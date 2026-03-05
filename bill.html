@@ -436,7 +436,11 @@ function renderBill() {
         ? ('Filed by ' + (bill.factions?.faction_name || 'Unknown'))
         : (bill.bill_type === 'budget' ? 'Automatically introduced to committee' : 'Filed by System');
 
-    if (isFloor && bill.voting_ends_tick && !bill.early_resolution_status) {
+    if (isFloor && bill.bill_type === 'budget' && !bill.voting_ends_tick) {
+        // Budget bills have no voting deadline — they persist until passed
+        document.getElementById('bill-voting-ends').style.display = 'block';
+        document.getElementById('bill-voting-ends').innerHTML = `<span style="color:#ff9800;">No voting deadline — budget bill remains on the floor until passed</span>`;
+    } else if (isFloor && bill.voting_ends_tick && !bill.early_resolution_status) {
         document.getElementById('bill-voting-ends').style.display = 'block';
         // If vote outcome is math-locked, show "Resolves next tick" instead of the original deadline
         const evalForDeadline = evaluateBillVote(bill, GAME_CONFIG.TOTAL_SEATS);
@@ -1508,20 +1512,39 @@ function renderSidebar() {
             statusLabel = 'WILL PASS';
             statusColor = '#4CAF50';
         } else if (evalResult.status === 'will_fail') {
-            statusLabel = evalResult.reason === 'quorum_impossible' ? 'WILL FAIL — QUORUM IMPOSSIBLE' : 'WILL FAIL';
-            statusColor = '#ff4444';
+            if (bill.bill_type === 'budget') {
+                statusLabel = 'NOT PASSING — budget bill remains on floor';
+                statusColor = '#ff9800';
+            } else {
+                statusLabel = evalResult.reason === 'quorum_impossible' ? 'WILL FAIL — QUORUM IMPOSSIBLE' : 'WILL FAIL';
+                statusColor = '#ff4444';
+            }
         } else if (evalResult.status === 'passing') {
             const quorumLabel = evalResult.quorumMet ? `${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} quorum met` : '';
             statusLabel = `PASSING${quorumLabel ? ' — ' + quorumLabel : ''}`;
             statusColor = '#8BC34A';
         } else if (evalResult.status === 'failing') {
-            statusLabel = 'FAILING';
-            statusColor = '#ff6644';
+            if (bill.bill_type === 'budget') {
+                statusLabel = 'NOT YET PASSING — needs more YES votes';
+                statusColor = '#ff9800';
+            } else {
+                statusLabel = 'FAILING';
+                statusColor = '#ff6644';
+            }
         } else if (evalResult.status === 'tied') {
-            statusLabel = 'TIED — bill will fail unless more yes votes are cast';
-            statusColor = '#ff9800';
+            if (bill.bill_type === 'budget') {
+                statusLabel = 'TIED — needs more YES votes to pass';
+                statusColor = '#ff9800';
+            } else {
+                statusLabel = 'TIED — bill will fail unless more yes votes are cast';
+                statusColor = '#ff9800';
+            }
         } else if (evalResult.status === 'quorum_not_met') {
-            statusLabel = `QUORUM NOT MET — ${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} participating`;
+            if (bill.bill_type === 'budget') {
+                statusLabel = `QUORUM NOT MET — ${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} participating (budget stays on floor)`;
+            } else {
+                statusLabel = `QUORUM NOT MET — ${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} participating`;
+            }
             statusColor = '#ffcc00';
         } else if (evalResult.status === 'pending' && isAbsoluteThreshold) {
             statusLabel = `${evalResult.neededFor} more YES needed of ${evalResult.thresholdNeeded} required`;
@@ -1587,14 +1610,15 @@ function renderSidebar() {
                 <span class="vote-tally-label">Quorum</span>
                 <span class="vote-tally-value" style="color:var(--text-secondary);">${participating} / ${quorumThreshold} needed <span class="vote-status-chip" style="background:${qColor};color:#000;">${qLabel}</span></span>
             </div>`;
+            const isBudget = bill.bill_type === 'budget';
             const pLabel = evalResult.status === 'will_pass' ? 'WILL PASS'
-                : evalResult.status === 'will_fail' ? 'WILL FAIL'
+                : evalResult.status === 'will_fail' ? (isBudget ? 'NOT PASSING' : 'WILL FAIL')
                 : evalResult.status === 'passing' ? 'PASSING'
-                : evalResult.status === 'failing' ? 'FAILING'
+                : evalResult.status === 'failing' ? (isBudget ? 'NOT PASSING' : 'FAILING')
                 : evalResult.status === 'tied' ? 'TIED'
                 : 'UNDECIDED';
             const pColor = evalResult.status === 'will_pass' || evalResult.status === 'passing' ? '#4CAF50'
-                : evalResult.status === 'will_fail' || evalResult.status === 'failing' ? '#ff4444'
+                : evalResult.status === 'will_fail' || evalResult.status === 'failing' ? (isBudget ? '#ff9800' : '#ff4444')
                 : evalResult.status === 'tied' ? '#ff9800'
                 : '#888';
             passageRow = `<div class="vote-tally-row">
@@ -1787,16 +1811,19 @@ async function enactDecree() {
         if (currentBill.bill_type !== 'budget') {
             decreeFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
         }
+        decreeFields.floor_tick = shard?.current_tick || 0;
         const { error } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
         if (error) throw error;
 
-        // Apply dynamic ideology penalty to sponsor (replaces static penalty)
-        const sponsorIdeology = await loadFactionIdeology(_supabase, currentBill.proposed_by);
-        if (sponsorIdeology) {
-            const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, currentBill.bill_articles || []);
-            if (dynamicPenalty < 0) {
-                await adjustMomentumAll(_supabase, currentNation.id, currentBill.proposed_by, dynamicPenalty, 'legislation:withdraw');
-                console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
+        // Apply dynamic ideology penalty to sponsor (skip for system-generated bills)
+        if (currentBill.proposed_by) {
+            const sponsorIdeology = await loadFactionIdeology(_supabase, currentBill.proposed_by);
+            if (sponsorIdeology) {
+                const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, currentBill.bill_articles || []);
+                if (dynamicPenalty < 0) {
+                    await adjustMomentumAll(_supabase, currentNation.id, currentBill.proposed_by, dynamicPenalty, 'legislation:withdraw');
+                    console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
+                }
             }
         }
 
