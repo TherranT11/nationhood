@@ -436,7 +436,11 @@ function renderBill() {
         ? ('Filed by ' + (bill.factions?.faction_name || 'Unknown'))
         : (bill.bill_type === 'budget' ? 'Automatically introduced to committee' : 'Filed by System');
 
-    if (isFloor && bill.voting_ends_tick && !bill.early_resolution_status) {
+    if (isFloor && bill.bill_type === 'budget' && !bill.voting_ends_tick) {
+        // Budget bills have no voting deadline — they persist until passed
+        document.getElementById('bill-voting-ends').style.display = 'block';
+        document.getElementById('bill-voting-ends').innerHTML = `<span style="color:#ff9800;">No voting deadline — budget bill remains on the floor until passed</span>`;
+    } else if (isFloor && bill.voting_ends_tick && !bill.early_resolution_status) {
         document.getElementById('bill-voting-ends').style.display = 'block';
         // If vote outcome is math-locked, show "Resolves next tick" instead of the original deadline
         const evalForDeadline = evaluateBillVote(bill, GAME_CONFIG.TOTAL_SEATS);
@@ -581,7 +585,12 @@ function renderBill() {
         ? '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ Foundational laws require at least one co-sponsor to advance.</div>'
         : '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or a simple majority of seats to send this to the floor.</div>'));
 
-    el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">Send to Floor</button>${isBudgetBill ? '<button class="sponsor-btn retract" onclick="retractBudgetBill()">Withdraw Budget</button>' : '<button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>'}` + reason;
+    // System-generated budget bills (proposed_by = null) cannot be retracted
+    const canRetractBudget = isBudgetBill && bill.proposed_by;
+    const retractBtn = isBudgetBill
+        ? (canRetractBudget ? '<button class="sponsor-btn retract" onclick="retractBudgetBill()">Withdraw Budget</button>' : '')
+        : '<button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>';
+    el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">Send to Floor</button>${retractBtn}` + reason;
 }
     }
 
@@ -1503,20 +1512,39 @@ function renderSidebar() {
             statusLabel = 'WILL PASS';
             statusColor = '#4CAF50';
         } else if (evalResult.status === 'will_fail') {
-            statusLabel = evalResult.reason === 'quorum_impossible' ? 'WILL FAIL — QUORUM IMPOSSIBLE' : 'WILL FAIL';
-            statusColor = '#ff4444';
+            if (bill.bill_type === 'budget') {
+                statusLabel = 'NOT PASSING — budget bill remains on floor';
+                statusColor = '#ff9800';
+            } else {
+                statusLabel = evalResult.reason === 'quorum_impossible' ? 'WILL FAIL — QUORUM IMPOSSIBLE' : 'WILL FAIL';
+                statusColor = '#ff4444';
+            }
         } else if (evalResult.status === 'passing') {
             const quorumLabel = evalResult.quorumMet ? `${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} quorum met` : '';
             statusLabel = `PASSING${quorumLabel ? ' — ' + quorumLabel : ''}`;
             statusColor = '#8BC34A';
         } else if (evalResult.status === 'failing') {
-            statusLabel = 'FAILING';
-            statusColor = '#ff6644';
+            if (bill.bill_type === 'budget') {
+                statusLabel = 'NOT YET PASSING — needs more YES votes';
+                statusColor = '#ff9800';
+            } else {
+                statusLabel = 'FAILING';
+                statusColor = '#ff6644';
+            }
         } else if (evalResult.status === 'tied') {
-            statusLabel = 'TIED — bill will fail unless more yes votes are cast';
-            statusColor = '#ff9800';
+            if (bill.bill_type === 'budget') {
+                statusLabel = 'TIED — needs more YES votes to pass';
+                statusColor = '#ff9800';
+            } else {
+                statusLabel = 'TIED — bill will fail unless more yes votes are cast';
+                statusColor = '#ff9800';
+            }
         } else if (evalResult.status === 'quorum_not_met') {
-            statusLabel = `QUORUM NOT MET — ${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} participating`;
+            if (bill.bill_type === 'budget') {
+                statusLabel = `QUORUM NOT MET — ${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} participating (budget stays on floor)`;
+            } else {
+                statusLabel = `QUORUM NOT MET — ${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} participating`;
+            }
             statusColor = '#ffcc00';
         } else if (evalResult.status === 'pending' && isAbsoluteThreshold) {
             statusLabel = `${evalResult.neededFor} more YES needed of ${evalResult.thresholdNeeded} required`;
@@ -1582,14 +1610,15 @@ function renderSidebar() {
                 <span class="vote-tally-label">Quorum</span>
                 <span class="vote-tally-value" style="color:var(--text-secondary);">${participating} / ${quorumThreshold} needed <span class="vote-status-chip" style="background:${qColor};color:#000;">${qLabel}</span></span>
             </div>`;
+            const isBudget = bill.bill_type === 'budget';
             const pLabel = evalResult.status === 'will_pass' ? 'WILL PASS'
-                : evalResult.status === 'will_fail' ? 'WILL FAIL'
+                : evalResult.status === 'will_fail' ? (isBudget ? 'NOT PASSING' : 'WILL FAIL')
                 : evalResult.status === 'passing' ? 'PASSING'
-                : evalResult.status === 'failing' ? 'FAILING'
+                : evalResult.status === 'failing' ? (isBudget ? 'NOT PASSING' : 'FAILING')
                 : evalResult.status === 'tied' ? 'TIED'
                 : 'UNDECIDED';
             const pColor = evalResult.status === 'will_pass' || evalResult.status === 'passing' ? '#4CAF50'
-                : evalResult.status === 'will_fail' || evalResult.status === 'failing' ? '#ff4444'
+                : evalResult.status === 'will_fail' || evalResult.status === 'failing' ? (isBudget ? '#ff9800' : '#ff4444')
                 : evalResult.status === 'tied' ? '#ff9800'
                 : '#888';
             passageRow = `<div class="vote-tally-row">
@@ -1782,16 +1811,19 @@ async function enactDecree() {
         if (currentBill.bill_type !== 'budget') {
             decreeFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
         }
+        decreeFields.floor_tick = shard?.current_tick || 0;
         const { error } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
         if (error) throw error;
 
-        // Apply dynamic ideology penalty to sponsor (replaces static penalty)
-        const sponsorIdeology = await loadFactionIdeology(_supabase, currentBill.proposed_by);
-        if (sponsorIdeology) {
-            const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, currentBill.bill_articles || []);
-            if (dynamicPenalty < 0) {
-                await adjustMomentumAll(_supabase, currentNation.id, currentBill.proposed_by, dynamicPenalty, 'legislation:withdraw');
-                console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
+        // Apply dynamic ideology penalty to sponsor (skip for system-generated bills)
+        if (currentBill.proposed_by) {
+            const sponsorIdeology = await loadFactionIdeology(_supabase, currentBill.proposed_by);
+            if (sponsorIdeology) {
+                const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, currentBill.bill_articles || []);
+                if (dynamicPenalty < 0) {
+                    await adjustMomentumAll(_supabase, currentNation.id, currentBill.proposed_by, dynamicPenalty, 'legislation:withdraw');
+                    console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
+                }
             }
         }
 
@@ -1839,6 +1871,8 @@ async function sendToFloor() {
         if (currentBill.bill_type !== 'budget') {
             updateFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
         }
+        // Track when the bill was moved to the floor
+        updateFields.floor_tick = shard?.current_tick || 0;
         const { error } = await _supabase.from('bills').update(updateFields).eq('id', billId);
         if (error) throw error;
 
@@ -1876,6 +1910,10 @@ async function retractBill() {
 }
 
 async function retractBudgetBill() {
+    if (!currentBill.proposed_by) {
+        alert('System-generated budget bills cannot be retracted.');
+        return;
+    }
     if (currentBill.status !== 'committee') {
         alert('This budget bill is on the floor and cannot be retracted.');
         return;
@@ -2499,8 +2537,9 @@ async function loadBudgetData(bill) {
 }
 
 function isBudgetEditable() {
-    // Adjustments only allowed in committee — floor is voting only
-    if (!currentBill || currentBill.status !== 'committee') return false;
+    // Budget allocations can be edited in committee or on the floor
+    // (floor editing allows parties to amend the budget to build consensus)
+    if (!currentBill || !['committee', 'floor'].includes(currentBill.status)) return false;
     if (currentBill.early_resolution_status) return false;
     if (!currentFaction) return false;
     if (currentSeats < 1) return false;
@@ -2562,7 +2601,8 @@ function renderBudgetBillUI() {
     const inflationPct = Math.pow(Math.max(0, inflationStat), 1.5) / 100;
     const totals = getBudgetTotals();
     // Three-state controls: showControls = buttons visible, canEdit = buttons clickable
-    const showControls = currentBill && currentBill.status === 'committee' && !currentBill.early_resolution_status;
+    // Budget bills can be edited in committee AND on the floor (to allow amendment for consensus)
+    const showControls = currentBill && ['committee', 'floor'].includes(currentBill.status) && !currentBill.early_resolution_status;
     const canEdit = isBudgetEditable();
     const gameYear = 2000 + Math.floor((currentBill.proposed_tick || 0) / 12);
 
@@ -2604,7 +2644,7 @@ function renderBudgetBillUI() {
     }
 
     if (currentBill.status === 'floor') {
-        h += '<div class="budget-locked-notice">Budget allocations are locked — this bill is now on the floor for voting.</div>';
+        h += '<div class="budget-floor-amend-notice">Budget allocations can still be amended on the floor. Changing allocations will reset all existing votes.</div>';
     }
 
     // === REVENUE SECTION ===
@@ -2718,11 +2758,12 @@ function renderBudgetBillUI() {
 
     h += '</div>'; // close budget-section
 
-    // Retract Budget Bill — only head of government can retract
+    // Retract Budget Bill — only head of government can retract, and only player-proposed bills
+    // System-generated budget bills (proposed_by = null) cannot be retracted
     const isPMParty = isAutocracy ? isHeadFaction
         : isPresidential ? (presidentFactionId && currentFaction?.id === presidentFactionId)
         : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId);
-    if (isPMParty && currentBill.status === 'committee') {
+    if (isPMParty && currentBill.status === 'committee' && currentBill.proposed_by) {
         h += '<div class="budget-retract-section">';
         h += '<button class="budget-retract-btn" onclick="retractBudgetBill()">Retract Budget Bill</button>';
         h += '<div class="budget-retract-note">Only the head of government can retract a budget bill.</div>';
@@ -2943,6 +2984,27 @@ function renderBudgetMinistryDetail(category, showControls, canEdit) {
     return h;
 }
 
+// When budget allocations change on the floor, reset all votes so parties must re-evaluate
+async function resetBudgetFloorVotes() {
+    if (!currentBill || currentBill.status !== 'floor') return;
+    try {
+        // Use RPC to bypass RLS and reset all votes (SECURITY DEFINER)
+        const { error } = await _supabase.rpc('reset_budget_floor_votes', { p_bill_id: currentBill.id });
+        if (error) throw error;
+        // Update local state
+        currentBill.votes_for = 0;
+        currentBill.votes_against = 0;
+        currentBill.votes_abstain = 0;
+        currentBill.early_resolution_status = null;
+        currentBill.early_resolution_tick = null;
+        currentBill.voting_ends_tick = null;
+        currentBill.bill_support = [];
+        console.log(`[BudgetAmend] Floor votes reset for budget bill ${currentBill.id} — allocations changed`);
+    } catch (e) {
+        console.error('[BudgetAmend] Failed to reset floor votes:', e);
+    }
+}
+
 // Sync ministry allocation_amount from per-item totals
 async function syncMinistryAllocation(category) {
     const alloc = budgetAllocations.find(a => a.fiscal_category === category);
@@ -3008,6 +3070,7 @@ function initBudgetDelegation() {
                     .eq('id', ia.id);
 
                 await syncMinistryAllocation(cat);
+                await resetBudgetFloorVotes();
                 renderBudgetBillUI();
 
             } else if (action.startsWith('disc-')) {
@@ -3033,6 +3096,7 @@ function initBudgetDelegation() {
                     .eq('id', alloc.id);
 
                 await syncMinistryAllocation(cat);
+                await resetBudgetFloorVotes();
                 renderBudgetBillUI();
             }
             return;
@@ -3074,6 +3138,7 @@ function initBudgetDelegation() {
                 .eq('id', ia.id);
 
             await syncMinistryAllocation(cat);
+            await resetBudgetFloorVotes();
             renderBudgetBillUI();
             return;
         }
