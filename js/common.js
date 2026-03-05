@@ -184,7 +184,13 @@ export async function loadGameState(requireFaction = true) {
     } else {
         const { data: userFaction, error: factionError } = await _supabase
             .from('factions').select('*').eq('id', user.id).single();
-        if (factionError || !userFaction) { if (requireFaction) { window.location.href = 'dashboard.html'; return null; } }
+        if (factionError || !userFaction) {
+            if (requireFaction) {
+                sessionStorage.removeItem(STATE_KEY);
+                window.location.href = 'select-nation.html';
+                return null;
+            }
+        }
         faction = userFaction;
     }
 
