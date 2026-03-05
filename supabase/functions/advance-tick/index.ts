@@ -641,7 +641,7 @@ function distributeTradeAmongPartners(exportCapacity, importers) {
             results.push({ importer_nation_id: weighted[i].nation_id, volume: Math.round(weighted[i].demand) });
             remaining -= weighted[i].demand;
         } else {
-            uncapped.push({ idx: results.length, nation_id: weighted[i].nation_id, demand: weighted[i].demand, weight: weighted[i].weight, share: share });
+            uncapped.push({ idx: results.length, nation_id: weighted[i].nation_id, demand: weighted[i].demand, weight: weighted[i].weight });
             uncappedWeight += weighted[i].weight;
             results.push({ importer_nation_id: weighted[i].nation_id, volume: 0 }); // placeholder
         }
@@ -935,16 +935,19 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 flagsMap[k2].has_rsc = true;
                 activeRSCs.push(ta);
             } else if (ta.agreement_type === 'export_subsidy') {
-                // Unilateral: nation_a_id is the subsidizing nation
+                // Unilateral: the subsidizing nation is identified from the article's author_nation_id,
+                // falling back to nation_a_id for legacy agreements without it
                 var esArts = ta.articles || [];
                 for (var ai = 0; ai < esArts.length; ai++) {
                     if (esArts[ai].type !== 'subsidized_sector') continue;
                     var esData = esArts[ai].data;
                     if (!esData || !esData.sector || !esData.subsidy_pct) continue;
-                    if (!subsidyMap[ta.nation_a_id]) subsidyMap[ta.nation_a_id] = {};
-                    // Take the highest subsidy if multiple agreements on the same sector
-                    var existing = subsidyMap[ta.nation_a_id][esData.sector] || 0;
-                    subsidyMap[ta.nation_a_id][esData.sector] = Math.max(existing, esData.subsidy_pct);
+                    var subsidizer = esData.author_nation_id || ta.nation_a_id;
+                    if (!subsidyMap[subsidizer]) subsidyMap[subsidizer] = {};
+                    // Clamp to valid range (5-30%) and take the highest if multiple agreements
+                    var clampedPct = Math.min(30, Math.max(5, esData.subsidy_pct));
+                    var existing = subsidyMap[subsidizer][esData.sector] || 0;
+                    subsidyMap[subsidizer][esData.sector] = Math.max(existing, clampedPct);
                 }
             }
         }
@@ -1075,7 +1078,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
     for (var si = 0; si < sectors.length; si++) {
         var sector = sectors[si];
-        var priceMod = priceModifiers[sector.key];
+        var priceMod = priceModifiers[sector.key] || 1.0;
 
         for (var ei = 0; ei < nationCount; ei++) {
             var exporter = nationList[ei];
@@ -1340,13 +1343,11 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                     }
                 }
 
-                // Determine who breached: if seller couldn't supply, seller is at fault
-                // if buyer didn't have demand, buyer is at fault (rare since we check demand > 0)
-                var sellerSupplied = actualExports[rscAlloc.sellerNationId][rscAlloc.sector] || 0;
+                // Determine who breached: seller at fault if their capacity dropped below
+                // commitment level; buyer at fault if seller had capacity but trade didn't flow
                 var sellerCapacity = nationFlows[rscAlloc.sellerNationId] &&
                     nationFlows[rscAlloc.sellerNationId][rscAlloc.sector] ?
                     nationFlows[rscAlloc.sellerNationId][rscAlloc.sector].exportCapacity : 0;
-                // Seller breach: they couldn't produce enough to meet the commitment
                 var sellerAtFault = sellerCapacity < rscAlloc.volume;
 
                 var breacherNationId = sellerAtFault ? rscAlloc.sellerNationId : rscAlloc.buyerNationId;
@@ -1363,7 +1364,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 var relRow = relMap[relPairKey];
                 if (relRow) {
                     var newScore = Math.max(-100, (Number(relRow.relation_score) || 0) - relPenalty);
-                    await supabase.from('nation_relations')
+                    await supabase.from('diplomatic_relations')
                         .update({ relation_score: newScore })
                         .eq('nation_a_id', relRow.nation_a_id)
                         .eq('nation_b_id', relRow.nation_b_id);

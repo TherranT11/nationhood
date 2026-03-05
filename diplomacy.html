@@ -4999,7 +4999,8 @@ async function saveTradeArticle(negotiationId, articleType) {
             const sector = document.getElementById('subsidy-sector')?.value;
             const pct = parseInt(document.getElementById('subsidy-pct')?.value || '15');
             if (!sector) { alert('Please select a sector.'); return; }
-            articleData = { sector: sector, subsidy_pct: pct };
+            // Store author_nation_id so the trade engine knows which nation is subsidizing
+            articleData = { sector: sector, subsidy_pct: pct, author_nation_id: currentNation.id };
             break;
         }
         case 'funding_source': {
