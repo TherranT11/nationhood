@@ -2773,6 +2773,7 @@ async function renderParties() {
 
     // === Performance Credit — DISABLED ===
 
+    const currentAP = Math.min(f.action_points || 0, GAME_CONFIG.MAX_AP);
     const currentTick = currentShard?.current_tick || 0;
 
     // === Voter Bloc Approval Cards (build HTML) ===
