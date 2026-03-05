@@ -1373,23 +1373,35 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     .eq('id', bill.original_bill_id).single();
                 if (originalBill) {
                     await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
-                    const enactment = await enactBill(supabase, originalBill, currentTick);
-                    if (!enactment?.success) {
-                        await markBillEnactmentFailed(supabase, originalBill, currentTick, enactment?.error || 'Unknown enactment failure');
+                    if (originalBill.bill_type === 'budget') {
+                        // Budget veto override: resolve budget effects + clear shutdown
                         try {
-                            await supabase.rpc('fire_system_event', {
-                                p_trigger_key: 'bill_failed',
-                                p_nation_id: originalBill.nation_id,
-                                p_tick: currentTick,
-                                p_placeholders: {
-                                    nation: nation?.name || 'Unknown',
-                                    bill_name: `${originalBill.bill_name} (override enactment failed)`,
-                                    sponsor: originalBill.factions?.faction_name || 'Unknown',
-                                    votes_for: '0',
-                                    votes_against: '0'
-                                }
-                            });
-                        } catch (e) { /* non-blocking */ }
+                            await resolveBudgetBill(supabase, originalBill, currentTick);
+                            await supabase.from('bills').update({ status: 'passed' }).eq('id', originalBill.id);
+                            // Shutdown will be resolved by resolveGovernmentShutdown in the tick loop
+                        } catch (budgetErr) {
+                            console.error(`[resolveExpiredVotes] Budget veto override enactment failed for ${originalBill.id}: ${budgetErr.message}`);
+                            await markBillEnactmentFailed(supabase, originalBill, currentTick, budgetErr.message);
+                        }
+                    } else {
+                        const enactment = await enactBill(supabase, originalBill, currentTick);
+                        if (!enactment?.success) {
+                            await markBillEnactmentFailed(supabase, originalBill, currentTick, enactment?.error || 'Unknown enactment failure');
+                            try {
+                                await supabase.rpc('fire_system_event', {
+                                    p_trigger_key: 'bill_failed',
+                                    p_nation_id: originalBill.nation_id,
+                                    p_tick: currentTick,
+                                    p_placeholders: {
+                                        nation: nation?.name || 'Unknown',
+                                        bill_name: `${originalBill.bill_name} (override enactment failed)`,
+                                        sponsor: originalBill.factions?.faction_name || 'Unknown',
+                                        votes_for: '0',
+                                        votes_against: '0'
+                                    }
+                                });
+                            } catch (e) { /* non-blocking */ }
+                        }
                     }
                 }
                 try {
@@ -1606,24 +1618,44 @@ export async function resolveExpiredVotes(supabase, nationId) {
         } else if (bill.bill_type === 'budget') {
             // Budget bill resolution
             if (passed) {
-                try {
-                    await resolveBudgetBill(supabase, bill, currentTick);
-                    await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-                } catch (budgetErr) {
-                    console.error(`[resolveExpiredVotes] resolveBudgetBill failed for bill ${bill.id}: ${budgetErr.message}`);
-                    // Do NOT mark as passed — revert to floor so it retries next tick
-                    results.push({ billId: bill.id, billName: bill.bill_name, result: 'error', votesFor, votesAgainst, type: 'budget', error: budgetErr.message });
-                    continue;
+                if (isPresidentialRepublic(nation)) {
+                    // Presidential systems: route budget to president's desk for signing
+                    await supabase.from('bills').update({
+                        status: 'president_desk',
+                        passed_tick: currentTick,
+                        president_desk_deadline: currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS
+                    }).eq('id', bill.id);
+                    try {
+                        await supabase.rpc('fire_system_event', {
+                            p_trigger_key: 'bill_passed',
+                            p_nation_id: bill.nation_id,
+                            p_tick: currentTick,
+                            p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
+                        });
+                    } catch (e) { /* non-blocking */ }
+                    console.log(`[resolveExpiredVotes] Budget bill ${bill.bill_name} passed legislature → president_desk (deadline tick ${currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS})`);
+                    results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
+                } else {
+                    // Parliamentary systems: enact budget directly
+                    try {
+                        await resolveBudgetBill(supabase, bill, currentTick);
+                        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+                    } catch (budgetErr) {
+                        console.error(`[resolveExpiredVotes] resolveBudgetBill failed for bill ${bill.id}: ${budgetErr.message}`);
+                        // Do NOT mark as passed — keep on floor so it retries next tick
+                        results.push({ billId: bill.id, billName: bill.bill_name, result: 'error', votesFor, votesAgainst, type: 'budget', error: budgetErr.message });
+                        continue;
+                    }
+                    try {
+                        await supabase.rpc('fire_system_event', {
+                            p_trigger_key: 'bill_passed',
+                            p_nation_id: bill.nation_id,
+                            p_tick: currentTick,
+                            p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
+                        });
+                    } catch (e) { /* non-blocking */ }
+                    results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
                 }
-                try {
-                    await supabase.rpc('fire_system_event', {
-                        p_trigger_key: 'bill_passed',
-                        p_nation_id: bill.nation_id,
-                        p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
-                    });
-                } catch (e) { /* non-blocking */ }
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
             } else {
                 await failBill(supabase, bill);
                 try {

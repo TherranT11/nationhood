@@ -856,12 +856,13 @@ export const GOVERNMENT_SHUTDOWN_CRISIS_ID = '00000000-0000-0000-0000-0000000000
  */
 export async function isGovernmentShutdown(supabase, nation, currentTick) {
     // Find the oldest open budget bill for this nation
+    // Include president_desk: the bill passed legislature but awaits presidential action
     const { data: openBudgetBills } = await supabase
         .from('bills')
         .select('id, proposed_tick')
         .eq('nation_id', nation.id)
         .eq('bill_type', 'budget')
-        .in('status', ['committee', 'floor'])
+        .in('status', ['committee', 'floor', 'president_desk'])
         .order('proposed_tick', { ascending: true })
         .limit(1);
 
@@ -1042,7 +1043,7 @@ export async function resolveGovernmentShutdown(supabase, nation, currentTick) {
  *
  * Skips if:
  *   - Nation is an autocracy
- *   - An open budget bill already exists (committee or floor)
+ *   - An open budget bill already exists (committee, floor, or president_desk)
  *   - It's too early (not within the auto-generation window)
  */
 export async function autoGenerateBudgetBill(supabase, nation, currentTick, activeLaws) {
@@ -1059,13 +1060,13 @@ export async function autoGenerateBudgetBill(supabase, nation, currentTick, acti
     // Not time yet
     if (currentTick < generateAtTick) return null;
 
-    // Check if there's already an open budget bill
+    // Check if there's already an open budget bill (including president's desk)
     const { data: openBills } = await supabase
         .from('bills')
         .select('id')
         .eq('nation_id', nation.id)
         .eq('bill_type', 'budget')
-        .in('status', ['committee', 'floor'])
+        .in('status', ['committee', 'floor', 'president_desk'])
         .limit(1);
 
     if (openBills && openBills.length > 0) return null;
