@@ -5138,7 +5138,7 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
 
     const { data: bills } = await supabase
         .from('bills')
-        .select('id, proposed_by, bill_type, bill_articles(*, policies(*)), bill_support(faction_id, stance)')
+        .select('id, proposed_by, bill_type, bill_articles(*, policies(id, ideologies, ideology)), bill_support(faction_id, stance)')
         .in('id', billIds);
 
     if (!bills || bills.length === 0) return;
@@ -5619,7 +5619,7 @@ async function resolveExpiredVotes(supabase, nationId) {
 
     const { data: expiredBills, error } = await supabase
         .from('bills')
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(id, policy_name, opposed_policy_ids, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, fiscal_category, ideologies, ideology, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)), bill_support(*, factions(faction_name))')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .lte('voting_ends_tick', currentTick);
@@ -5979,7 +5979,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
                 // Enact the ORIGINAL vetoed bill
                 const { data: originalBill } = await supabase.from('bills')
-                    .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+                    .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(id, policy_name, opposed_policy_ids, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, fiscal_category, ideologies, ideology, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)), bill_support(*, factions(faction_name))')
                     .eq('id', bill.original_bill_id).single();
                 if (originalBill) {
                     await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
@@ -6645,6 +6645,41 @@ async function enactBill(supabase, bill, currentTick) {
             }, { onConflict: 'nation_id,policy_id' });
             if (activeLawError) {
                 console.error(`[enactBill] Failed to upsert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
+            }
+        }
+
+        // ── Deduct upfront costs from national budget ──
+        let totalUpfrontCost = 0;
+        for (const art of articles) {
+            const policy = art.policies;
+            if (!policy || art.repeal_active_law_id) continue;
+            const baseCost = policy.upfront_cost || 0;
+            if (baseCost <= 0) continue;
+            let scaled = baseCost;
+            if (policy.upfront_scaling_stat && nation[policy.upfront_scaling_stat] !== undefined) {
+                const statVal = Number(nation[policy.upfront_scaling_stat]) || 1;
+                const divisor = RAW_SCALING_DIVISORS[policy.upfront_scaling_stat] || 50;
+                scaled = baseCost * (statVal / divisor);
+            }
+            totalUpfrontCost += scaled * 1_000_000;
+        }
+
+        if (totalUpfrontCost > 0) {
+            const reserves = Number(nation.budget_reserves || 0);
+            let newReserves = reserves - totalUpfrontCost;
+            let newDebt = Number(nation.debt || 0);
+            if (newReserves < 0) {
+                newDebt += Math.abs(newReserves);
+                newReserves = 0;
+            }
+            const { error: costErr } = await supabase.from('nations').update({
+                budget_reserves: newReserves,
+                debt: newDebt
+            }).eq('id', bill.nation_id);
+            if (costErr) {
+                console.error(`[enactBill] Failed to deduct upfront cost for bill ${bill.id}:`, costErr.message);
+            } else {
+                console.log(`[enactBill] Deducted upfront cost $${(totalUpfrontCost/1e9).toFixed(4)}B for bill "${bill.bill_name}" (reserves: $${(reserves/1e9).toFixed(2)}B → $${(newReserves/1e9).toFixed(2)}B, debt: $${(Number(nation.debt||0)/1e9).toFixed(2)}B → $${(newDebt/1e9).toFixed(2)}B)`);
             }
         }
     }
@@ -9440,7 +9475,7 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
  */
 async function signPresidentialBill(supabase, billId, presidentFactionId) {
     const { data: bill } = await supabase.from('bills')
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(id, policy_name, opposed_policy_ids, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, fiscal_category, ideologies, ideology, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)), bill_support(*, factions(faction_name))')
         .eq('id', billId).single();
     if (!bill || bill.status !== 'president_desk') throw new Error('Bill is not on the president\'s desk');
 
@@ -9583,7 +9618,7 @@ async function processPresidentDesk(supabase, nation, currentTick) {
     if (!isPresidentialRepublic(nation)) return [];
 
     const { data: expiredDesks } = await supabase.from('bills')
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(id, policy_name, opposed_policy_ids, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, fiscal_category, ideologies, ideology, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)), bill_support(*, factions(faction_name))')
         .eq('nation_id', nation.id)
         .eq('status', 'president_desk')
         .lte('president_desk_deadline', currentTick);
