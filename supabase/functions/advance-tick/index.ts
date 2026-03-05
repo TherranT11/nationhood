@@ -4160,20 +4160,20 @@ async function autoGenerateBudgetBill(supabase, nation, currentTick, activeLaws)
 // ==================== BUDGET COMMITTEE EXPIRY ====================
 
 /**
- * Check if a budget bill has expired in committee (sat for BUDGET_COMMITTEE_EXPIRY_TICKS
- * without being moved to the floor). If so, apply consequences:
+ * Check if a budget bill has sat in committee for BUDGET_COMMITTEE_EXPIRY_TICKS
+ * without being moved to the floor. If so, automatically move it to the floor
+ * and apply approval penalties. Budget bills can NEVER fail — they persist on
+ * the floor until passed.
  *
  * Parliamentary systems:
- *   - Fail the budget bill
- *   - All coalition parties receive BUDGET_FAILURE_COALITION_PENALTY (-5) approval with all voter blocs
- *   - Trigger snap elections (if not already in caretaker/election mode)
+ *   - Auto-move bill to floor
+ *   - All coalition parties receive BUDGET_FAILURE_COALITION_PENALTY (-5) approval
  *
  * Presidential systems:
- *   - Fail the budget bill and apply BUDGET_FAILURE_PRESIDENT_PENALTY (-10) to president's party
- *   - Directly activate a government shutdown crisis (since failing the bill means
- *     isGovernmentShutdown() won't detect it, the crisis is manually inserted)
+ *   - Auto-move bill to floor
+ *   - President's party receives BUDGET_FAILURE_PRESIDENT_PENALTY (-10) approval
  *
- * @returns {{ expired: boolean, consequence: string, billId?: string }} or null
+ * @returns {{ movedToFloor: boolean, consequence: string, billId?: string }} or null
  */
 async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
     // Skip autocracies
@@ -17753,6 +17753,18 @@ async function advanceTick(supabase) {
         // Apply GDP growth rate
         await applyGdpGrowth(supabase, nation);
 
+        // Budget committee expiry — auto-move budget bills to floor after 3 ticks in committee
+        // Runs BEFORE shutdown/unfunded checks so newly-floored bills are detected this tick
+        try {
+            const budgetExpiryResult = await processBudgetCommitteeExpiry(supabase, nation, newTick);
+            if (budgetExpiryResult) {
+                summary.budgetCommitteeExpiries = summary.budgetCommitteeExpiries || [];
+                summary.budgetCommitteeExpiries.push({ nation: nation.name, ...budgetExpiryResult });
+            }
+        } catch (budgetExpiryErr) {
+            console.error(`[advanceTick] Budget committee expiry failed for ${nation.name} (non-fatal):`, budgetExpiryErr);
+        }
+
         // Stat decay (equilibrium drift + erosion, modified by institution funding)
         if (!_institutionConfig) {
             const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
@@ -17816,17 +17828,6 @@ async function advanceTick(supabase) {
             }
         } catch (budgetGenErr) {
             console.error(`[advanceTick] Auto budget generation failed for ${nation.name} (non-fatal):`, budgetGenErr);
-        }
-
-        // Budget committee expiry — auto-move budget bills to floor after 3 ticks in committee
-        try {
-            const budgetExpiryResult = await processBudgetCommitteeExpiry(supabase, nation, newTick);
-            if (budgetExpiryResult) {
-                summary.budgetCommitteeExpiries = summary.budgetCommitteeExpiries || [];
-                summary.budgetCommitteeExpiries.push({ nation: nation.name, ...budgetExpiryResult });
-            }
-        } catch (budgetExpiryErr) {
-            console.error(`[advanceTick] Budget committee expiry failed for ${nation.name} (non-fatal):`, budgetExpiryErr);
         }
 
         // Ongoing costs
