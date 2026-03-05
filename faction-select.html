@@ -158,7 +158,7 @@ body {
   letter-spacing: 0.04em;
 }
 .ideo-card.selected .ideo-name {
-  color: var(--blue);
+  /* color inherited from inline style per ideology */
 }
 .ideo-desc {
   font-family: var(--font-ui);
@@ -263,7 +263,7 @@ body {
 
 <div id="page-content" style="display:none; width:100%; display:none; flex-direction:column; align-items:center;">
   <div class="page-header">
-    <h1>Nationhood</h1>
+    <h1>Step 2 of 3</h1>
     <div class="title">Define Your Political Identity</div>
     <div class="subtitle">Select exactly 2 ideologies from different axes. Each choice locks out its opposite. These will shape your party's platform and voter appeal.</div>
   </div>
@@ -279,7 +279,8 @@ body {
     </div>
   </div>
 
-  <div class="action-bar">
+  <div class="action-bar" style="display:flex;justify-content:space-between;">
+    <button class="btn-next" style="background:var(--bg-3);color:var(--text-muted);" onclick="goBack()">&#x25C0; BACK</button>
     <button class="btn-next" id="btn-next" disabled onclick="proceed()">CONTINUE &#x25B6;</button>
   </div>
 </div>
@@ -320,7 +321,16 @@ const AXES = [
   }
 ];
 
+const IDEOLOGY_COLORS = {
+  'Liberty': '#3b82f6', 'Equality': '#ef4444',
+  'Tradition': '#a855f7', 'Progress': '#22c55e',
+  'Security': '#f59e0b', 'Freedom': '#06b6d4',
+  'Globalism': '#14b8a6', 'Nationalism': '#f97316',
+  'Individualism': '#eab308', 'Collectivism': '#ec4899'
+};
+
 let selected = []; // array of {name, axisKey}
+let nationData = null;
 
 async function init() {
   const { data: { user } } = await _supabase.auth.getUser();
@@ -334,6 +344,18 @@ async function init() {
     return;
   }
 
+  // Load pending nation from sessionStorage (set by select-nation.html)
+  const raw = sessionStorage.getItem('nationhood_pending_nation');
+  if (!raw) {
+    window.location.href = 'select-nation.html';
+    return;
+  }
+  nationData = JSON.parse(raw);
+  if (!nationData.id) {
+    window.location.href = 'select-nation.html';
+    return;
+  }
+
   renderAxes();
   document.getElementById('loading').style.display = 'none';
   const content = document.getElementById('page-content');
@@ -342,7 +364,10 @@ async function init() {
 
 function renderAxes() {
   const container = document.getElementById('axes-container');
-  container.innerHTML = AXES.map(axis => `
+  container.innerHTML = AXES.map(axis => {
+    const lColor = IDEOLOGY_COLORS[axis.left.name] || 'var(--text-bright)';
+    const rColor = IDEOLOGY_COLORS[axis.right.name] || 'var(--text-bright)';
+    return `
     <div class="axis-block">
       <div class="axis-header">
         <div class="axis-dot"></div>
@@ -350,16 +375,16 @@ function renderAxes() {
       </div>
       <div class="axis-body">
         <div class="ideo-card" data-ideology="${axis.left.name}" data-opposite="${axis.right.name}" data-axis="${axis.key}" onclick="toggleIdeo(this)">
-          <div class="ideo-name">${axis.left.name}</div>
+          <div class="ideo-name" style="color:${lColor}">${axis.left.name}</div>
           <div class="ideo-desc">${axis.left.desc}</div>
         </div>
         <div class="ideo-card" data-ideology="${axis.right.name}" data-opposite="${axis.left.name}" data-axis="${axis.key}" onclick="toggleIdeo(this)">
-          <div class="ideo-name">${axis.right.name}</div>
+          <div class="ideo-name" style="color:${rColor}">${axis.right.name}</div>
           <div class="ideo-desc">${axis.right.desc}</div>
         </div>
       </div>
     </div>
-  `).join('');
+  `}).join('');
 }
 
 function toggleIdeo(el) {
@@ -391,7 +416,10 @@ function updateUI() {
   if (selected.length === 0) {
     tags.innerHTML = '<span class="sel-placeholder">Pick 2 ideologies</span>';
   } else {
-    tags.innerHTML = selected.map(s => `<span class="sel-tag">${s.name}</span>`).join('');
+    tags.innerHTML = selected.map(s => {
+      const c = IDEOLOGY_COLORS[s.name] || 'var(--blue)';
+      return `<span class="sel-tag" style="color:${c};border-color:${c};background:${c}18">${s.name}</span>`;
+    }).join('');
   }
 
   const btn = document.getElementById('btn-next');
@@ -407,10 +435,15 @@ function proceed() {
   window.location.href = 'createparty.html?' + params.toString();
 }
 
+function goBack() {
+  window.location.href = 'select-nation.html';
+}
+
 init();
 
 window.toggleIdeo = toggleIdeo;
 window.proceed = proceed;
+window.goBack = goBack;
 </script>
 </body>
 </html>
