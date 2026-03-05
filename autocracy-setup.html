@@ -726,9 +726,18 @@ async function createFaction() {
       age: 35 + Math.floor(Math.random() * 20)
     };
 
-    // Generate abbreviation from faction name (first letter of first 3 words)
-    const words = selectedName.split(/\s+/).filter(w => w.length > 1);
-    const abbr = words.slice(0, 3).map(w => w[0].toUpperCase()).join('');
+    // Generate abbreviation from faction name (first letter of up to 3 alphabetic words)
+    const words = selectedName.split(/\s+/).filter(w => /^[A-Za-z]/.test(w));
+    let abbr = words.slice(0, 3).map(w => w[0].toUpperCase()).join('');
+    // Pad to 3 chars if needed (e.g. "People's Vanguard" -> "PVG" from consonants)
+    if (abbr.length < 3) {
+      const allChars = selectedName.replace(/[^A-Za-z]/g, '').toUpperCase();
+      while (abbr.length < 3 && abbr.length < allChars.length) {
+        const next = allChars[abbr.length];
+        if (!abbr.includes(next)) abbr += next;
+        else abbr += allChars.charAt(Math.min(abbr.length + 1, allChars.length - 1));
+      }
+    }
 
     const { error: upsertError } = await _supabase
       .from('factions')
