@@ -90,60 +90,6 @@ body {
   line-height: 1.5;
 }
 
-/* Party identity bar */
-.party-bar {
-  width: 100%;
-  max-width: 900px;
-  padding: 0 16px;
-  margin-bottom: 16px;
-}
-.party-bar__inner {
-  background: var(--bg-2);
-  border: 1px solid var(--border-0);
-  padding: 8px 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.party-bar__label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 600;
-  color: var(--text-dim);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-.party-bar__name {
-  font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-bright);
-}
-.party-bar__abbr {
-  font-family: var(--font-mono);
-  font-size: 8.5px;
-  font-weight: 700;
-  padding: 1px 6px;
-  background: var(--blue-faint);
-  color: var(--blue);
-  border: 1px solid var(--blue-border);
-}
-.party-bar__ideo {
-  font-family: var(--font-mono);
-  font-size: 8.5px;
-  font-weight: 700;
-  padding: 1px 6px;
-  background: var(--purple-faint);
-  color: var(--purple);
-  border: 1px solid var(--purple-border);
-}
-.party-bar__sep {
-  width: 1px;
-  height: 14px;
-  background: var(--border-0);
-}
-
 /* Nation cards grid */
 .nations-grid {
   width: 100%;
@@ -207,6 +153,11 @@ body {
   background: var(--red-faint);
   color: var(--red);
   border: 1px solid var(--red-border);
+}
+.gov-presidential {
+  background: var(--blue-faint);
+  color: var(--blue);
+  border: 1px solid var(--blue-border);
 }
 
 /* Card body */
@@ -374,8 +325,6 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-.nation-card__footer {
   cursor: pointer;
   transition: background 0.15s ease;
 }
@@ -410,31 +359,6 @@ body {
 .nation-card.disabled:hover .join-label,
 .nation-card.disabled:hover .join-arrow {
   color: var(--text-dim);
-}
-
-/* Back button */
-.back-bar {
-  width: 100%;
-  max-width: 900px;
-  padding: 0 16px 32px;
-}
-.btn-back {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  padding: 7px 14px;
-  background: var(--bg-3);
-  border: 1px solid var(--border-0);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.btn-back:hover {
-  background: var(--bg-4);
-  color: var(--text-secondary);
-  border-color: var(--border-1);
 }
 
 /* Confirm modal */
@@ -492,6 +416,16 @@ body {
   font-size: 16px;
   font-weight: 700;
   color: var(--text-bright);
+  margin-bottom: 4px;
+}
+.modal__gov-badge {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: inline-block;
   margin-bottom: 12px;
 }
 .modal__actions {
@@ -525,10 +459,6 @@ body {
 }
 .modal__btn--confirm:hover {
   background: rgba(92,184,92,0.14);
-}
-.modal__btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
 }
 
 .loading-msg {
@@ -569,22 +499,14 @@ body {
 
 <div id="page-content" style="display:none; width:100%; flex-direction:column; align-items:center;">
   <div class="page-header">
-    <h1>Step 3 of 3</h1>
+    <h1>Step 1 of 3</h1>
     <div class="title">Choose Your Nation</div>
-    <div class="subtitle">Select a nation to enter. Each nation has its own government, parties, and crises. Your party will start with zero seats and must earn voter support through elections.</div>
-  </div>
-
-  <div class="party-bar">
-    <div class="party-bar__inner" id="party-bar"></div>
+    <div class="subtitle">Select a nation to join. Each nation has its own government type, parties, and crises. Your path forward depends on the nation's government.</div>
   </div>
 
   <div class="error-msg"><div class="error-msg__inner" id="error-message"></div></div>
 
   <div class="nations-grid" id="nations-grid"></div>
-
-  <div class="back-bar">
-    <button class="btn-back" onclick="goBack()">&#x25C0; BACK TO PARTY</button>
-  </div>
 </div>
 
 <!-- Confirm Modal -->
@@ -595,12 +517,13 @@ body {
       <span class="modal__title">Confirm Nation</span>
     </div>
     <div class="modal__body">
-      <div class="modal__text">You are about to create your party in:</div>
+      <div class="modal__text">You are about to join:</div>
       <div class="modal__nation-name" id="modal-nation-name"></div>
-      <div class="modal__text" id="modal-party-summary" style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono);"></div>
+      <div id="modal-gov-badge" class="modal__gov-badge"></div>
+      <div class="modal__text" id="modal-flow-hint" style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono);"></div>
       <div class="modal__actions">
         <button class="modal__btn modal__btn--cancel" onclick="closeModal()">CANCEL</button>
-        <button class="modal__btn modal__btn--confirm" id="modal-confirm-btn" onclick="confirmJoin()">CREATE PARTY</button>
+        <button class="modal__btn modal__btn--confirm" id="modal-confirm-btn" onclick="confirmNation()">CONTINUE</button>
       </div>
     </div>
   </div>
@@ -609,39 +532,18 @@ body {
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
-import { getPartyIconSVG } from './js/party-icons.js';
 
-// Leader name pools
-const FIRST_NAMES = [
-  'Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastian','Luca',
-  'Andres','Gabriel','Joaquin','Mariana','Carlos','Tomas','Rafael','Edwin',
-  'Emilio','Catalina','Fernando','Renata'
-];
-const LAST_NAMES = [
-  'Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Rios',
-  'Delgado','Espinoza','Guzman','Navarro','Cordoba','Echeverria','Pacheco','Montero',
-  'Aguilar','Valenzuela','Carrasco','Ibarra'
-];
-
-// Ideology axis mapping
-const IDEOLOGY_AXIS_MAP = {
-  'Liberty':       { axis: 'liberty_equality',           dir: -1 },
-  'Equality':      { axis: 'liberty_equality',           dir:  1 },
-  'Tradition':     { axis: 'tradition_progress',         dir: -1 },
-  'Progress':      { axis: 'tradition_progress',         dir:  1 },
-  'Security':      { axis: 'security_freedom',           dir: -1 },
-  'Freedom':       { axis: 'security_freedom',           dir:  1 },
-  'Globalism':     { axis: 'globalism_nationalism',      dir: -1 },
-  'Nationalism':   { axis: 'globalism_nationalism',      dir:  1 },
-  'Individualism': { axis: 'individualism_collectivism', dir: -1 },
-  'Collectivism':  { axis: 'individualism_collectivism', dir:  1 }
-};
-
-// Default party colors for seat bar (when party has no custom color)
 const FALLBACK_COLORS = ['#5b9bd5','#d48a3c','#5aafa5','#8b7ec8','#5cb85c','#d9534f','#c8a64e'];
 
+const IDEOLOGY_COLORS = {
+  'Liberty': '#3b82f6', 'Equality': '#ef4444',
+  'Tradition': '#a855f7', 'Progress': '#22c55e',
+  'Security': '#f59e0b', 'Freedom': '#06b6d4',
+  'Globalism': '#14b8a6', 'Nationalism': '#f97316',
+  'Individualism': '#eab308', 'Collectivism': '#ec4899'
+};
+
 let currentUser = null;
-let partyData = null;
 let allNations = [];
 let selectedNationId = null;
 
@@ -658,19 +560,6 @@ async function init() {
     return;
   }
 
-  // Load pending party data from sessionStorage
-  const raw = sessionStorage.getItem('nationhood_pending_party');
-  if (!raw) {
-    window.location.href = 'faction-select.html';
-    return;
-  }
-  partyData = JSON.parse(raw);
-  if (!partyData.name || !partyData.abbreviation || !partyData.ideology1 || !partyData.ideology2) {
-    window.location.href = 'faction-select.html';
-    return;
-  }
-
-  renderPartyBar();
   await loadNations();
 
   document.getElementById('loading').style.display = 'none';
@@ -678,21 +567,7 @@ async function init() {
   content.style.display = 'flex';
 }
 
-function renderPartyBar() {
-  const bar = document.getElementById('party-bar');
-  const colorStyle = partyData.color ? `background:${partyData.color}22;color:${partyData.color};border:1px solid ${partyData.color}44;` : '';
-  bar.innerHTML = `
-    <span class="party-bar__label">Your Party</span>
-    <span class="party-bar__sep"></span>
-    <span class="party-bar__name">${escapeHtml(partyData.name)}</span>
-    <span class="party-bar__abbr" style="${colorStyle || ''}">${escapeHtml(partyData.abbreviation)}</span>
-    <span class="party-bar__ideo" style="color:${IDEOLOGY_COLORS[partyData.ideology1] || 'var(--purple)'};border-color:${IDEOLOGY_COLORS[partyData.ideology1] || 'var(--purple-border)'};background:${IDEOLOGY_COLORS[partyData.ideology1] ? IDEOLOGY_COLORS[partyData.ideology1] + '18' : 'var(--purple-faint)'}">${escapeHtml(partyData.ideology1)}</span>
-    <span class="party-bar__ideo" style="color:${IDEOLOGY_COLORS[partyData.ideology2] || 'var(--purple)'};border-color:${IDEOLOGY_COLORS[partyData.ideology2] || 'var(--purple-border)'};background:${IDEOLOGY_COLORS[partyData.ideology2] ? IDEOLOGY_COLORS[partyData.ideology2] + '18' : 'var(--purple-faint)'}">${escapeHtml(partyData.ideology2)}</span>
-  `;
-}
-
 async function loadNations() {
-  // Fetch nations, parties, and crises in parallel
   const [nationsRes, partiesRes, crisesRes, ideologiesRes] = await Promise.all([
     _supabase.from('nations').select('*'),
     _supabase.from('factions').select('id, faction_name, abbreviation, seats, nation_id, party_color, ideology_value_1, ideology_value_2, is_npc').eq('faction_type', 'party'),
@@ -705,7 +580,6 @@ async function loadNations() {
   const crises = crisesRes.data || [];
   const ideologies = ideologiesRes.data || [];
 
-  // Build lookup maps
   const partiesByNation = {};
   const crisesByNation = {};
   const ideoByFaction = {};
@@ -726,13 +600,17 @@ async function loadNations() {
   renderNations(nations, partiesByNation, crisesByNation, ideoByFaction);
 }
 
-const IDEOLOGY_COLORS = {
-  'Liberty': '#3b82f6', 'Equality': '#ef4444',
-  'Tradition': '#a855f7', 'Progress': '#22c55e',
-  'Security': '#f59e0b', 'Freedom': '#06b6d4',
-  'Globalism': '#14b8a6', 'Nationalism': '#f97316',
-  'Individualism': '#eab308', 'Collectivism': '#ec4899'
-};
+function getGovTypeClass(govType) {
+  if (govType === 'Autocracy') return 'gov-autocracy';
+  if (govType === 'Presidential') return 'gov-presidential';
+  return 'gov-democracy';
+}
+
+function getGovTypeLabel(govType) {
+  if (govType === 'Autocracy') return 'AUTOCRACY';
+  if (govType === 'Presidential') return 'PRESIDENTIAL';
+  return 'PARLIAMENTARY';
+}
 
 function getIdeologyLabel(ideo) {
   if (!ideo) return '';
@@ -768,14 +646,12 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
     const nParties = partiesByNation[nation.id] || [];
     const nCrises = crisesByNation[nation.id] || [];
     const totalSeats = nation.total_seats || 100;
-    const isAuto = nation.government_type === 'Autocracy';
     const maxParties = nation.max_parties || 8;
     const isFull = nParties.filter(p => !p.is_npc).length >= maxParties;
-
-    // Flag URL
     const flagUrl = nation.flag_url || '';
+    const govClass = getGovTypeClass(nation.government_type);
+    const govLabel = getGovTypeLabel(nation.government_type);
 
-    // Seat bar segments
     const sortedParties = [...nParties].sort((a, b) => (b.seats || 0) - (a.seats || 0));
     const usedSeats = nParties.reduce((sum, p) => sum + (p.seats || 0), 0);
 
@@ -790,7 +666,6 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
       return `<span class="seat-legend-item"><span class="seat-legend-dot" style="background:${color};"></span>${escapeHtml(p.abbreviation || '?')} ${p.seats}</span>`;
     }).join('');
 
-    // Party rows
     const partyRows = sortedParties.map((p, i) => {
       const color = p.party_color || FALLBACK_COLORS[i % FALLBACK_COLORS.length];
       const ideo = ideoByFaction[p.id];
@@ -808,7 +683,6 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
       `;
     }).join('');
 
-    // Crisis rows
     const crisisRows = nCrises.length > 0
       ? nCrises.map(c => `
         <div class="crisis-row">
@@ -823,7 +697,7 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
         <div class="nation-card__header">
           ${flagUrl ? `<img class="nation-card__flag" src="${flagUrl}" alt="${escapeHtml(nation.name)}">` : ''}
           <span class="nation-card__name">${escapeHtml(nation.name)}</span>
-          <span class="nation-card__gov-type ${isAuto ? 'gov-autocracy' : 'gov-democracy'}">${isAuto ? 'AUTOCRACY' : nation.government_type || 'DEMOCRACY'}</span>
+          <span class="nation-card__gov-type ${govClass}">${govLabel}</span>
         </div>
         <div class="nation-card__body">
           <div class="stat-row">
@@ -831,7 +705,7 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
             <span class="stat-row__value" style="color:var(--text-secondary);">${totalSeats}</span>
           </div>
           <div class="stat-row">
-            <span class="stat-row__label">Parties</span>
+            <span class="stat-row__label">Factions</span>
             <span class="stat-row__value" style="color:${isFull ? 'var(--red)' : 'var(--text-secondary)'};">${nParties.filter(p => !p.is_npc).length}${maxParties ? ' / ' + maxParties : ''}</span>
           </div>
           <div class="stat-row">
@@ -852,10 +726,10 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
 
           ${nParties.length > 0 ? `
           <div class="party-list">
-            <div class="party-list__header">Parties &mdash; ${nParties.length}</div>
+            <div class="party-list__header">Factions &mdash; ${nParties.length}</div>
             ${partyRows}
           </div>
-          ` : '<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-ghost);padding:6px 0;">No parties yet — be the first</div>'}
+          ` : '<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-ghost);padding:6px 0;">No factions yet — be the first</div>'}
 
           <div class="crisis-section">
             <div class="party-list__header">Active Crises</div>
@@ -877,8 +751,20 @@ function selectNation(nationId) {
   if (!nation) return;
 
   document.getElementById('modal-nation-name').textContent = nation.name;
-  document.getElementById('modal-party-summary').textContent =
-    `${partyData.name} [${partyData.abbreviation}] — ${partyData.ideology1} + ${partyData.ideology2}`;
+
+  const govBadge = document.getElementById('modal-gov-badge');
+  const govClass = getGovTypeClass(nation.government_type);
+  const govLabel = getGovTypeLabel(nation.government_type);
+  govBadge.className = 'modal__gov-badge ' + govClass;
+  govBadge.textContent = govLabel;
+
+  const hint = document.getElementById('modal-flow-hint');
+  if (nation.government_type === 'Autocracy') {
+    hint.textContent = 'You will choose your ideology and faction name next.';
+  } else {
+    hint.textContent = 'You will choose your ideology, then name and customize your party.';
+  }
+
   document.getElementById('modal-overlay').classList.add('active');
 }
 
@@ -887,165 +773,31 @@ function closeModal() {
   selectedNationId = null;
 }
 
-async function confirmJoin() {
-  if (!selectedNationId || !partyData) return;
+function confirmNation() {
+  if (!selectedNationId) return;
+  const nation = allNations.find(n => n.id === selectedNationId);
+  if (!nation) return;
 
-  const btn = document.getElementById('modal-confirm-btn');
-  btn.disabled = true;
-  btn.textContent = 'CREATING...';
+  // Store selected nation in sessionStorage for the next pages
+  sessionStorage.setItem('nationhood_pending_nation', JSON.stringify({
+    id: nation.id,
+    name: nation.name,
+    government_type: nation.government_type
+  }));
 
-  // Clear cached state
-  sessionStorage.removeItem('nationhood_state');
-
-  try {
-    const nation = allNations.find(n => n.id === selectedNationId);
-    if (!nation) throw new Error('Nation not found');
-
-    // Get current tick
-    const { data: shardData } = await _supabase
-      .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shardData?.current_tick || 0;
-
-    // Generate leader
-    const leader = {
-      first: FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)],
-      last: LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)],
-      age: 35 + Math.floor(Math.random() * 20)
-    };
-
-    // Create faction record
-    const { error: upsertError } = await _supabase
-      .from('factions')
-      .upsert({
-        id: currentUser.id,
-        faction_type: 'party',
-        faction_name: partyData.name,
-        nation_id: nation.id,
-        nation: nation.name,
-        abbreviation: partyData.abbreviation,
-        ideology_value_1: partyData.ideology1,
-        ideology_value_2: partyData.ideology2,
-        seats: 0,
-        needs_rebuild: false,
-        party_color: partyData.color || null,
-        party_logo: partyData.logo || 'star',
-        party_description: partyData.description || null,
-        leader_first_name: leader.first,
-        leader_last_name: leader.last,
-        leader_age: leader.age,
-        founded_tick: currentTick,
-        action_points: 5,
-        approval_rating: null
-      });
-
-    if (upsertError) throw upsertError;
-
-    // Initialize ideology spectrum
-    const m1 = IDEOLOGY_AXIS_MAP[partyData.ideology1];
-    const m2 = IDEOLOGY_AXIS_MAP[partyData.ideology2];
-
-    if (m1 && m2) {
-      // Try RPC first
-      const { error: rpcError } = await _supabase.rpc('initialize_faction_ideology', {
-        p_faction_id: currentUser.id,
-        p_ideology_1: partyData.ideology1,
-        p_ideology_2: partyData.ideology2
-      });
-
-      if (rpcError) {
-        // Fallback: direct insert
-        const row = {
-          faction_id: currentUser.id,
-          liberty_equality: 0,
-          tradition_progress: 0,
-          security_freedom: 0,
-          globalism_nationalism: 0,
-          individualism_collectivism: 0,
-          declared_axis_1: m1.axis,
-          declared_direction_1: m1.dir,
-          declared_axis_2: m2.axis,
-          declared_direction_2: m2.dir
-        };
-        row[m1.axis] = 30 * m1.dir;
-        row[m2.axis] = 30 * m2.dir;
-
-        await _supabase.from('faction_ideology').upsert(row, { onConflict: 'faction_id' });
-      }
-    }
-
-    // Seed bloc approvals
-    try {
-      const { data: blocs } = await _supabase
-        .from('voter_blocs')
-        .select('id, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-        .eq('nation_id', nation.id)
-        .eq('is_active', true);
-
-      if (blocs && blocs.length > 0) {
-        const { data: ideo } = await _supabase.from('faction_ideology')
-          .select('liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-          .eq('faction_id', currentUser.id)
-          .maybeSingle();
-
-        const rows = blocs.map(bloc => {
-          let mult = 1.0;
-          if (ideo) {
-            const axes = ['liberty_equality','tradition_progress','security_freedom','globalism_nationalism','individualism_collectivism'];
-            let opposed = 0, aligned = 0;
-            for (const ax of axes) {
-              const ps = ideo[ax] || 0;
-              const bs = bloc['axis_' + ax] ?? 50;
-              if (Math.abs(ps) < 20 || Math.abs(bs - 50) < 10) continue;
-              if ((ps < 0 ? 'L' : 'R') === (bs < 50 ? 'L' : 'R')) aligned++; else opposed++;
-            }
-            if (opposed >= 2) mult = 0.70;
-            else if (opposed === 1) mult = 0.80;
-            else if (aligned === 0) mult = 0.90;
-          }
-          return {
-            faction_id: currentUser.id,
-            bloc_id: bloc.id,
-            preference_score: Math.round(40 * mult * 100) / 100
-          };
-        });
-
-        await _supabase.from('faction_bloc_approval')
-          .upsert(rows, { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true });
-      }
-    } catch (e) { console.warn('Bloc approval seeding non-blocking:', e); }
-
-    // Clean up and redirect
-    sessionStorage.removeItem('nationhood_pending_party');
-    sessionStorage.removeItem('nationhood_state');
-    window.location.href = 'dashboard.html';
-
-  } catch (error) {
-    console.error('Error creating party:', error);
-    const errEl = document.getElementById('error-message');
-    errEl.textContent = 'Error: ' + error.message;
-    errEl.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'CREATE PARTY';
-    closeModal();
+  // Route based on government type
+  if (nation.government_type === 'Autocracy') {
+    window.location.href = 'autocracy-setup.html';
+  } else {
+    window.location.href = 'faction-select.html';
   }
-}
-
-function goBack() {
-  // Go back to createparty with ideology params preserved
-  const params = new URLSearchParams();
-  if (partyData) {
-    params.set('ideology1', partyData.ideology1);
-    params.set('ideology2', partyData.ideology2);
-  }
-  window.location.href = 'createparty.html?' + params.toString();
 }
 
 init();
 
 window.selectNation = selectNation;
 window.closeModal = closeModal;
-window.confirmJoin = confirmJoin;
-window.goBack = goBack;
+window.confirmNation = confirmNation;
 </script>
 </body>
 </html>

@@ -594,7 +594,7 @@ initPage('dashboard', async (state) => {
 
     // No party? Send player through the onboarding flow
     if (!faction || !faction.nation_id) {
-        window.location.href = 'faction-select.html';
+        window.location.href = 'select-nation.html';
         return;
     }
     if (!nation) return;
