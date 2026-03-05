@@ -100,7 +100,7 @@ body {
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -115,9 +115,7 @@ body {
   padding: 2px 8px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  background: var(--purple-faint);
-  color: var(--purple);
-  border: 1px solid var(--purple-border);
+  border: 1px solid currentColor;
 }
 
 /* Form panel */
@@ -145,7 +143,7 @@ body {
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -165,14 +163,14 @@ body {
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   margin-bottom: 6px;
 }
 .input-label .hint {
   font-weight: 400;
-  color: var(--text-ghost);
+  color: var(--text-muted);
   text-transform: none;
   letter-spacing: 0;
 }
@@ -529,9 +527,19 @@ async function init() {
     return;
   }
 
-  // Show ideology tags
-  document.getElementById('ideo-tags').innerHTML =
-    `<span class="ideo-tag">${escapeHtml(ideology1)}</span><span class="ideo-tag">${escapeHtml(ideology2)}</span>`;
+  // Show ideology tags with per-ideology colors
+  const IDEOLOGY_COLORS = {
+    'Liberty': '#3b82f6', 'Equality': '#ef4444',
+    'Tradition': '#a855f7', 'Progress': '#22c55e',
+    'Security': '#f59e0b', 'Freedom': '#06b6d4',
+    'Globalism': '#14b8a6', 'Nationalism': '#f97316',
+    'Individualism': '#eab308', 'Collectivism': '#ec4899'
+  };
+  function ideoTagHtml(label) {
+    const c = IDEOLOGY_COLORS[label] || 'var(--purple)';
+    return `<span class="ideo-tag" style="color:${c};border-color:${c};background:${c}18">${escapeHtml(label)}</span>`;
+  }
+  document.getElementById('ideo-tags').innerHTML = ideoTagHtml(ideology1) + ideoTagHtml(ideology2);
 
   setupColorPicker();
   setupLogoPicker();
