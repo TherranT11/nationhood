@@ -219,8 +219,8 @@ export function computeMinistryInstitutionCost(institutions, fiscalCategory, nat
 export function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions, aidData) {
     const budget = calculateNationalBudget(nation);
     applyTradeTariffOverride(budget, tradeTariffRevenue);
-    const inflationStat = Number(nation.inflation || 50);
-    const inflationPct = (inflationStat - 50) / 2;
+    const inflationStat = Number(nation.inflation || 0);
+    const inflationPct = Math.pow(Math.max(0, inflationStat), 1.5) / 100;
     const reserves = Number(nation.budget_reserves || 0);
 
     // Foreign aid: received adds to revenue, given is a mandatory expenditure
@@ -396,6 +396,10 @@ export async function resolveBudgetBill(supabase, bill, currentTick) {
     const { data: allocations } = await supabase.from('budget_allocations')
         .select('*').eq('bill_id', bill.id);
 
+    // Use item-level allocations when available (players edit these directly)
+    const { data: itemAllocations } = await supabase.from('budget_item_allocations')
+        .select('allocation_amount').eq('bill_id', bill.id);
+
     const { data: nation } = await supabase.from('nations')
         .select('*').eq('id', bill.nation_id).single();
     if (!nation) return;
@@ -425,8 +429,14 @@ export async function resolveBudgetBill(supabase, bill, currentTick) {
     const available = budget.grossRevenue + aidData.received + reserves - budget.debtService - aidData.given;
 
     let totalSpending = 0;
-    for (const alloc of (allocations || [])) {
-        totalSpending += Number(alloc.allocation_amount || 0);
+    if (itemAllocations && itemAllocations.length > 0) {
+        for (const item of itemAllocations) {
+            totalSpending += Number(item.allocation_amount || 0);
+        }
+    } else {
+        for (const alloc of (allocations || [])) {
+            totalSpending += Number(alloc.allocation_amount || 0);
+        }
     }
 
     const gap = available - totalSpending;

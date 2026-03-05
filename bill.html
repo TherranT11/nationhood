@@ -1798,7 +1798,7 @@ async function enactDecree() {
         if (sponsorIdeology) {
             const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, currentBill.bill_articles || []);
             if (dynamicPenalty < 0) {
-                await adjustMomentumAll(_supabase, currentNation.id, currentBill.proposed_by, dynamicPenalty, 'legislation:withdraw');
+                await adjustMomentumAll(_supabase, currentNation.id, currentBill.proposed_by, dynamicPenalty, 'legislation:floor');
                 console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
             }
         }
@@ -1818,6 +1818,13 @@ async function sendToFloor() {
     const isSystemBudget = currentBill.bill_type === 'budget' && !currentBill.proposed_by;
     if (!currentFaction || (currentBill.proposed_by !== currentFaction.id && !isBudgetHeadOfGov && !isSystemBudget)) return;
     if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can advance.'); return; }
+
+    // Require at least one article for non-budget, non-repeal bills
+    if (currentBill.bill_type !== 'budget' && currentBill.bill_type !== 'repeal'
+        && (!currentBill.bill_articles || currentBill.bill_articles.filter(a => a.policy_id || a.effect_data || a.repeal_active_law_id).length === 0)) {
+        alert('This bill has no policy articles. Add at least one article before sending to the floor.');
+        return;
+    }
 
     // Budget bills: block during early proposal window (only for player-submitted budgets)
     if (currentBill.bill_type === 'budget' && currentBill.proposed_by) {
@@ -1857,7 +1864,7 @@ async function sendToFloor() {
         if (factionIdeology && currentBill.proposed_by) {
             const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, currentBill.bill_articles || []);
             if (dynamicPenalty < 0) {
-                await adjustMomentumAll(_supabase, currentNation.id, currentBill.proposed_by, dynamicPenalty, 'legislation:withdraw');
+                await adjustMomentumAll(_supabase, currentNation.id, currentBill.proposed_by, dynamicPenalty, 'legislation:floor');
                 penaltyMsg = `\n\n⚠ Ideology penalty: ${dynamicPenalty.toFixed(1)} momentum (bill conflicts with your values)`;
             }
         }

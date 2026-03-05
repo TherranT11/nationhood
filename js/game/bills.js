@@ -1109,7 +1109,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
             continue;
         }
 
-        const passed = resolution === 'passed';
+        let passed = resolution === 'passed';
         const isNoConfidence = bill.bill_type === 'no_confidence';
         const isFoundational = bill.bill_type === 'foundational';
 
