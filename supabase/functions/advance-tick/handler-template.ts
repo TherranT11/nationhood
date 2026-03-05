@@ -1423,6 +1423,21 @@ async function advanceTick(supabase) {
             await processStewardTick(supabase, nation);
         }
 
+        // Standing relevance decay (autocracy v2)
+        if (isAutocracy(nation)) {
+            await processStandingTick(supabase, nation, newTick);
+        }
+
+        // Regime health tick (autocracy v2)
+        if (isAutocracy(nation)) {
+            await processRegimeHealthTick(supabase, nation, newTick);
+        }
+
+        // Unaligned seat pool regeneration (autocracy v2)
+        if (isAutocracy(nation)) {
+            await processUnalignedPoolTick(supabase, nation, newTick);
+        }
+
         // Secret coalition detection (autocracy)
         if (isAutocracy(nation)) {
             await processCoalitionDetection(supabase, nation, newTick);
