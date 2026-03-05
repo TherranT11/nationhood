@@ -569,12 +569,12 @@ function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var diplomaticBonus = relScore * 0.3;
 
     // Bilateral trade agreement: type-specific affinity boost
-    // FTA (free trade) > RSC (supply contract) > PTA (partial reduction)
+    // FTA (free trade) > RSC (supply contract) > PTA (sector-specific, applied during distribution)
     var tradeBonus = 0;
     if (opts) {
         if (opts.has_fta) tradeBonus = 25;
         else if (opts.has_rsc) tradeBonus = 20;
-        else if (opts.has_pta) tradeBonus = 15;
+        // PTA bonus is now applied per-sector during trade distribution, not here
         else if (opts.has_trade_agreement) tradeBonus = 20;
     }
 
@@ -860,16 +860,18 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
-    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC) ──
+    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, Export Subsidy) ──
     var { data: activeTradeAgreements } = await supabase.from('trade_agreements')
         .select('id, nation_a_id, nation_b_id, agreement_type, articles')
         .eq('status', 'active')
-        .in('agreement_type', ['fta', 'pta', 'resource_supply']);
+        .in('agreement_type', ['fta', 'pta', 'resource_supply', 'export_subsidy']);
 
     // Set type-specific affinity flags from trade_agreements
     // Build tariff modifier map: tariffModMap[importerId|exporterId][sector] = reduction fraction (0-1)
     var tariffModMap = {};
     var activeRSCs = [];
+    // Export subsidy map: subsidyMap[nationId][sector] = subsidy_pct (5-30)
+    var subsidyMap = {};
 
     if (activeTradeAgreements) {
         for (var ti = 0; ti < activeTradeAgreements.length; ti++) {
@@ -932,6 +934,18 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 flagsMap[k1].has_rsc = true;
                 flagsMap[k2].has_rsc = true;
                 activeRSCs.push(ta);
+            } else if (ta.agreement_type === 'export_subsidy') {
+                // Unilateral: nation_a_id is the subsidizing nation
+                var esArts = ta.articles || [];
+                for (var ai = 0; ai < esArts.length; ai++) {
+                    if (esArts[ai].type !== 'subsidized_sector') continue;
+                    var esData = esArts[ai].data;
+                    if (!esData || !esData.sector || !esData.subsidy_pct) continue;
+                    if (!subsidyMap[ta.nation_a_id]) subsidyMap[ta.nation_a_id] = {};
+                    // Take the highest subsidy if multiple agreements on the same sector
+                    var existing = subsidyMap[ta.nation_a_id][esData.sector] || 0;
+                    subsidyMap[ta.nation_a_id][esData.sector] = Math.max(existing, esData.subsidy_pct);
+                }
             }
         }
     }
@@ -997,11 +1011,23 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             guaranteedVolume = Math.min(guaranteedVolume, sellerExport);
             if (guaranteedVolume <= 0) continue;
 
+            // Calculate RSC price modifier from price_terms article
+            // This affects the trade VALUE (tariff revenue, GDP impact) — not volume
+            var sectorPriceMod = priceModifiers[supplyArt.sector] || 1.0;
+            var rscValueMod = sectorPriceMod; // default: market price
+            if (priceArt) {
+                if (priceArt.price_type === 'fixed') rscValueMod = 1.0;
+                else if (priceArt.price_type === 'discounted') rscValueMod = sectorPriceMod * (1 - (priceArt.modifier_pct || 0) / 100);
+                else if (priceArt.price_type === 'premium') rscValueMod = sectorPriceMod * (1 + (priceArt.modifier_pct || 0) / 100);
+            }
+
             rscPreAllocations.push({
                 sellerNationId: sellerNationId,
                 buyerNationId: buyerNationId,
                 sector: supplyArt.sector,
                 volume: guaranteedVolume,
+                valueMod: rscValueMod,
+                commitmentPct: supplyArt.commitment_pct,
                 agreementId: rsc.id
             });
         }
@@ -1021,6 +1047,9 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     }
 
     var partnerRows = [];
+    // RSC value modifier map: rscValueModMap[buyerNationId|exporterNationId|sector] = valueMod
+    // Used during tariff revenue calculation to adjust effective trade value for RSC price terms
+    var rscValueModMap = {};
 
     // Pre-allocate RSC guaranteed volumes before normal distribution
     for (var ri = 0; ri < rscPreAllocations.length; ri++) {
@@ -1028,6 +1057,10 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         if (actualExports[rscAlloc.sellerNationId] && actualImports[rscAlloc.buyerNationId]) {
             actualExports[rscAlloc.sellerNationId][rscAlloc.sector] += rscAlloc.volume;
             actualImports[rscAlloc.buyerNationId][rscAlloc.sector] += rscAlloc.volume;
+
+            // Store RSC value modifier for tariff revenue calculation
+            var rscValKey = rscAlloc.buyerNationId + '|' + rscAlloc.sellerNationId + '|' + rscAlloc.sector;
+            rscValueModMap[rscValKey] = rscAlloc.valueMod;
 
             partnerRows.push({
                 tick: currentTick,
@@ -1053,8 +1086,15 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             var remainingExpCap = expCap - (actualExports[exporter.id][sector.key] || 0);
             if (remainingExpCap <= 0) continue;
 
-            // Apply price modifier to remaining export capacity
-            var adjustedCapacity = Math.round(remainingExpCap * priceMod);
+            // Apply export subsidy: subsidized exports are cheaper → effectively increases capacity
+            // A 20% subsidy means goods are 20% cheaper → 20% more volume can be sold
+            var esBoost = 1.0;
+            if (subsidyMap[exporter.id] && subsidyMap[exporter.id][sector.key]) {
+                esBoost = 1.0 + (subsidyMap[exporter.id][sector.key] / 100);
+            }
+
+            // Apply price modifier to remaining export capacity (subsidy offsets high prices)
+            var adjustedCapacity = Math.round(remainingExpCap * priceMod * esBoost);
 
             // Build importer list for this exporter (everyone else with demand > 0)
             var importerList = [];
@@ -1078,6 +1118,22 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 if (remainingDemand <= 0) continue;
 
                 var aff = affinityMap[exporter.id + '|' + importer.id] || 0;
+
+                // Sector-specific PTA bonus: if this importer has a PTA tariff reduction
+                // for this specific sector with this exporter, boost affinity for this sector
+                // This replaces the flat +15 PTA bonus with a targeted per-sector effect
+                var ptaTariffKey = importer.id + '|' + exporter.id;
+                if (tariffModMap[ptaTariffKey] && tariffModMap[ptaTariffKey][sector.key]) {
+                    var ptaReduction = tariffModMap[ptaTariffKey][sector.key];
+                    // Scale bonus by reduction amount: 100% reduction → +15, 50% → +7.5
+                    // Only apply if this pair has a PTA (not FTA, which already gets +25)
+                    var pairFlags2 = flagsMap[exporter.id + '|' + importer.id];
+                    if (pairFlags2 && pairFlags2.has_pta && !pairFlags2.has_fta) {
+                        aff += Math.round(ptaReduction * 15);
+                        aff = Math.min(aff, 100);
+                    }
+                }
+
                 if (aff <= 0) continue;
 
                 importerList.push({
@@ -1168,7 +1224,13 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             if (tariffModMap[modKey] && tariffModMap[modKey][pr.sector] !== undefined) {
                 effectiveRate = baseTariffRate * (1 - tariffModMap[modKey][pr.sector]);
             }
-            tariffRev += pr.trade_volume * effectiveRate * collectionRate;
+            // Apply RSC price terms: discounted RSC trade has lower effective value
+            var tradeValue = pr.trade_volume;
+            var rscValKey = n.id + '|' + pr.exporter_nation_id + '|' + pr.sector;
+            if (rscValueModMap[rscValKey] !== undefined) {
+                tradeValue = pr.trade_volume * rscValueModMap[rscValKey];
+            }
+            tariffRev += tradeValue * effectiveRate * collectionRate;
         }
         tariffRev = Math.round(tariffRev);
 
@@ -1236,6 +1298,109 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         await supabase.from('nations')
             .update(nationUpdates)
             .eq('id', n.id);
+    }
+
+    // ── Step 6b: RSC breach detection ──
+    // Check if RSC commitments were met. A breach occurs when the actual bilateral
+    // trade volume for the RSC sector falls significantly short of the guaranteed amount.
+    // Threshold: if actual < 80% of committed, it's a breach.
+    if (rscPreAllocations.length > 0) {
+        for (var ri = 0; ri < rscPreAllocations.length; ri++) {
+            var rscAlloc = rscPreAllocations[ri];
+            // Find actual bilateral volume for this seller→buyer in this sector
+            var actualBilateral = 0;
+            for (var pi = 0; pi < partnerRows.length; pi++) {
+                var pr = partnerRows[pi];
+                if (pr.exporter_nation_id === rscAlloc.sellerNationId &&
+                    pr.importer_nation_id === rscAlloc.buyerNationId &&
+                    pr.sector === rscAlloc.sector) {
+                    actualBilateral += pr.trade_volume;
+                }
+            }
+
+            var shortfall = rscAlloc.volume - actualBilateral;
+            // Breach threshold: must deliver at least 80% of committed volume
+            if (shortfall > rscAlloc.volume * 0.2) {
+                // Find the original RSC agreement to check for breach_penalty article
+                var breachRsc = null;
+                for (var bi = 0; bi < activeRSCs.length; bi++) {
+                    if (activeRSCs[bi].id === rscAlloc.agreementId) {
+                        breachRsc = activeRSCs[bi];
+                        break;
+                    }
+                }
+                if (!breachRsc) continue;
+
+                var breachArts = breachRsc.articles || [];
+                var breachPenalty = null;
+                for (var ai = 0; ai < breachArts.length; ai++) {
+                    if (breachArts[ai].type === 'breach_penalty') {
+                        breachPenalty = breachArts[ai].data;
+                        break;
+                    }
+                }
+
+                // Determine who breached: if seller couldn't supply, seller is at fault
+                // if buyer didn't have demand, buyer is at fault (rare since we check demand > 0)
+                var sellerSupplied = actualExports[rscAlloc.sellerNationId][rscAlloc.sector] || 0;
+                var sellerCapacity = nationFlows[rscAlloc.sellerNationId] &&
+                    nationFlows[rscAlloc.sellerNationId][rscAlloc.sector] ?
+                    nationFlows[rscAlloc.sellerNationId][rscAlloc.sector].exportCapacity : 0;
+                // Seller breach: they couldn't produce enough to meet the commitment
+                var sellerAtFault = sellerCapacity < rscAlloc.volume;
+
+                var breacherNationId = sellerAtFault ? rscAlloc.sellerNationId : rscAlloc.buyerNationId;
+                var victimNationId = sellerAtFault ? rscAlloc.buyerNationId : rscAlloc.sellerNationId;
+
+                // Apply penalties from breach_penalty article, or generic defaults
+                var relPenalty = breachPenalty ? (breachPenalty.relations_penalty || 3) : 3;
+                var repPenalty = breachPenalty ? (breachPenalty.reputation_penalty || 1) : 1;
+
+                // Update bilateral relations
+                var relPairKey = rscAlloc.sellerNationId < rscAlloc.buyerNationId
+                    ? rscAlloc.sellerNationId + '|' + rscAlloc.buyerNationId
+                    : rscAlloc.buyerNationId + '|' + rscAlloc.sellerNationId;
+                var relRow = relMap[relPairKey];
+                if (relRow) {
+                    var newScore = Math.max(-100, (Number(relRow.relation_score) || 0) - relPenalty);
+                    await supabase.from('nation_relations')
+                        .update({ relation_score: newScore })
+                        .eq('nation_a_id', relRow.nation_a_id)
+                        .eq('nation_b_id', relRow.nation_b_id);
+                }
+
+                // Apply reputation penalty to breacher
+                var breacherNation = null;
+                for (var ni = 0; ni < nationCount; ni++) {
+                    if (nationList[ni].id === breacherNationId) { breacherNation = nationList[ni]; break; }
+                }
+                if (breacherNation && repPenalty > 0) {
+                    var currentRep = Number(breacherNation.international_reputation) || 50;
+                    await supabase.from('nations')
+                        .update({ international_reputation: Math.max(0, currentRep - repPenalty) })
+                        .eq('id', breacherNationId);
+                }
+
+                // Log breach event
+                console.log('[processTradeFlows] RSC breach detected: agreement ' + rscAlloc.agreementId +
+                    ', sector ' + rscAlloc.sector + ', committed ' + rscAlloc.volume +
+                    ', actual ' + actualBilateral + ', breacher: ' + breacherNationId);
+
+                // Fire headline events for both nations
+                await supabase.rpc('insert_headline', {
+                    p_nation_id: breacherNationId,
+                    p_trigger_key: 'trade_agreement',
+                    p_tick: currentTick,
+                    p_data: { subtype: 'rsc_breach', role: 'breacher', partner_id: victimNationId, sector: rscAlloc.sector }
+                }).catch(function() {});
+                await supabase.rpc('insert_headline', {
+                    p_nation_id: victimNationId,
+                    p_trigger_key: 'trade_agreement',
+                    p_tick: currentTick,
+                    p_data: { subtype: 'rsc_breach', role: 'victim', partner_id: breacherNationId, sector: rscAlloc.sector }
+                }).catch(function() {});
+            }
+        }
     }
 
     // ── Step 7: Write to database ──
