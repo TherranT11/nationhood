@@ -94,11 +94,12 @@ const GAME_CONFIG = {
     INACTIVITY_DISBAND_TICKS: 12,         // at tick 12: party is disbanded (removed from nation, loses seats next election)
     BUDGET_EARLY_WINDOW_TICKS: 3,    // ticks before budget due date that early proposal opens
     BUDGET_AUTO_GENERATE_LEAD_TICKS: 3, // auto-generate budget bill this many ticks before due date
-    BUDGET_COMMITTEE_EXPIRY_TICKS: 3,   // budget bills auto-expire in committee after 3 ticks
+    BUDGET_COMMITTEE_EXPIRY_TICKS: 3,   // budget bills auto-move to floor after 3 ticks in committee
     BUDGET_BILL_VOTING_TICKS: null,   // budget bills persist until passed (never expire) — used for early resolution grace
-    BUDGET_BILL_MAX_FLOOR_TICKS: 4,   // budget bills auto-resolve after 4 ticks on the floor (forced vote)
-    BUDGET_FAILURE_COALITION_PENALTY: -5,  // parliamentary: coalition approval penalty on budget committee expiry
-    BUDGET_FAILURE_PRESIDENT_PENALTY: -10, // presidential: president party approval penalty on budget committee expiry
+    BUDGET_BILL_MAX_FLOOR_TICKS: null, // budget bills stay on floor indefinitely until passed (no forced resolution)
+    BUDGET_UNFUNDED_FLOOR_TICKS: 3,  // after 3 ticks on floor without passing, all ministry funding drops to 0%
+    BUDGET_FAILURE_COALITION_PENALTY: -5,  // parliamentary: coalition approval penalty on budget committee auto-move
+    BUDGET_FAILURE_PRESIDENT_PENALTY: -10, // presidential: president party approval penalty on budget committee auto-move
     NO_BUDGET_PENALTY_TICKS: 24,     // how many ticks without a budget before max penalty
     // Impeachment (Presidential systems only)
     IMPEACHMENT_AP_COST: 7,
@@ -3917,9 +3918,39 @@ async function isGovernmentShutdown(supabase, nation, currentTick) {
 }
 
 /**
+ * Check if a budget bill has been on the floor for more than BUDGET_UNFUNDED_FLOOR_TICKS
+ * without passing. If so, all ministry/institution funding drops to 0%.
+ */
+async function isBudgetUnfunded(supabase, nation, currentTick) {
+    const { data: floorBudgetBills } = await supabase
+        .from('bills')
+        .select('id, floor_tick, proposed_tick')
+        .eq('nation_id', nation.id)
+        .eq('bill_type', 'budget')
+        .eq('status', 'floor')
+        .order('proposed_tick', { ascending: true })
+        .limit(1);
+
+    if (!floorBudgetBills || floorBudgetBills.length === 0) {
+        return { active: false, ticksOnFloor: 0 };
+    }
+
+    const bill = floorBudgetBills[0];
+    const floorTick = bill.floor_tick ?? (bill.proposed_tick + GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS);
+    const ticksOnFloor = currentTick - floorTick;
+    const threshold = GAME_CONFIG.BUDGET_UNFUNDED_FLOOR_TICKS;
+
+    return {
+        active: ticksOnFloor >= threshold,
+        ticksOnFloor,
+        billId: bill.id
+    };
+}
+
+/**
  * Build a forced-Collapsed statInstitutionMap: every institution at 0% funding.
- * Used during government shutdown to force all institution-covered stats to decay
- * at the Collapsed tier rate (primary: 2.7, secondary: 1.7).
+ * Used during government shutdown or budget unfunded to force all institution-covered
+ * stats to decay at the Collapsed tier rate (primary: 2.7, secondary: 1.7).
  */
 function buildShutdownStatInstMap(institutionConfig) {
     const statMap = {};
@@ -4163,11 +4194,14 @@ async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
     const bill = expiredBills[0];
     const isPresidential = isPresidentialRepublic(nation);
 
-    if (isPresidential) {
-        // ── PRESIDENTIAL: fail bill + apply -10 penalty + immediately start shutdown ──
-        await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
+    // Auto-move the budget bill to the floor (budget bills can never fail)
+    await supabase.from('bills').update({
+        status: 'floor',
+        floor_tick: currentTick
+    }).eq('id', bill.id);
 
-        // Find president's party
+    if (isPresidential) {
+        // ── PRESIDENTIAL: apply -10 penalty to president's party ──
         const { data: president } = await supabase
             .from('presidents')
             .select('faction_id')
@@ -4184,50 +4218,11 @@ async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
             console.log(`[BudgetCommitteeExpiry] Presidential: ${nation.name} — president's party ${president.faction_id} receives ${GAME_CONFIG.BUDGET_FAILURE_PRESIDENT_PENALTY} approval penalty`);
         }
 
-        // Directly activate the government shutdown crisis
-        // (normally isGovernmentShutdown() requires an open bill, but since we failed it,
-        //  we manually insert the shutdown crisis so processGovernmentShutdown() picks it up)
-        const { data: existingCrises } = await supabase
-            .from('active_crises')
-            .select('id')
-            .eq('nation_id', nation.id)
-            .eq('crisis_id', GOVERNMENT_SHUTDOWN_CRISIS_ID);
-
-        if (!existingCrises || existingCrises.length === 0) {
-            await supabase.from('active_crises').insert({
-                crisis_id: GOVERNMENT_SHUTDOWN_CRISIS_ID,
-                nation_id: nation.id,
-                started_at_tick: currentTick,
-                effects_applied_log: []
-            });
-
-            await supabase.from('event_log').insert({
-                nation_id: nation.id,
-                event_name: 'CRISIS_STARTED: Government Shutdown',
-                description_used: 'The government has shut down. Congress failed to move the budget bill out of committee before the deadline.',
-                category: 'crisis',
-                effects_applied: [],
-                fired_at_tick: currentTick
-            });
-
-            try {
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'government_shutdown',
-                    p_nation_id: nation.id,
-                    p_tick: currentTick,
-                    p_placeholders: {
-                        nation: nation.name || 'Unknown',
-                        ticks_open: '0'
-                    }
-                });
-            } catch (e) { /* template may not exist */ }
-        }
-
         // Log event
         await supabase.from('event_log').insert({
             nation_id: nation.id,
-            event_name: 'BUDGET_COMMITTEE_EXPIRED',
-            description_used: `The budget bill "${bill.bill_name}" expired in committee without being sent to the floor. Government shutdown has begun.`,
+            event_name: 'BUDGET_AUTO_MOVED_TO_FLOOR',
+            description_used: `The budget bill "${bill.bill_name}" was automatically moved to the floor after sitting in committee for ${GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS} ticks.`,
             category: 'legislation',
             effects_applied: [],
             fired_at_tick: currentTick
@@ -4236,23 +4231,18 @@ async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
         try {
             await supabase.rpc('insert_news_event', {
                 p_nation_id: nation.id,
-                p_trigger_key: 'bill_failed',
+                p_trigger_key: 'budget_auto_floor',
                 p_tick: currentTick,
-                p_placeholders: { nation: nation.name || 'Unknown', bill_name: bill.bill_name, reason: 'expired in committee — government shutdown activated' }
+                p_placeholders: { nation: nation.name || 'Unknown', bill_name: bill.bill_name, reason: 'auto-moved to floor from committee' }
             });
         } catch (e) { /* news template may not exist */ }
 
-        console.log(`[BudgetCommitteeExpiry] Presidential: ${nation.name} — budget bill failed in committee, government shutdown activated`);
-        return { expired: true, consequence: 'shutdown', billId: bill.id };
+        console.log(`[BudgetCommitteeExpiry] Presidential: ${nation.name} — budget bill auto-moved to floor`);
+        return { movedToFloor: true, consequence: 'auto_floor_presidential', billId: bill.id };
 
     } else {
-        // ── PARLIAMENTARY: fail bill + apply -5 to coalition + trigger snap elections ──
-        await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
-
-        // Get coalition parties and apply penalty
-        // Query government_formations directly (avoid circular dependency with government-structure.js)
+        // ── PARLIAMENTARY: apply -5 to coalition parties ──
         let coalitionPartyIds = [];
-        let govStatus = null;
         const { data: activeGov } = await supabase
             .from('government_formations')
             .select('id, status, party_ids')
@@ -4263,7 +4253,6 @@ async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
             .maybeSingle();
         if (activeGov) {
             coalitionPartyIds = activeGov.party_ids || [];
-            govStatus = activeGov.status;
         }
 
         for (const partyId of coalitionPartyIds) {
@@ -4278,50 +4267,11 @@ async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
             console.log(`[BudgetCommitteeExpiry] Parliamentary: ${nation.name} — ${coalitionPartyIds.length} coalition parties receive ${GAME_CONFIG.BUDGET_FAILURE_COALITION_PENALTY} approval penalty`);
         }
 
-        // Trigger snap elections (if not already in caretaker/election mode)
-        if (govStatus !== 'caretaker') {
-            // Set government to caretaker
-            await supabase
-                .from('government_formations')
-                .update({ status: 'caretaker' })
-                .eq('nation_id', nation.id)
-                .in('status', ['formed']);
-
-            await supabase
-                .from('active_coalitions')
-                .update({ status: 'caretaker' })
-                .eq('nation_id', nation.id)
-                .is('dissolved_at', null);
-
-            // Cancel existing scheduled elections and schedule a new one
-            await supabase
-                .from('elections')
-                .delete()
-                .eq('nation_id', nation.id)
-                .eq('status', 'scheduled');
-
-            await supabase.from('elections').insert({
-                nation_id: nation.id,
-                election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
-                status: 'scheduled',
-                election_type: 'parliamentary'
-            });
-
-            // Freeze all active bills
-            await supabase
-                .from('bills')
-                .update({ status: 'frozen' })
-                .eq('nation_id', nation.id)
-                .in('status', ['committee', 'floor']);
-
-            console.log(`[BudgetCommitteeExpiry] Parliamentary: ${nation.name} — snap election triggered at tick ${currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS}`);
-        }
-
         // Log event
         await supabase.from('event_log').insert({
             nation_id: nation.id,
-            event_name: 'BUDGET_COMMITTEE_EXPIRED',
-            description_used: `The budget bill "${bill.bill_name}" expired in committee. The coalition has failed to pass a budget. New elections have been called.`,
+            event_name: 'BUDGET_AUTO_MOVED_TO_FLOOR',
+            description_used: `The budget bill "${bill.bill_name}" was automatically moved to the floor after sitting in committee for ${GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS} ticks.`,
             category: 'legislation',
             effects_applied: [],
             fired_at_tick: currentTick
@@ -4330,13 +4280,13 @@ async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
         try {
             await supabase.rpc('insert_news_event', {
                 p_nation_id: nation.id,
-                p_trigger_key: 'bill_failed',
+                p_trigger_key: 'budget_auto_floor',
                 p_tick: currentTick,
-                p_placeholders: { nation: nation.name || 'Unknown', bill_name: bill.bill_name, reason: 'expired in committee — snap elections called' }
+                p_placeholders: { nation: nation.name || 'Unknown', bill_name: bill.bill_name, reason: 'auto-moved to floor from committee' }
             });
         } catch (e) { /* news template may not exist */ }
 
-        return { expired: true, consequence: 'snap_election', billId: bill.id };
+        return { movedToFloor: true, consequence: 'auto_floor_parliamentary', billId: bill.id };
     }
 }
 
@@ -5477,6 +5427,14 @@ function resolveBillVote(bill, totalSeats) {
     const participating = forSeats + againstSeats + abstainSeats;
     const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
 
+    // Budget bills can NEVER fail — they stay on the floor until passed
+    if (bill.bill_type === 'budget') {
+        if (participating >= quorumThreshold && forSeats > againstSeats) {
+            return 'passed';
+        }
+        return 'deferred'; // not enough votes yet — remain on floor
+    }
+
     // Foundational / default_resolution / veto_override / impeachment_conviction: 67% absolute supermajority
     if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
         const threshold = Math.ceil(totalSeats * 2 / 3);
@@ -5639,26 +5597,11 @@ async function checkEarlyMajority(supabase, nationId) {
             }
         }
 
-        // ── Check 3: Budget bill forced resolution after MAX_FLOOR_TICKS ──
-        // Budget bills have no voting deadline (voting_ends_tick = null).
-        // If a budget bill has been on the floor for BUDGET_BILL_MAX_FLOOR_TICKS
-        // ticks without resolution, force a vote based on the current tally.
-        // This prevents budget bills from getting stuck indefinitely when
-        // bill_support seat_counts are stale and don't trigger a math-lock.
-        if (!earlyStatus && bill.bill_type === 'budget' && bill.voting_ends_tick == null) {
-            const ticksSinceProposed = currentTick - (bill.proposed_tick || 0);
-            // Budget bills spend up to BUDGET_COMMITTEE_EXPIRY_TICKS in committee before reaching the floor,
-            // so the forced resolution threshold must account for both committee and floor time.
-            const budgetForceThreshold = GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS + GAME_CONFIG.BUDGET_BILL_MAX_FLOOR_TICKS;
-            if (ticksSinceProposed >= budgetForceThreshold) {
-                if (participating >= quorumSeats && effectiveYes > noSeats) {
-                    earlyStatus = 'quorum_reached';
-                } else {
-                    earlyStatus = 'quorum_opposed';
-                }
-                console.log(`[checkEarlyMajority] Budget bill ${bill.bill_name}: FORCED resolution after ${ticksSinceProposed} ticks (YES=${yesSeats}, NO=${noSeats}, participating=${participating}, quorum=${quorumSeats})`);
-            }
-        }
+        // ── Check 3: Budget bills can never be forced to fail ──
+        // Budget bills persist on the floor until they pass. They can only
+        // resolve early if a passing majority is reached (math-lock or quorum).
+        // No forced resolution — if the budget stalls, the unfunded penalty
+        // (0% ministry funding) kicks in after BUDGET_UNFUNDED_FLOOR_TICKS.
 
         if (earlyStatus) {
             // Resolve immediately this tick (no grace period)
@@ -6300,7 +6243,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
             }
         } else if (bill.bill_type === 'budget') {
-            // Budget bill resolution
+            // Budget bill resolution — budget bills can NEVER fail
             if (passed) {
                 if (isPresidentialRepublic(nation)) {
                     // Presidential systems: route budget to president's desk for signing
@@ -6341,16 +6284,15 @@ async function resolveExpiredVotes(supabase, nationId) {
                     results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
                 }
             } else {
-                await failBill(supabase, bill);
-                try {
-                    await supabase.rpc('fire_system_event', {
-                        p_trigger_key: 'bill_failed',
-                        p_nation_id: bill.nation_id,
-                        p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain) }
-                    });
-                } catch (e) { /* non-blocking */ }
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
+                // Budget bill did not pass — keep it on the floor (budget bills never fail)
+                // Clear voting_ends_tick so it stays open for next tick
+                await supabase.from('bills').update({
+                    voting_ends_tick: null,
+                    early_resolution_status: null,
+                    early_resolution_tick: null
+                }).eq('id', bill.id);
+                console.log(`[resolveExpiredVotes] Budget bill ${bill.bill_name} did not pass — remains on floor (YES=${votesFor}, NO=${votesAgainst})`);
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'deferred', votesFor, votesAgainst, type: 'budget' });
             }
         } else if (bill.bill_type === 'impeachment_motion' && bill.impeachment_id) {
             // ── Impeachment Motion (Phase 1) ──
@@ -17798,12 +17740,18 @@ async function advanceTick(supabase) {
         }
         const shutdownCheck = await isGovernmentShutdown(supabase, nation, newTick);
         const shutdown = shutdownCheck.active;
+        const budgetUnfundedCheck = await isBudgetUnfunded(supabase, nation, newTick);
+        const budgetUnfunded = budgetUnfundedCheck.active;
         let statInstMap = null;
         let budgetItemAllocs = null;   // hoisted for minister approval funding check
-        if (shutdown && _institutionConfig.length > 0) {
-            // Government shutdown: force ALL institutions to 0% funding → Collapsed decay rates
+        if ((shutdown || budgetUnfunded) && _institutionConfig.length > 0) {
+            // Government shutdown or budget stalled on floor: force ALL institutions to 0% funding → Collapsed decay rates
             statInstMap = buildShutdownStatInstMap(_institutionConfig);
-            console.log(`[GovernmentShutdown] Forcing Collapsed institution decay for ${nation.name}`);
+            if (shutdown) {
+                console.log(`[GovernmentShutdown] Forcing Collapsed institution decay for ${nation.name}`);
+            } else {
+                console.log(`[BudgetUnfunded] Budget bill on floor for ${budgetUnfundedCheck.ticksOnFloor} ticks — forcing 0% ministry funding for ${nation.name}`);
+            }
         } else if (nation.last_budget_bill_id && _institutionConfig.length > 0) {
             const { data: itemAllocs } = await supabase.from('budget_item_allocations')
                 .select('item_type, item_id, allocation_amount, needed_amount')
@@ -17850,7 +17798,7 @@ async function advanceTick(supabase) {
             console.error(`[advanceTick] Auto budget generation failed for ${nation.name} (non-fatal):`, budgetGenErr);
         }
 
-        // Budget committee expiry — fail budget bills stuck in committee for 3 ticks
+        // Budget committee expiry — auto-move budget bills to floor after 3 ticks in committee
         try {
             const budgetExpiryResult = await processBudgetCommitteeExpiry(supabase, nation, newTick);
             if (budgetExpiryResult) {

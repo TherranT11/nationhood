@@ -1839,6 +1839,8 @@ async function sendToFloor() {
         if (currentBill.bill_type !== 'budget') {
             updateFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
         }
+        // Track when the bill was moved to the floor
+        updateFields.floor_tick = shard?.current_tick || 0;
         const { error } = await _supabase.from('bills').update(updateFields).eq('id', billId);
         if (error) throw error;
 
