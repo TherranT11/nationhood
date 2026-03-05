@@ -12437,7 +12437,8 @@ async function rebalanceVacantSeats(supabase, nation) {
         .from('factions')
         .select('id, faction_name, seats')
         .eq('nation_id', nation.id)
-        .eq('faction_type', 'party');
+        .eq('faction_type', 'party')
+        .eq('is_npc', false);
 
     if (error || !factions || factions.length === 0) return null;
 
@@ -15190,21 +15191,14 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
         }
     }
 
-    // 5. Zero seats first (while nation_id still set so rebalance can find remaining parties)
-    await supabase.from('factions')
-        .update({ seats: 0 })
-        .eq('id', factionId);
-
-    // 6. Immediately redistribute vacated seats to remaining parties
-    if (nation) {
-        await rebalanceVacantSeats(supabase, nation);
-    }
-
-    // 7. Core disband — null out nation_id, reset all stats to fresh defaults
+    // 5. Remove from nation AND zero seats in a single update so
+    //    rebalanceVacantSeats (and elections) never see this faction.
     const { error: disbandErr } = await supabase
         .from('factions')
         .update({
+            seats: 0,
             nation_id: null,
+            nation: null,
             abandoned_at: new Date().toISOString(),
             disband_cooldown_until_tick: currentTick + 24,
             action_points: 0,
@@ -15215,6 +15209,12 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
         .eq('id', factionId);
 
     if (disbandErr) throw new Error('Failed to disband party: ' + disbandErr.message);
+
+    // 6. Redistribute vacated seats to remaining parties (disbanded faction
+    //    already has nation_id=null so it won't appear in the query)
+    if (nation) {
+        await rebalanceVacantSeats(supabase, nation);
+    }
 
     // 8. Clean up all faction-related data from the old nation
     await supabase.from('faction_bloc_approval').delete().eq('faction_id', factionId);
@@ -15292,21 +15292,11 @@ async function processInactivityDecay(supabase, nationId, currentTick) {
             await supabase.from('bill_support').delete().eq('faction_id', faction.id);
             await supabase.from('campaign_actions').delete().eq('party_id', faction.id);
 
-            // Zero seats first (while nation_id still set so rebalance can find remaining parties)
-            await supabase.from('factions')
-                .update({ seats: 0 })
-                .eq('id', faction.id);
-
-            // Redistribute vacated seats to remaining parties
-            const { data: nationRow } = await supabase.from('nations')
-                .select('id, name, total_seats').eq('id', nationId).single();
-            if (nationRow) {
-                await rebalanceVacantSeats(supabase, nationRow);
-            }
-
-            // Now remove from nation
+            // Remove from nation AND zero seats in a single update so
+            // rebalanceVacantSeats (and elections) never see this faction.
             const { error: disbandErr } = await supabase.from('factions')
                 .update({
+                    seats: 0,
                     nation_id: null,
                     nation: null,
                     abandoned_at: new Date().toISOString(),
@@ -15318,7 +15308,15 @@ async function processInactivityDecay(supabase, nationId, currentTick) {
                 })
                 .eq('id', faction.id);
             if (disbandErr) {
-                console.error(`[InactivityDisband] FAILED to null nation_id for "${faction.faction_name}":`, disbandErr.message);
+                console.error(`[InactivityDisband] FAILED to disband "${faction.faction_name}":`, disbandErr.message);
+            }
+
+            // Redistribute vacated seats to remaining parties (disbanded faction
+            // already has nation_id=null so it won't appear in the query)
+            const { data: nationRow } = await supabase.from('nations')
+                .select('id, name, total_seats').eq('id', nationId).single();
+            if (nationRow) {
+                await rebalanceVacantSeats(supabase, nationRow);
             }
 
             // Event log
