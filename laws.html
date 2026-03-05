@@ -152,10 +152,18 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, generateBudgetBill, SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, generateBudgetBill, SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS, RAW_SCALING_DIVISORS } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 (function () {
     'use strict';
+/** Scale a policy cost by its scaling stat (e.g., population). */
+function scaleLawCost(baseCost, scalingStat) {
+    if (!scalingStat || !currentNation || currentNation[scalingStat] === undefined) return baseCost;
+    const statVal = Number(currentNation[scalingStat]) || 1;
+    const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
+    return baseCost * (statVal / divisor);
+}
+
 let currentNation = null, currentFaction = null, currentSeats = 0;
 let allPartySeats = {}, allParties = [], allPolicies = [];
 let activeLaws = [], committeeBills = [], floorBills = [], frozenBills = [], presidentDeskBills = [], recentBills = [];
@@ -534,12 +542,14 @@ function filterAllLaws() {
             effectsHTML = `<span class="tag ${cls}">${formatStatName(p.target_stat)} ${arrow}</span>`;
         }
 
-        const upCost = p.upfront_cost || 0;
-        const onCost = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
+        const upCostRaw = p.upfront_cost || 0;
+        const onCostRaw = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
+        const upCost = scaleLawCost(upCostRaw, p.upfront_scaling_stat);
+        const onCost = scaleLawCost(onCostRaw, p.ongoing_scaling_stat);
         const fmtC = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + m + 'M';
         const costHTML = [];
-        if (upCost > 0) costHTML.push(`Up: ${fmtC(upCost)}`);
-        if (onCost > 0) costHTML.push(`On: ${fmtC(onCost)}/t`);
+        if (upCost > 0) costHTML.push(`Up: ${fmtC(Math.round(upCost))}`);
+        if (onCost > 0) costHTML.push(`On: ${fmtC(Math.round(onCost))}/t`);
 
         return `<div class="law-card ${isActive ? 'law-active' : 'law-inactive'}">
             <div class="law-card-header">
@@ -1631,10 +1641,10 @@ function renderPolicyOptions(policies, containerId, buttonId) {
                         return `<span class="${cls}">${revDir} ${formatStatName(e.stat_key)}</span>`;
                     }).join(', ') + '</div>';
             }
-            const onCost = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
-            if (onCost > 0) {
-                const fmtC = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + m + 'M';
-                repealInfoHTML += `<div style="margin-top:2px;font-size:0.75rem;color:#4CAF50;">Saves ${fmtC(onCost)}/tick if repealed</div>`;
+            const onCostScaled = scaleLawCost(policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0, policy.ongoing_scaling_stat);
+            if (onCostScaled > 0) {
+                const fmtC = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + Math.round(m) + 'M';
+                repealInfoHTML += `<div style="margin-top:2px;font-size:0.75rem;color:#4CAF50;">Saves ${fmtC(onCostScaled)}/tick if repealed</div>`;
             }
         }
         return `<div class="policy-option${opposedClass}${pendingClass}${enactedClass}" data-policy-id="${policy.id}" onclick="${clickAction}"><div class="policy-option-name">${escapeHtml(policy.policy_name)} ${ideoHTML} ${opposedBadge}${pendingBadge}${enactedBadge}</div><div class="policy-option-desc">${escapeHtml(policy.description || '')}</div><div class="policy-option-effects">${effectHTML}</div>${repealInfoHTML}${opposedWarn}</div>`;
@@ -1783,12 +1793,12 @@ function renderDraftArticles() {
                     return `<span class="${cls}">${revDir} ${formatStatName(e.stat_key)}</span>`;
                 }).join(', ') + '</div>';
             }
-            // Show cost savings from repealing
-            const onCost = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
-            const fmtCost = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + m + 'M';
+            // Show cost savings from repealing (scaled by population/stat)
+            const onCostScaled2 = scaleLawCost(p.ongoing_base_cost || p.ongoing_cost_per_tick || 0, p.ongoing_scaling_stat);
+            const fmtCost = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + Math.round(m) + 'M';
             let savingsHTML = '';
-            if (onCost > 0) {
-                savingsHTML = `<div style="margin-top:4px;font-size:0.8rem;color:#4CAF50;font-weight:600;">Budget Savings: ${fmtCost(onCost)}/tick recovered</div>`;
+            if (onCostScaled2 > 0) {
+                savingsHTML = `<div style="margin-top:4px;font-size:0.8rem;color:#4CAF50;font-weight:600;">Budget Savings: ${fmtCost(onCostScaled2)}/tick recovered</div>`;
             }
             return `<div class="draft-article-card" style="border-left:3px solid #ff4444;">
                 <div class="draft-article-info">

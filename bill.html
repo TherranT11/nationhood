@@ -208,6 +208,14 @@ import { initPage, qCache, qCacheSet } from './js/common.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
+/** Scale a policy cost by its scaling stat (e.g., population). */
+function scalePolicyCost(baseCost, scalingStat, nation) {
+    if (!scalingStat || !nation || nation[scalingStat] === undefined) return baseCost;
+    const statVal = Number(nation[scalingStat]) || 1;
+    const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
+    return baseCost * (statVal / divisor);
+}
+
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
@@ -337,7 +345,7 @@ async function loadBillData() {
 
         // Load active laws for repeal article support
         const { data: activeLawRows } = await _supabase.from('active_laws')
-            .select('*, policies(id, policy_name, description, major_sector, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, stat_effects, target_stat, stat_direction, ideologies, ideology)')
+            .select('*, policies(id, policy_name, description, major_sector, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat, stat_effects, target_stat, stat_direction, ideologies, ideology)')
             .eq('nation_id', bill.nation_id)
             .eq('is_reversal', false);
         nationActiveLaws = (activeLawRows || []).filter(l => l.policies);
@@ -902,7 +910,7 @@ function renderArticles() {
 
             if (isRepealArticle) {
                 // Repeal article — show reversed effects and cost savings
-                const onCost = p.ongoing_cost_per_tick || p.ongoing_base_cost || 0;
+                const onCost = scalePolicyCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, currentNation);
                 // Repealing saves the ongoing cost (negate it)
                 totalOngoing -= onCost;
 
@@ -950,8 +958,8 @@ function renderArticles() {
                 '</div>';
             }
 
-            totalUpfront += p.upfront_cost || 0;
-            totalOngoing += p.ongoing_cost_per_tick || p.ongoing_base_cost || 0;
+            totalUpfront += scalePolicyCost(p.upfront_cost || 0, p.upfront_scaling_stat, currentNation);
+            totalOngoing += scalePolicyCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, currentNation);
 
             // Ideology tags — support new ideologies array and legacy single ideology
             const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
@@ -975,8 +983,8 @@ function renderArticles() {
                 effectsHTML = '<span class="' + cls + '">' + dir + ' ' + p.target_stat + '</span>';
             }
 
-            const upCost = p.upfront_cost || 0;
-            const onCost = p.ongoing_cost_per_tick || p.ongoing_base_cost || 0;
+            const upCost = scalePolicyCost(p.upfront_cost || 0, p.upfront_scaling_stat, currentNation);
+            const onCost = scalePolicyCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, currentNation);
 
             const policyActions = canEditArticles ? '<div class="article-sponsor-actions">' +
                 '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
