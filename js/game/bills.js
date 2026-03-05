@@ -968,6 +968,9 @@ export async function checkEarlyMajority(supabase, nationId) {
         // resolve early if a passing majority is reached (math-lock or quorum).
         // No forced resolution — if the budget stalls, the unfunded penalty
         // (0% ministry funding) kicks in after BUDGET_UNFUNDED_FLOOR_TICKS.
+        if (bill.bill_type === 'budget' && earlyStatus && (earlyStatus === 'majority_opposed' || earlyStatus === 'quorum_opposed')) {
+            earlyStatus = null; // Budget bills can only resolve early when passing
+        }
 
         if (earlyStatus) {
             // Resolve immediately this tick (no grace period)
@@ -1046,6 +1049,18 @@ export async function resolveExpiredVotes(supabase, nationId) {
             quorum_failures: bill.quorum_failures || 0
         };
         const resolution = resolveBillVote(resolveBill, totalSeats);
+
+        // Budget bills never fail or get deferred normally — they stay on floor until passed
+        if (bill.bill_type === 'budget' && resolution === 'deferred') {
+            await supabase.from('bills').update({
+                voting_ends_tick: null,
+                early_resolution_status: null,
+                early_resolution_tick: null
+            }).eq('id', bill.id);
+            console.log(`[resolveExpiredVotes] Budget bill ${bill.bill_name} did not pass — remains on floor (YES=${votesFor}, NO=${votesAgainst})`);
+            results.push({ billId: bill.id, billName: bill.bill_name, result: 'deferred', votesFor, votesAgainst, type: 'budget' });
+            continue; // Skip no-vote penalty for deferred budget bills
+        }
 
         // Handle quorum deferral: extend vote by 1 tick
         if (resolution === 'deferred') {
@@ -1649,17 +1664,9 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     } catch (e) { /* non-blocking */ }
                     results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
                 }
-            } else {
-                // Budget bill did not pass — keep it on the floor (budget bills never fail)
-                // Clear voting_ends_tick so it stays open for next tick
-                await supabase.from('bills').update({
-                    voting_ends_tick: null,
-                    early_resolution_status: null,
-                    early_resolution_tick: null
-                }).eq('id', bill.id);
-                console.log(`[resolveExpiredVotes] Budget bill ${bill.bill_name} did not pass — remains on floor (YES=${votesFor}, NO=${votesAgainst})`);
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'deferred', votesFor, votesAgainst, type: 'budget' });
             }
+            // Note: budget bills with resolution !== 'passed' are caught by the
+            // budget-specific deferred handler above and never reach this branch.
         } else if (bill.bill_type === 'impeachment_motion' && bill.impeachment_id) {
             // ── Impeachment Motion (Phase 1) ──
             if (passed) {

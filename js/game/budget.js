@@ -1165,6 +1165,19 @@ export async function processBudgetCommitteeExpiry(supabase, nation, currentTick
 
     if (!expiredBills || expiredBills.length === 0) return null;
 
+    // Don't auto-move if there's already a budget bill on the floor
+    const { data: floorBudgetBills } = await supabase
+        .from('bills')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('bill_type', 'budget')
+        .eq('status', 'floor')
+        .limit(1);
+    if (floorBudgetBills && floorBudgetBills.length > 0) {
+        console.log(`[BudgetCommitteeExpiry] ${nation.name} — skipping auto-move, budget bill already on floor`);
+        return null;
+    }
+
     const bill = expiredBills[0];
     const isPresidential = isPresidentialRepublic(nation);
 
