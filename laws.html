@@ -1879,6 +1879,8 @@ async function submitToCommittee() {
 
         if (existingBill) {
             alert('An Electoral Makeup bill is already pending.');
+            isSubmitting = false;
+            document.getElementById('submit-bill-btn').disabled = false;
             return;
         }
     }
@@ -2293,6 +2295,8 @@ async function retractBill(billId) {
             }
         }
 
+        await _supabase.from('bill_comments').delete().eq('bill_id', billId);
+        await _supabase.from('bill_amendment_requests').delete().eq('bill_id', billId);
         await _supabase.rpc('withdraw_bill_votes', { p_bill_id: billId });
         await _supabase.from('bill_articles').delete().eq('bill_id', billId);
         await _supabase.from('bills').delete().eq('id', billId);
@@ -2336,6 +2340,12 @@ function selectCommitteePolicy(policyId) {
 
 async function submitCommitteeArticle() {
     if (!committeeSelectedPolicy || !currentCommitteeBillId) return;
+    // Only the bill sponsor can add articles
+    const targetBill = committeeBills.find(b => b.id === currentCommitteeBillId);
+    if (targetBill && targetBill.proposed_by && targetBill.proposed_by !== currentFaction?.id) {
+        alert('Only the bill sponsor can add articles.');
+        return;
+    }
     try {
         const { data: existingArticles } = await _supabase.from('bill_articles').select('article_number').eq('bill_id', currentCommitteeBillId).order('article_number', { ascending: false }).limit(1);
         const nextArticleNum = (existingArticles?.[0]?.article_number || 1) + 1;

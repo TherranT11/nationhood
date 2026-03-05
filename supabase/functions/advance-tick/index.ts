@@ -6297,7 +6297,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                     });
                 } catch (e) { /* non-blocking */ }
 
-                // Budget floor failure consequences (mirrors committee expiry)
+                // Budget floor failure consequences
                 if (isPresidentialRepublic(nation)) {
                     // Presidential: activate government shutdown
                     const { data: president } = await supabase.from('presidents')
@@ -6318,15 +6318,34 @@ async function resolveExpiredVotes(supabase, nationId) {
                     }
                     console.log(`[resolveExpiredVotes] Budget floor failure: ${nation?.name} — government shutdown activated`);
                 } else {
-                    // Parliamentary: penalize coalition parties
+                    // Parliamentary: penalize coalition parties + trigger snap elections
                     const { data: activeGov } = await supabase.from('government_formations')
-                        .select('id, party_ids').eq('nation_id', bill.nation_id)
+                        .select('id, status, party_ids').eq('nation_id', bill.nation_id)
                         .in('status', ['formed', 'caretaker']).order('formed_at', { ascending: false }).limit(1).maybeSingle();
                     for (const partyId of (activeGov?.party_ids || [])) {
                         await adjustMomentumAll(supabase, bill.nation_id, partyId,
                             GAME_CONFIG.BUDGET_FAILURE_COALITION_PENALTY, 'budget:floor_failure');
                     }
-                    console.log(`[resolveExpiredVotes] Budget floor failure: ${nation?.name} — coalition penalty applied`);
+                    // Trigger snap elections if not already in caretaker mode
+                    if (activeGov && activeGov.status !== 'caretaker') {
+                        await supabase.from('government_formations').update({ status: 'caretaker' })
+                            .eq('nation_id', bill.nation_id).in('status', ['formed']);
+                        await supabase.from('active_coalitions').update({ status: 'caretaker' })
+                            .eq('nation_id', bill.nation_id).is('dissolved_at', null);
+                        await supabase.from('elections').delete()
+                            .eq('nation_id', bill.nation_id).eq('status', 'scheduled');
+                        await supabase.from('elections').insert({
+                            nation_id: bill.nation_id,
+                            election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
+                            status: 'scheduled',
+                            election_type: 'parliamentary'
+                        });
+                        await supabase.from('bills').update({ status: 'frozen' })
+                            .eq('nation_id', bill.nation_id).in('status', ['committee', 'floor']);
+                        console.log(`[resolveExpiredVotes] Budget floor failure: ${nation?.name} — snap election triggered at tick ${currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS}`);
+                    } else {
+                        console.log(`[resolveExpiredVotes] Budget floor failure: ${nation?.name} — coalition penalty applied (already caretaker)`);
+                    }
                 }
 
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
@@ -19617,6 +19636,13 @@ async function advanceTick(supabase) {
         if (vacancyResult) {
             summary.vacancies = summary.vacancies || [];
             summary.vacancies.push(vacancyResult);
+        }
+
+        // Expire non-budget committee bills past their deadline
+        const committeeExpired = await expireCommitteeBills(supabase, nation.id, newTick);
+        if (committeeExpired.length > 0) {
+            summary.committeeExpiries = summary.committeeExpiries || [];
+            summary.committeeExpiries.push({ nation: nation.name, bills: committeeExpired });
         }
 
         // Check for early majority on active floor bills (lock outcome + set grace tick)
