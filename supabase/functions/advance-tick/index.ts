@@ -1922,7 +1922,7 @@ const INVERTED_STATS = [
     'pollution', 'carbon_emissions', 'crime_rate', 'incarceration_rate',
     'drug_use', 'corruption', 'polarization', 'civil_unrest', 'terrorism',
     'political_violence', 'emigration', 'sanctions', 'debt', 'debt_growth',
-    'inflation', 'illegal_immigration', 'fuel_prices'
+    'inflation', 'interest_rates', 'illegal_immigration', 'fuel_prices'
 ];
 
 // Stats stored as raw numbers (not 0-100 indices).
@@ -4298,10 +4298,13 @@ async function applyTradeBalanceToGdpGrowth(supabase, nation) {
 async function applyGdpGrowth(supabase, nation) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
     const currentGdp = Number(nation.gdp ?? 0);
-    if (currentGdp <= 0) return;
+
+    // Minimum GDP floor: $1B prevents permanent dead state from multiplicative zero
+    const GDP_FLOOR = 1_000_000_000;
+    const effectiveGdp = Math.max(currentGdp, GDP_FLOOR);
 
     const monthlyChangePercent = (gdpGrowth - 50) / 50;
-    const newGdp = Math.max(0, currentGdp * (1 + monthlyChangePercent / 100));
+    const newGdp = Math.max(GDP_FLOOR, effectiveGdp * (1 + monthlyChangePercent / 100));
     nation.gdp = newGdp;
 
     await supabase.from('nations').update({ gdp: newGdp }).eq('id', nation.id);
@@ -6754,6 +6757,8 @@ async function enactBill(supabase, bill, currentTick) {
             if (costErr) {
                 console.error(`[enactBill] Failed to deduct upfront cost for bill ${bill.id}:`, costErr.message);
             } else {
+                nation.budget_reserves = newReserves;
+                nation.debt = newDebt;
                 console.log(`[enactBill] Deducted upfront cost $${(totalUpfrontCost/1e9).toFixed(4)}B for bill "${bill.bill_name}" (reserves: $${(reserves/1e9).toFixed(2)}B → $${(newReserves/1e9).toFixed(2)}B, debt: $${(Number(nation.debt||0)/1e9).toFixed(2)}B → $${(newDebt/1e9).toFixed(2)}B)`);
             }
         }
@@ -14777,7 +14782,24 @@ async function processOngoingCosts(supabase, nation, currentTick) {
         details.push({ policy: policy.policy_name, cost: tickCost });
     }
 
-    // Policy costs are tracked in active_laws.ongoing_accumulated.
+    // Deduct total ongoing costs from national budget
+    if (totalCost > 0) {
+        const costInDollars = totalCost * 1_000_000;
+        const reserves = Number(nation.budget_reserves || 0);
+        let newReserves = reserves - costInDollars;
+        let newDebt = Number(nation.debt || 0);
+        if (newReserves < 0) {
+            newDebt += Math.abs(newReserves);
+            newReserves = 0;
+        }
+        await supabase.from('nations').update({
+            budget_reserves: newReserves,
+            debt: newDebt
+        }).eq('id', nation.id);
+        nation.budget_reserves = newReserves;
+        nation.debt = newDebt;
+        console.log(`[processOngoingCosts] ${nation.name}: Deducted $${(costInDollars/1e9).toFixed(4)}B ongoing costs (reserves: $${(reserves/1e9).toFixed(2)}B → $${(newReserves/1e9).toFixed(2)}B)`);
+    }
 
     return { totalCost, details };
 }
