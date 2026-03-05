@@ -4137,10 +4137,9 @@ async function autoGenerateBudgetBill(supabase, nation, currentTick, activeLaws)
  *   - Trigger snap elections (if not already in caretaker/election mode)
  *
  * Presidential systems:
- *   - Keep the budget bill open (don't fail it — let shutdown mechanics handle it)
- *   - President's party receives BUDGET_FAILURE_PRESIDENT_PENALTY (-10) approval with all voter blocs
- *   - Government shutdown is triggered naturally by the existing isGovernmentShutdown() logic
- *     since the bill remains open past the due date
+ *   - Fail the budget bill and apply BUDGET_FAILURE_PRESIDENT_PENALTY (-10) to president's party
+ *   - Directly activate a government shutdown crisis (since failing the bill means
+ *     isGovernmentShutdown() won't detect it, the crisis is manually inserted)
  *
  * @returns {{ expired: boolean, consequence: string, billId?: string }} or null
  */
@@ -5647,7 +5646,10 @@ async function checkEarlyMajority(supabase, nationId) {
         // bill_support seat_counts are stale and don't trigger a math-lock.
         if (!earlyStatus && bill.bill_type === 'budget' && bill.voting_ends_tick == null) {
             const ticksSinceProposed = currentTick - (bill.proposed_tick || 0);
-            if (ticksSinceProposed >= GAME_CONFIG.BUDGET_BILL_MAX_FLOOR_TICKS) {
+            // Budget bills spend up to BUDGET_COMMITTEE_EXPIRY_TICKS in committee before reaching the floor,
+            // so the forced resolution threshold must account for both committee and floor time.
+            const budgetForceThreshold = GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS + GAME_CONFIG.BUDGET_BILL_MAX_FLOOR_TICKS;
+            if (ticksSinceProposed >= budgetForceThreshold) {
                 if (participating >= quorumSeats && effectiveYes > noSeats) {
                     earlyStatus = 'quorum_reached';
                 } else {
@@ -6287,8 +6289,15 @@ async function resolveExpiredVotes(supabase, nationId) {
         } else if (bill.bill_type === 'budget') {
             // Budget bill resolution
             if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-                await resolveBudgetBill(supabase, bill, currentTick);
+                try {
+                    await resolveBudgetBill(supabase, bill, currentTick);
+                    await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+                } catch (budgetErr) {
+                    console.error(`[resolveExpiredVotes] resolveBudgetBill failed for bill ${bill.id}: ${budgetErr.message}`);
+                    // Do NOT mark as passed — revert to floor so it retries next tick
+                    results.push({ billId: bill.id, billName: bill.bill_name, result: 'error', votesFor, votesAgainst, type: 'budget', error: budgetErr.message });
+                    continue;
+                }
                 try {
                     await supabase.rpc('fire_system_event', {
                         p_trigger_key: 'bill_passed',
