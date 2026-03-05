@@ -367,12 +367,14 @@ async function loadLawsData() {
 /**
  * Render ideology chip HTML for a policy, using dynamic alignment colors.
  */
-function renderIdeologyChips(policy) {
+function renderIdeologyChips(policy, isRepeal) {
     if (!policy) return '';
     const ideos = (policy.ideologies && Array.isArray(policy.ideologies) && policy.ideologies.length > 0)
         ? policy.ideologies : (policy.ideology ? [policy.ideology] : []);
     return ideos.map(i => {
-        const colorClass = getIdeologyChipClass(i, factionIdeology);
+        const rawClass = getIdeologyChipClass(i, factionIdeology);
+        // Invert alignment for repeals: repealing an opposed policy is good for you
+        const colorClass = isRepeal ? (rawClass === 'aligned' ? 'opposed' : rawClass === 'opposed' ? 'aligned' : rawClass) : rawClass;
         return `<span class="article-ideology ${colorClass}">${i}</span>`;
     }).join(' ');
 }
@@ -956,7 +958,7 @@ function renderPresidentDeskBills() {
         const articlesHtml = articles.length > 0
             ? articles.map(art => {
                 if (!art.policies) return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.article_title || 'Untitled'} <span style="background:#2196F3;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;">TEXT</span></span></div></div>`;
-                const chipHTML = renderIdeologyChips(art.policies);
+                const chipHTML = renderIdeologyChips(art.policies, !!art.repeal_active_law_id);
                 return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
             }).join('')
             : (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' : '');
@@ -1060,9 +1062,9 @@ function renderFloorBill(bill, isVetoed) {
                     : (function() {
                         var ev = evaluateBillVote({ votes_for: bill.votes_for || 0, votes_against: bill.votes_against || 0, votes_abstain: bill.votes_abstain || 0, bill_type: bill.bill_type }, GAME_CONFIG.TOTAL_SEATS);
                         var statusText, statusStyle;
-                        if (ev.status === 'will_pass') { statusText = 'WILL PASS — Resolves Next Tick'; statusStyle = 'border-color:#4CAF50;color:#4CAF50;'; }
+                        if (ev.status === 'will_pass') { statusText = 'WILL PASS — Resolves Next Tick'; statusStyle = 'background:#4CAF50;border-color:#4CAF50;color:#fff;'; }
                         else if (ev.status === 'will_fail') { statusText = 'WILL FAIL — Resolves Next Tick'; statusStyle = 'background:#ff4444;border-color:#ff4444;color:#fff;'; }
-                        else if (ev.status === 'passing') { statusText = 'PASSING — ' + ev.quorumCurrent + '/' + ev.quorumThreshold + ' quorum'; statusStyle = 'border-color:#8BC34A;color:#8BC34A;'; }
+                        else if (ev.status === 'passing') { statusText = 'PASSING — ' + ev.quorumCurrent + '/' + ev.quorumThreshold + ' quorum'; statusStyle = 'background:#8BC34A;border-color:#8BC34A;color:#fff;'; }
                         else if (ev.status === 'quorum_not_met') { statusText = 'QUORUM NOT MET — ' + ev.quorumCurrent + '/' + ev.quorumThreshold; statusStyle = 'border-color:#ffcc00;color:#ffcc00;'; }
                         else if (ev.status === 'pending') { statusText = (bill.votes_for || 0) + ' / ' + ev.thresholdNeeded + ' YES needed'; statusStyle = 'border-color:#ffcc00;color:#ffcc00;'; }
                         else { statusText = 'VOTING — ' + (bill.votes_for || 0) + ' YES / ' + (bill.votes_against || 0) + ' NO'; statusStyle = ''; }
@@ -1336,7 +1338,7 @@ function renderCommitteeBill(bill) {
                     if (!art.policies) {
                         return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.article_title || 'Untitled Provision'} <span style="background:#2196F3;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">TEXT</span></span><div class="article-desc" style="white-space:pre-wrap;">${art.article_text || ''}</div></div></div>`;
                     }
-                    const chipHTML = renderIdeologyChips(art.policies);
+                    const chipHTML = renderIdeologyChips(art.policies, !!art.repeal_active_law_id);
                     return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
                 }).join(''))))))}
             </div>

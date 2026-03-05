@@ -908,7 +908,9 @@ function renderArticles() {
 
                 const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
                 const ideoHTML = ideos.map(i => {
-                    const colorClass = getIdeologyChipClass(i, factionIdeology);
+                    // Invert alignment for repeals: repealing an opposed policy is good
+                    const rawClass = getIdeologyChipClass(i, factionIdeology);
+                    const colorClass = rawClass === 'aligned' ? 'opposed' : rawClass === 'opposed' ? 'aligned' : rawClass;
                     return '<span class="article-ideology ' + colorClass + '">' + i + '</span>';
                 }).join(' ');
 
@@ -1265,8 +1267,8 @@ function renderIdeologyWarning() {
     if (currentBill.bill_type === 'veto_override') return;
 
     if (!factionIdeology || !currentBill) return;
-    if (currentBill.bill_type === 'repeal') return;
 
+    const isRepeal = currentBill.bill_type === 'repeal';
     const articles = currentBill.bill_articles || [];
     if (articles.length === 0) return;
 
@@ -1280,6 +1282,8 @@ function renderIdeologyWarning() {
             ? p.ideologies.map(i => i.toUpperCase())
             : (p.ideology ? [p.ideology.toUpperCase()] : []);
 
+        const artIsRepeal = isRepeal || !!art.repeal_active_law_id;
+
         for (const tag of ideos) {
             const mapping = IDEOLOGY_TO_AXIS[tag];
             if (!mapping) continue;
@@ -1289,10 +1293,13 @@ function renderIdeologyWarning() {
             if (!axisAlignments[mapping.axisKey]) {
                 axisAlignments[mapping.axisKey] = { aligned: 0, opposed: 0, tags: [] };
             }
-            if (alignment > 10) {
-                axisAlignments[mapping.axisKey].aligned++;
-            } else if (alignment < -10) {
-                axisAlignments[mapping.axisKey].opposed++;
+            // Invert alignment for repeals: repealing an opposed policy benefits you
+            if (artIsRepeal) {
+                if (alignment > 10) axisAlignments[mapping.axisKey].opposed++;
+                else if (alignment < -10) axisAlignments[mapping.axisKey].aligned++;
+            } else {
+                if (alignment > 10) axisAlignments[mapping.axisKey].aligned++;
+                else if (alignment < -10) axisAlignments[mapping.axisKey].opposed++;
             }
             axisAlignments[mapping.axisKey].tags.push(tag);
         }
@@ -1327,17 +1334,17 @@ function renderIdeologyWarning() {
     if (totalOpposed > 0 && totalAligned === 0) {
         bannerClass = 'conflict';
         icon = '⚠️';
-        mainText = 'This bill conflicts with your party\'s values';
+        mainText = isRepeal ? 'Repealing this law conflicts with your party\'s values' : 'This bill conflicts with your party\'s values';
         detailText = conflictDetails.join('. ') + (dynamicPenalty < 0 ? `. Voting YES risks ~${Math.abs(dynamicPenalty).toFixed(1)} approval penalty.` : '');
     } else if (totalOpposed > 0 && totalAligned > 0) {
         bannerClass = 'mixed';
         icon = '⚖️';
-        mainText = 'This bill has mixed ideological alignment';
+        mainText = isRepeal ? 'Repealing this law has mixed ideological alignment' : 'This bill has mixed ideological alignment';
         detailText = conflictDetails.join('. ') + ` (${totalAligned} article${totalAligned > 1 ? 's' : ''} aligned)` + (dynamicPenalty < 0 ? `. Net approval risk: ~${Math.abs(dynamicPenalty).toFixed(1)}.` : '');
     } else if (totalAligned > 0) {
         bannerClass = 'aligned';
         icon = '✅';
-        mainText = 'This bill aligns with your party\'s values';
+        mainText = isRepeal ? 'Repealing this law aligns with your party\'s values' : 'This bill aligns with your party\'s values';
         detailText = `${totalAligned} article${totalAligned > 1 ? 's' : ''} match your ideological position.`;
     } else {
         return; // All neutral — no banner needed
@@ -1641,7 +1648,7 @@ function renderSidebar() {
 
         // ── Status label (shown only if server hasn't already confirmed early resolution) ──
         const statusHTML = statusLabel
-            ? `<div class="vote-status-banner" style="background:${statusColor}20;border:1px solid ${statusColor};color:${statusColor};">${statusLabel}</div>`
+            ? `<div class="vote-status-banner" style="background:${statusColor};border:1px solid ${statusColor};color:#fff;">${statusLabel}</div>`
             : '';
 
         html = `<div class="vote-tally"><div class="vote-tally-header"><div class="vote-tally-title">Current Tally</div></div><div class="vote-tally-content">

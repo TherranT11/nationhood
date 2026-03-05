@@ -1106,10 +1106,9 @@ export async function autoGenerateBudgetBill(supabase, nation, currentTick, acti
  *   - Trigger snap elections (if not already in caretaker/election mode)
  *
  * Presidential systems:
- *   - Keep the budget bill open (don't fail it — let shutdown mechanics handle it)
- *   - President's party receives BUDGET_FAILURE_PRESIDENT_PENALTY (-10) approval with all voter blocs
- *   - Government shutdown is triggered naturally by the existing isGovernmentShutdown() logic
- *     since the bill remains open past the due date
+ *   - Fail the budget bill and apply BUDGET_FAILURE_PRESIDENT_PENALTY (-10) to president's party
+ *   - Directly activate a government shutdown crisis (since failing the bill means
+ *     isGovernmentShutdown() won't detect it, the crisis is manually inserted)
  *
  * @returns {{ expired: boolean, consequence: string, billId?: string }} or null
  */

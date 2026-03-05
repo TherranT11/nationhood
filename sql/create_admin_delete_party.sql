@@ -54,7 +54,8 @@ DECLARE
         ARRAY['forum_replies',                $$DELETE FROM forum_replies WHERE faction_id = '%s'$$],
         ARRAY['forum_threads',                $$DELETE FROM forum_threads WHERE faction_id = '%s'$$],
         ARRAY['player_articles',              $$DELETE FROM player_articles WHERE author_faction_id = '%s'$$],
-        ARRAY['op_eds(author)',               $$DELETE FROM op_eds WHERE author_faction_id = '%s'$$]
+        ARRAY['op_eds(author)',               $$DELETE FROM op_eds WHERE author_faction_id = '%s'$$],
+        ARRAY['ministry_requests',            $$DELETE FROM ministry_requests WHERE faction_id = '%s'$$]
     ];
     i INT;
 BEGIN

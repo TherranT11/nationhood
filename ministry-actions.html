@@ -722,6 +722,191 @@ const MINISTRY_POLICIES = {
                 { bloc: 'Ethnic Minorities', pct: 10, reaction: 'strong_negative', desc: 'Minority communities disproportionately attend underfunded schools that score lowest.' }
             ]
         }
+    ],
+    finance: [
+        {
+            id: 'tax_compliance_crackdown',
+            name: 'Tax Compliance Crackdown',
+            icon: '🔍',
+            description: 'Double audit teams, cross-reference bank records with tax filings, pursue high-profile evasion cases. Name and shame corporate tax dodgers.',
+            affects: [
+                { stat: 'Efficiency', statKey: 'efficiency', change: '+1.5', direction: 'up', rate: 1.5 },
+                { stat: 'Happiness', statKey: 'happiness', change: '-1', direction: 'down', rate: 1, negative: true },
+                { stat: 'Foreign Investment', statKey: 'foreign_investment', change: '-0.5', direction: 'down', rate: 0.5, negative: true }
+            ],
+            costPerCapita: 4.5,
+            durationTicks: 3,
+            cooldownLabel: '3 ticks',
+            fiscalCategory: 'Finance',
+            maxUses: 4,
+            ideologyAxes: ['EQUALITY', 'SECURITY'],
+            ideologyConflicts: ['LIBERTY', 'FREEDOM'],
+            blocReactions: [
+                { bloc: 'Urban Progressives', pct: 12, reaction: 'strong_positive', desc: 'Redistributive justice — the rich finally paying their share. Name and shame is catnip.' },
+                { bloc: 'Urban Workers', pct: 15, reaction: 'positive', desc: 'Cracking down on corporate evasion feels like justice, though audit paperwork is miserable.' },
+                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'positive', desc: 'Support enforcement against the wealthy, though wary small businesses get targeted harder.' },
+                { bloc: 'Academics & Professionals', pct: 9, reaction: 'mild_positive', desc: 'Institutional credibility matters. Approve intellectually but hate the audit paperwork.' },
+                { bloc: 'Business Owners', pct: 6, reaction: 'strong_negative', desc: 'Government intrusion into private financial affairs. Name and shame is existentially threatening.' },
+                { bloc: 'Religious Conservatives', pct: 13, reaction: 'negative', desc: 'Expands state surveillance apparatus. Today bank accounts, tomorrow everything.' },
+                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'mild_negative', desc: 'Rural businesses with informal cash economies feel exposed. Admin burden falls harder on small operations.' },
+                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'neutral', desc: 'No strong interest. Could flip positive if framed as targeting foreign-owned companies.' },
+                { bloc: 'Military & Security', pct: 5, reaction: 'neutral', desc: 'Respect institutional enforcement but Liberty-Freedom alignment conflicts. Net wash.' }
+            ]
+        },
+        {
+            id: 'banking_stress_tests',
+            name: 'Banking Sector Stress Tests',
+            icon: '🏦',
+            description: 'Force all major banks to undergo rigorous stress testing. Publish results publicly. Undercapitalized banks must raise reserves or face restrictions.',
+            affects: [
+                { stat: 'Currency Strength', statKey: 'currency_strength', change: '+1.5', direction: 'up', rate: 1.5 },
+                { stat: 'Foreign Investment', statKey: 'foreign_investment', change: '+1', direction: 'up', rate: 1 },
+                { stat: 'Credit', statKey: 'credit', change: '-1.2', direction: 'down', rate: 1.2, negative: true },
+                { stat: 'GDP Growth', statKey: 'gdp_growth', change: '-0.3', direction: 'down', rate: 0.3, negative: true }
+            ],
+            costPerCapita: 6.0,
+            durationTicks: 4,
+            cooldownLabel: '4 ticks',
+            fiscalCategory: 'Finance',
+            maxUses: 4,
+            ideologyAxes: ['SECURITY', 'PROGRESS'],
+            ideologyConflicts: ['FREEDOM', 'TRADITION'],
+            blocReactions: [
+                { bloc: 'Academics & Professionals', pct: 9, reaction: 'strong_positive', desc: 'Perfect alignment. Institutional reform that international credit agencies reward.' },
+                { bloc: 'Urban Progressives', pct: 12, reaction: 'positive', desc: 'Government holding banks accountable. Credit tightening worries them only for working people.' },
+                { bloc: 'Business Owners', pct: 6, reaction: 'negative', desc: 'Credit squeeze is devastating for businesses relying on bank lending.' },
+                { bloc: 'Urban Workers', pct: 15, reaction: 'mixed', desc: 'Like banks being held accountable but the credit squeeze means harder mortgages and potential layoffs.' },
+                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'mild_negative', desc: 'Agricultural lending is heavily credit-dependent. Seasonal farming operations are directly hurt.' },
+                { bloc: 'Religious Conservatives', pct: 13, reaction: 'mild_negative', desc: 'Government restructuring financial institutions. Banking regulation is abstract enough that salience is low.' },
+                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'neutral', desc: 'Low salience. Banking regulation isn\'t their concern unless framed as financial sovereignty.' },
+                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'neutral', desc: 'Banking regulation is outside their primary concerns.' },
+                { bloc: 'Military & Security', pct: 5, reaction: 'neutral', desc: 'Respect institutional discipline but Liberty-Freedom alignment conflicts.' }
+            ]
+        },
+        {
+            id: 'sovereign_debt_restructuring',
+            name: 'Sovereign Debt Restructuring',
+            icon: '📉',
+            description: 'Renegotiate terms on existing government debt — extend maturities, lower interest rates, consolidate scattered obligations.',
+            affects: [
+                { stat: 'Debt Growth', statKey: 'debt_growth', change: '-2', direction: 'down', rate: 2 },
+                { stat: 'Efficiency', statKey: 'efficiency', change: '+0.8', direction: 'up', rate: 0.8 },
+                { stat: 'Intl Reputation', statKey: 'international_reputation', change: '-1', direction: 'down', rate: 1, negative: true },
+                { stat: 'Currency Strength', statKey: 'currency_strength', change: '-0.8', direction: 'down', rate: 0.8, negative: true }
+            ],
+            costPerCapita: 4.5,
+            durationTicks: 5,
+            cooldownLabel: '5 ticks',
+            fiscalCategory: 'Finance',
+            maxUses: 3,
+            ideologyAxes: ['EQUALITY', 'NATIONALISM'],
+            ideologyConflicts: ['LIBERTY', 'GLOBALISM'],
+            blocReactions: [
+                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'positive', desc: 'Refusing to honor terms set by international creditors is a sovereignty assertion.' },
+                { bloc: 'Urban Progressives', pct: 12, reaction: 'positive', desc: 'Debt restructuring frees up budget for public services — education, healthcare, social programs.' },
+                { bloc: 'Urban Workers', pct: 15, reaction: 'positive', desc: 'Lower debt means more room for spending that benefits them. Currency hit is abstract.' },
+                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'mild_positive', desc: 'Debt restructuring leading to more social spending benefits them. Low salience overall.' },
+                { bloc: 'Academics & Professionals', pct: 9, reaction: 'mild_negative', desc: 'INTERNATIONAL alarm. Reputation damage and currency weakness are exactly what they fear.' },
+                { bloc: 'Business Owners', pct: 6, reaction: 'negative', desc: 'Currency weakness makes imports expensive. Renegotiating debt sets a dangerous precedent.' },
+                { bloc: 'Religious Conservatives', pct: 13, reaction: 'mild_negative', desc: 'Debt obligations are sacred. You made a promise — keep it.' },
+                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'mild_negative', desc: 'Uncomfortable with broken financial commitments. Currency decline raises import costs.' },
+                { bloc: 'Military & Security', pct: 5, reaction: 'mild_negative', desc: 'Reduced credibility could affect defense procurement from foreign suppliers.' }
+            ]
+        },
+        {
+            id: 'small_business_deregulation',
+            name: 'Small Business Deregulation Program',
+            icon: '✂️',
+            description: 'Slash red tape for small and medium enterprises. Simplify business registration, reduce reporting requirements, streamline permits.',
+            affects: [
+                { stat: 'GDP Growth', statKey: 'gdp_growth', change: '+1', direction: 'up', rate: 1 },
+                { stat: 'Unemployment', statKey: 'unemployment', change: '-0.8', direction: 'down', rate: 0.8 },
+                { stat: 'Corruption', statKey: 'corruption', change: '+1', direction: 'up', rate: 1, negative: true },
+                { stat: 'Stability', statKey: 'stability', change: '-0.3', direction: 'down', rate: 0.3, negative: true },
+                { stat: 'Civil Unrest', statKey: 'civil_unrest', change: '+0.2', direction: 'up', rate: 0.2, negative: true }
+            ],
+            costPerCapita: 7.5,
+            durationTicks: 3,
+            cooldownLabel: '3 ticks',
+            fiscalCategory: 'Finance',
+            maxUses: 5,
+            ideologyAxes: ['LIBERTY', 'INDIVIDUALISM'],
+            ideologyConflicts: ['EQUALITY', 'COLLECTIVISM'],
+            blocReactions: [
+                { bloc: 'Business Owners', pct: 6, reaction: 'strong_positive', desc: 'Their policy. Deregulation directly reduces operating costs and gives workforce flexibility.' },
+                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'strong_positive', desc: 'Agricultural businesses drowning in permits and inspections. Family farms benefit disproportionately.' },
+                { bloc: 'Religious Conservatives', pct: 13, reaction: 'positive', desc: 'Shrinking government regulatory footprint. Self-reliance and limited state interference.' },
+                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'mild_positive', desc: 'Less government interference resonates. Passively supportive.' },
+                { bloc: 'Military & Security', pct: 5, reaction: 'mild_positive', desc: 'Approve of streamlining. Low salience.' },
+                { bloc: 'Urban Workers', pct: 15, reaction: 'negative', desc: 'Fewer workplace protections, fewer safety inspections. They\'re the ones in the unsafe buildings.' },
+                { bloc: 'Urban Progressives', pct: 12, reaction: 'strong_negative', desc: 'Deregulation as a license to steal. Corruption +1 is their headline stat.' },
+                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'negative', desc: 'Deregulation means minority-owned businesses lose protections while larger businesses exploit reduced oversight.' },
+                { bloc: 'Academics & Professionals', pct: 9, reaction: 'mild_negative', desc: 'They want smarter regulation, not less regulation. Anti-evidence approach.' }
+            ]
+        },
+        {
+            id: 'foreign_investment_zones',
+            name: 'Foreign Investment Incentive Zones',
+            icon: '🌐',
+            description: 'Designate special economic zones with tax holidays, fast-tracked permits, and dedicated infrastructure for foreign companies.',
+            affects: [
+                { stat: 'Foreign Investment', statKey: 'foreign_investment', change: '+2.5', direction: 'up', rate: 2.5 },
+                { stat: 'Unemployment', statKey: 'unemployment', change: '-1', direction: 'down', rate: 1 },
+                { stat: 'Debt Growth', statKey: 'debt_growth', change: '+0.8', direction: 'up', rate: 0.8, negative: true },
+                { stat: 'Happiness', statKey: 'happiness', change: '-0.5', direction: 'down', rate: 0.5, negative: true },
+                { stat: 'Corruption', statKey: 'corruption', change: '+0.5', direction: 'up', rate: 0.5, negative: true }
+            ],
+            costPerCapita: 27.0,
+            durationTicks: 5,
+            cooldownLabel: '5 ticks',
+            fiscalCategory: 'Finance',
+            maxUses: 4,
+            ideologyAxes: ['GLOBALISM', 'LIBERTY'],
+            ideologyConflicts: ['NATIONALISM', 'EQUALITY'],
+            blocReactions: [
+                { bloc: 'Academics & Professionals', pct: 9, reaction: 'positive', desc: 'Attracting foreign capital, technology transfer, global supply chain integration.' },
+                { bloc: 'Business Owners', pct: 6, reaction: 'mixed', desc: 'Split — some can partner with foreign firms, others compete against them with worse tax terms.' },
+                { bloc: 'Urban Workers', pct: 15, reaction: 'mixed', desc: 'Jobs are good, but preferential treatment for foreign capital offends Equality values.' },
+                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'mild_positive', desc: 'Foreign investment brings cultural exchange, but questions who actually benefits.' },
+                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'strong_negative', desc: 'Economic sovereignty sold to foreign companies. Building a foreign country inside ours.' },
+                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'negative', desc: 'Zones often built on agricultural land. Losing farmland to foreign factories is cultural loss.' },
+                { bloc: 'Religious Conservatives', pct: 13, reaction: 'negative', desc: 'Foreign corporate presence brings foreign cultural values. Zones are governance exceptions.' },
+                { bloc: 'Military & Security', pct: 5, reaction: 'mild_negative', desc: 'Sovereign territory carved out for foreign interests. Could flip if defense contractors involved.' },
+                { bloc: 'Urban Progressives', pct: 12, reaction: 'neutral', desc: 'Ambivalent — jobs are good but tax holidays for corporations are ideologically hostile.' }
+            ]
+        },
+        {
+            id: 'anti_money_laundering',
+            name: 'Anti-Money Laundering Enforcement',
+            icon: '🛡️',
+            description: 'Upgrade financial surveillance systems, hire forensic accountants, mandate suspicious transaction reporting, crack down on shell companies.',
+            affects: [
+                { stat: 'Corruption', statKey: 'corruption', change: '-1.5', direction: 'down', rate: 1.5 },
+                { stat: 'Intl Reputation', statKey: 'international_reputation', change: '+1', direction: 'up', rate: 1 },
+                { stat: 'Currency Strength', statKey: 'currency_strength', change: '+0.5', direction: 'up', rate: 0.5 },
+                { stat: 'Efficiency', statKey: 'efficiency', change: '-0.8', direction: 'down', rate: 0.8, negative: true },
+                { stat: 'Foreign Investment', statKey: 'foreign_investment', change: '-0.5', direction: 'down', rate: 0.5, negative: true },
+                { stat: 'GDP Growth', statKey: 'gdp_growth', change: '-0.3', direction: 'down', rate: 0.3, negative: true }
+            ],
+            costPerCapita: 18.0,
+            durationTicks: 4,
+            cooldownLabel: '4 ticks',
+            fiscalCategory: 'Finance',
+            maxUses: 4,
+            ideologyAxes: ['SECURITY', 'EQUALITY'],
+            ideologyConflicts: ['FREEDOM', 'LIBERTY'],
+            blocReactions: [
+                { bloc: 'Academics & Professionals', pct: 9, reaction: 'strong_positive', desc: 'Institutional credibility and international reputation are exactly what they care about.' },
+                { bloc: 'Urban Progressives', pct: 12, reaction: 'strong_positive', desc: 'Corruption -1.5 is their most valued stat effect. Money laundering connects to exploitation.' },
+                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'positive', desc: 'Organized financial crime disproportionately affects their communities.' },
+                { bloc: 'Urban Workers', pct: 15, reaction: 'mild_positive', desc: 'Like anti-corruption in principle but the GDP drag means fewer jobs and less wage growth.' },
+                { bloc: 'Business Owners', pct: 6, reaction: 'strong_negative', desc: 'Efficiency and GDP hits are direct costs. Mandatory transaction reporting is surveillance.' },
+                { bloc: 'Religious Conservatives', pct: 13, reaction: 'negative', desc: 'Major expansion of state surveillance infrastructure. Treating every citizen like a suspect.' },
+                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'mild_negative', desc: 'Rural cash transactions flagged by systems designed for urban banking. Compliance burden is higher per dollar.' },
+                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'neutral', desc: 'Could go positive if framed as targeting foreign money laundering operations.' },
+                { bloc: 'Military & Security', pct: 5, reaction: 'mixed', desc: 'Respect intelligence-style financial surveillance but Liberty-Freedom alignment conflicts.' }
+            ]
+        }
     ]
 };
 
