@@ -4330,7 +4330,6 @@ async function approveTradeNegotiation(negotiationId) {
     if (!confirm('Approve this trade agreement? Once both sides approve, ratification bills will be auto-generated in both parliaments.')) return;
 
     const weAreA = currentNation.id === neg.nation_a_id;
-    const myRole = null;
     const participants = neg.participants || [];
     const myPart = participants.find(p => p.faction_id === currentFaction.id);
 
@@ -4950,9 +4949,9 @@ async function saveTradeArticle(negotiationId, articleType) {
     switch (articleType) {
         case 'duration': {
             const durType = document.querySelector('input[name="dur-type"]:checked')?.value || 'fixed';
-            const ticks = parseInt(document.getElementById('dur-ticks')?.value || '12');
+            const ticks = Math.min(120, Math.max(4, parseInt(document.getElementById('dur-ticks')?.value || '12')));
             const autoRenew = document.getElementById('dur-autorenew')?.checked || false;
-            const withdrawal = parseInt(document.getElementById('dur-withdrawal')?.value || '3');
+            const withdrawal = Math.min(6, Math.max(1, parseInt(document.getElementById('dur-withdrawal')?.value || '3')));
             articleData = { duration_type: durType, duration_ticks: durType === 'fixed' ? ticks : null, auto_renew: autoRenew, withdrawal_notice_ticks: withdrawal };
             break;
         }
@@ -4966,7 +4965,7 @@ async function saveTradeArticle(negotiationId, articleType) {
         case 'tariff_reduction': {
             const sector = document.getElementById('tariff-sector')?.value;
             const direction = document.querySelector('input[name="tariff-dir"]:checked')?.value || 'mutual';
-            const pct = parseInt(document.getElementById('tariff-pct')?.value || '50');
+            const pct = Math.min(100, Math.max(0, parseInt(document.getElementById('tariff-pct')?.value || '50')));
             if (!sector) { alert('Please select a sector.'); return; }
             // Store author_nation_id so the trade engine can resolve directional tariff reductions
             articleData = { sector: sector, direction: direction, reduction_pct: pct, author_nation_id: currentNation.id };
@@ -4975,7 +4974,7 @@ async function saveTradeArticle(negotiationId, articleType) {
         case 'supply_commitment': {
             const sector = document.getElementById('supply-sector')?.value;
             const direction = document.querySelector('input[name="supply-dir"]:checked')?.value || 'we_buy';
-            const pct = parseInt(document.getElementById('supply-pct')?.value || '60');
+            const pct = Math.min(90, Math.max(10, parseInt(document.getElementById('supply-pct')?.value || '60')));
             if (!sector) { alert('Please select a resource.'); return; }
             // Store author_nation_id so the trade engine can resolve "we" to a specific nation
             articleData = { sector: sector, direction: direction, commitment_pct: pct, author_nation_id: currentNation.id };
@@ -4983,21 +4982,21 @@ async function saveTradeArticle(negotiationId, articleType) {
         }
         case 'price_terms': {
             const priceType = document.querySelector('input[name="price-type"]:checked')?.value || 'market';
-            const modifier = parseInt(document.getElementById('price-modifier')?.value || '10');
+            const modifier = Math.min(25, Math.max(0, parseInt(document.getElementById('price-modifier')?.value || '10')));
             articleData = { price_type: priceType, modifier_pct: (priceType === 'discounted' || priceType === 'premium') ? modifier : 0 };
             break;
         }
         case 'breach_penalty': {
             articleData = {
-                relations_penalty: parseInt(document.getElementById('breach-relations')?.value || '5'),
-                reputation_penalty: parseInt(document.getElementById('breach-reputation')?.value || '2'),
-                financial_penalty: parseInt(document.getElementById('breach-financial')?.value || '200')
+                relations_penalty: Math.min(8, Math.max(1, parseInt(document.getElementById('breach-relations')?.value || '5'))),
+                reputation_penalty: Math.min(4, Math.max(0, parseInt(document.getElementById('breach-reputation')?.value || '2'))),
+                financial_penalty: Math.min(500, Math.max(0, parseInt(document.getElementById('breach-financial')?.value || '200')))
             };
             break;
         }
         case 'subsidized_sector': {
             const sector = document.getElementById('subsidy-sector')?.value;
-            const pct = parseInt(document.getElementById('subsidy-pct')?.value || '15');
+            const pct = Math.min(30, Math.max(5, parseInt(document.getElementById('subsidy-pct')?.value || '15')));
             if (!sector) { alert('Please select a sector.'); return; }
             // Store author_nation_id so the trade engine knows which nation is subsidizing
             articleData = { sector: sector, subsidy_pct: pct, author_nation_id: currentNation.id };
@@ -5017,7 +5016,7 @@ async function saveTradeArticle(negotiationId, articleType) {
         }
         case 'aid_terms': {
             const amount = Number(document.getElementById('aid-amount')?.value || 0);
-            const gdpCap = parseInt(document.getElementById('aid-gdp-cap')?.value || '10');
+            const gdpCap = Math.min(25, Math.max(1, parseInt(document.getElementById('aid-gdp-cap')?.value || '10')));
             if (amount < DIPLOMACY_CONFIG.AID_MIN_AMOUNT) {
                 alert('Minimum aid amount is $' + (DIPLOMACY_CONFIG.AID_MIN_AMOUNT / 1e9).toFixed(0) + 'B.');
                 return;
@@ -5032,9 +5031,9 @@ async function saveTradeArticle(negotiationId, articleType) {
         case 'aid_condition': {
             const statKey = document.getElementById('cond-stat')?.value;
             const operator = document.querySelector('input[name="cond-op"]:checked')?.value || 'gte';
-            const threshold = parseInt(document.getElementById('cond-threshold')?.value || '50');
+            const threshold = Math.min(100, Math.max(0, parseInt(document.getElementById('cond-threshold')?.value || '50')));
             const onFailure = document.querySelector('input[name="cond-fail"]:checked')?.value || 'suspend';
-            const grace = parseInt(document.getElementById('cond-grace')?.value || '1');
+            const grace = Math.min(2, Math.max(0, parseInt(document.getElementById('cond-grace')?.value || '1')));
             if (!statKey) { alert('Please select a stat to monitor.'); return; }
             // Check max conditions
             const { data: condNeg } = await _supabase.from('trade_negotiations').select('draft_articles').eq('id', negotiationId).single();
