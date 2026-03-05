@@ -61,6 +61,8 @@ import { _supabase } from './js/supabase-client.js';
                 password: password,
             });
             if (error) throw error;
+            // Clear stale game state so dashboard fetches fresh data
+            sessionStorage.removeItem('nationhood_state');
             window.location.href = "dashboard.html";
         } catch (error) {
             console.error('Login error:', error);
