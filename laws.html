@@ -863,8 +863,8 @@ async function renderBudgetBillContent() {
             h += '<div class="bp-submit-notice bp-submit-warning">A budget bill is ' + (isSystemBill ? 'automatically ' : '') + 'pending in ' + pendingStatus + '. Move it to the floor before the committee deadline expires (' + GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS + ' ticks).</div>';
         } else {
             var lastBT = Number(currentNation.last_budget_tick || 0);
-            var dueTick = lastBT > 0 ? lastBT + GAME_CONFIG.TICKS_PER_YEAR : GAME_CONFIG.TICKS_PER_YEAR;
-            var genTick = dueTick - (GAME_CONFIG.BUDGET_AUTO_GENERATE_LEAD_TICKS || 3);
+            var budgetDueTick = lastBT > 0 ? lastBT + GAME_CONFIG.TICKS_PER_YEAR : GAME_CONFIG.TICKS_PER_YEAR;
+            var genTick = budgetDueTick - (GAME_CONFIG.BUDGET_AUTO_GENERATE_LEAD_TICKS || 3);
             var ticksUntilGen = genTick - currentTick;
             if (ticksUntilGen > 0) {
                 h += '<div class="bp-submit-notice bp-submit-disabled">Budget bills are automatically introduced to committee ' + (GAME_CONFIG.BUDGET_AUTO_GENERATE_LEAD_TICKS || 3) + ' ticks before the deadline. Next budget auto-generates in ' + ticksUntilGen + ' tick(s).</div>';
