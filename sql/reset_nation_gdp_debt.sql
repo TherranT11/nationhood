@@ -48,6 +48,12 @@ SET gdp = 95000000000,
     debt = 95000000000
 WHERE LOWER(name) = 'melizea';
 
+-- Palvera: GDP $106B, Debt $48B
+UPDATE nations
+SET gdp = 106000000000,
+    debt = 48000000000
+WHERE LOWER(name) = 'palvera';
+
 -- 3. Update seed_stats JSONB so shard resets preserve correct values
 UPDATE nations
 SET seed_stats = jsonb_set(
@@ -83,6 +89,13 @@ SET seed_stats = jsonb_set(
     '{debt}', '95000000000'
 )
 WHERE LOWER(name) = 'melizea' AND seed_stats IS NOT NULL;
+
+UPDATE nations
+SET seed_stats = jsonb_set(
+    jsonb_set(seed_stats, '{gdp}', '106000000000'),
+    '{debt}', '48000000000'
+)
+WHERE LOWER(name) = 'palvera' AND seed_stats IS NOT NULL;
 
 -- 4. Verify: show updated values
 SELECT name, gdp, debt,

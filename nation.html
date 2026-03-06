@@ -189,9 +189,9 @@ var defaultOpen = { economic: true, taxation: true, labor: true, infrastructure:
 var STAT_CATEGORIES = [
     { id: 'economic', label: 'Economic', icon: '\u{1F4B0}', blocs: ['Business Owners', 'Urban Workers'],
       stats: [
-        { name: 'GDP', key: 'gdp', desc: 'Gross domestic product', format: 'gdp' },
+        { name: 'GDP', key: 'gdp', desc: 'Gross domestic product', format: 'gdp', noHealth: true },
         { name: 'GDP Growth', key: 'gdp_growth', desc: 'Monthly economic growth rate', format: 'gdpgrowth' },
-        { name: 'National Debt', key: 'debt', desc: 'Government debt obligations', format: 'currency', inverted: true },
+        { name: 'National Debt', key: 'debt', desc: 'Government debt obligations', format: 'currency', inverted: true, noHealth: true },
         { name: 'Debt Growth', key: 'debt_growth', desc: 'Rate of debt accumulation', inverted: true },
         { name: 'Inflation', key: 'inflation', desc: 'Inflation growth rate', inverted: true, format: 'inflation' },
         { name: 'Interest Rates', key: 'interest_rates', desc: 'Central bank lending rate', inverted: true },
@@ -757,10 +757,20 @@ function formatTradeBalance(rawValue) {
     return expPct + '% Exp / ' + impPct + '% Imp';
 }
 
+// Detect GDP/debt stored as 0-100 stat scores instead of raw dollars
+var RAW_DOLLAR_KEYS = { gdp: true, debt: true };
+function isMisscaledMonetary(key, val) {
+    return RAW_DOLLAR_KEYS[key] && val != null && Number(val) >= 0 && Number(val) <= 100000;
+}
+
 function getDisplayValue(stat, nation) {
     var raw = nation[stat.key];
     var format = stat.format;
     if (raw === null || raw === undefined) return 'N/A';
+    if ((format === 'gdp' || format === 'currency') && isMisscaledMonetary(stat.key, raw)) {
+        console.warn('[DISPLAY] ' + stat.key + ' value ' + raw + ' looks like a 0-100 stat score, not a raw dollar amount. Run sql/reset_nation_gdp_debt.sql to fix.');
+        return '$' + Math.round(Number(raw));
+    }
     if (format === 'count') return formatNumber(raw);
     if (format === 'gdp') return formatCurrencyShort(scaleRawToDollars(raw));
     if (format === 'currency') return formatCurrencyShort(scaleRawToDollars(raw));

@@ -198,7 +198,7 @@ body {
     display: flex; align-items: center; gap: 8px;
 }
 .nation-flag {
-    width: 32px; height: 22px; object-fit: cover;
+    width: 36px; height: 24px; object-fit: contain;
     border: 1px solid rgba(255,255,255,0.08);
 }
 .nation-name {
@@ -590,7 +590,7 @@ body.light-mode .coalition-party-card.locked { background: #fff3e0; }
         margin-top: 4px;
     }
     .tick-info { gap: 12px; }
-    .nation-flag { width: 24px; height: 16px; }
+    .nation-flag { width: 28px; height: 19px; object-fit: contain; }
 
     /* Collapsible nav */
     .nav-tabs {

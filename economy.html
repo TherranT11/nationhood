@@ -853,12 +853,22 @@ function renderOverviewCard(label, value, colorClass, subHtml) {
 function renderRankings(nation) {
     if (!allNations || allNations.length === 0) return '';
 
+    // Detect GDP/debt stored as 0-100 stat scores instead of raw dollars
+    function fmtMonetary(key) {
+        return function(v) {
+            if (v >= 0 && v <= 100000) {
+                console.warn('[DISPLAY] ' + key + ' value ' + v + ' looks like a 0-100 stat score, not a raw dollar amount. Run sql/reset_nation_gdp_debt.sql to fix.');
+                return '$' + Math.round(v);
+            }
+            return formatBudgetCurrency(v);
+        };
+    }
     var metrics = [
-        { key: 'gdp', label: 'GDP', higher: true, fmt: function(v) { return formatBudgetCurrency(v); } },
+        { key: 'gdp', label: 'GDP', higher: true, fmt: fmtMonetary('gdp') },
         { key: 'gdp_growth', label: 'GDP Growth', higher: true, fmt: function(v) { var p = ((v - 50) / 50); return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; } },
         { key: 'standard_of_living', label: 'Std of Living', higher: true, fmt: function(v) { return Math.round(v); } },
         { key: 'unemployment', label: 'Unemployment', higher: false, fmt: function(v) { return Math.round(v); } },
-        { key: 'debt', label: 'National Debt', higher: false, fmt: function(v) { return formatBudgetCurrency(v); } }
+        { key: 'debt', label: 'National Debt', higher: false, fmt: fmtMonetary('debt') }
     ];
 
     var h = '<div class="econ-section">';
