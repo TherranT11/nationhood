@@ -301,18 +301,17 @@ export async function generateBudgetBill(supabase, nation, currentTick, activeLa
     const gameYear = 2000 + Math.floor(currentTick / 12);
     const billName = `Budget Act of ${gameYear}`;
 
-    // For system-generated bills, no sponsor (proposed_by = null).
-    // For player-submitted bills, find the ruling faction as sponsor.
-    let sponsorId = null;
-    if (!systemGenerated) {
-        sponsorId = nation.ruling_faction_id;
-        if (!sponsorId) {
-            // Fallback: first party faction
-            const { data: parties } = await supabase.from('factions')
-                .select('id').eq('nation_id', nation.id).eq('faction_type', 'party').limit(1);
-            sponsorId = parties?.[0]?.id;
-        }
-        if (!sponsorId) return null;
+    // Find sponsor: ruling faction or first party faction.
+    // System-generated bills also need a sponsor (proposed_by NOT NULL constraint).
+    let sponsorId = nation.ruling_faction_id;
+    if (!sponsorId) {
+        const { data: parties } = await supabase.from('factions')
+            .select('id').eq('nation_id', nation.id).eq('faction_type', 'party').limit(1);
+        sponsorId = parties?.[0]?.id;
+    }
+    if (!sponsorId) {
+        console.error(`[generateBudgetBill] No sponsor found for ${nation.name} — cannot create budget bill`);
+        return null;
     }
 
     const preamble = systemGenerated
@@ -1117,10 +1116,13 @@ export async function autoGenerateBudgetBill(supabase, nation, currentTick, acti
 
     if (openBills && openBills.length > 0) return null;
 
-    // Generate the budget bill with no sponsor (system-generated)
+    // Generate the budget bill (system-generated)
+    console.log(`[autoGenerateBudgetBill] Generating budget bill for ${nation.name} at tick ${currentTick} (due at tick ${budgetDueTick}, last_budget_tick=${lastBudgetTick})`);
     const billId = await generateBudgetBill(supabase, nation, currentTick, activeLaws, { systemGenerated: true });
 
-    if (billId) {
+    if (!billId) {
+        console.error(`[autoGenerateBudgetBill] generateBudgetBill returned null for ${nation.name} — bill creation failed`);
+    } else {
         console.log(`[autoGenerateBudgetBill] Auto-generated budget bill for ${nation.name} at tick ${currentTick} (due at tick ${budgetDueTick})`);
 
         // Fire system event notification

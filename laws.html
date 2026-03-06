@@ -764,6 +764,24 @@ async function renderBudgetBillContent() {
         let h = '';
         h += `<button class="all-laws-back" onclick="toggleBudgetBill()">\u2190 Back to ${termBills}</button>`;
         h += '<div class="section-header" style="font-size:1rem;">Upcoming Budget Bill</div>';
+
+        // === BUDGET BILL STATUS (auto-generate notice at top) ===
+        if (hasPendingBudget) {
+            const pendingStatus = existingBudget[0].status === 'committee' ? 'committee' : 'floor vote';
+            const isSystemBill = !existingBudget[0].proposed_by;
+            h += '<div class="bp-submit-notice bp-submit-warning" style="margin-bottom:12px;">A budget bill is ' + (isSystemBill ? 'automatically ' : '') + 'pending in ' + pendingStatus + '. Move it to the floor before the committee deadline expires (' + GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS + ' ticks).</div>';
+        } else {
+            var lastBT = Number(currentNation.last_budget_tick || 0);
+            var budgetDueTick2 = lastBT > 0 ? lastBT + GAME_CONFIG.TICKS_PER_YEAR : GAME_CONFIG.TICKS_PER_YEAR;
+            var genTick = budgetDueTick2 - (GAME_CONFIG.BUDGET_AUTO_GENERATE_LEAD_TICKS || 3);
+            var ticksUntilGen = genTick - currentTick;
+            if (ticksUntilGen > 0) {
+                h += '<div class="bp-submit-notice bp-submit-disabled" style="margin-bottom:12px;">Budget Bill will auto generate to Committee on <strong>' + tickToDate(genTick) + '</strong>.</div>';
+            } else {
+                h += '<div class="bp-submit-notice bp-submit-disabled" style="margin-bottom:12px;">Budget Bill will auto generate to Committee on the next tick.</div>';
+            }
+        }
+
         h += '<div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:12px;">Review Available: <strong>' + reviewAvailableDate + '</strong> · Open to Submit: <strong>' + openToSubmitDate + '</strong></div>';
 
         // === SUMMARY BAR ===
@@ -865,24 +883,7 @@ async function renderBudgetBillContent() {
             h += '</div></div>';
         }
 
-        // === BUDGET BILL STATUS ===
-        h += '<div class="bp-submit-section">';
-        if (hasPendingBudget) {
-            const pendingStatus = existingBudget[0].status === 'committee' ? 'committee' : 'floor vote';
-            const isSystemBill = !existingBudget[0].proposed_by;
-            h += '<div class="bp-submit-notice bp-submit-warning">A budget bill is ' + (isSystemBill ? 'automatically ' : '') + 'pending in ' + pendingStatus + '. Move it to the floor before the committee deadline expires (' + GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS + ' ticks).</div>';
-        } else {
-            var lastBT = Number(currentNation.last_budget_tick || 0);
-            var budgetDueTick = lastBT > 0 ? lastBT + GAME_CONFIG.TICKS_PER_YEAR : GAME_CONFIG.TICKS_PER_YEAR;
-            var genTick = budgetDueTick - (GAME_CONFIG.BUDGET_AUTO_GENERATE_LEAD_TICKS || 3);
-            var ticksUntilGen = genTick - currentTick;
-            if (ticksUntilGen > 0) {
-                h += '<div class="bp-submit-notice bp-submit-disabled">Budget bills are automatically introduced to committee ' + (GAME_CONFIG.BUDGET_AUTO_GENERATE_LEAD_TICKS || 3) + ' ticks before the deadline. Next budget auto-generates in ' + ticksUntilGen + ' tick(s).</div>';
-            } else {
-                h += '<div class="bp-submit-notice bp-submit-disabled">A budget bill will be automatically introduced next tick.</div>';
-            }
-        }
-        h += '</div>';
+        // Budget bill status notice is now at the top of the panel
 
         panel.innerHTML = h;
 
