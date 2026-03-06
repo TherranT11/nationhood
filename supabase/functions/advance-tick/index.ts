@@ -12281,6 +12281,11 @@ async function processPromiseTick(supabase, nation, currentTick) {
                     .update({ preference_score: newPref })
                     .eq('id', penaltyBlocRow.id);
             }
+            // Track accumulated penalty in progress field (displayed by UI)
+            const updatedProgress = { ...evaluation.progress, penalty_accumulated: (evaluation.progress.penalty_accumulated || 0) + Math.abs(penaltyAmount) };
+            await supabase.from('fundraiser_promises')
+                .update({ progress: updatedProgress, updated_at: new Date().toISOString() })
+                .eq('id', promise.id);
             results.push({ promise, resolution: 'tick_penalty', penaltyAmount });
         }
     }
