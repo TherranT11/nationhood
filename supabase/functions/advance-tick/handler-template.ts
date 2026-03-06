@@ -1045,7 +1045,8 @@ async function advanceTick(supabase) {
         // Auto-generate budget bill if due (3 ticks before budget deadline)
         try {
             const { data: budgetLaws } = await supabase.from('active_laws')
-                .select('*').eq('nation_id', nation.id);
+                .select('*, policies(id, policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat)')
+                .eq('nation_id', nation.id);
             const autoBudgetId = await autoGenerateBudgetBill(supabase, nation, newTick, budgetLaws || []);
             if (autoBudgetId) {
                 summary.autoBudgetBills = summary.autoBudgetBills || [];

@@ -557,7 +557,12 @@ function renderBill() {
         const isHeadOfGov = isAutocracy ? isHeadFaction
             : isPresidential ? (presidentFactionId && currentFaction?.id === presidentFactionId)
             : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId);
-        const canActOnBill = isSponsor || (isBudgetBill && isHeadOfGov);
+        const isBudgetGovMember = isBudgetBill && currentFaction && (
+            isAutocracy ? isHeadFaction
+            : isPresidential ? (presidentFactionId && currentFaction.id === presidentFactionId)
+            : (coalitionPartyIds.includes(currentFaction.id) || currentFaction?.id === coalitionLeadPartyId)
+        );
+        const canActOnBill = isSponsor || isBudgetGovMember;
         if (isAutocracy) {
             if (isHeadFaction || isSponsor) {
                 el.style.display = 'flex';
@@ -570,7 +575,7 @@ function renderBill() {
     const hasMajority = sponsorSeats >= GAME_CONFIG.MAJORITY_SEATS;
     const hasCosponsor = (bill.bill_support || []).some(s => s.faction_id !== bill.proposed_by && s.stance === 'accept');
     const isFoundational = bill.bill_type === 'foundational';
-    let canSendToFloor = !isNoGovernment && (isFoundational ? hasCosponsor : (hasMajority || hasCosponsor));
+    let canSendToFloor = !isNoGovernment && (isBudgetBill ? isBudgetGovMember : (isFoundational ? hasCosponsor : (hasMajority || hasCosponsor)));
 
     // Budget bills: block Send to Floor during early proposal window (before due date)
     let budgetEarlyWindowMsg = '';
@@ -1843,14 +1848,13 @@ async function enactDecree() {
 }
 
 async function sendToFloor() {
-    const isBudgetHeadOfGov = currentBill.bill_type === 'budget' && (
+    // Budget bills: any government/coalition party can send to floor
+    const isBudgetGovParty = currentBill.bill_type === 'budget' && currentFaction && (
         isAutocracy ? isHeadFaction
-        : isPresidential ? (presidentFactionId && currentFaction?.id === presidentFactionId)
-        : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId)
+        : isPresidential ? (presidentFactionId && currentFaction.id === presidentFactionId)
+        : (coalitionPartyIds.includes(currentFaction.id) || currentFaction.id === coalitionLeadPartyId)
     );
-    // System-generated budget bills (proposed_by = null) can be sent to floor by any coalition/government party
-    const isSystemBudget = currentBill.bill_type === 'budget' && !currentBill.proposed_by;
-    if (!currentFaction || (currentBill.proposed_by !== currentFaction.id && !isBudgetHeadOfGov && !isSystemBudget)) return;
+    if (!currentFaction || (currentBill.proposed_by !== currentFaction.id && !isBudgetGovParty)) return;
     if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can advance.'); return; }
 
     // Require at least one article for non-budget, non-repeal bills
