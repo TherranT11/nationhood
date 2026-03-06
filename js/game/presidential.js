@@ -262,20 +262,32 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
     const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
 
-    await supabase.from('bills').update({
-        president_action: 'signed',
-        president_action_tick: currentTick
-    }).eq('id', bill.id);
-
     if (bill.bill_type === 'budget') {
         // Budget bills: resolve budget effects instead of enactBill
         await resolveBudgetBill(supabase, bill, currentTick);
-        await supabase.from('bills').update({ status: 'passed' }).eq('id', bill.id);
+        await supabase.from('bills').update({
+            status: 'passed',
+            president_action: 'signed',
+            president_action_tick: currentTick
+        }).eq('id', bill.id);
     } else {
         const enactment = await enactBill(supabase, bill, currentTick);
         if (!enactment?.success) {
+            // Mark bill as failed so it doesn't stay stuck on the desk
+            await supabase.from('bills').update({
+                status: 'failed',
+                enact_error: `President signed but enactment failed: ${enactment?.error || 'Unknown'}`,
+                president_action: 'signed',
+                president_action_tick: currentTick
+            }).eq('id', bill.id);
             throw new Error(enactment?.error || 'Bill enactment failed after presidential signature');
         }
+        // Only mark president_action after successful enactment
+        // (enactBill already sets status='passed')
+        await supabase.from('bills').update({
+            president_action: 'signed',
+            president_action_tick: currentTick
+        }).eq('id', bill.id);
     }
 
     try {

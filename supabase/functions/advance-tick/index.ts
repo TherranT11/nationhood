@@ -9475,20 +9475,32 @@ async function signPresidentialBill(supabase, billId, presidentFactionId) {
     const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
 
-    await supabase.from('bills').update({
-        president_action: 'signed',
-        president_action_tick: currentTick
-    }).eq('id', bill.id);
-
     if (bill.bill_type === 'budget') {
         // Budget bills: resolve budget effects instead of enactBill
         await resolveBudgetBill(supabase, bill, currentTick);
-        await supabase.from('bills').update({ status: 'passed' }).eq('id', bill.id);
+        await supabase.from('bills').update({
+            status: 'passed',
+            president_action: 'signed',
+            president_action_tick: currentTick
+        }).eq('id', bill.id);
     } else {
         const enactment = await enactBill(supabase, bill, currentTick);
         if (!enactment?.success) {
+            // Mark bill as failed so it doesn't stay stuck on the desk
+            await supabase.from('bills').update({
+                status: 'failed',
+                enact_error: `President signed but enactment failed: ${enactment?.error || 'Unknown'}`,
+                president_action: 'signed',
+                president_action_tick: currentTick
+            }).eq('id', bill.id);
             throw new Error(enactment?.error || 'Bill enactment failed after presidential signature');
         }
+        // Only mark president_action after successful enactment
+        // (enactBill already sets status='passed')
+        await supabase.from('bills').update({
+            president_action: 'signed',
+            president_action_tick: currentTick
+        }).eq('id', bill.id);
     }
 
     try {
@@ -9628,14 +9640,25 @@ async function processPresidentDesk(supabase, nation, currentTick) {
                 await supabase.from('bills').update({ status: 'passed' }).eq('id', bill.id);
             } catch (budgetErr) {
                 console.error(`[processPresidentDesk] resolveBudgetBill failed for bill ${bill.id}: ${budgetErr.message}`);
+                await markBillEnactmentFailed(supabase, bill, currentTick, `President auto-signed but budget enactment failed: ${budgetErr.message}`);
                 results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: budgetErr.message });
                 continue;
             }
         } else {
-            const enactment = await enactBill(supabase, bill, currentTick);
-            if (!enactment?.success) {
-                console.error(`[processPresidentDesk] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
-                results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: enactment?.error });
+            try {
+                const enactment = await enactBill(supabase, bill, currentTick);
+                if (!enactment?.success) {
+                    const errMsg = enactment?.error || 'Unknown enactment failure';
+                    console.error(`[processPresidentDesk] Enactment failed for bill ${bill.id}: ${errMsg}`);
+                    await markBillEnactmentFailed(supabase, bill, currentTick, `President auto-signed but enactment failed: ${errMsg}`);
+                    results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: errMsg });
+                    continue;
+                }
+            } catch (enactErr) {
+                const errMsg = enactErr?.message || String(enactErr);
+                console.error(`[processPresidentDesk] enactBill threw for bill ${bill.id}: ${errMsg}`);
+                await markBillEnactmentFailed(supabase, bill, currentTick, `President auto-signed but enactment threw: ${errMsg}`);
+                results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: errMsg });
                 continue;
             }
         }
