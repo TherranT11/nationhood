@@ -994,6 +994,7 @@ export async function checkEarlyMajority(supabase, nationId) {
                 }
                 console.log(`[checkEarlyMajority] Budget bill ${bill.bill_name}: FORCED resolution after ${ticksOnFloor} ticks on floor (YES=${yesSeats}, NO=${noSeats}, participating=${participating}, quorum=${quorumSeats})`);
             }
+        }
         // ── Check 3: Budget bills can never be forced to fail ──
         // Budget bills persist on the floor until they pass. They can only
         // resolve early if a passing majority is reached (math-lock or quorum).
