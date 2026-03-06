@@ -332,7 +332,7 @@ function catHealth(cat, nation) {
     for (var i = 0; i < scored.length; i++) {
         var v = Number(nation[scored[i].key]);
         if (isNaN(v)) v = 50;
-        v = Math.min(v, 100);
+        v = Math.max(0, Math.min(v, 100));
         if (scored[i].inverted) v = 100 - v;
         sum += v;
     }
@@ -750,16 +750,11 @@ function formatGdpGrowth(rawValue) {
 
 function formatTradeBalance(rawValue) {
     var v = Math.round(Number(rawValue ?? 50));
-    if (v >= 50) {
-        var expPct = v, impPct = 100 - v;
-        if (impPct === 0) return '100% Exports';
-        if (expPct === impPct) return 'Balanced';
-        return expPct + '% Exp / ' + impPct + '% Imp';
-    } else {
-        var impPct = 100 - v, expPct = v;
-        if (expPct === 0) return '100% Imports';
-        return expPct + '% Exp / ' + impPct + '% Imp';
-    }
+    var expPct = v, impPct = 100 - v;
+    if (impPct === 0) return '100% Exports';
+    if (expPct === 0) return '100% Imports';
+    if (expPct === impPct) return 'Balanced';
+    return expPct + '% Exp / ' + impPct + '% Imp';
 }
 
 function getDisplayValue(stat, nation) {
@@ -771,7 +766,7 @@ function getDisplayValue(stat, nation) {
     if (format === 'currency') return formatCurrencyShort(scaleRawToDollars(raw));
     if (format === 'gdpgrowth') return formatGdpGrowth(raw);
     if (format === 'trade') return formatTradeBalance(raw);
-    if (format === 'inflation') return formatInflationRate(raw) + ' \u2014 ' + getInflationLabel(raw);
+    if (format === 'inflation') return formatInflationRate(raw);
     if (format === 'years') return (Math.round(Number(raw) * 10) / 10) + ' yrs';
     return Math.round(Number(raw) * 10) / 10;
 }
@@ -943,7 +938,7 @@ function renderStatCard(stat, nation) {
     // Trend
     var trendHTML = '';
     if (previousTickData) {
-        var histKey = stat.key === 'GDP' ? 'gdp' : stat.key;
+        var histKey = stat.key;
         var prevVal = previousTickData[histKey];
         if (prevVal !== null && prevVal !== undefined && raw !== null && raw !== undefined) {
             var delta = Number(raw) - Number(prevVal);
