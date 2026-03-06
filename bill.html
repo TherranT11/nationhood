@@ -2294,7 +2294,7 @@ function onSponsorAddSectorChange() {
             sectorActiveLaws.map(law => {
                 const p = law.policies;
                 const onCost = p.ongoing_cost_per_tick || p.ongoing_base_cost || 0;
-                const costLabel = onCost !== 0 ? ` <span style="color:${onCost > 0 ? '#4CAF50' : '#ff4444'};font-weight:bold;">+${formatCurrency(onCost).replace(/^[+-]/, '')}${Math.abs(onCost) >= 1000 ? '' : 'M'}/mo saved</span>` : '';
+                const costLabel = onCost !== 0 ? ` <span style="color:${onCost > 0 ? '#4CAF50' : '#ff4444'};font-weight:bold;">+${formatCurrency(onCost).replace(/^[+-]/, '')}/mo saved</span>` : '';
                 const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
                 const ideoHTML = ideos.map(i => {
                     const colorClass = getIdeologyChipClass(i, factionIdeology);
@@ -2453,7 +2453,7 @@ function formatCurrency(amt) {
     if (amt === 0) return '$0';
     const abs = Math.abs(amt), sign = amt < 0 ? '-' : '+';
     if (abs >= 1000) return `${sign}$${(abs / 1000) % 1 === 0 ? (abs / 1000).toFixed(0) : (abs / 1000).toFixed(1)}B`;
-    return `${sign}$${abs}M`;
+    return `${sign}$${Math.round(abs)}M`;
 }
 
 document.getElementById('chat-input')?.addEventListener('keypress', (e) => {
