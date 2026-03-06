@@ -19613,6 +19613,17 @@ async function advanceTick(supabase) {
             summary.vacancies.push(vacancyResult);
         }
 
+        // Auto-expire non-budget committee bills that have sat for COMMITTEE_EXPIRY_TICKS
+        try {
+            const committeeExpiries = await expireCommitteeBills(supabase, nation.id, newTick);
+            if (committeeExpiries.length > 0) {
+                summary.committeeExpiries = summary.committeeExpiries || [];
+                summary.committeeExpiries.push({ nation: nation.name, bills: committeeExpiries });
+            }
+        } catch (committeeErr) {
+            console.error(`[advanceTick] Committee bill expiry failed for ${nation.name} (non-fatal):`, committeeErr);
+        }
+
         // Check for early majority on active floor bills (lock outcome + set grace tick)
         const earlyResults = await checkEarlyMajority(supabase, nation.id);
         if (earlyResults.length > 0) {
