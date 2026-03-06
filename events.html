@@ -261,17 +261,6 @@ const PRIORITY = {
   OPED: 8
 };
 
-const PRIORITY_LABELS = {
-  [PRIORITY.WAR]: { tag: 'War Declaration', cls: 'tag--crisis', size: 'hero' },
-  [PRIORITY.CRISIS]: { tag: 'Crisis Event', cls: 'tag--crisis', size: 'hero' },
-  [PRIORITY.GOVERNMENT]: { tag: 'Government', cls: 'tag--domestic', size: 'featured' },
-  [PRIORITY.LEGISLATION]: { tag: 'Legislation', cls: 'tag--domestic', size: 'standard' },
-  [PRIORITY.ECONOMY]: { tag: 'Economy', cls: 'tag--economy', size: 'standard' },
-  [PRIORITY.DIPLOMACY]: { tag: 'International', cls: 'tag--international', size: 'standard' },
-  [PRIORITY.GENERAL]: { tag: 'General', cls: 'tag--defence', size: 'brief' },
-  [PRIORITY.OPED]: { tag: 'Opinion', cls: 'tag--opinion', size: 'oped' }
-};
-
 /* ══════════════════════════════════════════════════════
    CATEGORY MAPPING (from event_log categories)
    ══════════════════════════════════════════════════════ */
@@ -389,6 +378,7 @@ async function loadOpEds(nationId, shard) {
       .from('op_eds')
       .select('*, factions!author_faction_id(faction_name, abbreviation, party_color)')
       .eq('nation_id', nationId)
+      .eq('status', 'published')
       .order('created_at', { ascending: false })
       .limit(20);
     if (error) {
@@ -1097,7 +1087,7 @@ function renderStoryCard(article) {
   else if (article._isOpEd) clickAttr = ` style="cursor:pointer;" onclick="window._openReader && window._openReader('oped', '${article._opEdId}')"`;
   return `
     <article class="np-story-card${article._isDispatch ? ' np-story-card--dispatch' : ''}"${clickAttr}>
-      ${article._imageUrl ? `<div style="height:140px;background:url('${escapeHtml(article._imageUrl)}') center/cover;border-radius:4px 4px 0 0;margin:-12px -14px 10px;"></div>` : ''}
+      ${article._imageUrl ? `<div style="height:140px;background:url('${encodeURI(article._imageUrl)}') center/cover;border-radius:4px 4px 0 0;margin:-12px -14px 10px;"></div>` : ''}
       <div class="np-story-card__tags">
         <span class="np-tag np-tag--${sectionToCss(section)} np-tag--dot" style="${article.section_color ? 'background:' + article.section_color + '22;color:' + article.section_color : ''}">${escapeHtml(sectionLabel)}</span>
       </div>
@@ -1164,8 +1154,8 @@ function opEdAsStory(oped) {
     section_color: isDispatch ? '#b8860b' : '#94A3B8',
     section_label: isDispatch ? 'Official Dispatch' : 'Opinion',
     lede: bodyText.substring(0, 200) + (bodyText.length > 200 ? '...' : ''),
-    _tick: oped.published_tick || 0,
-    tick: oped.published_tick || 0,
+    _tick: oped.published_tick || oped.publish_tick || 0,
+    tick: oped.published_tick || oped.publish_tick || 0,
     tier: isDispatch ? 2 : 3,
     _isOpEd: true,
     _opEdId: oped.id || '',
@@ -1239,7 +1229,7 @@ function renderSidebarStats(nation) {
   const stats = [
     { label: 'Population', value: nation.population ? Number(nation.population).toLocaleString() : '—', arrow: '' },
     { label: 'GDP Growth', value: nation.gdp_growth != null ? nation.gdp_growth + '%' : '—', arrow: nation.gdp_growth > 0 ? 'up' : nation.gdp_growth < 0 ? 'down' : '' },
-    { label: 'Unemployment', value: nation.unemployment != null ? nation.unemployment + '%' : '—', arrow: 'down' },
+    { label: 'Unemployment', value: nation.unemployment != null ? nation.unemployment + '%' : '—', arrow: nation.unemployment > 10 ? 'down' : '' },
     { label: 'Stability', value: nation.stability != null ? String(nation.stability) : '—', arrow: nation.stability < 50 ? 'down' : '' },
   ];
 
@@ -1271,7 +1261,7 @@ function renderSidebarElection(parties, shard) {
       <div class="np-sidebar-section__title">Parliament Standings</div>
       ${sorted.map(p => {
         const pct = totalSeats > 0 ? ((p.seats || 0) / totalSeats * 100).toFixed(1) : '0.0';
-        const color = p.party_color || '#666';
+        const color = (p.party_color || '#666').replace(/[^a-zA-Z0-9#(),.\s%]/g, '');
         return `
           <div class="np-poll-bar-group">
             <div class="np-poll-bar__header">
@@ -1425,6 +1415,7 @@ function setupOpEdModal(faction, nation, shard) {
   cancelBtn.addEventListener('click', closeModal);
   closeBtn.addEventListener('click', closeModal);
   modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modal.classList.contains('np-oped-overlay--open')) closeModal(); });
 
   // Expose openModal for the Write Op-Ed button (re-bound after each render)
   window._openOpEdModal = openModal;
@@ -1511,11 +1502,15 @@ function setupOpEdModal(faction, nation, shard) {
       const { error: err2 } = await _supabase.from('op_eds').insert([{
         nation_id: nation.id,
         faction_id: faction.id,
+        author_name: leaderName,
         headline: h,
         body: b,
         topic: isDispatch ? 'domestic' : t,
+        status: 'published',
+        is_front_page: isFrontPage,
         is_official_dispatch: isDispatch || false,
         publish_tick: nextTick,
+        reward_ap: opedRewardAp,
         created_at: new Date().toISOString()
       }]);
       insertError = err2;
@@ -1684,6 +1679,7 @@ function setupArticleModal(faction, nation, shard) {
   cancelBtn.addEventListener('click', closeModal);
   closeBtn.addEventListener('click', closeModal);
   modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modal.classList.contains('np-oped-overlay--open')) closeModal(); });
   window._openArticleModal = openModal;
 
   submitBtn.addEventListener('click', async () => {
@@ -1794,6 +1790,7 @@ function setupReaderOverlay() {
 
   closeBtn.addEventListener('click', closeReader);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeReader(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.classList.contains('np-reader-overlay--open')) closeReader(); });
 
   window._openReader = function(type, id) {
     let html = '';
