@@ -20,7 +20,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
 import { tickToDate, escapeHtml, getIdeologyClass } from './js/utils.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize, ensureBlocApprovals, selectPresidentCandidate, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize, ensureBlocApprovals, selectPresidentCandidate, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier } from './js/game-common.js';
 import { getPartyIconSVG, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -68,7 +68,7 @@ async function renderAutocracyParties(el, f, n) {
     // Fetch all factions for this nation
     const { data: allFactions } = await _supabase
         .from('factions')
-        .select('id, faction_name, abbreviation, party_color, party_logo, action_points, loyalty, seats')
+        .select('id, faction_name, abbreviation, party_color, party_logo, action_points, loyalty, seats, standing, embezzled_funds, consecutive_embezzle_ticks, last_standing_action_tick, last_action_type')
         .eq('nation_id', n.id)
         .eq('faction_type', 'party')
         .order('seats', { ascending: false });
@@ -177,6 +177,17 @@ async function renderAutocracyParties(el, f, n) {
     const demandedThisTick = new Set(
         (loyaltyDemands || []).filter(d => d.demanded_at_tick === currentTick)
             .map(d => d.target_faction_id)
+    );
+
+    // ── PENDING COUP INVITATIONS (received) ──
+    const { data: pendingCoupInvites } = await _supabase
+        .from('campaign_actions')
+        .select('id, party_id, result, tick_performed')
+        .eq('nation_id', n.id)
+        .eq('action_type', 'coup_invitation')
+        .gte('tick_performed', currentTick - 2);
+    const myPendingCoupInvites = (pendingCoupInvites || []).filter(
+        inv => inv.result?.target_faction_id === f.id && inv.result?.status === 'pending'
     );
 
     // ── FACTION COALITIONS ──
@@ -312,6 +323,16 @@ async function renderAutocracyParties(el, f, n) {
         const corruption = Math.round(Number(n.corruption ?? 50));
         const freedomIdx = Math.round(Number(n.freedom_index ?? 50));
 
+        // Regime Health (v2) — visible to ALL players
+        const regimeHealthVal = Math.round(Number(n.regime_health ?? 80));
+        const regimeHealthPct = Math.max(0, Math.min(100, regimeHealthVal));
+        let regimeHealthLabel, regimeHealthColor;
+        if (regimeHealthVal >= 60) { regimeHealthLabel = 'HEALTHY'; regimeHealthColor = '#4CAF50'; }
+        else if (regimeHealthVal >= 40) { regimeHealthLabel = 'WEAKENING'; regimeHealthColor = '#ff9800'; }
+        else if (regimeHealthVal >= 20) { regimeHealthLabel = 'DECLINING'; regimeHealthColor = '#ff5722'; }
+        else if (regimeHealthVal > 0) { regimeHealthLabel = 'CRITICAL'; regimeHealthColor = '#ff1744'; }
+        else { regimeHealthLabel = 'COLLAPSED'; regimeHealthColor = '#880000'; }
+
         function vitalColor(val, invertedIsBetter) {
             const v = invertedIsBetter ? (100 - val) : val;
             if (v >= 70) return '#4CAF50';
@@ -330,14 +351,16 @@ async function renderAutocracyParties(el, f, n) {
             if (val >= 70) return '#4CAF50';
             if (val >= 50) return '#8BC34A';
             if (val >= 30) return '#ff9800';
+            if (val >= 15) return '#ff6600';
             return '#ff4444';
         }
 
         function loyaltyLabel(val) {
             if (val >= 70) return 'LOYAL';
             if (val >= 50) return 'COMPLIANT';
-            if (val >= 30) return 'WAVERING';
-            return 'DISLOYAL';
+            if (val >= 30) return 'UNCERTAIN';
+            if (val >= 15) return 'WAVERING';
+            return 'CRITICAL';
         }
 
         // Build a faction name lookup (needed by steward display in faction intel)
@@ -352,7 +375,7 @@ async function renderAutocracyParties(el, f, n) {
             return 0;
         });
         for (const faction of sortedFactions) {
-            const isYourParty = faction.id === rulingId;
+            const isYourParty = faction.id === f.id;
             const loy = Math.round(faction.loyalty ?? 50);
             const loyPct = Math.max(0, Math.min(100, loy));
             const lColor = loyaltyColor(loy);
@@ -376,7 +399,7 @@ async function renderAutocracyParties(el, f, n) {
                         <span class="reg-intel-steward-faction">${escapeHtml(claimedFactionName)}</span>
                         ${isStrongman ? `<span class="reg-intel-stat">
                             <span class="reg-intel-label">EST. LOYALTY</span>
-                            <span class="reg-intel-val" style="color:${loyaltyColor(factionSteward.estimated_loyalty ?? 55)}">${factionSteward.estimated_loyalty ?? 55}</span>
+                            <span class="reg-intel-tag" style="color:${loyaltyColor(factionSteward.estimated_loyalty ?? 55)}">${loyaltyLabel(factionSteward.estimated_loyalty ?? 55)}</span>
                         </span>` : ''}
                     </div>`;
             }
@@ -387,14 +410,38 @@ async function renderAutocracyParties(el, f, n) {
                 ? '<span class="reg-intel-ministry-none">None</span>'
                 : factionMinistryKeys.map(k => `<span class="reg-intel-ministry-tag">${MINISTRY_SHORT[k] || k}</span>`).join('');
 
+            // Loyalty display logic:
+            // - Your own party: see exact number + label
+            // - Strongman viewing others: label ONLY (no number, no bar)
+            // - Non-strongman viewing others: hidden ("?")
+            // - CRITICAL regime health: all loyalty visible to everyone
+            const regimeHealth = Number(n.regime_health ?? 80);
+            const isCriticalRegime = regimeHealth > 0 && regimeHealth < 20;
+            const canSeeExactLoyalty = isYourParty || isCriticalRegime;
+            const canSeeLoyaltyLabel = isStrongman || isYourParty || isCriticalRegime;
+
+            let loyaltyDisplayHtml;
+            if (canSeeExactLoyalty) {
+                loyaltyDisplayHtml = `<span class="reg-intel-val" style="color:${lColor}">${loy}</span><span class="reg-intel-tag" style="color:${lColor}">${lLabel}</span>`;
+            } else if (canSeeLoyaltyLabel) {
+                loyaltyDisplayHtml = `<span class="reg-intel-tag" style="color:${lColor}">${lLabel}</span>`;
+            } else {
+                loyaltyDisplayHtml = `<span class="reg-intel-val" style="color:#888">?</span>`;
+            }
+
+            const factionStanding = faction.standing ?? 30;
+
             factionIntelRows += `
                 <div class="reg-intel-row" style="border-left: 3px solid ${fColor}">
                     <div class="reg-intel-name">${escapeHtml(faction.faction_name)}${isYourParty ? ' <span class="reg-intel-your-party">[Your Party]</span>' : ''}</div>
                     <div class="reg-intel-stats">
                         <span class="reg-intel-stat">
                             <span class="reg-intel-label">LOYALTY</span>
-                            ${isStrongman ? `<span class="reg-intel-val" style="color:${lColor}">${loy}</span>` : ''}
-                            <span class="reg-intel-tag" style="color:${lColor}">${lLabel}</span>
+                            ${loyaltyDisplayHtml}
+                        </span>
+                        <span class="reg-intel-stat">
+                            <span class="reg-intel-label">STANDING</span>
+                            <span class="reg-intel-val">${factionStanding}</span>
                         </span>
                         <span class="reg-intel-stat">
                             <span class="reg-intel-label">SEATS</span>
@@ -406,9 +453,6 @@ async function renderAutocracyParties(el, f, n) {
                         ${ministryBadgesHtml}
                     </div>
                     ${stewardIntelHtml}
-                    ${isStrongman ? `<div class="reg-intel-bar-track">
-                        <div class="reg-intel-bar-fill" style="width:${loyPct}%;background:${lColor}"></div>
-                    </div>` : ''}
                 </div>`;
         }
 
@@ -648,23 +692,12 @@ async function renderAutocracyParties(el, f, n) {
             const stAP = f.action_points ?? 0;
             const stCoupReadiness = mySteward.coup_readiness ?? 0;
             const stTrueLoyalty = mySteward.true_loyalty ?? 100;
-            const canSeize = stCoupReadiness >= 50 && stTrueLoyalty < 30;
             const hasMinistry = (ministryByParty[f.id] || []).length > 0;
 
-            // Calculate coalition coup bonus for display
-            let displayCoupBonus = 0;
-            for (const c of myActiveCoalitions) {
-                const pid = c.faction_a_id === f.id ? c.faction_b_id : c.faction_a_id;
-                const ps = stewardByFaction[pid];
-                if (ps) {
-                    const mod = c.coalition_type === 'secret' ? 0.30 : 0.15;
-                    displayCoupBonus += Math.round((ps.power_base ?? 30) * mod);
-                }
-            }
-            const effectiveReadiness = Math.min(95, stCoupReadiness + displayCoupBonus);
-            const coupDisplayStr = displayCoupBonus > 0
-                ? `${effectiveReadiness}% (${stCoupReadiness}% + ${displayCoupBonus}% allies)`
-                : `${stCoupReadiness}%`;
+            // V2 Coup system
+            const coupEligibility = canAttemptCoup(f, n, currentTick);
+            const coupEstimate = getCoupEstimate(f, n);
+            const canSeize = coupEligibility.canCoup;
 
             const isGeneral = mySteward.steward_type === 'general';
             const isSecurityChief = mySteward.steward_type === 'security_chief';
@@ -702,7 +735,102 @@ async function renderAutocracyParties(el, f, n) {
                     : `<div class="reg-steward-action-req">No targets available</div>`;
             }
 
-            stewardActionsHtml = `
+            // ── Faction-level embezzled funds display ──
+            const factionFunds = Number(f.embezzled_funds ?? 0);
+
+            // ── Faction Actions (v2) ──
+            const hasPendingDemand = !!myPendingDemand;
+            const pledgeLoyaltyLabel = hasPendingDemand ? 'PLEDGE ALLEGIANCE (COMPLY)' : 'PLEDGE ALLEGIANCE';
+            const pledgeLoyaltyEffect = hasPendingDemand
+                ? `Loyalty: <strong class="reg-effect-pos">+${GAME_CONFIG.PLEDGE_ALLEGIANCE_COMPLY_LOYALTY}</strong> · Standing: <strong class="reg-effect-neg">${GAME_CONFIG.PLEDGE_ALLEGIANCE_COMPLY_STANDING}</strong>`
+                : `Loyalty: <strong class="reg-effect-pos">+${GAME_CONFIG.PLEDGE_ALLEGIANCE_LOYALTY}</strong> · Standing: <strong class="reg-effect-neg">${GAME_CONFIG.PLEDGE_ALLEGIANCE_STANDING}</strong>`;
+            const demoCanAfford = factionFunds >= GAME_CONFIG.DEMONSTRATE_COMPETENCE_COST;
+            const demoStandingDisplay = demoCanAfford ? `+${GAME_CONFIG.DEMONSTRATE_COMPETENCE_STANDING}` : `+${GAME_CONFIG.DEMONSTRATE_COMPETENCE_REDUCED_STANDING} (underfunded)`;
+
+            const factionActionsHtml = `
+                <div class="reg-section" id="faction-actions-section">
+                    <div class="reg-section-title">FACTION ACTIONS</div>
+                    <div class="reg-faction-funds">WAR CHEST: <strong>$${Math.round(factionFunds)}M</strong></div>
+                    <div class="reg-steward-actions">
+                        <button class="reg-steward-action-btn reg-faction-action-loyalty" id="faction-pledge-btn" ${stAP < GAME_CONFIG.PLEDGE_ALLEGIANCE_AP ? 'disabled' : ''}>
+                            <div class="reg-steward-action-header">
+                                <span class="reg-steward-action-name">${pledgeLoyaltyLabel}</span>
+                                <span class="reg-steward-action-cost">${GAME_CONFIG.PLEDGE_ALLEGIANCE_AP} AP</span>
+                            </div>
+                            <div class="reg-steward-action-desc">Publicly reaffirm loyalty. Speeches praising the regime. Loyalty theater.</div>
+                            <div class="reg-steward-action-effects">${pledgeLoyaltyEffect}</div>
+                        </button>
+                        <button class="reg-steward-action-btn reg-faction-action-power" id="faction-consolidate-btn" ${stAP < GAME_CONFIG.CONSOLIDATE_POWER_AP ? 'disabled' : ''}>
+                            <div class="reg-steward-action-header">
+                                <span class="reg-steward-action-name">CONSOLIDATE POWER</span>
+                                <span class="reg-steward-action-cost">${GAME_CONFIG.CONSOLIDATE_POWER_AP} AP</span>
+                            </div>
+                            <div class="reg-steward-action-desc">Place loyalists in bureaucratic positions. Build alliances with officials.</div>
+                            <div class="reg-steward-action-effects">Standing: <strong class="reg-effect-pos">+${GAME_CONFIG.CONSOLIDATE_POWER_STANDING}</strong> · Loyalty: <strong class="reg-effect-neg">${GAME_CONFIG.CONSOLIDATE_POWER_LOYALTY}</strong></div>
+                        </button>
+                        <button class="reg-steward-action-btn reg-faction-action-govern" id="faction-demonstrate-btn" ${stAP < GAME_CONFIG.DEMONSTRATE_COMPETENCE_AP ? 'disabled' : ''}>
+                            <div class="reg-steward-action-header">
+                                <span class="reg-steward-action-name">DEMONSTRATE COMPETENCE</span>
+                                <span class="reg-steward-action-cost">${GAME_CONFIG.DEMONSTRATE_COMPETENCE_AP} AP${demoCanAfford ? ` · $${GAME_CONFIG.DEMONSTRATE_COMPETENCE_COST}M` : ''}</span>
+                            </div>
+                            <div class="reg-steward-action-desc">Actually govern. Produce visible policy outcomes.${!demoCanAfford ? ' <em>(Underfunded — reduced effect)</em>' : ''}</div>
+                            <div class="reg-steward-action-effects">Standing: <strong class="reg-effect-pos">${demoStandingDisplay}</strong> · Loyalty: <strong class="reg-effect-pos">+${GAME_CONFIG.DEMONSTRATE_COMPETENCE_LOYALTY}</strong></div>
+                            <div class="reg-steward-action-risk">Vulnerability: rivals can poach seats 20% cheaper this tick</div>
+                        </button>
+                        <button class="reg-steward-action-btn reg-faction-action-embezzle" id="faction-embezzle-btn" ${stAP < GAME_CONFIG.EMBEZZLE_FUNDS_AP ? 'disabled' : ''}>
+                            <div class="reg-steward-action-header">
+                                <span class="reg-steward-action-name">EMBEZZLE FUNDS</span>
+                                <span class="reg-steward-action-cost">${GAME_CONFIG.EMBEZZLE_FUNDS_AP} AP</span>
+                            </div>
+                            <div class="reg-steward-action-desc">Divert state resources into your faction's hidden war chest.</div>
+                            <div class="reg-steward-action-effects">Loyalty: <strong class="reg-effect-neg">${GAME_CONFIG.EMBEZZLE_FUNDS_LOYALTY}</strong> · Funds: <strong class="reg-effect-pos">+$${GAME_CONFIG.EMBEZZLE_FUNDS_BASE_INCOME}M+</strong></div>
+                            <div class="reg-steward-action-risk">Detection Risk: <span class="reg-steward-action-risk-val">${getEmbezzleRiskLabel(f, n)}</span>${(f.consecutive_embezzle_ticks ?? 0) > 0 ? ` (${f.consecutive_embezzle_ticks} consecutive)` : ''}</div>
+                        </button>
+                        <div class="reg-steward-action-btn reg-faction-action-buy" id="faction-buy-panel">
+                            <div class="reg-steward-action-header">
+                                <span class="reg-steward-action-name">BUY INFLUENCE</span>
+                                <span class="reg-steward-action-cost">${GAME_CONFIG.BUY_INFLUENCE_AP} AP</span>
+                            </div>
+                            <div class="reg-steward-action-desc">Spend funds to recruit members from other factions or the unaligned pool.</div>
+                            <div class="reg-steward-action-effects">Standing: <strong class="reg-effect-neg">${GAME_CONFIG.BUY_INFLUENCE_STANDING}</strong> · Seats: <strong class="reg-effect-pos">+X</strong></div>
+                            ${stAP >= GAME_CONFIG.BUY_INFLUENCE_AP && factionFunds > 0 ? `
+                            <div class="reg-buy-targets">
+                                ${(n.unaligned_seats || 0) > 0 ? `<button class="reg-buy-target-btn" data-target="unaligned">Unaligned Pool (${n.unaligned_seats || 0} seats) · $${GAME_CONFIG.BUY_INFLUENCE_UNALIGNED_COST}M/seat</button>` : ''}
+                                ${(allFactions || []).filter(p => p.id !== f.id).map(p => {
+                                    const tStanding = Math.max(1, p.standing ?? 30);
+                                    const myStanding = Math.max(1, f.standing ?? 30);
+                                    const costPerSeat = Math.round(GAME_CONFIG.BUY_INFLUENCE_BASE_COST * (tStanding / myStanding) * (1 + (p.seats || 0) / (n.total_seats || 120)) * 100) / 100;
+                                    const pColor = p.party_color || '#666';
+                                    return `<button class="reg-buy-target-btn" data-target="${p.id}" data-name="${escapeHtml(p.faction_name)}" style="border-left-color:${pColor}">${escapeHtml(p.faction_name)} (${p.seats || 0} seats) · ~$${costPerSeat}M/seat</button>`;
+                                }).join('')}
+                            </div>
+                            <div class="reg-buy-amount" id="buy-amount-panel" style="display:none">
+                                <label>Spend: $<input type="number" id="buy-amount-input" min="1" max="${Math.floor(factionFunds)}" value="${Math.min(10, Math.floor(factionFunds))}" style="width:60px">M</label>
+                                <button class="reg-buy-submit" id="buy-submit-btn">BUY</button>
+                            </div>` : `<div class="reg-steward-action-req">${stAP < GAME_CONFIG.BUY_INFLUENCE_AP ? 'Not enough AP' : 'No funds available'}</div>`}
+                        </div>
+                        <div class="reg-steward-action-btn reg-faction-action-intimidate" id="faction-intimidate-panel">
+                            <div class="reg-steward-action-header">
+                                <span class="reg-steward-action-name">INTIMIDATE</span>
+                                <span class="reg-steward-action-cost">${GAME_CONFIG.INTIMIDATE_AP} AP · $${GAME_CONFIG.INTIMIDATE_COST}M</span>
+                            </div>
+                            <div class="reg-steward-action-desc">Use fear and threats to force members to switch allegiance.</div>
+                            <div class="reg-steward-action-effects">Loyalty: <strong class="reg-effect-neg">${GAME_CONFIG.INTIMIDATE_LOYALTY}</strong> · Standing: <strong class="reg-effect-pos">+${GAME_CONFIG.INTIMIDATE_STANDING}</strong> · Stability: <strong class="reg-effect-neg">${GAME_CONFIG.INTIMIDATE_STABILITY}</strong></div>
+                            ${stAP >= GAME_CONFIG.INTIMIDATE_AP && (f.seats || 0) >= GAME_CONFIG.INTIMIDATE_MIN_SEATS && factionFunds >= GAME_CONFIG.INTIMIDATE_COST ? `
+                            <div class="reg-intimidate-targets">
+                                ${(allFactions || []).filter(p => p.id !== f.id).map(p => {
+                                    const tStanding = Math.max(1, p.standing ?? 30);
+                                    const myStanding = f.standing ?? 30;
+                                    const est = Math.floor(GAME_CONFIG.INTIMIDATE_BASE_EFFECTIVENESS * (myStanding / tStanding) * ((f.seats || 0) / 20));
+                                    const pColor = p.party_color || '#666';
+                                    return `<button class="reg-intimidate-target-btn" data-target="${p.id}" data-name="${escapeHtml(p.faction_name)}" style="border-left-color:${pColor}">${escapeHtml(p.faction_name)} · ~${est} seats</button>`;
+                                }).join('')}
+                            </div>` : `<div class="reg-steward-action-req">${(f.seats || 0) < GAME_CONFIG.INTIMIDATE_MIN_SEATS ? `Need ${GAME_CONFIG.INTIMIDATE_MIN_SEATS}+ seats` : stAP < GAME_CONFIG.INTIMIDATE_AP ? 'Not enough AP' : 'Not enough funds'}</div>`}
+                        </div>
+                    </div>
+                </div>`;
+
+            stewardActionsHtml = factionActionsHtml + `
                 <div class="reg-section" id="steward-actions-section">
                     <div class="reg-section-title">STEWARD ACTIONS</div>
                     <div class="reg-steward-actions">
@@ -788,13 +916,32 @@ async function renderAutocracyParties(el, f, n) {
                             <div class="reg-steward-action-desc">Build secret alliances. <strong>+10</strong> Coup Readiness.</div>
                             <div class="reg-steward-action-risk">Detection Risk: <span class="reg-steward-action-risk-val">20%</span></div>
                         </button>
-                        <button class="reg-steward-action-btn reg-steward-action-seize" id="steward-seize-btn" ${!canSeize ? 'disabled' : ''}>
+                        <div class="reg-coup-panel">
                             <div class="reg-steward-action-header">
                                 <span class="reg-steward-action-name">SEIZE POWER</span>
                             </div>
-                            <div class="reg-steward-action-desc">Launch a coup. <strong>Success: ${coupDisplayStr}</strong></div>
-                            <div class="reg-steward-action-req">${canSeize ? 'READY TO STRIKE' : `Requires: Loyalty < 30 (${stTrueLoyalty}) & Readiness \u2265 50 (${stCoupReadiness})`}</div>
-                        </button>
+                            <div class="reg-coup-estimate">
+                                Estimate: <strong style="color:${coupEstimate.color}">${coupEstimate.tier}</strong>
+                            </div>
+                            ${!canSeize ? `<div class="reg-coup-requirements">
+                                ${coupEligibility.reasons.map(r => `<div class="reg-coup-req-item">${escapeHtml(r)}</div>`).join('')}
+                            </div>` : `
+                            <div class="reg-coup-controls">
+                                <div class="reg-coup-funds-row">
+                                    <label>Commit funds: $</label>
+                                    <input type="number" id="coup-funds-input" min="${GAME_CONFIG.COUP_FUNDS_THRESHOLD}" max="${Math.round(Number(f.embezzled_funds ?? 0))}" value="${Math.min(Math.round(Number(f.embezzled_funds ?? 0)), GAME_CONFIG.COUP_FUNDS_THRESHOLD)}" step="1">
+                                    <span>M (min $${GAME_CONFIG.COUP_FUNDS_THRESHOLD}M)</span>
+                                </div>
+                                <div class="reg-coup-invite-section">
+                                    <div class="reg-coup-invite-label">Invite allies (max 2):</div>
+                                    <div class="reg-coup-invite-targets">${
+                                        (allFactions || []).filter(p => p.id !== f.id && p.id !== n.ruling_faction_id && stewardByFaction[p.id])
+                                            .map(p => `<button class="reg-coup-invite-btn" data-faction-id="${p.id}" data-faction-name="${escapeHtml(p.faction_name)}" style="border-left-color:${p.party_color || '#666'}">${escapeHtml(p.faction_name)}</button>`).join('')
+                                    }</div>
+                                </div>
+                                <button class="reg-coup-launch-btn" id="coup-launch-btn">LAUNCH COUP</button>
+                            </div>`}
+                        </div>
                     </div>
                 </div>`;
         }
@@ -878,7 +1025,20 @@ async function renderAutocracyParties(el, f, n) {
             dynasty_prepare: 'DYNASTY: PREPARE',
             dynasty_detected_prepare: 'PREPARE DETECTED',
             official_dispatch: 'OFFICIAL DISPATCH',
-            party_disbanded: 'PARTY DISBANDED'
+            party_disbanded: 'PARTY DISBANDED',
+            coup_plot_reported: 'PLOT REPORTED',
+            regime_succession: 'SUCCESSION',
+            power_vacuum: 'POWER VACUUM',
+            coup_invitation: 'COUP INVITE',
+            faction_pledge_allegiance: 'PLEDGED ALLEGIANCE',
+            faction_consolidate_power: 'CONSOLIDATED',
+            faction_demonstrate_competence: 'DEMONSTRATED',
+            faction_embezzle: 'FACTION EMBEZZLE',
+            faction_embezzle_detected: 'EMBEZZLE DETECTED',
+            faction_buy_influence: 'BOUGHT INFLUENCE',
+            faction_intimidate: 'INTIMIDATED',
+            purge: 'PURGE',
+            redistribute_seats: 'REDISTRIBUTED'
         };
 
         let regimeLogHtml = '';
@@ -961,9 +1121,17 @@ async function renderAutocracyParties(el, f, n) {
                 } else if (['steward_detected_embezzle', 'steward_detected_conspire'].includes(entry.action_type)) {
                     detail = `${r.steward_name} (${r.faction_name}) caught! Standing -15`;
                 } else if (entry.action_type === 'coup_success') {
-                    detail = `${r.steward_name} (${r.faction_name}) seized power!`;
+                    detail = `${r.faction_name} seized power!${r.allies?.length > 0 ? ` Allies: ${r.allies.join(', ')}` : ''}`;
                 } else if (entry.action_type === 'coup_failed') {
-                    detail = `${r.steward_name} (${r.faction_name}) failed \u2014 executed`;
+                    detail = `${r.faction_name} failed coup attempt. ${r.steward_name || 'Leader'} executed. Seats lost: ${r.seats_lost || '?'}`;
+                } else if (entry.action_type === 'coup_plot_reported') {
+                    if (isStrongman || entry.party_id === f.id) {
+                        detail = `Coup plot reported! A faction exposed a conspirator.`;
+                    } else { return ''; }
+                } else if (entry.action_type === 'regime_succession') {
+                    detail = `Regime collapsed. ${r.successor_name} takes power via succession.`;
+                } else if (entry.action_type === 'power_vacuum') {
+                    detail = `Regime collapsed! ${r.new_ruler} seized power in the chaos.`;
                 } else if (entry.action_type === 'coalition_proposed') {
                     if (r.coalition_type === 'secret' && isStrongman) return '';
                     detail = `${r.coalition_type === 'public' ? 'Public' : 'Secret'} coalition proposed to ${r.target_faction}`;
@@ -1139,6 +1307,67 @@ async function renderAutocracyParties(el, f, n) {
             }
         }
 
+        // ── PURGE PANEL (Strongman only) ──
+        let purgeHtml = '';
+        if (isStrongman) {
+            const purgeTargets = (allFactions || []).filter(p => p.id !== rulingId && (p.loyalty ?? 50) < GAME_CONFIG.PURGE_LOYALTY_THRESHOLD);
+            const stAP = f.action_points ?? 0;
+            if (purgeTargets.length > 0) {
+                const purgeBtns = purgeTargets.map(p => {
+                    const pColor = p.party_color || '#666';
+                    return `<button class="reg-purge-target-btn" data-faction-id="${p.id}" data-faction-name="${escapeHtml(p.faction_name)}" style="border-left-color:${pColor}">${escapeHtml(p.faction_name)} (Loyalty: ${p.loyalty ?? 50})</button>`;
+                }).join('');
+                purgeHtml = `
+                    <div class="reg-section">
+                        <div class="reg-section-title" style="color:#ff1744">PURGE</div>
+                        <div class="reg-purge-panel">
+                            <div class="reg-purge-warning">Remove a faction's steward. Devastating consequences for the target and the regime.</div>
+                            <div class="reg-purge-targets">${purgeBtns}</div>
+                            <button class="reg-purge-submit" id="purge-submit-btn" disabled ${stAP < GAME_CONFIG.PURGE_AP ? 'title="Not enough AP"' : ''}>PURGE (${GAME_CONFIG.PURGE_AP} AP)</button>
+                        </div>
+                    </div>`;
+            }
+        }
+
+        // ── REDISTRIBUTE SEATS PANEL (Strongman only) ──
+        let redistributeHtml = '';
+        if (isStrongman) {
+            const stAP = f.action_points ?? 0;
+            const cooldownActive = n.last_redistribute_tick != null && (currentTick - n.last_redistribute_tick) < GAME_CONFIG.REDISTRIBUTE_SEATS_COOLDOWN;
+            const cooldownTicks = cooldownActive ? GAME_CONFIG.REDISTRIBUTE_SEATS_COOLDOWN - (currentTick - n.last_redistribute_tick) : 0;
+            const otherFactions = (allFactions || []).filter(p => p.id !== rulingId);
+
+            if (cooldownActive) {
+                redistributeHtml = `
+                    <div class="reg-section">
+                        <div class="reg-section-title">REDISTRIBUTE SEATS</div>
+                        <div class="reg-redistribute-cooldown">Cooldown: ${cooldownTicks} tick${cooldownTicks !== 1 ? 's' : ''} remaining.</div>
+                    </div>`;
+            } else if (otherFactions.length >= 2) {
+                const factionOpts = otherFactions.map(p => {
+                    const pColor = p.party_color || '#666';
+                    return `<option value="${p.id}" data-seats="${p.seats || 0}">${p.faction_name} (${p.seats || 0} seats)</option>`;
+                }).join('');
+                redistributeHtml = `
+                    <div class="reg-section">
+                        <div class="reg-section-title">REDISTRIBUTE SEATS</div>
+                        <div class="reg-redistribute-panel">
+                            <div class="reg-redistribute-row">
+                                <label>Take from: <select id="redistribute-loser">${factionOpts}</select></label>
+                            </div>
+                            <div class="reg-redistribute-row">
+                                <label>Give to: <select id="redistribute-gainer">${factionOpts}</select></label>
+                            </div>
+                            <div class="reg-redistribute-row">
+                                <label>Seats: <input type="number" id="redistribute-count" min="1" max="30" value="1" style="width:50px"></label>
+                                <span class="reg-redistribute-max" id="redistribute-max-label">Max: —</span>
+                            </div>
+                            <button class="reg-redistribute-submit" id="redistribute-submit-btn" ${stAP < GAME_CONFIG.REDISTRIBUTE_SEATS_AP ? 'disabled' : ''}>REDISTRIBUTE (${GAME_CONFIG.REDISTRIBUTE_SEATS_AP} AP)</button>
+                        </div>
+                    </div>`;
+            }
+        }
+
         // ── DEMAND BANNER (non-strongman with pending demand) ──
         let demandBannerHtml = '';
         if (!isStrongman && myPendingDemand) {
@@ -1153,6 +1382,27 @@ async function renderAutocracyParties(el, f, n) {
                         <button class="reg-demand-refuse-btn" id="demand-refuse-btn" data-demand-id="${myPendingDemand.id}">REFUSE</button>
                     </div>
                 </div>`;
+        }
+
+        // ── COUP INVITATION BANNER (non-strongman with pending invites) ──
+        let coupInviteBannerHtml = '';
+        if (!isStrongman && myPendingCoupInvites.length > 0) {
+            const invBanners = myPendingCoupInvites.map(inv => {
+                const inviterName = inv.result?.inviter_name || 'Unknown faction';
+                const estimateTier = inv.result?.estimate_tier || 'UNKNOWN';
+                return `
+                    <div class="reg-coup-invite-banner">
+                        <div class="reg-coup-invite-banner-title">COUP INVITATION</div>
+                        <div class="reg-coup-invite-banner-text"><strong>${escapeHtml(inviterName)}</strong> invites you to join a coup against the Strongman.</div>
+                        <div class="reg-coup-invite-banner-estimate">Estimated chance: <strong>${escapeHtml(estimateTier)}</strong></div>
+                        <div class="reg-coup-invite-banner-btns">
+                            <button class="reg-coup-respond-btn reg-coup-accept-btn" data-invite-id="${inv.id}" data-response="accepted">ACCEPT</button>
+                            <button class="reg-coup-respond-btn reg-coup-decline-btn" data-invite-id="${inv.id}" data-response="decline">DECLINE</button>
+                            <button class="reg-coup-respond-btn reg-coup-report-btn" data-invite-id="${inv.id}" data-response="report">REPORT</button>
+                        </div>
+                    </div>`;
+            }).join('');
+            coupInviteBannerHtml = invBanners;
         }
 
         // ── COALITION REQUEST BANNER (non-strongman with pending request) ──
@@ -1376,6 +1626,7 @@ async function renderAutocracyParties(el, f, n) {
                 </div>
 
                 ${demandBannerHtml}
+                ${coupInviteBannerHtml}
                 ${coalitionBannerHtml}
 
                 <div class="reg-body">
@@ -1398,6 +1649,18 @@ async function renderAutocracyParties(el, f, n) {
                                 <span class="reg-grip-label" style="color:${gripColor}">${gripLabel}</span>
                             </div>
                             `}
+                        </div>
+
+                        <div class="reg-section">
+                            <div class="reg-section-title">REGIME HEALTH</div>
+                            <div class="reg-grip-row">
+                                <span class="reg-grip-score" style="color:${regimeHealthColor}">${regimeHealthVal}</span>
+                                <div class="reg-grip-bar-track">
+                                    <div class="reg-grip-bar-fill" style="width:${regimeHealthPct}%;background:${regimeHealthColor}"></div>
+                                </div>
+                                <span class="reg-grip-label" style="color:${regimeHealthColor}">${regimeHealthLabel}</span>
+                            </div>
+                            <div class="reg-regime-health-note">${regimeHealthVal < 20 && regimeHealthVal > 0 ? 'The regime is collapsing. All loyalty scores are now visible.' : regimeHealthVal < 40 ? 'The regime is in decline. Loyalty decay accelerated.' : regimeHealthVal < 60 ? 'The regime shows signs of strain.' : 'Natural decay: -0.5/tick'}</div>
                         </div>
 
                         ${stewardStatusHtml}
@@ -1439,6 +1702,8 @@ async function renderAutocracyParties(el, f, n) {
                         ${threatHtml}
                         ${demandLoyaltyHtml}
                         ${appointSuccessorHtml}
+                        ${purgeHtml}
+                        ${redistributeHtml}
                     </div>
 
                     <div class="reg-col-right">
@@ -1780,6 +2045,185 @@ async function renderAutocracyParties(el, f, n) {
         });
     }
 
+    // ── STRONGMAN ACTIONS v2: PURGE ──
+    let selectedPurgeTarget = null;
+    document.querySelectorAll('.reg-purge-target-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.reg-purge-target-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            selectedPurgeTarget = btn.dataset.factionId;
+            const submitBtn = document.getElementById('purge-submit-btn');
+            if (submitBtn) submitBtn.disabled = false;
+        });
+    });
+    const purgeSubmitBtn = document.getElementById('purge-submit-btn');
+    if (purgeSubmitBtn) {
+        purgeSubmitBtn.addEventListener('click', async () => {
+            if (!selectedPurgeTarget) return;
+            const targetName = document.querySelector(`.reg-purge-target-btn[data-faction-id="${selectedPurgeTarget}"]`)?.dataset.factionName || 'Unknown';
+            if (!confirm(`PURGE ${targetName}?\n\nThis will:\n- Remove their steward\n- Reset loyalty to 50\n- Standing -20\n- Lose 30% seats\n- Seize all funds\n- Regime Health -3\n\nThis is irreversible.`)) return;
+            purgeSubmitBtn.disabled = true;
+            purgeSubmitBtn.textContent = 'PURGING...';
+            const result = await executePurge(_supabase, f.id, n.id, selectedPurgeTarget, currentShard?.current_tick || 0);
+            if (!result.success) { alert(result.error); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = result.newAp;
+            alert(`Purge complete:\n${result.purgedSteward} removed from ${result.targetName}\nNew steward: ${result.newSteward}\nSeats lost: ${result.seatsLost}\nFunds seized: $${result.fundsSeized}M`);
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
+    // ── STRONGMAN ACTIONS v2: REDISTRIBUTE SEATS ──
+    const redistributeLoser = document.getElementById('redistribute-loser');
+    const redistributeMaxLabel = document.getElementById('redistribute-max-label');
+    if (redistributeLoser && redistributeMaxLabel) {
+        const updateMax = () => {
+            const sel = redistributeLoser.options[redistributeLoser.selectedIndex];
+            const seats = Number(sel?.dataset?.seats || 0);
+            const max = Math.ceil(seats * GAME_CONFIG.REDISTRIBUTE_SEATS_MAX_RATIO);
+            redistributeMaxLabel.textContent = `Max: ${max}`;
+            const countInput = document.getElementById('redistribute-count');
+            if (countInput) { countInput.max = max; if (Number(countInput.value) > max) countInput.value = max; }
+        };
+        redistributeLoser.addEventListener('change', updateMax);
+        updateMax();
+    }
+    const redistributeSubmitBtn = document.getElementById('redistribute-submit-btn');
+    if (redistributeSubmitBtn) {
+        redistributeSubmitBtn.addEventListener('click', async () => {
+            const loserId = document.getElementById('redistribute-loser')?.value;
+            const gainerId = document.getElementById('redistribute-gainer')?.value;
+            const count = Number(document.getElementById('redistribute-count')?.value || 0);
+            if (!loserId || !gainerId || count <= 0) return;
+            if (loserId === gainerId) { alert('Loser and gainer must be different.'); return; }
+            redistributeSubmitBtn.disabled = true;
+            redistributeSubmitBtn.textContent = 'REDISTRIBUTING...';
+            const result = await executeRedistributeSeats(_supabase, f.id, n.id, loserId, gainerId, count, currentShard?.current_tick || 0);
+            if (!result.success) { alert(result.error); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = result.newAp;
+            alert(`Seats redistributed:\n${result.seatsTransferred} seats: ${result.loserName} → ${result.gainerName}`);
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
+    // ── FACTION ACTIONS (v2) ──
+
+    // PLEDGE ALLEGIANCE
+    const pledgeBtn = document.getElementById('faction-pledge-btn');
+    if (pledgeBtn) {
+        pledgeBtn.addEventListener('click', async () => {
+            if ((f.action_points || 0) < GAME_CONFIG.PLEDGE_ALLEGIANCE_AP) return;
+            pledgeBtn.disabled = true;
+            pledgeBtn.querySelector('.reg-steward-action-name').textContent = 'PLEDGING...';
+            const result = await executePledgeAllegiance(_supabase, f.id, n.id, currentShard?.current_tick || 0);
+            if (!result.success) { alert(result.error); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = result.newAp;
+            const loySign = result.loyaltyChange > 0 ? '+' : '';
+            const stSign = result.standingChange > 0 ? '+' : '';
+            alert(`Pledge Allegiance${result.compliedWithDemand ? ' (Compliance)' : ''}:\nLoyalty ${loySign}${result.loyaltyChange} → ${result.newLoyalty}\nStanding ${stSign}${result.standingChange} → ${result.newStanding}`);
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
+    // CONSOLIDATE POWER
+    const consolidateBtn = document.getElementById('faction-consolidate-btn');
+    if (consolidateBtn) {
+        consolidateBtn.addEventListener('click', async () => {
+            if ((f.action_points || 0) < GAME_CONFIG.CONSOLIDATE_POWER_AP) return;
+            consolidateBtn.disabled = true;
+            consolidateBtn.querySelector('.reg-steward-action-name').textContent = 'CONSOLIDATING...';
+            const result = await executeConsolidatePower(_supabase, f.id, n.id, currentShard?.current_tick || 0);
+            if (!result.success) { alert(result.error); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = result.newAp;
+            alert(`Consolidate Power:\nStanding +${result.standingChange} → ${result.newStanding}\nLoyalty ${result.loyaltyChange} → ${result.newLoyalty}`);
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
+    // DEMONSTRATE COMPETENCE
+    const demonstrateBtn = document.getElementById('faction-demonstrate-btn');
+    if (demonstrateBtn) {
+        demonstrateBtn.addEventListener('click', async () => {
+            if ((f.action_points || 0) < GAME_CONFIG.DEMONSTRATE_COMPETENCE_AP) return;
+            demonstrateBtn.disabled = true;
+            demonstrateBtn.querySelector('.reg-steward-action-name').textContent = 'GOVERNING...';
+            const result = await executeDemonstrateCompetence(_supabase, f.id, n.id, currentShard?.current_tick || 0);
+            if (!result.success) { alert(result.error); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = result.newAp;
+            let msg = `Demonstrate Competence:\nStanding +${result.standingChange} → ${result.newStanding}\nLoyalty +${result.loyaltyChange} → ${result.newLoyalty}`;
+            if (result.fundsSpent > 0) msg += `\nFunds spent: $${result.fundsSpent}M`;
+            if (result.nationStatChange) msg += `\n${result.nationStatChange.stat}: +${result.nationStatChange.change}`;
+            if (!result.couldAfford) msg += '\n(Underfunded — reduced standing gain, no nation stat bonus)';
+            alert(msg);
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
+    // BUY INFLUENCE (faction-level)
+    let selectedBuyTarget = null;
+    document.querySelectorAll('.reg-buy-target-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.reg-buy-target-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            selectedBuyTarget = btn.dataset.target;
+            const amountPanel = document.getElementById('buy-amount-panel');
+            if (amountPanel) amountPanel.style.display = 'flex';
+        });
+    });
+    const buySubmitBtn = document.getElementById('buy-submit-btn');
+    if (buySubmitBtn) {
+        buySubmitBtn.addEventListener('click', async () => {
+            if (!selectedBuyTarget) return;
+            const amountInput = document.getElementById('buy-amount-input');
+            const amount = Number(amountInput?.value || 0);
+            if (amount <= 0) return;
+            buySubmitBtn.disabled = true;
+            buySubmitBtn.textContent = 'BUYING...';
+            const result = await executeBuyInfluence(_supabase, f.id, n.id, selectedBuyTarget, amount, currentShard?.current_tick || 0);
+            if (!result.success) { alert(result.error); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = result.newAp;
+            alert(`Buy Influence:\nSeats gained: ${result.seatsGained} from ${result.targetName}\nFunds spent: $${result.fundsSpent}M${result.message ? '\n' + result.message : ''}`);
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
+    // INTIMIDATE (faction-level)
+    document.querySelectorAll('.reg-intimidate-target-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const targetId = btn.dataset.target;
+            const targetName = btn.dataset.name;
+            if (!confirm(`Intimidate ${targetName}?\nCost: $${GAME_CONFIG.INTIMIDATE_COST}M + ${GAME_CONFIG.INTIMIDATE_AP} AP\nLoyalty: ${GAME_CONFIG.INTIMIDATE_LOYALTY}`)) return;
+            btn.disabled = true;
+            btn.textContent = 'INTIMIDATING...';
+            const result = await executeIntimidate(_supabase, f.id, n.id, targetId, currentShard?.current_tick || 0);
+            if (!result.success) { alert(result.error); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = result.newAp;
+            let msg = result.failed
+                ? `Intimidation FAILED against ${result.targetName}!\nStanding: ${result.standingChange}\nLoyalty: ${result.loyaltyChange}`
+                : `Intimidation successful!\nSeats gained: ${result.seatsGained} from ${result.targetName}\nStanding: +${GAME_CONFIG.INTIMIDATE_STANDING}\nLoyalty: ${result.loyaltyChange}`;
+            alert(msg);
+            await renderAutocracyParties(el, f, n);
+        });
+    });
+
+    // EMBEZZLE FUNDS (faction-level)
+    const factionEmbezzleBtn = document.getElementById('faction-embezzle-btn');
+    if (factionEmbezzleBtn) {
+        factionEmbezzleBtn.addEventListener('click', async () => {
+            if ((f.action_points || 0) < GAME_CONFIG.EMBEZZLE_FUNDS_AP) return;
+            factionEmbezzleBtn.disabled = true;
+            factionEmbezzleBtn.querySelector('.reg-steward-action-name').textContent = 'EMBEZZLING...';
+            const result = await executeEmbezzleFunds(_supabase, f.id, n.id, currentShard?.current_tick || 0);
+            if (!result.success) { alert(result.error); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = result.newAp;
+            let msg = `Embezzle Funds:\nIncome: +$${result.income}M\nLoyalty: ${result.loyaltyChange}\nNew funds: $${Math.round(result.newFunds)}M`;
+            if (result.detected) {
+                msg += `\n\n⚠ DETECTED! Funds seized: $${result.fundsSeized}M\nStanding: ${result.standingChange}`;
+            }
+            alert(msg);
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
     // SHOW OF FORCE (General only)
     const showOfForceBtn = document.getElementById('steward-showofforce-btn');
     if (showOfForceBtn) {
@@ -1998,59 +2442,56 @@ async function renderAutocracyParties(el, f, n) {
         });
     }
 
-    const seizeBtn = document.getElementById('steward-seize-btn');
-    if (seizeBtn) {
-        seizeBtn.addEventListener('click', async () => {
-            const coupReadiness = mySteward.coup_readiness ?? 0;
-            const trueLoyalty = mySteward.true_loyalty ?? 100;
-            if (coupReadiness < 50 || trueLoyalty >= 30) return;
+    // ── V2 COUP SYSTEM HANDLERS ──
+    // Coup invite buttons
+    let coupInvitedIds = [];
+    el.querySelectorAll('.reg-coup-invite-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const targetId = btn.dataset.factionId;
+            if (coupInvitedIds.includes(targetId)) return;
+            if (coupInvitedIds.length >= 2) { alert('Maximum 2 invitations.'); return; }
 
-            // Calculate coalition coup bonus
-            let coalitionBonus = 0;
-            for (const c of myActiveCoalitions) {
-                const partnerId = c.faction_a_id === f.id ? c.faction_b_id : c.faction_a_id;
-                const partnerSteward = stewardByFaction[partnerId];
-                if (partnerSteward) {
-                    const modifier = c.coalition_type === 'secret' ? 0.30 : 0.15;
-                    coalitionBonus += Math.round((partnerSteward.power_base ?? 30) * modifier);
-                }
+            btn.disabled = true;
+            btn.textContent = 'SENDING...';
+            const result = await sendCoupInvitation(_supabase, f.id, n.id, targetId, currentTick);
+            if (!result.success) {
+                alert(result.error);
+                btn.disabled = false;
+                btn.textContent = btn.dataset.factionName;
+                return;
             }
-            const effectiveCoupChance = Math.min(95, coupReadiness + coalitionBonus);
+            coupInvitedIds.push(targetId);
+            btn.textContent = `INVITED (${result.estimateTier})`;
+            btn.classList.add('selected');
+        });
+    });
 
-            if (!confirm(`Launch coup attempt? Success chance: ${effectiveCoupChance}%${coalitionBonus > 0 ? ` (${coupReadiness}% base + ${coalitionBonus}% coalition)` : ''}. Failure means death for your steward.`)) return;
-            seizeBtn.disabled = true;
-            seizeBtn.querySelector('.reg-steward-action-name').textContent = 'SEIZING POWER...';
+    // Coup launch button
+    const coupLaunchBtn = document.getElementById('coup-launch-btn');
+    if (coupLaunchBtn) {
+        coupLaunchBtn.addEventListener('click', async () => {
+            const fundsInput = document.getElementById('coup-funds-input');
+            const fundsCommitted = Number(fundsInput?.value || GAME_CONFIG.COUP_FUNDS_THRESHOLD);
 
-            const success = Math.random() * 100 < effectiveCoupChance;
+            if (!confirm(`Launch a coup?\n\nFunds committed: $${fundsCommitted}M\nInvited allies: ${coupInvitedIds.length}\n\nFAILURE MEANS DEATH for your steward, loss of 40% seats, and severe penalties.\n\nProceed?`)) return;
+            coupLaunchBtn.disabled = true;
+            coupLaunchBtn.textContent = 'SEIZING POWER...';
 
-            if (success) {
-                await _supabase.from('nations').update({
-                    ruling_faction_id: f.id,
-                    successor_cooldown_end_tick: null,
-                    successor_is_family_member: false,
-                }).eq('id', n.id);
-                // Clear any chosen successor (new regime)
-                await _supabase.from('stewards').update({
-                    is_chosen_successor: false, succession_strength: 0, successor_appointed_tick: null,
-                }).eq('nation_id', n.id).eq('is_chosen_successor', true);
-                await _supabase.from('stewards').update({ coup_readiness: 0 }).eq('id', mySteward.id);
-                await _supabase.from('campaign_actions').insert({
-                    party_id: f.id, nation_id: n.id,
-                    action_type: 'coup_success',
-                    tick_performed: currentTick,
-                    result: { steward_name: `${mySteward.first_name} ${mySteward.last_name}`, faction_name: f.faction_name }
-                });
+            const result = await executeCoupAttempt(_supabase, f.id, n.id, fundsCommitted, currentTick);
+            if (!result.success) {
+                alert(result.error);
+                coupLaunchBtn.disabled = false;
+                coupLaunchBtn.textContent = 'LAUNCH COUP';
+                return;
+            }
+
+            if (result.coupSuccess) {
+                alert(`COUP SUCCESSFUL!\n\nYou are the new ruler.${result.allies.length > 0 ? `\nAllies: ${result.allies.join(', ')}` : ''}`);
             } else {
-                await _supabase.from('stewards').update({ is_alive: false }).eq('id', mySteward.id);
-                await _supabase.from('campaign_actions').insert({
-                    party_id: f.id, nation_id: n.id,
-                    action_type: 'coup_failed',
-                    tick_performed: currentTick,
-                    result: { steward_name: `${mySteward.first_name} ${mySteward.last_name}`, faction_name: f.faction_name }
-                });
+                alert(`COUP FAILED!\n\nYour steward is dead.\nSeats lost: ${result.seatsLost}\nFunds: seized\nStanding: -25\n\nA new steward has been appointed.`);
             }
 
-            // Dissolve all coalitions involving this faction (new ruler or dead steward)
+            // Dissolve all coalitions involving this faction
             for (const c of myActiveCoalitions) {
                 await _supabase.from('faction_coalitions').update({
                     status: 'dissolved', resolved_at_tick: currentTick
@@ -2060,6 +2501,22 @@ async function renderAutocracyParties(el, f, n) {
             await renderAutocracyParties(el, f, n);
         });
     }
+
+    // ── Coup invitation responses (for received invitations) ──
+    el.querySelectorAll('.reg-coup-respond-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const inviteId = btn.dataset.inviteId;
+            const response = btn.dataset.response;
+            btn.disabled = true;
+
+            const result = await respondToCoupInvitation(_supabase, f.id, n.id, inviteId, response, currentTick);
+            if (!result.success) { alert(result.error); btn.disabled = false; return; }
+
+            const labels = { accepted: 'ACCEPTED', decline: 'DECLINED', report: 'REPORTED TO STRONGMAN' };
+            alert(`Response: ${labels[response] || response}`);
+            await renderAutocracyParties(el, f, n);
+        });
+    });
 
     // ── APPOINT SUCCESSOR HANDLERS (Strongman) ──
     let selectedSuccessorFactionId = null;

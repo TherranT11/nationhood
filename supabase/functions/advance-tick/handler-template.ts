@@ -1143,6 +1143,7 @@ async function advanceTick(supabase) {
                 for (const cb of (committeeImpeach || [])) {
                     await supabase.from('bills').update({
                         status: 'floor',
+                        floor_tick: newTick,
                         voting_ends_tick: newTick + GAME_CONFIG.IMPEACHMENT_MOTION_VOTING_TICKS
                     }).eq('id', cb.id);
                     if (cb.impeachment_id) {
@@ -1421,6 +1422,21 @@ async function advanceTick(supabase) {
         // Steward stats tick (autocracy)
         if (isAutocracy(nation)) {
             await processStewardTick(supabase, nation);
+        }
+
+        // Standing relevance decay (autocracy v2)
+        if (isAutocracy(nation)) {
+            await processStandingTick(supabase, nation, newTick);
+        }
+
+        // Regime health tick (autocracy v2)
+        if (isAutocracy(nation)) {
+            await processRegimeHealthTick(supabase, nation, newTick);
+        }
+
+        // Unaligned seat pool regeneration (autocracy v2)
+        if (isAutocracy(nation)) {
+            await processUnalignedPoolTick(supabase, nation, newTick);
         }
 
         // Secret coalition detection (autocracy)

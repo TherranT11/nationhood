@@ -553,7 +553,7 @@ export const INVERTED_STATS = [
     'pollution', 'carbon_emissions', 'crime_rate', 'incarceration_rate',
     'drug_use', 'corruption', 'polarization', 'civil_unrest', 'terrorism',
     'political_violence', 'emigration', 'sanctions', 'debt', 'debt_growth',
-    'inflation', 'illegal_immigration', 'fuel_prices'
+    'inflation', 'interest_rates', 'illegal_immigration', 'fuel_prices'
 ];
 
 // Stats stored as raw numbers (not 0-100 indices).

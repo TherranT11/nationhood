@@ -672,7 +672,7 @@ initPage('dashboard', async (state) => {
     if (isPresidential) {
         const { data: pres } = await _supabase
             .from('presidents')
-            .select('first_name, last_name, age, terms_served')
+            .select('faction_id, first_name, last_name, age, terms_served')
             .eq('nation_id', nation.id)
             .eq('is_active', true)
             .order('elected_tick', { ascending: false })
@@ -695,13 +695,13 @@ initPage('dashboard', async (state) => {
     renderAlerts(nation, faction, coalition, ministries, scheduledElection, currentTick, eventLog);
 
     // ─── BILLS ───
-    renderBills(faction, floorBills, committeeBills);
+    renderBills(faction, floorBills, committeeBills, currentSeats);
 
     // ─── GOVERNMENT ───
     renderGovernment(nation, coalition, ministries, allParties, hog, govType, totalSeats, allPartySeats, isPresidential, isAuto, presidentData);
 
     // ─── QUICK ACTIONS ───
-    renderQuickActions(faction, nation, coalition, govType, isPresidential, mySteward);
+    renderQuickActions(faction, nation, coalition, govType, isPresidential, mySteward, presidentData);
 
     // ─── DEADLINES ───
     renderDeadlines(shard, scheduledElection, currentTick);
@@ -807,11 +807,12 @@ function renderAlerts(nation, faction, coalition, ministries, scheduledElection,
           </div>`);
     }
 
-    // Vacant ministries (exclude prime_minister for presidential republics — they have a President instead)
+    // Vacant ministries (exclude prime_minister for presidential/autocracy — they have no PM)
     const CABINET_KEYS = ['prime_minister','interior','foreign','defense','finance','education','healthcare','labor','justice','trade','energy','transportation'];
     const filledKeys = new Set(ministries.map(m => m.ministry_key));
     const isPres = isPresidentialRepublic(nation);
-    const vacancies = CABINET_KEYS.filter(k => !filledKeys.has(k) && !(isPres && k === 'prime_minister'));
+    const isAutoLocal = isAutocracy(nation);
+    const vacancies = CABINET_KEYS.filter(k => !filledKeys.has(k) && !((isPres || isAutoLocal) && k === 'prime_minister'));
     if (vacancies.length > 0) {
         alerts.push(`
           <div class="alert alert--info">
@@ -843,9 +844,9 @@ function renderAlerts(nation, faction, coalition, ministries, scheduledElection,
     stack.innerHTML = alerts.join('');
 }
 
-function renderBills(faction, floorBills, committeeBills) {
+function renderBills(faction, floorBills, committeeBills, seatCount) {
     // Recalculate vote tallies from bill_support (same as laws page)
-    for (const bill of floorBills) {
+    for (const bill of [...floorBills, ...committeeBills]) {
         let f = 0, a = 0, ab = 0;
         (bill.bill_support || []).forEach(s => {
             const st = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : 'abstain';
@@ -950,7 +951,7 @@ function renderBills(faction, floorBills, committeeBills) {
                 bill_id: billId,
                 faction_id: faction.id,
                 stance: stance,
-                seat_count: faction.seats || 0
+                seat_count: seatCount || faction.seats || 0
             }, { onConflict: 'bill_id,faction_id' });
 
             // Sync tallies to bills table and update displayed counts
@@ -1006,8 +1007,6 @@ function renderGovernment(nation, coalition, ministries, allParties, hog, govTyp
         leaderInit = (fn || ln) ? initials(fn, ln) : '??';
     }
 
-    const pmParty = leaderSub;
-
     // Coalition seat bar
     let coalitionHTML = '';
     if (coalition && coalition.party_ids && coalition.party_ids.length > 0) {
@@ -1018,7 +1017,7 @@ function renderGovernment(nation, coalition, ministries, allParties, hog, govTyp
             const abbr = p?.abbreviation || name.split(/\s+/).map(w => w[0]).join('').toUpperCase() || '?';
             return { name, abbr, seats, color: p?.party_color || partyColor(idx) };
         }).sort((a, b) => b.seats - a.seats);
-        const coalTotal = coalParties.reduce((s, p) => s + p.seats, 0);
+        const coalTotal = coalParties.reduce((s, p) => s + p.seats, 0) || 1;
 
         const barSegs = coalParties.map(p =>
             `<div class="coalition-bar__seg" style="width:${(p.seats / coalTotal * 100).toFixed(1)}%;background:${p.color}"></div>`
@@ -1091,7 +1090,7 @@ function renderGovernment(nation, coalition, ministries, allParties, hog, govTyp
       </div>`;
 }
 
-function renderQuickActions(faction, nation, coalition, govType, isPresidential, mySteward) {
+function renderQuickActions(faction, nation, coalition, govType, isPresidential, mySteward, presidentData) {
     const panel = document.getElementById('qa-panel');
     const body = document.getElementById('qa-body');
     const badge = document.getElementById('qa-badge');
@@ -1129,8 +1128,8 @@ function renderQuickActions(faction, nation, coalition, govType, isPresidential,
             }
         }
     } else if (isPresidential) {
-        const isPresident = isPM;
-        actions.push({ name: 'Executive Order', cost: 5, href: 'government.html#cabinet-section', disabled: !isPresident });
+        const isPresidentParty = presidentData && presidentData.faction_id === faction.id;
+        actions.push({ name: 'Executive Order', cost: 5, href: 'government.html#cabinet-section', disabled: !isPresidentParty });
         actions.push({ name: 'Impeachment', cost: 7, href: 'government.html#impeachment' });
     } else {
         actions.push({ name: 'Vote of No Confidence', cost: 5, href: 'government.html#no-confidence' });
@@ -1233,17 +1232,26 @@ function renderPartySnapshot(faction, blocs, blocApprovals) {
         (blocRows ? '<div class="sub-label">Bloc Support</div>' + blocRows : '<div class="dash-empty">No bloc data</div>');
 }
 
+function fmtInitial(firstName) {
+    const c = (firstName || '')[0];
+    return c ? c + '.' : '';
+}
+
 function renderAppointments(ministries, ambassadors, nation, nationNameMap) {
     const panel = document.getElementById('appt-panel');
     const body = document.getElementById('appt-body');
     panel.style.display = '';
 
     const rows = [];
+    const isPres = isPresidentialRepublic(nation);
+    const isAuto = isAutocracy(nation);
 
-    // PM
-    const pm = ministries.find(m => m.ministry_key === 'prime_minister');
-    if (pm) {
-        rows.push(`<div class="appt-row"><span class="appt-row__role">Prime Minister</span><span class="appt-row__holder">${escapeHtml((pm.minister_first_name || '')[0] + '. ' + (pm.minister_last_name || ''))}</span></div>`);
+    // PM row only for parliamentary systems
+    if (!isPres && !isAuto) {
+        const pm = ministries.find(m => m.ministry_key === 'prime_minister');
+        if (pm) {
+            rows.push(`<div class="appt-row"><span class="appt-row__role">Prime Minister</span><span class="appt-row__holder">${escapeHtml(fmtInitial(pm.minister_first_name) + ' ' + (pm.minister_last_name || ''))}</span></div>`);
+        }
     }
 
     // Key appointments from ministries
@@ -1252,7 +1260,7 @@ function renderAppointments(ministries, ambassadors, nation, nationNameMap) {
         const m = ministries.find(x => x.ministry_key === key);
         const label = key.charAt(0).toUpperCase() + key.slice(1);
         if (m && m.minister_last_name) {
-            rows.push(`<div class="appt-row"><span class="appt-row__role">Min. ${label}</span><span class="appt-row__holder">${escapeHtml((m.minister_first_name || '')[0] + '. ' + m.minister_last_name)}</span></div>`);
+            rows.push(`<div class="appt-row"><span class="appt-row__role">Min. ${label}</span><span class="appt-row__holder">${escapeHtml(fmtInitial(m.minister_first_name) + ' ' + m.minister_last_name)}</span></div>`);
         } else {
             rows.push(`<div class="appt-row"><span class="appt-row__role">Min. ${label}</span><span class="appt-row__vacant-btn" onclick="window.location.href='government.html'">Appoint</span></div>`);
         }
@@ -1260,7 +1268,7 @@ function renderAppointments(ministries, ambassadors, nation, nationNameMap) {
 
     // Ambassadors
     for (const amb of ambassadors.slice(0, 3)) {
-        const name = `${(amb.ambassador_first_name || '')[0] || ''}. ${amb.ambassador_last_name || ''}`;
+        const name = `${fmtInitial(amb.ambassador_first_name)} ${amb.ambassador_last_name || ''}`;
         const target = nationNameMap[amb.target_nation_id] || 'Unknown';
         if (amb.status === 'recalled') {
             rows.push(`<div class="appt-row"><span class="appt-row__role">Amb. ${escapeHtml(target)}</span><span class="appt-row__recalled">Recalled</span></div>`);

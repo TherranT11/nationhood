@@ -218,6 +218,7 @@ var STAT_CATEGORIES = [
     ]},
     { id: 'demographics', label: 'Demographics', icon: '\u{1F465}', blocs: [],
       stats: [
+        { name: 'Population', key: 'population', desc: 'Total national population', noHealth: true, format: 'count' },
         { name: 'Population Growth', key: 'population_growth', desc: 'Rate of population change' },
         { name: 'Birth Rate', key: 'birth_rate', desc: 'Births per 1,000 people' },
         { name: 'Death Rate', key: 'death_rate', desc: 'Deaths per 1,000 people', inverted: true },
@@ -331,7 +332,7 @@ function catHealth(cat, nation) {
     for (var i = 0; i < scored.length; i++) {
         var v = Number(nation[scored[i].key]);
         if (isNaN(v)) v = 50;
-        v = Math.min(v, 100);
+        v = Math.max(0, Math.min(v, 100));
         if (scored[i].inverted) v = 100 - v;
         sum += v;
     }
@@ -594,7 +595,6 @@ function addEffectToMap(map, statKey, name, direction, type) {
 function parsePolicyEffects(laws, map) {
     for (var i = 0; i < laws.length; i++) {
         var law = laws[i];
-        if (law.is_reversal) continue;
         var policy = law.policies;
         if (!policy) continue;
         var effects = policy.stat_effects;
@@ -603,7 +603,10 @@ function parsePolicyEffects(laws, map) {
             var eff = effects[j];
             if (!eff.stat_key) continue;
             var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
-            addEffectToMap(map, eff.stat_key, policy.policy_name, dir, 'Policy');
+            // Reversal laws flip the effect direction
+            if (law.is_reversal) dir = (dir === 'up') ? 'down' : 'up';
+            var label = law.is_reversal ? policy.policy_name + ' (Repeal)' : policy.policy_name;
+            addEffectToMap(map, eff.stat_key, label, dir, 'Policy');
         }
     }
 }
@@ -682,8 +685,9 @@ function calculateRanking(statKey, value, inverted = false) {
     if (value === null || value === undefined) return null;
     const values = allNations.map(n => n[statKey]).filter(v => v !== null && v !== undefined);
     if (values.length === 0) return null;
-    const sorted = [...values].sort((a, b) => inverted ? a - b : b - a);
-    return sorted.indexOf(value) + 1;
+    // Count how many nations are strictly better (handles ties correctly)
+    const betterCount = values.filter(v => inverted ? v < value : v > value).length;
+    return betterCount + 1;
 }
 
 function prettyStatName(key) {
@@ -746,16 +750,11 @@ function formatGdpGrowth(rawValue) {
 
 function formatTradeBalance(rawValue) {
     var v = Math.round(Number(rawValue ?? 50));
-    if (v >= 50) {
-        var expPct = v, impPct = 100 - v;
-        if (impPct === 0) return '100% Exports';
-        if (expPct === impPct) return 'Balanced';
-        return expPct + '% Exp / ' + impPct + '% Imp';
-    } else {
-        var impPct = 100 - v, expPct = v;
-        if (expPct === 0) return '100% Imports';
-        return expPct + '% Exp / ' + impPct + '% Imp';
-    }
+    var expPct = v, impPct = 100 - v;
+    if (impPct === 0) return '100% Exports';
+    if (expPct === 0) return '100% Imports';
+    if (expPct === impPct) return 'Balanced';
+    return expPct + '% Exp / ' + impPct + '% Imp';
 }
 
 function getDisplayValue(stat, nation) {
@@ -767,7 +766,7 @@ function getDisplayValue(stat, nation) {
     if (format === 'currency') return formatCurrencyShort(scaleRawToDollars(raw));
     if (format === 'gdpgrowth') return formatGdpGrowth(raw);
     if (format === 'trade') return formatTradeBalance(raw);
-    if (format === 'inflation') return formatInflationRate(raw) + ' \u2014 ' + getInflationLabel(raw);
+    if (format === 'inflation') return formatInflationRate(raw);
     if (format === 'years') return (Math.round(Number(raw) * 10) / 10) + ' yrs';
     return Math.round(Number(raw) * 10) / 10;
 }
@@ -939,7 +938,7 @@ function renderStatCard(stat, nation) {
     // Trend
     var trendHTML = '';
     if (previousTickData) {
-        var histKey = stat.key === 'GDP' ? 'gdp' : stat.key;
+        var histKey = stat.key;
         var prevVal = previousTickData[histKey];
         if (prevVal !== null && prevVal !== undefined && raw !== null && raw !== undefined) {
             var delta = Number(raw) - Number(prevVal);

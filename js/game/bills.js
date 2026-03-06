@@ -882,7 +882,7 @@ export async function checkEarlyMajority(supabase, nationId) {
     // Include budget bills with null voting_ends_tick (they persist until passed)
     const { data: activeBills, error } = await supabase
         .from('bills')
-        .select('id, bill_name, bill_type, voting_ends_tick, bill_support(faction_id, stance, seat_count)')
+        .select('id, bill_name, bill_type, voting_ends_tick, proposed_tick, floor_tick, bill_support(faction_id, stance, seat_count)')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .is('early_resolution_status', null)
@@ -890,7 +890,20 @@ export async function checkEarlyMajority(supabase, nationId) {
 
     if (error || !activeBills || activeBills.length === 0) return [];
 
-    const quorumSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.QUORUM_THRESHOLD);
+    // Use the actual sum of faction seats as the voting denominator, not
+    // total_seats.  In autocracies (and after seat changes) the nation's
+    // total_seats can exceed the seats actually held by factions — those
+    // vacant/unaligned seats can never vote, so including them would inflate
+    // the "undeclared" count and break quorum & math-lock checks.
+    const { data: factionRows } = await supabase
+        .from('factions')
+        .select('seats')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+    const factionSeatSum = (factionRows || []).reduce((sum, f) => sum + (f.seats || 0), 0);
+    const effectiveTotalSeats = Math.min(GAME_CONFIG.TOTAL_SEATS, Math.max(factionSeatSum, 1));
+
+    const quorumSeats = Math.ceil(effectiveTotalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
     const results = [];
 
     // Check for emergency minority government penalty (once per nation per tick)
@@ -914,7 +927,7 @@ export async function checkEarlyMajority(supabase, nationId) {
 
         let earlyStatus = null;
         const participating = yesSeats + noSeats + abstainSeats;
-        const undeclaredSeats = GAME_CONFIG.TOTAL_SEATS - participating;
+        const undeclaredSeats = Math.max(0, effectiveTotalSeats - participating);
 
         // ── Check 1: Mathematical lock (outcome impossible to change) ──
         if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
@@ -927,7 +940,7 @@ export async function checkEarlyMajority(supabase, nationId) {
             }
         } else if (bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion') {
             // Absolute majority: 50%+1 of total seats, no quorum
-            const threshold = Math.floor(GAME_CONFIG.TOTAL_SEATS / 2) + 1;
+            const threshold = Math.floor(effectiveTotalSeats / 2) + 1;
             if (effectiveYes >= threshold) {
                 earlyStatus = 'majority_reached';
             } else if (effectiveYes + undeclaredSeats < threshold) {
@@ -963,6 +976,24 @@ export async function checkEarlyMajority(supabase, nationId) {
             }
         }
 
+        // ── Check 3: Budget bill forced resolution after MAX_FLOOR_TICKS ──
+        // Budget bills have no voting deadline (voting_ends_tick = null).
+        // If a budget bill has been on the floor for BUDGET_BILL_MAX_FLOOR_TICKS
+        // ticks without resolution, force a vote based on the current tally.
+        // This prevents budget bills from getting stuck indefinitely when
+        // bill_support seat_counts are stale and don't trigger a math-lock.
+        if (!earlyStatus && bill.bill_type === 'budget' && bill.voting_ends_tick == null) {
+            // Use floor_tick if available, otherwise fall back to proposed_tick + committee expiry
+            const floorStart = bill.floor_tick || (bill.proposed_tick || 0) + GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS;
+            const ticksOnFloor = currentTick - floorStart;
+            if (ticksOnFloor >= GAME_CONFIG.BUDGET_BILL_MAX_FLOOR_TICKS) {
+                if (participating >= quorumSeats && effectiveYes > noSeats) {
+                    earlyStatus = 'quorum_reached';
+                } else {
+                    earlyStatus = 'quorum_opposed';
+                }
+                console.log(`[checkEarlyMajority] Budget bill ${bill.bill_name}: FORCED resolution after ${ticksOnFloor} ticks on floor (YES=${yesSeats}, NO=${noSeats}, participating=${participating}, quorum=${quorumSeats})`);
+            }
         // ── Check 3: Budget bills can never be forced to fail ──
         // Budget bills persist on the floor until they pass. They can only
         // resolve early if a passing majority is reached (math-lock or quorum).
@@ -986,7 +1017,7 @@ export async function checkEarlyMajority(supabase, nationId) {
             }).eq('id', bill.id);
 
             const resolveType = earlyStatus.startsWith('quorum') ? 'QUORUM' : 'MATH-LOCK';
-            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${participating}). Resolves tick ${resolveAtTick}`);
+            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${participating}, effectiveTotal=${effectiveTotalSeats}, configTotal=${GAME_CONFIG.TOTAL_SEATS}). Resolves tick ${resolveAtTick}`);
             results.push({ billId: bill.id, billName: bill.bill_name, status: earlyStatus, yesSeats, noSeats });
         }
     }
@@ -1014,13 +1045,25 @@ export async function resolveExpiredVotes(supabase, nationId) {
 
     const results = [];
 
+    // Compute the actual sum of faction-held seats — only these can vote.
+    // In autocracies (and after seat changes) total_seats can exceed the
+    // seats held by factions; including vacant/unaligned seats inflates
+    // quorum and makes bills impossible to pass.
+    const { data: factionRowsForResolve } = await supabase
+        .from('factions')
+        .select('seats')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+    const resolveFactionSeatSum = (factionRowsForResolve || []).reduce((sum, f) => sum + (f.seats || 0), 0);
+
     for (const bill of expiredBills) {
         const { data: nation } = await supabase
             .from('nations')
             .select('name, government_type, total_seats')
             .eq('id', bill.nation_id)
             .single();
-        const totalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+        const nominalTotalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+        const totalSeats = Math.min(nominalTotalSeats, Math.max(resolveFactionSeatSum, 1));
         let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
 
         (bill.bill_support || []).forEach(s => {
@@ -1118,7 +1161,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
             continue;
         }
 
-        const passed = resolution === 'passed';
+        let passed = resolution === 'passed';
         const isNoConfidence = bill.bill_type === 'no_confidence';
         const isFoundational = bill.bill_type === 'foundational';
 

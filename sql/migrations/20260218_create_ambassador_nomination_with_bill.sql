@@ -50,6 +50,7 @@ BEGIN
         bill_name,
         bill_type,
         status,
+        floor_tick,
         voting_ends_tick,
         ambassador_id,
         preamble
@@ -61,6 +62,7 @@ BEGIN
         p_bill_name,
         'confirmation',
         'floor',
+        p_current_tick,
         p_voting_ends_tick,
         v_ambassador_id,
         p_preamble

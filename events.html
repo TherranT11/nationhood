@@ -244,7 +244,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
-import { escapeHtml, tickToDate } from './js/utils.js';
+import { escapeHtml, escapeAttr, tickToDate } from './js/utils.js';
 import { deductAP, generateArticle, EVENT_TYPES, isGovernmentAutocracy } from './js/game-common.js';
 
 /* ══════════════════════════════════════════════════════
@@ -259,17 +259,6 @@ const PRIORITY = {
   DIPLOMACY: 6,
   GENERAL: 7,
   OPED: 8
-};
-
-const PRIORITY_LABELS = {
-  [PRIORITY.WAR]: { tag: 'War Declaration', cls: 'tag--crisis', size: 'hero' },
-  [PRIORITY.CRISIS]: { tag: 'Crisis Event', cls: 'tag--crisis', size: 'hero' },
-  [PRIORITY.GOVERNMENT]: { tag: 'Government', cls: 'tag--domestic', size: 'featured' },
-  [PRIORITY.LEGISLATION]: { tag: 'Legislation', cls: 'tag--domestic', size: 'standard' },
-  [PRIORITY.ECONOMY]: { tag: 'Economy', cls: 'tag--economy', size: 'standard' },
-  [PRIORITY.DIPLOMACY]: { tag: 'International', cls: 'tag--international', size: 'standard' },
-  [PRIORITY.GENERAL]: { tag: 'General', cls: 'tag--defence', size: 'brief' },
-  [PRIORITY.OPED]: { tag: 'Opinion', cls: 'tag--opinion', size: 'oped' }
 };
 
 /* ══════════════════════════════════════════════════════
@@ -298,6 +287,15 @@ function categoryToSection(category) {
 }
 
 /* ══════════════════════════════════════════════════════
+   SECTION → CSS CLASS MAPPING
+   ══════════════════════════════════════════════════════ */
+function sectionToCss(section) {
+  if (!section) return 'domestic';
+  const map = { politics: 'domestic', military: 'defence', diplomacy: 'international', society: 'domestic', economy: 'economy', defence: 'defence', international: 'international', opinion: 'opinion', crisis: 'crisis', sport: 'sport' };
+  return map[section] || 'domestic';
+}
+
+/* ══════════════════════════════════════════════════════
    STATE
    ══════════════════════════════════════════════════════ */
 let _state = null;
@@ -305,7 +303,6 @@ let _events = [];
 let _opeds = [];
 let _playerArticles = [];
 let _nationName = 'Valdoria';
-let _currentEdition = 'national';
 let _isAutocracyRuler = false;
 
 /* ══════════════════════════════════════════════════════
@@ -381,6 +378,7 @@ async function loadOpEds(nationId, shard) {
       .from('op_eds')
       .select('*, factions!author_faction_id(faction_name, abbreviation, party_color)')
       .eq('nation_id', nationId)
+      .eq('status', 'published')
       .order('created_at', { ascending: false })
       .limit(20);
     if (error) {
@@ -875,27 +873,30 @@ function buildArticles(events, campaignActions, nationNames, leaderMap) {
    ══════════════════════════════════════════════════════ */
 function renderNewspaper(nation, faction, shard, articles, opeds, parties, playerArticles) {
   playerArticles = playerArticles || [];
-  // Articles are pre-sorted by tick then tier from buildArticles()
-  const sorted = articles;
-
-  // Partition into layout slots using tier (hero from system articles only)
-  const heroArticle = sorted.find(a => a.tier <= 2) || sorted[0];
-  // Merge player articles into the story pool alongside system articles
-  const playerStories = playerArticles.map(a => playerArticleAsStory(a));
-  const remaining = [...sorted.filter(a => a !== heroArticle), ...playerStories];
-  remaining.sort((a, b) => (b._tick || b.tick || 0) - (a._tick || a.tick || 0));
-  const featuredArticles = remaining.slice(0, 6);
-  const briefArticles = remaining.slice(6, 14);
   const currentTick = shard?.current_tick || 0;
 
-  // Split op-eds: dispatches at very top, then featured, then regular
-  const dispatchOpeds = opeds.filter(o => o.is_official_dispatch);
-  const featuredOpeds = opeds.filter(o => o.is_front_page && !o.is_official_dispatch);
-  const regularOpeds = opeds.filter(o => !o.is_front_page && !o.is_official_dispatch);
+  // Convert op-eds and player articles to story-compatible objects
+  const playerStories = playerArticles.map(a => playerArticleAsStory(a));
+  const opedStories = opeds.map(o => opEdAsStory(o));
+
+  // Merge ALL content into one unified stream, sorted by tick then tier
+  const allContent = [...articles, ...playerStories, ...opedStories];
+  allContent.sort((a, b) => {
+    if ((b._tick || 0) !== (a._tick || 0)) return (b._tick || 0) - (a._tick || 0);
+    return (a.tier || 4) - (b.tier || 4);
+  });
+
+  // Partition: hero (highest priority), featured, briefs
+  const heroArticle = allContent.find(a => a.tier <= 2) || allContent[0];
+  const remaining = allContent.filter(a => a !== heroArticle);
+  const featuredArticles = remaining.slice(0, 6);
+  const briefArticles = remaining.slice(6, 14);
+  const sorted = articles; // keep reference for archive and sidebar
+
   const currentDate = shard?.current_date || tickToDate(currentTick);
 
   // Ticker items from headlines
-  const tickerItems = sorted.slice(0, 8).map(a => escapeHtml(a.headline || 'Event'));
+  const tickerItems = allContent.slice(0, 8).map(a => escapeHtml(a.headline || 'Event'));
 
   // Map Valdorian sections to tab sections for filtering
   const sectionToTab = (s) => {
@@ -971,7 +972,6 @@ ${heroArticle && heroArticle.tier <= 1 ? `
 <!-- MAIN CONTENT -->
 <div class="np-content">
   <main class="np-content__main">
-    ${dispatchOpeds.length > 0 ? dispatchOpeds.map(o => renderDispatchBanner(o)).join('') : ''}
     ${heroArticle ? renderHeroArticle(heroArticle) : renderNoEvents()}
     ${featuredArticles.length > 0 ? `
     <hr class="np-divider np-divider--heavy">
@@ -986,23 +986,13 @@ ${heroArticle && heroArticle.tier <= 1 ? `
       ${briefArticles.map(a => renderBrief(a)).join('')}
     </ul>
     ` : ''}
-    ${featuredOpeds.length > 0 ? `
-    <hr class="np-divider np-divider--heavy">
-    <div class="np-section-label">Featured Opinion</div>
-    ${featuredOpeds.map(o => renderOpEdCard(o)).join('')}
-    ` : ''}
-    ${regularOpeds.length > 0 ? `
-    <hr class="np-divider">
-    <div class="np-section-label">Op-Eds</div>
-    ${regularOpeds.map(o => renderOpEdCard(o)).join('')}
-    ` : ''}
     <hr class="np-divider">
     <div class="np-section-label">Previous Editions</div>
-    ${renderArchive(sorted, currentTick)}
+    ${renderArchive(allContent, currentTick)}
   </main>
 
   <aside class="np-content__sidebar">
-    ${renderSidebarBulletin(sorted)}
+    ${renderSidebarBulletin(allContent)}
     ${renderSidebarStats(nation)}
     ${renderSidebarElection(parties, shard)}
   </aside>
@@ -1020,7 +1010,7 @@ ${heroArticle && heroArticle.tier <= 1 ? `
     tab.addEventListener('click', () => {
       root.querySelectorAll('.np-nav-tabs__item').forEach(t => t.classList.remove('np-nav-tabs__item--active'));
       tab.classList.add('np-nav-tabs__item--active');
-      filterByTab(tab.dataset.tab, sorted, opeds, sectionToTab, playerArticles);
+      filterByTab(tab.dataset.tab, allContent, sectionToTab, currentTick);
     });
   });
 
@@ -1065,7 +1055,7 @@ function renderHeroArticle(article) {
     <article class="np-hero">
       <div class="np-hero__tags">
         ${article.tier <= 1 ? '<span class="np-tag np-tag--crisis">Breaking</span>' : ''}
-        <span class="np-tag np-tag--${section}" style="${article.section_color ? 'background:' + article.section_color + '22;color:' + article.section_color : ''}">${escapeHtml(sectionLabel)}</span>
+        <span class="np-tag np-tag--${sectionToCss(section)}" style="${article.section_color ? 'background:' + article.section_color + '22;color:' + article.section_color : ''}">${escapeHtml(sectionLabel)}</span>
         ${article.developing_story ? '<span class="np-tag" style="background:#ff980022;color:#ff9800;">Developing</span>' : ''}
       </div>
       <h2 class="np-hero__headline">${escapeHtml(headline)}</h2>
@@ -1086,48 +1076,20 @@ function renderHeroArticle(article) {
   `;
 }
 
-function renderImpactBox(effects) {
-  let parsed = effects;
-  if (typeof effects === 'string') {
-    try { parsed = JSON.parse(effects); } catch { return ''; }
-  }
-  if (!parsed || typeof parsed !== 'object') return '';
-
-  const entries = Object.entries(parsed);
-  if (entries.length === 0) return '';
-
-  return `
-    <div class="np-hero__impact">
-      <div class="np-hero__impact-title">Mechanical Impact — Your Nation</div>
-      <div class="np-impact-grid">
-        ${entries.map(([key, val]) => {
-          const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-          const num = parseFloat(val);
-          const cls = num < 0 ? 'np-impact-row__value--negative' : num > 0 ? 'np-impact-row__value--positive' : 'np-impact-row__value--neutral';
-          const arrow = num < 0 ? '&#9660;' : num > 0 ? '&#9650;' : '';
-          return `
-            <div class="np-impact-row">
-              <span class="np-impact-row__label">${escapeHtml(label)}</span>
-              <span class="np-impact-row__value ${cls}">${arrow} ${escapeHtml(String(val))}</span>
-            </div>`;
-        }).join('')}
-      </div>
-    </div>
-  `;
-}
-
 function renderStoryCard(article) {
   const section = article.section || 'domestic';
   const sectionLabel = article.section_label || section.charAt(0).toUpperCase() + section.slice(1);
   const headline = article.headline || 'News Update';
   const lede = article.lede || article._description || '';
   const dateline = article.nation || '';
-  const clickAttr = article._isPlayerArticle ? ` style="cursor:pointer;" onclick="window._openReader && window._openReader('article', '${article._playerArticleId}')"` : '';
+  let clickAttr = '';
+  if (article._isPlayerArticle) clickAttr = ` style="cursor:pointer;" onclick="window._openReader && window._openReader('article', '${escapeAttr(article._playerArticleId)}')"`;
+  else if (article._isOpEd) clickAttr = ` style="cursor:pointer;" onclick="window._openReader && window._openReader('oped', '${escapeAttr(article._opEdId)}')"`;
   return `
-    <article class="np-story-card"${clickAttr}>
-      ${article._imageUrl ? `<div style="height:140px;background:url('${escapeHtml(article._imageUrl)}') center/cover;border-radius:4px 4px 0 0;margin:-12px -14px 10px;"></div>` : ''}
+    <article class="np-story-card${article._isDispatch ? ' np-story-card--dispatch' : ''}"${clickAttr}>
+      ${article._imageUrl ? `<div style="height:140px;background:url('${encodeURI(article._imageUrl)}') center/cover;border-radius:4px 4px 0 0;margin:-12px -14px 10px;"></div>` : ''}
       <div class="np-story-card__tags">
-        <span class="np-tag np-tag--${section} np-tag--dot" style="${article.section_color ? 'background:' + article.section_color + '22;color:' + article.section_color : ''}">${escapeHtml(sectionLabel)}</span>
+        <span class="np-tag np-tag--${sectionToCss(section)} np-tag--dot" style="${article.section_color ? 'background:' + article.section_color + '22;color:' + article.section_color : ''}">${escapeHtml(sectionLabel)}</span>
       </div>
       <h3 class="np-story-card__headline">${escapeHtml(headline)}</h3>
       ${lede ? `<p class="np-story-card__lede">${escapeHtml(lede.substring(0, 180))}${lede.length > 180 ? '...' : ''}</p>` : ''}
@@ -1144,51 +1106,12 @@ function renderBrief(article) {
   return `
     <li class="np-brief">
       ${dateline ? '<span class="np-dateline">' + escapeHtml(dateline.toUpperCase()) + '</span> — ' : ''}${escapeHtml(text)}
-      <span class="np-tag np-tag--${section}">${escapeHtml(sectionLabel)}</span>
+      <span class="np-tag np-tag--${sectionToCss(section)}">${escapeHtml(sectionLabel)}</span>
     </li>
   `;
 }
 
-function renderOpEdCard(oped) {
-  if (oped.is_official_dispatch) return renderDispatchBanner(oped);
-  const factionName = oped.factions?.faction_name || 'Anonymous';
-  const abbr = oped.factions?.abbreviation || '?';
-  const isFront = oped.is_front_page;
-  const bodyText = oped.body || '';
-  const truncated = bodyText.length > 400 ? bodyText.substring(0, 400) + '...' : bodyText;
-  const opedId = oped.id || '';
-  return `
-    <div class="np-opinion-card ${isFront ? 'np-opinion-card--featured' : ''}" data-oped-id="${opedId}" style="cursor:pointer;" onclick="window._openReader && window._openReader('oped', '${opedId}')">
-      ${isFront ? '<div class="np-opinion-card__featured-badge">FEATURED</div>' : ''}
-      <div class="np-opinion-card__label">Opinion</div>
-      <h3 class="np-opinion-card__headline">${escapeHtml(oped.headline || 'Untitled')}</h3>
-      <p class="np-opinion-card__body">${escapeHtml(truncated).replace(/\n/g, '<br>')}</p>
-      <div class="np-opinion-card__author">— ${escapeHtml(factionName)} (${escapeHtml(abbr)})</div>
-      ${bodyText.length > 400 ? '<div class="np-opinion-card__readmore">Read full op-ed ›</div>' : ''}
-    </div>
-  `;
-}
-
-function renderDispatchBanner(oped) {
-  const bodyText = oped.body || '';
-  const truncated = bodyText.length > 300 ? bodyText.substring(0, 300) + '...' : bodyText;
-  const opedId = oped.id || '';
-  const authorName = oped.author_name || oped.factions?.faction_name || 'The Government';
-  return `
-    <div class="np-dispatch-banner" data-oped-id="${opedId}" style="cursor:pointer;" onclick="window._openReader && window._openReader('oped', '${opedId}')">
-      <div class="np-dispatch-banner__header">
-        <span class="np-dispatch-banner__icon">&#128220;</span>
-        <span class="np-dispatch-banner__label">OFFICIAL DISPATCH</span>
-      </div>
-      <h2 class="np-dispatch-banner__headline">${escapeHtml(oped.headline || 'Government Address')}</h2>
-      <p class="np-dispatch-banner__body">${escapeHtml(truncated).replace(/\n/g, '<br>')}</p>
-      <div class="np-dispatch-banner__author">— ${escapeHtml(authorName)}, Office of the Head of State</div>
-      ${bodyText.length > 300 ? '<div class="np-dispatch-banner__readmore">Read full dispatch ›</div>' : ''}
-    </div>
-  `;
-}
-
-// ── Convert player articles to story-card-compatible format ──
+// ── Convert player articles and op-eds to story-card-compatible format ──
 const _PLAYER_CAT_TO_SECTION = { politics: 'politics', sports: 'sport', weather: 'society', science: 'society', entertainment: 'society', economy: 'economy' };
 const _SECTION_COLORS = { politics: '#4A9EFF', economy: '#4ADE80', military: '#F87171', diplomacy: '#A78BFA', society: '#FBBF24', sport: '#2DD4BF' };
 const _STAFF_REPORTERS = {
@@ -1220,27 +1143,27 @@ function playerArticleAsStory(article) {
   };
 }
 
-function renderPlayerArticleCard(article) {
-  const factionName = article.factions?.faction_name || 'Anonymous';
-  const abbr = article.factions?.abbreviation || '?';
-  const color = article.factions?.party_color || '#666';
-  const cat = article.category || 'politics';
-  const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
-  const bodyText = article.body || '';
-  const truncated = bodyText.length > 200 ? bodyText.substring(0, 200) + '...' : bodyText;
-  const articleId = article.id || '';
-  const hasImage = article.image_url;
-  return `
-    <div class="np-player-article-card" data-article-id="${articleId}" onclick="window._openReader && window._openReader('article', '${articleId}')" style="cursor:pointer;">
-      ${hasImage ? `<div class="np-player-article-card__image" style="background-image:url('${escapeHtml(article.image_url)}')"></div>` : ''}
-      <div class="np-player-article-card__content">
-        <div class="np-player-article-card__category" style="color:${escapeHtml(color)}">${escapeHtml(catLabel)}</div>
-        <h3 class="np-player-article-card__headline">${escapeHtml(article.headline || 'Untitled')}</h3>
-        <p class="np-player-article-card__body">${escapeHtml(truncated).replace(/\n/g, '<br>')}</p>
-        <div class="np-player-article-card__author">By ${escapeHtml(factionName)} (${escapeHtml(abbr)})</div>
-      </div>
-    </div>
-  `;
+function opEdAsStory(oped) {
+  const isDispatch = oped.is_official_dispatch;
+  const factionName = oped.factions?.faction_name || 'Anonymous';
+  const abbr = oped.factions?.abbreviation || '?';
+  const bodyText = oped.body || '';
+  return {
+    headline: oped.headline || 'Untitled',
+    section: 'opinion',
+    section_color: isDispatch ? '#b8860b' : '#94A3B8',
+    section_label: isDispatch ? 'Official Dispatch' : 'Opinion',
+    lede: bodyText.substring(0, 200) + (bodyText.length > 200 ? '...' : ''),
+    _tick: oped.published_tick || oped.publish_tick || 0,
+    tick: oped.published_tick || oped.publish_tick || 0,
+    tier: isDispatch ? 2 : 3,
+    _isOpEd: true,
+    _opEdId: oped.id || '',
+    _isDispatch: isDispatch,
+    _reporterName: isDispatch ? (oped.author_name || factionName) : factionName + ' (' + abbr + ')',
+    _isFrontPage: oped.is_front_page,
+    nation: '',
+  };
 }
 
 function renderArchive(articles, currentTick) {
@@ -1290,7 +1213,7 @@ function renderSidebarBulletin(articles) {
         return `
           <div class="np-bulletin-item">
             <div class="np-bulletin-item__tags">
-              <span class="np-tag np-tag--${section} np-tag--dot">${escapeHtml(sectionLabel)}</span>
+              <span class="np-tag np-tag--${sectionToCss(section)} np-tag--dot">${escapeHtml(sectionLabel)}</span>
             </div>
             <h4 class="np-bulletin-item__headline">${escapeHtml(a.headline || 'Event')}</h4>
             <div class="np-bulletin-item__time">${a.nation ? '<span class="np-dateline">' + escapeHtml(a.nation) + '</span> · ' : ''}Tick ${a._tick || a.tick || '?'}</div>
@@ -1306,7 +1229,7 @@ function renderSidebarStats(nation) {
   const stats = [
     { label: 'Population', value: nation.population ? Number(nation.population).toLocaleString() : '—', arrow: '' },
     { label: 'GDP Growth', value: nation.gdp_growth != null ? nation.gdp_growth + '%' : '—', arrow: nation.gdp_growth > 0 ? 'up' : nation.gdp_growth < 0 ? 'down' : '' },
-    { label: 'Unemployment', value: nation.unemployment != null ? nation.unemployment + '%' : '—', arrow: 'down' },
+    { label: 'Unemployment', value: nation.unemployment != null ? nation.unemployment + '%' : '—', arrow: nation.unemployment > 10 ? 'down' : '' },
     { label: 'Stability', value: nation.stability != null ? String(nation.stability) : '—', arrow: nation.stability < 50 ? 'down' : '' },
   ];
 
@@ -1338,7 +1261,7 @@ function renderSidebarElection(parties, shard) {
       <div class="np-sidebar-section__title">Parliament Standings</div>
       ${sorted.map(p => {
         const pct = totalSeats > 0 ? ((p.seats || 0) / totalSeats * 100).toFixed(1) : '0.0';
-        const color = p.party_color || '#666';
+        const color = (p.party_color || '#666').replace(/[^a-zA-Z0-9#(),.\s%]/g, '');
         return `
           <div class="np-poll-bar-group">
             <div class="np-poll-bar__header">
@@ -1358,38 +1281,28 @@ function renderSidebarElection(parties, shard) {
 /* ══════════════════════════════════════════════════════
    TAB FILTERING
    ══════════════════════════════════════════════════════ */
-function filterByTab(tab, articles, opeds, sectionToTab, playerArticles) {
-  playerArticles = playerArticles || [];
+function filterByTab(tab, allContent, sectionToTab, currentTick) {
   const main = document.querySelector('.np-content__main');
   if (!main) return;
 
-  if (tab === 'opinion') {
-    main.innerHTML = `
-      <div class="np-section-label">Op-Eds & Opinion</div>
-      ${opeds.length > 0 ? opeds.map(o => renderOpEdCard(o)).join('') :
-        '<div style="font-family:var(--np-font-ui);font-size:14px;color:var(--np-text-muted);padding:40px 0;text-align:center;">No op-eds published yet. Be the first to write one!</div>'}
-    `;
-    return;
-  }
-
-  // Merge player articles (converted to story format) with system articles
-  const playerStories = playerArticles.map(a => playerArticleAsStory(a));
-  let allArticles = [...articles, ...playerStories];
+  // Filter by tab (front page shows everything)
+  let filtered = allContent;
   if (tab !== 'front' && sectionToTab) {
-    allArticles = allArticles.filter(a => sectionToTab(a.section) === tab);
+    filtered = allContent.filter(a => sectionToTab(a.section) === tab);
   }
 
-  const hero = allArticles[0];
-  const rest = allArticles.slice(1, 7);
-  const briefs = allArticles.slice(7, 15);
+  const hero = filtered.find(a => a.tier <= 2) || filtered[0];
+  const rest = filtered.filter(a => a !== hero);
+  const featured = rest.slice(0, 6);
+  const briefs = rest.slice(6, 15);
 
   main.innerHTML = `
     ${hero ? renderHeroArticle(hero) : renderNoEvents()}
-    ${rest.length > 0 ? `
+    ${featured.length > 0 ? `
     <hr class="np-divider np-divider--heavy">
     <div class="np-section-label">More Stories</div>
     <div class="np-stories-grid">
-      ${rest.map(a => renderStoryCard(a)).join('')}
+      ${featured.map(a => renderStoryCard(a)).join('')}
     </div>` : ''}
     ${briefs.length > 0 ? `
     <hr class="np-divider">
@@ -1397,6 +1310,10 @@ function filterByTab(tab, articles, opeds, sectionToTab, playerArticles) {
     <ul class="np-briefs-list">
       ${briefs.map(a => renderBrief(a)).join('')}
     </ul>` : ''}
+    ${tab === 'front' ? `
+    <hr class="np-divider">
+    <div class="np-section-label">Previous Editions</div>
+    ${renderArchive(allContent, currentTick)}` : ''}
   `;
 }
 
@@ -1470,11 +1387,11 @@ function setupOpEdModal(faction, nation, shard) {
     // Update live preview
     previewContent.innerHTML = `
       <div class="np-opinion-card" style="margin:0;border:none;background:transparent;padding:0;">
-        <div class="np-opinion-card__label">Opinion</div>
+        <div class="np-opinion-card__label">${isDispatch ? 'Official Dispatch' : 'Opinion'}</div>
         <h3 class="np-opinion-card__headline">${escapeHtml(h || 'Your headline will appear here...')}</h3>
-        <p class="np-opinion-card__body"${!b ? ' style="color:var(--np-text-light);font-style:italic;"' : ''}>${escapeHtml(b || 'Start writing to see how your op-ed will look in The Cruceran.')}</p>
-        ${wc >= 1000 ? '<div class="np-article-reward-earned">+2 AP will be awarded next tick</div>' : wc >= 800 ? `<div class="np-article-reward-progress">${1000 - wc} more words for +2 AP reward</div>` : ''}
-        <div class="np-opinion-card__author">— ${escapeHtml(faction.faction_name || 'Your Party')} (${escapeHtml(faction.abbreviation || '?')})</div>
+        <p class="np-opinion-card__body"${!b ? ' style="color:var(--np-text-light);font-style:italic;"' : ''}>${escapeHtml(b || (isDispatch ? 'Start writing to see how your dispatch will look.' : 'Start writing to see how your op-ed will look in The Cruceran.'))}</p>
+        ${!isDispatch ? (wc >= 1000 ? '<div class="np-article-reward-earned">+2 AP will be awarded next tick</div>' : wc >= 800 ? `<div class="np-article-reward-progress">${1000 - wc} more words for +2 AP reward</div>` : '') : ''}
+        <div class="np-opinion-card__author">— ${escapeHtml(faction.faction_name || 'Your Party')}${isDispatch ? ', Office of the Head of State' : ' (' + escapeHtml(faction.abbreviation || '?') + ')'}</div>
       </div>
     `;
   }
@@ -1493,11 +1410,14 @@ function setupOpEdModal(faction, nation, shard) {
     document.body.style.overflow = '';
     errorEl.textContent = '';
     errorEl.classList.remove('np-oped-editor__error--visible');
+    submitBtn.disabled = false;
+    submitText.textContent = isDispatch ? 'Issue Dispatch' : 'Submit to Editor';
   }
 
   cancelBtn.addEventListener('click', closeModal);
   closeBtn.addEventListener('click', closeModal);
   modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modal.classList.contains('np-oped-overlay--open')) closeModal(); });
 
   // Expose openModal for the Write Op-Ed button (re-bound after each render)
   window._openOpEdModal = openModal;
@@ -1556,7 +1476,7 @@ function setupOpEdModal(faction, nation, shard) {
     }
 
     // Insert op-ed (supports both old and new schema via fallback)
-    const leaderName = faction.leader_name || faction.faction_name || 'Anonymous';
+    const leaderName = (faction.leader_first_name && faction.leader_last_name) ? faction.leader_first_name + ' ' + faction.leader_last_name : (faction.faction_name || 'Anonymous');
     const nextTick = currentTick + 1;
 
     // Reward AP for long op-eds: +2 AP next tick if 1000+ words (not for dispatch)
@@ -1584,11 +1504,15 @@ function setupOpEdModal(faction, nation, shard) {
       const { error: err2 } = await _supabase.from('op_eds').insert([{
         nation_id: nation.id,
         faction_id: faction.id,
+        author_name: leaderName,
         headline: h,
         body: b,
         topic: isDispatch ? 'domestic' : t,
+        status: 'published',
+        is_front_page: isFrontPage,
         is_official_dispatch: isDispatch || false,
         publish_tick: nextTick,
+        reward_ap: opedRewardAp,
         created_at: new Date().toISOString()
       }]);
       insertError = err2;
@@ -1606,9 +1530,11 @@ function setupOpEdModal(faction, nation, shard) {
       return;
     }
 
-    // Dispatch: +1 stability and log to campaign_actions
+    // Dispatch: +1 stability (re-fetch current value to avoid stale overwrites)
     if (isDispatch) {
-      const newStability = Math.min(100, (nation.stability || 50) + 1);
+      const { data: freshNation } = await _supabase.from('nations').select('stability').eq('id', nation.id).single();
+      const currentStability = freshNation?.stability ?? nation.stability ?? 50;
+      const newStability = Math.min(100, currentStability + 1);
       await _supabase.from('nations').update({ stability: newStability }).eq('id', nation.id);
       nation.stability = newStability;
 
@@ -1750,11 +1676,14 @@ function setupArticleModal(faction, nation, shard) {
     document.body.style.overflow = '';
     errorEl.textContent = '';
     errorEl.classList.remove('np-oped-editor__error--visible');
+    submitBtn.disabled = false;
+    submitText.textContent = 'Submit Article';
   }
 
   cancelBtn.addEventListener('click', closeModal);
   closeBtn.addEventListener('click', closeModal);
   modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modal.classList.contains('np-oped-overlay--open')) closeModal(); });
   window._openArticleModal = openModal;
 
   submitBtn.addEventListener('click', async () => {
@@ -1797,7 +1726,7 @@ function setupArticleModal(faction, nation, shard) {
       }
     }
 
-    const leaderName = faction.leader_name || faction.faction_name || 'Anonymous';
+    const leaderName = (faction.leader_first_name && faction.leader_last_name) ? faction.leader_first_name + ' ' + faction.leader_last_name : (faction.faction_name || 'Anonymous');
     const nextTick = (shard?.current_tick || 0) + 1;
 
     const { error } = await _supabase.from('player_articles').insert([{
@@ -1865,6 +1794,7 @@ function setupReaderOverlay() {
 
   closeBtn.addEventListener('click', closeReader);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeReader(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.classList.contains('np-reader-overlay--open')) closeReader(); });
 
   window._openReader = function(type, id) {
     let html = '';
@@ -1902,7 +1832,7 @@ function setupReaderOverlay() {
           <h1 class="np-reader__headline">${escapeHtml(article.headline || 'Untitled')}</h1>
           <div class="np-reader__byline">${escapeHtml(reporter)}, ${escapeHtml(catLabel)} Correspondent</div>
           <hr class="np-reader__rule">
-          ${article.image_url ? `<div class="np-reader__image"><img src="${escapeHtml(article.image_url)}" alt="Article image"></div>` : ''}
+          ${article.image_url ? `<div class="np-reader__image"><img src="${escapeAttr(article.image_url)}" alt="Article image"></div>` : ''}
           <div class="np-reader__body">${escapeHtml(article.body || '').replace(/\n/g, '<br>')}</div>
         </div>
       `;

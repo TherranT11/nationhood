@@ -114,6 +114,89 @@ const GAME_CONFIG = {
     IMPEACHMENT_INCOMPETENCE_THRESHOLD: 25,   // gov_approval <= this for incompetence charge
     IMPEACHMENT_INCOMPETENCE_TICKS: 6,        // consecutive ticks below threshold
     IMPEACHMENT_VETO_ABUSE_COUNT: 2,          // vetoed bills with >66% support
+
+    // ── Autocracy v2 Faction Actions ──
+    PLEDGE_ALLEGIANCE_AP: 2,
+    PLEDGE_ALLEGIANCE_LOYALTY: 8,
+    PLEDGE_ALLEGIANCE_STANDING: -2,
+    PLEDGE_ALLEGIANCE_COMPLY_LOYALTY: 13,     // when under Demand Loyalty order
+    PLEDGE_ALLEGIANCE_COMPLY_STANDING: -3,
+    PLEDGE_ALLEGIANCE_STANDING_FLOOR: 5,      // standing cannot drop below this from pledging
+
+    CONSOLIDATE_POWER_AP: 2,
+    CONSOLIDATE_POWER_STANDING: 6,
+    CONSOLIDATE_POWER_LOYALTY: -3,
+
+    DEMONSTRATE_COMPETENCE_AP: 3,
+    DEMONSTRATE_COMPETENCE_STANDING: 4,
+    DEMONSTRATE_COMPETENCE_LOYALTY: 3,
+    DEMONSTRATE_COMPETENCE_COST: 2,           // $2M from embezzled funds
+    DEMONSTRATE_COMPETENCE_NATION_STAT: 0.3,
+    DEMONSTRATE_COMPETENCE_REDUCED_STANDING: 2, // when can't afford cost
+
+    EMBEZZLE_FUNDS_AP: 1,
+    EMBEZZLE_FUNDS_LOYALTY: -5,
+    EMBEZZLE_FUNDS_BASE_INCOME: 5,            // $5M base
+    EMBEZZLE_FUNDS_INCOME_FLOOR: 3,           // $3M minimum
+    EMBEZZLE_FUNDS_BASE_DETECTION: 0.10,      // 10% base
+    EMBEZZLE_FUNDS_CONSECUTIVE_BONUS: 0.05,   // +5% per consecutive tick
+    EMBEZZLE_FUNDS_DETECTION_FLOOR: 0.03,     // 3% minimum
+    EMBEZZLE_FUNDS_DETECTION_CAP: 0.50,       // 50% maximum
+    EMBEZZLE_FUNDS_DETECTED_LOYALTY: -15,
+    EMBEZZLE_FUNDS_DETECTED_STANDING: -10,
+    EMBEZZLE_FUNDS_DETECTED_FUNDS_SEIZURE: 0.30, // 30% seized
+
+    BUY_INFLUENCE_AP: 3,
+    BUY_INFLUENCE_STANDING: -1,
+    BUY_INFLUENCE_BASE_COST: 3,               // $3M per seat base
+    BUY_INFLUENCE_UNALIGNED_COST: 2,          // $2M per seat from unaligned pool
+    BUY_INFLUENCE_VULNERABILITY_DISCOUNT: 0.20, // 20% cheaper vs demonstrating faction
+
+    INTIMIDATE_AP: 2,
+    INTIMIDATE_COST: 1,                        // $1M flat
+    INTIMIDATE_LOYALTY: -4,
+    INTIMIDATE_STANDING: 2,
+    INTIMIDATE_STABILITY: -0.2,
+    INTIMIDATE_BASE_EFFECTIVENESS: 4,
+    INTIMIDATE_MIN_SEATS: 5,
+    INTIMIDATE_VULNERABILITY_BONUS: 0.25,      // 25% more effective vs demonstrating
+    INTIMIDATE_FAIL_STANDING: -3,
+    INTIMIDATE_REPORT_LOYALTY: -8,
+    INTIMIDATE_REPORT_STANDING: -3,
+    INTIMIDATE_REPORTER_LOYALTY: 3,
+    INTIMIDATE_RETALIATE_COST: 1,              // $1M
+    INTIMIDATE_RETALIATE_STANDING: -2,
+    INTIMIDATE_RETALIATE_SEATS: -2,
+    INTIMIDATE_RETALIATOR_LOYALTY: -2,
+
+    PURGE_AP: 3,
+    PURGE_LOYALTY_THRESHOLD: 20,
+    PURGE_TARGET_STANDING: -20,
+    PURGE_TARGET_SEAT_LOSS: 0.30,             // 30% lost
+    PURGE_TARGET_NEW_LOYALTY: 50,
+    PURGE_OTHERS_LOYALTY: 5,
+    PURGE_REGIME_HEALTH: -3,
+    PURGE_STABILITY: -1,
+    PURGE_COUP_LOCKOUT_TICKS: 6,
+
+    REDISTRIBUTE_SEATS_AP: 2,
+    REDISTRIBUTE_SEATS_COOLDOWN: 4,
+    REDISTRIBUTE_SEATS_MAX_RATIO: 0.30,       // max 30% of loser's seats
+    REDISTRIBUTE_SEATS_LOSER_STANDING: -3,
+    REDISTRIBUTE_SEATS_LOSER_LOYALTY: -5,
+    REDISTRIBUTE_SEATS_GAINER_LOYALTY: 5,
+
+    COUP_MIN_STANDING: 15,
+    COUP_MIN_SEAT_RATIO: 0.10,               // 10% of legislature
+    COUP_FUNDS_THRESHOLD: 30,                  // $30M
+    COUP_LOCKOUT_TICKS: 6,
+
+    STANDING_CAP: 90,
+    LOYALTY_CAP: 95,
+    STANDING_RELEVANCE_DECAY_TICKS: 3,
+    UNALIGNED_POOL_REGEN_TICKS: 4,            // +1 seat per 4 ticks
+    UNALIGNED_POOL_MAX_RATIO: 0.10,           // max 10% of legislature
+    NEW_FACTION_MIN_SEATS: 8,
 };
 /**
  * Update GAME_CONFIG with nation-specific seat values.
@@ -570,12 +653,12 @@ function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var diplomaticBonus = relScore * 0.3;
 
     // Bilateral trade agreement: type-specific affinity boost
-    // FTA (free trade) > RSC (supply contract) > PTA (sector-specific, applied during distribution)
+    // FTA (free trade) > RSC (supply contract) > PTA (partial reduction)
     var tradeBonus = 0;
     if (opts) {
         if (opts.has_fta) tradeBonus = 25;
         else if (opts.has_rsc) tradeBonus = 20;
-        // PTA bonus is now applied per-sector during trade distribution, not here
+        else if (opts.has_pta) tradeBonus = 15;
         else if (opts.has_trade_agreement) tradeBonus = 20;
     }
 
@@ -642,7 +725,7 @@ function distributeTradeAmongPartners(exportCapacity, importers) {
             results.push({ importer_nation_id: weighted[i].nation_id, volume: Math.round(weighted[i].demand) });
             remaining -= weighted[i].demand;
         } else {
-            uncapped.push({ idx: results.length, nation_id: weighted[i].nation_id, demand: weighted[i].demand, weight: weighted[i].weight });
+            uncapped.push({ idx: results.length, nation_id: weighted[i].nation_id, demand: weighted[i].demand, weight: weighted[i].weight, share: share });
             uncappedWeight += weighted[i].weight;
             results.push({ importer_nation_id: weighted[i].nation_id, volume: 0 }); // placeholder
         }
@@ -861,18 +944,16 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
-    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, Export Subsidy) ──
+    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC) ──
     var { data: activeTradeAgreements } = await supabase.from('trade_agreements')
         .select('id, nation_a_id, nation_b_id, agreement_type, articles')
         .eq('status', 'active')
-        .in('agreement_type', ['fta', 'pta', 'resource_supply', 'export_subsidy']);
+        .in('agreement_type', ['fta', 'pta', 'resource_supply']);
 
     // Set type-specific affinity flags from trade_agreements
     // Build tariff modifier map: tariffModMap[importerId|exporterId][sector] = reduction fraction (0-1)
     var tariffModMap = {};
     var activeRSCs = [];
-    // Export subsidy map: subsidyMap[nationId][sector] = subsidy_pct (5-30)
-    var subsidyMap = {};
 
     if (activeTradeAgreements) {
         for (var ti = 0; ti < activeTradeAgreements.length; ti++) {
@@ -935,21 +1016,6 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 flagsMap[k1].has_rsc = true;
                 flagsMap[k2].has_rsc = true;
                 activeRSCs.push(ta);
-            } else if (ta.agreement_type === 'export_subsidy') {
-                // Unilateral: the subsidizing nation is identified from the article's author_nation_id,
-                // falling back to nation_a_id for legacy agreements without it
-                var esArts = ta.articles || [];
-                for (var ai = 0; ai < esArts.length; ai++) {
-                    if (esArts[ai].type !== 'subsidized_sector') continue;
-                    var esData = esArts[ai].data;
-                    if (!esData || !esData.sector || !esData.subsidy_pct) continue;
-                    var subsidizer = esData.author_nation_id || ta.nation_a_id;
-                    if (!subsidyMap[subsidizer]) subsidyMap[subsidizer] = {};
-                    // Clamp to valid range (5-30%) and take the highest if multiple agreements
-                    var clampedPct = Math.min(30, Math.max(5, esData.subsidy_pct));
-                    var existing = subsidyMap[subsidizer][esData.sector] || 0;
-                    subsidyMap[subsidizer][esData.sector] = Math.max(existing, clampedPct);
-                }
             }
         }
     }
@@ -1001,7 +1067,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 buyerNationId = otherNationId;
             }
 
-            // Calculate guaranteed volume from buyer's import demand
+            // Calculate guaranteed volume from seller's export capacity
             var sellerFlows = nationFlows[sellerNationId];
             var buyerFlows = nationFlows[buyerNationId];
             if (!sellerFlows || !buyerFlows) continue;
@@ -1010,28 +1076,26 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             var buyerDemand = (buyerFlows[supplyArt.sector] && buyerFlows[supplyArt.sector].importDemand) || 0;
             if (sellerExport <= 0 || buyerDemand <= 0) continue;
 
-            // Commitment % applies to buyer's import demand, capped by seller's export capacity
-            var guaranteedVolume = Math.round(buyerDemand * (supplyArt.commitment_pct / 100));
-            guaranteedVolume = Math.min(guaranteedVolume, sellerExport);
-            if (guaranteedVolume <= 0) continue;
+            var guaranteedVolume = Math.round(sellerExport * (supplyArt.commitment_pct / 100));
+            guaranteedVolume = Math.min(guaranteedVolume, buyerDemand);
 
-            // Calculate RSC price modifier from price_terms article
-            // This affects the trade VALUE (tariff revenue, GDP impact) — not volume
+            // Apply price modifier based on price_terms article
             var sectorPriceMod = priceModifiers[supplyArt.sector] || 1.0;
-            var rscValueMod = sectorPriceMod; // default: market price
+            var rscPriceMod = sectorPriceMod;
             if (priceArt) {
-                if (priceArt.price_type === 'fixed') rscValueMod = 1.0;
-                else if (priceArt.price_type === 'discounted') rscValueMod = sectorPriceMod * (1 - (priceArt.modifier_pct || 0) / 100);
-                else if (priceArt.price_type === 'premium') rscValueMod = sectorPriceMod * (1 + (priceArt.modifier_pct || 0) / 100);
+                if (priceArt.price_type === 'fixed') rscPriceMod = 1.0;
+                else if (priceArt.price_type === 'discounted') rscPriceMod = sectorPriceMod * (1 - (priceArt.modifier_pct || 0) / 100);
+                else if (priceArt.price_type === 'premium') rscPriceMod = sectorPriceMod * (1 + (priceArt.modifier_pct || 0) / 100);
             }
+
+            var adjustedVolume = Math.round(guaranteedVolume * rscPriceMod);
+            if (adjustedVolume <= 0) continue;
 
             rscPreAllocations.push({
                 sellerNationId: sellerNationId,
                 buyerNationId: buyerNationId,
                 sector: supplyArt.sector,
-                volume: guaranteedVolume,
-                valueMod: rscValueMod,
-                commitmentPct: supplyArt.commitment_pct,
+                volume: adjustedVolume,
                 agreementId: rsc.id
             });
         }
@@ -1051,9 +1115,6 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     }
 
     var partnerRows = [];
-    // RSC value modifier map: rscValueModMap[buyerNationId|exporterNationId|sector] = valueMod
-    // Used during tariff revenue calculation to adjust effective trade value for RSC price terms
-    var rscValueModMap = {};
 
     // Pre-allocate RSC guaranteed volumes before normal distribution
     for (var ri = 0; ri < rscPreAllocations.length; ri++) {
@@ -1061,10 +1122,6 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         if (actualExports[rscAlloc.sellerNationId] && actualImports[rscAlloc.buyerNationId]) {
             actualExports[rscAlloc.sellerNationId][rscAlloc.sector] += rscAlloc.volume;
             actualImports[rscAlloc.buyerNationId][rscAlloc.sector] += rscAlloc.volume;
-
-            // Store RSC value modifier for tariff revenue calculation
-            var rscValKey = rscAlloc.buyerNationId + '|' + rscAlloc.sellerNationId + '|' + rscAlloc.sector;
-            rscValueModMap[rscValKey] = rscAlloc.valueMod;
 
             partnerRows.push({
                 tick: currentTick,
@@ -1079,7 +1136,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
     for (var si = 0; si < sectors.length; si++) {
         var sector = sectors[si];
-        var priceMod = priceModifiers[sector.key] || 1.0;
+        var priceMod = priceModifiers[sector.key];
 
         for (var ei = 0; ei < nationCount; ei++) {
             var exporter = nationList[ei];
@@ -1090,15 +1147,8 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             var remainingExpCap = expCap - (actualExports[exporter.id][sector.key] || 0);
             if (remainingExpCap <= 0) continue;
 
-            // Apply export subsidy: subsidized exports are cheaper → effectively increases capacity
-            // A 20% subsidy means goods are 20% cheaper → 20% more volume can be sold
-            var esBoost = 1.0;
-            if (subsidyMap[exporter.id] && subsidyMap[exporter.id][sector.key]) {
-                esBoost = 1.0 + (subsidyMap[exporter.id][sector.key] / 100);
-            }
-
-            // Apply price modifier to remaining export capacity (subsidy offsets high prices)
-            var adjustedCapacity = Math.round(remainingExpCap * priceMod * esBoost);
+            // Apply price modifier to remaining export capacity
+            var adjustedCapacity = Math.round(remainingExpCap * priceMod);
 
             // Build importer list for this exporter (everyone else with demand > 0)
             var importerList = [];
@@ -1122,22 +1172,6 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 if (remainingDemand <= 0) continue;
 
                 var aff = affinityMap[exporter.id + '|' + importer.id] || 0;
-
-                // Sector-specific PTA bonus: if this importer has a PTA tariff reduction
-                // for this specific sector with this exporter, boost affinity for this sector
-                // This replaces the flat +15 PTA bonus with a targeted per-sector effect
-                var ptaTariffKey = importer.id + '|' + exporter.id;
-                if (tariffModMap[ptaTariffKey] && tariffModMap[ptaTariffKey][sector.key]) {
-                    var ptaReduction = tariffModMap[ptaTariffKey][sector.key];
-                    // Scale bonus by reduction amount: 100% reduction → +15, 50% → +7.5
-                    // Only apply if this pair has a PTA (not FTA, which already gets +25)
-                    var pairFlags2 = flagsMap[exporter.id + '|' + importer.id];
-                    if (pairFlags2 && pairFlags2.has_pta && !pairFlags2.has_fta) {
-                        aff += Math.round(ptaReduction * 15);
-                        aff = Math.min(aff, 100);
-                    }
-                }
-
                 if (aff <= 0) continue;
 
                 importerList.push({
@@ -1228,13 +1262,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             if (tariffModMap[modKey] && tariffModMap[modKey][pr.sector] !== undefined) {
                 effectiveRate = baseTariffRate * (1 - tariffModMap[modKey][pr.sector]);
             }
-            // Apply RSC price terms: discounted RSC trade has lower effective value
-            var tradeValue = pr.trade_volume;
-            var rscValKey = n.id + '|' + pr.exporter_nation_id + '|' + pr.sector;
-            if (rscValueModMap[rscValKey] !== undefined) {
-                tradeValue = pr.trade_volume * rscValueModMap[rscValKey];
-            }
-            tariffRev += tradeValue * effectiveRate * collectionRate;
+            tariffRev += pr.trade_volume * effectiveRate * collectionRate;
         }
         tariffRev = Math.round(tariffRev);
 
@@ -1302,107 +1330,6 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         await supabase.from('nations')
             .update(nationUpdates)
             .eq('id', n.id);
-    }
-
-    // ── Step 6b: RSC breach detection ──
-    // Check if RSC commitments were met. A breach occurs when the actual bilateral
-    // trade volume for the RSC sector falls significantly short of the guaranteed amount.
-    // Threshold: if actual < 80% of committed, it's a breach.
-    if (rscPreAllocations.length > 0) {
-        for (var ri = 0; ri < rscPreAllocations.length; ri++) {
-            var rscAlloc = rscPreAllocations[ri];
-            // Find actual bilateral volume for this seller→buyer in this sector
-            var actualBilateral = 0;
-            for (var pi = 0; pi < partnerRows.length; pi++) {
-                var pr = partnerRows[pi];
-                if (pr.exporter_nation_id === rscAlloc.sellerNationId &&
-                    pr.importer_nation_id === rscAlloc.buyerNationId &&
-                    pr.sector === rscAlloc.sector) {
-                    actualBilateral += pr.trade_volume;
-                }
-            }
-
-            var shortfall = rscAlloc.volume - actualBilateral;
-            // Breach threshold: must deliver at least 80% of committed volume
-            if (shortfall > rscAlloc.volume * 0.2) {
-                // Find the original RSC agreement to check for breach_penalty article
-                var breachRsc = null;
-                for (var bi = 0; bi < activeRSCs.length; bi++) {
-                    if (activeRSCs[bi].id === rscAlloc.agreementId) {
-                        breachRsc = activeRSCs[bi];
-                        break;
-                    }
-                }
-                if (!breachRsc) continue;
-
-                var breachArts = breachRsc.articles || [];
-                var breachPenalty = null;
-                for (var ai = 0; ai < breachArts.length; ai++) {
-                    if (breachArts[ai].type === 'breach_penalty') {
-                        breachPenalty = breachArts[ai].data;
-                        break;
-                    }
-                }
-
-                // Determine who breached: seller at fault if their capacity dropped below
-                // commitment level; buyer at fault if seller had capacity but trade didn't flow
-                var sellerCapacity = nationFlows[rscAlloc.sellerNationId] &&
-                    nationFlows[rscAlloc.sellerNationId][rscAlloc.sector] ?
-                    nationFlows[rscAlloc.sellerNationId][rscAlloc.sector].exportCapacity : 0;
-                var sellerAtFault = sellerCapacity < rscAlloc.volume;
-
-                var breacherNationId = sellerAtFault ? rscAlloc.sellerNationId : rscAlloc.buyerNationId;
-                var victimNationId = sellerAtFault ? rscAlloc.buyerNationId : rscAlloc.sellerNationId;
-
-                // Apply penalties from breach_penalty article, or generic defaults
-                var relPenalty = breachPenalty ? (breachPenalty.relations_penalty || 3) : 3;
-                var repPenalty = breachPenalty ? (breachPenalty.reputation_penalty || 1) : 1;
-
-                // Update bilateral relations
-                var relPairKey = rscAlloc.sellerNationId < rscAlloc.buyerNationId
-                    ? rscAlloc.sellerNationId + '|' + rscAlloc.buyerNationId
-                    : rscAlloc.buyerNationId + '|' + rscAlloc.sellerNationId;
-                var relRow = relMap[relPairKey];
-                if (relRow) {
-                    var newScore = Math.max(-100, (Number(relRow.relation_score) || 0) - relPenalty);
-                    await supabase.from('diplomatic_relations')
-                        .update({ relation_score: newScore })
-                        .eq('nation_a_id', relRow.nation_a_id)
-                        .eq('nation_b_id', relRow.nation_b_id);
-                }
-
-                // Apply reputation penalty to breacher
-                var breacherNation = null;
-                for (var ni = 0; ni < nationCount; ni++) {
-                    if (nationList[ni].id === breacherNationId) { breacherNation = nationList[ni]; break; }
-                }
-                if (breacherNation && repPenalty > 0) {
-                    var currentRep = Number(breacherNation.international_reputation) || 50;
-                    await supabase.from('nations')
-                        .update({ international_reputation: Math.max(0, currentRep - repPenalty) })
-                        .eq('id', breacherNationId);
-                }
-
-                // Log breach event
-                console.log('[processTradeFlows] RSC breach detected: agreement ' + rscAlloc.agreementId +
-                    ', sector ' + rscAlloc.sector + ', committed ' + rscAlloc.volume +
-                    ', actual ' + actualBilateral + ', breacher: ' + breacherNationId);
-
-                // Fire headline events for both nations
-                await supabase.rpc('insert_headline', {
-                    p_nation_id: breacherNationId,
-                    p_trigger_key: 'trade_agreement',
-                    p_tick: currentTick,
-                    p_data: { subtype: 'rsc_breach', role: 'breacher', partner_id: victimNationId, sector: rscAlloc.sector }
-                }).catch(function() {});
-                await supabase.rpc('insert_headline', {
-                    p_nation_id: victimNationId,
-                    p_trigger_key: 'trade_agreement',
-                    p_tick: currentTick,
-                    p_data: { subtype: 'rsc_breach', role: 'victim', partner_id: breacherNationId, sector: rscAlloc.sector }
-                }).catch(function() {});
-            }
-        }
     }
 
     // ── Step 7: Write to database ──
@@ -1996,7 +1923,7 @@ const INVERTED_STATS = [
     'pollution', 'carbon_emissions', 'crime_rate', 'incarceration_rate',
     'drug_use', 'corruption', 'polarization', 'civil_unrest', 'terrorism',
     'political_violence', 'emigration', 'sanctions', 'debt', 'debt_growth',
-    'inflation', 'illegal_immigration', 'fuel_prices'
+    'inflation', 'interest_rates', 'illegal_immigration', 'fuel_prices'
 ];
 
 // Stats stored as raw numbers (not 0-100 indices).
@@ -3251,8 +3178,8 @@ function computeMinistryInstitutionCost(institutions, fiscalCategory, nation) {
 function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions, aidData) {
     const budget = calculateNationalBudget(nation);
     applyTradeTariffOverride(budget, tradeTariffRevenue);
-    const inflationStat = Number(nation.inflation || 50);
-    const inflationPct = (inflationStat - 50) / 2;
+    const inflationStat = Number(nation.inflation || 0);
+    const inflationPct = Math.pow(Math.max(0, inflationStat), 1.5) / 100;
     const reserves = Number(nation.budget_reserves || 0);
 
     // Foreign aid: received adds to revenue, given is a mandatory expenditure
@@ -3428,6 +3355,10 @@ async function resolveBudgetBill(supabase, bill, currentTick) {
     const { data: allocations } = await supabase.from('budget_allocations')
         .select('*').eq('bill_id', bill.id);
 
+    // Use item-level allocations when available (players edit these directly)
+    const { data: itemAllocations } = await supabase.from('budget_item_allocations')
+        .select('allocation_amount').eq('bill_id', bill.id);
+
     const { data: nation } = await supabase.from('nations')
         .select('*').eq('id', bill.nation_id).single();
     if (!nation) return;
@@ -3457,8 +3388,14 @@ async function resolveBudgetBill(supabase, bill, currentTick) {
     const available = budget.grossRevenue + aidData.received + reserves - budget.debtService - aidData.given;
 
     let totalSpending = 0;
-    for (const alloc of (allocations || [])) {
-        totalSpending += Number(alloc.allocation_amount || 0);
+    if (itemAllocations && itemAllocations.length > 0) {
+        for (const item of itemAllocations) {
+            totalSpending += Number(item.allocation_amount || 0);
+        }
+    } else {
+        for (const alloc of (allocations || [])) {
+            totalSpending += Number(alloc.allocation_amount || 0);
+        }
     }
 
     const gap = available - totalSpending;
@@ -5529,7 +5466,7 @@ async function checkEarlyMajority(supabase, nationId) {
     // Include budget bills with null voting_ends_tick (they persist until passed)
     const { data: activeBills, error } = await supabase
         .from('bills')
-        .select('id, bill_name, bill_type, voting_ends_tick, bill_support(faction_id, stance, seat_count)')
+        .select('id, bill_name, bill_type, voting_ends_tick, proposed_tick, floor_tick, bill_support(faction_id, stance, seat_count)')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .is('early_resolution_status', null)
@@ -5537,7 +5474,20 @@ async function checkEarlyMajority(supabase, nationId) {
 
     if (error || !activeBills || activeBills.length === 0) return [];
 
-    const quorumSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.QUORUM_THRESHOLD);
+    // Use the actual sum of faction seats as the voting denominator, not
+    // total_seats.  In autocracies (and after seat changes) the nation's
+    // total_seats can exceed the seats actually held by factions — those
+    // vacant/unaligned seats can never vote, so including them would inflate
+    // the "undeclared" count and break quorum & math-lock checks.
+    const { data: factionRows } = await supabase
+        .from('factions')
+        .select('seats')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+    const factionSeatSum = (factionRows || []).reduce((sum, f) => sum + (f.seats || 0), 0);
+    const effectiveTotalSeats = Math.min(GAME_CONFIG.TOTAL_SEATS, Math.max(factionSeatSum, 1));
+
+    const quorumSeats = Math.ceil(effectiveTotalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
     const results = [];
 
     // Check for emergency minority government penalty (once per nation per tick)
@@ -5561,7 +5511,7 @@ async function checkEarlyMajority(supabase, nationId) {
 
         let earlyStatus = null;
         const participating = yesSeats + noSeats + abstainSeats;
-        const undeclaredSeats = GAME_CONFIG.TOTAL_SEATS - participating;
+        const undeclaredSeats = Math.max(0, effectiveTotalSeats - participating);
 
         // ── Check 1: Mathematical lock (outcome impossible to change) ──
         if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
@@ -5574,7 +5524,7 @@ async function checkEarlyMajority(supabase, nationId) {
             }
         } else if (bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion') {
             // Absolute majority: 50%+1 of total seats, no quorum
-            const threshold = Math.floor(GAME_CONFIG.TOTAL_SEATS / 2) + 1;
+            const threshold = Math.floor(effectiveTotalSeats / 2) + 1;
             if (effectiveYes >= threshold) {
                 earlyStatus = 'majority_reached';
             } else if (effectiveYes + undeclaredSeats < threshold) {
@@ -5610,6 +5560,24 @@ async function checkEarlyMajority(supabase, nationId) {
             }
         }
 
+        // ── Check 3: Budget bill forced resolution after MAX_FLOOR_TICKS ──
+        // Budget bills have no voting deadline (voting_ends_tick = null).
+        // If a budget bill has been on the floor for BUDGET_BILL_MAX_FLOOR_TICKS
+        // ticks without resolution, force a vote based on the current tally.
+        // This prevents budget bills from getting stuck indefinitely when
+        // bill_support seat_counts are stale and don't trigger a math-lock.
+        if (!earlyStatus && bill.bill_type === 'budget' && bill.voting_ends_tick == null) {
+            // Use floor_tick if available, otherwise fall back to proposed_tick + committee expiry
+            const floorStart = bill.floor_tick || (bill.proposed_tick || 0) + GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS;
+            const ticksOnFloor = currentTick - floorStart;
+            if (ticksOnFloor >= GAME_CONFIG.BUDGET_BILL_MAX_FLOOR_TICKS) {
+                if (participating >= quorumSeats && effectiveYes > noSeats) {
+                    earlyStatus = 'quorum_reached';
+                } else {
+                    earlyStatus = 'quorum_opposed';
+                }
+                console.log(`[checkEarlyMajority] Budget bill ${bill.bill_name}: FORCED resolution after ${ticksOnFloor} ticks on floor (YES=${yesSeats}, NO=${noSeats}, participating=${participating}, quorum=${quorumSeats})`);
+            }
         // ── Check 3: Budget bills can never be forced to fail ──
         // Budget bills persist on the floor until they pass. They can only
         // resolve early if a passing majority is reached (math-lock or quorum).
@@ -5633,7 +5601,7 @@ async function checkEarlyMajority(supabase, nationId) {
             }).eq('id', bill.id);
 
             const resolveType = earlyStatus.startsWith('quorum') ? 'QUORUM' : 'MATH-LOCK';
-            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${participating}). Resolves tick ${resolveAtTick}`);
+            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${participating}, effectiveTotal=${effectiveTotalSeats}, configTotal=${GAME_CONFIG.TOTAL_SEATS}). Resolves tick ${resolveAtTick}`);
             results.push({ billId: bill.id, billName: bill.bill_name, status: earlyStatus, yesSeats, noSeats });
         }
     }
@@ -5661,13 +5629,25 @@ async function resolveExpiredVotes(supabase, nationId) {
 
     const results = [];
 
+    // Compute the actual sum of faction-held seats — only these can vote.
+    // In autocracies (and after seat changes) total_seats can exceed the
+    // seats held by factions; including vacant/unaligned seats inflates
+    // quorum and makes bills impossible to pass.
+    const { data: factionRowsForResolve } = await supabase
+        .from('factions')
+        .select('seats')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+    const resolveFactionSeatSum = (factionRowsForResolve || []).reduce((sum, f) => sum + (f.seats || 0), 0);
+
     for (const bill of expiredBills) {
         const { data: nation } = await supabase
             .from('nations')
             .select('name, government_type, total_seats')
             .eq('id', bill.nation_id)
             .single();
-        const totalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+        const nominalTotalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+        const totalSeats = Math.min(nominalTotalSeats, Math.max(resolveFactionSeatSum, 1));
         let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
 
         (bill.bill_support || []).forEach(s => {
@@ -5765,7 +5745,7 @@ async function resolveExpiredVotes(supabase, nationId) {
             continue;
         }
 
-        const passed = resolution === 'passed';
+        let passed = resolution === 'passed';
         const isNoConfidence = bill.bill_type === 'no_confidence';
         const isFoundational = bill.bill_type === 'foundational';
 
@@ -12467,6 +12447,20 @@ async function rebalanceVacantSeats(supabase, nation) {
 
 // ==================== LOYALTY TICK PROCESSING ====================
 
+/**
+ * Determine autocracy loyalty decay rate based on Regime Health thresholds.
+ * HEALTHY (60-100): -2/tick
+ * WEAKENING (40-59): -2.5/tick
+ * DECLINING (20-39): -3/tick
+ * CRITICAL (1-19): -4/tick
+ */
+function getAutocracyLoyaltyDecay(regimeHealth) {
+    if (regimeHealth >= 60) return -2;
+    if (regimeHealth >= 40) return -2.5;
+    if (regimeHealth >= 20) return -3;
+    return -4;
+}
+
 async function processLoyaltyTick(supabase, nation) {
     const rulingId = nation.ruling_faction_id;
     if (!rulingId) return;
@@ -12500,7 +12494,7 @@ async function processLoyaltyTick(supabase, nation) {
 
         if (faction.id === rulingId) {
             if (nationIsAutocracy) {
-                // Autocracy ruling faction: dynamic loyalty drifting toward 80
+                // Autocracy ruling faction (Strongman): loyalty drifts toward 80
                 const ministryCount = ministryCounts[faction.id] || 0;
                 if (loyalty > 80) loyalty -= 1;
                 else if (loyalty < 80) loyalty += 1;
@@ -12519,27 +12513,83 @@ async function processLoyaltyTick(supabase, nation) {
             continue;
         }
 
-        const ministryCount = ministryCounts[faction.id] || 0;
+        if (nationIsAutocracy) {
+            // ── v2 Autocracy Loyalty Decay ──
+            // Flat decay based on Regime Health thresholds. No ministry bonus.
+            // Loyalty cap: 95 (inherent paranoia of autocratic rule).
+            const regimeHealth = Number(nation.regime_health ?? 80);
+            const decayRate = getAutocracyLoyaltyDecay(regimeHealth);
+            loyalty += decayRate;
+            loyalty = Math.max(0, Math.min(95, Math.round(loyalty * 10) / 10));
 
-        if (ministryCount > 0) {
-            loyalty += ministryCount * 0.5;
+            await supabase.from('factions')
+                .update({ loyalty })
+                .eq('id', faction.id);
         } else {
-            loyalty -= 2;
+            // ── Democracy/Presidential loyalty ──
+            const ministryCount = ministryCounts[faction.id] || 0;
+
+            if (ministryCount > 0) {
+                loyalty += ministryCount * 0.5;
+            } else {
+                loyalty -= 2;
+            }
+
+            if (loyalty > 50) {
+                loyalty -= 1;
+            } else if (loyalty < 50) {
+                loyalty += 1;
+            }
+
+            loyalty = Math.max(0, Math.min(100, Math.round(loyalty * 10) / 10));
+
+            await supabase.from('factions')
+                .update({ loyalty, seats })
+                .eq('id', faction.id);
+        }
+    }
+}
+
+// ==================== STANDING TICK PROCESSING (v2) ====================
+
+/**
+ * Process faction standing relevance decay for autocracy nations.
+ * Standing has no natural decay, BUT if a faction takes no standing-building
+ * action (Consolidate Power or Demonstrate Competence) for 3+ consecutive ticks,
+ * standing decays at -1/tick until a standing-building action is taken.
+ * Standing cap: 90.
+ */
+async function processStandingTick(supabase, nation, currentTick) {
+    if (!isAutocracy(nation)) return;
+
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, standing, last_standing_action_tick')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+
+    if (!factions || factions.length === 0) return;
+
+    for (const faction of factions) {
+        let standing = faction.standing ?? 30;
+        const lastStandingTick = faction.last_standing_action_tick;
+
+        // Relevance decay: if 3+ ticks since last standing-building action
+        if (lastStandingTick != null && (currentTick - lastStandingTick) >= 3) {
+            standing -= 1;
+        } else if (lastStandingTick == null && currentTick >= 3) {
+            // Never taken a standing action — decay after tick 3
+            standing -= 1;
         }
 
-        if (loyalty > 50) {
-            loyalty -= 1;
-        } else if (loyalty < 50) {
-            loyalty += 1;
+        // Clamp to [0, 90]
+        standing = Math.max(0, Math.min(90, standing));
+
+        if (standing !== (faction.standing ?? 30)) {
+            await supabase.from('factions')
+                .update({ standing })
+                .eq('id', faction.id);
         }
-
-        loyalty = Math.max(0, Math.min(100, Math.round(loyalty * 10) / 10));
-
-        // Loyalty is now informational only for autocracies (no AP/seat drain or auto-purges).
-
-        await supabase.from('factions')
-            .update({ loyalty, seats })
-            .eq('id', faction.id);
     }
 }
 
@@ -12690,6 +12740,972 @@ const PILLAR_TO_STEWARD_TYPE = {
     foreign_patrons: 'intelligence_director',
     religious:       'religious_authority',
 };
+
+// ==================== AUTOCRACY v2 FACTION ACTIONS ====================
+
+/**
+ * Pledge Allegiance: publicly reaffirm loyalty. Groveling is free.
+ * Loyalty +8, Standing -2. If under Demand Loyalty: Loyalty +13, Standing -3.
+ * Standing cannot drop below 5 from this action.
+ * AP Cost: 2
+ */
+async function executePledgeAllegiance(supabase, factionId, nationId, currentTick) {
+    // 1. Validate faction + AP
+    const { data: faction } = await supabase
+        .from('factions').select('id, action_points, loyalty, standing, faction_name')
+        .eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+    if ((faction.action_points || 0) < GAME_CONFIG.PLEDGE_ALLEGIANCE_AP)
+        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.PLEDGE_ALLEGIANCE_AP}.` };
+
+    // 2. Check for active Demand Loyalty order
+    const { data: pendingDemand } = await supabase
+        .from('loyalty_demands')
+        .select('id, strongman_faction_id')
+        .eq('nation_id', nationId)
+        .eq('target_faction_id', factionId)
+        .eq('status', 'pending')
+        .maybeSingle();
+
+    const isComplying = !!pendingDemand;
+
+    // 3. Deduct AP
+    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.PLEDGE_ALLEGIANCE_AP);
+    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
+
+    // 4. Apply effects
+    const loyaltyGain = isComplying ? GAME_CONFIG.PLEDGE_ALLEGIANCE_COMPLY_LOYALTY : GAME_CONFIG.PLEDGE_ALLEGIANCE_LOYALTY;
+    const standingPenalty = isComplying ? GAME_CONFIG.PLEDGE_ALLEGIANCE_COMPLY_STANDING : GAME_CONFIG.PLEDGE_ALLEGIANCE_STANDING;
+
+    let newLoyalty = Math.min(GAME_CONFIG.LOYALTY_CAP, (faction.loyalty ?? 50) + loyaltyGain);
+    let newStanding = Math.max(GAME_CONFIG.PLEDGE_ALLEGIANCE_STANDING_FLOOR, (faction.standing ?? 30) + standingPenalty);
+    newStanding = Math.min(GAME_CONFIG.STANDING_CAP, newStanding);
+
+    await supabase.from('factions').update({
+        loyalty: newLoyalty,
+        standing: newStanding,
+        last_action_type: 'pledge_allegiance',
+        consecutive_embezzle_ticks: 0,
+    }).eq('id', factionId);
+
+    // 5. Resolve demand if complying
+    if (isComplying) {
+        await supabase.from('loyalty_demands').update({
+            status: 'complied', resolved_at_tick: currentTick
+        }).eq('id', pendingDemand.id);
+    }
+
+    // 6. Log action
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId, nation_id: nationId,
+        action_type: 'pledge_allegiance',
+        tick_performed: currentTick,
+        result: {
+            loyalty_change: loyaltyGain, standing_change: standingPenalty,
+            new_loyalty: newLoyalty, new_standing: newStanding,
+            complied_with_demand: isComplying,
+            faction_name: faction.faction_name,
+        }
+    });
+
+    return {
+        success: true,
+        newAp: apResult.newAp,
+        loyaltyChange: loyaltyGain,
+        standingChange: standingPenalty,
+        newLoyalty, newStanding,
+        compliedWithDemand: isComplying,
+    };
+}
+
+/**
+ * Consolidate Power: build institutional influence. Quiet power accumulation.
+ * Standing +6, Loyalty -3. Resets relevance decay counter.
+ * AP Cost: 2
+ */
+async function executeConsolidatePower(supabase, factionId, nationId, currentTick) {
+    // 1. Validate faction + AP
+    const { data: faction } = await supabase
+        .from('factions').select('id, action_points, loyalty, standing, faction_name')
+        .eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+    if ((faction.action_points || 0) < GAME_CONFIG.CONSOLIDATE_POWER_AP)
+        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.CONSOLIDATE_POWER_AP}.` };
+
+    // 2. Deduct AP
+    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.CONSOLIDATE_POWER_AP);
+    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
+
+    // 3. Apply effects
+    let newStanding = Math.min(GAME_CONFIG.STANDING_CAP, (faction.standing ?? 30) + GAME_CONFIG.CONSOLIDATE_POWER_STANDING);
+    let newLoyalty = Math.max(0, (faction.loyalty ?? 50) + GAME_CONFIG.CONSOLIDATE_POWER_LOYALTY);
+    newLoyalty = Math.min(GAME_CONFIG.LOYALTY_CAP, newLoyalty);
+
+    await supabase.from('factions').update({
+        loyalty: newLoyalty,
+        standing: newStanding,
+        last_action_type: 'consolidate_power',
+        last_standing_action_tick: currentTick,
+        consecutive_embezzle_ticks: 0,
+    }).eq('id', factionId);
+
+    // 4. Log action
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId, nation_id: nationId,
+        action_type: 'consolidate_power',
+        tick_performed: currentTick,
+        result: {
+            standing_change: GAME_CONFIG.CONSOLIDATE_POWER_STANDING,
+            loyalty_change: GAME_CONFIG.CONSOLIDATE_POWER_LOYALTY,
+            new_standing: newStanding, new_loyalty: newLoyalty,
+            faction_name: faction.faction_name,
+        }
+    });
+
+    return {
+        success: true,
+        newAp: apResult.newAp,
+        standingChange: GAME_CONFIG.CONSOLIDATE_POWER_STANDING,
+        loyaltyChange: GAME_CONFIG.CONSOLIDATE_POWER_LOYALTY,
+        newStanding, newLoyalty,
+    };
+}
+
+/**
+ * Demonstrate Competence: actually govern. Produce visible policy outcomes.
+ * Standing +4, Loyalty +3, Nation stat +0.3. Costs $2M from embezzled funds.
+ * If can't afford: Standing +2 (reduced), no nation stat effect.
+ * Sets vulnerability window (other factions can poach seats cheaper).
+ * AP Cost: 3
+ */
+async function executeDemonstrateCompetence(supabase, factionId, nationId, currentTick) {
+    // 1. Validate faction + AP
+    const { data: faction } = await supabase
+        .from('factions').select('id, action_points, loyalty, standing, embezzled_funds, faction_name')
+        .eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+    if ((faction.action_points || 0) < GAME_CONFIG.DEMONSTRATE_COMPETENCE_AP)
+        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.DEMONSTRATE_COMPETENCE_AP}.` };
+
+    // 2. Deduct AP
+    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.DEMONSTRATE_COMPETENCE_AP);
+    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
+
+    // 3. Check if faction can afford the cost
+    const funds = Number(faction.embezzled_funds ?? 0);
+    const canAfford = funds >= GAME_CONFIG.DEMONSTRATE_COMPETENCE_COST;
+
+    const standingGain = canAfford ? GAME_CONFIG.DEMONSTRATE_COMPETENCE_STANDING : GAME_CONFIG.DEMONSTRATE_COMPETENCE_REDUCED_STANDING;
+    const loyaltyGain = GAME_CONFIG.DEMONSTRATE_COMPETENCE_LOYALTY;
+
+    let newStanding = Math.min(GAME_CONFIG.STANDING_CAP, (faction.standing ?? 30) + standingGain);
+    let newLoyalty = Math.min(GAME_CONFIG.LOYALTY_CAP, (faction.loyalty ?? 50) + loyaltyGain);
+    let newFunds = canAfford ? funds - GAME_CONFIG.DEMONSTRATE_COMPETENCE_COST : funds;
+
+    await supabase.from('factions').update({
+        loyalty: newLoyalty,
+        standing: newStanding,
+        embezzled_funds: newFunds,
+        last_action_type: 'demonstrate_competence',
+        last_standing_action_tick: currentTick,
+        consecutive_embezzle_ticks: 0,
+    }).eq('id', factionId);
+
+    // 4. Apply nation stat bonus if funded
+    let nationStatChange = null;
+    if (canAfford) {
+        // Determine which nation stat to boost based on faction's steward type / pillar
+        const { data: steward } = await supabase
+            .from('stewards').select('pillar_key, steward_type')
+            .eq('faction_id', factionId).eq('nation_id', nationId).eq('is_alive', true)
+            .maybeSingle();
+
+        const pillarStatMap = {
+            military: 'stability', security: 'stability', bureaucracy: 'government_efficiency',
+            party: 'legitimacy', oligarchs: 'gdp_growth', media: 'press_freedom',
+            foreign_patrons: 'international_reputation', religious: 'legitimacy',
+        };
+        const statKey = pillarStatMap[steward?.pillar_key] || 'stability';
+
+        const { data: nation } = await supabase.from('nations').select(statKey).eq('id', nationId).single();
+        if (nation) {
+            const current = Number(nation[statKey] ?? 50);
+            const newVal = Math.min(100, current + GAME_CONFIG.DEMONSTRATE_COMPETENCE_NATION_STAT);
+            await supabase.from('nations').update({ [statKey]: newVal }).eq('id', nationId);
+            nationStatChange = { stat: statKey, change: GAME_CONFIG.DEMONSTRATE_COMPETENCE_NATION_STAT };
+        }
+    }
+
+    // 5. Log action
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId, nation_id: nationId,
+        action_type: 'demonstrate_competence',
+        tick_performed: currentTick,
+        result: {
+            standing_change: standingGain, loyalty_change: loyaltyGain,
+            new_standing: newStanding, new_loyalty: newLoyalty,
+            funds_spent: canAfford ? GAME_CONFIG.DEMONSTRATE_COMPETENCE_COST : 0,
+            nation_stat_change: nationStatChange,
+            could_afford: canAfford,
+            faction_name: faction.faction_name,
+        }
+    });
+
+    return {
+        success: true,
+        newAp: apResult.newAp,
+        standingChange: standingGain,
+        loyaltyChange: loyaltyGain,
+        newStanding, newLoyalty,
+        fundsSpent: canAfford ? GAME_CONFIG.DEMONSTRATE_COMPETENCE_COST : 0,
+        nationStatChange,
+        couldAfford: canAfford,
+    };
+}
+
+/**
+ * Embezzle Funds: divert state resources into hidden war chest.
+ * Loyalty -5, Funds +$X (formula-based), Detection risk.
+ * Income formula: base × (1 + standing/100) × (1 + seats/legislature_max)
+ * Base: $5M, Floor: $3M.
+ * Detection: 10% base + 5% per consecutive tick + corruption modifier.
+ * AP Cost: 1
+ */
+async function executeEmbezzleFunds(supabase, factionId, nationId, currentTick) {
+    // 1. Validate faction + AP
+    const { data: faction } = await supabase
+        .from('factions').select('id, action_points, loyalty, standing, seats, embezzled_funds, consecutive_embezzle_ticks, faction_name')
+        .eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+    if ((faction.action_points || 0) < GAME_CONFIG.EMBEZZLE_FUNDS_AP)
+        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.EMBEZZLE_FUNDS_AP}.` };
+
+    // 2. Fetch nation for corruption and legislature size
+    const { data: nation } = await supabase
+        .from('nations').select('corruption, total_seats, ruling_faction_id, regime_health')
+        .eq('id', nationId).single();
+    if (!nation) return { success: false, error: 'Nation not found.' };
+
+    const legislatureMax = nation.total_seats || 120;
+
+    // 3. Deduct AP
+    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.EMBEZZLE_FUNDS_AP);
+    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
+
+    // 4. Calculate income
+    const standing = faction.standing ?? 30;
+    const seats = faction.seats || 0;
+    let income = GAME_CONFIG.EMBEZZLE_FUNDS_BASE_INCOME * (1 + standing / 100) * (1 + seats / legislatureMax);
+    income = Math.max(GAME_CONFIG.EMBEZZLE_FUNDS_INCOME_FLOOR, Math.round(income * 100) / 100);
+
+    // 5. Calculate detection probability
+    const consecutiveTicks = (faction.consecutive_embezzle_ticks ?? 0);
+    const corruption = Number(nation.corruption ?? 50);
+    const corruptionMod = (corruption - 50) * -0.005; // -0.5% per point above 50, +0.5% below
+
+    // Security faction detection bonus
+    let securityBonus = 0;
+    const { data: secFactions } = await supabase
+        .from('factions').select('seats')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party')
+        .neq('id', factionId);
+    // We'd need to identify the "security" faction — for now use steward type
+    const { data: secStewards } = await supabase
+        .from('stewards').select('faction_id')
+        .eq('nation_id', nationId)
+        .eq('steward_type', 'security_chief')
+        .eq('is_alive', true);
+    if (secStewards && secStewards.length > 0) {
+        for (const ss of secStewards) {
+            const secFaction = (secFactions || []).find(f => f.id === ss.faction_id);
+            if (secFaction) {
+                securityBonus += ((secFaction.seats || 0) / legislatureMax) * 0.10;
+            }
+        }
+    }
+
+    let detectionProb = GAME_CONFIG.EMBEZZLE_FUNDS_BASE_DETECTION
+        + consecutiveTicks * GAME_CONFIG.EMBEZZLE_FUNDS_CONSECUTIVE_BONUS
+        + corruptionMod
+        + securityBonus;
+    detectionProb = Math.max(GAME_CONFIG.EMBEZZLE_FUNDS_DETECTION_FLOOR,
+        Math.min(GAME_CONFIG.EMBEZZLE_FUNDS_DETECTION_CAP, detectionProb));
+
+    // 6. Roll for detection
+    const detected = Math.random() < detectionProb;
+
+    // 7. Apply effects
+    let newLoyalty = Math.max(0, (faction.loyalty ?? 50) + GAME_CONFIG.EMBEZZLE_FUNDS_LOYALTY);
+    let newFunds = Number(faction.embezzled_funds ?? 0) + income;
+    let newStanding = faction.standing ?? 30;
+    let fundsSeized = 0;
+
+    if (detected) {
+        newLoyalty = Math.max(0, newLoyalty + GAME_CONFIG.EMBEZZLE_FUNDS_DETECTED_LOYALTY);
+        newStanding = Math.max(0, newStanding + GAME_CONFIG.EMBEZZLE_FUNDS_DETECTED_STANDING);
+        fundsSeized = Math.round(newFunds * GAME_CONFIG.EMBEZZLE_FUNDS_DETECTED_FUNDS_SEIZURE * 100) / 100;
+        newFunds -= fundsSeized;
+
+        // Regime health -1 for detected embezzlement
+        const newRegimeHealth = Math.max(0, Number(nation.regime_health ?? 80) - 1);
+        await supabase.from('nations').update({ regime_health: newRegimeHealth }).eq('id', nationId);
+    }
+
+    newLoyalty = Math.min(GAME_CONFIG.LOYALTY_CAP, newLoyalty);
+    newStanding = Math.min(GAME_CONFIG.STANDING_CAP, newStanding);
+
+    await supabase.from('factions').update({
+        loyalty: newLoyalty,
+        standing: newStanding,
+        embezzled_funds: Math.max(0, newFunds),
+        consecutive_embezzle_ticks: consecutiveTicks + 1,
+        last_action_type: 'embezzle_funds',
+    }).eq('id', factionId);
+
+    // 8. Log action
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId, nation_id: nationId,
+        action_type: detected ? 'faction_embezzle_detected' : 'faction_embezzle',
+        tick_performed: currentTick,
+        result: {
+            income, detected, funds_seized: fundsSeized,
+            detection_probability: Math.round(detectionProb * 100),
+            loyalty_change: GAME_CONFIG.EMBEZZLE_FUNDS_LOYALTY + (detected ? GAME_CONFIG.EMBEZZLE_FUNDS_DETECTED_LOYALTY : 0),
+            standing_change: detected ? GAME_CONFIG.EMBEZZLE_FUNDS_DETECTED_STANDING : 0,
+            faction_name: faction.faction_name,
+        }
+    });
+
+    // 9. Detection risk label
+    const riskLabel = detectionProb <= 0.12 ? 'LOW' : detectionProb <= 0.25 ? 'MODERATE' : detectionProb <= 0.35 ? 'ELEVATED' : 'HIGH';
+
+    return {
+        success: true,
+        newAp: apResult.newAp,
+        income, detected, fundsSeized,
+        detectionProbability: Math.round(detectionProb * 100),
+        riskLabel,
+        newLoyalty, newStanding,
+        newFunds: Math.max(0, newFunds),
+        loyaltyChange: GAME_CONFIG.EMBEZZLE_FUNDS_LOYALTY + (detected ? GAME_CONFIG.EMBEZZLE_FUNDS_DETECTED_LOYALTY : 0),
+        standingChange: detected ? GAME_CONFIG.EMBEZZLE_FUNDS_DETECTED_STANDING : 0,
+    };
+}
+
+/**
+ * Get qualitative detection risk label for embezzlement.
+ */
+/**
+ * Buy Influence: spend embezzled funds to recruit members from other factions or unaligned pool.
+ * Standing -1, Seats +X based on funds spent.
+ * Cost per seat: $3M × (target_standing / max(your_standing, 1)) × (1 + target_seats / legislature_max)
+ * Unaligned pool: $2M flat per seat.
+ * AP Cost: 3
+ */
+async function executeBuyInfluence(supabase, factionId, nationId, targetId, fundsToSpend, currentTick) {
+    // targetId can be a faction ID or 'unaligned' for the unaligned pool
+    const isUnaligned = targetId === 'unaligned';
+
+    // 1. Validate faction + AP
+    const { data: faction } = await supabase
+        .from('factions').select('id, action_points, standing, seats, embezzled_funds, faction_name, last_action_type')
+        .eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+    if ((faction.action_points || 0) < GAME_CONFIG.BUY_INFLUENCE_AP)
+        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.BUY_INFLUENCE_AP}.` };
+
+    const funds = Number(faction.embezzled_funds ?? 0);
+    if (fundsToSpend > funds) return { success: false, error: 'Not enough funds.' };
+    if (fundsToSpend <= 0) return { success: false, error: 'Must spend some funds.' };
+
+    const { data: nation } = await supabase
+        .from('nations').select('total_seats, unaligned_seats')
+        .eq('id', nationId).single();
+    if (!nation) return { success: false, error: 'Nation not found.' };
+    const legislatureMax = nation.total_seats || 120;
+
+    // 2. Deduct AP
+    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.BUY_INFLUENCE_AP);
+    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
+
+    let seatsGained = 0;
+    let targetName = 'Unaligned Pool';
+
+    if (isUnaligned) {
+        // Buy from unaligned pool — $2M flat per seat
+        const costPerSeat = GAME_CONFIG.BUY_INFLUENCE_UNALIGNED_COST;
+        seatsGained = Math.min(
+            Math.floor(fundsToSpend / costPerSeat),
+            nation.unaligned_seats || 0
+        );
+        if (seatsGained <= 0) {
+            // Refund AP? No — the AP was spent on the attempt regardless.
+            return { success: true, newAp: apResult.newAp, seatsGained: 0, fundsSpent: 0, message: 'Unaligned pool is empty.' };
+        }
+        const actualCost = seatsGained * costPerSeat;
+
+        await supabase.from('factions').update({
+            seats: (faction.seats || 0) + seatsGained,
+            embezzled_funds: funds - actualCost,
+            standing: Math.max(0, (faction.standing ?? 30) + GAME_CONFIG.BUY_INFLUENCE_STANDING),
+            last_action_type: 'buy_influence',
+            consecutive_embezzle_ticks: 0,
+        }).eq('id', factionId);
+
+        await supabase.from('nations').update({
+            unaligned_seats: Math.max(0, (nation.unaligned_seats || 0) - seatsGained)
+        }).eq('id', nationId);
+
+        await supabase.from('campaign_actions').insert({
+            party_id: factionId, nation_id: nationId,
+            action_type: 'buy_influence',
+            tick_performed: currentTick,
+            result: { seats_gained: seatsGained, funds_spent: actualCost, target: 'unaligned', faction_name: faction.faction_name }
+        });
+
+        return { success: true, newAp: apResult.newAp, seatsGained, fundsSpent: actualCost, targetName };
+    }
+
+    // 3. Buy from rival faction
+    const { data: target } = await supabase
+        .from('factions').select('id, standing, seats, faction_name, last_action_type')
+        .eq('id', targetId).single();
+    if (!target) return { success: false, error: 'Target faction not found.' };
+    if (target.id === factionId) return { success: false, error: 'Cannot target yourself.' };
+    targetName = target.faction_name;
+
+    // Cost per seat formula
+    const yourStanding = Math.max(1, faction.standing ?? 30);
+    const targetStanding = target.standing ?? 30;
+    const targetSeats = target.seats || 0;
+    let costPerSeat = GAME_CONFIG.BUY_INFLUENCE_BASE_COST * (targetStanding / yourStanding) * (1 + targetSeats / legislatureMax);
+
+    // Vulnerability discount: if target is demonstrating competence this tick
+    if (target.last_action_type === 'demonstrate_competence') {
+        costPerSeat *= (1 - GAME_CONFIG.BUY_INFLUENCE_VULNERABILITY_DISCOUNT);
+    }
+
+    seatsGained = Math.min(
+        Math.floor(fundsToSpend / costPerSeat),
+        targetSeats  // can't take more seats than they have
+    );
+    if (seatsGained <= 0) {
+        return { success: true, newAp: apResult.newAp, seatsGained: 0, fundsSpent: 0, message: 'Cannot afford even 1 seat.' };
+    }
+    const actualCost = Math.round(seatsGained * costPerSeat * 100) / 100;
+
+    // Apply seat transfer
+    await supabase.from('factions').update({
+        seats: (faction.seats || 0) + seatsGained,
+        embezzled_funds: funds - actualCost,
+        standing: Math.max(0, (faction.standing ?? 30) + GAME_CONFIG.BUY_INFLUENCE_STANDING),
+        last_action_type: 'buy_influence',
+        consecutive_embezzle_ticks: 0,
+    }).eq('id', factionId);
+
+    await supabase.from('factions').update({
+        seats: Math.max(0, targetSeats - seatsGained)
+    }).eq('id', targetId);
+
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId, nation_id: nationId,
+        action_type: 'buy_influence',
+        tick_performed: currentTick,
+        result: {
+            seats_gained: seatsGained, funds_spent: actualCost,
+            target_faction_id: targetId, target_name: targetName,
+            cost_per_seat: Math.round(costPerSeat * 100) / 100,
+            faction_name: faction.faction_name,
+        }
+    });
+
+    return { success: true, newAp: apResult.newAp, seatsGained, fundsSpent: actualCost, targetName, costPerSeat: Math.round(costPerSeat * 100) / 100 };
+}
+
+/**
+ * Intimidate: use fear/threats to force members of other factions to switch.
+ * Loyalty -4, Standing +2, Stability -0.2. $1M cost.
+ * Seats gained = 4 × (your_standing / max(target_standing, 1)) × (your_seats / 20)
+ * Requires 5+ seats.
+ * Failed intimidation (0 seats): Standing -3, Target standing +1.
+ * AP Cost: 2
+ */
+async function executeIntimidate(supabase, factionId, nationId, targetId, currentTick) {
+    // 1. Validate faction + AP + seats
+    const { data: faction } = await supabase
+        .from('factions').select('id, action_points, loyalty, standing, seats, embezzled_funds, faction_name')
+        .eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+    if ((faction.action_points || 0) < GAME_CONFIG.INTIMIDATE_AP)
+        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.INTIMIDATE_AP}.` };
+    if ((faction.seats || 0) < GAME_CONFIG.INTIMIDATE_MIN_SEATS)
+        return { success: false, error: `Need at least ${GAME_CONFIG.INTIMIDATE_MIN_SEATS} seats to intimidate.` };
+
+    const funds = Number(faction.embezzled_funds ?? 0);
+    if (funds < GAME_CONFIG.INTIMIDATE_COST)
+        return { success: false, error: `Need $${GAME_CONFIG.INTIMIDATE_COST}M for intimidation.` };
+
+    // 2. Validate target
+    const { data: target } = await supabase
+        .from('factions').select('id, standing, seats, faction_name, last_action_type')
+        .eq('id', targetId).single();
+    if (!target) return { success: false, error: 'Target faction not found.' };
+    if (target.id === factionId) return { success: false, error: 'Cannot target yourself.' };
+
+    // 3. Deduct AP
+    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.INTIMIDATE_AP);
+    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
+
+    // 4. Calculate seats gained
+    const yourStanding = faction.standing ?? 30;
+    const targetStanding = Math.max(1, target.standing ?? 30);
+    const yourSeats = faction.seats || 0;
+    let effectiveness = GAME_CONFIG.INTIMIDATE_BASE_EFFECTIVENESS * (yourStanding / targetStanding) * (yourSeats / 20);
+
+    // Vulnerability bonus
+    if (target.last_action_type === 'demonstrate_competence') {
+        effectiveness *= (1 + GAME_CONFIG.INTIMIDATE_VULNERABILITY_BONUS);
+    }
+
+    let seatsGained = Math.min(Math.floor(effectiveness), target.seats || 0);
+    const failed = seatsGained <= 0;
+
+    // 5. Apply effects
+    let newLoyalty = Math.max(0, (faction.loyalty ?? 50) + GAME_CONFIG.INTIMIDATE_LOYALTY);
+    let newStanding = faction.standing ?? 30;
+    let newFunds = funds - GAME_CONFIG.INTIMIDATE_COST;
+    let targetStandingChange = 0;
+
+    if (failed) {
+        // Failed intimidation — humiliation
+        newStanding = Math.max(0, newStanding + GAME_CONFIG.INTIMIDATE_FAIL_STANDING);
+        targetStandingChange = 1;
+        await supabase.from('factions').update({
+            standing: Math.min(GAME_CONFIG.STANDING_CAP, (target.standing ?? 30) + 1)
+        }).eq('id', targetId);
+    } else {
+        // Successful intimidation
+        newStanding = Math.min(GAME_CONFIG.STANDING_CAP, newStanding + GAME_CONFIG.INTIMIDATE_STANDING);
+
+        // Transfer seats
+        await supabase.from('factions').update({
+            seats: Math.max(0, (target.seats || 0) - seatsGained)
+        }).eq('id', targetId);
+    }
+
+    newLoyalty = Math.min(GAME_CONFIG.LOYALTY_CAP, newLoyalty);
+
+    await supabase.from('factions').update({
+        loyalty: newLoyalty,
+        standing: newStanding,
+        seats: (faction.seats || 0) + seatsGained,
+        embezzled_funds: Math.max(0, newFunds),
+        last_action_type: 'intimidate',
+        consecutive_embezzle_ticks: 0,
+    }).eq('id', factionId);
+
+    // Nation stability hit
+    const { data: nationData } = await supabase
+        .from('nations').select('stability').eq('id', nationId).single();
+    if (nationData) {
+        const newStability = Math.max(0, Number(nationData.stability ?? 50) + GAME_CONFIG.INTIMIDATE_STABILITY);
+        await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
+    }
+
+    // 6. Log action + create intimidation event for retaliation
+    const eventId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId, nation_id: nationId,
+        action_type: failed ? 'intimidate_failed' : 'intimidate',
+        tick_performed: currentTick,
+        result: {
+            seats_gained: seatsGained, failed,
+            target_faction_id: targetId, target_name: target.faction_name,
+            loyalty_change: GAME_CONFIG.INTIMIDATE_LOYALTY,
+            standing_change: failed ? GAME_CONFIG.INTIMIDATE_FAIL_STANDING : GAME_CONFIG.INTIMIDATE_STANDING,
+            target_standing_change: targetStandingChange,
+            event_id: eventId,
+            faction_name: faction.faction_name,
+        }
+    });
+
+    // Create a pending intimidation event for the target to respond to
+    if (!failed) {
+        await supabase.from('campaign_actions').insert({
+            party_id: targetId, nation_id: nationId,
+            action_type: 'intimidation_pending',
+            tick_performed: currentTick,
+            result: {
+                event_id: eventId,
+                intimidator_faction_id: factionId,
+                intimidator_name: faction.faction_name,
+                seats_lost: seatsGained,
+                status: 'pending',
+            }
+        });
+    }
+
+    return {
+        success: true,
+        newAp: apResult.newAp,
+        seatsGained, failed,
+        targetName: target.faction_name,
+        loyaltyChange: GAME_CONFIG.INTIMIDATE_LOYALTY,
+        standingChange: failed ? GAME_CONFIG.INTIMIDATE_FAIL_STANDING : GAME_CONFIG.INTIMIDATE_STANDING,
+        newLoyalty, newStanding,
+        eventId: failed ? null : eventId,
+    };
+}
+
+/**
+ * Respond to an intimidation event (Accept / Report / Retaliate).
+ */
+async function executeIntimidationResponse(supabase, factionId, nationId, eventId, response, currentTick) {
+    // Find the pending intimidation event
+    const { data: events } = await supabase
+        .from('campaign_actions')
+        .select('id, result')
+        .eq('party_id', factionId)
+        .eq('nation_id', nationId)
+        .eq('action_type', 'intimidation_pending');
+
+    const event = (events || []).find(e => e.result?.event_id === eventId && e.result?.status === 'pending');
+    if (!event) return { success: false, error: 'Intimidation event not found or already resolved.' };
+
+    const intimidatorId = event.result.intimidator_faction_id;
+
+    // Mark event as resolved
+    const updatedResult = { ...event.result, status: response, resolved_at_tick: currentTick };
+    await supabase.from('campaign_actions').update({ result: updatedResult }).eq('id', event.id);
+
+    if (response === 'accept') {
+        return { success: true, response: 'accept', message: 'Losses accepted.' };
+    }
+
+    if (response === 'report') {
+        // Intimidator: loyalty -8, standing -3
+        const { data: intimidator } = await supabase
+            .from('factions').select('id, loyalty, standing').eq('id', intimidatorId).single();
+        if (intimidator) {
+            await supabase.from('factions').update({
+                loyalty: Math.max(0, (intimidator.loyalty ?? 50) + GAME_CONFIG.INTIMIDATE_REPORT_LOYALTY),
+                standing: Math.max(0, (intimidator.standing ?? 30) + GAME_CONFIG.INTIMIDATE_REPORT_STANDING),
+            }).eq('id', intimidatorId);
+        }
+        // Reporter: loyalty +3
+        const { data: reporter } = await supabase
+            .from('factions').select('id, loyalty').eq('id', factionId).single();
+        if (reporter) {
+            await supabase.from('factions').update({
+                loyalty: Math.min(GAME_CONFIG.LOYALTY_CAP, (reporter.loyalty ?? 50) + GAME_CONFIG.INTIMIDATE_REPORTER_LOYALTY),
+            }).eq('id', factionId);
+        }
+
+        await supabase.from('campaign_actions').insert({
+            party_id: factionId, nation_id: nationId,
+            action_type: 'intimidation_reported',
+            tick_performed: currentTick,
+            result: { event_id: eventId, intimidator_id: intimidatorId }
+        });
+
+        return { success: true, response: 'report', message: 'Reported to the Strongman.' };
+    }
+
+    if (response === 'retaliate') {
+        // Check funds
+        const { data: retaliator } = await supabase
+            .from('factions').select('id, loyalty, embezzled_funds').eq('id', factionId).single();
+        if (!retaliator || Number(retaliator.embezzled_funds ?? 0) < GAME_CONFIG.INTIMIDATE_RETALIATE_COST)
+            return { success: false, error: `Need $${GAME_CONFIG.INTIMIDATE_RETALIATE_COST}M to retaliate.` };
+
+        // Retaliator: loyalty -2, funds -$1M
+        await supabase.from('factions').update({
+            loyalty: Math.max(0, (retaliator.loyalty ?? 50) + GAME_CONFIG.INTIMIDATE_RETALIATOR_LOYALTY),
+            embezzled_funds: Math.max(0, Number(retaliator.embezzled_funds ?? 0) - GAME_CONFIG.INTIMIDATE_RETALIATE_COST),
+        }).eq('id', factionId);
+
+        // Intimidator: standing -2, seats -2
+        const { data: intimidator } = await supabase
+            .from('factions').select('id, standing, seats').eq('id', intimidatorId).single();
+        if (intimidator) {
+            await supabase.from('factions').update({
+                standing: Math.max(0, (intimidator.standing ?? 30) + GAME_CONFIG.INTIMIDATE_RETALIATE_STANDING),
+                seats: Math.max(0, (intimidator.seats || 0) + GAME_CONFIG.INTIMIDATE_RETALIATE_SEATS),
+            }).eq('id', intimidatorId);
+        }
+
+        await supabase.from('campaign_actions').insert({
+            party_id: factionId, nation_id: nationId,
+            action_type: 'intimidation_retaliated',
+            tick_performed: currentTick,
+            result: { event_id: eventId, intimidator_id: intimidatorId }
+        });
+
+        return { success: true, response: 'retaliate', message: 'Retaliation successful.' };
+    }
+
+    return { success: false, error: 'Invalid response.' };
+}
+
+/**
+ * Purge: Strongman removes a faction's steward. Nuclear option.
+ * Requires target loyalty < 20.
+ * Target: steward removed, loyalty reset 50, standing -20, seats -30%, funds seized.
+ * Others: loyalty +5. Nation: stability -1. Regime Health -3.
+ * AP Cost: 3
+ */
+async function executePurge(supabase, factionId, nationId, targetFactionId, currentTick) {
+    // 1. Validate caller is Strongman
+    const { data: nation } = await supabase
+        .from('nations').select('id, ruling_faction_id, stability, civil_unrest, regime_health, international_reputation, total_seats')
+        .eq('id', nationId).single();
+    if (!nation) return { success: false, error: 'Nation not found.' };
+    if (nation.ruling_faction_id !== factionId) return { success: false, error: 'Only the Strongman can purge.' };
+
+    // 2. Validate target
+    const { data: target } = await supabase
+        .from('factions').select('id, loyalty, standing, seats, embezzled_funds, faction_name')
+        .eq('id', targetFactionId).single();
+    if (!target) return { success: false, error: 'Target faction not found.' };
+    if ((target.loyalty ?? 50) >= GAME_CONFIG.PURGE_LOYALTY_THRESHOLD)
+        return { success: false, error: `Target loyalty must be below ${GAME_CONFIG.PURGE_LOYALTY_THRESHOLD}. Current: ${target.loyalty ?? 50}.` };
+
+    // 3. Validate AP
+    const { data: strongman } = await supabase
+        .from('factions').select('action_points').eq('id', factionId).single();
+    if ((strongman?.action_points || 0) < GAME_CONFIG.PURGE_AP)
+        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.PURGE_AP}.` };
+
+    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.PURGE_AP);
+    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
+
+    // 4. Remove steward
+    const { data: targetSteward } = await supabase
+        .from('stewards').select('id, first_name, last_name, is_chosen_successor')
+        .eq('faction_id', targetFactionId).eq('nation_id', nationId).eq('is_alive', true)
+        .maybeSingle();
+
+    if (targetSteward) {
+        await supabase.from('stewards').update({
+            is_alive: false, died_at_tick: currentTick,
+            is_chosen_successor: false,
+        }).eq('id', targetSteward.id);
+    }
+
+    // 5. Create new steward (weaker stats)
+    const firstNames = ['Viktor', 'Andrei', 'Dmitri', 'Sergei', 'Nikolai', 'Alexei', 'Pavel', 'Oleg', 'Yuri', 'Ivan'];
+    const lastNames = ['Petrov', 'Volkov', 'Novikov', 'Kozlov', 'Morozov', 'Popov', 'Lebedev', 'Sokolov', 'Kuznetsov', 'Pavlov'];
+    const newFirst = firstNames[Math.floor(Math.random() * firstNames.length)];
+    const newLast = lastNames[Math.floor(Math.random() * lastNames.length)];
+
+    const { data: oldSteward } = await supabase
+        .from('stewards').select('pillar_key, steward_type')
+        .eq('faction_id', targetFactionId).eq('nation_id', nationId)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+
+    await supabase.from('stewards').insert({
+        nation_id: nationId,
+        faction_id: targetFactionId,
+        pillar_key: oldSteward?.pillar_key || 'party',
+        steward_type: oldSteward?.steward_type || 'technocrat',
+        first_name: newFirst,
+        last_name: newLast,
+        age: 35 + Math.floor(Math.random() * 20),
+        standing: 15,
+        power_base: 10,
+        true_loyalty: 50,
+        estimated_loyalty: 50,
+        personal_wealth: 0,
+        exit_readiness: 0,
+        coup_readiness: 0,
+        is_alive: true,
+        is_chosen_successor: false,
+        created_at_tick: currentTick,
+    });
+
+    // 6. Apply target faction effects
+    const seatsLost = Math.ceil((target.seats || 0) * GAME_CONFIG.PURGE_TARGET_SEAT_LOSS);
+    const newTargetSeats = Math.max(0, (target.seats || 0) - seatsLost);
+
+    await supabase.from('factions').update({
+        loyalty: GAME_CONFIG.PURGE_TARGET_NEW_LOYALTY,
+        standing: Math.max(0, (target.standing ?? 30) + GAME_CONFIG.PURGE_TARGET_STANDING),
+        seats: newTargetSeats,
+        embezzled_funds: 0,
+        coup_lockout_until_tick: currentTick + GAME_CONFIG.PURGE_COUP_LOCKOUT_TICKS,
+    }).eq('id', targetFactionId);
+
+    // 7. Scatter lost seats proportionally to other factions
+    const { data: otherFactions } = await supabase
+        .from('factions').select('id, seats')
+        .eq('nation_id', nationId).eq('faction_type', 'party')
+        .neq('id', targetFactionId);
+
+    if (otherFactions && otherFactions.length > 0 && seatsLost > 0) {
+        const totalOtherSeats = otherFactions.reduce((s, f) => s + (f.seats || 0), 0) || 1;
+        let remaining = seatsLost;
+        for (const of2 of otherFactions) {
+            const share = Math.round(seatsLost * ((of2.seats || 0) / totalOtherSeats));
+            const give = Math.min(share, remaining);
+            if (give > 0) {
+                await supabase.from('factions').update({ seats: (of2.seats || 0) + give }).eq('id', of2.id);
+                remaining -= give;
+            }
+        }
+        // Give remainder to largest faction
+        if (remaining > 0) {
+            const largest = otherFactions.sort((a, b) => (b.seats || 0) - (a.seats || 0))[0];
+            await supabase.from('factions').update({ seats: (largest.seats || 0) + remaining }).eq('id', largest.id);
+        }
+    }
+
+    // 8. All other non-ruling factions: loyalty +5
+    const { data: allFactions } = await supabase
+        .from('factions').select('id, loyalty')
+        .eq('nation_id', nationId).eq('faction_type', 'party')
+        .neq('id', targetFactionId).neq('id', factionId);
+    for (const af of (allFactions || [])) {
+        await supabase.from('factions').update({
+            loyalty: Math.min(GAME_CONFIG.LOYALTY_CAP, (af.loyalty ?? 50) + GAME_CONFIG.PURGE_OTHERS_LOYALTY)
+        }).eq('id', af.id);
+    }
+
+    // 9. Nation effects
+    const newStability = Math.max(0, Number(nation.stability ?? 50) + GAME_CONFIG.PURGE_STABILITY);
+    const newRegimeHealth = Math.max(0, Number(nation.regime_health ?? 80) + GAME_CONFIG.PURGE_REGIME_HEALTH);
+    const nationUpdates = { stability: newStability, regime_health: newRegimeHealth };
+
+    // Extra penalties for purging powerful factions
+    if ((target.standing ?? 30) > 50) {
+        nationUpdates.civil_unrest = Math.min(100, Number(nation.civil_unrest ?? 30) + 0.5);
+    }
+    if ((target.seats || 0) > 40) {
+        nationUpdates.civil_unrest = Math.min(100, Number(nationUpdates.civil_unrest ?? nation.civil_unrest ?? 30) + 0.5);
+    }
+    nationUpdates.international_reputation = Math.max(0, Number(nation.international_reputation ?? 50) - 0.5);
+
+    await supabase.from('nations').update(nationUpdates).eq('id', nationId);
+
+    // 10. Log action
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId, nation_id: nationId,
+        action_type: 'purge',
+        tick_performed: currentTick,
+        result: {
+            target_faction_id: targetFactionId,
+            target_name: target.faction_name,
+            purged_steward: targetSteward ? `${targetSteward.first_name} ${targetSteward.last_name}` : 'Unknown',
+            new_steward: `${newFirst} ${newLast}`,
+            seats_lost: seatsLost,
+            funds_seized: Number(target.embezzled_funds ?? 0),
+        }
+    });
+
+    return {
+        success: true,
+        newAp: apResult.newAp,
+        targetName: target.faction_name,
+        purgedSteward: targetSteward ? `${targetSteward.first_name} ${targetSteward.last_name}` : 'Unknown',
+        newSteward: `${newFirst} ${newLast}`,
+        seatsLost,
+        fundsSeized: Number(target.embezzled_funds ?? 0),
+    };
+}
+
+/**
+ * Redistribute Seats: Strongman transfers seats between factions.
+ * Loser: standing -3, loyalty -5. Gainer: loyalty +5.
+ * Max 30% of loser's seats. 4-tick cooldown.
+ * AP Cost: 2
+ */
+async function executeRedistributeSeats(supabase, factionId, nationId, loserId, gainerId, seatCount, currentTick) {
+    // 1. Validate caller is Strongman
+    const { data: nation } = await supabase
+        .from('nations').select('id, ruling_faction_id, last_redistribute_tick')
+        .eq('id', nationId).single();
+    if (!nation) return { success: false, error: 'Nation not found.' };
+    if (nation.ruling_faction_id !== factionId) return { success: false, error: 'Only the Strongman can redistribute seats.' };
+
+    // 2. Check cooldown
+    if (nation.last_redistribute_tick != null && (currentTick - nation.last_redistribute_tick) < GAME_CONFIG.REDISTRIBUTE_SEATS_COOLDOWN)
+        return { success: false, error: `Cooldown: ${GAME_CONFIG.REDISTRIBUTE_SEATS_COOLDOWN - (currentTick - nation.last_redistribute_tick)} ticks remaining.` };
+
+    // 3. Validate AP
+    const { data: strongman } = await supabase
+        .from('factions').select('action_points').eq('id', factionId).single();
+    if ((strongman?.action_points || 0) < GAME_CONFIG.REDISTRIBUTE_SEATS_AP)
+        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.REDISTRIBUTE_SEATS_AP}.` };
+
+    // 4. Validate loser and gainer
+    const { data: loser } = await supabase
+        .from('factions').select('id, seats, standing, loyalty, faction_name')
+        .eq('id', loserId).single();
+    const { data: gainer } = await supabase
+        .from('factions').select('id, seats, loyalty, faction_name')
+        .eq('id', gainerId).single();
+    if (!loser || !gainer) return { success: false, error: 'Faction not found.' };
+    if (loserId === gainerId) return { success: false, error: 'Loser and gainer must be different.' };
+
+    const maxSeats = Math.ceil((loser.seats || 0) * GAME_CONFIG.REDISTRIBUTE_SEATS_MAX_RATIO);
+    if (seatCount > maxSeats) return { success: false, error: `Max ${maxSeats} seats (30% of ${loser.seats || 0}).` };
+    if (seatCount <= 0) return { success: false, error: 'Must transfer at least 1 seat.' };
+    if (seatCount > (loser.seats || 0)) return { success: false, error: 'Loser doesn\'t have enough seats.' };
+
+    // 5. Deduct AP
+    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.REDISTRIBUTE_SEATS_AP);
+    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
+
+    // 6. Apply transfer
+    await supabase.from('factions').update({
+        seats: (loser.seats || 0) - seatCount,
+        standing: Math.max(0, (loser.standing ?? 30) + GAME_CONFIG.REDISTRIBUTE_SEATS_LOSER_STANDING),
+        loyalty: Math.max(0, (loser.loyalty ?? 50) + GAME_CONFIG.REDISTRIBUTE_SEATS_LOSER_LOYALTY),
+    }).eq('id', loserId);
+
+    await supabase.from('factions').update({
+        seats: (gainer.seats || 0) + seatCount,
+        loyalty: Math.min(GAME_CONFIG.LOYALTY_CAP, (gainer.loyalty ?? 50) + GAME_CONFIG.REDISTRIBUTE_SEATS_GAINER_LOYALTY),
+    }).eq('id', gainerId);
+
+    // 7. Update cooldown
+    await supabase.from('nations').update({ last_redistribute_tick: currentTick }).eq('id', nationId);
+
+    // 8. Log
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId, nation_id: nationId,
+        action_type: 'redistribute_seats',
+        tick_performed: currentTick,
+        result: {
+            loser_id: loserId, loser_name: loser.faction_name,
+            gainer_id: gainerId, gainer_name: gainer.faction_name,
+            seats_transferred: seatCount,
+        }
+    });
+
+    return {
+        success: true,
+        newAp: apResult.newAp,
+        loserName: loser.faction_name,
+        gainerName: gainer.faction_name,
+        seatsTransferred: seatCount,
+    };
+}
+
+function getEmbezzleRiskLabel(faction, nation) {
+    const consecutiveTicks = (faction.consecutive_embezzle_ticks ?? 0);
+    const corruption = Number(nation?.corruption ?? 50);
+    const corruptionMod = (corruption - 50) * -0.005;
+    let prob = GAME_CONFIG.EMBEZZLE_FUNDS_BASE_DETECTION
+        + consecutiveTicks * GAME_CONFIG.EMBEZZLE_FUNDS_CONSECUTIVE_BONUS
+        + corruptionMod;
+    prob = Math.max(GAME_CONFIG.EMBEZZLE_FUNDS_DETECTION_FLOOR,
+        Math.min(GAME_CONFIG.EMBEZZLE_FUNDS_DETECTION_CAP, prob));
+    if (prob <= 0.12) return 'LOW';
+    if (prob <= 0.25) return 'MODERATE';
+    if (prob <= 0.35) return 'ELEVATED';
+    return 'HIGH';
+}
 
 const STEWARD_TYPE_LABELS = {
     technocrat:           'Technocrat',
@@ -12882,6 +13898,11 @@ async function processStewardTick(supabase, nation) {
                 updated_at: new Date().toISOString()
             })
             .eq('id', steward.id);
+
+        // Sync steward standing → faction standing (v2: standing is faction-level)
+        await supabase.from('factions')
+            .update({ standing: Math.max(0, Math.min(90, standing)) })
+            .eq('id', steward.faction_id);
     }
 }
 
@@ -15778,6 +16799,649 @@ async function executeDynastyAction(supabase, nationId, factionId, mode, targetF
     return { success: true, ...result };
 }
 
+// ==================== PHASE 8: COUP OVERHAUL & REGIME HEALTH ====================
+
+/**
+ * Get regime health threshold label and effects.
+ */
+function getRegimeHealthTier(regimeHealth) {
+    if (regimeHealth >= 60) return { label: 'HEALTHY', color: '#4CAF50', coupBonus: 0, loyaltyDecay: -2 };
+    if (regimeHealth >= 40) return { label: 'WEAKENING', color: '#FFC107', coupBonus: 5, loyaltyDecay: -2.5 };
+    if (regimeHealth >= 20) return { label: 'DECLINING', color: '#FF9800', coupBonus: 10, loyaltyDecay: -3 };
+    if (regimeHealth >= 1) return { label: 'CRITICAL', color: '#F44336', coupBonus: 20, loyaltyDecay: -4 };
+    return { label: 'COLLAPSED', color: '#B71C1C', coupBonus: 30, loyaltyDecay: -5 };
+}
+
+/**
+ * Process regime health tick: natural decay, modifiers, recovery.
+ * Called once per tick for each autocracy nation.
+ */
+async function processRegimeHealthTick(supabase, nation, currentTick) {
+    if (!isAutocracy(nation)) return;
+
+    let rh = Number(nation.regime_health ?? 80);
+    const startingRH = 80; // recovery cap
+
+    // Natural decay: -0.5/tick
+    rh -= 0.5;
+
+    // Fetch factions for modifier calculations
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, loyalty, standing, seats')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+
+    if (factions && factions.length > 0) {
+        // Recovery: high average loyalty across non-ruling factions
+        const nonRuling = factions.filter(f => f.id !== nation.ruling_faction_id);
+        if (nonRuling.length > 0) {
+            const avgLoyalty = nonRuling.reduce((s, f) => s + (f.loyalty ?? 50), 0) / nonRuling.length;
+            if (avgLoyalty >= 60) rh += 0.3;
+        }
+    }
+
+    // Recovery: high stability
+    if ((nation.stability ?? 50) >= 60) rh += 0.3;
+
+    // Recovery: has a chosen successor
+    const { data: successorCheck } = await supabase
+        .from('stewards')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('is_chosen_successor', true)
+        .eq('is_alive', true)
+        .limit(1);
+    if (successorCheck && successorCheck.length > 0) rh += 0.1;
+
+    // Recovery: no active crises (check for recent negative events)
+    // Simple heuristic: if stability > 50 and no recent purges/coups, small bonus
+    const { data: recentBadEvents } = await supabase
+        .from('campaign_actions')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .in('action_type', ['purge', 'coup_failed', 'faction_intimidate'])
+        .gte('tick_performed', currentTick - 3)
+        .limit(1);
+    if (!recentBadEvents || recentBadEvents.length === 0) rh += 0.5;
+
+    // Cap: never exceeds starting value
+    rh = Math.min(startingRH, Math.max(0, rh));
+
+    // Update nation
+    await supabase.from('nations').update({ regime_health: rh }).eq('id', nation.id);
+
+    // Check for collapse (rh === 0)
+    if (rh <= 0) {
+        await handleRegimeCollapse(supabase, nation, currentTick);
+    }
+
+    return rh;
+}
+
+/**
+ * Handle regime collapse when regime_health reaches 0.
+ * If successor exists, they take over. Otherwise, power vacuum.
+ */
+async function handleRegimeCollapse(supabase, nation, currentTick) {
+    // Check for chosen successor
+    const { data: successor } = await supabase
+        .from('stewards')
+        .select('id, faction_id, first_name, last_name')
+        .eq('nation_id', nation.id)
+        .eq('is_chosen_successor', true)
+        .eq('is_alive', true)
+        .limit(1)
+        .single();
+
+    if (successor) {
+        // Successor takes over
+        await supabase.from('nations').update({
+            ruling_faction_id: successor.faction_id,
+            regime_health: 40, // partial recovery on succession
+            successor_cooldown_end_tick: null,
+            successor_is_family_member: false,
+        }).eq('id', nation.id);
+
+        // Clear successor status
+        await supabase.from('stewards').update({
+            is_chosen_successor: false,
+            succession_strength: 0,
+            successor_appointed_tick: null,
+        }).eq('nation_id', nation.id);
+
+        // Reset all loyalties to 40
+        await supabase.from('factions').update({ loyalty: 40 })
+            .eq('nation_id', nation.id)
+            .neq('id', successor.faction_id);
+
+        await supabase.from('campaign_actions').insert({
+            party_id: successor.faction_id,
+            nation_id: nation.id,
+            action_type: 'regime_succession',
+            tick_performed: currentTick,
+            result: {
+                successor_name: `${successor.first_name} ${successor.last_name}`,
+                faction_id: successor.faction_id,
+                reason: 'regime_collapse',
+            },
+        });
+    } else {
+        // Power vacuum — highest standing faction takes over with penalties
+        const { data: factions } = await supabase
+            .from('factions')
+            .select('id, standing, faction_name')
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'party')
+            .neq('id', nation.ruling_faction_id)
+            .order('standing', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (factions) {
+            await supabase.from('nations').update({
+                ruling_faction_id: factions.id,
+                regime_health: 30, // low recovery on power vacuum
+                stability: Math.max(0, (nation.stability ?? 50) - 10),
+            }).eq('id', nation.id);
+
+            // All loyalties reset to 30 (chaotic transition)
+            await supabase.from('factions').update({ loyalty: 30 })
+                .eq('nation_id', nation.id)
+                .neq('id', factions.id);
+
+            await supabase.from('campaign_actions').insert({
+                party_id: factions.id,
+                nation_id: nation.id,
+                action_type: 'power_vacuum',
+                tick_performed: currentTick,
+                result: {
+                    new_ruler: factions.faction_name,
+                    faction_id: factions.id,
+                    reason: 'regime_collapse',
+                },
+            });
+        }
+    }
+}
+
+/**
+ * Process unaligned seat pool regeneration: +1 seat per 4 ticks.
+ * Draws proportionally from largest factions.
+ */
+async function processUnalignedPoolTick(supabase, nation, currentTick) {
+    if (!isAutocracy(nation)) return;
+    if (currentTick % GAME_CONFIG.UNALIGNED_POOL_REGEN_TICKS !== 0) return;
+
+    const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
+    const maxPool = Math.floor(totalSeats * GAME_CONFIG.UNALIGNED_POOL_MAX_RATIO);
+    const currentPool = nation.unaligned_seats || 0;
+
+    if (currentPool >= maxPool) return;
+
+    // Find the largest faction to draw from
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, seats')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party')
+        .order('seats', { ascending: false })
+        .limit(1);
+
+    if (!factions || factions.length === 0 || factions[0].seats <= GAME_CONFIG.NEW_FACTION_MIN_SEATS) return;
+
+    // Draw 1 seat from largest faction
+    await supabase.from('factions').update({ seats: factions[0].seats - 1 }).eq('id', factions[0].id);
+    await supabase.from('nations').update({ unaligned_seats: currentPool + 1 }).eq('id', nation.id);
+}
+
+/**
+ * Calculate coup success probability.
+ * Based on standing, seats, funds, regime health, and allies.
+ */
+function calculateCoupProbability(faction, nation, allies = []) {
+    const standing = faction.standing ?? 30;
+    const seats = faction.seats ?? 0;
+    const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
+    const funds = Number(faction.embezzled_funds ?? 0);
+    const rh = Number(nation.regime_health ?? 80);
+
+    // Base probability from standing (0-30%)
+    const standingComponent = (standing / 90) * 30;
+
+    // Seat ratio component (0-25%)
+    const seatRatio = seats / totalSeats;
+    const seatComponent = Math.min(25, seatRatio * 100);
+
+    // Funds component (0-20%)
+    const fundsComponent = Math.min(20, (funds / 100) * 20);
+
+    // Regime health weakness bonus (0-20%)
+    const tier = getRegimeHealthTier(rh);
+    const rhComponent = tier.coupBonus;
+
+    // Ally bonus (up to 15%)
+    let allyBonus = 0;
+    for (const ally of allies) {
+        allyBonus += ((ally.seats ?? 0) / totalSeats) * 15;
+    }
+    allyBonus = Math.min(15, allyBonus);
+
+    const raw = standingComponent + seatComponent + fundsComponent + rhComponent + allyBonus;
+    return Math.max(5, Math.min(95, Math.round(raw)));
+}
+
+/**
+ * Get qualitative coup estimate with noise for player display.
+ */
+function getCoupEstimate(faction, nation, allies = []) {
+    const trueProbability = calculateCoupProbability(faction, nation, allies);
+
+    // Apply noise: ±((100 - standing) / 100 × 15%)
+    const standing = faction.standing ?? 30;
+    const noiseRange = ((100 - standing) / 100) * 15;
+    const noise = (Math.random() * 2 - 1) * noiseRange;
+    const displayed = Math.max(5, Math.min(95, Math.round(trueProbability + noise)));
+
+    // Map to tier
+    let tier, color;
+    if (displayed < 25) { tier = 'DESPERATE'; color = '#F44336'; }
+    else if (displayed < 40) { tier = 'RISKY'; color = '#FF9800'; }
+    else if (displayed < 55) { tier = 'UNCERTAIN'; color = '#FFC107'; }
+    else if (displayed < 70) { tier = 'FAVORABLE'; color = '#8BC34A'; }
+    else { tier = 'STRONG'; color = '#4CAF50'; }
+
+    return { tier, color, displayed, trueProbability };
+}
+
+/**
+ * Check if a faction meets the new v2 coup requirements.
+ */
+function canAttemptCoup(faction, nation, currentTick) {
+    const standing = faction.standing ?? 30;
+    const seats = faction.seats ?? 0;
+    const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
+    const funds = Number(faction.embezzled_funds ?? 0);
+    const lockoutUntil = faction.coup_lockout_until_tick;
+
+    const reasons = [];
+    if (standing < GAME_CONFIG.COUP_MIN_STANDING) {
+        reasons.push(`Standing ${standing} < ${GAME_CONFIG.COUP_MIN_STANDING}`);
+    }
+    if (seats / totalSeats < GAME_CONFIG.COUP_MIN_SEAT_RATIO) {
+        reasons.push(`Seats ${seats} < ${Math.ceil(totalSeats * GAME_CONFIG.COUP_MIN_SEAT_RATIO)} (${Math.round(GAME_CONFIG.COUP_MIN_SEAT_RATIO * 100)}%)`);
+    }
+    if (funds < GAME_CONFIG.COUP_FUNDS_THRESHOLD) {
+        reasons.push(`Funds $${Math.round(funds)}M < $${GAME_CONFIG.COUP_FUNDS_THRESHOLD}M`);
+    }
+    if (lockoutUntil && currentTick < lockoutUntil) {
+        reasons.push(`Lockout until tick ${lockoutUntil} (${lockoutUntil - currentTick} ticks)`);
+    }
+    // Check if faction is the ruling faction
+    if (faction.id === nation.ruling_faction_id) {
+        reasons.push('Cannot coup yourself');
+    }
+
+    return { canCoup: reasons.length === 0, reasons };
+}
+
+/**
+ * Send a coup invitation to another faction.
+ * Stores as a campaign_action with status 'pending_coup_invite'.
+ */
+async function sendCoupInvitation(supabase, factionId, nationId, targetFactionId, currentTick) {
+    // Validate sender meets coup requirements
+    const { data: faction } = await supabase
+        .from('factions')
+        .select('id, standing, seats, embezzled_funds, coup_lockout_until_tick, faction_name')
+        .eq('id', factionId)
+        .single();
+    if (!faction) return { success: false, error: 'Faction not found' };
+
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('id, ruling_faction_id, total_seats, regime_health')
+        .eq('id', nationId)
+        .single();
+    if (!nation) return { success: false, error: 'Nation not found' };
+
+    const eligibility = canAttemptCoup(faction, nation, currentTick);
+    if (!eligibility.canCoup) return { success: false, error: `Not eligible: ${eligibility.reasons.join(', ')}` };
+
+    // Check if already invited this faction
+    const { data: existing } = await supabase
+        .from('campaign_actions')
+        .select('id')
+        .eq('party_id', factionId)
+        .eq('nation_id', nationId)
+        .eq('action_type', 'coup_invitation')
+        .gte('tick_performed', currentTick - 2)
+        .limit(1);
+    if (existing && existing.length > 0) return { success: false, error: 'Already sent an invitation recently' };
+
+    // Check max 2 invitations
+    const { data: allInvites } = await supabase
+        .from('campaign_actions')
+        .select('id')
+        .eq('party_id', factionId)
+        .eq('nation_id', nationId)
+        .eq('action_type', 'coup_invitation')
+        .gte('tick_performed', currentTick - 2);
+    if (allInvites && allInvites.length >= 2) return { success: false, error: 'Maximum 2 invitations per coup attempt' };
+
+    // Get estimate for display to invitee
+    const estimate = getCoupEstimate(faction, nation);
+
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId,
+        nation_id: nationId,
+        action_type: 'coup_invitation',
+        tick_performed: currentTick,
+        result: {
+            target_faction_id: targetFactionId,
+            inviter_name: faction.faction_name,
+            estimate_tier: estimate.tier,
+            status: 'pending',
+        },
+    });
+
+    return { success: true, estimateTier: estimate.tier };
+}
+
+/**
+ * Respond to a coup invitation.
+ * Options: 'accept', 'decline', 'report'
+ */
+async function respondToCoupInvitation(supabase, factionId, nationId, invitationId, response, currentTick) {
+    // Load the invitation
+    const { data: invite } = await supabase
+        .from('campaign_actions')
+        .select('id, party_id, result')
+        .eq('id', invitationId)
+        .single();
+    if (!invite) return { success: false, error: 'Invitation not found' };
+    if (invite.result?.target_faction_id !== factionId) return { success: false, error: 'Not your invitation' };
+    if (invite.result?.status !== 'pending') return { success: false, error: 'Already responded' };
+
+    const inviterId = invite.party_id;
+    const updatedResult = { ...invite.result, status: response, responded_tick: currentTick };
+
+    await supabase.from('campaign_actions')
+        .update({ result: updatedResult })
+        .eq('id', invitationId);
+
+    if (response === 'report') {
+        // Reporter: loyalty +15
+        const { data: reporter } = await supabase
+            .from('factions').select('id, loyalty').eq('id', factionId).single();
+        if (reporter) {
+            const newLoyalty = Math.min(GAME_CONFIG.LOYALTY_CAP, (reporter.loyalty ?? 50) + 15);
+            await supabase.from('factions').update({ loyalty: newLoyalty }).eq('id', factionId);
+        }
+
+        // Plotter: loyalty -20, standing -5
+        const { data: plotter } = await supabase
+            .from('factions').select('id, loyalty, standing').eq('id', inviterId).single();
+        if (plotter) {
+            const newLoyalty = Math.max(0, (plotter.loyalty ?? 50) - 20);
+            const newStanding = Math.max(0, (plotter.standing ?? 30) - 5);
+            await supabase.from('factions').update({ loyalty: newLoyalty, standing: newStanding }).eq('id', inviterId);
+        }
+
+        // Notify strongman
+        const { data: nation } = await supabase.from('nations').select('ruling_faction_id').eq('id', nationId).single();
+        await supabase.from('campaign_actions').insert({
+            party_id: nation?.ruling_faction_id || factionId,
+            nation_id: nationId,
+            action_type: 'coup_plot_reported',
+            tick_performed: currentTick,
+            result: {
+                reporter_faction_id: factionId,
+                plotter_faction_id: inviterId,
+            },
+        });
+    }
+
+    return { success: true, response };
+}
+
+/**
+ * Execute a coup attempt (v2 overhaul).
+ * New requirements: standing >= 15, seats >= 10%, funds >= $30M.
+ */
+async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted, currentTick) {
+    // Load faction data
+    const { data: faction } = await supabase
+        .from('factions')
+        .select('id, standing, seats, embezzled_funds, coup_lockout_until_tick, faction_name, loyalty')
+        .eq('id', factionId)
+        .single();
+    if (!faction) return { success: false, error: 'Faction not found' };
+
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('id, ruling_faction_id, total_seats, regime_health, stability')
+        .eq('id', nationId)
+        .single();
+    if (!nation) return { success: false, error: 'Nation not found' };
+
+    // Validate requirements
+    const eligibility = canAttemptCoup(faction, nation, currentTick);
+    if (!eligibility.canCoup) return { success: false, error: `Not eligible: ${eligibility.reasons.join(', ')}` };
+
+    // Validate funds commitment (must commit at least $30M, can't exceed holdings)
+    const funds = Number(faction.embezzled_funds ?? 0);
+    const committed = Math.min(funds, fundsCommitted);
+    if (committed < GAME_CONFIG.COUP_FUNDS_THRESHOLD) {
+        return { success: false, error: `Must commit at least $${GAME_CONFIG.COUP_FUNDS_THRESHOLD}M` };
+    }
+
+    // Find accepted allies
+    const { data: acceptedInvites } = await supabase
+        .from('campaign_actions')
+        .select('id, result')
+        .eq('party_id', factionId)
+        .eq('nation_id', nationId)
+        .eq('action_type', 'coup_invitation')
+        .gte('tick_performed', currentTick - 2);
+
+    const allyIds = [];
+    if (acceptedInvites) {
+        for (const inv of acceptedInvites) {
+            if (inv.result?.status === 'accepted') {
+                allyIds.push(inv.result.target_faction_id);
+            }
+        }
+    }
+
+    // Load ally data
+    let allies = [];
+    if (allyIds.length > 0) {
+        const { data: allyData } = await supabase
+            .from('factions')
+            .select('id, standing, seats, faction_name')
+            .in('id', allyIds);
+        allies = allyData || [];
+    }
+
+    // Calculate true probability
+    const trueProbability = calculateCoupProbability(faction, nation, allies);
+    const success = Math.random() * 100 < trueProbability;
+
+    // Deduct committed funds regardless
+    await supabase.from('factions').update({
+        embezzled_funds: Math.max(0, funds - committed),
+    }).eq('id', factionId);
+
+    const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
+
+    if (success) {
+        // === COUP SUCCESS ===
+        // Old strongman's faction: reset
+        const oldRulingId = nation.ruling_faction_id;
+
+        // New ruler
+        await supabase.from('nations').update({
+            ruling_faction_id: factionId,
+            regime_health: Math.max(20, Number(nation.regime_health ?? 80) - 10),
+            stability: Math.max(0, (nation.stability ?? 50) - 5),
+            successor_cooldown_end_tick: null,
+            successor_is_family_member: false,
+        }).eq('id', nationId);
+
+        // Clear any chosen successors
+        await supabase.from('stewards').update({
+            is_chosen_successor: false, succession_strength: 0, successor_appointed_tick: null,
+        }).eq('nation_id', nationId).eq('is_chosen_successor', true);
+
+        // Coup leader: standing +10, loyalty set to 70
+        await supabase.from('factions').update({
+            standing: Math.min(GAME_CONFIG.STANDING_CAP, (faction.standing ?? 30) + 10),
+            loyalty: 70,
+            coup_lockout_until_tick: null,
+        }).eq('id', factionId);
+
+        // Allies: standing +10, loyalty set to 70
+        for (const ally of allies) {
+            await supabase.from('factions').update({
+                standing: Math.min(GAME_CONFIG.STANDING_CAP, (ally.standing ?? 30) + 10),
+                loyalty: 70,
+            }).eq('id', ally.id);
+        }
+
+        // Non-involved factions: loyalty reset to 40
+        const involvedIds = [factionId, ...allyIds, oldRulingId].filter(Boolean);
+        await supabase.from('factions').update({ loyalty: 40 })
+            .eq('nation_id', nationId)
+            .eq('faction_type', 'party')
+            .not('id', 'in', `(${involvedIds.join(',')})`);
+
+        await supabase.from('campaign_actions').insert({
+            party_id: factionId,
+            nation_id: nationId,
+            action_type: 'coup_success',
+            tick_performed: currentTick,
+            result: {
+                faction_name: faction.faction_name,
+                allies: allies.map(a => a.faction_name),
+                probability: trueProbability,
+                funds_committed: committed,
+            },
+        });
+
+        return {
+            success: true,
+            coupSuccess: true,
+            probability: trueProbability,
+            allies: allies.map(a => a.faction_name),
+        };
+    } else {
+        // === COUP FAILURE ===
+        // Leader: steward dies, standing -25, loyalty 10, lose 40% seats, 6-tick lockout
+        const { data: leaderSteward } = await supabase
+            .from('stewards')
+            .select('id, first_name, last_name')
+            .eq('faction_id', factionId)
+            .eq('nation_id', nationId)
+            .eq('is_alive', true)
+            .limit(1)
+            .single();
+
+        if (leaderSteward) {
+            await supabase.from('stewards').update({ is_alive: false }).eq('id', leaderSteward.id);
+
+            // Generate new steward
+            const newFirstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)];
+            const newLastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)];
+            const { data: oldSteward } = await supabase
+                .from('stewards').select('steward_type, pillar_key')
+                .eq('id', leaderSteward.id).single();
+            await supabase.from('stewards').insert({
+                faction_id: factionId,
+                nation_id: nationId,
+                first_name: newFirstName,
+                last_name: newLastName,
+                age: 35 + Math.floor(Math.random() * 20),
+                steward_type: oldSteward?.steward_type || 'party_chairman',
+                pillar_key: oldSteward?.pillar_key,
+                standing: 10,
+                power_base: 15,
+                true_loyalty: 50,
+                estimated_loyalty: 50,
+                personal_wealth: 0,
+                exit_readiness: 0,
+                coup_readiness: 0,
+                is_alive: true,
+            });
+        }
+
+        // Leader faction penalties
+        const seatLoss = Math.floor((faction.seats ?? 0) * 0.40);
+        await supabase.from('factions').update({
+            standing: Math.max(0, (faction.standing ?? 30) - 25),
+            loyalty: 10,
+            embezzled_funds: 0,
+            seats: Math.max(1, (faction.seats ?? 0) - seatLoss),
+            coup_lockout_until_tick: currentTick + GAME_CONFIG.COUP_LOCKOUT_TICKS,
+        }).eq('id', factionId);
+
+        // Distribute lost seats to ruling faction
+        if (seatLoss > 0 && nation.ruling_faction_id) {
+            const { data: ruler } = await supabase
+                .from('factions').select('id, seats').eq('id', nation.ruling_faction_id).single();
+            if (ruler) {
+                await supabase.from('factions').update({
+                    seats: (ruler.seats ?? 0) + seatLoss,
+                }).eq('id', ruler.id);
+            }
+        }
+
+        // Allies: standing -15, loyalty -20, lose 20% seats
+        for (const ally of allies) {
+            const allySeatLoss = Math.floor((ally.seats ?? 0) * 0.20);
+            const { data: allyFaction } = await supabase
+                .from('factions').select('id, loyalty, standing, seats')
+                .eq('id', ally.id).single();
+            if (allyFaction) {
+                await supabase.from('factions').update({
+                    standing: Math.max(0, (allyFaction.standing ?? 30) - 15),
+                    loyalty: Math.max(0, (allyFaction.loyalty ?? 50) - 20),
+                    seats: Math.max(1, (allyFaction.seats ?? 0) - allySeatLoss),
+                }).eq('id', ally.id);
+            }
+        }
+
+        // Regime health penalty
+        await supabase.from('nations').update({
+            regime_health: Math.max(0, Number(nation.regime_health ?? 80) - 5),
+            stability: Math.max(0, (nation.stability ?? 50) - 3),
+        }).eq('id', nationId);
+
+        await supabase.from('campaign_actions').insert({
+            party_id: factionId,
+            nation_id: nationId,
+            action_type: 'coup_failed',
+            tick_performed: currentTick,
+            result: {
+                faction_name: faction.faction_name,
+                steward_name: leaderSteward ? `${leaderSteward.first_name} ${leaderSteward.last_name}` : 'Unknown',
+                allies: allies.map(a => a.faction_name),
+                probability: trueProbability,
+                funds_committed: committed,
+                seats_lost: seatLoss,
+            },
+        });
+
+        return {
+            success: true,
+            coupSuccess: false,
+            probability: trueProbability,
+            seatsLost: seatLoss,
+            stewardDied: !!leaderSteward,
+        };
+    }
+}
+
 
 // ────────── election-simulation ──────────
 
@@ -17907,6 +19571,7 @@ async function advanceTick(supabase) {
                 for (const cb of (committeeImpeach || [])) {
                     await supabase.from('bills').update({
                         status: 'floor',
+                        floor_tick: newTick,
                         voting_ends_tick: newTick + GAME_CONFIG.IMPEACHMENT_MOTION_VOTING_TICKS
                     }).eq('id', cb.id);
                     if (cb.impeachment_id) {
@@ -18185,6 +19850,21 @@ async function advanceTick(supabase) {
         // Steward stats tick (autocracy)
         if (isAutocracy(nation)) {
             await processStewardTick(supabase, nation);
+        }
+
+        // Standing relevance decay (autocracy v2)
+        if (isAutocracy(nation)) {
+            await processStandingTick(supabase, nation, newTick);
+        }
+
+        // Regime health tick (autocracy v2)
+        if (isAutocracy(nation)) {
+            await processRegimeHealthTick(supabase, nation, newTick);
+        }
+
+        // Unaligned seat pool regeneration (autocracy v2)
+        if (isAutocracy(nation)) {
+            await processUnalignedPoolTick(supabase, nation, newTick);
         }
 
         // Secret coalition detection (autocracy)

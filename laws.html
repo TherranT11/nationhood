@@ -152,10 +152,18 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, generateBudgetBill, SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, generateBudgetBill, SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS, RAW_SCALING_DIVISORS } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 (function () {
     'use strict';
+/** Scale a policy cost by its scaling stat (e.g., population). */
+function scaleLawCost(baseCost, scalingStat) {
+    if (!scalingStat || !currentNation || currentNation[scalingStat] === undefined) return baseCost;
+    const statVal = Number(currentNation[scalingStat]) || 1;
+    const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
+    return baseCost * (statVal / divisor);
+}
+
 let currentNation = null, currentFaction = null, currentSeats = 0;
 let allPartySeats = {}, allParties = [], allPolicies = [];
 let activeLaws = [], committeeBills = [], floorBills = [], frozenBills = [], presidentDeskBills = [], recentBills = [];
@@ -534,12 +542,14 @@ function filterAllLaws() {
             effectsHTML = `<span class="tag ${cls}">${formatStatName(p.target_stat)} ${arrow}</span>`;
         }
 
-        const upCost = p.upfront_cost || 0;
-        const onCost = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
+        const upCostRaw = p.upfront_cost || 0;
+        const onCostRaw = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
+        const upCost = scaleLawCost(upCostRaw, p.upfront_scaling_stat);
+        const onCost = scaleLawCost(onCostRaw, p.ongoing_scaling_stat);
         const fmtC = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + m + 'M';
         const costHTML = [];
-        if (upCost > 0) costHTML.push(`Up: ${fmtC(upCost)}`);
-        if (onCost > 0) costHTML.push(`On: ${fmtC(onCost)}/t`);
+        if (upCost > 0) costHTML.push(`Up: ${fmtC(Math.round(upCost))}`);
+        if (onCost > 0) costHTML.push(`On: ${fmtC(Math.round(onCost))}/t`);
 
         return `<div class="law-card ${isActive ? 'law-active' : 'law-inactive'}">
             <div class="law-card-header">
@@ -1060,7 +1070,9 @@ function renderFloorBill(bill, isVetoed) {
                     : (bill.early_resolution_status === 'majority_reached' || bill.early_resolution_status === 'quorum_reached') ? `<div class="floor-status" style="border-color:#4CAF50;">MAJORITY REACHED — Passes This Tick</div>`
                     : (bill.early_resolution_status === 'majority_opposed' || bill.early_resolution_status === 'quorum_opposed') ? `<div class="floor-status" style="background:#ff4444;border-color:#ff4444;">MAJORITY OPPOSED — Fails This Tick</div>`
                     : (function() {
-                        var ev = evaluateBillVote({ votes_for: bill.votes_for || 0, votes_against: bill.votes_against || 0, votes_abstain: bill.votes_abstain || 0, bill_type: bill.bill_type }, GAME_CONFIG.TOTAL_SEATS);
+                        var fss = Object.values(allPartySeats).reduce(function(s,v){return s+(v||0);},0);
+                        var ets = Math.min(GAME_CONFIG.TOTAL_SEATS, Math.max(fss, 1));
+                        var ev = evaluateBillVote({ votes_for: bill.votes_for || 0, votes_against: bill.votes_against || 0, votes_abstain: bill.votes_abstain || 0, bill_type: bill.bill_type }, ets);
                         var statusText, statusStyle;
                         if (ev.status === 'will_pass') { statusText = 'WILL PASS — Resolves Next Tick'; statusStyle = 'background:#4CAF50;border-color:#4CAF50;color:#fff;'; }
                         else if (ev.status === 'will_fail') { statusText = 'WILL FAIL — Resolves Next Tick'; statusStyle = 'background:#ff4444;border-color:#ff4444;color:#fff;'; }
@@ -1092,7 +1104,7 @@ function renderFloorBill(bill, isVetoed) {
                 }).join('')))))))))))}
             </div>
             ${isVetoed ? `<div class="vetoed-stamp">${isPresidential ? '⛔ VETOED BY PRESIDENT' : '⛔ VETOED BY HEAD FACTION'}</div>` : `
-                <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span>${(bill.votes_abstain || 0) > 0 ? `<span style="color:#888;font-size:0.75rem;margin-left:8px;">— ${bill.votes_abstain} Abstain</span>` : ''}<span style="color:var(--text-secondary);font-size:0.75rem;margin-left:8px;">${GAME_CONFIG.TOTAL_SEATS - (bill.votes_for || 0) - (bill.votes_against || 0) - (bill.votes_abstain || 0)} undeclared</span></div>
+                <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span>${(bill.votes_abstain || 0) > 0 ? `<span style="color:#888;font-size:0.75rem;margin-left:8px;">— ${bill.votes_abstain} Abstain</span>` : ''}<span style="color:var(--text-secondary);font-size:0.75rem;margin-left:8px;">${Math.max(0, Math.min(GAME_CONFIG.TOTAL_SEATS, Object.values(allPartySeats).reduce((s,v)=>s+(v||0),0)) - (bill.votes_for || 0) - (bill.votes_against || 0) - (bill.votes_abstain || 0))} undeclared</span></div>
                 ${lawsIsAutocracy && isHeadFaction ? `<div class="veto-banner"><div><div class="veto-banner-text">⚠ You may veto this ${termBill.toLowerCase()}</div><div style="font-size:0.75rem;color:#888;">Costs -${GAME_CONFIG.VETO_APPROVAL_COST} Approval</div></div><button class="stance-btn veto" onclick="event.stopPropagation(); vetoDecree('${bill.id}')">VETO</button></div>` : ''}
             `}
             ${!isVetoed ? `<div class="click-hint">Click to view full ${termBill.toLowerCase()} & vote →</div>` : ''}
@@ -1353,7 +1365,7 @@ async function enactDecree(billId) {
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const bill = committeeBills.find(b => b.id === billId);
-        const decreeFields = { status: 'floor' };
+        const decreeFields = { status: 'floor', floor_tick: shard?.current_tick || 0 };
         if (bill?.bill_type !== 'budget') {
             decreeFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
         }
@@ -1366,7 +1378,7 @@ async function enactDecree(billId) {
             if (sponsorIdeology) {
                 const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, bill.bill_articles || []);
                 if (dynamicPenalty < 0) {
-                    await adjustMomentumAll(_supabase, currentNation.id, bill.proposed_by, dynamicPenalty, 'legislation:withdraw');
+                    await adjustMomentumAll(_supabase, currentNation.id, bill.proposed_by, dynamicPenalty, 'legislation:floor');
                     console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
                 }
             }
@@ -1632,10 +1644,10 @@ function renderPolicyOptions(policies, containerId, buttonId) {
                         return `<span class="${cls}">${revDir} ${formatStatName(e.stat_key)}</span>`;
                     }).join(', ') + '</div>';
             }
-            const onCost = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
-            if (onCost > 0) {
-                const fmtC = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + m + 'M';
-                repealInfoHTML += `<div style="margin-top:2px;font-size:0.75rem;color:#4CAF50;">Saves ${fmtC(onCost)}/tick if repealed</div>`;
+            const onCostScaled = scaleLawCost(policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0, policy.ongoing_scaling_stat);
+            if (onCostScaled > 0) {
+                const fmtC = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + Math.round(m) + 'M';
+                repealInfoHTML += `<div style="margin-top:2px;font-size:0.75rem;color:#4CAF50;">Saves ${fmtC(onCostScaled)}/tick if repealed</div>`;
             }
         }
         return `<div class="policy-option${opposedClass}${pendingClass}${enactedClass}" data-policy-id="${policy.id}" onclick="${clickAction}"><div class="policy-option-name">${escapeHtml(policy.policy_name)} ${ideoHTML} ${opposedBadge}${pendingBadge}${enactedBadge}</div><div class="policy-option-desc">${escapeHtml(policy.description || '')}</div><div class="policy-option-effects">${effectHTML}</div>${repealInfoHTML}${opposedWarn}</div>`;
@@ -1784,12 +1796,12 @@ function renderDraftArticles() {
                     return `<span class="${cls}">${revDir} ${formatStatName(e.stat_key)}</span>`;
                 }).join(', ') + '</div>';
             }
-            // Show cost savings from repealing
-            const onCost = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
-            const fmtCost = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + m + 'M';
+            // Show cost savings from repealing (scaled by population/stat)
+            const onCostScaled2 = scaleLawCost(p.ongoing_base_cost || p.ongoing_cost_per_tick || 0, p.ongoing_scaling_stat);
+            const fmtCost = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + Math.round(m) + 'M';
             let savingsHTML = '';
-            if (onCost > 0) {
-                savingsHTML = `<div style="margin-top:4px;font-size:0.8rem;color:#4CAF50;font-weight:600;">Budget Savings: ${fmtCost(onCost)}/tick recovered</div>`;
+            if (onCostScaled2 > 0) {
+                savingsHTML = `<div style="margin-top:4px;font-size:0.8rem;color:#4CAF50;font-weight:600;">Budget Savings: ${fmtCost(onCostScaled2)}/tick recovered</div>`;
             }
             return `<div class="draft-article-card" style="border-left:3px solid #ff4444;">
                 <div class="draft-article-info">
@@ -1870,6 +1882,8 @@ async function submitToCommittee() {
 
         if (existingBill) {
             alert('An Electoral Makeup bill is already pending.');
+            isSubmitting = false;
+            document.getElementById('submit-bill-btn').disabled = false;
             return;
         }
     }
@@ -2284,6 +2298,8 @@ async function retractBill(billId) {
             }
         }
 
+        await _supabase.from('bill_comments').delete().eq('bill_id', billId);
+        await _supabase.from('bill_amendment_requests').delete().eq('bill_id', billId);
         await _supabase.rpc('withdraw_bill_votes', { p_bill_id: billId });
         await _supabase.from('bill_articles').delete().eq('bill_id', billId);
         await _supabase.from('bills').delete().eq('id', billId);
@@ -2327,6 +2343,12 @@ function selectCommitteePolicy(policyId) {
 
 async function submitCommitteeArticle() {
     if (!committeeSelectedPolicy || !currentCommitteeBillId) return;
+    // Only the bill sponsor can add articles
+    const targetBill = committeeBills.find(b => b.id === currentCommitteeBillId);
+    if (targetBill && targetBill.proposed_by && targetBill.proposed_by !== currentFaction?.id) {
+        alert('Only the bill sponsor can add articles.');
+        return;
+    }
     try {
         const { data: existingArticles } = await _supabase.from('bill_articles').select('article_number').eq('bill_id', currentCommitteeBillId).order('article_number', { ascending: false }).limit(1);
         const nextArticleNum = (existingArticles?.[0]?.article_number || 1) + 1;
@@ -2338,6 +2360,12 @@ async function submitCommitteeArticle() {
 
 async function sendToFloor(billId) {
     const bill = committeeBills.find(b => b.id === billId);
+    // Require at least one article for non-budget, non-repeal bills
+    if (bill && bill.bill_type !== 'budget' && bill.bill_type !== 'repeal'
+        && (!bill.bill_articles || bill.bill_articles.filter(a => a.policy_id || a.effect_data || a.repeal_active_law_id).length === 0)) {
+        alert('This bill has no policy articles. Add at least one article before sending to the floor.');
+        return;
+    }
     // Prompt to rename the bill before sending to floor
     const newName = prompt('Rename this Bill?', bill?.bill_name || '');
     if (newName === null) return; // User cancelled
@@ -2349,6 +2377,7 @@ async function sendToFloor(billId) {
             updateFields.bill_name = trimmed;
         }
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        updateFields.floor_tick = shard?.current_tick || 0;
         // Budget bills persist indefinitely (no voting deadline)
         if (bill?.bill_type !== 'budget') {
             updateFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
@@ -2361,7 +2390,7 @@ async function sendToFloor(billId) {
         if (bill && bill.proposed_by && factionIdeology) {
             const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, bill.bill_articles || []);
             if (dynamicPenalty < 0) {
-                await adjustMomentumAll(_supabase, currentNation.id, bill.proposed_by, dynamicPenalty, 'legislation:withdraw');
+                await adjustMomentumAll(_supabase, currentNation.id, bill.proposed_by, dynamicPenalty, 'legislation:floor');
                 console.log(`Dynamic ideology penalty (floor): ${dynamicPenalty} for sponsor`);
             }
         }
