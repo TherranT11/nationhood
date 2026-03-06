@@ -296,7 +296,8 @@ export const HEADLINE_TEMPLATES = {
     bill_vote_pass: [
         { id: 'bill_pass_h_01', template: "Parliament Passes {bill_name}", conditions: [], weight: 1 },
         { id: 'bill_pass_h_02', template: "{bill_name} Clears Parliament in Decisive Vote", conditions: [{ field: 'margin', op: '>', value: 20 }], weight: 2 },
-        { id: 'bill_pass_h_03', template: "{bill_name} Squeaks Through Parliament — Narrow Victory for {party_name}", conditions: [{ field: 'margin', op: '<', value: 5 }], weight: 2 },
+        { id: 'bill_pass_h_03', template: "{bill_name} Squeaks Through Parliament — Narrow Victory for {party_name}", conditions: [{ field: 'margin', op: '<', value: 5 }, { field: 'party_name', op: '!=', value: '' }], weight: 2 },
+        { id: 'bill_pass_h_03b', template: "{bill_name} Squeaks Through Parliament — Narrow Victory", conditions: [{ field: 'margin', op: '<', value: 5 }], weight: 1 },
         { id: 'bill_pass_h_04', template: "Landmark: {bill_name} Becomes Law After Contentious Debate", conditions: [{ field: 'defection_count', op: '>', value: 3 }], weight: 2 },
     ],
 
@@ -673,8 +674,9 @@ export const LEDE_TEMPLATES = {
 
     // ─── Rally ───
     rally: [
-        { id: 'rally_l_01', conditions: [{ field: 'momentum_change', op: '>', value: 5 }], template: "The {party_name} drew large crowds to a rally in the capital, campaigning on {ideology_tag} themes. Party leader {leader_name} called for {subject_name}, energizing {primary_energized_bloc} and {secondary_energized_bloc} voters." },
-        { id: 'rally_l_02', conditions: [{ field: 'blocs_alienated', op: '>', value: 0 }], template: "A {party_name} rally on {subject_name} drew a mixed response. While {primary_energized_bloc} voters responded positively, {primary_alienated_bloc} communities criticized the party's message as divisive." },
+        { id: 'rally_l_01', conditions: [{ field: 'momentum_change', op: '>', value: 5 }, { field: 'secondary_energized_bloc', op: '!=', value: '' }], template: "The {party_name} drew large crowds to a rally in the capital, campaigning on {ideology_tag} themes. Party leader {leader_name} called for {subject_name}, energizing {primary_energized_bloc} and {secondary_energized_bloc} voters." },
+        { id: 'rally_l_01b', conditions: [{ field: 'momentum_change', op: '>', value: 5 }], template: "The {party_name} drew large crowds to a rally in the capital, campaigning on {ideology_tag} themes. Party leader {leader_name} called for {subject_name}, energizing {primary_energized_bloc} voters." },
+        { id: 'rally_l_02', conditions: [{ field: 'blocs_alienated', op: '>', value: 0 }, { field: 'primary_alienated_bloc', op: '!=', value: '' }], template: "A {party_name} rally on {subject_name} drew a mixed response. While {primary_energized_bloc} voters responded positively, {primary_alienated_bloc} communities criticized the party's message as divisive." },
         { id: 'rally_l_03', conditions: [{ field: 'momentum_change', op: '<', value: 3 }], template: "{party_name} held a low-key rally on {subject_name}. Turnout was modest and the event generated little media attention." },
         { id: 'rally_l_04', conditions: [], template: "The {party_name} rallied supporters around {subject_name} at an event in the capital. {leader_name} addressed the crowd, emphasizing the party's platform and vision for {nation_name}." },
     ],
@@ -756,11 +758,13 @@ export const LEDE_TEMPLATES = {
 
     // ─── Bill Pass/Fail ───
     bill_vote_pass: [
-        { id: 'bill_pass_l_01', conditions: [], template: "Parliament has passed {bill_name} in a {vote_for}-{vote_against} vote. The legislation, sponsored by {party_name}, will now take effect." },
+        { id: 'bill_pass_l_01', conditions: [{ field: 'party_name', op: '!=', value: '' }], template: "Parliament has passed {bill_name} in a {vote_for}-{vote_against} vote. The legislation, sponsored by {party_name}, will now take effect." },
+        { id: 'bill_pass_l_02', conditions: [], template: "Parliament has passed {bill_name} in a {vote_for}-{vote_against} vote. The legislation will now take effect." },
     ],
 
     bill_vote_fail: [
-        { id: 'bill_fail_l_01', conditions: [], template: "Parliament has rejected {bill_name} in a {vote_for}-{vote_against} vote. {party_name}'s legislative agenda has suffered a setback." },
+        { id: 'bill_fail_l_01', conditions: [{ field: 'party_name', op: '!=', value: '' }], template: "Parliament has rejected {bill_name} in a {vote_for}-{vote_against} vote. {party_name}'s legislative agenda has suffered a setback." },
+        { id: 'bill_fail_l_02', conditions: [], template: "Parliament has rejected {bill_name} in a {vote_for}-{vote_against} vote. The proposed legislation has been defeated." },
     ],
 };
 

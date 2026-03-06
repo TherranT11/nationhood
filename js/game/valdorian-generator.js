@@ -301,6 +301,8 @@ export function generateArticle(eventData) {
             for (const blockName of blockOrder) {
                 const blocks = blockDefs[blockName];
                 if (!blocks) continue;
+                // Skip opposition reaction blocks if no opposition leader is available
+                if (blockName === 'reaction_oppose' && !eventData.opposition_leader) continue;
                 for (const block of blocks) {
                     if (block.required || Math.random() > 0.3) {
                         bodyParagraphs.push(fillTemplate(block.template, eventData));
