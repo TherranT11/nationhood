@@ -574,8 +574,7 @@ async function submitTaxBill(nation) {
         var impactLine;
         if (key === 'corporate_tax') {
             var blocEff = rateDiff > 0 ? -3 : 2;
-            impactLine = '  Impact: ' + (blocEff >= 0 ? '+' : '') + blocEff + '% Business Owners bloc approval' +
-                (rateDiff > 0 ? ' + party approval' : '');
+            impactLine = '  Impact: ' + (blocEff >= 0 ? '+' : '') + blocEff + '% Business Owners bloc momentum (proposing party)';
         } else {
             var approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
             impactLine = '  Approval impact: ' + (approvalImpact >= 0 ? '+' : '') + approvalImpact + '%';
@@ -632,8 +631,7 @@ async function submitTaxBill(nation) {
             var artApprovalText;
             if (artKey === 'corporate_tax') {
                 var blocEff = artRateDiff > 0 ? -3 : 2;
-                artApprovalText = (blocEff >= 0 ? '+' : '') + blocEff + '% Business Owners voter bloc approval' +
-                    (artRateDiff > 0 ? ' + party approval impact' : '');
+                artApprovalText = (blocEff >= 0 ? '+' : '') + blocEff + '% Business Owners voter bloc momentum (proposing party)';
             } else {
                 var artApproval = artRateDiff > 0 ? artRateDiff * -2 : Math.abs(artRateDiff) * 1;
                 artApprovalText = (artApproval >= 0 ? '+' : '') + artApproval + '% approval';
@@ -1098,8 +1096,16 @@ function renderTaxationTab(nation) {
     var salesTax = Math.round(Number(nation.sales_tax || 0));
 
     // Store original rates on first render (don't overwrite if already set)
+    // Use integer-rounded values to match slider step=1 precision
     if (!originalRates._initialized) {
         originalRates = { income_tax: incomeTax, corporate_tax: corpTax, sales_tax: salesTax, _initialized: true };
+    }
+
+    // Warn if database rates have fractional parts that will be lost by integer sliders
+    if (Math.round(Number(nation.income_tax || 0) * 10) % 10 !== 0 ||
+        Math.round(Number(nation.corporate_tax || 0) * 10) % 10 !== 0 ||
+        Math.round(Number(nation.sales_tax || 0) * 10) % 10 !== 0) {
+        console.warn('[Taxation] DB tax rates have fractional precision — slider uses integer rounding');
     }
 
     var avgRate = (incomeTax + corpTax + salesTax) / 3;
@@ -1295,7 +1301,7 @@ function renderTaxCard(config, nation, budget) {
             h += '<span class="tax-approval-badge">' + blocLabel + '</span> ';
             h += '<span class="tax-approval-value">' + blocSign + blocImpact + '%</span>';
             h += '<span class="tax-approval-explain">(' + blocExplain + ')</span>';
-            h += '<span class="tax-approval-scope">Business Owners voter bloc' + (rateDiff > 0 ? ' + party approval' : '') + '</span>';
+            h += '<span class="tax-approval-scope">Business Owners voter bloc (proposing party)</span>';
             h += '</div>';
         } else {
             var approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
@@ -1305,7 +1311,7 @@ function renderTaxCard(config, nation, budget) {
             var impactExplain = rateDiff > 0
                 ? Math.abs(rateDiff) + '% increase &times; -2 per point'
                 : Math.abs(rateDiff) + '% decrease &times; +1 per point';
-            var scopeNote = isPresidentialRepublic(nation) ? 'President&rsquo;s party + proposing party' : 'Coalition parties + proposing party';
+            var scopeNote = 'Proposing party (all voter blocs)';
             h += '<div class="tax-approval-impact ' + impactClass + '">';
             h += '<span class="tax-approval-badge">' + impactLabel + '</span> ';
             h += '<span class="tax-approval-value">' + impactSign + approvalImpact + '%</span>';

@@ -6694,10 +6694,10 @@ async function enactBill(supabase, bill, currentTick) {
             const title = art.article_title || '';
             if (!title.endsWith('Rate Change')) continue;
             const text = art.article_text || '';
-            const match = text.match(/change\s+(.+?)\s+from\s+(\d+)%?\s+to\s+(\d+)%/i);
+            const match = text.match(/change\s+(.+?)\s+from\s+(\d+(?:\.\d+)?)%?\s+to\s+(\d+(?:\.\d+)?)%/i);
             if (!match) continue;
             const taxName = match[1].trim();
-            const newRate = Math.max(0, Math.min(50, parseInt(match[3], 10)));
+            const newRate = Math.max(0, Math.min(50, Number(match[3])));
             const taxKey = taxName === 'Income Tax' ? 'income_tax'
                 : taxName === 'Sales Tax' ? 'sales_tax'
                 : taxName === 'Corporate Tax' ? 'corporate_tax'
