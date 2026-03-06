@@ -4158,8 +4158,9 @@ async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
         floor_tick: currentTick
     }).eq('id', bill.id);
 
+    // Apply approval penalties based on government type
+    let consequence;
     if (isPresidential) {
-        // ── PRESIDENTIAL: apply -10 penalty to president's party ──
         const { data: president } = await supabase
             .from('presidents')
             .select('faction_id')
@@ -4173,34 +4174,10 @@ async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
                 GAME_CONFIG.BUDGET_FAILURE_PRESIDENT_PENALTY,
                 'budget:committee_expiry'
             );
-            console.log(`[BudgetCommitteeExpiry] Presidential: ${nation.name} — president's party ${president.faction_id} receives ${GAME_CONFIG.BUDGET_FAILURE_PRESIDENT_PENALTY} approval penalty`);
+            console.log(`[BudgetCommitteeExpiry] Presidential: ${nation.name} — president's party receives ${GAME_CONFIG.BUDGET_FAILURE_PRESIDENT_PENALTY} approval penalty`);
         }
-
-        // Log event
-        await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_name: 'BUDGET_AUTO_MOVED_TO_FLOOR',
-            description_used: `The budget bill "${bill.bill_name}" was automatically moved to the floor after sitting in committee for ${GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS} ticks.`,
-            category: 'legislation',
-            effects_applied: [],
-            fired_at_tick: currentTick
-        });
-
-        try {
-            await supabase.rpc('insert_news_event', {
-                p_nation_id: nation.id,
-                p_trigger_key: 'budget_auto_floor',
-                p_tick: currentTick,
-                p_placeholders: { nation: nation.name || 'Unknown', bill_name: bill.bill_name, reason: 'auto-moved to floor from committee' }
-            });
-        } catch (e) { /* news template may not exist */ }
-
-        console.log(`[BudgetCommitteeExpiry] Presidential: ${nation.name} — budget bill auto-moved to floor`);
-        return { movedToFloor: true, consequence: 'auto_floor_presidential', billId: bill.id };
-
+        consequence = 'auto_floor_presidential';
     } else {
-        // ── PARLIAMENTARY: apply -5 to coalition parties ──
-        let coalitionPartyIds = [];
         const { data: activeGov } = await supabase
             .from('government_formations')
             .select('id, status, party_ids')
@@ -4209,9 +4186,7 @@ async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
             .order('formed_at', { ascending: false })
             .limit(1)
             .maybeSingle();
-        if (activeGov) {
-            coalitionPartyIds = activeGov.party_ids || [];
-        }
+        const coalitionPartyIds = activeGov?.party_ids || [];
 
         for (const partyId of coalitionPartyIds) {
             await adjustMomentumAll(
@@ -4220,32 +4195,32 @@ async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
                 'budget:committee_expiry'
             );
         }
-
         if (coalitionPartyIds.length > 0) {
             console.log(`[BudgetCommitteeExpiry] Parliamentary: ${nation.name} — ${coalitionPartyIds.length} coalition parties receive ${GAME_CONFIG.BUDGET_FAILURE_COALITION_PENALTY} approval penalty`);
         }
-
-        // Log event
-        await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_name: 'BUDGET_AUTO_MOVED_TO_FLOOR',
-            description_used: `The budget bill "${bill.bill_name}" was automatically moved to the floor after sitting in committee for ${GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS} ticks.`,
-            category: 'legislation',
-            effects_applied: [],
-            fired_at_tick: currentTick
-        });
-
-        try {
-            await supabase.rpc('insert_news_event', {
-                p_nation_id: nation.id,
-                p_trigger_key: 'budget_auto_floor',
-                p_tick: currentTick,
-                p_placeholders: { nation: nation.name || 'Unknown', bill_name: bill.bill_name, reason: 'auto-moved to floor from committee' }
-            });
-        } catch (e) { /* news template may not exist */ }
-
-        return { movedToFloor: true, consequence: 'auto_floor_parliamentary', billId: bill.id };
+        consequence = 'auto_floor_parliamentary';
     }
+
+    // Log event (shared for both government types)
+    await supabase.from('event_log').insert({
+        nation_id: nation.id,
+        event_name: 'BUDGET_AUTO_MOVED_TO_FLOOR',
+        description_used: `The budget bill "${bill.bill_name}" was automatically moved to the floor after sitting in committee for ${GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS} ticks.`,
+        category: 'legislation',
+        effects_applied: [],
+        fired_at_tick: currentTick
+    });
+
+    try {
+        await supabase.rpc('insert_news_event', {
+            p_nation_id: nation.id,
+            p_trigger_key: 'budget_auto_floor',
+            p_tick: currentTick,
+            p_placeholders: { nation: nation.name || 'Unknown', bill_name: bill.bill_name, reason: 'auto-moved to floor from committee' }
+        });
+    } catch (e) { /* news template may not exist */ }
+
+    return { movedToFloor: true, consequence, billId: bill.id };
 }
 
 // Trade balance influences GDP growth each tick:
@@ -5523,8 +5498,11 @@ async function checkEarlyMajority(supabase, nationId) {
 
         // ── Check 1: Mathematical lock (outcome impossible to change) ──
         if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
-            // Absolute supermajority: 67% of total seats, no quorum
-            const requiredSeats = getRequiredSeats(bill.bill_type);
+            // Absolute supermajority: 67% of effective total seats, no quorum
+            // Must use effectiveTotalSeats (not GAME_CONFIG.TOTAL_SEATS) to match resolveBillVote
+            const requiredSeats = (bill.bill_type === 'veto_override')
+                ? Math.ceil(effectiveTotalSeats * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD)
+                : Math.ceil(effectiveTotalSeats * GAME_CONFIG.SUPERMAJORITY_THRESHOLD);
             if (effectiveYes >= requiredSeats) {
                 earlyStatus = 'majority_reached';
             } else if (effectiveYes + undeclaredSeats < requiredSeats) {
@@ -16280,7 +16258,22 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
 
     if (disbandErr) throw new Error('Failed to disband party: ' + disbandErr.message);
 
-    // 8. Clean up all faction-related data from the old nation
+    // 8. Fail any open bills proposed by this faction (they lose their sponsor)
+    const { data: orphanedBills } = await supabase
+        .from('bills')
+        .select('id, bill_name, bill_type, ambassador_id')
+        .eq('nation_id', nationId)
+        .eq('proposed_by', factionId)
+        .in('status', ['committee', 'floor']);
+    if (orphanedBills && orphanedBills.length > 0) {
+        for (const bill of orphanedBills) {
+            await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
+            console.log(`[disbandParty] Failed orphaned bill "${bill.bill_name}" (proposed by disbanded faction)`);
+        }
+        await syncAmbassadorsForFailedConfirmationBills(supabase, orphanedBills);
+    }
+
+    // 9. Clean up all faction-related data from the old nation
     await supabase.from('faction_bloc_approval').delete().eq('faction_id', factionId);
     await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
     await supabase.from('ideology_history').delete().eq('faction_id', factionId);

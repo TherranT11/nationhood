@@ -1754,6 +1754,13 @@ function renderCurrentVote() {
 async function castVote(vote) {
     if (!currentFaction || currentBill.status !== 'floor') return;
 
+    // Check locked support (from accepted strike deals)
+    const mySupport = (currentBill.bill_support || []).find(s => s.faction_id === currentFaction.id);
+    if (mySupport?.locked) {
+        alert('Your support is locked — a strike deal was accepted.');
+        return;
+    }
+
     // Nominee self-rejection: if this is a minister_confirmation bill and the
     // nominee's party votes NO, immediately end the vote as failed.
     if (vote === 'no' && currentBill.bill_type === 'minister_confirmation' && currentBill.ministry_key) {

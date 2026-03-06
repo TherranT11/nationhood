@@ -5997,7 +5997,25 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
 
     if (disbandErr) throw new Error('Failed to disband party: ' + disbandErr.message);
 
-    // 8. Clean up all faction-related data from the old nation
+    // 8. Fail any open bills proposed by this faction (they lose their sponsor)
+    const { data: orphanedBills } = await supabase
+        .from('bills')
+        .select('id, bill_name, bill_type, ambassador_id')
+        .eq('nation_id', nationId)
+        .eq('proposed_by', factionId)
+        .in('status', ['committee', 'floor']);
+    if (orphanedBills && orphanedBills.length > 0) {
+        for (const bill of orphanedBills) {
+            await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
+            // Reject any pending ambassadors from failed confirmation bills
+            if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
+                await supabase.from('ambassadors').update({ status: 'rejected', is_active: false }).eq('id', bill.ambassador_id);
+            }
+            console.log(`[disbandParty] Failed orphaned bill "${bill.bill_name}" (proposed by disbanded faction)`);
+        }
+    }
+
+    // 9. Clean up all faction-related data from the old nation
     await supabase.from('faction_bloc_approval').delete().eq('faction_id', factionId);
     await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
     await supabase.from('ideology_history').delete().eq('faction_id', factionId);
@@ -6007,7 +6025,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     await supabase.from('bill_support').delete().eq('faction_id', factionId);
     await supabase.from('campaign_actions').delete().eq('party_id', factionId);
 
-    // 9. Audit log
+    // 10. Audit log
     const { error: logErr } = await supabase
         .from('campaign_actions')
         .insert({

@@ -931,8 +931,11 @@ export async function checkEarlyMajority(supabase, nationId) {
 
         // ── Check 1: Mathematical lock (outcome impossible to change) ──
         if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
-            // Absolute supermajority: 67% of total seats, no quorum
-            const requiredSeats = getRequiredSeats(bill.bill_type);
+            // Absolute supermajority: 67% of effective total seats, no quorum
+            // Must use effectiveTotalSeats (not GAME_CONFIG.TOTAL_SEATS) to match resolveBillVote
+            const requiredSeats = (bill.bill_type === 'veto_override')
+                ? Math.ceil(effectiveTotalSeats * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD)
+                : Math.ceil(effectiveTotalSeats * GAME_CONFIG.SUPERMAJORITY_THRESHOLD);
             if (effectiveYes >= requiredSeats) {
                 earlyStatus = 'majority_reached';
             } else if (effectiveYes + undeclaredSeats < requiredSeats) {
