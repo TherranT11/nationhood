@@ -1486,8 +1486,10 @@ function renderSidebar() {
         let f=0,a=0,ab=0;
         support.forEach(s => { const st=s.stance==='accept'?'yes':s.stance==='reject'?'no':s.stance; if(st==='yes')f+=s.seat_count; else if(st==='no')a+=s.seat_count; else if(st==='abstain')ab+=s.seat_count; });
 
-        const totalSeats = GAME_CONFIG.TOTAL_SEATS;
-        const undeclared = totalSeats - f - a - ab;
+        // Use actual faction seat sum — vacant/unaligned seats can never vote
+        const factionSeatSum = Object.values(allPartySeats).reduce((s, v) => s + (v || 0), 0);
+        const totalSeats = Math.min(GAME_CONFIG.TOTAL_SEATS, Math.max(factionSeatSum, 1));
+        const undeclared = Math.max(0, totalSeats - f - a - ab);
 
         // Use the new evaluateBillVote for authoritative status
         const evalResult = evaluateBillVote({

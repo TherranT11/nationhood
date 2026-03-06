@@ -1070,7 +1070,9 @@ function renderFloorBill(bill, isVetoed) {
                     : (bill.early_resolution_status === 'majority_reached' || bill.early_resolution_status === 'quorum_reached') ? `<div class="floor-status" style="border-color:#4CAF50;">MAJORITY REACHED — Passes This Tick</div>`
                     : (bill.early_resolution_status === 'majority_opposed' || bill.early_resolution_status === 'quorum_opposed') ? `<div class="floor-status" style="background:#ff4444;border-color:#ff4444;">MAJORITY OPPOSED — Fails This Tick</div>`
                     : (function() {
-                        var ev = evaluateBillVote({ votes_for: bill.votes_for || 0, votes_against: bill.votes_against || 0, votes_abstain: bill.votes_abstain || 0, bill_type: bill.bill_type }, GAME_CONFIG.TOTAL_SEATS);
+                        var fss = Object.values(allPartySeats).reduce(function(s,v){return s+(v||0);},0);
+                        var ets = Math.min(GAME_CONFIG.TOTAL_SEATS, Math.max(fss, 1));
+                        var ev = evaluateBillVote({ votes_for: bill.votes_for || 0, votes_against: bill.votes_against || 0, votes_abstain: bill.votes_abstain || 0, bill_type: bill.bill_type }, ets);
                         var statusText, statusStyle;
                         if (ev.status === 'will_pass') { statusText = 'WILL PASS — Resolves Next Tick'; statusStyle = 'background:#4CAF50;border-color:#4CAF50;color:#fff;'; }
                         else if (ev.status === 'will_fail') { statusText = 'WILL FAIL — Resolves Next Tick'; statusStyle = 'background:#ff4444;border-color:#ff4444;color:#fff;'; }
@@ -1102,7 +1104,7 @@ function renderFloorBill(bill, isVetoed) {
                 }).join('')))))))))))}
             </div>
             ${isVetoed ? `<div class="vetoed-stamp">${isPresidential ? '⛔ VETOED BY PRESIDENT' : '⛔ VETOED BY HEAD FACTION'}</div>` : `
-                <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span>${(bill.votes_abstain || 0) > 0 ? `<span style="color:#888;font-size:0.75rem;margin-left:8px;">— ${bill.votes_abstain} Abstain</span>` : ''}<span style="color:var(--text-secondary);font-size:0.75rem;margin-left:8px;">${GAME_CONFIG.TOTAL_SEATS - (bill.votes_for || 0) - (bill.votes_against || 0) - (bill.votes_abstain || 0)} undeclared</span></div>
+                <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span>${(bill.votes_abstain || 0) > 0 ? `<span style="color:#888;font-size:0.75rem;margin-left:8px;">— ${bill.votes_abstain} Abstain</span>` : ''}<span style="color:var(--text-secondary);font-size:0.75rem;margin-left:8px;">${Math.max(0, Math.min(GAME_CONFIG.TOTAL_SEATS, Object.values(allPartySeats).reduce((s,v)=>s+(v||0),0)) - (bill.votes_for || 0) - (bill.votes_against || 0) - (bill.votes_abstain || 0))} undeclared</span></div>
                 ${lawsIsAutocracy && isHeadFaction ? `<div class="veto-banner"><div><div class="veto-banner-text">⚠ You may veto this ${termBill.toLowerCase()}</div><div style="font-size:0.75rem;color:#888;">Costs -${GAME_CONFIG.VETO_APPROVAL_COST} Approval</div></div><button class="stance-btn veto" onclick="event.stopPropagation(); vetoDecree('${bill.id}')">VETO</button></div>` : ''}
             `}
             ${!isVetoed ? `<div class="click-hint">Click to view full ${termBill.toLowerCase()} & vote →</div>` : ''}

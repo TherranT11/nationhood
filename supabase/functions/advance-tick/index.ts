@@ -3177,8 +3177,8 @@ function computeMinistryInstitutionCost(institutions, fiscalCategory, nation) {
 function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions, aidData) {
     const budget = calculateNationalBudget(nation);
     applyTradeTariffOverride(budget, tradeTariffRevenue);
-    const inflationStat = Number(nation.inflation || 50);
-    const inflationPct = (inflationStat - 50) / 2;
+    const inflationStat = Number(nation.inflation || 0);
+    const inflationPct = Math.pow(Math.max(0, inflationStat), 1.5) / 100;
     const reserves = Number(nation.budget_reserves || 0);
 
     // Foreign aid: received adds to revenue, given is a mandatory expenditure
@@ -3354,6 +3354,10 @@ async function resolveBudgetBill(supabase, bill, currentTick) {
     const { data: allocations } = await supabase.from('budget_allocations')
         .select('*').eq('bill_id', bill.id);
 
+    // Use item-level allocations when available (players edit these directly)
+    const { data: itemAllocations } = await supabase.from('budget_item_allocations')
+        .select('allocation_amount').eq('bill_id', bill.id);
+
     const { data: nation } = await supabase.from('nations')
         .select('*').eq('id', bill.nation_id).single();
     if (!nation) return;
@@ -3383,8 +3387,14 @@ async function resolveBudgetBill(supabase, bill, currentTick) {
     const available = budget.grossRevenue + aidData.received + reserves - budget.debtService - aidData.given;
 
     let totalSpending = 0;
-    for (const alloc of (allocations || [])) {
-        totalSpending += Number(alloc.allocation_amount || 0);
+    if (itemAllocations && itemAllocations.length > 0) {
+        for (const item of itemAllocations) {
+            totalSpending += Number(item.allocation_amount || 0);
+        }
+    } else {
+        for (const alloc of (allocations || [])) {
+            totalSpending += Number(alloc.allocation_amount || 0);
+        }
     }
 
     const gap = available - totalSpending;
@@ -3824,36 +3834,23 @@ async function isGovernmentShutdown(supabase, nation, currentTick) {
         .order('proposed_tick', { ascending: true })
         .limit(1);
 
-    if (openBudgetBills && openBudgetBills.length > 0) {
-        const bill = openBudgetBills[0];
-        const lastBudgetTick = Number(nation.last_budget_tick || 0);
-        const budgetDueTick = lastBudgetTick > 0
-            ? (lastBudgetTick + GAME_CONFIG.TICKS_PER_YEAR)
-            : GAME_CONFIG.TICKS_PER_YEAR;
-        const shutdownStartTick = budgetDueTick + 2;
-        const ticksOpen = Math.max(0, currentTick - shutdownStartTick);
-
-        return {
-            active: currentTick >= shutdownStartTick,
-            openBillId: bill.id,
-            ticksOpen
-        };
+    if (!openBudgetBills || openBudgetBills.length === 0) {
+        return { active: false };
     }
 
-    // Also check for manually-activated shutdown crises (e.g. budget veto, committee expiry)
-    const { data: shutdownCrisis } = await supabase
-        .from('active_crises')
-        .select('id, started_at_tick')
-        .eq('nation_id', nation.id)
-        .eq('crisis_id', GOVERNMENT_SHUTDOWN_CRISIS_ID)
-        .limit(1);
+    const bill = openBudgetBills[0];
+    const lastBudgetTick = Number(nation.last_budget_tick || 0);
+    const budgetDueTick = lastBudgetTick > 0
+        ? (lastBudgetTick + GAME_CONFIG.TICKS_PER_YEAR)
+        : GAME_CONFIG.TICKS_PER_YEAR;
+    const shutdownStartTick = budgetDueTick + 2;
+    const ticksOpen = Math.max(0, currentTick - shutdownStartTick);
 
-    if (shutdownCrisis && shutdownCrisis.length > 0) {
-        const ticksOpen = Math.max(0, currentTick - (shutdownCrisis[0].started_at_tick || 0));
-        return { active: true, ticksOpen };
-    }
-
-    return { active: false };
+    return {
+        active: currentTick >= shutdownStartTick,
+        openBillId: bill.id,
+        ticksOpen
+    };
 }
 
 /**
@@ -4298,13 +4295,10 @@ async function applyTradeBalanceToGdpGrowth(supabase, nation) {
 async function applyGdpGrowth(supabase, nation) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
     const currentGdp = Number(nation.gdp ?? 0);
-
-    // Minimum GDP floor: $1B prevents permanent dead state from multiplicative zero
-    const GDP_FLOOR = 1_000_000_000;
-    const effectiveGdp = Math.max(currentGdp, GDP_FLOOR);
+    if (currentGdp <= 0) return;
 
     const monthlyChangePercent = (gdpGrowth - 50) / 50;
-    const newGdp = Math.max(GDP_FLOOR, effectiveGdp * (1 + monthlyChangePercent / 100));
+    const newGdp = Math.max(0, currentGdp * (1 + monthlyChangePercent / 100));
     nation.gdp = newGdp;
 
     await supabase.from('nations').update({ gdp: newGdp }).eq('id', nation.id);
@@ -5154,7 +5148,7 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
 
     const { data: bills } = await supabase
         .from('bills')
-        .select('id, proposed_by, bill_type, bill_articles(*, policies(id, ideologies, ideology)), bill_support(faction_id, stance)')
+        .select('id, proposed_by, bill_type, bill_articles(*, policies(*)), bill_support(faction_id, stance)')
         .in('id', billIds);
 
     if (!bills || bills.length === 0) return;
@@ -5509,7 +5503,20 @@ async function checkEarlyMajority(supabase, nationId) {
 
     if (error || !activeBills || activeBills.length === 0) return [];
 
-    const quorumSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.QUORUM_THRESHOLD);
+    // Use the actual sum of faction seats as the voting denominator, not
+    // total_seats.  In autocracies (and after seat changes) the nation's
+    // total_seats can exceed the seats actually held by factions — those
+    // vacant/unaligned seats can never vote, so including them would inflate
+    // the "undeclared" count and break quorum & math-lock checks.
+    const { data: factionRows } = await supabase
+        .from('factions')
+        .select('seats')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+    const factionSeatSum = (factionRows || []).reduce((sum, f) => sum + (f.seats || 0), 0);
+    const effectiveTotalSeats = Math.min(GAME_CONFIG.TOTAL_SEATS, Math.max(factionSeatSum, 1));
+
+    const quorumSeats = Math.ceil(effectiveTotalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
     const results = [];
 
     // Check for emergency minority government penalty (once per nation per tick)
@@ -5533,7 +5540,7 @@ async function checkEarlyMajority(supabase, nationId) {
 
         let earlyStatus = null;
         const participating = yesSeats + noSeats + abstainSeats;
-        const undeclaredSeats = GAME_CONFIG.TOTAL_SEATS - participating;
+        const undeclaredSeats = Math.max(0, effectiveTotalSeats - participating);
 
         // ── Check 1: Mathematical lock (outcome impossible to change) ──
         if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
@@ -5546,7 +5553,7 @@ async function checkEarlyMajority(supabase, nationId) {
             }
         } else if (bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion') {
             // Absolute majority: 50%+1 of total seats, no quorum
-            const threshold = Math.floor(GAME_CONFIG.TOTAL_SEATS / 2) + 1;
+            const threshold = Math.floor(effectiveTotalSeats / 2) + 1;
             if (effectiveYes >= threshold) {
                 earlyStatus = 'majority_reached';
             } else if (effectiveYes + undeclaredSeats < threshold) {
@@ -5571,7 +5578,7 @@ async function checkEarlyMajority(supabase, nationId) {
         if (!earlyStatus && participating >= quorumSeats) {
             if (bill.bill_type !== 'foundational' && bill.bill_type !== 'veto_override'
                 && bill.bill_type !== 'no_confidence' && bill.bill_type !== 'impeachment_motion'
-                && bill.bill_type !== 'impeachment_conviction' && bill.bill_type !== 'default_resolution') {
+                && bill.bill_type !== 'impeachment_conviction') {
                 // Ordinary bill: simple majority of votes cast
                 if (effectiveYes > noSeats) {
                     earlyStatus = 'quorum_reached';
@@ -5616,7 +5623,7 @@ async function checkEarlyMajority(supabase, nationId) {
             }).eq('id', bill.id);
 
             const resolveType = earlyStatus.startsWith('quorum') ? 'QUORUM' : 'MATH-LOCK';
-            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${participating}). Resolves tick ${resolveAtTick}`);
+            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${participating}, effectiveTotal=${effectiveTotalSeats}, configTotal=${GAME_CONFIG.TOTAL_SEATS}). Resolves tick ${resolveAtTick}`);
             results.push({ billId: bill.id, billName: bill.bill_name, status: earlyStatus, yesSeats, noSeats });
         }
     }
@@ -5635,7 +5642,7 @@ async function resolveExpiredVotes(supabase, nationId) {
 
     const { data: expiredBills, error } = await supabase
         .from('bills')
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(id, policy_name, opposed_policy_ids, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, fiscal_category, ideologies, ideology, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)), bill_support(*, factions(faction_name))')
+        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .lte('voting_ends_tick', currentTick);
@@ -5644,13 +5651,25 @@ async function resolveExpiredVotes(supabase, nationId) {
 
     const results = [];
 
+    // Compute the actual sum of faction-held seats — only these can vote.
+    // In autocracies (and after seat changes) total_seats can exceed the
+    // seats held by factions; including vacant/unaligned seats inflates
+    // quorum and makes bills impossible to pass.
+    const { data: factionRowsForResolve } = await supabase
+        .from('factions')
+        .select('seats')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+    const resolveFactionSeatSum = (factionRowsForResolve || []).reduce((sum, f) => sum + (f.seats || 0), 0);
+
     for (const bill of expiredBills) {
         const { data: nation } = await supabase
             .from('nations')
             .select('name, government_type, total_seats')
             .eq('id', bill.nation_id)
             .single();
-        const totalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+        const nominalTotalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+        const totalSeats = Math.min(nominalTotalSeats, Math.max(resolveFactionSeatSum, 1));
         let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
 
         (bill.bill_support || []).forEach(s => {
@@ -5821,14 +5840,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 });
             } catch (e) { /* non-blocking */ }
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'default_resolution', earlyResolution: bill.early_resolution_status || null });
-        } else if (bill.bill_type === 'confirmation') {
-            if (!bill.ambassador_id) {
-                // Malformed confirmation bill — fail it gracefully
-                await failBill(supabase, bill);
-                console.error(`[resolveExpiredVotes] Confirmation bill ${bill.id} has no ambassador_id, failing`);
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'confirmation', error: 'missing ambassador_id' });
-                continue;
-            }
+        } else if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
             // Ambassador confirmation bill
             // Check if nominee voted NO — auto-fail (withdrawal of nomination)
             const { data: ambRow } = await supabase.from('ambassadors').select('faction_id').eq('id', bill.ambassador_id).maybeSingle();
@@ -6002,7 +6014,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
                 // Enact the ORIGINAL vetoed bill
                 const { data: originalBill } = await supabase.from('bills')
-                    .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(id, policy_name, opposed_policy_ids, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, fiscal_category, ideologies, ideology, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)), bill_support(*, factions(faction_name))')
+                    .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
                     .eq('id', bill.original_bill_id).single();
                 if (originalBill) {
                     await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
@@ -6299,58 +6311,6 @@ async function resolveExpiredVotes(supabase, nationId) {
                         p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain) }
                     });
                 } catch (e) { /* non-blocking */ }
-
-                // Budget floor failure consequences
-                if (isPresidentialRepublic(nation)) {
-                    // Presidential: activate government shutdown
-                    const { data: president } = await supabase.from('presidents')
-                        .select('faction_id').eq('nation_id', bill.nation_id).eq('is_active', true).maybeSingle();
-                    if (president?.faction_id) {
-                        await adjustMomentumAll(supabase, bill.nation_id, president.faction_id,
-                            GAME_CONFIG.BUDGET_FAILURE_PRESIDENT_PENALTY, 'budget:floor_failure');
-                    }
-                    const { data: existingShutdown } = await supabase.from('active_crises')
-                        .select('id').eq('nation_id', bill.nation_id).eq('crisis_id', GOVERNMENT_SHUTDOWN_CRISIS_ID);
-                    if (!existingShutdown || existingShutdown.length === 0) {
-                        await supabase.from('active_crises').insert({
-                            crisis_id: GOVERNMENT_SHUTDOWN_CRISIS_ID,
-                            nation_id: bill.nation_id,
-                            started_at_tick: currentTick,
-                            effects_applied_log: []
-                        });
-                    }
-                    console.log(`[resolveExpiredVotes] Budget floor failure: ${nation?.name} — government shutdown activated`);
-                } else {
-                    // Parliamentary: penalize coalition parties + trigger snap elections
-                    const { data: activeGov } = await supabase.from('government_formations')
-                        .select('id, status, party_ids').eq('nation_id', bill.nation_id)
-                        .in('status', ['formed', 'caretaker']).order('formed_at', { ascending: false }).limit(1).maybeSingle();
-                    for (const partyId of (activeGov?.party_ids || [])) {
-                        await adjustMomentumAll(supabase, bill.nation_id, partyId,
-                            GAME_CONFIG.BUDGET_FAILURE_COALITION_PENALTY, 'budget:floor_failure');
-                    }
-                    // Trigger snap elections if not already in caretaker mode
-                    if (activeGov && activeGov.status !== 'caretaker') {
-                        await supabase.from('government_formations').update({ status: 'caretaker' })
-                            .eq('nation_id', bill.nation_id).in('status', ['formed']);
-                        await supabase.from('active_coalitions').update({ status: 'caretaker' })
-                            .eq('nation_id', bill.nation_id).is('dissolved_at', null);
-                        await supabase.from('elections').delete()
-                            .eq('nation_id', bill.nation_id).eq('status', 'scheduled');
-                        await supabase.from('elections').insert({
-                            nation_id: bill.nation_id,
-                            election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
-                            status: 'scheduled',
-                            election_type: 'parliamentary'
-                        });
-                        await supabase.from('bills').update({ status: 'frozen' })
-                            .eq('nation_id', bill.nation_id).in('status', ['committee', 'floor']);
-                        console.log(`[resolveExpiredVotes] Budget floor failure: ${nation?.name} — snap election triggered at tick ${currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS}`);
-                    } else {
-                        console.log(`[resolveExpiredVotes] Budget floor failure: ${nation?.name} — coalition penalty applied (already caretaker)`);
-                    }
-                }
-
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
             }
         } else if (bill.bill_type === 'impeachment_motion' && bill.impeachment_id) {
@@ -6600,9 +6560,6 @@ async function resolveExpiredVotes(supabase, nationId) {
         }
 
         // ── No-vote penalty: punish factions that didn't cast any vote ──
-        // Skip for bills routed to president_desk (bill is still alive, not finalized)
-        const lastResult = results[results.length - 1];
-        if (lastResult?.result === 'president_desk') continue;
         try {
             const penalized = await applyNoVotePenalty(supabase, bill, bill.nation_id);
             if (penalized.length > 0) {
@@ -6723,43 +6680,6 @@ async function enactBill(supabase, bill, currentTick) {
             }, { onConflict: 'nation_id,policy_id' });
             if (activeLawError) {
                 console.error(`[enactBill] Failed to upsert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
-            }
-        }
-
-        // ── Deduct upfront costs from national budget ──
-        let totalUpfrontCost = 0;
-        for (const art of articles) {
-            const policy = art.policies;
-            if (!policy || art.repeal_active_law_id) continue;
-            const baseCost = policy.upfront_cost || 0;
-            if (baseCost <= 0) continue;
-            let scaled = baseCost;
-            if (policy.upfront_scaling_stat && nation[policy.upfront_scaling_stat] !== undefined) {
-                const statVal = Number(nation[policy.upfront_scaling_stat]) || 1;
-                const divisor = RAW_SCALING_DIVISORS[policy.upfront_scaling_stat] || 50;
-                scaled = baseCost * (statVal / divisor);
-            }
-            totalUpfrontCost += scaled * 1_000_000;
-        }
-
-        if (totalUpfrontCost > 0) {
-            const reserves = Number(nation.budget_reserves || 0);
-            let newReserves = reserves - totalUpfrontCost;
-            let newDebt = Number(nation.debt || 0);
-            if (newReserves < 0) {
-                newDebt += Math.abs(newReserves);
-                newReserves = 0;
-            }
-            const { error: costErr } = await supabase.from('nations').update({
-                budget_reserves: newReserves,
-                debt: newDebt
-            }).eq('id', bill.nation_id);
-            if (costErr) {
-                console.error(`[enactBill] Failed to deduct upfront cost for bill ${bill.id}:`, costErr.message);
-            } else {
-                nation.budget_reserves = newReserves;
-                nation.debt = newDebt;
-                console.log(`[enactBill] Deducted upfront cost $${(totalUpfrontCost/1e9).toFixed(4)}B for bill "${bill.bill_name}" (reserves: $${(reserves/1e9).toFixed(2)}B → $${(newReserves/1e9).toFixed(2)}B, debt: $${(Number(nation.debt||0)/1e9).toFixed(2)}B → $${(newDebt/1e9).toFixed(2)}B)`);
             }
         }
     }
@@ -6884,9 +6804,7 @@ async function enactBill(supabase, bill, currentTick) {
 
 async function reversePolicy(supabase, nation, policy, passedTick, currentTick) {
     const ticksActive = currentTick - (passedTick || 0);
-    if (ticksActive < 0) return;
-    // ticksActive === 0: policy was enacted this tick; use 1 tick to reverse any effects already applied
-    const effectiveTicks = Math.max(ticksActive, 1);
+    if (ticksActive <= 0) return;
 
     const sourceEffects = [];
     if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
@@ -6909,19 +6827,19 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
         const delay = eff.delay_ticks || 0;
         const duration = eff.duration_ticks || 12;
 
-        let activeTicks = 0;
-        if (effectiveTicks > delay) {
-            activeTicks = Math.min(effectiveTicks - delay, duration);
+        let effectiveTicks = 0;
+        if (ticksActive > delay) {
+            effectiveTicks = Math.min(ticksActive - delay, duration);
         }
 
-        if (activeTicks <= 0) continue;
+        if (effectiveTicks <= 0) continue;
 
         reversalEffects.push({
             stat_key: eff.stat_key,
             direction: eff.direction === 'up' ? 'down' : 'up',
             rate: eff.rate || 1,
             delay_ticks: 0,
-            duration_ticks: activeTicks
+            duration_ticks: effectiveTicks
         });
     }
 
@@ -9557,7 +9475,7 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
  */
 async function signPresidentialBill(supabase, billId, presidentFactionId) {
     const { data: bill } = await supabase.from('bills')
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(id, policy_name, opposed_policy_ids, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, fiscal_category, ideologies, ideology, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)), bill_support(*, factions(faction_name))')
+        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
         .eq('id', billId).single();
     if (!bill || bill.status !== 'president_desk') throw new Error('Bill is not on the president\'s desk');
 
@@ -9626,9 +9544,7 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
     }).eq('id', bill.id);
 
     // Auto-create veto override bill (goes straight to floor)
-    const { data: vetoNation } = await supabase.from('nations').select('total_seats').eq('id', bill.nation_id).single();
-    const nationSeats = vetoNation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
-    const overrideSeats = Math.ceil(nationSeats * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
+    const overrideSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
     const { data: overrideBill } = await supabase.from('bills').insert({
         nation_id: bill.nation_id,
         proposed_by: bill.proposed_by,
@@ -9639,7 +9555,7 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
         voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
         original_bill_id: bill.id,
         is_veto_override: true,
-        preamble: `The President has vetoed "${bill.bill_name}". The legislature may override this veto with a two-thirds supermajority (${overrideSeats} of ${nationSeats} seats).`
+        preamble: `The President has vetoed "${bill.bill_name}". The legislature may override this veto with a two-thirds supermajority (${overrideSeats} of ${GAME_CONFIG.TOTAL_SEATS} seats).`
     }).select().single();
 
     // Budget veto: apply president penalty + activate government shutdown
@@ -9702,7 +9618,7 @@ async function processPresidentDesk(supabase, nation, currentTick) {
     if (!isPresidentialRepublic(nation)) return [];
 
     const { data: expiredDesks } = await supabase.from('bills')
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(id, policy_name, opposed_policy_ids, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, fiscal_category, ideologies, ideology, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)), bill_support(*, factions(faction_name))')
+        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
         .eq('nation_id', nation.id)
         .eq('status', 'president_desk')
         .lte('president_desk_deadline', currentTick);
@@ -9724,7 +9640,6 @@ async function processPresidentDesk(supabase, nation, currentTick) {
                 await supabase.from('bills').update({ status: 'passed' }).eq('id', bill.id);
             } catch (budgetErr) {
                 console.error(`[processPresidentDesk] resolveBudgetBill failed for bill ${bill.id}: ${budgetErr.message}`);
-                await markBillEnactmentFailed(supabase, bill, currentTick, budgetErr.message || 'Budget auto-sign enactment failed');
                 results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: budgetErr.message });
                 continue;
             }
@@ -9732,7 +9647,6 @@ async function processPresidentDesk(supabase, nation, currentTick) {
             const enactment = await enactBill(supabase, bill, currentTick);
             if (!enactment?.success) {
                 console.error(`[processPresidentDesk] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
-                await markBillEnactmentFailed(supabase, bill, currentTick, enactment?.error || 'Auto-sign enactment failed');
                 results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: enactment?.error });
                 continue;
             }
@@ -14782,24 +14696,7 @@ async function processOngoingCosts(supabase, nation, currentTick) {
         details.push({ policy: policy.policy_name, cost: tickCost });
     }
 
-    // Deduct total ongoing costs from national budget
-    if (totalCost > 0) {
-        const costInDollars = totalCost * 1_000_000;
-        const reserves = Number(nation.budget_reserves || 0);
-        let newReserves = reserves - costInDollars;
-        let newDebt = Number(nation.debt || 0);
-        if (newReserves < 0) {
-            newDebt += Math.abs(newReserves);
-            newReserves = 0;
-        }
-        await supabase.from('nations').update({
-            budget_reserves: newReserves,
-            debt: newDebt
-        }).eq('id', nation.id);
-        nation.budget_reserves = newReserves;
-        nation.debt = newDebt;
-        console.log(`[processOngoingCosts] ${nation.name}: Deducted $${(costInDollars/1e9).toFixed(4)}B ongoing costs (reserves: $${(reserves/1e9).toFixed(2)}B → $${(newReserves/1e9).toFixed(2)}B)`);
-    }
+    // Policy costs are tracked in active_laws.ongoing_accumulated.
 
     return { totalCost, details };
 }
@@ -19588,7 +19485,7 @@ async function advanceTick(supabase) {
         // Auto-generate budget bill if due (3 ticks before budget deadline)
         try {
             const { data: budgetLaws } = await supabase.from('active_laws')
-                .select('*, policies(id, policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat)').eq('nation_id', nation.id);
+                .select('*').eq('nation_id', nation.id);
             const autoBudgetId = await autoGenerateBudgetBill(supabase, nation, newTick, budgetLaws || []);
             if (autoBudgetId) {
                 summary.autoBudgetBills = summary.autoBudgetBills || [];
@@ -19658,13 +19555,6 @@ async function advanceTick(supabase) {
         if (vacancyResult) {
             summary.vacancies = summary.vacancies || [];
             summary.vacancies.push(vacancyResult);
-        }
-
-        // Expire non-budget committee bills past their deadline
-        const committeeExpired = await expireCommitteeBills(supabase, nation.id, newTick);
-        if (committeeExpired.length > 0) {
-            summary.committeeExpiries = summary.committeeExpiries || [];
-            summary.committeeExpiries.push({ nation: nation.name, bills: committeeExpired });
         }
 
         // Check for early majority on active floor bills (lock outcome + set grace tick)

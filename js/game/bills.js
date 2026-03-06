@@ -882,7 +882,20 @@ export async function checkEarlyMajority(supabase, nationId) {
 
     if (error || !activeBills || activeBills.length === 0) return [];
 
-    const quorumSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.QUORUM_THRESHOLD);
+    // Use the actual sum of faction seats as the voting denominator, not
+    // total_seats.  In autocracies (and after seat changes) the nation's
+    // total_seats can exceed the seats actually held by factions — those
+    // vacant/unaligned seats can never vote, so including them would inflate
+    // the "undeclared" count and break quorum & math-lock checks.
+    const { data: factionRows } = await supabase
+        .from('factions')
+        .select('seats')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+    const factionSeatSum = (factionRows || []).reduce((sum, f) => sum + (f.seats || 0), 0);
+    const effectiveTotalSeats = Math.min(GAME_CONFIG.TOTAL_SEATS, Math.max(factionSeatSum, 1));
+
+    const quorumSeats = Math.ceil(effectiveTotalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
     const results = [];
 
     // Check for emergency minority government penalty (once per nation per tick)
@@ -906,7 +919,7 @@ export async function checkEarlyMajority(supabase, nationId) {
 
         let earlyStatus = null;
         const participating = yesSeats + noSeats + abstainSeats;
-        const undeclaredSeats = GAME_CONFIG.TOTAL_SEATS - participating;
+        const undeclaredSeats = Math.max(0, effectiveTotalSeats - participating);
 
         // ── Check 1: Mathematical lock (outcome impossible to change) ──
         if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
@@ -919,7 +932,7 @@ export async function checkEarlyMajority(supabase, nationId) {
             }
         } else if (bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion') {
             // Absolute majority: 50%+1 of total seats, no quorum
-            const threshold = Math.floor(GAME_CONFIG.TOTAL_SEATS / 2) + 1;
+            const threshold = Math.floor(effectiveTotalSeats / 2) + 1;
             if (effectiveYes >= threshold) {
                 earlyStatus = 'majority_reached';
             } else if (effectiveYes + undeclaredSeats < threshold) {
@@ -989,7 +1002,7 @@ export async function checkEarlyMajority(supabase, nationId) {
             }).eq('id', bill.id);
 
             const resolveType = earlyStatus.startsWith('quorum') ? 'QUORUM' : 'MATH-LOCK';
-            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${participating}). Resolves tick ${resolveAtTick}`);
+            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${participating}, effectiveTotal=${effectiveTotalSeats}, configTotal=${GAME_CONFIG.TOTAL_SEATS}). Resolves tick ${resolveAtTick}`);
             results.push({ billId: bill.id, billName: bill.bill_name, status: earlyStatus, yesSeats, noSeats });
         }
     }
@@ -1017,13 +1030,25 @@ export async function resolveExpiredVotes(supabase, nationId) {
 
     const results = [];
 
+    // Compute the actual sum of faction-held seats — only these can vote.
+    // In autocracies (and after seat changes) total_seats can exceed the
+    // seats held by factions; including vacant/unaligned seats inflates
+    // quorum and makes bills impossible to pass.
+    const { data: factionRowsForResolve } = await supabase
+        .from('factions')
+        .select('seats')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+    const resolveFactionSeatSum = (factionRowsForResolve || []).reduce((sum, f) => sum + (f.seats || 0), 0);
+
     for (const bill of expiredBills) {
         const { data: nation } = await supabase
             .from('nations')
             .select('name, government_type, total_seats')
             .eq('id', bill.nation_id)
             .single();
-        const totalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+        const nominalTotalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+        const totalSeats = Math.min(nominalTotalSeats, Math.max(resolveFactionSeatSum, 1));
         let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
 
         (bill.bill_support || []).forEach(s => {
