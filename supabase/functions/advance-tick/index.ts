@@ -10504,7 +10504,12 @@ async function processStatConnections(supabase, nation, currentTick, connections
             ? targetVal + effectiveMag
             : targetVal - effectiveMag;
 
-        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+        // Raw-value stats (gdp, debt, population) must not be clamped to 0-100
+        if (RAW_SCALING_DIVISORS[conn.target_stat]) {
+            newVal = Math.max(0, newVal);
+        } else {
+            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+        }
 
         if (newVal !== Math.round(targetVal * 10) / 10) {
             // Accumulate — multiple connections can affect the same target
@@ -10512,9 +10517,10 @@ async function processStatConnections(supabase, nation, currentTick, connections
                 // Add delta on top of already-accumulated value
                 const prevDelta = nationUpdates[conn.target_stat] - targetVal;
                 const thisDelta = newVal - targetVal;
-                nationUpdates[conn.target_stat] = Math.round(
-                    Math.max(0, Math.min(100, targetVal + prevDelta + thisDelta)) * 10
-                ) / 10;
+                const accumulated = targetVal + prevDelta + thisDelta;
+                nationUpdates[conn.target_stat] = RAW_SCALING_DIVISORS[conn.target_stat]
+                    ? Math.max(0, accumulated)
+                    : Math.round(Math.max(0, Math.min(100, accumulated)) * 10) / 10;
             } else {
                 nationUpdates[conn.target_stat] = newVal;
             }
@@ -14381,11 +14387,19 @@ async function processMinistryActions(supabase, nation, currentTick) {
                         factionUpdates[fKey] = newVal;
                     } else {
                         // Default: nation stat
+                        // GDP is only changed by gdp_growth via applyGdpGrowth — skip
+                        if (statKey === 'gdp') continue;
                         currentVal = nationUpdates[statKey] !== undefined
                             ? nationUpdates[statKey]
                             : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
-                        newVal = eff.direction === 'up' ? currentVal + rate : currentVal - rate;
-                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                        let scaledMinistryRate = RAW_SCALING_DIVISORS[statKey] ? rate * RAW_SCALING_DIVISORS[statKey] : rate;
+                        newVal = eff.direction === 'up' ? currentVal + scaledMinistryRate : currentVal - scaledMinistryRate;
+                        // Raw-value stats (debt, population) must not be clamped to 0-100
+                        if (RAW_SCALING_DIVISORS[statKey]) {
+                            newVal = Math.max(0, newVal);
+                        } else {
+                            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                        }
                         nationUpdates[statKey] = newVal;
                     }
 
@@ -14861,9 +14875,17 @@ async function processEvents(supabase, nation, currentTick) {
             }
 
             if (effect.target === 'nation') {
+                // GDP is only changed by gdp_growth via applyGdpGrowth — skip
+                if (evtStatKey === 'gdp') continue;
                 const currentVal = nation[evtStatKey] !== undefined
                     ? Number(nation[evtStatKey]) : 50;
-                const newVal = Math.max(0, Math.min(100, currentVal + effect.change_value));
+                const scaledChange = RAW_SCALING_DIVISORS[evtStatKey]
+                    ? effect.change_value * RAW_SCALING_DIVISORS[evtStatKey]
+                    : effect.change_value;
+                // Raw-value stats (debt, population) must not be clamped to 0-100
+                const newVal = RAW_SCALING_DIVISORS[evtStatKey]
+                    ? Math.max(0, currentVal + scaledChange)
+                    : Math.max(0, Math.min(100, currentVal + scaledChange));
                 nationUpdates[evtStatKey] = newVal;
                 nation[evtStatKey] = newVal;
 
@@ -15140,13 +15162,21 @@ async function processCrises(supabase, nation, currentTick, budgetItemAllocs) {
             }
 
             if (effect.target === 'nation') {
+                // GDP is only changed by gdp_growth via applyGdpGrowth — skip
+                if (statKey === 'gdp') continue;
                 const currentVal = nationUpdates[statKey] !== undefined
                     ? nationUpdates[statKey]
                     : (nation[statKey] !== undefined && nation[statKey] !== null
                         ? Number(nation[statKey]) : 50);
 
-                // Basic 0-100 clamp + 1dp rounding; floor/ceiling enforcement deferred to final pass
-                let newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
+                // Raw-value stats (debt, population) must not be clamped to 0-100
+                let newVal;
+                if (RAW_SCALING_DIVISORS[statKey]) {
+                    const scaledCrisisChange = changePT * RAW_SCALING_DIVISORS[statKey];
+                    newVal = Math.max(0, currentVal + scaledCrisisChange);
+                } else {
+                    newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
+                }
                 nationUpdates[statKey] = newVal;
                 nation[statKey] = newVal;
 
