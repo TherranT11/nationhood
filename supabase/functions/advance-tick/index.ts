@@ -12176,6 +12176,7 @@ function evaluatePromiseStatus(promise, nationStats, currentTick, ministries, co
  * Checks fulfillment, applies rewards/penalties for expired promises.
  */
 async function processPromiseTick(supabase, nation, currentTick) {
+    const cfg = MAKE_PROMISE_CONFIG;
     const { data: activePromises } = await supabase
         .from('fundraiser_promises')
         .select('*')
@@ -12264,20 +12265,20 @@ async function processPromiseTick(supabase, nation, currentTick) {
             continue;
         }
 
-        // Per-tick penalty: governing party with unfulfilled promise loses approval with the promised bloc
-        // -1D3 approval per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
+        // Per-tick penalty: governing party with unfulfilled promise loses preference with the promised bloc
+        // -1D3 preference per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
         if (isGoverning && promise.bloc_id) {
             const penaltyAmount = -(Math.floor(Math.random() * (cfg.PENALTY_PER_TICK_MAX - cfg.PENALTY_PER_TICK_MIN + 1)) + cfg.PENALTY_PER_TICK_MIN);
             const { data: penaltyBlocRow } = await supabase
                 .from('faction_bloc_approval')
-                .select('id, approval')
+                .select('id, preference_score')
                 .eq('faction_id', promise.party_id)
                 .eq('bloc_id', promise.bloc_id)
                 .single();
             if (penaltyBlocRow) {
-                const newApproval = Math.max(0, Math.round(penaltyBlocRow.approval + penaltyAmount));
+                const newPref = Math.max(0, Math.round((penaltyBlocRow.preference_score || 0) + penaltyAmount));
                 await supabase.from('faction_bloc_approval')
-                    .update({ approval: newApproval })
+                    .update({ preference_score: newPref })
                     .eq('id', penaltyBlocRow.id);
             }
             results.push({ promise, resolution: 'tick_penalty', penaltyAmount });
@@ -12310,15 +12311,15 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
                 .eq('id', blocRow.id);
         }
 
-        // +approval with ALL blocs (APPROVAL_IF_KEPT — the main +12 reward)
+        // +preference_score with ALL blocs (APPROVAL_IF_KEPT — the main +12 reward)
         const { data: allBlocRows } = await supabase
             .from('faction_bloc_approval')
-            .select('id, approval')
+            .select('id, preference_score')
             .eq('faction_id', promise.party_id);
         for (const row of (allBlocRows || [])) {
-            const newApproval = Math.min(100, Math.round(row.approval + cfg.APPROVAL_IF_KEPT));
+            const newPref = Math.min(100, Math.round((row.preference_score || 0) + cfg.APPROVAL_IF_KEPT));
             await supabase.from('faction_bloc_approval')
-                .update({ approval: newApproval })
+                .update({ preference_score: newPref })
                 .eq('id', row.id);
         }
 
