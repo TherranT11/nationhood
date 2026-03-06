@@ -1369,10 +1369,11 @@ async function enactDecree(billId) {
         if (bill?.bill_type !== 'budget') {
             decreeFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
         }
+        decreeFields.floor_tick = shard?.current_tick || 0;
         await _supabase.from('bills').update(decreeFields).eq('id', billId);
 
-        // Apply dynamic ideology penalty to sponsor
-        if (bill) {
+        // Apply dynamic ideology penalty to sponsor (skip for system-generated bills)
+        if (bill && bill.proposed_by) {
             const sponsorIdeology = await loadFactionIdeology(_supabase, bill.proposed_by);
             if (sponsorIdeology) {
                 const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, bill.bill_articles || []);
@@ -2381,10 +2382,12 @@ async function sendToFloor(billId) {
         if (bill?.bill_type !== 'budget') {
             updateFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
         }
+        // Track when the bill was moved to the floor
+        updateFields.floor_tick = shard?.current_tick || 0;
         await _supabase.from('bills').update(updateFields).eq('id', billId);
 
-        // Apply dynamic ideology penalty to sponsor
-        if (bill && factionIdeology) {
+        // Apply dynamic ideology penalty to sponsor (skip for system-generated bills)
+        if (bill && bill.proposed_by && factionIdeology) {
             const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, bill.bill_articles || []);
             if (dynamicPenalty < 0) {
                 await adjustMomentumAll(_supabase, currentNation.id, bill.proposed_by, dynamicPenalty, 'legislation:floor');
