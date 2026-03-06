@@ -308,8 +308,7 @@ export function renderNavTabs(activeTab) {
         { id: 'laws', label: 'Bills', href: 'laws.html' },
         { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
         { id: 'economy', label: 'Economy', href: 'economy.html' },
-        { id: 'events', label: 'Events', href: 'events.html' },
-        { id: 'conflict', label: 'Conflict', href: 'conflict.html' }
+        { id: 'events', label: 'Events', href: 'events.html' }
     ];
 
     // Preserve admin overrides in nav links so clicking tabs
