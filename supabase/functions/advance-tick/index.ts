@@ -3730,7 +3730,7 @@ async function processAidConditionReview(supabase, nation, currentTick) {
  */
 async function processExpiredTradeAgreements(supabase, currentTick) {
     const { data: expired } = await supabase.from('trade_agreements')
-        .select('id, agreement_type, agreement_name, nation_a_id, nation_b_id')
+        .select('id, agreement_type, agreement_name, nation_a_id, nation_b_id, auto_renew, duration_ticks')
         .eq('status', 'active')
         .not('expires_at_tick', 'is', null)
         .lte('expires_at_tick', currentTick);
@@ -3739,6 +3739,32 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
 
     const results = [];
     for (const agreement of expired) {
+        // Auto-renew: extend the agreement instead of expiring it
+        if (agreement.auto_renew && agreement.duration_ticks > 0) {
+            const newExpiry = currentTick + agreement.duration_ticks;
+            await supabase.from('trade_agreements').update({
+                expires_at_tick: newExpiry,
+                updated_at: new Date().toISOString()
+            }).eq('id', agreement.id);
+
+            // Notify both nations of renewal
+            try {
+                const eventPlaceholders = { agreement_name: agreement.agreement_name || 'Agreement' };
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'trade_agreement_renewed', p_nation_id: agreement.nation_a_id,
+                    p_tick: currentTick, p_placeholders: eventPlaceholders
+                });
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'trade_agreement_renewed', p_nation_id: agreement.nation_b_id,
+                    p_tick: currentTick, p_placeholders: eventPlaceholders
+                });
+            } catch (e) { /* non-blocking — event trigger may not exist yet */ }
+
+            results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type, resolution: 'renewed', newExpiry });
+            console.log(`[processExpiredTradeAgreements] Auto-renewed: ${agreement.agreement_name} (${agreement.agreement_type}) → expires tick ${newExpiry}`);
+            continue;
+        }
+
         await supabase.from('trade_agreements').update({
             status: 'expired'
         }).eq('id', agreement.id);
@@ -3765,9 +3791,49 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
             });
         } catch (e) { /* non-blocking */ }
 
-        results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type });
+        results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type, resolution: 'expired' });
         console.log(`[processExpiredTradeAgreements] Expired: ${agreement.agreement_name} (${agreement.agreement_type})`);
     }
+
+    // ── Process pending withdrawals that have passed their notice period ──
+    const { data: pendingWithdrawals } = await supabase.from('trade_agreements')
+        .select('id, agreement_type, agreement_name, nation_a_id, nation_b_id, withdrawn_by_nation')
+        .eq('status', 'active')
+        .not('withdrawn_at_tick', 'is', null)
+        .lte('withdrawn_at_tick', currentTick);
+
+    for (const agreement of (pendingWithdrawals || [])) {
+        await supabase.from('trade_agreements').update({
+            status: 'withdrawn',
+            updated_at: new Date().toISOString()
+        }).eq('id', agreement.id);
+
+        // For economic aid, mark the aid_agreement_state as well
+        if (agreement.agreement_type === 'economic_aid') {
+            await supabase.from('aid_agreement_state').update({
+                is_suspended: true,
+                suspension_reason: 'Agreement withdrawn',
+                next_review_tick: null
+            }).eq('agreement_id', agreement.id);
+        }
+
+        // Notify both nations
+        try {
+            const eventPlaceholders = { agreement_name: agreement.agreement_name || 'Agreement' };
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'trade_agreement_withdrawn', p_nation_id: agreement.nation_a_id,
+                p_tick: currentTick, p_placeholders: eventPlaceholders
+            });
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'trade_agreement_withdrawn', p_nation_id: agreement.nation_b_id,
+                p_tick: currentTick, p_placeholders: eventPlaceholders
+            });
+        } catch (e) { /* non-blocking — event trigger may not exist yet */ }
+
+        results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type, resolution: 'withdrawn' });
+        console.log(`[processExpiredTradeAgreements] Withdrawal finalized: ${agreement.agreement_name} (${agreement.agreement_type})`);
+    }
+
     return results;
 }
 

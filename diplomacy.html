@@ -743,9 +743,13 @@ async function renderAgreementsTab() {
                         '</div>'
                     ).join('');
 
-                    // Withdraw button
+                    // Withdraw button (hide if withdrawal already pending)
+                    const withdrawalPending = ta.withdrawn_at_tick != null && ta.withdrawn_at_tick > shardTick;
+                    const withdrawalTicksLeft = withdrawalPending ? ta.withdrawn_at_tick - shardTick : 0;
                     let withdrawBtn = '';
-                    if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
+                    if (withdrawalPending) {
+                        withdrawBtn = '<span class="trade-neg-status-value expiring" title="Withdrawal notice filed">Withdrawing in ' + withdrawalTicksLeft + ' tick' + (withdrawalTicksLeft !== 1 ? 's' : '') + '</span>';
+                    } else if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
                         const noticeLabel = ta.withdrawal_notice_ticks ? ta.withdrawal_notice_ticks + ' tick notice' : 'immediate';
                         withdrawBtn = '<button class="agreement-withdraw-btn" onclick="withdrawTradeAgreement(\'' + ta.id + '\')" title="' + noticeLabel + '">Withdraw</button>';
                     }
@@ -820,9 +824,9 @@ async function withdrawTradeAgreement(agreementId) {
 
     if (!confirm(confirmMsg)) return;
 
-    // Update agreement status
+    // File withdrawal notice — agreement stays active through the notice period.
+    // The tick processor will set status='withdrawn' when withdrawn_at_tick is reached.
     await _supabase.from('trade_agreements').update({
-        status: 'withdrawn',
         withdrawn_at_tick: shardTick + noticeTicks,
         withdrawal_notice_at: shardTick,
         withdrawn_by_nation: currentNation.id
