@@ -5,7 +5,7 @@
 CREATE OR REPLACE FUNCTION accumulate_ap(
     p_faction_id UUID,
     p_gain INT,
-    p_max_ap INT DEFAULT 20
+    p_max_ap INT DEFAULT 10
 )
 RETURNS INT
 LANGUAGE plpgsql

@@ -3260,18 +3260,17 @@ async function generateBudgetBill(supabase, nation, currentTick, activeLaws, opt
     const gameYear = 2000 + Math.floor(currentTick / 12);
     const billName = `Budget Act of ${gameYear}`;
 
-    // For system-generated bills, no sponsor (proposed_by = null).
-    // For player-submitted bills, find the ruling faction as sponsor.
-    let sponsorId = null;
-    if (!systemGenerated) {
-        sponsorId = nation.ruling_faction_id;
-        if (!sponsorId) {
-            // Fallback: first party faction
-            const { data: parties } = await supabase.from('factions')
-                .select('id').eq('nation_id', nation.id).eq('faction_type', 'party').limit(1);
-            sponsorId = parties?.[0]?.id;
-        }
-        if (!sponsorId) return null;
+    // Find sponsor: ruling faction or first party faction.
+    // System-generated bills also need a sponsor (proposed_by NOT NULL constraint).
+    let sponsorId = nation.ruling_faction_id;
+    if (!sponsorId) {
+        const { data: parties } = await supabase.from('factions')
+            .select('id').eq('nation_id', nation.id).eq('faction_type', 'party').limit(1);
+        sponsorId = parties?.[0]?.id;
+    }
+    if (!sponsorId) {
+        console.error(`[generateBudgetBill] No sponsor found for ${nation.name} — cannot create budget bill`);
+        return null;
     }
 
     const preamble = systemGenerated
@@ -3731,7 +3730,7 @@ async function processAidConditionReview(supabase, nation, currentTick) {
  */
 async function processExpiredTradeAgreements(supabase, currentTick) {
     const { data: expired } = await supabase.from('trade_agreements')
-        .select('id, agreement_type, agreement_name, nation_a_id, nation_b_id')
+        .select('id, agreement_type, agreement_name, nation_a_id, nation_b_id, auto_renew, duration_ticks')
         .eq('status', 'active')
         .not('expires_at_tick', 'is', null)
         .lte('expires_at_tick', currentTick);
@@ -3740,6 +3739,32 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
 
     const results = [];
     for (const agreement of expired) {
+        // Auto-renew: extend the agreement instead of expiring it
+        if (agreement.auto_renew && agreement.duration_ticks > 0) {
+            const newExpiry = currentTick + agreement.duration_ticks;
+            await supabase.from('trade_agreements').update({
+                expires_at_tick: newExpiry,
+                updated_at: new Date().toISOString()
+            }).eq('id', agreement.id);
+
+            // Notify both nations of renewal
+            try {
+                const eventPlaceholders = { agreement_name: agreement.agreement_name || 'Agreement' };
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'trade_agreement_renewed', p_nation_id: agreement.nation_a_id,
+                    p_tick: currentTick, p_placeholders: eventPlaceholders
+                });
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'trade_agreement_renewed', p_nation_id: agreement.nation_b_id,
+                    p_tick: currentTick, p_placeholders: eventPlaceholders
+                });
+            } catch (e) { /* non-blocking — event trigger may not exist yet */ }
+
+            results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type, resolution: 'renewed', newExpiry });
+            console.log(`[processExpiredTradeAgreements] Auto-renewed: ${agreement.agreement_name} (${agreement.agreement_type}) → expires tick ${newExpiry}`);
+            continue;
+        }
+
         await supabase.from('trade_agreements').update({
             status: 'expired'
         }).eq('id', agreement.id);
@@ -3766,9 +3791,49 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
             });
         } catch (e) { /* non-blocking */ }
 
-        results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type });
+        results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type, resolution: 'expired' });
         console.log(`[processExpiredTradeAgreements] Expired: ${agreement.agreement_name} (${agreement.agreement_type})`);
     }
+
+    // ── Process pending withdrawals that have passed their notice period ──
+    const { data: pendingWithdrawals } = await supabase.from('trade_agreements')
+        .select('id, agreement_type, agreement_name, nation_a_id, nation_b_id, withdrawn_by_nation')
+        .eq('status', 'active')
+        .not('withdrawn_at_tick', 'is', null)
+        .lte('withdrawn_at_tick', currentTick);
+
+    for (const agreement of (pendingWithdrawals || [])) {
+        await supabase.from('trade_agreements').update({
+            status: 'withdrawn',
+            updated_at: new Date().toISOString()
+        }).eq('id', agreement.id);
+
+        // For economic aid, mark the aid_agreement_state as well
+        if (agreement.agreement_type === 'economic_aid') {
+            await supabase.from('aid_agreement_state').update({
+                is_suspended: true,
+                suspension_reason: 'Agreement withdrawn',
+                next_review_tick: null
+            }).eq('agreement_id', agreement.id);
+        }
+
+        // Notify both nations
+        try {
+            const eventPlaceholders = { agreement_name: agreement.agreement_name || 'Agreement' };
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'trade_agreement_withdrawn', p_nation_id: agreement.nation_a_id,
+                p_tick: currentTick, p_placeholders: eventPlaceholders
+            });
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'trade_agreement_withdrawn', p_nation_id: agreement.nation_b_id,
+                p_tick: currentTick, p_placeholders: eventPlaceholders
+            });
+        } catch (e) { /* non-blocking — event trigger may not exist yet */ }
+
+        results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type, resolution: 'withdrawn' });
+        console.log(`[processExpiredTradeAgreements] Withdrawal finalized: ${agreement.agreement_name} (${agreement.agreement_type})`);
+    }
+
     return results;
 }
 
@@ -4076,10 +4141,13 @@ async function autoGenerateBudgetBill(supabase, nation, currentTick, activeLaws)
 
     if (openBills && openBills.length > 0) return null;
 
-    // Generate the budget bill with no sponsor (system-generated)
+    // Generate the budget bill (system-generated)
+    console.log(`[autoGenerateBudgetBill] Generating budget bill for ${nation.name} at tick ${currentTick} (due at tick ${budgetDueTick}, last_budget_tick=${lastBudgetTick})`);
     const billId = await generateBudgetBill(supabase, nation, currentTick, activeLaws, { systemGenerated: true });
 
-    if (billId) {
+    if (!billId) {
+        console.error(`[autoGenerateBudgetBill] generateBudgetBill returned null for ${nation.name} — bill creation failed`);
+    } else {
         console.log(`[autoGenerateBudgetBill] Auto-generated budget bill for ${nation.name} at tick ${currentTick} (due at tick ${budgetDueTick})`);
 
         // Fire system event notification
@@ -4156,8 +4224,9 @@ async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
         floor_tick: currentTick
     }).eq('id', bill.id);
 
+    // Apply approval penalties based on government type
+    let consequence;
     if (isPresidential) {
-        // ── PRESIDENTIAL: apply -10 penalty to president's party ──
         const { data: president } = await supabase
             .from('presidents')
             .select('faction_id')
@@ -4171,34 +4240,10 @@ async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
                 GAME_CONFIG.BUDGET_FAILURE_PRESIDENT_PENALTY,
                 'budget:committee_expiry'
             );
-            console.log(`[BudgetCommitteeExpiry] Presidential: ${nation.name} — president's party ${president.faction_id} receives ${GAME_CONFIG.BUDGET_FAILURE_PRESIDENT_PENALTY} approval penalty`);
+            console.log(`[BudgetCommitteeExpiry] Presidential: ${nation.name} — president's party receives ${GAME_CONFIG.BUDGET_FAILURE_PRESIDENT_PENALTY} approval penalty`);
         }
-
-        // Log event
-        await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_name: 'BUDGET_AUTO_MOVED_TO_FLOOR',
-            description_used: `The budget bill "${bill.bill_name}" was automatically moved to the floor after sitting in committee for ${GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS} ticks.`,
-            category: 'legislation',
-            effects_applied: [],
-            fired_at_tick: currentTick
-        });
-
-        try {
-            await supabase.rpc('insert_news_event', {
-                p_nation_id: nation.id,
-                p_trigger_key: 'budget_auto_floor',
-                p_tick: currentTick,
-                p_placeholders: { nation: nation.name || 'Unknown', bill_name: bill.bill_name, reason: 'auto-moved to floor from committee' }
-            });
-        } catch (e) { /* news template may not exist */ }
-
-        console.log(`[BudgetCommitteeExpiry] Presidential: ${nation.name} — budget bill auto-moved to floor`);
-        return { movedToFloor: true, consequence: 'auto_floor_presidential', billId: bill.id };
-
+        consequence = 'auto_floor_presidential';
     } else {
-        // ── PARLIAMENTARY: apply -5 to coalition parties ──
-        let coalitionPartyIds = [];
         const { data: activeGov } = await supabase
             .from('government_formations')
             .select('id, status, party_ids')
@@ -4207,9 +4252,7 @@ async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
             .order('formed_at', { ascending: false })
             .limit(1)
             .maybeSingle();
-        if (activeGov) {
-            coalitionPartyIds = activeGov.party_ids || [];
-        }
+        const coalitionPartyIds = activeGov?.party_ids || [];
 
         for (const partyId of coalitionPartyIds) {
             await adjustMomentumAll(
@@ -4218,32 +4261,32 @@ async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
                 'budget:committee_expiry'
             );
         }
-
         if (coalitionPartyIds.length > 0) {
             console.log(`[BudgetCommitteeExpiry] Parliamentary: ${nation.name} — ${coalitionPartyIds.length} coalition parties receive ${GAME_CONFIG.BUDGET_FAILURE_COALITION_PENALTY} approval penalty`);
         }
-
-        // Log event
-        await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_name: 'BUDGET_AUTO_MOVED_TO_FLOOR',
-            description_used: `The budget bill "${bill.bill_name}" was automatically moved to the floor after sitting in committee for ${GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS} ticks.`,
-            category: 'legislation',
-            effects_applied: [],
-            fired_at_tick: currentTick
-        });
-
-        try {
-            await supabase.rpc('insert_news_event', {
-                p_nation_id: nation.id,
-                p_trigger_key: 'budget_auto_floor',
-                p_tick: currentTick,
-                p_placeholders: { nation: nation.name || 'Unknown', bill_name: bill.bill_name, reason: 'auto-moved to floor from committee' }
-            });
-        } catch (e) { /* news template may not exist */ }
-
-        return { movedToFloor: true, consequence: 'auto_floor_parliamentary', billId: bill.id };
+        consequence = 'auto_floor_parliamentary';
     }
+
+    // Log event (shared for both government types)
+    await supabase.from('event_log').insert({
+        nation_id: nation.id,
+        event_name: 'BUDGET_AUTO_MOVED_TO_FLOOR',
+        description_used: `The budget bill "${bill.bill_name}" was automatically moved to the floor after sitting in committee for ${GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS} ticks.`,
+        category: 'legislation',
+        effects_applied: [],
+        fired_at_tick: currentTick
+    });
+
+    try {
+        await supabase.rpc('insert_news_event', {
+            p_nation_id: nation.id,
+            p_trigger_key: 'budget_auto_floor',
+            p_tick: currentTick,
+            p_placeholders: { nation: nation.name || 'Unknown', bill_name: bill.bill_name, reason: 'auto-moved to floor from committee' }
+        });
+    } catch (e) { /* news template may not exist */ }
+
+    return { movedToFloor: true, consequence, billId: bill.id };
 }
 
 // Trade balance influences GDP growth each tick:
@@ -5521,8 +5564,11 @@ async function checkEarlyMajority(supabase, nationId) {
 
         // ── Check 1: Mathematical lock (outcome impossible to change) ──
         if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
-            // Absolute supermajority: 67% of total seats, no quorum
-            const requiredSeats = getRequiredSeats(bill.bill_type);
+            // Absolute supermajority: 67% of effective total seats, no quorum
+            // Must use effectiveTotalSeats (not GAME_CONFIG.TOTAL_SEATS) to match resolveBillVote
+            const requiredSeats = (bill.bill_type === 'veto_override')
+                ? Math.ceil(effectiveTotalSeats * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD)
+                : Math.ceil(effectiveTotalSeats * GAME_CONFIG.SUPERMAJORITY_THRESHOLD);
             if (effectiveYes >= requiredSeats) {
                 earlyStatus = 'majority_reached';
             } else if (effectiveYes + undeclaredSeats < requiredSeats) {
@@ -10502,7 +10548,12 @@ async function processStatConnections(supabase, nation, currentTick, connections
             ? targetVal + effectiveMag
             : targetVal - effectiveMag;
 
-        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+        // Raw-value stats (gdp, debt, population) must not be clamped to 0-100
+        if (RAW_SCALING_DIVISORS[conn.target_stat]) {
+            newVal = Math.max(0, newVal);
+        } else {
+            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+        }
 
         if (newVal !== Math.round(targetVal * 10) / 10) {
             // Accumulate — multiple connections can affect the same target
@@ -10510,9 +10561,10 @@ async function processStatConnections(supabase, nation, currentTick, connections
                 // Add delta on top of already-accumulated value
                 const prevDelta = nationUpdates[conn.target_stat] - targetVal;
                 const thisDelta = newVal - targetVal;
-                nationUpdates[conn.target_stat] = Math.round(
-                    Math.max(0, Math.min(100, targetVal + prevDelta + thisDelta)) * 10
-                ) / 10;
+                const accumulated = targetVal + prevDelta + thisDelta;
+                nationUpdates[conn.target_stat] = RAW_SCALING_DIVISORS[conn.target_stat]
+                    ? Math.max(0, accumulated)
+                    : Math.round(Math.max(0, Math.min(100, accumulated)) * 10) / 10;
             } else {
                 nationUpdates[conn.target_stat] = newVal;
             }
@@ -12190,6 +12242,7 @@ function evaluatePromiseStatus(promise, nationStats, currentTick, ministries, co
  * Checks fulfillment, applies rewards/penalties for expired promises.
  */
 async function processPromiseTick(supabase, nation, currentTick) {
+    const cfg = MAKE_PROMISE_CONFIG;
     const { data: activePromises } = await supabase
         .from('fundraiser_promises')
         .select('*')
@@ -12278,22 +12331,27 @@ async function processPromiseTick(supabase, nation, currentTick) {
             continue;
         }
 
-        // Per-tick penalty: governing party with unfulfilled promise loses approval with the promised bloc
-        // -1D3 approval per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
+        // Per-tick penalty: governing party with unfulfilled promise loses preference with the promised bloc
+        // -1D3 preference per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
         if (isGoverning && promise.bloc_id) {
             const penaltyAmount = -(Math.floor(Math.random() * (cfg.PENALTY_PER_TICK_MAX - cfg.PENALTY_PER_TICK_MIN + 1)) + cfg.PENALTY_PER_TICK_MIN);
             const { data: penaltyBlocRow } = await supabase
                 .from('faction_bloc_approval')
-                .select('id, approval')
+                .select('id, preference_score')
                 .eq('faction_id', promise.party_id)
                 .eq('bloc_id', promise.bloc_id)
                 .single();
             if (penaltyBlocRow) {
-                const newApproval = Math.max(0, Math.round(penaltyBlocRow.approval + penaltyAmount));
+                const newPref = Math.max(0, Math.round((penaltyBlocRow.preference_score || 0) + penaltyAmount));
                 await supabase.from('faction_bloc_approval')
-                    .update({ approval: newApproval })
+                    .update({ preference_score: newPref })
                     .eq('id', penaltyBlocRow.id);
             }
+            // Track accumulated penalty in progress field (displayed by UI)
+            const updatedProgress = { ...evaluation.progress, penalty_accumulated: (evaluation.progress.penalty_accumulated || 0) + Math.abs(penaltyAmount) };
+            await supabase.from('fundraiser_promises')
+                .update({ progress: updatedProgress, updated_at: new Date().toISOString() })
+                .eq('id', promise.id);
             results.push({ promise, resolution: 'tick_penalty', penaltyAmount });
         }
     }
@@ -12324,15 +12382,15 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
                 .eq('id', blocRow.id);
         }
 
-        // +approval with ALL blocs (APPROVAL_IF_KEPT — the main +12 reward)
+        // +preference_score with ALL blocs (APPROVAL_IF_KEPT — the main +12 reward)
         const { data: allBlocRows } = await supabase
             .from('faction_bloc_approval')
-            .select('id, approval')
+            .select('id, preference_score')
             .eq('faction_id', promise.party_id);
         for (const row of (allBlocRows || [])) {
-            const newApproval = Math.min(100, Math.round(row.approval + cfg.APPROVAL_IF_KEPT));
+            const newPref = Math.min(100, Math.round((row.preference_score || 0) + cfg.APPROVAL_IF_KEPT));
             await supabase.from('faction_bloc_approval')
-                .update({ approval: newApproval })
+                .update({ preference_score: newPref })
                 .eq('id', row.id);
         }
 
@@ -14379,11 +14437,19 @@ async function processMinistryActions(supabase, nation, currentTick) {
                         factionUpdates[fKey] = newVal;
                     } else {
                         // Default: nation stat
+                        // GDP is only changed by gdp_growth via applyGdpGrowth — skip
+                        if (statKey === 'gdp') continue;
                         currentVal = nationUpdates[statKey] !== undefined
                             ? nationUpdates[statKey]
                             : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
-                        newVal = eff.direction === 'up' ? currentVal + rate : currentVal - rate;
-                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                        let scaledMinistryRate = RAW_SCALING_DIVISORS[statKey] ? rate * RAW_SCALING_DIVISORS[statKey] : rate;
+                        newVal = eff.direction === 'up' ? currentVal + scaledMinistryRate : currentVal - scaledMinistryRate;
+                        // Raw-value stats (debt, population) must not be clamped to 0-100
+                        if (RAW_SCALING_DIVISORS[statKey]) {
+                            newVal = Math.max(0, newVal);
+                        } else {
+                            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                        }
                         nationUpdates[statKey] = newVal;
                     }
 
@@ -14859,9 +14925,17 @@ async function processEvents(supabase, nation, currentTick) {
             }
 
             if (effect.target === 'nation') {
+                // GDP is only changed by gdp_growth via applyGdpGrowth — skip
+                if (evtStatKey === 'gdp') continue;
                 const currentVal = nation[evtStatKey] !== undefined
                     ? Number(nation[evtStatKey]) : 50;
-                const newVal = Math.max(0, Math.min(100, currentVal + effect.change_value));
+                const scaledChange = RAW_SCALING_DIVISORS[evtStatKey]
+                    ? effect.change_value * RAW_SCALING_DIVISORS[evtStatKey]
+                    : effect.change_value;
+                // Raw-value stats (debt, population) must not be clamped to 0-100
+                const newVal = RAW_SCALING_DIVISORS[evtStatKey]
+                    ? Math.max(0, currentVal + scaledChange)
+                    : Math.max(0, Math.min(100, currentVal + scaledChange));
                 nationUpdates[evtStatKey] = newVal;
                 nation[evtStatKey] = newVal;
 
@@ -15138,13 +15212,21 @@ async function processCrises(supabase, nation, currentTick, budgetItemAllocs) {
             }
 
             if (effect.target === 'nation') {
+                // GDP is only changed by gdp_growth via applyGdpGrowth — skip
+                if (statKey === 'gdp') continue;
                 const currentVal = nationUpdates[statKey] !== undefined
                     ? nationUpdates[statKey]
                     : (nation[statKey] !== undefined && nation[statKey] !== null
                         ? Number(nation[statKey]) : 50);
 
-                // Basic 0-100 clamp + 1dp rounding; floor/ceiling enforcement deferred to final pass
-                let newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
+                // Raw-value stats (debt, population) must not be clamped to 0-100
+                let newVal;
+                if (RAW_SCALING_DIVISORS[statKey]) {
+                    const scaledCrisisChange = changePT * RAW_SCALING_DIVISORS[statKey];
+                    newVal = Math.max(0, currentVal + scaledCrisisChange);
+                } else {
+                    newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
+                }
                 nationUpdates[statKey] = newVal;
                 nation[statKey] = newVal;
 
@@ -16248,7 +16330,22 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
 
     if (disbandErr) throw new Error('Failed to disband party: ' + disbandErr.message);
 
-    // 8. Clean up all faction-related data from the old nation
+    // 8. Fail any open bills proposed by this faction (they lose their sponsor)
+    const { data: orphanedBills } = await supabase
+        .from('bills')
+        .select('id, bill_name, bill_type, ambassador_id')
+        .eq('nation_id', nationId)
+        .eq('proposed_by', factionId)
+        .in('status', ['committee', 'floor']);
+    if (orphanedBills && orphanedBills.length > 0) {
+        for (const bill of orphanedBills) {
+            await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
+            console.log(`[disbandParty] Failed orphaned bill "${bill.bill_name}" (proposed by disbanded faction)`);
+        }
+        await syncAmbassadorsForFailedConfirmationBills(supabase, orphanedBills);
+    }
+
+    // 9. Clean up all faction-related data from the old nation
     await supabase.from('faction_bloc_approval').delete().eq('faction_id', factionId);
     await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
     await supabase.from('ideology_history').delete().eq('faction_id', factionId);
@@ -19303,7 +19400,7 @@ async function advanceTick(supabase) {
     const failedFactionIds = new Set();
 
     // Accumulate AP for party factions each tick:
-    // base 5 AP, +1 if in government, +1 if approval > 60. Capped at MAX_AP.
+    // base 3 AP, +2 if in government coalition or strongman. Capped at MAX_AP (10).
     // Uses atomic RPC to prevent race conditions with concurrent player deductions.
     let apDistributed = 0;
     let apFailed = 0;
@@ -19325,7 +19422,7 @@ async function advanceTick(supabase) {
 
         for (const faction of factions) {
             const isInGovernment = governmentPartyIds.has(faction.id);
-            let apGain = 4;
+            let apGain = 3;
             if (isInGovernment) apGain += 2;
 
             // Family member successor penalty: ruling faction loses 1 AP/tick
@@ -19515,7 +19612,8 @@ async function advanceTick(supabase) {
         // Auto-generate budget bill if due (3 ticks before budget deadline)
         try {
             const { data: budgetLaws } = await supabase.from('active_laws')
-                .select('*').eq('nation_id', nation.id);
+                .select('*, policies(id, policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat)')
+                .eq('nation_id', nation.id);
             const autoBudgetId = await autoGenerateBudgetBill(supabase, nation, newTick, budgetLaws || []);
             if (autoBudgetId) {
                 summary.autoBudgetBills = summary.autoBudgetBills || [];
@@ -19585,6 +19683,17 @@ async function advanceTick(supabase) {
         if (vacancyResult) {
             summary.vacancies = summary.vacancies || [];
             summary.vacancies.push(vacancyResult);
+        }
+
+        // Auto-expire non-budget committee bills that have sat for COMMITTEE_EXPIRY_TICKS
+        try {
+            const committeeExpiries = await expireCommitteeBills(supabase, nation.id, newTick);
+            if (committeeExpiries.length > 0) {
+                summary.committeeExpiries = summary.committeeExpiries || [];
+                summary.committeeExpiries.push({ nation: nation.name, bills: committeeExpiries });
+            }
+        } catch (committeeErr) {
+            console.error(`[advanceTick] Committee bill expiry failed for ${nation.name} (non-fatal):`, committeeErr);
         }
 
         // Check for early majority on active floor bills (lock outcome + set grace tick)

@@ -221,7 +221,12 @@ export async function processStatConnections(supabase, nation, currentTick, conn
             ? targetVal + effectiveMag
             : targetVal - effectiveMag;
 
-        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+        // Raw-value stats (gdp, debt, population) must not be clamped to 0-100
+        if (RAW_SCALING_DIVISORS[conn.target_stat]) {
+            newVal = Math.max(0, newVal);
+        } else {
+            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+        }
 
         if (newVal !== Math.round(targetVal * 10) / 10) {
             // Accumulate — multiple connections can affect the same target
@@ -229,9 +234,10 @@ export async function processStatConnections(supabase, nation, currentTick, conn
                 // Add delta on top of already-accumulated value
                 const prevDelta = nationUpdates[conn.target_stat] - targetVal;
                 const thisDelta = newVal - targetVal;
-                nationUpdates[conn.target_stat] = Math.round(
-                    Math.max(0, Math.min(100, targetVal + prevDelta + thisDelta)) * 10
-                ) / 10;
+                const accumulated = targetVal + prevDelta + thisDelta;
+                nationUpdates[conn.target_stat] = RAW_SCALING_DIVISORS[conn.target_stat]
+                    ? Math.max(0, accumulated)
+                    : Math.round(Math.max(0, Math.min(100, accumulated)) * 10) / 10;
             } else {
                 nationUpdates[conn.target_stat] = newVal;
             }
@@ -4098,11 +4104,19 @@ export async function processMinistryActions(supabase, nation, currentTick) {
                         factionUpdates[fKey] = newVal;
                     } else {
                         // Default: nation stat
+                        // GDP is only changed by gdp_growth via applyGdpGrowth — skip
+                        if (statKey === 'gdp') continue;
                         currentVal = nationUpdates[statKey] !== undefined
                             ? nationUpdates[statKey]
                             : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
-                        newVal = eff.direction === 'up' ? currentVal + rate : currentVal - rate;
-                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                        let scaledMinistryRate = RAW_SCALING_DIVISORS[statKey] ? rate * RAW_SCALING_DIVISORS[statKey] : rate;
+                        newVal = eff.direction === 'up' ? currentVal + scaledMinistryRate : currentVal - scaledMinistryRate;
+                        // Raw-value stats (debt, population) must not be clamped to 0-100
+                        if (RAW_SCALING_DIVISORS[statKey]) {
+                            newVal = Math.max(0, newVal);
+                        } else {
+                            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                        }
                         nationUpdates[statKey] = newVal;
                     }
 
@@ -4578,9 +4592,17 @@ export async function processEvents(supabase, nation, currentTick) {
             }
 
             if (effect.target === 'nation') {
+                // GDP is only changed by gdp_growth via applyGdpGrowth — skip
+                if (evtStatKey === 'gdp') continue;
                 const currentVal = nation[evtStatKey] !== undefined
                     ? Number(nation[evtStatKey]) : 50;
-                const newVal = Math.max(0, Math.min(100, currentVal + effect.change_value));
+                const scaledChange = RAW_SCALING_DIVISORS[evtStatKey]
+                    ? effect.change_value * RAW_SCALING_DIVISORS[evtStatKey]
+                    : effect.change_value;
+                // Raw-value stats (debt, population) must not be clamped to 0-100
+                const newVal = RAW_SCALING_DIVISORS[evtStatKey]
+                    ? Math.max(0, currentVal + scaledChange)
+                    : Math.max(0, Math.min(100, currentVal + scaledChange));
                 nationUpdates[evtStatKey] = newVal;
                 nation[evtStatKey] = newVal;
 
@@ -4857,13 +4879,21 @@ export async function processCrises(supabase, nation, currentTick, budgetItemAll
             }
 
             if (effect.target === 'nation') {
+                // GDP is only changed by gdp_growth via applyGdpGrowth — skip
+                if (statKey === 'gdp') continue;
                 const currentVal = nationUpdates[statKey] !== undefined
                     ? nationUpdates[statKey]
                     : (nation[statKey] !== undefined && nation[statKey] !== null
                         ? Number(nation[statKey]) : 50);
 
-                // Basic 0-100 clamp + 1dp rounding; floor/ceiling enforcement deferred to final pass
-                let newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
+                // Raw-value stats (debt, population) must not be clamped to 0-100
+                let newVal;
+                if (RAW_SCALING_DIVISORS[statKey]) {
+                    const scaledCrisisChange = changePT * RAW_SCALING_DIVISORS[statKey];
+                    newVal = Math.max(0, currentVal + scaledCrisisChange);
+                } else {
+                    newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
+                }
                 nationUpdates[statKey] = newVal;
                 nation[statKey] = newVal;
 
@@ -5967,7 +5997,25 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
 
     if (disbandErr) throw new Error('Failed to disband party: ' + disbandErr.message);
 
-    // 8. Clean up all faction-related data from the old nation
+    // 8. Fail any open bills proposed by this faction (they lose their sponsor)
+    const { data: orphanedBills } = await supabase
+        .from('bills')
+        .select('id, bill_name, bill_type, ambassador_id')
+        .eq('nation_id', nationId)
+        .eq('proposed_by', factionId)
+        .in('status', ['committee', 'floor']);
+    if (orphanedBills && orphanedBills.length > 0) {
+        for (const bill of orphanedBills) {
+            await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
+            // Reject any pending ambassadors from failed confirmation bills
+            if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
+                await supabase.from('ambassadors').update({ status: 'rejected', is_active: false }).eq('id', bill.ambassador_id);
+            }
+            console.log(`[disbandParty] Failed orphaned bill "${bill.bill_name}" (proposed by disbanded faction)`);
+        }
+    }
+
+    // 9. Clean up all faction-related data from the old nation
     await supabase.from('faction_bloc_approval').delete().eq('faction_id', factionId);
     await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
     await supabase.from('ideology_history').delete().eq('faction_id', factionId);
@@ -5977,7 +6025,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     await supabase.from('bill_support').delete().eq('faction_id', factionId);
     await supabase.from('campaign_actions').delete().eq('party_id', factionId);
 
-    // 9. Audit log
+    // 10. Audit log
     const { error: logErr } = await supabase
         .from('campaign_actions')
         .insert({

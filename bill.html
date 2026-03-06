@@ -557,7 +557,12 @@ function renderBill() {
         const isHeadOfGov = isAutocracy ? isHeadFaction
             : isPresidential ? (presidentFactionId && currentFaction?.id === presidentFactionId)
             : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId);
-        const canActOnBill = isSponsor || (isBudgetBill && isHeadOfGov);
+        const isBudgetGovMember = isBudgetBill && currentFaction && (
+            isAutocracy ? isHeadFaction
+            : isPresidential ? (presidentFactionId && currentFaction.id === presidentFactionId)
+            : (coalitionPartyIds.includes(currentFaction.id) || currentFaction?.id === coalitionLeadPartyId)
+        );
+        const canActOnBill = isSponsor || isBudgetGovMember;
         if (isAutocracy) {
             if (isHeadFaction || isSponsor) {
                 el.style.display = 'flex';
@@ -570,7 +575,7 @@ function renderBill() {
     const hasMajority = sponsorSeats >= GAME_CONFIG.MAJORITY_SEATS;
     const hasCosponsor = (bill.bill_support || []).some(s => s.faction_id !== bill.proposed_by && s.stance === 'accept');
     const isFoundational = bill.bill_type === 'foundational';
-    let canSendToFloor = !isNoGovernment && (isFoundational ? hasCosponsor : (hasMajority || hasCosponsor));
+    let canSendToFloor = !isNoGovernment && (isBudgetBill ? isBudgetGovMember : (isFoundational ? hasCosponsor : (hasMajority || hasCosponsor)));
 
     // Budget bills: block Send to Floor during early proposal window (before due date)
     let budgetEarlyWindowMsg = '';
@@ -1749,6 +1754,13 @@ function renderCurrentVote() {
 async function castVote(vote) {
     if (!currentFaction || currentBill.status !== 'floor') return;
 
+    // Check locked support (from accepted strike deals)
+    const mySupport = (currentBill.bill_support || []).find(s => s.faction_id === currentFaction.id);
+    if (mySupport?.locked) {
+        alert('Your support is locked — a strike deal was accepted.');
+        return;
+    }
+
     // Nominee self-rejection: if this is a minister_confirmation bill and the
     // nominee's party votes NO, immediately end the vote as failed.
     if (vote === 'no' && currentBill.bill_type === 'minister_confirmation' && currentBill.ministry_key) {
@@ -1843,14 +1855,13 @@ async function enactDecree() {
 }
 
 async function sendToFloor() {
-    const isBudgetHeadOfGov = currentBill.bill_type === 'budget' && (
+    // Budget bills: any government/coalition party can send to floor
+    const isBudgetGovParty = currentBill.bill_type === 'budget' && currentFaction && (
         isAutocracy ? isHeadFaction
-        : isPresidential ? (presidentFactionId && currentFaction?.id === presidentFactionId)
-        : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId)
+        : isPresidential ? (presidentFactionId && currentFaction.id === presidentFactionId)
+        : (coalitionPartyIds.includes(currentFaction.id) || currentFaction.id === coalitionLeadPartyId)
     );
-    // System-generated budget bills (proposed_by = null) can be sent to floor by any coalition/government party
-    const isSystemBudget = currentBill.bill_type === 'budget' && !currentBill.proposed_by;
-    if (!currentFaction || (currentBill.proposed_by !== currentFaction.id && !isBudgetHeadOfGov && !isSystemBudget)) return;
+    if (!currentFaction || (currentBill.proposed_by !== currentFaction.id && !isBudgetGovParty)) return;
     if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can advance.'); return; }
 
     // Require at least one article for non-budget, non-repeal bills
@@ -2283,7 +2294,7 @@ function onSponsorAddSectorChange() {
             sectorActiveLaws.map(law => {
                 const p = law.policies;
                 const onCost = p.ongoing_cost_per_tick || p.ongoing_base_cost || 0;
-                const costLabel = onCost !== 0 ? ` <span style="color:${onCost > 0 ? '#4CAF50' : '#ff4444'};font-weight:bold;">+${formatCurrency(onCost).replace(/^[+-]/, '')}${Math.abs(onCost) >= 1000 ? '' : 'M'}/mo saved</span>` : '';
+                const costLabel = onCost !== 0 ? ` <span style="color:${onCost > 0 ? '#4CAF50' : '#ff4444'};font-weight:bold;">+${formatCurrency(onCost).replace(/^[+-]/, '')}/mo saved</span>` : '';
                 const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
                 const ideoHTML = ideos.map(i => {
                     const colorClass = getIdeologyChipClass(i, factionIdeology);
@@ -2442,7 +2453,7 @@ function formatCurrency(amt) {
     if (amt === 0) return '$0';
     const abs = Math.abs(amt), sign = amt < 0 ? '-' : '+';
     if (abs >= 1000) return `${sign}$${(abs / 1000) % 1 === 0 ? (abs / 1000).toFixed(0) : (abs / 1000).toFixed(1)}B`;
-    return `${sign}$${abs}M`;
+    return `${sign}$${Math.round(abs)}M`;
 }
 
 document.getElementById('chat-input')?.addEventListener('keypress', (e) => {

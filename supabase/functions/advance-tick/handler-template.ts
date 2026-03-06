@@ -833,7 +833,7 @@ async function advanceTick(supabase) {
     const failedFactionIds = new Set();
 
     // Accumulate AP for party factions each tick:
-    // base 5 AP, +1 if in government, +1 if approval > 60. Capped at MAX_AP.
+    // base 3 AP, +2 if in government coalition or strongman. Capped at MAX_AP (10).
     // Uses atomic RPC to prevent race conditions with concurrent player deductions.
     let apDistributed = 0;
     let apFailed = 0;
@@ -855,7 +855,7 @@ async function advanceTick(supabase) {
 
         for (const faction of factions) {
             const isInGovernment = governmentPartyIds.has(faction.id);
-            let apGain = 4;
+            let apGain = 3;
             if (isInGovernment) apGain += 2;
 
             // Family member successor penalty: ruling faction loses 1 AP/tick
@@ -1045,7 +1045,8 @@ async function advanceTick(supabase) {
         // Auto-generate budget bill if due (3 ticks before budget deadline)
         try {
             const { data: budgetLaws } = await supabase.from('active_laws')
-                .select('*').eq('nation_id', nation.id);
+                .select('*, policies(id, policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat)')
+                .eq('nation_id', nation.id);
             const autoBudgetId = await autoGenerateBudgetBill(supabase, nation, newTick, budgetLaws || []);
             if (autoBudgetId) {
                 summary.autoBudgetBills = summary.autoBudgetBills || [];
