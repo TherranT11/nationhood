@@ -560,7 +560,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
-import { isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, loadSeats, fetchActiveCoalition, GAME_CONFIG } from './js/game-common.js';
+import { isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, loadSeats, fetchActiveCoalition, GAME_CONFIG, initGameConfigForNation } from './js/game-common.js';
 import { escapeHtml } from './js/utils.js';
 import { syncVoteTallies } from './js/game/bills.js';
 
@@ -598,6 +598,7 @@ initPage('dashboard', async (state) => {
         return;
     }
     if (!nation) return;
+    initGameConfigForNation(nation);
 
     // Fire all data loads in parallel
     const [
@@ -686,7 +687,8 @@ initPage('dashboard', async (state) => {
     for (const p of allParties) {
         if (allPartySeats[p.id] !== undefined) p.seats = allPartySeats[p.id];
     }
-    const totalSeats = allParties.reduce((s, p) => s + (p.seats || 0), 0) || 100;
+    const factionSeatSum = allParties.reduce((s, p) => s + (p.seats || 0), 0);
+    const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS || 120;
 
     // ─── BANNER ───
     renderBanner(faction, coalition, currentSeats, totalSeats);
