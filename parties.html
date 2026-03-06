@@ -3078,25 +3078,29 @@ async function renderParties() {
     // Self-heal: ensure current faction has bloc approval rows (may be missing after failed disband)
     await ensureBlocApprovals(_supabase, f.id, n.id);
 
-    const { data: allBlocApprovals } = await _supabase
+    const { data: allBlocApprovals, error: blocApprovalErr } = await _supabase
         .from('faction_bloc_approval')
         .select('faction_id, momentum, bloc_id, preference_score, ideology_alignment, performance_perception, ideology_drift')
-        .in('faction_id', allPartyIds);
+        .in('faction_id', allPartyIds.length > 0 ? allPartyIds : ['00000000-0000-0000-0000-000000000000']);
+    if (blocApprovalErr) console.error('[parties] faction_bloc_approval query error:', blocApprovalErr.message);
 
-    const { data: blocs } = await _supabase
+    const { data: blocs, error: blocsErr } = await _supabase
         .from('voter_blocs')
         .select('id, bloc_name, population_weight, priority_issues, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
         .eq('nation_id', n.id)
         .eq('is_active', true);
+    if (blocsErr) console.error('[parties] voter_blocs query error:', blocsErr.message, '| nation_id:', n.id);
+    if (!blocs || blocs.length === 0) console.warn('[parties] voter_blocs returned empty for nation', n.id, '| error:', blocsErr?.message || 'none');
 
     // Fetch recent momentum log for this party (per-bloc + global, last 30 entries)
-    const { data: momentumLog } = await _supabase
+    const { data: momentumLog, error: momLogErr } = await _supabase
         .from('momentum_log')
         .select('amount, source, tick, bloc_id')
         .eq('nation_id', n.id)
         .eq('faction_id', f.id)
         .order('tick', { ascending: false })
         .limit(30);
+    if (momLogErr) console.error('[parties] momentum_log query error:', momLogErr.message);
 
     const blocWeights = {};
     for (const b of (blocs || [])) blocWeights[b.id] = b.population_weight || 1;
@@ -3765,7 +3769,10 @@ async function renderParties() {
                 <span class="vba-legend-click">Click to expand</span>
             </div>
             <div class="vba-grid">
-                ${blocCardsHtml}
+                ${blocCardsHtml || `<div style="grid-column:1/-1;text-align:center;padding:24px 16px;color:var(--text-muted);">
+                    <p style="margin:0 0 8px;font-size:14px;">No voter bloc data available.</p>
+                    <p style="margin:0;font-size:12px;opacity:0.7;">This is likely a database permissions issue (missing RLS SELECT policy on voter_blocs). Run the migration: <code>sql/migrations/20260306_fix_voter_bloc_rls.sql</code></p>
+                </div>`}
             </div>
             <div class="vba-footer">
                 <div class="vba-footer-stats">
