@@ -40,6 +40,7 @@ DECLARE
         ARRAY['bill_support',                 $$DELETE FROM bill_support WHERE faction_id = '%s'$$],
         ARRAY['bills',                        $$DELETE FROM bills WHERE proposed_by = '%s'$$],
         ARRAY['campaign_actions',             $$DELETE FROM campaign_actions WHERE party_id = '%s'$$],
+        ARRAY['impeachment_proceedings',     $$DELETE FROM impeachment_proceedings WHERE initiated_by_faction_id = '%s'$$],
         ARRAY['loyalty_demands',              $$DELETE FROM loyalty_demands WHERE strongman_faction_id = '%s' OR target_faction_id = '%s'$$],
         ARRAY['coalition_messages',           $$DELETE FROM coalition_messages WHERE coalition_id IN (SELECT id FROM faction_coalitions WHERE faction_a_id = '%s' OR faction_b_id = '%s')$$],
         ARRAY['faction_coalitions',           $$DELETE FROM faction_coalitions WHERE faction_a_id = '%s' OR faction_b_id = '%s'$$],

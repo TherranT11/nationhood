@@ -77,6 +77,7 @@ BEGIN
         WHERE f.nation_id = p_nation_id
           AND f.faction_type = 'party'
           AND f.is_npc = FALSE
+          AND f.abandoned_at IS NULL
     ) t;
 
     IF jsonb_array_length(v_parties) = 0 THEN
