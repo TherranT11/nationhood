@@ -700,7 +700,7 @@ initPage('dashboard', async (state) => {
     renderBills(faction, floorBills, committeeBills, currentSeats);
 
     // ─── GOVERNMENT ───
-    renderGovernment(nation, coalition, ministries, allParties, hog, govType, totalSeats, allPartySeats, isPresidential, isAuto, presidentData);
+    await renderGovernment(nation, coalition, ministries, allParties, hog, govType, totalSeats, allPartySeats, isPresidential, isAuto, presidentData);
 
     // ─── QUICK ACTIONS ───
     renderQuickActions(faction, nation, coalition, govType, isPresidential, mySteward, presidentData);
@@ -968,7 +968,7 @@ function renderBills(faction, floorBills, committeeBills, seatCount) {
     });
 }
 
-function renderGovernment(nation, coalition, ministries, allParties, hog, govType, totalSeats, allPartySeats, isPresidential, isAuto, presidentData) {
+async function renderGovernment(nation, coalition, ministries, allParties, hog, govType, totalSeats, allPartySeats, isPresidential, isAuto, presidentData) {
     const panel = document.getElementById('gov-panel');
     const body = document.getElementById('gov-body');
     const badge = document.getElementById('gov-badge');
