@@ -54,9 +54,16 @@
 
 /* ── Page layout ── */
 .pol-page {
+    padding: 24px 28px 60px;
+}
+
+/* ── Party card box ── */
+.pol-party-card {
     width: 380px;
-    margin: 0 auto;
-    padding: 24px 20px 60px;
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-0);
+    border-radius: 6px;
+    padding: 22px 24px 24px;
 }
 
 /* ── Section label ── */
@@ -515,6 +522,7 @@ function renderPartyTab(f, nation, data) {
     <div class="pol-page">
         <div class="pol-section-label">Politics</div>
 
+        <div class="pol-party-card">
         <!-- Party header -->
         <div class="pol-header">
             <div class="pol-logo">${logoSvg}</div>
@@ -571,6 +579,7 @@ function renderPartyTab(f, nation, data) {
                 ${lastElectionDate ? `<div class="pol-stat-note">${lastElectionDate}</div>` : ''}
             </div>
         </div>
+        </div><!-- /pol-party-card -->
     </div>`;
 
     document.getElementById('content-area').innerHTML = html;
