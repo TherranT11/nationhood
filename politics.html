@@ -2573,6 +2573,15 @@ function computeCategoryContribution(nation, statKeys) {
     return { avgGoodness, score };
 }
 
+function formatStatValue(key, val) {
+    if (key === 'gdp') {
+        if (val >= 1e9) return '$' + Math.round(val / 1e9) + 'B';
+        if (val >= 1e6) return '$' + Math.round(val / 1e6) + 'M';
+        return '$' + Math.round(val);
+    }
+    return Math.round(val * 10) / 10;
+}
+
 function getRepresentativeStat(nation, statKeys) {
     // Return the stat with the worst individual value
     let worst = null, worstBadness = -1;
@@ -2583,7 +2592,7 @@ function getRepresentativeStat(nation, statKeys) {
         const badness = dir === 1 ? (100 - val) : val;
         if (badness > worstBadness) {
             worstBadness = badness;
-            worst = { key, val: Math.round(val * 10) / 10 };
+            worst = { key, val: formatStatValue(key, val) };
         }
     }
     return worst;
