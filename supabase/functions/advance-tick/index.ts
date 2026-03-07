@@ -19448,63 +19448,88 @@ async function advanceTick(supabase) {
         const popGrowthBeforeEffects = Number(nation.population_growth ?? 50);
 
         // Stat effects (from passed bills/active laws)
-        const effectResults = await processStatEffects(supabase, nation, newTick);
-        if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
+        try {
+            const effectResults = await processStatEffects(supabase, nation, newTick);
+            if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
+        } catch (statEffErr) {
+            console.error(`[advanceTick] processStatEffects failed for ${nation.name} (non-fatal):`, statEffErr);
+        }
 
         // Ministry action effects
-        const ministryResults = await processMinistryActions(supabase, nation, newTick);
-        if (ministryResults.length > 0) {
-            summary.ministryActions = summary.ministryActions || [];
-            summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
+        try {
+            const ministryResults = await processMinistryActions(supabase, nation, newTick);
+            if (ministryResults.length > 0) {
+                summary.ministryActions = summary.ministryActions || [];
+                summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
+            }
+        } catch (ministryErr) {
+            console.error(`[advanceTick] processMinistryActions failed for ${nation.name} (non-fatal):`, ministryErr);
         }
 
         // Apply GDP growth rate
-        await applyGdpGrowth(supabase, nation);
+        try {
+            await applyGdpGrowth(supabase, nation);
+        } catch (gdpErr) {
+            console.error(`[advanceTick] applyGdpGrowth failed for ${nation.name} (non-fatal):`, gdpErr);
+        }
 
         // Stat decay (equilibrium drift + erosion, modified by institution funding)
-        if (!_institutionConfig) {
-            const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
-            _institutionConfig = icRows || [];
-        }
-        const shutdownCheck = await isGovernmentShutdown(supabase, nation, newTick);
-        const shutdown = shutdownCheck.active;
-        let statInstMap = null;
+        let shutdown = false;
         let budgetItemAllocs = null;   // hoisted for minister approval funding check
-        if (shutdown && _institutionConfig.length > 0) {
-            // Government shutdown: force ALL institutions to 0% funding → Collapsed decay rates
-            statInstMap = buildShutdownStatInstMap(_institutionConfig);
-            console.log(`[GovernmentShutdown] Forcing Collapsed institution decay for ${nation.name}`);
-        } else if (nation.last_budget_bill_id && _institutionConfig.length > 0) {
-            const { data: itemAllocs } = await supabase.from('budget_item_allocations')
-                .select('item_type, item_id, allocation_amount, needed_amount')
-                .eq('bill_id', nation.last_budget_bill_id)
-                .eq('item_type', 'institution');
-            budgetItemAllocs = itemAllocs;
-            statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs);
-        }
-        const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
-        const decayResults = await processStatDecay(supabase, nation, statInstMap, shutdown, policyDecayAdj);
-        if (decayResults.length > 0) {
-            summary.decay = summary.decay || [];
-            summary.decay.push({ nation: nation.name, effects: decayResults });
+        try {
+            if (!_institutionConfig) {
+                const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
+                _institutionConfig = icRows || [];
+            }
+            const shutdownCheck = await isGovernmentShutdown(supabase, nation, newTick);
+            shutdown = shutdownCheck.active;
+            let statInstMap = null;
+            if (shutdown && _institutionConfig.length > 0) {
+                // Government shutdown: force ALL institutions to 0% funding → Collapsed decay rates
+                statInstMap = buildShutdownStatInstMap(_institutionConfig);
+                console.log(`[GovernmentShutdown] Forcing Collapsed institution decay for ${nation.name}`);
+            } else if (nation.last_budget_bill_id && _institutionConfig.length > 0) {
+                const { data: itemAllocs } = await supabase.from('budget_item_allocations')
+                    .select('item_type, item_id, allocation_amount, needed_amount')
+                    .eq('bill_id', nation.last_budget_bill_id)
+                    .eq('item_type', 'institution');
+                budgetItemAllocs = itemAllocs;
+                statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs);
+            }
+            const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
+            const decayResults = await processStatDecay(supabase, nation, statInstMap, shutdown, policyDecayAdj);
+            if (decayResults.length > 0) {
+                summary.decay = summary.decay || [];
+                summary.decay.push({ nation: nation.name, effects: decayResults });
+            }
+        } catch (decayErr) {
+            console.error(`[advanceTick] Stat decay/shutdown failed for ${nation.name} (non-fatal):`, decayErr);
         }
 
         // Stat connections (threshold-triggered ripple effects)
-        if (!_statConnections) {
-            const { data: scRows } = await supabase.from('stat_connections').select('*').eq('enabled', true);
-            _statConnections = scRows || [];
-        }
-        const connResults = await processStatConnections(supabase, nation, newTick, _statConnections);
-        if (connResults.length > 0) {
-            summary.statConnections = summary.statConnections || [];
-            summary.statConnections.push({ nation: nation.name, effects: connResults });
+        try {
+            if (!_statConnections) {
+                const { data: scRows } = await supabase.from('stat_connections').select('*').eq('enabled', true);
+                _statConnections = scRows || [];
+            }
+            const connResults = await processStatConnections(supabase, nation, newTick, _statConnections);
+            if (connResults.length > 0) {
+                summary.statConnections = summary.statConnections || [];
+                summary.statConnections.push({ nation: nation.name, effects: connResults });
+            }
+        } catch (connErr) {
+            console.error(`[advanceTick] processStatConnections failed for ${nation.name} (non-fatal):`, connErr);
         }
 
         // No-budget penalty (if nation hasn't passed a budget in over a year)
-        const noBudgetResult = await processNoBudgetPenalty(supabase, nation, newTick);
-        if (noBudgetResult) {
-            summary.noBudgetPenalties = summary.noBudgetPenalties || [];
-            summary.noBudgetPenalties.push({ nation: nation.name, ...noBudgetResult });
+        try {
+            const noBudgetResult = await processNoBudgetPenalty(supabase, nation, newTick);
+            if (noBudgetResult) {
+                summary.noBudgetPenalties = summary.noBudgetPenalties || [];
+                summary.noBudgetPenalties.push({ nation: nation.name, ...noBudgetResult });
+            }
+        } catch (noBudgetErr) {
+            console.error(`[advanceTick] processNoBudgetPenalty failed for ${nation.name} (non-fatal):`, noBudgetErr);
         }
 
         // Auto-generate budget bill if due (3 ticks before budget deadline)
@@ -19533,8 +19558,12 @@ async function advanceTick(supabase) {
         }
 
         // Ongoing costs
-        const costResult = await processOngoingCosts(supabase, nation, newTick);
-        if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
+        try {
+            const costResult = await processOngoingCosts(supabase, nation, newTick);
+            if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
+        } catch (costErr) {
+            console.error(`[advanceTick] processOngoingCosts failed for ${nation.name} (non-fatal):`, costErr);
+        }
 
         // Sovereign debt mechanics (burden, credit deterioration, lockout, debt crisis trigger)
         try {
@@ -19559,29 +19588,50 @@ async function advanceTick(supabase) {
         }
 
         // PM trait effects
-        await processPMTraitEffects(supabase, nation, newTick);
+        try {
+            await processPMTraitEffects(supabase, nation, newTick);
+        } catch (pmTraitErr) {
+            console.error(`[advanceTick] processPMTraitEffects failed for ${nation.name} (non-fatal):`, pmTraitErr);
+        }
 
         // Inactivity decay — penalise idle factions; at tick 12 disband the party entirely
         // Runs RIGHT BEFORE elections so auto-disbanded parties lose seats in the upcoming election
-        const inactivityResults = await processInactivityDecay(supabase, nation.id, newTick);
-        if (inactivityResults.length > 0) {
-            summary.inactivityDecay = summary.inactivityDecay || [];
-            summary.inactivityDecay.push({ nation: nation.name, factions: inactivityResults });
+        try {
+            const inactivityResults = await processInactivityDecay(supabase, nation.id, newTick);
+            if (inactivityResults.length > 0) {
+                summary.inactivityDecay = summary.inactivityDecay || [];
+                summary.inactivityDecay.push({ nation: nation.name, factions: inactivityResults });
+            }
+        } catch (inactivityErr) {
+            console.error(`[advanceTick] processInactivityDecay failed for ${nation.name} (non-fatal):`, inactivityErr);
         }
 
         // Elections (democracy only)
-        const electionResults = await processElections(supabase, nation, newTick);
-        if (electionResults.length > 0) {
-            summary.elections = summary.elections || [];
-            summary.elections.push({ nation: nation.name, elections: electionResults });
+        try {
+            const electionResults = await processElections(supabase, nation, newTick);
+            if (electionResults.length > 0) {
+                summary.elections = summary.elections || [];
+                summary.elections.push({ nation: nation.name, elections: electionResults });
+            }
+        } catch (electionErr) {
+            console.error(`[advanceTick] processElections failed for ${nation.name} (non-fatal):`, electionErr);
         }
 
         // Government vacancy penalties (democracy only)
-        const vacancyResult = await processGovernmentVacancy(supabase, nation, newTick);
-        if (vacancyResult) {
-            summary.vacancies = summary.vacancies || [];
-            summary.vacancies.push(vacancyResult);
+        try {
+            const vacancyResult = await processGovernmentVacancy(supabase, nation, newTick);
+            if (vacancyResult) {
+                summary.vacancies = summary.vacancies || [];
+                summary.vacancies.push(vacancyResult);
+            }
+        } catch (vacancyErr) {
+            console.error(`[advanceTick] processGovernmentVacancy failed for ${nation.name} (non-fatal):`, vacancyErr);
         }
+
+        // ═══════════════════════════════════════════════════════════════
+        // BILL RESOLUTION — must always run regardless of upstream failures
+        // ═══════════════════════════════════════════════════════════════
+        console.log(`[advanceTick] === BILL RESOLUTION START for ${nation.name} (tick ${newTick}) ===`);
 
         // Check for early majority on active floor bills (lock outcome + set grace tick)
         const earlyResults = await checkEarlyMajority(supabase, nation.id);
@@ -19931,10 +19981,14 @@ async function advanceTick(supabase) {
         if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
 
         // Process active fundraiser promises
-        const promiseResults = await processPromiseTick(supabase, nation, newTick);
-        if (promiseResults.length > 0) {
-            summary.promises = summary.promises || [];
-            summary.promises.push({ nation: nation.name, promises: promiseResults });
+        try {
+            const promiseResults = await processPromiseTick(supabase, nation, newTick);
+            if (promiseResults.length > 0) {
+                summary.promises = summary.promises || [];
+                summary.promises.push({ nation: nation.name, promises: promiseResults });
+            }
+        } catch (promiseErr) {
+            console.error(`[advanceTick] processPromiseTick failed for ${nation.name} (non-fatal):`, promiseErr);
         }
 
 
@@ -19950,17 +20004,25 @@ async function advanceTick(supabase) {
         }
 
         // Economic aid condition reviews (annual, at year boundaries)
-        const aidReviewResults = await processAidConditionReview(supabase, freshNation || nation, newTick);
-        if (aidReviewResults.length > 0) {
-            summary.aidReviews = summary.aidReviews || [];
-            summary.aidReviews.push({ nation: nation.name, reviews: aidReviewResults });
+        try {
+            const aidReviewResults = await processAidConditionReview(supabase, freshNation || nation, newTick);
+            if (aidReviewResults.length > 0) {
+                summary.aidReviews = summary.aidReviews || [];
+                summary.aidReviews.push({ nation: nation.name, reviews: aidReviewResults });
+            }
+        } catch (aidErr) {
+            console.error(`[advanceTick] processAidConditionReview failed for ${nation.name} (non-fatal):`, aidErr);
         }
 
         // Ambassador term limits (retirements + warnings)
-        const retirementResults = await processAmbassadorRetirements(supabase, freshNation || nation, newTick);
-        if (retirementResults.length > 0) {
-            summary.ambassadorRetirements = summary.ambassadorRetirements || [];
-            summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
+        try {
+            const retirementResults = await processAmbassadorRetirements(supabase, freshNation || nation, newTick);
+            if (retirementResults.length > 0) {
+                summary.ambassadorRetirements = summary.ambassadorRetirements || [];
+                summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
+            }
+        } catch (retireErr) {
+            console.error(`[advanceTick] processAmbassadorRetirements failed for ${nation.name} (non-fatal):`, retireErr);
         }
 
         // ── Leader aging (every January — tick % 12 === 0) ──
