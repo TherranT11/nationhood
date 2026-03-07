@@ -20,7 +20,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
 import { tickToDate, escapeHtml, getIdeologyClass } from './js/utils.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize, ensureBlocApprovals, selectPresidentCandidate, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize, ensureBlocApprovals, selectPresidentCandidate, generatePresidentCandidates, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier } from './js/game-common.js';
 import { getPartyIconSVG, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -3050,8 +3050,28 @@ async function renderParties() {
             if (unselectedCandidates && unselectedCandidates.length > 0) {
                 presNomineeState = 'active';
                 presNomineeCandidates = unselectedCandidates;
-            } else if (presTicksUntil !== null && presTicksUntil <= GAME_CONFIG.PRESIDENTIAL_CANDIDATE_LEAD_TICKS) {
-                presNomineeState = 'active'; // should have candidates but may not yet
+            } else if (presTicksUntil !== null && presTicksUntil <= GAME_CONFIG.PRESIDENTIAL_CANDIDATE_LEAD_TICKS && presTicksUntil >= 1) {
+                // Candidates should exist but don't yet — auto-generate them now
+                try {
+                    await generatePresidentCandidates(_supabase, n.id, f.id, currentTick, 'presidential');
+                    const { data: freshCandidates } = await _supabase
+                        .from('pm_candidates')
+                        .select('*')
+                        .eq('nation_id', n.id)
+                        .eq('faction_id', f.id)
+                        .eq('candidate_type', 'presidential')
+                        .eq('selected', false)
+                        .order('created_at', { ascending: true });
+                    if (freshCandidates && freshCandidates.length > 0) {
+                        presNomineeState = 'active';
+                        presNomineeCandidates = freshCandidates;
+                    } else {
+                        presNomineeState = 'greyed';
+                    }
+                } catch (genErr) {
+                    console.error('Auto-generate presidential candidates failed:', genErr);
+                    presNomineeState = 'greyed';
+                }
             } else {
                 presNomineeState = 'greyed';
             }
