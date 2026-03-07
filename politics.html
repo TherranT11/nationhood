@@ -1103,7 +1103,8 @@
 }
 
 /* ── Government Scorecard box ── */
-.pol-scorecard-box {
+/* ── Administration Card ── */
+.pol-admin-box {
     width: 380px;
     flex-shrink: 0;
     background: var(--dbg-2);
@@ -1112,38 +1113,150 @@
     padding: 16px 20px;
     overflow-y: auto;
 }
-.pol-sc-header {
+.pol-admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 6px;
+}
+.pol-admin-name {
+    font-family: var(--dfont-ui);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--dtext-0);
+}
+.pol-admin-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+}
+.pol-admin-meta span {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+}
+.pol-admin-approval-block {
+    text-align: right;
+}
+.pol-admin-president-section {
+    margin-bottom: 6px;
+}
+.pol-admin-pres-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    margin-bottom: 6px;
 }
-.pol-sc-title {
+.pol-admin-pres-name {
     font-family: var(--dfont-ui);
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-    color: var(--dtext-2);
-    text-transform: uppercase;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--dtext-0);
 }
-.pol-sc-gov-badge {
+.pol-admin-pres-age {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--dtext-2);
+}
+.pol-admin-party-badge {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
+    margin-top: 3px;
 }
-.pol-sc-gov-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 1px;
+.pol-admin-party-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    flex-shrink: 0;
 }
-.pol-sc-gov-abbr {
+.pol-admin-ideo-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--dborder-0);
+}
+.pol-admin-ideo-label {
     font-family: var(--dfont-mono);
-    font-size: 9px;
-}
-.pol-sc-gov-label {
-    font-family: var(--dfont-mono);
-    font-size: 9px;
+    font-size: 8px;
     color: var(--dtext-3);
+    text-transform: uppercase;
+}
+.pol-admin-ideo-value {
+    font-family: var(--dfont-ui);
+    font-size: 11px;
+    font-weight: 600;
+}
+.pol-admin-trait-box {
+    margin-top: 8px;
+    padding: 7px 10px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--dborder-0);
+}
+.pol-admin-trait-name {
+    font-family: var(--dfont-ui);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--dtext-0);
+}
+.pol-admin-trait-effect {
+    display: flex;
+    align-items: flex-start;
+    gap: 5px;
+    margin-top: 2px;
+}
+.pol-admin-trait-sign {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    flex-shrink: 0;
+}
+.pol-admin-trait-text {
+    font-family: var(--dfont-ui);
+    font-size: 10px;
+    color: var(--dtext-2);
+    line-height: 1.4;
+}
+.pol-admin-vp-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+}
+.pol-admin-vp-name {
+    font-family: var(--dfont-ui);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--dtext-0);
+    margin-top: 2px;
+}
+.pol-admin-impeach-btn {
+    padding: 5px 14px;
+    border-radius: 3px;
+    background: var(--dred-faint);
+    border: 1px solid rgba(239,68,68,0.27);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.pol-admin-impeach-label {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--dred);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.pol-admin-impeach-cost {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--damber);
 }
 .pol-sc-approval-row {
     display: flex;
@@ -2145,6 +2258,26 @@ initPage('politics', async (state) => {
         .single();
     const prevApproval = prevSnap?.gov_approval ?? null;
 
+    // Fetch active president (presidential systems)
+    const { data: president } = await _supabase
+        .from('presidents')
+        .select('id, faction_id, first_name, last_name, age, ideology, trait, trait_upside, trait_downside, elected_tick, term_ends_tick, is_active, terms_served')
+        .eq('nation_id', nation.id)
+        .eq('is_active', true)
+        .order('elected_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    // Fetch current administration
+    const { data: administration } = await _supabase
+        .from('administrations')
+        .select('id, admin_name, government_type, started_at_tick, president_name, president_party_id, president_party_name')
+        .eq('nation_id', nation.id)
+        .is('ended_at_tick', null)
+        .order('started_at_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
     // Fetch last completed parliamentary election
     const { data: lastParliamentary } = await _supabase
         .from('elections')
@@ -2193,7 +2326,9 @@ initPage('politics', async (state) => {
         prevApproval,
         lastParliamentary,
         lastPresidential,
-        scheduledElections
+        scheduledElections,
+        president,
+        administration
     });
 });
 
@@ -2235,7 +2370,8 @@ function renderPartyTab(f, nation, data) {
         totalSeats, mySeats, voteSharePct, lastElectionDate,
         seatDelta, role, officerNames, allParties, allPartyIdeologies, coalition, activeCrises, currentTick,
         nextElection, blocApprovals, prevApproval,
-        lastParliamentary, lastPresidential, scheduledElections
+        lastParliamentary, lastPresidential, scheduledElections,
+        president, administration
     } = data;
 
     const partyColor = f.party_color || '#ffcc00';
@@ -2292,6 +2428,7 @@ function renderPartyTab(f, nation, data) {
         <div class="pol-section-label">Politics</div>
 
         <div class="pol-columns">
+        ${renderAdminBox(nation, coalition, allParties, currentTick, prevApproval, president, administration)}
         <div class="pol-party-card">
         <!-- Party header -->
         <div class="pol-header">
@@ -2350,16 +2487,14 @@ function renderPartyTab(f, nation, data) {
             </div>
         </div>
         </div><!-- /pol-party-card -->
-        ${renderModifiersBox(f)}
         ${renderParliamentBox(allParties, coalition, nation, f.id)}
-        ${renderNationalMoodBox(nation, activeCrises, currentTick)}
         </div><!-- /pol-columns -->
 
         <div class="pol-row-2">
+        ${renderNationalMoodBox(nation, activeCrises, currentTick)}
         ${renderIdeologyBox(allParties, allPartyIdeologies, f.id)}
         ${renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, f.id)}
         ${renderEditIdentityBox(f, currentTick)}
-        ${renderGovScorecardBox(nation, coalition, allParties, currentTick, prevApproval)}
         </div>
 
         <div class="pol-row-3">
@@ -2372,7 +2507,7 @@ function renderPartyTab(f, nation, data) {
     document.getElementById('content-area').innerHTML = html;
 
     // Lock all panels to fixed 450px height
-    document.querySelectorAll('.pol-party-card, .pol-modifiers-box, .pol-parliament-box, .pol-mood-box, .pol-ideology-box, .pol-forecast-box, .pol-identity-box, .pol-scorecard-box, .pol-election-box, .pol-upcoming-box, .pol-blocs-box').forEach(el => {
+    document.querySelectorAll('.pol-admin-box, .pol-party-card, .pol-parliament-box, .pol-mood-box, .pol-ideology-box, .pol-forecast-box, .pol-identity-box, .pol-election-box, .pol-upcoming-box, .pol-blocs-box').forEach(el => {
         el.style.height = '450px';
     });
 
@@ -2902,9 +3037,9 @@ function getRepresentativeStat(nation, statKeys) {
     return worst;
 }
 
-function renderGovScorecardBox(nation, coalition, allParties, currentTick, prevApproval) {
+function renderAdminBox(nation, coalition, allParties, currentTick, prevApproval, president, administration) {
     const approval = Math.round(Number(nation.gov_approval ?? 50));
-    const apprColor = approval >= 50 ? 'var(--dgreen)' : approval >= 35 ? 'var(--damber)' : approval >= 20 ? 'var(--damber)' : 'var(--dred)';
+    const ac = approval >= 50 ? 'var(--dgreen)' : approval >= 35 ? 'var(--damber)' : approval >= 20 ? 'var(--damber)' : 'var(--dred)';
 
     // Delta from previous tick
     let deltaHtml = '';
@@ -2921,21 +3056,30 @@ function renderGovScorecardBox(nation, coalition, allParties, currentTick, prevA
         deltaHtml = `<span class="pol-sc-approval-delta" style="color:var(--dtext-3)">—</span>`;
     }
 
-    // Governing party badge
-    const leadPartyId = coalition?.lead_party_id || null;
-    const leadParty = leadPartyId ? (allParties || []).find(p => p.id === leadPartyId) : null;
-    let govBadgeHtml = '';
-    if (leadParty) {
-        const pc = leadParty.party_color || '#8a8778';
-        const abbr = leadParty.abbreviation || (leadParty.faction_name || '??').substring(0, 2).toUpperCase();
-        govBadgeHtml = `<div class="pol-sc-gov-badge">
-            <div class="pol-sc-gov-dot" style="background:${pc}"></div>
-            <span class="pol-sc-gov-abbr" style="color:${pc}">${escapeHtml(abbr)}</span>
-            <span class="pol-sc-gov-label">gov</span>
-        </div>`;
+    // Admin name
+    const adminName = administration?.admin_name || 'Government';
+
+    // Government type label
+    const govType = nation.government_type || administration?.government_type || '';
+    const isPres = isPresidentialRepublic(nation);
+    const govTypeLabel = isPres ? 'Presidential' : 'Parliamentary';
+
+    // Divided government detection (president's party vs parliament majority)
+    let govStatusLabel = '';
+    let govStatusColor = 'var(--dtext-3)';
+    if (isPres && president && coalition) {
+        const presPartySeats = (allParties || []).find(p => p.id === president.faction_id)?.seats || 0;
+        const totalSeats = (allParties || []).reduce((s, p) => s + (p.seats || 0), 0);
+        if (presPartySeats > totalSeats / 2) {
+            govStatusLabel = 'Unified Gov.';
+            govStatusColor = 'var(--dgreen)';
+        } else {
+            govStatusLabel = 'Divided Gov.';
+            govStatusColor = 'var(--damber)';
+        }
     }
 
-    // Compute contributions per category
+    // Compute contributions (reusing existing functions)
     const categories = Object.entries(ISSUE_CATEGORY_STATS).map(([key, statKeys]) => {
         const { score } = computeCategoryContribution(nation, statKeys);
         const rep = getRepresentativeStat(nation, statKeys);
@@ -2946,38 +3090,108 @@ function renderGovScorecardBox(nation, coalition, allParties, currentTick, prevA
             critical: score <= -6
         };
     });
-
     const positives = categories.filter(c => c.score > 0).sort((a, b) => b.score - a.score);
     const negatives = categories.filter(c => c.score < 0).sort((a, b) => a.score - b.score);
     const totalPos = positives.reduce((s, c) => s + c.score, 0);
     const totalNeg = Math.abs(negatives.reduce((s, c) => s + c.score, 0));
-
-    // Top vulnerabilities (worst 4 negatives)
     const topVulns = negatives.slice(0, 4);
 
-    const vulnsHtml = topVulns.map(v =>
-        `<div class="pol-sc-vuln">
-            <span class="pol-sc-vuln-label">${escapeHtml(v.name)}</span>
-            <span class="pol-sc-vuln-stat">${v.repStat}</span>
-            <span class="pol-sc-vuln-score">${v.score}</span>
-        </div>`
-    ).join('');
+    // President section
+    let presidentHtml = '';
+    if (isPres && president) {
+        const presParty = (allParties || []).find(p => p.id === president.faction_id);
+        const presColor = presParty?.party_color || '#888';
+        const presPartyName = presParty?.faction_name || 'Unknown Party';
+        const presAbbr = presParty?.abbreviation || presPartyName.substring(0, 3).toUpperCase();
+        const termLabel = president.terms_served > 1 ? `${president.terms_served}${president.terms_served === 2 ? 'nd' : 'rd'} Term` : '1st Term';
+        const ticksLeft = president.term_ends_tick - currentTick;
+        const monthsLeft = Math.max(0, ticksLeft);
+        const termEndStr = monthsLeft > 0 ? `Term ends: ${monthsLeft} Month${monthsLeft !== 1 ? 's' : ''}` : 'Term ending';
 
-    // Full breakdown
+        // Ideology display
+        const ideoRaw = president.ideology || '';
+        const ideoDisplay = ideoRaw.charAt(0).toUpperCase() + ideoRaw.slice(1).toLowerCase();
+        const ideoColor = presColor;
+
+        // Trait section
+        let traitHtml = '';
+        if (president.trait) {
+            const traitName = president.trait.charAt(0).toUpperCase() + president.trait.slice(1).replace(/_/g, ' ');
+            traitHtml = `
+            <div class="pol-admin-trait-box">
+                <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px">
+                    <span style="font-family:var(--dfont-mono);font-size:10px;color:${ideoColor}">&#9670;</span>
+                    <span class="pol-admin-trait-name">${escapeHtml(traitName)}</span>
+                </div>
+                ${president.trait_upside ? `<div class="pol-admin-trait-effect">
+                    <span class="pol-admin-trait-sign" style="color:var(--dgreen)">+</span>
+                    <span class="pol-admin-trait-text">${escapeHtml(president.trait_upside)}</span>
+                </div>` : ''}
+                ${president.trait_downside ? `<div class="pol-admin-trait-effect">
+                    <span class="pol-admin-trait-sign" style="color:var(--dred)">&minus;</span>
+                    <span class="pol-admin-trait-text">${escapeHtml(president.trait_downside)}</span>
+                </div>` : ''}
+            </div>`;
+        }
+
+        presidentHtml = `
+        <div class="pol-admin-pres-header">
+            <span style="font-family:var(--dfont-ui);font-size:11px;font-weight:500;letter-spacing:0.04em;color:var(--dtext-2);text-transform:uppercase">President — ${termLabel}</span>
+            <span style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3)">${termEndStr}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+                <div class="pol-admin-pres-name">${escapeHtml(president.first_name + ' ' + president.last_name)} <span class="pol-admin-pres-age">(${president.age || '?'})</span></div>
+                <div class="pol-admin-party-badge">
+                    <div class="pol-admin-party-dot" style="background:${presColor}"></div>
+                    <span style="font-family:var(--dfont-ui);font-size:10px;color:${presColor}">${escapeHtml(presPartyName)}</span>
+                </div>
+            </div>
+            <div class="pol-admin-ideo-badge">
+                <span class="pol-admin-ideo-label">Ideology</span>
+                <span class="pol-admin-ideo-value" style="color:${ideoColor}">${escapeHtml(ideoDisplay)}</span>
+            </div>
+        </div>
+        ${traitHtml}`;
+    } else if (!isPres) {
+        // Parliamentary — show PM from coalition lead party
+        const leadPartyId = coalition?.lead_party_id || null;
+        const leadParty = leadPartyId ? (allParties || []).find(p => p.id === leadPartyId) : null;
+        const pmColor = leadParty?.party_color || '#888';
+        const pmPartyName = leadParty?.faction_name || 'Unknown';
+        presidentHtml = `
+        <div style="margin-bottom:6px">
+            <span style="font-family:var(--dfont-ui);font-size:11px;font-weight:500;letter-spacing:0.04em;color:var(--dtext-2);text-transform:uppercase">Head of Government</span>
+        </div>
+        <div class="pol-admin-party-badge">
+            <div class="pol-admin-party-dot" style="background:${pmColor}"></div>
+            <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:${pmColor}">${escapeHtml(pmPartyName)}</span>
+        </div>`;
+    }
+
+    // Vulnerabilities
+    const vulnsHtml = topVulns.map(v => {
+        const isCritical = v.critical;
+        const bg = isCritical ? 'var(--dred-faint)' : 'rgba(255,255,255,0.02)';
+        const border = isCritical ? 'var(--dred)' : 'var(--damber)';
+        return `<div style="display:flex;align-items:center;padding:4px 8px;margin-bottom:3px;border-radius:3px;background:${bg};border-left:3px solid ${border}">
+            <span style="font-family:var(--dfont-ui);font-size:10px;color:var(--dtext-0);flex:1">${escapeHtml(v.name)}</span>
+            <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:700;color:var(--dtext-2);width:36px;text-align:right">${v.repStat}</span>
+            <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:700;color:var(--dred);width:34px;text-align:right">${v.score}</span>
+        </div>`;
+    }).join('');
+
+    // Breakdown rows
     const posRowsHtml = positives.map(c =>
-        `<div class="pol-sc-row">
-            <span class="pol-sc-row-name">${escapeHtml(c.name)}</span>
-            <span class="pol-sc-row-stat">${c.repStat}</span>
-            <span class="pol-sc-row-score" style="color:var(--dgreen)">+${c.score}</span>
+        `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--dborder-0)">
+            <span style="font-family:var(--dfont-ui);font-size:10px;color:var(--dtext-2)">${escapeHtml(c.name)}</span>
+            <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;color:var(--dgreen)">+${c.score}</span>
         </div>`
     ).join('');
-
     const negRowsHtml = negatives.map(c =>
-        `<div class="pol-sc-row">
-            <span class="pol-sc-row-name">${escapeHtml(c.name)}</span>
-            <span class="pol-sc-row-stat">${c.repStat}</span>
-            <span class="pol-sc-row-score" style="color:var(--dred)">${c.score}</span>
-            ${c.critical ? '<span class="pol-sc-row-critical">⚠</span>' : ''}
+        `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--dborder-0)">
+            <span style="font-family:var(--dfont-ui);font-size:10px;color:var(--dtext-2)">${escapeHtml(c.name)}</span>
+            <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;color:var(--dred)">${c.score}</span>
         </div>`
     ).join('');
 
@@ -2986,50 +3200,63 @@ function renderGovScorecardBox(nation, coalition, allParties, currentTick, prevA
     const worstDrag = negatives.length > 0 ? negatives[0].name : 'unknown factors';
     const secondDrag = negatives.length > 1 ? negatives[1].name : null;
     if (approval >= 50) {
-        stratLabel = 'STRONG';
-        stratColor = 'var(--dgreen)';
+        stratLabel = 'STRONG'; stratColor = 'var(--dgreen)';
         stratText = 'Government is popular and delivering results.';
     } else if (approval >= 40) {
-        stratLabel = 'VULNERABLE';
-        stratColor = 'var(--damber)';
+        stratLabel = 'VULNERABLE'; stratColor = 'var(--damber)';
         stratText = `Government is holding but trending down. ${escapeHtml(worstDrag)} is the primary drag.`;
     } else if (approval >= 25) {
-        stratLabel = 'WEAK';
-        stratColor = 'var(--dred)';
-        stratText = `Government approval below 40% and falling. ${escapeHtml(worstDrag)}${secondDrag ? ' and ' + escapeHtml(secondDrag) : ''} ${secondDrag ? 'are' : 'is'} the biggest drag${secondDrag ? 's' : ''}. Voters are looking for alternatives.`;
+        stratLabel = 'WEAK'; stratColor = 'var(--dred)';
+        stratText = `Government approval below 40%. ${escapeHtml(worstDrag)}${secondDrag ? ' and ' + escapeHtml(secondDrag) : ''} ${secondDrag ? 'are' : 'is'} the biggest drag${secondDrag ? 's' : ''}.`;
     } else {
-        stratLabel = 'COLLAPSING';
-        stratColor = 'var(--dred)';
-        stratText = `Government approval critically low. ${escapeHtml(worstDrag)}${secondDrag ? ' and ' + escapeHtml(secondDrag) : ''} ${secondDrag ? 'are' : 'is'} driving collapse. Immediate action required.`;
+        stratLabel = 'COLLAPSING'; stratColor = 'var(--dred)';
+        stratText = `Government approval critically low. Voters are looking for alternatives.`;
     }
 
-    return `<div class="pol-scorecard-box">
-        <!-- Header -->
-        <div class="pol-sc-header">
-            <span class="pol-sc-title">Government Scorecard</span>
-            ${govBadgeHtml}
-        </div>
+    // Impeach button (presidential only)
+    const impeachHtml = isPres && president ? `
+        <div style="display:flex;justify-content:center;margin-top:2px">
+            <div class="pol-admin-impeach-btn">
+                <span class="pol-admin-impeach-label">Impeach President</span>
+                <span class="pol-admin-impeach-cost">7 AP</span>
+            </div>
+        </div>` : '';
 
-        <!-- Approval headline -->
-        <div class="pol-sc-approval-row">
+    return `<div class="pol-admin-box">
+        <!-- Header: Admin name + Approval -->
+        <div class="pol-admin-header">
             <div>
-                <div class="pol-sc-approval-label">APPROVAL</div>
-                <div style="display:flex;align-items:baseline;gap:6px">
-                    <span class="pol-sc-approval-big" style="color:${apprColor}">${approval}%</span>
+                <div class="pol-admin-name">${escapeHtml(adminName)}</div>
+                <div class="pol-admin-meta">
+                    <span style="color:var(--dtext-2)">${govTypeLabel}</span>
+                    ${govStatusLabel ? `<span style="color:var(--dtext-3)">&middot;</span><span style="font-weight:600;color:${govStatusColor}">${govStatusLabel}</span>` : ''}
+                </div>
+            </div>
+            <div class="pol-admin-approval-block">
+                <div style="font-family:var(--dfont-mono);font-size:8px;color:var(--dtext-3)">APPROVAL</div>
+                <div style="display:flex;align-items:baseline;gap:4px;justify-content:flex-end">
+                    <span class="pol-sc-approval-big" style="font-size:24px;color:${ac}">${approval}%</span>
                     ${deltaHtml}
                 </div>
             </div>
         </div>
 
         <!-- Approval bar -->
-        <div class="pol-sc-bar">
-            <div class="pol-sc-bar-fill" style="width:${approval}%;background:${apprColor}"></div>
+        <div class="pol-sc-bar" style="height:6px">
+            <div class="pol-sc-bar-fill" style="width:${approval}%;background:${ac}"></div>
             <div class="pol-sc-bar-midline"></div>
         </div>
         <div class="pol-sc-bar-labels">
             <span>+${Math.round(totalPos * 10) / 10} positive</span>
             <span>50%</span>
             <span>-${Math.round(totalNeg * 10) / 10} negative</span>
+        </div>
+
+        <div class="pol-sc-divider"></div>
+
+        <!-- President / Head of Government -->
+        <div class="pol-admin-president-section">
+            ${presidentHtml}
         </div>
 
         <div class="pol-sc-divider"></div>
@@ -3043,8 +3270,6 @@ function renderGovScorecardBox(nation, coalition, allParties, currentTick, prevA
             ${vulnsHtml}
         </div>
 
-        <div class="pol-sc-divider"></div>
-
         <!-- Collapsible breakdown -->
         <div class="pol-sc-toggle" onclick="var bd=this.nextElementSibling;bd.classList.toggle('open');this.querySelector('.pol-sc-toggle-arrow').style.transform=bd.classList.contains('open')?'rotate(180deg)':'rotate(0)'">
             <span class="pol-sc-toggle-text">Full breakdown</span>
@@ -3055,10 +3280,6 @@ function renderGovScorecardBox(nation, coalition, allParties, currentTick, prevA
             <div style="margin-top:4px;margin-bottom:8px">${posRowsHtml || '<div style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3);padding:4px 0">None</div>'}</div>
             <span class="pol-sc-section-label" style="color:var(--dred)">NEGATIVE</span>
             <div style="margin-top:4px;margin-bottom:8px">${negRowsHtml || '<div style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3);padding:4px 0">None</div>'}</div>
-            <div class="pol-sc-net">
-                <span class="pol-sc-net-label">Net</span>
-                <span class="pol-sc-net-value" style="color:${apprColor}">+${Math.round(totalPos * 10) / 10} / -${Math.round(totalNeg * 10) / 10} = ${approval}%</span>
-            </div>
         </div>
 
         <div class="pol-sc-divider"></div>
@@ -3068,6 +3289,8 @@ function renderGovScorecardBox(nation, coalition, allParties, currentTick, prevA
             <span class="pol-sc-strategic-label" style="color:${stratColor}">${stratLabel}</span>
             <div class="pol-sc-strategic-text">${stratText}</div>
         </div>
+
+        ${impeachHtml}
     </div>`;
 }
 
