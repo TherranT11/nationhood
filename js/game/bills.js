@@ -1867,6 +1867,8 @@ export async function enactBill(supabase, bill, currentTick) {
                 enactError = `Repeal target active_law ${repealResult.targetLawId} not found or missing policy`;
             } else if (repealResult.reason === 'delete_failed') {
                 enactError = `Repeal target ${repealResult.targetLawId} could not be deleted: ${repealResult.error}`;
+            } else if (repealResult.reason === 'clear_bill_references_failed' || repealResult.reason === 'clear_article_references_failed') {
+                enactError = `Repeal target ${repealResult.targetLawId} FK cleanup failed: ${repealResult.error}`;
             } else {
                 enactError = `Unknown repeal failure (${repealResult.reason})`;
             }
@@ -1904,6 +1906,9 @@ export async function enactBill(supabase, bill, currentTick) {
                 for (const opposedId of policy.opposed_policy_ids) {
                     const opposedLaw = (currentActiveLaws || []).find(l => l.policy_id === opposedId);
                     if (opposedLaw && opposedLaw.policies) {
+                        // Clear FK references before deleting (same pattern as repealActiveLaw)
+                        await supabase.from('bills').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', opposedLaw.id);
+                        await supabase.from('bill_articles').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', opposedLaw.id);
                         await reversePolicy(supabase, nation, opposedLaw.policies, opposedLaw.passed_tick, currentTick);
                         await supabase.from('active_laws').delete().eq('id', opposedLaw.id);
                     }
@@ -2041,7 +2046,10 @@ export async function enactBill(supabase, bill, currentTick) {
 
 export async function reversePolicy(supabase, nation, policy, passedTick, currentTick) {
     const ticksActive = currentTick - (passedTick || 0);
-    if (ticksActive <= 0) return;
+    if (ticksActive <= 0) {
+        console.log(`[reversePolicy] Skipping reversal for ${policy.policy_name || policy.id}: ticksActive=${ticksActive} (enacted same tick)`);
+        return;
+    }
 
     const sourceEffects = [];
     if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
