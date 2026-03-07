@@ -9,7 +9,7 @@ import { loadFactionIdeology } from './ideology.js';
 import { enactBill, failBill } from './bills.js';
 import { resolveBudgetBill, GOVERNMENT_SHUTDOWN_CRISIS_ID } from './budget.js';
 import { adjustMomentumAll } from './momentum.js';
-import { PM_FIRST_NAMES, PM_LAST_NAMES, PM_TRAIT_KEYS, getWeightedIdeologies, selectPMCandidate, weightedRandomPick } from './political-actions.js';
+import { PM_FIRST_NAMES, PM_LAST_NAMES, PM_TRAIT_KEYS, getWeightedIdeologies, selectPMCandidate, weightedRandomPick, autoAppointPartyLeaderAsPM } from './political-actions.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fireBillEvent } from './event-helpers.js';
@@ -684,51 +684,35 @@ export async function processPresidentCandidateTimeout(supabase, nation, current
 export async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
     if (!isParliamentaryDemocracy(nation)) return;
 
-    // Guard: only auto-select PM if a coalition is actually formed
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'caretaker')) return;
 
-    const timeoutTicks = 3;
-    const { data: staleCandidates } = await supabase
-        .from('pm_candidates')
-        .select('*')
+    // Check if there's already an active HOG
+    const { data: existingHOG } = await supabase
+        .from('head_of_government')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('active', true)
+        .limit(1)
+        .maybeSingle();
+    if (existingHOG) return;
+
+    // No active HOG — auto-appoint the PM party's leader
+    const pmPartyId = coalition.ministry_assignments?.prime_minister || coalition.lead_party_id;
+    if (!pmPartyId) return;
+
+    try {
+        await autoAppointPartyLeaderAsPM(supabase, nation.id, pmPartyId, currentTick);
+        console.log(`Auto-appointed party leader as PM for ${nation.name} (tick timeout recovery)`);
+    } catch (e) {
+        console.error(`Error auto-appointing parliamentary PM for ${nation.name}:`, e);
+    }
+
+    // Clean up any stale PM candidates
+    await supabase.from('pm_candidates').delete()
         .eq('nation_id', nation.id)
         .eq('candidate_type', 'parliamentary')
-        .eq('selected', false)
-        .lte('created_at_tick', currentTick - timeoutTicks)
-        .order('created_at_tick', { ascending: true });
-
-    if (!staleCandidates || staleCandidates.length === 0) return;
-
-    // Group by faction to auto-select one per party
-    const factionGroups = {};
-    for (const c of staleCandidates) {
-        if (!factionGroups[c.faction_id]) factionGroups[c.faction_id] = [];
-        factionGroups[c.faction_id].push(c);
-    }
-
-    for (const [factionId, candidates] of Object.entries(factionGroups)) {
-        // Check if this faction already has a selected candidate
-        const { data: alreadySelected } = await supabase
-            .from('pm_candidates')
-            .select('id')
-            .eq('nation_id', nation.id)
-            .eq('faction_id', factionId)
-            .eq('candidate_type', 'parliamentary')
-            .eq('selected', true)
-            .limit(1)
-            .maybeSingle();
-        if (alreadySelected) continue;
-
-        const pick = candidates[0];
-        console.log(`Auto-selecting parliamentary PM for ${nation.name}: ${pick.first_name} ${pick.last_name} — selection timed out after ${timeoutTicks} ticks`);
-
-        try {
-            await selectPMCandidate(supabase, pick.id, nation.id, factionId, currentTick);
-        } catch (e) {
-            console.error(`Error auto-selecting parliamentary PM for ${nation.name}:`, e);
-        }
-    }
+        .eq('selected', false);
 }
 
 // ==================== NOMINEE SELF-REJECTION ====================

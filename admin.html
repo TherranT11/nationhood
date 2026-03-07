@@ -1310,8 +1310,14 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         }).join('');
     }
     async function removePlayer(playerId, nationId, partyName) {
-        if (!confirm(`Remove ${partyName} from this nation?`)) return;
-        try { await _supabase.from('factions').update({ nation_id: null, abandoned_at: new Date().toISOString() }).eq('id', playerId); alert('✅ Player removed!'); await loadStats(); await loadNations(); } catch (error) { alert('❌ Error: ' + error.message); }
+        if (!confirm(`Remove ${partyName} from this nation? This will zero their seats, redistribute to remaining parties, and clean up related records.`)) return;
+        try {
+            const { data, error } = await _supabase.rpc('admin_kick_party', { p_faction_id: playerId, p_nation_id: nationId });
+            if (error) throw error;
+            const summary = data ? Object.entries(data).map(([k,v]) => `${k}: ${v}`).join(', ') : 'done';
+            alert(`✅ "${partyName}" removed!\n${summary}`);
+            await loadStats(); await loadNations();
+        } catch (error) { alert('❌ Error: ' + error.message); }
     }
     async function deleteParty(factionId, partyName) {
         if (!confirm(`⚠️ PERMANENTLY DELETE "${partyName}"?`)) return;

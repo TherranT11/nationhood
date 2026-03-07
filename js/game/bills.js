@@ -1825,10 +1825,13 @@ export async function resolveExpiredVotes(supabase, nationId) {
 
 async function markBillEnactmentFailed(supabase, bill, currentTick, enactError) {
     const normalizedError = typeof enactError === 'string' ? enactError : 'Unknown enactment failure';
-    await supabase.from('bills').update({
+    const { error } = await supabase.from('bills').update({
         status: 'failed',
         passed_tick: currentTick
     }).eq('id', bill.id);
+    if (error) {
+        console.error(`[markBillEnactmentFailed] Failed to mark bill ${bill.id} as failed:`, error.message);
+    }
 }
 
 export async function enactBill(supabase, bill, currentTick) {
@@ -2234,9 +2237,12 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 }
 
 export async function failBill(supabase, bill) {
-    await supabase.from('bills').update({
+    const { error } = await supabase.from('bills').update({
         status: 'failed'
     }).eq('id', bill.id);
+    if (error) {
+        console.error(`[failBill] Failed to mark bill ${bill.id} as failed:`, error.message);
+    }
 }
 
 /**

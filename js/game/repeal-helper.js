@@ -38,7 +38,9 @@ export async function repealActiveLaw({
         return { success: false, reason: 'missing_target_policy', targetLawId };
     }
 
-    await reversePolicy(supabase, nation, targetLaw.policies, targetLaw.passed_tick, currentTick);
+    // Save policy data before deleting the target law
+    const targetPolicy = targetLaw.policies;
+    const targetPassedTick = targetLaw.passed_tick;
 
     // Nullify any FK references to this active_law before deleting it.
     // This avoids bills_repeal_active_law_id_fkey failures when old repeal bills still point at this law.
@@ -68,6 +70,9 @@ export async function repealActiveLaw({
         };
     }
 
+    // Delete target law FIRST, then create reversal.
+    // reversePolicy upserts with onConflict: 'nation_id,policy_id' — if the target
+    // law still exists, the upsert overwrites it, then the delete destroys the reversal.
     const { error: deleteError } = await supabase
         .from('active_laws')
         .delete()
@@ -82,10 +87,13 @@ export async function repealActiveLaw({
         };
     }
 
+    // Now create reversal effects (inserts a fresh row since the conflicting row is gone)
+    await reversePolicy(supabase, nation, targetPolicy, targetPassedTick, currentTick);
+
     return {
         success: true,
         reason: 'repealed',
         targetLawId,
-        policyName: targetLaw.policies.policy_name,
+        policyName: targetPolicy.policy_name,
     };
 }

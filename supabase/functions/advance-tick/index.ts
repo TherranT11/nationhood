@@ -4500,7 +4500,9 @@ async function repealActiveLaw({
         return { success: false, reason: 'missing_target_policy', targetLawId };
     }
 
-    await reversePolicy(supabase, nation, targetLaw.policies, targetLaw.passed_tick, currentTick);
+    // Save policy data before deleting the target law
+    const targetPolicy = targetLaw.policies;
+    const targetPassedTick = targetLaw.passed_tick;
 
     // Nullify any FK references to this active_law before deleting it.
     // This avoids bills_repeal_active_law_id_fkey failures when old repeal bills still point at this law.
@@ -4530,6 +4532,9 @@ async function repealActiveLaw({
         };
     }
 
+    // Delete target law FIRST, then create reversal.
+    // reversePolicy upserts with onConflict: 'nation_id,policy_id' — if the target
+    // law still exists, the upsert overwrites it, then the delete destroys the reversal.
     const { error: deleteError } = await supabase
         .from('active_laws')
         .delete()
@@ -4544,11 +4549,14 @@ async function repealActiveLaw({
         };
     }
 
+    // Now create reversal effects (inserts a fresh row since the conflicting row is gone)
+    await reversePolicy(supabase, nation, targetPolicy, targetPassedTick, currentTick);
+
     return {
         success: true,
         reason: 'repealed',
         targetLawId,
-        policyName: targetLaw.policies.policy_name,
+        policyName: targetPolicy.policy_name,
     };
 }
 
@@ -6425,10 +6433,13 @@ async function resolveExpiredVotes(supabase, nationId) {
 
 async function markBillEnactmentFailed(supabase, bill, currentTick, enactError) {
     const normalizedError = typeof enactError === 'string' ? enactError : 'Unknown enactment failure';
-    await supabase.from('bills').update({
+    const { error } = await supabase.from('bills').update({
         status: 'failed',
         passed_tick: currentTick
     }).eq('id', bill.id);
+    if (error) {
+        console.error(`[markBillEnactmentFailed] Failed to mark bill ${bill.id} as failed:`, error.message);
+    }
 }
 
 async function enactBill(supabase, bill, currentTick) {
@@ -6834,9 +6845,12 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 }
 
 async function failBill(supabase, bill) {
-    await supabase.from('bills').update({
+    const { error } = await supabase.from('bills').update({
         status: 'failed'
     }).eq('id', bill.id);
+    if (error) {
+        console.error(`[failBill] Failed to mark bill ${bill.id} as failed:`, error.message);
+    }
 }
 
 /**
@@ -9471,9 +9485,20 @@ async function processPresidentDesk(supabase, nation, currentTick) {
                 continue;
             }
         } else {
-            const enactment = await enactBill(supabase, bill, currentTick);
+            let enactment;
+            try {
+                enactment = await enactBill(supabase, bill, currentTick);
+            } catch (enactErr) {
+                console.error(`[processPresidentDesk] enactBill threw for bill ${bill.id}:`, enactErr);
+                enactment = { success: false, error: enactErr?.message || String(enactErr) };
+            }
             if (!enactment?.success) {
                 console.error(`[processPresidentDesk] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
+                await supabase.from('bills').update({
+                    status: 'failed',
+                    president_action: 'auto_signed',
+                    president_action_tick: currentTick
+                }).eq('id', bill.id);
                 results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: enactment?.error });
                 continue;
             }
@@ -9741,51 +9766,36 @@ async function processPresidentCandidateTimeout(supabase, nation, currentTick) {
 async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
     if (!isParliamentaryDemocracy(nation)) return;
 
-    // Guard: only auto-select PM if a coalition is actually formed
+    // Guard: only auto-appoint PM if a coalition is actually formed
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'caretaker')) return;
 
-    const timeoutTicks = 3;
-    const { data: staleCandidates } = await supabase
-        .from('pm_candidates')
-        .select('*')
+    // Check if there's already an active HOG
+    const { data: existingHOG } = await supabase
+        .from('head_of_government')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('active', true)
+        .limit(1)
+        .maybeSingle();
+    if (existingHOG) return;
+
+    // No active HOG — auto-appoint the PM party's leader
+    const pmPartyId = coalition.ministry_assignments?.prime_minister || coalition.lead_party_id;
+    if (!pmPartyId) return;
+
+    try {
+        await autoAppointPartyLeaderAsPM(supabase, nation.id, pmPartyId, currentTick);
+        console.log(`Auto-appointed party leader as PM for ${nation.name} (tick timeout recovery)`);
+    } catch (e) {
+        console.error(`Error auto-appointing parliamentary PM for ${nation.name}:`, e);
+    }
+
+    // Clean up any stale PM candidates
+    await supabase.from('pm_candidates').delete()
         .eq('nation_id', nation.id)
         .eq('candidate_type', 'parliamentary')
-        .eq('selected', false)
-        .lte('created_at_tick', currentTick - timeoutTicks)
-        .order('created_at_tick', { ascending: true });
-
-    if (!staleCandidates || staleCandidates.length === 0) return;
-
-    // Group by faction to auto-select one per party
-    const factionGroups = {};
-    for (const c of staleCandidates) {
-        if (!factionGroups[c.faction_id]) factionGroups[c.faction_id] = [];
-        factionGroups[c.faction_id].push(c);
-    }
-
-    for (const [factionId, candidates] of Object.entries(factionGroups)) {
-        // Check if this faction already has a selected candidate
-        const { data: alreadySelected } = await supabase
-            .from('pm_candidates')
-            .select('id')
-            .eq('nation_id', nation.id)
-            .eq('faction_id', factionId)
-            .eq('candidate_type', 'parliamentary')
-            .eq('selected', true)
-            .limit(1)
-            .maybeSingle();
-        if (alreadySelected) continue;
-
-        const pick = candidates[0];
-        console.log(`Auto-selecting parliamentary PM for ${nation.name}: ${pick.first_name} ${pick.last_name} — selection timed out after ${timeoutTicks} ticks`);
-
-        try {
-            await selectPMCandidate(supabase, pick.id, nation.id, factionId, currentTick);
-        } catch (e) {
-            console.error(`Error auto-selecting parliamentary PM for ${nation.name}:`, e);
-        }
-    }
+        .eq('selected', false);
 }
 
 // ==================== NOMINEE SELF-REJECTION ====================
@@ -15607,6 +15617,107 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
     return candidate;
 }
 
+/**
+ * Auto-appoint the party leader as Prime Minister without candidate selection.
+ * Server-side version for advance-tick processing.
+ */
+async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, currentTick) {
+    const coalition = await fetchActiveCoalition(supabase, nationId);
+    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'caretaker')) {
+        throw new Error('Cannot appoint a Prime Minister until a coalition has been formed.');
+    }
+
+    const { data: faction, error: factionErr } = await supabase
+        .from('factions')
+        .select('id, faction_name, leader_first_name, leader_last_name, leader_age')
+        .eq('id', factionId)
+        .single();
+    if (factionErr || !faction) throw new Error('Faction not found');
+    if (!faction.leader_first_name || !faction.leader_last_name) {
+        throw new Error('Party leader data is incomplete — cannot auto-appoint PM.');
+    }
+
+    const factionIdeology = await loadFactionIdeology(supabase, factionId);
+    const weightedIdeologies = getWeightedIdeologies(factionIdeology);
+    const ideologyPick = weightedRandomPick(weightedIdeologies);
+    const ideology = ideologyPick.item;
+    const traitKey = PM_TRAIT_KEYS[Math.floor(Math.random() * PM_TRAIT_KEYS.length)];
+    const leaderAge = faction.leader_age || (35 + Math.floor(Math.random() * 16));
+
+    await supabase.from('pm_candidates').delete()
+        .eq('nation_id', nationId).eq('faction_id', factionId).eq('selected', false);
+
+    await supabase.from('head_of_government')
+        .update({ active: false })
+        .eq('nation_id', nationId).eq('active', true);
+
+    const { error: hogErr } = await supabase
+        .from('head_of_government')
+        .upsert({
+            nation_id: nationId, faction_id: factionId, candidate_id: null,
+            first_name: faction.leader_first_name, last_name: faction.leader_last_name,
+            age: leaderAge, ideology: ideology.tag, trait_key: traitKey,
+            appointed_tick: currentTick, active: true
+        }, { onConflict: 'nation_id' });
+    if (hogErr) throw hogErr;
+
+    const pmFullName = `${faction.leader_first_name} ${faction.leader_last_name}`;
+    await supabase.from('administrations').update({
+        prime_minister: pmFullName,
+        admin_name: `${faction.leader_last_name} Administration`,
+        updated_at: new Date().toISOString()
+    }).eq('nation_id', nationId).is('ended_at_tick', null);
+
+    const { data: pmMinistry } = await supabase.from('ministries')
+        .select('id').eq('nation_id', nationId)
+        .eq('ministry_key', 'prime_minister').eq('is_active', true)
+        .maybeSingle();
+
+    const { data: nationForBaseline } = await supabase.from('nations').select('*').eq('id', nationId).single();
+    const pmBaselines = nationForBaseline ? buildMinistryBaselines('prime_minister', nationForBaseline) : {};
+
+    if (pmMinistry) {
+        await supabase.from('ministries').update({
+            party_id: factionId,
+            minister_first_name: faction.leader_first_name,
+            minister_last_name: faction.leader_last_name,
+            minister_age: leaderAge, minister_approval: 50,
+            stat_baselines: pmBaselines
+        }).eq('id', pmMinistry.id);
+    } else {
+        await supabase.from('ministries').insert({
+            nation_id: nationId, ministry_key: 'prime_minister',
+            ministry_name: 'Prime Minister', is_active: true,
+            party_id: factionId,
+            minister_first_name: faction.leader_first_name,
+            minister_last_name: faction.leader_last_name,
+            minister_age: leaderAge, minister_approval: 50,
+            stat_baselines: pmBaselines
+        });
+    }
+
+    const axisKey = ideology.axisKey;
+    const shift = 5 * ideology.direction;
+    let currentIdeology = factionIdeology;
+    if (!currentIdeology) {
+        const newRow = { faction_id: factionId, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0 };
+        await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id' });
+        currentIdeology = newRow;
+    }
+    const currentVal = currentIdeology[axisKey] || 0;
+    const newVal = Math.max(-100, Math.min(100, currentVal + shift));
+    await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
+
+    const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', traitKey).single();
+    if (trait?.effects?.on_appoint_stability && nationForBaseline) {
+        const newStability = Math.max(0, Math.min(100, (nationForBaseline.stability || 50) + trait.effects.on_appoint_stability));
+        await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
+    }
+
+    console.log(`Auto-appointed party leader as PM: ${pmFullName} (${traitKey}) for faction ${factionId}`);
+    return { first_name: faction.leader_first_name, last_name: faction.leader_last_name, age: leaderAge, ideology: ideology.tag, trait_key: traitKey };
+}
+
 async function processPMTraitEffects(supabase, nation, currentTick) {
     let effects, factionId;
 
@@ -15800,10 +15911,10 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
         );
 
         if (eligible) {
-            await generatePMCandidates(supabase, nationId, eligible.id, currentTick);
-            console.log(`PM offered to ${eligible.faction_name}`);
+            await autoAppointPartyLeaderAsPM(supabase, nationId, eligible.id, currentTick);
+            console.log(`PM auto-appointed to ${eligible.faction_name} leader`);
             return {
-                result: 'pm_offered',
+                result: 'pm_appointed',
                 newPmPartyId: eligible.id,
                 newPmPartyName: eligible.faction_name
             };
