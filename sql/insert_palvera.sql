@@ -59,7 +59,7 @@ UPDATE nations SET
     birth_rate = 42,
     death_rate = 25,
     median_age = 52,
-    eligible_voters = 65,
+    eligible_voters = 4322500,
     ethnic_diversity = 42,
 
     -- Healthcare
@@ -167,7 +167,7 @@ SET seed_stats = jsonb_build_object(
     'birth_rate', 42,
     'death_rate', 25,
     'median_age', 52,
-    'eligible_voters', 65,
+    'eligible_voters', 4322500,
     'ethnic_diversity', 42,
     'healthcare_quality', 62,
     'healthcare_accessibility', 72,

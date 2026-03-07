@@ -1918,6 +1918,7 @@ const INVERTED_STATS = [
 // All other stats (0-100 indices) use the default divisor of 50.
 const RAW_SCALING_DIVISORS = {
     population: 1_000_000,
+    eligible_voters: 1_000_000,
     gdp: 1_000_000_000,
     debt: 1_000_000_000
 };
