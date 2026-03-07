@@ -3730,7 +3730,7 @@ async function processAidConditionReview(supabase, nation, currentTick) {
  */
 async function processExpiredTradeAgreements(supabase, currentTick) {
     const { data: expired } = await supabase.from('trade_agreements')
-        .select('id, agreement_type, agreement_name, nation_a_id, nation_b_id, auto_renew, duration_ticks')
+        .select('id, agreement_type, agreement_name, nation_a_id, nation_b_id')
         .eq('status', 'active')
         .not('expires_at_tick', 'is', null)
         .lte('expires_at_tick', currentTick);
@@ -3739,32 +3739,6 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
 
     const results = [];
     for (const agreement of expired) {
-        // Auto-renew: extend the agreement instead of expiring it
-        if (agreement.auto_renew && agreement.duration_ticks > 0) {
-            const newExpiry = currentTick + agreement.duration_ticks;
-            await supabase.from('trade_agreements').update({
-                expires_at_tick: newExpiry,
-                updated_at: new Date().toISOString()
-            }).eq('id', agreement.id);
-
-            // Notify both nations of renewal
-            try {
-                const eventPlaceholders = { agreement_name: agreement.agreement_name || 'Agreement' };
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'trade_agreement_renewed', p_nation_id: agreement.nation_a_id,
-                    p_tick: currentTick, p_placeholders: eventPlaceholders
-                });
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'trade_agreement_renewed', p_nation_id: agreement.nation_b_id,
-                    p_tick: currentTick, p_placeholders: eventPlaceholders
-                });
-            } catch (e) { /* non-blocking — event trigger may not exist yet */ }
-
-            results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type, resolution: 'renewed', newExpiry });
-            console.log(`[processExpiredTradeAgreements] Auto-renewed: ${agreement.agreement_name} (${agreement.agreement_type}) → expires tick ${newExpiry}`);
-            continue;
-        }
-
         await supabase.from('trade_agreements').update({
             status: 'expired'
         }).eq('id', agreement.id);
@@ -3791,49 +3765,9 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
             });
         } catch (e) { /* non-blocking */ }
 
-        results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type, resolution: 'expired' });
+        results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type });
         console.log(`[processExpiredTradeAgreements] Expired: ${agreement.agreement_name} (${agreement.agreement_type})`);
     }
-
-    // ── Process pending withdrawals that have passed their notice period ──
-    const { data: pendingWithdrawals } = await supabase.from('trade_agreements')
-        .select('id, agreement_type, agreement_name, nation_a_id, nation_b_id, withdrawn_by_nation')
-        .eq('status', 'active')
-        .not('withdrawn_at_tick', 'is', null)
-        .lte('withdrawn_at_tick', currentTick);
-
-    for (const agreement of (pendingWithdrawals || [])) {
-        await supabase.from('trade_agreements').update({
-            status: 'withdrawn',
-            updated_at: new Date().toISOString()
-        }).eq('id', agreement.id);
-
-        // For economic aid, mark the aid_agreement_state as well
-        if (agreement.agreement_type === 'economic_aid') {
-            await supabase.from('aid_agreement_state').update({
-                is_suspended: true,
-                suspension_reason: 'Agreement withdrawn',
-                next_review_tick: null
-            }).eq('agreement_id', agreement.id);
-        }
-
-        // Notify both nations
-        try {
-            const eventPlaceholders = { agreement_name: agreement.agreement_name || 'Agreement' };
-            await supabase.rpc('fire_system_event', {
-                p_trigger_key: 'trade_agreement_withdrawn', p_nation_id: agreement.nation_a_id,
-                p_tick: currentTick, p_placeholders: eventPlaceholders
-            });
-            await supabase.rpc('fire_system_event', {
-                p_trigger_key: 'trade_agreement_withdrawn', p_nation_id: agreement.nation_b_id,
-                p_tick: currentTick, p_placeholders: eventPlaceholders
-            });
-        } catch (e) { /* non-blocking — event trigger may not exist yet */ }
-
-        results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type, resolution: 'withdrawn' });
-        console.log(`[processExpiredTradeAgreements] Withdrawal finalized: ${agreement.agreement_name} (${agreement.agreement_type})`);
-    }
-
     return results;
 }
 
@@ -4672,10 +4606,10 @@ async function syncVoteTallies(supabase, billId) {
 
     let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
     (allVotes || []).forEach(v => {
-        const st = v.stance === 'accept' ? 'yes' : v.stance === 'reject' ? 'no' : 'abstain';
-        if (st === 'yes')            votesFor += v.seat_count;
-        else if (st === 'no')        votesAgainst += v.seat_count;
-        else if (st === 'abstain')   votesAbstain += v.seat_count;
+        const st = v.stance === 'accept' ? 'yes' : v.stance === 'reject' ? 'no' : v.stance;
+        if (st === 'yes')            votesFor += (v.seat_count || 0);
+        else if (st === 'no')        votesAgainst += (v.seat_count || 0);
+        else if (st === 'abstain')   votesAbstain += (v.seat_count || 0);
     });
 
     await supabase.from('bills').update({
@@ -4792,8 +4726,9 @@ async function applyEnactmentApproval(supabase, nationId, approvalDeltas) {
  * @param {string} nationId
  */
 async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
+    const ALIGNED_PREF_BONUS = 6;
     const ALIGNED_MOMENTUM_BONUS = 6;
-    const OPPOSED_MOMENTUM_PENALTY = -6;
+    const OPPOSED_PREF_PENALTY = -8;
     const AXIS_THRESHOLD = 10; // distance from center (50) to count as "having" an opinion
 
     const sponsorId = bill.proposed_by;
@@ -4871,17 +4806,46 @@ async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
         .eq('faction_id', sponsorId)
         .in('bloc_id', allAffectedBlocIds);
 
-    // 5. Apply momentum adjustments (preference_score is recalculated by three-pillar calc)
-    for (const blocId of alignedBlocIds) {
-        await adjustMomentum(supabase, nationId, sponsorId, blocId, ALIGNED_MOMENTUM_BONUS, 'bill:passage_aligned');
+    // 5. Apply adjustments
+    for (const row of (approvalRows || [])) {
+        const oldPref = Math.round(row.preference_score ?? 50);
+        const oldMom = Number(row.momentum ?? 0);
+
+        if (alignedBlocIds.has(row.bloc_id)) {
+            const newPref = Math.max(0, Math.min(100, oldPref + ALIGNED_PREF_BONUS));
+            const newMom = Math.max(-50, Math.min(50, oldMom + ALIGNED_MOMENTUM_BONUS));
+            await supabase.from('faction_bloc_approval')
+                .update({ preference_score: newPref, momentum: newMom })
+                .eq('id', row.id);
+        } else if (opposedBlocIds.has(row.bloc_id)) {
+            const newPref = Math.max(0, Math.min(100, oldPref + OPPOSED_PREF_PENALTY));
+            await supabase.from('faction_bloc_approval')
+                .update({ preference_score: newPref })
+                .eq('id', row.id);
+        }
     }
-    for (const blocId of opposedBlocIds) {
-        await adjustMomentum(supabase, nationId, sponsorId, blocId, OPPOSED_MOMENTUM_PENALTY, 'bill:passage_opposed');
+
+    // 6. Audit log for momentum changes on aligned blocs
+    if (alignedBlocIds.size > 0) {
+        const { data: shard } = await supabase
+            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        for (const blocId of alignedBlocIds) {
+            try {
+                await supabase.from('momentum_log').insert({
+                    nation_id: nationId,
+                    faction_id: sponsorId,
+                    bloc_id: blocId,
+                    amount: ALIGNED_MOMENTUM_BONUS,
+                    source: 'bill:passage_aligned',
+                    tick: shard?.current_tick || 0
+                });
+            } catch (_) { /* non-blocking audit log */ }
+        }
     }
 
     const alignedNames = voterBlocs.filter(b => alignedBlocIds.has(b.id)).map(b => b.bloc_name);
     const opposedNames = voterBlocs.filter(b => opposedBlocIds.has(b.id)).map(b => b.bloc_name);
-    console.log(`[BillPassage] Sponsor ${sponsorId}: +${ALIGNED_MOMENTUM_BONUS} mom with aligned [${alignedNames.join(', ')}], ${OPPOSED_MOMENTUM_PENALTY} mom with opposed [${opposedNames.join(', ')}]`);
+    console.log(`[BillPassage] Sponsor ${sponsorId}: +${ALIGNED_PREF_BONUS} pref/mom with aligned blocs [${alignedNames.join(', ')}], ${OPPOSED_PREF_PENALTY} pref with opposed blocs [${opposedNames.join(', ')}]`);
 }
 
 
@@ -4965,10 +4929,19 @@ async function applyNoVotePenalty(supabase, bill, nationId) {
         const momentumLoss = -(Math.floor(Math.random() * 3) + 2);
         await adjustMomentumAll(supabase, nationId, faction.id, momentumLoss, 'penalty:no_vote');
 
-        // Additional momentum penalty on affected blocs (ideology-matched)
+        // Preference: -2 preference_score on matched blocs only
         if (affectedBlocIds.size > 0) {
-            for (const blocId of affectedBlocIds) {
-                await adjustMomentum(supabase, nationId, faction.id, blocId, PREFERENCE_PENALTY, 'penalty:no_vote_bloc');
+            const { data: blocRows } = await supabase
+                .from('faction_bloc_approval')
+                .select('id, bloc_id, preference_score')
+                .eq('faction_id', faction.id)
+                .in('bloc_id', [...affectedBlocIds]);
+
+            for (const row of (blocRows || [])) {
+                const newPref = Math.round(Math.max(0, Math.min(100, (row.preference_score ?? 50) + PREFERENCE_PENALTY)));
+                await supabase.from('faction_bloc_approval')
+                    .update({ preference_score: newPref })
+                    .eq('id', row.id);
             }
         }
 
@@ -4976,7 +4949,7 @@ async function applyNoVotePenalty(supabase, bill, nationId) {
             factionId: faction.id,
             factionName: faction.faction_name,
             momentumLoss,
-            blocMomentumPenalty: affectedBlocIds.size > 0 ? PREFERENCE_PENALTY : 0,
+            preferencePenalty: affectedBlocIds.size > 0 ? PREFERENCE_PENALTY : 0,
             affectedBlocCount: affectedBlocIds.size
         });
     }
@@ -5508,9 +5481,9 @@ async function checkEarlyMajority(supabase, nationId) {
         let yesSeats = 0, noSeats = 0, abstainSeats = 0;
         (bill.bill_support || []).forEach(s => {
             const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
-            if (stance === 'yes') yesSeats += s.seat_count;
-            else if (stance === 'no') noSeats += s.seat_count;
-            else if (stance === 'abstain') abstainSeats += s.seat_count;
+            if (stance === 'yes') yesSeats += (s.seat_count || 0);
+            else if (stance === 'no') noSeats += (s.seat_count || 0);
+            else if (stance === 'abstain') abstainSeats += (s.seat_count || 0);
         });
 
         // Apply emergency minority penalty to effective YES votes
@@ -5669,9 +5642,9 @@ async function resolveExpiredVotes(supabase, nationId) {
         (bill.bill_support || []).forEach(s => {
             // Normalize committee stances: 'accept' → 'yes', 'reject' → 'no'
             const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
-            if (stance === 'yes') votesFor += s.seat_count;
-            else if (stance === 'no') votesAgainst += s.seat_count;
-            else if (stance === 'abstain') votesAbstain += s.seat_count;
+            if (stance === 'yes') votesFor += (s.seat_count || 0);
+            else if (stance === 'no') votesAgainst += (s.seat_count || 0);
+            else if (stance === 'abstain') votesAbstain += (s.seat_count || 0);
         });
 
         // Emergency minority government penalty: -20% effective YES votes
@@ -10752,6 +10725,7 @@ async function executeRally(supabase, factionId, nationId, blocId, currentTick) 
     // ── 6. Roll specific target effect ──
     const targetDelta = outcome.targetMin + Math.floor(Math.random() * (outcome.targetMax - outcome.targetMin + 1));
 
+    // ── 7. Apply effects ──
     // ── 7. Apply effects (momentum only — preference_score recalculated by three-pillar calc) ──
     const effects = [];
     const targetRow = approvalByBloc[blocId];
@@ -12195,7 +12169,6 @@ function evaluatePromiseStatus(promise, nationStats, currentTick, ministries, co
  * Checks fulfillment, applies rewards/penalties for expired promises.
  */
 async function processPromiseTick(supabase, nation, currentTick) {
-    const cfg = MAKE_PROMISE_CONFIG;
     const { data: activePromises } = await supabase
         .from('fundraiser_promises')
         .select('*')
@@ -12284,17 +12257,22 @@ async function processPromiseTick(supabase, nation, currentTick) {
             continue;
         }
 
-        // Per-tick penalty: governing party with unfulfilled promise loses preference with the promised bloc
-        // -1D3 preference per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
+        // Per-tick penalty: governing party with unfulfilled promise loses approval with the promised bloc
+        // -1D3 approval per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
         if (isGoverning && promise.bloc_id) {
             const penaltyAmount = -(Math.floor(Math.random() * (cfg.PENALTY_PER_TICK_MAX - cfg.PENALTY_PER_TICK_MIN + 1)) + cfg.PENALTY_PER_TICK_MIN);
-            // Apply penalty via momentum (preference_score recalculated by three-pillar calc)
-            await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, penaltyAmount, 'promise:unfulfilled_tick');
-            // Track accumulated penalty in progress field (displayed by UI)
-            const updatedProgress = { ...evaluation.progress, penalty_accumulated: (evaluation.progress.penalty_accumulated || 0) + Math.abs(penaltyAmount) };
-            await supabase.from('fundraiser_promises')
-                .update({ progress: updatedProgress, updated_at: new Date().toISOString() })
-                .eq('id', promise.id);
+            const { data: penaltyBlocRow } = await supabase
+                .from('faction_bloc_approval')
+                .select('id, approval')
+                .eq('faction_id', promise.party_id)
+                .eq('bloc_id', promise.bloc_id)
+                .single();
+            if (penaltyBlocRow) {
+                const newApproval = Math.max(0, Math.round(penaltyBlocRow.approval + penaltyAmount));
+                await supabase.from('faction_bloc_approval')
+                    .update({ approval: newApproval })
+                    .eq('id', penaltyBlocRow.id);
+            }
             results.push({ promise, resolution: 'tick_penalty', penaltyAmount });
         }
     }
@@ -12310,7 +12288,6 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
 
     if (resolution === 'fulfilled') {
         // ── REWARDS (all via momentum — preference_score recalculated by three-pillar calc) ──
-        // +momentum with affected bloc (KEPT_PREF_BONUS)
         if (promise.bloc_id) {
             await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, cfg.KEPT_PREF_BONUS, 'promise:kept_bloc');
         }
@@ -12328,7 +12305,6 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
 
     } else if (resolution === 'broken') {
         // ── PENALTIES (all via momentum — preference_score recalculated by three-pillar calc) ──
-        // -momentum with affected bloc
         if (promise.bloc_id) {
             await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, cfg.BROKEN_DONOR_PREF, 'promise:broken_bloc');
         }
@@ -16233,9 +16209,12 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
     if (orphanedBills && orphanedBills.length > 0) {
         for (const bill of orphanedBills) {
             await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
+            // Reject any pending ambassadors from failed confirmation bills
+            if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
+                await supabase.from('ambassadors').update({ status: 'rejected', is_active: false }).eq('id', bill.ambassador_id);
+            }
             console.log(`[disbandParty] Failed orphaned bill "${bill.bill_name}" (proposed by disbanded faction)`);
         }
-        await syncAmbassadorsForFailedConfirmationBills(supabase, orphanedBills);
     }
 
     // 9. Clean up all faction-related data from the old nation
@@ -16248,7 +16227,7 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
     await supabase.from('bill_support').delete().eq('faction_id', factionId);
     await supabase.from('campaign_actions').delete().eq('party_id', factionId);
 
-    // 9. Audit log
+    // 10. Audit log
     const { error: logErr } = await supabase
         .from('campaign_actions')
         .insert({
@@ -19578,17 +19557,6 @@ async function advanceTick(supabase) {
             summary.vacancies.push(vacancyResult);
         }
 
-        // Auto-expire non-budget committee bills that have sat for COMMITTEE_EXPIRY_TICKS
-        try {
-            const committeeExpiries = await expireCommitteeBills(supabase, nation.id, newTick);
-            if (committeeExpiries.length > 0) {
-                summary.committeeExpiries = summary.committeeExpiries || [];
-                summary.committeeExpiries.push({ nation: nation.name, bills: committeeExpiries });
-            }
-        } catch (committeeErr) {
-            console.error(`[advanceTick] Committee bill expiry failed for ${nation.name} (non-fatal):`, committeeErr);
-        }
-
         // Check for early majority on active floor bills (lock outcome + set grace tick)
         const earlyResults = await checkEarlyMajority(supabase, nation.id);
         if (earlyResults.length > 0) {
@@ -19879,11 +19847,7 @@ async function advanceTick(supabase) {
         const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick, shutdownNow);
 
         // Three-pillar voter preference recalculation
-        try {
-            await calculateThreePillarPreferences(supabase, nation, newTick);
-        } catch (threePillarErr) {
-            console.error(`[advanceTick] Three-pillar calculation FAILED for ${nation.name} (tick ${newTick}):`, threePillarErr);
-        }
+        await calculateThreePillarPreferences(supabase, nation, newTick);
 
         // Faction loyalty (autocracy)
         if (isAutocracy(nation)) {

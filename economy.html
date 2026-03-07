@@ -674,11 +674,6 @@ async function submitTaxBill(nation) {
             console.error('Failed to add sponsor support:', supportError.message);
         }
 
-        // Trigger NPC committee votes for democracies
-        if (!isAutocracyGov) {
-            await _supabase.rpc('process_npc_committee_votes', { p_nation_id: nation.id });
-        }
-
         // Reset state and navigate to the bill
         taxRateChanges = {};
         originalRates = {};

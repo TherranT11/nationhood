@@ -39,10 +39,10 @@ export async function syncVoteTallies(supabase, billId) {
 
     let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
     (allVotes || []).forEach(v => {
-        const st = v.stance === 'accept' ? 'yes' : v.stance === 'reject' ? 'no' : 'abstain';
-        if (st === 'yes')            votesFor += v.seat_count;
-        else if (st === 'no')        votesAgainst += v.seat_count;
-        else if (st === 'abstain')   votesAbstain += v.seat_count;
+        const st = v.stance === 'accept' ? 'yes' : v.stance === 'reject' ? 'no' : v.stance;
+        if (st === 'yes')            votesFor += (v.seat_count || 0);
+        else if (st === 'no')        votesAgainst += (v.seat_count || 0);
+        else if (st === 'abstain')   votesAbstain += (v.seat_count || 0);
     });
 
     await supabase.from('bills').update({
@@ -914,9 +914,9 @@ export async function checkEarlyMajority(supabase, nationId) {
         let yesSeats = 0, noSeats = 0, abstainSeats = 0;
         (bill.bill_support || []).forEach(s => {
             const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
-            if (stance === 'yes') yesSeats += s.seat_count;
-            else if (stance === 'no') noSeats += s.seat_count;
-            else if (stance === 'abstain') abstainSeats += s.seat_count;
+            if (stance === 'yes') yesSeats += (s.seat_count || 0);
+            else if (stance === 'no') noSeats += (s.seat_count || 0);
+            else if (stance === 'abstain') abstainSeats += (s.seat_count || 0);
         });
 
         // Apply emergency minority penalty to effective YES votes
@@ -1075,9 +1075,9 @@ export async function resolveExpiredVotes(supabase, nationId) {
         (bill.bill_support || []).forEach(s => {
             // Normalize committee stances: 'accept' → 'yes', 'reject' → 'no'
             const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
-            if (stance === 'yes') votesFor += s.seat_count;
-            else if (stance === 'no') votesAgainst += s.seat_count;
-            else if (stance === 'abstain') votesAbstain += s.seat_count;
+            if (stance === 'yes') votesFor += (s.seat_count || 0);
+            else if (stance === 'no') votesAgainst += (s.seat_count || 0);
+            else if (stance === 'abstain') votesAbstain += (s.seat_count || 0);
         });
 
         // Emergency minority government penalty: -20% effective YES votes
