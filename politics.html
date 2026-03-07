@@ -333,11 +333,29 @@
     font-size: 12px;
 }
 
-/* ── Two-column layout ── */
+/* ── Top row layout ── */
 .pol-columns {
     display: flex;
     gap: 16px;
     align-items: stretch;
+    justify-content: center;
+}
+
+/* ── Second row layout ── */
+.pol-row-2 {
+    display: flex;
+    gap: 16px;
+    margin-top: 16px;
+    justify-content: flex-start;
+    /* offset to align under the party card in the centered top row */
+}
+
+/* ── First column wrapper (party card + ideology stacked) ── */
+.pol-col-1 {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex-shrink: 0;
 }
 
 /* ── Modifiers box ── */
@@ -606,6 +624,120 @@
     background: var(--dred);
 }
 
+/* ── Ideology box ── */
+.pol-ideology-box {
+    width: 380px;
+    flex-shrink: 0;
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-0);
+    border-radius: 4px;
+    padding: 16px 20px;
+}
+.pol-ideo-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+.pol-ideo-legend {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+.pol-ideo-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--dborder-0);
+    cursor: default;
+}
+.pol-ideo-legend-item:hover {
+    border-color: rgba(255,255,255,0.12);
+}
+.pol-ideo-legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+}
+.pol-ideo-legend-abbr {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 700;
+}
+.pol-ideo-legend-you {
+    font-family: var(--dfont-mono);
+    font-size: 7px;
+    color: var(--dtxt-muted);
+}
+.pol-ideo-zone-legend {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    margin-bottom: 14px;
+}
+.pol-ideo-zone-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.pol-ideo-zone-line {
+    width: 12px;
+    height: 1px;
+}
+.pol-ideo-zone-label {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    color: var(--dtxt-muted);
+}
+.pol-ideo-axes {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.pol-ideo-axis-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+.pol-ideo-axis-label {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--dtxt-secondary);
+}
+.pol-ideo-track {
+    position: relative;
+    height: 24px;
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid var(--dborder-0);
+    background: rgba(255,255,255,0.02);
+}
+.pol-ideo-zone-line-v {
+    position: absolute;
+    top: 0;
+    width: 1px;
+    height: 100%;
+}
+.pol-ideo-center-line {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 1px;
+    height: 100%;
+    background: rgba(107,106,94,0.27);
+}
+.pol-ideo-marker {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 2px;
+}
+
 /* ── National Mood box ── */
 .pol-mood-box {
     width: 380px;
@@ -777,6 +909,7 @@ import { getPartyIconSVG } from './js/party-icons.js';
 import { tickToDate } from './js/utils.js';
 import { fetchActiveCoalition, isPresidentialRepublic } from './js/game/government-structure.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './js/game/stats.js';
+import { IDEOLOGY_AXES } from './js/game/ideology.js';
 
 initPage('politics', async (state) => {
     const { nation, faction, shard } = state;
@@ -797,6 +930,15 @@ initPage('politics', async (state) => {
         .select('id, seats, national_vote_share, faction_name, abbreviation, party_color')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
+
+    // Fetch ideology scores for all parties
+    const partyIds = (allParties || []).map(p => p.id);
+    const { data: allPartyIdeologies } = partyIds.length > 0
+        ? await _supabase
+            .from('faction_ideology')
+            .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+            .in('faction_id', partyIds)
+        : { data: [] };
 
     const totalSeats = (allParties || []).reduce((sum, p) => sum + (p.seats || 0), 0);
     const mySeats = f.seats || 0;
@@ -861,6 +1003,7 @@ initPage('politics', async (state) => {
         currentTick,
         officerNames,
         allParties,
+        allPartyIdeologies,
         activeCrises
     });
 });
@@ -901,7 +1044,7 @@ function generateOfficerNames(factionId) {
 function renderPartyTab(f, nation, data) {
     const {
         totalSeats, mySeats, voteSharePct, lastElectionDate,
-        seatDelta, role, officerNames, allParties, coalition, activeCrises, currentTick
+        seatDelta, role, officerNames, allParties, allPartyIdeologies, coalition, activeCrises, currentTick
     } = data;
 
     const partyColor = f.party_color || '#ffcc00';
@@ -958,6 +1101,7 @@ function renderPartyTab(f, nation, data) {
         <div class="pol-section-label">Politics</div>
 
         <div class="pol-columns">
+        <div class="pol-col-1">
         <div class="pol-party-card">
         <!-- Party header -->
         <div class="pol-header">
@@ -1016,6 +1160,8 @@ function renderPartyTab(f, nation, data) {
             </div>
         </div>
         </div><!-- /pol-party-card -->
+        ${renderIdeologyBox(allParties, allPartyIdeologies, f.id)}
+        </div><!-- /pol-col-1 -->
         ${renderModifiersBox(f)}
         ${renderParliamentBox(allParties, coalition, nation, f.id)}
         ${renderNationalMoodBox(nation, activeCrises, currentTick)}
@@ -1196,6 +1342,81 @@ function importanceColor(pct) {
     if (pct >= 60) return 'var(--dred)';
     if (pct >= 40) return 'var(--damber)';
     return 'var(--dgreen)';
+}
+
+function renderIdeologyBox(allParties, allPartyIdeologies, playerFactionId) {
+    const parties = allParties || [];
+    const ideoMap = {};
+    for (const row of (allPartyIdeologies || [])) {
+        ideoMap[row.faction_id] = row;
+    }
+
+    // Build party data with ideology positions
+    const partyData = parties.map(p => ({
+        id: p.id,
+        name: p.faction_name || 'Unknown',
+        abbr: p.abbreviation || (p.faction_name || '??').substring(0, 2).toUpperCase(),
+        color: p.party_color || '#8a8778',
+        isPlayer: p.id === playerFactionId,
+        ideo: ideoMap[p.id] || {}
+    }));
+
+    // Party legend
+    const legendHtml = partyData.map(p =>
+        `<div class="pol-ideo-legend-item">
+            <div class="pol-ideo-legend-dot" style="background:${p.color}"></div>
+            <span class="pol-ideo-legend-abbr" style="color:${p.color}">${escapeHtml(p.abbr)}</span>
+            ${p.isPlayer ? '<span class="pol-ideo-legend-you">YOU</span>' : ''}
+        </div>`
+    ).join('');
+
+    // Zone legend
+    const zoneLegendHtml = `
+        <div class="pol-ideo-zone-legend">
+            <div class="pol-ideo-zone-item">
+                <div class="pol-ideo-zone-line" style="background:rgba(250,204,21,0.33)"></div>
+                <span class="pol-ideo-zone-label">Centrist / Moderate</span>
+            </div>
+            <div class="pol-ideo-zone-item">
+                <div class="pol-ideo-zone-line" style="background:rgba(239,68,68,0.33)"></div>
+                <span class="pol-ideo-zone-label">Moderate / Radical</span>
+            </div>
+        </div>`;
+
+    // Axis tracks
+    const axesHtml = IDEOLOGY_AXES.map(ax => {
+        // Party markers on this axis
+        const markersHtml = partyData.map(p => {
+            const rawVal = Number(p.ideo[ax.key] ?? 0); // -100 to +100
+            const pos = (rawVal + 100) / 2; // normalize to 0–100
+            return `<div class="pol-ideo-marker" style="left:${pos}%;width:10px;height:10px;background:${p.color}"></div>`;
+        }).join('');
+
+        return `<div>
+            <div class="pol-ideo-axis-labels">
+                <span class="pol-ideo-axis-label">${escapeHtml(ax.leftLabel)}</span>
+                <span class="pol-ideo-axis-label">${escapeHtml(ax.rightLabel)}</span>
+            </div>
+            <div class="pol-ideo-track">
+                <div class="pol-ideo-zone-line-v" style="left:15%;background:rgba(239,68,68,0.2)"></div>
+                <div class="pol-ideo-zone-line-v" style="left:85%;background:rgba(239,68,68,0.2)"></div>
+                <div class="pol-ideo-zone-line-v" style="left:35%;background:rgba(250,204,21,0.2)"></div>
+                <div class="pol-ideo-zone-line-v" style="left:65%;background:rgba(250,204,21,0.2)"></div>
+                <div class="pol-ideo-center-line"></div>
+                ${markersHtml}
+            </div>
+        </div>`;
+    }).join('');
+
+    return `
+        <div class="pol-ideology-box">
+            <div class="pol-ideo-header">
+                <span class="pol-mod-title">Ideology — All Parties</span>
+            </div>
+            <div class="pol-ideo-legend">${legendHtml}</div>
+            ${zoneLegendHtml}
+            <div class="pol-ideo-axes">${axesHtml}</div>
+        </div>`;
 }
 
 function renderNationalMoodBox(nation, activeCrises, currentTick) {
