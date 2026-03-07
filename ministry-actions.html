@@ -1111,7 +1111,7 @@ function renderMinistryContent(key) {
     const icon = MINISTRY_ICONS[key] || '';
     const fiscalCat = MINISTRY_FISCAL_MAP[key];
     const alloc = budgetAllocations[fiscalCat] || { allocated: 0, needed: 0 };
-    const overallPct = alloc.needed > 0 ? Math.round((alloc.allocated / alloc.needed) * 100) : 0;
+    const overallPct = alloc.needed > 0 ? Math.round((alloc.allocated / alloc.needed) * 100) : 100;
     const overallFunding = getFundingLabel(overallPct);
     const institutions = MINISTRY_INSTITUTIONS[key] || [];
     const policies = MINISTRY_POLICIES[key] || [];
@@ -1213,7 +1213,7 @@ function renderInstitutionsTab(ministryKey, institutions, alloc) {
                 instNeeded = alloc.needed * inst.costShare;
             }
         }
-        const pct = instNeeded > 0 ? Math.round((instAllocated / instNeeded) * 100) : 0;
+        const pct = instNeeded > 0 ? Math.round((instAllocated / instNeeded) * 100) : 100;
         const funding = getFundingLabel(pct);
         const decay = getDecayRate(pct);
 

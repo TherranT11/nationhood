@@ -2532,7 +2532,7 @@ function buildStatInstitutionMap(instConfig, itemAllocations) {
         const alloc = allocMap[inst.id];
         const fundingPct = alloc && alloc.needed > 0
             ? Math.min(100, Math.round((alloc.allocated / alloc.needed) * 100))
-            : 0;  // no allocation row = unfunded
+            : 100;  // no allocation row = fully funded (all ministries funded at 100%)
 
         for (const role of ['primary', 'secondary']) {
             const statKey = inst[`${role}_stat`];
@@ -19237,6 +19237,9 @@ async function advanceTick(supabase) {
                 .eq('item_type', 'institution');
             budgetItemAllocs = itemAllocs;
             statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs);
+        } else if (_institutionConfig.length > 0) {
+            // No budget bill yet — all ministries funded at 100% by default
+            statInstMap = buildStatInstitutionMap(_institutionConfig, []);
         }
         const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
         const decayResults = await processStatDecay(supabase, nation, statInstMap, shutdown, policyDecayAdj);
