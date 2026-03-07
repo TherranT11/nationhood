@@ -5679,13 +5679,15 @@ async function resolveExpiredVotes(supabase, nationId) {
         .eq('faction_type', 'party');
     const resolveFactionSeatSum = (factionRowsForResolve || []).reduce((sum, f) => sum + (f.seats || 0), 0);
 
+    // Fetch nation once (all expired bills share the same nationId)
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('*')
+        .eq('id', nationId)
+        .single();
+
     for (const bill of expiredBills) {
       try {
-        const { data: nation } = await supabase
-            .from('nations')
-            .select('name, government_type, total_seats')
-            .eq('id', bill.nation_id)
-            .single();
         const nominalTotalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
         const totalSeats = Math.min(nominalTotalSeats, Math.max(resolveFactionSeatSum, 1));
         let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
@@ -5964,7 +5966,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                             await markBillEnactmentFailed(supabase, originalBill, currentTick, budgetErr.message);
                         }
                     } else {
-                        const enactment = await enactBill(supabase, originalBill, currentTick);
+                        const enactment = await enactBill(supabase, originalBill, currentTick, nation);
                         if (!enactment?.success) {
                             await markBillEnactmentFailed(supabase, originalBill, currentTick, enactment?.error || 'Unknown enactment failure');
                             await fireBillEvent(supabase, 'bill_failed', originalBill, { currentTick, nationName: nation?.name, votesFor: 0, votesAgainst: 0, billNameOverride: `${originalBill.bill_name} (override enactment failed)` });
@@ -6354,7 +6356,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 // Wrap enactBill in try-catch to convert thrown exceptions into {success: false}
                 let enactment;
                 try {
-                    enactment = await enactBill(supabase, bill, currentTick);
+                    enactment = await enactBill(supabase, bill, currentTick, nation);
                 } catch (enactErr) {
                     console.error(`[resolveExpiredVotes] enactBill threw for bill ${bill.id} ("${bill.bill_name}"):`, enactErr);
                     enactment = { success: false, error: `enactBill threw: ${enactErr?.message || enactErr}` };
@@ -6432,7 +6434,6 @@ async function resolveExpiredVotes(supabase, nationId) {
 }
 
 async function markBillEnactmentFailed(supabase, bill, currentTick, enactError) {
-    const normalizedError = typeof enactError === 'string' ? enactError : 'Unknown enactment failure';
     const { error } = await supabase.from('bills').update({
         status: 'failed',
         passed_tick: currentTick
@@ -6442,14 +6443,18 @@ async function markBillEnactmentFailed(supabase, bill, currentTick, enactError) 
     }
 }
 
-async function enactBill(supabase, bill, currentTick) {
+async function enactBill(supabase, bill, currentTick, nation) {
     let enactError = null;
 
-    const { data: nation } = await supabase
-        .from('nations')
-        .select('*')
-        .eq('id', bill.nation_id)
-        .single();
+    // If nation not passed, fetch it (backward compat for callers that don't have it)
+    if (!nation) {
+        const { data: nationRow } = await supabase
+            .from('nations')
+            .select('*')
+            .eq('id', bill.nation_id)
+            .single();
+        nation = nationRow;
+    }
     if (!nation) return { success: false, error: `Nation ${bill.nation_id} not found` };
 
     const { data: currentActiveLaws } = await supabase
@@ -6475,6 +6480,8 @@ async function enactBill(supabase, bill, currentTick) {
                 enactError = `Repeal target active_law ${repealResult.targetLawId} not found or missing policy`;
             } else if (repealResult.reason === 'delete_failed') {
                 enactError = `Repeal target ${repealResult.targetLawId} could not be deleted: ${repealResult.error}`;
+            } else if (repealResult.reason === 'clear_bill_references_failed' || repealResult.reason === 'clear_article_references_failed') {
+                enactError = `Repeal target ${repealResult.targetLawId} FK cleanup failed: ${repealResult.error}`;
             } else {
                 enactError = `Unknown repeal failure (${repealResult.reason})`;
             }
@@ -6512,6 +6519,9 @@ async function enactBill(supabase, bill, currentTick) {
                 for (const opposedId of policy.opposed_policy_ids) {
                     const opposedLaw = (currentActiveLaws || []).find(l => l.policy_id === opposedId);
                     if (opposedLaw && opposedLaw.policies) {
+                        // Clear FK references before deleting (same pattern as repealActiveLaw)
+                        await supabase.from('bills').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', opposedLaw.id);
+                        await supabase.from('bill_articles').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', opposedLaw.id);
                         await reversePolicy(supabase, nation, opposedLaw.policies, opposedLaw.passed_tick, currentTick);
                         await supabase.from('active_laws').delete().eq('id', opposedLaw.id);
                     }
@@ -6649,7 +6659,10 @@ async function enactBill(supabase, bill, currentTick) {
 
 async function reversePolicy(supabase, nation, policy, passedTick, currentTick) {
     const ticksActive = currentTick - (passedTick || 0);
-    if (ticksActive <= 0) return;
+    if (ticksActive <= 0) {
+        console.log(`[reversePolicy] Skipping reversal for ${policy.policy_name || policy.id}: ticksActive=${ticksActive} (enacted same tick)`);
+        return;
+    }
 
     const sourceEffects = [];
     if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
@@ -9487,7 +9500,7 @@ async function processPresidentDesk(supabase, nation, currentTick) {
         } else {
             let enactment;
             try {
-                enactment = await enactBill(supabase, bill, currentTick);
+                enactment = await enactBill(supabase, bill, currentTick, nation);
             } catch (enactErr) {
                 console.error(`[processPresidentDesk] enactBill threw for bill ${bill.id}:`, enactErr);
                 enactment = { success: false, error: enactErr?.message || String(enactErr) };
