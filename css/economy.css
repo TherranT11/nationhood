@@ -306,6 +306,20 @@ body.light-mode .econ-card-value { color: #2a2a25; }
 }
 
 /* ===== BUDGET TAB v2 ===== */
+.bv2-budget-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    margin-top: 12px;
+}
+.bv2-budget-left {
+    padding-right: 10px;
+}
+.bv2-budget-right {
+    padding-left: 10px;
+    border-left: 1px solid rgba(255,255,255,0.06);
+}
+
 .bv2-summary-bar {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
@@ -551,6 +565,21 @@ body.light-mode .econ-card-value { color: #2a2a25; }
 }
 
 /* --- Responsive --- */
+@media (max-width: 1100px) {
+    .bv2-budget-split {
+        grid-template-columns: 1fr;
+    }
+    .bv2-budget-left {
+        padding-right: 0;
+    }
+    .bv2-budget-right {
+        padding-left: 0;
+        border-left: none;
+        border-top: 1px solid rgba(255,255,255,0.06);
+        padding-top: 12px;
+        margin-top: 12px;
+    }
+}
 @media (max-width: 800px) {
     .bv2-summary-bar {
         grid-template-columns: 1fr;

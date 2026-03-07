@@ -1110,7 +1110,21 @@ function renderMinistryContent(key) {
     const fullName = MINISTRY_FULL_NAMES[key] || getButtonLabel(key);
     const icon = MINISTRY_ICONS[key] || '';
     const fiscalCat = MINISTRY_FISCAL_MAP[key];
-    const alloc = budgetAllocations[fiscalCat] || { allocated: 0, needed: 0 };
+    let alloc = budgetAllocations[fiscalCat] || null;
+    // When no budget bill exists, compute actual institution costs and auto-fund at 100%
+    if (!alloc) {
+        let totalNeeded = 0;
+        for (const inst of (MINISTRY_INSTITUTIONS[key] || [])) {
+            if (inst.baseCostPerCapita) {
+                if (inst.scalingType === 'gdp') {
+                    totalNeeded += (inst.baseCostPerCapita / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0);
+                } else {
+                    totalNeeded += inst.baseCostPerCapita * (currentNation.population || 0);
+                }
+            }
+        }
+        alloc = { allocated: totalNeeded, needed: totalNeeded };
+    }
     const overallPct = alloc.needed > 0 ? Math.round((alloc.allocated / alloc.needed) * 100) : 100;
     const overallFunding = getFundingLabel(overallPct);
     const institutions = MINISTRY_INSTITUTIONS[key] || [];
@@ -1201,8 +1215,7 @@ function renderInstitutionsTab(ministryKey, institutions, alloc) {
             instAllocated = itemAlloc.allocated;
             instNeeded = itemAlloc.needed;
         } else {
-            // Fallback: estimate from ministry-level allocation × costShare
-            instAllocated = alloc.allocated * inst.costShare;
+            // No per-institution allocation — compute needed cost and auto-fund at 100%
             if (inst.baseCostPerCapita) {
                 if (inst.scalingType === 'gdp') {
                     instNeeded = (inst.baseCostPerCapita / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0);
@@ -1212,6 +1225,7 @@ function renderInstitutionsTab(ministryKey, institutions, alloc) {
             } else {
                 instNeeded = alloc.needed * inst.costShare;
             }
+            instAllocated = instNeeded; // Auto-fund at 100%
         }
         const pct = instNeeded > 0 ? Math.round((instAllocated / instNeeded) * 100) : 100;
         const funding = getFundingLabel(pct);
@@ -1936,7 +1950,7 @@ function getInstitutionFundingPct(instId, ministryKey) {
     if (!inst) return 100;
 
     const fiscalCat = MINISTRY_FISCAL_MAP[ministryKey];
-    const alloc = budgetAllocations[fiscalCat] || { allocated: 0, needed: 0 };
+    const alloc = budgetAllocations[fiscalCat] || null;
     const itemAlloc = budgetItemAllocations[instId];
 
     let instAllocated, instNeeded;
@@ -1944,7 +1958,7 @@ function getInstitutionFundingPct(instId, ministryKey) {
         instAllocated = itemAlloc.allocated;
         instNeeded = itemAlloc.needed;
     } else {
-        instAllocated = alloc.allocated * inst.costShare;
+        // No per-institution allocation — compute needed and auto-fund at 100%
         if (inst.baseCostPerCapita) {
             if (inst.scalingType === 'gdp') {
                 instNeeded = (inst.baseCostPerCapita / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0);
@@ -1952,8 +1966,9 @@ function getInstitutionFundingPct(instId, ministryKey) {
                 instNeeded = inst.baseCostPerCapita * (currentNation.population || 0);
             }
         } else {
-            instNeeded = alloc.needed * inst.costShare;
+            instNeeded = alloc ? alloc.needed * inst.costShare : 0;
         }
+        instAllocated = instNeeded; // Auto-fund at 100%
     }
 
     return instNeeded > 0 ? Math.round((instAllocated / instNeeded) * 100) : 100;
