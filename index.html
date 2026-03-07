@@ -79,7 +79,7 @@ import { _supabase } from './js/supabase-client.js';
     /**
      * Checks the user's faction status and redirects accordingly:
      *   - Has a party with a nation assigned → dashboard.html
-     *   - Anything else (no faction, no nation, etc.) → dashboard.html
+     *   - Anything else (no faction, no nation, etc.) → select-nation.html
      */
     async function routeUser(user) {
         try {
@@ -93,13 +93,14 @@ import { _supabase } from './js/supabase-client.js';
                 // Fully set up — go to home dashboard
                 window.location.href = 'dashboard.html';
             } else {
-                // Needs setup — go to dashboard
-                window.location.href = 'dashboard.html';
+                // Needs setup — route into nation selection onboarding
+                window.location.href = 'select-nation.html';
             }
 
         } catch (error) {
             console.error('Faction check error:', error);
-            window.location.href = 'dashboard.html';
+            // If faction lookup fails, send user to onboarding instead of dropping into gameplay.
+            window.location.href = 'select-nation.html';
         }
     }
 </script>
