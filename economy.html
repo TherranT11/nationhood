@@ -466,7 +466,7 @@ function wireTabEvents(nation) {
             });
         });
     }
-    if (false) { // Budget tab removed
+    if (activeTab === 'budget') {
         document.querySelectorAll('.ministry-tab').forEach(function(tab) {
             tab.addEventListener('click', function() {
                 selectMinistryCategory(tab.getAttribute('data-category'));
@@ -1360,24 +1360,23 @@ function renderTaxCard(config, nation, budget) {
 }
 
 // ==================== BUDGET TAB ====================
-function renderBudgetTab(nation) {
-    var h = '<div class="econ-tab-body">';
-    h += '<div class="economy-body">';
-    h += '<div class="economy-left">';
-    h += renderBudgetPanel(nation);
-    h += '</div>';
-    h += '<div class="economy-right">';
-    h += renderMinistryPanel();
-    h += '</div>';
-    h += '</div>';
-    h += '</div>';
-    return h;
-}
 
-function renderBudgetPanel(nation) {
+var MINISTRY_DESCRIPTIONS = {
+    'Finance': 'Economic oversight',
+    'Defense': 'Armed forces & security',
+    'Healthcare': 'Public healthcare',
+    'Education': 'Public schooling & universities',
+    'Transportation': 'Roads, utilities, transit',
+    'Interior': 'Civil administration',
+    'Labor': 'Employment & welfare',
+    'Energy': 'Power generation & regulation',
+    'Justice': 'Courts & law enforcement',
+    'Foreign Ministry': 'Diplomacy & foreign affairs',
+    'Trade': 'Commerce & trade policy'
+};
+
+function renderBudgetTab(nation) {
     var budget = calculateNationalBudget(nation);
-    var currentYear = gameYear || new Date().getFullYear();
-    var previousYear = currentYear - 1;
 
     if (tradeData && tradeData.summary && Number(tradeData.summary.tariff_revenue) > 0) {
         var oldTariff = budget.tariffRevenue;
@@ -1385,108 +1384,175 @@ function renderBudgetPanel(nation) {
         budget.grossRevenue = budget.grossRevenue - oldTariff + budget.tariffRevenue;
     }
 
-    // Add foreign aid revenue
     var aidReceived = aidData ? Number(aidData.received || 0) : 0;
     var aidGiven = aidData ? Number(aidData.given || 0) : 0;
-    budget.aidReceived = aidReceived;
-    budget.aidGiven = aidGiven;
     budget.grossRevenue += aidReceived;
 
-    var prevBudget = null;
-    if (previousYearData) {
-        prevBudget = calculateNationalBudget(previousYearData);
-    }
-
-    var expenditures = {};
-    if (expenditureData) {
-        for (var key in expenditureData) {
-            expenditures[key] = expenditureData[key];
-        }
-    }
-    expenditures['Interest on Debt'] = budget.debtService;
-    if (aidGiven > 0) {
-        expenditures['Foreign Aid Commitments'] = aidGiven;
-    }
-
     var totalExpenditure = 0;
-    for (var key in expenditures) {
-        totalExpenditure += expenditures[key] || 0;
+    var expByCat = {};
+    if (expenditureData) {
+        for (var k in expenditureData) {
+            expByCat[k] = expenditureData[k] || 0;
+            totalExpenditure += expenditureData[k] || 0;
+        }
     }
+    totalExpenditure += budget.debtService || 0;
+    if (aidGiven > 0) totalExpenditure += aidGiven;
+
     var balance = budget.grossRevenue - totalExpenditure;
+    var isDeficit = balance < 0;
+    var balSign = balance >= 0 ? '+' : '';
 
-    var h = '<div class="budget-panel">';
+    var h = '<div class="econ-tab-body">';
 
-    h += '<div class="budget-header">';
-    h += '<div class="budget-title">YEARLY BUDGET</div>';
-    h += '<div class="budget-subtitle">Budget of ' + escapeHtml(nation.name) + ' &mdash; Year ' + currentYear + '</div>';
+    // --- Summary bar: 3 cards ---
+    h += '<div class="bv2-summary-bar">';
+    h += '<div class="bv2-card">';
+    h += '<div class="bv2-card-label" style="color:#4CAF50;">REVENUE</div>';
+    h += '<div class="bv2-card-value">' + formatBudgetCurrency(budget.grossRevenue) + '</div>';
+    h += '</div>';
+    h += '<div class="bv2-card">';
+    h += '<div class="bv2-card-label" style="color:#ff4444;">EXPENDITURES</div>';
+    h += '<div class="bv2-card-value">' + formatBudgetCurrency(totalExpenditure) + '</div>';
+    h += '</div>';
+    h += '<div class="bv2-card">';
+    h += '<div class="bv2-card-label" style="color:' + (isDeficit ? '#ff4444' : '#4CAF50') + ';">' + (isDeficit ? 'DEFICIT' : 'SURPLUS') + '</div>';
+    h += '<div class="bv2-card-value" style="color:' + (isDeficit ? '#ff4444' : '#4CAF50') + ';">' + balSign + formatBudgetCurrency(balance) + '</div>';
+    h += '</div>';
     h += '</div>';
 
-    h += '<div class="budget-summary">';
-    h += '<div class="budget-summary-row">';
-    h += '<div class="budget-summary-item">';
-    h += '<span class="budget-summary-label">Revenue</span>';
-    h += '<span class="budget-summary-value">' + formatBudgetCurrency(budget.grossRevenue) + '</span>';
-    h += '</div>';
-    h += '<div class="budget-summary-item">';
-    h += '<span class="budget-summary-label">Expenditures</span>';
-    h += '<span class="budget-summary-value">' + formatBudgetCurrency(totalExpenditure) + '</span>';
-    h += '</div>';
+    // --- Split layout: budget left, ministry detail right ---
+    h += '<div class="bv2-budget-split">';
+    h += '<div class="bv2-budget-left">';
+
+    // --- Two-column breakdown ---
+    h += '<div class="bv2-breakdown">';
+
+    // LEFT: Revenues
+    h += '<div class="bv2-col">';
+    h += '<div class="bv2-col-header">';
+    h += '<span class="bv2-col-title" style="color:#4CAF50;">REVENUES</span>';
+    h += '<span class="bv2-col-total" style="color:#4CAF50;">Total: ' + formatBudgetCurrency(budget.grossRevenue) + ' / yr</span>';
     h += '</div>';
 
-    var balanceClass = balance >= 0 ? 'surplus' : 'deficit';
-    var balanceLabel = balance >= 0 ? 'SURPLUS' : 'DEFICIT';
-    var balanceSign = balance >= 0 ? '+' : '';
-    h += '<div class="budget-balance ' + balanceClass + '">';
-    h += '<span class="budget-balance-label">' + balanceLabel + ':</span> ';
-    h += '<span class="budget-balance-value">' + balanceSign + formatBudgetCurrency(balance) + '</span>';
-
-    if (prevBudget) {
-        var prevTotalExp = (prevBudget.debtService || 0);
-        if (expenditureData) {
-            for (var pKey in expenditureData) prevTotalExp += expenditureData[pKey] || 0;
-        }
-        var prevBalance = prevBudget.grossRevenue - prevTotalExp;
-        h += '<span class="budget-balance-trend">' + budgetTrendHtml(balance, prevBalance, previousYear) + '</span>';
+    h += bv2RevenueRow('INCOME TAX', Math.round(Number(nation.income_tax || 0)) + '% rate · Income bracket', budget.incomeRevenue);
+    h += bv2RevenueRow('SALES TAX', Math.round(Number(nation.sales_tax || 0)) + '% rate · Consumption', budget.salesRevenue);
+    h += bv2RevenueRow('CORPORATE TAX', Math.round(Number(nation.corporate_tax || 0)) + '% rate · Corporate profits', budget.corpRevenue);
+    h += bv2RevenueRow('TARIFF & TRADE', 'Import duties · Trade balance', budget.tariffRevenue);
+    if (budget.oilRevenue > 0) {
+        h += bv2RevenueRow('OIL & GAS', 'State resource revenue', budget.oilRevenue);
     }
-    h += '</div>';
-    h += '</div>';
-
-    h += '<div class="budget-columns">';
-
-    h += '<div class="budget-column">';
-    h += '<div class="budget-column-header">Revenue Breakdown</div>';
-    h += budgetLineItem('Income Tax', budget.incomeRevenue, prevBudget ? prevBudget.incomeRevenue : null, previousYear);
-    h += budgetLineItem('Corporate Tax', budget.corpRevenue, prevBudget ? prevBudget.corpRevenue : null, previousYear);
-    h += budgetLineItem('Sales Tax', budget.salesRevenue, prevBudget ? prevBudget.salesRevenue : null, previousYear);
-    h += budgetLineItem('Trade & Tariffs', budget.tariffRevenue, prevBudget ? prevBudget.tariffRevenue : null, previousYear);
-    h += budgetLineItem('State Enterprises', budget.oilRevenue, prevBudget ? prevBudget.oilRevenue : null, previousYear);
     if (aidReceived > 0) {
-        h += budgetLineItem('Foreign Aid Received', aidReceived, null, previousYear);
+        h += bv2RevenueRow('FOREIGN AID', 'Aid received from partners', aidReceived);
     }
-    h += budgetTotalLine(budget.grossRevenue);
+
+    h += '<div class="bv2-total-row">';
+    h += '<span class="bv2-total-label">TOTAL REVENUE</span>';
+    h += '<span class="bv2-total-value">' + formatBudgetCurrency(budget.grossRevenue) + '/yr</span>';
+    h += '</div>';
     h += '</div>';
 
-    h += '<div class="budget-column">';
-    h += '<div class="budget-column-header">Expenditure Breakdown</div>';
-    var expenditureItems = [
-        'Interior', 'Labor', 'Healthcare', 'Education',
-        'Transportation', 'Energy', 'Justice', 'Foreign Ministry', 'Finance',
-        'Defense', 'Trade', 'Interest on Debt'
-    ];
-    if (aidGiven > 0) {
-        expenditureItems.push('Foreign Aid Commitments');
-    }
-    for (var i = 0; i < expenditureItems.length; i++) {
-        var catAmount = expenditures[expenditureItems[i]] || 0;
-        if (expenditureItems[i] !== 'Interest on Debt') {
-            h += budgetLineItemClickable(expenditureItems[i], catAmount, null, previousYear);
-        } else {
-            h += budgetLineItem(expenditureItems[i], catAmount, null, previousYear);
+    // RIGHT: Expenditures
+    h += '<div class="bv2-col">';
+    h += '<div class="bv2-col-header">';
+    h += '<span class="bv2-col-title" style="color:#ff4444;">EXPENDITURES &mdash; MINISTRY COSTS</span>';
+    h += '<span class="bv2-col-total" style="color:#ff4444;">Total: ' + formatBudgetCurrency(totalExpenditure) + ' / yr</span>';
+    h += '</div>';
+
+    // Sort ministries by cost descending
+    var sortedMins = [];
+    for (var cat in expByCat) {
+        if (expByCat[cat] > 0) {
+            sortedMins.push({ name: cat, cost: expByCat[cat] });
         }
     }
-    h += budgetTotalLine(totalExpenditure);
+    sortedMins.sort(function(a, b) { return b.cost - a.cost; });
+
+    for (var i = 0; i < sortedMins.length; i++) {
+        var m = sortedMins[i];
+        var dispName = m.name === 'Foreign Ministry' ? 'MINISTRY OF FOREIGN AFFAIRS' : 'MINISTRY OF ' + m.name.toUpperCase();
+        var desc = MINISTRY_DESCRIPTIONS[m.name] || '';
+        h += bv2ExpenditureRow(dispName, desc, m.cost, 100);
+    }
+    if (budget.debtService > 0) {
+        h += bv2ExpenditureRow('INTEREST ON DEBT', 'Debt service payments', budget.debtService, null);
+    }
+    if (aidGiven > 0) {
+        h += bv2ExpenditureRow('FOREIGN AID GIVEN', 'Aid commitments to partners', aidGiven, null);
+    }
+
+    h += '<div class="bv2-total-row">';
+    h += '<span class="bv2-total-label">TOTAL EXPENDITURE</span>';
+    h += '<span class="bv2-total-value">' + formatBudgetCurrency(totalExpenditure) + '/yr</span>';
+    h += '</div>';
     h += '</div>';
 
+    h += '</div>'; // .bv2-breakdown
+
+    // --- Net balance box ---
+    var netColor = isDeficit ? '#ff4444' : '#4CAF50';
+    var netIcon = isDeficit ? '&#9650;' : '&#9660;';
+    var netLabel = isDeficit ? 'DEFICIT' : 'SURPLUS';
+    h += '<div class="bv2-net-box" style="border-color:' + netColor + ';">';
+    h += '<div class="bv2-net-header">';
+    h += '<span class="bv2-net-icon" style="color:' + netColor + ';">' + netIcon + '</span>';
+    h += '<span class="bv2-net-label" style="color:' + netColor + ';">' + netLabel + '</span>';
+    h += '</div>';
+    h += '<div class="bv2-net-amount" style="color:' + netColor + ';">' + balSign + formatBudgetCurrency(balance) + '</div>';
+    if (isDeficit) {
+        h += '<div class="bv2-net-subtext">SHORTFALL ATTRIBUTING TO NATIONAL DEBT THIS TICK</div>';
+    }
+    h += '<div class="bv2-net-breakdown">';
+    h += '<div class="bv2-net-col"><div class="bv2-net-col-label">TOTAL REVENUE</div><div class="bv2-net-col-value">' + formatBudgetCurrency(budget.grossRevenue) + '</div></div>';
+    h += '<div class="bv2-net-col"><div class="bv2-net-col-label">TOTAL EXPENDITURE</div><div class="bv2-net-col-value">' + formatBudgetCurrency(totalExpenditure) + '</div></div>';
+    h += '<div class="bv2-net-col"><div class="bv2-net-col-label">NET</div><div class="bv2-net-col-value" style="color:' + netColor + ';">' + balSign + formatBudgetCurrency(balance) + '</div></div>';
+    h += '</div>';
+    h += '</div>';
+
+    // --- Info notice ---
+    if (isDeficit) {
+        h += '<div class="bv2-info-bar">';
+        h += '<span class="bv2-info-icon">i</span> ';
+        h += 'All ministries are currently funded at <strong>100%</strong>. ';
+        h += 'The shortfall of <strong style="color:#ff4444;">' + formatBudgetCurrency(Math.abs(balance)) + '</strong> exceeds available revenue ';
+        h += 'and is being added to the national debt each tick. ';
+        h += 'Raise taxes, grow the economy, or reduce ministry costs to close the gap.';
+        h += '</div>';
+    }
+
+    // --- Ministry Detail Panel (right column) ---
+    h += '</div>'; // close .bv2-budget-left
+    h += '<div class="bv2-budget-right">';
+    h += renderMinistryPanel();
+    h += '</div>';
+    h += '</div>'; // close .bv2-budget-split
+
+    h += '</div>'; // .econ-tab-body
+    return h;
+}
+
+function bv2RevenueRow(label, subtitle, value) {
+    var h = '<div class="bv2-row">';
+    h += '<div class="bv2-row-left">';
+    h += '<div class="bv2-row-label">' + escapeHtml(label) + '</div>';
+    h += '<div class="bv2-row-subtitle">' + escapeHtml(subtitle) + '</div>';
+    h += '</div>';
+    h += '<div class="bv2-row-value">' + formatBudgetCurrency(value) + '/yr</div>';
+    h += '</div>';
+    return h;
+}
+
+function bv2ExpenditureRow(label, subtitle, value, fundingPct) {
+    var h = '<div class="bv2-row">';
+    h += '<div class="bv2-row-left">';
+    h += '<div class="bv2-row-label">' + escapeHtml(label) + '</div>';
+    h += '<div class="bv2-row-subtitle">' + escapeHtml(subtitle) + '</div>';
+    h += '</div>';
+    h += '<div class="bv2-row-right">';
+    if (fundingPct !== null) {
+        h += '<span class="bv2-funding-badge">' + fundingPct + '%</span>';
+    }
+    h += '<span class="bv2-row-value">' + formatBudgetCurrency(value) + '/yr</span>';
     h += '</div>';
     h += '</div>';
     return h;
