@@ -587,9 +587,6 @@ export const MINISTER_APPROVAL_CONFIG = {
     // Legislative activity: bonus to gov_approval_events when a bill passes
     BILL_PASSAGE_EVENT_BONUS: 3,
 
-    // Legislative inactivity: -1/tick to gov_approval_events after grace period
-    LEGISLATIVE_INACTIVITY_GRACE_TICKS: 6,
-    LEGISLATIVE_INACTIVITY_PENALTY: -1,
 };
 
 /**

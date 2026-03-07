@@ -32,11 +32,6 @@ export const GAME_CONFIG = {
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
     MAX_AP: 10,  // maximum action points a party can accumulate
     TICKS_PER_YEAR: 12,
-    // Inactivity decay — penalties for factions that haven't logged in
-    INACTIVITY_GRACE_TICKS: 6,            // no penalty for first 6 ticks of inactivity
-    INACTIVITY_MOMENTUM_DECAY: 5,         // -5 momentum per voter bloc per tick while inactive (ticks 7-11)
-    INACTIVITY_APPROVAL_DECAY: 5,         // -5 approval per voter bloc per tick while inactive (ticks 7-11)
-    INACTIVITY_DISBAND_TICKS: 12,         // at tick 12: party is disbanded (removed from nation, loses seats next election)
     // (Budget bill system removed)
     // Impeachment (Presidential systems only)
     IMPEACHMENT_AP_COST: 7,

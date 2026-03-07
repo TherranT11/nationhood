@@ -1096,14 +1096,6 @@ async function advanceTick(supabase) {
         // PM trait effects
         await processPMTraitEffects(supabase, nation, newTick);
 
-        // Inactivity decay — penalise idle factions; at tick 12 disband the party entirely
-        // Runs RIGHT BEFORE elections so auto-disbanded parties lose seats in the upcoming election
-        const inactivityResults = await processInactivityDecay(supabase, nation.id, newTick);
-        if (inactivityResults.length > 0) {
-            summary.inactivityDecay = summary.inactivityDecay || [];
-            summary.inactivityDecay.push({ nation: nation.name, factions: inactivityResults });
-        }
-
         // Elections (democracy only)
         const electionResults = await processElections(supabase, nation, newTick);
         if (electionResults.length > 0) {
@@ -1385,13 +1377,6 @@ async function advanceTick(supabase) {
         if (ministerApprovalResults.length > 0) {
             summary.ministerApprovals = summary.ministerApprovals || [];
             summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
-        }
-
-        // Legislative inactivity: penalize gov_approval_events when no bills passed recently
-        const inactivityResult = await processLegislativeInactivity(supabase, nation, newTick, shutdownNow);
-        if (inactivityResult) {
-            summary.legislativeInactivity = summary.legislativeInactivity || [];
-            summary.legislativeInactivity.push({ nation: nation.name, ...inactivityResult });
         }
 
         // Decay gov_approval_events by 10% per tick (transient shocks fade naturally)

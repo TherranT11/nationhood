@@ -462,8 +462,7 @@ export async function resolveBudgetBill(supabase, bill, currentTick) {
         debt: newDebt,
         budget_reserves: newReserves,
         last_budget_tick: currentTick,
-        last_budget_bill_id: bill.id,
-        last_bill_passed_tick: currentTick
+        last_budget_bill_id: bill.id
     }).eq('id', nation.id);
 
     if (updateErr) {
