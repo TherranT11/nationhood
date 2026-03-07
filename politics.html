@@ -347,6 +347,7 @@
     gap: 16px;
     margin-top: 16px;
     justify-content: center;
+    align-items: flex-start;
 }
 
 /* ── Modifiers box ── */
@@ -625,6 +626,7 @@
     border: 1px solid var(--dborder-0);
     border-radius: 4px;
     padding: 16px 20px;
+    overflow-y: auto;
 }
 .pol-ideo-header {
     display: flex;
@@ -1811,11 +1813,11 @@ function renderPartyTab(f, nation, data) {
 
     document.getElementById('content-area').innerHTML = html;
 
-    // Lock row-1 panels to the Party card's natural height
+    // Lock all panels to the Party card's natural height
     const partyCard = document.querySelector('.pol-party-card');
     if (partyCard) {
         const h = partyCard.offsetHeight + 'px';
-        document.querySelectorAll('.pol-modifiers-box, .pol-parliament-box, .pol-mood-box').forEach(el => {
+        document.querySelectorAll('.pol-modifiers-box, .pol-parliament-box, .pol-mood-box, .pol-ideology-box, .pol-forecast-box, .pol-identity-box').forEach(el => {
             el.style.height = h;
         });
     }
