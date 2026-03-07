@@ -8,7 +8,7 @@ import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic } from 
 import { RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
 import { IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, loadFactionIdeology } from './ideology.js';
 import { MINISTER_APPROVAL_CONFIG, ISSUE_CATEGORY_STATS, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, STAT_TO_MINISTRY, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, statDirectionSign } from './stats.js';
-import { adjustGovernmentApprovalEvent, adjustMomentumAll } from './momentum.js';
+import { adjustGovernmentApprovalEvent, adjustMomentum, adjustMomentumAll } from './momentum.js';
 import { GOVERNMENT_SHUTDOWN_CRISIS_ID } from './budget.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { recalcDerivedApproval } from './bills.js';
@@ -465,15 +465,15 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
     const targetDelta = outcome.targetMin + Math.floor(Math.random() * (outcome.targetMax - outcome.targetMin + 1));
 
     // ── 7. Apply effects ──
+    // ── 7. Apply effects (momentum only — preference_score recalculated by three-pillar calc) ──
     const effects = [];
     const targetRow = approvalByBloc[blocId];
     if (targetRow) {
-        const oldPref = Math.round(targetRow.preference_score || 0);
-        const newPref = Math.max(0, Math.min(100, oldPref + targetDelta));
-        const newMom = Math.round(((targetRow.momentum || 0) + targetDelta) * 100) / 100;
+        const oldMom = Number(targetRow.momentum || 0);
+        const newMom = Math.max(-50, Math.min(50, Math.round((oldMom + targetDelta) * 100) / 100));
         await supabase.from('faction_bloc_approval')
-            .update({ preference_score: newPref, momentum: newMom }).eq('id', targetRow.id);
-        effects.push({ bloc: targetBloc.bloc_name, blocId, value: targetDelta, oldPref, newPref });
+            .update({ momentum: newMom }).eq('id', targetRow.id);
+        effects.push({ bloc: targetBloc.bloc_name, blocId, value: targetDelta, oldMom, newMom });
     }
 
     // Spillover effects
@@ -510,12 +510,11 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
             if (!row) continue;
             // For non-'all' scopes, skip target bloc (already handled above)
             if (sb.id === blocId && outcome.spilloverScope !== 'all') continue;
-            const oldPref = Math.round(row.preference_score || 0);
-            const newPref = Math.max(0, Math.min(100, oldPref + outcome.spillover));
-            const newMom = Math.round(((row.momentum || 0) + outcome.spillover) * 100) / 100;
+            const oldMom = Number(row.momentum || 0);
+            const newMom = Math.max(-50, Math.min(50, Math.round((oldMom + outcome.spillover) * 100) / 100));
             await supabase.from('faction_bloc_approval')
-                .update({ preference_score: newPref, momentum: newMom }).eq('id', row.id);
-            effects.push({ bloc: sb.bloc_name, blocId: sb.id, value: outcome.spillover, oldPref, newPref });
+                .update({ momentum: newMom }).eq('id', row.id);
+            effects.push({ bloc: sb.bloc_name, blocId: sb.id, value: outcome.spillover, oldMom, newMom });
         }
     }
 
@@ -728,16 +727,15 @@ export async function executeOutreach(supabase, factionId, nationId, blocId, cur
     const alignment = factionIdeo ? computeOutreachAlignment(factionIdeo, targetBloc) : 50;
     const { diminished } = calcOutreachEffect(alignment, recentToBloc);
 
-    // ── 7. Apply target bloc effect ──
+    // ── 7. Apply target bloc effect (momentum only — preference_score recalculated by three-pillar calc) ──
     const effects = [];
     const targetRow = approvalByBloc[blocId];
     if (targetRow) {
-        const oldPref = Math.round(targetRow.preference_score || 0);
-        const newPref = Math.max(0, Math.min(100, oldPref + diminished));
-        const newMom = Math.round(((targetRow.momentum || 0) + diminished) * 100) / 100;
+        const oldMom = Number(targetRow.momentum || 0);
+        const newMom = Math.max(-50, Math.min(50, Math.round((oldMom + diminished) * 100) / 100));
         await supabase.from('faction_bloc_approval')
-            .update({ preference_score: newPref, momentum: newMom }).eq('id', targetRow.id);
-        effects.push({ bloc: targetBloc.bloc_name, blocId, value: diminished, oldPref, newPref });
+            .update({ momentum: newMom }).eq('id', targetRow.id);
+        effects.push({ bloc: targetBloc.bloc_name, blocId, value: diminished, oldMom, newMom });
     }
 
     // ── 8. Apply friction to opposed blocs ──
@@ -745,12 +743,11 @@ export async function executeOutreach(supabase, factionId, nationId, blocId, cur
     for (const fri of frictions) {
         const row = approvalByBloc[fri.blocId];
         if (!row) continue;
-        const oldPref = Math.round(row.preference_score || 0);
-        const newPref = Math.max(0, Math.min(100, oldPref + fri.penalty));
-        const newMom = Math.round(((row.momentum || 0) + fri.penalty) * 100) / 100;
+        const oldMom = Number(row.momentum || 0);
+        const newMom = Math.max(-50, Math.min(50, Math.round((oldMom + fri.penalty) * 100) / 100));
         await supabase.from('faction_bloc_approval')
-            .update({ preference_score: newPref, momentum: newMom }).eq('id', row.id);
-        effects.push({ bloc: fri.blocName, blocId: fri.blocId, value: fri.penalty, oldPref, newPref });
+            .update({ momentum: newMom }).eq('id', row.id);
+        effects.push({ bloc: fri.blocName, blocId: fri.blocId, value: fri.penalty, oldMom, newMom });
     }
 
     // ── 9. Deduct AP ──
@@ -1394,16 +1391,12 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
         ? cfg.APPROVAL_ON_PROMISE_CRISIS
         : cfg.APPROVAL_ON_PROMISE_STAT;
 
+    // ── 6. Apply immediate momentum bump (preference_score recalculated by three-pillar calc) ──
     const blocEffects = [];
     for (const blocId of affectedBlocIds) {
-        const row = approvalByBloc[blocId];
-        if (!row) continue;
-        const oldPref = Math.round(row.preference_score || 0);
-        const newPref = Math.min(100, oldPref + approvalBump);
-        await supabase.from('faction_bloc_approval')
-            .update({ preference_score: newPref }).eq('id', row.id);
+        await adjustMomentum(supabase, nationId, factionId, blocId, approvalBump, `promise:made_${promiseType}`);
         const bloc = (allBlocs || []).find(b => b.id === blocId);
-        blocEffects.push({ blocId, blocName: bloc?.bloc_name, oldPref, newPref, delta: approvalBump });
+        blocEffects.push({ blocId, blocName: bloc?.bloc_name, delta: approvalBump });
     }
 
     // ── 7. Deduct AP if needed ──
@@ -2033,36 +2026,16 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
     const cfg = MAKE_PROMISE_CONFIG;
 
     if (resolution === 'fulfilled') {
-        // ── REWARDS ──
-        // +preference with affected bloc (KEPT_PREF_BONUS)
-        const { data: blocRow } = await supabase
-            .from('faction_bloc_approval')
-            .select('id, preference_score')
-            .eq('faction_id', promise.party_id)
-            .eq('bloc_id', promise.bloc_id)
-            .single();
-
-        if (blocRow) {
-            const newPref = Math.min(100, Math.round(blocRow.preference_score + cfg.KEPT_PREF_BONUS));
-            await supabase.from('faction_bloc_approval')
-                .update({ preference_score: newPref })
-                .eq('id', blocRow.id);
+        // ── REWARDS (all via momentum — preference_score recalculated by three-pillar calc) ──
+        if (promise.bloc_id) {
+            await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, cfg.KEPT_PREF_BONUS, 'promise:kept_bloc');
         }
 
-        // +approval with ALL blocs (APPROVAL_IF_KEPT — the main +12 reward)
-        const { data: allBlocRows } = await supabase
-            .from('faction_bloc_approval')
-            .select('id, approval')
-            .eq('faction_id', promise.party_id);
-        for (const row of (allBlocRows || [])) {
-            const newApproval = Math.min(100, Math.round(row.approval + cfg.APPROVAL_IF_KEPT));
-            await supabase.from('faction_bloc_approval')
-                .update({ approval: newApproval })
-                .eq('id', row.id);
-        }
+        // +momentum with ALL blocs (APPROVAL_IF_KEPT — the main +12 reward)
+        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.APPROVAL_IF_KEPT, 'promise:kept');
 
-        // +momentum
-        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.KEPT_MOMENTUM, 'promise:kept');
+        // +momentum (additional general boost)
+        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.KEPT_MOMENTUM, 'promise:kept_bonus');
 
         // Mark promise as fulfilled
         await supabase.from('fundraiser_promises')
@@ -2070,38 +2043,18 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
             .eq('id', promise.id);
 
     } else if (resolution === 'broken') {
-        // ── PENALTIES ──
-        // -preference with affected bloc
-        const { data: blocRow } = await supabase
-            .from('faction_bloc_approval')
-            .select('id, preference_score')
-            .eq('faction_id', promise.party_id)
-            .eq('bloc_id', promise.bloc_id)
-            .single();
-
-        if (blocRow) {
-            const newPref = Math.max(0, Math.round(blocRow.preference_score + cfg.BROKEN_DONOR_PREF));
-            await supabase.from('faction_bloc_approval')
-                .update({ preference_score: newPref })
-                .eq('id', blocRow.id);
+        // ── PENALTIES (all via momentum — preference_score recalculated by three-pillar calc) ──
+        if (promise.bloc_id) {
+            await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, cfg.BROKEN_DONOR_PREF, 'promise:broken_bloc');
         }
 
-        // -preference with ALL blocs
-        const { data: allBlocRows } = await supabase
-            .from('faction_bloc_approval')
-            .select('id, preference_score')
-            .eq('faction_id', promise.party_id);
-        for (const row of (allBlocRows || [])) {
-            const newPref = Math.max(0, Math.round(row.preference_score + cfg.BROKEN_ALL_PREF));
-            await supabase.from('faction_bloc_approval')
-                .update({ preference_score: newPref })
-                .eq('id', row.id);
-        }
+        // -momentum with ALL blocs
+        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.BROKEN_ALL_PREF, 'promise:broken');
 
-        // -momentum
-        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.BROKEN_MOMENTUM, 'promise:broken');
+        // -momentum (additional penalty)
+        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.BROKEN_MOMENTUM, 'promise:broken_penalty');
 
-        // Nervous other promise holders: -1 pref with each
+        // Nervous other promise holders: -1 momentum with each bloc
         const { data: otherPromises } = await supabase
             .from('fundraiser_promises')
             .select('bloc_id')
@@ -2110,21 +2063,9 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
             .neq('id', promise.id);
 
         if (otherPromises && otherPromises.length > 0) {
-            const nervousBlocIds = [...new Set(otherPromises.map(p => p.bloc_id))];
+            const nervousBlocIds = [...new Set(otherPromises.map(p => p.bloc_id).filter(Boolean))];
             for (const nervousBlocId of nervousBlocIds) {
-                const { data: nervousRow } = await supabase
-                    .from('faction_bloc_approval')
-                    .select('id, preference_score')
-                    .eq('faction_id', promise.party_id)
-                    .eq('bloc_id', nervousBlocId)
-                    .single();
-
-                if (nervousRow) {
-                    const newPref = Math.max(0, Math.round(nervousRow.preference_score + cfg.BROKEN_NERVOUS_PREF));
-                    await supabase.from('faction_bloc_approval')
-                        .update({ preference_score: newPref })
-                        .eq('id', nervousRow.id);
-                }
+                await adjustMomentum(supabase, promise.nation_id, promise.party_id, nervousBlocId, cfg.BROKEN_NERVOUS_PREF, 'promise:broken_nervous');
             }
         }
 
@@ -5280,7 +5221,7 @@ export async function processRevolution(supabase, nation, currentTick) {
     if (allFactions && allFactions.length > 0) {
         for (const faction of allFactions) {
             await supabase.from('faction_bloc_approval')
-                .update({ preference_score: 50, momentum: 0 })
+                .update({ momentum: 0 })
                 .eq('faction_id', faction.id);
             await recalcDerivedApproval(supabase, faction.id);
         }
