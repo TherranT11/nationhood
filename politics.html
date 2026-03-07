@@ -1098,6 +1098,413 @@
     transition: transform 0.15s;
     flex-shrink: 0;
 }
+
+/* ── Edit Party Identity box ── */
+.pol-identity-box {
+    width: 380px;
+    flex-shrink: 0;
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-0);
+    border-radius: 4px;
+    padding: 16px 20px;
+    overflow-y: auto;
+}
+.pol-id-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 14px;
+}
+.pol-id-title {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--dtext-0);
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+.pol-id-subtitle {
+    font-family: var(--dfont-ui);
+    font-size: 10px;
+    color: var(--dtext-3);
+}
+.pol-id-preview {
+    width: 42px;
+    height: 42px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+.pol-id-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.pol-id-divider {
+    height: 1px;
+    background: var(--dborder-0);
+    margin: 14px 0;
+}
+.pol-id-section-label {
+    font-family: var(--dfont-ui);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    color: var(--dtext-2);
+    text-transform: uppercase;
+}
+.pol-id-ap-badge {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    color: var(--dtext-3);
+}
+.pol-id-name-display {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--dbg-4);
+    border: 1px solid var(--dborder-0);
+    border-radius: 3px;
+    margin-bottom: 8px;
+}
+.pol-id-name-display span:first-child {
+    font-family: var(--dfont-ui);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dtext-0);
+}
+.pol-id-name-display span:last-child {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    color: var(--dtext-3);
+}
+.pol-id-rename-btn {
+    width: 100%;
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 7px 12px;
+    border-radius: 3px;
+    background: transparent;
+    border: 1px dashed rgba(255,255,255,0.10);
+    color: var(--dtext-2);
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.pol-id-rename-btn:hover {
+    border-color: rgba(255,255,255,0.16);
+}
+.pol-id-rename-cost {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    padding: 2px 7px;
+    border: 1px solid rgba(200,166,78,0.35);
+    background: var(--damber-faint);
+    color: var(--damber);
+    border-radius: 2px;
+}
+.pol-id-rename-form {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.pol-id-rename-row {
+    display: flex;
+    gap: 6px;
+}
+.pol-id-rename-input {
+    flex: 1;
+    background: var(--dbg-4);
+    border: 1px solid var(--dborder-0);
+    border-radius: 3px;
+    color: var(--dtext-0);
+    font-family: var(--dfont-ui);
+    font-size: 12px;
+    padding: 7px 10px;
+    outline: none;
+}
+.pol-id-rename-input:focus {
+    border-color: var(--dborder-2);
+}
+.pol-id-rename-input.has-error {
+    border-color: var(--dred);
+}
+.pol-id-rename-confirm {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 7px 14px;
+    border-radius: 3px;
+    background: var(--damber-faint);
+    border: 1px solid var(--damber);
+    color: var(--damber);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.pol-id-rename-cancel {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    padding: 7px 10px;
+    border-radius: 3px;
+    background: transparent;
+    border: 1px solid var(--dborder-0);
+    color: var(--dtext-3);
+    cursor: pointer;
+}
+.pol-id-rename-meta {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    color: var(--dtext-3);
+}
+.pol-id-cooldown {
+    padding: 8px 12px;
+    background: var(--dbg-4);
+    border: 1px solid var(--dborder-0);
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.pol-id-cooldown-label {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+    white-space: nowrap;
+}
+.pol-id-cooldown-track {
+    flex: 1;
+    height: 3px;
+    background: var(--dborder-0);
+    border-radius: 2px;
+}
+.pol-id-cooldown-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--damber);
+}
+.pol-id-cooldown-ticks {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--damber);
+    white-space: nowrap;
+}
+.pol-id-error {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dred);
+    background: var(--dred-faint);
+    padding: 5px 8px;
+    border-radius: 2px;
+    border: 1px solid var(--dred-border);
+}
+.pol-id-desc {
+    width: 100%;
+    background: var(--dbg-4);
+    border: 1px solid var(--dborder-0);
+    border-radius: 3px;
+    color: var(--dtext-0);
+    font-family: var(--dfont-ui);
+    font-size: 11px;
+    padding: 8px 10px;
+    resize: none;
+    outline: none;
+    line-height: 1.5;
+    box-sizing: border-box;
+}
+.pol-id-desc:focus {
+    border-color: var(--dborder-2);
+}
+.pol-id-char-count {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+}
+.pol-id-char-count.warn {
+    color: var(--damber);
+}
+.pol-id-colors {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 8px;
+}
+.pol-id-swatch {
+    width: 22px;
+    height: 22px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    box-sizing: border-box;
+}
+.pol-id-swatch.selected {
+    border-color: var(--dtext-0);
+}
+.pol-id-hex-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+.pol-id-hex-label {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-2);
+}
+.pol-id-hex-input {
+    background: var(--dbg-4);
+    border: 1px solid var(--dborder-0);
+    border-radius: 2px;
+    color: var(--dtext-0);
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    width: 80px;
+    outline: none;
+}
+.pol-id-hex-preview {
+    width: 20px;
+    height: 20px;
+    border-radius: 2px;
+    border: 1px solid var(--dborder-0);
+}
+.pol-id-tab-bar {
+    display: flex;
+    margin-bottom: 10px;
+}
+.pol-id-tab {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    cursor: pointer;
+    border: 1px solid var(--dborder-0);
+    background: var(--dbg-4);
+    color: var(--dtext-2);
+}
+.pol-id-tab:first-child { border-radius: 2px 0 0 2px; }
+.pol-id-tab:last-child  { border-radius: 0 2px 2px 0; }
+.pol-id-tab.active {
+    background: rgba(255,255,255,0.04);
+    border-color: var(--dtext-2);
+    color: var(--dtext-0);
+}
+.pol-id-icon-cat {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    color: var(--dtext-3);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+}
+.pol-id-icon-grid {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+.pol-id-icon-tile {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 3px;
+    background: var(--dbg-4);
+    border: 1px solid var(--dborder-0);
+}
+.pol-id-icon-tile.selected {
+    border-color: currentColor;
+    background: rgba(255,255,255,0.04);
+}
+.pol-id-upload-zone {
+    border: 1px dashed var(--dborder-1);
+    border-radius: 3px;
+    padding: 18px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    background: var(--dbg-4);
+}
+.pol-id-upload-zone.has-image {
+    background: rgba(255,255,255,0.02);
+}
+.pol-id-upload-preview {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: 3px;
+}
+.pol-id-upload-text {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+    letter-spacing: 0.06em;
+    text-align: center;
+}
+.pol-id-upload-hint {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    color: var(--dtext-3);
+}
+.pol-id-remove-btn {
+    margin-top: 6px;
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: transparent;
+    border: 1px solid var(--dborder-0);
+    color: var(--dtext-3);
+    padding: 3px 10px;
+    border-radius: 2px;
+    cursor: pointer;
+}
+.pol-id-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.pol-id-footer-hint {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+}
+.pol-id-save-btn {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 7px 20px;
+    border-radius: 3px;
+    cursor: pointer;
+    background: var(--damber-faint);
+    border: 1px solid var(--damber);
+    color: var(--damber);
+}
+.pol-id-save-btn.saved {
+    background: var(--dgreen-faint);
+    border-color: var(--dgreen);
+    color: var(--dgreen);
+}
 </style>
 </head>
 <body>
@@ -1114,7 +1521,8 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
-import { getPartyIconSVG } from './js/party-icons.js';
+import { getPartyIconSVG, PARTY_ICONS, PARTY_COLOR_PALETTE } from './js/party-icons.js';
+import { deductAP } from './js/game/config.js';
 import { tickToDate } from './js/utils.js';
 import { fetchActiveCoalition, isPresidentialRepublic } from './js/game/government-structure.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './js/game/stats.js';
@@ -1397,6 +1805,7 @@ function renderPartyTab(f, nation, data) {
         <div class="pol-row-2">
         ${renderIdeologyBox(allParties, allPartyIdeologies, f.id)}
         ${renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, f.id)}
+        ${renderEditIdentityBox(f, currentTick)}
         </div>
     </div>`;
 
@@ -1410,6 +1819,9 @@ function renderPartyTab(f, nation, data) {
             el.style.height = h;
         });
     }
+
+    // Wire up Edit Party Identity interactivity
+    initEditIdentityBox(f);
 }
 
 function renderModifiersBox(f) {
@@ -1888,6 +2300,422 @@ function renderNationalMoodBox(nation, activeCrises, currentTick) {
             ${crisesHtml}
             ${issuesHtml}
         </div>`;
+}
+
+const RENAME_AP_COST  = 3;
+const RENAME_COOLDOWN = 60;
+const MAX_DESC        = 200;
+const MAX_FILE_KB     = 256;
+
+function renderEditIdentityBox(f, currentTick) {
+    const color = f.party_color || '#ffcc00';
+    const icon  = f.party_logo || 'flag';
+    const desc  = f.party_description || '';
+    const ap    = f.action_points || 0;
+    const lastRenameTick = f.last_rename_tick || 0;
+    const cooldownRemaining = Math.max(0, RENAME_COOLDOWN - (currentTick - lastRenameTick));
+    const onCooldown = cooldownRemaining > 0;
+
+    // Preview badge
+    const previewSvg = getPartyIconSVG(icon, 20, color);
+
+    // Color swatches
+    const swatchesHtml = PARTY_COLOR_PALETTE.map(c => {
+        const sel = c.hex.toLowerCase() === color.toLowerCase() ? ' selected' : '';
+        return `<div class="pol-id-swatch${sel}" data-color="${c.hex}" title="${c.label}" style="background:${c.hex}"></div>`;
+    }).join('');
+
+    // Icon categories
+    const categories = {};
+    for (const [key, val] of Object.entries(PARTY_ICONS)) {
+        const cat = val.category || 'Other';
+        if (!categories[cat]) categories[cat] = [];
+        categories[cat].push({ key, label: val.label });
+    }
+    let iconsHtml = '';
+    for (const [cat, items] of Object.entries(categories)) {
+        iconsHtml += `<div class="pol-id-icon-cat">${escapeHtml(cat)}</div><div class="pol-id-icon-grid">`;
+        for (const item of items) {
+            const sel = item.key === icon ? ' selected' : '';
+            const svg = getPartyIconSVG(item.key, 16, item.key === icon ? color : '#8a8778');
+            iconsHtml += `<div class="pol-id-icon-tile${sel}" data-icon="${item.key}" title="${escapeHtml(item.label)}" style="color:${item.key === icon ? color : '#8a8778'}">${svg}</div>`;
+        }
+        iconsHtml += '</div>';
+    }
+
+    // Rename section
+    let renameHtml;
+    if (onCooldown) {
+        const pct = (cooldownRemaining / RENAME_COOLDOWN * 100).toFixed(1);
+        renameHtml = `
+            <div class="pol-id-cooldown">
+                <span class="pol-id-cooldown-label">Rename cooldown</span>
+                <div class="pol-id-cooldown-track"><div class="pol-id-cooldown-fill" style="width:${pct}%"></div></div>
+                <span class="pol-id-cooldown-ticks">${cooldownRemaining}t</span>
+            </div>`;
+    } else {
+        renameHtml = `
+            <button class="pol-id-rename-btn" id="pol-id-rename-btn">
+                <span>Rename Party</span>
+                <span class="pol-id-rename-cost">${RENAME_AP_COST} AP · ${RENAME_COOLDOWN}t cooldown</span>
+            </button>
+            <div class="pol-id-rename-form" id="pol-id-rename-form" style="display:none">
+                <div class="pol-id-rename-row">
+                    <input class="pol-id-rename-input" id="pol-id-rename-input" placeholder="Enter new party name…" maxlength="60">
+                    <button class="pol-id-rename-confirm" id="pol-id-rename-confirm">Confirm</button>
+                    <button class="pol-id-rename-cancel" id="pol-id-rename-cancel">✕</button>
+                </div>
+                <div class="pol-id-rename-meta">
+                    <span>Costs <span style="color:var(--damber)">${RENAME_AP_COST} AP</span> · locks rename for <span style="color:var(--damber)">${RENAME_COOLDOWN} ticks</span></span>
+                    <span id="pol-id-ap-available" style="color:${ap >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)'}">${ap} AP available</span>
+                </div>
+                <div class="pol-id-error" id="pol-id-rename-error" style="display:none"></div>
+            </div>`;
+    }
+
+    return `<div class="pol-identity-box" id="pol-identity-box"
+        data-faction-id="${f.id}"
+        data-selected-color="${color}"
+        data-selected-icon="${icon}"
+        data-current-tick="${currentTick}">
+
+        <!-- Header -->
+        <div class="pol-id-header">
+            <div>
+                <div class="pol-id-title">Edit Party Identity</div>
+                <div class="pol-id-subtitle">Cosmetic changes are free and instant</div>
+            </div>
+            <div class="pol-id-preview" id="pol-id-preview" style="border:2px solid ${color};background:${color}18">
+                ${previewSvg}
+            </div>
+        </div>
+        <div class="pol-id-divider"></div>
+
+        <!-- Party Name -->
+        <div style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <span class="pol-id-section-label">Party Name</span>
+                <span class="pol-id-ap-badge">AP: <span id="pol-id-ap-display" style="color:${ap >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)'}">${ap}</span></span>
+            </div>
+            <div class="pol-id-name-display">
+                <span id="pol-id-current-name">${escapeHtml(f.faction_name)}</span>
+                <span>current</span>
+            </div>
+            ${renameHtml}
+        </div>
+        <div class="pol-id-divider"></div>
+
+        <!-- Description -->
+        <div style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <span class="pol-id-section-label">Description</span>
+                <span class="pol-id-char-count${desc.length > MAX_DESC * 0.9 ? ' warn' : ''}" id="pol-id-char-count">${desc.length} / ${MAX_DESC}</span>
+            </div>
+            <textarea class="pol-id-desc" id="pol-id-desc" rows="3" maxlength="${MAX_DESC}">${escapeHtml(desc)}</textarea>
+        </div>
+        <div class="pol-id-divider"></div>
+
+        <!-- Party Color -->
+        <div style="margin-bottom:14px">
+            <span class="pol-id-section-label">Party Color</span>
+            <div class="pol-id-colors" id="pol-id-colors">${swatchesHtml}</div>
+            <div class="pol-id-hex-row">
+                <span class="pol-id-hex-label">Custom hex</span>
+                <input class="pol-id-hex-input" id="pol-id-hex-input" value="${color}" maxlength="7">
+                <div class="pol-id-hex-preview" id="pol-id-hex-preview" style="background:${color}"></div>
+            </div>
+        </div>
+        <div class="pol-id-divider"></div>
+
+        <!-- Party Logo -->
+        <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <span class="pol-id-section-label">Party Logo</span>
+                <div class="pol-id-tab-bar">
+                    <button class="pol-id-tab active" data-tab="icon">Icon</button>
+                    <button class="pol-id-tab" data-tab="custom">Custom Image</button>
+                </div>
+            </div>
+            <div id="pol-id-icon-section">${iconsHtml}</div>
+            <div id="pol-id-upload-section" style="display:none">
+                <div class="pol-id-upload-zone" id="pol-id-upload-zone">
+                    <div style="font-size:22px;color:var(--dtext-3)">⬆</div>
+                    <div class="pol-id-upload-text">Click to upload logo</div>
+                    <div class="pol-id-upload-hint">PNG · JPG · SVG · WebP · Max ${MAX_FILE_KB}KB · Best at 128×128px</div>
+                </div>
+                <input type="file" accept="image/*" id="pol-id-file-input" style="display:none">
+                <div class="pol-id-error" id="pol-id-upload-error" style="display:none"></div>
+                <button class="pol-id-remove-btn" id="pol-id-remove-btn" style="display:none">Remove Image</button>
+            </div>
+        </div>
+        <div class="pol-id-divider"></div>
+
+        <!-- Footer -->
+        <div class="pol-id-footer">
+            <div class="pol-id-footer-hint">Preview updates live ↗</div>
+            <button class="pol-id-save-btn" id="pol-id-save-btn">Save Changes</button>
+        </div>
+    </div>`;
+}
+
+function initEditIdentityBox(f) {
+    const box = document.getElementById('pol-identity-box');
+    if (!box) return;
+
+    const preview      = document.getElementById('pol-id-preview');
+    const colorsGrid   = document.getElementById('pol-id-colors');
+    const hexInput     = document.getElementById('pol-id-hex-input');
+    const hexPreview   = document.getElementById('pol-id-hex-preview');
+    const descArea     = document.getElementById('pol-id-desc');
+    const charCount    = document.getElementById('pol-id-char-count');
+    const saveBtn      = document.getElementById('pol-id-save-btn');
+    const renameBtn    = document.getElementById('pol-id-rename-btn');
+    const renameForm   = document.getElementById('pol-id-rename-form');
+    const renameInput  = document.getElementById('pol-id-rename-input');
+    const renameConfirm = document.getElementById('pol-id-rename-confirm');
+    const renameCancel = document.getElementById('pol-id-rename-cancel');
+    const renameError  = document.getElementById('pol-id-rename-error');
+    const nameDisplay  = document.getElementById('pol-id-current-name');
+    const apDisplay    = document.getElementById('pol-id-ap-display');
+    const apAvailable  = document.getElementById('pol-id-ap-available');
+    const iconSection  = document.getElementById('pol-id-icon-section');
+    const uploadSection = document.getElementById('pol-id-upload-section');
+    const uploadZone   = document.getElementById('pol-id-upload-zone');
+    const fileInput    = document.getElementById('pol-id-file-input');
+    const uploadError  = document.getElementById('pol-id-upload-error');
+    const removeBtn    = document.getElementById('pol-id-remove-btn');
+
+    let uploadedDataUrl = null;
+    let useCustomImage  = false;
+
+    function getColor() { return box.dataset.selectedColor; }
+    function getIcon()  { return box.dataset.selectedIcon; }
+
+    function updatePreview() {
+        const c = getColor();
+        preview.style.border = '2px solid ' + c;
+        preview.style.background = c + '18';
+        if (useCustomImage && uploadedDataUrl) {
+            preview.innerHTML = '<img src="' + uploadedDataUrl + '" alt="" style="width:100%;height:100%;object-fit:cover">';
+        } else {
+            preview.innerHTML = getPartyIconSVG(getIcon(), 20, c);
+        }
+    }
+
+    function updateIconHighlights() {
+        const c = getColor();
+        const sel = getIcon();
+        box.querySelectorAll('.pol-id-icon-tile').forEach(t => {
+            const key = t.dataset.icon;
+            const isSelected = key === sel;
+            t.classList.toggle('selected', isSelected);
+            t.style.color = isSelected ? c : '#8a8778';
+            t.innerHTML = getPartyIconSVG(key, 16, isSelected ? c : '#8a8778');
+        });
+    }
+
+    function updateSwatchHighlights() {
+        const c = getColor().toLowerCase();
+        box.querySelectorAll('.pol-id-swatch').forEach(s => {
+            s.classList.toggle('selected', s.dataset.color.toLowerCase() === c);
+        });
+    }
+
+    // Color swatches
+    if (colorsGrid) {
+        colorsGrid.addEventListener('click', e => {
+            const swatch = e.target.closest('.pol-id-swatch');
+            if (!swatch) return;
+            box.dataset.selectedColor = swatch.dataset.color;
+            hexInput.value = swatch.dataset.color;
+            hexPreview.style.background = swatch.dataset.color;
+            updateSwatchHighlights();
+            updateIconHighlights();
+            updatePreview();
+        });
+    }
+
+    // Custom hex
+    if (hexInput) {
+        hexInput.addEventListener('input', () => {
+            const val = hexInput.value;
+            if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+                box.dataset.selectedColor = val;
+                hexPreview.style.background = val;
+                updateSwatchHighlights();
+                updateIconHighlights();
+                updatePreview();
+            } else {
+                hexPreview.style.background = 'var(--dtext-3)';
+            }
+        });
+    }
+
+    // Icon tiles
+    if (iconSection) {
+        iconSection.addEventListener('click', e => {
+            const tile = e.target.closest('.pol-id-icon-tile');
+            if (!tile) return;
+            box.dataset.selectedIcon = tile.dataset.icon;
+            useCustomImage = false;
+            updateIconHighlights();
+            updatePreview();
+        });
+    }
+
+    // Tab toggle
+    box.querySelectorAll('.pol-id-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            box.querySelectorAll('.pol-id-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const isIcon = tab.dataset.tab === 'icon';
+            iconSection.style.display = isIcon ? '' : 'none';
+            uploadSection.style.display = isIcon ? 'none' : '';
+        });
+    });
+
+    // Upload zone
+    if (uploadZone) {
+        uploadZone.addEventListener('click', () => fileInput.click());
+    }
+    if (fileInput) {
+        fileInput.addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            uploadError.style.display = 'none';
+            if (file.size > MAX_FILE_KB * 1024) {
+                uploadError.textContent = '⚠ File too large — max ' + MAX_FILE_KB + 'KB.';
+                uploadError.style.display = '';
+                return;
+            }
+            if (!file.type.startsWith('image/')) {
+                uploadError.textContent = '⚠ Must be PNG, JPG, SVG, or WebP.';
+                uploadError.style.display = '';
+                return;
+            }
+            const r = new FileReader();
+            r.onload = ev => {
+                uploadedDataUrl = ev.target.result;
+                useCustomImage = true;
+                uploadZone.classList.add('has-image');
+                uploadZone.innerHTML = `
+                    <img class="pol-id-upload-preview" src="${uploadedDataUrl}" alt="preview" style="border:2px solid ${getColor()}">
+                    <div class="pol-id-upload-text" style="color:var(--dtext-2)">Click to replace</div>
+                    <div class="pol-id-upload-hint">PNG · JPG · SVG · WebP · Max ${MAX_FILE_KB}KB · Best at 128×128px</div>`;
+                removeBtn.style.display = '';
+                updatePreview();
+            };
+            r.readAsDataURL(file);
+        });
+    }
+    if (removeBtn) {
+        removeBtn.addEventListener('click', () => {
+            uploadedDataUrl = null;
+            useCustomImage = false;
+            uploadZone.classList.remove('has-image');
+            uploadZone.innerHTML = `
+                <div style="font-size:22px;color:var(--dtext-3)">⬆</div>
+                <div class="pol-id-upload-text">Click to upload logo</div>
+                <div class="pol-id-upload-hint">PNG · JPG · SVG · WebP · Max ${MAX_FILE_KB}KB · Best at 128×128px</div>`;
+            removeBtn.style.display = 'none';
+            updatePreview();
+        });
+    }
+
+    // Description char counter
+    if (descArea && charCount) {
+        descArea.addEventListener('input', () => {
+            const len = descArea.value.length;
+            charCount.textContent = len + ' / ' + MAX_DESC;
+            charCount.classList.toggle('warn', len > MAX_DESC * 0.9);
+        });
+    }
+
+    // Rename flow
+    if (renameBtn && renameForm) {
+        renameBtn.addEventListener('click', () => {
+            renameBtn.style.display = 'none';
+            renameForm.style.display = '';
+            renameInput.focus();
+        });
+    }
+    if (renameCancel) {
+        renameCancel.addEventListener('click', () => {
+            renameForm.style.display = 'none';
+            renameBtn.style.display = '';
+            renameInput.value = '';
+            renameError.style.display = 'none';
+            renameInput.classList.remove('has-error');
+        });
+    }
+    if (renameConfirm) {
+        renameConfirm.addEventListener('click', async () => {
+            renameError.style.display = 'none';
+            renameInput.classList.remove('has-error');
+            const trimmed = renameInput.value.trim();
+            if (!trimmed) {
+                renameError.textContent = '⚠ Name cannot be empty.';
+                renameError.style.display = '';
+                renameInput.classList.add('has-error');
+                return;
+            }
+            if (trimmed.length < 3) {
+                renameError.textContent = '⚠ Minimum 3 characters.';
+                renameError.style.display = '';
+                renameInput.classList.add('has-error');
+                return;
+            }
+            // Deduct AP via RPC
+            const result = await deductAP(_supabase, f.id, RENAME_AP_COST);
+            if (!result.success) {
+                renameError.textContent = '⚠ ' + (result.error || 'Insufficient AP');
+                renameError.style.display = '';
+                return;
+            }
+            // Update faction_name + last_rename_tick in DB
+            const tick = parseInt(box.dataset.currentTick) || 0;
+            await _supabase.from('factions').update({
+                faction_name: trimmed,
+                last_rename_tick: tick
+            }).eq('id', f.id);
+
+            // Update UI
+            nameDisplay.textContent = trimmed;
+            apDisplay.textContent = result.newAp;
+            apDisplay.style.color = result.newAp >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)';
+            if (apAvailable) {
+                apAvailable.textContent = result.newAp + ' AP available';
+                apAvailable.style.color = result.newAp >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)';
+            }
+            renameForm.style.display = 'none';
+            renameInput.value = '';
+            // Replace rename button with cooldown bar
+            renameBtn.outerHTML = `
+                <div class="pol-id-cooldown">
+                    <span class="pol-id-cooldown-label">Rename cooldown</span>
+                    <div class="pol-id-cooldown-track"><div class="pol-id-cooldown-fill" style="width:100%"></div></div>
+                    <span class="pol-id-cooldown-ticks">${RENAME_COOLDOWN}t</span>
+                </div>`;
+        });
+    }
+
+    // Save button
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+            const updateData = {
+                party_color: getColor(),
+                party_logo: useCustomImage ? null : getIcon(),
+                party_description: descArea ? descArea.value.slice(0, MAX_DESC) : ''
+            };
+            await _supabase.from('factions').update(updateData).eq('id', f.id);
+            saveBtn.textContent = '✓ Saved';
+            saveBtn.classList.add('saved');
+            setTimeout(() => {
+                saveBtn.textContent = 'Save Changes';
+                saveBtn.classList.remove('saved');
+            }, 2000);
+        });
+    }
 }
 
 function escapeHtml(str) {
