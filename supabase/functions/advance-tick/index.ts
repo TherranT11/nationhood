@@ -4558,6 +4558,18 @@ async function repealActiveLaw({
 
     await reversePolicy(supabase, nation, targetLaw.policies, targetLaw.passed_tick, currentTick);
 
+    // Nullify any FK references to this active_law before deleting it
+    // (bills.repeal_active_law_id and bill_articles.repeal_active_law_id)
+    await supabase
+        .from('bills')
+        .update({ repeal_active_law_id: null })
+        .eq('repeal_active_law_id', targetLawId);
+
+    await supabase
+        .from('bill_articles')
+        .update({ repeal_active_law_id: null })
+        .eq('repeal_active_law_id', targetLawId);
+
     const { error: deleteError } = await supabase
         .from('active_laws')
         .delete()
