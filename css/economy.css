@@ -213,6 +213,98 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     gap: 16px;
 }
 
+/* ===== BUDGET TAB ===== */
+.budget-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+.budget-line-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.budget-line-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 12px;
+    font-size: 0.78rem;
+    color: #c4c2b6;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.budget-line-item:last-child {
+    border-bottom: none;
+}
+.budget-line-label {
+    flex: 1;
+}
+.budget-line-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    color: #e2e0d6;
+    text-align: right;
+}
+.budget-line-bold .budget-line-label {
+    font-weight: 700;
+    color: #e2e0d6;
+}
+.budget-line-bold .budget-line-value {
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+.budget-line-divider {
+    height: 1px;
+    background: rgba(255,255,255,0.1);
+    margin: 4px 12px;
+}
+.budget-collection-rate {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 12px;
+    font-size: 0.75rem;
+    color: #8a8778;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    margin-top: 4px;
+}
+.budget-cr-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    color: #c4c2b6;
+}
+.budget-net-box {
+    margin-top: 16px;
+    padding: 16px 20px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-left-width: 3px;
+    border-radius: 6px;
+    text-align: center;
+}
+.budget-net-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    color: #8a8778;
+    margin-bottom: 4px;
+}
+.budget-net-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+.budget-net-note {
+    font-size: 0.72rem;
+    color: #6b6a5e;
+    margin-top: 6px;
+    font-style: italic;
+}
+
+@media (max-width: 700px) {
+    .budget-columns {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Placeholder */
 .econ-placeholder {
     text-align: center;
