@@ -336,7 +336,7 @@
 .pol-columns {
     display: flex;
     gap: 24px;
-    align-items: stretch;
+    align-items: flex-start;
 }
 
 /* ── Modifiers box ── */
@@ -433,6 +433,175 @@
     display: flex;
     align-items: center;
 }
+
+/* ── Parliament box ── */
+.pol-parliament-box {
+    width: 380px;
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-0);
+    border-radius: 4px;
+    padding: 22px 24px 24px;
+}
+.pol-parl-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+.pol-parl-title {
+    font-family: var(--dfont-mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dtxt-muted);
+}
+.pol-parl-seats-count {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--dtxt-dim);
+}
+.pol-seat-bar-wrap {
+    position: relative;
+    margin-bottom: 18px;
+}
+.pol-seat-bar {
+    display: flex;
+    gap: 2px;
+    height: 14px;
+    border-radius: 3px;
+    overflow: hidden;
+}
+.pol-seat-segment {
+    height: 100%;
+    border-radius: 2px;
+    min-width: 2px;
+}
+.pol-majority-line {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 0;
+    border-left: 2px dashed var(--dtxt-dim);
+    pointer-events: none;
+}
+.pol-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    margin-top: 14px;
+}
+.pol-section-header:first-of-type {
+    margin-top: 0;
+}
+.pol-section-title {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dtxt-dim);
+}
+.pol-section-seats {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--dtxt-dim);
+}
+.pol-parl-party-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--dborder-hair);
+}
+.pol-parl-party-row:last-child {
+    border-bottom: none;
+}
+.pol-mini-logo {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--dfont-mono);
+    font-size: 7px;
+    font-weight: 800;
+    color: #fff;
+    flex-shrink: 0;
+    text-transform: uppercase;
+}
+.pol-parl-party-name {
+    font-family: var(--dfont-ui);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--dtxt-primary);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pol-parl-party-seats {
+    font-family: var(--dfont-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--dtxt-secondary);
+}
+.pol-you-pill {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: var(--dblue);
+    background: var(--dblue-faint);
+    border: 1px solid var(--dblue-border);
+    border-radius: 3px;
+    padding: 1px 5px;
+}
+.pol-hog-pill {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--damber);
+    background: var(--damber-faint);
+    border: 1px solid var(--damber-border);
+    border-radius: 3px;
+    padding: 1px 5px;
+}
+.pol-margin-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 16px;
+    padding: 8px 0;
+    border-top: 1px solid var(--dborder-0);
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 600;
+}
+.pol-margin-positive {
+    color: var(--dgreen);
+}
+.pol-margin-negative {
+    color: var(--dred);
+}
+.pol-margin-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.pol-margin-positive .pol-margin-dot {
+    background: var(--dgreen);
+}
+.pol-margin-negative .pol-margin-dot {
+    background: var(--dred);
+}
 </style>
 </head>
 <body>
@@ -469,7 +638,7 @@ initPage('politics', async (state) => {
     // Fetch total seats from all parties
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, seats, national_vote_share')
+        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -528,7 +697,8 @@ initPage('politics', async (state) => {
         role,
         coalition,
         currentTick,
-        officerNames
+        officerNames,
+        allParties
     });
 });
 
@@ -568,7 +738,7 @@ function generateOfficerNames(factionId) {
 function renderPartyTab(f, nation, data) {
     const {
         totalSeats, mySeats, voteSharePct, lastElectionDate,
-        seatDelta, role, officerNames
+        seatDelta, role, officerNames, allParties, coalition
     } = data;
 
     const partyColor = f.party_color || '#ffcc00';
@@ -684,6 +854,7 @@ function renderPartyTab(f, nation, data) {
         </div>
         </div><!-- /pol-party-card -->
         ${renderModifiersBox(f)}
+        ${renderParliamentBox(allParties, coalition, nation, f.id)}
         </div><!-- /pol-columns -->
     </div>`;
 
@@ -722,6 +893,117 @@ function renderModifiersBox(f) {
                 <span class="pol-mod-count">${modCount} active</span>
             </div>
             ${bodyHtml}
+        </div>`;
+}
+
+function miniLogo(color, acronym, name) {
+    const c = color || '#8a8778';
+    const abbr = acronym || (name ? name.substring(0, 2).toUpperCase() : '??');
+    return `<div class="pol-mini-logo" style="background:${c}">${escapeHtml(abbr)}</div>`;
+}
+
+function hogTitle(govType) {
+    if (!govType) return 'Head of Gov.';
+    const g = govType.toLowerCase();
+    if (g === 'democracy' || g.includes('parliament')) return 'PM';
+    if (g.includes('president')) return 'President';
+    if (g === 'autocracy' || g.includes('dictator') || g.includes('authorit')) return 'Strongman';
+    return 'Head of Gov.';
+}
+
+function renderParliamentBox(allParties, coalition, nation, playerFactionId) {
+    const parties = allParties || [];
+    const totalSeats = parties.reduce((sum, p) => sum + (p.seats || 0), 0);
+    const majority = Math.ceil(totalSeats / 2);
+    const coalitionIds = new Set(coalition?.party_ids || []);
+    const leadPartyId = coalition?.lead_party_id || null;
+
+    // Split into governing and opposition
+    const governing = parties.filter(p => coalitionIds.has(p.id));
+    const opposition = parties.filter(p => !coalitionIds.has(p.id));
+    const govSeats = governing.reduce((sum, p) => sum + (p.seats || 0), 0);
+    const oppSeats = opposition.reduce((sum, p) => sum + (p.seats || 0), 0);
+
+    // Seat composition bar — sorted by seats desc
+    const barParties = [...parties].sort((a, b) => (b.seats || 0) - (a.seats || 0));
+    const segmentsHtml = totalSeats > 0
+        ? barParties.map(p => {
+            const pct = ((p.seats || 0) / totalSeats) * 100;
+            if (pct <= 0) return '';
+            const c = p.party_color || '#8a8778';
+            return `<div class="pol-seat-segment" style="width:${pct.toFixed(2)}%;background:${c}"></div>`;
+        }).join('')
+        : '';
+
+    // Majority line position
+    const majPct = totalSeats > 0 ? (majority / totalSeats) * 100 : 50;
+    const majorityLineHtml = `<div class="pol-majority-line" style="left:${majPct.toFixed(2)}%"></div>`;
+
+    // Government title
+    const title = hogTitle(nation?.government_type);
+
+    // Party row renderer
+    function partyRow(p) {
+        const logo = miniLogo(p.party_color, p.abbreviation, p.faction_name);
+        const name = escapeHtml(p.faction_name || 'Unknown');
+        const seats = p.seats || 0;
+        const isPlayer = p.id === playerFactionId;
+        const isHoG = p.id === leadPartyId;
+        const pills = [
+            isHoG ? `<span class="pol-hog-pill">${escapeHtml(title)}</span>` : '',
+            isPlayer ? '<span class="pol-you-pill">YOU</span>' : ''
+        ].filter(Boolean).join(' ');
+        return `<div class="pol-parl-party-row">
+            ${logo}
+            <span class="pol-parl-party-name">${name}</span>
+            ${pills}
+            <span class="pol-parl-party-seats">${seats}</span>
+        </div>`;
+    }
+
+    const govRowsHtml = governing.length > 0
+        ? governing.sort((a, b) => (b.seats || 0) - (a.seats || 0)).map(partyRow).join('')
+        : '';
+    const oppRowsHtml = opposition.length > 0
+        ? opposition.sort((a, b) => (b.seats || 0) - (a.seats || 0)).map(partyRow).join('')
+        : '';
+
+    // Margin
+    const margin = govSeats - majority;
+    const marginPositive = margin >= 0;
+    const marginCls = marginPositive ? 'pol-margin-positive' : 'pol-margin-negative';
+    const marginText = marginPositive
+        ? `+${margin} above majority`
+        : `${Math.abs(margin)} below majority`;
+
+    return `
+        <div class="pol-parliament-box">
+            <div class="pol-parl-header">
+                <span class="pol-parl-title">Parliament</span>
+                <span class="pol-parl-seats-count">${totalSeats} seats</span>
+            </div>
+
+            <div class="pol-seat-bar-wrap">
+                <div class="pol-seat-bar">${segmentsHtml}</div>
+                ${majorityLineHtml}
+            </div>
+
+            <div class="pol-section-header">
+                <span class="pol-section-title">Governing Coalition</span>
+                <span class="pol-section-seats">${govSeats} seats</span>
+            </div>
+            ${govRowsHtml}
+
+            <div class="pol-section-header">
+                <span class="pol-section-title">Opposition</span>
+                <span class="pol-section-seats">${oppSeats} seats</span>
+            </div>
+            ${oppRowsHtml}
+
+            <div class="pol-margin-row ${marginCls}">
+                <span class="pol-margin-dot"></span>
+                <span>${marginText}</span>
+            </div>
         </div>`;
 }
 
