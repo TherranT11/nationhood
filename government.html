@@ -40,7 +40,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration } from './js/game-common.js';
-import { getPartyIconSVG } from './js/party-icons.js';
+import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 (function () {
     'use strict';
 
@@ -215,7 +215,7 @@ async function renderGovernmentPage() {
             fetchActiveCoalition(_supabase, currentNation.id),
             fetchMinistries(),
             _supabase.from('factions')
-                .select('id, faction_name, abbreviation, is_npc, seats, approval_rating, loyalty, action_points, party_color, party_logo')
+                .select('id, faction_name, abbreviation, is_npc, seats, approval_rating, loyalty, action_points, party_color, party_logo, custom_logo_url')
                 .eq('nation_id', currentNation.id).eq('faction_type', 'party')
         ]);
 
@@ -453,6 +453,10 @@ function getPartyLogoById(partyId) {
     const p = allParties.find(x => x.id === partyId);
     return p?.party_logo || null;
 }
+function getPartyCustomLogoById(partyId) {
+    const p = allParties.find(x => x.id === partyId);
+    return p?.custom_logo_url || null;
+}
 
 // ==================== ADMINISTRATION BOX ====================
 
@@ -689,7 +693,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                     ${renderAdminChat()}
                 </div>
                 <div class="coalition-parties">
-                    <div class="coalition-party-tag" style="border-left:3px solid ${getPartyColorById(presidentFactionId)};padding-left:8px;">${getPartyLogoById(presidentFactionId) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(getPartyLogoById(presidentFactionId), 16, getPartyColorById(presidentFactionId))}</span>` : ''}${escapeHtml(presPartyName)}<span class="seats">${presPartySeats} Seats</span></div>
+                    <div class="coalition-party-tag" style="border-left:3px solid ${getPartyColorById(presidentFactionId)};padding-left:8px;">${getPartyLogoById(presidentFactionId) || getPartyCustomLogoById(presidentFactionId) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: getPartyCustomLogoById(presidentFactionId), iconKey: getPartyLogoById(presidentFactionId), size: 16, color: getPartyColorById(presidentFactionId) })}</span>` : ''}${escapeHtml(presPartyName)}<span class="seats">${presPartySeats} Seats</span></div>
                 </div>
                 ${renderImpeachmentButton()}
             </div>`;
@@ -737,7 +741,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         if (missingGovIds.length > 0) {
             const { data: missingGovParties } = await _supabase
                 .from('factions')
-                .select('id, faction_name, abbreviation, seats, party_color, party_logo, is_npc')
+                .select('id, faction_name, abbreviation, seats, party_color, party_logo, custom_logo_url, is_npc')
                 .in('id', missingGovIds);
             if (missingGovParties) allParties.push(...missingGovParties);
         }
@@ -771,8 +775,10 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                 <div class="coalition-parties">
                     ${coalitionParties.map((p, i) => {
                         const cpColor = getPartyColorById(p.party_id || allParties.find(x => x.faction_name === p.party_name)?.id);
-                        const cpLogo = getPartyLogoById(p.party_id || allParties.find(x => x.faction_name === p.party_name)?.id);
-                        const cpLogoHtml = cpLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(cpLogo, 16, cpColor)}</span>` : '';
+                        const cpPartyId = p.party_id || allParties.find(x => x.faction_name === p.party_name)?.id;
+                        const cpLogo = getPartyLogoById(cpPartyId);
+                        const cpCustomLogo = getPartyCustomLogoById(cpPartyId);
+                        const cpLogoHtml = cpLogo || cpCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: cpCustomLogo, iconKey: cpLogo, size: 16, color: cpColor })}</span>` : '';
                         return `${i > 0 ? '<span class="coalition-divider">|</span>' : ''}<div class="coalition-party-tag" style="border-left:3px solid ${cpColor};padding-left:8px;">${cpLogoHtml}${escapeHtml(p.party_name)}<span class="seats">${p.seats} Seats</span></div>`;
                     }).join('')}
                 </div>
@@ -857,7 +863,8 @@ function renderChatMessages() {
         const partyName = party?.faction_name || 'Unknown';
         const partyColor = party?.party_color || '#888';
         const partyLogo = party?.party_logo;
-        const logoHtml = partyLogo ? `<span style="display:inline-flex;vertical-align:middle;">${getPartyIconSVG(partyLogo, 14, partyColor)}</span>` : '';
+        const partyCustomLogo = party?.custom_logo_url;
+        const logoHtml = partyLogo || partyCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;">${getPartyLogoHTML({ customLogoUrl: partyCustomLogo, iconKey: partyLogo, size: 14, color: partyColor })}</span>` : '';
         const timeAgo = formatChatTime(m.created_at);
         const escapedMsg = escapeHtml(m.message);
         return `<div class="admin-chat-msg" style="border-left-color:${partyColor};">
@@ -1173,7 +1180,8 @@ function renderCabinet(ministries, coalition) {
                 const partyName = m.factions?.faction_name || 'Unknown';
                 const mColor = getPartyColorById(m.party_id);
                 const mLogo = getPartyLogoById(m.party_id);
-                const mLogoHtml = mLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(mLogo, 16, mColor)}</span>` : '';
+                const mCustomLogo = getPartyCustomLogoById(m.party_id);
+                const mLogoHtml = mLogo || mCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: mCustomLogo, iconKey: mLogo, size: 16, color: mColor })}</span>` : '';
                 const appr = m.minister_approval ?? 50;
                 const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
                 return `<div class="ministry-card" style="border-top:3px solid ${mColor};padding:10px 12px;"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${escapeHtml(m.minister_first_name)} ${escapeHtml(m.minister_last_name)}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party" style="color:${mColor};">${mLogoHtml}${escapeHtml(partyName)}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>${renderMinistryStatBreakdown(key, m)}${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests, m)}</div>`;
@@ -1213,7 +1221,8 @@ function renderCabinet(ministries, coalition) {
         var partyName = m.factions?.faction_name || 'Unknown';
         var mColor = getPartyColorById(m.party_id);
         var mLogo = getPartyLogoById(m.party_id);
-        var mLogoHtml = mLogo ? '<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">' + getPartyIconSVG(mLogo, 16, mColor) + '</span>' : '';
+        var mCustomLogo = getPartyCustomLogoById(m.party_id);
+        var mLogoHtml = (mLogo || mCustomLogo) ? '<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">' + getPartyLogoHTML({ customLogoUrl: mCustomLogo, iconKey: mLogo, size: 16, color: mColor }) + '</span>' : '';
         var name = m.minister_first_name + ' ' + m.minister_last_name;
         var isMyMinistry = currentFaction && m.party_id === currentFaction.id;
         var resignBtn = (isMyMinistry && !isCaretaker) ? '<div class="ministry-actions"><button class="ministry-btn purge" onclick="event.stopPropagation();resignMinistry(\'' + m.ministry_key + '\')">Resign Ministry</button></div>' : '';
@@ -1291,7 +1300,8 @@ function renderPresidentialMinistryCard(key, ministry) {
         const partyName = ministry.factions?.faction_name || 'Unknown';
         const pmColor = getPartyColorById(ministry.party_id);
         const pmLogo = getPartyLogoById(ministry.party_id);
-        const pmLogoHtml = pmLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(pmLogo, 16, pmColor)}</span>` : '';
+        const pmCustomLogo = getPartyCustomLogoById(ministry.party_id);
+        const pmLogoHtml = pmLogo || pmCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: pmCustomLogo, iconKey: pmLogo, size: 16, color: pmColor })}</span>` : '';
         const appr = ministry.minister_approval ?? 50;
         const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
 
@@ -1384,7 +1394,8 @@ function openNominateModal(ministryKey) {
         const isPres = c.partyId === presidentFactionId;
         const candColor = getPartyColorById(c.partyId);
         const candLogo = getPartyLogoById(c.partyId);
-        const candLogoHtml = candLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyIconSVG(candLogo, 14, candColor)}</span>` : '';
+        const candCustomLogo = getPartyCustomLogoById(c.partyId);
+        const candLogoHtml = candLogo || candCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: candColor })}</span>` : '';
         return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};"><div><div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div><div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag ${isPres ? 'ruling' : 'other'}">${candLogoHtml}${escapeHtml(c.partyName)}</span></div></div>${isPres ? '<span class="ruling-label">PRESIDENT</span>' : ''}</div>`;
     }).join('');
 
@@ -1448,7 +1459,8 @@ function openAssignModal(ministryKey) {
         const isRuling = c.partyId === rulingFactionId;
         const candColor = getPartyColorById(c.partyId);
         const candLogo = getPartyLogoById(c.partyId);
-        const candLogoHtml = candLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyIconSVG(candLogo, 14, candColor)}</span>` : '';
+        const candCustomLogo = getPartyCustomLogoById(c.partyId);
+        const candLogoHtml = candLogo || candCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: candColor })}</span>` : '';
         return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};"><div><div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div><div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag ${isRuling ? 'ruling' : 'other'}">${candLogoHtml}${escapeHtml(c.partyName)}</span></div></div>${isRuling ? '<span class="ruling-label">RULING</span>' : ''}</div>`;
     }).join('');
 
@@ -1482,7 +1494,8 @@ function openAppointModal(ministryKey) {
     document.getElementById('assign-candidates').innerHTML = generatedCandidates.map((c, i) => {
         const candColor = getPartyColorById(c.partyId);
         const candLogo = getPartyLogoById(c.partyId);
-        const candLogoHtml = candLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyIconSVG(candLogo, 14, candColor)}</span>` : '';
+        const candCustomLogo = getPartyCustomLogoById(c.partyId);
+        const candLogoHtml = candLogo || candCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: candColor })}</span>` : '';
         return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};">` +
         `<div><div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div>` +
         `<div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag other">${candLogoHtml}${escapeHtml(c.partyName)}</span></div></div></div>`;
@@ -2618,7 +2631,8 @@ function drawParliament(parties, options = {}) {
             legendEl.innerHTML = fmt.map(p => {
                 const legParty = allParties.find(x => x.faction_name === p.name);
                 const legLogo = legParty?.party_logo;
-                const legLogoHtml = legLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyIconSVG(legLogo, 14, p.color)}</span>` : '';
+                const legCustomLogo = legParty?.custom_logo_url;
+                const legLogoHtml = legLogo || legCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: legCustomLogo, iconKey: legLogo, size: 14, color: p.color })}</span>` : '';
                 return `<div class="legend-item"><span class="legend-swatch" style="background:${p.color};"></span><span class="legend-name">${legLogoHtml}${escapeHtml(p.name)}</span><span class="legend-seats">${p.seats}</span></div>`;
             }).join('');
         }

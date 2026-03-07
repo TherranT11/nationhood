@@ -94,6 +94,22 @@ function getPartyIconSVG(iconKey, size = 24, color = null) {
 }
 
 /**
+ * Render a party logo as HTML — uses custom_logo_url if available, otherwise falls back to icon SVG.
+ * @param {object} opts
+ * @param {string|null} opts.customLogoUrl - URL of a custom uploaded logo image
+ * @param {string|null} opts.iconKey - Icon key for getPartyIconSVG fallback
+ * @param {number} opts.size - Pixel size (width/height)
+ * @param {string|null} opts.color - Color for SVG icon fallback
+ * @returns {string} HTML string (either <img> or <svg>)
+ */
+function getPartyLogoHTML({ customLogoUrl, iconKey, size = 24, color = null } = {}) {
+    if (customLogoUrl) {
+        return `<img src="${customLogoUrl}" alt="" style="width:${size}px;height:${size}px;object-fit:contain;border-radius:2px;vertical-align:middle">`;
+    }
+    return getPartyIconSVG(iconKey, size, color);
+}
+
+/**
  * Get the default color for a party based on its creation index within the nation.
  * Ensures no two parties in the same nation start with the same color.
  * @param {number} index - Party creation index (0-based)
@@ -119,4 +135,4 @@ function colorDistance(hex1, hex2) {
     return Math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2);
 }
 
-export { PARTY_ICONS, PARTY_COLOR_PALETTE, DEFAULT_PARTY_ICON, getPartyIconSVG, getDefaultPartyColor, colorDistance };
+export { PARTY_ICONS, PARTY_COLOR_PALETTE, DEFAULT_PARTY_ICON, getPartyIconSVG, getPartyLogoHTML, getDefaultPartyColor, colorDistance };

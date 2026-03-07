@@ -21,7 +21,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
 import { tickToDate, escapeHtml, getIdeologyClass } from './js/utils.js';
 import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize, ensureBlocApprovals, selectPresidentCandidate, generatePresidentCandidates, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier } from './js/game-common.js';
-import { getPartyIconSVG, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './js/party-icons.js';
+import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './js/party-icons.js';
 
 let currentFaction = null;
 let currentNation = null;
@@ -2977,7 +2977,7 @@ async function renderParties() {
     // Fetch all parties for seat + vote share data
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, faction_name, abbreviation, seats, national_vote_share, party_color, party_logo, party_description, leader_first_name, leader_last_name, leader_age, founded_tick, ideology_value_1, ideology_value_2')
+        .select('id, faction_name, abbreviation, seats, national_vote_share, party_color, party_logo, custom_logo_url, party_description, leader_first_name, leader_last_name, leader_age, founded_tick, ideology_value_1, ideology_value_2')
         .eq('nation_id', n.id)
         .eq('faction_type', 'party');
 
@@ -3149,7 +3149,7 @@ async function renderParties() {
     const badgeClass = getRoleBadgeClass(role);
 
     const partyColor = f.party_color || '#ffcc00';
-    const logoSvg = getPartyIconSVG(f.party_logo, 44, partyColor);
+    const logoSvg = getPartyLogoHTML({ customLogoUrl: f.custom_logo_url, iconKey: f.party_logo, size: 44, color: partyColor });
     const treasury = formatCurrency(f.party_funds || 0);
     const founded = tickToDate(f.founded_tick);
     const leaderName = f.leader_first_name && f.leader_last_name
@@ -3458,7 +3458,7 @@ async function renderParties() {
             let html = '';
             for (const op of list) {
                 const opColor = op.party_color || '#666';
-                const opLogo = getPartyIconSVG(op.party_logo, 36, opColor);
+                const opLogo = getPartyLogoHTML({ customLogoUrl: op.custom_logo_url, iconKey: op.party_logo, size: 36, color: opColor });
                 const opBadgeClass = getRoleBadgeClass(op._role);
                 const opLeader = op.leader_first_name && op.leader_last_name
                     ? op.leader_first_name + ' ' + op.leader_last_name + (op.leader_age ? ', ' + op.leader_age : '')
@@ -4096,6 +4096,7 @@ async function renderParties() {
                 party_description: newDesc || null,
                 party_color: editColor,
                 party_logo: editLogo,
+                custom_logo_url: null,
             }).eq('id', f.id);
 
             if (error) {
@@ -4107,9 +4108,11 @@ async function renderParties() {
                 f.party_description = newDesc || null;
                 f.party_color = editColor;
                 f.party_logo = editLogo;
+                f.custom_logo_url = null;
                 currentFaction.party_description = f.party_description;
                 currentFaction.party_color = f.party_color;
                 currentFaction.party_logo = f.party_logo;
+                currentFaction.custom_logo_url = null;
                 setTimeout(() => renderParties(), 800);
             }
             saveBtn.disabled = false;

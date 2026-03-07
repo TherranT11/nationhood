@@ -563,6 +563,7 @@ import { initPage, formatNumber } from './js/common.js';
 import { isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, loadSeats, fetchActiveCoalition, GAME_CONFIG, initGameConfigForNation } from './js/game-common.js';
 import { escapeHtml } from './js/utils.js';
 import { syncVoteTallies } from './js/game/bills.js';
+import { getPartyLogoHTML } from './js/party-icons.js';
 
 
 // Palette helper for party colors
@@ -618,8 +619,8 @@ initPage('dashboard', async (state) => {
         opEdsRes,
     ] = await Promise.all([
         fetchActiveCoalition(_supabase, nation.id),
-        _supabase.from('ministries').select('*, factions(faction_name, abbreviation, party_color)').eq('nation_id', nation.id).eq('is_active', true),
-        _supabase.from('factions').select('id, faction_name, abbreviation, seats, approval_rating, action_points, party_color, party_logo, is_npc, loyalty, momentum').eq('nation_id', nation.id).eq('faction_type', 'party'),
+        _supabase.from('ministries').select('*, factions(faction_name, abbreviation, party_color, party_logo, custom_logo_url)').eq('nation_id', nation.id).eq('is_active', true),
+        _supabase.from('factions').select('id, faction_name, abbreviation, seats, approval_rating, action_points, party_color, party_logo, custom_logo_url, is_npc, loyalty, momentum').eq('nation_id', nation.id).eq('faction_type', 'party'),
         _supabase.from('bills').select('*, factions(faction_name, abbreviation), bill_support(faction_id, stance, seat_count), bill_articles(article_number, article_title, article_text, policies(policy_name, description))').eq('nation_id', nation.id).in('status', ['floor', 'vetoed']),
         _supabase.from('bills').select('*, factions(faction_name, abbreviation), bill_support(faction_id, stance, seat_count), bill_articles(article_number, article_title, article_text, policies(policy_name, description))').eq('nation_id', nation.id).eq('status', 'committee'),
         _supabase.from('head_of_government').select('*, factions(id, faction_name), leader_traits(*)').eq('nation_id', nation.id).eq('active', true).maybeSingle(),
@@ -753,7 +754,7 @@ function renderBanner(faction, coalition, seats, totalSeats) {
         <div class="banner__left">
           <div>
             <div class="banner__title">
-              ${escapeHtml(faction.faction_name)}
+              ${(faction.party_logo || faction.custom_logo_url) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:6px;">${getPartyLogoHTML({ customLogoUrl: faction.custom_logo_url, iconKey: faction.party_logo, size: 22, color: faction.party_color || '#ffcc00' })}</span>` : ''}${escapeHtml(faction.faction_name)}
               <span class="banner__title-abbr">${escapeHtml(faction.abbreviation || '')}</span>
             </div>
             <div class="banner__meta">
@@ -1017,7 +1018,7 @@ async function renderGovernment(nation, coalition, ministries, allParties, hog, 
         if (missingIds.length > 0) {
             const { data: missingParties } = await _supabase
                 .from('factions')
-                .select('id, faction_name, abbreviation, seats, party_color, party_logo, is_npc')
+                .select('id, faction_name, abbreviation, seats, party_color, party_logo, custom_logo_url, is_npc')
                 .in('id', missingIds);
             if (missingParties) allParties.push(...missingParties);
         }
@@ -1027,16 +1028,17 @@ async function renderGovernment(nation, coalition, ministries, allParties, hog, 
             const seats = allPartySeats[id] || p?.seats || 0;
             const name = p?.faction_name || 'Unknown';
             const abbr = p?.abbreviation || name.split(/\s+/).map(w => w[0]).join('').toUpperCase() || '?';
-            return { name, abbr, seats, color: p?.party_color || partyColor(idx) };
+            return { name, abbr, seats, color: p?.party_color || partyColor(idx), partyLogo: p?.party_logo, customLogoUrl: p?.custom_logo_url };
         }).sort((a, b) => b.seats - a.seats);
         const coalTotal = coalParties.reduce((s, p) => s + p.seats, 0) || 1;
 
         const barSegs = coalParties.map(p =>
             `<div class="coalition-bar__seg" style="width:${(p.seats / coalTotal * 100).toFixed(1)}%;background:${p.color}"></div>`
         ).join('');
-        const legendItems = coalParties.map(p =>
-            `<span class="coalition-legend__item"><span class="coalition-legend__dot" style="background:${p.color}"></span> ${escapeHtml(p.abbr)} (${p.seats})</span>`
-        ).join('');
+        const legendItems = coalParties.map(p => {
+            const logoHtml = (p.partyLogo || p.customLogoUrl) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:3px;">${getPartyLogoHTML({ customLogoUrl: p.customLogoUrl, iconKey: p.partyLogo, size: 12, color: p.color })}</span>` : `<span class="coalition-legend__dot" style="background:${p.color}"></span>`;
+            return `<span class="coalition-legend__item">${logoHtml} ${escapeHtml(p.abbr)} (${p.seats})</span>`;
+        }).join('');
 
         coalitionHTML = `
           <div class="sub-label">Coalition -- ${coalTotal} / ${totalSeats}</div>
@@ -1068,12 +1070,15 @@ async function renderGovernment(nation, coalition, ministries, allParties, hog, 
         const name = `${(m.minister_first_name || '')[0] || ''}. ${m.minister_last_name || ''}`;
         const pAbbr = m.factions?.abbreviation || '';
         const pColor = m.factions?.party_color || 'var(--dblue)';
+        const pLogo = m.factions?.party_logo;
+        const pCustomLogo = m.factions?.custom_logo_url;
+        const pLogoHtml = (pLogo || pCustomLogo) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:3px;">${getPartyLogoHTML({ customLogoUrl: pCustomLogo, iconKey: pLogo, size: 12, color: pColor })}</span>` : '';
         const appr = Math.round(m.minister_approval ?? 50);
         const apprColor = appr >= 60 ? 'var(--dgreen)' : appr >= 40 ? 'var(--dtxt-secondary)' : appr >= 25 ? 'var(--damber)' : 'var(--dred)';
         return `
           <div class="cabinet-row">
             <span class="cabinet-row__ministry">${key.charAt(0).toUpperCase() + key.slice(1)}</span>
-            <span class="cabinet-row__holder">${escapeHtml(name)} <span class="cabinet-row__party-tag" style="background:${pColor}22;color:${pColor}">${escapeHtml(pAbbr)}</span></span>
+            <span class="cabinet-row__holder">${escapeHtml(name)} <span class="cabinet-row__party-tag" style="background:${pColor}22;color:${pColor}">${pLogoHtml}${escapeHtml(pAbbr)}</span></span>
             <span class="cabinet-row__approval" style="color:${apprColor}">${appr}%</span>
           </div>`;
     }).join('');

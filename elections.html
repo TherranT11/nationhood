@@ -25,7 +25,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, fetchActiveCoalition, runElectionPreview, getPartyAlignment, distributeVotes, allocateSeatsByVotes, dissolveCoalition, generatePMCandidates, autoAppointPartyLeaderAsPM, rolloverAdministration, buildMinistryBaselines } from './js/game-common.js';
-import { getPartyIconSVG } from './js/party-icons.js';
+import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 (function () {
     'use strict';
 /**
@@ -67,6 +67,10 @@ function getPartyColor(partyId, fallbackIndex) {
 function getPartyLogo(partyId) {
     const p = allParties.find(x => x.id === partyId);
     return p?.party_logo || null;
+}
+function getPartyCustomLogoUrl(partyId) {
+    const p = allParties.find(x => x.id === partyId);
+    return p?.custom_logo_url || null;
 }
 
 async function fetchLatestCompletedGeneralElection() {
@@ -137,7 +141,7 @@ initPage('elections', async (state) => {
 async function renderDemocracyPage() {
     const { data: parties } = await _supabase
         .from('factions')
-        .select('id, faction_name, seats, approval_rating, abbreviation, ideology_value_1, ideology_value_2, party_color, party_logo')
+        .select('id, faction_name, seats, approval_rating, abbreviation, ideology_value_1, ideology_value_2, party_color, party_logo, custom_logo_url')
         .eq('nation_id', currentNation.id)
         .eq('faction_type', 'party')
         .eq('is_npc', false)
@@ -317,7 +321,8 @@ async function renderElectionResults(election) {
     document.getElementById('election-results-list').innerHTML = results.map((r, idx) => {
         const pColor = getPartyColor(r.party_id, idx);
         const pLogo = getPartyLogo(r.party_id);
-        const logoHtml = pLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:6px;">${getPartyIconSVG(pLogo, 18, pColor)}</span>` : '';
+        const pCustomLogoUrl = getPartyCustomLogoUrl(r.party_id);
+        const logoHtml = (pLogo || pCustomLogoUrl) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:6px;">${getPartyLogoHTML({ customLogoUrl: pCustomLogoUrl, iconKey: pLogo, size: 18, color: pColor })}</span>` : '';
         return `
         <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #222; align-items: center; border-left: 3px solid ${pColor}; padding-left: 10px;">
             <span style="font-size: 0.9rem; color: ${pColor}; font-weight: bold;">${logoHtml}${r.party_name}</span>
@@ -534,7 +539,8 @@ async function renderPresidentialResults(election) {
             const isWinner = c.winner || c.candidate_id === tableWinner.candidate_id;
             const cPartyColor = getPartyColor(c.party_id || c.faction_id, cIdx);
             const cLogo = getPartyLogo(c.party_id || c.faction_id);
-            const cLogoHtml = cLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(cLogo, 16, cPartyColor)}</span>` : '';
+            const cCustomLogoUrl = getPartyCustomLogoUrl(c.party_id || c.faction_id);
+            const cLogoHtml = (cLogo || cCustomLogoUrl) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: cCustomLogoUrl, iconKey: cLogo, size: 16, color: cPartyColor })}</span>` : '';
             return `
                 <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 0.8fr;gap:12px;padding:12px 0;border-bottom:1px solid #222;align-items:center;border-left:3px solid ${cPartyColor};padding-left:10px;">
                     <span style="font-size:0.9rem;color:${isWinner ? '#4CAF50' : '#e0e0e0'};font-weight:bold;">
@@ -559,7 +565,8 @@ async function renderPresidentialResults(election) {
     const winnerColor = ideologyColors[winnerIdeology] || '#888';
     const winnerPartyColor = getPartyColor(winner.party_id || winner.faction_id, 0);
     const winnerLogo = getPartyLogo(winner.party_id || winner.faction_id);
-    const winnerLogoHtml = winnerLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:8px;">${getPartyIconSVG(winnerLogo, 22, winnerPartyColor)}</span>` : '';
+    const winnerCustomLogoUrl = getPartyCustomLogoUrl(winner.party_id || winner.faction_id);
+    const winnerLogoHtml = (winnerLogo || winnerCustomLogoUrl) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:8px;">${getPartyLogoHTML({ customLogoUrl: winnerCustomLogoUrl, iconKey: winnerLogo, size: 22, color: winnerPartyColor })}</span>` : '';
 
     // Winner banner
     let html = `
@@ -707,7 +714,8 @@ async function loadFormationsList() {
                         const seats = getPartySeats(p.id);
                         const pColor = p.party_color || FALLBACK_COLORS[pIdx % FALLBACK_COLORS.length];
                         const pLogo = p.party_logo;
-                        const logoHtml = pLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(pLogo, 16, pColor)}</span>` : '';
+                        const pCustomLogo = p.custom_logo_url;
+                        const logoHtml = (pLogo || pCustomLogo) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: pCustomLogo, iconKey: pLogo, size: 16, color: pColor })}</span>` : '';
                         return `
                             <div class="party-checkbox-item ${isYou ? 'checked disabled' : ''}"
                                  data-party-id="${p.id}" data-seats="${seats}"
@@ -934,7 +942,8 @@ function renderFormationDetail(formation) {
         const seats = getPartySeats(pid);
         const chipColor = p?.party_color || FALLBACK_COLORS[pIdx % FALLBACK_COLORS.length];
         const chipLogo = p?.party_logo;
-        const chipLogoHtml = chipLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(chipLogo, 16, chipColor)}</span>` : '';
+        const chipCustomLogo = p?.custom_logo_url;
+        const chipLogoHtml = (chipLogo || chipCustomLogo) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: chipCustomLogo, iconKey: chipLogo, size: 16, color: chipColor })}</span>` : '';
         return `<div class="formation-party-chip" style="border-left:3px solid ${chipColor};">${chipLogoHtml}${p?.faction_name || '?'}<span class="chip-seats">${seats} seats</span></div>`;
     }).join('');
 
