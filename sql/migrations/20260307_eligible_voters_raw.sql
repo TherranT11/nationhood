@@ -4,6 +4,10 @@
 --
 -- Formula: new_value = ROUND(population * old_eligible_voters / 100)
 
+-- 0. Widen column type to hold raw voter counts (millions)
+ALTER TABLE nations ALTER COLUMN eligible_voters TYPE NUMERIC;
+ALTER TABLE nations_history ALTER COLUMN eligible_voters TYPE NUMERIC;
+
 -- 1. Preview: show current values and what they'll become
 SELECT name, population, eligible_voters,
     ROUND(population * eligible_voters / 100.0) AS new_eligible_voters
