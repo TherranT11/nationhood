@@ -769,7 +769,8 @@ function renderBudgetTab(nation) {
     h += '<div class="budget-net-label">' + netLabel + '</div>';
     h += '<div class="budget-net-value" style="color:' + netColor + ';">' + balSign + formatBudgetCurrency(bs.balance) + '</div>';
     if (bs.balance < 0) {
-        h += '<div class="budget-net-note">Deficits accrue to the national debt each January.</div>';
+        var perTick = Math.abs(bs.balance) / GAME_CONFIG.TICKS_PER_YEAR;
+        h += '<div class="budget-net-note">' + formatBudgetCurrency(perTick) + ' per tick accruing to national debt.</div>';
     }
     h += '</div>';
 

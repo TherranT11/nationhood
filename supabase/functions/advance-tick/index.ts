@@ -14438,6 +14438,76 @@ async function processOngoingCosts(supabase, nation, currentTick) {
     return { totalCost, details };
 }
 
+// ==================== MINISTRY FUNDING (revenue vs. cost → deficit accrual) ====================
+
+/**
+ * Compare total ministry institution costs to nation revenue each tick.
+ * All ministries remain at funding_level = 1.0 (Phase 1 behavior).
+ * If costs exceed revenue, the shortfall accrues directly to nation.debt.
+ */
+async function processMinistryFunding(supabase: any, nation: any, currentTick: number) {
+    // Ensure institution config is loaded (shared cache with processStatDecay)
+    if (!_institutionConfig) {
+        const { data } = await supabase.from('ministry_institution_config').select('*');
+        _institutionConfig = data || [];
+    }
+
+    if (_institutionConfig.length === 0) {
+        return { funded: true, deficit: false, totalCost: 0, revenue: 0 };
+    }
+
+    // Sum institution costs across all fiscal categories (annualized)
+    let totalAnnualInstitutionCost = 0;
+    for (const cat of FISCAL_CATEGORIES) {
+        const { total } = computeMinistryInstitutionCost(_institutionConfig, cat, nation);
+        totalAnnualInstitutionCost += total;
+    }
+
+    // Convert to per-tick
+    const perTickCost = totalAnnualInstitutionCost / GAME_CONFIG.TICKS_PER_YEAR;
+
+    // Calculate per-tick revenue
+    const budget = calculateNationalBudget(nation);
+    const perTickRevenue = budget.grossRevenue / GAME_CONFIG.TICKS_PER_YEAR;
+
+    // If costs exceed revenue, accrue shortfall to debt
+    if (perTickCost > perTickRevenue && perTickCost > 0) {
+        const deficitContribution = perTickCost - perTickRevenue;
+        const currentDebt = Number(nation.debt || 0);
+        const newDebt = currentDebt + deficitContribution;
+
+        const { error } = await supabase.from('nations')
+            .update({ debt: newDebt })
+            .eq('id', nation.id);
+
+        if (error) {
+            console.error(`[processMinistryFunding] Debt update failed for ${nation.name}:`, error.message);
+            return { funded: true, deficit: true, deficitContribution, totalCost: perTickCost, revenue: perTickRevenue, error: error.message };
+        }
+
+        Object.assign(nation, { debt: newDebt });
+
+        console.log(`[processMinistryFunding] ${nation.name}: deficit ${Math.round(deficitContribution).toLocaleString()} accrued to debt (cost=${Math.round(perTickCost).toLocaleString()} rev=${Math.round(perTickRevenue).toLocaleString()} newDebt=${Math.round(newDebt).toLocaleString()})`);
+
+        return {
+            funded: true,
+            deficit: true,
+            deficitContribution,
+            totalCost: perTickCost,
+            revenue: perTickRevenue,
+            newDebt
+        };
+    }
+
+    return {
+        funded: true,
+        deficit: false,
+        surplus: perTickRevenue - perTickCost,
+        totalCost: perTickCost,
+        revenue: perTickRevenue
+    };
+}
+
 // All columns that nations_history tracks (must match the DB table schema)
 const HISTORY_SNAPSHOT_COLUMNS = [
     ...NATION_STAT_COLUMNS,
@@ -19221,6 +19291,22 @@ async function advanceTick(supabase) {
         // Ongoing costs
         const costResult = await processOngoingCosts(supabase, nation, newTick);
         if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
+
+        // Ministry funding: compare institution costs to revenue, accrue deficit to debt
+        try {
+            const fundingResult = await processMinistryFunding(supabase, nation, newTick);
+            if (fundingResult.deficit) {
+                summary.ministryFunding = summary.ministryFunding || [];
+                summary.ministryFunding.push({
+                    nation: nation.name,
+                    deficit: fundingResult.deficitContribution,
+                    cost: fundingResult.totalCost,
+                    revenue: fundingResult.revenue
+                });
+            }
+        } catch (fundingErr) {
+            console.error(`[advanceTick] Ministry funding failed for ${nation.name} (non-fatal):`, fundingErr);
+        }
 
         // Sovereign debt mechanics (burden, credit deterioration, lockout, debt crisis trigger)
         try {
