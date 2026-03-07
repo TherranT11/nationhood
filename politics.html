@@ -1258,6 +1258,117 @@
     font-weight: 700;
     color: var(--damber);
 }
+
+/* ── Coalition Overview box ── */
+.pol-coalition-box {
+    width: 380px;
+    flex-shrink: 0;
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-0);
+    border-radius: 4px;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+.pol-co-tier-row {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 10px;
+}
+.pol-co-tier-card {
+    flex: 1;
+    padding: 6px 8px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.015);
+    border: 1px solid var(--dborder-0);
+}
+.pol-co-tier-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.pol-co-tier-label {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+.pol-co-tier-count {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    color: var(--dtext-3);
+}
+.pol-co-tier-pct {
+    font-family: var(--dfont-mono);
+    font-size: 18px;
+    font-weight: 700;
+    margin-top: 2px;
+}
+.pol-co-ebar {
+    display: flex;
+    height: 18px;
+    border-radius: 3px;
+    overflow: hidden;
+    gap: 1px;
+}
+.pol-co-ebar-seg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.pol-co-ebar-seg span {
+    font-family: var(--dfont-mono);
+    font-size: 7px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.pol-co-key-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 2px;
+}
+.pol-co-key-block {
+    flex: 1;
+    text-align: center;
+    padding: 5px 0;
+    background: rgba(255,255,255,0.02);
+    border-radius: 3px;
+}
+.pol-co-key-value {
+    font-family: var(--dfont-mono);
+    font-size: 16px;
+    font-weight: 700;
+}
+.pol-co-key-label {
+    font-family: var(--dfont-mono);
+    font-size: 7px;
+    color: var(--dtext-3);
+    letter-spacing: 0.04em;
+}
+.pol-co-axis-track {
+    position: relative;
+    height: 14px;
+    background: rgba(255,255,255,0.025);
+    border-radius: 3px;
+    border: 1px solid var(--dborder-0);
+}
+.pol-co-axis-marker {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+}
+.pol-co-axis-value {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-2);
+    text-align: center;
+    margin-top: 1px;
+}
+
 .pol-sc-approval-row {
     display: flex;
     align-items: flex-end;
@@ -2309,6 +2420,19 @@ initPage('politics', async (state) => {
         .eq('status', 'scheduled')
         .order('election_tick', { ascending: true });
 
+    // Fetch voter blocs for coalition overview
+    const { data: voterBlocs } = await _supabase
+        .from('voter_blocs')
+        .select('id, bloc_name, population_weight, is_active')
+        .eq('nation_id', nation.id)
+        .eq('is_active', true);
+
+    // Fetch player's faction_bloc_approval rows (preference_score per bloc)
+    const { data: playerBlocApprovals } = await _supabase
+        .from('faction_bloc_approval')
+        .select('bloc_id, preference_score')
+        .eq('faction_id', f.id);
+
     renderPartyTab(f, nation, {
         totalSeats,
         mySeats,
@@ -2329,7 +2453,9 @@ initPage('politics', async (state) => {
         lastPresidential,
         scheduledElections,
         president,
-        administration
+        administration,
+        voterBlocs,
+        playerBlocApprovals
     });
 });
 
@@ -2372,7 +2498,8 @@ function renderPartyTab(f, nation, data) {
         seatDelta, role, officerNames, allParties, allPartyIdeologies, coalition, activeCrises, currentTick,
         nextElection, blocApprovals, prevApproval,
         lastParliamentary, lastPresidential, scheduledElections,
-        president, administration
+        president, administration,
+        voterBlocs, playerBlocApprovals
     } = data;
 
     const partyColor = f.party_color || '#ffcc00';
@@ -2493,6 +2620,7 @@ function renderPartyTab(f, nation, data) {
         </div><!-- /pol-columns -->
 
         <div class="pol-row-2">
+        ${renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIdeologies, f.id, f.party_color)}
         ${renderNationalMoodBox(nation, activeCrises, currentTick)}
         ${renderIdeologyBox(allParties, allPartyIdeologies, f.id)}
         ${renderEditIdentityBox(f, currentTick)}
@@ -2507,7 +2635,7 @@ function renderPartyTab(f, nation, data) {
     document.getElementById('content-area').innerHTML = html;
 
     // Lock all panels to fixed 450px height
-    document.querySelectorAll('.pol-admin-box, .pol-party-card, .pol-parliament-box, .pol-mood-box, .pol-ideology-box, .pol-forecast-box, .pol-identity-box, .pol-election-box, .pol-blocs-box').forEach(el => {
+    document.querySelectorAll('.pol-admin-box, .pol-party-card, .pol-parliament-box, .pol-forecast-box, .pol-coalition-box, .pol-mood-box, .pol-ideology-box, .pol-identity-box, .pol-election-box, .pol-blocs-box').forEach(el => {
         el.style.height = '450px';
     });
 
@@ -3035,6 +3163,136 @@ function getRepresentativeStat(nation, statKeys) {
         }
     }
     return worst;
+}
+
+function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIdeologies, playerFactionId, playerPartyColor) {
+    const blocs = voterBlocs || [];
+    const approvalMap = {};
+    for (const row of (playerBlocApprovals || [])) {
+        approvalMap[row.bloc_id] = Number(row.preference_score ?? 50);
+    }
+
+    // Classify blocs into tiers based on preference_score
+    // BASE: >= 70, LEAN: 55-69, SWING: 45-54, SKEPTICAL: 30-44, HOSTILE: < 30
+    const TIER_DEFS = [
+        { key: 'BASE', label: 'BASE', min: 70, color: 'var(--dgreen)', dimColor: 'rgba(74,222,128,0.08)' },
+        { key: 'LEAN', label: 'LEAN', min: 55, color: '#22d3ee', dimColor: 'rgba(34,211,238,0.08)' },
+        { key: 'SWING', label: 'SWING', min: 45, color: 'var(--damber)', dimColor: 'rgba(250,204,21,0.08)' },
+        { key: 'SKEPTICAL', label: 'SKEPTICAL', min: 30, color: '#f97316', dimColor: 'rgba(249,115,22,0.08)' },
+        { key: 'HOSTILE', label: 'HOSTILE', min: 0, color: 'var(--dred)', dimColor: 'rgba(239,68,68,0.08)' },
+    ];
+
+    // Assign each bloc to a tier
+    const tierData = TIER_DEFS.map(t => ({ ...t, blocs: 0, weight: 0 }));
+    const totalWeight = blocs.reduce((s, b) => s + Number(b.population_weight || 0), 0);
+
+    for (const bloc of blocs) {
+        const pref = approvalMap[bloc.id] ?? 50;
+        const w = Number(bloc.population_weight || 0);
+        for (const tier of tierData) {
+            if (pref >= tier.min) {
+                tier.blocs++;
+                tier.weight += w;
+                break;
+            }
+        }
+    }
+
+    // Convert weights to percentages
+    for (const tier of tierData) {
+        tier.pct = totalWeight > 0 ? Math.round((tier.weight / totalWeight) * 100) : 0;
+    }
+
+    const basePct = tierData[0].pct;
+    const leanPct = tierData[1].pct;
+    const swingPct = tierData[2].pct;
+    const solidPct = basePct + leanPct;
+    const reachable = solidPct + swingPct;
+    const conceded = 100 - reachable;
+
+    // Tier cards
+    const tierCardsHtml = tierData.map(t =>
+        `<div class="pol-co-tier-card" style="border-top:3px solid ${t.color}">
+            <div class="pol-co-tier-header">
+                <span class="pol-co-tier-label" style="color:${t.color}">${t.label}</span>
+                <span class="pol-co-tier-count">${t.blocs}</span>
+            </div>
+            <div class="pol-co-tier-pct" style="color:${t.color}">${t.pct}%</div>
+        </div>`
+    ).join('');
+
+    // Electorate bar
+    const ebarHtml = tierData.filter(t => t.pct > 0).map(t => {
+        const showLabel = t.pct >= 10;
+        return `<div class="pol-co-ebar-seg" style="width:${t.pct}%;background:${t.color}22;border-bottom:3px solid ${t.color}">
+            <span style="color:${t.color}">${showLabel ? `${t.label} ${t.pct}%` : t.pct}</span>
+        </div>`;
+    }).join('');
+
+    // Key numbers
+    const keyRowHtml = `
+        <div class="pol-co-key-row">
+            <div class="pol-co-key-block">
+                <div class="pol-co-key-value" style="color:var(--dgreen)">${solidPct}%</div>
+                <div class="pol-co-key-label">SOLID</div>
+            </div>
+            <div class="pol-co-key-block">
+                <div class="pol-co-key-value" style="color:var(--damber)">${reachable}%</div>
+                <div class="pol-co-key-label">REACHABLE</div>
+            </div>
+            <div class="pol-co-key-block">
+                <div class="pol-co-key-value" style="color:var(--dred)">${conceded}%</div>
+                <div class="pol-co-key-label">CONCEDED</div>
+            </div>
+        </div>`;
+
+    // Ideology axes (player's party only)
+    const ideoMap = {};
+    for (const row of (allPartyIdeologies || [])) ideoMap[row.faction_id] = row;
+    const playerIdeo = ideoMap[playerFactionId] || {};
+    const partyColor = playerPartyColor || '#60a5fa';
+
+    const axesHtml = IDEOLOGY_AXES.map(ax => {
+        const rawVal = Number(playerIdeo[ax.key] ?? 0); // -100 to +100
+        const pos = (rawVal + 100) / 2; // 0–100
+
+        return `<div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+                <span style="font-family:var(--dfont-mono);font-size:8px;color:var(--dtext-2)">${escapeHtml(ax.leftLabel)}</span>
+                <span style="font-family:var(--dfont-mono);font-size:8px;color:var(--dtext-2)">${escapeHtml(ax.rightLabel)}</span>
+            </div>
+            <div class="pol-co-axis-track">
+                <div style="position:absolute;left:15%;top:0;width:1px;height:100%;background:rgba(239,68,68,0.22)"></div>
+                <div style="position:absolute;left:85%;top:0;width:1px;height:100%;background:rgba(239,68,68,0.22)"></div>
+                <div style="position:absolute;left:35%;top:0;width:1px;height:100%;background:rgba(250,204,21,0.22)"></div>
+                <div style="position:absolute;left:65%;top:0;width:1px;height:100%;background:rgba(250,204,21,0.22)"></div>
+                <div style="position:absolute;left:50%;top:0;width:1px;height:100%;background:rgba(255,255,255,0.1)"></div>
+                <div class="pol-co-axis-marker" style="left:${pos}%;background:${partyColor}"></div>
+            </div>
+            <div class="pol-co-axis-value">${Math.round(pos)}</div>
+        </div>`;
+    }).join('');
+
+    return `<div class="pol-coalition-box">
+        <span style="font-family:var(--dfont-ui);font-size:11px;font-weight:500;letter-spacing:0.04em;color:var(--dtext-2);text-transform:uppercase;display:block;margin-bottom:10px">Coalition Overview</span>
+
+        <div class="pol-co-tier-row">${tierCardsHtml}</div>
+
+        <div style="margin-bottom:4px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                <span style="font-family:var(--dfont-ui);font-size:9px;font-weight:500;letter-spacing:0.04em;color:var(--dtext-2);text-transform:uppercase">Electorate by Tier</span>
+                <span style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-2)">Reachable: <span style="color:var(--dgreen);font-weight:700">${reachable}%</span></span>
+            </div>
+            <div class="pol-co-ebar">${ebarHtml}</div>
+        </div>
+
+        <div class="pol-sc-divider"></div>
+        ${keyRowHtml}
+        <div class="pol-sc-divider"></div>
+
+        <span style="font-family:var(--dfont-ui);font-size:9px;font-weight:500;letter-spacing:0.04em;color:var(--dtext-2);text-transform:uppercase;display:block;margin-bottom:8px">Your Ideology</span>
+        <div style="display:flex;flex-direction:column;gap:6px;flex:1">${axesHtml}</div>
+    </div>`;
 }
 
 function renderAdminBox(nation, coalition, allParties, currentTick, prevApproval, president, administration) {
