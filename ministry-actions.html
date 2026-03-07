@@ -950,7 +950,7 @@ initPage('ministry-actions', async (state) => {
 
     // Fetch all active ministries
     const { data } = await _supabase.from('ministries')
-        .select('*, factions(faction_name, party_color, party_logo)')
+        .select('*, factions(faction_name, party_color, party_logo, custom_logo_url)')
         .eq('nation_id', currentNation.id)
         .eq('is_active', true);
     ministryData = data || [];

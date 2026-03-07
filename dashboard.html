@@ -619,7 +619,7 @@ initPage('dashboard', async (state) => {
     ] = await Promise.all([
         fetchActiveCoalition(_supabase, nation.id),
         _supabase.from('ministries').select('*, factions(faction_name, abbreviation, party_color)').eq('nation_id', nation.id).eq('is_active', true),
-        _supabase.from('factions').select('id, faction_name, abbreviation, seats, approval_rating, action_points, party_color, party_logo, is_npc, loyalty, momentum').eq('nation_id', nation.id).eq('faction_type', 'party'),
+        _supabase.from('factions').select('id, faction_name, abbreviation, seats, approval_rating, action_points, party_color, party_logo, custom_logo_url, is_npc, loyalty, momentum').eq('nation_id', nation.id).eq('faction_type', 'party'),
         _supabase.from('bills').select('*, factions(faction_name, abbreviation), bill_support(faction_id, stance, seat_count), bill_articles(article_number, article_title, article_text, policies(policy_name, description))').eq('nation_id', nation.id).in('status', ['floor', 'vetoed']),
         _supabase.from('bills').select('*, factions(faction_name, abbreviation), bill_support(faction_id, stance, seat_count), bill_articles(article_number, article_title, article_text, policies(policy_name, description))').eq('nation_id', nation.id).eq('status', 'committee'),
         _supabase.from('head_of_government').select('*, factions(id, faction_name), leader_traits(*)').eq('nation_id', nation.id).eq('active', true).maybeSingle(),
@@ -1017,7 +1017,7 @@ async function renderGovernment(nation, coalition, ministries, allParties, hog, 
         if (missingIds.length > 0) {
             const { data: missingParties } = await _supabase
                 .from('factions')
-                .select('id, faction_name, abbreviation, seats, party_color, party_logo, is_npc')
+                .select('id, faction_name, abbreviation, seats, party_color, party_logo, custom_logo_url, is_npc')
                 .in('id', missingIds);
             if (missingParties) allParties.push(...missingParties);
         }

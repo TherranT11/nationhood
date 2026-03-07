@@ -2657,7 +2657,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
-import { getPartyIconSVG, PARTY_ICONS, PARTY_COLOR_PALETTE } from './js/party-icons.js';
+import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './js/party-icons.js';
 import { deductAP } from './js/game/config.js';
 import { tickToDate } from './js/utils.js';
 import { fetchActiveCoalition } from './js/game/government-structure.js';
@@ -2906,7 +2906,7 @@ function renderPartyTab(f, nation, data) {
     } = data;
 
     const partyColor = f.party_color || '#ffcc00';
-    const logoSvg = getPartyIconSVG(f.party_logo, 36, partyColor);
+    const logoSvg = getPartyLogoHTML({ customLogoUrl: f.custom_logo_url, iconKey: f.party_logo, size: 36, color: partyColor });
     const founded = tickToDate(f.founded_tick);
 
     // Role badge
@@ -4082,7 +4082,8 @@ function renderEditIdentityBox(f, currentTick) {
     const onCooldown = cooldownRemaining > 0;
 
     // Preview badge
-    const previewSvg = getPartyIconSVG(icon, 20, color);
+    const hasCustomLogo = !!f.custom_logo_url;
+    const previewSvg = getPartyLogoHTML({ customLogoUrl: f.custom_logo_url, iconKey: icon, size: 20, color });
 
     // Color swatches
     const swatchesHtml = PARTY_COLOR_PALETTE.map(c => {
@@ -4197,20 +4198,26 @@ function renderEditIdentityBox(f, currentTick) {
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
                 <span class="pol-id-section-label">Party Logo</span>
                 <div class="pol-id-tab-bar">
-                    <button class="pol-id-tab active" data-tab="icon">Icon</button>
-                    <button class="pol-id-tab" data-tab="custom">Custom Image</button>
+                    <button class="pol-id-tab${hasCustomLogo ? '' : ' active'}" data-tab="icon">Icon</button>
+                    <button class="pol-id-tab${hasCustomLogo ? ' active' : ''}" data-tab="custom">Custom Image</button>
                 </div>
             </div>
-            <div id="pol-id-icon-section">${iconsHtml}</div>
-            <div id="pol-id-upload-section" style="display:none">
-                <div class="pol-id-upload-zone" id="pol-id-upload-zone">
-                    <div style="font-size:22px;color:var(--dtext-3)">⬆</div>
-                    <div class="pol-id-upload-text">Click to upload logo</div>
-                    <div class="pol-id-upload-hint">PNG · JPG · SVG · WebP · Max ${MAX_FILE_KB}KB · Best at 128×128px</div>
+            <div id="pol-id-icon-section"${hasCustomLogo ? ' style="display:none"' : ''}>${iconsHtml}</div>
+            <div id="pol-id-upload-section"${hasCustomLogo ? '' : ' style="display:none"'}>
+                <div class="pol-id-upload-zone${hasCustomLogo ? ' has-image' : ''}" id="pol-id-upload-zone">
+                    ${hasCustomLogo ? `
+                        <img class="pol-id-upload-preview" src="${f.custom_logo_url}" alt="preview" style="border:2px solid ${color}">
+                        <div class="pol-id-upload-text" style="color:var(--dtext-2)">Click to replace</div>
+                        <div class="pol-id-upload-hint">PNG · JPG · SVG · WebP · Max ${MAX_FILE_KB}KB · Best at 128×128px</div>
+                    ` : `
+                        <div style="font-size:22px;color:var(--dtext-3)">⬆</div>
+                        <div class="pol-id-upload-text">Click to upload logo</div>
+                        <div class="pol-id-upload-hint">PNG · JPG · SVG · WebP · Max ${MAX_FILE_KB}KB · Best at 128×128px</div>
+                    `}
                 </div>
                 <input type="file" accept="image/*" id="pol-id-file-input" style="display:none">
                 <div class="pol-id-error" id="pol-id-upload-error" style="display:none"></div>
-                <button class="pol-id-remove-btn" id="pol-id-remove-btn" style="display:none">Remove Image</button>
+                <button class="pol-id-remove-btn" id="pol-id-remove-btn"${hasCustomLogo ? '' : ' style="display:none"'}>Remove Image</button>
             </div>
         </div>
         <div class="pol-id-divider"></div>
@@ -4251,7 +4258,9 @@ function initEditIdentityBox(f) {
     const removeBtn    = document.getElementById('pol-id-remove-btn');
 
     let uploadedDataUrl = null;
-    let useCustomImage  = false;
+    let uploadedFile    = null;
+    let useCustomImage  = !!(f.custom_logo_url);
+    let existingCustomUrl = f.custom_logo_url || null;
 
     function getColor() { return box.dataset.selectedColor; }
     function getIcon()  { return box.dataset.selectedIcon; }
@@ -4260,8 +4269,9 @@ function initEditIdentityBox(f) {
         const c = getColor();
         preview.style.border = '2px solid ' + c;
         preview.style.background = c + '18';
-        if (useCustomImage && uploadedDataUrl) {
-            preview.innerHTML = '<img src="' + uploadedDataUrl + '" alt="" style="width:100%;height:100%;object-fit:cover">';
+        if (useCustomImage && (uploadedDataUrl || existingCustomUrl)) {
+            const src = uploadedDataUrl || existingCustomUrl;
+            preview.innerHTML = '<img src="' + src + '" alt="" style="width:100%;height:100%;object-fit:cover">';
         } else {
             preview.innerHTML = getPartyIconSVG(getIcon(), 20, c);
         }
@@ -4361,6 +4371,7 @@ function initEditIdentityBox(f) {
             const r = new FileReader();
             r.onload = ev => {
                 uploadedDataUrl = ev.target.result;
+                uploadedFile = file;
                 useCustomImage = true;
                 uploadZone.classList.add('has-image');
                 uploadZone.innerHTML = `
@@ -4376,7 +4387,9 @@ function initEditIdentityBox(f) {
     if (removeBtn) {
         removeBtn.addEventListener('click', () => {
             uploadedDataUrl = null;
+            uploadedFile = null;
             useCustomImage = false;
+            existingCustomUrl = null;
             uploadZone.classList.remove('has-image');
             uploadZone.innerHTML = `
                 <div style="font-size:22px;color:var(--dtext-3)">⬆</div>
@@ -4467,14 +4480,41 @@ function initEditIdentityBox(f) {
     // Save button
     if (saveBtn) {
         saveBtn.addEventListener('click', async () => {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+
+            let customLogoUrl = existingCustomUrl;
+
+            // Upload new custom image to Supabase Storage if a new file was selected
+            if (useCustomImage && uploadedFile) {
+                const ext = uploadedFile.name.split('.').pop() || 'png';
+                const filePath = `party-logos/${f.id}/${Date.now()}.${ext}`;
+                const { error: uploadErr } = await _supabase.storage
+                    .from('public-assets')
+                    .upload(filePath, uploadedFile, { contentType: uploadedFile.type, upsert: true });
+                if (uploadErr) {
+                    console.error('Logo upload failed:', uploadErr.message);
+                    saveBtn.textContent = '⚠ Upload failed';
+                    saveBtn.disabled = false;
+                    setTimeout(() => { saveBtn.textContent = 'Save Changes'; }, 2000);
+                    return;
+                }
+                const { data: urlData } = _supabase.storage.from('public-assets').getPublicUrl(filePath);
+                customLogoUrl = urlData?.publicUrl || null;
+                existingCustomUrl = customLogoUrl;
+                uploadedFile = null; // Clear so we don't re-upload
+            }
+
             const updateData = {
                 party_color: getColor(),
                 party_logo: useCustomImage ? null : getIcon(),
+                custom_logo_url: useCustomImage ? customLogoUrl : null,
                 party_description: descArea ? descArea.value.slice(0, MAX_DESC) : ''
             };
             await _supabase.from('factions').update(updateData).eq('id', f.id);
             saveBtn.textContent = '✓ Saved';
             saveBtn.classList.add('saved');
+            saveBtn.disabled = false;
             setTimeout(() => {
                 saveBtn.textContent = 'Save Changes';
                 saveBtn.classList.remove('saved');
