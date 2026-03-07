@@ -1878,8 +1878,8 @@
 
 /* Election Results panel */
 .pol-election-box {
-    width: 380px;
-    flex-shrink: 0;
+    flex: 1 1 380px;
+    min-width: 380px;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
     border-radius: 6px;
@@ -2489,18 +2489,17 @@ function renderPartyTab(f, nation, data) {
         </div>
         </div><!-- /pol-party-card -->
         ${renderParliamentBox(allParties, coalition, nation, f.id)}
+        ${renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, f.id)}
         </div><!-- /pol-columns -->
 
         <div class="pol-row-2">
         ${renderNationalMoodBox(nation, activeCrises, currentTick)}
         ${renderIdeologyBox(allParties, allPartyIdeologies, f.id)}
-        ${renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, f.id)}
         ${renderEditIdentityBox(f, currentTick)}
         </div>
 
         <div class="pol-row-3">
         ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties)}
-        ${renderUpcomingElectionsBox(scheduledElections, currentTick)}
         ${renderBlocVotingBox(lastParliamentary, allParties)}
         </div>
     </div>`;
@@ -2508,7 +2507,7 @@ function renderPartyTab(f, nation, data) {
     document.getElementById('content-area').innerHTML = html;
 
     // Lock all panels to fixed 450px height
-    document.querySelectorAll('.pol-admin-box, .pol-party-card, .pol-parliament-box, .pol-mood-box, .pol-ideology-box, .pol-forecast-box, .pol-identity-box, .pol-election-box, .pol-upcoming-box, .pol-blocs-box').forEach(el => {
+    document.querySelectorAll('.pol-admin-box, .pol-party-card, .pol-parliament-box, .pol-mood-box, .pol-ideology-box, .pol-forecast-box, .pol-identity-box, .pol-election-box, .pol-blocs-box').forEach(el => {
         el.style.height = '450px';
     });
 
