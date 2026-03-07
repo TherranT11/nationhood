@@ -215,7 +215,7 @@ async function renderGovernmentPage() {
             fetchActiveCoalition(_supabase, currentNation.id),
             fetchMinistries(),
             _supabase.from('factions')
-                .select('id, faction_name, is_npc, seats, approval_rating, loyalty, action_points, party_color, party_logo')
+                .select('id, faction_name, abbreviation, is_npc, seats, approval_rating, loyalty, action_points, party_color, party_logo')
                 .eq('nation_id', currentNation.id).eq('faction_type', 'party')
         ]);
 
@@ -750,7 +750,16 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
             const cls = pmAppr < 35 ? 'low' : pmAppr < 50 ? 'mid' : 'high';
             return `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${cls}">${Math.round(pmAppr)}%</span></div>`;
         })() : '';
-        const coalitionParties = coalition.party_ids.map(id => { const p = parties.find(x => x.party_id === id); const fallbackName = allParties.find(f => f.id === id)?.faction_name || 'Unknown'; return p ? { ...p, seats: allPartySeats[id] || p.seats || 0 } : { party_name: fallbackName, seats: allPartySeats[id] || 0 }; }).sort((a,b) => b.seats - a.seats);
+        // Fetch any coalition parties missing from allParties (handles presidential virtual coalitions)
+        const missingGovIds = coalition.party_ids.filter(id => !allParties.find(x => x.id === id));
+        if (missingGovIds.length > 0) {
+            const { data: missingGovParties } = await _supabase
+                .from('factions')
+                .select('id, faction_name, abbreviation, seats, party_color, party_logo, is_npc')
+                .in('id', missingGovIds);
+            if (missingGovParties) allParties.push(...missingGovParties);
+        }
+        const coalitionParties = coalition.party_ids.map(id => { const p = parties.find(x => x.party_id === id); const fallback = allParties.find(f => f.id === id); const fallbackName = fallback?.faction_name || 'Unknown'; return p ? { ...p, seats: allPartySeats[id] || p.seats || 0 } : { party_name: fallbackName, seats: allPartySeats[id] || 0, party_id: id }; }).sort((a,b) => b.seats - a.seats);
         return `
             <div class="administration-box">
                 <div class="administration-header"><div><div class="administration-title">${escapeHtml(adminLast)} Administration</div><div class="administration-subtitle">${coalition.status === 'caretaker' ? 'Caretaker Government' : 'Coalition Government'}</div></div>${approvalHTML}</div>

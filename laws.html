@@ -1929,7 +1929,6 @@ async function submitToCommittee() {
             await _supabase.from('bill_articles').insert(articles);
         }
 
-        if (!lawsIsAutocracy) await _supabase.rpc('process_npc_committee_votes', { p_nation_id: currentNation.id });
         closeModal(); await loadLawsData(); renderLawsPage();
         alert(`"${billName}" submitted to committee!${isFoundationalBill ? '\n\nYou need at least one co-sponsor to send it to the floor.' : ''}`);
     } catch (error) { console.error('Error submitting:', error); alert('Error submitting. Please try again.'); } finally { isSubmitting = false; }
@@ -2218,12 +2217,6 @@ async function submitDefaultResolution() {
         }).eq('id', currentNation.id);
 
         // Trigger NPC voting
-        if (!lawsIsAutocracy) {
-            try {
-                await _supabase.rpc('process_npc_committee_votes', { p_nation_id: currentNation.id });
-            } catch (e) { /* non-fatal */ }
-        }
-
         // Event log
         await _supabase.from('event_log').insert({
             nation_id: currentNation.id,
