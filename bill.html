@@ -224,22 +224,15 @@ let factionIdeology = null; // Dynamic ideology scores for current player
 let nationActiveLaws = []; // Active laws in the nation (for repeal articles)
 let currentShardTick = 0; // Current shard tick for deadline proximity checks
 let isNoGovernment = false;
-let coalitionPartyIds = []; // For budget bill editing permissions
+let coalitionPartyIds = []; // For bill editing permissions
 let coalitionLeadPartyId = null; // PM's party in parliamentary systems
 let ratificationData = null; // Fetched agreement/proposal data for ratification bills
-let budgetAllocations = []; // Budget allocation rows for budget bills
-let budgetItemAllocations = []; // Per-item (institution/policy) allocation rows
-let budgetActiveLaws = [];  // Active laws for computing ministry costs
-let budgetNation = null;    // Full nation data for budget calculations
-let budgetTradeTariffRevenue = null; // Trade engine tariff revenue for budget display
-let budgetAidData = null;           // Economic aid data { received, given, agreements }
-let budgetInstitutions = [];     // Institution config rows for budget display
 let nominatedFactionId = null; // Faction nominated in confirmation/minister_confirmation bills
 let selectedStrikeArticleId = null;
 let editingArticleId = null;
 let sponsorSelectedPolicy = null;
 let selectedRepealLaw = null; // Active law selected for repeal article
-const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'repeal', 'budget', 'impeachment_motion', 'impeachment_conviction'];
+const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'repeal', 'impeachment_motion', 'impeachment_conviction'];
 
 const urlParams = new URLSearchParams(window.location.search);
 const billId = urlParams.get('id');
@@ -375,11 +368,6 @@ async function loadBillData() {
 
         const mySupport = bill.bill_support?.find(s => s.faction_id === currentFaction?.id);
         if (mySupport) myVote = mySupport.stance;
-
-        // Load budget-specific data
-        if (bill.bill_type === 'budget') {
-            await loadBudgetData(bill);
-        }
 
         // Fetch current tick for deadline proximity checks
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -660,10 +648,6 @@ function renderVoteStatusBadge(bill) {
 
 function renderArticles() {
     const bill = currentBill;
-    if (bill.bill_type === 'budget') {
-        renderBudgetBillUI();
-        return;
-    }
     const isSponsor = bill.proposed_by === currentFaction?.id;
     const isCommittee = bill.status === 'committee';
     const canEditArticles = isSponsor && isCommittee && !SPECIAL_BILL_TYPES.includes(bill.bill_type);

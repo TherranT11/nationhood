@@ -324,7 +324,7 @@ export function renderNavTabs(activeTab) {
         if (params.length) href += '?' + params.join('&');
         let badgeHtml = '';
         if (tab.id === 'laws') {
-            badgeHtml = '<span class="nav-badge" id="bills-badge" style="display:none;"></span><span class="nav-badge-budget" id="budget-due-badge" style="display:none;"></span>';
+            badgeHtml = '<span class="nav-badge" id="bills-badge" style="display:none;"></span>';
         } else if (tab.id === 'parties') {
             badgeHtml = '<span class="nav-badge" id="parties-nominee-badge" style="display:none;"></span>';
         }
@@ -362,12 +362,11 @@ export function cleanSeenBills(activeFloorIds) {
 
 async function updateBillsBadge(faction, nation, shard) {
     const badge = document.getElementById('bills-badge');
-    const budgetDueBadge = document.getElementById('budget-due-badge');
     if (!badge || !faction || !nation) return;
     try {
         const { data: floorBills } = await _supabase
             .from('bills')
-            .select('id, bill_type, bill_support(faction_id)')
+            .select('id, bill_support(faction_id)')
             .eq('nation_id', nation.id)
             .eq('status', 'floor');
 
@@ -379,54 +378,11 @@ async function updateBillsBadge(faction, nation, shard) {
             if (!hasVoted && !hasSeen) count++;
         }
 
-        // Budget cycle detection: cooldown vs early window vs overdue
-        const currentTick = shard?.current_tick || 0;
-        const lastBudgetTick = Number(nation.last_budget_tick || 0);
-        const dueTick = lastBudgetTick > 0 ? lastBudgetTick + 12 : 12;
-        const ticksUntilDue = dueTick - currentTick;
-        const inEarlyWindow = ticksUntilDue > 0 && ticksUntilDue <= 3;
-        const budgetOverdue = ticksUntilDue <= 0;
-        const budgetOnCooldown = ticksUntilDue > 3; // hard cooldown
-
-        const hasPendingBudget = (floorBills || []).some(b => b.bill_type === 'budget');
-        let hasPendingCommittee = false;
-        if (!budgetOnCooldown && !hasPendingBudget) {
-            // Also check committee
-            const { data: committeeBudget } = await _supabase.from('bills')
-                .select('id')
-                .eq('nation_id', nation.id)
-                .eq('bill_type', 'budget')
-                .eq('status', 'committee')
-                .limit(1);
-            hasPendingCommittee = committeeBudget && committeeBudget.length > 0;
-            if (!hasPendingCommittee) {
-                count++;
-            }
-        }
-
         if (count > 0) {
             badge.textContent = count;
             badge.style.display = '';
         } else {
             badge.style.display = 'none';
-        }
-
-        // Budget Due badge on nav tab (yellow = early window, red = overdue)
-        if (budgetDueBadge) {
-            const budgetPassedThisCycle = hasPendingBudget || hasPendingCommittee || budgetOnCooldown;
-            const reviewTick = Math.max(0, dueTick - 3);
-            const reviewDate = tickToDate(reviewTick);
-            const submitDate = tickToDate(dueTick);
-            if (!budgetPassedThisCycle && (inEarlyWindow || budgetOverdue)) {
-                budgetDueBadge.textContent = budgetOverdue ? 'OVERDUE' : 'DUE';
-                budgetDueBadge.className = 'nav-badge-budget ' + (budgetOverdue ? 'nav-badge-budget-red' : 'nav-badge-budget-yellow');
-                budgetDueBadge.title = budgetOverdue
-                    ? 'Budget is overdue! Review Available: ' + reviewDate + '. Open to Submit: ' + submitDate + '.'
-                    : 'Review Available: ' + reviewDate + '. Open to Submit: ' + submitDate + '.';
-                budgetDueBadge.style.display = '';
-            } else {
-                budgetDueBadge.style.display = 'none';
-            }
         }
     } catch (e) {
         console.error('Error updating bills badge:', e);
