@@ -6862,7 +6862,7 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
 
     if (reversalEffects.length === 0) return;
 
-    const { error: reversalInsertError } = await supabase.from('active_laws').insert({
+    const { error: reversalInsertError } = await supabase.from('active_laws').upsert({
         nation_id: nation.id,
         policy_id: policy.id,
         passed_tick: currentTick,
@@ -6870,9 +6870,9 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
         effects_applied_through_tick: currentTick - 1,
         is_reversal: true,
         reversal_effects: reversalEffects
-    });
+    }, { onConflict: 'nation_id,policy_id' });
     if (reversalInsertError) {
-        console.error(`[reversePolicy] Failed to insert reversal active_law for policy ${policy.id}:`, reversalInsertError.message);
+        console.error(`[reversePolicy] Failed to upsert reversal active_law for policy ${policy.id}:`, reversalInsertError.message);
     }
 }
 
@@ -12286,7 +12286,7 @@ async function processPromiseTick(supabase, nation, currentTick) {
         // Per-tick penalty: governing party with unfulfilled promise loses approval with the promised bloc
         // -1D3 approval per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
         if (isGoverning && promise.bloc_id) {
-            const penaltyAmount = -(Math.floor(Math.random() * (cfg.PENALTY_PER_TICK_MAX - cfg.PENALTY_PER_TICK_MIN + 1)) + cfg.PENALTY_PER_TICK_MIN);
+            const penaltyAmount = -(Math.floor(Math.random() * (MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX - MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN + 1)) + MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN);
             const { data: penaltyBlocRow } = await supabase
                 .from('faction_bloc_approval')
                 .select('id, approval')
