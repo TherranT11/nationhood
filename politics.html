@@ -1102,6 +1102,251 @@
     flex-shrink: 0;
 }
 
+/* ── Government Scorecard box ── */
+.pol-scorecard-box {
+    width: 380px;
+    flex-shrink: 0;
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-0);
+    border-radius: 4px;
+    padding: 16px 20px;
+    overflow-y: auto;
+}
+.pol-sc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.pol-sc-title {
+    font-family: var(--dfont-ui);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--dtext-2);
+    text-transform: uppercase;
+}
+.pol-sc-gov-badge {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.pol-sc-gov-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 1px;
+}
+.pol-sc-gov-abbr {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+}
+.pol-sc-gov-label {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+}
+.pol-sc-approval-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.pol-sc-approval-label {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+    margin-bottom: 2px;
+}
+.pol-sc-approval-big {
+    font-family: var(--dfont-mono);
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+}
+.pol-sc-approval-delta {
+    font-family: var(--dfont-mono);
+    font-size: 12px;
+    font-weight: 600;
+}
+.pol-sc-bar {
+    position: relative;
+    height: 8px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 3px;
+    margin-bottom: 4px;
+}
+.pol-sc-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+}
+.pol-sc-bar-midline {
+    position: absolute;
+    left: 50%;
+    top: -2px;
+    width: 1px;
+    height: 12px;
+    background: rgba(255,255,255,0.19);
+}
+.pol-sc-bar-labels {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    color: var(--dtext-3);
+}
+.pol-sc-divider {
+    height: 1px;
+    background: var(--dborder-0);
+    margin: 10px 0;
+}
+.pol-sc-vuln-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.pol-sc-vuln-title {
+    font-family: var(--dfont-ui);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--dtext-2);
+    text-transform: uppercase;
+}
+.pol-sc-vuln-count {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    color: var(--dred);
+}
+.pol-sc-vuln {
+    display: flex;
+    align-items: center;
+    padding: 5px 8px;
+    margin-bottom: 3px;
+    border-radius: 3px;
+    background: var(--dred-faint);
+    border-left: 3px solid var(--dred);
+}
+.pol-sc-vuln-label {
+    font-family: var(--dfont-ui);
+    font-size: 11px;
+    color: var(--dtext-0);
+    flex: 1;
+}
+.pol-sc-vuln-stat {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--dtext-2);
+    width: 44px;
+    text-align: right;
+}
+.pol-sc-vuln-score {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--dred);
+    width: 30px;
+    text-align: right;
+}
+.pol-sc-toggle {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    padding: 2px 0;
+}
+.pol-sc-toggle-text {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+}
+.pol-sc-toggle-arrow {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+    transition: transform 0.15s;
+}
+.pol-sc-breakdown {
+    display: none;
+    margin-top: 6px;
+}
+.pol-sc-breakdown.open {
+    display: block;
+}
+.pol-sc-section-label {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+.pol-sc-row {
+    display: flex;
+    align-items: center;
+    padding: 3px 0;
+    border-bottom: 1px solid var(--dborder-0);
+}
+.pol-sc-row-name {
+    font-family: var(--dfont-ui);
+    font-size: 10px;
+    color: var(--dtext-2);
+    flex: 1;
+}
+.pol-sc-row-stat {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+    width: 40px;
+    text-align: right;
+}
+.pol-sc-row-score {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 600;
+    width: 30px;
+    text-align: right;
+}
+.pol-sc-row-critical {
+    font-family: var(--dfont-mono);
+    font-size: 7px;
+    color: var(--dred);
+    margin-left: 4px;
+}
+.pol-sc-net {
+    display: flex;
+    justify-content: space-between;
+    padding-top: 4px;
+}
+.pol-sc-net-label {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--dtext-2);
+}
+.pol-sc-net-value {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 700;
+}
+.pol-sc-strategic {
+    padding: 8px 10px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.015);
+    border-left: 3px solid;
+}
+.pol-sc-strategic-label {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 700;
+}
+.pol-sc-strategic-text {
+    font-family: var(--dfont-ui);
+    font-size: 10px;
+    color: var(--dtext-2);
+    margin-top: 4px;
+    line-height: 1.5;
+}
+
 /* ── Edit Party Identity box ── */
 .pol-identity-box {
     width: 380px;
@@ -1630,6 +1875,15 @@ initPage('politics', async (state) => {
     // Generate deterministic deputy leader and party whip names from faction id
     const officerNames = generateOfficerNames(f.id);
 
+    // Fetch previous tick's gov_approval for delta display
+    const { data: prevSnap } = await _supabase
+        .from('nations_history')
+        .select('gov_approval')
+        .eq('nation_id', nation.id)
+        .eq('tick', currentTick - 1)
+        .single();
+    const prevApproval = prevSnap?.gov_approval ?? null;
+
     renderPartyTab(f, nation, {
         totalSeats,
         mySeats,
@@ -1644,7 +1898,8 @@ initPage('politics', async (state) => {
         allPartyIdeologies,
         activeCrises,
         nextElection,
-        blocApprovals
+        blocApprovals,
+        prevApproval
     });
 });
 
@@ -1685,7 +1940,7 @@ function renderPartyTab(f, nation, data) {
     const {
         totalSeats, mySeats, voteSharePct, lastElectionDate,
         seatDelta, role, officerNames, allParties, allPartyIdeologies, coalition, activeCrises, currentTick,
-        nextElection, blocApprovals
+        nextElection, blocApprovals, prevApproval
     } = data;
 
     const partyColor = f.party_color || '#ffcc00';
@@ -1809,13 +2064,14 @@ function renderPartyTab(f, nation, data) {
         ${renderIdeologyBox(allParties, allPartyIdeologies, f.id)}
         ${renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, f.id)}
         ${renderEditIdentityBox(f, currentTick)}
+        ${renderGovScorecardBox(nation, coalition, allParties, currentTick, prevApproval)}
         </div>
     </div>`;
 
     document.getElementById('content-area').innerHTML = html;
 
     // Lock all panels to fixed 450px height
-    document.querySelectorAll('.pol-party-card, .pol-modifiers-box, .pol-parliament-box, .pol-mood-box, .pol-ideology-box, .pol-forecast-box, .pol-identity-box').forEach(el => {
+    document.querySelectorAll('.pol-party-card, .pol-modifiers-box, .pol-parliament-box, .pol-mood-box, .pol-ideology-box, .pol-forecast-box, .pol-identity-box, .pol-scorecard-box').forEach(el => {
         el.style.height = '450px';
     });
 
@@ -2299,6 +2555,207 @@ function renderNationalMoodBox(nation, activeCrises, currentTick) {
             ${crisesHtml}
             ${issuesHtml}
         </div>`;
+}
+
+function computeCategoryContribution(nation, statKeys) {
+    let total = 0, count = 0;
+    for (const key of statKeys) {
+        const val = Number(nation[key] ?? 50);
+        const dir = statDirectionSign(key);
+        if (dir === 0) continue;
+        const goodness = dir === 1 ? val : (100 - val);
+        total += Math.max(0, Math.min(100, goodness));
+        count++;
+    }
+    if (count === 0) return { avgGoodness: 50, score: 0 };
+    const avgGoodness = total / count;
+    const score = Math.round(((avgGoodness - 50) / 5) * 10) / 10;
+    return { avgGoodness, score };
+}
+
+function getRepresentativeStat(nation, statKeys) {
+    // Return the stat with the worst individual value
+    let worst = null, worstBadness = -1;
+    for (const key of statKeys) {
+        const val = Number(nation[key] ?? 50);
+        const dir = statDirectionSign(key);
+        if (dir === 0) continue;
+        const badness = dir === 1 ? (100 - val) : val;
+        if (badness > worstBadness) {
+            worstBadness = badness;
+            worst = { key, val: Math.round(val * 10) / 10 };
+        }
+    }
+    return worst;
+}
+
+function renderGovScorecardBox(nation, coalition, allParties, currentTick, prevApproval) {
+    const approval = Math.round(Number(nation.gov_approval ?? 50));
+    const apprColor = approval >= 50 ? 'var(--dgreen)' : approval >= 35 ? 'var(--damber)' : approval >= 20 ? 'var(--damber)' : 'var(--dred)';
+
+    // Delta from previous tick
+    let deltaHtml = '';
+    if (prevApproval !== null && prevApproval !== undefined) {
+        const delta = Math.round((approval - prevApproval) * 10) / 10;
+        if (delta !== 0) {
+            const dColor = delta > 0 ? 'var(--dgreen)' : 'var(--dred)';
+            const arrow = delta > 0 ? '▲' : '▼';
+            deltaHtml = `<span class="pol-sc-approval-delta" style="color:${dColor}">${arrow}${Math.abs(delta)}</span>`;
+        } else {
+            deltaHtml = `<span class="pol-sc-approval-delta" style="color:var(--dtext-3)">—</span>`;
+        }
+    } else {
+        deltaHtml = `<span class="pol-sc-approval-delta" style="color:var(--dtext-3)">—</span>`;
+    }
+
+    // Governing party badge
+    const leadPartyId = coalition?.lead_party_id || null;
+    const leadParty = leadPartyId ? (allParties || []).find(p => p.id === leadPartyId) : null;
+    let govBadgeHtml = '';
+    if (leadParty) {
+        const pc = leadParty.party_color || '#8a8778';
+        const abbr = leadParty.abbreviation || (leadParty.faction_name || '??').substring(0, 2).toUpperCase();
+        govBadgeHtml = `<div class="pol-sc-gov-badge">
+            <div class="pol-sc-gov-dot" style="background:${pc}"></div>
+            <span class="pol-sc-gov-abbr" style="color:${pc}">${escapeHtml(abbr)}</span>
+            <span class="pol-sc-gov-label">gov</span>
+        </div>`;
+    }
+
+    // Compute contributions per category
+    const categories = Object.entries(ISSUE_CATEGORY_STATS).map(([key, statKeys]) => {
+        const { score } = computeCategoryContribution(nation, statKeys);
+        const rep = getRepresentativeStat(nation, statKeys);
+        return {
+            name: ISSUE_DISPLAY_NAMES[key] || key,
+            score,
+            repStat: rep ? rep.val : '—',
+            critical: score <= -6
+        };
+    });
+
+    const positives = categories.filter(c => c.score > 0).sort((a, b) => b.score - a.score);
+    const negatives = categories.filter(c => c.score < 0).sort((a, b) => a.score - b.score);
+    const totalPos = positives.reduce((s, c) => s + c.score, 0);
+    const totalNeg = Math.abs(negatives.reduce((s, c) => s + c.score, 0));
+
+    // Top vulnerabilities (worst 4 negatives)
+    const topVulns = negatives.slice(0, 4);
+
+    const vulnsHtml = topVulns.map(v =>
+        `<div class="pol-sc-vuln">
+            <span class="pol-sc-vuln-label">${escapeHtml(v.name)}</span>
+            <span class="pol-sc-vuln-stat">${v.repStat}</span>
+            <span class="pol-sc-vuln-score">${v.score}</span>
+        </div>`
+    ).join('');
+
+    // Full breakdown
+    const posRowsHtml = positives.map(c =>
+        `<div class="pol-sc-row">
+            <span class="pol-sc-row-name">${escapeHtml(c.name)}</span>
+            <span class="pol-sc-row-stat">${c.repStat}</span>
+            <span class="pol-sc-row-score" style="color:var(--dgreen)">+${c.score}</span>
+        </div>`
+    ).join('');
+
+    const negRowsHtml = negatives.map(c =>
+        `<div class="pol-sc-row">
+            <span class="pol-sc-row-name">${escapeHtml(c.name)}</span>
+            <span class="pol-sc-row-stat">${c.repStat}</span>
+            <span class="pol-sc-row-score" style="color:var(--dred)">${c.score}</span>
+            ${c.critical ? '<span class="pol-sc-row-critical">⚠</span>' : ''}
+        </div>`
+    ).join('');
+
+    // Strategic read
+    let stratLabel, stratColor, stratText;
+    const worstDrag = negatives.length > 0 ? negatives[0].name : 'unknown factors';
+    const secondDrag = negatives.length > 1 ? negatives[1].name : null;
+    if (approval >= 50) {
+        stratLabel = 'STRONG';
+        stratColor = 'var(--dgreen)';
+        stratText = 'Government is popular and delivering results.';
+    } else if (approval >= 40) {
+        stratLabel = 'VULNERABLE';
+        stratColor = 'var(--damber)';
+        stratText = `Government is holding but trending down. ${escapeHtml(worstDrag)} is the primary drag.`;
+    } else if (approval >= 25) {
+        stratLabel = 'WEAK';
+        stratColor = 'var(--dred)';
+        stratText = `Government approval below 40% and falling. ${escapeHtml(worstDrag)}${secondDrag ? ' and ' + escapeHtml(secondDrag) : ''} ${secondDrag ? 'are' : 'is'} the biggest drag${secondDrag ? 's' : ''}. Voters are looking for alternatives.`;
+    } else {
+        stratLabel = 'COLLAPSING';
+        stratColor = 'var(--dred)';
+        stratText = `Government approval critically low. ${escapeHtml(worstDrag)}${secondDrag ? ' and ' + escapeHtml(secondDrag) : ''} ${secondDrag ? 'are' : 'is'} driving collapse. Immediate action required.`;
+    }
+
+    return `<div class="pol-scorecard-box">
+        <!-- Header -->
+        <div class="pol-sc-header">
+            <span class="pol-sc-title">Government Scorecard</span>
+            ${govBadgeHtml}
+        </div>
+
+        <!-- Approval headline -->
+        <div class="pol-sc-approval-row">
+            <div>
+                <div class="pol-sc-approval-label">APPROVAL</div>
+                <div style="display:flex;align-items:baseline;gap:6px">
+                    <span class="pol-sc-approval-big" style="color:${apprColor}">${approval}%</span>
+                    ${deltaHtml}
+                </div>
+            </div>
+        </div>
+
+        <!-- Approval bar -->
+        <div class="pol-sc-bar">
+            <div class="pol-sc-bar-fill" style="width:${approval}%;background:${apprColor}"></div>
+            <div class="pol-sc-bar-midline"></div>
+        </div>
+        <div class="pol-sc-bar-labels">
+            <span>+${Math.round(totalPos * 10) / 10} positive</span>
+            <span>50%</span>
+            <span>-${Math.round(totalNeg * 10) / 10} negative</span>
+        </div>
+
+        <div class="pol-sc-divider"></div>
+
+        <!-- Top Vulnerabilities -->
+        <div style="margin-bottom:2px">
+            <div class="pol-sc-vuln-header">
+                <span class="pol-sc-vuln-title">Top Vulnerabilities</span>
+                <span class="pol-sc-vuln-count">${topVulns.filter(v => v.critical).length} critical</span>
+            </div>
+            ${vulnsHtml}
+        </div>
+
+        <div class="pol-sc-divider"></div>
+
+        <!-- Collapsible breakdown -->
+        <div class="pol-sc-toggle" onclick="var bd=this.nextElementSibling;bd.classList.toggle('open');this.querySelector('.pol-sc-toggle-arrow').style.transform=bd.classList.contains('open')?'rotate(180deg)':'rotate(0)'">
+            <span class="pol-sc-toggle-text">Full breakdown</span>
+            <span class="pol-sc-toggle-arrow">▼</span>
+        </div>
+        <div class="pol-sc-breakdown">
+            <span class="pol-sc-section-label" style="color:var(--dgreen)">POSITIVE</span>
+            <div style="margin-top:4px;margin-bottom:8px">${posRowsHtml || '<div style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3);padding:4px 0">None</div>'}</div>
+            <span class="pol-sc-section-label" style="color:var(--dred)">NEGATIVE</span>
+            <div style="margin-top:4px;margin-bottom:8px">${negRowsHtml || '<div style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3);padding:4px 0">None</div>'}</div>
+            <div class="pol-sc-net">
+                <span class="pol-sc-net-label">Net</span>
+                <span class="pol-sc-net-value" style="color:${apprColor}">+${Math.round(totalPos * 10) / 10} / -${Math.round(totalNeg * 10) / 10} = ${approval}%</span>
+            </div>
+        </div>
+
+        <div class="pol-sc-divider"></div>
+
+        <!-- Strategic read -->
+        <div class="pol-sc-strategic" style="border-left-color:${stratColor}">
+            <span class="pol-sc-strategic-label" style="color:${stratColor}">${stratLabel}</span>
+            <div class="pol-sc-strategic-text">${stratText}</div>
+        </div>
+    </div>`;
 }
 
 const RENAME_AP_COST  = 3;
