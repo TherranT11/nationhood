@@ -146,70 +146,11 @@ initPage(cfg.initTab, async (state) => {
 });
 
 // ═══════════════════════════════════════
-//  PM init
+//  PM init — parliamentary systems auto-appoint party leader, no candidate selection needed
 // ═══════════════════════════════════════
 async function initPM() {
-    // Guard: coalition must be formed
-    const { data: activeGov } = await _supabase
-        .from('government_formations')
-        .select('id, status')
-        .eq('nation_id', currentNation.id)
-        .in('status', ['formed', 'caretaker'])
-        .order('formed_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-    if (!activeGov) {
-        renderEmpty('No coalition has been finalized yet. A government must be formed before a Prime Minister can be appointed. <a href="elections.html">Go to Elections \u2192</a>');
-        return;
-    }
-
-    await loadTraits();
-    await loadPMCandidates();
-
-    if (candidates.length === 0) {
-        // Check if this faction is the PM party
-        const { data: gov } = await _supabase
-            .from('government_formations')
-            .select('ministry_assignments')
-            .eq('nation_id', currentNation.id)
-            .in('status', ['formed', 'caretaker'])
-            .order('formed_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-        const pmPartyId = gov?.ministry_assignments?.prime_minister;
-
-        if (pmPartyId === currentFaction.id) {
-            const { data: shard } = await _supabase
-                .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-            try {
-                await generatePMCandidates(_supabase, currentNation.id, currentFaction.id, shard?.current_tick || 0);
-                await loadPMCandidates();
-                if (candidates.length > 0) { renderCandidates(); return; }
-            } catch (e) {
-                console.error('Auto-generate PM candidates failed:', e);
-            }
-        }
-
-        // Check if already has active HOG
-        const { data: hog } = await _supabase
-            .from('head_of_government')
-            .select('*')
-            .eq('nation_id', currentNation.id)
-            .eq('faction_id', currentFaction.id)
-            .eq('active', true)
-            .maybeSingle();
-
-        if (hog) {
-            renderEmpty('You have already selected a Prime Minister. <a href="government.html">View Government \u2192</a>');
-        } else {
-            renderEmpty('No candidates available. Candidates are generated when a coalition is formed and your party receives the Prime Minister post.');
-        }
-        return;
-    }
-
-    renderCandidates();
+    // Parliamentary PM selection is now automatic — redirect to government page
+    renderEmpty('Prime Ministers are now automatically appointed from your Party Leader when a coalition forms. <a href="government.html">View Government \u2192</a>');
 }
 
 async function loadPMCandidates() {

@@ -5554,6 +5554,146 @@ export async function selectPMCandidate(supabase, candidateId, nationId, faction
     return candidate;
 }
 
+/**
+ * Auto-appoint the party leader as Prime Minister without candidate selection.
+ * Used for parliamentary systems — the party leader becomes PM immediately
+ * when their party receives the PM role during coalition formation.
+ */
+export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, currentTick) {
+    const coalition = await fetchActiveCoalition(supabase, nationId);
+    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'caretaker')) {
+        throw new Error('Cannot appoint a Prime Minister until a coalition has been formed.');
+    }
+
+    // Load faction with leader data
+    const { data: faction, error: factionErr } = await supabase
+        .from('factions')
+        .select('id, faction_name, leader_first_name, leader_last_name, leader_age')
+        .eq('id', factionId)
+        .single();
+    if (factionErr || !faction) throw new Error('Faction not found');
+    if (!faction.leader_first_name || !faction.leader_last_name) {
+        throw new Error('Party leader data is incomplete — cannot auto-appoint PM.');
+    }
+
+    // Pick a weighted ideology based on faction's ideology profile
+    const factionIdeology = await loadFactionIdeology(supabase, factionId);
+    const weightedIdeologies = getWeightedIdeologies(factionIdeology);
+    const ideologyPick = weightedRandomPick(weightedIdeologies);
+    const ideology = ideologyPick.item;
+
+    // Pick a random trait
+    const traitKey = PM_TRAIT_KEYS[Math.floor(Math.random() * PM_TRAIT_KEYS.length)];
+
+    const leaderAge = faction.leader_age || (35 + Math.floor(Math.random() * 16));
+
+    // Clean up any existing PM candidates for this faction
+    await supabase.from('pm_candidates').delete()
+        .eq('nation_id', nationId).eq('faction_id', factionId).eq('selected', false);
+
+    // Deactivate any current HOG
+    await supabase.from('head_of_government')
+        .update({ active: false })
+        .eq('nation_id', nationId).eq('active', true);
+
+    // Create HOG record
+    const { error: hogErr } = await supabase
+        .from('head_of_government')
+        .upsert({
+            nation_id: nationId,
+            faction_id: factionId,
+            candidate_id: null,
+            first_name: faction.leader_first_name,
+            last_name: faction.leader_last_name,
+            age: leaderAge,
+            ideology: ideology.tag,
+            trait_key: traitKey,
+            appointed_tick: currentTick,
+            active: true
+        }, { onConflict: 'nation_id' });
+    if (hogErr) throw hogErr;
+
+    // Update administration record
+    const pmFullName = `${faction.leader_first_name} ${faction.leader_last_name}`;
+    await supabase.from('administrations').update({
+        prime_minister: pmFullName,
+        admin_name: `${faction.leader_last_name} Administration`,
+        updated_at: new Date().toISOString()
+    }).eq('nation_id', nationId).is('ended_at_tick', null);
+
+    // Update/create PM ministry row
+    const { data: pmMinistry } = await supabase.from('ministries')
+        .select('id').eq('nation_id', nationId)
+        .eq('ministry_key', 'prime_minister').eq('is_active', true)
+        .maybeSingle();
+
+    const { data: nationForBaseline } = await supabase.from('nations').select('*').eq('id', nationId).single();
+    const pmBaselines = nationForBaseline ? buildMinistryBaselines('prime_minister', nationForBaseline) : {};
+
+    if (pmMinistry) {
+        await supabase.from('ministries').update({
+            party_id: factionId,
+            minister_first_name: faction.leader_first_name,
+            minister_last_name: faction.leader_last_name,
+            minister_age: leaderAge,
+            minister_approval: 50,
+            stat_baselines: pmBaselines
+        }).eq('id', pmMinistry.id);
+    } else {
+        await supabase.from('ministries').insert({
+            nation_id: nationId,
+            ministry_key: 'prime_minister',
+            ministry_name: 'Prime Minister',
+            is_active: true,
+            party_id: factionId,
+            minister_first_name: faction.leader_first_name,
+            minister_last_name: faction.leader_last_name,
+            minister_age: leaderAge,
+            minister_approval: 50,
+            stat_baselines: pmBaselines
+        });
+    }
+
+    // Apply ideology shift (+5 for PM, same as original selectPMCandidate uses +15 via candidate)
+    const axisKey = ideology.axisKey;
+    const shift = 5 * ideology.direction;
+
+    let currentIdeology = factionIdeology;
+    if (!currentIdeology) {
+        const newRow = { faction_id: factionId, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0 };
+        await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id' });
+        currentIdeology = newRow;
+    }
+    const currentVal = currentIdeology[axisKey] || 0;
+    const newVal = Math.max(-100, Math.min(100, currentVal + shift));
+    await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
+
+    // Apply trait effects
+    const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', traitKey).single();
+    if (trait?.effects?.on_appoint_stability && nationForBaseline) {
+        const newStability = Math.max(0, Math.min(100, (nationForBaseline.stability || 50) + trait.effects.on_appoint_stability));
+        await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
+    }
+
+    // Fire system event
+    try {
+        await supabase.rpc('fire_system_event', {
+            p_trigger_key: 'pm_appointed',
+            p_nation_id: nationId,
+            p_tick: currentTick,
+            p_placeholders: {
+                nation: nationForBaseline?.name || '',
+                pm_name: pmFullName,
+                party: faction.faction_name,
+                trait: trait?.trait_name || traitKey
+            }
+        });
+    } catch (e) { console.warn('PM appointed event fire failed (non-blocking):', e); }
+
+    console.log(`Auto-appointed party leader as PM: ${pmFullName} (${traitKey}) for faction ${factionId}`);
+    return { first_name: faction.leader_first_name, last_name: faction.leader_last_name, age: leaderAge, ideology: ideology.tag, trait_key: traitKey };
+}
+
 export async function processPMTraitEffects(supabase, nation, currentTick) {
     let effects, factionId;
 
@@ -5747,10 +5887,10 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
         );
 
         if (eligible) {
-            await generatePMCandidates(supabase, nationId, eligible.id, currentTick);
-            console.log(`PM offered to ${eligible.faction_name}`);
+            await autoAppointPartyLeaderAsPM(supabase, nationId, eligible.id, currentTick);
+            console.log(`PM auto-appointed to ${eligible.faction_name} leader`);
             return {
-                result: 'pm_offered',
+                result: 'pm_appointed',
                 newPmPartyId: eligible.id,
                 newPmPartyName: eligible.faction_name
             };

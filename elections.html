@@ -24,7 +24,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, fetchActiveCoalition, runElectionPreview, getPartyAlignment, distributeVotes, allocateSeatsByVotes, dissolveCoalition, generatePMCandidates, rolloverAdministration, buildMinistryBaselines } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, fetchActiveCoalition, runElectionPreview, getPartyAlignment, distributeVotes, allocateSeatsByVotes, dissolveCoalition, generatePMCandidates, autoAppointPartyLeaderAsPM, rolloverAdministration, buildMinistryBaselines } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 (function () {
     'use strict';
@@ -197,27 +197,8 @@ async function renderDemocracyPage() {
     // Presidential systems never show coalition formation
     const showFormation = isPresidential ? false : (currentElectionId && !govFormed);
 
-    // Check if current player has pending PM selection
-    let hasPendingPM = false;
-    if (currentFaction && !isPresidential) {
-        const { count } = await _supabase
-            .from('pm_candidates')
-            .select('*', { count: 'exact', head: true })
-            .eq('nation_id', currentNation.id)
-            .eq('faction_id', currentFaction.id)
-            .eq('selected', false);
-        hasPendingPM = (count || 0) > 0;
-    }
     const html = `
         <div class="panel-padding">
-            ${hasPendingPM ? `
-    <div style="background:linear-gradient(135deg,#2a2200,#1a1a00);border:2px solid var(--accent);border-radius:12px;padding:20px;margin-bottom:24px;text-align:center;cursor:pointer;" onclick="window.location.href='select-candidate.html?role=pm'">
-        <div style="font-size:1.8rem;margin-bottom:8px;">👑</div>
-        <div style="font-size:1.1rem;color:var(--accent);font-weight:bold;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Select Your Prime Minister</div>
-        <div style="font-size:0.85rem;color:var(--text-secondary);">Your coalition has formed. Choose who will lead the nation.</div>
-        <div style="margin-top:12px;display:inline-block;padding:8px 24px;background:var(--accent);color:#121212;border-radius:6px;font-weight:bold;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;">Choose Now →</div>
-    </div>
-` : ''}
             <!-- Presidential Candidate Results (Presidential systems only) -->
             ${isPresidential ? `
             <div id="presidential-results-section" style="display: ${presidentialElection ? 'block' : 'none'};">
@@ -1663,26 +1644,25 @@ async function formGovernment() {
                     }
                 }
 
-                // Generate 3 PM candidates for the PM party
-                await generatePMCandidates(
-                    _supabase,
-                    currentNation.id,
-                    pmPartyId,
-                    shard?.current_tick || 0
-                );
+                // Auto-appoint the PM party's leader as Prime Minister
+                try {
+                    const appointed = await autoAppointPartyLeaderAsPM(
+                        _supabase,
+                        currentNation.id,
+                        pmPartyId,
+                        shard?.current_tick || 0
+                    );
+                    console.log(`Auto-appointed PM: ${appointed.first_name} ${appointed.last_name}`);
+                } catch (pmErr) {
+                    console.error('Auto-appoint PM failed:', pmErr);
+                }
 
             }
 
             alert('🏛️ ' + data.message);
             if (realtimeChannel) { _supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
             sessionStorage.removeItem('nationhood_state');
-
-            // If current player IS the PM party, send them to candidate selection
-            if (pmPartyId === currentFaction.id) {
-                window.location.href = 'select-candidate.html?role=pm';
-            } else {
-                location.reload();
-            }
+            location.reload();
         } else { alert('❌ ' + data.message); }
     } catch (err) { alert('❌ Error: ' + err.message); }
     finally { _formingInProgress = false; }
