@@ -5603,9 +5603,16 @@ export async function processPMTraitEffects(supabase, nation, currentTick) {
                 console.warn(`[processPMTraitEffects] Skipping invalid stat_key "${rawStat}" in PM trait for ${nation.name}`);
                 continue;
             }
+            // GDP is only changed by gdp_growth via applyGdpGrowth — skip
+            if (stat === 'gdp') continue;
             const currentVal = nation[stat];
             if (currentVal !== undefined && currentVal !== null) {
-                updates[stat] = Math.round(Math.max(0, Math.min(100, currentVal + delta)) * 10) / 10;
+                if (RAW_SCALING_DIVISORS[stat]) {
+                    // Raw-value stats (debt, population): scale rate and don't clamp to 0-100
+                    updates[stat] = Math.max(0, Number(currentVal) + delta * RAW_SCALING_DIVISORS[stat]);
+                } else {
+                    updates[stat] = Math.round(Math.max(0, Math.min(100, Number(currentVal) + delta)) * 10) / 10;
+                }
             }
         }
         if (Object.keys(updates).length > 0) {
