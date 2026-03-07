@@ -60,6 +60,7 @@
 /* ── Party card box ── */
 .pol-party-card {
     width: 380px;
+    flex-shrink: 0;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
     border-radius: 6px;
@@ -335,13 +336,14 @@
 /* ── Two-column layout ── */
 .pol-columns {
     display: flex;
-    gap: 24px;
+    gap: 16px;
     align-items: stretch;
 }
 
 /* ── Modifiers box ── */
 .pol-modifiers-box {
     width: 380px;
+    flex-shrink: 0;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
     border-radius: 6px;
@@ -437,6 +439,7 @@
 /* ── Parliament box ── */
 .pol-parliament-box {
     width: 380px;
+    flex-shrink: 0;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
     border-radius: 4px;
@@ -602,6 +605,123 @@
 .pol-margin-negative .pol-margin-dot {
     background: var(--dred);
 }
+
+/* ── National Mood box ── */
+.pol-mood-box {
+    width: 380px;
+    flex-shrink: 0;
+    flex-grow: 0;
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-0);
+    border-radius: 4px;
+    padding: 22px 24px 24px;
+}
+.pol-mood-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+.pol-mood-title {
+    font-family: var(--dfont-mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dtxt-muted);
+}
+.pol-mood-crisis-label {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dtxt-dim);
+    margin-bottom: 8px;
+}
+.pol-mood-no-crises {
+    font-family: var(--dfont-ui);
+    font-size: 12px;
+    color: var(--dtxt-dim);
+    margin-bottom: 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--dborder-hair);
+}
+.pol-mood-crisis {
+    background: var(--dbg-3);
+    border: 1px solid var(--dborder-1);
+    border-left: 3px solid var(--damber);
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.pol-mood-crisis:last-of-type {
+    margin-bottom: 14px;
+}
+.pol-mood-crisis-name {
+    font-family: var(--dfont-ui);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--dtxt-bright);
+}
+.pol-mood-crisis-dur {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--dred);
+}
+.pol-mood-issue {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--dborder-hair);
+}
+.pol-mood-issue:last-child {
+    border-bottom: none;
+}
+.pol-mood-issue-name {
+    font-family: var(--dfont-ui);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--dtxt-primary);
+    flex: 1;
+    white-space: nowrap;
+}
+.pol-mood-issue-bar-wrap {
+    width: 60px;
+    height: 5px;
+    background: var(--dbg-4);
+    border-radius: 3px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.pol-mood-issue-bar {
+    height: 100%;
+    border-radius: 3px;
+}
+.pol-mood-issue-pct {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--dtxt-dim);
+    width: 28px;
+    text-align: right;
+    flex-shrink: 0;
+}
+.pol-mood-footer {
+    font-family: var(--dfont-ui);
+    font-size: 11px;
+    color: var(--dtxt-dim);
+    text-align: center;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--dborder-0);
+    font-style: italic;
+}
 </style>
 </head>
 <body>
@@ -621,6 +741,7 @@ import { initPage } from './js/common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 import { tickToDate } from './js/utils.js';
 import { fetchActiveCoalition, isPresidentialRepublic } from './js/game/government-structure.js';
+import { ISSUE_CATEGORY_STATS, statDirectionSign } from './js/game/stats.js';
 
 initPage('politics', async (state) => {
     const { nation, faction, shard } = state;
@@ -685,6 +806,12 @@ initPage('politics', async (state) => {
         role = coalition.lead_party_id === f.id ? 'Lead — Governing' : 'Governing Coalition';
     }
 
+    // Fetch active crises
+    const { data: activeCrises } = await _supabase
+        .from('active_crises')
+        .select('id, started_at_tick, crisis_templates(name, description)')
+        .eq('nation_id', nation.id);
+
     // Generate deterministic deputy leader and party whip names from faction id
     const officerNames = generateOfficerNames(f.id);
 
@@ -698,7 +825,8 @@ initPage('politics', async (state) => {
         coalition,
         currentTick,
         officerNames,
-        allParties
+        allParties,
+        activeCrises
     });
 });
 
@@ -738,7 +866,7 @@ function generateOfficerNames(factionId) {
 function renderPartyTab(f, nation, data) {
     const {
         totalSeats, mySeats, voteSharePct, lastElectionDate,
-        seatDelta, role, officerNames, allParties, coalition
+        seatDelta, role, officerNames, allParties, coalition, activeCrises, currentTick
     } = data;
 
     const partyColor = f.party_color || '#ffcc00';
@@ -855,6 +983,7 @@ function renderPartyTab(f, nation, data) {
         </div><!-- /pol-party-card -->
         ${renderModifiersBox(f)}
         ${renderParliamentBox(allParties, coalition, nation, f.id)}
+        ${renderNationalMoodBox(nation, activeCrises, currentTick)}
         </div><!-- /pol-columns -->
     </div>`;
 
@@ -1004,6 +1133,79 @@ function renderParliamentBox(allParties, coalition, nation, playerFactionId) {
                 <span class="pol-margin-dot"></span>
                 <span>${marginText}</span>
             </div>
+        </div>`;
+}
+
+const ISSUE_DISPLAY_NAMES = {
+    Economics: 'Economy', Military: 'Security', Social: 'Quality of Life',
+    Governance: 'Governance', Healthcare: 'Healthcare', Education: 'Education',
+    Immigration: 'Immigration', Labor: 'Labor & Jobs', Infrastructure: 'Infrastructure',
+    International: 'Foreign Affairs', Agriculture: 'Agriculture'
+};
+
+function computeIssueImportance(nation, statKeys) {
+    let total = 0, count = 0;
+    for (const key of statKeys) {
+        const val = Number(nation[key] ?? 50);
+        const dir = statDirectionSign(key);
+        if (dir === 0) continue;
+        // Higher-is-better: badness = 100 - val. Lower-is-better: badness = val.
+        const badness = dir === 1 ? (100 - val) : val;
+        total += Math.max(0, Math.min(100, badness));
+        count++;
+    }
+    return count > 0 ? Math.round(total / count) : 0;
+}
+
+function importanceColor(pct) {
+    if (pct >= 60) return 'var(--dred)';
+    if (pct >= 40) return 'var(--damber)';
+    return 'var(--dgreen)';
+}
+
+function renderNationalMoodBox(nation, activeCrises, currentTick) {
+    const crises = activeCrises || [];
+
+    // Crises section
+    let crisesHtml;
+    if (crises.length === 0) {
+        crisesHtml = '<div class="pol-mood-no-crises">No active crises</div>';
+    } else {
+        crisesHtml = crises.map(c => {
+            const name = c.crisis_templates?.name || 'Unknown Crisis';
+            const dur = currentTick - (c.started_at_tick || 0);
+            return `<div class="pol-mood-crisis">
+                <span class="pol-mood-crisis-name">${escapeHtml(name)}</span>
+                <span class="pol-mood-crisis-dur">${dur}t</span>
+            </div>`;
+        }).join('');
+    }
+
+    // Issues section
+    const issues = Object.entries(ISSUE_CATEGORY_STATS).map(([key, statKeys]) => ({
+        name: ISSUE_DISPLAY_NAMES[key] || key,
+        importance: computeIssueImportance(nation, statKeys)
+    })).sort((a, b) => b.importance - a.importance);
+
+    const issuesHtml = issues.map(iss => {
+        const color = importanceColor(iss.importance);
+        return `<div class="pol-mood-issue">
+            <span class="pol-mood-issue-name">${escapeHtml(iss.name)}</span>
+            <div class="pol-mood-issue-bar-wrap">
+                <div class="pol-mood-issue-bar" style="width:${iss.importance}%;background:${color}"></div>
+            </div>
+            <span class="pol-mood-issue-pct">${iss.importance}%</span>
+        </div>`;
+    }).join('');
+
+    return `
+        <div class="pol-mood-box">
+            <div class="pol-mood-header">
+                <span class="pol-mood-title">National Mood</span>
+            </div>
+            ${crisesHtml}
+            ${issuesHtml}
+            <div class="pol-mood-footer">Check Events &amp; Media to see rival party credibility</div>
         </div>`;
 }
 
