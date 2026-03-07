@@ -737,6 +737,27 @@
     transform: translate(-50%, -50%);
     border-radius: 2px;
 }
+.pol-ideo-summaries {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid var(--dborder-0);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.pol-ideo-summary-row {
+    font-family: var(--dfont-mono);
+    font-size: 9.5px;
+    color: var(--dtxt-secondary);
+    line-height: 1.4;
+}
+.pol-ideo-summary-abbr {
+    font-weight: 700;
+    margin-right: 4px;
+}
+.pol-ideo-summary-stances {
+    font-weight: 400;
+}
 
 /* ── National Mood box ── */
 .pol-mood-box {
@@ -1408,6 +1429,25 @@ function renderIdeologyBox(allParties, allPartyIdeologies, playerFactionId) {
         </div>`;
     }).join('');
 
+    // Party stance summaries
+    const summariesHtml = partyData.map(p => {
+        const stances = [];
+        for (const ax of IDEOLOGY_AXES) {
+            const raw = Number(p.ideo[ax.key] ?? 0);
+            const pos = (raw + 100) / 2; // 0-100
+            if (pos >= 35 && pos <= 65) continue; // centrist — skip
+            const side = pos < 50 ? ax.leftLabel : ax.rightLabel;
+            const zone = (pos <= 15 || pos >= 85) ? 'Radical' : 'Moderate';
+            const zoneColor = zone === 'Radical' ? 'var(--dred)' : 'var(--damber)';
+            stances.push(`<span style="color:${zoneColor}">${zone}</span> ${escapeHtml(side)}`);
+        }
+        if (stances.length === 0) return '';
+        return `<div class="pol-ideo-summary-row">
+            <span class="pol-ideo-summary-abbr" style="color:${p.color}">${escapeHtml(p.abbr)}:</span>
+            <span class="pol-ideo-summary-stances">${stances.join(', ')}</span>
+        </div>`;
+    }).filter(Boolean).join('');
+
     return `
         <div class="pol-ideology-box">
             <div class="pol-ideo-header">
@@ -1416,6 +1456,7 @@ function renderIdeologyBox(allParties, allPartyIdeologies, playerFactionId) {
             <div class="pol-ideo-legend">${legendHtml}</div>
             ${zoneLegendHtml}
             <div class="pol-ideo-axes">${axesHtml}</div>
+            ${summariesHtml ? `<div class="pol-ideo-summaries">${summariesHtml}</div>` : ''}
         </div>`;
 }
 
