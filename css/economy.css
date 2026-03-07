@@ -1364,12 +1364,16 @@ body.light-mode .budget-line-clickable:hover {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 16px;
+    width: 100%;
 }
 
 .budget-line-label {
     font-size: 0.75rem;
     color: #e2e0d6;
     font-weight: 500;
+    flex: 1;
+    min-width: 0;
 }
 
 .budget-line-value {
@@ -1377,6 +1381,9 @@ body.light-mode .budget-line-clickable:hover {
     font-family: 'JetBrains Mono', monospace;
     font-weight: 600;
     color: #e2e0d6;
+    white-space: nowrap;
+    text-align: right;
+    flex-shrink: 0;
 }
 
 .budget-line-trend {
