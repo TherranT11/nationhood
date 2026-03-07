@@ -1369,6 +1369,275 @@
     margin-top: 1px;
 }
 
+/* ── Coalition section labels ── */
+.pol-co-section-label {
+    font-family: var(--dfont-ui);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--dtext-2);
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 10px;
+}
+.pol-co-sub-label {
+    font-family: var(--dfont-ui);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--dtext-2);
+    text-transform: uppercase;
+}
+
+/* ── Bloc Alignment selector ── */
+.pol-ba-selector {
+    position: relative;
+    margin-bottom: 0;
+}
+.pol-ba-selected {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--dborder-0);
+    cursor: pointer;
+}
+.pol-ba-selected:hover {
+    border-color: rgba(255,255,255,0.12);
+}
+.pol-ba-sel-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+.pol-ba-sel-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.pol-ba-sel-name {
+    font-family: var(--dfont-ui);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dtext-0);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pol-ba-sel-badge {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 2px;
+    white-space: nowrap;
+}
+.pol-ba-sel-pct {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+}
+.pol-ba-sel-arrow {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+    transition: transform 0.15s;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+.pol-ba-sel-arrow.open {
+    transform: rotate(180deg);
+}
+
+/* Dropdown */
+.pol-ba-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-0);
+    border-radius: 0 0 3px 3px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    max-height: 240px;
+    overflow-y: auto;
+}
+.pol-ba-dropdown.open {
+    display: block;
+}
+.pol-ba-drop-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--dborder-0);
+    border-left: 3px solid transparent;
+}
+.pol-ba-drop-item:hover {
+    background: rgba(255,255,255,0.04);
+}
+.pol-ba-drop-item.active {
+    background: rgba(255,255,255,0.04);
+}
+.pol-ba-drop-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 1px;
+    flex-shrink: 0;
+}
+.pol-ba-drop-name {
+    font-family: var(--dfont-ui);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--dtext-2);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.pol-ba-drop-item.active .pol-ba-drop-name {
+    font-weight: 700;
+    color: var(--dtext-0);
+}
+.pol-ba-drop-tier {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    white-space: nowrap;
+}
+.pol-ba-drop-pct {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+}
+.pol-ba-drop-score {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 18px;
+    text-align: right;
+}
+
+/* Legend */
+.pol-ba-legend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.pol-ba-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.pol-ba-legend-item span {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+}
+.pol-ba-legend-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+}
+.pol-ba-legend-hint {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    color: var(--dtext-3);
+    margin-left: auto;
+}
+
+/* Axis row */
+.pol-ba-axis-row {
+    margin-bottom: 8px;
+}
+.pol-ba-axis-labels {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2px;
+}
+.pol-ba-axis-label {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-2);
+}
+.pol-ba-axis-str {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+}
+.pol-ba-axis-track {
+    position: relative;
+    height: 14px;
+    background: rgba(255,255,255,0.025);
+    border-radius: 3px;
+    border: 1px solid var(--dborder-0);
+}
+.pol-ba-axis-band {
+    position: absolute;
+    height: 100%;
+    border-radius: 3px;
+}
+.pol-ba-axis-marker {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+}
+.pol-ba-axis-marker span {
+    font-family: var(--dfont-mono);
+    font-size: 6px;
+    font-weight: 700;
+}
+.pol-ba-axis-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 2px;
+}
+.pol-ba-axis-meta span {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+}
+
+/* Summary */
+.pol-ba-summary {
+    display: flex;
+    justify-content: space-between;
+    padding-top: 4px;
+    border-top: 1px solid var(--dborder-0);
+}
+.pol-ba-summary span {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+}
+
+/* Issues */
+.pol-ba-issues {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.pol-ba-issue-tag {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    color: var(--dtext-2);
+    background: rgba(255,255,255,0.03);
+    padding: 2px 6px;
+    border-radius: 2px;
+    border: 1px solid var(--dborder-0);
+}
+
 .pol-sc-approval-row {
     display: flex;
     align-items: flex-end;
@@ -2314,9 +2583,14 @@
     }
     /* Ideology track markers slightly bigger for touch */
     .pol-ideo-marker,
-    .pol-co-axis-marker {
+    .pol-co-axis-marker,
+    .pol-ba-axis-marker {
         width: 12px !important;
         height: 12px !important;
+    }
+    /* Bloc alignment dropdown full width */
+    .pol-ba-sel-name {
+        max-width: 140px;
     }
     /* Parliament seat grid */
     .pol-parl-grid {
@@ -2552,7 +2826,7 @@ initPage('politics', async (state) => {
     // Fetch voter blocs for coalition overview
     const { data: voterBlocs } = await _supabase
         .from('voter_blocs')
-        .select('id, bloc_name, population_weight, is_active')
+        .select('id, bloc_name, population_weight, is_active, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism, priority_issues, ideology_1, ideology_2, ideology_3, ideology_4, ideology_5')
         .eq('nation_id', nation.id)
         .eq('is_active', true);
 
@@ -2775,6 +3049,9 @@ function renderPartyTab(f, nation, data) {
 
     // Wire up Election Results tab switching
     initElectionResultsBox();
+
+    // Wire up Bloc Alignment interactivity
+    initBlocAlignment();
 }
 
 function renderModifiersBox(f) {
@@ -3313,20 +3590,55 @@ function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIde
         { key: 'HOSTILE', label: 'HOSTILE', min: 0, color: 'var(--dred)', dimColor: 'rgba(239,68,68,0.08)' },
     ];
 
-    // Assign each bloc to a tier
+    // Map axis keys from IDEOLOGY_AXES to voter_bloc column names
+    const AXIS_COL_MAP = {
+        liberty_equality: 'axis_liberty_equality',
+        tradition_progress: 'axis_tradition_progress',
+        security_freedom: 'axis_security_freedom',
+        globalism_nationalism: 'axis_globalism_nationalism',
+        individualism_collectivism: 'axis_individualism_collectivism',
+    };
+
+    // Assign each bloc to a tier and compute enriched data
     const tierData = TIER_DEFS.map(t => ({ ...t, blocs: 0, weight: 0 }));
     const totalWeight = blocs.reduce((s, b) => s + Number(b.population_weight || 0), 0);
 
+    const enrichedBlocs = [];
     for (const bloc of blocs) {
         const pref = approvalMap[bloc.id] ?? 50;
         const w = Number(bloc.population_weight || 0);
+        let tierKey = 'HOSTILE';
         for (const tier of tierData) {
             if (pref >= tier.min) {
                 tier.blocs++;
                 tier.weight += w;
+                tierKey = tier.key;
                 break;
             }
         }
+        const pct = totalWeight > 0 ? Math.round((w / totalWeight) * 100) : 0;
+
+        // Compute ideology strengths from ideology tags
+        const tags = [bloc.ideology_1, bloc.ideology_2, bloc.ideology_3, bloc.ideology_4, bloc.ideology_5]
+            .filter(t => t && t !== 'Unaligned').map(t => t.toUpperCase());
+        const strengths = {};
+        for (const ax of IDEOLOGY_AXES) {
+            const col = AXIS_COL_MAP[ax.key];
+            const val = Number(bloc[col] ?? 50);
+            const hasTag = tags.includes(ax.left) || tags.includes(ax.right);
+            const extreme = val <= 20 || val >= 80;
+            strengths[ax.key] = hasTag ? 3 : extreme ? 2 : (val <= 30 || val >= 70) ? 1 : 0.5;
+        }
+
+        // Collect top issues from priority_issues or ideology tags
+        let issues = [];
+        if (bloc.priority_issues && Array.isArray(bloc.priority_issues)) {
+            issues = bloc.priority_issues.slice(0, 3);
+        } else if (tags.length > 0) {
+            issues = tags.slice(0, 3).map(t => t.charAt(0) + t.slice(1).toLowerCase());
+        }
+
+        enrichedBlocs.push({ ...bloc, pref, pct, tierKey, strengths, issues, tags });
     }
 
     // Convert weights to percentages
@@ -3377,41 +3689,56 @@ function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIde
             </div>
         </div>`;
 
-    // Ideology axes (player's party only)
+    // Get player party ideology (convert -100..+100 to 0..100)
     const ideoMap = {};
     for (const row of (allPartyIdeologies || [])) ideoMap[row.faction_id] = row;
     const playerIdeo = ideoMap[playerFactionId] || {};
     const partyColor = playerPartyColor || '#60a5fa';
 
-    const axesHtml = IDEOLOGY_AXES.map(ax => {
-        const rawVal = Number(playerIdeo[ax.key] ?? 0); // -100 to +100
-        const pos = (rawVal + 100) / 2; // 0–100
+    // Pre-compute party positions on 0-100 scale
+    const partyPositions = {};
+    for (const ax of IDEOLOGY_AXES) {
+        partyPositions[ax.key] = Math.round((Number(playerIdeo[ax.key] ?? 0) + 100) / 2);
+    }
 
-        return `<div>
-            <div style="display:flex;justify-content:space-between;margin-bottom:2px">
-                <span style="font-family:var(--dfont-mono);font-size:8px;color:var(--dtext-2)">${escapeHtml(ax.leftLabel)}</span>
-                <span style="font-family:var(--dfont-mono);font-size:8px;color:var(--dtext-2)">${escapeHtml(ax.rightLabel)}</span>
-            </div>
-            <div class="pol-co-axis-track">
-                <div style="position:absolute;left:15%;top:0;width:1px;height:100%;background:rgba(239,68,68,0.22)"></div>
-                <div style="position:absolute;left:85%;top:0;width:1px;height:100%;background:rgba(239,68,68,0.22)"></div>
-                <div style="position:absolute;left:35%;top:0;width:1px;height:100%;background:rgba(250,204,21,0.22)"></div>
-                <div style="position:absolute;left:65%;top:0;width:1px;height:100%;background:rgba(250,204,21,0.22)"></div>
-                <div style="position:absolute;left:50%;top:0;width:1px;height:100%;background:rgba(255,255,255,0.1)"></div>
-                <div class="pol-co-axis-marker" style="left:${pos}%;background:${partyColor}"></div>
-            </div>
-            <div class="pol-co-axis-value">${Math.round(pos)}</div>
+    // Bloc dropdown options — sorted by preference descending
+    const sortedBlocs = [...enrichedBlocs].sort((a, b) => b.pref - a.pref);
+    const defaultBloc = sortedBlocs[0];
+
+    // Encode enriched bloc data as JSON for the interactivity script
+    const blocDataJson = JSON.stringify(sortedBlocs.map(b => ({
+        id: b.id,
+        name: b.bloc_name,
+        pref: b.pref,
+        pct: b.pct,
+        tier: b.tierKey,
+        axes: Object.fromEntries(IDEOLOGY_AXES.map(ax => [ax.key, Number(b[AXIS_COL_MAP[ax.key]] ?? 50)])),
+        strengths: b.strengths,
+        issues: b.issues,
+    }))).replace(/</g, '\\u003c');
+
+    const partyPosJson = JSON.stringify(partyPositions);
+
+    // Dropdown items HTML
+    const dropdownItemsHtml = sortedBlocs.map(b => {
+        const bt = TIER_DEFS.find(t => t.key === b.tierKey) || TIER_DEFS[4];
+        return `<div class="pol-ba-drop-item" data-bloc-id="${b.id}">
+            <div class="pol-ba-drop-dot" style="background:${bt.color}"></div>
+            <span class="pol-ba-drop-name">${escapeHtml(b.bloc_name)}</span>
+            <span class="pol-ba-drop-tier" style="color:${bt.color}">${bt.label}</span>
+            <span class="pol-ba-drop-pct">${b.pct}%</span>
+            <span class="pol-ba-drop-score" style="color:${bt.color}">${b.pref}</span>
         </div>`;
     }).join('');
 
     return `<div class="pol-coalition-box">
-        <span style="font-family:var(--dfont-ui);font-size:11px;font-weight:500;letter-spacing:0.04em;color:var(--dtext-2);text-transform:uppercase;display:block;margin-bottom:10px">Coalition Overview</span>
+        <span class="pol-co-section-label">Coalition Overview</span>
 
         <div class="pol-co-tier-row">${tierCardsHtml}</div>
 
         <div style="margin-bottom:4px">
             <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-                <span style="font-family:var(--dfont-ui);font-size:9px;font-weight:500;letter-spacing:0.04em;color:var(--dtext-2);text-transform:uppercase">Electorate by Tier</span>
+                <span class="pol-co-sub-label">Electorate by Tier</span>
                 <span style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-2)">Reachable: <span style="color:var(--dgreen);font-weight:700">${reachable}%</span></span>
             </div>
             <div class="pol-co-ebar">${ebarHtml}</div>
@@ -3421,8 +3748,65 @@ function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIde
         ${keyRowHtml}
         <div class="pol-sc-divider"></div>
 
-        <span style="font-family:var(--dfont-ui);font-size:9px;font-weight:500;letter-spacing:0.04em;color:var(--dtext-2);text-transform:uppercase;display:block;margin-bottom:8px">Your Ideology</span>
-        <div style="display:flex;flex-direction:column;gap:6px;flex:1">${axesHtml}</div>
+        <!-- BLOC ALIGNMENT -->
+        <span class="pol-co-section-label">Bloc Alignment</span>
+
+        <div class="pol-ba-selector" id="pol-ba-selector">
+            <div class="pol-ba-selected" id="pol-ba-selected">
+                <div class="pol-ba-sel-left">
+                    <div class="pol-ba-sel-dot" id="pol-ba-sel-dot"></div>
+                    <span class="pol-ba-sel-name" id="pol-ba-sel-name"></span>
+                    <span class="pol-ba-sel-badge" id="pol-ba-sel-badge"></span>
+                    <span class="pol-ba-sel-pct" id="pol-ba-sel-pct"></span>
+                </div>
+                <span class="pol-ba-sel-arrow" id="pol-ba-sel-arrow">▼</span>
+            </div>
+            <div class="pol-ba-dropdown" id="pol-ba-dropdown">
+                ${dropdownItemsHtml}
+            </div>
+        </div>
+
+        <!-- Stats row -->
+        <div class="pol-co-key-row" id="pol-ba-stats" style="margin-top:10px">
+            <div class="pol-co-key-block">
+                <div class="pol-co-key-value" id="pol-ba-alignment">—</div>
+                <div class="pol-co-key-label">ALIGNMENT</div>
+            </div>
+            <div class="pol-co-key-block">
+                <div class="pol-co-key-value" id="pol-ba-approval">—</div>
+                <div class="pol-co-key-label">APPROVAL</div>
+            </div>
+            <div class="pol-co-key-block">
+                <div class="pol-co-key-value" id="pol-ba-headroom">—</div>
+                <div class="pol-co-key-label">HEADROOM</div>
+            </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="pol-ba-legend" style="margin-top:10px">
+            <div class="pol-ba-legend-item">
+                <div class="pol-ba-legend-dot" style="background:${partyColor}"></div>
+                <span style="color:${partyColor}">You</span>
+            </div>
+            <div class="pol-ba-legend-item">
+                <div class="pol-ba-legend-dot" id="pol-ba-legend-bloc-dot"></div>
+                <span id="pol-ba-legend-bloc-name"></span>
+            </div>
+            <span class="pol-ba-legend-hint">● = importance</span>
+        </div>
+
+        <!-- Axes -->
+        <div id="pol-ba-axes" style="margin-top:6px"></div>
+
+        <!-- Summary -->
+        <div class="pol-ba-summary" id="pol-ba-summary" style="margin-top:4px"></div>
+
+        <!-- Issues -->
+        <div class="pol-ba-issues" id="pol-ba-issues" style="margin-top:6px"></div>
+
+        <script type="text/json" id="pol-ba-bloc-data">${blocDataJson}</script>
+        <script type="text/json" id="pol-ba-party-pos">${partyPosJson}</script>
+        <script type="text/json" id="pol-ba-party-color">"${partyColor}"</script>
     </div>`;
 }
 
@@ -4228,6 +4612,171 @@ function initElectionResultsBox() {
             const content = box.querySelector(`.pol-el-content[data-content="${target}"]`);
             if (content) content.classList.add('active');
         });
+    });
+}
+
+function initBlocAlignment() {
+    const dataEl = document.getElementById('pol-ba-bloc-data');
+    const partyPosEl = document.getElementById('pol-ba-party-pos');
+    const partyColorEl = document.getElementById('pol-ba-party-color');
+    if (!dataEl || !partyPosEl) return;
+
+    const blocsData = JSON.parse(dataEl.textContent);
+    const partyPos = JSON.parse(partyPosEl.textContent);
+    const partyColor = JSON.parse(partyColorEl.textContent);
+    if (blocsData.length === 0) return;
+
+    const TIER_COLORS = {
+        BASE: { color: 'var(--dgreen)', raw: '#4ade80', dim: 'rgba(74,222,128,0.08)' },
+        LEAN: { color: '#22d3ee', raw: '#22d3ee', dim: 'rgba(34,211,238,0.08)' },
+        SWING: { color: 'var(--damber)', raw: '#facc15', dim: 'rgba(250,204,21,0.08)' },
+        SKEPTICAL: { color: '#f97316', raw: '#f97316', dim: 'rgba(249,115,22,0.08)' },
+        HOSTILE: { color: 'var(--dred)', raw: '#ef4444', dim: 'rgba(239,68,68,0.08)' },
+    };
+    const AXES = [
+        { key: 'liberty_equality', left: 'Liberty', right: 'Equality' },
+        { key: 'tradition_progress', left: 'Tradition', right: 'Progress' },
+        { key: 'security_freedom', left: 'Security', right: 'Freedom' },
+        { key: 'globalism_nationalism', left: 'Globalism', right: 'Nationalism' },
+        { key: 'individualism_collectivism', left: 'Individualism', right: 'Collectivism' },
+    ];
+
+    const distColor = d => d <= 10 ? 'var(--dgreen)' : d <= 20 ? '#22d3ee' : d <= 35 ? 'var(--damber)' : d <= 50 ? '#f97316' : 'var(--dred)';
+    const strDots = s => s >= 3 ? '●●●' : s >= 2 ? '●●' : s >= 1 ? '●' : '';
+    const strColor = s => s >= 3 ? 'var(--dred)' : s >= 2 ? '#f97316' : s >= 1 ? 'var(--damber)' : 'var(--dtext-3)';
+
+    const selectedEl = document.getElementById('pol-ba-selected');
+    const dropdown = document.getElementById('pol-ba-dropdown');
+    const arrow = document.getElementById('pol-ba-sel-arrow');
+    const items = dropdown.querySelectorAll('.pol-ba-drop-item');
+
+    function renderBloc(bloc) {
+        const tc = TIER_COLORS[bloc.tier] || TIER_COLORS.HOSTILE;
+
+        // Selected bar
+        document.getElementById('pol-ba-sel-dot').style.background = tc.raw;
+        document.getElementById('pol-ba-sel-name').textContent = bloc.name;
+        const badge = document.getElementById('pol-ba-sel-badge');
+        badge.textContent = bloc.tier;
+        badge.style.color = tc.raw;
+        badge.style.background = tc.dim;
+        document.getElementById('pol-ba-sel-pct').textContent = bloc.pct + '%';
+
+        // Compute alignment from ideology distance
+        const axisData = AXES.map(ax => {
+            const pv = partyPos[ax.key] || 50;
+            const bv = bloc.axes[ax.key] || 50;
+            const dist = Math.abs(pv - bv);
+            const str = bloc.strengths[ax.key] || 0.5;
+            return { ...ax, pv, bv, dist, str, weighted: dist * str };
+        });
+        const totalWeighted = axisData.reduce((s, a) => s + a.weighted, 0);
+        const maxWeighted = AXES.length * 100 * 3; // max possible
+        const alignment = Math.round(Math.max(0, 100 - (totalWeighted / maxWeighted) * 100));
+        const approval = bloc.pref;
+        const headroom = alignment - approval;
+
+        // Stats
+        const alEl = document.getElementById('pol-ba-alignment');
+        alEl.textContent = alignment;
+        alEl.style.color = tc.raw;
+        const apEl = document.getElementById('pol-ba-approval');
+        apEl.textContent = approval;
+        apEl.style.color = 'var(--dtext-0)';
+        const hrEl = document.getElementById('pol-ba-headroom');
+        hrEl.textContent = (headroom >= 0 ? '+' : '') + headroom;
+        hrEl.style.color = headroom > 10 ? 'var(--damber)' : headroom >= 0 ? 'var(--dgreen)' : 'var(--dred)';
+
+        // Legend
+        document.getElementById('pol-ba-legend-bloc-dot').style.background = tc.raw;
+        const lbn = document.getElementById('pol-ba-legend-bloc-name');
+        lbn.textContent = bloc.name;
+        lbn.style.color = tc.raw;
+
+        // Axes
+        const axesContainer = document.getElementById('pol-ba-axes');
+        axesContainer.innerHTML = axisData.map(a => {
+            const dc = distColor(a.dist);
+            const bandLeft = Math.min(a.pv, a.bv);
+            const bandWidth = a.dist;
+            return `<div class="pol-ba-axis-row">
+                <div class="pol-ba-axis-labels">
+                    <span class="pol-ba-axis-label">${a.left}</span>
+                    <span class="pol-ba-axis-str" style="color:${strColor(a.str)}">${strDots(a.str)}</span>
+                    <span class="pol-ba-axis-label">${a.right}</span>
+                </div>
+                <div class="pol-ba-axis-track">
+                    <div style="position:absolute;left:15%;top:0;width:1px;height:100%;background:rgba(239,68,68,0.22)"></div>
+                    <div style="position:absolute;left:85%;top:0;width:1px;height:100%;background:rgba(239,68,68,0.22)"></div>
+                    <div style="position:absolute;left:35%;top:0;width:1px;height:100%;background:rgba(250,204,21,0.22)"></div>
+                    <div style="position:absolute;left:65%;top:0;width:1px;height:100%;background:rgba(250,204,21,0.22)"></div>
+                    <div style="position:absolute;left:50%;top:0;width:1px;height:100%;background:rgba(255,255,255,0.1)"></div>
+                    ${a.dist > 3 ? `<div class="pol-ba-axis-band" style="left:${bandLeft}%;width:${bandWidth}%;background:${dc}12"></div>` : ''}
+                    <div class="pol-ba-axis-marker" style="left:${a.pv}%;background:${partyColor};z-index:3">
+                        <span style="color:var(--dbg-0)">${a.pv}</span>
+                    </div>
+                    <div class="pol-ba-axis-marker" style="left:${a.bv}%;background:${tc.raw}">
+                        <span style="color:var(--dbg-0)">${a.bv}</span>
+                    </div>
+                </div>
+                <div class="pol-ba-axis-meta">
+                    <span style="color:${dc}">dist: ${a.dist}</span>
+                    <span style="color:var(--dtext-3)">×${a.str} = <span style="color:${dc};font-weight:700">${a.weighted.toFixed(0)}</span></span>
+                </div>
+            </div>`;
+        }).join('');
+
+        // Summary
+        const bestAxis = axisData.reduce((b, a) => a.dist < b.dist ? a : b, axisData[0]);
+        const worstAxis = axisData.reduce((w, a) => a.weighted > w.weighted ? a : w, axisData[0]);
+        document.getElementById('pol-ba-summary').innerHTML =
+            `<span style="color:var(--dgreen)">Closest: ${bestAxis.left}/${bestAxis.right}</span>` +
+            `<span style="color:var(--dred)">Gap: ${worstAxis.left}/${worstAxis.right}</span>`;
+
+        // Issues
+        const issuesContainer = document.getElementById('pol-ba-issues');
+        issuesContainer.innerHTML = (bloc.issues || []).map(iss =>
+            `<span class="pol-ba-issue-tag">${iss}</span>`
+        ).join('');
+
+        // Update dropdown active state
+        items.forEach(item => {
+            item.classList.toggle('active', item.getAttribute('data-bloc-id') === bloc.id);
+            if (item.getAttribute('data-bloc-id') === bloc.id) {
+                item.style.borderLeftColor = tc.raw;
+            } else {
+                item.style.borderLeftColor = 'transparent';
+            }
+        });
+    }
+
+    // Initial render with first bloc
+    renderBloc(blocsData[0]);
+
+    // Toggle dropdown
+    selectedEl.addEventListener('click', () => {
+        const isOpen = dropdown.classList.toggle('open');
+        arrow.classList.toggle('open', isOpen);
+    });
+
+    // Select a bloc
+    items.forEach(item => {
+        item.addEventListener('click', () => {
+            const blocId = item.getAttribute('data-bloc-id');
+            const bloc = blocsData.find(b => b.id === blocId);
+            if (bloc) renderBloc(bloc);
+            dropdown.classList.remove('open');
+            arrow.classList.remove('open');
+        });
+    });
+
+    // Close dropdown on outside click
+    document.addEventListener('click', (e) => {
+        const selector = document.getElementById('pol-ba-selector');
+        if (selector && !selector.contains(e.target)) {
+            dropdown.classList.remove('open');
+            arrow.classList.remove('open');
+        }
     });
 }
 
