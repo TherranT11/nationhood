@@ -2097,6 +2097,22 @@
     text-align: center;
     padding: 40px 0;
 }
+.pol-endorse-btn {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--dtext-3);
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--dborder-0);
+    border-radius: 3px;
+    padding: 4px 12px;
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+.pol-endorse-btn:disabled {
+    pointer-events: none;
+}
 
 /* Upcoming Elections panel */
 .pol-upcoming-box {
@@ -2237,6 +2253,119 @@
 .pol-bloc-top-party {
     font-weight: 600;
     color: var(--dtext-0);
+}
+
+/* ════════════════════════ MOBILE RESPONSIVE ════════════════════════ */
+@media (max-width: 860px) {
+    .pol-page {
+        padding: 12px 8px 40px;
+    }
+    .pol-columns,
+    .pol-row-2,
+    .pol-row-3 {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    /* All fixed-width panels become full-width */
+    .pol-party-card,
+    .pol-admin-box,
+    .pol-parliament-box,
+    .pol-forecast-box,
+    .pol-coalition-box,
+    .pol-mood-box,
+    .pol-ideology-box,
+    .pol-identity-box,
+    .pol-election-box,
+    .pol-blocs-box,
+    .pol-modifiers-box {
+        width: 100% !important;
+        min-width: 0 !important;
+        flex-shrink: 1 !important;
+        height: auto !important;
+        max-height: none !important;
+    }
+    /* Election Results flex override */
+    .pol-election-box {
+        flex: none !important;
+    }
+    /* Election tabs wrap */
+    .pol-el-tabs {
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+    .pol-el-tab {
+        font-size: 9px;
+        padding: 5px 10px;
+    }
+    /* Tables scroll horizontally */
+    .pol-el-table,
+    .pol-blocs-table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    /* Coalition tier cards stack less tightly */
+    .pol-co-tier-row {
+        flex-wrap: wrap;
+    }
+    .pol-co-tier-card {
+        flex: 1 1 calc(33% - 4px);
+        min-width: 60px;
+    }
+    /* Ideology track markers slightly bigger for touch */
+    .pol-ideo-marker,
+    .pol-co-axis-marker {
+        width: 12px !important;
+        height: 12px !important;
+    }
+    /* Parliament seat grid */
+    .pol-parl-grid {
+        gap: 2px;
+    }
+}
+
+@media (max-width: 480px) {
+    .pol-page {
+        padding: 8px 4px 32px;
+    }
+    .pol-section-label {
+        font-size: 9px;
+        margin-bottom: 10px;
+    }
+    /* Admin card adjustments */
+    .pol-admin-name {
+        font-size: 14px;
+    }
+    .pol-admin-header {
+        flex-direction: column;
+        gap: 8px;
+    }
+    .pol-admin-approval-block {
+        text-align: left;
+    }
+    /* Party card */
+    .pol-party-name {
+        font-size: 14px;
+    }
+    .pol-header {
+        gap: 10px;
+    }
+    /* Coalition tier cards 2-per-row on small screens */
+    .pol-co-tier-card {
+        flex: 1 1 calc(50% - 4px);
+    }
+    .pol-co-tier-pct {
+        font-size: 14px;
+    }
+    /* Key row smaller */
+    .pol-co-key-value {
+        font-size: 14px;
+    }
+    /* Endorse button */
+    .pol-endorse-btn {
+        font-size: 8px;
+        padding: 3px 8px;
+    }
 }
 </style>
 </head>
@@ -2634,10 +2763,12 @@ function renderPartyTab(f, nation, data) {
 
     document.getElementById('content-area').innerHTML = html;
 
-    // Lock all panels to fixed 450px height
-    document.querySelectorAll('.pol-admin-box, .pol-party-card, .pol-parliament-box, .pol-forecast-box, .pol-coalition-box, .pol-mood-box, .pol-ideology-box, .pol-identity-box, .pol-election-box, .pol-blocs-box').forEach(el => {
-        el.style.height = '450px';
-    });
+    // Lock all panels to fixed 450px height (desktop only)
+    if (window.innerWidth > 860) {
+        document.querySelectorAll('.pol-admin-box, .pol-party-card, .pol-parliament-box, .pol-forecast-box, .pol-coalition-box, .pol-mood-box, .pol-ideology-box, .pol-identity-box, .pol-election-box, .pol-blocs-box').forEach(el => {
+            el.style.height = '450px';
+        });
+    }
 
     // Wire up Edit Party Identity interactivity
     initEditIdentityBox(f);
@@ -4001,14 +4132,10 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
             </table>`;
     }
 
-    function renderPresidentialContent(el) {
-        if (!el) return '<div class="pol-el-empty">No presidential election results yet.</div>';
-        const r = el.results;
-        if (!r || !r.presidential_candidates) return '<div class="pol-el-empty">No presidential election results yet.</div>';
-        const date = tickToDate(el.election_tick);
-        const cands = [...r.presidential_candidates].sort((a, b) => (b.votes || 0) - (a.votes || 0));
-        const maxVotePct = Math.max(...cands.map(c => c.vote_percentage || 0), 1);
-        let rows = cands.map(c => {
+    function renderPresidentialCandidates(cands, date, turnoutPct, totalVotesCast) {
+        const sorted = [...cands].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+        const maxVotePct = Math.max(...sorted.map(c => c.vote_percentage || 0), 1);
+        let rows = sorted.map(c => {
             const color = colorMap[c.faction_id] || '#888';
             const pct = (c.vote_percentage || 0).toFixed(1);
             const barW = Math.round(((c.vote_percentage || 0) / maxVotePct) * 100);
@@ -4023,21 +4150,67 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         }).join('');
         return `
             <div class="pol-el-date">${date}</div>
-            <div class="pol-el-summary">Turnout: ${(r.turnout_pct || 0).toFixed(1)}% &middot; ${(r.total_votes_cast || 0).toLocaleString()} votes</div>
+            <div class="pol-el-summary">Turnout: ${(turnoutPct || 0).toFixed(1)}% &middot; ${(totalVotesCast || 0).toLocaleString()} votes</div>
             <table class="pol-el-table">
                 <thead><tr><th>Candidate</th><th>Party</th><th>Votes</th><th></th><th>%</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table>`;
     }
 
+    function renderPresidentialContent(el) {
+        if (!el) return '<div class="pol-el-empty">No presidential election results yet.</div>';
+        const r = el.results;
+        if (!r || !r.presidential_candidates) return '<div class="pol-el-empty">No presidential election results yet.</div>';
+        const date = tickToDate(el.election_tick);
+        return renderPresidentialCandidates(r.presidential_candidates, date, r.turnout_pct, r.total_votes_cast);
+    }
+
+    function renderRound1Content(el) {
+        if (!el) return '<div class="pol-el-empty">No first round results.</div>';
+        const r = el.results;
+        const cands = r?.round_1_candidates || r?.presidential_candidates;
+        if (!cands) return '<div class="pol-el-empty">No first round results.</div>';
+        const date = tickToDate(el.election_tick);
+        return renderPresidentialCandidates(cands, date, r.turnout_pct, r.total_votes_cast);
+    }
+
+    function renderRunoffContent(el) {
+        if (!el) return '<div class="pol-el-empty">No runoff results.</div>';
+        const r = el.results;
+        const cands = r?.runoff_candidates;
+        if (!cands) return '<div class="pol-el-empty">No runoff results.</div>';
+        const date = tickToDate(el.election_tick);
+        return renderPresidentialCandidates(cands, date, r.turnout_pct, r.total_votes_cast);
+    }
+
+    // Determine if presidential election had a runoff
+    const wasRunoff = lastPresidential?.results?.was_runoff === true;
+
+    // Build presidential tabs
+    let presTabs, presContents;
+    if (wasRunoff) {
+        presTabs = `
+            <button class="pol-el-tab" data-tab="pres-r1">Presidential [1st Round]</button>
+            <button class="pol-el-tab" data-tab="pres-runoff">Presidential [Runoff]</button>`;
+        presContents = `
+            <div class="pol-el-content" data-content="pres-r1">${renderRound1Content(lastPresidential)}</div>
+            <div class="pol-el-content" data-content="pres-runoff">${renderRunoffContent(lastPresidential)}</div>`;
+    } else {
+        presTabs = `<button class="pol-el-tab" data-tab="pres">Presidential</button>`;
+        presContents = `<div class="pol-el-content" data-content="pres">${renderPresidentialContent(lastPresidential)}</div>`;
+    }
+
     return `<div class="pol-election-box">
-        <div class="pol-section-label" style="margin-bottom:12px">ELECTION RESULTS</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div class="pol-section-label" style="margin-bottom:0">ELECTION RESULTS</div>
+            <button class="pol-endorse-btn" disabled>Endorse Candidate</button>
+        </div>
         <div class="pol-el-tabs">
             <button class="pol-el-tab active" data-tab="parl">Parliamentary</button>
-            <button class="pol-el-tab" data-tab="pres">Presidential</button>
+            ${presTabs}
         </div>
         <div class="pol-el-content active" data-content="parl">${renderParliamentaryContent(lastParliamentary)}</div>
-        <div class="pol-el-content" data-content="pres">${renderPresidentialContent(lastPresidential)}</div>
+        ${presContents}
     </div>`;
 }
 
