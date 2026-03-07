@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Politics | Nationhood Alpha</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Shared Styles -->
+    <link rel="stylesheet" href="css/dashboard.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<!-- ===== TOP BAR ===== -->
+<div id="top-bar"></div>
+
+<!-- ===== CONTENT AREA ===== -->
+<div id="content-area">
+    <div style="max-width:900px; margin:80px auto; text-align:center; padding:40px 20px;">
+        <h1 style="font-family:var(--dfont-ui); font-size:28px; font-weight:700; color:var(--dtxt-bright); margin-bottom:12px;">Politics</h1>
+        <p style="font-family:var(--dfont-ui); font-size:15px; color:var(--dtxt-secondary);">Under construction</p>
+    </div>
+</div>
+
+<!-- Page Script -->
+<script type="module">
+import { initPage } from './js/common.js';
+
+(async () => {
+    await initPage({ tabId: 'politics' });
+})();
+</script>
+</body>
+</html>
