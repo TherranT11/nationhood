@@ -15,6 +15,7 @@ import { resolveNoConfidence } from './elections.js';
 import { PM_FIRST_NAMES, PM_LAST_NAMES } from './political-actions.js';
 import { allocateSeatsByVotes } from './election-simulation.js';
 import { repealActiveLaw } from './repeal-helper.js';
+import { fireBillEvent } from './event-helpers.js';
 
 // ==================== BILL SUPPORT ====================
 
@@ -1156,22 +1157,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
             await failBill(supabase, bill);
             const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
             const participating = votesFor + votesAgainst + votesAbstain;
-            try {
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'bill_failed',
-                    p_nation_id: bill.nation_id,
-                    p_tick: currentTick,
-                    p_placeholders: {
-                        nation: nation?.name || 'Unknown',
-                        bill_name: bill.bill_name,
-                        sponsor: bill.factions?.faction_name || 'Unknown',
-                        votes_for: String(votesFor),
-                        votes_against: String(votesAgainst),
-                        votes_abstain: String(votesAbstain),
-                        reason: `quorum not met after two attempts (${participating}/${quorumThreshold} participating)`
-                    }
-                });
-            } catch (e) { /* non-blocking */ }
+            await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, extra: { reason: `quorum not met after two attempts (${participating}/${quorumThreshold} participating)` } });
             console.log(`[resolveExpiredVotes] ${bill.bill_name}: quorum failed twice (${participating}/${quorumThreshold}), bill dies`);
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_no_quorum', votesFor, votesAgainst, votesAbstain, type: bill.bill_type });
             continue;
@@ -1204,23 +1190,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     await failBill(supabase, bill);
                 }
             }
-            const eventKey = enacted ? 'bill_passed' : 'bill_failed';
-            try {
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: eventKey,
-                    p_nation_id: bill.nation_id,
-                    p_tick: currentTick,
-                    p_placeholders: {
-                        nation: nation?.name || 'Unknown',
-                        bill_name: bill.bill_name,
-                        sponsor: bill.factions?.faction_name || 'Unknown',
-                        votes_for: String(votesFor),
-                        votes_against: String(votesAgainst),
-                        votes_abstain: String(votesAbstain),
-                        article_count: '0'
-                    }
-                });
-            } catch (e) { /* non-blocking */ }
+            await fireBillEvent(supabase, enacted ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
             results.push({ billId: bill.id, billName: bill.bill_name, result: enacted ? 'passed' : 'failed', votesFor, votesAgainst, type: 'foundational', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'default_resolution') {
             // ── Sovereign Default Resolution ──
@@ -1247,22 +1217,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     }
                 }
             }
-            const eventKey = passed ? 'bill_passed' : 'bill_failed';
-            try {
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: eventKey,
-                    p_nation_id: bill.nation_id,
-                    p_tick: currentTick,
-                    p_placeholders: {
-                        nation: nation?.name || 'Unknown',
-                        bill_name: bill.bill_name,
-                        sponsor: bill.factions?.faction_name || 'Unknown',
-                        votes_for: String(votesFor),
-                        votes_against: String(votesAgainst),
-                        article_count: '0'
-                    }
-                });
-            } catch (e) { /* non-blocking */ }
+            await fireBillEvent(supabase, passed ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'default_resolution', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
             // Ambassador confirmation bill
@@ -1283,19 +1238,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     is_active: true,
                     appointed_at_tick: currentTick
                 }).eq('id', bill.ambassador_id);
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'bill_passed',
-                    p_nation_id: bill.nation_id,
-                    p_tick: currentTick,
-                    p_placeholders: {
-                        nation: nation?.name || 'Unknown',
-                        bill_name: bill.bill_name,
-                        sponsor: bill.factions?.faction_name || 'Unknown',
-                        votes_for: String(votesFor),
-                        votes_against: String(votesAgainst),
-                        article_count: '0'
-                    }
-                });
+                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
             } else {
                 await failBill(supabase, bill);
                 // Reject the ambassador
@@ -1303,19 +1246,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     status: 'rejected',
                     is_active: false
                 }).eq('id', bill.ambassador_id);
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'bill_failed',
-                    p_nation_id: bill.nation_id,
-                    p_tick: currentTick,
-                    p_placeholders: {
-                        nation: nation?.name || 'Unknown',
-                        bill_name: bill.bill_name,
-                        sponsor: bill.factions?.faction_name || 'Unknown',
-                        votes_for: String(votesFor),
-                        votes_against: String(votesAgainst),
-                        votes_abstain: String(votesAbstain)
-                    }
-                });
+                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
             }
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'confirmation', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
@@ -1383,21 +1314,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     }).eq('id', ministry.id);
                 }
 
-                try {
-                    await supabase.rpc('fire_system_event', {
-                        p_trigger_key: 'bill_passed',
-                        p_nation_id: bill.nation_id,
-                        p_tick: currentTick,
-                        p_placeholders: {
-                            nation: nation?.name || 'Unknown',
-                            bill_name: bill.bill_name,
-                            sponsor: bill.factions?.faction_name || 'Unknown',
-                            votes_for: String(votesFor),
-                            votes_against: String(votesAgainst),
-                            article_count: '0'
-                        }
-                    });
-                } catch (e) { /* non-blocking */ }
+                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
             } else {
                 await failBill(supabase, bill);
 
@@ -1415,21 +1332,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     }).eq('id', ministry.id);
                 }
 
-                try {
-                    await supabase.rpc('fire_system_event', {
-                        p_trigger_key: 'bill_failed',
-                        p_nation_id: bill.nation_id,
-                        p_tick: currentTick,
-                        p_placeholders: {
-                            nation: nation?.name || 'Unknown',
-                            bill_name: bill.bill_name,
-                            sponsor: bill.factions?.faction_name || 'Unknown',
-                            votes_for: String(votesFor),
-                            votes_against: String(votesAgainst),
-                            votes_abstain: String(votesAbstain)
-                        }
-                    });
-                } catch (e) { /* non-blocking */ }
+                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
             }
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'minister_confirmation', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'veto_override' && bill.original_bill_id) {
@@ -1456,42 +1359,15 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         const enactment = await enactBill(supabase, originalBill, currentTick);
                         if (!enactment?.success) {
                             await markBillEnactmentFailed(supabase, originalBill, currentTick, enactment?.error || 'Unknown enactment failure');
-                            try {
-                                await supabase.rpc('fire_system_event', {
-                                    p_trigger_key: 'bill_failed',
-                                    p_nation_id: originalBill.nation_id,
-                                    p_tick: currentTick,
-                                    p_placeholders: {
-                                        nation: nation?.name || 'Unknown',
-                                        bill_name: `${originalBill.bill_name} (override enactment failed)`,
-                                        sponsor: originalBill.factions?.faction_name || 'Unknown',
-                                        votes_for: '0',
-                                        votes_against: '0'
-                                    }
-                                });
-                            } catch (e) { /* non-blocking */ }
+                            await fireBillEvent(supabase, 'bill_failed', originalBill, { currentTick, nationName: nation?.name, votesFor: 0, votesAgainst: 0, billNameOverride: `${originalBill.bill_name} (override enactment failed)` });
                         }
                     }
                 }
-                try {
-                    await supabase.rpc('fire_system_event', {
-                        p_trigger_key: 'bill_passed',
-                        p_nation_id: bill.nation_id,
-                        p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
-                    });
-                } catch (e) { /* non-blocking */ }
+                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
             } else {
                 await failBill(supabase, bill);
-                try {
-                    await supabase.rpc('fire_system_event', {
-                        p_trigger_key: 'bill_failed',
-                        p_nation_id: bill.nation_id,
-                        p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain) }
-                    });
-                } catch (e) { /* non-blocking */ }
+                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
             }
         } else if (bill.bill_type === 'ratification' && bill.diplomatic_proposal_id) {
@@ -1528,14 +1404,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                                 .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
                         }
                     }
-                    try {
-                        await supabase.rpc('fire_system_event', {
-                            p_trigger_key: 'bill_passed',
-                            p_nation_id: bill.nation_id,
-                            p_tick: currentTick,
-                            p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
-                        });
-                    } catch (e) { /* non-blocking */ }
+                    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
                 }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
             } else {
@@ -1544,14 +1413,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 await supabase.from('diplomatic_proposals')
                     .update({ status: 'ratification_failed' })
                     .eq('id', bill.diplomatic_proposal_id);
-                try {
-                    await supabase.rpc('fire_system_event', {
-                        p_trigger_key: 'bill_failed',
-                        p_nation_id: bill.nation_id,
-                        p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain) }
-                    });
-                } catch (e) { /* non-blocking */ }
+                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
             }
         } else if (bill.bill_type === 'ratification' && bill.trade_negotiation_id) {
@@ -1659,14 +1521,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     // If only one side ratified so far, just leave negotiation in 'ratification' status
                 }
 
-                try {
-                    await supabase.rpc('fire_system_event', {
-                        p_trigger_key: 'bill_passed',
-                        p_nation_id: bill.nation_id,
-                        p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
-                    });
-                } catch (e) { /* non-blocking */ }
+                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
             } else {
                 await failBill(supabase, bill);
@@ -1674,14 +1529,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 await supabase.from('trade_negotiations')
                     .update({ status: 'ratification_failed' })
                     .eq('id', bill.trade_negotiation_id);
-                try {
-                    await supabase.rpc('fire_system_event', {
-                        p_trigger_key: 'bill_failed',
-                        p_nation_id: bill.nation_id,
-                        p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain) }
-                    });
-                } catch (e) { /* non-blocking */ }
+                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
             }
         } else if (bill.bill_type === 'budget') {
@@ -1694,14 +1542,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         passed_tick: currentTick,
                         president_desk_deadline: currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS
                     }).eq('id', bill.id);
-                    try {
-                        await supabase.rpc('fire_system_event', {
-                            p_trigger_key: 'bill_passed',
-                            p_nation_id: bill.nation_id,
-                            p_tick: currentTick,
-                            p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
-                        });
-                    } catch (e) { /* non-blocking */ }
+                    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
                     console.log(`[resolveExpiredVotes] Budget bill ${bill.bill_name} passed legislature → president_desk (deadline tick ${currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS})`);
                     results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
                 } else {
@@ -1715,14 +1556,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         results.push({ billId: bill.id, billName: bill.bill_name, result: 'error', votesFor, votesAgainst, type: 'budget', error: budgetErr.message });
                         continue;
                     }
-                    try {
-                        await supabase.rpc('fire_system_event', {
-                            p_trigger_key: 'bill_passed',
-                            p_nation_id: bill.nation_id,
-                            p_tick: currentTick,
-                            p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
-                        });
-                    } catch (e) { /* non-blocking */ }
+                    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
                     results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
                 }
             }
@@ -1906,22 +1740,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     passed_tick: currentTick,
                     president_desk_deadline: currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS
                 }).eq('id', bill.id);
-                try {
-                    await supabase.rpc('fire_system_event', {
-                        p_trigger_key: 'bill_passed',
-                        p_nation_id: bill.nation_id,
-                        p_tick: currentTick,
-                        p_placeholders: {
-                            nation: nation?.name || 'Unknown',
-                            bill_name: bill.bill_name,
-                            sponsor: bill.factions?.faction_name || 'Unknown',
-                            votes_for: String(votesFor),
-                            votes_against: String(votesAgainst),
-                            votes_abstain: String(votesAbstain),
-                            article_count: String((bill.bill_articles || []).length)
-                        }
-                    });
-                } catch (e) { /* non-blocking */ }
+                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: (bill.bill_articles || []).length });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
             } else {
                 // Wrap enactBill in try-catch to convert thrown exceptions into {success: false}
@@ -1934,58 +1753,16 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 }
                 if (!enactment?.success) {
                     await markBillEnactmentFailed(supabase, bill, currentTick, enactment?.error || 'Unknown enactment failure');
-                    try {
-                        await supabase.rpc('fire_system_event', {
-                            p_trigger_key: 'bill_failed',
-                            p_nation_id: bill.nation_id,
-                            p_tick: currentTick,
-                            p_placeholders: {
-                                nation: nation?.name || 'Unknown',
-                                bill_name: `${bill.bill_name} (enactment failed)`,
-                                sponsor: bill.factions?.faction_name || 'Unknown',
-                                votes_for: String(votesFor),
-                                votes_against: String(votesAgainst),
-                                votes_abstain: String(votesAbstain)
-                            }
-                        });
-                    } catch (e) { /* non-blocking */ }
+                    await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, billNameOverride: `${bill.bill_name} (enactment failed)` });
                     results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_enactment', votesFor, votesAgainst, error: enactment?.error, earlyResolution: bill.early_resolution_status || null });
                 } else {
-                    try {
-                        await supabase.rpc('fire_system_event', {
-                            p_trigger_key: 'bill_passed',
-                            p_nation_id: bill.nation_id,
-                            p_tick: currentTick,
-                            p_placeholders: {
-                                nation: nation?.name || 'Unknown',
-                                bill_name: bill.bill_name,
-                                sponsor: bill.factions?.faction_name || 'Unknown',
-                                votes_for: String(votesFor),
-                                votes_against: String(votesAgainst),
-                                article_count: String((bill.bill_articles || []).length)
-                            }
-                        });
-                    } catch (e) { /* non-blocking */ }
+                    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: (bill.bill_articles || []).length });
                     results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
                 }
             }
         } else {
             await failBill(supabase, bill);
-            try {
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'bill_failed',
-                    p_nation_id: bill.nation_id,
-                    p_tick: currentTick,
-                    p_placeholders: {
-                        nation: nation?.name || 'Unknown',
-                        bill_name: bill.bill_name,
-                        sponsor: bill.factions?.faction_name || 'Unknown',
-                        votes_for: String(votesFor),
-                        votes_against: String(votesAgainst),
-                        votes_abstain: String(votesAbstain)
-                    }
-                });
-            } catch (e) { /* non-blocking */ }
+            await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
         }
 

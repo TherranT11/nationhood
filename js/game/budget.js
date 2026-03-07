@@ -8,6 +8,7 @@ import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS } from './diplomacy-constants.js
 import { adjustGovernmentApprovalEvent, adjustMomentumAll } from './momentum.js';
 import { MINISTER_APPROVAL_CONFIG } from './stats.js';
 import { isPresidentialRepublic, isAutocracy } from './government-types.js';
+import { fireBilateralEvent } from './event-helpers.js';
 
 // ==================== NATIONAL BUDGET CALCULATION ====================
 
@@ -638,17 +639,7 @@ export async function processAidConditionReview(supabase, nation, currentTick) {
             newAmount = 0;
 
             // Fire event for both nations (recipient + donor)
-            const eventPlaceholders = { agreement_name: agreement.agreement_name || 'Economic Aid', nation: nation.name };
-            try {
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'aid_terminated', p_nation_id: nation.id,
-                    p_tick: currentTick, p_placeholders: eventPlaceholders
-                });
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'aid_terminated', p_nation_id: state.donor_nation_id,
-                    p_tick: currentTick, p_placeholders: eventPlaceholders
-                });
-            } catch (e) { /* non-blocking */ }
+            await fireBilateralEvent(supabase, 'aid_terminated', nation.id, state.donor_nation_id, currentTick, { agreement_name: agreement.agreement_name || 'Economic Aid', nation: nation.name });
         } else if (shouldSuspend) {
             await supabase.from('aid_agreement_state').update({
                 is_suspended: true,
@@ -663,17 +654,7 @@ export async function processAidConditionReview(supabase, nation, currentTick) {
             newAmount = 0;
 
             // Fire event for both nations (recipient + donor)
-            const eventPlaceholders = { agreement_name: agreement.agreement_name || 'Economic Aid', nation: nation.name };
-            try {
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'aid_suspended', p_nation_id: nation.id,
-                    p_tick: currentTick, p_placeholders: eventPlaceholders
-                });
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'aid_suspended', p_nation_id: state.donor_nation_id,
-                    p_tick: currentTick, p_placeholders: eventPlaceholders
-                });
-            } catch (e) { /* non-blocking */ }
+            await fireBilateralEvent(supabase, 'aid_suspended', nation.id, state.donor_nation_id, currentTick, { agreement_name: agreement.agreement_name || 'Economic Aid', nation: nation.name });
         } else if (state.is_suspended) {
             // All conditions now met on a suspended agreement — un-suspend
             newAmount = Number(state.original_annual_amount) * reductionFactor;
@@ -704,17 +685,7 @@ export async function processAidConditionReview(supabase, nation, currentTick) {
             actionsTaken.push({ condition_index: -1, action: 'unsuspend', reason: 'All conditions now met — aid resumed' });
 
             // Fire event for both nations
-            const eventPlaceholders = { agreement_name: agreement.agreement_name || 'Economic Aid', nation: nation.name };
-            try {
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'aid_resumed', p_nation_id: nation.id,
-                    p_tick: currentTick, p_placeholders: eventPlaceholders
-                });
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'aid_resumed', p_nation_id: state.donor_nation_id,
-                    p_tick: currentTick, p_placeholders: eventPlaceholders
-                });
-            } catch (e) { /* non-blocking */ }
+            await fireBilateralEvent(supabase, 'aid_resumed', nation.id, state.donor_nation_id, currentTick, { agreement_name: agreement.agreement_name || 'Economic Aid', nation: nation.name });
         } else {
             // Apply reductions if any
             newAmount = Number(state.original_annual_amount) * reductionFactor;
@@ -793,17 +764,7 @@ export async function processExpiredTradeAgreements(supabase, currentTick) {
         }
 
         // Notify both nations
-        try {
-            const eventPlaceholders = { agreement_name: agreement.agreement_name || 'Agreement' };
-            await supabase.rpc('fire_system_event', {
-                p_trigger_key: 'trade_agreement_expired', p_nation_id: agreement.nation_a_id,
-                p_tick: currentTick, p_placeholders: eventPlaceholders
-            });
-            await supabase.rpc('fire_system_event', {
-                p_trigger_key: 'trade_agreement_expired', p_nation_id: agreement.nation_b_id,
-                p_tick: currentTick, p_placeholders: eventPlaceholders
-            });
-        } catch (e) { /* non-blocking */ }
+        await fireBilateralEvent(supabase, 'trade_agreement_expired', agreement.nation_a_id, agreement.nation_b_id, currentTick, { agreement_name: agreement.agreement_name || 'Agreement' });
 
         results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type });
         console.log(`[processExpiredTradeAgreements] Expired: ${agreement.agreement_name} (${agreement.agreement_type})`);

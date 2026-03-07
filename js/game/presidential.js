@@ -12,6 +12,7 @@ import { adjustMomentumAll } from './momentum.js';
 import { PM_FIRST_NAMES, PM_LAST_NAMES, PM_TRAIT_KEYS, getWeightedIdeologies, selectPMCandidate, weightedRandomPick } from './political-actions.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
+import { fireBillEvent } from './event-helpers.js';
 
 /**
  * Generate 3 president candidates for a party (reuses PM candidate generation pattern).
@@ -289,20 +290,7 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
         }).eq('id', bill.id);
     }
 
-    try {
-        await supabase.rpc('fire_system_event', {
-            p_trigger_key: 'bill_passed',
-            p_nation_id: bill.nation_id,
-            p_tick: currentTick,
-            p_placeholders: {
-                nation: 'Unknown',
-                bill_name: bill.bill_name + ' (signed by President)',
-                sponsor: bill.factions?.faction_name || 'Unknown',
-                votes_for: '0', votes_against: '0', votes_abstain: '0',
-                article_count: String((bill.bill_articles || []).length)
-            }
-        });
-    } catch (e) { /* non-blocking */ }
+    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, votesFor: 0, votesAgainst: 0, votesAbstain: 0, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (signed by President)' });
 }
 
 /**
@@ -379,19 +367,7 @@ export async function vetoPresidentialBill(supabase, billId, presidentFactionId)
         console.log(`[vetoPresidentialBill] Budget vetoed — government shutdown activated for nation ${bill.nation_id}`);
     }
 
-    try {
-        await supabase.rpc('fire_system_event', {
-            p_trigger_key: 'bill_failed',
-            p_nation_id: bill.nation_id,
-            p_tick: currentTick,
-            p_placeholders: {
-                nation: 'Unknown',
-                bill_name: bill.bill_name + ' (VETOED by President)',
-                sponsor: bill.factions?.faction_name || 'Unknown',
-                votes_for: '0', votes_against: '0', votes_abstain: '0'
-            }
-        });
-    } catch (e) { /* non-blocking */ }
+    await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, votesFor: 0, votesAgainst: 0, votesAbstain: 0, billNameOverride: bill.bill_name + ' (VETOED by President)' });
 
     return overrideBill;
 }
@@ -446,20 +422,7 @@ export async function processPresidentDesk(supabase, nation, currentTick) {
             }
         }
 
-        try {
-            await supabase.rpc('fire_system_event', {
-                p_trigger_key: 'bill_passed',
-                p_nation_id: nation.id,
-                p_tick: currentTick,
-                p_placeholders: {
-                    nation: nation.name,
-                    bill_name: bill.bill_name + ' (auto-signed by President)',
-                    sponsor: bill.factions?.faction_name || 'Unknown',
-                    votes_for: '0', votes_against: '0',
-                    article_count: String((bill.bill_articles || []).length)
-                }
-            });
-        } catch (e) { /* non-blocking */ }
+        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationId: nation.id, nationName: nation.name, votesFor: 0, votesAgainst: 0, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (auto-signed by President)' });
 
         results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed' });
     }
@@ -820,19 +783,7 @@ export async function rejectOwnNomination(supabase, billId, nomineePartyId) {
     // 4. Fire system event
     try {
         const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        await supabase.rpc('fire_system_event', {
-            p_trigger_key: 'bill_failed',
-            p_nation_id: bill.nation_id,
-            p_tick: shard?.current_tick || 0,
-            p_placeholders: {
-                nation: 'Unknown',
-                bill_name: bill.bill_name + ' (Nominee declined)',
-                sponsor: 'President',
-                votes_for: '0',
-                votes_against: '0',
-                votes_abstain: '0'
-            }
-        });
+        await fireBillEvent(supabase, 'bill_failed', bill, { currentTick: shard?.current_tick || 0, votesFor: 0, votesAgainst: 0, votesAbstain: 0, sponsor: 'President', billNameOverride: bill.bill_name + ' (Nominee declined)' });
     } catch (e) { /* non-blocking */ }
 
     console.log(`Nominee self-rejection: party ${nomineePartyId} declined nomination for ${mKey} (bill ${billId}). -2 gov approval applied.`);
