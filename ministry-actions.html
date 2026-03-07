@@ -42,6 +42,7 @@ if (new URLSearchParams(window.location.search).get('dev') === '1') {
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { isGovernmentPresidential, isGovernmentAutocracy, calculateNationalBudget, GAME_CONFIG } from './js/game-common.js';
+import { getPartyLogoHTML } from './js/party-icons.js';
 
 // ==================== CONSTANTS ====================
 
@@ -1143,9 +1144,12 @@ function renderMinistryContent(key) {
     if (ministry && ministry.minister_first_name) {
         const pColor = ministry.factions?.party_color || '#888';
         const pName = ministry.factions?.faction_name || 'Unknown';
+        const pLogo = ministry.factions?.party_logo;
+        const pCustomLogo = ministry.factions?.custom_logo_url;
+        const pLogoHtml = (pLogo || pCustomLogo) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: pCustomLogo, iconKey: pLogo, size: 14, color: pColor })}</span>` : '';
         h += `<span>Minister: <strong>${esc(ministry.minister_first_name)} ${esc(ministry.minister_last_name)}</strong></span>`;
         h += '<span class="mdet-sep">|</span>';
-        h += `<span>Party: <strong style="color:${pColor}">${esc(pName)}</strong></span>`;
+        h += `<span>Party: ${pLogoHtml}<strong style="color:${pColor}">${esc(pName)}</strong></span>`;
         const appr = ministry.minister_approval ?? 50;
         const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
         h += '<span class="mdet-sep">|</span>';
