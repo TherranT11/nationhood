@@ -337,25 +337,16 @@
 .pol-columns {
     display: flex;
     gap: 16px;
-    align-items: flex-start;
+    align-items: stretch;
     justify-content: center;
 }
 
-/* ── Second row layout ── */
+/* ── Second row ── */
 .pol-row-2 {
     display: flex;
     gap: 16px;
     margin-top: 16px;
-    justify-content: flex-start;
-    /* offset to align under the party card in the centered top row */
-}
-
-/* ── First column wrapper (party card + ideology stacked) ── */
-.pol-col-1 {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    flex-shrink: 0;
+    justify-content: center;
 }
 
 /* ── Modifiers box ── */
@@ -368,6 +359,7 @@
     padding: 22px 24px 24px;
     display: flex;
     flex-direction: column;
+    overflow-y: auto;
 }
 .pol-mod-header {
     display: flex;
@@ -462,6 +454,7 @@
     border: 1px solid var(--dborder-0);
     border-radius: 4px;
     padding: 22px 24px 24px;
+    overflow-y: auto;
 }
 .pol-parl-header {
     display: flex;
@@ -759,13 +752,6 @@
     font-weight: 400;
 }
 
-/* ── Column 2 wrapper (modifiers + forecast stacked) ── */
-.pol-col-2 {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    flex-shrink: 0;
-}
 
 /* ── Election Forecast box ── */
 .pol-forecast-box {
@@ -775,6 +761,7 @@
     border: 1px solid var(--dborder-0);
     border-radius: 4px;
     padding: 16px 20px;
+    overflow-y: auto;
 }
 .pol-fc-header {
     display: flex;
@@ -1344,7 +1331,6 @@ function renderPartyTab(f, nation, data) {
         <div class="pol-section-label">Politics</div>
 
         <div class="pol-columns">
-        <div class="pol-col-1">
         <div class="pol-party-card">
         <!-- Party header -->
         <div class="pol-header">
@@ -1403,15 +1389,15 @@ function renderPartyTab(f, nation, data) {
             </div>
         </div>
         </div><!-- /pol-party-card -->
-        ${renderIdeologyBox(allParties, allPartyIdeologies, f.id)}
-        </div><!-- /pol-col-1 -->
-        <div class="pol-col-2">
         ${renderModifiersBox(f)}
         ${renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, f.id)}
-        </div><!-- /pol-col-2 -->
         ${renderParliamentBox(allParties, coalition, nation, f.id)}
         ${renderNationalMoodBox(nation, activeCrises, currentTick)}
         </div><!-- /pol-columns -->
+
+        <div class="pol-row-2">
+        ${renderIdeologyBox(allParties, allPartyIdeologies, f.id)}
+        </div>
     </div>`;
 
     document.getElementById('content-area').innerHTML = html;
