@@ -1753,6 +1753,267 @@
     border-color: var(--dgreen);
     color: var(--dgreen);
 }
+
+/* ── Third row (Elections) ── */
+.pol-row-3 {
+    display: flex;
+    gap: 16px;
+    margin-top: 16px;
+    justify-content: center;
+    align-items: flex-start;
+}
+
+/* Election Results panel */
+.pol-election-box {
+    width: 380px;
+    flex-shrink: 0;
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-0);
+    border-radius: 6px;
+    padding: 22px 24px 24px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+.pol-el-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--dborder-0);
+    margin-bottom: 12px;
+}
+.pol-el-tab {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dtext-3);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+.pol-el-tab:hover { color: var(--dtext-0); }
+.pol-el-tab.active {
+    color: var(--dtext-0);
+    border-bottom-color: var(--dtext-0);
+}
+.pol-el-content { display: none; }
+.pol-el-content.active { display: block; }
+.pol-el-summary {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    color: var(--dtext-3);
+    margin-bottom: 10px;
+}
+.pol-el-date {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    color: var(--dtext-3);
+    margin-bottom: 8px;
+}
+.pol-el-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.pol-el-table th {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dtext-3);
+    text-align: left;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--dborder-0);
+}
+.pol-el-table th:last-child,
+.pol-el-table td:last-child { text-align: right; }
+.pol-el-table td {
+    padding: 5px 6px;
+    color: var(--dtext-0);
+    border-bottom: 1px solid var(--dbg-4);
+}
+.pol-el-color-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+.pol-el-bar-cell { width: 60px; }
+.pol-el-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--dbg-4);
+    overflow: hidden;
+}
+.pol-el-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+}
+.pol-el-winner-badge {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--dgreen);
+    background: var(--dgreen-faint);
+    padding: 1px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.05em;
+}
+.pol-el-empty {
+    font-family: var(--dfont-mono);
+    font-size: 12px;
+    color: var(--dtext-3);
+    text-align: center;
+    padding: 40px 0;
+}
+
+/* Upcoming Elections panel */
+.pol-upcoming-box {
+    width: 380px;
+    flex-shrink: 0;
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-0);
+    border-radius: 6px;
+    padding: 22px 24px 24px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+.pol-upcoming-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--dbg-4);
+}
+.pol-upcoming-row:last-child { border-bottom: none; }
+.pol-upcoming-type {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+.pol-upcoming-type.parl {
+    color: var(--dtext-0);
+    background: var(--dbg-4);
+}
+.pol-upcoming-type.pres {
+    color: var(--damber);
+    background: var(--damber-faint);
+}
+.pol-upcoming-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+}
+.pol-upcoming-date {
+    font-family: var(--dfont-ui);
+    font-size: 13px;
+    color: var(--dtext-0);
+}
+.pol-upcoming-countdown {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    color: var(--dtext-3);
+}
+
+/* How Blocs Voted panel (double-width) */
+.pol-blocs-box {
+    width: 760px;
+    flex-shrink: 0;
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-0);
+    border-radius: 6px;
+    padding: 22px 24px 24px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+.pol-blocs-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.pol-blocs-table th {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dtext-3);
+    text-align: left;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--dborder-0);
+}
+.pol-blocs-table td {
+    padding: 5px 6px;
+    color: var(--dtext-0);
+    border-bottom: 1px solid var(--dbg-4);
+    vertical-align: top;
+}
+.pol-bloc-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+}
+.pol-bloc-tag {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    padding: 1px 5px;
+    border-radius: 2px;
+    background: var(--dbg-4);
+    color: var(--dtext-2);
+}
+.pol-bloc-votes {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.pol-bloc-vote-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+}
+.pol-bloc-vote-bar {
+    height: 5px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.pol-bloc-vote-name {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 80px;
+}
+.pol-bloc-vote-pct {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-3);
+    min-width: 35px;
+    text-align: right;
+}
+.pol-bloc-top-party {
+    font-weight: 600;
+    color: var(--dtext-0);
+}
 </style>
 </head>
 <body>
@@ -1884,6 +2145,36 @@ initPage('politics', async (state) => {
         .single();
     const prevApproval = prevSnap?.gov_approval ?? null;
 
+    // Fetch last completed parliamentary election
+    const { data: lastParliamentary } = await _supabase
+        .from('elections')
+        .select('election_tick, results, election_type')
+        .eq('nation_id', nation.id)
+        .eq('status', 'completed')
+        .eq('election_type', 'parliamentary')
+        .order('election_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    // Fetch last completed presidential election
+    const { data: lastPresidential } = await _supabase
+        .from('elections')
+        .select('election_tick, results, election_type')
+        .eq('nation_id', nation.id)
+        .eq('status', 'completed')
+        .eq('election_type', 'presidential')
+        .order('election_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    // Fetch all scheduled elections (for upcoming panel)
+    const { data: scheduledElections } = await _supabase
+        .from('elections')
+        .select('election_tick, election_type')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .order('election_tick', { ascending: true });
+
     renderPartyTab(f, nation, {
         totalSeats,
         mySeats,
@@ -1899,7 +2190,10 @@ initPage('politics', async (state) => {
         activeCrises,
         nextElection,
         blocApprovals,
-        prevApproval
+        prevApproval,
+        lastParliamentary,
+        lastPresidential,
+        scheduledElections
     });
 });
 
@@ -1940,7 +2234,8 @@ function renderPartyTab(f, nation, data) {
     const {
         totalSeats, mySeats, voteSharePct, lastElectionDate,
         seatDelta, role, officerNames, allParties, allPartyIdeologies, coalition, activeCrises, currentTick,
-        nextElection, blocApprovals, prevApproval
+        nextElection, blocApprovals, prevApproval,
+        lastParliamentary, lastPresidential, scheduledElections
     } = data;
 
     const partyColor = f.party_color || '#ffcc00';
@@ -2066,17 +2361,26 @@ function renderPartyTab(f, nation, data) {
         ${renderEditIdentityBox(f, currentTick)}
         ${renderGovScorecardBox(nation, coalition, allParties, currentTick, prevApproval)}
         </div>
+
+        <div class="pol-row-3">
+        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties)}
+        ${renderUpcomingElectionsBox(scheduledElections, currentTick)}
+        ${renderBlocVotingBox(lastParliamentary, allParties)}
+        </div>
     </div>`;
 
     document.getElementById('content-area').innerHTML = html;
 
     // Lock all panels to fixed 450px height
-    document.querySelectorAll('.pol-party-card, .pol-modifiers-box, .pol-parliament-box, .pol-mood-box, .pol-ideology-box, .pol-forecast-box, .pol-identity-box, .pol-scorecard-box').forEach(el => {
+    document.querySelectorAll('.pol-party-card, .pol-modifiers-box, .pol-parliament-box, .pol-mood-box, .pol-ideology-box, .pol-forecast-box, .pol-identity-box, .pol-scorecard-box, .pol-election-box, .pol-upcoming-box, .pol-blocs-box').forEach(el => {
         el.style.height = '450px';
     });
 
     // Wire up Edit Party Identity interactivity
     initEditIdentityBox(f);
+
+    // Wire up Election Results tab switching
+    initElectionResultsBox();
 }
 
 function renderModifiersBox(f) {
@@ -3181,6 +3485,190 @@ function initEditIdentityBox(f) {
             }, 2000);
         });
     }
+}
+
+function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties) {
+    // Build a color map from allParties
+    const colorMap = {};
+    (allParties || []).forEach(p => { colorMap[p.id] = p.party_color || '#888'; });
+
+    function renderParliamentaryContent(el) {
+        if (!el) return '<div class="pol-el-empty">No parliamentary election results yet.</div>';
+        const r = el.results;
+        if (!r || !r.votes) return '<div class="pol-el-empty">No parliamentary election results yet.</div>';
+        const date = tickToDate(el.election_tick);
+        const votes = [...r.votes].sort((a, b) => (b.seats || 0) - (a.seats || 0));
+        const maxVotePct = Math.max(...votes.map(v => v.vote_percentage || 0), 1);
+        let rows = votes.map(v => {
+            const color = colorMap[v.party_id] || '#888';
+            const pct = (v.vote_percentage || 0).toFixed(1);
+            const barW = Math.round(((v.vote_percentage || 0) / maxVotePct) * 100);
+            return `<tr>
+                <td><span class="pol-el-color-dot" style="background:${color}"></span>${escapeHtml(v.party_name)}</td>
+                <td>${(v.votes || 0).toLocaleString()}</td>
+                <td class="pol-el-bar-cell"><div class="pol-el-bar"><div class="pol-el-bar-fill" style="width:${barW}%;background:${color}"></div></div></td>
+                <td>${pct}%</td>
+                <td>${v.seats || 0}</td>
+            </tr>`;
+        }).join('');
+        return `
+            <div class="pol-el-date">${date}</div>
+            <div class="pol-el-summary">Turnout: ${(r.turnout_pct || 0).toFixed(1)}% &middot; ${(r.total_votes_cast || 0).toLocaleString()} votes</div>
+            <table class="pol-el-table">
+                <thead><tr><th>Party</th><th>Votes</th><th></th><th>%</th><th>Seats</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    }
+
+    function renderPresidentialContent(el) {
+        if (!el) return '<div class="pol-el-empty">No presidential election results yet.</div>';
+        const r = el.results;
+        if (!r || !r.presidential_candidates) return '<div class="pol-el-empty">No presidential election results yet.</div>';
+        const date = tickToDate(el.election_tick);
+        const cands = [...r.presidential_candidates].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+        const maxVotePct = Math.max(...cands.map(c => c.vote_percentage || 0), 1);
+        let rows = cands.map(c => {
+            const color = colorMap[c.faction_id] || '#888';
+            const pct = (c.vote_percentage || 0).toFixed(1);
+            const barW = Math.round(((c.vote_percentage || 0) / maxVotePct) * 100);
+            const winBadge = c.winner ? ' <span class="pol-el-winner-badge">WINNER</span>' : '';
+            return `<tr>
+                <td><span class="pol-el-color-dot" style="background:${color}"></span>${escapeHtml(c.candidate_name)}${winBadge}</td>
+                <td>${escapeHtml(c.party_name)}</td>
+                <td>${(c.votes || 0).toLocaleString()}</td>
+                <td class="pol-el-bar-cell"><div class="pol-el-bar"><div class="pol-el-bar-fill" style="width:${barW}%;background:${color}"></div></div></td>
+                <td>${pct}%</td>
+            </tr>`;
+        }).join('');
+        return `
+            <div class="pol-el-date">${date}</div>
+            <div class="pol-el-summary">Turnout: ${(r.turnout_pct || 0).toFixed(1)}% &middot; ${(r.total_votes_cast || 0).toLocaleString()} votes</div>
+            <table class="pol-el-table">
+                <thead><tr><th>Candidate</th><th>Party</th><th>Votes</th><th></th><th>%</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    }
+
+    return `<div class="pol-election-box">
+        <div class="pol-section-label" style="margin-bottom:12px">ELECTION RESULTS</div>
+        <div class="pol-el-tabs">
+            <button class="pol-el-tab active" data-tab="parl">Parliamentary</button>
+            <button class="pol-el-tab" data-tab="pres">Presidential</button>
+        </div>
+        <div class="pol-el-content active" data-content="parl">${renderParliamentaryContent(lastParliamentary)}</div>
+        <div class="pol-el-content" data-content="pres">${renderPresidentialContent(lastPresidential)}</div>
+    </div>`;
+}
+
+function initElectionResultsBox() {
+    const box = document.querySelector('.pol-election-box');
+    if (!box) return;
+    const tabs = box.querySelectorAll('.pol-el-tab');
+    const contents = box.querySelectorAll('.pol-el-content');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            contents.forEach(c => c.classList.remove('active'));
+            tab.classList.add('active');
+            const target = tab.getAttribute('data-tab');
+            const content = box.querySelector(`.pol-el-content[data-content="${target}"]`);
+            if (content) content.classList.add('active');
+        });
+    });
+}
+
+function renderUpcomingElectionsBox(scheduledElections, currentTick) {
+    const elections = scheduledElections || [];
+    let bodyHtml;
+    if (elections.length === 0) {
+        bodyHtml = '<div class="pol-el-empty">No elections currently scheduled.</div>';
+    } else {
+        bodyHtml = elections.map(e => {
+            const date = tickToDate(e.election_tick);
+            const ticksAway = e.election_tick - currentTick;
+            const typeClass = e.election_type === 'presidential' ? 'pres' : 'parl';
+            const typeLabel = e.election_type === 'presidential' ? 'Presidential' : 'Parliamentary';
+            return `<div class="pol-upcoming-row">
+                <span class="pol-upcoming-type ${typeClass}">${typeLabel}</span>
+                <div class="pol-upcoming-info">
+                    <span class="pol-upcoming-date">${date}</span>
+                    <span class="pol-upcoming-countdown">in ${ticksAway} tick${ticksAway !== 1 ? 's' : ''}</span>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    return `<div class="pol-upcoming-box">
+        <div class="pol-section-label" style="margin-bottom:12px">UPCOMING ELECTIONS</div>
+        ${bodyHtml}
+    </div>`;
+}
+
+function renderBlocVotingBox(lastParliamentary, allParties) {
+    const colorMap = {};
+    const nameMap = {};
+    (allParties || []).forEach(p => {
+        colorMap[p.id] = p.party_color || '#888';
+        nameMap[p.id] = p.abbreviation || p.faction_name || '?';
+    });
+
+    if (!lastParliamentary || !lastParliamentary.results || !lastParliamentary.results.bloc_details) {
+        return `<div class="pol-blocs-box">
+            <div class="pol-section-label" style="margin-bottom:12px">HOW BLOCS VOTED</div>
+            <div class="pol-el-empty">No bloc voting data available.</div>
+        </div>`;
+    }
+
+    const blocs = lastParliamentary.results.bloc_details;
+    const date = tickToDate(lastParliamentary.election_tick);
+
+    let rows = blocs.map(bloc => {
+        // Tags
+        const tags = (bloc.tags || []).map(t => `<span class="pol-bloc-tag">${escapeHtml(t)}</span>`).join('');
+
+        // Sort party_votes by votes descending
+        const pv = [...(bloc.party_votes || [])].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+        const totalBlocVotes = pv.reduce((s, v) => s + (v.votes || 0), 0) || 1;
+
+        // Find top party
+        const topParty = pv.length > 0 ? pv[0] : null;
+        const topPartyName = topParty ? (nameMap[topParty.party_id] || escapeHtml(topParty.party_name)) : '—';
+        const topPartyColor = topParty ? (colorMap[topParty.party_id] || '#888') : '#888';
+
+        // Vote split — show top 3 parties as mini bars
+        const top3 = pv.slice(0, 3);
+        const voteBars = top3.map(v => {
+            const pct = ((v.votes || 0) / totalBlocVotes * 100).toFixed(1);
+            const color = colorMap[v.party_id] || '#888';
+            const name = nameMap[v.party_id] || escapeHtml(v.party_name);
+            return `<div class="pol-bloc-vote-row">
+                <div class="pol-bloc-vote-bar" style="width:${Math.max(pct * 0.8, 2)}px;background:${color}"></div>
+                <span class="pol-bloc-vote-name">${name}</span>
+                <span class="pol-bloc-vote-pct">${pct}%</span>
+            </div>`;
+        }).join('');
+
+        return `<tr>
+            <td>${escapeHtml(bloc.bloc_name)}</td>
+            <td><div class="pol-bloc-tags">${tags || '—'}</div></td>
+            <td>${(bloc.voter_count || 0).toLocaleString()}</td>
+            <td><span class="pol-bloc-top-party"><span class="pol-el-color-dot" style="background:${topPartyColor}"></span>${topPartyName}</span></td>
+            <td><div class="pol-bloc-votes">${voteBars}</div></td>
+            <td>${(bloc.abstentions || 0).toLocaleString()}</td>
+        </tr>`;
+    }).join('');
+
+    const totalAbstentions = blocs.reduce((s, b) => s + (b.abstentions || 0), 0);
+
+    return `<div class="pol-blocs-box">
+        <div class="pol-section-label" style="margin-bottom:12px">HOW BLOCS VOTED</div>
+        <div class="pol-el-date">${date}</div>
+        <table class="pol-blocs-table">
+            <thead><tr><th>Bloc</th><th>Tags</th><th>Voters</th><th>Top Party</th><th>Vote Split</th><th>Abstain</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+        <div class="pol-el-summary" style="margin-top:8px">Total abstentions: ${totalAbstentions.toLocaleString()}</div>
+    </div>`;
 }
 
 function escapeHtml(str) {
