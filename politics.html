@@ -759,6 +759,207 @@
     font-weight: 400;
 }
 
+/* ── Column 2 wrapper (modifiers + forecast stacked) ── */
+.pol-col-2 {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex-shrink: 0;
+}
+
+/* ── Election Forecast box ── */
+.pol-forecast-box {
+    width: 380px;
+    flex-shrink: 0;
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-0);
+    border-radius: 4px;
+    padding: 16px 20px;
+}
+.pol-fc-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+.pol-fc-phase {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 2px;
+}
+.pol-fc-empty {
+    padding: 16px 0;
+    text-align: center;
+}
+.pol-fc-empty-title {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    color: var(--dtxt-muted);
+    margin-bottom: 8px;
+}
+.pol-fc-empty-detail {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtxt-muted);
+    line-height: 1.6;
+}
+.pol-fc-countdown {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.pol-fc-ticks-big {
+    font-family: var(--dfont-mono);
+    font-size: 24px;
+    font-weight: 700;
+}
+.pol-fc-ticks-label {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtxt-muted);
+    margin-left: 4px;
+}
+.pol-fc-margin-val {
+    font-family: var(--dfont-mono);
+    font-size: 12px;
+    font-weight: 700;
+}
+.pol-fc-margin-label {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtxt-muted);
+}
+.pol-fc-conf-badge {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 2px;
+}
+.pol-fc-conf-bar {
+    position: relative;
+    height: 4px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 2px;
+    margin-bottom: 14px;
+}
+.pol-fc-conf-fill {
+    height: 100%;
+    border-radius: 2px;
+    opacity: 0.6;
+}
+.pol-fc-party {
+    margin-bottom: 10px;
+}
+.pol-fc-party-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 3px;
+}
+.pol-fc-party-left {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.pol-fc-party-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+}
+.pol-fc-party-abbr {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 700;
+}
+.pol-fc-party-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.pol-fc-momentum {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 600;
+}
+.pol-fc-range {
+    font-family: var(--dfont-mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--dtxt-bright);
+}
+.pol-fc-seats-label {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtxt-muted);
+}
+.pol-fc-band {
+    position: relative;
+    height: 16px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 3px;
+}
+.pol-fc-band-fill {
+    position: absolute;
+    height: 100%;
+    border-radius: 3px;
+    border-width: 1px;
+    border-style: solid;
+}
+.pol-fc-maj-line {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    width: 1px;
+    background: rgba(226,224,214,0.15);
+}
+.pol-fc-maj-legend {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+    margin-bottom: 8px;
+}
+.pol-fc-maj-dash {
+    width: 12px;
+    height: 1px;
+    background: rgba(226,224,214,0.25);
+}
+.pol-fc-maj-text {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    color: var(--dtxt-muted);
+}
+.pol-fc-status {
+    padding: 6px 10px;
+    border-radius: 3px;
+    border-left: 3px solid;
+}
+.pol-fc-status-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.pol-fc-status-label {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 700;
+}
+.pol-fc-status-overlap {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtxt-muted);
+}
+.pol-fc-status-desc {
+    font-family: var(--dfont-ui);
+    font-size: 10px;
+    color: var(--dtxt-secondary);
+    margin-top: 2px;
+}
+
 /* ── National Mood box ── */
 .pol-mood-box {
     width: 380px;
@@ -1010,6 +1211,24 @@ initPage('politics', async (state) => {
         .select('id, started_at_tick, crisis_templates(name, description)')
         .eq('nation_id', nation.id);
 
+    // Fetch next scheduled election
+    const { data: nextElection } = await _supabase
+        .from('elections')
+        .select('election_tick')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .order('election_tick', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+    // Fetch per-party momentum (average across blocs)
+    const { data: blocApprovals } = partyIds.length > 0
+        ? await _supabase
+            .from('faction_bloc_approval')
+            .select('faction_id, momentum')
+            .in('faction_id', partyIds)
+        : { data: [] };
+
     // Generate deterministic deputy leader and party whip names from faction id
     const officerNames = generateOfficerNames(f.id);
 
@@ -1025,7 +1244,9 @@ initPage('politics', async (state) => {
         officerNames,
         allParties,
         allPartyIdeologies,
-        activeCrises
+        activeCrises,
+        nextElection,
+        blocApprovals
     });
 });
 
@@ -1065,7 +1286,8 @@ function generateOfficerNames(factionId) {
 function renderPartyTab(f, nation, data) {
     const {
         totalSeats, mySeats, voteSharePct, lastElectionDate,
-        seatDelta, role, officerNames, allParties, allPartyIdeologies, coalition, activeCrises, currentTick
+        seatDelta, role, officerNames, allParties, allPartyIdeologies, coalition, activeCrises, currentTick,
+        nextElection, blocApprovals
     } = data;
 
     const partyColor = f.party_color || '#ffcc00';
@@ -1183,7 +1405,10 @@ function renderPartyTab(f, nation, data) {
         </div><!-- /pol-party-card -->
         ${renderIdeologyBox(allParties, allPartyIdeologies, f.id)}
         </div><!-- /pol-col-1 -->
+        <div class="pol-col-2">
         ${renderModifiersBox(f)}
+        ${renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, f.id)}
+        </div><!-- /pol-col-2 -->
         ${renderParliamentBox(allParties, coalition, nation, f.id)}
         ${renderNationalMoodBox(nation, activeCrises, currentTick)}
         </div><!-- /pol-columns -->
@@ -1457,6 +1682,157 @@ function renderIdeologyBox(allParties, allPartyIdeologies, playerFactionId) {
             ${zoneLegendHtml}
             <div class="pol-ideo-axes">${axesHtml}</div>
             ${summariesHtml ? `<div class="pol-ideo-summaries">${summariesHtml}</div>` : ''}
+        </div>`;
+}
+
+function renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, playerFactionId) {
+    const FORECAST_START = 12;
+    const MARGIN_START = 12;
+    const electionTick = nextElection?.election_tick || 0;
+    const ticksLeft = electionTick > currentTick ? electionTick - currentTick : 0;
+    const forecastVisible = electionTick > 0 && ticksLeft <= FORECAST_START;
+    const majority = Math.ceil(totalSeats / 2);
+
+    // Phase label
+    const phase = ticksLeft <= 5 ? 'CAMPAIGN SEASON' : ticksLeft <= 10 ? 'MID CYCLE' : 'EARLY CYCLE';
+    const phaseColor = ticksLeft <= 5 ? 'var(--dred)' : ticksLeft <= 10 ? 'var(--damber)' : 'var(--dgreen)';
+
+    if (!forecastVisible) {
+        const ticksUntilForecast = electionTick > 0 ? ticksLeft - FORECAST_START : 0;
+        const detail = electionTick > 0
+            ? `Forecast available in <span style="color:var(--dtxt-secondary);font-weight:700">${ticksUntilForecast} ticks</span><br>Polling begins ${FORECAST_START} ticks before election`
+            : 'No election currently scheduled';
+        return `
+            <div class="pol-forecast-box">
+                <div class="pol-fc-header">
+                    <span class="pol-mod-title">Election Forecast</span>
+                </div>
+                <div class="pol-fc-empty">
+                    <div class="pol-fc-empty-title">Insufficient polling data</div>
+                    <div class="pol-fc-empty-detail">${detail}</div>
+                </div>
+            </div>`;
+    }
+
+    // Compute per-party momentum (average across blocs)
+    const momMap = {};
+    const momCount = {};
+    for (const row of (blocApprovals || [])) {
+        const fid = row.faction_id;
+        momMap[fid] = (momMap[fid] || 0) + Number(row.momentum || 0);
+        momCount[fid] = (momCount[fid] || 0) + 1;
+    }
+
+    const seatMargin = Math.max(1, MARGIN_START - (FORECAST_START - ticksLeft));
+
+    // Build party forecast data
+    const parties = (allParties || []).map(p => {
+        const voteShare = Number(p.national_vote_share || 0);
+        const estSeats = Math.round((voteShare / 100) * totalSeats);
+        const avgMom = momCount[p.id] ? Math.round(momMap[p.id] / momCount[p.id]) : 0;
+        return { ...p, estSeats, momentum: avgMom };
+    }).sort((a, b) => b.estSeats - a.estSeats);
+
+    // Confidence
+    const confLabel = seatMargin >= 10 ? 'VERY LOW' : seatMargin >= 7 ? 'LOW' : seatMargin >= 5 ? 'MODERATE' : seatMargin >= 3 ? 'HIGH' : 'VERY HIGH';
+    const confColor = seatMargin >= 10 ? 'var(--dred)' : seatMargin >= 7 ? 'var(--damber)' : seatMargin >= 5 ? 'var(--damber)' : seatMargin >= 3 ? '#22d3ee' : 'var(--dgreen)';
+    const confPct = ((FORECAST_START - ticksLeft) / FORECAST_START) * 100;
+
+    // Party bands
+    const bandsHtml = parties.map(p => {
+        const lo = Math.max(p.estSeats - seatMargin, 0);
+        const hi = Math.min(p.estSeats + seatMargin, totalSeats);
+        const loPct = (lo / totalSeats) * 100;
+        const hiPct = (hi / totalSeats) * 100;
+        const color = p.party_color || '#8a8778';
+        const abbr = p.abbreviation || (p.faction_name || '??').substring(0, 2).toUpperCase();
+        const isPlayer = p.id === playerFactionId;
+        const momColor = p.momentum > 0 ? 'var(--dgreen)' : p.momentum < 0 ? 'var(--dred)' : 'var(--dtxt-muted)';
+        const momArrow = p.momentum > 0 ? '▲' : p.momentum < 0 ? '▼' : '—';
+        const momText = p.momentum !== 0 ? `${momArrow}${Math.abs(p.momentum)}` : momArrow;
+        const majLinePct = (majority / totalSeats) * 100;
+
+        return `<div class="pol-fc-party">
+            <div class="pol-fc-party-header">
+                <div class="pol-fc-party-left">
+                    <div class="pol-fc-party-dot" style="background:${color}"></div>
+                    <span class="pol-fc-party-abbr" style="color:${color}">${escapeHtml(abbr)}</span>
+                    ${isPlayer ? '<span class="pol-ideo-legend-you">YOU</span>' : ''}
+                </div>
+                <div class="pol-fc-party-right">
+                    <span class="pol-fc-momentum" style="color:${momColor}">${momText}</span>
+                    <span class="pol-fc-range">${lo}–${hi}</span>
+                    <span class="pol-fc-seats-label">seats</span>
+                </div>
+            </div>
+            <div class="pol-fc-band">
+                <div class="pol-fc-band-fill" style="left:${loPct.toFixed(1)}%;width:${(hiPct - loPct).toFixed(1)}%;background:${color}22;border-color:${color}33"></div>
+                <div class="pol-fc-maj-line" style="left:${majLinePct.toFixed(1)}%"></div>
+            </div>
+        </div>`;
+    }).join('');
+
+    // Race status
+    const playerParty = parties.find(p => p.id === playerFactionId);
+    const topRival = parties.find(p => p.id !== playerFactionId);
+    let statusHtml = '';
+    if (playerParty && topRival) {
+        const pLo = Math.max(playerParty.estSeats - seatMargin, 0);
+        const pHi = Math.min(playerParty.estSeats + seatMargin, totalSeats);
+        const rLo = Math.max(topRival.estSeats - seatMargin, 0);
+        const rHi = Math.min(topRival.estSeats + seatMargin, totalSeats);
+        const overlap = Math.max(0, Math.min(pHi, rHi) - Math.max(pLo, rLo));
+        const totalRange = pHi - pLo;
+        const overlapPct = totalRange > 0 ? Math.round((overlap / totalRange) * 100) : 0;
+        const pAbbr = playerParty.abbreviation || 'YOU';
+        const rAbbr = topRival.abbreviation || 'RIVAL';
+        const label = overlapPct > 70 ? 'TOO CLOSE TO CALL'
+            : overlapPct > 30 ? 'COMPETITIVE'
+            : overlapPct > 0 ? (playerParty.estSeats > topRival.estSeats ? `LEANING ${pAbbr}` : `LEANING ${rAbbr}`)
+            : (playerParty.estSeats > topRival.estSeats ? `${pAbbr} LEADS` : `${rAbbr} LEADS`);
+        const statusColor = overlapPct > 70 ? 'var(--dred)' : overlapPct > 30 ? 'var(--damber)' : 'var(--dgreen)';
+        const desc = overlapPct > 70 ? `${pAbbr} and ${rAbbr} seat ranges fully overlap. Outcome is uncertain.`
+            : overlapPct > 30 ? 'Bands are narrowing. Late campaigns could decide the race.'
+            : overlapPct > 0 ? 'Leading party is emerging, but the gap is not yet decisive.'
+            : 'Ranges no longer overlap. Leader is identifiable.';
+        statusHtml = `
+            <div class="pol-fc-status" style="background:${statusColor}08;border-color:${statusColor}">
+                <div class="pol-fc-status-header">
+                    <span class="pol-fc-status-label" style="color:${statusColor}">${escapeHtml(label)}</span>
+                    <span class="pol-fc-status-overlap">${overlapPct}% overlap</span>
+                </div>
+                <div class="pol-fc-status-desc">${desc}</div>
+            </div>`;
+    }
+
+    return `
+        <div class="pol-forecast-box">
+            <div class="pol-fc-header">
+                <span class="pol-mod-title">Election Forecast</span>
+                <span class="pol-fc-phase" style="color:${phaseColor};background:${phaseColor}15">${phase}</span>
+            </div>
+            <div class="pol-fc-countdown">
+                <div>
+                    <span class="pol-fc-ticks-big" style="color:${phaseColor}">${ticksLeft}</span>
+                    <span class="pol-fc-ticks-label">ticks</span>
+                </div>
+                <div style="text-align:right">
+                    <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end">
+                        <span class="pol-fc-margin-label">Margin:</span>
+                        <span class="pol-fc-margin-val" style="color:${confColor}">±${seatMargin} seats</span>
+                    </div>
+                    <span class="pol-fc-conf-badge" style="color:${confColor};background:${confColor}15">${confLabel} CONFIDENCE</span>
+                </div>
+            </div>
+            <div class="pol-fc-conf-bar">
+                <div class="pol-fc-conf-fill" style="width:${confPct.toFixed(0)}%;background:${confColor}"></div>
+            </div>
+            ${bandsHtml}
+            <div class="pol-fc-maj-legend">
+                <div class="pol-fc-maj-dash"></div>
+                <span class="pol-fc-maj-text">Majority: ${majority} seats</span>
+            </div>
+            ${statusHtml}
         </div>`;
 }
 
