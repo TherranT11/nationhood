@@ -1,17 +1,330 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Politics | Nationhood Alpha</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Politics | Nationhood Alpha</title>
 
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Shared Styles -->
-    <link rel="stylesheet" href="css/dashboard.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<!-- Shared Styles -->
+<link rel="stylesheet" href="css/dashboard.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+/* ═══════════════════════════════════════
+   POLITICS PAGE — DESIGN GUIDE V3 OVERRIDES
+   ═══════════════════════════════════════ */
+:root {
+    --dbg-0: #0e0e0c;
+    --dbg-1: #141412;
+    --dbg-2: #1a1a17;
+    --dbg-3: #1e1e1a;
+    --dbg-4: #24241f;
+    --dbg-5: #2c2c26;
+    --dbg-hover: #282822;
+    --dtxt-bright: #e2e0d6;
+    --dtxt-primary: #c4c2b8;
+    --dtxt-secondary: #8a8778;
+    --dtxt-muted: #6b6a5e;
+    --dtxt-dim: #4a4940;
+    --dtxt-ghost: #333229;
+    --dborder-hair: rgba(255,255,255,0.04);
+    --dborder-0: rgba(255,255,255,0.06);
+    --dborder-1: rgba(255,255,255,0.08);
+    --dborder-2: rgba(255,255,255,0.12);
+    --dgreen: #5cb85c;
+    --dgreen-faint: rgba(92,184,92,0.08);
+    --dgreen-border: rgba(92,184,92,0.18);
+    --dred: #d9534f;
+    --dred-faint: rgba(217,83,79,0.08);
+    --dred-border: rgba(217,83,79,0.18);
+    --damber: #c8a64e;
+    --damber-faint: rgba(200,166,78,0.08);
+    --damber-border: rgba(200,166,78,0.18);
+    --dblue: #5b9bd5;
+    --dblue-faint: rgba(91,155,213,0.08);
+    --dblue-border: rgba(91,155,213,0.18);
+    --dfont-mono: 'JetBrains Mono', monospace;
+    --dfont-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+    --dfont-serif: 'IBM Plex Serif', Georgia, serif;
+}
+
+/* ── Page layout ── */
+.pol-page {
+    width: 380px;
+    margin: 0 auto;
+    padding: 24px 20px 60px;
+}
+
+/* ── Section label ── */
+.pol-section-label {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--dtxt-muted);
+    margin-bottom: 18px;
+}
+
+/* ── Party header row ── */
+.pol-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.pol-logo {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: 2px solid var(--dborder-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: var(--dbg-3);
+}
+.pol-logo svg {
+    display: block;
+}
+.pol-header-info {
+    min-width: 0;
+}
+.pol-party-name {
+    font-family: var(--dfont-ui);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--dtxt-bright);
+    line-height: 1.2;
+    margin-bottom: 6px;
+}
+
+/* ── Role badge + established ── */
+.pol-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.pol-role-badge {
+    font-family: var(--dfont-mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 3px;
+}
+.pol-role-gov {
+    background: var(--dgreen-faint);
+    border: 1px solid var(--dgreen-border);
+    color: var(--dgreen);
+}
+.pol-role-opp {
+    background: var(--dred-faint);
+    border: 1px solid var(--dred-border);
+    color: var(--dred);
+}
+.pol-role-lead {
+    background: var(--dgreen-faint);
+    border: 1px solid var(--dgreen-border);
+    color: var(--dgreen);
+}
+.pol-established {
+    font-family: var(--dfont-mono);
+    font-size: 10.5px;
+    color: var(--dtxt-muted);
+}
+
+/* ── Ideology tags row ── */
+.pol-ideo-row {
+    display: flex;
+    gap: 10px;
+    margin: 18px 0;
+}
+.pol-ideo-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--dbg-3);
+    border: 1px solid var(--dborder-1);
+    border-radius: 4px;
+    padding: 6px 12px;
+}
+.pol-ideo-label {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dtxt-muted);
+}
+.pol-ideo-value {
+    font-family: var(--dfont-ui);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* Ideology colors */
+.pol-ideo-liberty       { color: #9C27B0; }
+.pol-ideo-equality      { color: #E91E63; }
+.pol-ideo-freedom       { color: #2196F3; }
+.pol-ideo-security      { color: #FF9800; }
+.pol-ideo-individualism { color: #eab308; }
+.pol-ideo-collectivism  { color: #ec4899; }
+.pol-ideo-tradition     { color: #795548; }
+.pol-ideo-progress      { color: #00BCD4; }
+.pol-ideo-nationalism   { color: #FF5722; }
+.pol-ideo-globalism     { color: #3F51B5; }
+
+/* ── Divider ── */
+.pol-divider {
+    border: none;
+    border-top: 1px solid var(--dborder-0);
+    margin: 18px 0;
+}
+
+/* ── Leader section ── */
+.pol-leader-section {
+    margin-bottom: 20px;
+}
+.pol-leader-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.pol-sub-label {
+    font-family: var(--dfont-mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dtxt-muted);
+}
+.pol-leader-name {
+    font-family: var(--dfont-ui);
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--dtxt-bright);
+    margin-bottom: 2px;
+}
+.pol-leader-age {
+    font-family: var(--dfont-mono);
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--dtxt-secondary);
+}
+.pol-leader-ideo {
+    font-family: var(--dfont-ui);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* ── Party Leadership button ── */
+.pol-leadership-btn {
+    font-family: var(--dfont-mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dtxt-secondary);
+    background: var(--dbg-3);
+    border: 1px solid var(--dborder-1);
+    border-radius: 4px;
+    padding: 7px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.pol-leadership-btn:hover {
+    color: var(--dtxt-bright);
+    border-color: var(--dborder-2);
+    background: var(--dbg-4);
+}
+
+/* ── Deputy / Whip row ── */
+.pol-officers-row {
+    display: flex;
+    gap: 40px;
+    margin-bottom: 20px;
+}
+.pol-officer {
+    min-width: 0;
+}
+.pol-officer-label {
+    font-family: var(--dfont-mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dtxt-muted);
+    margin-bottom: 4px;
+}
+.pol-officer-name {
+    font-family: var(--dfont-ui);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--dtxt-primary);
+}
+
+/* ── Stats row (seats + vote share) ── */
+.pol-stats-row {
+    display: flex;
+    gap: 40px;
+}
+.pol-stat-block {}
+.pol-stat-label {
+    font-family: var(--dfont-mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dtxt-muted);
+    margin-bottom: 6px;
+}
+.pol-stat-value {
+    font-family: var(--dfont-mono);
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--dtxt-bright);
+    line-height: 1;
+}
+.pol-stat-total {
+    font-size: 16px;
+    font-weight: 400;
+    color: var(--dtxt-muted);
+}
+.pol-stat-delta {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 6px;
+}
+.pol-stat-delta.up { color: var(--dgreen); }
+.pol-stat-delta.down { color: var(--dred); }
+.pol-stat-delta.flat { color: var(--dtxt-muted); }
+.pol-stat-note {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtxt-dim);
+    margin-top: 4px;
+}
+
+/* ── Loading ── */
+.pol-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    color: var(--dtxt-muted);
+    font-family: var(--dfont-mono);
+    font-size: 12px;
+}
+</style>
 </head>
 <body>
 
@@ -20,19 +333,252 @@
 
 <!-- ===== CONTENT AREA ===== -->
 <div id="content-area">
-    <div style="max-width:900px; margin:80px auto; text-align:center; padding:40px 20px;">
-        <h1 style="font-family:var(--dfont-ui); font-size:28px; font-weight:700; color:var(--dtxt-bright); margin-bottom:12px;">Politics</h1>
-        <p style="font-family:var(--dfont-ui); font-size:15px; color:var(--dtxt-secondary);">Under construction</p>
-    </div>
+    <div class="pol-loading">Loading...</div>
 </div>
 
 <!-- Page Script -->
 <script type="module">
 import { initPage } from './js/common.js';
+import { getPartyIconSVG } from './js/party-icons.js';
+import { tickToDate } from './js/utils.js';
+import { fetchActiveCoalition, isPresidentialRepublic } from './js/game/government-structure.js';
 
-(async () => {
-    await initPage({ tabId: 'politics' });
-})();
+initPage('politics', async (state) => {
+    const { nation, faction, shard } = state;
+
+    if (!nation || !faction) {
+        document.getElementById('content-area').innerHTML =
+            '<div class="pol-loading">No nation or party data available.</div>';
+        return;
+    }
+
+    // Fetch full faction data (state.faction has SELECT * so should be complete)
+    const f = faction;
+    const currentTick = shard?.current_tick || 0;
+
+    // Fetch total seats from all parties
+    const { data: allParties } = await _supabase
+        .from('factions')
+        .select('id, seats, national_vote_share')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+
+    const totalSeats = (allParties || []).reduce((sum, p) => sum + (p.seats || 0), 0);
+    const mySeats = f.seats || 0;
+
+    // Compute vote share
+    const myVoteShare = Number(f.national_vote_share || 0);
+    const voteSharePct = myVoteShare.toFixed(1);
+
+    // Get last completed election for vote share date + delta
+    const { data: lastElection } = await _supabase
+        .from('elections')
+        .select('election_tick, results')
+        .eq('nation_id', nation.id)
+        .eq('status', 'completed')
+        .order('election_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    let lastElectionDate = null;
+    let seatDelta = null;
+    if (lastElection) {
+        lastElectionDate = tickToDate(lastElection.election_tick);
+
+        // Try to compute seat delta from election results
+        const results = lastElection.results;
+        if (Array.isArray(results)) {
+            const myResult = results.find(r => r.party_id === f.id);
+            if (myResult && typeof myResult.seats_won === 'number') {
+                // Previous seats = seats before that election
+                const prevSeats = typeof myResult.seats_before === 'number' ? myResult.seats_before : null;
+                if (prevSeats !== null) {
+                    seatDelta = mySeats - prevSeats;
+                }
+            }
+        }
+    }
+
+    // Fetch coalition to determine governing/opposition
+    const coalition = await fetchActiveCoalition(_supabase, nation.id);
+    let role = 'Opposition';
+    if (coalition && coalition.party_ids && coalition.party_ids.includes(f.id)) {
+        role = coalition.lead_party_id === f.id ? 'Lead — Governing' : 'Governing Coalition';
+    }
+
+    // Generate deterministic deputy leader and party whip names from faction id
+    const officerNames = generateOfficerNames(f.id);
+
+    renderPartyTab(f, nation, {
+        totalSeats,
+        mySeats,
+        voteSharePct,
+        lastElectionDate,
+        seatDelta,
+        role,
+        coalition,
+        currentTick,
+        officerNames
+    });
+});
+
+/**
+ * Generate deterministic officer names from faction UUID.
+ * Uses the UUID bytes to seed a simple selection from name pools.
+ */
+function generateOfficerNames(factionId) {
+    const FIRST_NAMES = [
+        'Katarina', 'Viktor', 'Elena', 'Andrei', 'Mira', 'Stefan', 'Nadia', 'Lukas',
+        'Irina', 'Gregor', 'Sonja', 'Dmitri', 'Anya', 'Marko', 'Petra', 'Nikolai',
+        'Lena', 'Branko', 'Olga', 'Jovan', 'Rada', 'Pavel', 'Vesna', 'Boris',
+        'Milena', 'Dragan', 'Zora', 'Aleksei', 'Daria', 'Milos'
+    ];
+    const LAST_NAMES = [
+        'Dreki', 'Reznik', 'Volkov', 'Kovar', 'Brandt', 'Jovic', 'Petrov', 'Lazar',
+        'Novak', 'Kadric', 'Zelenko', 'Varga', 'Ivic', 'Balasz', 'Horta', 'Demic',
+        'Maric', 'Gruber', 'Tesic', 'Orlov', 'Szabo', 'Pavic', 'Radic', 'Leko',
+        'Tomic', 'Kosta', 'Bauer', 'Haris', 'Petrovic', 'Lukic'
+    ];
+
+    // Parse hex characters from UUID to get seed values
+    const hex = factionId.replace(/-/g, '');
+    const seedA = parseInt(hex.substring(0, 4), 16);
+    const seedB = parseInt(hex.substring(4, 8), 16);
+    const seedC = parseInt(hex.substring(8, 12), 16);
+    const seedD = parseInt(hex.substring(12, 16), 16);
+
+    return {
+        deputyFirst: FIRST_NAMES[seedA % FIRST_NAMES.length],
+        deputyLast: LAST_NAMES[seedB % LAST_NAMES.length],
+        whipFirst: FIRST_NAMES[seedC % FIRST_NAMES.length],
+        whipLast: LAST_NAMES[seedD % LAST_NAMES.length]
+    };
+}
+
+function renderPartyTab(f, nation, data) {
+    const {
+        totalSeats, mySeats, voteSharePct, lastElectionDate,
+        seatDelta, role, officerNames
+    } = data;
+
+    const partyColor = f.party_color || '#ffcc00';
+    const logoSvg = getPartyIconSVG(f.party_logo, 36, partyColor);
+    const founded = tickToDate(f.founded_tick);
+
+    // Role badge
+    const isGov = role.includes('Governing') || role.includes('Lead');
+    const roleLabel = role.includes('Lead') ? 'Governing' : role;
+    const roleCls = isGov ? 'pol-role-gov' : 'pol-role-opp';
+
+    // Ideology tags
+    const ideo1 = f.ideology_value_1 || null;
+    const ideo2 = f.ideology_value_2 || null;
+
+    function ideoTag(val) {
+        if (!val) return '';
+        const cls = 'pol-ideo-' + val.toLowerCase();
+        const label = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
+        return `<div class="pol-ideo-box">
+            <span class="pol-ideo-label">Ideology</span>
+            <span class="pol-ideo-value ${cls}">${label}</span>
+        </div>`;
+    }
+
+    // Leader
+    const leaderName = f.leader_first_name && f.leader_last_name
+        ? f.leader_first_name + ' ' + f.leader_last_name
+        : 'Vacant';
+    const leaderAge = f.leader_age ? `(${f.leader_age})` : '';
+    const leaderIdeo = ideo1
+        ? `<span class="pol-leader-ideo pol-ideo-${ideo1.toLowerCase()}">${ideo1.charAt(0).toUpperCase() + ideo1.slice(1).toLowerCase()}</span>`
+        : '';
+
+    // Seat delta display
+    let deltaHtml = '';
+    if (seatDelta !== null && seatDelta !== 0) {
+        const sign = seatDelta > 0 ? '+' : '';
+        const cls = seatDelta > 0 ? 'up' : 'down';
+        deltaHtml = `<span class="pol-stat-delta ${cls}">${sign}${seatDelta}</span>`;
+    }
+
+    // Vote share delta (simple: compare to equal share as baseline)
+    let voteShareDeltaHtml = '';
+    // We show the vote share as-is with an up arrow if > 0
+    const vsNum = parseFloat(voteSharePct);
+    if (vsNum > 0) {
+        // Show a delta indicator based on change from hypothetical equal share
+        // For now just show the percentage; delta from last election would need historical data
+    }
+
+    const html = `
+    <div class="pol-page">
+        <div class="pol-section-label">Politics</div>
+
+        <!-- Party header -->
+        <div class="pol-header">
+            <div class="pol-logo">${logoSvg}</div>
+            <div class="pol-header-info">
+                <div class="pol-party-name">${escapeHtml(f.faction_name)}</div>
+                <div class="pol-meta-row">
+                    <span class="pol-role-badge ${roleCls}">${escapeHtml(roleLabel.toUpperCase())}</span>
+                    <span class="pol-established">Est. ${founded}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ideology tags -->
+        <div class="pol-ideo-row">
+            ${ideoTag(ideo1)}
+            ${ideoTag(ideo2)}
+        </div>
+
+        <hr class="pol-divider">
+
+        <!-- Leader -->
+        <div class="pol-leader-section">
+            <div class="pol-leader-header">
+                <span class="pol-sub-label">Leader</span>
+                <button class="pol-leadership-btn" disabled>Party Leadership &rarr;</button>
+            </div>
+            <div class="pol-leader-name">${escapeHtml(leaderName)} <span class="pol-leader-age">${leaderAge}</span></div>
+            ${leaderIdeo}
+        </div>
+
+        <!-- Deputy Leader & Party Whip -->
+        <div class="pol-officers-row">
+            <div class="pol-officer">
+                <div class="pol-officer-label">Deputy Leader</div>
+                <div class="pol-officer-name">${escapeHtml(officerNames.deputyFirst + ' ' + officerNames.deputyLast)}</div>
+            </div>
+            <div class="pol-officer">
+                <div class="pol-officer-label">Party Whip</div>
+                <div class="pol-officer-name">${escapeHtml(officerNames.whipFirst + ' ' + officerNames.whipLast)}</div>
+            </div>
+        </div>
+
+        <hr class="pol-divider">
+
+        <!-- Seats & Vote Share -->
+        <div class="pol-stats-row">
+            <div class="pol-stat-block">
+                <div class="pol-stat-label">Seats</div>
+                <div class="pol-stat-value">${mySeats}<span class="pol-stat-total">/${totalSeats}</span>${deltaHtml}</div>
+            </div>
+            <div class="pol-stat-block">
+                <div class="pol-stat-label">Vote Share</div>
+                <div class="pol-stat-value">${voteSharePct}%</div>
+                ${lastElectionDate ? `<div class="pol-stat-note">${lastElectionDate}</div>` : ''}
+            </div>
+        </div>
+    </div>`;
+
+    document.getElementById('content-area').innerHTML = html;
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 </script>
 </body>
 </html>
