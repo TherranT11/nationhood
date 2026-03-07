@@ -1107,6 +1107,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
             quorum_failures: bill.quorum_failures || 0
         };
         const resolution = resolveBillVote(resolveBill, totalSeats);
+        console.log(`[resolveExpiredVotes] bill=${bill.id} votes yes=${votesFor} no=${votesAgainst} abstain=${votesAbstain} effective_yes=${effectiveVotesFor} totalSeats=${totalSeats} resolution=${resolution}`);
 
         // Budget bills never fail or get deferred normally — they stay on floor until passed
         if (bill.bill_type === 'budget' && resolution === 'deferred') {
@@ -1988,6 +1989,25 @@ export async function resolveExpiredVotes(supabase, nationId) {
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
         }
 
+        // Guardrail: resolved bills must not remain on the floor after this function.
+        // If any branch forgets to persist status, fail closed so the bill leaves the active queue.
+        try {
+            const { data: persistedBill, error: persistedErr } = await supabase
+                .from('bills')
+                .select('id, status, voting_ends_tick')
+                .eq('id', bill.id)
+                .single();
+            if (persistedErr) {
+                throw new Error(`post-resolution read failed: ${persistedErr.message}`);
+            }
+            if (persistedBill && persistedBill.status === 'floor' && persistedBill.voting_ends_tick != null && persistedBill.voting_ends_tick <= currentTick) {
+                throw new Error(`bill ${bill.id} remained on floor after resolution (voting_ends_tick=${persistedBill.voting_ends_tick}, tick=${currentTick})`);
+            }
+        } catch (persistCheckErr) {
+            console.error('[resolveExpiredVotes] Persistence guard tripped:', persistCheckErr);
+            throw persistCheckErr;
+        }
+
         // ── No-vote penalty: punish factions that didn't cast any vote ──
         try {
             const penalized = await applyNoVotePenalty(supabase, bill, bill.nation_id);
@@ -2283,7 +2303,7 @@ export async function reversePolicy(supabase, nation, policy, passedTick, curren
 
     if (reversalEffects.length === 0) return;
 
-    const { error: reversalInsertError } = await supabase.from('active_laws').insert({
+    const { error: reversalInsertError } = await supabase.from('active_laws').upsert({
         nation_id: nation.id,
         policy_id: policy.id,
         passed_tick: currentTick,
@@ -2291,9 +2311,9 @@ export async function reversePolicy(supabase, nation, policy, passedTick, curren
         effects_applied_through_tick: currentTick - 1,
         is_reversal: true,
         reversal_effects: reversalEffects
-    });
+    }, { onConflict: 'nation_id,policy_id' });
     if (reversalInsertError) {
-        console.error(`[reversePolicy] Failed to insert reversal active_law for policy ${policy.id}:`, reversalInsertError.message);
+        console.error(`[reversePolicy] Failed to upsert reversal active_law for policy ${policy.id}:`, reversalInsertError.message);
     }
 }
 

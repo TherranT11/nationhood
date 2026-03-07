@@ -5686,6 +5686,7 @@ async function resolveExpiredVotes(supabase, nationId) {
             quorum_failures: bill.quorum_failures || 0
         };
         const resolution = resolveBillVote(resolveBill, totalSeats);
+        console.log(`[resolveExpiredVotes] bill=${bill.id} votes yes=${votesFor} no=${votesAgainst} abstain=${votesAbstain} effective_yes=${effectiveVotesFor} totalSeats=${totalSeats} resolution=${resolution}`);
 
         // Budget bills never fail or get deferred normally — they stay on floor until passed
         if (bill.bill_type === 'budget' && resolution === 'deferred') {
@@ -6565,6 +6566,25 @@ async function resolveExpiredVotes(supabase, nationId) {
                 });
             } catch (e) { /* non-blocking */ }
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
+        }
+
+        // Guardrail: resolved bills must not remain on the floor after this function.
+        // If any branch forgets to persist status, fail closed so the bill leaves the active queue.
+        try {
+            const { data: persistedBill, error: persistedErr } = await supabase
+                .from('bills')
+                .select('id, status, voting_ends_tick')
+                .eq('id', bill.id)
+                .single();
+            if (persistedErr) {
+                throw new Error(`post-resolution read failed: ${persistedErr.message}`);
+            }
+            if (persistedBill && persistedBill.status === 'floor' && persistedBill.voting_ends_tick != null && persistedBill.voting_ends_tick <= currentTick) {
+                throw new Error(`bill ${bill.id} remained on floor after resolution (voting_ends_tick=${persistedBill.voting_ends_tick}, tick=${currentTick})`);
+            }
+        } catch (persistCheckErr) {
+            console.error('[resolveExpiredVotes] Persistence guard tripped:', persistCheckErr);
+            throw persistCheckErr;
         }
 
         // ── No-vote penalty: punish factions that didn't cast any vote ──
@@ -19634,6 +19654,7 @@ async function advanceTick(supabase) {
         console.log(`[advanceTick] === BILL RESOLUTION START for ${nation.name} (tick ${newTick}) ===`);
 
         // Check for early majority on active floor bills (lock outcome + set grace tick)
+        console.log(`[advanceTick] Bill resolution start (early-majority phase): nation=${nation.name} tick=${newTick}`);
         const earlyResults = await checkEarlyMajority(supabase, nation.id);
         if (earlyResults.length > 0) {
             summary.earlyMajority = summary.earlyMajority || [];
@@ -19641,7 +19662,9 @@ async function advanceTick(supabase) {
         }
 
         // Resolve expired votes (includes early-locked bills whose grace tick ended)
+        console.log(`[advanceTick] Bill resolution start (expiry phase): nation=${nation.name} tick=${newTick}`);
         const resolutions = await resolveExpiredVotes(supabase, nation.id);
+        console.log(`[advanceTick] Bill resolution end: nation=${nation.name} tick=${newTick} resolved=${resolutions.length}`);
         if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
 
         // ── Impeachment processing (Presidential systems) ──

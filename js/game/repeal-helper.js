@@ -40,6 +40,34 @@ export async function repealActiveLaw({
 
     await reversePolicy(supabase, nation, targetLaw.policies, targetLaw.passed_tick, currentTick);
 
+    // Nullify any FK references to this active_law before deleting it.
+    // This avoids bills_repeal_active_law_id_fkey failures when old repeal bills still point at this law.
+    const { error: billRefError } = await supabase
+        .from('bills')
+        .update({ repeal_active_law_id: null })
+        .eq('repeal_active_law_id', targetLawId);
+    if (billRefError) {
+        return {
+            success: false,
+            reason: 'clear_bill_references_failed',
+            targetLawId,
+            error: billRefError.message,
+        };
+    }
+
+    const { error: articleRefError } = await supabase
+        .from('bill_articles')
+        .update({ repeal_active_law_id: null })
+        .eq('repeal_active_law_id', targetLawId);
+    if (articleRefError) {
+        return {
+            success: false,
+            reason: 'clear_article_references_failed',
+            targetLawId,
+            error: articleRefError.message,
+        };
+    }
+
     const { error: deleteError } = await supabase
         .from('active_laws')
         .delete()
