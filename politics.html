@@ -337,7 +337,7 @@
 .pol-columns {
     display: flex;
     gap: 16px;
-    align-items: stretch;
+    align-items: flex-start;
     justify-content: center;
 }
 
@@ -1390,17 +1390,26 @@ function renderPartyTab(f, nation, data) {
         </div>
         </div><!-- /pol-party-card -->
         ${renderModifiersBox(f)}
-        ${renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, f.id)}
         ${renderParliamentBox(allParties, coalition, nation, f.id)}
         ${renderNationalMoodBox(nation, activeCrises, currentTick)}
         </div><!-- /pol-columns -->
 
         <div class="pol-row-2">
         ${renderIdeologyBox(allParties, allPartyIdeologies, f.id)}
+        ${renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, f.id)}
         </div>
     </div>`;
 
     document.getElementById('content-area').innerHTML = html;
+
+    // Lock row-1 panels to the Party card's natural height
+    const partyCard = document.querySelector('.pol-party-card');
+    if (partyCard) {
+        const h = partyCard.offsetHeight + 'px';
+        document.querySelectorAll('.pol-modifiers-box, .pol-parliament-box, .pol-mood-box').forEach(el => {
+            el.style.height = h;
+        });
+    }
 }
 
 function renderModifiersBox(f) {
