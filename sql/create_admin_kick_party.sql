@@ -194,6 +194,10 @@ BEGIN
     GET DIAGNOSTICS cnt = ROW_COUNT;
     IF cnt > 0 THEN result := result || jsonb_build_object('ideology_history', cnt); END IF;
 
+    DELETE FROM bill_amendment_requests WHERE faction_id = p_faction_id;
+    GET DIAGNOSTICS cnt = ROW_COUNT;
+    IF cnt > 0 THEN result := result || jsonb_build_object('bill_amendment_requests', cnt); END IF;
+
     DELETE FROM bill_support WHERE faction_id = p_faction_id;
     GET DIAGNOSTICS cnt = ROW_COUNT;
     IF cnt > 0 THEN result := result || jsonb_build_object('bill_support', cnt); END IF;
