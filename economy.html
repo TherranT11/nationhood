@@ -220,34 +220,8 @@ async function loadExpenditureData(nationId, nation) {
         }
     }
 
-    var usedBudgetBill = false;
-    if (nation.last_budget_bill_id) {
-        var instRes = await _supabase.from('budget_item_allocations')
-            .select('fiscal_category, item_name, allocation_amount, needed_amount')
-            .eq('bill_id', nation.last_budget_bill_id)
-            .eq('item_type', 'institution');
-
-        if (instRes.data && instRes.data.length > 0) {
-            usedBudgetBill = true;
-            for (var j = 0; j < instRes.data.length; j++) {
-                var inst = instRes.data[j];
-                var instCat = inst.fiscal_category;
-                var instCost = Number(inst.allocation_amount || 0);
-                if (!totals[instCat]) totals[instCat] = 0;
-                if (!details[instCat]) details[instCat] = [];
-                totals[instCat] += instCost;
-                if (instCost > 0) {
-                    details[instCat].push({
-                        name: inst.item_name,
-                        cost: instCost,
-                        type: 'institution',
-                        needed: Number(inst.needed_amount || 0)
-                    });
-                }
-            }
-        }
-    }
-    if (!usedBudgetBill) {
+    // Institution costs from config (budget bill system removed)
+    {
         var configRes = await _supabase.from('ministry_institution_config').select('*');
         var population = Number(nation.population || 0);
         var gdp = Number(nation.gdp || 0);
@@ -451,7 +425,6 @@ function renderEconomyPage(nation) {
 function renderTabBar() {
     var tabs = [
         { key: 'overview', label: 'Overview' },
-        { key: 'budget', label: 'Budget' },
         { key: 'taxation', label: 'Taxation' },
         { key: 'trade', label: 'Trade' },
         { key: 'sectors', label: 'Sectors' },
@@ -469,7 +442,6 @@ function renderTabBar() {
 function renderTabContent(nation) {
     switch (activeTab) {
         case 'overview': return renderOverviewTab(nation);
-        case 'budget': return renderBudgetTab(nation);
         case 'taxation': return renderTaxationTab(nation);
         case 'trade': return renderTradeTab(nation);
         case 'sectors': return renderSectorsTab(nation);
@@ -492,7 +464,7 @@ function wireTabEvents(nation) {
             });
         });
     }
-    if (activeTab === 'budget') {
+    if (false) { // Budget tab removed
         document.querySelectorAll('.ministry-tab').forEach(function(tab) {
             tab.addEventListener('click', function() {
                 selectMinistryCategory(tab.getAttribute('data-category'));
