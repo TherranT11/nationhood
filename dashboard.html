@@ -1012,6 +1012,16 @@ function renderGovernment(nation, coalition, ministries, allParties, hog, govTyp
     // Coalition seat bar
     let coalitionHTML = '';
     if (coalition && coalition.party_ids && coalition.party_ids.length > 0) {
+        // Fetch any coalition parties not already in allParties (handles presidential virtual coalitions, stale data, etc.)
+        const missingIds = coalition.party_ids.filter(id => !allParties.find(x => x.id === id));
+        if (missingIds.length > 0) {
+            const { data: missingParties } = await _supabase
+                .from('factions')
+                .select('id, faction_name, abbreviation, seats, party_color, party_logo, is_npc')
+                .in('id', missingIds);
+            if (missingParties) allParties.push(...missingParties);
+        }
+
         const coalParties = coalition.party_ids.map((id, idx) => {
             const p = allParties.find(x => x.id === id);
             const seats = allPartySeats[id] || p?.seats || 0;
