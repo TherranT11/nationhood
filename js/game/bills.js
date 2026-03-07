@@ -888,6 +888,8 @@ export async function checkEarlyMajority(supabase, nationId) {
         .is('early_resolution_status', null)
         .or(`voting_ends_tick.gt.${currentTick},voting_ends_tick.is.null`);
 
+    console.log(`[checkEarlyMajority] nation=${nationId} currentTick=${currentTick} found ${activeBills?.length ?? 0} active floor bills (error=${error?.message || 'none'})`);
+
     if (error || !activeBills || activeBills.length === 0) return [];
 
     // Use the actual sum of faction seats as the voting denominator, not
@@ -1045,6 +1047,13 @@ export async function resolveExpiredVotes(supabase, nationId) {
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .lte('voting_ends_tick', currentTick);
+
+    console.log(`[resolveExpiredVotes] nation=${nationId} currentTick=${currentTick} query returned ${expiredBills?.length ?? 0} bills (error=${error?.message || 'none'})`);
+    if (expiredBills && expiredBills.length > 0) {
+        for (const b of expiredBills) {
+            console.log(`[resolveExpiredVotes]   bill=${b.id} "${b.bill_name}" type=${b.bill_type} voting_ends=${b.voting_ends_tick} early_status=${b.early_resolution_status} support_count=${(b.bill_support||[]).length}`);
+        }
+    }
 
     if (error || !expiredBills || expiredBills.length === 0) return [];
 

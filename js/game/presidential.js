@@ -402,13 +402,21 @@ export async function vetoPresidentialBill(supabase, billId, presidentFactionId)
  * Called during advanceTick().
  */
 export async function processPresidentDesk(supabase, nation, currentTick) {
+    console.log(`[processPresidentDesk] nation=${nation.name} gov=${nation.government_type} isPres=${isPresidentialRepublic(nation)} tick=${currentTick}`);
     if (!isPresidentialRepublic(nation)) return [];
 
-    const { data: expiredDesks } = await supabase.from('bills')
+    const { data: expiredDesks, error: deskErr } = await supabase.from('bills')
         .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
         .eq('nation_id', nation.id)
         .eq('status', 'president_desk')
         .lte('president_desk_deadline', currentTick);
+
+    console.log(`[processPresidentDesk] found ${expiredDesks?.length ?? 0} expired desk bills (error=${deskErr?.message || 'none'})`);
+    if (expiredDesks && expiredDesks.length > 0) {
+        for (const b of expiredDesks) {
+            console.log(`[processPresidentDesk]   bill=${b.id} "${b.bill_name}" deadline=${b.president_desk_deadline} action=${b.president_action}`);
+        }
+    }
 
     if (!expiredDesks || expiredDesks.length === 0) return [];
 

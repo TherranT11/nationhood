@@ -5455,6 +5455,8 @@ async function checkEarlyMajority(supabase, nationId) {
         .is('early_resolution_status', null)
         .or(`voting_ends_tick.gt.${currentTick},voting_ends_tick.is.null`);
 
+    console.log(`[checkEarlyMajority] nation=${nationId} currentTick=${currentTick} found ${activeBills?.length ?? 0} active floor bills (error=${error?.message || 'none'})`);
+
     if (error || !activeBills || activeBills.length === 0) return [];
 
     // Use the actual sum of faction seats as the voting denominator, not
@@ -5612,6 +5614,13 @@ async function resolveExpiredVotes(supabase, nationId) {
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .lte('voting_ends_tick', currentTick);
+
+    console.log(`[resolveExpiredVotes] nation=${nationId} currentTick=${currentTick} query returned ${expiredBills?.length ?? 0} bills (error=${error?.message || 'none'})`);
+    if (expiredBills && expiredBills.length > 0) {
+        for (const b of expiredBills) {
+            console.log(`[resolveExpiredVotes]   bill=${b.id} "${b.bill_name}" type=${b.bill_type} voting_ends=${b.voting_ends_tick} early_status=${b.early_resolution_status} support_count=${(b.bill_support||[]).length}`);
+        }
+    }
 
     if (error || !expiredBills || expiredBills.length === 0) return [];
 
@@ -9625,13 +9634,21 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
  * Called during advanceTick().
  */
 async function processPresidentDesk(supabase, nation, currentTick) {
+    console.log(`[processPresidentDesk] nation=${nation.name} gov=${nation.government_type} isPres=${isPresidentialRepublic(nation)} tick=${currentTick}`);
     if (!isPresidentialRepublic(nation)) return [];
 
-    const { data: expiredDesks } = await supabase.from('bills')
+    const { data: expiredDesks, error: deskErr } = await supabase.from('bills')
         .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
         .eq('nation_id', nation.id)
         .eq('status', 'president_desk')
         .lte('president_desk_deadline', currentTick);
+
+    console.log(`[processPresidentDesk] found ${expiredDesks?.length ?? 0} expired desk bills (error=${deskErr?.message || 'none'})`);
+    if (expiredDesks && expiredDesks.length > 0) {
+        for (const b of expiredDesks) {
+            console.log(`[processPresidentDesk]   bill=${b.id} "${b.bill_name}" deadline=${b.president_desk_deadline} action=${b.president_action}`);
+        }
+    }
 
     if (!expiredDesks || expiredDesks.length === 0) return [];
 
