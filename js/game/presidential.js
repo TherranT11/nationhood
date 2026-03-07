@@ -276,7 +276,6 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
             // Mark bill as failed so it doesn't stay stuck on the desk
             await supabase.from('bills').update({
                 status: 'failed',
-                enact_error: `President signed but enactment failed: ${enactment?.error || 'Unknown'}`,
                 president_action: 'signed',
                 president_action_tick: currentTick
             }).eq('id', bill.id);

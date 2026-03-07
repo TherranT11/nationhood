@@ -2030,8 +2030,7 @@ async function markBillEnactmentFailed(supabase, bill, currentTick, enactError) 
     const normalizedError = typeof enactError === 'string' ? enactError : 'Unknown enactment failure';
     await supabase.from('bills').update({
         status: 'failed',
-        passed_tick: currentTick,
-        enact_error: normalizedError
+        passed_tick: currentTick
     }).eq('id', bill.id);
 }
 
@@ -2231,8 +2230,7 @@ export async function enactBill(supabase, bill, currentTick) {
 
     await supabase.from('bills').update({
         status: 'passed',
-        passed_tick: currentTick,
-        enact_error: null
+        passed_tick: currentTick
     }).eq('id', bill.id);
 
     // Legislative activity: boost gov_approval_events and record last bill tick
