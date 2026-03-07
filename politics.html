@@ -615,12 +615,20 @@
     border: 1px solid var(--dborder-0);
     border-radius: 4px;
     padding: 22px 24px 24px;
+    overflow-y: auto;
 }
 .pol-mood-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 16px;
+    margin-bottom: 4px;
+}
+.pol-mood-subtitle {
+    font-family: var(--dfont-ui);
+    font-size: 11px;
+    color: var(--dtxt-dim);
+    margin-bottom: 14px;
+    font-style: italic;
 }
 .pol-mood-title {
     font-family: var(--dfont-mono);
@@ -673,15 +681,22 @@
     font-weight: 600;
     color: var(--dred);
 }
+.pol-mood-issue-wrap {
+    border-bottom: 1px solid var(--dborder-hair);
+}
+.pol-mood-issue-wrap:last-child {
+    border-bottom: none;
+}
 .pol-mood-issue {
     display: flex;
     align-items: center;
     gap: 10px;
     padding: 7px 0;
-    border-bottom: 1px solid var(--dborder-hair);
+    cursor: pointer;
+    user-select: none;
 }
-.pol-mood-issue:last-child {
-    border-bottom: none;
+.pol-mood-issue:hover .pol-mood-issue-name {
+    color: var(--dtxt-bright);
 }
 .pol-mood-issue-name {
     font-family: var(--dfont-ui);
@@ -712,15 +727,35 @@
     text-align: right;
     flex-shrink: 0;
 }
-.pol-mood-footer {
-    font-family: var(--dfont-ui);
-    font-size: 11px;
+.pol-mood-stats {
+    padding: 4px 0 6px 12px;
+    display: none;
+}
+.pol-mood-stats.open {
+    display: block;
+}
+.pol-mood-stat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 0;
+}
+.pol-mood-stat-name {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
     color: var(--dtxt-dim);
-    text-align: center;
-    margin-top: 14px;
-    padding-top: 12px;
-    border-top: 1px solid var(--dborder-0);
-    font-style: italic;
+}
+.pol-mood-stat-val {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--dtxt-secondary);
+}
+.pol-mood-chevron {
+    font-size: 9px;
+    color: var(--dtxt-dim);
+    transition: transform 0.15s;
+    flex-shrink: 0;
 }
 </style>
 </head>
@@ -1184,28 +1219,41 @@ function renderNationalMoodBox(nation, activeCrises, currentTick) {
     // Issues section
     const issues = Object.entries(ISSUE_CATEGORY_STATS).map(([key, statKeys]) => ({
         name: ISSUE_DISPLAY_NAMES[key] || key,
-        importance: computeIssueImportance(nation, statKeys)
+        importance: computeIssueImportance(nation, statKeys),
+        statKeys
     })).sort((a, b) => b.importance - a.importance);
 
-    const issuesHtml = issues.map(iss => {
+    const issuesHtml = issues.map((iss, idx) => {
         const color = importanceColor(iss.importance);
-        return `<div class="pol-mood-issue">
-            <span class="pol-mood-issue-name">${escapeHtml(iss.name)}</span>
-            <div class="pol-mood-issue-bar-wrap">
-                <div class="pol-mood-issue-bar" style="width:${iss.importance}%;background:${color}"></div>
+        const statsHtml = iss.statKeys.map(sk => {
+            const val = Math.round(Number(nation[sk] ?? 0));
+            const label = sk.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            return `<div class="pol-mood-stat-row">
+                <span class="pol-mood-stat-name">${escapeHtml(label)}</span>
+                <span class="pol-mood-stat-val">${val}</span>
+            </div>`;
+        }).join('');
+        return `<div class="pol-mood-issue-wrap">
+            <div class="pol-mood-issue" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.pol-mood-chevron').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+                <span class="pol-mood-issue-name">${escapeHtml(iss.name)}</span>
+                <div class="pol-mood-issue-bar-wrap">
+                    <div class="pol-mood-issue-bar" style="width:${iss.importance}%;background:${color}"></div>
+                </div>
+                <span class="pol-mood-issue-pct">${iss.importance}%</span>
+                <span class="pol-mood-chevron">▸</span>
             </div>
-            <span class="pol-mood-issue-pct">${iss.importance}%</span>
+            <div class="pol-mood-stats">${statsHtml}</div>
         </div>`;
     }).join('');
 
     return `
         <div class="pol-mood-box">
             <div class="pol-mood-header">
-                <span class="pol-mood-title">National Mood</span>
+                <span class="pol-mood-title">Electorate Issues</span>
             </div>
+            <div class="pol-mood-subtitle">Shows which issues matter most to the electorate.</div>
             ${crisesHtml}
             ${issuesHtml}
-            <div class="pol-mood-footer">Check Events &amp; Media to see rival party credibility</div>
         </div>`;
 }
 
