@@ -2253,9 +2253,8 @@ export async function enactBill(supabase, bill, currentTick) {
         passed_tick: currentTick
     }).eq('id', bill.id);
 
-    // Legislative activity: boost gov_approval_events and record last bill tick
+    // Legislative activity: boost gov_approval_events
     await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-    await supabase.from('nations').update({ last_bill_passed_tick: currentTick }).eq('id', bill.nation_id);
 
     return { success: true };
 }
@@ -2451,9 +2450,8 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
     // Sync in-memory config so downstream logic in the same tick uses the new seat count
     initGameConfigForNation({ total_seats: newTotalSeats });
 
-    // Legislative activity: boost gov_approval_events and record last bill tick
+    // Legislative activity: boost gov_approval_events
     await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-    await supabase.from('nations').update({ last_bill_passed_tick: currentTick }).eq('id', bill.nation_id);
 
     return true;
 }

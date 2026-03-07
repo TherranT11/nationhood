@@ -87,11 +87,6 @@ const GAME_CONFIG = {
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
     MAX_AP: 10,  // maximum action points a party can accumulate
     TICKS_PER_YEAR: 12,
-    // Inactivity decay — penalties for factions that haven't logged in
-    INACTIVITY_GRACE_TICKS: 6,            // no penalty for first 6 ticks of inactivity
-    INACTIVITY_MOMENTUM_DECAY: 5,         // -5 momentum per voter bloc per tick while inactive (ticks 7-11)
-    INACTIVITY_APPROVAL_DECAY: 5,         // -5 approval per voter bloc per tick while inactive (ticks 7-11)
-    INACTIVITY_DISBAND_TICKS: 12,         // at tick 12: party is disbanded (removed from nation, loses seats next election)
     // (Budget bill system removed)
     // Impeachment (Presidential systems only)
     IMPEACHMENT_AP_COST: 7,
@@ -2832,9 +2827,6 @@ const MINISTER_APPROVAL_CONFIG = {
     // Legislative activity: bonus to gov_approval_events when a bill passes
     BILL_PASSAGE_EVENT_BONUS: 3,
 
-    // Legislative inactivity: -1/tick to gov_approval_events after grace period
-    LEGISLATIVE_INACTIVITY_GRACE_TICKS: 6,
-    LEGISLATIVE_INACTIVITY_PENALTY: -1,
 };
 
 /**
@@ -5896,9 +5888,8 @@ async function enactBill(supabase, bill, currentTick) {
         passed_tick: currentTick
     }).eq('id', bill.id);
 
-    // Legislative activity: boost gov_approval_events and record last bill tick
+    // Legislative activity: boost gov_approval_events
     await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-    await supabase.from('nations').update({ last_bill_passed_tick: currentTick }).eq('id', bill.nation_id);
 
     return { success: true };
 }
@@ -6094,9 +6085,8 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
     // Sync in-memory config so downstream logic in the same tick uses the new seat count
     initGameConfigForNation({ total_seats: newTotalSeats });
 
-    // Legislative activity: boost gov_approval_events and record last bill tick
+    // Legislative activity: boost gov_approval_events
     await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-    await supabase.from('nations').update({ last_bill_passed_tick: currentTick }).eq('id', bill.nation_id);
 
     return true;
 }
@@ -13610,49 +13600,6 @@ async function calculateGovernmentApprovalTick(supabase, nation, currentTick, is
     return govApproval;
 }
 
-// ==================== LAYER 2b: LEGISLATIVE INACTIVITY PENALTY ====================
-
-/**
- * Apply a per-tick penalty to gov_approval_events when the government has not
- * passed any bills for an extended period.
- *
- * After LEGISLATIVE_INACTIVITY_GRACE_TICKS (6) ticks with no legislation, each
- * subsequent tick injects LEGISLATIVE_INACTIVITY_PENALTY (-1) into gov_approval_events. The
- * 10% per-tick decay on events means a sustained drought converges to about -10
- * on the event modifier — enough to meaningfully drag government approval down
- * without being catastrophic.
- *
- * Skipped when:
- *  - No government is formed (no PM)
- *  - Nation is in government shutdown (already penalized harder)
- *
- * @param {object} supabase
- * @param {object} nation - full nation row
- * @param {number} currentTick
- * @param {boolean} [isShutdown=false]
- */
-async function processLegislativeInactivity(supabase, nation, currentTick, isShutdown = false) {
-    const cfg = MINISTER_APPROVAL_CONFIG;
-
-    // Skip if no government formed or already in shutdown (which has its own penalties)
-    if (!nation.pm_party_id || isShutdown) return null;
-
-    const lastBillTick = nation.last_bill_passed_tick;
-    const ticksSinceLastBill = lastBillTick != null ? (currentTick - lastBillTick) : currentTick;
-
-    if (ticksSinceLastBill <= cfg.LEGISLATIVE_INACTIVITY_GRACE_TICKS) return null;
-
-    // Apply penalty via the event modifier system
-    await adjustGovernmentApprovalEvent(supabase, nation.id, cfg.LEGISLATIVE_INACTIVITY_PENALTY, 'legislative_inactivity');
-
-    // Update in-memory value so downstream calculations see it this tick
-    nation.gov_approval_events = Math.max(-50,
-        (Number(nation.gov_approval_events ?? 0) + cfg.LEGISLATIVE_INACTIVITY_PENALTY));
-
-    console.log(`[LegislativeInactivity] ${nation.name}: ${ticksSinceLastBill} ticks since last bill (grace=${cfg.LEGISLATIVE_INACTIVITY_GRACE_TICKS}), applied ${cfg.LEGISLATIVE_INACTIVITY_PENALTY} to events`);
-    return { ticksSinceLastBill, penalty: cfg.LEGISLATIVE_INACTIVITY_PENALTY };
-}
-
 async function processOngoingCosts(supabase, nation, currentTick) {
     const { data: activeLaws } = await supabase
         .from('active_laws')
@@ -15270,174 +15217,6 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
     return { result: 'disbanded' };
 }
 
-
-// ==================== INACTIVITY DECAY ====================
-
-/**
- * Process inactivity penalties for idle factions in a nation.
- *
- * Rules (per tick, for each non-NPC faction with nation_id set):
- *   • ticksInactive = currentTick - (faction.last_seen_tick ?? faction.founded_tick ?? 0)
- *   • If ticksInactive > INACTIVITY_GRACE_TICKS (6) and < INACTIVITY_DISBAND_TICKS (12):
- *       – Lose INACTIVITY_MOMENTUM_DECAY (5) momentum with every voter bloc
- *       – Lose INACTIVITY_APPROVAL_DECAY (5) approval with every voter bloc
- *   • If ticksInactive >= INACTIVITY_DISBAND_TICKS (12):
- *       – Party is DISBANDED: removed from nation, seats zeroed, spot opened for new players
- *       – Ambassadors remain until their term expires
- *       – Ministries remain until the next election
- *
- * @returns {Array<{factionId, factionName, ticksInactive, momentumLost, approvalLost, disbanded?}>}
- */
-async function processInactivityDecay(supabase, nationId, currentTick) {
-    const results = [];
-
-    // Fetch all non-NPC factions in this nation
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id, faction_name, last_seen_tick, founded_tick, faction_type')
-        .eq('nation_id', nationId)
-        .eq('faction_type', 'party')
-        .eq('is_npc', false);
-
-    if (!factions || factions.length === 0) return results;
-
-    for (const faction of factions) {
-        const lastActive = faction.last_seen_tick ?? faction.founded_tick ?? 0;
-        const ticksInactive = currentTick - lastActive;
-
-        if (ticksInactive <= GAME_CONFIG.INACTIVITY_GRACE_TICKS) continue;
-
-        // At tick 12+, disband the party entirely
-        if (ticksInactive >= GAME_CONFIG.INACTIVITY_DISBAND_TICKS) {
-            console.log(`[InactivityDisband] "${faction.faction_name}" (${ticksInactive} ticks idle): DISBANDED from nation ${nationId}`);
-
-            // Clean up faction-related data (but NOT ambassadors or ministries)
-            await supabase.from('faction_bloc_approval').delete().eq('faction_id', faction.id);
-            await supabase.from('faction_ideology').delete().eq('faction_id', faction.id);
-            await supabase.from('ideology_history').delete().eq('faction_id', faction.id);
-            await supabase.from('momentum_log').delete().eq('faction_id', faction.id);
-            await supabase.from('fundraiser_promises').delete().eq('party_id', faction.id);
-            await supabase.from('donor_trust').delete().eq('party_id', faction.id);
-            await supabase.from('bill_support').delete().eq('faction_id', faction.id);
-            await supabase.from('campaign_actions').delete().eq('party_id', faction.id);
-
-            // Zero seats first (while nation_id still set so rebalance can find remaining parties)
-            await supabase.from('factions')
-                .update({ seats: 0 })
-                .eq('id', faction.id);
-
-            // Redistribute vacated seats to remaining parties
-            const { data: nationRow } = await supabase.from('nations')
-                .select('id, name, total_seats').eq('id', nationId).single();
-            if (nationRow) {
-                await rebalanceVacantSeats(supabase, nationRow);
-            }
-
-            // Now remove from nation
-            const { error: disbandErr } = await supabase.from('factions')
-                .update({
-                    nation_id: null,
-                    nation: null,
-                    abandoned_at: new Date().toISOString(),
-                    disband_cooldown_until_tick: currentTick + 24,
-                    action_points: 0,
-                    approval_rating: null,
-                    last_seen_tick: null,
-                    founded_tick: null
-                })
-                .eq('id', faction.id);
-            if (disbandErr) {
-                console.error(`[InactivityDisband] FAILED to null nation_id for "${faction.faction_name}":`, disbandErr.message);
-            }
-
-            // Event log
-            await supabase.from('event_log').insert({
-                nation_id: nationId,
-                event_name: 'PARTY_DISBANDED_INACTIVITY',
-                description_used: `${faction.faction_name} has been dissolved due to prolonged inactivity (${ticksInactive} ticks idle). Their seats have been redistributed to remaining parties. Ambassadors remain at their posts until their terms expire.`,
-                category: 'POLITICAL',
-                effects_applied: {
-                    faction_id: faction.id,
-                    faction_name: faction.faction_name,
-                    ticks_inactive: ticksInactive,
-                    seats_zeroed: true,
-                    ambassadors_kept: true,
-                    ministries_kept_until_election: true
-                }
-            });
-
-            // Audit log
-            await supabase.from('campaign_actions').insert({
-                party_id: faction.id,
-                nation_id: nationId,
-                action_type: 'party_disbanded',
-                tick_performed: currentTick,
-                result: { faction_name: faction.faction_name, reason: 'inactivity', ticks_inactive: ticksInactive }
-            });
-
-            results.push({
-                factionId: faction.id,
-                factionName: faction.faction_name,
-                ticksInactive,
-                momentumLost: 0,
-                approvalLost: 0,
-                disbanded: true
-            });
-            continue;
-        }
-
-        // Ticks 7-11: gradual decay (-5 momentum, -5 approval per bloc per tick)
-        const momentumPenalty = GAME_CONFIG.INACTIVITY_MOMENTUM_DECAY;
-        const approvalPenalty = GAME_CONFIG.INACTIVITY_APPROVAL_DECAY;
-
-        const entry = {
-            factionId: faction.id,
-            factionName: faction.faction_name,
-            ticksInactive,
-            momentumLost: 0,
-            approvalLost: 0
-        };
-
-        // Apply momentum and approval penalties to every voter bloc
-        const { data: blocRows } = await supabase
-            .from('faction_bloc_approval')
-            .select('id, momentum, approval')
-            .eq('faction_id', faction.id);
-
-        if (blocRows && blocRows.length > 0) {
-            for (const row of blocRows) {
-                const oldMomentum = Number(row.momentum ?? 0);
-                const newMomentum = Math.max(-50, Math.round((oldMomentum - momentumPenalty) * 100) / 100);
-
-                const oldApproval = Number(row.approval ?? 40);
-                const newApproval = Math.max(0, oldApproval - approvalPenalty);
-
-                await supabase.from('faction_bloc_approval')
-                    .update({ momentum: newMomentum, approval: newApproval })
-                    .eq('id', row.id);
-            }
-
-            entry.momentumLost = momentumPenalty;
-            entry.approvalLost = approvalPenalty;
-
-            // Audit log for momentum loss
-            await supabase.from('momentum_log').insert({
-                nation_id: nationId,
-                faction_id: faction.id,
-                bloc_id: null,
-                amount: -momentumPenalty,
-                source: 'inactivity_decay',
-                tick: currentTick
-            });
-
-            console.log(`[InactivityDecay] "${faction.faction_name}" (${ticksInactive} ticks idle): -${momentumPenalty} momentum, -${approvalPenalty} approval across ${blocRows.length} blocs`);
-        }
-
-        results.push(entry);
-    }
-
-    return results;
-}
 
 // ==================== APPOINT SUCCESSOR ====================
 
@@ -18546,18 +18325,6 @@ async function advanceTick(supabase) {
             console.error(`[advanceTick] processPMTraitEffects failed for ${nation.name} (non-fatal):`, pmTraitErr);
         }
 
-        // Inactivity decay — penalise idle factions; at tick 12 disband the party entirely
-        // Runs RIGHT BEFORE elections so auto-disbanded parties lose seats in the upcoming election
-        try {
-            const inactivityResults = await processInactivityDecay(supabase, nation.id, newTick);
-            if (inactivityResults.length > 0) {
-                summary.inactivityDecay = summary.inactivityDecay || [];
-                summary.inactivityDecay.push({ nation: nation.name, factions: inactivityResults });
-            }
-        } catch (inactivityErr) {
-            console.error(`[advanceTick] processInactivityDecay failed for ${nation.name} (non-fatal):`, inactivityErr);
-        }
-
         // Elections (democracy only)
         try {
             const electionResults = await processElections(supabase, nation, newTick);
@@ -18837,13 +18604,6 @@ async function advanceTick(supabase) {
         if (ministerApprovalResults.length > 0) {
             summary.ministerApprovals = summary.ministerApprovals || [];
             summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
-        }
-
-        // Legislative inactivity: penalize gov_approval_events when no bills passed recently
-        const inactivityResult = await processLegislativeInactivity(supabase, nation, newTick, false);
-        if (inactivityResult) {
-            summary.legislativeInactivity = summary.legislativeInactivity || [];
-            summary.legislativeInactivity.push({ nation: nation.name, ...inactivityResult });
         }
 
         // Decay gov_approval_events by 10% per tick (transient shocks fade naturally)
