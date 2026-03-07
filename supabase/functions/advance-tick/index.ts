@@ -4500,7 +4500,9 @@ async function repealActiveLaw({
         return { success: false, reason: 'missing_target_policy', targetLawId };
     }
 
-    await reversePolicy(supabase, nation, targetLaw.policies, targetLaw.passed_tick, currentTick);
+    // Save policy data before deleting the target law
+    const targetPolicy = targetLaw.policies;
+    const targetPassedTick = targetLaw.passed_tick;
 
     // Nullify any FK references to this active_law before deleting it.
     // This avoids bills_repeal_active_law_id_fkey failures when old repeal bills still point at this law.
@@ -4530,6 +4532,9 @@ async function repealActiveLaw({
         };
     }
 
+    // Delete target law FIRST, then create reversal.
+    // reversePolicy upserts with onConflict: 'nation_id,policy_id' — if the target
+    // law still exists, the upsert overwrites it, then the delete destroys the reversal.
     const { error: deleteError } = await supabase
         .from('active_laws')
         .delete()
@@ -4544,11 +4549,14 @@ async function repealActiveLaw({
         };
     }
 
+    // Now create reversal effects (inserts a fresh row since the conflicting row is gone)
+    await reversePolicy(supabase, nation, targetPolicy, targetPassedTick, currentTick);
+
     return {
         success: true,
         reason: 'repealed',
         targetLawId,
-        policyName: targetLaw.policies.policy_name,
+        policyName: targetPolicy.policy_name,
     };
 }
 
@@ -6425,10 +6433,13 @@ async function resolveExpiredVotes(supabase, nationId) {
 
 async function markBillEnactmentFailed(supabase, bill, currentTick, enactError) {
     const normalizedError = typeof enactError === 'string' ? enactError : 'Unknown enactment failure';
-    await supabase.from('bills').update({
+    const { error } = await supabase.from('bills').update({
         status: 'failed',
         passed_tick: currentTick
     }).eq('id', bill.id);
+    if (error) {
+        console.error(`[markBillEnactmentFailed] Failed to mark bill ${bill.id} as failed:`, error.message);
+    }
 }
 
 async function enactBill(supabase, bill, currentTick) {
@@ -6834,9 +6845,12 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 }
 
 async function failBill(supabase, bill) {
-    await supabase.from('bills').update({
+    const { error } = await supabase.from('bills').update({
         status: 'failed'
     }).eq('id', bill.id);
+    if (error) {
+        console.error(`[failBill] Failed to mark bill ${bill.id} as failed:`, error.message);
+    }
 }
 
 /**
@@ -9471,9 +9485,20 @@ async function processPresidentDesk(supabase, nation, currentTick) {
                 continue;
             }
         } else {
-            const enactment = await enactBill(supabase, bill, currentTick);
+            let enactment;
+            try {
+                enactment = await enactBill(supabase, bill, currentTick);
+            } catch (enactErr) {
+                console.error(`[processPresidentDesk] enactBill threw for bill ${bill.id}:`, enactErr);
+                enactment = { success: false, error: enactErr?.message || String(enactErr) };
+            }
             if (!enactment?.success) {
                 console.error(`[processPresidentDesk] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
+                await supabase.from('bills').update({
+                    status: 'failed',
+                    president_action: 'auto_signed',
+                    president_action_tick: currentTick
+                }).eq('id', bill.id);
                 results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: enactment?.error });
                 continue;
             }
