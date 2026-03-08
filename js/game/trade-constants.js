@@ -351,8 +351,10 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
     // Active embargo/sanctions between these two nations: major penalty
     var embargoPenalty = (opts && opts.has_embargo) ? -40 : 0;
 
-    // Geographic proximity (future: use region data when available)
-    var proximityBonus = (opts && opts.same_region) ? 10 : 0;
+    // Geographic proximity: continuous bonus scaled from proximity 0-100.
+    // Bordering (100) → +20, same region (50) → +10, distant (20) → +4.
+    var proximity = (opts && opts.proximity != null) ? Number(opts.proximity) : 50;
+    var proximityBonus = (proximity / 100) * 20;
 
     var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus;
     return Math.round(Math.max(0, Math.min(100, affinity)));
@@ -716,7 +718,8 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
             var pairKey = a.id + '|' + b.id;
             var rel = relMap[pairKey] || null;
             var flags = flagsMap[pairKey] || {};
-            if (rel && rel.proximity >= 80) flags.same_region = true;
+            // Pass continuous proximity (0-100) for gravity-model weighting
+            flags.proximity = (rel && rel.proximity != null) ? rel.proximity : 50;
             var aff = calculateTradeAffinity(a, b, rel, flags);
             affinityMap[a.id + '|' + b.id] = aff;
             affinityMap[b.id + '|' + a.id] = aff;
@@ -820,74 +823,145 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
+    // ── Simultaneous proportional distribution ──
+    // Instead of iterating exporters sequentially (which lets the first exporter
+    // saturate all demand), we collect ALL bilateral (exporter→importer) pairs per
+    // sector and allocate simultaneously using a gravity-model weight:
+    //   weight = exportCapacity × importDemand × affinity × proximityFactor
+    // Each pair's allocation is capped by both the exporter's capacity and the
+    // importer's demand. Two passes handle the caps + redistribute surplus.
+
     for (var si = 0; si < sectors.length; si++) {
         var sector = sectors[si];
         var priceMod = priceModifiers[sector.key];
+        var priceDampener = 1 / Math.sqrt(priceMod);
 
+        // Collect all viable bilateral pairs for this sector
+        // pairs[i] = { expId, impId, expCap, impDem, affinity, weight }
+        var pairs = [];
         for (var ei = 0; ei < nationCount; ei++) {
             var exporter = nationList[ei];
             var expCap = nationFlows[exporter.id][sector.key].exportCapacity;
             if (expCap <= 0) continue;
-
-            // Subtract RSC pre-allocated exports from remaining capacity
+            // Subtract RSC pre-allocated exports
             var remainingExpCap = expCap - (actualExports[exporter.id][sector.key] || 0);
             if (remainingExpCap <= 0) continue;
+            var adjustedCap = Math.round(remainingExpCap * priceMod);
+            if (adjustedCap <= 0) continue;
 
-            // Apply price modifier to remaining export capacity
-            var adjustedCapacity = Math.round(remainingExpCap * priceMod);
-
-            // Build importer list for this exporter (everyone else with demand > 0)
-            var importerList = [];
             for (var ii = 0; ii < nationCount; ii++) {
                 if (ii === ei) continue;
                 var importer = nationList[ii];
 
-                // Hard embargo block: zero trade between embargoed pairs
+                // Hard embargo block
                 var pairFlags = flagsMap[exporter.id + '|' + importer.id];
                 if (pairFlags && pairFlags.has_embargo) continue;
 
                 var impDem = nationFlows[importer.id][sector.key].importDemand;
-                // Subtract what they've already received from other exporters
-                var remainingDemand = impDem - actualImports[importer.id][sector.key];
-                if (remainingDemand <= 0) continue;
-
-                // Price-responsive demand: high prices reduce demand, low prices increase it
-                // Uses square root for partial elasticity (not fully elastic)
-                var priceDampener = 1 / Math.sqrt(priceMod);
-                remainingDemand = Math.round(remainingDemand * priceDampener);
-                if (remainingDemand <= 0) continue;
+                // Subtract RSC pre-allocated imports
+                var remainingDem = impDem - (actualImports[importer.id][sector.key] || 0);
+                if (remainingDem <= 0) continue;
+                remainingDem = Math.round(remainingDem * priceDampener);
+                if (remainingDem <= 0) continue;
 
                 var aff = affinityMap[exporter.id + '|' + importer.id] || 0;
                 if (aff <= 0) continue;
 
-                importerList.push({
-                    nation_id: importer.id,
-                    demand: remainingDemand,
-                    affinity: aff
+                // Gravity-model weight: supply × demand × affinity
+                var w = adjustedCap * remainingDem * aff;
+                pairs.push({
+                    expId: exporter.id,
+                    impId: importer.id,
+                    expCap: adjustedCap,
+                    impDem: remainingDem,
+                    affinity: aff,
+                    weight: w,
+                    volume: 0
                 });
             }
+        }
 
-            if (importerList.length === 0) continue;
+        if (pairs.length === 0) continue;
 
-            // Distribute this exporter's capacity among importers
-            var allocations = distributeTradeAmongPartners(adjustedCapacity, importerList);
+        // Build per-exporter and per-importer capacity/demand budgets
+        var expBudget = {};  // expBudget[expId] = remaining capacity
+        var impBudget = {};  // impBudget[impId] = remaining demand
+        for (var pi = 0; pi < pairs.length; pi++) {
+            var p = pairs[pi];
+            if (expBudget[p.expId] == null) expBudget[p.expId] = p.expCap;
+            if (impBudget[p.impId] == null) impBudget[p.impId] = p.impDem;
+        }
 
-            for (var ai = 0; ai < allocations.length; ai++) {
-                var alloc = allocations[ai];
-                if (alloc.volume <= 0) continue;
-
-                actualExports[exporter.id][sector.key] += alloc.volume;
-                actualImports[alloc.importer_nation_id][sector.key] += alloc.volume;
-
-                partnerRows.push({
-                    tick: currentTick,
-                    exporter_nation_id: exporter.id,
-                    importer_nation_id: alloc.importer_nation_id,
-                    sector: sector.key,
-                    trade_volume: alloc.volume,
-                    affinity_score: affinityMap[exporter.id + '|' + alloc.importer_nation_id] || 0
-                });
+        // Iterative proportional fitting (2 passes to handle caps)
+        for (var pass = 0; pass < 2; pass++) {
+            // Compute total weight per exporter and per importer
+            var expWeightSum = {};
+            var impWeightSum = {};
+            for (var pi = 0; pi < pairs.length; pi++) {
+                var p = pairs[pi];
+                if (p.weight <= 0) continue;
+                if (!expWeightSum[p.expId]) expWeightSum[p.expId] = 0;
+                if (!impWeightSum[p.impId]) impWeightSum[p.impId] = 0;
+                expWeightSum[p.expId] += p.weight;
+                impWeightSum[p.impId] += p.weight;
             }
+
+            // Allocate each pair: min of (exporter's share, importer's share)
+            for (var pi = 0; pi < pairs.length; pi++) {
+                var p = pairs[pi];
+                if (p.weight <= 0) { p.volume = 0; continue; }
+
+                // Share of this exporter's capacity going to this importer
+                var expShare = (expBudget[p.expId] || 0) * (p.weight / (expWeightSum[p.expId] || 1));
+                // Share of this importer's demand filled by this exporter
+                var impShare = (impBudget[p.impId] || 0) * (p.weight / (impWeightSum[p.impId] || 1));
+                p.volume = Math.round(Math.min(expShare, impShare));
+            }
+
+            // Update budgets: subtract allocated volumes, zero out fully-allocated pairs
+            for (var eid in expBudget) expBudget[eid] = 0;
+            for (var iid in impBudget) impBudget[iid] = 0;
+            // First compute how much was allocated per exporter/importer
+            var expUsed = {};
+            var impUsed = {};
+            for (var pi = 0; pi < pairs.length; pi++) {
+                var p = pairs[pi];
+                if (!expUsed[p.expId]) expUsed[p.expId] = 0;
+                if (!impUsed[p.impId]) impUsed[p.impId] = 0;
+                expUsed[p.expId] += p.volume;
+                impUsed[p.impId] += p.volume;
+            }
+            // Recompute remaining budgets from original caps minus total used
+            for (var pi = 0; pi < pairs.length; pi++) {
+                var p = pairs[pi];
+                expBudget[p.expId] = p.expCap - (expUsed[p.expId] || 0);
+                impBudget[p.impId] = p.impDem - (impUsed[p.impId] || 0);
+            }
+            // Zero out weights for pairs where either side is exhausted
+            for (var pi = 0; pi < pairs.length; pi++) {
+                var p = pairs[pi];
+                if ((expBudget[p.expId] || 0) <= 0 || (impBudget[p.impId] || 0) <= 0) {
+                    p.weight = 0;
+                }
+            }
+        }
+
+        // Record final allocations
+        for (var pi = 0; pi < pairs.length; pi++) {
+            var p = pairs[pi];
+            if (p.volume <= 0) continue;
+
+            actualExports[p.expId][sector.key] += p.volume;
+            actualImports[p.impId][sector.key] += p.volume;
+
+            partnerRows.push({
+                tick: currentTick,
+                exporter_nation_id: p.expId,
+                importer_nation_id: p.impId,
+                sector: sector.key,
+                trade_volume: p.volume,
+                affinity_score: p.affinity
+            });
         }
     }
 
