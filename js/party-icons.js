@@ -104,7 +104,7 @@ function getPartyIconSVG(iconKey, size = 24, color = null) {
  */
 function getPartyLogoHTML({ customLogoUrl, iconKey, size = 24, color = null } = {}) {
     if (customLogoUrl) {
-        return `<img src="${customLogoUrl}" alt="" style="width:${size}px;height:${size}px;object-fit:contain;border-radius:2px;vertical-align:middle">`;
+        return `<img src="${customLogoUrl}" alt="" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:50%;vertical-align:middle">`;
     }
     return getPartyIconSVG(iconKey, size, color);
 }
