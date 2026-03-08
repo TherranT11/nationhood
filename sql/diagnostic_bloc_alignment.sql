@@ -37,7 +37,7 @@ WITH ideology_calc AS (
         fba.momentum,
         fba.vote_share,
         fba.ideology_drift,
-        n.nation_name
+        n.name AS nation_name
     FROM factions f
     JOIN faction_ideology fi ON fi.faction_id = f.id
     JOIN voter_blocs vb ON vb.nation_id = f.nation_id AND vb.is_active = true
