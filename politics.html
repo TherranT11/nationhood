@@ -2730,7 +2730,7 @@ import { initPage } from './js/common.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './js/party-icons.js';
 import { deductAP } from './js/game/config.js';
 import { tickToDate } from './js/utils.js';
-import { fetchActiveCoalition } from './js/game/government-structure.js';
+import { fetchActiveCoalition, loadSeats } from './js/game/government-structure.js';
 import { isPresidentialRepublic, isAutocracy } from './js/game/government-types.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './js/game/stats.js';
 import { IDEOLOGY_AXES } from './js/game/ideology.js';
@@ -2764,8 +2764,11 @@ initPage('politics', async (state) => {
             .in('faction_id', partyIds)
         : { data: [] };
 
+    // Normalise seat counts from election results (single source of truth)
+    const { currentSeats } = await loadSeats(_supabase, nation.id, isAutocracy(nation), allParties || [], f.id);
+
     const totalSeats = (allParties || []).reduce((sum, p) => sum + (p.seats || 0), 0);
-    const mySeats = f.seats || 0;
+    const mySeats = currentSeats;
 
     // Compute vote share
     const myVoteShare = Number(f.national_vote_share || 0);

@@ -18966,30 +18966,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.statConnections.push({ nation: nation.name, effects: connResults });
         }
 
-        // Auto-generate budget bill if due (3 ticks before budget deadline)
-        try {
-            const { data: budgetLaws } = await supabase.from('active_laws')
-                .select('*, policies(id, policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat)')
-                .eq('nation_id', nation.id);
-            const autoBudgetId = await autoGenerateBudgetBill(supabase, nation, newTick, budgetLaws || []);
-            if (autoBudgetId) {
-                summary.autoBudgetBills = summary.autoBudgetBills || [];
-                summary.autoBudgetBills.push({ nation: nation.name, billId: autoBudgetId });
-            }
-        } catch (budgetGenErr) {
-            console.error(`[advanceTick] Auto budget generation failed for ${nation.name} (non-fatal):`, budgetGenErr);
-        }
-
-        // Budget committee expiry — fail budget bills stuck in committee for 3 ticks
-        try {
-            const budgetExpiryResult = await processBudgetCommitteeExpiry(supabase, nation, newTick);
-            if (budgetExpiryResult) {
-                summary.budgetCommitteeExpiries = summary.budgetCommitteeExpiries || [];
-                summary.budgetCommitteeExpiries.push({ nation: nation.name, ...budgetExpiryResult });
-            }
-        } catch (budgetExpiryErr) {
-            console.error(`[advanceTick] Budget committee expiry failed for ${nation.name} (non-fatal):`, budgetExpiryErr);
-        }
+        // (Budget bill auto-generation and committee expiry removed — budget system disabled)
 
         // Ongoing costs
         const costResult = await processOngoingCosts(supabase, nation, newTick);

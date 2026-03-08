@@ -685,9 +685,6 @@ initPage('dashboard', async (state) => {
 
     // Load real seat counts
     const { allPartySeats, currentSeats } = await loadSeats(_supabase, nation.id, isAuto, allParties, faction.id);
-    for (const p of allParties) {
-        if (allPartySeats[p.id] !== undefined) p.seats = allPartySeats[p.id];
-    }
     const factionSeatSum = allParties.reduce((s, p) => s + (p.seats || 0), 0);
     const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS || 120;
 
