@@ -308,7 +308,7 @@ export function renderNavTabs(activeTab) {
         { id: 'government', label: 'Government', href: 'government.html' },
         { id: 'politics', label: 'Politics', href: 'politics.html' },
         { id: 'ministry-actions', label: 'Ministry', href: 'ministry-actions.html' },
-        { id: 'parties', label: 'Parties', href: 'parties.html' },
+
         { id: 'laws', label: 'Bills', href: 'laws.html' },
         { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
         { id: 'economy', label: 'Economy', href: 'economy.html' },
@@ -329,8 +329,6 @@ export function renderNavTabs(activeTab) {
         let badgeHtml = '';
         if (tab.id === 'laws') {
             badgeHtml = '<span class="nav-badge" id="bills-badge" style="display:none;"></span>';
-        } else if (tab.id === 'parties') {
-            badgeHtml = '<span class="nav-badge" id="parties-nominee-badge" style="display:none;"></span>';
         }
         return `
             <a href="${href}"
