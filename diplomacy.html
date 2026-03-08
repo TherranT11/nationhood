@@ -3827,6 +3827,23 @@ async function openTradeNegotiation(negotiationId) {
     const typeLabel = typeInfo ? escapeHtml(typeInfo.label) : 'Trade Negotiations';
     const typeIconClass = typeInfo ? typeInfo.icon : 'chart';
 
+    // Determine if we're the recipient of an open negotiation (not yet in participants)
+    const isRecipientOfOpen = neg.status === 'open' && !participants.some(p => p.nation_id === currentNation.id);
+
+    // Fetch linked proposal if we're the recipient (needed for accept/reject)
+    let linkedProposal = null;
+    if (isRecipientOfOpen) {
+        const { data: proposals } = await _supabase
+            .from('diplomatic_proposals')
+            .select('*')
+            .eq('proposal_type', 'trade_negotiation')
+            .eq('status', 'proposed')
+            .eq('target_nation_id', currentNation.id);
+        linkedProposal = (proposals || []).find(p => p.proposal_data?.negotiation_id === neg.id) || null;
+    }
+
+    const openStatusText = isRecipientOfOpen ? 'AWAITING YOUR RESPONSE' : 'AWAITING ACCEPTANCE';
+
     let html = `
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
             <button class="wizard-back-btn" onclick="renderInitiativeWizard()" style="padding:5px 10px;font-size:0.72rem;">Back</button>
@@ -3844,7 +3861,7 @@ async function openTradeNegotiation(negotiationId) {
             </div>
             <div style="text-align:right;">
                 <div class="trade-neg-status-value ${neg.status === 'ratification' ? 'active' : neg.status === 'ratification_failed' ? 'expiring' : neg.status === 'concluded' ? 'active' : statusClass}">
-                    ${neg.status === 'open' ? 'AWAITING ACCEPTANCE' : neg.status === 'ratification' ? 'AWAITING PARLIAMENT' : neg.status === 'ratification_failed' ? 'RATIFICATION FAILED' : neg.status === 'concluded' ? 'RATIFIED &amp; ACTIVE' : ticksLeft + ' ticks remaining'}
+                    ${neg.status === 'open' ? openStatusText : neg.status === 'ratification' ? 'AWAITING PARLIAMENT' : neg.status === 'ratification_failed' ? 'RATIFICATION FAILED' : neg.status === 'concluded' ? 'RATIFIED &amp; ACTIVE' : ticksLeft + ' ticks remaining'}
                 </div>
                 <div style="font-size:0.62rem;color:var(--text-dim);">${neg.status === 'ratification' || neg.status === 'concluded' || neg.status === 'ratification_failed' ? 'Both sides approved' : 'Expires tick ' + neg.expires_at_tick}</div>
             </div>
@@ -3922,23 +3939,43 @@ async function openTradeNegotiation(negotiationId) {
         }
     }
 
-    // ── If status is 'open', show waiting message ──
+    // ── If status is 'open', show accept buttons for recipient or waiting message for proposer ──
     if (neg.status === 'open') {
-        html += `
-            <div class="trade-info-box info" style="margin-top:16px;">
-                Waiting for ${escapeHtml(partnerName)}'s ambassador to accept these negotiations.
-                Once they accept, the negotiation table opens and you can choose an agreement type together.
-            </div>
-        `;
-
-        // Cancel button for the proposer (requires a diplomatic role)
-        const myPart = participants.find(p => p.nation_id === currentNation.id);
-        if (myPart && hasAnyDiplomaticRole()) {
+        if (isRecipientOfOpen) {
+            // Recipient view: show accept/reject buttons
             html += `
-                <div style="margin-top:12px;">
-                    <button class="proposal-reject-btn" style="font-size:0.72rem;padding:5px 12px;" onclick="cancelTradeNegotiation('${neg.id}')">Cancel Negotiations</button>
+                <div class="trade-info-box info" style="margin-top:16px;">
+                    ${escapeHtml(partnerName)} has proposed opening trade negotiations with your nation.
+                    If you accept, the negotiation table opens and both sides can choose an agreement type and draft terms together.
                 </div>
             `;
+            if (linkedProposal && hasAnyDiplomaticRole()) {
+                const apCost = DIPLOMACY_CONFIG.ACCEPT_TRADE_NEGOTIATION_AP;
+                html += `
+                    <div class="inbox-card-actions" style="margin-top:12px;">
+                        <button class="proposal-accept-btn" onclick="acceptTradeNegotiation('${linkedProposal.id}', '${neg.id}')">Begin Negotiations (${apCost} AP)</button>
+                        <button class="proposal-reject-btn" onclick="rejectTradeNegotiation('${linkedProposal.id}', '${neg.id}')">Reject</button>
+                    </div>
+                `;
+            }
+        } else {
+            // Proposer view: show waiting message
+            html += `
+                <div class="trade-info-box info" style="margin-top:16px;">
+                    Waiting for ${escapeHtml(partnerName)}'s ambassador to accept these negotiations.
+                    Once they accept, the negotiation table opens and you can choose an agreement type together.
+                </div>
+            `;
+
+            // Cancel button for the proposer (requires a diplomatic role)
+            const myPart = participants.find(p => p.nation_id === currentNation.id);
+            if (myPart && hasAnyDiplomaticRole()) {
+                html += `
+                    <div style="margin-top:12px;">
+                        <button class="proposal-reject-btn" style="font-size:0.72rem;padding:5px 12px;" onclick="cancelTradeNegotiation('${neg.id}')">Cancel Negotiations</button>
+                    </div>
+                `;
+            }
         }
 
         panel.innerHTML = html;
