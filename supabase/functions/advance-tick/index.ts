@@ -4243,6 +4243,59 @@ function resolveRepealTargetLawId({ bill, article } = {}) {
     return fallbackArticle?.repeal_active_law_id || null;
 }
 
+async function clearRepealReferencesForLaw(supabase, targetLawId) {
+    const { data: referencingBills, error: fetchBillsError } = await supabase
+        .from('bills')
+        .select('id')
+        .eq('repeal_active_law_id', targetLawId);
+    if (fetchBillsError) {
+        return { success: false, error: `Failed to load referencing bills: ${fetchBillsError.message}` };
+    }
+
+    if ((referencingBills || []).length > 0) {
+        const billIds = referencingBills.map(r => r.id).filter(Boolean);
+        const { error: clearBillsError } = await supabase
+            .from('bills')
+            .update({ repeal_active_law_id: null })
+            .in('id', billIds);
+        if (clearBillsError) {
+            return { success: false, error: `Failed to clear bills.repeal_active_law_id: ${clearBillsError.message}` };
+        }
+    }
+
+    const { data: referencingArticles, error: fetchArticlesError } = await supabase
+        .from('bill_articles')
+        .select('id')
+        .eq('repeal_active_law_id', targetLawId);
+    if (fetchArticlesError) {
+        return { success: false, error: `Failed to load referencing bill_articles: ${fetchArticlesError.message}` };
+    }
+
+    if ((referencingArticles || []).length > 0) {
+        const articleIds = referencingArticles.map(r => r.id).filter(Boolean);
+        const { error: clearArticlesError } = await supabase
+            .from('bill_articles')
+            .update({ repeal_active_law_id: null })
+            .in('id', articleIds);
+        if (clearArticlesError) {
+            return { success: false, error: `Failed to clear bill_articles.repeal_active_law_id: ${clearArticlesError.message}` };
+        }
+    }
+
+    const { count: remainingBillRefs, error: verifyBillsError } = await supabase
+        .from('bills')
+        .select('id', { count: 'exact', head: true })
+        .eq('repeal_active_law_id', targetLawId);
+    if (verifyBillsError) {
+        return { success: false, error: `Failed to verify bill references: ${verifyBillsError.message}` };
+    }
+    if ((remainingBillRefs || 0) > 0) {
+        return { success: false, error: `FK cleanup incomplete: ${remainingBillRefs} bills still reference active_law ${targetLawId}` };
+    }
+
+    return { success: true };
+}
+
 async function repealActiveLaw({
     supabase,
     nation,
@@ -4272,30 +4325,14 @@ async function repealActiveLaw({
     const targetPassedTick = targetLaw.passed_tick;
 
     // Nullify any FK references to this active_law before deleting it.
-    // This avoids bills_repeal_active_law_id_fkey failures when old repeal bills still point at this law.
-    const { error: billRefError } = await supabase
-        .from('bills')
-        .update({ repeal_active_law_id: null })
-        .eq('repeal_active_law_id', targetLawId);
-    if (billRefError) {
+    // Do this in a fetch->update->verify flow to avoid silent no-op updates.
+    const clearRefs = await clearRepealReferencesForLaw(supabase, targetLawId);
+    if (!clearRefs.success) {
         return {
             success: false,
             reason: 'clear_bill_references_failed',
             targetLawId,
-            error: billRefError.message,
-        };
-    }
-
-    const { error: articleRefError } = await supabase
-        .from('bill_articles')
-        .update({ repeal_active_law_id: null })
-        .eq('repeal_active_law_id', targetLawId);
-    if (articleRefError) {
-        return {
-            success: false,
-            reason: 'clear_article_references_failed',
-            targetLawId,
-            error: articleRefError.message,
+            error: clearRefs.error,
         };
     }
 
@@ -6280,9 +6317,11 @@ async function enactBill(supabase, bill, currentTick) {
                 for (const opposedId of policy.opposed_policy_ids) {
                     const opposedLaw = (currentActiveLaws || []).find(l => l.policy_id === opposedId);
                     if (opposedLaw && opposedLaw.policies) {
-                        // Clear FK references before deleting (same pattern as repealActiveLaw)
-                        await supabase.from('bills').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', opposedLaw.id);
-                        await supabase.from('bill_articles').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', opposedLaw.id);
+                        const clearRefs = await clearRepealReferencesForLaw(supabase, opposedLaw.id);
+                        if (!clearRefs.success) {
+                            console.error(`[enactBill] Failed to clear repeal references for opposed law ${opposedLaw.id}: ${clearRefs.error}`);
+                            continue;
+                        }
                         await reversePolicy(supabase, nation, opposedLaw.policies, opposedLaw.passed_tick, currentTick);
                         await supabase.from('active_laws').delete().eq('id', opposedLaw.id);
                     }
@@ -6464,17 +6503,45 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
 
     if (reversalEffects.length === 0) return;
 
-    const { error: reversalInsertError } = await supabase.from('active_laws').upsert({
-        nation_id: nation.id,
-        policy_id: policy.id,
+    const reversalPayload = {
         passed_tick: currentTick,
         proposed_by: null,
         effects_applied_through_tick: currentTick - 1,
         is_reversal: true,
         reversal_effects: reversalEffects
-    }, { onConflict: 'nation_id,policy_id' });
-    if (reversalInsertError) {
-        console.error(`[reversePolicy] Failed to upsert reversal active_law for policy ${policy.id}:`, reversalInsertError.message);
+    };
+
+    const { data: existingLaw, error: existingLawError } = await supabase
+        .from('active_laws')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('policy_id', policy.id)
+        .maybeSingle();
+    if (existingLawError) {
+        console.error(`[reversePolicy] Failed to load existing active_law for policy ${policy.id}:`, existingLawError.message);
+        return;
+    }
+
+    if (existingLaw?.id) {
+        const { error: updateError } = await supabase
+            .from('active_laws')
+            .update(reversalPayload)
+            .eq('id', existingLaw.id);
+        if (updateError) {
+            console.error(`[reversePolicy] Failed to update reversal active_law for policy ${policy.id}:`, updateError.message);
+        }
+        return;
+    }
+
+    const { error: insertError } = await supabase
+        .from('active_laws')
+        .insert({
+            nation_id: nation.id,
+            policy_id: policy.id,
+            ...reversalPayload,
+        });
+    if (insertError) {
+        console.error(`[reversePolicy] Failed to insert reversal active_law for policy ${policy.id}:`, insertError.message);
     }
 }
 
