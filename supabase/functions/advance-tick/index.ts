@@ -18691,20 +18691,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     if (reprocess) console.log(`[advanceTick] REPROCESS mode — re-running effects for tick ${newTick} (no advance)`);
     const intervalMs = (shard.tick_interval_hours || 12) * 60 * 60 * 1000;
     const now = Date.now();
-    let nextTickAt;
-
-    if (force) {
-        // Manual advance: anchor next tick from NOW + interval
-        nextTickAt = new Date(now + intervalMs);
-    } else {
-        // Scheduled advance: anchor from previous schedule to prevent drift
-        const prevTickAt = new Date(shard.next_tick_at || new Date());
-        nextTickAt = new Date(prevTickAt.getTime() + intervalMs);
-        // Safety: if calculated next tick is in the past (e.g. server was down), advance to future
-        while (nextTickAt.getTime() <= now) {
-            nextTickAt = new Date(nextTickAt.getTime() + intervalMs);
-        }
-    }
+    // Always anchor next tick from NOW + interval.
+    // The cron fires every minute so drift is negligible, and this avoids
+    // compounding issues when manual advances or interval changes shift next_tick_at.
+    const nextTickAt = new Date(now + intervalMs);
     // Compute date directly from tick number to prevent drift between
     // shard.current_date (string-based) and tickToDate() (tick-based).
     const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
