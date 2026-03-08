@@ -29,8 +29,13 @@ SET debt = 10000000000
 WHERE LOWER(name) = 'avelia'
   AND debt < 1000000000;  -- safety: only fix if broken
 
--- 4. Verify
-SELECT name, debt,
+-- 4. Set Avelia GDP to $324B
+UPDATE nations
+SET gdp = 324000000000
+WHERE LOWER(name) = 'avelia';
+
+-- 5. Verify
+SELECT name, gdp, debt,
     CASE WHEN debt >= 1000000000 THEN 'dollar-scale OK'
          ELSE 'STILL BROKEN ⚠' END AS debt_status
 FROM nations
