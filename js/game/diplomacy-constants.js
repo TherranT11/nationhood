@@ -566,3 +566,10 @@ export const RAW_SCALING_DIVISORS = {
     debt: 1_000_000_000
 };
 
+// Stats that must NEVER be modified by generic tick processors (processStatEffects,
+// processMinistryActions, processEvents, processCrises, processStatConnections).
+// GDP is driven exclusively by gdp_growth via applyGdpGrowth.
+// Debt is driven exclusively by the budget system (surplus/deficit).
+// Any policy/event/crisis/connection targeting these keys will be silently skipped.
+export const STAT_PROCESSOR_SKIP = new Set(['gdp', 'debt']);
+

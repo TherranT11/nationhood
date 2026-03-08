@@ -1997,6 +1997,11 @@ const RAW_SCALING_DIVISORS = {
     debt: 1_000_000_000
 };
 
+// Stats that must NEVER be modified by generic tick processors.
+// GDP is driven exclusively by gdp_growth via applyGdpGrowth.
+// Debt is driven exclusively by the budget system (surplus/deficit).
+const STAT_PROCESSOR_SKIP = new Set(['gdp', 'debt']);
+
 
 // ────────── ideology ──────────
 
@@ -2475,7 +2480,7 @@ function normalizeNationStatKey(statKey) {
  * Stats where HIGHER values are better (increase = achievement).
  */
 const STATS_HIGHER_IS_BETTER = [
-    'gdp', 'gdp_growth', 'currency_strength', 'foreign_investment', 'credit',
+    'gdp_growth', 'currency_strength', 'foreign_investment', 'credit',
     'labor_force_participation', 'minimum_wage', 'union_strength',
     'population_growth', 'eligible_voters', 'ethnic_diversity',
     'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan',
@@ -2491,7 +2496,7 @@ const STATS_HIGHER_IS_BETTER = [
  * Stats where LOWER values are better (decrease = achievement).
  */
 const STATS_LOWER_IS_BETTER = [
-    'debt', 'debt_growth', 'inflation', 'interest_rates',
+    'debt_growth', 'inflation', 'interest_rates',
     'unemployment', 'poverty_rate', 'income_inequality', 'death_rate',
     'drug_use', 'fuel_prices', 'pollution', 'carbon_emissions',
     'crime_rate', 'incarceration_rate', 'corruption', 'polarization',
@@ -9851,6 +9856,8 @@ async function processStatConnections(supabase, nation, currentTick, connections
     for (const conn of connections) {
         if (!NATION_STAT_COLUMN_SET.has(conn.source_stat) ||
             !NATION_STAT_COLUMN_SET.has(conn.target_stat)) continue;
+        // GDP and debt are driven by dedicated systems — skip
+        if (STAT_PROCESSOR_SKIP.has(conn.target_stat)) continue;
 
         const sourceVal = Number(nation[conn.source_stat] ?? 50);
         const targetVal = Number(nation[conn.target_stat] ?? 50);
@@ -11150,7 +11157,7 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
  * Get list of stats available for promise-making with current values.
  * Only returns stats with a clear direction (higher/lower is better).
  */
-const EXCLUDED_PROMISE_STATS = new Set(['population', 'gdp']);
+const EXCLUDED_PROMISE_STATS = new Set(['population', 'gdp', 'debt']);
 
 function getPromiseableStats(nation) {
     const results = [];
@@ -13522,7 +13529,7 @@ async function processStatEffects(supabase, nation, currentTick) {
 
                 if (ticksSincePassed > delay && ticksSincePassed <= delay + duration) {
                     // GDP is only changed by gdp_growth via applyGdpGrowth — skip stat effects
-                    if (statKey === 'gdp') continue;
+                    if (STAT_PROCESSOR_SKIP.has(statKey)) continue;
 
                     const currentVal = nationUpdates[statKey] !== undefined
                         ? nationUpdates[statKey]
@@ -13713,8 +13720,8 @@ async function processMinistryActions(supabase, nation, currentTick) {
                         factionUpdates[fKey] = newVal;
                     } else {
                         // Default: nation stat
-                        // GDP is only changed by gdp_growth via applyGdpGrowth — skip
-                        if (statKey === 'gdp') continue;
+                        // GDP and debt are driven by dedicated systems — skip
+                        if (STAT_PROCESSOR_SKIP.has(statKey)) continue;
                         currentVal = nationUpdates[statKey] !== undefined
                             ? nationUpdates[statKey]
                             : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
@@ -14146,7 +14153,7 @@ async function processEvents(supabase, nation, currentTick) {
 
             if (effect.target === 'nation') {
                 // GDP is only changed by gdp_growth via applyGdpGrowth — skip
-                if (evtStatKey === 'gdp') continue;
+                if (STAT_PROCESSOR_SKIP.has(evtStatKey)) continue;
                 const currentVal = nation[evtStatKey] !== undefined
                     ? Number(nation[evtStatKey]) : 50;
                 const scaledChange = RAW_SCALING_DIVISORS[evtStatKey]
@@ -15397,8 +15404,8 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
                 console.warn(`[processPMTraitEffects] Skipping invalid stat_key "${rawStat}" in PM trait for ${nation.name}`);
                 continue;
             }
-            // GDP is only changed by gdp_growth via applyGdpGrowth — skip
-            if (stat === 'gdp') continue;
+            // GDP and debt are driven by dedicated systems — skip
+            if (STAT_PROCESSOR_SKIP.has(stat)) continue;
             const currentVal = nation[stat];
             if (currentVal !== undefined && currentVal !== null) {
                 if (RAW_SCALING_DIVISORS[stat]) {
