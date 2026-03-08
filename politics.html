@@ -5938,7 +5938,8 @@ const EVENT_ACTION_LABELS = {
     regime_succession: 'SUCCESSION', power_vacuum: 'POWER VACUUM',
     take_a_stand: 'TOOK A STAND', champion_community: 'CHAMPIONED',
     build_a_bridge: 'BUILT A BRIDGE', double_down: 'DOUBLED DOWN',
-    dig_up_dirt: 'DUG UP DIRT',
+    dig_up_dirt: 'DUG UP DIRT', campaign_mobilize: 'MOBILIZED VOTERS',
+    campaign_message: 'MESSAGING CAMPAIGN', campaign_contrast: 'ATTACK AD',
 };
 
 async function renderEventsTab(nationId, factionId, currentTick) {
@@ -5991,6 +5992,9 @@ async function renderEventsTab(nationId, factionId, currentTick) {
         else if (entry.action_type === 'build_a_bridge') detail = r.headline || (r.bloc_name ? `Bridge to ${r.bloc_name}` : '');
         else if (entry.action_type === 'double_down') detail = r.headline || (r.side ? `${r.side} (${r.stacks}/3)` : '');
         else if (entry.action_type === 'dig_up_dirt') detail = r.headline || (r.mode === 'bloc' ? `Studied ${r.bloc_name}` : `Investigated ${r.rival_name}`);
+        else if (entry.action_type === 'campaign_mobilize') detail = r.headline || (r.bloc_name ? `Mobilized ${r.bloc_name}` : '');
+        else if (entry.action_type === 'campaign_message') detail = r.headline || 'Messaging campaign';
+        else if (entry.action_type === 'campaign_contrast') detail = r.headline || (r.rival_name ? `Attacked ${r.rival_name}` : '');
         else detail = r.headline || '';
 
         return `<div class="pol-event-row">
@@ -6599,6 +6603,7 @@ async function handleNarrConfirm(container, f, n, ap, totalAp, committedAp, bloc
         else if (sel.id === 'champion') result = await executeNarrChampion(f, n, blocs, tick, costAmt);
         else if (sel.id === 'bridge') result = await executeNarrBridge(f, n, blocs, partyIdeo, tick, costAmt);
         else if (sel.id === 'doubledown') result = await executeNarrDoubleDown(f, n, partyIdeo, tick, costAmt);
+        else if (sel.id === 'campaign') result = await executeNarrCampaign(f, n, blocs, otherParties, tick, costAmt);
         else if (sel.id === 'intel') result = await executeNarrIntel(f, n, blocs, otherParties, tick, costAmt);
         else { alert('Action not yet implemented.'); return; }
     } catch (err) {
@@ -6828,6 +6833,99 @@ async function executeNarrDoubleDown(f, n, partyIdeo, tick, cost) {
             side: sideLabel, stacks: newStacks,
             headline: `${f.faction_name || 'Party'} doubled down on ${sideLabel} (${newStacks}/3)`
         }
+    });
+
+    return { success: true, newAp };
+}
+
+// ── Hit the Campaign Trail ──
+// Three modes: Mobilize (drive turnout), Message (shift narrative), Contrast (attack rival).
+async function executeNarrCampaign(f, n, blocs, otherParties, tick, cost) {
+    const mode = _narrCampMode; // 'mobilize', 'message', 'contrast'
+    if (!mode) return { success: false, error: 'No campaign mode selected.' };
+
+    // Deduct AP
+    const newAp = (f.action_points ?? 0) - cost;
+    const { error: apErr } = await _supabase.from('factions').update({ action_points: newAp }).eq('id', f.id);
+    if (apErr) return { success: false, error: 'Failed to deduct AP.' };
+
+    let result = {};
+
+    if (mode === 'mobilize') {
+        // Get Out the Vote — boost turnout for a specific bloc, +approval for your party there
+        const bloc = blocs.find(b => b.id === _narrBloc);
+        if (!bloc) return { success: true, newAp };
+
+        // Boost turnout for this bloc (+8 percentage points, capped at 95)
+        const newTurnout = Math.min(95, (bloc.turnout_rate ?? 50) + 8);
+        await _supabase.from('voter_blocs').update({ turnout_rate: newTurnout }).eq('id', bloc.id);
+
+        // Small approval boost from visible effort (+3)
+        await upsertBlocApproval(f.id, bloc.id, (row) => ({
+            preference_score: Math.min(100, (row.preference_score ?? 50) + 3)
+        }));
+
+        result = {
+            mode: 'mobilize', bloc_id: bloc.id, bloc_name: bloc.bloc_name,
+            turnout_before: bloc.turnout_rate ?? 50, turnout_after: newTurnout,
+            headline: `${f.faction_name || 'Party'} mobilized voters in ${bloc.bloc_name} (turnout ${bloc.turnout_rate ?? 50}% → ${newTurnout}%)`
+        };
+
+    } else if (mode === 'message') {
+        // Control the Narrative — boost approval with all non-hostile blocs based on existing alignment
+        const effects = [];
+        for (const b of blocs) {
+            if (b.tier === 'HOSTILE') continue;
+            // Aligned blocs benefit more, swing blocs get a smaller nudge
+            const boost = b.tier === 'BASE' ? 3 : b.tier === 'LEAN' ? 2 : 1;
+            await upsertBlocApproval(f.id, b.id, (row) => ({
+                preference_score: Math.min(100, (row.preference_score ?? 50) + boost)
+            }));
+            effects.push({ bloc_name: b.bloc_name, delta: boost });
+        }
+
+        result = {
+            mode: 'message', effects,
+            headline: `${f.faction_name || 'Party'} ran a messaging campaign (+${effects.length} blocs reached)`
+        };
+
+    } else if (mode === 'contrast') {
+        // Attack the Opposition — hurt rival's approval with a bloc, small self-boost, risk of backlash
+        const rival = otherParties.find(p => p.id === _narrRival);
+        const bloc = blocs.find(b => b.id === _narrBloc);
+        if (!rival || !bloc) return { success: true, newAp };
+
+        // Damage rival's approval with this bloc (-6)
+        await upsertBlocApproval(rival.id, bloc.id, (row) => ({
+            preference_score: Math.max(0, (row.preference_score ?? 50) - 6)
+        }));
+
+        // Small boost for attacker with this bloc (+2)
+        await upsertBlocApproval(f.id, bloc.id, (row) => ({
+            preference_score: Math.min(100, (row.preference_score ?? 50) + 2)
+        }));
+
+        // Backlash risk: slight approval hit with all SWING blocs (-1) — voters dislike mudslinging
+        const backlashBlocs = blocs.filter(b => b.tier === 'SWING' && b.id !== bloc.id);
+        for (const b of backlashBlocs) {
+            await upsertBlocApproval(f.id, b.id, (row) => ({
+                preference_score: Math.max(0, (row.preference_score ?? 50) - 1)
+            }));
+        }
+
+        result = {
+            mode: 'contrast',
+            rival_id: rival.id, rival_name: rival.faction_name,
+            bloc_id: bloc.id, bloc_name: bloc.bloc_name,
+            backlash_count: backlashBlocs.length,
+            headline: `${f.faction_name || 'Party'} attacked ${rival.faction_name} over ${bloc.bloc_name} voters`
+        };
+    }
+
+    // Log to campaign_actions
+    await _supabase.from('campaign_actions').insert({
+        party_id: f.id, nation_id: n.id, action_type: 'campaign_' + mode,
+        tick_performed: tick, ap_cost: cost, result
     });
 
     return { success: true, newAp };
