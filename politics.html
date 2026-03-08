@@ -2711,6 +2711,48 @@ body.light-mode .pol-blocs-box {
         padding: 3px 8px;
     }
 }
+
+/* ════════════════════════ PAGE-LEVEL SUB-TABS ════════════════════════ */
+.pol-page-tabs {
+    display: flex;
+    gap: 0;
+    padding: 12px 28px 0;
+    border-bottom: 1px solid var(--dborder-0);
+    background: var(--dbg-1);
+}
+.pol-page-tab {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dtext-3);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px 18px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+.pol-page-tab:hover {
+    color: var(--dtext-2);
+}
+.pol-page-tab.active {
+    color: var(--dtext-0);
+    border-bottom-color: var(--dtext-0);
+}
+.pol-page-content { display: none; }
+.pol-page-content.active { display: block; }
+
+@media (max-width: 860px) {
+    .pol-page-tabs {
+        padding: 8px 8px 0;
+    }
+    .pol-page-tab {
+        padding: 6px 12px;
+        font-size: 10px;
+    }
+}
 </style>
 </head>
 <body>
@@ -3038,6 +3080,11 @@ function renderPartyTab(f, nation, data) {
     }
 
     const html = `
+    <div class="pol-page-tabs">
+        <button class="pol-page-tab active" data-page-tab="politics">Politics</button>
+        <button class="pol-page-tab" data-page-tab="actions">Actions</button>
+    </div>
+    <div class="pol-page-content active" data-page-content="politics">
     <div class="pol-page">
         <div class="pol-section-label">Politics</div>
 
@@ -3116,9 +3163,27 @@ function renderPartyTab(f, nation, data) {
         ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties)}
         ${renderBlocVotingBox(lastParliamentary, allParties)}
         </div>
+    </div>
+    </div><!-- /pol-page-content politics -->
+    <div class="pol-page-content" data-page-content="actions">
+        <div class="pol-page" style="min-height:300px;">
+            <div class="pol-section-label">Actions</div>
+        </div>
     </div>`;
 
     document.getElementById('content-area').innerHTML = html;
+
+    // Wire up page-level sub-tabs (Politics / Actions)
+    document.querySelectorAll('.pol-page-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.pol-page-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.pol-page-content').forEach(c => c.classList.remove('active'));
+            tab.classList.add('active');
+            const target = tab.getAttribute('data-page-tab');
+            const content = document.querySelector(`.pol-page-content[data-page-content="${target}"]`);
+            if (content) content.classList.add('active');
+        });
+    });
 
     // Lock all panels to fixed 450px height (desktop only)
     if (window.innerWidth > 860) {
