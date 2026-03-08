@@ -689,21 +689,6 @@ export async function isBudgetUnfunded(supabase, nation, currentTick) {
     };
 }
 
-
-
-// Trade balance influences GDP growth each tick:
-// trade_balance (0-100) centered at 50 → surplus boosts gdp_growth, deficit drags it down
-// Nudge: (trade_balance - 50) / 50 → range -1 to +1 per tick on gdp_growth
-export async function applyTradeBalanceToGdpGrowth(supabase, nation) {
-    const tradeBalance = Number(nation.trade_balance ?? 50);
-    const currentGdpGrowth = Number(nation.gdp_growth ?? 50);
-    const nudge = (tradeBalance - 50) / 50; // -1 to +1
-    const newGdpGrowth = Math.max(0, Math.min(100, currentGdpGrowth + nudge));
-    if (Math.abs(nudge) < 0.01) return;
-    nation.gdp_growth = newGdpGrowth;
-    await supabase.from('nations').update({ gdp_growth: newGdpGrowth }).eq('id', nation.id);
-}
-
 // Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
 // Formula: monthlyChange% = (gdp_growth - 50) / 50  →  0=-1%, 50=0%, 100=+1%
 export async function applyGdpGrowth(supabase, nation) {
