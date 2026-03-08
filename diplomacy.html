@@ -1332,6 +1332,18 @@ async function acceptTradeNegotiation(proposalId, negotiationId) {
         return;
     }
 
+    // If proposalId wasn't provided, look it up from the negotiation
+    if (!proposalId) {
+        const { data: proposals } = await _supabase
+            .from('diplomatic_proposals')
+            .select('id')
+            .eq('proposal_type', 'trade_negotiation')
+            .in('status', ['proposed', 'revised'])
+            .or('target_nation_id.eq.' + currentNation.id + ',proposing_nation_id.eq.' + currentNation.id);
+        const match = (proposals || []).find(p => true); // Any trade negotiation proposal for our nation
+        if (match) proposalId = match.id;
+    }
+
     // Determine our role
     const ourAmb = diplomaticRoles.ambassadorTo.find(a =>
         a.target_nation_id === neg.nation_a_id || a.target_nation_id === neg.nation_b_id
@@ -1365,7 +1377,9 @@ async function acceptTradeNegotiation(proposalId, negotiationId) {
     }
 
     // Mark the diplomatic proposal as active (removes from inbox)
-    await _supabase.from('diplomatic_proposals').update({ status: 'active' }).eq('id', proposalId);
+    if (proposalId) {
+        await _supabase.from('diplomatic_proposals').update({ status: 'active' }).eq('id', proposalId);
+    }
 
     // Fire event
     const partnerId = neg.nation_a_id === currentNation.id ? neg.nation_b_id : neg.nation_a_id;
@@ -1401,8 +1415,22 @@ async function rejectTradeNegotiation(proposalId, negotiationId) {
         }).eq('id', negotiationId);
     }
 
+    // If proposalId wasn't provided, look it up
+    if (!proposalId && negotiationId) {
+        const { data: proposals } = await _supabase
+            .from('diplomatic_proposals')
+            .select('id')
+            .eq('proposal_type', 'trade_negotiation')
+            .in('status', ['proposed', 'revised'])
+            .or('target_nation_id.eq.' + currentNation.id + ',proposing_nation_id.eq.' + currentNation.id);
+        const match = (proposals || []).find(p => true);
+        if (match) proposalId = match.id;
+    }
+
     // Mark the proposal as rejected
-    await _supabase.from('diplomatic_proposals').update({ status: 'rejected' }).eq('id', proposalId);
+    if (proposalId) {
+        await _supabase.from('diplomatic_proposals').update({ status: 'rejected' }).eq('id', proposalId);
+    }
 
     alert('Trade negotiations rejected.');
     await renderInboxTab();
@@ -3833,13 +3861,18 @@ async function openTradeNegotiation(negotiationId) {
     // Fetch linked proposal if we're the recipient (needed for accept/reject)
     let linkedProposal = null;
     if (isRecipientOfOpen) {
-        const { data: proposals } = await _supabase
+        // Try target_nation_id first (standard case), then proposing_nation_id as fallback
+        const { data: proposals, error: propErr } = await _supabase
             .from('diplomatic_proposals')
             .select('*')
             .eq('proposal_type', 'trade_negotiation')
-            .eq('status', 'proposed')
-            .eq('target_nation_id', currentNation.id);
-        linkedProposal = (proposals || []).find(p => p.proposal_data?.negotiation_id === neg.id) || null;
+            .in('status', ['proposed', 'revised'])
+            .or('target_nation_id.eq.' + currentNation.id + ',proposing_nation_id.eq.' + currentNation.id);
+        console.log('[Trade] Proposal lookup for neg', neg.id, '- found:', (proposals || []).length, 'proposals, error:', propErr);
+        if (proposals) {
+            linkedProposal = proposals.find(p => p.proposal_data?.negotiation_id === neg.id) || null;
+            console.log('[Trade] Matched proposal:', linkedProposal?.id || 'NONE');
+        }
     }
 
     const openStatusText = isRecipientOfOpen ? 'AWAITING YOUR RESPONSE' : 'AWAITING ACCEPTANCE';
@@ -3949,12 +3982,13 @@ async function openTradeNegotiation(negotiationId) {
                     If you accept, the negotiation table opens and both sides can choose an agreement type and draft terms together.
                 </div>
             `;
-            if (linkedProposal && hasAnyDiplomaticRole()) {
+            if (hasAnyDiplomaticRole()) {
                 const apCost = DIPLOMACY_CONFIG.ACCEPT_TRADE_NEGOTIATION_AP;
+                const proposalId = linkedProposal ? linkedProposal.id : '';
                 html += `
                     <div class="inbox-card-actions" style="margin-top:12px;">
-                        <button class="proposal-accept-btn" onclick="acceptTradeNegotiation('${linkedProposal.id}', '${neg.id}')">Begin Negotiations (${apCost} AP)</button>
-                        <button class="proposal-reject-btn" onclick="rejectTradeNegotiation('${linkedProposal.id}', '${neg.id}')">Reject</button>
+                        <button class="proposal-accept-btn" onclick="acceptTradeNegotiation('${proposalId}', '${neg.id}')">Begin Negotiations (${apCost} AP)</button>
+                        <button class="proposal-reject-btn" onclick="rejectTradeNegotiation('${proposalId}', '${neg.id}')">Reject</button>
                     </div>
                 `;
             }

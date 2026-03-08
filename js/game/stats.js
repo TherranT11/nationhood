@@ -155,7 +155,7 @@ export function normalizeNationStatKey(statKey) {
  * Stats where HIGHER values are better (increase = achievement).
  */
 export const STATS_HIGHER_IS_BETTER = [
-    'gdp', 'gdp_growth', 'currency_strength', 'foreign_investment', 'credit',
+    'gdp_growth', 'currency_strength', 'foreign_investment', 'credit',
     'labor_force_participation', 'minimum_wage', 'union_strength',
     'population_growth', 'eligible_voters', 'ethnic_diversity',
     'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan',
@@ -171,7 +171,7 @@ export const STATS_HIGHER_IS_BETTER = [
  * Stats where LOWER values are better (decrease = achievement).
  */
 export const STATS_LOWER_IS_BETTER = [
-    'debt', 'debt_growth', 'inflation', 'interest_rates',
+    'debt_growth', 'inflation', 'interest_rates',
     'unemployment', 'poverty_rate', 'income_inequality', 'death_rate',
     'drug_use', 'fuel_prices', 'pollution', 'carbon_emissions',
     'crime_rate', 'incarceration_rate', 'corruption', 'polarization',
