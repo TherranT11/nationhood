@@ -2278,7 +2278,7 @@
 
 /* Election Results panel */
 .pol-election-box {
-    flex: 1 1 380px;
+    flex: 1 1 0;
     min-width: 300px;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
@@ -2458,11 +2458,10 @@
     color: var(--dtext-3);
 }
 
-/* How Blocs Voted panel (double-width) */
+/* How Blocs Voted panel */
 .pol-blocs-box {
-    width: 760px;
     min-width: 300px;
-    flex: 0 1 760px;
+    flex: 1 1 0;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
     border-radius: 6px;
@@ -3035,10 +3034,6 @@ initPage('politics', async (state) => {
     const totalSeats = (allParties || []).reduce((sum, p) => sum + (p.seats || 0), 0);
     const mySeats = currentSeats;
 
-    // Compute vote share
-    const myVoteShare = Number(f.national_vote_share || 0);
-    const voteSharePct = myVoteShare.toFixed(1);
-
     // Get last completed election for vote share date + delta
     const { data: lastElection } = await _supabase
         .from('elections')
@@ -3049,18 +3044,26 @@ initPage('politics', async (state) => {
         .limit(1)
         .maybeSingle();
 
+    // Compute vote share from election results (not the between-election poll)
+    let voteSharePct = Number(f.national_vote_share || 0).toFixed(1); // fallback
     let lastElectionDate = null;
     let seatDelta = null;
     if (lastElection) {
         lastElectionDate = tickToDate(lastElection.election_tick);
 
-        // Try to compute seat delta from election results
+        // Extract vote_percentage from election results
         const results = lastElection.results;
+        const votesArr = results?.votes || (Array.isArray(results) ? results : []);
+        const myResult = votesArr.find(r => r.party_id === f.id);
+        if (myResult && typeof myResult.vote_percentage === 'number') {
+            voteSharePct = myResult.vote_percentage.toFixed(1);
+        }
+
+        // Try to compute seat delta from election results
         if (Array.isArray(results)) {
-            const myResult = results.find(r => r.party_id === f.id);
-            if (myResult && typeof myResult.seats_won === 'number') {
-                // Previous seats = seats before that election
-                const prevSeats = typeof myResult.seats_before === 'number' ? myResult.seats_before : null;
+            const mySeatResult = results.find(r => r.party_id === f.id);
+            if (mySeatResult && typeof mySeatResult.seats_won === 'number') {
+                const prevSeats = typeof mySeatResult.seats_before === 'number' ? mySeatResult.seats_before : null;
                 if (prevSeats !== null) {
                     seatDelta = mySeats - prevSeats;
                 }
