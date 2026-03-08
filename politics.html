@@ -47,6 +47,10 @@
     --dblue: #5b9bd5;
     --dblue-faint: rgba(91,155,213,0.08);
     --dblue-border: rgba(91,155,213,0.18);
+    --dtext-0: #e2e0d6;
+    --dtext-1: #c4c2b8;
+    --dtext-2: #8a8778;
+    --dtext-3: #6b6a5e;
     --dfont-mono: 'JetBrains Mono', monospace;
     --dfont-ui: 'IBM Plex Sans', -apple-system, sans-serif;
     --dfont-serif: 'IBM Plex Serif', Georgia, serif;
@@ -60,7 +64,8 @@
 /* ── Party card box ── */
 .pol-party-card {
     width: 380px;
-    flex-shrink: 0;
+    min-width: 300px;
+    flex: 0 1 380px;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
     border-radius: 6px;
@@ -141,6 +146,11 @@
     background: var(--dgreen-faint);
     border: 1px solid var(--dgreen-border);
     color: var(--dgreen);
+}
+.pol-role-strongman {
+    background: var(--damber-faint);
+    border: 1px solid var(--damber-border);
+    color: var(--damber);
 }
 .pol-established {
     font-family: var(--dfont-mono);
@@ -340,6 +350,7 @@
     gap: 16px;
     align-items: flex-start;
     justify-content: center;
+    flex-wrap: wrap;
 }
 
 /* ── Second row ── */
@@ -349,6 +360,7 @@
     margin-top: 16px;
     justify-content: center;
     align-items: flex-start;
+    flex-wrap: wrap;
 }
 
 /* ── Modifiers box ── */
@@ -451,7 +463,8 @@
 /* ── Parliament box ── */
 .pol-parliament-box {
     width: 380px;
-    flex-shrink: 0;
+    min-width: 300px;
+    flex: 0 1 380px;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
     border-radius: 4px;
@@ -622,7 +635,8 @@
 /* ── Ideology box ── */
 .pol-ideology-box {
     width: 380px;
-    flex-shrink: 0;
+    min-width: 300px;
+    flex: 0 1 380px;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
     border-radius: 4px;
@@ -759,7 +773,8 @@
 /* ── Election Forecast box ── */
 .pol-forecast-box {
     width: 380px;
-    flex-shrink: 0;
+    min-width: 280px;
+    flex: 0 1 380px;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
     border-radius: 4px;
@@ -953,8 +968,8 @@
 /* ── National Mood box ── */
 .pol-mood-box {
     width: 380px;
-    flex-shrink: 0;
-    flex-grow: 0;
+    min-width: 300px;
+    flex: 0 1 380px;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
     border-radius: 4px;
@@ -1106,7 +1121,8 @@
 /* ── Administration Card ── */
 .pol-admin-box {
     width: 380px;
-    flex-shrink: 0;
+    min-width: 280px;
+    flex: 0 1 380px;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
     border-radius: 4px;
@@ -1262,7 +1278,8 @@
 /* ── Coalition Overview box ── */
 .pol-coalition-box {
     width: 380px;
-    flex-shrink: 0;
+    min-width: 300px;
+    flex: 0 1 380px;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
     border-radius: 4px;
@@ -1843,7 +1860,8 @@
 /* ── Edit Party Identity box ── */
 .pol-identity-box {
     width: 380px;
-    flex-shrink: 0;
+    min-width: 300px;
+    flex: 0 1 380px;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
     border-radius: 4px;
@@ -2254,12 +2272,13 @@
     margin-top: 16px;
     justify-content: center;
     align-items: flex-start;
+    flex-wrap: wrap;
 }
 
 /* Election Results panel */
 .pol-election-box {
     flex: 1 1 380px;
-    min-width: 380px;
+    min-width: 300px;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
     border-radius: 6px;
@@ -2441,7 +2460,8 @@
 /* How Blocs Voted panel (double-width) */
 .pol-blocs-box {
     width: 760px;
-    flex-shrink: 0;
+    min-width: 300px;
+    flex: 0 1 760px;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
     border-radius: 6px;
@@ -2522,6 +2542,56 @@
 .pol-bloc-top-party {
     font-weight: 600;
     color: var(--dtext-0);
+}
+
+/* ════════════════════════ LIGHT MODE ════════════════════════ */
+body.light-mode {
+    --dbg-0: #f0f1f4;
+    --dbg-1: #f5f5f3;
+    --dbg-2: #ffffff;
+    --dbg-3: #f8f8f6;
+    --dbg-4: #eeede8;
+    --dbg-5: #e5e4df;
+    --dbg-hover: #eaeae5;
+    --dtxt-bright: #1a1a18;
+    --dtxt-primary: #2c2c28;
+    --dtxt-secondary: #555550;
+    --dtxt-muted: #777770;
+    --dtxt-dim: #999990;
+    --dtxt-ghost: #bbbbb5;
+    --dtext-0: #1a1a18;
+    --dtext-1: #2c2c28;
+    --dtext-2: #555550;
+    --dtext-3: #777770;
+    --dborder-hair: rgba(0,0,0,0.04);
+    --dborder-0: rgba(0,0,0,0.08);
+    --dborder-1: rgba(0,0,0,0.12);
+    --dborder-2: rgba(0,0,0,0.16);
+    --dgreen: #2e7d32;
+    --dgreen-faint: rgba(46,125,50,0.08);
+    --dgreen-border: rgba(46,125,50,0.22);
+    --dred: #c62828;
+    --dred-faint: rgba(198,40,40,0.06);
+    --dred-border: rgba(198,40,40,0.18);
+    --damber: #a07000;
+    --damber-faint: rgba(160,112,0,0.08);
+    --damber-border: rgba(160,112,0,0.22);
+    --dblue: #1565c0;
+    --dblue-faint: rgba(21,101,192,0.06);
+    --dblue-border: rgba(21,101,192,0.18);
+}
+/* Inline style color overrides for light mode */
+body.light-mode .pol-admin-box,
+body.light-mode .pol-party-card,
+body.light-mode .pol-parliament-box,
+body.light-mode .pol-forecast-box,
+body.light-mode .pol-coalition-box,
+body.light-mode .pol-mood-box,
+body.light-mode .pol-ideology-box,
+body.light-mode .pol-identity-box,
+body.light-mode .pol-election-box,
+body.light-mode .pol-blocs-box {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
 /* ════════════════════════ MOBILE RESPONSIVE ════════════════════════ */
@@ -2661,7 +2731,7 @@ import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } f
 import { deductAP } from './js/game/config.js';
 import { tickToDate } from './js/utils.js';
 import { fetchActiveCoalition } from './js/game/government-structure.js';
-import { isPresidentialRepublic } from './js/game/government-types.js';
+import { isPresidentialRepublic, isAutocracy } from './js/game/government-types.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './js/game/stats.js';
 import { IDEOLOGY_AXES } from './js/game/ideology.js';
 
@@ -2732,8 +2802,11 @@ initPage('politics', async (state) => {
 
     // Fetch coalition to determine governing/opposition
     const coalition = await fetchActiveCoalition(_supabase, nation.id);
+    const isAutoNation = isAutocracy(nation);
     let role = 'Opposition';
-    if (coalition && coalition.party_ids && coalition.party_ids.includes(f.id)) {
+    if (isAutoNation && nation.ruling_faction_id === f.id) {
+        role = 'Strongman';
+    } else if (coalition && coalition.party_ids && coalition.party_ids.includes(f.id)) {
         role = coalition.lead_party_id === f.id ? 'Lead — Governing' : 'Governing Coalition';
     }
 
@@ -2843,6 +2916,7 @@ initPage('politics', async (state) => {
         lastElectionDate,
         seatDelta,
         role,
+        isAutoNation,
         coalition,
         currentTick,
         officerNames,
@@ -2898,7 +2972,7 @@ function generateOfficerNames(factionId) {
 function renderPartyTab(f, nation, data) {
     const {
         totalSeats, mySeats, voteSharePct, lastElectionDate,
-        seatDelta, role, officerNames, allParties, allPartyIdeologies, coalition, activeCrises, currentTick,
+        seatDelta, role, isAutoNation, officerNames, allParties, allPartyIdeologies, coalition, activeCrises, currentTick,
         nextElection, blocApprovals, prevApproval,
         lastParliamentary, lastPresidential, scheduledElections,
         president, administration,
@@ -2910,9 +2984,9 @@ function renderPartyTab(f, nation, data) {
     const founded = tickToDate(f.founded_tick);
 
     // Role badge
-    const isGov = role.includes('Governing') || role.includes('Lead');
+    const isGov = role.includes('Governing') || role.includes('Lead') || role === 'Strongman';
     const roleLabel = role.includes('Lead') ? 'Governing' : role;
-    const roleCls = isGov ? 'pol-role-gov' : 'pol-role-opp';
+    const roleCls = role === 'Strongman' ? 'pol-role-strongman' : isGov ? 'pol-role-gov' : 'pol-role-opp';
 
     // Ideology tags
     const ideo1 = f.ideology_value_1 || null;
@@ -2928,11 +3002,17 @@ function renderPartyTab(f, nation, data) {
         </div>`;
     }
 
-    // Leader
-    const leaderName = f.leader_first_name && f.leader_last_name
-        ? f.leader_first_name + ' ' + f.leader_last_name
-        : 'Vacant';
-    const leaderAge = f.leader_age ? `(${f.leader_age})` : '';
+    // Leader — for autocracy strongman, use head of state as party leader
+    let leaderName, leaderAge;
+    if (isAutoNation && nation.ruling_faction_id === f.id && nation.head_of_state_first_name && nation.head_of_state_last_name) {
+        leaderName = nation.head_of_state_first_name + ' ' + nation.head_of_state_last_name;
+        leaderAge = nation.head_of_state_age ? `(${nation.head_of_state_age})` : '';
+    } else {
+        leaderName = f.leader_first_name && f.leader_last_name
+            ? f.leader_first_name + ' ' + f.leader_last_name
+            : 'Vacant';
+        leaderAge = f.leader_age ? `(${f.leader_age})` : '';
+    }
     const leaderIdeo = ideo1
         ? `<span class="pol-leader-ideo pol-ideo-${ideo1.toLowerCase()}">${ideo1.charAt(0).toUpperCase() + ideo1.slice(1).toLowerCase()}</span>`
         : '';
@@ -2984,7 +3064,7 @@ function renderPartyTab(f, nation, data) {
         <!-- Leader -->
         <div class="pol-leader-section">
             <div class="pol-leader-header">
-                <span class="pol-sub-label">Leader</span>
+                <span class="pol-sub-label">${isAutoNation && nation.ruling_faction_id === f.id ? 'Generalísimo' : 'Leader'}</span>
                 <button class="pol-leadership-btn" disabled>Party Leadership &rarr;</button>
             </div>
             <div class="pol-leader-name">${escapeHtml(leaderName)} <span class="pol-leader-age">${leaderAge}</span></div>
@@ -3108,8 +3188,17 @@ function renderParliamentBox(allParties, coalition, nation, playerFactionId) {
     const parties = allParties || [];
     const totalSeats = parties.reduce((sum, p) => sum + (p.seats || 0), 0);
     const majority = Math.ceil(totalSeats / 2);
-    const coalitionIds = new Set(coalition?.party_ids || []);
-    const leadPartyId = coalition?.lead_party_id || null;
+    const isAuto = isAutocracy(nation);
+
+    // For autocracies without a coalition, use ruling_faction_id to split governing/opposition
+    let coalitionIds, leadPartyId;
+    if (isAuto && !coalition && nation.ruling_faction_id) {
+        coalitionIds = new Set([nation.ruling_faction_id]);
+        leadPartyId = nation.ruling_faction_id;
+    } else {
+        coalitionIds = new Set(coalition?.party_ids || []);
+        leadPartyId = coalition?.lead_party_id || null;
+    }
 
     // Split into governing and opposition
     const governing = parties.filter(p => coalitionIds.has(p.id));
@@ -3182,7 +3271,7 @@ function renderParliamentBox(allParties, coalition, nation, playerFactionId) {
             </div>
 
             <div class="pol-section-header">
-                <span class="pol-section-title">Governing Coalition</span>
+                <span class="pol-section-title">${isAuto ? 'Ruling Party' : 'Governing Coalition'}</span>
                 <span class="pol-section-seats">${govSeats} seats</span>
             </div>
             ${govRowsHtml}
@@ -3835,7 +3924,8 @@ function renderAdminBox(nation, coalition, allParties, currentTick, prevApproval
     // Government type label
     const govType = nation.government_type || administration?.government_type || '';
     const isPres = isPresidentialRepublic(nation);
-    const govTypeLabel = isPres ? 'Presidential' : 'Parliamentary';
+    const isAuto = isAutocracy(nation);
+    const govTypeLabel = isAuto ? 'Autocracy' : isPres ? 'Presidential' : 'Parliamentary';
 
     // Divided government detection (president's party vs parliament majority)
     let govStatusLabel = '';
@@ -3926,6 +4016,30 @@ function renderAdminBox(nation, coalition, allParties, currentTick, prevApproval
             </div>
         </div>
         ${traitHtml}`;
+    } else if (isAuto) {
+        // Autocracy — show Generalísimo / Head of State
+        const hosName = (nation.head_of_state_first_name && nation.head_of_state_last_name)
+            ? nation.head_of_state_first_name + ' ' + nation.head_of_state_last_name
+            : 'Unknown';
+        const hosAge = nation.head_of_state_age ? `, Age ${nation.head_of_state_age}` : '';
+        const rulingParty = nation.ruling_faction_id ? (allParties || []).find(p => p.id === nation.ruling_faction_id) : null;
+        const rpColor = rulingParty?.party_color || '#c8a64e';
+        const rpName = rulingParty?.faction_name || 'Ruling Party';
+        presidentHtml = `
+        <div style="margin-bottom:6px">
+            <span style="font-family:var(--dfont-ui);font-size:11px;font-weight:500;letter-spacing:0.04em;color:var(--dtext-2);text-transform:uppercase">Generalísimo</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+            <div>
+                <div style="font-family:var(--dfont-ui);font-size:15px;font-weight:700;color:var(--dtext-0)">${escapeHtml(hosName)}</div>
+                <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3)">${escapeHtml(hosAge)}</div>
+            </div>
+        </div>
+        <div class="pol-admin-party-badge">
+            <div class="pol-admin-party-dot" style="background:${rpColor}"></div>
+            <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:${rpColor}">${escapeHtml(rpName)}</span>
+        </div>
+        <div style="font-family:var(--dfont-mono);font-size:9px;color:var(--damber);margin-top:6px">Rules until dead or deposed</div>`;
     } else if (!isPres) {
         // Parliamentary — show PM from coalition lead party
         const leadPartyId = coalition?.lead_party_id || null;
