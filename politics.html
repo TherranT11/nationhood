@@ -6263,8 +6263,7 @@ function renderPlankConfig(blocs, partyIdeo) {
             const target = _narrPlankStr === 'strong' ? (end === 'left' ? 15 : 85) : (end === 'left' ? 35 : 65);
             html += `<div class="narr-effects-box"><div class="narr-effects-label">Who this helps and hurts:</div><div class="narr-effects-list">`;
             for (const b of blocs) {
-                // Use bloc ideology alignment on this axis (simplified)
-                const blocVal = 50; // Placeholder — real computation uses bloc ideology
+                const blocVal = b['axis_' + ax.key] ?? 50;
                 const d = Math.abs(target - blocVal);
                 const th = _narrPlankStr === 'strong' ? 20 : 30;
                 let effect = null;
