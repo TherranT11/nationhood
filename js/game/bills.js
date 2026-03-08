@@ -1905,24 +1905,32 @@ export async function enactBill(supabase, bill, currentTick) {
                 for (const opposedId of policy.opposed_policy_ids) {
                     const opposedLaw = (currentActiveLaws || []).find(l => l.policy_id === opposedId);
                     if (opposedLaw && opposedLaw.policies) {
-                        // Clear FK references before deleting (same pattern as repealActiveLaw)
-                        await supabase.from('bills').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', opposedLaw.id);
-                        await supabase.from('bill_articles').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', opposedLaw.id);
+                        // reversePolicy handles FK cleanup + delete + reversal insertion
                         await reversePolicy(supabase, nation, opposedLaw.policies, opposedLaw.passed_tick, currentTick);
-                        await supabase.from('active_laws').delete().eq('id', opposedLaw.id);
                     }
                 }
             }
 
-            const { error: activeLawError } = await supabase.from('active_laws').upsert({
+            // Delete-then-insert instead of upsert to avoid PostgREST onConflict issues
+            const { data: existingActiveLaw } = await supabase.from('active_laws')
+                .select('id')
+                .eq('nation_id', bill.nation_id)
+                .eq('policy_id', policy.id)
+                .maybeSingle();
+            if (existingActiveLaw) {
+                await supabase.from('bills').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingActiveLaw.id);
+                await supabase.from('bill_articles').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingActiveLaw.id);
+                await supabase.from('active_laws').delete().eq('id', existingActiveLaw.id);
+            }
+            const { error: activeLawError } = await supabase.from('active_laws').insert({
                 nation_id: bill.nation_id,
                 policy_id: policy.id,
                 passed_tick: currentTick,
                 proposed_by: bill.proposed_by,
                 effects_applied_through_tick: currentTick - 1
-            }, { onConflict: 'nation_id,policy_id' });
+            });
             if (activeLawError) {
-                console.error(`[enactBill] Failed to upsert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
+                console.error(`[enactBill] Failed to insert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
             }
         }
     }
@@ -2089,7 +2097,24 @@ export async function reversePolicy(supabase, nation, policy, passedTick, curren
 
     if (reversalEffects.length === 0) return;
 
-    const { error: reversalInsertError } = await supabase.from('active_laws').upsert({
+    // Delete any existing active_law for this policy first, then insert the reversal.
+    // This avoids the duplicate key constraint violation that occurs when upsert's
+    // onConflict resolution fails (a known PostgREST edge case).
+    // First find the existing row so we can clear FK references before deleting.
+    const { data: existingLaw } = await supabase.from('active_laws')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('policy_id', policy.id)
+        .maybeSingle();
+
+    if (existingLaw) {
+        // Clear FK references from bills and bill_articles before deleting
+        await supabase.from('bills').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingLaw.id);
+        await supabase.from('bill_articles').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingLaw.id);
+        await supabase.from('active_laws').delete().eq('id', existingLaw.id);
+    }
+
+    const { error: reversalInsertError } = await supabase.from('active_laws').insert({
         nation_id: nation.id,
         policy_id: policy.id,
         passed_tick: currentTick,
@@ -2097,9 +2122,9 @@ export async function reversePolicy(supabase, nation, policy, passedTick, curren
         effects_applied_through_tick: currentTick - 1,
         is_reversal: true,
         reversal_effects: reversalEffects
-    }, { onConflict: 'nation_id,policy_id' });
+    });
     if (reversalInsertError) {
-        console.error(`[reversePolicy] Failed to upsert reversal active_law for policy ${policy.id}:`, reversalInsertError.message);
+        console.error(`[reversePolicy] Failed to insert reversal active_law for policy ${policy.id}:`, reversalInsertError.message);
     }
 }
 
