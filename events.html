@@ -245,7 +245,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml, escapeAttr, tickToDate } from './js/utils.js';
-import { deductAP, generateArticle, EVENT_TYPES, isGovernmentAutocracy } from './js/game-common.js';
+import { deductAP, generateArticle, EVENT_TYPES, isGovernmentAutocracy, loadSeats, isAutocracy } from './js/game-common.js';
 
 /* ══════════════════════════════════════════════════════
    PRIORITY CONSTANTS
@@ -336,6 +336,13 @@ initPage('events', async (state) => {
   _events = events;
   _opeds = opeds;
   _playerArticles = playerArticles;
+
+  // Normalise seat counts from election results (single source of truth)
+  const isAuto = isAutocracy(nation);
+  const { allPartySeats } = await loadSeats(_supabase, nation.id, isAuto, parties, faction?.id);
+  for (const p of parties) {
+    if (allPartySeats[p.id] !== undefined) p.seats = allPartySeats[p.id];
+  }
 
   // Generate rich articles from templates (all nations)
   const articles = buildArticles(events, campaignActions, nationNames, leaderMap);
@@ -1583,6 +1590,8 @@ function setupOpEdModal(faction, nation, shard) {
       loadParties(nation.id), loadEvents(shard), loadCampaignActions(shard),
       loadPlayerArticles(nation.id), loadAllFactionLeaders(), loadAllNationNames()
     ]);
+    const { allPartySeats: aps1 } = await loadSeats(_supabase, nation.id, isAutocracy(nation), parties, faction?.id);
+    for (const p of parties) { if (aps1[p.id] !== undefined) p.seats = aps1[p.id]; }
     _events = reloadEvents;
     _playerArticles = reloadPlayerArticles;
     const articles = buildArticles(_events, reloadActions, nationNames, leaderMap);
@@ -1785,6 +1794,8 @@ function setupArticleModal(faction, nation, shard) {
       loadParties(nation.id), loadEvents(shard), loadCampaignActions(shard),
       loadAllFactionLeaders(), loadAllNationNames()
     ]);
+    const { allPartySeats: aps2 } = await loadSeats(_supabase, nation.id, isAutocracy(nation), parties, faction?.id);
+    for (const p of parties) { if (aps2[p.id] !== undefined) p.seats = aps2[p.id]; }
     _events = reloadEvents;
     const articles = buildArticles(_events, reloadActions, nationNames, leaderMap);
     renderNewspaper(nation, faction, shard, articles, _opeds, parties, _playerArticles);
