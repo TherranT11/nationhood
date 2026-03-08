@@ -827,7 +827,18 @@ function renderOverviewTab(nation) {
     var gdpGrowth = Number(nation.gdp_growth) || 50;
     var growthPct = ((gdpGrowth - 50) / 50) * 1;
     var growthDisplay = (growthPct >= 0 ? '+' : '') + growthPct.toFixed(2) + '%';
-    h += renderOverviewCard('GDP Growth', growthDisplay, growthPct >= 0 ? 'surplus' : 'deficit', getTrendArrow('gdp_growth', gdpGrowth, false));
+    var gdpGrowthSub = getTrendArrow('gdp_growth', gdpGrowth, false);
+    if (tradeData && tradeData.summary) {
+        var tVol = Number(tradeData.summary.total_exports || 0) + Number(tradeData.summary.total_imports || 0);
+        var tRatio = Number(nation.gdp) > 0 ? tVol / Number(nation.gdp) : 0;
+        var tNudge = Math.max(-0.2, Math.min(0.2, (tRatio - 0.5) * 0.4));
+        if (Math.abs(tNudge) >= 0.005) {
+            var tSign = tNudge > 0 ? '+' : '';
+            var tCls = tNudge > 0 ? 'surplus' : 'deficit';
+            gdpGrowthSub += ' <span class="econ-card-' + tCls + '" style="font-size:11px">Trade ' + tSign + tNudge.toFixed(2) + '</span>';
+        }
+    }
+    h += renderOverviewCard('GDP Growth', growthDisplay, growthPct >= 0 ? 'surplus' : 'deficit', gdpGrowthSub);
 
     var unemp = Number(nation.unemployment) || 50;
     h += renderOverviewCard('Unemployment', Math.round(unemp), unemp <= 30 ? 'surplus' : unemp <= 60 ? 'neutral' : 'deficit', getTrendArrow('unemployment', unemp, true));

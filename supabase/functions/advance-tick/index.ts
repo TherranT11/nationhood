@@ -1345,6 +1345,17 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         // ── Trade-driven stat nudges ──
         var nationUpdates = { trade_balance: tradeBalanceIdx };
 
+        // GDP growth: trade volume (exports + imports) as % of GDP
+        // Neutral at 50% of GDP; more trade = better growth, isolation = drag
+        // Capped at ±0.2 per tick (~20% of max gdp_growth swing)
+        var tradeVolume = totalExp + totalImp;
+        var tradeVolumeRatio = gdp > 0 ? tradeVolume / gdp : 0;
+        var tradeGdpNudge = Math.max(-0.2, Math.min(0.2, (tradeVolumeRatio - 0.5) * 0.4));
+        if (Math.abs(tradeGdpNudge) >= 0.01) {
+            var currentGdpGrowth = Number(n.gdp_growth) || 50;
+            nationUpdates.gdp_growth = Math.round(Math.max(0, Math.min(100, currentGdpGrowth + tradeGdpNudge)) * 10) / 10;
+        }
+
         // Currency strength: trade surplus strengthens currency, deficit weakens it
         // Gentler than GDP nudge: (tradeBalance - 50) / 100 → range -0.5 to +0.5 per tick
         var currentCurrency = Number(n.currency_strength) || 50;
@@ -3707,19 +3718,6 @@ async function isBudgetUnfunded(supabase, nation, currentTick) {
 }
 
 
-
-// Trade balance influences GDP growth each tick:
-// trade_balance (0-100) centered at 50 → surplus boosts gdp_growth, deficit drags it down
-// Nudge: (trade_balance - 50) / 50 → range -1 to +1 per tick on gdp_growth
-async function applyTradeBalanceToGdpGrowth(supabase, nation) {
-    const tradeBalance = Number(nation.trade_balance ?? 50);
-    const currentGdpGrowth = Number(nation.gdp_growth ?? 50);
-    const nudge = (tradeBalance - 50) / 50; // -1 to +1
-    const newGdpGrowth = Math.max(0, Math.min(100, currentGdpGrowth + nudge));
-    if (Math.abs(nudge) < 0.01) return;
-    nation.gdp_growth = newGdpGrowth;
-    await supabase.from('nations').update({ gdp_growth: newGdpGrowth }).eq('id', nation.id);
-}
 
 // Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
 // Formula: monthlyChange% = (gdp_growth - 50) / 50  →  0=-1%, 50=0%, 100=+1%
