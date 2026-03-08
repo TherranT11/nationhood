@@ -11,6 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <!-- Shared Styles -->
 <link rel="stylesheet" href="css/dashboard.css">
+<link rel="stylesheet" href="css/parties.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
@@ -2712,6 +2713,229 @@ body.light-mode .pol-blocs-box {
     }
 }
 
+/* ════════════════════════ ACTION PANELS ════════════════════════ */
+.pol-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+}
+.pol-action-panel {
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-0);
+    border-radius: 6px;
+    padding: 16px 18px;
+    min-height: 200px;
+}
+.pol-action-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.pol-action-title {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dtext-0);
+}
+.pol-action-cost {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--damber);
+    background: var(--damber-faint);
+    border: 1px solid var(--damber-border);
+    border-radius: 3px;
+    padding: 2px 8px;
+}
+.pol-action-tagline {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+    margin-bottom: 12px;
+}
+.pol-action-subtitle {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-2);
+    margin: 10px 0 6px;
+}
+.pol-bloc-select-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+.pol-bloc-select-card {
+    background: var(--dbg-3);
+    border: 1px solid var(--dborder-0);
+    border-radius: 4px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    flex: 1 1 140px;
+    min-width: 120px;
+}
+.pol-bloc-select-card:hover {
+    border-color: var(--dborder-2);
+    background: var(--dbg-hover);
+}
+.pol-bloc-select-card.selected {
+    border-color: var(--dtext-0);
+    background: rgba(255,255,255,0.04);
+}
+.pol-bloc-select-name {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--dtext-0);
+    margin-bottom: 3px;
+}
+.pol-bloc-select-stats {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.pol-action-execute {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--dtext-0);
+    background: var(--dbg-4);
+    border: 1px solid var(--dborder-1);
+    border-radius: 4px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    margin-top: 8px;
+}
+.pol-action-execute:hover:not(:disabled) {
+    background: var(--dbg-hover);
+    border-color: var(--dtext-2);
+}
+.pol-action-execute:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.pol-action-result {
+    padding: 14px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+}
+.pol-action-result-success { background: var(--dgreen-faint); border: 1px solid var(--dgreen-border); }
+.pol-action-result-fail { background: var(--dred-faint); border: 1px solid var(--dred-border); }
+.pol-action-result-neutral { background: var(--damber-faint); border: 1px solid var(--damber-border); }
+.pol-action-result-title {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--dtext-0);
+    margin-bottom: 4px;
+}
+.pol-action-result-detail {
+    font-family: var(--dfont-ui);
+    font-size: 12px;
+    color: var(--dtext-1);
+    margin-bottom: 6px;
+}
+.pol-action-result-effects {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-2);
+    margin-bottom: 8px;
+}
+.pol-action-dismiss {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-2);
+    background: var(--dbg-4);
+    border: 1px solid var(--dborder-0);
+    border-radius: 3px;
+    padding: 4px 12px;
+    cursor: pointer;
+}
+.pol-action-cooldown, .pol-action-empty {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-3);
+    padding: 12px 0;
+}
+.pol-promise-stats {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-2);
+    margin-bottom: 10px;
+}
+.pol-promise-card {
+    background: var(--dbg-3);
+    border: 1px solid var(--dborder-0);
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+}
+.pol-promise-text {
+    font-family: var(--dfont-ui);
+    font-size: 12px;
+    color: var(--dtext-1);
+}
+.pol-promise-meta {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+    margin-top: 3px;
+}
+
+/* ════════════════════════ EVENTS TAB ════════════════════════ */
+.pol-events-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.pol-event-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--dborder-hair);
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+}
+.pol-event-date {
+    color: var(--dtext-3);
+    min-width: 70px;
+    flex-shrink: 0;
+}
+.pol-event-faction {
+    font-weight: 600;
+    min-width: 50px;
+    flex-shrink: 0;
+}
+.pol-event-label {
+    color: var(--dtext-1);
+    font-weight: 500;
+    min-width: 100px;
+    flex-shrink: 0;
+}
+.pol-event-detail {
+    color: var(--dtext-2);
+    flex: 1;
+}
+
+@media (max-width: 860px) {
+    .pol-actions-grid {
+        grid-template-columns: 1fr;
+    }
+    .pol-event-row {
+        flex-wrap: wrap;
+    }
+}
+
 /* ════════════════════════ PAGE-LEVEL SUB-TABS ════════════════════════ */
 .pol-page-tabs {
     display: flex;
@@ -2768,14 +2992,12 @@ body.light-mode .pol-blocs-box {
 <!-- Page Script -->
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage } from './js/common.js';
-import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './js/party-icons.js';
-import { deductAP } from './js/game/config.js';
-import { tickToDate } from './js/utils.js';
-import { fetchActiveCoalition, loadSeats } from './js/game/government-structure.js';
-import { isPresidentialRepublic, isAutocracy } from './js/game/government-types.js';
+import { initPage, formatCurrency } from './js/common.js';
+import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './js/party-icons.js';
+import { tickToDate, escapeHtml as utilEscapeHtml, getIdeologyClass } from './js/utils.js';
+import { fetchActiveCoalition, loadSeats, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, ensureBlocApprovals, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, PM_FIRST_NAMES, PM_LAST_NAMES, loadNationIdeologies, getFullIdeologyProfile, getIdeologyLabel, IDEOLOGY_AXES } from './js/game-common.js';
+import { isAutocracy } from './js/game/government-types.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './js/game/stats.js';
-import { IDEOLOGY_AXES } from './js/game/ideology.js';
 
 initPage('politics', async (state) => {
     const { nation, faction, shard } = state;
@@ -2785,6 +3007,9 @@ initPage('politics', async (state) => {
             '<div class="pol-loading">No nation or party data available.</div>';
         return;
     }
+
+    // Initialize game config for this nation (needed for autocracy action costs)
+    await initGameConfigForNation(_supabase, nation.id);
 
     // Fetch full faction data (state.faction has SELECT * so should be complete)
     const f = faction;
@@ -3083,6 +3308,7 @@ function renderPartyTab(f, nation, data) {
     <div class="pol-page-tabs">
         <button class="pol-page-tab active" data-page-tab="politics">Politics</button>
         <button class="pol-page-tab" data-page-tab="actions">Actions</button>
+        <button class="pol-page-tab" data-page-tab="events">Events</button>
     </div>
     <div class="pol-page-content active" data-page-content="politics">
     <div class="pol-page">
@@ -3168,6 +3394,13 @@ function renderPartyTab(f, nation, data) {
     <div class="pol-page-content" data-page-content="actions">
         <div class="pol-page" style="min-height:300px;">
             <div class="pol-section-label">Actions</div>
+            <div id="actions-container"></div>
+        </div>
+    </div>
+    <div class="pol-page-content" data-page-content="events">
+        <div class="pol-page" style="min-height:300px;">
+            <div class="pol-section-label">Political Events</div>
+            <div id="events-container"></div>
         </div>
     </div>`;
 
@@ -3200,6 +3433,20 @@ function renderPartyTab(f, nation, data) {
 
     // Wire up Bloc Alignment interactivity
     initBlocAlignment();
+
+    // ═══════════════════════════════════════
+    // EVENTS TAB — Political Events Feed
+    // ═══════════════════════════════════════
+    await renderEventsTab(nation.id, faction.id, currentTick);
+
+    // ═══════════════════════════════════════
+    // ACTIONS TAB — Democracy Campaign Actions
+    // ═══════════════════════════════════════
+    if (!isAutoNation) {
+        await renderDemocracyActions(nation, faction, shard, allParties);
+    } else {
+        await renderAutocracyActionsTab(nation, faction, shard);
+    }
 }
 
 function renderModifiersBox(f) {
@@ -5100,6 +5347,846 @@ function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// EVENTS TAB RENDERER
+// ═══════════════════════════════════════════════════════════════════
+const EVENT_ACTION_LABELS = {
+    rally: 'RALLY', outreach: 'OUTREACH', attack: 'ATTACK', make_promise: 'PROMISE MADE',
+    press_conference: 'PRESS CONFERENCE', steward_claim: 'STEWARD CLAIMED',
+    demand_loyalty: 'DEMAND LOYALTY', loyalty_demand_complied: 'COMPLIED',
+    loyalty_demand_refused: 'REFUSED', loyalty_demand_expired: 'DEMAND EXPIRED',
+    steward_show_of_force: 'SHOW OF FORCE', steward_mobilize: 'MOBILIZE',
+    steward_surveillance: 'SURVEILLANCE', steward_embezzle: 'EMBEZZLED',
+    steward_conspire: 'CONSPIRED', coup_success: 'COUP — SUCCESS',
+    coup_failed: 'COUP — FAILED', coalition_proposed: 'COALITION PROPOSED',
+    coalition_accepted: 'COALITION FORMED', coalition_betrayed: 'BETRAYAL',
+    coalition_detected: 'COALITION DETECTED', coalition_dissolved: 'COALITION DISSOLVED',
+    appoint_successor: 'SUCCESSOR APPOINTED', revoke_successor: 'SUCCESSOR REVOKED',
+    faction_pledge_allegiance: 'PLEDGED ALLEGIANCE', faction_consolidate_power: 'CONSOLIDATED',
+    faction_demonstrate_competence: 'DEMONSTRATED', faction_embezzle: 'FACTION EMBEZZLE',
+    faction_buy_influence: 'BOUGHT INFLUENCE', faction_intimidate: 'INTIMIDATED',
+    purge: 'PURGE', redistribute_seats: 'REDISTRIBUTED', party_disbanded: 'PARTY DISBANDED',
+    official_dispatch: 'OFFICIAL DISPATCH', strongman_death: 'STRONGMAN DIED',
+    regime_succession: 'SUCCESSION', power_vacuum: 'POWER VACUUM',
+};
+
+async function renderEventsTab(nationId, factionId, currentTick) {
+    const container = document.getElementById('events-container');
+    if (!container) return;
+
+    const { data: actions } = await _supabase
+        .from('campaign_actions')
+        .select('action_type, party_id, tick_performed, result, factions(faction_name, abbreviation, party_color)')
+        .eq('nation_id', nationId)
+        .order('tick_performed', { ascending: false })
+        .limit(50);
+
+    if (!actions || actions.length === 0) {
+        container.innerHTML = '<div style="color:var(--dtext-3);padding:16px;font-size:12px;">No political events yet.</div>';
+        return;
+    }
+
+    const rows = actions.map(entry => {
+        const dateStr = tickToDate(entry.tick_performed);
+        const fName = entry.factions?.abbreviation || entry.factions?.faction_name || '???';
+        const fColor = entry.factions?.party_color || '#888';
+        const label = EVENT_ACTION_LABELS[entry.action_type] || entry.action_type.replace(/_/g, ' ').toUpperCase();
+        const r = entry.result || {};
+
+        let detail = '';
+        if (entry.action_type === 'rally') detail = r.headline || r.outcomeName || '';
+        else if (entry.action_type === 'outreach') detail = r.blocName ? `Outreach to ${r.blocName}` : '';
+        else if (entry.action_type === 'attack') detail = r.headline || (r.targetName ? `Attacked ${r.targetName}` : '');
+        else if (entry.action_type === 'make_promise') detail = r.headline || r.demandText || '';
+        else if (entry.action_type === 'demand_loyalty') detail = r.target_faction ? `Demanded loyalty from ${r.target_faction}` : '';
+        else if (entry.action_type === 'loyalty_demand_complied') detail = r.faction_name ? `${r.faction_name} complied` : '';
+        else if (entry.action_type === 'loyalty_demand_refused') detail = r.faction_name ? `${r.faction_name} refused` : '';
+        else if (entry.action_type === 'coup_success') detail = r.faction_name ? `${r.faction_name} seized power!` : '';
+        else if (entry.action_type === 'coup_failed') detail = r.faction_name ? `${r.faction_name} failed coup` : '';
+        else if (entry.action_type === 'faction_pledge_allegiance') detail = r.faction_name || '';
+        else if (entry.action_type === 'faction_consolidate_power') detail = r.faction_name || '';
+        else if (entry.action_type === 'faction_demonstrate_competence') detail = r.faction_name || '';
+        else if (entry.action_type === 'faction_embezzle') detail = r.detected ? 'DETECTED' : '';
+        else if (entry.action_type === 'faction_buy_influence') detail = r.targetName ? `from ${r.targetName}` : '';
+        else if (entry.action_type === 'faction_intimidate') detail = r.targetName ? `${r.targetName}` : '';
+        else if (entry.action_type === 'appoint_successor') detail = r.successor_name || '';
+        else if (entry.action_type === 'purge') detail = r.target_name || '';
+        else if (entry.action_type === 'party_disbanded') detail = r.faction_name || '';
+        else if (entry.action_type === 'steward_claim') detail = r.pillar_name ? `Claimed ${r.pillar_name}` : '';
+        else if (entry.action_type === 'steward_mobilize') detail = r.mode === 'rally_regime' ? 'Rallied for regime' : (r.detected ? 'Rallied for self — DETECTED' : '');
+        else if (entry.action_type === 'coalition_accepted') detail = r.partner_faction || '';
+        else detail = r.headline || '';
+
+        return `<div class="pol-event-row">
+            <span class="pol-event-date">${escapeHtml(dateStr)}</span>
+            <span class="pol-event-faction" style="color:${fColor}">${escapeHtml(fName)}</span>
+            <span class="pol-event-label">${escapeHtml(label)}</span>
+            ${detail ? `<span class="pol-event-detail">${escapeHtml(detail)}</span>` : ''}
+        </div>`;
+    }).join('');
+
+    container.innerHTML = `<div class="pol-events-list">${rows}</div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DEMOCRACY ACTIONS TAB RENDERER
+// ═══════════════════════════════════════════════════════════════════
+
+// State variables for action panels
+let rallySelectedBloc = null, rallyResult = null;
+let outreachSelectedBloc = null, outreachResult = null;
+let attackSelectedTarget = null, attackSelectedVector = null, attackResult = null, attackEvidenceCache = {};
+let pmShowCreator = false, pmPromiseType = null, pmSelectedStat = null, pmSelectedCrisis = null, pmResult = null;
+
+// Store references for re-rendering
+let _currentNation = null, _currentFaction = null, _currentShard = null, _currentAllParties = null;
+
+async function renderDemocracyActions(nation, faction, shard, allParties) {
+    _currentNation = nation;
+    _currentFaction = faction;
+    _currentShard = shard;
+    _currentAllParties = allParties;
+    const container = document.getElementById('actions-container');
+    if (!container) return;
+
+    const tick = shard?.current_tick || 0;
+    const f = faction;
+    const n = nation;
+
+    // Refresh faction AP
+    const { data: freshF } = await _supabase.from('factions')
+        .select('action_points, party_funds, embezzled_funds').eq('id', f.id).single();
+    if (freshF) {
+        f.action_points = freshF.action_points;
+        f.party_funds = freshF.party_funds;
+    }
+    const ap = f.action_points ?? 0;
+
+    // Fetch voter blocs for Rally/Outreach
+    const { data: voterBlocs } = await _supabase
+        .from('voter_blocs').select('*').eq('nation_id', n.id).eq('is_active', true);
+
+    // Fetch bloc approvals for this faction
+    const { data: blocApprovals } = await _supabase
+        .from('faction_bloc_approval')
+        .select('bloc_id, preference_score, momentum, ideology_alignment')
+        .eq('faction_id', f.id);
+    const approvalByBloc = {};
+    for (const ba of (blocApprovals || [])) approvalByBloc[ba.bloc_id] = ba;
+
+    // Fetch faction ideology for outreach alignment
+    const { data: factionIdeo } = await _supabase
+        .from('faction_ideology')
+        .select('*').eq('faction_id', f.id).single();
+
+    // Fetch recent campaign actions (cooldowns)
+    const { data: recentActions } = await _supabase
+        .from('campaign_actions')
+        .select('action_type, tick_performed, result')
+        .eq('party_id', f.id)
+        .eq('nation_id', n.id)
+        .gte('tick_performed', tick - 10)
+        .order('tick_performed', { ascending: false });
+
+    // Fetch other parties for Attack
+    const otherParties = (allParties || []).filter(p => p.id !== f.id);
+
+    // Fetch active promises
+    const { data: activePromises } = await _supabase
+        .from('faction_promises')
+        .select('*')
+        .eq('faction_id', f.id)
+        .in('status', ['active', 'kept', 'broken']);
+
+    // Cooldown checks
+    const lastRallyTick = (recentActions || []).find(a => a.action_type === 'rally')?.tick_performed || -999;
+    const rallyCooldown = tick - lastRallyTick < RALLY_CONFIG.COOLDOWN_WINDOW;
+    const lastAttackTick = (recentActions || []).find(a => a.action_type === 'attack')?.tick_performed || -999;
+    const attackCooldown = tick - lastAttackTick < ATTACK_CONFIG.COOLDOWN_WINDOW;
+    const recentAttackCount = (recentActions || []).filter(a => a.action_type === 'attack').length;
+    const credibility = computeAttackCredibility(recentAttackCount);
+
+    // Build the actions HTML
+    container.innerHTML = `
+        <div class="pol-actions-grid">
+            <div class="pol-action-panel" id="action-outreach">
+                <div class="pol-action-header">
+                    <span class="pol-action-title">VOTER OUTREACH</span>
+                    <span class="pol-action-cost">${OUTREACH_CONFIG.AP_COST} AP</span>
+                </div>
+                <div class="pol-action-tagline">Guaranteed result · No random outcomes · No polarization</div>
+                <div id="outreach-panel-content"></div>
+            </div>
+            <div class="pol-action-panel" id="action-rally">
+                <div class="pol-action-header">
+                    <span class="pol-action-title">HOLD A RALLY</span>
+                    <span class="pol-action-cost">${RALLY_CONFIG.AP_COST} AP</span>
+                </div>
+                <div class="pol-action-tagline">Random outcomes · Risk vs reward · May increase polarization</div>
+                <div id="rally-panel-content"></div>
+            </div>
+            <div class="pol-action-panel" id="action-attack">
+                <div class="pol-action-header">
+                    <span class="pol-action-title">ATTACK THE OPPOSITION</span>
+                    <span class="pol-action-cost">${ATTACK_CONFIG.AP_COST} AP</span>
+                </div>
+                <div class="pol-action-tagline">Target another party · Evidence-based · Polarization +0.4</div>
+                <div id="attack-panel-content"></div>
+            </div>
+            <div class="pol-action-panel" id="action-promise">
+                <div class="pol-action-header">
+                    <span class="pol-action-title">MAKE PROMISE</span>
+                    <span class="pol-action-cost">${MAKE_PROMISE_CONFIG.AP_COST} AP</span>
+                </div>
+                <div class="pol-action-tagline">Promise improvements · Tracked over time · Kept or broken</div>
+                <div id="promise-panel-content"></div>
+            </div>
+        </div>
+    `;
+
+    // Render each sub-panel
+    renderOutreachPanel(f, n, tick, voterBlocs, approvalByBloc, factionIdeo, recentActions);
+    renderRallyPanel(f, n, tick, voterBlocs, approvalByBloc, rallyCooldown, recentActions);
+    renderAttackPanel(f, n, tick, otherParties, attackCooldown, credibility, recentAttackCount);
+    renderPromisePanel(f, n, tick, activePromises, recentActions);
+}
+
+function renderOutreachPanel(f, n, tick, blocs, approvalByBloc, factionIdeo, recentActions) {
+    const container = document.getElementById('outreach-panel-content');
+    if (!container) return;
+    const ap = f.action_points ?? 0;
+    const recentOutreach = (recentActions || []).filter(a => a.action_type === 'outreach');
+
+    if (outreachResult) {
+        const r = outreachResult;
+        container.innerHTML = `
+            <div class="pol-action-result pol-action-result-success">
+                <div class="pol-action-result-title">Outreach Complete</div>
+                <div class="pol-action-result-detail">${escapeHtml(r.blocName || '')}: ${r.effects?.map(e => `${escapeHtml(e.label)} ${e.value > 0 ? '+' : ''}${e.value}`).join(', ') || 'Done'}</div>
+                <button class="pol-action-dismiss" id="outreach-dismiss-btn">OK</button>
+            </div>`;
+        document.getElementById('outreach-dismiss-btn')?.addEventListener('click', () => {
+            outreachResult = null; outreachSelectedBloc = null;
+            renderOutreachPanel(f, n, tick, blocs, approvalByBloc, factionIdeo, recentActions);
+        });
+        return;
+    }
+
+    if (!blocs || blocs.length === 0) {
+        container.innerHTML = '<div class="pol-action-empty">No voter blocs available.</div>';
+        return;
+    }
+
+    const blocCards = (blocs || []).map(b => {
+        const ba = approvalByBloc[b.id];
+        const approval = Math.round(ba?.preference_score ?? 50);
+        const recentToBloc = recentOutreach.filter(a => a.result?.blocId === b.id).length;
+        const alignment = factionIdeo ? computeOutreachAlignment(factionIdeo, b) : 50;
+        const effect = calcOutreachEffect(alignment, recentToBloc);
+        const selected = outreachSelectedBloc === b.id;
+        return `<div class="pol-bloc-select-card${selected ? ' selected' : ''}" data-bloc-id="${b.id}">
+            <div class="pol-bloc-select-name">${escapeHtml(b.bloc_name)}</div>
+            <div class="pol-bloc-select-stats">
+                <span>Approval: ${approval}</span>
+                <span>Alignment: ${alignment}</span>
+                <span>Effect: +${effect}</span>
+                ${recentToBloc > 0 ? `<span style="color:var(--damber)">×${recentToBloc} recent</span>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="pol-bloc-select-grid">${blocCards}</div>
+        ${outreachSelectedBloc ? `<button class="pol-action-execute" id="outreach-execute-btn" ${ap < OUTREACH_CONFIG.AP_COST ? 'disabled' : ''}>Conduct Outreach — ${OUTREACH_CONFIG.AP_COST} AP</button>` : ''}
+    `;
+
+    // Wire up bloc selection
+    container.querySelectorAll('.pol-bloc-select-card').forEach(card => {
+        card.addEventListener('click', () => {
+            outreachSelectedBloc = card.dataset.blocId;
+            renderOutreachPanel(f, n, tick, blocs, approvalByBloc, factionIdeo, recentActions);
+        });
+    });
+
+    // Wire up execute
+    const execBtn = document.getElementById('outreach-execute-btn');
+    if (execBtn) {
+        execBtn.addEventListener('click', async () => {
+            execBtn.disabled = true;
+            execBtn.textContent = 'Executing...';
+            const result = await executeOutreach(_supabase, f.id, n.id, outreachSelectedBloc, tick);
+            if (result.success) {
+                outreachResult = result;
+                f.action_points = result.newAp;
+                // Log as political event
+                renderOutreachPanel(f, n, tick, blocs, approvalByBloc, factionIdeo, recentActions);
+                await renderEventsTab(n.id, f.id, tick);
+            } else {
+                alert(result.error);
+                execBtn.disabled = false;
+                execBtn.textContent = `Conduct Outreach — ${OUTREACH_CONFIG.AP_COST} AP`;
+            }
+        });
+    }
+}
+
+function renderRallyPanel(f, n, tick, blocs, approvalByBloc, cooldown, recentActions) {
+    const container = document.getElementById('rally-panel-content');
+    if (!container) return;
+    const ap = f.action_points ?? 0;
+
+    if (rallyResult) {
+        const r = rallyResult;
+        container.innerHTML = `
+            <div class="pol-action-result ${r.outcomeId === 'rousing' || r.outcomeId === 'solid' ? 'pol-action-result-success' : r.outcomeId === 'gaffe' || r.outcomeId === 'counter_protest' ? 'pol-action-result-fail' : 'pol-action-result-neutral'}">
+                <div class="pol-action-result-title">${escapeHtml(r.outcomeName || 'Rally Result')}</div>
+                <div class="pol-action-result-detail">${escapeHtml(r.headline || '')}</div>
+                <div class="pol-action-result-effects">${(r.effects || []).map(e => `<span>${escapeHtml(e.label)}: ${e.value > 0 ? '+' : ''}${e.value}</span>`).join(' · ')}</div>
+                <button class="pol-action-dismiss" id="rally-dismiss-btn">OK</button>
+            </div>`;
+        document.getElementById('rally-dismiss-btn')?.addEventListener('click', () => {
+            rallyResult = null; rallySelectedBloc = null;
+            renderRallyPanel(f, n, tick, blocs, approvalByBloc, cooldown, recentActions);
+        });
+        return;
+    }
+
+    if (cooldown) {
+        container.innerHTML = '<div class="pol-action-cooldown">Rally on cooldown. Wait for next tick window.</div>';
+        return;
+    }
+
+    if (!blocs || blocs.length === 0) {
+        container.innerHTML = '<div class="pol-action-empty">No voter blocs available.</div>';
+        return;
+    }
+
+    const blocCards = (blocs || []).map(b => {
+        const ba = approvalByBloc[b.id];
+        const approval = Math.round(ba?.preference_score ?? 50);
+        const selected = rallySelectedBloc === b.id;
+        return `<div class="pol-bloc-select-card${selected ? ' selected' : ''}" data-bloc-id="${b.id}">
+            <div class="pol-bloc-select-name">${escapeHtml(b.bloc_name)}</div>
+            <div class="pol-bloc-select-stats"><span>Approval: ${approval}</span></div>
+        </div>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="pol-bloc-select-grid">${blocCards}</div>
+        ${rallySelectedBloc ? `<button class="pol-action-execute" id="rally-execute-btn" ${ap < RALLY_CONFIG.AP_COST ? 'disabled' : ''}>Hold Rally — ${RALLY_CONFIG.AP_COST} AP</button>` : ''}
+    `;
+
+    container.querySelectorAll('.pol-bloc-select-card').forEach(card => {
+        card.addEventListener('click', () => {
+            rallySelectedBloc = card.dataset.blocId;
+            renderRallyPanel(f, n, tick, blocs, approvalByBloc, cooldown, recentActions);
+        });
+    });
+
+    const execBtn = document.getElementById('rally-execute-btn');
+    if (execBtn) {
+        execBtn.addEventListener('click', async () => {
+            execBtn.disabled = true;
+            execBtn.textContent = 'Executing...';
+            const result = await executeRally(_supabase, f.id, n.id, rallySelectedBloc, tick);
+            if (result.success) {
+                rallyResult = result;
+                f.action_points = result.newAp;
+                renderRallyPanel(f, n, tick, blocs, approvalByBloc, cooldown, recentActions);
+                await renderEventsTab(n.id, f.id, tick);
+            } else {
+                alert(result.error);
+                execBtn.disabled = false;
+                execBtn.textContent = `Hold Rally — ${RALLY_CONFIG.AP_COST} AP`;
+            }
+        });
+    }
+}
+
+async function renderAttackPanel(f, n, tick, otherParties, cooldown, credibility, recentAttackCount) {
+    const container = document.getElementById('attack-panel-content');
+    if (!container) return;
+    const ap = f.action_points ?? 0;
+
+    if (attackResult) {
+        const r = attackResult;
+        container.innerHTML = `
+            <div class="pol-action-result ${r.outcomeId === 'devastating' || r.outcomeId === 'effective' ? 'pol-action-result-success' : r.outcomeId === 'backfire' ? 'pol-action-result-fail' : 'pol-action-result-neutral'}">
+                <div class="pol-action-result-title">${escapeHtml(r.outcomeName || 'Attack Result')}</div>
+                <div class="pol-action-result-detail">${escapeHtml(r.headline || '')}</div>
+                <div class="pol-action-result-effects">${(r.effects || []).map(e => `<span>${escapeHtml(e.label)}: ${e.value > 0 ? '+' : ''}${e.value}</span>`).join(' · ')}</div>
+                <button class="pol-action-dismiss" id="attack-dismiss-btn">OK</button>
+            </div>`;
+        document.getElementById('attack-dismiss-btn')?.addEventListener('click', () => {
+            attackResult = null; attackSelectedTarget = null; attackSelectedVector = null;
+            renderAttackPanel(f, n, tick, otherParties, cooldown, credibility, recentAttackCount);
+        });
+        return;
+    }
+
+    if (cooldown) {
+        container.innerHTML = '<div class="pol-action-cooldown">Attack on cooldown.</div>';
+        return;
+    }
+
+    if (otherParties.length === 0) {
+        container.innerHTML = '<div class="pol-action-empty">No targets available.</div>';
+        return;
+    }
+
+    // Target selection
+    const targetCards = otherParties.map(p => {
+        const selected = attackSelectedTarget === p.id;
+        return `<div class="pol-bloc-select-card${selected ? ' selected' : ''}" data-target-id="${p.id}" style="border-left:3px solid ${p.party_color || '#888'}">
+            <div class="pol-bloc-select-name">${escapeHtml(p.faction_name)}</div>
+            <div class="pol-bloc-select-stats"><span>Seats: ${p.seats || 0}</span></div>
+        </div>`;
+    }).join('');
+
+    let vectorHtml = '';
+    if (attackSelectedTarget && attackEvidenceCache[attackSelectedTarget]) {
+        const vectors = attackEvidenceCache[attackSelectedTarget];
+        if (vectors.length > 0) {
+            vectorHtml = `<div class="pol-action-subtitle">Select Attack Vector:</div><div class="pol-bloc-select-grid">${vectors.map(v => {
+                const selected = attackSelectedVector === v.id;
+                return `<div class="pol-bloc-select-card${selected ? ' selected' : ''}" data-vector-id="${v.id}">
+                    <div class="pol-bloc-select-name">${escapeHtml(v.name)}</div>
+                    <div class="pol-bloc-select-stats"><span>Strength: ${v.strength}</span></div>
+                </div>`;
+            }).join('')}</div>`;
+        } else {
+            vectorHtml = '<div class="pol-action-empty">No evidence found. Only General Smear available.</div>';
+        }
+    }
+
+    container.innerHTML = `
+        <div class="pol-action-subtitle">Credibility: ${credibility}%</div>
+        <div class="pol-bloc-select-grid">${targetCards}</div>
+        ${vectorHtml}
+        ${attackSelectedTarget && attackSelectedVector ? `<button class="pol-action-execute" id="attack-execute-btn" ${ap < ATTACK_CONFIG.AP_COST ? 'disabled' : ''}>Launch Attack — ${ATTACK_CONFIG.AP_COST} AP</button>` : ''}
+    `;
+
+    // Wire up target selection
+    container.querySelectorAll('[data-target-id]').forEach(card => {
+        card.addEventListener('click', async () => {
+            const tid = card.dataset.targetId;
+            attackSelectedTarget = tid;
+            attackSelectedVector = null;
+            // Load evidence
+            if (!attackEvidenceCache[tid]) {
+                const evidence = await gatherAttackEvidence(_supabase, tid, n.id, tick);
+                const vectors = buildAttackVectors(evidence);
+                // Always add General Smear
+                if (!vectors.find(v => v.id === 'general_smear')) {
+                    vectors.push({ id: 'general_smear', name: 'General Smear', strength: 'weak', icon: '●' });
+                }
+                attackEvidenceCache[tid] = vectors;
+            }
+            renderAttackPanel(f, n, tick, otherParties, cooldown, credibility, recentAttackCount);
+        });
+    });
+
+    // Wire up vector selection
+    container.querySelectorAll('[data-vector-id]').forEach(card => {
+        card.addEventListener('click', () => {
+            attackSelectedVector = card.dataset.vectorId;
+            renderAttackPanel(f, n, tick, otherParties, cooldown, credibility, recentAttackCount);
+        });
+    });
+
+    // Wire up execute
+    const execBtn = document.getElementById('attack-execute-btn');
+    if (execBtn) {
+        execBtn.addEventListener('click', async () => {
+            execBtn.disabled = true;
+            execBtn.textContent = 'Executing...';
+            const result = await executeAttack(_supabase, f.id, n.id, attackSelectedTarget, attackSelectedVector, tick);
+            if (result.success) {
+                attackResult = result;
+                f.action_points = result.newAp;
+                renderAttackPanel(f, n, tick, otherParties, cooldown, credibility, recentAttackCount);
+                await renderEventsTab(n.id, f.id, tick);
+            } else {
+                alert(result.error);
+                execBtn.disabled = false;
+                execBtn.textContent = `Launch Attack — ${ATTACK_CONFIG.AP_COST} AP`;
+            }
+        });
+    }
+}
+
+function renderPromisePanel(f, n, tick, activePromises, recentActions) {
+    const container = document.getElementById('promise-panel-content');
+    if (!container) return;
+    const ap = f.action_points ?? 0;
+
+    if (pmResult) {
+        const r = pmResult;
+        container.innerHTML = `
+            <div class="pol-action-result pol-action-result-success">
+                <div class="pol-action-result-title">Promise Made</div>
+                <div class="pol-action-result-detail">${escapeHtml(r.headline || r.demandText || 'Promise created')}</div>
+                <button class="pol-action-dismiss" id="promise-dismiss-btn">OK</button>
+            </div>`;
+        document.getElementById('promise-dismiss-btn')?.addEventListener('click', () => {
+            pmResult = null; pmShowCreator = false; pmPromiseType = null; pmSelectedStat = null; pmSelectedCrisis = null;
+            renderPromisePanel(f, n, tick, activePromises, recentActions);
+        });
+        return;
+    }
+
+    const activeCount = (activePromises || []).filter(p => p.status === 'active').length;
+    const keptCount = (activePromises || []).filter(p => p.status === 'kept').length;
+    const brokenCount = (activePromises || []).filter(p => p.status === 'broken').length;
+    const promisedThisTick = (recentActions || []).some(a => a.action_type === 'make_promise' && a.tick_performed === tick);
+    const atLimit = activeCount >= 5;
+
+    // Get promiseable stats
+    const stats = getPromiseableStats(n);
+
+    // Active promises list
+    const promiseList = (activePromises || []).filter(p => p.status === 'active').map(p => {
+        const ticksLeft = (p.deadline_tick || 0) - tick;
+        return `<div class="pol-promise-card">
+            <div class="pol-promise-text">${escapeHtml(p.demand_text || 'Promise')}</div>
+            <div class="pol-promise-meta">${ticksLeft > 0 ? `${ticksLeft} ticks left` : 'Expired'}</div>
+        </div>`;
+    }).join('');
+
+    let creatorHtml = '';
+    if (!atLimit && !promisedThisTick) {
+        const statBtns = stats.map(s => {
+            const selected = pmSelectedStat === s.key;
+            return `<div class="pol-bloc-select-card${selected ? ' selected' : ''}" data-stat="${s.key}">
+                <div class="pol-bloc-select-name">${escapeHtml(s.label)}</div>
+                <div class="pol-bloc-select-stats"><span>Current: ${s.value}</span></div>
+            </div>`;
+        }).join('');
+
+        creatorHtml = `
+            <div class="pol-action-subtitle">Promise a stat improvement:</div>
+            <div class="pol-bloc-select-grid">${statBtns}</div>
+            ${pmSelectedStat ? `<button class="pol-action-execute" id="promise-execute-btn" ${ap < MAKE_PROMISE_CONFIG.AP_COST ? 'disabled' : ''}>Make Promise — ${MAKE_PROMISE_CONFIG.AP_COST} AP</button>` : ''}
+        `;
+    } else if (atLimit) {
+        creatorHtml = '<div class="pol-action-cooldown">Maximum 5 active promises.</div>';
+    } else if (promisedThisTick) {
+        creatorHtml = '<div class="pol-action-cooldown">One promise per tick.</div>';
+    }
+
+    container.innerHTML = `
+        <div class="pol-promise-stats">
+            <span>Active: ${activeCount}</span> · <span style="color:var(--dgreen)">Kept: ${keptCount}</span> · <span style="color:var(--dred)">Broken: ${brokenCount}</span>
+        </div>
+        ${promiseList}
+        ${creatorHtml}
+    `;
+
+    // Wire up stat selection
+    container.querySelectorAll('[data-stat]').forEach(card => {
+        card.addEventListener('click', () => {
+            pmSelectedStat = card.dataset.stat;
+            renderPromisePanel(f, n, tick, activePromises, recentActions);
+        });
+    });
+
+    // Wire up execute
+    const execBtn = document.getElementById('promise-execute-btn');
+    if (execBtn) {
+        execBtn.addEventListener('click', async () => {
+            execBtn.disabled = true;
+            execBtn.textContent = 'Making Promise...';
+            const result = await executeMakePromise(_supabase, f.id, n.id, tick, 'stat', { stat: pmSelectedStat });
+            if (result.success) {
+                pmResult = result;
+                f.action_points = result.newAp;
+                renderPromisePanel(f, n, tick, activePromises, recentActions);
+                await renderEventsTab(n.id, f.id, tick);
+            } else {
+                alert(result.error);
+                execBtn.disabled = false;
+                execBtn.textContent = `Make Promise — ${MAKE_PROMISE_CONFIG.AP_COST} AP`;
+            }
+        });
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// AUTOCRACY ACTIONS TAB RENDERER (placeholder — full implementation
+// mirrors parties.html renderAutocracyParties action sections)
+// ═══════════════════════════════════════════════════════════════════
+async function renderAutocracyActionsTab(nation, faction, shard) {
+    const container = document.getElementById('actions-container');
+    if (!container) return;
+
+    const n = nation;
+    const f = faction;
+    const tick = shard?.current_tick || 0;
+    const rulingId = n.ruling_faction_id;
+    const isStrongman = f.id === rulingId;
+
+    // Refresh faction data
+    const { data: freshF } = await _supabase.from('factions')
+        .select('action_points, embezzled_funds, consecutive_embezzle_ticks, standing, loyalty, seats')
+        .eq('id', f.id).single();
+    if (freshF) Object.assign(f, freshF);
+    const ap = f.action_points ?? 0;
+
+    // Fetch steward
+    const { data: stewardRows } = await _supabase
+        .from('stewards')
+        .select('*')
+        .eq('nation_id', n.id).eq('faction_id', f.id).eq('is_alive', true);
+    const mySteward = (stewardRows || [])[0] || null;
+
+    // Fetch all factions
+    const { data: allFactions } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, party_color, action_points, loyalty, seats, standing, embezzled_funds')
+        .eq('nation_id', n.id).eq('faction_type', 'party');
+    const nonRuling = (allFactions || []).filter(p => p.id !== rulingId);
+
+    // Fetch ministries
+    const { data: ministries } = await _supabase
+        .from('ministries').select('ministry_key, party_id').eq('nation_id', n.id).not('party_id', 'is', null);
+    const ministryByParty = {};
+    for (const m of (ministries || [])) {
+        if (!ministryByParty[m.party_id]) ministryByParty[m.party_id] = [];
+        ministryByParty[m.party_id].push(m.ministry_key);
+    }
+    const hasMinistry = (ministryByParty[f.id] || []).length > 0;
+
+    const isChosenSuccessor = mySteward?.is_chosen_successor;
+    const isGeneral = mySteward?.steward_type === 'general';
+    const isSecurityChief = mySteward?.steward_type === 'security_chief';
+    const isPartyChairman = mySteward?.steward_type === 'party_chairman' && !isStrongman;
+
+    const factionFunds = Number(f.embezzled_funds ?? 0);
+
+    let html = '';
+
+    if (!mySteward && !isStrongman) {
+        html = '<div class="pol-action-empty">You must claim a pillar and become a steward before taking actions.</div>';
+    } else if (isStrongman) {
+        // Strongman actions: Demand Loyalty, Appoint Successor, Purge, Redistribute
+        html = `
+            <div class="pol-actions-grid">
+                <div class="pol-action-panel">
+                    <div class="pol-action-header">
+                        <span class="pol-action-title">DEMAND LOYALTY</span>
+                        <span class="pol-action-cost">2 AP</span>
+                    </div>
+                    <div class="pol-action-tagline">Target a faction. They must comply or refuse.</div>
+                    <div class="pol-bloc-select-grid">${nonRuling.map(p => `<button class="pol-action-execute" style="margin:4px;border-left:3px solid ${p.party_color || '#888'}" data-demand-target="${p.id}">${escapeHtml(p.faction_name)}</button>`).join('')}</div>
+                </div>
+                <div class="pol-action-panel">
+                    <div class="pol-action-header">
+                        <span class="pol-action-title">APPOINT SUCCESSOR</span>
+                        <span class="pol-action-cost">${SUCCESSOR_CONFIG.AP_COST} AP</span>
+                    </div>
+                    <div class="pol-action-tagline">Designate a steward as your chosen successor.</div>
+                    <div id="autocracy-successor-content"></div>
+                </div>
+                <div class="pol-action-panel">
+                    <div class="pol-action-header">
+                        <span class="pol-action-title">PURGE</span>
+                        <span class="pol-action-cost">${GAME_CONFIG.PURGE_AP} AP</span>
+                    </div>
+                    <div class="pol-action-tagline">Remove a faction's steward. Devastating consequences.</div>
+                    <div id="autocracy-purge-content"></div>
+                </div>
+                <div class="pol-action-panel">
+                    <div class="pol-action-header">
+                        <span class="pol-action-title">REDISTRIBUTE SEATS</span>
+                        <span class="pol-action-cost">${GAME_CONFIG.REDISTRIBUTE_SEATS_AP} AP</span>
+                    </div>
+                    <div class="pol-action-tagline">Transfer seats between factions.</div>
+                    <div id="autocracy-redistribute-content"></div>
+                </div>
+            </div>`;
+    } else {
+        // Steward faction actions + steward-specific actions
+        const hasPendingDemand = false; // TODO: check loyalty demands
+        const demoCanAfford = factionFunds >= (GAME_CONFIG.DEMONSTRATE_COMPETENCE_COST || 2);
+
+        html = `
+            <div class="pol-actions-grid">
+                <div class="pol-action-panel">
+                    <div class="pol-action-header">
+                        <span class="pol-action-title">PLEDGE ALLEGIANCE</span>
+                        <span class="pol-action-cost">${GAME_CONFIG.PLEDGE_ALLEGIANCE_AP} AP</span>
+                    </div>
+                    <div class="pol-action-tagline">Publicly reaffirm loyalty. Loyalty +${GAME_CONFIG.PLEDGE_ALLEGIANCE_LOYALTY}, Standing ${GAME_CONFIG.PLEDGE_ALLEGIANCE_STANDING}</div>
+                    <button class="pol-action-execute" id="autocracy-pledge-btn" ${ap < GAME_CONFIG.PLEDGE_ALLEGIANCE_AP ? 'disabled' : ''}>PLEDGE</button>
+                </div>
+                <div class="pol-action-panel">
+                    <div class="pol-action-header">
+                        <span class="pol-action-title">CONSOLIDATE POWER</span>
+                        <span class="pol-action-cost">${GAME_CONFIG.CONSOLIDATE_POWER_AP} AP</span>
+                    </div>
+                    <div class="pol-action-tagline">Build alliances. Standing +${GAME_CONFIG.CONSOLIDATE_POWER_STANDING}, Loyalty ${GAME_CONFIG.CONSOLIDATE_POWER_LOYALTY}</div>
+                    <button class="pol-action-execute" id="autocracy-consolidate-btn" ${ap < GAME_CONFIG.CONSOLIDATE_POWER_AP ? 'disabled' : ''}>CONSOLIDATE</button>
+                </div>
+                <div class="pol-action-panel">
+                    <div class="pol-action-header">
+                        <span class="pol-action-title">DEMONSTRATE COMPETENCE</span>
+                        <span class="pol-action-cost">${GAME_CONFIG.DEMONSTRATE_COMPETENCE_AP} AP${demoCanAfford ? ` · $${GAME_CONFIG.DEMONSTRATE_COMPETENCE_COST}M` : ''}</span>
+                    </div>
+                    <div class="pol-action-tagline">Actually govern. Standing +${demoCanAfford ? GAME_CONFIG.DEMONSTRATE_COMPETENCE_STANDING : GAME_CONFIG.DEMONSTRATE_COMPETENCE_REDUCED_STANDING}, Loyalty +${GAME_CONFIG.DEMONSTRATE_COMPETENCE_LOYALTY}</div>
+                    <button class="pol-action-execute" id="autocracy-demonstrate-btn" ${ap < GAME_CONFIG.DEMONSTRATE_COMPETENCE_AP ? 'disabled' : ''}>DEMONSTRATE</button>
+                </div>
+                <div class="pol-action-panel">
+                    <div class="pol-action-header">
+                        <span class="pol-action-title">EMBEZZLE FUNDS</span>
+                        <span class="pol-action-cost">${GAME_CONFIG.EMBEZZLE_FUNDS_AP} AP</span>
+                    </div>
+                    <div class="pol-action-tagline">Loyalty ${GAME_CONFIG.EMBEZZLE_FUNDS_LOYALTY} · Risk: ${getEmbezzleRiskLabel(f, n)}</div>
+                    <button class="pol-action-execute" id="autocracy-embezzle-btn" ${ap < GAME_CONFIG.EMBEZZLE_FUNDS_AP ? 'disabled' : ''}>EMBEZZLE</button>
+                </div>
+                ${isGeneral ? `<div class="pol-action-panel">
+                    <div class="pol-action-header">
+                        <span class="pol-action-title">SHOW OF FORCE</span>
+                        <span class="pol-action-cost">3 AP</span>
+                    </div>
+                    <div class="pol-action-tagline">Military presence. All rivals: -5 Coup Readiness</div>
+                    <button class="pol-action-execute" id="autocracy-showofforce-btn" ${ap < 3 ? 'disabled' : ''}>DEPLOY</button>
+                </div>` : ''}
+                ${isPartyChairman ? `<div class="pol-action-panel">
+                    <div class="pol-action-header">
+                        <span class="pol-action-title">MOBILIZE</span>
+                        <span class="pol-action-cost">${MOBILIZE_CONFIG.AP_COST} AP</span>
+                    </div>
+                    <div class="pol-action-tagline">Organize demonstrations for regime or yourself.</div>
+                    <button class="pol-action-execute" data-mode="rally_regime" id="autocracy-mobilize-regime-btn" ${ap < MOBILIZE_CONFIG.AP_COST ? 'disabled' : ''}>Rally for Regime</button>
+                    <button class="pol-action-execute" data-mode="rally_self" id="autocracy-mobilize-self-btn" ${ap < MOBILIZE_CONFIG.AP_COST ? 'disabled' : ''}>Rally for Self (risky)</button>
+                </div>` : ''}
+                ${isChosenSuccessor ? `<div class="pol-action-panel">
+                    <div class="pol-action-header">
+                        <span class="pol-action-title">DYNASTY</span>
+                        <span class="pol-action-cost">1 AP</span>
+                    </div>
+                    <div class="pol-action-tagline">Prepare for your future reign.</div>
+                    <button class="pol-action-execute" id="autocracy-cultivate-btn" ${ap < 1 ? 'disabled' : ''}>Cultivate Image</button>
+                    <button class="pol-action-execute" id="autocracy-prepare-btn" ${ap < 1 ? 'disabled' : ''}>Prepare Succession</button>
+                </div>` : ''}
+            </div>
+            <div style="margin-top:12px;font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3)">WAR CHEST: $${Math.round(factionFunds)}M</div>`;
+    }
+
+    container.innerHTML = html;
+
+    // Wire up autocracy action buttons
+    const reRender = async () => {
+        await renderAutocracyActionsTab(nation, faction, shard);
+        await renderEventsTab(n.id, f.id, tick);
+    };
+
+    // Steward actions
+    document.getElementById('autocracy-pledge-btn')?.addEventListener('click', async function() {
+        this.disabled = true; this.textContent = 'PLEDGING...';
+        const r = await executePledgeAllegiance(_supabase, f.id, n.id, tick);
+        if (!r.success) { alert(r.error); await reRender(); return; }
+        f.action_points = r.newAp;
+        alert(`Pledge Allegiance:\nLoyalty ${r.loyaltyChange > 0 ? '+' : ''}${r.loyaltyChange} → ${r.newLoyalty}\nStanding ${r.standingChange > 0 ? '+' : ''}${r.standingChange} → ${r.newStanding}`);
+        await reRender();
+    });
+
+    document.getElementById('autocracy-consolidate-btn')?.addEventListener('click', async function() {
+        this.disabled = true; this.textContent = 'CONSOLIDATING...';
+        const r = await executeConsolidatePower(_supabase, f.id, n.id, tick);
+        if (!r.success) { alert(r.error); await reRender(); return; }
+        f.action_points = r.newAp;
+        alert(`Consolidate Power:\nStanding +${r.standingChange} → ${r.newStanding}\nLoyalty ${r.loyaltyChange} → ${r.newLoyalty}`);
+        await reRender();
+    });
+
+    document.getElementById('autocracy-demonstrate-btn')?.addEventListener('click', async function() {
+        this.disabled = true; this.textContent = 'GOVERNING...';
+        const r = await executeDemonstrateCompetence(_supabase, f.id, n.id, tick);
+        if (!r.success) { alert(r.error); await reRender(); return; }
+        f.action_points = r.newAp;
+        let msg = `Standing +${r.standingChange}, Loyalty +${r.loyaltyChange}`;
+        if (r.fundsSpent > 0) msg += `, Spent $${r.fundsSpent}M`;
+        alert(msg);
+        await reRender();
+    });
+
+    document.getElementById('autocracy-embezzle-btn')?.addEventListener('click', async function() {
+        this.disabled = true; this.textContent = 'EMBEZZLING...';
+        const r = await executeEmbezzleFunds(_supabase, f.id, n.id, tick);
+        if (!r.success) { alert(r.error); await reRender(); return; }
+        f.action_points = r.newAp;
+        let msg = `Income: +$${r.income}M, Loyalty: ${r.loyaltyChange}`;
+        if (r.detected) msg += ` — DETECTED! Funds seized: $${r.fundsSeized}M`;
+        alert(msg);
+        await reRender();
+    });
+
+    // Mobilize
+    document.getElementById('autocracy-mobilize-regime-btn')?.addEventListener('click', async function() {
+        this.disabled = true;
+        const r = await executeMobilize(_supabase, f.id, n.id, 'rally_regime', tick);
+        if (!r.success) { alert(r.error); await reRender(); return; }
+        f.action_points = r.newAp;
+        alert(`Rallied for regime. Legitimacy +${r.legitimacyChange || 3}, Standing +${r.standingChange || 3}`);
+        await reRender();
+    });
+
+    document.getElementById('autocracy-mobilize-self-btn')?.addEventListener('click', async function() {
+        this.disabled = true;
+        const r = await executeMobilize(_supabase, f.id, n.id, 'rally_self', tick);
+        if (!r.success) { alert(r.error); await reRender(); return; }
+        f.action_points = r.newAp;
+        let msg = `Coup Readiness +${r.coupReadinessChange || 5}`;
+        if (r.detected) msg += ' — DETECTED!';
+        alert(msg);
+        await reRender();
+    });
+
+    // Dynasty
+    document.getElementById('autocracy-cultivate-btn')?.addEventListener('click', async function() {
+        this.disabled = true;
+        const r = await executeDynastyAction(_supabase, n.id, f.id, 'cultivate_image', null, tick);
+        if (!r.success) { alert(r.error); await reRender(); return; }
+        f.action_points = r.newAp;
+        alert(`Image cultivated. Legitimacy +${r.legitimacyGain}, Succession Strength +${r.successionStrengthGain}`);
+        await reRender();
+    });
+
+    document.getElementById('autocracy-prepare-btn')?.addEventListener('click', async function() {
+        this.disabled = true;
+        const r = await executeDynastyAction(_supabase, n.id, f.id, 'prepare_succession', null, tick);
+        if (!r.success) { alert(r.error); await reRender(); return; }
+        f.action_points = r.newAp;
+        alert(r.detected ? 'Preparation detected!' : `Succession Strength +${r.successionStrengthGain}, Exit Readiness +${r.exitReadinessGain}`);
+        await reRender();
+    });
+
+    // Strongman demand loyalty buttons
+    container.querySelectorAll('[data-demand-target]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (ap < 2) { alert('Not enough AP (need 2).'); return; }
+            btn.disabled = true; btn.textContent = 'DEMANDING...';
+            const apResult = await deductAP(_supabase, f.id, 2);
+            if (!apResult.success) { alert('Not enough AP.'); await reRender(); return; }
+            f.action_points = apResult.newAp;
+            const targetId = btn.dataset.demandTarget;
+            const targetName = (allFactions || []).find(p => p.id === targetId)?.faction_name || 'Unknown';
+            await _supabase.from('loyalty_demands').insert({
+                nation_id: n.id, strongman_faction_id: f.id,
+                target_faction_id: targetId, demanded_at_tick: tick, deadline_tick: tick + 2, status: 'pending'
+            });
+            await _supabase.from('campaign_actions').insert({
+                party_id: f.id, nation_id: n.id, action_type: 'demand_loyalty',
+                tick_performed: tick, result: { target_faction: targetName, target_faction_id: targetId }
+            });
+            alert(`Demanded loyalty from ${targetName}`);
+            await reRender();
+        });
+    });
+}
+
 </script>
 </body>
 </html>
