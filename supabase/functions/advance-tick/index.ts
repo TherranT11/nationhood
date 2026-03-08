@@ -8731,6 +8731,31 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
         }
     }
 
+    // === VACATE NON-PRESIDENT-PARTY MINISTERS (new administration) ===
+    if (isChallengerWin) {
+        try {
+            const { error: vacateErr } = await supabase
+                .from('ministries')
+                .update({
+                    party_id: null,
+                    minister_first_name: null,
+                    minister_last_name: null,
+                    minister_age: null
+                })
+                .eq('nation_id', nation.id)
+                .eq('is_active', true)
+                .neq('party_id', winner.faction_id);
+
+            if (vacateErr) {
+                console.warn(`[PresElection] Failed to vacate non-president ministers for ${nation.name}:`, vacateErr.message);
+            } else {
+                console.log(`[PresElection] Vacated non-${winner.party_name} ministers for new administration in ${nation.name}`);
+            }
+        } catch (vacateErr) {
+            console.warn('[PresElection] Error vacating ministers:', vacateErr);
+        }
+    }
+
     // === WINNER/LOSER EFFECTS ===
     try {
         const { data: nationStats } = await supabase.from('nations')
