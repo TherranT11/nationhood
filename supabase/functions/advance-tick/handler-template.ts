@@ -800,20 +800,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     if (reprocess) console.log(`[advanceTick] REPROCESS mode — re-running effects for tick ${newTick} (no advance)`);
     const intervalMs = (shard.tick_interval_hours || 12) * 60 * 60 * 1000;
     const now = Date.now();
-    let nextTickAt;
-
-    if (force) {
-        // Manual advance: anchor next tick from NOW + interval
-        nextTickAt = new Date(now + intervalMs);
-    } else {
-        // Scheduled advance: anchor from previous schedule to prevent drift
-        const prevTickAt = new Date(shard.next_tick_at || new Date());
-        nextTickAt = new Date(prevTickAt.getTime() + intervalMs);
-        // Safety: if calculated next tick is in the past (e.g. server was down), advance to future
-        while (nextTickAt.getTime() <= now) {
-            nextTickAt = new Date(nextTickAt.getTime() + intervalMs);
-        }
-    }
+    // Always anchor next tick from NOW + interval.
+    // The cron fires every minute so drift is negligible, and this avoids
+    // compounding issues when manual advances or interval changes shift next_tick_at.
+    const nextTickAt = new Date(now + intervalMs);
     // Compute date directly from tick number to prevent drift between
     // shard.current_date (string-based) and tickToDate() (tick-based).
     const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -1006,15 +996,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
             _institutionConfig = icRows || [];
         }
-        const shutdownCheck = await isGovernmentShutdown(supabase, nation, newTick);
-        const shutdown = shutdownCheck.active;
         let statInstMap = null;
         let budgetItemAllocs = null;   // hoisted for minister approval funding check
-        if (shutdown && _institutionConfig.length > 0) {
-            // Government shutdown: force ALL institutions to 0% funding → Collapsed decay rates
-            statInstMap = buildShutdownStatInstMap(_institutionConfig);
-            console.log(`[GovernmentShutdown] Forcing Collapsed institution decay for ${nation.name}`);
-        } else if (nation.last_budget_bill_id && _institutionConfig.length > 0) {
+        if (nation.last_budget_bill_id && _institutionConfig.length > 0) {
             const { data: itemAllocs } = await supabase.from('budget_item_allocations')
                 .select('item_type, item_id, allocation_amount, needed_amount')
                 .eq('bill_id', nation.last_budget_bill_id)
@@ -1023,7 +1007,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs);
         }
         const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
-        const decayResults = await processStatDecay(supabase, nation, statInstMap, shutdown, policyDecayAdj);
+        const decayResults = await processStatDecay(supabase, nation, statInstMap, policyDecayAdj);
         if (decayResults.length > 0) {
             summary.decay = summary.decay || [];
             summary.decay.push({ nation: nation.name, effects: decayResults });
@@ -1038,13 +1022,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         if (connResults.length > 0) {
             summary.statConnections = summary.statConnections || [];
             summary.statConnections.push({ nation: nation.name, effects: connResults });
-        }
-
-        // No-budget penalty (if nation hasn't passed a budget in over a year)
-        const noBudgetResult = await processNoBudgetPenalty(supabase, nation, newTick);
-        if (noBudgetResult) {
-            summary.noBudgetPenalties = summary.noBudgetPenalties || [];
-            summary.noBudgetPenalties.push({ nation: nation.name, ...noBudgetResult });
         }
 
         // Auto-generate budget bill if due (3 ticks before budget deadline)
@@ -1339,24 +1316,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         }
 
-        // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
-        // (the original `shutdown` boolean was computed before bill resolution)
-        const shutdownCheckNow = await isGovernmentShutdown(supabase, nation, newTick);
-        const shutdownNow = shutdownCheckNow.active;
-
-        // Government shutdown penalties (approval + stability + unfunded ministry collapsing)
-        // Runs BEFORE approval calculations so stat/event effects propagate in the same tick.
-        if (shutdownNow) {
-            const shutdownResult = await processGovernmentShutdown(supabase, nation, newTick, shutdownCheckNow);
-            if (shutdownResult) {
-                summary.governmentShutdowns = summary.governmentShutdowns || [];
-                summary.governmentShutdowns.push({ nation: nation.name, ...shutdownResult });
-            }
-        } else {
-            // If shutdown ended (budget passed), remove the active_crises row
-            await resolveGovernmentShutdown(supabase, nation, newTick);
-        }
-
         // Crises (persistent negative events that apply effects every tick)
         // Runs BEFORE approval calculations so crisis stat/event effects propagate in the same tick.
         const crisisResults = await processCrises(supabase, nation, newTick, budgetItemAllocs);
@@ -1373,12 +1332,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.populationGrowth.push({ nation: nation.name, ...popGrowthResult });
         }
 
-        // Re-fetch nation to get post-crisis/shutdown stat values for minister approval
+        // Re-fetch nation to get post-crisis stat values for minister approval
         const { data: preApprovalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (preApprovalNation) Object.assign(nation, preApprovalNation);
 
         // Layer 1: Update minister approvals (drift-to-performance model)
-        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick, shutdownNow);
+        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick);
         if (ministerApprovalResults.length > 0) {
             summary.ministerApprovals = summary.ministerApprovals || [];
             summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
@@ -1395,7 +1354,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // Layer 2: Calculate government approval (avg minister + vacancy penalty + event modifier)
-        const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick, shutdownNow);
+        const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick);
 
         // Three-pillar voter preference recalculation
         await calculateThreePillarPreferences(supabase, nation, newTick);

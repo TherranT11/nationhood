@@ -579,11 +579,6 @@ export const MINISTER_APPROVAL_CONFIG = {
     // Event modifier decay: 10% per tick (transient shocks fade naturally)
     EVENTS_DECAY_RATE: 0.10,
 
-    // Government shutdown: -6/tick direct penalty on minister approval
-    SHUTDOWN_MINISTER_PENALTY: -6,
-    // Government shutdown: -25 flat penalty on government approval
-    SHUTDOWN_GOV_PENALTY: -25,
-
     // Legislative activity: bonus to gov_approval_events when a bill passes
     BILL_PASSAGE_EVENT_BONUS: 3,
 

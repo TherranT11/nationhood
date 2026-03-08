@@ -141,22 +141,6 @@ export function buildCrisisResolvedEvent(template, activeRecord, nationName, pmN
     };
 }
 
-/**
- * Build a government shutdown event object.
- */
-export function buildGovernmentShutdownEvent(nationName, pmName, durationTicks, currentTick) {
-    return {
-        event_type: 'government_shutdown',
-        section: 'economy',
-        tier: 1,
-        topic_tags: ['crisis', 'budget'],
-        nation_name: nationName,
-        pm_name: pmName || 'the Prime Minister',
-        crisis_name: 'Government Shutdown',
-        duration_ticks: durationTicks,
-        tick: currentTick,
-    };
-}
 
 /**
  * Build a sovereign default event object.

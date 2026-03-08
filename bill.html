@@ -2639,23 +2639,6 @@ function renderBudgetBillUI() {
     h += '</div>';
     h += '</div>';
 
-    // Shutdown countdown tooltip
-    const budgetDueTick = getBudgetDueTick(currentNation);
-    const shutdownDeadlineTick = budgetDueTick + 2;
-    const ticksUntilShutdown = shutdownDeadlineTick - currentShardTick;
-    const shutdownDeadlineDate = tickToDate(shutdownDeadlineTick);
-    if (ticksUntilShutdown > 0) {
-        h += '<div class="budget-shutdown-warning">';
-        h += '<span class="budget-shutdown-warning__icon">&#9888;</span> ';
-        h += 'If this budget is not passed by <strong>' + shutdownDeadlineDate + '</strong>, a <strong>Government Shutdown</strong> crisis will begin &mdash; all institutions lose funding and stability drops each tick.';
-        h += '</div>';
-    } else if (currentBill.status !== 'floor') {
-        h += '<div class="budget-shutdown-active">';
-        h += '<span class="budget-shutdown-active__icon">&#9888;</span> ';
-        h += '<strong>Government Shutdown in effect.</strong> Pass this budget immediately to end the crisis.';
-        h += '</div>';
-    }
-
     if (currentBill.status === 'floor') {
         h += '<div class="budget-floor-amend-notice">Budget allocations can still be amended on the floor. Changing allocations will reset all existing votes.</div>';
     }
@@ -2800,11 +2783,6 @@ function renderBudgetBillUI() {
             if (detailEl) detailEl.innerHTML = renderBudgetMinistryDetail(budgetSelectedCategory, showControls, canEdit);
         });
     });
-}
-
-function getBudgetDueTick(nation) {
-    const lastBudgetTick = Number(nation?.last_budget_tick || 0);
-    return lastBudgetTick > 0 ? (lastBudgetTick + GAME_CONFIG.TICKS_PER_YEAR) : GAME_CONFIG.TICKS_PER_YEAR;
 }
 
 function budgetRevLine(label, value, isBold, isNegative) {

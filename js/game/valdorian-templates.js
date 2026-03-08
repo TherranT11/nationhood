@@ -246,7 +246,6 @@ export const EVENT_TYPES = {
     crisis_started:     { section: 'politics', tier: 1, label: 'Crisis Erupts' },
     crisis_ongoing:     { section: 'politics', tier: 2, label: 'Crisis Update' },
     crisis_resolved:    { section: 'politics', tier: 2, label: 'Crisis Resolved' },
-    government_shutdown:{ section: 'economy',  tier: 1, label: 'Government Shutdown' },
     currency_collapse:  { section: 'economy',  tier: 1, label: 'Currency Collapse' },
     hyperinflation:     { section: 'economy',  tier: 1, label: 'Hyperinflation Emergency' },
     debt_crisis:        { section: 'economy',  tier: 1, label: 'Sovereign Debt Crisis' },
@@ -548,14 +547,6 @@ export const HEADLINE_TEMPLATES = {
         { id: 'crisis_res_h_04', template: "{pm_name} Claims Credit as {crisis_name} Ends", conditions: [], weight: 2 },
     ],
 
-    government_shutdown: [
-        { id: 'shutdown_h_01', template: "GOVERNMENT SHUTDOWN: {nation_name} Without a Budget", conditions: [], weight: 1 },
-        { id: 'shutdown_h_02', template: "{nation_name} Government Shuts Down — Parliament Deadlocked on Budget", conditions: [], weight: 2 },
-        { id: 'shutdown_h_03', template: "Services Suspended: Government Shutdown Hits {nation_name}", conditions: [], weight: 1 },
-        { id: 'shutdown_h_04', template: "Day {duration_ticks} of Shutdown: {nation_name} Institutions Crumbling", conditions: [{ field: 'duration_ticks', op: '>', value: 3 }], weight: 3 },
-        { id: 'shutdown_h_05', template: "Budget Crisis: {pm_name} Unable to Break Parliamentary Deadlock", conditions: [], weight: 1 },
-    ],
-
     currency_collapse: [
         { id: 'currency_h_01', template: "CURRENCY CRISIS: {currency_name} in Freefall", conditions: [], weight: 1 },
         { id: 'currency_h_02', template: "{nation_name} Currency Collapses — Emergency Measures Expected", conditions: [], weight: 2 },
@@ -700,12 +691,6 @@ export const LEDE_TEMPLATES = {
         { id: 'crisis_res_l_02', conditions: [], template: "The {crisis_name} in {nation_name} has been resolved. Key indicators have recovered to acceptable levels, allowing the government to stand down emergency measures. {pm_name} expressed relief but cautioned against complacency." },
     ],
 
-    // ─── Government Shutdown ───
-    government_shutdown: [
-        { id: 'shutdown_l_01', conditions: [{ field: 'duration_ticks', op: '>', value: 3 }], template: "The government shutdown in {nation_name} drags on as parliament remains unable to pass a budget. Public services are being suspended, stability continues to fall, and all government institutions are operating at minimal capacity. Ministers are taking heavy approval hits as the deadlock persists." },
-        { id: 'shutdown_l_02', conditions: [], template: "{nation_name}'s government has shut down after parliament failed to pass a budget. All institutions have been forced to zero funding, triggering cascading stat penalties. The PM and ministers face severe approval drops each tick until a budget is approved." },
-    ],
-
     // ─── Currency Collapse ───
     currency_collapse: [
         { id: 'currency_l_01', conditions: [], template: "The {currency_name} has collapsed below the critical threshold, sending markets into turmoil. Inflation is surging, foreign investment is fleeing, and trade balance is deteriorating rapidly. Central bank officials are meeting in emergency session." },
@@ -790,21 +775,6 @@ export const BODY_BLOCK_TEMPLATES = {
         ],
         escalation_warning: [
             { id: 'crisis_start_esc_01', required: false, template: "Analysts warn that if left unchecked, the {crisis_name} could cascade into broader economic instability. The government's response in the coming ticks will be critical in determining the crisis's ultimate severity." },
-        ],
-    },
-
-    government_shutdown: {
-        context: [
-            { id: 'shutdown_ctx_01', required: true, template: "The shutdown was triggered after a budget bill sat on the parliamentary floor for more than two ticks without passing. Partisan divisions have prevented any compromise, leaving the government without authority to fund operations." },
-        ],
-        action: [
-            { id: 'shutdown_act_01', required: true, template: "All government institutions have been forced to zero funding, triggering 'Collapsed' decay rates across the board. Primary stats under funded ministries are declining at -2.7 per tick, with secondary stats at -1.7 per tick." },
-        ],
-        impact_domestic: [
-            { id: 'shutdown_impact_01', required: true, template: "The effects are already being felt: stability is dropping by 1.0 each tick, civil unrest is rising at +3.5, corruption at +2.5, and happiness is declining at -2.0. Unemployment is also ticking upward." },
-        ],
-        reaction_oppose: [
-            { id: 'shutdown_opp_01', required: false, template: "Opposition parties have called the shutdown a failure of leadership. 'This is what happens when you put ideology ahead of governance,' said {opposition_leader}." },
         ],
     },
 
