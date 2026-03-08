@@ -464,6 +464,31 @@ export async function recalcDerivedApproval(supabase, factionId, blocRows) {
  * Returns the (possibly newly created) bloc approval rows, or null on failure.
  */
 export async function ensureBlocApprovals(supabase, factionId, nationId) {
+    // Ensure faction_ideology row exists (required for preference_score calculation)
+    const { data: ideoRow } = await supabase
+        .from('faction_ideology')
+        .select('faction_id')
+        .eq('faction_id', factionId)
+        .maybeSingle();
+
+    if (!ideoRow) {
+        const { error: ideoErr } = await supabase
+            .from('faction_ideology')
+            .insert({
+                faction_id: factionId,
+                liberty_equality: 0,
+                tradition_progress: 0,
+                security_freedom: 0,
+                globalism_nationalism: 0,
+                individualism_collectivism: 0
+            });
+        if (ideoErr) {
+            console.error('[ensureBlocApprovals] Failed to create faction_ideology row:', ideoErr.message);
+        } else {
+            console.log(`[ensureBlocApprovals] Created missing faction_ideology row for faction ${factionId}`);
+        }
+    }
+
     const { data: existing, error: checkErr } = await supabase
         .from('faction_bloc_approval')
         .select('id, bloc_id, preference_score')
