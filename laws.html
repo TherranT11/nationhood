@@ -152,7 +152,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, generateBudgetBill, SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS, RAW_SCALING_DIVISORS } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS, RAW_SCALING_DIVISORS } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 (function () {
     'use strict';
@@ -520,16 +520,11 @@ function filterAllLaws() {
     }).join('');
 }
 
-// ==================== BUDGET BILL PREVIEW ====================
-
-// Budget bill UI removed
+// ==================== BUDGET BILL (REMOVED) ====================
+// Budget bill system has been fully removed.
 function toggleBudgetBill() { }
 
-// (Budget bill helper functions removed)
-
-// (Budget ministry tabs removed)
-
-// Budget bill rendering functions removed - start marker
+// Legacy rendering stub — never called, kept to avoid reference errors
 function _removed_renderBudgetMinistryPanel(tab, instByMinistry, budgetLaws, nation) {
     var insts = instByMinistry[tab.key] || [];
     var population = Number(nation.population || 0);
@@ -597,256 +592,6 @@ function _removed_renderBudgetMinistryPanel(tab, instByMinistry, budgetLaws, nat
     return h;
 }
 
-async function renderBudgetBillContent() {
-    const panel = document.getElementById('budget-bill-panel');
-    try {
-        const { data: shard } = await _supabase.from('shard').select('current_tick, "current_date"').eq('name', 'Alpha Shard').single();
-        const currentTick = shard?.current_tick || 0;
-        const nextJanTick = Math.ceil((currentTick + 1) / 12) * 12;
-        const gameYear = 2000 + Math.floor(nextJanTick / 12);
-
-        // Check budget cycle: cooldown vs early window vs due
-        const lastBudgetTick = Number(currentNation.last_budget_tick || 0);
-        const cycleLen = GAME_CONFIG.TICKS_PER_YEAR;
-        const earlyWindow = GAME_CONFIG.BUDGET_EARLY_WINDOW_TICKS;
-        const dueTick = lastBudgetTick > 0 ? lastBudgetTick + cycleLen : cycleLen;
-        const ticksUntilDue = dueTick - currentTick;
-        const inEarlyWindow = ticksUntilDue > 0 && ticksUntilDue <= earlyWindow;
-        const budgetOnCooldown = ticksUntilDue > earlyWindow; // hard cooldown (more than 3 ticks away)
-        const cooldownRemaining = budgetOnCooldown ? ticksUntilDue - earlyWindow : 0;
-        const budgetOverdue = ticksUntilDue <= 0;
-
-        // Compute review/submit date labels based on actual budget due tick
-        const reviewTick = Math.max(0, dueTick - earlyWindow);
-        const reviewAvailableDate = tickToDate(reviewTick);
-        const openToSubmitDate = tickToDate(dueTick);
-
-        // Check if a budget bill is already on the floor
-        const { data: existingBudget } = await _supabase.from('bills')
-            .select('id, status')
-            .eq('nation_id', currentNation.id)
-            .eq('bill_type', 'budget')
-            .in('status', ['committee', 'floor'])
-            .limit(1);
-        const hasPendingBudget = existingBudget && existingBudget.length > 0;
-
-        // Check if player is in government (coalition member or ruling faction)
-        const coalition = await fetchActiveCoalition(_supabase, currentNation.id);
-        const coalitionPartyIds = new Set([
-            ...(coalition?.party_ids || []),
-            currentNation.ruling_faction_id
-        ].filter(Boolean));
-        const playerInGovernment = currentFaction && coalitionPartyIds.has(currentFaction.id);
-
-        const { data: laws } = await _supabase.from('active_laws')
-            .select('*, policies(id, policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat)')
-            .eq('nation_id', currentNation.id);
-        const budgetLaws = (laws || []).filter(l => !l.is_reversal);
-
-        const { data: tradeSummary } = await _supabase.from('trade_summary')
-            .select('tariff_revenue')
-            .eq('nation_id', currentNation.id)
-            .order('tick', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        const tradeTariffRevenue = tradeSummary ? Number(tradeSummary.tariff_revenue) : null;
-
-        // Load institution config from DB
-        const { data: instRows } = await _supabase.from('ministry_institution_config').select('*');
-        const instByMinistry = {};
-        for (var ir of (instRows || [])) {
-            if (!instByMinistry[ir.ministry_key]) instByMinistry[ir.ministry_key] = [];
-            instByMinistry[ir.ministry_key].push(ir);
-        }
-
-        const bd = buildBudgetData(currentNation, budgetLaws, tradeTariffRevenue, instRows || []);
-        const budget = calculateNationalBudget(currentNation);
-        applyTradeTariffOverride(budget, tradeTariffRevenue);
-
-        const gap = bd.available - bd.totalExpenditure;
-        const gapLabel = gap >= 0 ? 'SURPLUS' : 'DEFICIT';
-        const gapClass = gap >= 0 ? 'bp-surplus' : 'bp-deficit';
-
-        let h = '';
-        h += `<button class="all-laws-back" onclick="toggleBudgetBill()">\u2190 Back to ${termBills}</button>`;
-        h += '<div class="section-header" style="font-size:1rem;">Upcoming Budget Bill</div>';
-
-        // === BUDGET BILL STATUS (auto-generate notice at top) ===
-        if (hasPendingBudget) {
-            const pendingStatus = existingBudget[0].status === 'committee' ? 'committee' : 'floor vote';
-            const isSystemBill = !existingBudget[0].proposed_by;
-            h += '<div class="bp-submit-notice bp-submit-warning" style="margin-bottom:12px;">A budget bill is ' + (isSystemBill ? 'automatically ' : '') + 'pending in ' + pendingStatus + '. Move it to the floor before the committee deadline expires (' + GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS + ' ticks).</div>';
-        } else {
-            var lastBT = Number(currentNation.last_budget_tick || 0);
-            var budgetDueTick2 = lastBT > 0 ? lastBT + GAME_CONFIG.TICKS_PER_YEAR : GAME_CONFIG.TICKS_PER_YEAR;
-            var genTick = budgetDueTick2 - (GAME_CONFIG.BUDGET_AUTO_GENERATE_LEAD_TICKS || 3);
-            var ticksUntilGen = genTick - currentTick;
-            if (ticksUntilGen > 0) {
-                h += '<div class="bp-submit-notice bp-submit-disabled" style="margin-bottom:12px;">Budget Bill will auto generate to Committee on <strong>' + tickToDate(genTick) + '</strong>.</div>';
-            } else {
-                h += '<div class="bp-submit-notice bp-submit-disabled" style="margin-bottom:12px;">Budget Bill will auto generate to Committee on the next tick.</div>';
-            }
-        }
-
-        h += '<div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:12px;">Review Available: <strong>' + reviewAvailableDate + '</strong> · Open to Submit: <strong>' + openToSubmitDate + '</strong></div>';
-
-        // === SUMMARY BAR ===
-        h += '<div class="bp-summary-bar">';
-        h += '<div class="bp-summary-item"><span class="bp-summary-label">Available</span><span class="bp-summary-value">' + fmtBudgetVal(bd.available) + '</span></div>';
-        h += '<div class="bp-summary-item"><span class="bp-summary-label">Spending</span><span class="bp-summary-value">' + fmtBudgetVal(bd.totalExpenditure) + '</span></div>';
-        h += '<div class="bp-summary-item"><span class="bp-summary-label">' + gapLabel + '</span><span class="bp-summary-value ' + gapClass + '">' + (gap >= 0 ? '+' : '') + fmtBudgetVal(gap) + '</span></div>';
-        h += '<div class="bp-summary-item"><span class="bp-summary-label">Projected Debt</span><span class="bp-summary-value">' + fmtBudgetVal(bd.projectedDebt) + '</span></div>';
-        h += '</div>';
-
-        // === TWO-COLUMN LAYOUT ===
-        h += '<div class="bp-columns">';
-
-        // --- Left: Revenue ---
-        h += '<div class="bp-col">';
-        h += '<div class="bp-col-header">REVENUE</div>';
-        h += budgetLine('Income Tax (' + Math.round(Number(currentNation.income_tax || 0)) + '%)', budget.incomeRevenue);
-        h += budgetLine('Corporate Tax (' + Math.round(Number(currentNation.corporate_tax || 0)) + '%)', budget.corpRevenue);
-        h += budgetLine('Sales Tax (' + Math.round(Number(currentNation.sales_tax || 0)) + '%)', budget.salesRevenue);
-        h += budgetLine('Tariffs (' + Math.round(Number(currentNation.tariffs || 0)) + '%)', budget.tariffRevenue);
-        if (budget.oilRevenue > 0) {
-            h += budgetLine('State Enterprises (Oil & Gas)', budget.oilRevenue);
-        }
-        h += '<div class="bp-divider"></div>';
-        h += budgetLine('Gross Revenue', budget.grossRevenue, true);
-        var reserves = Number(currentNation.budget_reserves || 0);
-        if (reserves > 0) {
-            h += budgetLine("Last Year's Reserves", reserves);
-        }
-        h += budgetLine('Debt Service', -budget.debtService, false, true);
-        h += '<div class="bp-divider"></div>';
-        h += budgetLine('AVAILABLE FOR ALLOCATION', bd.available, true);
-        h += '</div>';
-
-        // --- Right: Expenditures ---
-        var inflationStat = Number(currentNation.inflation || 0);
-        var inflationPct = Math.pow(Math.max(0, inflationStat), 1.5) / 100;
-        var inflMult = getInflationMultiplier(inflationStat);
-        h += '<div class="bp-col">';
-        h += '<div class="bp-col-header">EXPENDITURES</div>';
-        h += '<div class="bp-inflation-summary">';
-        h += '<span>📊</span> ';
-        h += '<span>' + (currentNation.name || 'Nation') + '\'s inflation is currently <strong>' + formatInflationRate(inflationStat) + ' (' + getInflationLabel(inflationStat) + ')</strong>. ';
-        if (inflationPct > 0.5) {
-            h += 'That has raised all ministry costs by <strong class="bp-deficit">+' + inflationPct.toFixed(1) + '%</strong> ';
-            h += '(multiplier: ' + inflMult.toFixed(3) + '×).';
-        } else {
-            h += 'Costs are stable (negligible inflation adjustment).';
-        }
-        h += '</span></div>';
-        for (var i = 0; i < FISCAL_CATEGORIES.length; i++) {
-            var cat = FISCAL_CATEGORIES[i];
-            var mData = bd.ministries[cat];
-            h += budgetLine(cat, mData ? mData.fulfilledCost : 0);
-        }
-        h += '<div class="bp-divider"></div>';
-        h += budgetLine('Total Expenditures', bd.totalExpenditure, true);
-        h += '</div>';
-
-        h += '</div>'; // .bp-columns
-
-        // === MINISTRY SUB-TABS ===
-        h += '<div class="bp-ministry-tabs" id="bp-ministry-tabs">';
-        for (var t = 0; t < BUDGET_MINISTRY_TABS.length; t++) {
-            var tab = BUDGET_MINISTRY_TABS[t];
-            var activeClass = t === 0 ? ' active' : '';
-            h += '<button class="bp-ministry-tab' + activeClass + '" data-idx="' + t + '">' + tab.label + '</button>';
-        }
-        h += '</div>';
-
-        // Detail panel — render first tab by default
-        h += '<div class="bp-ministry-detail" id="bp-ministry-detail">';
-        h += renderBudgetMinistryPanel(BUDGET_MINISTRY_TABS[0], instByMinistry, budgetLaws, currentNation);
-        h += '</div>';
-
-        // === SURPLUS / DEFICIT OUTCOME ===
-        var currentDebt = Number(currentNation.debt || 0);
-        if (gap >= 0) {
-            h += '<div class="bp-outcome bp-outcome-surplus">';
-            h += '<div class="bp-outcome-title">📈 Projected Surplus: ' + fmtBudgetVal(gap) + '</div>';
-            if (currentDebt > 0) {
-                var repay = Math.min(gap, currentDebt);
-                var leftover = gap - repay;
-                h += '<div class="bp-outcome-detail">';
-                h += '<div>→ ' + fmtBudgetVal(repay) + ' goes toward <strong>debt repayment</strong> (current debt: ' + fmtBudgetVal(currentDebt) + ')</div>';
-                if (leftover > 0) h += '<div>→ ' + fmtBudgetVal(leftover) + ' carried forward as <strong>budget reserves</strong></div>';
-                h += '</div>';
-            } else {
-                h += '<div class="bp-outcome-detail">→ ' + fmtBudgetVal(gap) + ' carried forward as <strong>budget reserves</strong>. No outstanding debt.</div>';
-            }
-            h += '</div>';
-        } else {
-            var deficit = Math.abs(gap);
-            h += '<div class="bp-outcome bp-outcome-deficit">';
-            h += '<div class="bp-outcome-title">📉 Projected Deficit: ' + fmtBudgetVal(deficit) + '</div>';
-            h += '<div class="bp-outcome-detail">';
-            h += '<div>→ ' + fmtBudgetVal(deficit) + ' will be <strong>added to national debt</strong></div>';
-            h += '<div style="margin-top:4px;color:#888;">Projected debt: <strong>' + fmtBudgetVal(bd.projectedDebt) + '</strong> (current: ' + fmtBudgetVal(currentDebt) + ')</div>';
-            h += '</div></div>';
-        }
-
-        // Budget bill status notice is now at the top of the panel
-
-        panel.innerHTML = h;
-
-        // Wire ministry tab clicks via event delegation
-        var tabBar = document.getElementById('bp-ministry-tabs');
-        if (tabBar) {
-            tabBar.addEventListener('click', function(e) {
-                var btn = e.target.closest('.bp-ministry-tab');
-                if (!btn) return;
-                var idx = Number(btn.getAttribute('data-idx'));
-                tabBar.querySelectorAll('.bp-ministry-tab').forEach(function(b) { b.classList.remove('active'); });
-                btn.classList.add('active');
-                var detail = document.getElementById('bp-ministry-detail');
-                if (detail) detail.innerHTML = renderBudgetMinistryPanel(BUDGET_MINISTRY_TABS[idx], instByMinistry, budgetLaws, currentNation);
-            });
-        }
-
-        // Wire submit budget button
-        var submitBtn = document.getElementById('submit-budget-btn');
-        if (submitBtn) {
-            submitBtn.addEventListener('click', async function() {
-                await submitBudgetBill(currentTick, budgetLaws);
-            });
-        }
-    } catch (err) {
-        console.error('Budget bill preview error:', err);
-        panel.innerHTML = `<button class="all-laws-back" onclick="toggleBudgetBill()">\u2190 Back to ${termBills}</button><div style="color:#ff4444;text-align:center;padding:40px;">Error loading budget data: ${err.message || err}</div>`;
-    }
-}
-
-async function submitBudgetBill(currentTick, budgetLaws) {
-    const statusEl = document.getElementById('budget-submit-status');
-    const btn = document.getElementById('submit-budget-btn');
-    statusEl.style.display = 'block';
-    statusEl.textContent = 'Submitting budget bill...';
-    if (btn) btn.disabled = true;
-
-    try {
-        const billId = await generateBudgetBill(_supabase, currentNation, currentTick, budgetLaws || []);
-
-        if (!billId) {
-            statusEl.className = 'bp-submit-status bp-submit-error';
-            statusEl.textContent = 'Failed to create budget bill. Check console for details.';
-            if (btn) btn.disabled = false;
-            return;
-        }
-
-        statusEl.className = 'bp-submit-status bp-submit-success';
-        statusEl.textContent = 'Budget bill sent to committee! Redirecting...';
-        setTimeout(function() { window.location.href = 'bill.html?id=' + billId; }, 1000);
-    } catch (err) {
-        console.error('Submit budget bill error:', err);
-        statusEl.className = 'bp-submit-status bp-submit-error';
-        statusEl.textContent = 'Error: ' + (err.message || err);
-        if (btn) btn.disabled = false;
-    }
-}
 
 // ==================== FLOOR BILLS ====================
 
@@ -2322,7 +2067,6 @@ window.enactDecree = enactDecree;
 window.retractBill = retractBill;
 window.filterAllLaws = filterAllLaws;
 window.togglePassedLaws = togglePassedLaws;
-window.toggleBudgetBill = toggleBudgetBill;
 window.openDefaultResolutionModal = openDefaultResolutionModal;
 window.closeDefaultModal = closeDefaultModal;
 window.onDefaultTypeChange = onDefaultTypeChange;

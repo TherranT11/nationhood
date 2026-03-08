@@ -3280,126 +3280,6 @@ function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions, a
     };
 }
 
-/**
- * Auto-generate a budget bill for a nation.
- * Called at January ticks (tick % 12 === 1, since tick 1 = January after start).
- */
-async function generateBudgetBill(supabase, nation, currentTick, activeLaws, opts) {
-    const systemGenerated = opts?.systemGenerated || false;
-
-    // Fetch latest trade summary for tariff revenue (matches Economy page)
-    let tradeTariffRevenue = null;
-    try {
-        const { data: tradeSummary } = await supabase.from('trade_summary')
-            .select('tariff_revenue')
-            .eq('nation_id', nation.id)
-            .order('tick', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        if (tradeSummary) tradeTariffRevenue = Number(tradeSummary.tariff_revenue);
-    } catch (e) { /* no trade data yet — use formula fallback */ }
-
-    // Load institution config for cost calculations
-    const { data: instRows } = await supabase.from('ministry_institution_config')
-        .select('*');
-
-    // Query active economic aid agreements for this nation
-    let aidData = { received: 0, given: 0, agreements: [] };
-    try {
-        aidData = await getActiveAidForNation(supabase, nation.id);
-    } catch (e) { /* no aid data yet */ }
-
-    const budgetData = buildBudgetData(nation, activeLaws, tradeTariffRevenue, instRows || [], aidData);
-
-    const gameYear = 2000 + Math.floor(currentTick / 12);
-    const billName = `Budget Act of ${gameYear}`;
-
-    // Find sponsor: ruling faction or first party faction.
-    // System-generated bills also need a sponsor (proposed_by NOT NULL constraint).
-    let sponsorId = nation.ruling_faction_id;
-    if (!sponsorId) {
-        const { data: parties } = await supabase.from('factions')
-            .select('id').eq('nation_id', nation.id).eq('faction_type', 'party').limit(1);
-        sponsorId = parties?.[0]?.id;
-    }
-    if (!sponsorId) {
-        console.error(`[generateBudgetBill] No sponsor found for ${nation.name} — cannot create budget bill`);
-        return null;
-    }
-
-    const preamble = systemGenerated
-        ? `Annual budget for the fiscal year ${gameYear}. ` +
-          `This bill allocates $${(budgetData.available / 1e9).toFixed(1)}B in available revenue across all government ministries. ` +
-          `The budget has been automatically introduced to committee and must be moved to the floor for a vote before the deadline.`
-        : `Annual budget for the fiscal year ${gameYear}. ` +
-          `This bill allocates $${(budgetData.available / 1e9).toFixed(1)}B in available revenue across all government ministries. ` +
-          (budgetData.inflationPct > 0
-              ? `Inflation (${budgetData.inflationStat.toFixed(0)}/100) has increased all costs by ~${budgetData.inflationPct.toFixed(1)}% since the last budget cycle.`
-              : `Inflation is currently under control.`);
-
-    // Insert the bill into committee (voting_ends_tick set when sent to floor)
-    const { data: bill, error: billError } = await supabase.from('bills').insert({
-        nation_id: nation.id,
-        proposed_by: sponsorId,
-        proposed_tick: currentTick,
-        bill_name: billName,
-        status: 'committee',
-        preamble,
-        bill_type: 'budget'
-    }).select('id').single();
-
-    if (billError || !bill) {
-        console.error('[generateBudgetBill] Failed to create budget bill:', billError?.message);
-        return null;
-    }
-
-    // Insert budget allocations per ministry
-    const allocRows = [];
-    for (const cat of FISCAL_CATEGORIES) {
-        const m = budgetData.ministries[cat];
-        allocRows.push({
-            bill_id: bill.id,
-            nation_id: nation.id,
-            fiscal_category: cat,
-            allocation_amount: m.allocation,
-            fulfilled_cost: m.fulfilledCost
-        });
-    }
-
-    const { error: allocError } = await supabase.from('budget_allocations').insert(allocRows);
-    if (allocError) {
-        console.error('[generateBudgetBill] Failed to insert allocations:', allocError.message);
-    }
-
-    // Insert per-item allocations (institutions + policies)
-    const itemRows = [];
-    for (const cat of FISCAL_CATEGORIES) {
-        const m = budgetData.ministries[cat];
-        for (const inst of (m.institutions || [])) {
-            itemRows.push({
-                bill_id: bill.id, nation_id: nation.id, fiscal_category: cat,
-                item_type: 'institution', item_id: inst.id,
-                item_name: inst.institution_name,
-                allocation_amount: inst.cost, needed_amount: inst.cost, is_cut: false
-            });
-        }
-        for (const pol of (m.policies || [])) {
-            itemRows.push({
-                bill_id: bill.id, nation_id: nation.id, fiscal_category: cat,
-                item_type: 'policy', item_id: pol.policy_id,
-                item_name: pol.policy_name,
-                allocation_amount: pol.cost, needed_amount: pol.cost, is_cut: false
-            });
-        }
-    }
-    if (itemRows.length > 0) {
-        const { error: itemError } = await supabase.from('budget_item_allocations').insert(itemRows);
-        if (itemError) console.error('[generateBudgetBill] Failed to insert item allocations:', itemError.message);
-    }
-
-    console.log(`[generateBudgetBill] Created budget bill "${billName}" for ${nation.name} (bill ${bill.id})`);
-    return bill.id;
-}
 
 /**
  * Resolve a passed budget bill: adjust debt based on surplus/deficit, update reserves.
@@ -3822,191 +3702,6 @@ async function isBudgetUnfunded(supabase, nation, currentTick) {
 }
 
 
-// ==================== AUTO-GENERATE BUDGET BILLS ====================
-
-/**
- * Auto-generate a budget bill and place it into committee if one is due.
- * Called each tick from the tick handler. Generates a bill BUDGET_AUTO_GENERATE_LEAD_TICKS
- * (3) ticks before the budget due date. The bill has no sponsor (proposed_by = null) —
- * it is a system-generated bill that parliament must move to the floor.
- *
- * Skips if:
- *   - Nation is an autocracy
- *   - An open budget bill already exists (committee, floor, or president_desk)
- *   - It's too early (not within the auto-generation window)
- */
-async function autoGenerateBudgetBill(supabase, nation, currentTick, activeLaws) {
-    // Skip autocracies — no parliament to pass budgets
-    if (isAutocracy(nation)) return null;
-
-    // Calculate when the next budget is due
-    const lastBudgetTick = Number(nation.last_budget_tick || 0);
-    const budgetDueTick = lastBudgetTick > 0
-        ? (lastBudgetTick + GAME_CONFIG.TICKS_PER_YEAR)
-        : GAME_CONFIG.TICKS_PER_YEAR;
-    const generateAtTick = budgetDueTick - GAME_CONFIG.BUDGET_AUTO_GENERATE_LEAD_TICKS;
-
-    // Not time yet
-    if (currentTick < generateAtTick) return null;
-
-    // Check if there's already an open budget bill (including president's desk)
-    const { data: openBills } = await supabase
-        .from('bills')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('bill_type', 'budget')
-        .in('status', ['committee', 'floor', 'president_desk'])
-        .limit(1);
-
-    if (openBills && openBills.length > 0) return null;
-
-    // Generate the budget bill (system-generated)
-    console.log(`[autoGenerateBudgetBill] Generating budget bill for ${nation.name} at tick ${currentTick} (due at tick ${budgetDueTick}, last_budget_tick=${lastBudgetTick})`);
-    const billId = await generateBudgetBill(supabase, nation, currentTick, activeLaws, { systemGenerated: true });
-
-    if (!billId) {
-        console.error(`[autoGenerateBudgetBill] generateBudgetBill returned null for ${nation.name} — bill creation failed`);
-    } else {
-        console.log(`[autoGenerateBudgetBill] Auto-generated budget bill for ${nation.name} at tick ${currentTick} (due at tick ${budgetDueTick})`);
-
-        // Fire system event notification
-        try {
-            await supabase.rpc('insert_news_event', {
-                p_nation_id: nation.id,
-                p_trigger_key: 'budget_bill_introduced',
-                p_tick: currentTick,
-                p_placeholders: {
-                    nation: nation.name || 'Unknown',
-                    bill_name: `Budget Act of ${2000 + Math.floor(currentTick / 12)}`,
-                    deadline_ticks: String(GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS)
-                }
-            });
-        } catch (e) { /* news template may not exist yet */ }
-    }
-
-    return billId;
-}
-
-// ==================== BUDGET COMMITTEE AUTO-MOVE ====================
-
-/**
- * Check if a budget bill has sat in committee for BUDGET_COMMITTEE_EXPIRY_TICKS
- * without being moved to the floor. If so, automatically move it to the floor
- * and apply approval penalties. Budget bills can NEVER fail — they persist on
- * the floor until passed.
- *
- * Parliamentary systems:
- *   - Auto-move bill to floor
- *   - All coalition parties receive BUDGET_FAILURE_COALITION_PENALTY (-5) approval
- *
- * Presidential systems:
- *   - Auto-move bill to floor
- *   - President's party receives BUDGET_FAILURE_PRESIDENT_PENALTY (-10) approval
- *
- * @returns {{ movedToFloor: boolean, consequence: string, billId?: string }} or null
- */
-async function processBudgetCommitteeExpiry(supabase, nation, currentTick) {
-    // Skip autocracies
-    if (isAutocracy(nation)) return null;
-
-    // Find budget bills sitting in committee past the deadline
-    const deadline = currentTick - GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS;
-    const { data: expiredBills } = await supabase
-        .from('bills')
-        .select('id, bill_name, proposed_tick')
-        .eq('nation_id', nation.id)
-        .eq('bill_type', 'budget')
-        .eq('status', 'committee')
-        .lte('proposed_tick', deadline);
-
-    if (!expiredBills || expiredBills.length === 0) return null;
-
-    // Don't auto-move if there's already a budget bill on the floor
-    const { data: floorBudgetBills } = await supabase
-        .from('bills')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('bill_type', 'budget')
-        .eq('status', 'floor')
-        .limit(1);
-    if (floorBudgetBills && floorBudgetBills.length > 0) {
-        console.log(`[BudgetCommitteeExpiry] ${nation.name} — skipping auto-move, budget bill already on floor`);
-        return null;
-    }
-
-    const bill = expiredBills[0];
-    const isPresidential = isPresidentialRepublic(nation);
-
-    // Auto-move the budget bill to the floor (budget bills can never fail)
-    await supabase.from('bills').update({
-        status: 'floor',
-        floor_tick: currentTick
-    }).eq('id', bill.id);
-
-    // Apply approval penalties based on government type
-    let consequence;
-    if (isPresidential) {
-        const { data: president } = await supabase
-            .from('presidents')
-            .select('faction_id')
-            .eq('nation_id', nation.id)
-            .eq('is_active', true)
-            .maybeSingle();
-
-        if (president?.faction_id) {
-            await adjustMomentumAll(
-                supabase, nation.id, president.faction_id,
-                GAME_CONFIG.BUDGET_FAILURE_PRESIDENT_PENALTY,
-                'budget:committee_expiry'
-            );
-            console.log(`[BudgetCommitteeExpiry] Presidential: ${nation.name} — president's party receives ${GAME_CONFIG.BUDGET_FAILURE_PRESIDENT_PENALTY} approval penalty`);
-        }
-        consequence = 'auto_floor_presidential';
-    } else {
-        const { data: activeGov } = await supabase
-            .from('government_formations')
-            .select('id, status, party_ids')
-            .eq('nation_id', nation.id)
-            .in('status', ['formed', 'caretaker'])
-            .order('formed_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        const coalitionPartyIds = activeGov?.party_ids || [];
-
-        for (const partyId of coalitionPartyIds) {
-            await adjustMomentumAll(
-                supabase, nation.id, partyId,
-                GAME_CONFIG.BUDGET_FAILURE_COALITION_PENALTY,
-                'budget:committee_expiry'
-            );
-        }
-        if (coalitionPartyIds.length > 0) {
-            console.log(`[BudgetCommitteeExpiry] Parliamentary: ${nation.name} — ${coalitionPartyIds.length} coalition parties receive ${GAME_CONFIG.BUDGET_FAILURE_COALITION_PENALTY} approval penalty`);
-        }
-        consequence = 'auto_floor_parliamentary';
-    }
-
-    // Log event (shared for both government types)
-    await supabase.from('event_log').insert({
-        nation_id: nation.id,
-        event_name: 'BUDGET_AUTO_MOVED_TO_FLOOR',
-        description_used: `The budget bill "${bill.bill_name}" was automatically moved to the floor after sitting in committee for ${GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS} ticks.`,
-        category: 'legislation',
-        effects_applied: [],
-        fired_at_tick: currentTick
-    });
-
-    try {
-        await supabase.rpc('insert_news_event', {
-            p_nation_id: nation.id,
-            p_trigger_key: 'budget_auto_floor',
-            p_tick: currentTick,
-            p_placeholders: { nation: nation.name || 'Unknown', bill_name: bill.bill_name, reason: 'auto-moved to floor from committee' }
-        });
-    } catch (e) { /* news template may not exist */ }
-
-    return { movedToFloor: true, consequence, billId: bill.id };
-}
 
 // Trade balance influences GDP growth each tick:
 // trade_balance (0-100) centered at 50 → surplus boosts gdp_growth, deficit drags it down
@@ -4944,6 +4639,31 @@ async function recalcDerivedApproval(supabase, factionId, blocRows) {
  * Returns the (possibly newly created) bloc approval rows, or null on failure.
  */
 async function ensureBlocApprovals(supabase, factionId, nationId) {
+    // Ensure faction_ideology row exists (required for preference_score calculation)
+    const { data: ideoRow } = await supabase
+        .from('faction_ideology')
+        .select('faction_id')
+        .eq('faction_id', factionId)
+        .maybeSingle();
+
+    if (!ideoRow) {
+        const { error: ideoErr } = await supabase
+            .from('faction_ideology')
+            .insert({
+                faction_id: factionId,
+                liberty_equality: 0,
+                tradition_progress: 0,
+                security_freedom: 0,
+                globalism_nationalism: 0,
+                individualism_collectivism: 0
+            });
+        if (ideoErr) {
+            console.error('[ensureBlocApprovals] Failed to create faction_ideology row:', ideoErr.message);
+        } else {
+            console.log(`[ensureBlocApprovals] Created missing faction_ideology row for faction ${factionId}`);
+        }
+    }
+
     const { data: existing, error: checkErr } = await supabase
         .from('faction_bloc_approval')
         .select('id, bloc_id, preference_score')
