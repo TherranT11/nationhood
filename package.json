@@ -2,7 +2,13 @@
   "name": "nationhood",
   "private": true,
   "scripts": {
-    "build": "vite build",
+    "dev": "vite --mode main",
+    "dev:work": "vite --mode work --port 3001",
+    "build": "vite build --mode main",
+    "build:work": "vite build --mode work",
+    "seed:work": "node scripts/seed-work.js",
+    "snapshot:save": "node scripts/snapshot.js save",
+    "snapshot:restore": "node scripts/snapshot.js restore",
     "lint:inline-scripts": "node scripts/check-inline-script-globals.js",
     "sync:edge-function": "node scripts/sync-edge-function.js",
     "test:repeal-helper": "node scripts/test-repeal-helper.mjs"

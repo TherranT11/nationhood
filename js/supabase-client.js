@@ -1,13 +1,23 @@
 /**
  * Supabase Client Setup
  * Shared across all dashboard pages
+ *
+ * Environment-aware: reads VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+ * from .env.main or .env.work depending on the Vite mode.
+ * Fallback to hardcoded production values for non-Vite contexts (e.g. direct file open).
  */
 
 // Uses the global `supabase` object from CDN <script> tag in each HTML file
 const { createClient } = supabase;
 
-const SUPABASE_URL = 'https://pbumjalxclmegzckhqqr.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
+// Environment detection — Vite statically replaces import.meta.env at build/dev time
+const SUPABASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL)
+    || 'https://pbumjalxclmegzckhqqr.supabase.co';
+const SUPABASE_KEY = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY)
+    || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
+
+export const APP_ENV = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_APP_ENV) || 'main';
+export const IS_WORK_ENV = APP_ENV === 'work';
 
 // Initialize Supabase client
 export const _supabase = createClient(SUPABASE_URL, SUPABASE_KEY);

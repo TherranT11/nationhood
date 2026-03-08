@@ -4841,7 +4841,7 @@ function initBlocAlignment() {
         apEl.textContent = approval;
         apEl.style.color = 'var(--dtext-0)';
         const hrEl = document.getElementById('pol-ba-headroom');
-        hrEl.textContent = (headroom >= 0 ? '+' : '') + headroom;
+        hrEl.textContent = (headroom >= 0 ? '+' : '') + headroom.toFixed(1);
         hrEl.style.color = headroom > 10 ? 'var(--damber)' : headroom >= 0 ? 'var(--dgreen)' : 'var(--dred)';
 
         // Legend

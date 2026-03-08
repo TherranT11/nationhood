@@ -7,7 +7,7 @@
  * - Population growth calculations
  */
 
-import { _supabase, handleLogout } from './supabase-client.js';
+import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { tickToDate } from './utils.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
 
@@ -286,6 +286,19 @@ export function renderTopBar(activeTab) {
         </nav>
     `;
     document.getElementById('top-bar').innerHTML = topBarHTML;
+
+    // Work environment banner and Dev Toolbar
+    if (IS_WORK_ENV) {
+        if (!document.getElementById('work-env-banner')) {
+            const banner = document.createElement('div');
+            banner.id = 'work-env-banner';
+            banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:10000;background:linear-gradient(90deg,#1a6b1a,#2d9b2d);color:#fff;text-align:center;padding:4px 12px;font-size:0.75rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;pointer-events:none;';
+            banner.textContent = '[WORK ENVIRONMENT] \u2014 Not connected to live game';
+            document.body.prepend(banner);
+        }
+        document.title = '[WORK] ' + document.title;
+        import('./dev-toolbar.js').then(m => m.renderDevToolbar()).catch(() => {});
+    }
 }
 
 export function renderNavTabs(activeTab) {
