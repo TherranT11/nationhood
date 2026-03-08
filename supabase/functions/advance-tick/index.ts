@@ -18959,7 +18959,7 @@ async function processAusterityCommitments(supabase, nation, currentTick) {
 
 // ==================== ADVANCE TICK ====================
 
-async function advanceTick(supabase, { force = false } = {}) {
+async function advanceTick(supabase, { force = false, reprocess = false } = {}) {
     // 1. Pre-compute next tick metadata
     const { data: shard } = await supabase
         .from('shard')
@@ -18968,7 +18968,9 @@ async function advanceTick(supabase, { force = false } = {}) {
         .single();
     if (!shard) throw new Error('Shard not found');
 
-    const newTick = (shard.current_tick || 0) + 1;
+    // Reprocess mode: re-run game effects for the CURRENT tick without advancing
+    const newTick = reprocess ? (shard.current_tick || 0) : (shard.current_tick || 0) + 1;
+    if (reprocess) console.log(`[advanceTick] REPROCESS mode — re-running effects for tick ${newTick} (no advance)`);
     const intervalMs = (shard.tick_interval_hours || 12) * 60 * 60 * 1000;
     const now = Date.now();
     let nextTickAt;
@@ -19982,13 +19984,18 @@ async function advanceTick(supabase, { force = false } = {}) {
     // 5. Commit shard tick/date AFTER all nation processing completes.
     // This is the last step — if the function timed out earlier, the tick
     // number stays unchanged and the cron will re-process on the next run.
-    console.log(`[advanceTick] All nations processed. Committing tick ${newTick}...`);
-    await supabase.from('shard').update({
-        current_tick: newTick,
-        next_tick_at: nextTickAt.toISOString(),
-        current_date: newDate
-    }).eq('name', 'Alpha Shard');
-    console.log(`[advanceTick] Tick ${newTick} committed. Next tick at ${nextTickAt.toISOString()}`);
+    // Commit shard update — skip entirely in reprocess mode
+    if (reprocess) {
+        console.log(`[advanceTick] REPROCESS complete for tick ${newTick}. Shard NOT updated (no advance).`);
+    } else {
+        console.log(`[advanceTick] All nations processed. Committing tick ${newTick}...`);
+        await supabase.from('shard').update({
+            current_tick: newTick,
+            next_tick_at: nextTickAt.toISOString(),
+            current_date: newDate
+        }).eq('name', 'Alpha Shard');
+        console.log(`[advanceTick] Tick ${newTick} committed. Next tick at ${nextTickAt.toISOString()}`);
+    }
 
     return summary;
 }
@@ -20026,18 +20033,20 @@ Deno.serve(async (req) => {
         await ensureApRpcAvailability(supabase);
         console.log("[advance-tick] Step 0: Preflight complete.");
 
-        // 1. Check for force parameter (admin manual trigger)
+        // 1. Check for force/reprocess parameters (admin manual trigger)
         let force = false;
+        let reprocess = false;
         try {
             const body = await Promise.race([
                 req.json(),
                 new Promise((_, reject) => setTimeout(() => reject(new Error("body read timeout")), 3000)),
             ]);
             force = body?.force === true;
+            reprocess = body?.reprocess === true;
         } catch (_) {
             // No body, invalid JSON, or timeout — not forced
         }
-        console.log(`[advance-tick] Step 1: force=${force}`);
+        console.log(`[advance-tick] Step 1: force=${force}, reprocess=${reprocess}`);
 
         // 2. Check if tick is due (skip check if force=true)
         console.log("[advance-tick] Step 2: Querying shard...");
@@ -20056,7 +20065,7 @@ Deno.serve(async (req) => {
             );
         }
 
-        if (!force) {
+        if (!force && !reprocess) {
             const now = new Date();
             const nextTickAt = new Date(shard.next_tick_at);
 
@@ -20076,7 +20085,7 @@ Deno.serve(async (req) => {
         }
 
         // 3. Tick is due (or forced) — acquire lock
-        console.log(`[advance-tick] ✓ Tick IS due (or forced). Acquiring lock for tick ${shard.current_tick}...`);
+        console.log(`[advance-tick] ✓ Tick IS due (or forced/reprocess). Acquiring lock for tick ${shard.current_tick}...`);
         const lockAcquired = await acquireTickLock(supabase);
         if (!lockAcquired) {
             console.warn(`[advance-tick] Lock held — tick ${shard.current_tick}, tick_processing=${shard.tick_processing}`);
@@ -20092,7 +20101,7 @@ Deno.serve(async (req) => {
         // 4. Process the tick
         console.log(`[advance-tick] Lock acquired, processing tick ${shard.current_tick}...`);
         try {
-            const summary = await advanceTick(supabase, { force });
+            const summary = await advanceTick(supabase, { force, reprocess });
             const responseStatus = summary.partial ? "partial" : "success";
             console.log(
                 `[advance-tick] Tick ${summary.tick} ${summary.partial ? 'partially processed' : 'processed'} (${summary.nations} nations)`
