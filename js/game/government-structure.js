@@ -53,6 +53,11 @@ export async function loadSeats(supabase, nationId, isAutocracy, allParties, cur
         });
     }
 
+    // Patch the party objects in-place so callers don't need to
+    allParties.forEach(p => {
+        if (allPartySeats[p.id] !== undefined) p.seats = allPartySeats[p.id];
+    });
+
     const currentSeats = allPartySeats[currentFactionId] ??
         allParties.find(p => p.id === currentFactionId)?.seats ?? 0;
 

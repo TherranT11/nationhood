@@ -2765,11 +2765,7 @@ initPage('politics', async (state) => {
         : { data: [] };
 
     // Normalise seat counts from election results (single source of truth)
-    const isAuto = isAutocracy(nation);
-    const { allPartySeats, currentSeats } = await loadSeats(_supabase, nation.id, isAuto, allParties || [], f.id);
-    for (const p of (allParties || [])) {
-        if (allPartySeats[p.id] !== undefined) p.seats = allPartySeats[p.id];
-    }
+    const { currentSeats } = await loadSeats(_supabase, nation.id, isAutocracy(nation), allParties || [], f.id);
 
     const totalSeats = (allParties || []).reduce((sum, p) => sum + (p.seats || 0), 0);
     const mySeats = currentSeats;
