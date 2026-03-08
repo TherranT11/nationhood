@@ -18,7 +18,7 @@ DELETE FROM active_laws WHERE is_reversal = true;
 -- 3. Unstick any bills stuck in 'voting' past their deadline
 UPDATE bills SET status = 'failed'
 WHERE status = 'voting'
-AND vote_deadline < (SELECT current_tick FROM shard WHERE name = 'Alpha Shard');
+AND voting_ends_tick < (SELECT current_tick FROM shard WHERE name = 'Alpha Shard');
 
 -- 4. Unstick any bills stuck on president's desk past their deadline
 UPDATE bills SET status = 'failed'
