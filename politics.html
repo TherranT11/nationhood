@@ -6475,8 +6475,210 @@ function renderPromisePanel(f, n, tick, activePromises, recentActions) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// AUTOCRACY ACTIONS TAB RENDERER (placeholder — full implementation
-// mirrors parties.html renderAutocracyParties action sections)
+// STRONGMAN ACTION PANELS
+// ═══════════════════════════════════════════════════════════════════
+
+function renderSuccessorPanel(n, f, ap, tick, allStewardRows, allFactions, nonRuling, stewardByFaction) {
+    // Find current chosen successor
+    const chosenSteward = (allStewardRows || []).find(s => s.is_chosen_successor);
+    const isFamilySuccessor = n.successor_is_family_member === true;
+    const hasSuccessor = !!chosenSteward || isFamilySuccessor;
+
+    // Cooldown check
+    const cooldownEnd = Number(n.successor_cooldown_end_tick || 0);
+    const cooldownLeft = Math.max(0, cooldownEnd - tick);
+    const onCooldown = cooldownLeft > 0;
+
+    // Build content
+    let content = '';
+
+    if (hasSuccessor) {
+        // Show current successor with revoke option
+        if (chosenSteward) {
+            const stFaction = allFactions?.find(p => p.id === chosenSteward.faction_id);
+            const stType = STEWARD_TYPE_LABELS[chosenSteward.steward_type] || chosenSteward.steward_type;
+            content = `
+                <div style="background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.3);border-radius:6px;padding:12px;margin-top:8px">
+                    <div style="color:#FFD700;font-weight:700;font-size:11px;margin-bottom:6px">CHOSEN SUCCESSOR</div>
+                    <div style="font-weight:700;color:var(--dtext-1)">${escapeHtml(chosenSteward.first_name + ' ' + chosenSteward.last_name)}</div>
+                    <div style="font-size:10px;color:var(--dtext-3);margin-top:2px">${escapeHtml(stType)} — ${escapeHtml(stFaction?.faction_name || '?')}</div>
+                    <div style="display:flex;gap:12px;margin-top:8px;font-size:10px">
+                        <span>Succession Str: <span style="color:#FFD700">${Math.round(chosenSteward.succession_strength ?? 0)}</span></span>
+                        <span>True Loyalty: <span style="color:var(--dtext-2)">${Math.round(chosenSteward.true_loyalty ?? 50)}</span></span>
+                    </div>
+                    <div style="font-size:9px;color:var(--dtext-3);margin-top:8px">
+                        Revoking costs: Stability -${SUCCESSOR_CONFIG.REVOKE_STABILITY_DROP}, Faction Loyalty -${SUCCESSOR_CONFIG.REVOKE_LOYALTY_DROP}, All Coup Readiness +${SUCCESSOR_CONFIG.REVOKE_COUP_READINESS}
+                    </div>
+                    <button class="pol-action-execute" style="margin-top:8px;background:#880000" id="successor-revoke-btn">REVOKE SUCCESSION</button>
+                </div>`;
+        } else {
+            // Family member successor
+            content = `
+                <div style="background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.3);border-radius:6px;padding:12px;margin-top:8px">
+                    <div style="color:#FFD700;font-weight:700;font-size:11px;margin-bottom:6px">CHOSEN SUCCESSOR</div>
+                    <div style="font-weight:700;color:var(--dtext-1)">Family Member</div>
+                    <div style="font-size:10px;color:var(--dtext-3);margin-top:2px">Dynasty succession — costs ${SUCCESSOR_CONFIG.FAMILY_AP_PENALTY} AP/tick while active</div>
+                    <div style="font-size:9px;color:#ff9800;margin-top:6px">All pillar support -${SUCCESSOR_CONFIG.FAMILY_PILLAR_PENALTY}, All coup readiness +${SUCCESSOR_CONFIG.FAMILY_COUP_READINESS}</div>
+                    <button class="pol-action-execute" style="margin-top:8px;background:#880000" id="successor-revoke-btn">REVOKE SUCCESSION</button>
+                </div>`;
+        }
+    } else if (onCooldown) {
+        content = `<div style="color:var(--dtext-3);font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:4px">
+            Appointment on cooldown — ${cooldownLeft} tick${cooldownLeft !== 1 ? 's' : ''} remaining
+        </div>`;
+    } else {
+        // Show appointment targets
+        const eligibleStewards = (allStewardRows || []).filter(s =>
+            s.faction_id !== f.id && !s.is_chosen_successor
+        );
+
+        let targetButtons = '';
+        if (eligibleStewards.length > 0) {
+            targetButtons = eligibleStewards.map(s => {
+                const fac = allFactions?.find(p => p.id === s.faction_id);
+                const stType = STEWARD_TYPE_LABELS[s.steward_type] || s.steward_type;
+                return `<button class="pol-action-execute" style="margin:4px;border-left:3px solid ${fac?.party_color || '#888'};text-align:left;display:block;width:100%" data-successor-target="${s.faction_id}">
+                    <div>${escapeHtml(s.first_name + ' ' + s.last_name)}</div>
+                    <div style="font-size:9px;opacity:0.7">${escapeHtml(stType)} — ${escapeHtml(fac?.faction_name || '?')}</div>
+                </button>`;
+            }).join('');
+        } else {
+            targetButtons = '<div style="color:var(--dtext-3);font-size:10px;padding:4px 0">No eligible stewards to appoint.</div>';
+        }
+
+        content = `
+            <div style="margin-top:8px">
+                <div style="font-size:10px;color:var(--dtext-3);margin-bottom:6px">
+                    Stability +${SUCCESSOR_CONFIG.STABILITY_BOOST}, Target pillar +${SUCCESSOR_CONFIG.PILLAR_BOOST}.
+                    Others: Loyalty -${SUCCESSOR_CONFIG.OTHER_LOYALTY_DROP}, Coup Readiness +${SUCCESSOR_CONFIG.OTHER_COUP_READINESS}
+                </div>
+                <div style="font-size:10px;color:var(--dtext-2);font-weight:700;margin-bottom:4px">Select a steward:</div>
+                ${targetButtons}
+                <div style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.1);padding-top:8px">
+                    <button class="pol-action-execute" style="width:100%;border-left:3px solid #FFD700" id="successor-family-btn" ${ap < SUCCESSOR_CONFIG.AP_COST ? 'disabled' : ''}>
+                        <div>Appoint Family Member</div>
+                        <div style="font-size:9px;opacity:0.7">Costs ${SUCCESSOR_CONFIG.FAMILY_AP_PENALTY} AP/tick. All pillars -${SUCCESSOR_CONFIG.FAMILY_PILLAR_PENALTY}, All coup readiness +${SUCCESSOR_CONFIG.FAMILY_COUP_READINESS}</div>
+                    </button>
+                </div>
+            </div>`;
+    }
+
+    return `<div class="pol-action-panel">
+        <div class="pol-action-header">
+            <span class="pol-action-title">APPOINT SUCCESSOR</span>
+            <span class="pol-action-cost">${SUCCESSOR_CONFIG.AP_COST} AP</span>
+        </div>
+        <div class="pol-action-tagline">${hasSuccessor ? 'Successor designated.' : 'Designate a steward as your chosen successor.'}</div>
+        ${content}
+    </div>`;
+}
+
+function renderPurgePanel(n, f, ap, tick, nonRuling, stewardByFaction) {
+    const purgeTargets = nonRuling.filter(p => {
+        const loy = Math.round(p.loyalty ?? 50);
+        return loy < (GAME_CONFIG.PURGE_LOYALTY_THRESHOLD || 20) && stewardByFaction[p.id];
+    });
+
+    let content = '';
+    if (purgeTargets.length === 0) {
+        content = `<div style="color:var(--dtext-3);font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:4px">
+            No factions eligible for purge. Targets must have loyalty below ${GAME_CONFIG.PURGE_LOYALTY_THRESHOLD || 20} and an active steward.
+        </div>`;
+    } else {
+        const targetButtons = purgeTargets.map(p => {
+            const loy = Math.round(p.loyalty ?? 50);
+            const steward = stewardByFaction[p.id];
+            const stName = steward ? `${steward.first_name} ${steward.last_name}` : '?';
+            return `<button class="pol-action-execute" style="margin:4px;border-left:3px solid ${p.party_color || '#888'};text-align:left;display:block;width:100%" data-purge-target="${p.id}" ${ap < (GAME_CONFIG.PURGE_AP || 3) ? 'disabled' : ''}>
+                <div>${escapeHtml(p.faction_name)} <span style="color:#ff4444;font-size:10px">Loyalty: ${loy}</span></div>
+                <div style="font-size:9px;opacity:0.7">Steward: ${escapeHtml(stName)}</div>
+            </button>`;
+        }).join('');
+
+        content = `
+            <div style="margin-top:8px">
+                <div style="font-size:10px;color:#ff5722;margin-bottom:6px">
+                    Target loses steward, ${Math.round((GAME_CONFIG.PURGE_TARGET_SEAT_LOSS || 0.30) * 100)}% seats, all embezzled funds.
+                    Loyalty reset to ${GAME_CONFIG.PURGE_TARGET_NEW_LOYALTY || 50}. Stability ${GAME_CONFIG.PURGE_STABILITY || -1}, Health ${GAME_CONFIG.PURGE_REGIME_HEALTH || -3}.
+                </div>
+                ${targetButtons}
+            </div>`;
+    }
+
+    return `<div class="pol-action-panel">
+        <div class="pol-action-header">
+            <span class="pol-action-title" style="color:#ff5722">PURGE</span>
+            <span class="pol-action-cost">${GAME_CONFIG.PURGE_AP || 3} AP</span>
+        </div>
+        <div class="pol-action-tagline">Remove a faction's steward. Devastating consequences.</div>
+        ${content}
+    </div>`;
+}
+
+function renderRedistributePanel(n, f, ap, tick, nonRuling) {
+    const cooldownTicks = GAME_CONFIG.REDISTRIBUTE_SEATS_COOLDOWN || 4;
+    const lastRedist = Number(n.last_redistribute_tick || 0);
+    const cooldownLeft = Math.max(0, (lastRedist + cooldownTicks) - tick);
+    const onCooldown = cooldownLeft > 0;
+    const maxRatio = GAME_CONFIG.REDISTRIBUTE_SEATS_MAX_RATIO || 0.30;
+    const apCost = GAME_CONFIG.REDISTRIBUTE_SEATS_AP || 2;
+
+    // Need at least 2 non-ruling factions to transfer between, or any non-ruling to transfer to ruling
+    const otherFactions = nonRuling.filter(p => (p.seats || 0) > 0 || true);
+
+    let content = '';
+    if (onCooldown) {
+        content = `<div style="color:var(--dtext-3);font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:4px">
+            On cooldown — ${cooldownLeft} tick${cooldownLeft !== 1 ? 's' : ''} remaining
+        </div>`;
+    } else if (otherFactions.length < 2) {
+        content = `<div style="color:var(--dtext-3);font-size:11px;margin-top:8px">Not enough factions to redistribute between.</div>`;
+    } else {
+        const optionsHtml = otherFactions.map(p =>
+            `<option value="${p.id}">${escapeHtml(p.faction_name)} (${p.seats || 0} seats)</option>`
+        ).join('');
+
+        content = `
+            <div style="margin-top:8px">
+                <div style="font-size:10px;color:var(--dtext-3);margin-bottom:8px">
+                    Loser: Standing ${GAME_CONFIG.REDISTRIBUTE_SEATS_LOSER_STANDING || -3}, Loyalty ${GAME_CONFIG.REDISTRIBUTE_SEATS_LOSER_LOYALTY || -5}.
+                    Gainer: Loyalty +${GAME_CONFIG.REDISTRIBUTE_SEATS_GAINER_LOYALTY || 5}. Max ${Math.round(maxRatio * 100)}% of loser's seats.
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span style="font-size:10px;color:var(--dtext-2);min-width:65px">Take from:</span>
+                        <select id="redist-loser" style="flex:1;background:var(--dbg-3);color:var(--dtext-1);border:1px solid var(--dborder-1);padding:4px 8px;border-radius:4px;font-size:11px">
+                            ${optionsHtml}
+                        </select>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span style="font-size:10px;color:var(--dtext-2);min-width:65px">Give to:</span>
+                        <select id="redist-gainer" style="flex:1;background:var(--dbg-3);color:var(--dtext-1);border:1px solid var(--dborder-1);padding:4px 8px;border-radius:4px;font-size:11px">
+                            ${optionsHtml}
+                        </select>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span style="font-size:10px;color:var(--dtext-2);min-width:65px">Seats:</span>
+                        <input type="number" id="redist-seats" min="1" max="30" value="1" style="width:60px;background:var(--dbg-3);color:var(--dtext-1);border:1px solid var(--dborder-1);padding:4px 8px;border-radius:4px;font-size:11px">
+                        <span id="redist-max-label" style="font-size:9px;color:var(--dtext-3)"></span>
+                    </div>
+                    <button class="pol-action-execute" id="redist-execute-btn" ${ap < apCost ? 'disabled' : ''} style="margin-top:4px">REDISTRIBUTE</button>
+                </div>
+            </div>`;
+    }
+
+    return `<div class="pol-action-panel">
+        <div class="pol-action-header">
+            <span class="pol-action-title">REDISTRIBUTE SEATS</span>
+            <span class="pol-action-cost">${apCost} AP</span>
+        </div>
+        <div class="pol-action-tagline">Transfer seats between factions.</div>
+        ${content}
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// AUTOCRACY ACTIONS TAB RENDERER
 // ═══════════════════════════════════════════════════════════════════
 async function renderAutocracyActionsTab(nation, faction, shard) {
     const container = document.getElementById('actions-container');
@@ -6526,10 +6728,12 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
 
     const factionFunds = Number(f.embezzled_funds ?? 0);
 
-    // Fetch all stewards for coalition targeting
+    // Fetch ALL stewards (full data for successor/purge/coalition)
     const { data: allStewardRows } = await _supabase
-        .from('stewards').select('faction_id, is_alive').eq('nation_id', n.id).eq('is_alive', true);
+        .from('stewards').select('*').eq('nation_id', n.id).eq('is_alive', true);
     const factionsWithStewards = new Set((allStewardRows || []).map(s => s.faction_id));
+    const stewardByFaction = {};
+    for (const s of (allStewardRows || [])) stewardByFaction[s.faction_id] = s;
 
     // Fetch existing coalitions
     const { data: coalitionRows } = await _supabase
@@ -6647,30 +6851,9 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
                     <div class="pol-action-tagline">Target a faction. They must comply or refuse.</div>
                     <div class="pol-bloc-select-grid">${nonRuling.map(p => `<button class="pol-action-execute" style="margin:4px;border-left:3px solid ${p.party_color || '#888'}" data-demand-target="${p.id}">${escapeHtml(p.faction_name)}</button>`).join('')}</div>
                 </div>
-                <div class="pol-action-panel">
-                    <div class="pol-action-header">
-                        <span class="pol-action-title">APPOINT SUCCESSOR</span>
-                        <span class="pol-action-cost">${SUCCESSOR_CONFIG.AP_COST} AP</span>
-                    </div>
-                    <div class="pol-action-tagline">Designate a steward as your chosen successor.</div>
-                    <div id="autocracy-successor-content"></div>
-                </div>
-                <div class="pol-action-panel">
-                    <div class="pol-action-header">
-                        <span class="pol-action-title">PURGE</span>
-                        <span class="pol-action-cost">${GAME_CONFIG.PURGE_AP} AP</span>
-                    </div>
-                    <div class="pol-action-tagline">Remove a faction's steward. Devastating consequences.</div>
-                    <div id="autocracy-purge-content"></div>
-                </div>
-                <div class="pol-action-panel">
-                    <div class="pol-action-header">
-                        <span class="pol-action-title">REDISTRIBUTE SEATS</span>
-                        <span class="pol-action-cost">${GAME_CONFIG.REDISTRIBUTE_SEATS_AP} AP</span>
-                    </div>
-                    <div class="pol-action-tagline">Transfer seats between factions.</div>
-                    <div id="autocracy-redistribute-content"></div>
-                </div>
+                ${renderSuccessorPanel(n, f, ap, tick, allStewardRows, allFactions, nonRuling, stewardByFaction)}
+                ${renderPurgePanel(n, f, ap, tick, nonRuling, stewardByFaction)}
+                ${renderRedistributePanel(n, f, ap, tick, nonRuling)}
                 ${coalitionHtml}
             </div>`;
     } else {
@@ -6898,6 +7081,95 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
             alert(`Demanded loyalty from ${targetName}`);
             await reRender();
         });
+    });
+
+    // ── Appoint Successor: steward target buttons ──
+    container.querySelectorAll('[data-successor-target]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (ap < SUCCESSOR_CONFIG.AP_COST) { alert(`Not enough AP (need ${SUCCESSOR_CONFIG.AP_COST}).`); return; }
+            const targetId = btn.dataset.successorTarget;
+            const targetFac = (allFactions || []).find(p => p.id === targetId);
+            if (!confirm(`Appoint ${targetFac?.faction_name || 'this faction'}'s steward as successor?\n\nCost: ${SUCCESSOR_CONFIG.AP_COST} AP\nStability +${SUCCESSOR_CONFIG.STABILITY_BOOST}\nTarget pillar +${SUCCESSOR_CONFIG.PILLAR_BOOST}\nOther factions: Loyalty -${SUCCESSOR_CONFIG.OTHER_LOYALTY_DROP}, Coup Readiness +${SUCCESSOR_CONFIG.OTHER_COUP_READINESS}\n\nCooldown: ${SUCCESSOR_CONFIG.COOLDOWN_TICKS} ticks`)) return;
+            btn.disabled = true;
+            const r = await executeAppointSuccessor(_supabase, n.id, f.id, targetId, tick);
+            if (!r.success) { alert(r.error || 'Failed to appoint successor.'); await reRender(); return; }
+            f.action_points = r.newAp;
+            alert(`Appointed ${r.successorName} as chosen successor.`);
+            await reRender();
+        });
+    });
+
+    // ── Appoint Successor: family member button ──
+    document.getElementById('successor-family-btn')?.addEventListener('click', async () => {
+        if (ap < SUCCESSOR_CONFIG.AP_COST) { alert(`Not enough AP (need ${SUCCESSOR_CONFIG.AP_COST}).`); return; }
+        if (!confirm(`Appoint a family member as successor?\n\nCost: ${SUCCESSOR_CONFIG.AP_COST} AP + ${SUCCESSOR_CONFIG.FAMILY_AP_PENALTY} AP/tick ongoing\nStability +${SUCCESSOR_CONFIG.FAMILY_STABILITY_BOOST}\nAll pillars: -${SUCCESSOR_CONFIG.FAMILY_PILLAR_PENALTY} support\nAll stewards: Coup Readiness +${SUCCESSOR_CONFIG.FAMILY_COUP_READINESS}\n\nCooldown: ${SUCCESSOR_CONFIG.COOLDOWN_TICKS} ticks`)) return;
+        const r = await executeAppointSuccessor(_supabase, n.id, f.id, f.id, tick);
+        if (!r.success) { alert(r.error || 'Failed to appoint family member.'); await reRender(); return; }
+        f.action_points = r.newAp;
+        alert('Appointed family member as successor.');
+        await reRender();
+    });
+
+    // ── Revoke Successor ──
+    document.getElementById('successor-revoke-btn')?.addEventListener('click', async () => {
+        if (!confirm('Revoke the current successor?\n\nStability -' + SUCCESSOR_CONFIG.REVOKE_STABILITY_DROP + '\nAll stewards: Coup Readiness +' + SUCCESSOR_CONFIG.REVOKE_COUP_READINESS + '\nFormer successor faction: Loyalty -' + SUCCESSOR_CONFIG.REVOKE_LOYALTY_DROP)) return;
+        const r = await executeRevokeSuccessor(_supabase, n.id, f.id, tick);
+        if (!r.success) { alert(r.error || 'Failed to revoke successor.'); await reRender(); return; }
+        alert('Successor revoked.' + (r.revokedName ? ` ${r.revokedName} removed.` : ''));
+        await reRender();
+    });
+
+    // ── Purge target buttons ──
+    container.querySelectorAll('[data-purge-target]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const targetId = btn.dataset.purgeTarget;
+            const targetFac = (allFactions || []).find(p => p.id === targetId);
+            const targetName = targetFac?.faction_name || 'Unknown';
+            if (!confirm(`PURGE ${targetName.toUpperCase()}?\n\nThis will:\n• Kill their steward and replace with a weaker one\n• Remove ${Math.round((GAME_CONFIG.PURGE_TARGET_SEAT_LOSS || 0.30) * 100)}% of their seats\n• Seize all embezzled funds\n• Reset loyalty to ${GAME_CONFIG.PURGE_TARGET_NEW_LOYALTY || 50}\n• Standing -${Math.abs(GAME_CONFIG.PURGE_TARGET_STANDING || 20)}\n\nNational effects:\n• Stability ${GAME_CONFIG.PURGE_STABILITY || -1}\n• Regime Health ${GAME_CONFIG.PURGE_REGIME_HEALTH || -3}\n• Other factions: Loyalty +${GAME_CONFIG.PURGE_OTHERS_LOYALTY || 5}`)) return;
+            btn.disabled = true;
+            const r = await executePurge(_supabase, f.id, n.id, targetId, tick);
+            if (!r.success) { alert(r.error || 'Purge failed.'); await reRender(); return; }
+            f.action_points = r.newAp;
+            let msg = `Purged ${r.targetName}.\nSteward ${r.purgedSteward} eliminated.\nNew steward: ${r.newSteward}\nSeats lost: ${r.seatsLost}`;
+            if (r.fundsSeized > 0) msg += `\nFunds seized: $${r.fundsSeized}M`;
+            alert(msg);
+            await reRender();
+        });
+    });
+
+    // ── Redistribute Seats ──
+    const redistLoser = document.getElementById('redist-loser');
+    const redistGainer = document.getElementById('redist-gainer');
+    const redistSeats = document.getElementById('redist-seats');
+    const redistMaxLabel = document.getElementById('redist-max-label');
+
+    // Update max seats label when loser changes
+    function updateRedistMax() {
+        if (!redistLoser || !redistSeats || !redistMaxLabel) return;
+        const loserFac = (allFactions || []).find(p => p.id === redistLoser.value);
+        const maxSeats = Math.max(1, Math.floor((loserFac?.seats || 0) * (GAME_CONFIG.REDISTRIBUTE_SEATS_MAX_RATIO || 0.30)));
+        redistMaxLabel.textContent = `(max ${maxSeats})`;
+        redistSeats.max = maxSeats;
+        if (Number(redistSeats.value) > maxSeats) redistSeats.value = maxSeats;
+    }
+    redistLoser?.addEventListener('change', updateRedistMax);
+    updateRedistMax();
+
+    document.getElementById('redist-execute-btn')?.addEventListener('click', async () => {
+        if (!redistLoser || !redistGainer || !redistSeats) return;
+        const loserId = redistLoser.value;
+        const gainerId = redistGainer.value;
+        const seats = parseInt(redistSeats.value, 10);
+        if (loserId === gainerId) { alert('Cannot transfer to the same faction.'); return; }
+        if (!seats || seats < 1) { alert('Must transfer at least 1 seat.'); return; }
+        const loserFac = (allFactions || []).find(p => p.id === loserId);
+        const gainerFac = (allFactions || []).find(p => p.id === gainerId);
+        if (!confirm(`Transfer ${seats} seat${seats !== 1 ? 's' : ''} from ${loserFac?.faction_name || '?'} to ${gainerFac?.faction_name || '?'}?`)) return;
+        const r = await executeRedistributeSeats(_supabase, f.id, n.id, loserId, gainerId, seats, tick);
+        if (!r.success) { alert(r.error || 'Redistribution failed.'); await reRender(); return; }
+        f.action_points = r.newAp;
+        alert(`Redistributed ${r.seatsTransferred} seats from ${r.loserName} to ${r.gainerName}.`);
+        await reRender();
     });
 
     // Coalition: Propose
