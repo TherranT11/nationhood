@@ -6084,7 +6084,7 @@ const NARR_ACTIONS = [
 const NARR_AXES = [
     { left: 'Globalism', right: 'Nationalism', key: 'globalism_nationalism' },
     { left: 'Individualism', right: 'Collectivism', key: 'individualism_collectivism' },
-    { left: 'Progress', right: 'Tradition', key: 'tradition_progress' },
+    { left: 'Tradition', right: 'Progress', key: 'tradition_progress' },
     { left: 'Security', right: 'Freedom', key: 'security_freedom' },
     { left: 'Liberty', right: 'Equality', key: 'liberty_equality' },
 ];
@@ -6336,7 +6336,7 @@ function renderChampionConfig(blocs) {
     for (const b of eligible) {
         const t = NARR_TIER_META[b.tier] || NARR_TIER_META.SWING;
         const isSel = _narrBloc === b.id;
-        const electPct = b.population_weight ? Math.round(b.population_weight * 100) : '?';
+        const electPct = b.population_weight ? Math.round(b.population_weight) : '?';
         html += `<div class="narr-bloc-card${isSel ? ' selected' : ''}" data-bloc-id="${b.id}" style="border-left-color:${isSel ? '#4ade80' : t.color};${isSel ? 'border-color:rgba(74,222,128,0.2);background:rgba(74,222,128,0.03)' : ''}">
             <div class="narr-bloc-head">
                 <div>
@@ -6555,7 +6555,10 @@ function wireNarrConfig(container, f, n, ap, totalAp, committedAp, blocs, otherP
     });
     // Axis selection (bridge, doubledown)
     container.querySelectorAll('[data-axis-key]').forEach(el => {
-        el.addEventListener('click', () => { _narrAxis = _narrAxis === el.dataset.axisKey ? null : el.dataset.axisKey; rerender(); });
+        el.addEventListener('click', () => {
+            if (el.classList.contains('disabled')) return;
+            _narrAxis = _narrAxis === el.dataset.axisKey ? null : el.dataset.axisKey; rerender();
+        });
     });
     // Campaign mode
     container.querySelectorAll('[data-camp-mode]').forEach(el => {
@@ -6725,10 +6728,15 @@ async function executeNarrChampion(f, n, blocs, tick, cost) {
     if (apErr) return { success: false, error: 'Failed to deduct AP.' };
 
     // Immediate approval boost from championing (creates row if missing)
-    await upsertBlocApproval(f.id, bloc.id, (row) => ({
-        preference_score: Math.min(100, (row.preference_score ?? 50) + 8),
-        last_platform: { championed: true, championed_at_tick: tick }
-    }));
+    await upsertBlocApproval(f.id, bloc.id, (row) => {
+        const platform = row.last_platform || {};
+        platform.championed = true;
+        platform.championed_at_tick = tick;
+        return {
+            preference_score: Math.min(100, (row.preference_score ?? 50) + 8),
+            last_platform: platform
+        };
+    });
 
     // Log to campaign_actions
     await _supabase.from('campaign_actions').insert({
