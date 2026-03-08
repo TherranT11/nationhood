@@ -652,8 +652,10 @@ function calculateTradeAffinity(nationA, nationB, relation, opts) {
     // Active embargo/sanctions between these two nations: major penalty
     var embargoPenalty = (opts && opts.has_embargo) ? -40 : 0;
 
-    // Geographic proximity (future: use region data when available)
-    var proximityBonus = (opts && opts.same_region) ? 10 : 0;
+    // Geographic proximity: continuous bonus scaled from proximity 0-100.
+    // Bordering (100) → +20, same region (50) → +10, distant (20) → +4.
+    var proximity = (opts && opts.proximity != null) ? Number(opts.proximity) : 50;
+    var proximityBonus = (proximity / 100) * 20;
 
     var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus;
     return Math.round(Math.max(0, Math.min(100, affinity)));
@@ -1017,7 +1019,8 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             var pairKey = a.id + '|' + b.id;
             var rel = relMap[pairKey] || null;
             var flags = flagsMap[pairKey] || {};
-            if (rel && rel.proximity >= 80) flags.same_region = true;
+            // Pass continuous proximity (0-100) for gravity-model weighting
+            flags.proximity = (rel && rel.proximity != null) ? rel.proximity : 50;
             var aff = calculateTradeAffinity(a, b, rel, flags);
             affinityMap[a.id + '|' + b.id] = aff;
             affinityMap[b.id + '|' + a.id] = aff;
@@ -1121,74 +1124,145 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
+    // ── Simultaneous proportional distribution ──
+    // Instead of iterating exporters sequentially (which lets the first exporter
+    // saturate all demand), we collect ALL bilateral (exporter→importer) pairs per
+    // sector and allocate simultaneously using a gravity-model weight:
+    //   weight = exportCapacity × importDemand × affinity × proximityFactor
+    // Each pair's allocation is capped by both the exporter's capacity and the
+    // importer's demand. Two passes handle the caps + redistribute surplus.
+
     for (var si = 0; si < sectors.length; si++) {
         var sector = sectors[si];
         var priceMod = priceModifiers[sector.key];
+        var priceDampener = 1 / Math.sqrt(priceMod);
 
+        // Collect all viable bilateral pairs for this sector
+        // pairs[i] = { expId, impId, expCap, impDem, affinity, weight }
+        var pairs = [];
         for (var ei = 0; ei < nationCount; ei++) {
             var exporter = nationList[ei];
             var expCap = nationFlows[exporter.id][sector.key].exportCapacity;
             if (expCap <= 0) continue;
-
-            // Subtract RSC pre-allocated exports from remaining capacity
+            // Subtract RSC pre-allocated exports
             var remainingExpCap = expCap - (actualExports[exporter.id][sector.key] || 0);
             if (remainingExpCap <= 0) continue;
+            var adjustedCap = Math.round(remainingExpCap * priceMod);
+            if (adjustedCap <= 0) continue;
 
-            // Apply price modifier to remaining export capacity
-            var adjustedCapacity = Math.round(remainingExpCap * priceMod);
-
-            // Build importer list for this exporter (everyone else with demand > 0)
-            var importerList = [];
             for (var ii = 0; ii < nationCount; ii++) {
                 if (ii === ei) continue;
                 var importer = nationList[ii];
 
-                // Hard embargo block: zero trade between embargoed pairs
+                // Hard embargo block
                 var pairFlags = flagsMap[exporter.id + '|' + importer.id];
                 if (pairFlags && pairFlags.has_embargo) continue;
 
                 var impDem = nationFlows[importer.id][sector.key].importDemand;
-                // Subtract what they've already received from other exporters
-                var remainingDemand = impDem - actualImports[importer.id][sector.key];
-                if (remainingDemand <= 0) continue;
-
-                // Price-responsive demand: high prices reduce demand, low prices increase it
-                // Uses square root for partial elasticity (not fully elastic)
-                var priceDampener = 1 / Math.sqrt(priceMod);
-                remainingDemand = Math.round(remainingDemand * priceDampener);
-                if (remainingDemand <= 0) continue;
+                // Subtract RSC pre-allocated imports
+                var remainingDem = impDem - (actualImports[importer.id][sector.key] || 0);
+                if (remainingDem <= 0) continue;
+                remainingDem = Math.round(remainingDem * priceDampener);
+                if (remainingDem <= 0) continue;
 
                 var aff = affinityMap[exporter.id + '|' + importer.id] || 0;
                 if (aff <= 0) continue;
 
-                importerList.push({
-                    nation_id: importer.id,
-                    demand: remainingDemand,
-                    affinity: aff
+                // Gravity-model weight: supply × demand × affinity
+                var w = adjustedCap * remainingDem * aff;
+                pairs.push({
+                    expId: exporter.id,
+                    impId: importer.id,
+                    expCap: adjustedCap,
+                    impDem: remainingDem,
+                    affinity: aff,
+                    weight: w,
+                    volume: 0
                 });
             }
+        }
 
-            if (importerList.length === 0) continue;
+        if (pairs.length === 0) continue;
 
-            // Distribute this exporter's capacity among importers
-            var allocations = distributeTradeAmongPartners(adjustedCapacity, importerList);
+        // Build per-exporter and per-importer capacity/demand budgets
+        var expBudget = {};  // expBudget[expId] = remaining capacity
+        var impBudget = {};  // impBudget[impId] = remaining demand
+        for (var pi = 0; pi < pairs.length; pi++) {
+            var p = pairs[pi];
+            if (expBudget[p.expId] == null) expBudget[p.expId] = p.expCap;
+            if (impBudget[p.impId] == null) impBudget[p.impId] = p.impDem;
+        }
 
-            for (var ai = 0; ai < allocations.length; ai++) {
-                var alloc = allocations[ai];
-                if (alloc.volume <= 0) continue;
-
-                actualExports[exporter.id][sector.key] += alloc.volume;
-                actualImports[alloc.importer_nation_id][sector.key] += alloc.volume;
-
-                partnerRows.push({
-                    tick: currentTick,
-                    exporter_nation_id: exporter.id,
-                    importer_nation_id: alloc.importer_nation_id,
-                    sector: sector.key,
-                    trade_volume: alloc.volume,
-                    affinity_score: affinityMap[exporter.id + '|' + alloc.importer_nation_id] || 0
-                });
+        // Iterative proportional fitting (2 passes to handle caps)
+        for (var pass = 0; pass < 2; pass++) {
+            // Compute total weight per exporter and per importer
+            var expWeightSum = {};
+            var impWeightSum = {};
+            for (var pi = 0; pi < pairs.length; pi++) {
+                var p = pairs[pi];
+                if (p.weight <= 0) continue;
+                if (!expWeightSum[p.expId]) expWeightSum[p.expId] = 0;
+                if (!impWeightSum[p.impId]) impWeightSum[p.impId] = 0;
+                expWeightSum[p.expId] += p.weight;
+                impWeightSum[p.impId] += p.weight;
             }
+
+            // Allocate each pair: min of (exporter's share, importer's share)
+            for (var pi = 0; pi < pairs.length; pi++) {
+                var p = pairs[pi];
+                if (p.weight <= 0) { p.volume = 0; continue; }
+
+                // Share of this exporter's capacity going to this importer
+                var expShare = (expBudget[p.expId] || 0) * (p.weight / (expWeightSum[p.expId] || 1));
+                // Share of this importer's demand filled by this exporter
+                var impShare = (impBudget[p.impId] || 0) * (p.weight / (impWeightSum[p.impId] || 1));
+                p.volume = Math.round(Math.min(expShare, impShare));
+            }
+
+            // Update budgets: subtract allocated volumes, zero out fully-allocated pairs
+            for (var eid in expBudget) expBudget[eid] = 0;
+            for (var iid in impBudget) impBudget[iid] = 0;
+            // First compute how much was allocated per exporter/importer
+            var expUsed = {};
+            var impUsed = {};
+            for (var pi = 0; pi < pairs.length; pi++) {
+                var p = pairs[pi];
+                if (!expUsed[p.expId]) expUsed[p.expId] = 0;
+                if (!impUsed[p.impId]) impUsed[p.impId] = 0;
+                expUsed[p.expId] += p.volume;
+                impUsed[p.impId] += p.volume;
+            }
+            // Recompute remaining budgets from original caps minus total used
+            for (var pi = 0; pi < pairs.length; pi++) {
+                var p = pairs[pi];
+                expBudget[p.expId] = p.expCap - (expUsed[p.expId] || 0);
+                impBudget[p.impId] = p.impDem - (impUsed[p.impId] || 0);
+            }
+            // Zero out weights for pairs where either side is exhausted
+            for (var pi = 0; pi < pairs.length; pi++) {
+                var p = pairs[pi];
+                if ((expBudget[p.expId] || 0) <= 0 || (impBudget[p.impId] || 0) <= 0) {
+                    p.weight = 0;
+                }
+            }
+        }
+
+        // Record final allocations
+        for (var pi = 0; pi < pairs.length; pi++) {
+            var p = pairs[pi];
+            if (p.volume <= 0) continue;
+
+            actualExports[p.expId][sector.key] += p.volume;
+            actualImports[p.impId][sector.key] += p.volume;
+
+            partnerRows.push({
+                tick: currentTick,
+                exporter_nation_id: p.expId,
+                importer_nation_id: p.impId,
+                sector: sector.key,
+                trade_volume: p.volume,
+                affinity_score: p.affinity
+            });
         }
     }
 
@@ -1923,83 +1997,6 @@ const RAW_SCALING_DIVISORS = {
     debt: 1_000_000_000
 };
 
-// Minimum thresholds for raw-value stats that should never be treated as 0-100 values.
-// If a stat falls below this, it was almost certainly corrupted by a 0-100 clamp.
-const RAW_STAT_CORRUPTION_THRESHOLDS = {
-    gdp: 1_000_000,     // $1M — any real GDP is billions
-    debt: -1,            // debt can legitimately be 0 if paid off, but not set to 0 from billions
-    population: 10_000,  // any real population is millions
-    eligible_voters: 10_000
-};
-
-/**
- * Guard: detect and prevent raw-value stat corruption after a tick processor runs.
- * Compares post-processor values to pre-processor snapshots.
- * If a raw stat was at dollar/population scale and got clamped to 0-100 range, restore it.
- *
- * @param {string} processorName - Name of the processor (for logging)
- * @param {object} nation - The in-memory nation object (mutable)
- * @param {object} snapshot - Pre-processor snapshot of raw-value stats { gdp, debt, ... }
- * @param {object} supabase - Supabase client (for corrective writes)
- * @returns {boolean} true if corruption was detected and fixed
- */
-async function guardRawValueStats(processorName, nation, snapshot, supabase) {
-    let corrupted = false;
-    const fixes = {};
-
-    for (const [stat, divisor] of Object.entries(RAW_SCALING_DIVISORS)) {
-        const before = snapshot[stat];
-        const after = nation[stat];
-
-        // Skip if we didn't have a valid large-scale value before
-        if (before === undefined || before === null || Number(before) < 1000) continue;
-
-        const afterNum = Number(after);
-
-        // Detect corruption: value was in billions/millions range, now it's in 0-100 range
-        if (afterNum >= 0 && afterNum <= 100 && Number(before) > 1000) {
-            console.error(
-                `[guardRawValueStats] CORRUPTION DETECTED in ${processorName} for ${nation.name}: ` +
-                `${stat} changed from ${before} to ${afterNum} (looks like 0-100 clamp). Restoring.`
-            );
-            nation[stat] = before;
-            fixes[stat] = before;
-            corrupted = true;
-        }
-        // Also detect if value dropped to exactly 0 from a large value (debt zeroed out)
-        else if (afterNum === 0 && Number(before) > 1_000_000) {
-            console.error(
-                `[guardRawValueStats] CORRUPTION DETECTED in ${processorName} for ${nation.name}: ` +
-                `${stat} dropped from ${before} to 0. Restoring.`
-            );
-            nation[stat] = before;
-            fixes[stat] = before;
-            corrupted = true;
-        }
-    }
-
-    if (corrupted && Object.keys(fixes).length > 0) {
-        const { error } = await supabase.from('nations').update(fixes).eq('id', nation.id);
-        if (error) {
-            console.error(`[guardRawValueStats] FAILED to restore ${nation.name}:`, error.message);
-        } else {
-            console.log(`[guardRawValueStats] Restored ${nation.name}: ${JSON.stringify(fixes)}`);
-        }
-    }
-
-    return corrupted;
-}
-
-/**
- * Take a snapshot of all raw-value stats for corruption detection.
- */
-function snapshotRawStats(nation) {
-    const snap = {};
-    for (const stat of Object.keys(RAW_SCALING_DIVISORS)) {
-        snap[stat] = nation[stat];
-    }
-    return snap;
-}
 
 // ────────── ideology ──────────
 
@@ -4087,6 +4084,11 @@ async function loadSeats(supabase, nationId, isAutocracy, allParties, currentFac
             }
         });
     }
+
+    // Patch the party objects in-place so callers don't need to
+    allParties.forEach(p => {
+        if (allPartySeats[p.id] !== undefined) p.seats = allPartySeats[p.id];
+    });
 
     const currentSeats = allPartySeats[currentFactionId] ??
         allParties.find(p => p.id === currentFactionId)?.seats ?? 0;
@@ -10781,11 +10783,11 @@ const ATTACK_VECTORS = [
 ];
 
 const ATTACK_OUTCOMES = [
-    { id: 'devastating', name: 'Devastating Hit', icon: '\u2726', targetMin: -7, targetMax: -5, selfMin: 3, selfMax: 3, polarization: 1 },
-    { id: 'effective', name: 'Effective Attack', icon: '\u25CF', targetMin: -4, targetMax: -3, selfMin: 1, selfMax: 2, polarization: 1 },
-    { id: 'glancing', name: 'Glancing Blow', icon: '\u25E6', targetMin: -1, targetMax: -1, selfMin: 0, selfMax: 0, polarization: 0 },
-    { id: 'backfire', name: 'Backfire', icon: '\u26A0', targetMin: 1, targetMax: 2, selfMin: -4, selfMax: -2, polarization: 1 },
-    { id: 'mutual', name: 'Mutual Destruction', icon: '\u2715', targetMin: -3, targetMax: -3, selfMin: -2, selfMax: -2, polarization: 2 },
+    { id: 'devastating', name: 'Devastating Hit', icon: '\u2726', targetMin: -7, targetMax: -5, selfMin: 3, selfMax: 3, polarization: 0.4 },
+    { id: 'effective', name: 'Effective Attack', icon: '\u25CF', targetMin: -4, targetMax: -3, selfMin: 1, selfMax: 2, polarization: 0.4 },
+    { id: 'glancing', name: 'Glancing Blow', icon: '\u25E6', targetMin: -1, targetMax: -1, selfMin: 0, selfMax: 0, polarization: 0.4 },
+    { id: 'backfire', name: 'Backfire', icon: '\u26A0', targetMin: 1, targetMax: 2, selfMin: -4, selfMax: -2, polarization: 0.4 },
+    { id: 'mutual', name: 'Mutual Destruction', icon: '\u2715', targetMin: -3, targetMax: -3, selfMin: -2, selfMax: -2, polarization: 0.4 },
 ];
 
 const ATTACK_OUTCOME_COLORS = {
@@ -19023,16 +19025,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // policy deltas and rebase on birth_rate - death_rate afterwards.
         const popGrowthBeforeEffects = Number(nation.population_growth ?? 50);
 
-        // Snapshot raw-value stats (GDP, debt, population) for corruption detection.
-        // After each stat processor, we check if any raw stat was clamped to 0-100 range.
-        const _rawSnapInitial = snapshotRawStats(nation); // preserved for final catch-all
-        let _rawSnap = snapshotRawStats(nation);
-
         // Stat effects (from passed bills/active laws)
         const effectResults = await processStatEffects(supabase, nation, newTick);
         if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
-        await guardRawValueStats('processStatEffects', nation, _rawSnap, supabase);
-        _rawSnap = snapshotRawStats(nation);
 
         // Ministry action effects
         const ministryResults = await processMinistryActions(supabase, nation, newTick);
@@ -19040,12 +19035,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.ministryActions = summary.ministryActions || [];
             summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
         }
-        await guardRawValueStats('processMinistryActions', nation, _rawSnap, supabase);
-        _rawSnap = snapshotRawStats(nation);
 
         // Apply GDP growth rate
         await applyGdpGrowth(supabase, nation);
-        _rawSnap = snapshotRawStats(nation);
 
         // Stat decay (equilibrium drift + erosion, modified by institution funding)
         if (!_institutionConfig) {
@@ -19068,8 +19060,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.decay = summary.decay || [];
             summary.decay.push({ nation: nation.name, effects: decayResults });
         }
-        await guardRawValueStats('processStatDecay', nation, _rawSnap, supabase);
-        _rawSnap = snapshotRawStats(nation);
 
         // Stat connections (threshold-triggered ripple effects)
         if (!_statConnections) {
@@ -19081,16 +19071,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.statConnections = summary.statConnections || [];
             summary.statConnections.push({ nation: nation.name, effects: connResults });
         }
-        await guardRawValueStats('processStatConnections', nation, _rawSnap, supabase);
-        _rawSnap = snapshotRawStats(nation);
 
         // (Budget bill auto-generation and committee expiry removed — budget system disabled)
 
         // Ongoing costs
         const costResult = await processOngoingCosts(supabase, nation, newTick);
         if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
-        await guardRawValueStats('processOngoingCosts', nation, _rawSnap, supabase);
-        _rawSnap = snapshotRawStats(nation);
 
         // Sovereign debt mechanics (burden, credit deterioration, lockout, debt crisis trigger)
         try {
@@ -19102,8 +19088,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         } catch (debtErr) {
             console.error(`[advanceTick] Sovereign debt mechanics failed for ${nation.name} (non-fatal):`, debtErr);
         }
-        await guardRawValueStats('processSovereignDebtMechanics', nation, _rawSnap, supabase);
-        _rawSnap = snapshotRawStats(nation);
 
         // Austerity commitments from enacted sovereign defaults
         try {
@@ -19115,13 +19099,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         } catch (austErr) {
             console.error(`[advanceTick] Austerity processing failed for ${nation.name} (non-fatal):`, austErr);
         }
-        await guardRawValueStats('processAusterityCommitments', nation, _rawSnap, supabase);
-        _rawSnap = snapshotRawStats(nation);
 
         // PM trait effects
         await processPMTraitEffects(supabase, nation, newTick);
-        await guardRawValueStats('processPMTraitEffects', nation, _rawSnap, supabase);
-        _rawSnap = snapshotRawStats(nation);
 
         // Elections (democracy only)
         const electionResults = await processElections(supabase, nation, newTick);
@@ -19368,8 +19348,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.crises = summary.crises || [];
             summary.crises.push({ nation: nation.name, crises: crisisResults });
         }
-        await guardRawValueStats('processCrises', nation, _rawSnap, supabase);
-        _rawSnap = snapshotRawStats(nation);
 
         // Population growth: recompute from birth_rate - death_rate base,
         // preserving any policy/crisis deltas, then apply population change.
@@ -19458,10 +19436,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // Random events
-        _rawSnap = snapshotRawStats(nation);
         const eventResults = await processEvents(supabase, nation, newTick);
         if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
-        await guardRawValueStats('processEvents', nation, _rawSnap, supabase);
 
         // Process active fundraiser promises
         const promiseResults = await processPromiseTick(supabase, nation, newTick);
@@ -19808,14 +19784,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // deltas show stale cumulative changes instead of per-tick changes.
         try {
             const { data: finalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
-
-            // Final catch-all integrity check: if GDP/debt got corrupted by ANY
-            // processor (including ones we didn't instrument), restore from the
-            // initial snapshot taken at the start of this nation's processing.
-            if (finalNation && _rawSnapInitial) {
-                await guardRawValueStats('FINAL_CHECK', finalNation, _rawSnapInitial, supabase);
-            }
-
             await recordStatHistory(supabase, finalNation || nation, newTick);
             await snapshotNationHistory(supabase, finalNation || nation, newTick);
         } catch (snapErr) {

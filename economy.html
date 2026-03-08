@@ -345,6 +345,49 @@ async function loadTradeData(nationId) {
         }
     }
 
+    // Fetch diplomatic relations for affinity breakdown tooltips
+    var partnerIds = Object.keys(partners);
+    if (partnerIds.length > 0) {
+        var relRes = await _supabase.from('diplomatic_relations')
+            .select('nation_a_id, nation_b_id, relation_score, proximity, active_treaties');
+
+        if (relRes.data) {
+            for (var i = 0; i < relRes.data.length; i++) {
+                var r = relRes.data[i];
+                var partnerId = null;
+                if (r.nation_a_id === nationId) partnerId = r.nation_b_id;
+                else if (r.nation_b_id === nationId) partnerId = r.nation_a_id;
+                if (partnerId && partners[partnerId]) {
+                    var relScore = Number(r.relation_score) || 0;
+                    var prox = (r.proximity != null) ? Number(r.proximity) : 50;
+                    var treaties = r.active_treaties || [];
+                    var hasFTA = false, hasRSC = false, hasPTA = false, hasEmbargo = false;
+                    for (var t = 0; t < treaties.length; t++) {
+                        var ty = treaties[t].agreement_type || treaties[t].type || '';
+                        if (ty === 'free_trade') hasFTA = true;
+                        else if (ty === 'resource_supply') hasRSC = true;
+                        else if (ty === 'partial_trade') hasPTA = true;
+                        else if (ty === 'embargo') hasEmbargo = true;
+                    }
+                    var tradeBonus = hasFTA ? 25 : hasRSC ? 20 : hasPTA ? 15 : 0;
+                    var diplomaticBonus = relScore * 0.3;
+                    var proximityBonus = (prox / 100) * 20;
+                    var embargoPenalty = hasEmbargo ? -40 : 0;
+                    partners[partnerId].affinityBreakdown = {
+                        base: 50,
+                        diplomatic: Math.round(diplomaticBonus * 10) / 10,
+                        relScore: relScore,
+                        trade: tradeBonus,
+                        tradeType: hasFTA ? 'FTA' : hasRSC ? 'RSC' : hasPTA ? 'PTA' : null,
+                        proximity: Math.round(proximityBonus * 10) / 10,
+                        proximityRaw: prox,
+                        embargo: embargoPenalty
+                    };
+                }
+            }
+        }
+    }
+
     tradeData = { summary: summary, flows: flows, prevFlows: prevFlows, partners: partners };
     qCacheSet(cacheKey, tradeData, 2 * 60 * 1000);
 }
@@ -1794,7 +1837,28 @@ function renderTradePartnersSection() {
         // Header row: name + affinity
         h += '<div class="partner-header">';
         h += '<div class="partner-name"' + (NATION_COLORS[p.name] ? ' style="color:' + NATION_COLORS[p.name] + '"' : '') + '>' + escapeHtml(p.name) + '</div>';
-        h += '<div class="partner-affinity">AFF ' + Math.round(p.affinity) + '</div>';
+        var affTipHtml = '';
+        if (p.affinityBreakdown) {
+            var ab = p.affinityBreakdown;
+            affTipHtml += '<div class="aff-tip-title">Trade Affinity</div>';
+            affTipHtml += '<div class="aff-tip-desc">How likely two nations are to trade with each other, based on diplomacy, agreements, and geography.</div>';
+            affTipHtml += '<div class="aff-tip-rows">';
+            affTipHtml += '<div class="aff-tip-row"><span>Base</span><span>+' + ab.base + '</span></div>';
+            affTipHtml += '<div class="aff-tip-row"><span>Diplomatic <span class="aff-tip-detail">(rel ' + ab.relScore + ' × 0.3)</span></span><span>' + (ab.diplomatic >= 0 ? '+' : '') + ab.diplomatic + '</span></div>';
+            if (ab.tradeType) {
+                affTipHtml += '<div class="aff-tip-row"><span>Trade Pact <span class="aff-tip-detail">(' + ab.tradeType + ')</span></span><span>+' + ab.trade + '</span></div>';
+            }
+            affTipHtml += '<div class="aff-tip-row"><span>Proximity <span class="aff-tip-detail">(dist ' + ab.proximityRaw + '/100)</span></span><span>+' + ab.proximity + '</span></div>';
+            if (ab.embargo) {
+                affTipHtml += '<div class="aff-tip-row aff-tip-negative"><span>Embargo</span><span>' + ab.embargo + '</span></div>';
+            }
+            affTipHtml += '</div>';
+            affTipHtml += '<div class="aff-tip-total"><span>Total</span><span>' + Math.round(p.affinity) + ' / 100</span></div>';
+        }
+        h += '<div class="partner-affinity aff-tip-wrap">';
+        h += '<span class="aff-tip-trigger">AFF ' + Math.round(p.affinity) + ' ⓘ</span>';
+        if (affTipHtml) h += '<div class="aff-tooltip">' + affTipHtml + '</div>';
+        h += '</div>';
         h += '</div>';
 
         // Stats row

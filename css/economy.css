@@ -1775,6 +1775,89 @@ body.light-mode .trade-score-bar {
     color: #6b6a5e;
 }
 
+/* Affinity tooltip */
+.aff-tip-wrap {
+    position: relative;
+    cursor: help;
+}
+.aff-tip-trigger {
+    border-bottom: 1px dotted #6b6a5e;
+}
+.aff-tooltip {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 100;
+    width: 260px;
+    padding: 10px 12px;
+    margin-top: 4px;
+    background: #1a1a18;
+    border: 1px solid #3a3a35;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: #c5c4b8;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    pointer-events: none;
+}
+.aff-tip-wrap:hover .aff-tooltip {
+    display: block;
+}
+.aff-tip-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #e8e6d9;
+    margin-bottom: 4px;
+}
+.aff-tip-desc {
+    font-size: 0.58rem;
+    color: #8a8778;
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+.aff-tip-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 6px;
+}
+.aff-tip-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.aff-tip-row span:last-child {
+    color: #4CAF50;
+    font-weight: 600;
+}
+.aff-tip-row.aff-tip-negative span:last-child {
+    color: #f44336;
+}
+.aff-tip-detail {
+    color: #6b6a5e;
+    font-size: 0.55rem;
+}
+.aff-tip-total {
+    display: flex;
+    justify-content: space-between;
+    border-top: 1px solid #3a3a35;
+    padding-top: 6px;
+    font-weight: 700;
+    color: #e8e6d9;
+}
+body.light-mode .aff-tooltip {
+    background: #f5f4f0;
+    border-color: #d5d4c8;
+    color: #3a3a35;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+body.light-mode .aff-tip-title { color: #1a1a18; }
+body.light-mode .aff-tip-desc { color: #6b6a5e; }
+body.light-mode .aff-tip-detail { color: #8a8778; }
+body.light-mode .aff-tip-total { color: #1a1a18; border-color: #d5d4c8; }
+body.light-mode .aff-tip-trigger { border-bottom-color: #8a8778; }
+
 .partner-stats {
     display: flex;
     justify-content: space-between;
