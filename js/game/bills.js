@@ -1346,11 +1346,10 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 if (originalBill) {
                     await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
                     if (originalBill.bill_type === 'budget') {
-                        // Budget veto override: resolve budget effects + clear shutdown
+                        // Budget veto override: resolve budget effects
                         try {
                             await resolveBudgetBill(supabase, originalBill, currentTick);
                             await supabase.from('bills').update({ status: 'passed' }).eq('id', originalBill.id);
-                            // Shutdown will be resolved by resolveGovernmentShutdown in the tick loop
                         } catch (budgetErr) {
                             console.error(`[resolveExpiredVotes] Budget veto override enactment failed for ${originalBill.id}: ${budgetErr.message}`);
                             await markBillEnactmentFailed(supabase, originalBill, currentTick, budgetErr.message);

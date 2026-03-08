@@ -9,7 +9,6 @@ import { RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
 import { IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, loadFactionIdeology } from './ideology.js';
 import { MINISTER_APPROVAL_CONFIG, ISSUE_CATEGORY_STATS, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, STAT_TO_MINISTRY, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, statDirectionSign } from './stats.js';
 import { adjustGovernmentApprovalEvent, adjustMomentum, adjustMomentumAll } from './momentum.js';
-import { GOVERNMENT_SHUTDOWN_CRISIS_ID } from './budget.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { recalcDerivedApproval } from './bills.js';
 import { closeAdministration, dissolveCoalition } from './elections.js';
@@ -70,7 +69,7 @@ export async function buildPolicyDecayAdjustments(supabase, nationId) {
     return adjustments;
 }
 
-export async function processStatDecay(supabase, nation, statInstitutionMap, isShutdown = false, policyDecayAdjustments = null) {
+export async function processStatDecay(supabase, nation, statInstitutionMap, policyDecayAdjustments = null) {
     const appliedDecay = [];
     const nationUpdates = {};
 
@@ -92,16 +91,6 @@ export async function processStatDecay(supabase, nation, statInstitutionMap, isS
                 // Ceiling: lower the target so the stat decays down toward it
                 target = Math.max(0, target - adj.ceiling);
             }
-        }
-
-        // During a government shutdown, institution-covered stats decay toward
-        // worst-case values instead of their normal equilibrium targets.
-        // This ensures the shutdown has a catastrophic, tangible impact on stats
-        // even when they've already settled near their natural equilibrium.
-        if (isShutdown && statInstitutionMap && statInstitutionMap[statKey]) {
-            const sign = statDirectionSign(statKey);
-            if (sign === 1)       target = Math.min(target, 10);  // higher-is-better → tank toward 10
-            else if (sign === -1) target = Math.max(target, 90);  // lower-is-better → spike toward 90
         }
 
         if (currentVal === target) continue;
@@ -4164,10 +4153,9 @@ export async function processMinistryActions(supabase, nation, currentTick) {
  * @param {object} supabase
  * @param {object} nation - full nation row with current stat values
  * @param {number} currentTick
- * @param {boolean} [isShutdown=false]
  * @returns {Array<object>} per-minister results for tick summary
  */
-export async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown = false) {
+export async function updateMinisterApprovals(supabase, nation, currentTick) {
     const cfg = MINISTER_APPROVAL_CONFIG;
 
     const { data: ministries } = await supabase
@@ -4225,11 +4213,6 @@ export async function updateMinisterApprovals(supabase, nation, currentTick, isS
             newApproval += avgDelta * cfg.DELTA_SENSITIVITY;
         }
 
-        // Government shutdown: slam a direct penalty per tick
-        if (isShutdown) {
-            newApproval += cfg.SHUTDOWN_MINISTER_PENALTY;
-        }
-
         newApproval = Math.round(Math.max(0, Math.min(100, newApproval)) * 10) / 10;
 
         await supabase.from('ministries')
@@ -4246,8 +4229,7 @@ export async function updateMinisterApprovals(supabase, nation, currentTick, isS
     }
 
     if (results.length > 0) {
-        const shutdownTag = isShutdown ? ' [SHUTDOWN]' : '';
-        console.log(`[updateMinisterApprovals] ${nation.name}:${shutdownTag} ${results.map(r =>
+        console.log(`[updateMinisterApprovals] ${nation.name}: ${results.map(r =>
             `${r.ministry_key} ${r.old}→${r.new} (avgDelta=${r.avgDelta})`
         ).join(', ')}`);
     }
@@ -4268,10 +4250,9 @@ export async function updateMinisterApprovals(supabase, nation, currentTick, isS
  * @param {object} supabase
  * @param {object} nation - nation row with current stat values
  * @param {number} currentTick
- * @param {boolean} [isShutdown=false]
  * @returns {number|null} the computed government approval (0-100), or null if no government
  */
-export async function calculateGovernmentApprovalTick(supabase, nation, currentTick, isShutdown = false) {
+export async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
     const cfg = MINISTER_APPROVAL_CONFIG;
 
     const { data: ministries } = await supabase
@@ -4301,11 +4282,6 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
     // Composite
     let rawApproval = ministerAvg + vacancyPenalty + eventModifier;
 
-    // Government shutdown: flat penalty
-    if (isShutdown) {
-        rawApproval += cfg.SHUTDOWN_GOV_PENALTY;
-    }
-
     const govApproval = Math.round(Math.max(0, Math.min(100, rawApproval)));
 
     // Store on nation
@@ -4316,7 +4292,7 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
     // Update in-memory nation object
     nation.gov_approval = govApproval;
 
-    console.log(`[GovApproval] ${nation.name}: ${govApproval} (avg=${Math.round(ministerAvg)}, vacancies=${vacantCount}×${cfg.VACANCY_PENALTY}=${vacancyPenalty}, events=${eventModifier}${isShutdown ? ', SHUTDOWN' : ''})`);
+    console.log(`[GovApproval] ${nation.name}: ${govApproval} (avg=${Math.round(ministerAvg)}, vacancies=${vacantCount}×${cfg.VACANCY_PENALTY}=${vacancyPenalty}, events=${eventModifier})`);
 
     return govApproval;
 }
@@ -4645,7 +4621,6 @@ export async function processCrises(supabase, nation, currentTick, budgetItemAll
     // 3. Check inactive crises for activation
     for (const template of crisisTemplates) {
         if (activeMap[template.id]) continue; // already active
-        if (template.id === GOVERNMENT_SHUTDOWN_CRISIS_ID) continue; // managed by dedicated shutdown code
 
         let allTriggersMet = false;
 

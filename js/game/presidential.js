@@ -7,7 +7,7 @@ import { GAME_CONFIG } from './config.js';
 import { isParliamentaryDemocracy, isPresidentialRepublic } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { enactBill, failBill } from './bills.js';
-import { resolveBudgetBill, GOVERNMENT_SHUTDOWN_CRISIS_ID } from './budget.js';
+import { resolveBudgetBill } from './budget.js';
 import { adjustMomentumAll } from './momentum.js';
 import { PM_FIRST_NAMES, PM_LAST_NAMES, PM_TRAIT_KEYS, getWeightedIdeologies, selectPMCandidate, weightedRandomPick, autoAppointPartyLeaderAsPM } from './political-actions.js';
 import { fetchActiveCoalition } from './government-structure.js';
@@ -341,30 +341,6 @@ export async function vetoPresidentialBill(supabase, billId, presidentFactionId)
                 'budget:presidential_veto'
             );
         }
-        // Directly activate government shutdown crisis
-        const { data: existingCrises } = await supabase
-            .from('active_crises')
-            .select('id')
-            .eq('nation_id', bill.nation_id)
-            .eq('crisis_id', GOVERNMENT_SHUTDOWN_CRISIS_ID);
-
-        if (!existingCrises || existingCrises.length === 0) {
-            await supabase.from('active_crises').insert({
-                crisis_id: GOVERNMENT_SHUTDOWN_CRISIS_ID,
-                nation_id: bill.nation_id,
-                started_at_tick: currentTick,
-                effects_applied_log: []
-            });
-            await supabase.from('event_log').insert({
-                nation_id: bill.nation_id,
-                event_name: 'CRISIS_STARTED: Government Shutdown',
-                description_used: 'The President has vetoed the budget. The government has shut down pending a veto override vote.',
-                category: 'crisis',
-                effects_applied: [],
-                fired_at_tick: currentTick
-            });
-        }
-        console.log(`[vetoPresidentialBill] Budget vetoed — government shutdown activated for nation ${bill.nation_id}`);
     }
 
     await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, votesFor: 0, votesAgainst: 0, votesAbstain: 0, billNameOverride: bill.bill_name + ' (VETOED by President)' });

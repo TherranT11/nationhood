@@ -582,16 +582,12 @@ function eventLogToEvent(entry, nationNames, leaderMap) {
   else if (name.includes('SOVEREIGN DEFAULT') || name.includes('SOVEREIGN_DEFAULT')) event_type = 'sovereign_default';
   else if (name.includes('DEFAULT') && name.includes('CONTAGION')) event_type = 'sovereign_default';
   else if (name.includes('DEFAULT') && name.includes('RESOLUTION')) event_type = 'sovereign_default';
-  else if (name.includes('CRISIS_STARTED') && name.includes('SHUTDOWN')) event_type = 'government_shutdown';
-  else if (name.includes('CRISIS_RESOLVED') && name.includes('SHUTDOWN')) event_type = 'crisis_resolved';
   else if (name.includes('CRISIS_STARTED')) event_type = 'crisis_started';
   else if (name.includes('CRISIS_RESOLVED')) event_type = 'crisis_resolved';
   // Revolution events → crisis_ongoing
   else if (name.includes('REVOLUTION_WARNING') || name.includes('REVOLUTION_ESCALATION')) event_type = 'crisis_ongoing';
   else if (name.includes('DEMOCRATIC_REVOLUTION')) event_type = 'crisis_started';
   else if (name.includes('REVOLUTION_AVERTED')) event_type = 'crisis_resolved';
-  // Shutdown without CRISIS_ prefix
-  else if (name.includes('SHUTDOWN')) event_type = 'government_shutdown';
   // Currency / hyperinflation
   else if (name.includes('CURRENCY') && name.includes('COLLAPSE')) event_type = 'currency_collapse';
   else if (name.includes('HYPERINFLATION')) event_type = 'hyperinflation';
