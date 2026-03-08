@@ -1112,12 +1112,12 @@ function renderQuickActions(faction, nation, coalition, govType, isPresidential,
     panel.style.display = '';
     badge.textContent = ap + ' AP remaining';
 
-    // Core actions available to all
+    // Core democracy actions
     const actions = [
-        { name: 'Hold Rally', cost: 3, href: 'parties.html#rally-container' },
-        { name: 'Voter Outreach', cost: 4, href: 'parties.html#outreach-container' },
-        { name: 'Promise', cost: 2, href: 'parties.html#promise-maker-container' },
-        { name: 'Attack', cost: 3, href: 'parties.html#attack-container' },
+        { name: 'Take a Stand', cost: 3, href: 'politics.html?tab=actions' },
+        { name: 'Champion', cost: 3, href: 'politics.html?tab=actions' },
+        { name: 'Campaign', cost: 2, href: 'politics.html?tab=actions' },
+        { name: 'Dig Up Dirt', cost: 1, href: 'politics.html?tab=actions' },
     ];
 
     const isAuto = govType === 'Autocracy';

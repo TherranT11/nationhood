@@ -2713,182 +2713,187 @@ body.light-mode .pol-blocs-box {
     }
 }
 
-/* ════════════════════════ ACTION PANELS ════════════════════════ */
-.pol-actions-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    gap: 16px;
+/* ════════════════════════ NARRATIVE ACTION PANELS ════════════════════════ */
+.narr-wrap { display: flex; gap: 16px; }
+.narr-list { width: 320px; flex-shrink: 0; }
+.narr-item {
+    padding: 12px 16px; margin-bottom: 6px; border-radius: 4px;
+    background: var(--dbg-3); border: 1px solid var(--dborder-0);
+    border-left: 4px solid transparent; cursor: pointer;
+    transition: all 0.15s;
 }
-.pol-action-panel {
-    background: var(--dbg-2);
-    border: 1px solid var(--dborder-0);
-    border-radius: 6px;
-    padding: 16px 18px;
-    min-height: 200px;
+.narr-item:hover { border-color: var(--dborder-2); }
+.narr-item.selected { background: rgba(255,255,255,0.02); }
+.narr-item.disabled { opacity: 0.35; cursor: default; }
+.narr-item-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.narr-item-name { font-family: var(--dfont-ui); font-size: 14px; font-weight: 700; }
+.narr-item-icon { font-family: var(--dfont-mono); font-size: 13px; margin-right: 6px; }
+.narr-item-ap { font-family: var(--dfont-mono); font-size: 11px; font-weight: 700; color: var(--damber); }
+.narr-item-question { font-family: var(--dfont-ui); font-size: 12px; font-weight: 600; font-style: italic; margin-bottom: 4px; }
+.narr-item-desc { font-family: var(--dfont-ui); font-size: 11px; color: var(--dtext-2); line-height: 1.5; }
+.narr-config {
+    flex: 1; background: var(--dbg-3); border: 1px solid var(--dborder-0);
+    border-radius: 4px; padding: 20px 24px;
 }
-.pol-action-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 6px;
+.narr-config-empty {
+    background: var(--dbg-3); border: 1px solid var(--dborder-0);
+    border-radius: 4px; padding: 40px 20px; text-align: center;
 }
-.pol-action-title {
-    font-family: var(--dfont-mono);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--dtext-0);
+.narr-config-empty-text { font-family: var(--dfont-ui); font-size: 14px; color: var(--dtext-3); font-style: italic; }
+.narr-flavor {
+    font-family: var(--dfont-ui); font-size: 12px; color: var(--dtext-2);
+    font-style: italic; line-height: 1.6; margin-bottom: 16px;
+    padding: 10px 14px; border-left: 3px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.01);
 }
-.pol-action-cost {
-    font-family: var(--dfont-mono);
-    font-size: 10px;
-    color: var(--damber);
-    background: var(--damber-faint);
-    border: 1px solid var(--damber-border);
-    border-radius: 3px;
-    padding: 2px 8px;
+.narr-subtitle { font-family: var(--dfont-ui); font-size: 13px; font-weight: 600; color: var(--dtext-0); margin-bottom: 10px; }
+.narr-pill {
+    font-family: var(--dfont-mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.06em; padding: 2px 8px; border-radius: 2px;
+    display: inline-block;
 }
-.pol-action-tagline {
-    font-family: var(--dfont-mono);
-    font-size: 9px;
-    color: var(--dtext-3);
-    margin-bottom: 12px;
+.narr-ap-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.narr-ap-label { font-family: var(--dfont-mono); font-size: 10px; color: var(--dtext-3); letter-spacing: 0.1em; text-transform: uppercase; }
+.narr-ap-pips { display: flex; gap: 3px; margin-top: 4px; }
+.narr-ap-pip { width: 24px; height: 10px; border-radius: 2px; }
+.narr-ap-count { font-family: var(--dfont-mono); font-size: 11px; font-weight: 700; margin-left: 6px; }
+.narr-ap-committed { font-family: var(--dfont-mono); font-size: 9px; color: var(--dtext-3); margin-left: 4px; }
+.narr-ap-cost { font-family: var(--dfont-mono); font-size: 10px; }
+.narr-axis-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 16px; }
+.narr-axis-pair { display: flex; gap: 4px; }
+.narr-axis-btn {
+    flex: 1; padding: 8px 10px; border-radius: 3px; cursor: pointer;
+    text-align: center; background: rgba(255,255,255,0.02);
+    border: 1px solid var(--dborder-0); transition: all 0.15s;
 }
-.pol-action-subtitle {
-    font-family: var(--dfont-mono);
-    font-size: 10px;
-    color: var(--dtext-2);
-    margin: 10px 0 6px;
+.narr-axis-btn:hover { border-color: var(--dborder-2); }
+.narr-axis-btn.selected { border-color: rgba(249,115,22,0.33); background: rgba(249,115,22,0.06); }
+.narr-axis-btn-label { font-family: var(--dfont-ui); font-size: 12px; font-weight: 500; }
+.narr-axis-btn-label.active { font-weight: 700; }
+.narr-axis-btn-fit { font-family: var(--dfont-mono); font-size: 8px; color: var(--dgreen); margin-top: 2px; }
+.narr-strength-row { display: flex; gap: 8px; margin-bottom: 16px; }
+.narr-strength-card {
+    flex: 1; padding: 12px 14px; border-radius: 4px; cursor: pointer;
+    background: rgba(255,255,255,0.02); border: 1px solid var(--dborder-0);
+    border-left: 4px solid transparent; transition: all 0.15s;
 }
-.pol-bloc-select-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 10px;
+.narr-strength-card.selected { background: rgba(255,255,255,0.03); }
+.narr-strength-name { font-family: var(--dfont-ui); font-size: 13px; font-weight: 700; }
+.narr-strength-desc { font-family: var(--dfont-ui); font-size: 11px; color: var(--dtext-2); line-height: 1.5; margin-top: 4px; }
+.narr-strength-maint { font-family: var(--dfont-mono); font-size: 9px; color: var(--dtext-3); margin-top: 6px; }
+.narr-effects-box {
+    padding: 10px 14px; background: rgba(255,255,255,0.02); border-radius: 3px;
+    border-left: 3px solid var(--damber);
 }
-.pol-bloc-select-card {
-    background: var(--dbg-3);
-    border: 1px solid var(--dborder-0);
-    border-radius: 4px;
-    padding: 8px 12px;
-    cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
-    flex: 1 1 140px;
-    min-width: 120px;
+.narr-effects-label { font-family: var(--dfont-ui); font-size: 11px; font-weight: 600; color: var(--dtext-2); margin-bottom: 6px; }
+.narr-effects-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.narr-effect-chip {
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 8px; border-radius: 3px;
 }
-.pol-bloc-select-card:hover {
-    border-color: var(--dborder-2);
-    background: var(--dbg-hover);
+.narr-effect-chip.positive { background: var(--dgreen-faint); border: 1px solid rgba(92,184,92,0.14); }
+.narr-effect-chip.negative { background: var(--dred-faint); border: 1px solid rgba(217,83,79,0.14); }
+.narr-effect-chip-name { font-family: var(--dfont-ui); font-size: 10px; color: var(--dtext-0); }
+.narr-effect-chip-val { font-family: var(--dfont-mono); font-size: 10px; font-weight: 700; }
+.narr-bloc-list { display: flex; flex-direction: column; gap: 6px; }
+.narr-bloc-card {
+    padding: 10px 14px; border-radius: 4px; cursor: pointer;
+    background: rgba(255,255,255,0.015); border: 1px solid var(--dborder-0);
+    border-left: 4px solid transparent; transition: all 0.15s;
 }
-.pol-bloc-select-card.selected {
-    border-color: var(--dtext-0);
-    background: rgba(255,255,255,0.04);
+.narr-bloc-card:hover { border-color: var(--dborder-2); }
+.narr-bloc-card.selected { background: rgba(255,255,255,0.03); }
+.narr-bloc-card.disabled { opacity: 0.35; cursor: default; }
+.narr-bloc-head { display: flex; justify-content: space-between; align-items: center; }
+.narr-bloc-name { font-family: var(--dfont-ui); font-size: 13px; font-weight: 600; color: var(--dtext-0); }
+.narr-bloc-pct { font-family: var(--dfont-mono); font-size: 10px; color: var(--dtext-3); margin-left: 8px; }
+.narr-bloc-detail { font-family: var(--dfont-ui); font-size: 11px; color: var(--dtext-2); line-height: 1.6; margin-top: 8px; }
+.narr-bloc-warn { font-family: var(--dfont-mono); font-size: 10px; margin-top: 6px; }
+.narr-bloc-meta { font-family: var(--dfont-mono); font-size: 9px; margin-top: 4px; }
+.narr-split { display: flex; gap: 16px; }
+.narr-split-half { flex: 1; }
+.narr-overlap-row {
+    padding: 6px 10px; margin-bottom: 3px; border-radius: 3px;
+    display: flex; justify-content: space-between; align-items: center;
+    background: rgba(255,255,255,0.015); border: 1px solid var(--dborder-0);
+    transition: all 0.15s; cursor: pointer;
 }
-.pol-bloc-select-name {
-    font-family: var(--dfont-mono);
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--dtext-0);
-    margin-bottom: 3px;
+.narr-overlap-row:hover { border-color: var(--dborder-2); }
+.narr-overlap-row.selected { background: rgba(91,155,213,0.06); border-color: rgba(91,155,213,0.2); }
+.narr-overlap-row.disabled { opacity: 0.25; cursor: default; }
+.narr-overlap-label { font-family: var(--dfont-ui); font-size: 11px; }
+.narr-overlap-val { font-family: var(--dfont-mono); font-size: 10px; }
+.narr-bridge-info {
+    margin-top: 10px; padding: 10px 12px; border-radius: 3px;
+    background: var(--dblue-faint); border-left: 3px solid var(--dblue);
 }
-.pol-bloc-select-stats {
-    font-family: var(--dfont-mono);
-    font-size: 9px;
-    color: var(--dtext-3);
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
+.narr-bridge-info-text { font-family: var(--dfont-ui); font-size: 11px; color: var(--dtext-2); line-height: 1.5; }
+.narr-dd-card {
+    padding: 10px 14px; border-radius: 4px; cursor: pointer;
+    background: rgba(255,255,255,0.015); border: 1px solid var(--dborder-0);
+    border-left: 4px solid transparent; transition: all 0.15s; margin-bottom: 6px;
 }
-.pol-action-execute {
-    font-family: var(--dfont-mono);
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: var(--dtext-0);
-    background: var(--dbg-4);
-    border: 1px solid var(--dborder-1);
-    border-radius: 4px;
-    padding: 8px 16px;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-    margin-top: 8px;
+.narr-dd-card:hover { border-color: var(--dborder-2); }
+.narr-dd-card.selected { background: rgba(167,139,250,0.03); border-color: rgba(167,139,250,0.2); }
+.narr-dd-card.maxed { opacity: 0.35; cursor: default; }
+.narr-dd-head { display: flex; justify-content: space-between; align-items: center; }
+.narr-dd-name { font-family: var(--dfont-ui); font-size: 13px; font-weight: 600; color: var(--dtext-0); }
+.narr-dd-axis { font-family: var(--dfont-mono); font-size: 10px; color: var(--dtext-3); margin-left: 8px; }
+.narr-dd-pips { display: flex; gap: 3px; }
+.narr-dd-pip { width: 10px; height: 10px; border-radius: 2px; }
+.narr-camp-mode {
+    padding: 10px 14px; border-radius: 4px; cursor: pointer;
+    background: rgba(255,255,255,0.015); border: 1px solid var(--dborder-0);
+    border-left: 4px solid transparent; transition: all 0.15s; margin-bottom: 6px;
 }
-.pol-action-execute:hover:not(:disabled) {
-    background: var(--dbg-hover);
-    border-color: var(--dtext-2);
+.narr-camp-mode:hover { border-color: var(--dborder-2); }
+.narr-camp-mode.selected { background: rgba(255,255,255,0.03); }
+.narr-camp-mode-head { display: flex; align-items: center; gap: 6px; }
+.narr-camp-mode-icon { font-family: var(--dfont-mono); font-size: 13px; }
+.narr-camp-mode-name { font-family: var(--dfont-ui); font-size: 13px; font-weight: 700; }
+.narr-camp-mode-desc { font-family: var(--dfont-ui); font-size: 11px; color: var(--dtext-2); line-height: 1.6; margin-top: 6px; }
+.narr-camp-mode-extra { font-family: var(--dfont-mono); font-size: 10px; margin-top: 4px; }
+.narr-target-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.narr-target-card {
+    padding: 8px 10px; border-radius: 3px; cursor: pointer;
+    background: rgba(255,255,255,0.015); border: 1px solid var(--dborder-0);
+    transition: all 0.15s;
 }
-.pol-action-execute:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+.narr-target-card:hover { border-color: var(--dborder-2); }
+.narr-target-card.selected { background: rgba(255,255,255,0.04); }
+.narr-target-name { font-family: var(--dfont-ui); font-size: 11px; font-weight: 600; color: var(--dtext-0); }
+.narr-target-meta { font-family: var(--dfont-mono); font-size: 9px; color: var(--dtext-2); margin-top: 2px; }
+.narr-rival-card {
+    flex: 1; padding: 10px 14px; border-radius: 4px; cursor: pointer;
+    background: rgba(255,255,255,0.015); border: 1px solid var(--dborder-0);
+    border-left: 3px solid transparent; transition: all 0.15s;
 }
-.pol-action-result {
-    padding: 14px;
-    border-radius: 4px;
-    margin-bottom: 8px;
+.narr-rival-card:hover { border-color: var(--dborder-2); }
+.narr-rival-card.selected { background: rgba(255,255,255,0.04); }
+.narr-rival-name { font-family: var(--dfont-ui); font-size: 13px; font-weight: 600; }
+.narr-intel-choice {
+    flex: 1; padding: 12px 14px; border-radius: 4px; cursor: pointer;
+    background: rgba(255,255,255,0.015); border: 1px solid var(--dborder-0);
+    border-left: 4px solid transparent; transition: all 0.15s;
 }
-.pol-action-result-success { background: var(--dgreen-faint); border: 1px solid var(--dgreen-border); }
-.pol-action-result-fail { background: var(--dred-faint); border: 1px solid var(--dred-border); }
-.pol-action-result-neutral { background: var(--damber-faint); border: 1px solid var(--damber-border); }
-.pol-action-result-title {
-    font-family: var(--dfont-mono);
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--dtext-0);
-    margin-bottom: 4px;
+.narr-intel-choice:hover { border-color: var(--dborder-2); }
+.narr-intel-choice.selected { background: rgba(255,255,255,0.03); }
+.narr-intel-choice-name { font-family: var(--dfont-ui); font-size: 13px; font-weight: 700; }
+.narr-intel-choice-desc { font-family: var(--dfont-ui); font-size: 11px; color: var(--dtext-2); line-height: 1.5; margin-top: 4px; }
+.narr-intel-choice-ap { font-family: var(--dfont-mono); font-size: 10px; color: var(--damber); margin-top: 6px; }
+.narr-confirm-row { display: flex; justify-content: flex-end; margin-top: 20px; }
+.narr-confirm-btn {
+    padding: 10px 28px; border-radius: 4px; border: none; cursor: pointer;
+    font-family: var(--dfont-mono); font-size: 11px; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase; color: var(--dbg-1);
 }
-.pol-action-result-detail {
-    font-family: var(--dfont-ui);
-    font-size: 12px;
-    color: var(--dtext-1);
-    margin-bottom: 6px;
-}
-.pol-action-result-effects {
-    font-family: var(--dfont-mono);
-    font-size: 10px;
-    color: var(--dtext-2);
-    margin-bottom: 8px;
-}
-.pol-action-dismiss {
-    font-family: var(--dfont-mono);
-    font-size: 10px;
-    color: var(--dtext-2);
-    background: var(--dbg-4);
-    border: 1px solid var(--dborder-0);
-    border-radius: 3px;
-    padding: 4px 12px;
-    cursor: pointer;
-}
-.pol-action-cooldown, .pol-action-empty {
-    font-family: var(--dfont-mono);
-    font-size: 10px;
-    color: var(--dtext-3);
-    padding: 12px 0;
-}
-.pol-promise-stats {
-    font-family: var(--dfont-mono);
-    font-size: 10px;
-    color: var(--dtext-2);
-    margin-bottom: 10px;
-}
-.pol-promise-card {
-    background: var(--dbg-3);
-    border: 1px solid var(--dborder-0);
-    border-radius: 4px;
-    padding: 8px 12px;
-    margin-bottom: 6px;
-}
-.pol-promise-text {
-    font-family: var(--dfont-ui);
-    font-size: 12px;
-    color: var(--dtext-1);
-}
-.pol-promise-meta {
-    font-family: var(--dfont-mono);
-    font-size: 9px;
-    color: var(--dtext-3);
-    margin-top: 3px;
+.narr-confirm-btn.disabled { opacity: 0.4; cursor: default; }
+
+@media (max-width: 860px) {
+    .narr-wrap { flex-direction: column; }
+    .narr-list { width: 100%; }
+    .narr-axis-grid { grid-template-columns: 1fr; }
+    .narr-target-grid { grid-template-columns: 1fr; }
 }
 
 /* ════════════════════════ EVENTS TAB ════════════════════════ */
@@ -5992,17 +5997,67 @@ async function renderEventsTab(nationId, factionId, currentTick) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// DEMOCRACY ACTIONS TAB RENDERER
+// DEMOCRACY NARRATIVE ACTIONS TAB
 // ═══════════════════════════════════════════════════════════════════
 
-// State variables for action panels
-let rallySelectedBloc = null, rallyResult = null;
-let outreachSelectedBloc = null, outreachResult = null;
-let attackSelectedTarget = null, attackSelectedVector = null, attackResult = null, attackEvidenceCache = {};
-let pmShowCreator = false, pmPromiseType = null, pmSelectedStat = null, pmSelectedCrisis = null, pmResult = null;
+// Narrative action state
+let _narrSelected = null;
+let _narrPlankDir = null, _narrPlankStr = null;
+let _narrBloc = null, _narrAxis = null;
+let _narrCampMode = null, _narrRival = null;
 
 // Store references for re-rendering
 let _currentNation = null, _currentFaction = null, _currentShard = null, _currentAllParties = null;
+
+// Narrative action definitions
+const NARR_ACTIONS = [
+    { id: 'plank', name: 'Take a Stand', ap: 3, color: '#f97316', icon: '◆',
+      question: 'What does your party believe in?',
+      desc: 'Declare a platform position. Voters who share this belief will warm to you. Voters who oppose it will turn away. Once declared, breaking this promise has severe consequences.',
+      flavor: 'The press conference is scheduled. The podium is ready. What will you tell the country your party stands for?' },
+    { id: 'champion', name: 'Champion a Community', ap: 3, color: '#4ade80', icon: '★',
+      question: 'Who are your people?',
+      desc: 'Publicly commit to a voter bloc. Your governance record with them is amplified — successes earn double credit, but failures hurt twice as much. They\'ll make demands of you.',
+      flavor: 'The party leader will visit their communities, attend their events, and speak to their concerns. Who do you fight for?' },
+    { id: 'bridge', name: 'Build a Bridge', ap: 2, color: '#60a5fa', icon: '⌇',
+      question: 'Can you find common ground?',
+      desc: 'Reach out to a distant voter bloc on a shared value. Temporary alignment boost with a small permanent residual. Three bridges to the same group can convert them.',
+      flavor: 'Politics makes strange bedfellows. Is there a group you disagree with on most things, but share one core value?' },
+    { id: 'doubledown', name: 'Double Down', ap: 2, color: '#a78bfa', icon: '▮',
+      question: 'How deep are your convictions?',
+      desc: 'Harden your stance on an ideological axis. Your loyalists become more resilient to attacks and decay. But pivoting later becomes catastrophically expensive.',
+      flavor: 'Are you a true believer, or a politician of convenience? The deeper you dig in, the harder it is to change course.' },
+    { id: 'campaign', name: 'Hit the Campaign Trail', ap: 2, color: '#facc15', icon: '⚡',
+      question: 'How do you want to fight?',
+      desc: 'Mobilize voters to the polls, shape the national conversation with messaging, or launch an attack on a rival\'s record.',
+      flavor: 'The election is approaching. Your team is ready. Where do you deploy them?' },
+    { id: 'intel', name: 'Dig Up Dirt', ap: 1, color: '#8a8778', icon: '◉',
+      question: 'What don\'t you know?',
+      desc: 'Investigate a voter bloc or rival party. Reveals hidden approval data, enabling more effective campaigns and strategic decisions.',
+      flavor: 'Your intelligence team has resources available. What do you need to know before making your next move?' },
+];
+
+const NARR_AXES = [
+    { left: 'Globalism', right: 'Nationalism', key: 'globalism_nationalism' },
+    { left: 'Individualism', right: 'Collectivism', key: 'individualism_collectivism' },
+    { left: 'Progress', right: 'Tradition', key: 'tradition_progress' },
+    { left: 'Security', right: 'Freedom', key: 'security_freedom' },
+    { left: 'Liberty', right: 'Equality', key: 'liberty_equality' },
+];
+
+const NARR_TIER_META = {
+    BASE: { label: 'BASE', color: '#4ade80', bg: 'rgba(74,222,128,0.08)' },
+    LEAN: { label: 'LEAN', color: '#22d3ee', bg: 'rgba(34,211,238,0.08)' },
+    SWING: { label: 'SWING', color: '#facc15', bg: 'rgba(250,204,21,0.08)' },
+    SKEPTICAL: { label: 'SKEPTICAL', color: '#f97316', bg: 'rgba(249,115,22,0.08)' },
+    HOSTILE: { label: 'HOSTILE', color: '#ef4444', bg: 'rgba(239,68,68,0.08)' },
+};
+
+function narrReset() {
+    _narrPlankDir = null; _narrPlankStr = null;
+    _narrBloc = null; _narrAxis = null;
+    _narrCampMode = null; _narrRival = null;
+}
 
 async function renderDemocracyActions(nation, faction, shard, allParties) {
     _currentNation = nation;
@@ -6018,18 +6073,19 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
 
     // Refresh faction AP
     const { data: freshF } = await _supabase.from('factions')
-        .select('action_points, party_funds, embezzled_funds').eq('id', f.id).single();
+        .select('action_points, party_funds').eq('id', f.id).single();
     if (freshF) {
         f.action_points = freshF.action_points;
         f.party_funds = freshF.party_funds;
     }
     const ap = f.action_points ?? 0;
+    const totalAp = GAME_CONFIG?.MAX_AP || 5;
 
-    // Fetch voter blocs for Rally/Outreach
+    // Fetch voter blocs
     const { data: voterBlocs } = await _supabase
         .from('voter_blocs').select('*').eq('nation_id', n.id).eq('is_active', true);
 
-    // Fetch bloc approvals for this faction
+    // Fetch bloc approvals
     const { data: blocApprovals } = await _supabase
         .from('faction_bloc_approval')
         .select('bloc_id, preference_score, momentum, ideology_alignment')
@@ -6037,442 +6093,444 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     const approvalByBloc = {};
     for (const ba of (blocApprovals || [])) approvalByBloc[ba.bloc_id] = ba;
 
-    // Fetch faction ideology for outreach alignment
+    // Fetch faction ideology
     const { data: factionIdeo } = await _supabase
         .from('faction_ideology')
         .select('*').eq('faction_id', f.id).single();
 
-    // Fetch recent campaign actions (cooldowns)
-    const { data: recentActions } = await _supabase
-        .from('campaign_actions')
-        .select('action_type, tick_performed, result')
-        .eq('party_id', f.id)
-        .eq('nation_id', n.id)
-        .gte('tick_performed', tick - 10)
-        .order('tick_performed', { ascending: false });
-
-    // Fetch other parties for Attack
+    // Fetch other parties
     const otherParties = (allParties || []).filter(p => p.id !== f.id);
 
-    // Fetch active promises
-    const { data: activePromises } = await _supabase
-        .from('faction_promises')
-        .select('*')
-        .eq('faction_id', f.id)
-        .in('status', ['active', 'kept', 'broken']);
+    // Compute party ideology as 0-100 scale per axis for UI
+    const partyIdeo = {};
+    if (factionIdeo) {
+        partyIdeo.globalism_nationalism = 50 + (factionIdeo.globalism_nationalism || 0);
+        partyIdeo.individualism_collectivism = 50 + (factionIdeo.individualism_collectivism || 0);
+        partyIdeo.tradition_progress = 50 + (factionIdeo.tradition_progress || 0);
+        partyIdeo.security_freedom = 50 + (factionIdeo.security_freedom || 0);
+        partyIdeo.liberty_equality = 50 + (factionIdeo.liberty_equality || 0);
+    }
 
-    // Cooldown checks
-    const lastRallyTick = (recentActions || []).find(a => a.action_type === 'rally')?.tick_performed || -999;
-    const rallyCooldown = tick - lastRallyTick < RALLY_CONFIG.COOLDOWN_WINDOW;
-    const lastAttackTick = (recentActions || []).find(a => a.action_type === 'attack')?.tick_performed || -999;
-    const attackCooldown = tick - lastAttackTick < ATTACK_CONFIG.COOLDOWN_WINDOW;
-    const recentAttackCount = (recentActions || []).filter(a => a.action_type === 'attack').length;
-    const credibility = computeAttackCredibility(recentAttackCount);
+    // Compute committed AP (maintenance costs from existing commitments — placeholder)
+    const committedAp = Math.max(0, totalAp - ap);
 
-    // Build the actions HTML
-    container.innerHTML = `
-        <div class="pol-actions-grid">
-            <div class="pol-action-panel" id="action-outreach">
-                <div class="pol-action-header">
-                    <span class="pol-action-title">VOTER OUTREACH</span>
-                    <span class="pol-action-cost">${OUTREACH_CONFIG.AP_COST} AP</span>
-                </div>
-                <div class="pol-action-tagline">Guaranteed result · No random outcomes · No polarization</div>
-                <div id="outreach-panel-content"></div>
-            </div>
-            <div class="pol-action-panel" id="action-rally">
-                <div class="pol-action-header">
-                    <span class="pol-action-title">HOLD A RALLY</span>
-                    <span class="pol-action-cost">${RALLY_CONFIG.AP_COST} AP</span>
-                </div>
-                <div class="pol-action-tagline">Random outcomes · Risk vs reward · May increase polarization</div>
-                <div id="rally-panel-content"></div>
-            </div>
-            <div class="pol-action-panel" id="action-attack">
-                <div class="pol-action-header">
-                    <span class="pol-action-title">ATTACK THE OPPOSITION</span>
-                    <span class="pol-action-cost">${ATTACK_CONFIG.AP_COST} AP</span>
-                </div>
-                <div class="pol-action-tagline">Target another party · Evidence-based · Polarization +0.4</div>
-                <div id="attack-panel-content"></div>
-            </div>
-            <div class="pol-action-panel" id="action-promise">
-                <div class="pol-action-header">
-                    <span class="pol-action-title">MAKE PROMISE</span>
-                    <span class="pol-action-cost">${MAKE_PROMISE_CONFIG.AP_COST} AP</span>
-                </div>
-                <div class="pol-action-tagline">Promise improvements · Tracked over time · Kept or broken</div>
-                <div id="promise-panel-content"></div>
-            </div>
-        </div>
-    `;
+    // Determine bloc tiers from approval data
+    const blocs = (voterBlocs || []).map(b => {
+        const ba = approvalByBloc[b.id];
+        const pref = ba?.preference_score ?? 50;
+        let tier = 'SWING';
+        if (pref >= 65) tier = 'BASE';
+        else if (pref >= 55) tier = 'LEAN';
+        else if (pref < 35) tier = 'HOSTILE';
+        else if (pref < 45) tier = 'SKEPTICAL';
+        return { ...b, tier, approval: Math.round(pref), turnout: b.turnout_rate ?? 50, ideology: b };
+    });
 
-    // Render each sub-panel
-    renderOutreachPanel(f, n, tick, voterBlocs, approvalByBloc, factionIdeo, recentActions);
-    renderRallyPanel(f, n, tick, voterBlocs, approvalByBloc, rallyCooldown, recentActions);
-    renderAttackPanel(f, n, tick, otherParties, attackCooldown, credibility, recentAttackCount);
-    renderPromisePanel(f, n, tick, activePromises, recentActions);
+    renderNarrativeUI(container, f, n, ap, totalAp, committedAp, blocs, otherParties, partyIdeo, approvalByBloc, tick);
 }
 
-function renderOutreachPanel(f, n, tick, blocs, approvalByBloc, factionIdeo, recentActions) {
-    const container = document.getElementById('outreach-panel-content');
-    if (!container) return;
-    const ap = f.action_points ?? 0;
-    const recentOutreach = (recentActions || []).filter(a => a.action_type === 'outreach');
+function renderNarrativeUI(container, f, n, ap, totalAp, committedAp, blocs, otherParties, partyIdeo, approvalByBloc, tick) {
+    const sel = NARR_ACTIONS.find(a => a.id === _narrSelected);
+    const canAfford = sel ? ap >= (sel.id === 'campaign' && _narrCampMode === 'contrast' ? 3 : sel.ap) : false;
 
-    if (outreachResult) {
-        const r = outreachResult;
-        container.innerHTML = `
-            <div class="pol-action-result pol-action-result-success">
-                <div class="pol-action-result-title">Outreach Complete</div>
-                <div class="pol-action-result-detail">${escapeHtml(r.blocName || '')}: ${r.effects?.map(e => `${escapeHtml(e.label)} ${e.value > 0 ? '+' : ''}${e.value}`).join(', ') || 'Done'}</div>
-                <button class="pol-action-dismiss" id="outreach-dismiss-btn">OK</button>
-            </div>`;
-        document.getElementById('outreach-dismiss-btn')?.addEventListener('click', () => {
-            outreachResult = null; outreachSelectedBloc = null;
-            renderOutreachPanel(f, n, tick, blocs, approvalByBloc, factionIdeo, recentActions);
-        });
-        return;
+    // AP bar
+    let apHtml = `<div class="narr-ap-bar"><div>
+        <span class="narr-ap-label">Political Capital</span>
+        <div class="narr-ap-pips">`;
+    for (let i = 0; i < totalAp; i++) {
+        let bg;
+        if (i < committedAp) bg = 'rgba(239,68,68,0.27)';
+        else if (i < committedAp + ap) bg = '#f97316';
+        else bg = 'rgba(255,255,255,0.04)';
+        apHtml += `<div class="narr-ap-pip" style="background:${bg}"></div>`;
     }
-
-    if (!blocs || blocs.length === 0) {
-        container.innerHTML = '<div class="pol-action-empty">No voter blocs available.</div>';
-        return;
+    const apColor = ap <= 1 ? '#ef4444' : '#f97316';
+    apHtml += `<span class="narr-ap-count" style="color:${apColor}">${ap} available</span>`;
+    apHtml += `<span class="narr-ap-committed">(${committedAp} committed)</span>`;
+    apHtml += `</div></div>`;
+    if (sel) {
+        const costColor = canAfford ? '#4ade80' : '#ef4444';
+        const costAmt = sel.id === 'campaign' && _narrCampMode === 'contrast' ? 3 : sel.ap;
+        apHtml += `<div class="narr-ap-cost" style="color:${costColor}">${escapeHtml(sel.name)}: ${costAmt} AP ${canAfford ? '✓' : '— can\'t afford'}</div>`;
     }
+    apHtml += `</div>`;
 
-    const blocCards = (blocs || []).map(b => {
-        const ba = approvalByBloc[b.id];
-        const approval = Math.round(ba?.preference_score ?? 50);
-        const recentToBloc = recentOutreach.filter(a => a.result?.blocId === b.id).length;
-        const alignment = factionIdeo ? computeOutreachAlignment(factionIdeo, b) : 50;
-        const effect = calcOutreachEffect(alignment, recentToBloc);
-        const selected = outreachSelectedBloc === b.id;
-        return `<div class="pol-bloc-select-card${selected ? ' selected' : ''}" data-bloc-id="${b.id}">
-            <div class="pol-bloc-select-name">${escapeHtml(b.bloc_name)}</div>
-            <div class="pol-bloc-select-stats">
-                <span>Approval: ${approval}</span>
-                <span>Alignment: ${alignment}</span>
-                <span>Effect: +${effect}</span>
-                ${recentToBloc > 0 ? `<span style="color:var(--damber)">×${recentToBloc} recent</span>` : ''}
+    // Action list (left)
+    let listHtml = '';
+    for (const act of NARR_ACTIONS) {
+        const isSel = _narrSelected === act.id;
+        const ok = ap >= act.ap;
+        const borderColor = isSel ? act.color : ok ? act.color + '55' : 'var(--dtext-3)';
+        const bgStyle = isSel ? `background:${act.color}08;` : '';
+        const borderStyle = isSel ? `border-color:${act.color}33;` : '';
+        const nameColor = isSel ? act.color : 'var(--dtext-0)';
+        listHtml += `<div class="narr-item${isSel ? ' selected' : ''}${!ok ? ' disabled' : ''}" data-action-id="${act.id}" style="border-left-color:${borderColor};${bgStyle}${borderStyle}${!ok ? 'opacity:0.35;' : ''}">
+            <div class="narr-item-head">
+                <div style="display:flex;align-items:center;gap:6px">
+                    <span class="narr-item-icon" style="color:${act.color}">${act.icon}</span>
+                    <span class="narr-item-name" style="color:${nameColor}">${escapeHtml(act.name)}</span>
+                </div>
+                <span class="narr-item-ap">${act.ap} AP</span>
             </div>
+            <div class="narr-item-question" style="color:${act.color}">"${escapeHtml(act.question)}"</div>
+            ${isSel ? `<div class="narr-item-desc">${escapeHtml(act.desc)}</div>` : ''}
         </div>`;
-    }).join('');
+    }
 
-    container.innerHTML = `
-        <div class="pol-bloc-select-grid">${blocCards}</div>
-        ${outreachSelectedBloc ? `<button class="pol-action-execute" id="outreach-execute-btn" ${ap < OUTREACH_CONFIG.AP_COST ? 'disabled' : ''}>Conduct Outreach — ${OUTREACH_CONFIG.AP_COST} AP</button>` : ''}
-    `;
+    // Config panel (right)
+    let configHtml = '';
+    if (!sel) {
+        configHtml = `<div class="narr-config-empty"><div class="narr-config-empty-text">Choose an action to shape your party's future</div></div>`;
+    } else {
+        configHtml = `<div class="narr-config" style="border-color:${sel.color}22">`;
+        configHtml += `<div class="narr-flavor" style="border-left-color:${sel.color}33;background:${sel.color}05">${escapeHtml(sel.flavor)}</div>`;
+        configHtml += renderNarrConfigBody(sel, blocs, otherParties, partyIdeo, approvalByBloc, ap);
+        // Confirm button
+        const costAmt = sel.id === 'campaign' && _narrCampMode === 'contrast' ? 3 : sel.ap;
+        configHtml += `<div class="narr-confirm-row"><div class="narr-confirm-btn${canAfford ? '' : ' disabled'}" style="background:${canAfford ? sel.color : 'var(--dtext-3)'}" id="narr-confirm-btn">Confirm — ${costAmt} AP</div></div>`;
+        configHtml += `</div>`;
+    }
 
-    // Wire up bloc selection
-    container.querySelectorAll('.pol-bloc-select-card').forEach(card => {
-        card.addEventListener('click', () => {
-            outreachSelectedBloc = card.dataset.blocId;
-            renderOutreachPanel(f, n, tick, blocs, approvalByBloc, factionIdeo, recentActions);
+    container.innerHTML = `${apHtml}<div class="narr-wrap"><div class="narr-list">${listHtml}</div><div style="flex:1">${configHtml}</div></div>`;
+
+    // Wire up action selection
+    container.querySelectorAll('.narr-item').forEach(el => {
+        el.addEventListener('click', () => {
+            const id = el.dataset.actionId;
+            const act = NARR_ACTIONS.find(a => a.id === id);
+            if (act && ap < act.ap) return;
+            _narrSelected = _narrSelected === id ? null : id;
+            narrReset();
+            renderNarrativeUI(container, f, n, ap, totalAp, committedAp, blocs, otherParties, partyIdeo, approvalByBloc, tick);
         });
     });
 
-    // Wire up execute
-    const execBtn = document.getElementById('outreach-execute-btn');
-    if (execBtn) {
-        execBtn.addEventListener('click', async () => {
-            execBtn.disabled = true;
-            execBtn.textContent = 'Executing...';
-            const result = await executeOutreach(_supabase, f.id, n.id, outreachSelectedBloc, tick);
-            if (result.success) {
-                outreachResult = result;
-                f.action_points = result.newAp;
-                // Log as political event
-                renderOutreachPanel(f, n, tick, blocs, approvalByBloc, factionIdeo, recentActions);
-                await renderEventsTab(n.id, f.id, tick);
-            } else {
-                alert(result.error);
-                execBtn.disabled = false;
-                execBtn.textContent = `Conduct Outreach — ${OUTREACH_CONFIG.AP_COST} AP`;
-            }
-        });
-    }
+    // Wire up config panel interactions
+    wireNarrConfig(container, f, n, ap, totalAp, committedAp, blocs, otherParties, partyIdeo, approvalByBloc, tick);
 }
 
-function renderRallyPanel(f, n, tick, blocs, approvalByBloc, cooldown, recentActions) {
-    const container = document.getElementById('rally-panel-content');
-    if (!container) return;
-    const ap = f.action_points ?? 0;
-
-    if (rallyResult) {
-        const r = rallyResult;
-        container.innerHTML = `
-            <div class="pol-action-result ${r.outcomeId === 'rousing' || r.outcomeId === 'solid' ? 'pol-action-result-success' : r.outcomeId === 'gaffe' || r.outcomeId === 'counter_protest' ? 'pol-action-result-fail' : 'pol-action-result-neutral'}">
-                <div class="pol-action-result-title">${escapeHtml(r.outcomeName || 'Rally Result')}</div>
-                <div class="pol-action-result-detail">${escapeHtml(r.headline || '')}</div>
-                <div class="pol-action-result-effects">${(r.effects || []).map(e => `<span>${escapeHtml(e.label)}: ${e.value > 0 ? '+' : ''}${e.value}</span>`).join(' · ')}</div>
-                <button class="pol-action-dismiss" id="rally-dismiss-btn">OK</button>
-            </div>`;
-        document.getElementById('rally-dismiss-btn')?.addEventListener('click', () => {
-            rallyResult = null; rallySelectedBloc = null;
-            renderRallyPanel(f, n, tick, blocs, approvalByBloc, cooldown, recentActions);
-        });
-        return;
-    }
-
-    if (cooldown) {
-        container.innerHTML = '<div class="pol-action-cooldown">Rally on cooldown. Wait for next tick window.</div>';
-        return;
-    }
-
-    if (!blocs || blocs.length === 0) {
-        container.innerHTML = '<div class="pol-action-empty">No voter blocs available.</div>';
-        return;
-    }
-
-    const blocCards = (blocs || []).map(b => {
-        const ba = approvalByBloc[b.id];
-        const approval = Math.round(ba?.preference_score ?? 50);
-        const selected = rallySelectedBloc === b.id;
-        return `<div class="pol-bloc-select-card${selected ? ' selected' : ''}" data-bloc-id="${b.id}">
-            <div class="pol-bloc-select-name">${escapeHtml(b.bloc_name)}</div>
-            <div class="pol-bloc-select-stats"><span>Approval: ${approval}</span></div>
-        </div>`;
-    }).join('');
-
-    container.innerHTML = `
-        <div class="pol-bloc-select-grid">${blocCards}</div>
-        ${rallySelectedBloc ? `<button class="pol-action-execute" id="rally-execute-btn" ${ap < RALLY_CONFIG.AP_COST ? 'disabled' : ''}>Hold Rally — ${RALLY_CONFIG.AP_COST} AP</button>` : ''}
-    `;
-
-    container.querySelectorAll('.pol-bloc-select-card').forEach(card => {
-        card.addEventListener('click', () => {
-            rallySelectedBloc = card.dataset.blocId;
-            renderRallyPanel(f, n, tick, blocs, approvalByBloc, cooldown, recentActions);
-        });
-    });
-
-    const execBtn = document.getElementById('rally-execute-btn');
-    if (execBtn) {
-        execBtn.addEventListener('click', async () => {
-            execBtn.disabled = true;
-            execBtn.textContent = 'Executing...';
-            const result = await executeRally(_supabase, f.id, n.id, rallySelectedBloc, tick);
-            if (result.success) {
-                rallyResult = result;
-                f.action_points = result.newAp;
-                renderRallyPanel(f, n, tick, blocs, approvalByBloc, cooldown, recentActions);
-                await renderEventsTab(n.id, f.id, tick);
-            } else {
-                alert(result.error);
-                execBtn.disabled = false;
-                execBtn.textContent = `Hold Rally — ${RALLY_CONFIG.AP_COST} AP`;
-            }
-        });
-    }
+function renderNarrConfigBody(sel, blocs, otherParties, partyIdeo, approvalByBloc, ap) {
+    if (sel.id === 'plank') return renderPlankConfig(blocs, partyIdeo);
+    if (sel.id === 'champion') return renderChampionConfig(blocs);
+    if (sel.id === 'bridge') return renderBridgeConfig(blocs, partyIdeo);
+    if (sel.id === 'doubledown') return renderDoubleDownConfig(partyIdeo);
+    if (sel.id === 'campaign') return renderCampaignConfig(blocs, otherParties);
+    if (sel.id === 'intel') return renderIntelConfig(blocs, otherParties);
+    return '';
 }
 
-async function renderAttackPanel(f, n, tick, otherParties, cooldown, credibility, recentAttackCount) {
-    const container = document.getElementById('attack-panel-content');
-    if (!container) return;
-    const ap = f.action_points ?? 0;
-
-    if (attackResult) {
-        const r = attackResult;
-        container.innerHTML = `
-            <div class="pol-action-result ${r.outcomeId === 'devastating' || r.outcomeId === 'effective' ? 'pol-action-result-success' : r.outcomeId === 'backfire' ? 'pol-action-result-fail' : 'pol-action-result-neutral'}">
-                <div class="pol-action-result-title">${escapeHtml(r.outcomeName || 'Attack Result')}</div>
-                <div class="pol-action-result-detail">${escapeHtml(r.headline || '')}</div>
-                <div class="pol-action-result-effects">${(r.effects || []).map(e => `<span>${escapeHtml(e.label)}: ${e.value > 0 ? '+' : ''}${e.value}</span>`).join(' · ')}</div>
-                <button class="pol-action-dismiss" id="attack-dismiss-btn">OK</button>
+// ── Take a Stand ──
+function renderPlankConfig(blocs, partyIdeo) {
+    let html = `<div class="narr-subtitle">What do you believe in?</div><div class="narr-axis-grid">`;
+    for (const ax of NARR_AXES) {
+        html += `<div class="narr-axis-pair">`;
+        for (const dir of [ax.left, ax.right]) {
+            const isSel = _narrPlankDir === dir;
+            const isLeft = dir === ax.left;
+            const val = partyIdeo[ax.key] ?? 50;
+            const aligned = isLeft ? val < 40 : val > 60;
+            html += `<div class="narr-axis-btn${isSel ? ' selected' : ''}" data-plank-dir="${dir}" data-plank-axis="${ax.key}">
+                <div class="narr-axis-btn-label${isSel ? ' active' : ''}" style="${isSel ? 'color:#f97316;font-weight:700' : aligned ? '' : 'color:var(--dtext-3)'}">${escapeHtml(dir)}</div>
+                ${aligned ? '<div class="narr-axis-btn-fit">natural fit</div>' : ''}
             </div>`;
-        document.getElementById('attack-dismiss-btn')?.addEventListener('click', () => {
-            attackResult = null; attackSelectedTarget = null; attackSelectedVector = null;
-            renderAttackPanel(f, n, tick, otherParties, cooldown, credibility, recentAttackCount);
-        });
-        return;
+        }
+        html += `</div>`;
+    }
+    html += `</div>`;
+
+    if (_narrPlankDir) {
+        html += `<div class="narr-subtitle">How strongly do you commit?</div><div class="narr-strength-row">`;
+        const strengths = [
+            { k: 'strong', label: 'Full Commitment', desc: 'Major alignment shift. Constrains your governance — breaking this promise has severe consequences.', color: '#f97316' },
+            { k: 'moderate', label: 'Soft Endorsement', desc: 'Modest alignment shift. Flexible — you can walk it back later with minor fallout.', color: '#facc15' },
+        ];
+        for (const s of strengths) {
+            const isSel = _narrPlankStr === s.k;
+            html += `<div class="narr-strength-card${isSel ? ' selected' : ''}" data-plank-str="${s.k}" style="${isSel ? `border-left-color:${s.color};border-color:${s.color}44;background:${s.color}10` : ''}">
+                <div class="narr-strength-name" style="color:${isSel ? s.color : 'var(--dtext-0)'}">${s.label}</div>
+                <div class="narr-strength-desc">${s.desc}</div>
+                <div class="narr-strength-maint">1 AP/tick maintenance</div>
+            </div>`;
+        }
+        html += `</div>`;
     }
 
-    if (cooldown) {
-        container.innerHTML = '<div class="pol-action-cooldown">Attack on cooldown.</div>';
-        return;
-    }
-
-    if (otherParties.length === 0) {
-        container.innerHTML = '<div class="pol-action-empty">No targets available.</div>';
-        return;
-    }
-
-    // Target selection
-    const targetCards = otherParties.map(p => {
-        const selected = attackSelectedTarget === p.id;
-        return `<div class="pol-bloc-select-card${selected ? ' selected' : ''}" data-target-id="${p.id}" style="border-left:3px solid ${p.party_color || '#888'}">
-            <div class="pol-bloc-select-name">${escapeHtml(p.faction_name)}</div>
-            <div class="pol-bloc-select-stats"><span>Seats: ${p.seats || 0}</span></div>
-        </div>`;
-    }).join('');
-
-    let vectorHtml = '';
-    if (attackSelectedTarget && attackEvidenceCache[attackSelectedTarget]) {
-        const vectors = attackEvidenceCache[attackSelectedTarget];
-        if (vectors.length > 0) {
-            vectorHtml = `<div class="pol-action-subtitle">Select Attack Vector:</div><div class="pol-bloc-select-grid">${vectors.map(v => {
-                const selected = attackSelectedVector === v.id;
-                return `<div class="pol-bloc-select-card${selected ? ' selected' : ''}" data-vector-id="${v.id}">
-                    <div class="pol-bloc-select-name">${escapeHtml(v.name)}</div>
-                    <div class="pol-bloc-select-stats"><span>Strength: ${v.strength}</span></div>
+    if (_narrPlankDir && _narrPlankStr) {
+        // Show affected blocs
+        const ax = NARR_AXES.find(a => a.left === _narrPlankDir || a.right === _narrPlankDir);
+        if (ax) {
+            const end = ax.left === _narrPlankDir ? 'left' : 'right';
+            const target = _narrPlankStr === 'strong' ? (end === 'left' ? 15 : 85) : (end === 'left' ? 35 : 65);
+            html += `<div class="narr-effects-box"><div class="narr-effects-label">Who this helps and hurts:</div><div class="narr-effects-list">`;
+            for (const b of blocs) {
+                // Use bloc ideology alignment on this axis (simplified)
+                const blocVal = 50; // Placeholder — real computation uses bloc ideology
+                const d = Math.abs(target - blocVal);
+                const th = _narrPlankStr === 'strong' ? 20 : 30;
+                let effect = null;
+                if (d <= th) effect = _narrPlankStr === 'strong' ? '+5' : '+2';
+                else if (_narrPlankStr === 'strong' && d > 50) effect = '-3';
+                if (!effect) continue;
+                const pos = effect.startsWith('+');
+                html += `<div class="narr-effect-chip ${pos ? 'positive' : 'negative'}">
+                    <span class="narr-effect-chip-name">${escapeHtml(b.bloc_name)}</span>
+                    <span class="narr-effect-chip-val" style="color:${pos ? '#4ade80' : '#ef4444'}">${effect}</span>
                 </div>`;
-            }).join('')}</div>`;
-        } else {
-            vectorHtml = '<div class="pol-action-empty">No evidence found. Only General Smear available.</div>';
+            }
+            html += `</div></div>`;
         }
     }
-
-    container.innerHTML = `
-        <div class="pol-action-subtitle">Credibility: ${credibility}%</div>
-        <div class="pol-bloc-select-grid">${targetCards}</div>
-        ${vectorHtml}
-        ${attackSelectedTarget && attackSelectedVector ? `<button class="pol-action-execute" id="attack-execute-btn" ${ap < ATTACK_CONFIG.AP_COST ? 'disabled' : ''}>Launch Attack — ${ATTACK_CONFIG.AP_COST} AP</button>` : ''}
-    `;
-
-    // Wire up target selection
-    container.querySelectorAll('[data-target-id]').forEach(card => {
-        card.addEventListener('click', async () => {
-            const tid = card.dataset.targetId;
-            attackSelectedTarget = tid;
-            attackSelectedVector = null;
-            // Load evidence
-            if (!attackEvidenceCache[tid]) {
-                const evidence = await gatherAttackEvidence(_supabase, tid, n.id, tick);
-                const vectors = buildAttackVectors(evidence);
-                // Always add General Smear
-                if (!vectors.find(v => v.id === 'general_smear')) {
-                    vectors.push({ id: 'general_smear', name: 'General Smear', strength: 'weak', icon: '●' });
-                }
-                attackEvidenceCache[tid] = vectors;
-            }
-            renderAttackPanel(f, n, tick, otherParties, cooldown, credibility, recentAttackCount);
-        });
-    });
-
-    // Wire up vector selection
-    container.querySelectorAll('[data-vector-id]').forEach(card => {
-        card.addEventListener('click', () => {
-            attackSelectedVector = card.dataset.vectorId;
-            renderAttackPanel(f, n, tick, otherParties, cooldown, credibility, recentAttackCount);
-        });
-    });
-
-    // Wire up execute
-    const execBtn = document.getElementById('attack-execute-btn');
-    if (execBtn) {
-        execBtn.addEventListener('click', async () => {
-            execBtn.disabled = true;
-            execBtn.textContent = 'Executing...';
-            const result = await executeAttack(_supabase, f.id, n.id, attackSelectedTarget, attackSelectedVector, tick);
-            if (result.success) {
-                attackResult = result;
-                f.action_points = result.newAp;
-                renderAttackPanel(f, n, tick, otherParties, cooldown, credibility, recentAttackCount);
-                await renderEventsTab(n.id, f.id, tick);
-            } else {
-                alert(result.error);
-                execBtn.disabled = false;
-                execBtn.textContent = `Launch Attack — ${ATTACK_CONFIG.AP_COST} AP`;
-            }
-        });
-    }
+    return html;
 }
 
-function renderPromisePanel(f, n, tick, activePromises, recentActions) {
-    const container = document.getElementById('promise-panel-content');
-    if (!container) return;
-    const ap = f.action_points ?? 0;
-
-    if (pmResult) {
-        const r = pmResult;
-        container.innerHTML = `
-            <div class="pol-action-result pol-action-result-success">
-                <div class="pol-action-result-title">Promise Made</div>
-                <div class="pol-action-result-detail">${escapeHtml(r.headline || r.demandText || 'Promise created')}</div>
-                <button class="pol-action-dismiss" id="promise-dismiss-btn">OK</button>
-            </div>`;
-        document.getElementById('promise-dismiss-btn')?.addEventListener('click', () => {
-            pmResult = null; pmShowCreator = false; pmPromiseType = null; pmSelectedStat = null; pmSelectedCrisis = null;
-            renderPromisePanel(f, n, tick, activePromises, recentActions);
-        });
-        return;
-    }
-
-    const activeCount = (activePromises || []).filter(p => p.status === 'active').length;
-    const keptCount = (activePromises || []).filter(p => p.status === 'kept').length;
-    const brokenCount = (activePromises || []).filter(p => p.status === 'broken').length;
-    const promisedThisTick = (recentActions || []).some(a => a.action_type === 'make_promise' && a.tick_performed === tick);
-    const atLimit = activeCount >= 5;
-
-    // Get promiseable stats
-    const stats = getPromiseableStats(n);
-
-    // Active promises list
-    const promiseList = (activePromises || []).filter(p => p.status === 'active').map(p => {
-        const ticksLeft = (p.deadline_tick || 0) - tick;
-        return `<div class="pol-promise-card">
-            <div class="pol-promise-text">${escapeHtml(p.demand_text || 'Promise')}</div>
-            <div class="pol-promise-meta">${ticksLeft > 0 ? `${ticksLeft} ticks left` : 'Expired'}</div>
+// ── Champion a Community ──
+function renderChampionConfig(blocs) {
+    const eligible = blocs.filter(b => b.tier !== 'HOSTILE' && b.tier !== 'SKEPTICAL');
+    let html = `<div class="narr-subtitle">Who will you fight for?</div><div class="narr-bloc-list">`;
+    for (const b of eligible) {
+        const t = NARR_TIER_META[b.tier] || NARR_TIER_META.SWING;
+        const isSel = _narrBloc === b.id;
+        const electPct = b.population_weight ? Math.round(b.population_weight * 100) : '?';
+        html += `<div class="narr-bloc-card${isSel ? ' selected' : ''}" data-bloc-id="${b.id}" style="border-left-color:${isSel ? '#4ade80' : t.color};${isSel ? 'border-color:rgba(74,222,128,0.2);background:rgba(74,222,128,0.03)' : ''}">
+            <div class="narr-bloc-head">
+                <div>
+                    <span class="narr-bloc-name">${escapeHtml(b.bloc_name)}</span>
+                    <span class="narr-bloc-pct">${electPct}% of electorate</span>
+                </div>
+                <span class="narr-pill" style="color:${t.color};background:${t.bg};border:1px solid ${t.color}33">${t.label}</span>
+            </div>
+            ${isSel ? `<div class="narr-bloc-detail">Your governance record with them is amplified 2×. When you deliver on their issues, they'll reward you. When you fail, they'll punish you.
+                <div class="narr-bloc-warn" style="color:#f97316">They will make demands every 3-5 ticks. 30% of demands will conflict with your other commitments.</div>
+            </div>` : ''}
         </div>`;
-    }).join('');
+    }
+    html += `</div>`;
+    return html;
+}
 
-    let creatorHtml = '';
-    if (!atLimit && !promisedThisTick) {
-        const statBtns = stats.map(s => {
-            const selected = pmSelectedStat === s.key;
-            return `<div class="pol-bloc-select-card${selected ? ' selected' : ''}" data-stat="${s.key}">
-                <div class="pol-bloc-select-name">${escapeHtml(s.label)}</div>
-                <div class="pol-bloc-select-stats"><span>Current: ${s.value}</span></div>
+// ── Build a Bridge ──
+function renderBridgeConfig(blocs, partyIdeo) {
+    const distant = blocs.filter(b => b.tier !== 'BASE' && b.tier !== 'HOSTILE');
+    let html = `<div class="narr-subtitle">Who do you want to reach out to?</div><div class="narr-split"><div class="narr-split-half"><div class="narr-bloc-list">`;
+    for (const b of distant) {
+        const t = NARR_TIER_META[b.tier] || NARR_TIER_META.SWING;
+        const isSel = _narrBloc === b.id;
+        html += `<div class="narr-bloc-card${isSel ? ' selected' : ''}" data-bloc-id="${b.id}" style="border-left-color:${isSel ? '#60a5fa' : t.color};${isSel ? 'border-color:rgba(96,165,250,0.2);background:rgba(96,165,250,0.03)' : ''}">
+            <div class="narr-bloc-head">
+                <span class="narr-bloc-name" style="${isSel ? 'color:#60a5fa' : ''}">${escapeHtml(b.bloc_name)}</span>
+                <span class="narr-pill" style="color:${t.color};background:${t.bg};border:1px solid ${t.color}33">${t.label}</span>
+            </div>
+        </div>`;
+    }
+    html += `</div></div>`;
+
+    // Right: axis picker (only if bloc selected)
+    if (_narrBloc) {
+        html += `<div class="narr-split-half"><div style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0);margin-bottom:8px">What value do you share?</div>`;
+        for (const ax of NARR_AXES) {
+            const pVal = partyIdeo[ax.key] ?? 50;
+            // Simplified distance — real version would compare against bloc ideology
+            const d = 25; // Placeholder
+            const ok = d <= 30;
+            const close = d <= 15;
+            const isSel = _narrAxis === ax.key;
+            html += `<div class="narr-overlap-row${isSel ? ' selected' : ''}${!ok ? ' disabled' : ''}" data-axis-key="${ax.key}" style="${!ok ? 'opacity:0.25;cursor:default' : ''}">
+                <span class="narr-overlap-label" style="${isSel ? 'color:#60a5fa' : ''}">${escapeHtml(ax.left)} / ${escapeHtml(ax.right)}</span>
+                <span class="narr-overlap-val" style="color:${close ? '#4ade80' : ok ? '#facc15' : '#ef4444'}">${close ? 'strong overlap' : ok ? 'some overlap' : 'too far apart'}</span>
             </div>`;
-        }).join('');
+        }
+        if (_narrAxis) {
+            html += `<div class="narr-bridge-info"><div class="narr-bridge-info-text">Alignment on this axis is boosted for 10 ticks. After the bridge expires, +1 permanent goodwill remains.</div></div>`;
+        }
+        html += `</div>`;
+    }
+    html += `</div>`;
+    return html;
+}
 
-        creatorHtml = `
-            <div class="pol-action-subtitle">Promise a stat improvement:</div>
-            <div class="pol-bloc-select-grid">${statBtns}</div>
-            ${pmSelectedStat ? `<button class="pol-action-execute" id="promise-execute-btn" ${ap < MAKE_PROMISE_CONFIG.AP_COST ? 'disabled' : ''}>Make Promise — ${MAKE_PROMISE_CONFIG.AP_COST} AP</button>` : ''}
-        `;
-    } else if (atLimit) {
-        creatorHtml = '<div class="pol-action-cooldown">Maximum 5 active promises.</div>';
-    } else if (promisedThisTick) {
-        creatorHtml = '<div class="pol-action-cooldown">One promise per tick.</div>';
+// ── Double Down ──
+function renderDoubleDownConfig(partyIdeo) {
+    let html = `<div class="narr-subtitle">Which conviction will you deepen?</div>`;
+    for (const ax of NARR_AXES) {
+        const val = partyIdeo[ax.key] ?? 50;
+        const sideLabel = val > 50 ? ax.right : ax.left;
+        const stacks = 0; // Placeholder — real version reads from faction data
+        const maxed = stacks >= 3;
+        const isSel = _narrAxis === ax.key;
+        html += `<div class="narr-dd-card${isSel ? ' selected' : ''}${maxed ? ' maxed' : ''}" data-axis-key="${ax.key}">
+            <div class="narr-dd-head">
+                <div>
+                    <span class="narr-dd-name">${escapeHtml(sideLabel)}</span>
+                    <span class="narr-dd-axis">${escapeHtml(ax.left)} / ${escapeHtml(ax.right)}</span>
+                </div>
+                <div class="narr-dd-pips">
+                    ${[1,2,3].map(i => `<div class="narr-dd-pip" style="background:${i <= stacks ? '#a78bfa' : 'rgba(255,255,255,0.06)'}"></div>`).join('')}
+                </div>
+            </div>
+            ${isSel ? `<div class="narr-bloc-detail" style="margin-top:8px">Your loyalists on this axis become more resistant to attacks and approval decay.${stacks >= 2 ? " At this level, they'll stay with you through almost anything." : ''}
+                <div class="narr-bloc-warn" style="color:#ef4444">Warning: pivoting on this axis now costs ${(stacks + 1) * 10} approval with aligned blocs.</div>
+            </div>` : ''}
+            ${maxed ? '<div class="narr-bloc-meta" style="color:#a78bfa">Maximum conviction reached</div>' : ''}
+        </div>`;
+    }
+    return html;
+}
+
+// ── Hit the Campaign Trail ──
+function renderCampaignConfig(blocs, otherParties) {
+    const modes = [
+        { id: 'mobilize', name: 'Get Out the Vote', icon: '▲', color: '#4ade80', desc: 'Send organizers into communities to drive turnout. Voters who support you stay home if you don\'t motivate them.' },
+        { id: 'message', name: 'Control the Narrative', icon: '◎', color: '#22d3ee', desc: 'Shift the national conversation toward issues where you\'re strong. Make the election about your strengths, not your weaknesses.' },
+        { id: 'contrast', name: 'Attack the Opposition', icon: '✦', color: '#ef4444', desc: 'Launch a negative campaign against a rival. Effective but risky — voters don\'t like politicians who sling too much mud. Costs 3 AP.', extra: 'Aggression reputation: doing this repeatedly alienates moderate voters.' },
+    ];
+    let html = `<div class="narr-subtitle">How do you want to campaign?</div>`;
+    for (const m of modes) {
+        const isSel = _narrCampMode === m.id;
+        html += `<div class="narr-camp-mode${isSel ? ' selected' : ''}" data-camp-mode="${m.id}" style="border-left-color:${isSel ? m.color : 'transparent'};${isSel ? `border-color:${m.color}33;background:${m.color}08` : ''}">
+            <div class="narr-camp-mode-head">
+                <span class="narr-camp-mode-icon" style="color:${m.color}">${m.icon}</span>
+                <span class="narr-camp-mode-name" style="color:${isSel ? m.color : 'var(--dtext-0)'}">${escapeHtml(m.name)}</span>
+                ${m.id === 'contrast' ? '<span style="font-family:var(--dfont-mono);font-size:9px;color:#f97316;margin-left:6px">3 AP</span>' : ''}
+            </div>
+            ${isSel ? `<div class="narr-camp-mode-desc">${escapeHtml(m.desc)}${m.extra ? `<div class="narr-camp-mode-extra" style="color:#f97316">${escapeHtml(m.extra)}</div>` : ''}</div>` : ''}
+        </div>`;
     }
 
-    container.innerHTML = `
-        <div class="pol-promise-stats">
-            <span>Active: ${activeCount}</span> · <span style="color:var(--dgreen)">Kept: ${keptCount}</span> · <span style="color:var(--dred)">Broken: ${brokenCount}</span>
-        </div>
-        ${promiseList}
-        ${creatorHtml}
-    `;
+    // Sub-target selection
+    if (_narrCampMode === 'mobilize') {
+        const eligible = blocs.filter(b => b.tier !== 'HOSTILE');
+        html += `<div style="margin-top:12px"><div style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0);margin-bottom:6px">Where do you send organizers?</div><div class="narr-target-grid">`;
+        for (const b of eligible) {
+            const t = NARR_TIER_META[b.tier] || NARR_TIER_META.SWING;
+            const isSel = _narrBloc === b.id;
+            html += `<div class="narr-target-card${isSel ? ' selected' : ''}" data-bloc-id="${b.id}" style="${isSel ? 'background:rgba(74,222,128,0.06);border-color:rgba(74,222,128,0.2)' : ''}">
+                <span class="narr-target-name">${escapeHtml(b.bloc_name)}</span>
+                <span style="font-family:var(--dfont-mono);font-size:9px;color:${t.color};margin-left:6px">${t.label}</span>
+                <div class="narr-target-meta">Current turnout: ${b.turnout}%</div>
+            </div>`;
+        }
+        html += `</div></div>`;
+    }
 
-    // Wire up stat selection
-    container.querySelectorAll('[data-stat]').forEach(card => {
-        card.addEventListener('click', () => {
-            pmSelectedStat = card.dataset.stat;
-            renderPromisePanel(f, n, tick, activePromises, recentActions);
+    if (_narrCampMode === 'contrast') {
+        html += `<div style="margin-top:12px;display:flex;gap:12px">`;
+        // Left: rival picker
+        html += `<div style="flex:1"><div style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0);margin-bottom:6px">Who do you attack?</div>`;
+        for (const r of otherParties) {
+            const isSel = _narrRival === r.id;
+            html += `<div class="narr-rival-card${isSel ? ' selected' : ''}" data-rival-id="${r.id}" style="border-left-color:${isSel ? '#ef4444' : r.party_color || '#888'};${isSel ? 'border-color:rgba(239,68,68,0.2);background:rgba(239,68,68,0.03)' : ''}; margin-bottom:4px">
+                <span class="narr-rival-name" style="color:${isSel ? (r.party_color || 'var(--dtext-0)') : 'var(--dtext-0)'}">${escapeHtml(r.faction_name)}</span>
+            </div>`;
+        }
+        html += `</div>`;
+        // Right: bloc target (if rival selected)
+        if (_narrRival) {
+            const eligible = blocs.filter(b => b.tier !== 'HOSTILE');
+            html += `<div style="flex:1"><div style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0);margin-bottom:6px">Over which voters?</div>`;
+            for (const b of eligible) {
+                const t = NARR_TIER_META[b.tier] || NARR_TIER_META.SWING;
+                const isSel = _narrBloc === b.id;
+                html += `<div class="narr-target-card${isSel ? ' selected' : ''}" data-bloc-id="${b.id}" style="margin-bottom:3px;${isSel ? 'background:rgba(239,68,68,0.03);border-color:rgba(239,68,68,0.2)' : ''}">
+                    <span style="font-family:var(--dfont-ui);font-size:11px;color:var(--dtext-0)">${escapeHtml(b.bloc_name)}</span>
+                    <span style="font-family:var(--dfont-mono);font-size:9px;color:${t.color};margin-left:6px">${t.label}</span>
+                </div>`;
+            }
+            html += `</div>`;
+        }
+        html += `</div>`;
+    }
+    return html;
+}
+
+// ── Dig Up Dirt ──
+function renderIntelConfig(blocs, otherParties) {
+    const choices = [
+        { k: 'bloc', name: 'Study a community', desc: 'Learn how a specific voter group feels about all parties. Detailed and durable insight.', apLabel: '1 AP', color: '#22d3ee' },
+        { k: 'rival', name: 'Investigate a rival', desc: 'Get a broad picture of one rival\'s standing across all voter groups. Fades faster.', apLabel: '2 AP', color: '#f97316' },
+    ];
+    let html = `<div class="narr-subtitle">What do you want to investigate?</div><div style="display:flex;gap:8px;margin-bottom:12px">`;
+    for (const c of choices) {
+        const isSel = _narrCampMode === c.k;
+        html += `<div class="narr-intel-choice${isSel ? ' selected' : ''}" data-intel-mode="${c.k}" style="border-left-color:${isSel ? c.color : 'transparent'};${isSel ? `border-color:${c.color}33;background:${c.color}08` : ''}">
+            <div class="narr-intel-choice-name" style="color:${isSel ? c.color : 'var(--dtext-0)'}">${escapeHtml(c.name)}</div>
+            <div class="narr-intel-choice-desc">${escapeHtml(c.desc)}</div>
+            <div class="narr-intel-choice-ap">${c.apLabel}</div>
+        </div>`;
+    }
+    html += `</div>`;
+
+    if (_narrCampMode === 'bloc') {
+        html += `<div class="narr-target-grid">`;
+        for (const b of blocs) {
+            const t = NARR_TIER_META[b.tier] || NARR_TIER_META.SWING;
+            const isSel = _narrBloc === b.id;
+            html += `<div class="narr-target-card${isSel ? ' selected' : ''}" data-bloc-id="${b.id}" style="${isSel ? `background:rgba(34,211,238,0.06);border-color:rgba(34,211,238,0.2)` : ''}">
+                <span class="narr-target-name">${escapeHtml(b.bloc_name)}</span>
+                <span style="font-family:var(--dfont-mono);font-size:9px;color:${t.color};margin-left:6px">${t.label}</span>
+            </div>`;
+        }
+        html += `</div>`;
+    }
+
+    if (_narrCampMode === 'rival') {
+        html += `<div style="display:flex;gap:6px">`;
+        for (const r of otherParties) {
+            const isSel = _narrRival === r.id;
+            html += `<div class="narr-rival-card${isSel ? ' selected' : ''}" data-rival-id="${r.id}" style="${isSel ? `border-left-color:${r.party_color || '#888'};background:${r.party_color || '#888'}10;border-color:${r.party_color || '#888'}33` : ''}">
+                <span class="narr-rival-name" style="color:${isSel ? (r.party_color || 'var(--dtext-0)') : 'var(--dtext-0)'}">${escapeHtml(r.faction_name)}</span>
+            </div>`;
+        }
+        html += `</div>`;
+    }
+    return html;
+}
+
+// ── Wire up all config panel interactions ──
+function wireNarrConfig(container, f, n, ap, totalAp, committedAp, blocs, otherParties, partyIdeo, approvalByBloc, tick) {
+    const rerender = () => renderNarrativeUI(container, f, n, ap, totalAp, committedAp, blocs, otherParties, partyIdeo, approvalByBloc, tick);
+
+    // Plank: axis direction
+    container.querySelectorAll('[data-plank-dir]').forEach(el => {
+        el.addEventListener('click', () => { _narrPlankDir = el.dataset.plankDir; _narrPlankStr = null; rerender(); });
+    });
+    // Plank: strength
+    container.querySelectorAll('[data-plank-str]').forEach(el => {
+        el.addEventListener('click', () => { _narrPlankStr = el.dataset.plankStr; rerender(); });
+    });
+    // Bloc selection (champion, bridge, campaign mobilize/contrast, intel)
+    container.querySelectorAll('[data-bloc-id]').forEach(el => {
+        el.addEventListener('click', () => {
+            _narrBloc = _narrBloc === el.dataset.blocId ? null : el.dataset.blocId;
+            if (_narrSelected === 'bridge') _narrAxis = null;
+            rerender();
         });
     });
-
-    // Wire up execute
-    const execBtn = document.getElementById('promise-execute-btn');
-    if (execBtn) {
-        execBtn.addEventListener('click', async () => {
-            execBtn.disabled = true;
-            execBtn.textContent = 'Making Promise...';
-            const result = await executeMakePromise(_supabase, f.id, n.id, tick, 'stat', { stat: pmSelectedStat });
-            if (result.success) {
-                pmResult = result;
-                f.action_points = result.newAp;
-                renderPromisePanel(f, n, tick, activePromises, recentActions);
-                await renderEventsTab(n.id, f.id, tick);
-            } else {
-                alert(result.error);
-                execBtn.disabled = false;
-                execBtn.textContent = `Make Promise — ${MAKE_PROMISE_CONFIG.AP_COST} AP`;
-            }
+    // Axis selection (bridge, doubledown)
+    container.querySelectorAll('[data-axis-key]').forEach(el => {
+        el.addEventListener('click', () => { _narrAxis = _narrAxis === el.dataset.axisKey ? null : el.dataset.axisKey; rerender(); });
+    });
+    // Campaign mode
+    container.querySelectorAll('[data-camp-mode]').forEach(el => {
+        el.addEventListener('click', () => {
+            _narrCampMode = _narrCampMode === el.dataset.campMode ? null : el.dataset.campMode;
+            _narrBloc = null; _narrRival = null; rerender();
         });
-    }
+    });
+    // Rival selection (campaign contrast, intel)
+    container.querySelectorAll('[data-rival-id]').forEach(el => {
+        el.addEventListener('click', () => { _narrRival = el.dataset.rivalId; _narrBloc = null; rerender(); });
+    });
+    // Intel mode
+    container.querySelectorAll('[data-intel-mode]').forEach(el => {
+        el.addEventListener('click', () => {
+            _narrCampMode = _narrCampMode === el.dataset.intelMode ? null : el.dataset.intelMode;
+            _narrBloc = null; _narrRival = null; rerender();
+        });
+    });
 }
+
+// Old democracy action panels (Rally, Outreach, Attack, Promise) have been
+// replaced by the narrative actions system above.
 
 // ═══════════════════════════════════════════════════════════════════
 // STRONGMAN ACTION PANELS

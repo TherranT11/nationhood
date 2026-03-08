@@ -3813,14 +3813,8 @@ async function renderParties() {
             </div>
         </div>
 
-        <div class="actions-row">
-            <div id="rally-container"></div>
-            <div id="promise-maker-container"></div>
-        </div>
-        <div class="actions-row">
-            <div id="outreach-container"></div>
-            <div id="attack-container"></div>
-        </div>
+        <!-- Old democracy action panels (Rally, Outreach, Promise, Attack) removed.
+             Actions now live on politics.html Actions tab as narrative actions. -->
 
 
         ${otherPartiesHtml}
@@ -4217,7 +4211,10 @@ async function renderParties() {
         });
     }
 
-    // ── Voter Outreach UI (guaranteed, no randomness) ──
+    // ── Old democracy action panels removed (Rally, Outreach, Promise, Attack) ──
+    // Actions now live on politics.html Actions tab as narrative actions.
+    // The block below is disabled — containers no longer exist in the DOM.
+    if (false) {
     let outreachSelectedBloc = null;
     let outreachResult = null;
 
@@ -5732,6 +5729,7 @@ async function renderParties() {
     }
 
     renderAttack();
+    } // end if(false) — old democracy actions disabled
 
     // Scroll to the section specified in the URL hash (from dashboard quick actions)
     if (window.location.hash) {
