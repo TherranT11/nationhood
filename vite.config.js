@@ -13,10 +13,12 @@ for (const file of htmlFiles) {
   input[name] = resolve(__dirname, file);
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  // Load .env.work when mode is 'work', otherwise .env.main
+  envFile: `.env.${mode === 'work' ? 'work' : 'main'}`,
   build: {
     rollupOptions: {
       input,
     },
   },
-});
+}));
