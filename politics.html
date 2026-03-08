@@ -6017,6 +6017,38 @@ let _narrCampMode = null, _narrRival = null;
 // Store references for re-rendering
 let _currentNation = null, _currentFaction = null, _currentShard = null, _currentAllParties = null;
 
+// Compute real AP cost for current action + mode
+function narrActionCost(sel) {
+    if (!sel) return 0;
+    if (sel.id === 'campaign' && _narrCampMode === 'contrast') return 3;
+    if (sel.id === 'intel' && _narrCampMode === 'rival') return 2;
+    if (sel.id === 'intel') return 1;
+    return sel.ap;
+}
+
+// Check if all required selections are made for current action
+function narrIsReady(sel) {
+    if (!sel) return false;
+    if (sel.id === 'plank') return !!_narrPlankDir && !!_narrPlankStr;
+    if (sel.id === 'champion') return !!_narrBloc;
+    if (sel.id === 'bridge') return !!_narrBloc && !!_narrAxis;
+    if (sel.id === 'doubledown') return !!_narrAxis;
+    if (sel.id === 'campaign') {
+        if (!_narrCampMode) return false;
+        if (_narrCampMode === 'mobilize') return !!_narrBloc;
+        if (_narrCampMode === 'message') return true;
+        if (_narrCampMode === 'contrast') return !!_narrRival && !!_narrBloc;
+        return false;
+    }
+    if (sel.id === 'intel') {
+        if (!_narrCampMode) return false;
+        if (_narrCampMode === 'bloc') return !!_narrBloc;
+        if (_narrCampMode === 'rival') return !!_narrRival;
+        return false;
+    }
+    return false;
+}
+
 // Narrative action definitions
 const NARR_ACTIONS = [
     { id: 'plank', name: 'Take a Stand', ap: 3, color: '#f97316', icon: '◆',
@@ -6140,7 +6172,7 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
 
 function renderNarrativeUI(container, f, n, ap, totalAp, committedAp, blocs, otherParties, partyIdeo, approvalByBloc, tick) {
     const sel = NARR_ACTIONS.find(a => a.id === _narrSelected);
-    const canAfford = sel ? ap >= (sel.id === 'campaign' && _narrCampMode === 'contrast' ? 3 : sel.ap) : false;
+    const canAfford = sel ? ap >= narrActionCost(sel) : false;
 
     // AP bar
     let apHtml = `<div class="narr-ap-bar"><div>
@@ -6158,9 +6190,9 @@ function renderNarrativeUI(container, f, n, ap, totalAp, committedAp, blocs, oth
     apHtml += `<span class="narr-ap-committed">(${committedAp} committed)</span>`;
     apHtml += `</div></div>`;
     if (sel) {
+        const realCost = narrActionCost(sel);
         const costColor = canAfford ? '#4ade80' : '#ef4444';
-        const costAmt = sel.id === 'campaign' && _narrCampMode === 'contrast' ? 3 : sel.ap;
-        apHtml += `<div class="narr-ap-cost" style="color:${costColor}">${escapeHtml(sel.name)}: ${costAmt} AP ${canAfford ? '✓' : '— can\'t afford'}</div>`;
+        apHtml += `<div class="narr-ap-cost" style="color:${costColor}">${escapeHtml(sel.name)}: ${realCost} AP ${canAfford ? '✓' : '— can\'t afford'}</div>`;
     }
     apHtml += `</div>`;
 
@@ -6194,9 +6226,11 @@ function renderNarrativeUI(container, f, n, ap, totalAp, committedAp, blocs, oth
         configHtml = `<div class="narr-config" style="border-color:${sel.color}22">`;
         configHtml += `<div class="narr-flavor" style="border-left-color:${sel.color}33;background:${sel.color}05">${escapeHtml(sel.flavor)}</div>`;
         configHtml += renderNarrConfigBody(sel, blocs, otherParties, partyIdeo, approvalByBloc, ap);
-        // Confirm button
-        const costAmt = sel.id === 'campaign' && _narrCampMode === 'contrast' ? 3 : sel.ap;
-        configHtml += `<div class="narr-confirm-row"><div class="narr-confirm-btn${canAfford ? '' : ' disabled'}" style="background:${canAfford ? sel.color : 'var(--dtext-3)'}" id="narr-confirm-btn">Confirm — ${costAmt} AP</div></div>`;
+        // Confirm button — check both affordability and selection readiness
+        const costAmt = narrActionCost(sel);
+        const isReady = narrIsReady(sel);
+        const canConfirm = canAfford && isReady;
+        configHtml += `<div class="narr-confirm-row"><div class="narr-confirm-btn${canConfirm ? '' : ' disabled'}" style="background:${canConfirm ? sel.color : 'var(--dtext-3)'}" id="narr-confirm-btn">Confirm — ${costAmt} AP</div></div>`;
         configHtml += `</div>`;
     }
 
@@ -6551,17 +6585,9 @@ function wireNarrConfig(container, f, n, ap, totalAp, committedAp, blocs, otherP
 async function handleNarrConfirm(container, f, n, ap, totalAp, committedAp, blocs, otherParties, partyIdeo, approvalByBloc, tick) {
     const sel = NARR_ACTIONS.find(a => a.id === _narrSelected);
     if (!sel) return;
-    const costAmt = sel.id === 'campaign' && _narrCampMode === 'contrast' ? 3 : (sel.id === 'intel' && _narrCampMode === 'rival' ? 2 : sel.id === 'intel' ? 1 : sel.ap);
+    const costAmt = narrActionCost(sel);
     if (ap < costAmt) return;
-
-    // Validate readiness per action
-    if (sel.id === 'plank' && (!_narrPlankDir || !_narrPlankStr)) return;
-    if (sel.id === 'champion' && !_narrBloc) return;
-    if (sel.id === 'bridge' && (!_narrBloc || !_narrAxis)) return;
-    if (sel.id === 'doubledown' && !_narrAxis) return;
-    if (sel.id === 'intel' && !_narrCampMode) return;
-    if (sel.id === 'intel' && _narrCampMode === 'bloc' && !_narrBloc) return;
-    if (sel.id === 'intel' && _narrCampMode === 'rival' && !_narrRival) return;
+    if (!narrIsReady(sel)) return;
 
     // Disable button
     const btn = document.getElementById('narr-confirm-btn');
@@ -6586,6 +6612,11 @@ async function handleNarrConfirm(container, f, n, ap, totalAp, committedAp, bloc
         return;
     }
 
+    // Show intel results immediately
+    if (sel.id === 'intel' && result.intel) {
+        showIntelResults(result.intel);
+    }
+
     // Update local AP
     f.action_points = result.newAp;
 
@@ -6601,6 +6632,20 @@ async function handleNarrConfirm(container, f, n, ap, totalAp, committedAp, bloc
 // ══════════════════════════════════════════════════════════════
 // NARRATIVE ACTION EXECUTORS
 // ══════════════════════════════════════════════════════════════
+
+// Helper: update or create faction_bloc_approval row
+async function upsertBlocApproval(factionId, blocId, updateFn) {
+    const { data: fba } = await _supabase.from('faction_bloc_approval')
+        .select('id, preference_score, momentum, last_platform').eq('faction_id', factionId).eq('bloc_id', blocId).maybeSingle();
+    if (fba) {
+        const updates = updateFn(fba);
+        await _supabase.from('faction_bloc_approval').update(updates).eq('id', fba.id);
+    } else {
+        const defaults = { faction_id: factionId, bloc_id: blocId, preference_score: 50, momentum: 0 };
+        const updates = updateFn(defaults);
+        await _supabase.from('faction_bloc_approval').insert({ ...defaults, ...updates });
+    }
+}
 
 // ── Take a Stand ──
 // Shifts faction ideology toward the chosen direction.
@@ -6643,13 +6688,10 @@ async function executeNarrPlank(f, n, blocs, partyIdeo, tick, cost) {
 
         effects.push({ bloc_id: b.id, bloc_name: b.bloc_name, delta });
 
-        // Update preference_score in faction_bloc_approval
-        const { data: fba } = await _supabase.from('faction_bloc_approval')
-            .select('id, preference_score').eq('faction_id', f.id).eq('bloc_id', b.id).maybeSingle();
-        if (fba) {
-            const newPref = Math.max(0, Math.min(100, (fba.preference_score ?? 50) + delta));
-            await _supabase.from('faction_bloc_approval').update({ preference_score: newPref }).eq('id', fba.id);
-        }
+        // Update preference_score in faction_bloc_approval (creates row if missing)
+        await upsertBlocApproval(f.id, b.id, (row) => ({
+            preference_score: Math.max(0, Math.min(100, (row.preference_score ?? 50) + delta))
+        }));
     }
 
     // Log to campaign_actions
@@ -6677,16 +6719,11 @@ async function executeNarrChampion(f, n, blocs, tick, cost) {
     const { error: apErr } = await _supabase.from('factions').update({ action_points: newAp }).eq('id', f.id);
     if (apErr) return { success: false, error: 'Failed to deduct AP.' };
 
-    // Immediate approval boost from championing
-    const { data: fba } = await _supabase.from('faction_bloc_approval')
-        .select('id, preference_score').eq('faction_id', f.id).eq('bloc_id', bloc.id).maybeSingle();
-    if (fba) {
-        const newPref = Math.min(100, (fba.preference_score ?? 50) + 8);
-        await _supabase.from('faction_bloc_approval').update({
-            preference_score: newPref,
-            last_platform: { championed: true, championed_at_tick: tick }
-        }).eq('id', fba.id);
-    }
+    // Immediate approval boost from championing (creates row if missing)
+    await upsertBlocApproval(f.id, bloc.id, (row) => ({
+        preference_score: Math.min(100, (row.preference_score ?? 50) + 8),
+        last_platform: { championed: true, championed_at_tick: tick }
+    }));
 
     // Log to campaign_actions
     await _supabase.from('campaign_actions').insert({
@@ -6721,16 +6758,15 @@ async function executeNarrBridge(f, n, blocs, partyIdeo, tick, cost) {
     const distance = Math.abs(pVal - bVal);
     const boost = distance <= 15 ? 6 : distance <= 30 ? 4 : 2;
 
-    const { data: fba } = await _supabase.from('faction_bloc_approval')
-        .select('id, preference_score, last_platform').eq('faction_id', f.id).eq('bloc_id', bloc.id).maybeSingle();
-    if (fba) {
-        const newPref = Math.min(100, (fba.preference_score ?? 50) + boost);
-        const platform = fba.last_platform || {};
+    // Update approval (creates row if missing)
+    await upsertBlocApproval(f.id, bloc.id, (row) => {
+        const platform = row.last_platform || {};
         platform.bridge = { axis: ax.key, expires_tick: tick + 10, boost };
-        await _supabase.from('faction_bloc_approval').update({
-            preference_score: newPref, last_platform: platform
-        }).eq('id', fba.id);
-    }
+        return {
+            preference_score: Math.min(100, (row.preference_score ?? 50) + boost),
+            last_platform: platform
+        };
+    });
 
     // Log to campaign_actions
     await _supabase.from('campaign_actions').insert({
@@ -6755,7 +6791,14 @@ async function executeNarrDoubleDown(f, n, partyIdeo, tick, cost) {
     if (!ax) return { success: false, error: 'Invalid axis.' };
 
     // Read current conviction stacks from faction_ideology
-    const { data: ideo } = await _supabase.from('faction_ideology').select('*').eq('faction_id', f.id).single();
+    let { data: ideo } = await _supabase.from('faction_ideology').select('*').eq('faction_id', f.id).maybeSingle();
+    if (!ideo) {
+        // Create row if missing
+        const { data: newIdeo } = await _supabase.from('faction_ideology')
+            .insert({ faction_id: f.id, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0, convictions: {} })
+            .select().single();
+        ideo = newIdeo;
+    }
     const convictions = ideo?.convictions || {};
     const currentStacks = convictions[ax.key] || 0;
     if (currentStacks >= 3) return { success: false, error: 'Maximum conviction already reached on this axis.' };
@@ -6765,18 +6808,13 @@ async function executeNarrDoubleDown(f, n, partyIdeo, tick, cost) {
     const { error: apErr } = await _supabase.from('factions').update({ action_points: newAp }).eq('id', f.id);
     if (apErr) return { success: false, error: 'Failed to deduct AP.' };
 
-    // Increment conviction stack
+    // Increment conviction stack + deepen ideology in one update
     const newStacks = currentStacks + 1;
     convictions[ax.key] = newStacks;
-    await _supabase.from('faction_ideology').update({ convictions }).eq('faction_id', f.id);
-
-    // Deepen ideology shift slightly (+5 toward current lean)
-    if (ideo) {
-        const current = ideo[ax.key] || 0;
-        const nudge = current >= 0 ? 5 : -5;
-        const newVal = Math.max(-50, Math.min(50, current + nudge));
-        await _supabase.from('faction_ideology').update({ [ax.key]: newVal }).eq('faction_id', f.id);
-    }
+    const current = ideo?.[ax.key] || 0;
+    const nudge = current > 0 ? 5 : current < 0 ? -5 : 0; // neutral stays neutral
+    const newVal = Math.max(-50, Math.min(50, current + nudge));
+    await _supabase.from('faction_ideology').update({ convictions, [ax.key]: newVal }).eq('faction_id', f.id);
 
     const val = partyIdeo[ax.key] ?? 50;
     const sideLabel = val > 50 ? ax.right : ax.left;
@@ -6870,7 +6908,31 @@ async function executeNarrIntel(f, n, blocs, otherParties, tick, cost) {
         tick_performed: tick, ap_cost: cost, result
     });
 
-    return { success: true, newAp };
+    return { success: true, newAp, intel: result };
+}
+
+// ── Intel results display ──
+function showIntelResults(intel) {
+    let msg = '';
+    if (intel.mode === 'bloc') {
+        msg = `=== INTEL: ${intel.bloc_name} ===\n\nParty standings:\n`;
+        for (const s of (intel.standings || [])) {
+            const arrow = s.momentum > 0 ? '↑' : s.momentum < 0 ? '↓' : '→';
+            msg += `  ${s.name}: ${s.pref}% ${arrow} (momentum: ${s.momentum > 0 ? '+' : ''}${s.momentum})\n`;
+        }
+        msg += `\nBloc ideology:\n`;
+        const axisLabels = { globalism_nationalism: 'Global ← → National', individualism_collectivism: 'Individual ← → Collective', tradition_progress: 'Tradition ← → Progress', security_freedom: 'Security ← → Freedom', liberty_equality: 'Liberty ← → Equality' };
+        for (const [k, v] of Object.entries(intel.axes || {})) {
+            msg += `  ${axisLabels[k] || k}: ${v ?? 50}/100\n`;
+        }
+    } else if (intel.mode === 'rival') {
+        msg = `=== INTEL: ${intel.rival_name} ===\n\nStanding with blocs:\n`;
+        for (const s of (intel.bloc_standings || [])) {
+            const arrow = s.momentum > 0 ? '↑' : s.momentum < 0 ? '↓' : '→';
+            msg += `  ${s.bloc_name}: ${s.pref}% ${arrow} (momentum: ${s.momentum > 0 ? '+' : ''}${s.momentum})\n`;
+        }
+    }
+    alert(msg);
 }
 
 // Old democracy action panels (Rally, Outreach, Attack, Promise) have been
