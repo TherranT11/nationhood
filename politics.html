@@ -3239,7 +3239,7 @@ function generateOfficerNames(factionId) {
     };
 }
 
-function renderPartyTab(f, nation, data) {
+async function renderPartyTab(f, nation, data) {
     const {
         totalSeats, mySeats, voteSharePct, lastElectionDate,
         seatDelta, role, isAutoNation, officerNames, allParties, allPartyIdeologies, coalition, activeCrises, currentTick,
