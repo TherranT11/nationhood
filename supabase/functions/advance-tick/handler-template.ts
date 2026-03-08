@@ -786,7 +786,7 @@ async function processAusterityCommitments(supabase, nation, currentTick) {
 
 // ==================== ADVANCE TICK ====================
 
-async function advanceTick(supabase) {
+async function advanceTick(supabase, { force = false } = {}) {
     // 1. Pre-compute next tick metadata
     const { data: shard } = await supabase
         .from('shard')
@@ -796,15 +796,21 @@ async function advanceTick(supabase) {
     if (!shard) throw new Error('Shard not found');
 
     const newTick = (shard.current_tick || 0) + 1;
-    // Anchor next_tick_at to the previous schedule to prevent drift
-    // Uses UTC-safe millisecond arithmetic instead of setHours() which is timezone-dependent
     const intervalMs = (shard.tick_interval_hours || 12) * 60 * 60 * 1000;
-    const prevTickAt = new Date(shard.next_tick_at || new Date());
-    let nextTickAt = new Date(prevTickAt.getTime() + intervalMs);
-    // Safety: if calculated next tick is in the past (e.g. server was down), advance to future
     const now = Date.now();
-    while (nextTickAt.getTime() <= now) {
-        nextTickAt = new Date(nextTickAt.getTime() + intervalMs);
+    let nextTickAt;
+
+    if (force) {
+        // Manual advance: anchor next tick from NOW + interval
+        nextTickAt = new Date(now + intervalMs);
+    } else {
+        // Scheduled advance: anchor from previous schedule to prevent drift
+        const prevTickAt = new Date(shard.next_tick_at || new Date());
+        nextTickAt = new Date(prevTickAt.getTime() + intervalMs);
+        // Safety: if calculated next tick is in the past (e.g. server was down), advance to future
+        while (nextTickAt.getTime() <= now) {
+            nextTickAt = new Date(nextTickAt.getTime() + intervalMs);
+        }
     }
     // Compute date directly from tick number to prevent drift between
     // shard.current_date (string-based) and tickToDate() (tick-based).
@@ -911,12 +917,9 @@ async function advanceTick(supabase) {
         };
     }
 
-    // 3. Commit shard tick/date after critical AP phase succeeds
-    await supabase.from('shard').update({
-        current_tick: newTick,
-        next_tick_at: nextTickAt.toISOString(),
-        current_date: newDate
-    }).eq('name', 'Alpha Shard');
+    // NOTE: Shard tick/date commit moved to AFTER nation processing (see below).
+    // This prevents the tick number from advancing if the function times out
+    // during nation processing, which would cause skipped game effects.
 
     // Clear expired coup cooldowns
     await supabase.from('factions')
@@ -1803,6 +1806,17 @@ async function advanceTick(supabase) {
       }
     }
 
+    // 5. Commit shard tick/date AFTER all nation processing completes.
+    // This is the last step — if the function timed out earlier, the tick
+    // number stays unchanged and the cron will re-process on the next run.
+    console.log(`[advanceTick] All nations processed. Committing tick ${newTick}...`);
+    await supabase.from('shard').update({
+        current_tick: newTick,
+        next_tick_at: nextTickAt.toISOString(),
+        current_date: newDate
+    }).eq('name', 'Alpha Shard');
+    console.log(`[advanceTick] Tick ${newTick} committed. Next tick at ${nextTickAt.toISOString()}`);
+
     return summary;
 }
 
@@ -1889,6 +1903,7 @@ Deno.serve(async (req) => {
         }
 
         // 3. Tick is due (or forced) — acquire lock
+        console.log(`[advance-tick] ✓ Tick IS due (or forced). Acquiring lock for tick ${shard.current_tick}...`);
         const lockAcquired = await acquireTickLock(supabase);
         if (!lockAcquired) {
             console.warn(`[advance-tick] Lock held — tick ${shard.current_tick}, tick_processing=${shard.tick_processing}`);
@@ -1904,7 +1919,7 @@ Deno.serve(async (req) => {
         // 4. Process the tick
         console.log(`[advance-tick] Lock acquired, processing tick ${shard.current_tick}...`);
         try {
-            const summary = await advanceTick(supabase);
+            const summary = await advanceTick(supabase, { force });
             const responseStatus = summary.partial ? "partial" : "success";
             console.log(
                 `[advance-tick] Tick ${summary.tick} ${summary.partial ? 'partially processed' : 'processed'} (${summary.nations} nations)`

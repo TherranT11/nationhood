@@ -2532,7 +2532,7 @@ function buildStatInstitutionMap(instConfig, itemAllocations) {
         const alloc = allocMap[inst.id];
         const fundingPct = alloc && alloc.needed > 0
             ? Math.min(100, Math.round((alloc.allocated / alloc.needed) * 100))
-            : 100;  // no allocation row = fully funded (all ministries funded at 100%)
+            : 0;  // no allocation row = unfunded
 
         for (const role of ['primary', 'secondary']) {
             const statKey = inst[`${role}_stat`];
@@ -5679,15 +5679,13 @@ async function resolveExpiredVotes(supabase, nationId) {
         .eq('faction_type', 'party');
     const resolveFactionSeatSum = (factionRowsForResolve || []).reduce((sum, f) => sum + (f.seats || 0), 0);
 
-    // Fetch nation once (all expired bills share the same nationId)
-    const { data: nation } = await supabase
-        .from('nations')
-        .select('*')
-        .eq('id', nationId)
-        .single();
-
     for (const bill of expiredBills) {
       try {
+        const { data: nation } = await supabase
+            .from('nations')
+            .select('name, government_type, total_seats')
+            .eq('id', bill.nation_id)
+            .single();
         const nominalTotalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
         const totalSeats = Math.min(nominalTotalSeats, Math.max(resolveFactionSeatSum, 1));
         let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
@@ -5966,7 +5964,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                             await markBillEnactmentFailed(supabase, originalBill, currentTick, budgetErr.message);
                         }
                     } else {
-                        const enactment = await enactBill(supabase, originalBill, currentTick, nation);
+                        const enactment = await enactBill(supabase, originalBill, currentTick);
                         if (!enactment?.success) {
                             await markBillEnactmentFailed(supabase, originalBill, currentTick, enactment?.error || 'Unknown enactment failure');
                             await fireBillEvent(supabase, 'bill_failed', originalBill, { currentTick, nationName: nation?.name, votesFor: 0, votesAgainst: 0, billNameOverride: `${originalBill.bill_name} (override enactment failed)` });
@@ -6356,7 +6354,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 // Wrap enactBill in try-catch to convert thrown exceptions into {success: false}
                 let enactment;
                 try {
-                    enactment = await enactBill(supabase, bill, currentTick, nation);
+                    enactment = await enactBill(supabase, bill, currentTick);
                 } catch (enactErr) {
                     console.error(`[resolveExpiredVotes] enactBill threw for bill ${bill.id} ("${bill.bill_name}"):`, enactErr);
                     enactment = { success: false, error: `enactBill threw: ${enactErr?.message || enactErr}` };
@@ -6434,6 +6432,7 @@ async function resolveExpiredVotes(supabase, nationId) {
 }
 
 async function markBillEnactmentFailed(supabase, bill, currentTick, enactError) {
+    const normalizedError = typeof enactError === 'string' ? enactError : 'Unknown enactment failure';
     const { error } = await supabase.from('bills').update({
         status: 'failed',
         passed_tick: currentTick
@@ -6443,18 +6442,14 @@ async function markBillEnactmentFailed(supabase, bill, currentTick, enactError) 
     }
 }
 
-async function enactBill(supabase, bill, currentTick, nation) {
+async function enactBill(supabase, bill, currentTick) {
     let enactError = null;
 
-    // If nation not passed, fetch it (backward compat for callers that don't have it)
-    if (!nation) {
-        const { data: nationRow } = await supabase
-            .from('nations')
-            .select('*')
-            .eq('id', bill.nation_id)
-            .single();
-        nation = nationRow;
-    }
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('*')
+        .eq('id', bill.nation_id)
+        .single();
     if (!nation) return { success: false, error: `Nation ${bill.nation_id} not found` };
 
     const { data: currentActiveLaws } = await supabase
@@ -9498,20 +9493,9 @@ async function processPresidentDesk(supabase, nation, currentTick) {
                 continue;
             }
         } else {
-            let enactment;
-            try {
-                enactment = await enactBill(supabase, bill, currentTick, nation);
-            } catch (enactErr) {
-                console.error(`[processPresidentDesk] enactBill threw for bill ${bill.id}:`, enactErr);
-                enactment = { success: false, error: enactErr?.message || String(enactErr) };
-            }
+            const enactment = await enactBill(supabase, bill, currentTick);
             if (!enactment?.success) {
                 console.error(`[processPresidentDesk] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
-                await supabase.from('bills').update({
-                    status: 'failed',
-                    president_action: 'auto_signed',
-                    president_action_tick: currentTick
-                }).eq('id', bill.id);
                 results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: enactment?.error });
                 continue;
             }
@@ -9779,7 +9763,6 @@ async function processPresidentCandidateTimeout(supabase, nation, currentTick) {
 async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
     if (!isParliamentaryDemocracy(nation)) return;
 
-    // Guard: only auto-appoint PM if a coalition is actually formed
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'caretaker')) return;
 
@@ -14438,76 +14421,6 @@ async function processOngoingCosts(supabase, nation, currentTick) {
     return { totalCost, details };
 }
 
-// ==================== MINISTRY FUNDING (revenue vs. cost → deficit accrual) ====================
-
-/**
- * Compare total ministry institution costs to nation revenue each tick.
- * All ministries remain at funding_level = 1.0 (Phase 1 behavior).
- * If costs exceed revenue, the shortfall accrues directly to nation.debt.
- */
-async function processMinistryFunding(supabase: any, nation: any, currentTick: number) {
-    // Ensure institution config is loaded (shared cache with processStatDecay)
-    if (!_institutionConfig) {
-        const { data } = await supabase.from('ministry_institution_config').select('*');
-        _institutionConfig = data || [];
-    }
-
-    if (_institutionConfig.length === 0) {
-        return { funded: true, deficit: false, totalCost: 0, revenue: 0 };
-    }
-
-    // Sum institution costs across all fiscal categories (annualized)
-    let totalAnnualInstitutionCost = 0;
-    for (const cat of FISCAL_CATEGORIES) {
-        const { total } = computeMinistryInstitutionCost(_institutionConfig, cat, nation);
-        totalAnnualInstitutionCost += total;
-    }
-
-    // Convert to per-tick
-    const perTickCost = totalAnnualInstitutionCost / GAME_CONFIG.TICKS_PER_YEAR;
-
-    // Calculate per-tick revenue
-    const budget = calculateNationalBudget(nation);
-    const perTickRevenue = budget.grossRevenue / GAME_CONFIG.TICKS_PER_YEAR;
-
-    // If costs exceed revenue, accrue shortfall to debt
-    if (perTickCost > perTickRevenue && perTickCost > 0) {
-        const deficitContribution = perTickCost - perTickRevenue;
-        const currentDebt = Number(nation.debt || 0);
-        const newDebt = currentDebt + deficitContribution;
-
-        const { error } = await supabase.from('nations')
-            .update({ debt: newDebt })
-            .eq('id', nation.id);
-
-        if (error) {
-            console.error(`[processMinistryFunding] Debt update failed for ${nation.name}:`, error.message);
-            return { funded: true, deficit: true, deficitContribution, totalCost: perTickCost, revenue: perTickRevenue, error: error.message };
-        }
-
-        Object.assign(nation, { debt: newDebt });
-
-        console.log(`[processMinistryFunding] ${nation.name}: deficit ${Math.round(deficitContribution).toLocaleString()} accrued to debt (cost=${Math.round(perTickCost).toLocaleString()} rev=${Math.round(perTickRevenue).toLocaleString()} newDebt=${Math.round(newDebt).toLocaleString()})`);
-
-        return {
-            funded: true,
-            deficit: true,
-            deficitContribution,
-            totalCost: perTickCost,
-            revenue: perTickRevenue,
-            newDebt
-        };
-    }
-
-    return {
-        funded: true,
-        deficit: false,
-        surplus: perTickRevenue - perTickCost,
-        totalCost: perTickCost,
-        revenue: perTickRevenue
-    };
-}
-
 // All columns that nations_history tracks (must match the DB table schema)
 const HISTORY_SNAPSHOT_COLUMNS = [
     ...NATION_STAT_COLUMNS,
@@ -15702,7 +15615,8 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
 
 /**
  * Auto-appoint the party leader as Prime Minister without candidate selection.
- * Server-side version for advance-tick processing.
+ * Used for parliamentary systems — the party leader becomes PM immediately
+ * when their party receives the PM role during coalition formation.
  */
 async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, currentTick) {
     const coalition = await fetchActiveCoalition(supabase, nationId);
@@ -15710,6 +15624,7 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
         throw new Error('Cannot appoint a Prime Minister until a coalition has been formed.');
     }
 
+    // Load faction with leader data
     const { data: faction, error: factionErr } = await supabase
         .from('factions')
         .select('id, faction_name, leader_first_name, leader_last_name, leader_age')
@@ -15720,30 +15635,44 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
         throw new Error('Party leader data is incomplete — cannot auto-appoint PM.');
     }
 
+    // Pick a weighted ideology based on faction's ideology profile
     const factionIdeology = await loadFactionIdeology(supabase, factionId);
     const weightedIdeologies = getWeightedIdeologies(factionIdeology);
     const ideologyPick = weightedRandomPick(weightedIdeologies);
     const ideology = ideologyPick.item;
+
+    // Pick a random trait
     const traitKey = PM_TRAIT_KEYS[Math.floor(Math.random() * PM_TRAIT_KEYS.length)];
+
     const leaderAge = faction.leader_age || (35 + Math.floor(Math.random() * 16));
 
+    // Clean up any existing PM candidates for this faction
     await supabase.from('pm_candidates').delete()
         .eq('nation_id', nationId).eq('faction_id', factionId).eq('selected', false);
 
+    // Deactivate any current HOG
     await supabase.from('head_of_government')
         .update({ active: false })
         .eq('nation_id', nationId).eq('active', true);
 
+    // Create HOG record
     const { error: hogErr } = await supabase
         .from('head_of_government')
         .upsert({
-            nation_id: nationId, faction_id: factionId, candidate_id: null,
-            first_name: faction.leader_first_name, last_name: faction.leader_last_name,
-            age: leaderAge, ideology: ideology.tag, trait_key: traitKey,
-            appointed_tick: currentTick, active: true
+            nation_id: nationId,
+            faction_id: factionId,
+            candidate_id: null,
+            first_name: faction.leader_first_name,
+            last_name: faction.leader_last_name,
+            age: leaderAge,
+            ideology: ideology.tag,
+            trait_key: traitKey,
+            appointed_tick: currentTick,
+            active: true
         }, { onConflict: 'nation_id' });
     if (hogErr) throw hogErr;
 
+    // Update administration record
     const pmFullName = `${faction.leader_first_name} ${faction.leader_last_name}`;
     await supabase.from('administrations').update({
         prime_minister: pmFullName,
@@ -15751,6 +15680,7 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
         updated_at: new Date().toISOString()
     }).eq('nation_id', nationId).is('ended_at_tick', null);
 
+    // Update/create PM ministry row
     const { data: pmMinistry } = await supabase.from('ministries')
         .select('id').eq('nation_id', nationId)
         .eq('ministry_key', 'prime_minister').eq('is_active', true)
@@ -15764,23 +15694,29 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
             party_id: factionId,
             minister_first_name: faction.leader_first_name,
             minister_last_name: faction.leader_last_name,
-            minister_age: leaderAge, minister_approval: 50,
+            minister_age: leaderAge,
+            minister_approval: 50,
             stat_baselines: pmBaselines
         }).eq('id', pmMinistry.id);
     } else {
         await supabase.from('ministries').insert({
-            nation_id: nationId, ministry_key: 'prime_minister',
-            ministry_name: 'Prime Minister', is_active: true,
+            nation_id: nationId,
+            ministry_key: 'prime_minister',
+            ministry_name: 'Prime Minister',
+            is_active: true,
             party_id: factionId,
             minister_first_name: faction.leader_first_name,
             minister_last_name: faction.leader_last_name,
-            minister_age: leaderAge, minister_approval: 50,
+            minister_age: leaderAge,
+            minister_approval: 50,
             stat_baselines: pmBaselines
         });
     }
 
+    // Apply ideology shift (+5 for PM, same as original selectPMCandidate uses +15 via candidate)
     const axisKey = ideology.axisKey;
     const shift = 5 * ideology.direction;
+
     let currentIdeology = factionIdeology;
     if (!currentIdeology) {
         const newRow = { faction_id: factionId, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0 };
@@ -15791,11 +15727,27 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
     const newVal = Math.max(-100, Math.min(100, currentVal + shift));
     await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
 
+    // Apply trait effects
     const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', traitKey).single();
     if (trait?.effects?.on_appoint_stability && nationForBaseline) {
         const newStability = Math.max(0, Math.min(100, (nationForBaseline.stability || 50) + trait.effects.on_appoint_stability));
         await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
     }
+
+    // Fire system event
+    try {
+        await supabase.rpc('fire_system_event', {
+            p_trigger_key: 'pm_appointed',
+            p_nation_id: nationId,
+            p_tick: currentTick,
+            p_placeholders: {
+                nation: nationForBaseline?.name || '',
+                pm_name: pmFullName,
+                party: faction.faction_name,
+                trait: trait?.trait_name || traitKey
+            }
+        });
+    } catch (e) { console.warn('PM appointed event fire failed (non-blocking):', e); }
 
     console.log(`Auto-appointed party leader as PM: ${pmFullName} (${traitKey}) for faction ${factionId}`);
     return { first_name: faction.leader_first_name, last_name: faction.leader_last_name, age: leaderAge, ideology: ideology.tag, trait_key: traitKey };
@@ -19007,7 +18959,7 @@ async function processAusterityCommitments(supabase, nation, currentTick) {
 
 // ==================== ADVANCE TICK ====================
 
-async function advanceTick(supabase) {
+async function advanceTick(supabase, { force = false } = {}) {
     // 1. Pre-compute next tick metadata
     const { data: shard } = await supabase
         .from('shard')
@@ -19017,15 +18969,21 @@ async function advanceTick(supabase) {
     if (!shard) throw new Error('Shard not found');
 
     const newTick = (shard.current_tick || 0) + 1;
-    // Anchor next_tick_at to the previous schedule to prevent drift
-    // Uses UTC-safe millisecond arithmetic instead of setHours() which is timezone-dependent
     const intervalMs = (shard.tick_interval_hours || 12) * 60 * 60 * 1000;
-    const prevTickAt = new Date(shard.next_tick_at || new Date());
-    let nextTickAt = new Date(prevTickAt.getTime() + intervalMs);
-    // Safety: if calculated next tick is in the past (e.g. server was down), advance to future
     const now = Date.now();
-    while (nextTickAt.getTime() <= now) {
-        nextTickAt = new Date(nextTickAt.getTime() + intervalMs);
+    let nextTickAt;
+
+    if (force) {
+        // Manual advance: anchor next tick from NOW + interval
+        nextTickAt = new Date(now + intervalMs);
+    } else {
+        // Scheduled advance: anchor from previous schedule to prevent drift
+        const prevTickAt = new Date(shard.next_tick_at || new Date());
+        nextTickAt = new Date(prevTickAt.getTime() + intervalMs);
+        // Safety: if calculated next tick is in the past (e.g. server was down), advance to future
+        while (nextTickAt.getTime() <= now) {
+            nextTickAt = new Date(nextTickAt.getTime() + intervalMs);
+        }
     }
     // Compute date directly from tick number to prevent drift between
     // shard.current_date (string-based) and tickToDate() (tick-based).
@@ -19132,12 +19090,9 @@ async function advanceTick(supabase) {
         };
     }
 
-    // 3. Commit shard tick/date after critical AP phase succeeds
-    await supabase.from('shard').update({
-        current_tick: newTick,
-        next_tick_at: nextTickAt.toISOString(),
-        current_date: newDate
-    }).eq('name', 'Alpha Shard');
+    // NOTE: Shard tick/date commit moved to AFTER nation processing (see below).
+    // This prevents the tick number from advancing if the function times out
+    // during nation processing, which would cause skipped game effects.
 
     // Clear expired coup cooldowns
     await supabase.from('factions')
@@ -19237,9 +19192,6 @@ async function advanceTick(supabase) {
                 .eq('item_type', 'institution');
             budgetItemAllocs = itemAllocs;
             statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs);
-        } else if (_institutionConfig.length > 0) {
-            // No budget bill yet — all ministries funded at 100% by default
-            statInstMap = buildStatInstitutionMap(_institutionConfig, []);
         }
         const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
         const decayResults = await processStatDecay(supabase, nation, statInstMap, shutdown, policyDecayAdj);
@@ -19294,22 +19246,6 @@ async function advanceTick(supabase) {
         // Ongoing costs
         const costResult = await processOngoingCosts(supabase, nation, newTick);
         if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
-
-        // Ministry funding: compare institution costs to revenue, accrue deficit to debt
-        try {
-            const fundingResult = await processMinistryFunding(supabase, nation, newTick);
-            if (fundingResult.deficit) {
-                summary.ministryFunding = summary.ministryFunding || [];
-                summary.ministryFunding.push({
-                    nation: nation.name,
-                    deficit: fundingResult.deficitContribution,
-                    cost: fundingResult.totalCost,
-                    revenue: fundingResult.revenue
-                });
-            }
-        } catch (fundingErr) {
-            console.error(`[advanceTick] Ministry funding failed for ${nation.name} (non-fatal):`, fundingErr);
-        }
 
         // Sovereign debt mechanics (burden, credit deterioration, lockout, debt crisis trigger)
         try {
@@ -20043,6 +19979,17 @@ async function advanceTick(supabase) {
       }
     }
 
+    // 5. Commit shard tick/date AFTER all nation processing completes.
+    // This is the last step — if the function timed out earlier, the tick
+    // number stays unchanged and the cron will re-process on the next run.
+    console.log(`[advanceTick] All nations processed. Committing tick ${newTick}...`);
+    await supabase.from('shard').update({
+        current_tick: newTick,
+        next_tick_at: nextTickAt.toISOString(),
+        current_date: newDate
+    }).eq('name', 'Alpha Shard');
+    console.log(`[advanceTick] Tick ${newTick} committed. Next tick at ${nextTickAt.toISOString()}`);
+
     return summary;
 }
 
@@ -20129,6 +20076,7 @@ Deno.serve(async (req) => {
         }
 
         // 3. Tick is due (or forced) — acquire lock
+        console.log(`[advance-tick] ✓ Tick IS due (or forced). Acquiring lock for tick ${shard.current_tick}...`);
         const lockAcquired = await acquireTickLock(supabase);
         if (!lockAcquired) {
             console.warn(`[advance-tick] Lock held — tick ${shard.current_tick}, tick_processing=${shard.tick_processing}`);
@@ -20144,7 +20092,7 @@ Deno.serve(async (req) => {
         // 4. Process the tick
         console.log(`[advance-tick] Lock acquired, processing tick ${shard.current_tick}...`);
         try {
-            const summary = await advanceTick(supabase);
+            const summary = await advanceTick(supabase, { force });
             const responseStatus = summary.partial ? "partial" : "success";
             console.log(
                 `[advance-tick] Tick ${summary.tick} ${summary.partial ? 'partially processed' : 'processed'} (${summary.nations} nations)`
