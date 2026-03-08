@@ -1923,6 +1923,83 @@ const RAW_SCALING_DIVISORS = {
     debt: 1_000_000_000
 };
 
+// Minimum thresholds for raw-value stats that should never be treated as 0-100 values.
+// If a stat falls below this, it was almost certainly corrupted by a 0-100 clamp.
+const RAW_STAT_CORRUPTION_THRESHOLDS = {
+    gdp: 1_000_000,     // $1M — any real GDP is billions
+    debt: -1,            // debt can legitimately be 0 if paid off, but not set to 0 from billions
+    population: 10_000,  // any real population is millions
+    eligible_voters: 10_000
+};
+
+/**
+ * Guard: detect and prevent raw-value stat corruption after a tick processor runs.
+ * Compares post-processor values to pre-processor snapshots.
+ * If a raw stat was at dollar/population scale and got clamped to 0-100 range, restore it.
+ *
+ * @param {string} processorName - Name of the processor (for logging)
+ * @param {object} nation - The in-memory nation object (mutable)
+ * @param {object} snapshot - Pre-processor snapshot of raw-value stats { gdp, debt, ... }
+ * @param {object} supabase - Supabase client (for corrective writes)
+ * @returns {boolean} true if corruption was detected and fixed
+ */
+async function guardRawValueStats(processorName, nation, snapshot, supabase) {
+    let corrupted = false;
+    const fixes = {};
+
+    for (const [stat, divisor] of Object.entries(RAW_SCALING_DIVISORS)) {
+        const before = snapshot[stat];
+        const after = nation[stat];
+
+        // Skip if we didn't have a valid large-scale value before
+        if (before === undefined || before === null || Number(before) < 1000) continue;
+
+        const afterNum = Number(after);
+
+        // Detect corruption: value was in billions/millions range, now it's in 0-100 range
+        if (afterNum >= 0 && afterNum <= 100 && Number(before) > 1000) {
+            console.error(
+                `[guardRawValueStats] CORRUPTION DETECTED in ${processorName} for ${nation.name}: ` +
+                `${stat} changed from ${before} to ${afterNum} (looks like 0-100 clamp). Restoring.`
+            );
+            nation[stat] = before;
+            fixes[stat] = before;
+            corrupted = true;
+        }
+        // Also detect if value dropped to exactly 0 from a large value (debt zeroed out)
+        else if (afterNum === 0 && Number(before) > 1_000_000) {
+            console.error(
+                `[guardRawValueStats] CORRUPTION DETECTED in ${processorName} for ${nation.name}: ` +
+                `${stat} dropped from ${before} to 0. Restoring.`
+            );
+            nation[stat] = before;
+            fixes[stat] = before;
+            corrupted = true;
+        }
+    }
+
+    if (corrupted && Object.keys(fixes).length > 0) {
+        const { error } = await supabase.from('nations').update(fixes).eq('id', nation.id);
+        if (error) {
+            console.error(`[guardRawValueStats] FAILED to restore ${nation.name}:`, error.message);
+        } else {
+            console.log(`[guardRawValueStats] Restored ${nation.name}: ${JSON.stringify(fixes)}`);
+        }
+    }
+
+    return corrupted;
+}
+
+/**
+ * Take a snapshot of all raw-value stats for corruption detection.
+ */
+function snapshotRawStats(nation) {
+    const snap = {};
+    for (const stat of Object.keys(RAW_SCALING_DIVISORS)) {
+        snap[stat] = nation[stat];
+    }
+    return snap;
+}
 
 // ────────── ideology ──────────
 
@@ -18921,9 +18998,16 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // policy deltas and rebase on birth_rate - death_rate afterwards.
         const popGrowthBeforeEffects = Number(nation.population_growth ?? 50);
 
+        // Snapshot raw-value stats (GDP, debt, population) for corruption detection.
+        // After each stat processor, we check if any raw stat was clamped to 0-100 range.
+        const _rawSnapInitial = snapshotRawStats(nation); // preserved for final catch-all
+        let _rawSnap = snapshotRawStats(nation);
+
         // Stat effects (from passed bills/active laws)
         const effectResults = await processStatEffects(supabase, nation, newTick);
         if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
+        await guardRawValueStats('processStatEffects', nation, _rawSnap, supabase);
+        _rawSnap = snapshotRawStats(nation);
 
         // Ministry action effects
         const ministryResults = await processMinistryActions(supabase, nation, newTick);
@@ -18931,9 +19015,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.ministryActions = summary.ministryActions || [];
             summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
         }
+        await guardRawValueStats('processMinistryActions', nation, _rawSnap, supabase);
+        _rawSnap = snapshotRawStats(nation);
 
         // Apply GDP growth rate
         await applyGdpGrowth(supabase, nation);
+        _rawSnap = snapshotRawStats(nation);
 
         // Stat decay (equilibrium drift + erosion, modified by institution funding)
         if (!_institutionConfig) {
@@ -18956,6 +19043,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.decay = summary.decay || [];
             summary.decay.push({ nation: nation.name, effects: decayResults });
         }
+        await guardRawValueStats('processStatDecay', nation, _rawSnap, supabase);
+        _rawSnap = snapshotRawStats(nation);
 
         // Stat connections (threshold-triggered ripple effects)
         if (!_statConnections) {
@@ -18967,12 +19056,16 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.statConnections = summary.statConnections || [];
             summary.statConnections.push({ nation: nation.name, effects: connResults });
         }
+        await guardRawValueStats('processStatConnections', nation, _rawSnap, supabase);
+        _rawSnap = snapshotRawStats(nation);
 
         // (Budget bill auto-generation and committee expiry removed — budget system disabled)
 
         // Ongoing costs
         const costResult = await processOngoingCosts(supabase, nation, newTick);
         if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
+        await guardRawValueStats('processOngoingCosts', nation, _rawSnap, supabase);
+        _rawSnap = snapshotRawStats(nation);
 
         // Sovereign debt mechanics (burden, credit deterioration, lockout, debt crisis trigger)
         try {
@@ -18984,6 +19077,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         } catch (debtErr) {
             console.error(`[advanceTick] Sovereign debt mechanics failed for ${nation.name} (non-fatal):`, debtErr);
         }
+        await guardRawValueStats('processSovereignDebtMechanics', nation, _rawSnap, supabase);
+        _rawSnap = snapshotRawStats(nation);
 
         // Austerity commitments from enacted sovereign defaults
         try {
@@ -18995,9 +19090,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         } catch (austErr) {
             console.error(`[advanceTick] Austerity processing failed for ${nation.name} (non-fatal):`, austErr);
         }
+        await guardRawValueStats('processAusterityCommitments', nation, _rawSnap, supabase);
+        _rawSnap = snapshotRawStats(nation);
 
         // PM trait effects
         await processPMTraitEffects(supabase, nation, newTick);
+        await guardRawValueStats('processPMTraitEffects', nation, _rawSnap, supabase);
+        _rawSnap = snapshotRawStats(nation);
 
         // Elections (democracy only)
         const electionResults = await processElections(supabase, nation, newTick);
@@ -19244,6 +19343,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.crises = summary.crises || [];
             summary.crises.push({ nation: nation.name, crises: crisisResults });
         }
+        await guardRawValueStats('processCrises', nation, _rawSnap, supabase);
+        _rawSnap = snapshotRawStats(nation);
 
         // Population growth: recompute from birth_rate - death_rate base,
         // preserving any policy/crisis deltas, then apply population change.
@@ -19332,8 +19433,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // Random events
+        _rawSnap = snapshotRawStats(nation);
         const eventResults = await processEvents(supabase, nation, newTick);
         if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
+        await guardRawValueStats('processEvents', nation, _rawSnap, supabase);
 
         // Process active fundraiser promises
         const promiseResults = await processPromiseTick(supabase, nation, newTick);
@@ -19680,6 +19783,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // deltas show stale cumulative changes instead of per-tick changes.
         try {
             const { data: finalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+
+            // Final catch-all integrity check: if GDP/debt got corrupted by ANY
+            // processor (including ones we didn't instrument), restore from the
+            // initial snapshot taken at the start of this nation's processing.
+            if (finalNation && _rawSnapInitial) {
+                await guardRawValueStats('FINAL_CHECK', finalNation, _rawSnapInitial, supabase);
+            }
+
             await recordStatHistory(supabase, finalNation || nation, newTick);
             await snapshotNationHistory(supabase, finalNation || nation, newTick);
         } catch (snapErr) {
