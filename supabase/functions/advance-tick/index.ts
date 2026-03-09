@@ -8987,10 +8987,9 @@ async function signPresidentialBill(supabase, billId, presidentFactionId) {
     // Only mark president_action after successful enactment
     // (enactBill already sets status='passed')
     await supabase.from('bills').update({
-            president_action: 'signed',
-            president_action_tick: currentTick
-        }).eq('id', bill.id);
-    }
+        president_action: 'signed',
+        president_action_tick: currentTick
+    }).eq('id', bill.id);
 
     await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, votesFor: 0, votesAgainst: 0, votesAbstain: 0, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (signed by President)' });
 }
