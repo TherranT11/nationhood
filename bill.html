@@ -412,8 +412,6 @@ function renderBill() {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#E65100;">🏛 Cabinet Confirmation</span>';
     } else if (bill.bill_type === 'veto_override') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#B71C1C;">⚖ Veto Override</span>';
-    } else if (bill.bill_type === 'budget') {
-        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#1B5E20;">Budget</span>';
     } else if (bill.bill_type === 'ratification') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#0288D1;">🌐 Ratification</span>';
     } else if (bill.bill_type === 'impeachment_motion') {
@@ -437,13 +435,9 @@ function renderBill() {
 
     document.getElementById('bill-sponsor').textContent = bill.proposed_by
         ? ('Filed by ' + (bill.factions?.faction_name || 'Unknown'))
-        : (bill.bill_type === 'budget' ? 'Automatically introduced to committee' : 'Filed by System');
+        : 'Filed by System';
 
-    if (isFloor && bill.bill_type === 'budget' && !bill.voting_ends_tick) {
-        // Budget bills have no voting deadline — they persist until passed
-        document.getElementById('bill-voting-ends').style.display = 'block';
-        document.getElementById('bill-voting-ends').innerHTML = `<span style="color:#ff9800;">No voting deadline — budget bill remains on the floor until passed</span>`;
-    } else if (isFloor && bill.voting_ends_tick && !bill.early_resolution_status) {
+    if (isFloor && bill.voting_ends_tick && !bill.early_resolution_status) {
         document.getElementById('bill-voting-ends').style.display = 'block';
         // If vote outcome is math-locked, show "Resolves next tick" instead of the original deadline
         const evalForDeadline = evaluateBillVote(bill, GAME_CONFIG.TOTAL_SEATS);
@@ -547,17 +541,7 @@ function renderBill() {
         }
     } else if (isCommittee) {
         const el = document.getElementById('sponsor-actions');
-        // For budget bills, head of government can send to floor (PM/President/Autocrat)
-        const isBudgetBill = bill.bill_type === 'budget';
-        const isHeadOfGov = isAutocracy ? isHeadFaction
-            : isPresidential ? (presidentFactionId && currentFaction?.id === presidentFactionId)
-            : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId);
-        const isBudgetGovMember = isBudgetBill && currentFaction && (
-            isAutocracy ? isHeadFaction
-            : isPresidential ? (presidentFactionId && currentFaction.id === presidentFactionId)
-            : (coalitionPartyIds.includes(currentFaction.id) || currentFaction?.id === coalitionLeadPartyId)
-        );
-        const canActOnBill = isSponsor || isBudgetGovMember;
+        const canActOnBill = isSponsor;
         if (isAutocracy) {
             if (isHeadFaction || isSponsor) {
                 el.style.display = 'flex';
@@ -570,34 +554,16 @@ function renderBill() {
     const hasMajority = sponsorSeats >= GAME_CONFIG.MAJORITY_SEATS;
     const hasCosponsor = (bill.bill_support || []).some(s => s.faction_id !== bill.proposed_by && s.stance === 'accept');
     const isFoundational = bill.bill_type === 'foundational';
-    let canSendToFloor = !isNoGovernment && (isBudgetBill ? isBudgetGovMember : (isFoundational ? hasCosponsor : (hasMajority || hasCosponsor)));
-
-    // Budget bills: block Send to Floor during early proposal window (before due date)
-    let budgetEarlyWindowMsg = '';
-    if (isBudgetBill && canSendToFloor) {
-        const lastBT = Number(currentNation.last_budget_tick || 0);
-        const cycleLen = GAME_CONFIG.TICKS_PER_YEAR;
-        const earlyWin = GAME_CONFIG.BUDGET_EARLY_WINDOW_TICKS;
-        const dueTick = lastBT > 0 ? lastBT + cycleLen : cycleLen;
-        const ticksUntilDue = dueTick - currentShardTick;
-        if (ticksUntilDue > 0 && ticksUntilDue <= earlyWin) {
-            canSendToFloor = false;
-            budgetEarlyWindowMsg = '<div style="color:#ffb300;font-size:0.78rem;margin-top:10px;text-align:center;" title="Budget vote opens in ' + ticksUntilDue + ' tick(s)">⏳ Budget vote opens in ' + ticksUntilDue + ' tick(s). You can edit and gather support until then.</div>';
-        }
-    }
+    let canSendToFloor = !isNoGovernment && (isFoundational ? hasCosponsor : (hasMajority || hasCosponsor));
 
     const disabledAttr = canSendToFloor ? '' : 'disabled';
-    const reason = budgetEarlyWindowMsg ? budgetEarlyWindowMsg : (isNoGovernment
+    const reason = isNoGovernment
         ? '<div style="color:#4fc3f7;font-size:0.78rem;margin-top:10px;text-align:center;">🏛️ Legislature is suspended until a new government is formed.</div>'
         : (canSendToFloor ? '' : isFoundational
         ? '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ Foundational laws require at least one co-sponsor to advance.</div>'
         : '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or a simple majority of seats to send this to the floor.</div>'));
 
-    // System-generated budget bills (proposed_by = null) cannot be retracted
-    const canRetractBudget = isBudgetBill && bill.proposed_by;
-    const retractBtn = isBudgetBill
-        ? (canRetractBudget ? '<button class="sponsor-btn retract" onclick="retractBudgetBill()">Withdraw Budget</button>' : '')
-        : '<button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>';
+    const retractBtn = '<button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>';
     el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">Send to Floor</button>${retractBtn}` + reason;
 }
     }
@@ -1513,7 +1479,7 @@ function renderSidebar() {
                 </div>` : (!isSponsor ? `<div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div><div class="no-amendments">No conditional support offers</div>` : '')}
             ${(() => {
                 const myLocked2 = currentFaction && billSupport.find(s => s.faction_id === currentFaction.id)?.locked;
-                const canAmend = !isSponsor && !myLocked2 && bill.bill_type !== 'foundational' && bill.bill_type !== 'confirmation' && bill.bill_type !== 'minister_confirmation' && bill.bill_type !== 'veto_override' && bill.bill_type !== 'budget';
+                const canAmend = !isSponsor && !myLocked2 && bill.bill_type !== 'foundational' && bill.bill_type !== 'confirmation' && bill.bill_type !== 'minister_confirmation' && bill.bill_type !== 'veto_override';
                 return canAmend ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button><button class="add-strike-btn" onclick="openStrikeAmendmentModal()">✂ Strike Article</button></div>` : '';
             })()}
         </div>`;
@@ -1550,39 +1516,20 @@ function renderSidebar() {
             statusLabel = 'WILL PASS';
             statusColor = '#4CAF50';
         } else if (evalResult.status === 'will_fail') {
-            if (bill.bill_type === 'budget') {
-                statusLabel = 'NOT PASSING — budget bill remains on floor';
-                statusColor = '#ff9800';
-            } else {
-                statusLabel = evalResult.reason === 'quorum_impossible' ? 'WILL FAIL — QUORUM IMPOSSIBLE' : 'WILL FAIL';
-                statusColor = '#ff4444';
-            }
+            statusLabel = evalResult.reason === 'quorum_impossible' ? 'WILL FAIL — QUORUM IMPOSSIBLE' : 'WILL FAIL';
+            statusColor = '#ff4444';
         } else if (evalResult.status === 'passing') {
             const quorumLabel = evalResult.quorumMet ? `${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} quorum met` : '';
             statusLabel = `PASSING${quorumLabel ? ' — ' + quorumLabel : ''}`;
             statusColor = '#8BC34A';
         } else if (evalResult.status === 'failing') {
-            if (bill.bill_type === 'budget') {
-                statusLabel = 'NOT YET PASSING — needs more YES votes';
-                statusColor = '#ff9800';
-            } else {
-                statusLabel = 'FAILING';
-                statusColor = '#ff6644';
-            }
+            statusLabel = 'FAILING';
+            statusColor = '#ff6644';
         } else if (evalResult.status === 'tied') {
-            if (bill.bill_type === 'budget') {
-                statusLabel = 'TIED — needs more YES votes to pass';
-                statusColor = '#ff9800';
-            } else {
-                statusLabel = 'TIED — bill will fail unless more yes votes are cast';
-                statusColor = '#ff9800';
-            }
+            statusLabel = 'TIED — bill will fail unless more yes votes are cast';
+            statusColor = '#ff9800';
         } else if (evalResult.status === 'quorum_not_met') {
-            if (bill.bill_type === 'budget') {
-                statusLabel = `QUORUM NOT MET — ${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} participating (budget stays on floor)`;
-            } else {
-                statusLabel = `QUORUM NOT MET — ${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} participating`;
-            }
+            statusLabel = `QUORUM NOT MET — ${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} participating`;
             statusColor = '#ffcc00';
         } else if (evalResult.status === 'pending' && isAbsoluteThreshold) {
             statusLabel = `${evalResult.neededFor} more YES needed of ${evalResult.thresholdNeeded} required`;
@@ -1648,15 +1595,14 @@ function renderSidebar() {
                 <span class="vote-tally-label">Quorum</span>
                 <span class="vote-tally-value" style="color:var(--text-secondary);">${participating} / ${quorumThreshold} needed <span class="vote-status-chip" style="background:${qColor};color:#000;">${qLabel}</span></span>
             </div>`;
-            const isBudget = bill.bill_type === 'budget';
             const pLabel = evalResult.status === 'will_pass' ? 'WILL PASS'
-                : evalResult.status === 'will_fail' ? (isBudget ? 'NOT PASSING' : 'WILL FAIL')
+                : evalResult.status === 'will_fail' ? 'WILL FAIL'
                 : evalResult.status === 'passing' ? 'PASSING'
-                : evalResult.status === 'failing' ? (isBudget ? 'NOT PASSING' : 'FAILING')
+                : evalResult.status === 'failing' ? 'FAILING'
                 : evalResult.status === 'tied' ? 'TIED'
                 : 'UNDECIDED';
             const pColor = evalResult.status === 'will_pass' || evalResult.status === 'passing' ? '#4CAF50'
-                : evalResult.status === 'will_fail' || evalResult.status === 'failing' ? (isBudget ? '#ff9800' : '#ff4444')
+                : evalResult.status === 'will_fail' || evalResult.status === 'failing' ? '#ff4444'
                 : evalResult.status === 'tied' ? '#ff9800'
                 : '#888';
             passageRow = `<div class="vote-tally-row">
@@ -1836,10 +1782,7 @@ async function signBillAction() {
 async function vetoBillAction() {
     if (!isPresidentParty) return;
     const overrideSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
-    const budgetWarning = currentBill.bill_type === 'budget'
-        ? '\n\nWARNING: Vetoing the budget will trigger a GOVERNMENT SHUTDOWN and apply approval penalties to the President\'s party.\n'
-        : '';
-    if (!confirm(`VETO this bill?${budgetWarning}\nA veto override bill will be automatically created requiring ${overrideSeats}/${GAME_CONFIG.TOTAL_SEATS} seats (2/3 supermajority).\n\nProceed?`)) return;
+    if (!confirm(`VETO this bill?\nA veto override bill will be automatically created requiring ${overrideSeats}/${GAME_CONFIG.TOTAL_SEATS} seats (2/3 supermajority).\n\nProceed?`)) return;
     try {
         await vetoPresidentialBill(_supabase, currentBill.id, currentFaction.id);
         alert('Bill vetoed. A veto override bill has been sent to the floor.');
@@ -1853,10 +1796,7 @@ async function enactDecree() {
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const decreeFields = { status: 'floor', floor_tick: shard?.current_tick || 0 };
-        if (currentBill.bill_type !== 'budget') {
-            decreeFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
-        }
-        decreeFields.floor_tick = shard?.current_tick || 0;
+        decreeFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
         const { error } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
         if (error) throw error;
 
@@ -1878,33 +1818,14 @@ async function enactDecree() {
 }
 
 async function sendToFloor() {
-    // Budget bills: any government/coalition party can send to floor
-    const isBudgetGovParty = currentBill.bill_type === 'budget' && currentFaction && (
-        isAutocracy ? isHeadFaction
-        : isPresidential ? (presidentFactionId && currentFaction.id === presidentFactionId)
-        : (coalitionPartyIds.includes(currentFaction.id) || currentFaction.id === coalitionLeadPartyId)
-    );
-    if (!currentFaction || (currentBill.proposed_by !== currentFaction.id && !isBudgetGovParty)) return;
+    if (!currentFaction || currentBill.proposed_by !== currentFaction.id) return;
     if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can advance.'); return; }
 
-    // Require at least one article for non-budget, non-repeal bills
-    if (currentBill.bill_type !== 'budget' && currentBill.bill_type !== 'repeal'
+    // Require at least one article for non-repeal bills
+    if (currentBill.bill_type !== 'repeal'
         && (!currentBill.bill_articles || currentBill.bill_articles.filter(a => a.policy_id || a.effect_data || a.repeal_active_law_id).length === 0)) {
         alert('This bill has no policy articles. Add at least one article before sending to the floor.');
         return;
-    }
-
-    // Budget bills: block during early proposal window (only for player-submitted budgets)
-    if (currentBill.bill_type === 'budget' && currentBill.proposed_by) {
-        const lastBT = Number(currentNation.last_budget_tick || 0);
-        const cycleLen = GAME_CONFIG.TICKS_PER_YEAR;
-        const earlyWin = GAME_CONFIG.BUDGET_EARLY_WINDOW_TICKS;
-        const dueTick = lastBT > 0 ? lastBT + cycleLen : cycleLen;
-        const ticksUntilDue = dueTick - currentShardTick;
-        if (ticksUntilDue > 0 && ticksUntilDue <= earlyWin) {
-            alert('Budget vote opens in ' + ticksUntilDue + ' tick(s). The budget cannot be sent to the floor until it is officially due.');
-            return;
-        }
     }
 
     // Prompt to rename the bill before sending to floor
@@ -1919,17 +1840,11 @@ async function sendToFloor() {
         }
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         updateFields.floor_tick = shard?.current_tick || 0;
-        // Budget bills persist indefinitely (no voting deadline)
-        if (currentBill.bill_type !== 'budget') {
-            updateFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
-        }
-        // Track when the bill was moved to the floor
-        updateFields.floor_tick = shard?.current_tick || 0;
+        updateFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
         const { error } = await _supabase.from('bills').update(updateFields).eq('id', billId);
         if (error) throw error;
 
         // Apply dynamic ideology penalty to sponsor (replaces static penalty)
-        // Skip for system-generated budget bills (no sponsor)
         let penaltyMsg = '';
         if (factionIdeology && currentBill.proposed_by) {
             const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, currentBill.bill_articles || []);
@@ -1957,29 +1872,6 @@ async function retractBill() {
         await _supabase.from('bill_articles').delete().eq('bill_id', billId);
         await _supabase.from('bills').delete().eq('id', billId);
         alert('Retracted.');
-        window.location.href = 'laws.html';
-    } catch (e) { console.error(e); alert('Error: ' + e.message); }
-}
-
-async function retractBudgetBill() {
-    if (!currentBill.proposed_by) {
-        alert('System-generated budget bills cannot be retracted.');
-        return;
-    }
-    if (currentBill.status !== 'committee') {
-        alert('This budget bill is on the floor and cannot be retracted.');
-        return;
-    }
-    if (!confirm('Retract this budget bill? This cannot be undone.')) return;
-    try {
-        await _supabase.from('budget_item_allocations').delete().eq('bill_id', billId);
-        await _supabase.from('budget_allocations').delete().eq('bill_id', billId);
-        await _supabase.from('bill_comments').delete().eq('bill_id', billId);
-        await _supabase.from('bill_amendment_requests').delete().eq('bill_id', billId);
-        await _supabase.rpc('withdraw_bill_votes', { p_bill_id: billId });
-        await _supabase.from('bill_articles').delete().eq('bill_id', billId);
-        await _supabase.from('bills').delete().eq('id', billId);
-        alert('Budget bill retracted.');
         window.location.href = 'laws.html';
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
@@ -2497,7 +2389,6 @@ window.signBillAction = signBillAction;
 window.vetoBillAction = vetoBillAction;
 window.enactDecree = enactDecree;
 window.retractBill = retractBill;
-window.retractBudgetBill = retractBudgetBill;
 window.sendToFloor = sendToFloor;
 window.respondToAmendment = respondToAmendment;
 window.setCommitteeStance = setCommitteeStance;
@@ -2521,660 +2412,6 @@ window.submitSponsorAddArticle = submitSponsorAddArticle;
 window.openSponsorAddTextModal = openSponsorAddTextModal;
 window.closeSponsorAddTextModal = closeSponsorAddTextModal;
 window.submitSponsorAddTextArticle = submitSponsorAddTextArticle;
-
-// ==================== BUDGET BILL ====================
-
-let budgetSelectedCategory = null;
-
-async function loadBudgetData(bill) {
-    try {
-        // Load budget allocations
-        const { data: allocs } = await _supabase.from('budget_allocations')
-            .select('*').eq('bill_id', bill.id);
-        budgetAllocations = allocs || [];
-
-        // Load full nation data for budget calculations
-        const { data: nation } = await _supabase.from('nations')
-            .select('*').eq('id', bill.nation_id).single();
-        budgetNation = nation;
-
-        // Load active laws for cost breakdown
-        const { data: laws } = await _supabase.from('active_laws')
-            .select('*, policies(id, policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat)')
-            .eq('nation_id', bill.nation_id);
-        budgetActiveLaws = (laws || []).filter(l => !l.is_reversal);
-
-        // Load latest trade summary for tariff revenue (matches Economy page)
-        const { data: tradeSummary } = await _supabase.from('trade_summary')
-            .select('tariff_revenue')
-            .eq('nation_id', bill.nation_id)
-            .order('tick', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        budgetTradeTariffRevenue = tradeSummary ? Number(tradeSummary.tariff_revenue) : null;
-
-        // Load institution config for cost breakdown
-        const { data: instRows } = await _supabase.from('ministry_institution_config')
-            .select('*');
-        budgetInstitutions = instRows || [];
-
-        // Load per-item allocations
-        const { data: itemAllocs } = await _supabase.from('budget_item_allocations')
-            .select('*').eq('bill_id', bill.id);
-        budgetItemAllocations = itemAllocs || [];
-
-        // Load economic aid data
-        try {
-            const { data: aidStates } = await _supabase.from('aid_agreement_state')
-                .select('*, trade_agreements!inner(status, agreement_type, articles, agreement_name)')
-                .or('donor_nation_id.eq.' + bill.nation_id + ',recipient_nation_id.eq.' + bill.nation_id)
-                .eq('trade_agreements.status', 'active')
-                .eq('trade_agreements.agreement_type', 'economic_aid')
-                .eq('is_suspended', false);
-            let received = 0, given = 0;
-            for (const s of (aidStates || [])) {
-                const amt = Number(s.current_annual_amount || 0);
-                if (s.recipient_nation_id === bill.nation_id) received += amt;
-                if (s.donor_nation_id === bill.nation_id) given += amt;
-            }
-            budgetAidData = { received, given, agreements: aidStates || [] };
-        } catch (aidErr) {
-            console.warn('Aid data load error (non-fatal):', aidErr);
-            budgetAidData = { received: 0, given: 0, agreements: [] };
-        }
-    } catch (e) {
-        console.error('Error loading budget data:', e);
-        // Non-fatal: renderBudgetBillUI handles missing budgetNation gracefully
-    }
-}
-
-function isBudgetEditable() {
-    // Budget allocations can be edited in committee or on the floor
-    // (floor editing allows parties to amend the budget to build consensus)
-    if (!currentBill || !['committee', 'floor'].includes(currentBill.status)) return false;
-    if (currentBill.early_resolution_status) return false;
-    if (!currentFaction) return false;
-    if (currentSeats < 1) return false;
-    // Presidential / Autocracy: anyone with 1+ seat can edit
-    if (isPresidential || isAutocracy) return true;
-    // Parliamentary: coalition members and PM (lead party) can edit
-    return coalitionPartyIds.includes(currentFaction.id) || currentFaction.id === coalitionLeadPartyId;
-}
-
-function getBudgetTotals() {
-    const nation = budgetNation;
-    if (!nation) return { grossRevenue: 0, debtService: 0, available: 0, reserves: 0, totalSpending: 0, gap: 0, currentDebt: 0, projectedDebt: 0, aidReceived: 0, aidGiven: 0 };
-
-    const budget = calculateNationalBudget(nation);
-    applyTradeTariffOverride(budget, budgetTradeTariffRevenue);
-    const reserves = Number(nation.budget_reserves || 0);
-    const aidReceived = Number(budgetAidData?.received || 0);
-    const aidGiven = Number(budgetAidData?.given || 0);
-    budget.aidReceived = aidReceived;
-    budget.aidGiven = aidGiven;
-    budget.grossRevenue += aidReceived;
-    const available = budget.grossRevenue + reserves - budget.debtService - aidGiven;
-
-    let totalSpending = 0;
-    const hasAnyItems = budgetItemAllocations.length > 0;
-    if (hasAnyItems) {
-        for (const cat of FISCAL_CATEGORIES) {
-            totalSpending += computeMinistryAllocTotal(cat);
-        }
-    } else {
-        for (const alloc of budgetAllocations) {
-            totalSpending += Number(alloc.allocation_amount || 0);
-        }
-    }
-
-    const gap = available - totalSpending;
-    const currentDebt = Number(nation.debt || 0);
-    let projectedDebt = currentDebt;
-    if (gap < 0) projectedDebt += Math.abs(gap);
-    else projectedDebt = Math.max(0, projectedDebt - gap);
-
-    return { ...budget, reserves, available, totalSpending, gap, currentDebt, projectedDebt };
-}
-
-function renderBudgetBillUI() {
-    const articlesEl = document.getElementById('bill-articles');
-    const totalsEl = document.getElementById('bill-totals');
-    if (totalsEl) totalsEl.style.display = 'none'; // Hide normal bill totals
-
-    const nation = budgetNation;
-    if (!nation) {
-        articlesEl.innerHTML = '<div style="color:#ff4444;text-align:center;padding:20px;">Error loading budget data.</div>';
-        return;
-    }
-
-    const budget = calculateNationalBudget(nation);
-    applyTradeTariffOverride(budget, budgetTradeTariffRevenue);
-    const inflationStat = Number(nation.inflation || 0);
-    const inflationPct = Math.pow(Math.max(0, inflationStat), 1.5) / 100;
-    const totals = getBudgetTotals();
-    // Three-state controls: showControls = buttons visible, canEdit = buttons clickable
-    // Budget bills can be edited in committee AND on the floor (to allow amendment for consensus)
-    const showControls = currentBill && ['committee', 'floor'].includes(currentBill.status) && !currentBill.early_resolution_status;
-    const canEdit = isBudgetEditable();
-    const gameYear = 2000 + Math.floor((currentBill.proposed_tick || 0) / 12);
-
-    let h = '';
-
-    // === PERSISTENT TOP BAR ===
-    const gapClass = totals.gap >= 0 ? 'budget-gap-surplus' : 'budget-gap-deficit';
-    const gapSign = totals.gap >= 0 ? '+' : '';
-    h += '<div class="budget-top-bar" id="budget-top-bar">';
-    h += '<div class="budget-top-numbers">';
-    h += '<span>Available: <strong>' + fmtBudgetCurrency(totals.available) + '</strong></span>';
-    h += '<span class="budget-top-sep">|</span>';
-    h += '<span>Spending: <strong>' + fmtBudgetCurrency(totals.totalSpending) + '</strong></span>';
-    h += '<span class="budget-top-sep">|</span>';
-    h += '<span>Gap: <strong class="' + gapClass + '">' + gapSign + fmtBudgetCurrency(totals.gap) + '</strong></span>';
-    h += '</div>';
-    h += '<div class="budget-top-debt">';
-    h += '<span>Current Debt: ' + fmtBudgetCurrency(totals.currentDebt) + '</span>';
-    h += '<span class="budget-top-sep">|</span>';
-    h += '<span>Projected Debt: <strong>' + fmtBudgetCurrency(totals.projectedDebt) + '</strong></span>';
-    h += '</div>';
-    h += '</div>';
-
-    if (currentBill.status === 'floor') {
-        h += '<div class="budget-floor-amend-notice">Budget allocations can still be amended on the floor. Changing allocations will reset all existing votes.</div>';
-    }
-
-    // === REVENUE SECTION ===
-    h += '<div class="budget-section">';
-    h += '<div class="budget-section-header">REVENUE — Year ' + gameYear + '</div>';
-    h += '<div class="budget-revenue-grid">';
-    h += budgetRevLine('Income Tax (' + Math.round(Number(nation.income_tax || 0)) + '% rate)', budget.incomeRevenue);
-    h += budgetRevLine('Corporate Tax (' + Math.round(Number(nation.corporate_tax || 0)) + '% rate)', budget.corpRevenue);
-    h += budgetRevLine('Sales Tax (' + Math.round(Number(nation.sales_tax || 0)) + '% rate)', budget.salesRevenue);
-    h += budgetRevLine('Tariff Revenue (' + Math.round(Number(nation.tariffs || 0)) + '% rate)', budget.tariffRevenue);
-    if (budget.oilRevenue > 0) {
-        h += budgetRevLine('State Enterprises (Oil & Gas)', budget.oilRevenue);
-    }
-    if (totals.aidReceived > 0) {
-        h += budgetRevLine('Foreign Aid Received', totals.aidReceived);
-    }
-    h += '<div class="budget-rev-divider"></div>';
-    h += budgetRevLine('Gross Revenue', budget.grossRevenue, true);
-    if (totals.reserves > 0) {
-        h += budgetRevLine("Last Year's Reserves", totals.reserves);
-    }
-    h += budgetRevLine('Debt Service (Interest on ' + fmtBudgetCurrency(totals.currentDebt) + ')', -budget.debtService, false, true);
-    if (totals.aidGiven > 0) {
-        h += budgetRevLine('Foreign Aid Commitments', -totals.aidGiven, false, true);
-    }
-    h += '<div class="budget-rev-divider"></div>';
-    h += budgetRevLine('AVAILABLE FOR ALLOCATION', totals.available, true);
-    h += '</div>';
-
-    if (inflationPct > 0.5) {
-        h += '<div class="budget-inflation-notice">Inflation (' + formatInflationRate(inflationStat) + ' — ' + getInflationLabel(inflationStat) + ') has increased all costs by ~' + inflationPct.toFixed(1) + '% since last budget cycle</div>';
-    }
-    h += '</div>';
-
-    // === MINISTRY TABS ===
-    h += '<div class="budget-section">';
-    h += '<div class="budget-section-header">EXPENDITURES BY MINISTRY</div>';
-
-    // Inflation notice at top of expenditures
-    const inflationMult = getInflationMultiplier(inflationStat);
-    h += '<div class="budget-inflation-summary">';
-    h += '<span class="budget-inflation-icon">📊</span>';
-    h += '<span>' + escapeHtml(budgetNation.name || 'Nation') + '\'s inflation is currently <strong>' + formatInflationRate(inflationStat) + ' (' + getInflationLabel(inflationStat) + ')</strong>. ';
-    if (inflationPct > 0.5) {
-        h += 'That has raised all ministry costs by <strong class="budget-gap-deficit">+' + inflationPct.toFixed(1) + '%</strong> ';
-        h += '(multiplier: ' + inflationMult.toFixed(3) + '×).';
-    } else {
-        h += 'Costs are stable (negligible inflation adjustment).';
-    }
-    h += '</span></div>';
-    h += '<div class="budget-ministry-tabs" id="budget-ministry-tabs">';
-    for (const cat of FISCAL_CATEGORIES) {
-        const hasItems = budgetItemAllocations.some(ia => ia.fiscal_category === cat);
-        const allocAmt = hasItems ? computeMinistryAllocTotal(cat) : Number(budgetAllocations.find(a => a.fiscal_category === cat)?.allocation_amount || 0);
-        // Compute live needed cost
-        const catPolicies = computeMinistryPolicyCost(budgetActiveLaws, cat, budgetNation);
-        const catInstitutions = computeMinistryInstitutionCost(budgetInstitutions, cat, budgetNation);
-        const neededCost = catPolicies.total + catInstitutions.total;
-        const pctFunded = neededCost > 0 ? Math.round((allocAmt / neededCost) * 100) : 100;
-        const pctClass = pctFunded >= 100 ? 'funded-full' : pctFunded >= 80 ? 'funded-ok' : 'funded-low';
-        const activeClass = (budgetSelectedCategory === cat || (!budgetSelectedCategory && cat === FISCAL_CATEGORIES[0])) ? ' active' : '';
-        h += '<button class="budget-ministry-tab' + activeClass + '" data-cat="' + escapeHtml(cat) + '">';
-        h += '<span class="budget-tab-name">' + escapeHtml(cat) + '</span>';
-        h += '<span class="budget-tab-budgeted">BUDGETED: ' + fmtBudgetCurrency(allocAmt) + '</span>';
-        h += '<span class="budget-tab-needed">NEEDED: ' + fmtBudgetCurrency(neededCost) + '</span>';
-        h += '<span class="budget-tab-pct ' + pctClass + '">' + pctFunded + '%</span>';
-        h += '</button>';
-    }
-    h += '</div>';
-
-    // === MINISTRY DETAIL ===
-    h += '<div id="budget-ministry-detail">';
-    h += renderBudgetMinistryDetail(budgetSelectedCategory || FISCAL_CATEGORIES[0], showControls, canEdit);
-    h += '</div>';
-
-    // === SURPLUS / DEFICIT OUTCOME ===
-    h += '<div class="budget-outcome-section">';
-    if (totals.gap >= 0) {
-        const currentDebt = totals.currentDebt;
-        const surplus = totals.gap;
-        if (currentDebt > 0) {
-            const debtRepayment = Math.min(surplus, currentDebt);
-            const leftover = surplus - debtRepayment;
-            h += '<div class="budget-outcome surplus">';
-            h += '<div class="budget-outcome-title">📈 Budget Surplus: ' + fmtBudgetCurrency(surplus) + '</div>';
-            h += '<div class="budget-outcome-detail">';
-            h += '<div>→ ' + fmtBudgetCurrency(debtRepayment) + ' goes toward <strong>debt repayment</strong> (current debt: ' + fmtBudgetCurrency(currentDebt) + ')</div>';
-            if (leftover > 0) {
-                h += '<div>→ ' + fmtBudgetCurrency(leftover) + ' carried forward as <strong>budget reserves</strong></div>';
-            }
-            h += '<div style="margin-top:6px;color:#aaa;">Projected debt after budget: <strong>' + fmtBudgetCurrency(totals.projectedDebt) + '</strong></div>';
-            h += '</div></div>';
-        } else {
-            h += '<div class="budget-outcome surplus">';
-            h += '<div class="budget-outcome-title">📈 Budget Surplus: ' + fmtBudgetCurrency(surplus) + '</div>';
-            h += '<div class="budget-outcome-detail">';
-            h += '<div>→ ' + fmtBudgetCurrency(surplus) + ' carried forward as <strong>budget reserves</strong></div>';
-            h += '<div style="margin-top:6px;color:#aaa;">No outstanding debt.</div>';
-            h += '</div></div>';
-        }
-    } else {
-        const deficit = Math.abs(totals.gap);
-        h += '<div class="budget-outcome deficit">';
-        h += '<div class="budget-outcome-title">📉 Budget Deficit: ' + fmtBudgetCurrency(deficit) + '</div>';
-        h += '<div class="budget-outcome-detail">';
-        h += '<div>→ ' + fmtBudgetCurrency(deficit) + ' will be <strong>added to national debt</strong></div>';
-        h += '<div style="margin-top:6px;color:#aaa;">Projected debt after budget: <strong>' + fmtBudgetCurrency(totals.projectedDebt) + '</strong> (current: ' + fmtBudgetCurrency(totals.currentDebt) + ')</div>';
-        h += '</div></div>';
-    }
-    h += '</div>';
-
-    h += '</div>'; // close budget-section
-
-    // Retract Budget Bill — only head of government can retract, and only player-proposed bills
-    // System-generated budget bills (proposed_by = null) cannot be retracted
-    const isPMParty = isAutocracy ? isHeadFaction
-        : isPresidential ? (presidentFactionId && currentFaction?.id === presidentFactionId)
-        : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId);
-    if (isPMParty && currentBill.status === 'committee' && currentBill.proposed_by) {
-        h += '<div class="budget-retract-section">';
-        h += '<button class="budget-retract-btn" onclick="retractBudgetBill()">Retract Budget Bill</button>';
-        h += '<div class="budget-retract-note">Only the head of government can retract a budget bill.</div>';
-        h += '</div>';
-    }
-
-    articlesEl.innerHTML = h;
-
-    // Set up event delegation once (survives innerHTML rebuilds)
-    initBudgetDelegation();
-
-    // Wire ministry tab clicks via delegation on the tabs container
-    document.querySelectorAll('.budget-ministry-tab').forEach(function(tab) {
-        tab.addEventListener('click', function() {
-            budgetSelectedCategory = tab.getAttribute('data-cat');
-            // Update active tab
-            document.querySelectorAll('.budget-ministry-tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            // Re-render detail only — delegated handlers still work
-            const detailEl = document.getElementById('budget-ministry-detail');
-            if (detailEl) detailEl.innerHTML = renderBudgetMinistryDetail(budgetSelectedCategory, showControls, canEdit);
-        });
-    });
-}
-
-function budgetRevLine(label, value, isBold, isNegative) {
-    const cls = isBold ? ' budget-rev-bold' : '';
-    const negCls = isNegative ? ' budget-rev-negative' : '';
-    return '<div class="budget-rev-line' + cls + negCls + '">' +
-        '<span class="budget-rev-label">' + escapeHtml(label) + '</span>' +
-        '<span class="budget-rev-value">' + fmtBudgetCurrency(value) + '</span>' +
-        '</div>';
-}
-
-// Helper: compute ministry total from per-item allocations
-function computeMinistryAllocTotal(category) {
-    const alloc = budgetAllocations.find(a => a.fiscal_category === category);
-    const ministryPolicies = computeMinistryPolicyCost(budgetActiveLaws, category, budgetNation);
-    const ministryInstitutions = computeMinistryInstitutionCost(budgetInstitutions, category, budgetNation);
-    const itemAllocs = budgetItemAllocations.filter(ia => ia.fiscal_category === category);
-
-    let total = 0;
-
-    // Sum institution allocations
-    for (const inst of ministryInstitutions.institutions) {
-        const ia = itemAllocs.find(i => i.item_type === 'institution' && i.item_id === inst.id);
-        total += ia ? Number(ia.allocation_amount) : inst.cost;
-    }
-
-    // Sum non-cut policy costs
-    for (const p of ministryPolicies.policies) {
-        const ia = itemAllocs.find(i => i.item_type === 'policy' && i.item_id === p.policy_id);
-        if (!(ia && ia.is_cut)) total += p.cost;
-    }
-
-    // Add discretionary
-    total += Number(alloc?.discretionary_amount || 0);
-
-    return total;
-}
-
-function renderBudgetMinistryDetail(category, showControls, canEdit) {
-    const alloc = budgetAllocations.find(a => a.fiscal_category === category);
-    const discretionary = Number(alloc?.discretionary_amount || 0);
-    const disabledAttr = canEdit ? '' : ' disabled';
-    const disabledClass = canEdit ? '' : ' budget-btn-disabled';
-
-    // Compute live costs for this ministry
-    const ministryPolicies = computeMinistryPolicyCost(budgetActiveLaws, category, budgetNation);
-    const ministryInstitutions = computeMinistryInstitutionCost(budgetInstitutions, category, budgetNation);
-    const liveTotalCost = ministryPolicies.total + ministryInstitutions.total;
-
-    // Get per-item allocations for this ministry
-    const itemAllocs = budgetItemAllocations.filter(ia => ia.fiscal_category === category);
-    function getItemAlloc(type, id) {
-        return itemAllocs.find(ia => ia.item_type === type && ia.item_id === id);
-    }
-
-    // Compute actual total budgeted from items
-    const allocAmt = computeMinistryAllocTotal(category);
-
-    let h = '';
-
-    // Allocation header with BUDGETED / NEEDED / Percentage
-    const detailPctFunded = liveTotalCost > 0 ? Math.round((allocAmt / liveTotalCost) * 100) : (allocAmt > 0 ? 999 : 100);
-    const detailPctClass = detailPctFunded >= 100 ? 'funded-full' : detailPctFunded >= 80 ? 'funded-ok' : 'funded-low';
-    h += '<div class="budget-alloc-summary">';
-    h += '<div class="budget-alloc-item">';
-    h += '<span class="budget-alloc-label">BUDGETED</span>';
-    h += '<span class="budget-alloc-value">' + fmtBudgetCurrency(allocAmt) + '</span>';
-    h += '</div>';
-    h += '<div class="budget-alloc-item">';
-    h += '<span class="budget-alloc-label">NEEDED</span>';
-    h += '<span class="budget-alloc-value">' + fmtBudgetCurrency(liveTotalCost) + '</span>';
-    h += '</div>';
-    h += '<div class="budget-alloc-item">';
-    h += '<span class="budget-alloc-label">FUNDED</span>';
-    h += '<span class="budget-alloc-value ' + detailPctClass + '">' + Math.min(detailPctFunded, 999) + '%</span>';
-    h += '</div>';
-    h += '</div>';
-
-    // Funding status
-    if (detailPctFunded < 100) {
-        h += '<div class="budget-ministry-status">';
-        h += '<span class="budget-underfunded-note">Underfunded — effects run at ' + detailPctFunded + '% capacity</span>';
-        h += '</div>';
-    }
-
-    // Non-coalition notice (committee stage, but not in coalition)
-    if (showControls && !canEdit) {
-        h += '<div class="budget-readonly-notice">Only coalition members can amend the budget in committee.</div>';
-    }
-
-    // ===== Institutions section =====
-    h += '<div class="budget-sub-section">';
-    h += '<div class="budget-sub-header">INSTITUTIONS</div>';
-    let instSubtotal = 0;
-    if (ministryInstitutions.institutions.length === 0) {
-        h += '<div class="budget-empty-notice">No institutions in this ministry.</div>';
-    } else {
-        for (const inst of ministryInstitutions.institutions) {
-            const ia = getItemAlloc('institution', inst.id);
-            const itemNeeded = inst.cost;
-            const itemBudgeted = ia ? Number(ia.allocation_amount) : itemNeeded;
-            instSubtotal += itemBudgeted;
-            const itemPct = itemNeeded > 0 ? Math.round((itemBudgeted / itemNeeded) * 100) : 100;
-            const itemPctClass = itemPct >= 100 ? 'funded-full' : itemPct >= 80 ? 'funded-ok' : 'funded-low';
-
-            h += '<div class="budget-line-item">';
-            h += '<div class="budget-line-name">' + escapeHtml(inst.institution_name) + '</div>';
-            h += '<div class="budget-line-stats">';
-            h += '<span class="budget-line-stat"><span class="budget-line-stat-label">BUDGETED</span> ' + fmtBudgetCurrency(itemBudgeted) + '</span>';
-            h += '<span class="budget-line-stat"><span class="budget-line-stat-label">NEEDED</span> ' + fmtBudgetCurrency(itemNeeded) + '</span>';
-            h += '<span class="budget-line-pct ' + itemPctClass + '">' + itemPct + '%</span>';
-            h += '</div>';
-            if (showControls) {
-                h += '<div class="budget-item-controls">';
-                h += '<button class="budget-item-btn fulfill' + disabledClass + '" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-fulfill"' + disabledAttr + '>Fulfill</button>';
-                h += '<button class="budget-item-btn' + disabledClass + '" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-dec5"' + disabledAttr + '>-5%</button>';
-                h += '<button class="budget-item-btn' + disabledClass + '" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-dec1"' + disabledAttr + '>-1%</button>';
-                h += '<button class="budget-item-btn' + disabledClass + '" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-inc1"' + disabledAttr + '>+1%</button>';
-                h += '<button class="budget-item-btn' + disabledClass + '" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-inc5"' + disabledAttr + '>+5%</button>';
-                h += '</div>';
-            }
-            h += '</div>';
-        }
-    }
-    h += '<div class="budget-sub-total"><span>Institution Subtotal</span><span>' + fmtBudgetCurrency(instSubtotal) + '</span></div>';
-    h += '</div>';
-
-    // ===== Policies section =====
-    h += '<div class="budget-sub-section">';
-    h += '<div class="budget-sub-header">POLICIES</div>';
-    let policySubtotal = 0;
-    if (ministryPolicies.policies.length === 0) {
-        h += '<div class="budget-empty-notice">No active policies in this ministry.</div>';
-    } else {
-        for (const p of ministryPolicies.policies) {
-            const ia = getItemAlloc('policy', p.policy_id);
-            const isCut = ia ? ia.is_cut : false;
-            const itemNeeded = p.cost;
-            if (!isCut) policySubtotal += itemNeeded;
-
-            h += '<div class="budget-line-item' + (isCut ? ' budget-item-cut' : '') + '">';
-            h += '<div class="budget-line-name-row">';
-            h += '<span class="budget-line-name' + (isCut ? ' budget-cut-name' : '') + '">' + escapeHtml(p.policy_name) + '</span>';
-            if (showControls) {
-                h += '<button class="budget-cut-btn ' + (isCut ? 'is-cut' : '') + disabledClass + '" data-type="policy" data-item="' + escapeHtml(p.policy_id) + '" data-cat="' + escapeHtml(category) + '" data-action="policy-cut"' + disabledAttr + '>' + (isCut ? 'FUND' : 'CUT') + '</button>';
-            } else if (isCut) {
-                h += '<span class="budget-cut-badge">CUT</span>';
-            }
-            h += '</div>';
-            h += '<div class="budget-line-stats">';
-            if (isCut) {
-                h += '<span class="budget-line-stat budget-cut-text"><span class="budget-line-stat-label">BUDGETED</span> $0</span>';
-                h += '<span class="budget-line-stat budget-cut-text"><span class="budget-line-stat-label">NEEDED</span> ' + fmtBudgetCurrency(itemNeeded) + '</span>';
-                h += '<span class="budget-line-pct funded-low">0%</span>';
-            } else {
-                h += '<span class="budget-line-stat"><span class="budget-line-stat-label">BUDGETED</span> ' + fmtBudgetCurrency(itemNeeded) + '</span>';
-                h += '<span class="budget-line-stat"><span class="budget-line-stat-label">NEEDED</span> ' + fmtBudgetCurrency(itemNeeded) + '</span>';
-                h += '<span class="budget-line-pct funded-full">100%</span>';
-            }
-            h += '</div>';
-            h += '</div>';
-        }
-    }
-    h += '<div class="budget-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetCurrency(policySubtotal) + '</span></div>';
-    h += '</div>';
-
-    // ===== Discretionary section =====
-    h += '<div class="budget-sub-section">';
-    h += '<div class="budget-sub-header">DISCRETIONARY</div>';
-    h += '<div class="budget-line-item budget-disc-item">';
-    h += '<div class="budget-line-name">Discretionary Funds</div>';
-    h += '<div class="budget-line-stats">';
-    h += '<span class="budget-line-stat"><span class="budget-line-stat-label">ALLOCATED</span> ' + fmtBudgetCurrency(discretionary) + '</span>';
-    h += '</div>';
-    if (showControls) {
-        h += '<div class="budget-item-controls">';
-        h += '<button class="budget-item-btn' + disabledClass + '" data-cat="' + escapeHtml(category) + '" data-action="disc-dec5"' + disabledAttr + '>-5%</button>';
-        h += '<button class="budget-item-btn' + disabledClass + '" data-cat="' + escapeHtml(category) + '" data-action="disc-dec1"' + disabledAttr + '>-1%</button>';
-        h += '<button class="budget-item-btn' + disabledClass + '" data-cat="' + escapeHtml(category) + '" data-action="disc-inc1"' + disabledAttr + '>+1%</button>';
-        h += '<button class="budget-item-btn' + disabledClass + '" data-cat="' + escapeHtml(category) + '" data-action="disc-inc5"' + disabledAttr + '>+5%</button>';
-        h += '</div>';
-    }
-    h += '</div>';
-    h += '</div>';
-
-    // MINISTRY TOTAL
-    const ministryTotal = instSubtotal + policySubtotal + discretionary;
-    h += '<div class="budget-ministry-total"><span>MINISTRY TOTAL</span><span>' + fmtBudgetCurrency(ministryTotal) + '</span></div>';
-
-    return h;
-}
-
-// When budget allocations change on the floor, reset all votes so parties must re-evaluate
-async function resetBudgetFloorVotes() {
-    if (!currentBill || currentBill.status !== 'floor') return;
-    try {
-        // Use RPC to bypass RLS and reset all votes (SECURITY DEFINER)
-        const { error } = await _supabase.rpc('reset_budget_floor_votes', { p_bill_id: currentBill.id });
-        if (error) throw error;
-        // Update local state
-        currentBill.votes_for = 0;
-        currentBill.votes_against = 0;
-        currentBill.votes_abstain = 0;
-        currentBill.early_resolution_status = null;
-        currentBill.early_resolution_tick = null;
-        currentBill.voting_ends_tick = null;
-        currentBill.bill_support = [];
-        console.log(`[BudgetAmend] Floor votes reset for budget bill ${currentBill.id} — allocations changed`);
-    } catch (e) {
-        console.error('[BudgetAmend] Failed to reset floor votes:', e);
-    }
-}
-
-// Sync ministry allocation_amount from per-item totals
-async function syncMinistryAllocation(category) {
-    const alloc = budgetAllocations.find(a => a.fiscal_category === category);
-    if (!alloc) return;
-    const total = computeMinistryAllocTotal(category);
-    alloc.allocation_amount = total;
-    await _supabase.from('budget_allocations')
-        .update({ allocation_amount: total, updated_at: new Date().toISOString() })
-        .eq('id', alloc.id);
-}
-
-// One-time event delegation setup — survives innerHTML rebuilds
-function initBudgetDelegation() {
-    const container = document.getElementById('bill-articles');
-    if (!container || container._budgetDelegated) return;
-    container._budgetDelegated = true;
-
-    container.addEventListener('click', async function(e) {
-        // --- Institution / Discretionary +/- buttons ---
-        const itemBtn = e.target.closest('.budget-item-btn');
-        if (itemBtn) {
-            if (itemBtn.disabled) return;
-            if (!isBudgetEditable()) return;
-
-            const action = itemBtn.getAttribute('data-action');
-            const cat = itemBtn.getAttribute('data-cat');
-            const itemId = itemBtn.getAttribute('data-item');
-
-            if (action.startsWith('inst-')) {
-                // Institution allocation change
-                let ia = budgetItemAllocations.find(i => i.item_type === 'institution' && i.item_id === String(itemId) && i.fiscal_category === cat);
-
-                // Compute needed cost for this institution
-                const ministryInst = computeMinistryInstitutionCost(budgetInstitutions, cat, budgetNation);
-                const instData = ministryInst.institutions.find(i => String(i.id) === String(itemId));
-                const neededCost = instData ? instData.cost : 0;
-
-                if (!ia) {
-                    // Create row if missing (legacy budget bill)
-                    const instName = instData ? instData.institution_name : itemId;
-                    const newRow = {
-                        bill_id: currentBill.id, nation_id: currentBill.nation_id,
-                        fiscal_category: cat, item_type: 'institution', item_id: String(itemId),
-                        item_name: instName, allocation_amount: neededCost, needed_amount: neededCost, is_cut: false
-                    };
-                    const { data } = await _supabase.from('budget_item_allocations').insert(newRow).select('*').single();
-                    if (data) { budgetItemAllocations.push(data); ia = data; }
-                    else return;
-                }
-
-                let amt = Number(ia.allocation_amount);
-                const step = neededCost; // base for percentage
-                if (action === 'inst-fulfill') amt = neededCost;
-                else if (action === 'inst-inc1') amt += step * 0.01;
-                else if (action === 'inst-inc5') amt += step * 0.05;
-                else if (action === 'inst-dec1') amt -= step * 0.01;
-                else if (action === 'inst-dec5') amt -= step * 0.05;
-
-                amt = Math.max(0, amt);
-                ia.allocation_amount = amt;
-                await _supabase.from('budget_item_allocations')
-                    .update({ allocation_amount: amt, updated_at: new Date().toISOString() })
-                    .eq('id', ia.id);
-
-                await syncMinistryAllocation(cat);
-                await resetBudgetFloorVotes();
-                renderBudgetBillUI();
-
-            } else if (action.startsWith('disc-')) {
-                // Discretionary change
-                const alloc = budgetAllocations.find(a => a.fiscal_category === cat);
-                if (!alloc) return;
-
-                const ministryPol = computeMinistryPolicyCost(budgetActiveLaws, cat, budgetNation);
-                const ministryInst = computeMinistryInstitutionCost(budgetInstitutions, cat, budgetNation);
-                const totalNeeded = ministryPol.total + ministryInst.total;
-                const step = totalNeeded > 0 ? totalNeeded : 1000000; // base for percentage
-
-                let disc = Number(alloc.discretionary_amount || 0);
-                if (action === 'disc-inc1') disc += step * 0.01;
-                else if (action === 'disc-inc5') disc += step * 0.05;
-                else if (action === 'disc-dec1') disc -= step * 0.01;
-                else if (action === 'disc-dec5') disc -= step * 0.05;
-
-                disc = Math.max(0, disc);
-                alloc.discretionary_amount = disc;
-                await _supabase.from('budget_allocations')
-                    .update({ discretionary_amount: disc, updated_at: new Date().toISOString() })
-                    .eq('id', alloc.id);
-
-                await syncMinistryAllocation(cat);
-                await resetBudgetFloorVotes();
-                renderBudgetBillUI();
-            }
-            return;
-        }
-
-        // --- Policy CUT/FUND toggle ---
-        const cutBtn = e.target.closest('.budget-cut-btn');
-        if (cutBtn) {
-            if (cutBtn.disabled) return;
-            if (!isBudgetEditable()) return;
-
-            const cat = cutBtn.getAttribute('data-cat');
-            const policyId = cutBtn.getAttribute('data-item');
-
-            let ia = budgetItemAllocations.find(i => i.item_type === 'policy' && i.item_id === policyId && i.fiscal_category === cat);
-
-            // Compute needed cost
-            const ministryPol = computeMinistryPolicyCost(budgetActiveLaws, cat, budgetNation);
-            const polData = ministryPol.policies.find(p => p.policy_id === policyId);
-            const neededCost = polData ? polData.cost : 0;
-
-            if (!ia) {
-                // Create row if missing (legacy budget bill)
-                const polName = polData ? polData.policy_name : policyId;
-                const newRow = {
-                    bill_id: currentBill.id, nation_id: currentBill.nation_id,
-                    fiscal_category: cat, item_type: 'policy', item_id: policyId,
-                    item_name: polName, allocation_amount: neededCost, needed_amount: neededCost, is_cut: false
-                };
-                const { data } = await _supabase.from('budget_item_allocations').insert(newRow).select('*').single();
-                if (data) { budgetItemAllocations.push(data); ia = data; }
-                else return;
-            }
-
-            // Toggle cut
-            ia.is_cut = !ia.is_cut;
-            await _supabase.from('budget_item_allocations')
-                .update({ is_cut: ia.is_cut, updated_at: new Date().toISOString() })
-                .eq('id', ia.id);
-
-            await syncMinistryAllocation(cat);
-            await resetBudgetFloorVotes();
-            renderBudgetBillUI();
-            return;
-        }
-    });
-}
-
 
 </script>
 </body>

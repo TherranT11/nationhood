@@ -1268,17 +1268,6 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
         .select('id, bill_type, ambassador_id');
     await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
 
-    // If a budget bill was dissolved, reset the budget cycle so the new government
-    // gets a fresh 12-tick window (prevents inheriting overdue penalties)
-    const hadBudgetBill = (dissolvedBills || []).some(b => b.bill_type === 'budget');
-    if (hadBudgetBill) {
-        await supabase.from('nations')
-            .update({ last_budget_tick: currentTick })
-            .eq('id', nation.id);
-        nation.last_budget_tick = currentTick;
-        console.log(`[resolveElection] Reset budget cycle for ${nation.name} after dissolving pending budget bill`);
-    }
-
     if (isPresidential && normalizedElectionType === 'presidential') {
         // Fail bills on president's desk
         const { data: deskBills } = await supabase.from('bills')

@@ -727,7 +727,7 @@ function renderFloorBill(bill, isVetoed) {
     else if (bill.bill_type === 'minister_confirmation') typeBadge = ' <span style="background:#E65100;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Cabinet Confirmation</span>';
     else if (bill.bill_type === 'veto_override') typeBadge = ' <span style="background:#B71C1C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Veto Override</span>';
     else if (bill.bill_type === 'ratification') typeBadge = ' <span style="background:#00695C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🌐 Ratification</span>';
-    else if (bill.bill_type === 'budget') typeBadge = ' <span style="background:#ff9800;color:#000;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💰 Budget</span>';
+
     else if (bill.bill_type === 'default_resolution') typeBadge = ' <span style="background:#b71c1c;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💀 Default Resolution</span>';
     else if (bill.bill_type === 'impeachment_motion') typeBadge = ' <span style="background:#D32F2F;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Impeachment</span>';
     else if (bill.bill_type === 'impeachment_conviction') typeBadge = ' <span style="background:#B71C1C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Impeachment Trial</span>';
@@ -739,7 +739,7 @@ function renderFloorBill(bill, isVetoed) {
             <div class="committee-bill-header">
                 <div>
                     <div class="floor-bill-name">` + billTitle + `</div>
-                    <div class="committee-bill-sponsor">${!bill.proposed_by && bill.bill_type === 'budget' ? 'Automatically introduced to committee' : ((bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion' || bill.bill_type === 'impeachment_conviction') ? 'Filed' : 'Proposed') + ' by ' + (bill.factions?.faction_name || 'Unknown')}</div>
+                    <div class="committee-bill-sponsor">${((bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion' || bill.bill_type === 'impeachment_conviction') ? 'Filed' : 'Proposed') + ' by ' + (bill.factions?.faction_name || 'Unknown')}</div>
                 </div>
                 ${isVetoed ? `<div class="floor-status vetoed-status">VETOED</div>`
                     : (bill.early_resolution_status === 'majority_reached' || bill.early_resolution_status === 'quorum_reached') ? `<div class="floor-status" style="border-color:#4CAF50;">MAJORITY REACHED — Passes This Tick</div>`
@@ -767,7 +767,6 @@ function renderFloorBill(bill, isVetoed) {
                 (bill.bill_type === 'default_resolution' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#b71c1c;">💀 Sovereign Default Resolution</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
                 (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_type === 'ratification' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#00695C;">🌐 Diplomatic Ratification Vote</span><div class="article-desc">Requires quorum (50%) + simple majority to ratify.</div></div></div>' :
-                (bill.bill_type === 'budget' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff9800;">💰 Annual Budget Allocation</span><div class="article-desc">Allocates government revenue across all ministries. Requires quorum (50%) + simple majority to pass.</div></div></div>' :
                 (bill.bill_type === 'impeachment_motion' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#D32F2F;">⚖ Impeachment Motion</span><div class="article-desc">Requires absolute majority (' + GAME_CONFIG.MAJORITY_SEATS + ' of ' + GAME_CONFIG.TOTAL_SEATS + ' seats) to impeach.</div></div></div>' :
                 (bill.bill_type === 'impeachment_conviction' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#B71C1C;">⚖ Impeachment Trial — Conviction Vote</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to convict and remove the president.</div></div></div>' :
                 (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number).map(art => {
@@ -788,7 +787,7 @@ function renderFloorBill(bill, isVetoed) {
                     }
                     const chipHTML = renderIdeologyChips(art.policies);
                     return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
-                }).join('')))))))))))}
+                }).join(''))))))))))}
             </div>
             ${isVetoed ? `<div class="vetoed-stamp">${isPresidential ? '⛔ VETOED BY PRESIDENT' : '⛔ VETOED BY HEAD FACTION'}</div>` : `
                 <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span>${(bill.votes_abstain || 0) > 0 ? `<span style="color:#888;font-size:0.75rem;margin-left:8px;">— ${bill.votes_abstain} Abstain</span>` : ''}<span style="color:var(--text-secondary);font-size:0.75rem;margin-left:8px;">${Math.max(0, Math.min(GAME_CONFIG.TOTAL_SEATS, Object.values(allPartySeats).reduce((s,v)=>s+(v||0),0)) - (bill.votes_for || 0) - (bill.votes_against || 0) - (bill.votes_abstain || 0))} undeclared</span></div>
@@ -974,7 +973,7 @@ function renderArchiveBill(bill) {
         : bill.bill_type === 'ratification' ? ' <span class="archive-type-badge" style="background:#00695C;">Ratification</span>'
         : bill.bill_type === 'minister_confirmation' ? ' <span class="archive-type-badge" style="background:#E65100;">Cabinet Confirmation</span>'
         : bill.bill_type === 'confirmation' ? ' <span class="archive-type-badge" style="background:#1a5276;">Confirmation</span>'
-        : bill.bill_type === 'budget' ? ' <span class="archive-type-badge" style="background:#1B5E20;">Budget</span>'
+
         : bill.bill_type === 'default_resolution' ? ' <span class="archive-type-badge" style="background:#b71c1c;">Default Resolution</span>'
         : bill.bill_type === 'impeachment_motion' ? ' <span class="archive-type-badge" style="background:#D32F2F;">Impeachment</span>'
         : bill.bill_type === 'impeachment_conviction' ? ' <span class="archive-type-badge" style="background:#B71C1C;">Impeachment Trial</span>'
@@ -1015,8 +1014,8 @@ function renderCommitteeBill(bill) {
         <div class="committee-bill clickable-bill" onclick="if(!event.target.closest('.decree-actions'))window.location.href='bill.html?id=${bill.id}'">
             <div class="committee-bill-header">
                 <div>
-                    <div class="committee-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : (bill.bill_type === 'foundational' ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>' : (bill.bill_type === 'default_resolution' ? ' <span style="background:#b71c1c;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💀 Default Resolution</span>' : (bill.bill_type === 'ratification' ? ' <span style="background:#00695C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🌐 Ratification</span>' : (bill.bill_type === 'budget' ? ' <span style="background:#ff9800;color:#000;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💰 Budget</span>' : (bill.bill_type === 'impeachment_motion' ? ' <span style="background:#D32F2F;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Impeachment</span>' : '')))))}</div>
-                    <div class="committee-bill-sponsor">${!bill.proposed_by && bill.bill_type === 'budget' ? 'Automatically introduced to committee' : 'Proposed by ' + (bill.factions?.faction_name || 'Unknown')}</div>
+                    <div class="committee-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : (bill.bill_type === 'foundational' ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>' : (bill.bill_type === 'default_resolution' ? ' <span style="background:#b71c1c;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💀 Default Resolution</span>' : (bill.bill_type === 'ratification' ? ' <span style="background:#00695C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🌐 Ratification</span>' : (bill.bill_type === 'impeachment_motion' ? ' <span style="background:#D32F2F;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Impeachment</span>' : '')))))}</div>
+                    <div class="committee-bill-sponsor">Proposed by ${bill.factions?.faction_name || 'Unknown'}</div>
                 </div>
                 ${lawsIsAutocracy ? `<div class="committee-support"><div style="font-size:0.85rem;color:#ff4444;font-weight:bold;">DECREE</div><div class="support-label">${isHeadFaction ? 'You can enact this' : 'Awaiting head faction'}</div></div>` :
                 `<div class="committee-support"><div class="support-percent ${support.percent >= 51 ? 'enough' : ''}">${support.percent}%</div><div class="support-label">Support</div></div>`}
@@ -1027,7 +1026,6 @@ function renderCommitteeBill(bill) {
                 (bill.bill_type === 'default_resolution' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#b71c1c;">💀 Sovereign Default Resolution</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
                 (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_type === 'ratification' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#00695C;">🌐 Diplomatic Ratification Vote</span><div class="article-desc">Requires simple majority (' + GAME_CONFIG.MAJORITY_SEATS + ' seats) to ratify.</div></div></div>' :
-                (bill.bill_type === 'budget' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff9800;">💰 Annual Budget Allocation</span><div class="article-desc">Allocates government revenue across all ministries.</div></div></div>' :
                 (bill.bill_type === 'impeachment_motion' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#D32F2F;">⚖ Impeachment Motion — Committee Debate</span><div class="article-desc">Will proceed to floor vote after committee debate period.</div></div></div>' :
                 (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number).map(art => {
                     if (!art.policies) {
@@ -1047,7 +1045,7 @@ function renderCommitteeBill(bill) {
                     }
                     const chipHTML = renderIdeologyChips(art.policies, !!art.repeal_active_law_id);
                     return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
-                }).join(''))))))}
+                }).join('')))))}
             </div>
             ${decreeActionsHTML}
             ${!lawsIsAutocracy ? `<div class="click-hint" style="color:#ff9800;">Click to view full ${termBill.toLowerCase()} & negotiate →</div>` : ''}
@@ -1061,9 +1059,7 @@ async function enactDecree(billId) {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const bill = committeeBills.find(b => b.id === billId);
         const decreeFields = { status: 'floor', floor_tick: shard?.current_tick || 0 };
-        if (bill?.bill_type !== 'budget') {
-            decreeFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
-        }
+        decreeFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
         decreeFields.floor_tick = shard?.current_tick || 0;
         await _supabase.from('bills').update(decreeFields).eq('id', billId);
 
@@ -2288,8 +2284,8 @@ async function submitCommitteeArticle() {
 
 async function sendToFloor(billId) {
     const bill = committeeBills.find(b => b.id === billId);
-    // Require at least one article for non-budget, non-repeal bills
-    if (bill && bill.bill_type !== 'budget' && bill.bill_type !== 'repeal'
+    // Require at least one article for non-repeal bills
+    if (bill && bill.bill_type !== 'repeal'
         && (!bill.bill_articles || bill.bill_articles.filter(a => a.policy_id || a.effect_data || a.repeal_active_law_id || a.funding_data).length === 0)) {
         alert('This bill has no policy articles. Add at least one article before sending to the floor.');
         return;
@@ -2306,10 +2302,7 @@ async function sendToFloor(billId) {
         }
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         updateFields.floor_tick = shard?.current_tick || 0;
-        // Budget bills persist indefinitely (no voting deadline)
-        if (bill?.bill_type !== 'budget') {
-            updateFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
-        }
+        updateFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
         // Track when the bill was moved to the floor
         updateFields.floor_tick = shard?.current_tick || 0;
         await _supabase.from('bills').update(updateFields).eq('id', billId);

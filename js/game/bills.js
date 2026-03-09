@@ -9,7 +9,7 @@ import { DIPLOMACY_CONFIG } from './diplomacy-constants.js';
 import { IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology } from './ideology.js';
 import { adjustMomentum, adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
-import { resolveBudgetBill } from './budget.js';
+
 import { fetchActiveCoalition } from './government-structure.js';
 import { resolveNoConfidence } from './elections.js';
 import { PM_FIRST_NAMES, PM_LAST_NAMES } from './political-actions.js';
@@ -560,7 +560,7 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
 
     // Only legislative bills affect ideology
     const legislativeBills = bills.filter(b =>
-        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override', 'budget'].includes(b.bill_type)
+        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
     );
     if (legislativeBills.length === 0) return;
 
@@ -819,14 +819,6 @@ export function resolveBillVote(bill, totalSeats) {
     const participating = forSeats + againstSeats + abstainSeats;
     const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
 
-    // Budget bills can NEVER fail — they stay on the floor until passed
-    if (bill.bill_type === 'budget') {
-        if (participating >= quorumThreshold && forSeats > againstSeats) {
-            return 'passed';
-        }
-        return 'deferred'; // not enough votes yet — remain on floor
-    }
-
     // Foundational / default_resolution / veto_override / impeachment_conviction: 67% absolute supermajority
     if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
         const threshold = Math.ceil(totalSeats * 2 / 3);
@@ -865,7 +857,6 @@ export async function expireCommitteeBills(supabase, nationId, currentTick) {
         .select('id, bill_name, proposed_by')
         .eq('nation_id', nationId)
         .eq('status', 'committee')
-        .neq('bill_type', 'budget')  // budget bills persist until passed
         .neq('bill_type', 'default_resolution')  // default resolutions skip committee
         .lte('proposed_tick', deadline);
 
@@ -905,7 +896,6 @@ export async function checkEarlyMajority(supabase, nationId) {
     const currentTick = shard.current_tick;
 
     // Bills still voting, not yet locked, not yet expired
-    // Include budget bills with null voting_ends_tick (they persist until passed)
     const { data: activeBills, error } = await supabase
         .from('bills')
         .select('id, bill_name, bill_type, voting_ends_tick, proposed_tick, floor_tick, bill_support(faction_id, stance, seat_count)')
@@ -1008,40 +998,9 @@ export async function checkEarlyMajority(supabase, nationId) {
             }
         }
 
-        // ── Check 3: Budget bill forced resolution after MAX_FLOOR_TICKS ──
-        // Budget bills have no voting deadline (voting_ends_tick = null).
-        // If a budget bill has been on the floor for BUDGET_BILL_MAX_FLOOR_TICKS
-        // ticks without resolution, force a vote based on the current tally.
-        // This prevents budget bills from getting stuck indefinitely when
-        // bill_support seat_counts are stale and don't trigger a math-lock.
-        if (!earlyStatus && bill.bill_type === 'budget' && bill.voting_ends_tick == null) {
-            // Use floor_tick if available, otherwise fall back to proposed_tick + committee expiry
-            const floorStart = bill.floor_tick || (bill.proposed_tick || 0) + GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS;
-            const ticksOnFloor = currentTick - floorStart;
-            if (ticksOnFloor >= GAME_CONFIG.BUDGET_BILL_MAX_FLOOR_TICKS) {
-                if (participating >= quorumSeats && effectiveYes > noSeats) {
-                    earlyStatus = 'quorum_reached';
-                } else {
-                    earlyStatus = 'quorum_opposed';
-                }
-                console.log(`[checkEarlyMajority] Budget bill ${bill.bill_name}: FORCED resolution after ${ticksOnFloor} ticks on floor (YES=${yesSeats}, NO=${noSeats}, participating=${participating}, quorum=${quorumSeats})`);
-            }
-        }
-        // ── Check 3: Budget bills can never be forced to fail ──
-        // Budget bills persist on the floor until they pass. They can only
-        // resolve early if a passing majority is reached (math-lock or quorum).
-        // No forced resolution — if the budget stalls, the unfunded penalty
-        // (0% ministry funding) kicks in after BUDGET_UNFUNDED_FLOOR_TICKS.
-        if (bill.bill_type === 'budget' && earlyStatus && (earlyStatus === 'majority_opposed' || earlyStatus === 'quorum_opposed')) {
-            earlyStatus = null; // Budget bills can only resolve early when passing
-        }
-
         if (earlyStatus) {
             // Resolve immediately this tick (no grace period)
-            // Budget bills have null voting_ends_tick, so just use currentTick
-            const resolveAtTick = bill.voting_ends_tick != null
-                ? Math.min(currentTick, bill.voting_ends_tick)
-                : currentTick;
+            const resolveAtTick = Math.min(currentTick, bill.voting_ends_tick);
 
             await supabase.from('bills').update({
                 early_resolution_status: earlyStatus,
@@ -1134,18 +1093,6 @@ export async function resolveExpiredVotes(supabase, nationId) {
         };
         const resolution = resolveBillVote(resolveBill, totalSeats);
         console.log(`[resolveExpiredVotes] bill=${bill.id} votes yes=${votesFor} no=${votesAgainst} abstain=${votesAbstain} effective_yes=${effectiveVotesFor} totalSeats=${totalSeats} resolution=${resolution}`);
-
-        // Budget bills never fail or get deferred normally — they stay on floor until passed
-        if (bill.bill_type === 'budget' && resolution === 'deferred') {
-            await supabase.from('bills').update({
-                voting_ends_tick: null,
-                early_resolution_status: null,
-                early_resolution_tick: null
-            }).eq('id', bill.id);
-            console.log(`[resolveExpiredVotes] Budget bill ${bill.bill_name} did not pass — remains on floor (YES=${votesFor}, NO=${votesAgainst})`);
-            results.push({ billId: bill.id, billName: bill.bill_name, result: 'deferred', votesFor, votesAgainst, type: 'budget' });
-            continue; // Skip no-vote penalty for deferred budget bills
-        }
 
         // Handle quorum deferral: extend vote by 1 tick
         if (resolution === 'deferred') {
@@ -1390,21 +1337,10 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     .eq('id', bill.original_bill_id).single();
                 if (originalBill) {
                     await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
-                    if (originalBill.bill_type === 'budget') {
-                        // Budget veto override: resolve budget effects
-                        try {
-                            await resolveBudgetBill(supabase, originalBill, currentTick);
-                            await supabase.from('bills').update({ status: 'passed' }).eq('id', originalBill.id);
-                        } catch (budgetErr) {
-                            console.error(`[resolveExpiredVotes] Budget veto override enactment failed for ${originalBill.id}: ${budgetErr.message}`);
-                            await markBillEnactmentFailed(supabase, originalBill, currentTick, budgetErr.message);
-                        }
-                    } else {
-                        const enactment = await enactBill(supabase, originalBill, currentTick);
-                        if (!enactment?.success) {
-                            await markBillEnactmentFailed(supabase, originalBill, currentTick, enactment?.error || 'Unknown enactment failure');
-                            await fireBillEvent(supabase, 'bill_failed', originalBill, { currentTick, nationName: nation?.name, votesFor: 0, votesAgainst: 0, billNameOverride: `${originalBill.bill_name} (override enactment failed)` });
-                        }
+                    const enactment = await enactBill(supabase, originalBill, currentTick);
+                    if (!enactment?.success) {
+                        await markBillEnactmentFailed(supabase, originalBill, currentTick, enactment?.error || 'Unknown enactment failure');
+                        await fireBillEvent(supabase, 'bill_failed', originalBill, { currentTick, nationName: nation?.name, votesFor: 0, votesAgainst: 0, billNameOverride: `${originalBill.bill_name} (override enactment failed)` });
                     }
                 }
                 await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
@@ -1648,36 +1584,6 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'retaliatory_tariff', earlyResolution: bill.early_resolution_status || null });
             }
-        } else if (bill.bill_type === 'budget') {
-            // Budget bill resolution — budget bills can NEVER fail
-            if (passed) {
-                if (isPresidentialRepublic(nation)) {
-                    // Presidential systems: route budget to president's desk for signing
-                    await supabase.from('bills').update({
-                        status: 'president_desk',
-                        passed_tick: currentTick,
-                        president_desk_deadline: currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS
-                    }).eq('id', bill.id);
-                    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-                    console.log(`[resolveExpiredVotes] Budget bill ${bill.bill_name} passed legislature → president_desk (deadline tick ${currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS})`);
-                    results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
-                } else {
-                    // Parliamentary systems: enact budget directly
-                    try {
-                        await resolveBudgetBill(supabase, bill, currentTick);
-                        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-                    } catch (budgetErr) {
-                        console.error(`[resolveExpiredVotes] resolveBudgetBill failed for bill ${bill.id}: ${budgetErr.message}`);
-                        // Do NOT mark as passed — keep on floor so it retries next tick
-                        results.push({ billId: bill.id, billName: bill.bill_name, result: 'error', votesFor, votesAgainst, type: 'budget', error: budgetErr.message });
-                        continue;
-                    }
-                    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-                    results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
-                }
-            }
-            // Note: budget bills with resolution !== 'passed' are caught by the
-            // budget-specific deferred handler above and never reach this branch.
         } else if (bill.bill_type === 'impeachment_motion' && bill.impeachment_id) {
             // ── Impeachment Motion (Phase 1) ──
             if (passed) {

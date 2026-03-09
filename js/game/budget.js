@@ -106,7 +106,7 @@ export const TAX_CONFIG = [
     }
 ];
 
-// ==================== BUDGET BILL HELPERS ====================
+// ==================== BUDGET CALCULATION HELPERS ====================
 
 /**
  * Fiscal categories that map 1:1 to ministries.
@@ -268,93 +268,6 @@ export function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institut
     };
 }
 
-
-/**
- * Resolve a passed budget bill: adjust debt based on surplus/deficit, update reserves.
- */
-export async function resolveBudgetBill(supabase, bill, currentTick) {
-    const { data: allocations } = await supabase.from('budget_allocations')
-        .select('*').eq('bill_id', bill.id);
-
-    // Use item-level allocations when available (players edit these directly)
-    const { data: itemAllocations } = await supabase.from('budget_item_allocations')
-        .select('allocation_amount').eq('bill_id', bill.id);
-
-    const { data: nation } = await supabase.from('nations')
-        .select('*').eq('id', bill.nation_id).single();
-    if (!nation) return;
-
-    const budget = calculateNationalBudget(nation);
-
-    // Override tariff revenue with real trade engine data
-    let tradeTariffRevenue = null;
-    try {
-        const { data: tradeSummary } = await supabase.from('trade_summary')
-            .select('tariff_revenue')
-            .eq('nation_id', nation.id)
-            .order('tick', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        if (tradeSummary) tradeTariffRevenue = Number(tradeSummary.tariff_revenue);
-    } catch (e) { /* no trade data yet */ }
-    applyTradeTariffOverride(budget, tradeTariffRevenue);
-
-    // Include economic aid in budget resolution
-    let aidData = { received: 0, given: 0 };
-    try {
-        aidData = await getActiveAidForNation(supabase, nation.id);
-    } catch (e) { /* no aid data yet */ }
-
-    const reserves = Number(nation.budget_reserves || 0);
-    const available = budget.grossRevenue + aidData.received + reserves - budget.debtService - aidData.given;
-
-    let totalSpending = 0;
-    if (itemAllocations && itemAllocations.length > 0) {
-        for (const item of itemAllocations) {
-            totalSpending += Number(item.allocation_amount || 0);
-        }
-    } else {
-        for (const alloc of (allocations || [])) {
-            totalSpending += Number(alloc.allocation_amount || 0);
-        }
-    }
-
-    const gap = available - totalSpending;
-    let newDebt = Number(nation.debt || 0);
-    let newReserves = 0;
-
-    if (gap >= 0) {
-        // Surplus: reduce debt (or build reserves if no debt)
-        if (newDebt > 0) {
-            const debtReduction = Math.min(gap, newDebt);
-            newDebt -= debtReduction;
-            newReserves = gap - debtReduction;
-        } else {
-            newReserves = gap;
-        }
-    } else {
-        // Deficit: add to debt
-        newDebt += Math.abs(gap);
-        newReserves = 0;
-    }
-
-    // Update nation
-    const { error: updateErr } = await supabase.from('nations').update({
-        debt: newDebt,
-        budget_reserves: newReserves,
-        last_budget_tick: currentTick,
-        last_budget_bill_id: bill.id
-    }).eq('id', nation.id);
-
-    if (updateErr) {
-        console.error(`[resolveBudgetBill] CRITICAL: Failed to update nation ${nation.name} (last_budget_tick=${currentTick}):`, updateErr.message);
-    }
-
-    console.log(`[resolveBudgetBill] Nation ${nation.name}: spending=$${(totalSpending/1e9).toFixed(2)}B, gap=$${(gap/1e9).toFixed(2)}B, newDebt=$${(newDebt/1e9).toFixed(2)}B, last_budget_tick=${currentTick}`);
-
-    // Legislative activity: boost gov_approval_events for passing a budget
-    await adjustGovernmentApprovalEvent(supabase, nation.id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage:budget');
-}
 
 // ==================== ECONOMIC AID HELPERS ====================
 
@@ -652,42 +565,6 @@ export async function processExpiredTradeAgreements(supabase, currentTick) {
     return results;
 }
 
-
-// ==================== BUDGET UNFUNDED PENALTY ====================
-
-/**
- * Check if a budget bill has been on the floor for more than BUDGET_UNFUNDED_FLOOR_TICKS
- * without passing. If so, return true — the caller should force all ministry/institution
- * funding to 0% (same effect as government shutdown's buildShutdownStatInstMap).
- *
- * @returns {{ active: boolean, ticksOnFloor: number, billId?: string }}
- */
-export async function isBudgetUnfunded(supabase, nation, currentTick) {
-    const { data: floorBudgetBills } = await supabase
-        .from('bills')
-        .select('id, floor_tick, proposed_tick')
-        .eq('nation_id', nation.id)
-        .eq('bill_type', 'budget')
-        .eq('status', 'floor')
-        .order('proposed_tick', { ascending: true })
-        .limit(1);
-
-    if (!floorBudgetBills || floorBudgetBills.length === 0) {
-        return { active: false, ticksOnFloor: 0 };
-    }
-
-    const bill = floorBudgetBills[0];
-    // Use floor_tick if available, otherwise estimate from proposed_tick + committee time
-    const floorTick = bill.floor_tick ?? (bill.proposed_tick + GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS);
-    const ticksOnFloor = currentTick - floorTick;
-    const threshold = GAME_CONFIG.BUDGET_UNFUNDED_FLOOR_TICKS;
-
-    return {
-        active: ticksOnFloor >= threshold,
-        ticksOnFloor,
-        billId: bill.id
-    };
-}
 
 // Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
 // Formula: monthlyChange% = (gdp_growth - 50) / 50  →  0=-1%, 50=0%, 100=+1%

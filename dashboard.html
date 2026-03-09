@@ -914,7 +914,6 @@ function renderBills(faction, floorBills, committeeBills, seatCount) {
         let brief = '';
         if (bill.bill_type === 'no_confidence') brief = 'Motion to dissolve the current government';
         else if (bill.bill_type === 'foundational') brief = 'Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats';
-        else if (bill.bill_type === 'budget') brief = 'Annual budget allocation across all ministries';
         else if (bill.bill_type === 'default_resolution') brief = 'Sovereign default resolution';
         else if (bill.bill_type === 'impeachment_motion') brief = 'Impeachment motion against the president';
         else if (bill.bill_type === 'impeachment_conviction') brief = 'Impeachment trial — conviction vote';
