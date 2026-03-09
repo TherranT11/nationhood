@@ -833,9 +833,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     // Accumulate AP for party factions each tick:
     // base 3 AP, +2 if in government coalition or strongman. Capped at MAX_AP (10).
     // Uses atomic RPC to prevent race conditions with concurrent player deductions.
+    // Skip AP accumulation in reprocess mode — AP was already granted on the original tick.
     let apDistributed = 0;
     let apFailed = 0;
-    for (const nation of nationList) {
+    if (reprocess) {
+        console.log(`[advanceTick] REPROCESS mode — skipping AP accumulation`);
+    }
+    for (const nation of (reprocess ? [] : nationList)) {
       try {
         const { data: factions } = await supabase
             .from('factions')
