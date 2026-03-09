@@ -532,17 +532,6 @@ async function renderRelationsTab() {
             const score = relation?.relation_score ?? 35;
             const tier = getRelationTier(score, hasCeasefire);
 
-            // Embassy status
-            let embassyStatus = 'none';
-            if (relation) {
-                if (currentNation.id === relation.nation_a_id) {
-                    embassyStatus = relation.embassy_status_a || 'open';
-                } else {
-                    embassyStatus = relation.embassy_status_b || 'open';
-                }
-            }
-            const embassyColor = embassyStatus === 'open' ? '#4ade80' : embassyStatus === 'closed' ? '#ef4444' : '#6b6a5e';
-
             // Find our ambassador to this nation
             const ambassador = ourAmbassadors.find(a => a.target_nation_id === nation.id);
             const ambName = ambassador
@@ -557,6 +546,10 @@ async function renderRelationsTab() {
                 ? ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim()
                 : null;
             const theirAmbParty = theirAmb?.factions?.abbreviation ? ' (' + theirAmb.factions.abbreviation + ')' : '';
+
+            // Embassy status: open only if both nations have an active ambassador to each other
+            const embassyStatus = (ambassador && theirAmb) ? 'open' : 'closed';
+            const embassyColor = embassyStatus === 'open' ? '#4ade80' : '#ef4444';
 
             // Count agreements with this nation
             const agreementCount = activeAgreements.filter(a =>
@@ -1896,15 +1889,8 @@ async function renderNationCardBody(nationId) {
         const score = relation?.relation_score ?? 35;
         const tier = getRelationTier(score, hasCeasefire);
 
-        // Embassy status
-        let embassyStatus = 'N/A';
-        if (relation) {
-            if (currentNation && currentNation.id === relation.nation_a_id) {
-                embassyStatus = relation.embassy_status_a || 'open';
-            } else {
-                embassyStatus = relation.embassy_status_b || 'open';
-            }
-        }
+        // Embassy status: open only if both nations have an active ambassador to each other
+        const embassyStatus = (ambassador && theirAmbassador) ? 'open' : 'closed';
 
         // Build body HTML
         let html = '';
@@ -2046,7 +2032,7 @@ function getRelationBarColor(score) {
 // ==================== RELATION SECTION ====================
 
 function renderRelationSection(relType, relClass, embassyStatus, ambassador) {
-    const embassyColor = embassyStatus === 'open' ? '#4ade80' : embassyStatus === 'closed' ? '#ef4444' : '#6b6a5e';
+    const embassyColor = embassyStatus === 'open' ? '#4ade80' : '#ef4444';
     const ambName = ambassador
         ? (ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '')
         : null;
