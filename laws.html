@@ -1514,8 +1514,7 @@ function addArticle() {
         document.getElementById('bill-name-input').value = `Electoral Makeup Act (${newSeats} Seats)`;
         document.getElementById('bill-name-section').style.display = 'block';
         document.getElementById('submit-bill-btn').disabled = false;
-        document.getElementById('add-article-section').style.display = 'none';
-        document.getElementById('add-text-article-section').style.display = 'none';
+        _hideAllArticleButtons();
         return;
     }
 
