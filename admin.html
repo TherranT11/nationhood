@@ -1385,6 +1385,19 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                     if (nation[k] !== undefined && nation[k] !== null) snapshot[k] = nation[k];
                 });
 
+                // Validate GDP/debt are in dollar scale before saving seed
+                // (prevents snapshotting corrupted 0-100 stat scores)
+                if (snapshot.gdp !== undefined && snapshot.gdp >= 0 && snapshot.gdp <= 100000) {
+                    console.error(`[snapshotSeedStats] REFUSING to snapshot ${nation.name}: GDP=${snapshot.gdp} is not dollar-scale`);
+                    statusEl.innerHTML = `<span style="color:#ff4444; font-weight:bold;">⚠ ${nation.name} GDP=${snapshot.gdp} looks corrupted (0-100 stat score). Fix data first.</span>`;
+                    return;
+                }
+                if (snapshot.debt !== undefined && snapshot.debt > 0 && snapshot.debt <= 100000) {
+                    console.error(`[snapshotSeedStats] REFUSING to snapshot ${nation.name}: debt=${snapshot.debt} is not dollar-scale`);
+                    statusEl.innerHTML = `<span style="color:#ff4444; font-weight:bold;">⚠ ${nation.name} debt=${snapshot.debt} looks corrupted (0-100 stat score). Fix data first.</span>`;
+                    return;
+                }
+
                 const { error: uErr } = await _supabase.from('nations')
                     .update({ seed_stats: snapshot })
                     .eq('id', nation.id);

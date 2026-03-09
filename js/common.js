@@ -603,6 +603,25 @@ export function scaleRawToDollars(val) {
     return val;
 }
 
+/**
+ * Runtime guard for raw economic values (GDP, debt, population).
+ * Logs an error if a value looks like a 0-100 stat score instead of a raw
+ * monetary/count value. Call this before displaying GDP or debt.
+ *
+ * This catches data corruption at the display layer — if a tick processor
+ * accidentally clamps GDP from $88B down to 100, this will fire immediately
+ * on the next page load rather than silently displaying "$100".
+ */
+export function assertRawEconomicValue(value, fieldName) {
+    if (value !== null && value !== undefined && Number(value) >= 0 && Number(value) <= 100_000) {
+        console.error(
+            `[ECONOMIC DISPLAY BUG] ${fieldName} = ${value} — ` +
+            `this looks like a 0-100 stat score instead of a raw monetary value. ` +
+            `Check the data source. Run sql/reset_nation_gdp_debt.sql to fix.`
+        );
+    }
+}
+
 export function showLoading(containerId = 'content-area') {
     const container = document.getElementById(containerId);
     if (container) {
