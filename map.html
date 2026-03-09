@@ -67,7 +67,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage, loadGameState, updateTopBarInfo, scaleRawToDollars } from './js/common.js';
+import { initPage, loadGameState, updateTopBarInfo, scaleRawToDollars, assertRawEconomicValue } from './js/common.js';
 import { initGameConfigForNation } from './js/game-common.js';
 import { escapeHtml } from './js/utils.js';
 let currentUser = null;
@@ -199,6 +199,10 @@ if (!faction) {
                     return '$' + val.toLocaleString();
                 };
                 
+                // Validate GDP/debt are raw dollar values, not 0-100 stat scores
+                assertRawEconomicValue(nation.gdp, 'gdp');
+                assertRawEconomicValue(nation.debt, 'debt');
+
                 // Display nation stats
                 document.getElementById('details').innerHTML = `
                     <div style="margin-bottom: 20px;">

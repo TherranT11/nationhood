@@ -109,7 +109,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
-import { fetchPreviousNationTick } from './js/common.js';
+import { fetchPreviousNationTick, assertRawEconomicValue } from './js/common.js';
 
 // Resolve nation name from query parameter: nation-info.html?name=sangreza
 const NATION_SLUG = new URLSearchParams(window.location.search).get('name');
@@ -200,8 +200,10 @@ function scaleGDP(raw) { return raw; }
 function statCard(label, key, val, desc, format, inverted, displayVal) {
     var dv = displayVal !== undefined ? displayVal : val;
     var shown;
+    if (format === 'currency' || format === 'gdp') {
+        assertRawEconomicValue(dv, key);
+    }
     if ((format === 'currency' || format === 'gdp') && isMisscaledMonetary(key, dv)) {
-        console.warn('[DISPLAY] ' + key + ' value ' + dv + ' looks like a 0-100 stat score, not a raw dollar amount. Run sql/reset_nation_gdp_debt.sql to fix.');
         shown = '$' + Math.round(Number(dv));
     } else if (format === 'currency' || format === 'gdp') shown = fmtCur(dv);
     else if (format === 'years') shown = (dv != null ? (Math.round(dv * 10) / 10) + ' yrs' : 'N/A');

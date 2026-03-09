@@ -32,7 +32,7 @@
 <!-- Page-Specific Script -->
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage, qCache, qCacheSet, formatNumber, scaleRawToDollars } from './js/common.js';
+import { initPage, qCache, qCacheSet, formatNumber, scaleRawToDollars, assertRawEconomicValue } from './js/common.js';
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
 import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
@@ -767,8 +767,10 @@ function getDisplayValue(stat, nation) {
     var raw = nation[stat.key];
     var format = stat.format;
     if (raw === null || raw === undefined) return 'N/A';
+    if (format === 'gdp' || format === 'currency') {
+        assertRawEconomicValue(raw, stat.key);
+    }
     if ((format === 'gdp' || format === 'currency') && isMisscaledMonetary(stat.key, raw)) {
-        console.warn('[DISPLAY] ' + stat.key + ' value ' + raw + ' looks like a 0-100 stat score, not a raw dollar amount. Run sql/reset_nation_gdp_debt.sql to fix.');
         return '$' + Math.round(Number(raw));
     }
     if (format === 'count') return formatNumber(raw);

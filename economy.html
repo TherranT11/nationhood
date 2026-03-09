@@ -24,7 +24,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage, qCache, qCacheSet, formatCurrency } from './js/common.js';
+import { initPage, qCache, qCacheSet, formatCurrency, assertRawEconomicValue } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
 import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
 import { calculateNationalBudget, applyTradeTariffOverride, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, isAutocracy, ISSUE_CATEGORY_STATS, formatStatName, deductAP, fetchActiveCoalition, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG } from './js/game-common.js';
@@ -879,8 +879,8 @@ function renderRankings(nation) {
     // Detect GDP/debt stored as 0-100 stat scores instead of raw dollars
     function fmtMonetary(key) {
         return function(v) {
+            assertRawEconomicValue(v, key);
             if (v >= 0 && v <= 100000) {
-                console.warn('[DISPLAY] ' + key + ' value ' + v + ' looks like a 0-100 stat score, not a raw dollar amount. Run sql/reset_nation_gdp_debt.sql to fix.');
                 return '$' + Math.round(v);
             }
             return formatBudgetCurrency(v);
