@@ -3513,3 +3513,150 @@ body.light-mode .tax-proposed-status {
     background: rgba(160, 110, 30, 0.08);
     border-color: rgba(160, 110, 30, 0.2);
 }
+
+/* ==================== Trade Diagnostics ==================== */
+.trade-diagnostics {
+    margin-top: 8px;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.trade-diag-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    padding: 6px 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+}
+.trade-diag-header:hover { color: #8a8a7a; }
+.trade-diag-toggle {
+    font-size: 0.7rem;
+    transition: transform 0.2s;
+}
+.trade-diagnostics.expanded .trade-diag-toggle { transform: rotate(180deg); }
+.trade-diag-body {
+    display: none;
+    padding: 8px 10px 10px;
+}
+.trade-diagnostics.expanded .trade-diag-body { display: block; }
+
+.trade-diag-modifiers {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+.trade-diag-mod {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1;
+    min-width: 120px;
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 4px;
+}
+.trade-diag-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+.trade-diag-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    color: #d4d4c8;
+    font-weight: 600;
+}
+.trade-diag-effect {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #555;
+}
+
+.trade-diag-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    margin-bottom: 10px;
+}
+.trade-diag-table th {
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.55rem;
+    font-weight: 500;
+    padding: 4px 6px;
+    text-align: right;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.trade-diag-table th:first-child { text-align: left; }
+.trade-diag-table td {
+    padding: 3px 6px;
+    text-align: right;
+    color: #888;
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+}
+.trade-diag-table td:first-child { text-align: left; color: #999; }
+.trade-diag-table td.surplus { color: #4CAF50; }
+.trade-diag-table td.deficit { color: #f44336; }
+.trade-diag-table td.muted { color: #444; }
+
+.trade-diag-affinity-summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    margin-bottom: 6px;
+}
+.trade-diag-affinity-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.trade-diag-affinity-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    padding: 2px 0;
+}
+.trade-diag-affinity-name {
+    min-width: 100px;
+    color: #999;
+}
+.trade-diag-affinity-score {
+    font-weight: 600;
+    min-width: 28px;
+    text-align: right;
+}
+.trade-diag-affinity-breakdown {
+    color: #555;
+    font-size: 0.52rem;
+}
+
+body.light-mode .trade-diagnostics { border-color: rgba(0,0,0,0.08); }
+body.light-mode .trade-diag-header { color: #999; }
+body.light-mode .trade-diag-header:hover { color: #666; }
+body.light-mode .trade-diag-mod { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.06); }
+body.light-mode .trade-diag-label { color: #999; }
+body.light-mode .trade-diag-value { color: #333; }
+body.light-mode .trade-diag-effect { color: #aaa; }
+body.light-mode .trade-diag-table th { color: #999; border-bottom-color: rgba(0,0,0,0.08); }
+body.light-mode .trade-diag-table td { color: #666; border-bottom-color: rgba(0,0,0,0.04); }
+body.light-mode .trade-diag-table td:first-child { color: #555; }
+body.light-mode .trade-diag-table td.muted { color: #bbb; }
+body.light-mode .trade-diag-affinity-summary { border-top-color: rgba(0,0,0,0.06); }
+body.light-mode .trade-diag-affinity-name { color: #555; }
+body.light-mode .trade-diag-affinity-breakdown { color: #aaa; }
