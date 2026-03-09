@@ -9729,25 +9729,7 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     const coalitionPartyIds = new Set(coalition?.party_ids || []);
 
-    // ── 2. Load all faction_bloc_approval rows (including last_platform for narrative action effects) ──
-    const { data: allBlocRows } = await supabase
-        .from('faction_bloc_approval')
-        .select('id, faction_id, bloc_id, ideology_alignment, performance_perception, momentum, preference_score, last_platform')
-        .in('faction_id', factionIds);
-    if (!allBlocRows || allBlocRows.length === 0) return;
-
-    // Detect rows stuck at seed defaults (preference_score=40, ideology_alignment=50, vote_share=0)
-    const stuckRows = allBlocRows.filter(r =>
-        Number(r.preference_score) === 40 &&
-        Number(r.ideology_alignment) === 50 &&
-        (Number(r.vote_share) === 0 || r.vote_share === null)
-    );
-    if (stuckRows.length > 0) {
-        const stuckFactions = [...new Set(stuckRows.map(r => r.faction_id))];
-        console.warn(`[Three-Pillar] Detected ${stuckRows.length} stuck rows (seed defaults) for ${stuckFactions.length} faction(s): ${stuckFactions.join(', ')}`);
-    }
-
-    // ── 3. Load voter blocs (ideology axes + priority issues + k_value + weight) ──
+    // ── 2. Load voter blocs first (needed for orphan detection) ──
     const { data: voterBlocs } = await supabase
         .from('voter_blocs')
         .select('id, population_weight, k_value, priority_issues, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
@@ -9757,6 +9739,74 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
 
     const blocMap = {};
     for (const b of voterBlocs) blocMap[b.id] = b;
+    const activeBlocIds = new Set(voterBlocs.map(b => b.id));
+
+    // ── 3. Load all faction_bloc_approval rows ──
+    let { data: allBlocRows } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, faction_id, bloc_id, ideology_alignment, performance_perception, momentum, preference_score, last_platform')
+        .in('faction_id', factionIds);
+    if (!allBlocRows) allBlocRows = [];
+
+    // ── 3b. Repair orphaned/stale bloc_id references ──
+    // faction_bloc_approval rows referencing inactive/deleted voter_blocs will be
+    // silently skipped by the calculation loop (`if (!bloc) continue`), leaving
+    // preference_score permanently stuck at its seed value (40).
+    const orphanedRows = allBlocRows.filter(r => !activeBlocIds.has(r.bloc_id));
+    if (orphanedRows.length > 0) {
+        console.warn(`[Three-Pillar] Deleting ${orphanedRows.length} orphaned faction_bloc_approval rows (stale bloc_ids) for nation ${nation.name}`);
+        for (const row of orphanedRows) {
+            await supabase.from('faction_bloc_approval').delete().eq('id', row.id);
+        }
+        allBlocRows = allBlocRows.filter(r => activeBlocIds.has(r.bloc_id));
+    }
+
+    // ── 3c. Seed missing faction_bloc_approval rows ──
+    // Ensures every (faction, active_bloc) pair has a row.
+    const existingPairs = new Set(allBlocRows.map(r => `${r.faction_id}:${r.bloc_id}`));
+    const missingPairs = [];
+    for (const fid of factionIds) {
+        for (const bloc of voterBlocs) {
+            if (!existingPairs.has(`${fid}:${bloc.id}`)) {
+                missingPairs.push({ faction_id: fid, bloc_id: bloc.id, preference_score: 40 });
+            }
+        }
+    }
+    if (missingPairs.length > 0) {
+        console.warn(`[Three-Pillar] Seeding ${missingPairs.length} missing faction_bloc_approval rows for nation ${nation.name}`);
+        const { error: seedErr } = await supabase.from('faction_bloc_approval')
+            .upsert(missingPairs, { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true });
+        if (seedErr) {
+            console.error(`[Three-Pillar] Failed to seed missing rows:`, seedErr.message);
+        }
+        // Re-fetch all rows after any repairs
+        const { data: refreshedRows } = await supabase
+            .from('faction_bloc_approval')
+            .select('id, faction_id, bloc_id, ideology_alignment, performance_perception, momentum, preference_score, last_platform')
+            .in('faction_id', factionIds);
+        if (refreshedRows && refreshedRows.length > 0) {
+            allBlocRows = refreshedRows;
+        }
+    }
+
+    if (allBlocRows.length === 0) return;
+
+    // ── 3d. Detect and reset stuck rows ──
+    // Rows stuck at seed defaults (preference_score=40, ideology_alignment=50) have never been
+    // successfully updated by the three-pillar engine. Reset in-memory values to force fresh calculation.
+    const stuckRows = allBlocRows.filter(r =>
+        Number(r.preference_score) === 40 &&
+        Number(r.ideology_alignment) === 50
+    );
+    if (stuckRows.length > 0) {
+        const stuckFactions = [...new Set(stuckRows.map(r => r.faction_id))];
+        console.warn(`[Three-Pillar] Detected ${stuckRows.length} stuck rows for ${stuckFactions.length} faction(s): ${stuckFactions.join(', ')}. Resetting to force recalculation.`);
+        for (const sr of stuckRows) {
+            sr.ideology_alignment = 0;
+            sr.preference_score = 0;
+            sr.momentum = 0;
+        }
+    }
 
     // ── 4. Load faction ideologies (dynamic axis scores + conviction stacks) ──
     const { data: ideologies } = await supabase
@@ -10016,8 +10066,9 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     }
 
     // ── 9. Batch-update faction_bloc_approval rows ──
+    let updateFailCount = 0;
     for (const u of updates) {
-        const { error: updateErr } = await supabase.from('faction_bloc_approval')
+        const { data: updatedRows, error: updateErr } = await supabase.from('faction_bloc_approval')
             .update({
                 ideology_alignment: u.ideology_alignment,
                 performance_perception: u.performance_perception,
@@ -10026,10 +10077,37 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
                 vote_share: u.vote_share,
                 ideology_drift: u.ideology_drift
             })
-            .eq('id', u.id);
+            .eq('id', u.id)
+            .select('id');
         if (updateErr) {
             console.error(`[Three-Pillar] Failed to update faction_bloc_approval row ${u.id} (faction=${u.faction_id}, bloc=${u.bloc_id}):`, updateErr.message);
+            updateFailCount++;
+        } else if (!updatedRows || updatedRows.length === 0) {
+            // Update returned success but modified 0 rows — row likely missing or RLS blocked
+            console.error(`[Three-Pillar] Update matched 0 rows for faction_bloc_approval id=${u.id} (faction=${u.faction_id}, bloc=${u.bloc_id}, pref=${u.preference_score}). Attempting upsert fallback.`);
+            // Fallback: upsert to ensure the row exists with correct values
+            const { error: upsertErr } = await supabase.from('faction_bloc_approval')
+                .upsert({
+                    id: u.id,
+                    faction_id: u.faction_id,
+                    bloc_id: u.bloc_id,
+                    ideology_alignment: u.ideology_alignment,
+                    performance_perception: u.performance_perception,
+                    momentum: u.momentum,
+                    preference_score: u.preference_score,
+                    vote_share: u.vote_share,
+                    ideology_drift: u.ideology_drift
+                }, { onConflict: 'faction_id,bloc_id' });
+            if (upsertErr) {
+                console.error(`[Three-Pillar] Upsert fallback also failed for faction=${u.faction_id}, bloc=${u.bloc_id}:`, upsertErr.message);
+                updateFailCount++;
+            } else {
+                console.log(`[Three-Pillar] Upsert fallback succeeded for faction=${u.faction_id}, bloc=${u.bloc_id}`);
+            }
         }
+    }
+    if (updateFailCount > 0) {
+        console.error(`[Three-Pillar] ${updateFailCount}/${updates.length} updates failed for nation ${nation.name}`);
     }
 
     // ── 9b. Write back platform changes (bridge expiry cleanup) ──
