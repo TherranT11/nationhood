@@ -617,6 +617,7 @@ initPage('dashboard', async (state) => {
         blocApprovalsRes,
         eventLogRes,
         opEdsRes,
+        activeCrisesRes,
     ] = await Promise.all([
         fetchActiveCoalition(_supabase, nation.id),
         _supabase.from('ministries').select('*, factions(faction_name, abbreviation, party_color, party_logo, custom_logo_url)').eq('nation_id', nation.id).eq('is_active', true),
@@ -632,6 +633,7 @@ initPage('dashboard', async (state) => {
         _supabase.from('faction_bloc_approval').select('bloc_id, preference_score').eq('faction_id', faction.id),
         _supabase.from('event_log').select('*').eq('nation_id', nation.id).order('fired_at_tick', { ascending: false }).limit(20),
         _supabase.from('op_eds').select('*').eq('nation_id', nation.id).order('created_at', { ascending: false }).limit(5),
+        _supabase.from('active_crises').select('crisis_id, crisis_templates(name, description)').eq('nation_id', nation.id),
     ]);
 
     const coalition = coalitionRes;
@@ -650,6 +652,7 @@ initPage('dashboard', async (state) => {
     const blocApprovals = blocApprovalsRes.data || [];
     const eventLog = eventLogRes.data || [];
     const opEds = opEdsRes.data || [];
+    const activeCrises = activeCrisesRes.data || [];
 
     const isAuto = isAutocracy(nation);
     const isPresidential = isPresidentialRepublic(nation);
@@ -692,7 +695,7 @@ initPage('dashboard', async (state) => {
     renderBanner(faction, coalition, currentSeats, totalSeats);
 
     // ─── ALERTS ───
-    renderAlerts(nation, faction, coalition, ministries, scheduledElection, currentTick, eventLog);
+    renderAlerts(nation, faction, coalition, ministries, scheduledElection, currentTick, eventLog, activeCrises);
 
     // ─── BILLS ───
     renderBills(faction, floorBills, committeeBills, currentSeats);
@@ -767,30 +770,53 @@ function renderBanner(faction, coalition, seats, totalSeats) {
     el.style.display = '';
 }
 
-function renderAlerts(nation, faction, coalition, ministries, scheduledElection, currentTick, eventLog) {
+function renderAlerts(nation, faction, coalition, ministries, scheduledElection, currentTick, eventLog, activeCrises) {
     const stack = document.getElementById('alert-stack');
     const alerts = [];
 
-    // Crisis events from event log (recent crises)
-    const crisisEvents = eventLog.filter(e =>
-        e.event_name && (
-            e.event_name.includes('CRISIS_STARTED') ||
-            e.event_name.includes('REVOLUTION_WARNING') ||
-            e.event_name.includes('REVOLUTION_ESCALATION') ||
-            e.event_name.includes('WAR_DECLARED')
-        ) && (currentTick - (e.fired_at_tick || 0)) <= 5
+    // Active crises (from active_crises table — only shows while crisis is ongoing)
+    for (const crisis of (activeCrises || [])) {
+        const t = crisis.crisis_templates;
+        if (!t) continue;
+        alerts.push(`
+          <div class="alert alert--crisis">
+            <div class="alert__icon" style="color:var(--dred)">!!</div>
+            <div class="alert__content">
+              <div class="alert__title">CRISIS: ${escapeHtml(t.name)}</div>
+              <div class="alert__sub">${escapeHtml(t.description || '').substring(0, 120)}</div>
+            </div>
+            <a class="alert__action alert__action--red" href="nation.html">Respond</a>
+          </div>`);
+    }
+
+    // Revolution warning (tracked on the nation row, not in active_crises)
+    if (nation.revolution_started_tick != null) {
+        alerts.push(`
+          <div class="alert alert--crisis">
+            <div class="alert__icon" style="color:var(--dred)">!!</div>
+            <div class="alert__content">
+              <div class="alert__title">REVOLUTION IN PROGRESS</div>
+              <div class="alert__sub">A democratic revolution is underway. Address stability and democratic demands.</div>
+            </div>
+            <a class="alert__action alert__action--red" href="nation.html">Respond</a>
+          </div>`);
+    }
+
+    // War declarations (still event-log based — wars don't have an active_crises row)
+    const warEvents = eventLog.filter(e =>
+        e.event_name && e.event_name.includes('WAR_DECLARED') &&
+        (currentTick - (e.fired_at_tick || 0)) <= 3
     );
-    for (const evt of crisisEvents.slice(0, 2)) {
-        const name = (evt.event_name || '').replace(/_/g, ' ');
+    for (const evt of warEvents.slice(0, 1)) {
         const desc = evt.description_chosen || evt.description || evt.event_data?.description || '';
         alerts.push(`
           <div class="alert alert--crisis">
             <div class="alert__icon" style="color:var(--dred)">!!</div>
             <div class="alert__content">
-              <div class="alert__title">${escapeHtml(name)}</div>
+              <div class="alert__title">WAR DECLARED</div>
               <div class="alert__sub">${escapeHtml(desc).substring(0, 120)}</div>
             </div>
-            <a class="alert__action alert__action--red" href="events.html">Respond</a>
+            <a class="alert__action alert__action--red" href="nation.html">Respond</a>
           </div>`);
     }
 
