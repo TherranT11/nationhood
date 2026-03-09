@@ -1556,6 +1556,78 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
             }
+        } else if (bill.bill_type === 'ratification' && bill.trade_agreement_data && bill.trade_agreement_data.type === 'retaliatory_tariff') {
+            // Unilateral retaliatory tariff ratification
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+                var rtData = bill.trade_agreement_data;
+                var imposerId = rtData.imposer_nation_id;
+                var targetId = rtData.target_nation_id;
+                var isPermanent = rtData.duration_type === 'permanent';
+                var durationTicks = rtData.duration_ticks || null;
+
+                // Insert trade_agreement (retaliatory_tariff bypasses nation ordering constraint — imposer is always nation_a)
+                await supabase.from('trade_agreements').insert({
+                    nation_a_id: imposerId,
+                    nation_b_id: targetId,
+                    bill_a_id: bill.id,
+                    agreement_type: 'retaliatory_tariff',
+                    agreement_name: rtData.agreement_name || 'Retaliatory Tariff',
+                    articles: rtData.articles || [],
+                    duration_type: isPermanent ? 'permanent' : 'fixed',
+                    duration_ticks: isPermanent ? null : durationTicks,
+                    auto_renew: false,
+                    withdrawal_notice_ticks: 1,
+                    status: 'active',
+                    enacted_at_tick: currentTick,
+                    expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null)
+                });
+
+                // Apply relation_score penalty: -surcharge_pct / 2 (max surcharge across all sector articles)
+                var maxSurcharge = 0;
+                var articles = rtData.articles || [];
+                for (var rti = 0; rti < articles.length; rti++) {
+                    if (articles[rti].type === 'tariff_surcharge') {
+                        maxSurcharge = Math.max(maxSurcharge, articles[rti].data.surcharge_pct || 0);
+                    }
+                }
+                var relPenalty = Math.round(maxSurcharge / 2);
+
+                if (relPenalty > 0) {
+                    // Use canonical ordering for diplomatic_relations lookup
+                    var relA = imposerId < targetId ? imposerId : targetId;
+                    var relB = imposerId < targetId ? targetId : imposerId;
+                    var { data: rel } = await supabase.from('diplomatic_relations')
+                        .select('id, relation_score')
+                        .eq('nation_a_id', relA).eq('nation_b_id', relB).maybeSingle();
+                    if (rel) {
+                        var newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) - relPenalty));
+                        await supabase.from('diplomatic_relations')
+                            .update({ relation_score: newScore }).eq('id', rel.id);
+                    }
+                }
+
+                // Fire enactment event for target nation
+                try {
+                    var { data: imposerNation } = await supabase.from('nations').select('name').eq('id', imposerId).single();
+                    var imposerName = imposerNation?.name || 'Unknown';
+                    await supabase.from('event_log').insert({
+                        nation_id: targetId,
+                        event_name: 'Retaliatory Tariff Enacted',
+                        category: 'Trade',
+                        description_chosen: imposerName + ' has enacted a retaliatory tariff on your exports. Relations have decreased by ' + relPenalty + '.',
+                        fired_at_tick: currentTick
+                    });
+                } catch (e) { /* non-blocking */ }
+
+                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'retaliatory_tariff', earlyResolution: bill.early_resolution_status || null });
+            } else {
+                await failBill(supabase, bill);
+                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'retaliatory_tariff', earlyResolution: bill.early_resolution_status || null });
+            }
         } else if (bill.bill_type === 'budget') {
             // Budget bill resolution — budget bills can NEVER fail
             if (passed) {

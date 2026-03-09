@@ -158,7 +158,8 @@ const TRADE_TYPE_ICONS = {
     chart: '&#128200;',      // chart
     truck: '&#9981;',        // fuel pump
     money: '&#128176;',      // money bag
-    aid: '&#127793;'         // seedling (growth/aid)
+    aid: '&#127793;',        // seedling (growth/aid)
+    shield: '&#128737;'      // shield (retaliatory tariff)
 };
 
 // Flag URLs (shared across all rendering functions)
@@ -805,8 +806,53 @@ async function withdrawTradeAgreement(agreementId) {
     const { data: ta } = await _supabase.from('trade_agreements').select('*').eq('id', agreementId).single();
     if (!ta) { alert('Could not load agreement.'); return; }
 
-    const noticeTicks = ta.withdrawal_notice_ticks || 3;
+    const isRetaliatory = ta.agreement_type === 'retaliatory_tariff';
+    const noticeTicks = isRetaliatory ? 0 : (ta.withdrawal_notice_ticks || 3);
     const articles = ta.articles || [];
+
+    // Retaliatory tariffs: lifting them improves relations (no penalties)
+    if (isRetaliatory) {
+        // Calculate relations bonus: +maxSurcharge/4 (partial recovery)
+        let maxSurcharge = 0;
+        for (const art of articles) {
+            if (art.type === 'tariff_surcharge') {
+                maxSurcharge = Math.max(maxSurcharge, art.data?.surcharge_pct || 0);
+            }
+        }
+        const relBonus = Math.round(maxSurcharge / 4);
+
+        let confirmMsg = 'Lift "' + (ta.agreement_name || 'retaliatory tariff') + '"?\n\n' +
+            'This will take effect immediately.\n';
+        if (relBonus > 0) confirmMsg += 'Relations improvement: +' + relBonus + '\n';
+        if (!confirm(confirmMsg)) return;
+
+        // Immediately withdraw (no notice period for unilateral actions)
+        await _supabase.from('trade_agreements').update({
+            status: 'withdrawn',
+            withdrawn_at_tick: shardTick,
+            withdrawal_notice_at: shardTick,
+            withdrawn_by_nation: currentNation.id
+        }).eq('id', agreementId);
+
+        // Apply relations improvement
+        if (relBonus > 0) {
+            const otherNationId = (ta.nation_a_id === currentNation.id) ? ta.nation_b_id : ta.nation_a_id;
+            const nA = currentNation.id < otherNationId ? currentNation.id : otherNationId;
+            const nB = currentNation.id < otherNationId ? otherNationId : currentNation.id;
+            const { data: rel } = await _supabase.from('diplomatic_relations')
+                .select('id, relation_score')
+                .eq('nation_a_id', nA).eq('nation_b_id', nB).maybeSingle();
+            if (rel) {
+                const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + relBonus));
+                await _supabase.from('diplomatic_relations')
+                    .update({ relation_score: newScore }).eq('id', rel.id);
+            }
+        }
+
+        alert('Retaliatory tariff lifted immediately.' + (relBonus > 0 ? ' Relations improved by +' + relBonus + '.' : ''));
+        await renderAgreementsTab();
+        return;
+    }
 
     // Check for negotiated breach_penalty article
     const breachArt = articles.find(a => a.type === 'breach_penalty');
@@ -3031,6 +3077,18 @@ function renderWizardStep2() {
         </div>
     `;
 
+    // Unilateral Actions category
+    html += `
+        <div class="type-card" data-category="unilateral" onclick="wizardSelectCategory('unilateral')">
+            <div class="type-card-title" style="color:#ff5722;">Unilateral Action</div>
+            <div class="type-card-desc">Impose retaliatory tariffs on a specific nation's imports. No negotiation required — your parliament ratifies.</div>
+            <div class="type-card-effects">
+                <span class="trade-type-tag unilateral">UNILATERAL</span>
+                <span class="trade-type-tag" style="background:rgba(255,87,34,0.15);color:#ff5722;">TARGETED</span>
+            </div>
+        </div>
+    `;
+
     html += '</div>';
     html += `<div class="wizard-nav">
         <button class="wizard-back-btn" onclick="wizardBackToStep1()">Back</button>
@@ -3086,6 +3144,9 @@ async function wizardGoToStep3() {
         // Economic aid skips type selection — go straight to proposal with pre-set type
         wizardAgreementType = 'economic_aid';
         await renderWizardStep3AidProposal();
+    } else if (wizardCategory === 'unilateral') {
+        wizardAgreementType = 'retaliatory_tariff';
+        await renderWizardStep3Unilateral();
     } else {
         await renderWizardStep3TradeProposal();
     }
@@ -3531,6 +3592,283 @@ async function submitAidProposal() {
     // Redirect to the negotiation
     alert('Aid negotiation proposed! Awaiting acceptance from ' + ((await _supabase.from('nations').select('name').eq('id', wizardTargetNation).single()).data?.name || 'the target nation') + '.');
     openTradeNegotiation(neg.id);
+}
+
+// ==================== STEP 3D: UNILATERAL ACTIONS (Retaliatory Tariff) ====================
+async function renderWizardStep3Unilateral() {
+    const panel = document.getElementById('wizard-panel-3');
+    if (!panel) return;
+
+    panel.innerHTML = '<p style="color:#888;font-style:italic;font-size:0.82rem;">Loading...</p>';
+
+    const { data: targetNation } = await _supabase.from('nations').select('id, name').eq('id', wizardTargetNation).single();
+    const targetName = targetNation?.name || 'Unknown';
+
+    // Check for existing active retaliatory tariff against this nation
+    const { data: existingRT } = await _supabase
+        .from('trade_agreements')
+        .select('id, articles')
+        .eq('status', 'active')
+        .eq('agreement_type', 'retaliatory_tariff')
+        .eq('nation_a_id', currentNation.id)
+        .eq('nation_b_id', wizardTargetNation);
+
+    if (existingRT && existingRT.length > 0) {
+        panel.innerHTML = `
+            <div class="trade-info-box warning">
+                You already have an active retaliatory tariff against ${escapeHtml(targetName)}. Withdraw the existing one before imposing a new one.
+            </div>
+            <div class="wizard-nav" style="margin-top:12px;">
+                <button class="wizard-back-btn" onclick="wizardBackToStep2()">Back</button>
+            </div>
+        `;
+        return;
+    }
+
+    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isFM && !diplomaticRoles.isMoT;
+    const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
+
+    const sectorOpts = TRADEABLE_SECTORS.map(s =>
+        '<label class="trade-checkbox-option" style="margin-bottom:4px;">' +
+            '<input type="checkbox" name="rt-sector" value="' + s.key + '" onchange="updateRetaliatorySummary()" /> ' +
+            escapeHtml(s.label) +
+        '</label>'
+    ).join('');
+
+    let html = `
+        <div class="trade-article-builder">
+            <div class="trade-article-header">
+                <span class="trade-article-title" style="color:#ff5722;">Retaliatory Tariff against ${escapeHtml(targetName)}</span>
+            </div>
+
+            <p style="font-size:0.78rem;color:var(--text-muted);line-height:1.5;margin-bottom:14px;">
+                Impose a targeted tariff surcharge on imports from ${escapeHtml(targetName)}.
+                This is a unilateral action — no negotiation required. Your parliament must ratify it.
+            </p>
+
+            <div class="trade-field">
+                <label>Name</label>
+                <input type="text" id="rt-name" placeholder="e.g. ${escapeHtml(currentNation.name)} Tariff Act on ${escapeHtml(targetName)}" maxlength="120" />
+            </div>
+
+            <div class="trade-field">
+                <label>Targeted Sectors (select one or more)</label>
+                <div id="rt-sectors" style="display:flex;flex-direction:column;gap:2px;">${sectorOpts}</div>
+            </div>
+
+            <div class="trade-field">
+                <label>Surcharge Rate (applied to all selected sectors)</label>
+                <div class="trade-slider-value" id="rt-pct-display">25%</div>
+                <input type="range" class="trade-slider" id="rt-pct" min="5" max="50" value="25" oninput="updateRetaliatorySummary()" />
+                <div class="trade-slider-labels">
+                    <span>5%</span><span>25%</span><span>50%</span>
+                </div>
+            </div>
+
+            <div class="trade-field">
+                <label>Duration</label>
+                <div class="trade-radio-group" style="margin-bottom:8px;">
+                    <label class="trade-radio-option selected" onclick="this.querySelector('input').checked=true;toggleRTDuration()">
+                        <input type="radio" name="rt-dur-type" value="fixed" checked />
+                        <div>
+                            <div class="trade-radio-label">Fixed Term</div>
+                            <div class="trade-radio-hint">Set number of ticks</div>
+                        </div>
+                    </label>
+                    <label class="trade-radio-option" onclick="this.querySelector('input').checked=true;toggleRTDuration()">
+                        <input type="radio" name="rt-dur-type" value="permanent" />
+                        <div>
+                            <div class="trade-radio-label">Until Revoked</div>
+                            <div class="trade-radio-hint">Stays active until you withdraw</div>
+                        </div>
+                    </label>
+                </div>
+                <div id="rt-dur-fixed-fields">
+                    <input type="number" id="rt-dur-ticks" value="12" min="4" max="48" style="width:80px;" />
+                    <span style="font-size:0.72rem;color:var(--text-dim);margin-left:4px;">ticks (min 4, max 48)</span>
+                </div>
+            </div>
+
+            <div id="rt-summary" class="trade-info-box warning" style="margin-top:12px;">
+                Select sectors to see the impact summary.
+            </div>
+
+            <div style="font-size:0.78rem;color:var(--text-muted);margin:12px 0;line-height:1.6;">
+                <strong>What happens:</strong><br/>
+                1. You submit this action (${apCost} AP)<br/>
+                2. A ratification bill goes to YOUR parliament only<br/>
+                3. If ratified, the surcharge takes effect immediately<br/>
+                4. Diplomatic relations with ${escapeHtml(targetName)} decrease<br/>
+                5. You earn tariff revenue on affected imports
+            </div>
+        </div>
+
+        <div class="wizard-nav" style="margin-top:12px;">
+            <button class="wizard-back-btn" onclick="wizardBackToStep2()">Back</button>
+            <button class="wizard-next-btn" id="rt-submit-btn" disabled onclick="submitRetaliatory()">
+                Submit for Ratification (${apCost} AP)
+            </button>
+        </div>
+    `;
+
+    panel.innerHTML = html;
+}
+
+function toggleRTDuration() {
+    const isPermanent = document.querySelector('input[name="rt-dur-type"][value="permanent"]')?.checked;
+    const fields = document.getElementById('rt-dur-fixed-fields');
+    if (fields) fields.style.display = isPermanent ? 'none' : 'block';
+}
+
+function updateRetaliatorySummary() {
+    const pct = parseInt(document.getElementById('rt-pct')?.value || '25');
+    document.getElementById('rt-pct-display').textContent = pct + '%';
+
+    const checked = document.querySelectorAll('input[name="rt-sector"]:checked');
+    const sectorCount = checked.length;
+    const relPenalty = Math.round(pct / 2);
+
+    const summary = document.getElementById('rt-summary');
+    const btn = document.getElementById('rt-submit-btn');
+
+    if (sectorCount === 0) {
+        if (summary) { summary.className = 'trade-info-box info'; summary.textContent = 'Select sectors to see the impact summary.'; }
+        if (btn) btn.disabled = true;
+        return;
+    }
+
+    if (btn) btn.disabled = false;
+
+    const sectorNames = [];
+    checked.forEach(cb => {
+        const s = TRADEABLE_SECTORS.find(ts => ts.key === cb.value);
+        if (s) sectorNames.push(s.label);
+    });
+
+    let severity = 'warning';
+    if (pct >= 35) severity = 'danger';
+    else if (pct <= 15) severity = 'info';
+
+    if (summary) {
+        summary.className = 'trade-info-box ' + severity;
+        summary.innerHTML = '<strong>+' + pct + '% surcharge</strong> on ' + sectorNames.join(', ') +
+            ' imports.<br/>Diplomatic impact: <strong>-' + relPenalty + ' Relations</strong> with target nation.';
+    }
+}
+
+async function submitRetaliatory() {
+    const btn = document.getElementById('rt-submit-btn');
+    if (btn) btn.disabled = true;
+
+    const checked = document.querySelectorAll('input[name="rt-sector"]:checked');
+    if (checked.length === 0) { alert('Select at least one sector.'); if (btn) btn.disabled = false; return; }
+
+    const pct = Math.min(50, Math.max(5, parseInt(document.getElementById('rt-pct')?.value || '25')));
+    const nameInput = document.getElementById('rt-name');
+    const agreementName = (nameInput?.value || '').trim() || 'Retaliatory Tariff';
+
+    const durType = document.querySelector('input[name="rt-dur-type"]:checked')?.value || 'fixed';
+    const durTicks = durType === 'fixed' ? Math.min(48, Math.max(4, parseInt(document.getElementById('rt-dur-ticks')?.value || '12'))) : null;
+
+    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isFM && !diplomaticRoles.isMoT;
+    const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
+
+    // Deduct AP
+    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+    if (!apResult.success) {
+        alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (currentFaction.action_points || 0));
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Build articles: one tariff_surcharge per selected sector + duration
+    const articles = [];
+    checked.forEach(cb => {
+        articles.push({
+            type: 'tariff_surcharge',
+            data: { sector: cb.value, surcharge_pct: pct, imposer_nation_id: currentNation.id }
+        });
+    });
+    articles.push({
+        type: 'duration',
+        data: {
+            duration_type: durType === 'permanent' ? 'permanent' : 'fixed',
+            duration_ticks: durTicks,
+            auto_renew: false,
+            withdrawal_notice_ticks: 1
+        }
+    });
+
+    // Fetch target nation name
+    const { data: targetNation } = await _supabase.from('nations').select('id, name').eq('id', wizardTargetNation).single();
+    const targetName = targetNation?.name || 'Unknown';
+
+    const billTitle = 'Ratify: ' + agreementName;
+    const sectorNames = [];
+    checked.forEach(cb => {
+        const s = TRADEABLE_SECTORS.find(ts => ts.key === cb.value);
+        if (s) sectorNames.push(s.label);
+    });
+    const billPreamble = 'Ratification of retaliatory tariff against ' + targetName + '. ' +
+        'Imposes a +' + pct + '% tariff surcharge on ' + sectorNames.join(', ') + ' imports from ' + targetName + '. ' +
+        (durType === 'permanent' ? 'Duration: until revoked.' : 'Duration: ' + durTicks + ' ticks.') + ' ' +
+        'A YES vote enacts the tariff; a NO vote blocks it.';
+
+    // Create ratification bill in OWN parliament only
+    const { data: bill, error: billErr } = await _supabase.from('bills').insert({
+        nation_id: currentNation.id,
+        bill_type: 'ratification',
+        bill_name: billTitle,
+        preamble: billPreamble,
+        proposed_by: currentFaction.id,
+        status: 'floor',
+        proposed_tick: currentTick,
+        floor_tick: currentTick,
+        voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
+        trade_agreement_data: {
+            type: 'retaliatory_tariff',
+            imposer_nation_id: currentNation.id,
+            target_nation_id: wizardTargetNation,
+            agreement_name: agreementName,
+            articles: articles,
+            duration_type: durType === 'permanent' ? 'permanent' : 'fixed',
+            duration_ticks: durTicks
+        }
+    }).select('id').single();
+
+    if (billErr) {
+        console.error('Error creating retaliatory tariff bill:', billErr);
+        alert('Error: ' + billErr.message);
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    // Fire event
+    try {
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation.id,
+            event_name: agreementName + ' — Proposed',
+            category: 'Trade',
+            description_chosen: currentNation.name + ' has submitted a retaliatory tariff bill targeting ' + targetName + ' (' + sectorNames.join(', ') + ' at +' + pct + '%).',
+            fired_at_tick: currentTick
+        });
+        // Also fire event for target nation
+        await _supabase.from('event_log').insert({
+            nation_id: wizardTargetNation,
+            event_name: 'Retaliatory Tariff Proposed',
+            category: 'Trade',
+            description_chosen: currentNation.name + ' has proposed a retaliatory tariff on your ' + sectorNames.join(', ') + ' exports (+' + pct + '%). Their parliament is voting on ratification.',
+            fired_at_tick: currentTick
+        });
+    } catch (e) { /* non-blocking */ }
+
+    alert('Retaliatory tariff bill submitted to parliament! A YES vote will enact the tariff against ' + targetName + '.');
+    await renderInitiativeWizard();
 }
 
 function wizardBackToStep2() {
@@ -4023,6 +4361,8 @@ async function openTradeNegotiation(negotiationId) {
         html += '<div class="trade-type-grid">';
 
         for (const [key, tInfo] of Object.entries(TRADE_AGREEMENT_TYPES)) {
+            // Skip unilateral-only types (retaliatory tariff) — those use a separate flow
+            if (tInfo.category === 'unilateral') continue;
             const tIconHtml = TRADE_TYPE_ICONS[tInfo.icon] || '';
             html += `
                 <div class="trade-type-card" onclick="selectNegotiationType('${neg.id}', '${key}')">
@@ -4258,6 +4598,11 @@ function renderTradeArticleSummary(article) {
             const op = d.operator === 'lte' ? '\u2264' : '\u2265';
             const failLabels = { suspend: 'Suspend', terminate: 'Terminate', reduce: 'Reduce' };
             return escapeHtml(label) + ' ' + op + ' ' + (d.threshold || 0) + ' (on failure: ' + (failLabels[d.on_failure] || d.on_failure) + ', grace: ' + (d.grace_periods || 0) + ')';
+        }
+        case 'tariff_surcharge': {
+            const d = article.data || {};
+            const sector = TRADEABLE_SECTOR_MAP[d.sector];
+            return (sector?.label || d.sector || 'Unknown') + ': +' + (d.surcharge_pct || 0) + '% tariff surcharge';
         }
         default:
             return 'Unknown article type: ' + article.type;
@@ -4561,6 +4906,9 @@ function renderTradeArticleEditor(container, articleType, negotiationId) {
             break;
         case 'aid_condition':
             html += renderAidConditionEditor();
+            break;
+        case 'tariff_surcharge':
+            html += renderTariffSurchargeEditor();
             break;
     }
 
@@ -5019,6 +5367,48 @@ function updateConditionDefaults() {
     if (radio) radio.checked = true;
 }
 
+// ── Tariff Surcharge Editor (Retaliatory Tariff) ──
+function renderTariffSurchargeEditor() {
+    const opts = TRADEABLE_SECTORS.map(s =>
+        '<option value="' + s.key + '">' + escapeHtml(s.label) + '</option>'
+    ).join('');
+    return `
+        <div class="trade-field">
+            <label>Sector</label>
+            <select id="surcharge-sector">${opts}</select>
+        </div>
+        <div class="trade-field">
+            <label>Surcharge Rate</label>
+            <div class="trade-slider-value" id="surcharge-pct-display">25%</div>
+            <input type="range" class="trade-slider" id="surcharge-pct" min="5" max="50" value="25" oninput="updateSurchargeWarning(this.value)" />
+            <div class="trade-slider-labels">
+                <span>5%</span><span>25%</span><span>50%</span>
+            </div>
+            <div id="surcharge-warning" class="trade-info-box warning" style="margin-top:6px;">
+                At 25%, significant impact on imports. Diplomatic penalty: -12 Relations.
+            </div>
+        </div>
+    `;
+}
+
+function updateSurchargeWarning(val) {
+    document.getElementById('surcharge-pct-display').textContent = val + '%';
+    const warn = document.getElementById('surcharge-warning');
+    if (!warn) return;
+    const v = parseInt(val);
+    const relPenalty = Math.round(v / 2);
+    if (v <= 15) {
+        warn.className = 'trade-info-box info';
+        warn.textContent = 'At ' + v + '%, modest import cost increase. Diplomatic penalty: -' + relPenalty + ' Relations.';
+    } else if (v <= 30) {
+        warn.className = 'trade-info-box warning';
+        warn.textContent = 'At ' + v + '%, significant impact on imports. Diplomatic penalty: -' + relPenalty + ' Relations.';
+    } else {
+        warn.className = 'trade-info-box danger';
+        warn.textContent = 'At ' + v + '%, near-prohibitive tariff wall. Diplomatic penalty: -' + relPenalty + ' Relations. Expect retaliation.';
+    }
+}
+
 // ── Save Article (reads editor values and appends to negotiation) ──
 async function saveTradeArticle(negotiationId, articleType) {
     let articleData = {};
@@ -5120,6 +5510,13 @@ async function saveTradeArticle(negotiationId, articleType) {
                 return;
             }
             articleData = { stat_key: statKey, operator: operator, threshold: threshold, on_failure: onFailure, grace_periods: grace };
+            break;
+        }
+        case 'tariff_surcharge': {
+            const sector = document.getElementById('surcharge-sector')?.value;
+            const pct = Math.min(50, Math.max(5, parseInt(document.getElementById('surcharge-pct')?.value || '25')));
+            if (!sector) { alert('Please select a sector.'); return; }
+            articleData = { sector: sector, surcharge_pct: pct, imposer_nation_id: currentNation.id };
             break;
         }
     }
@@ -6235,6 +6632,11 @@ window.updateSupplyWarning = updateSupplyWarning;
 window.updateSubsidyWarning = updateSubsidyWarning;
 window.renderInitiativeWizard = renderInitiativeWizard;
 window.withdrawTradeAgreement = withdrawTradeAgreement;
+// Unilateral actions exports
+window.submitRetaliatory = submitRetaliatory;
+window.toggleRTDuration = toggleRTDuration;
+window.updateRetaliatorySummary = updateRetaliatorySummary;
+window.updateSurchargeWarning = updateSurchargeWarning;
 // Phase 3 exports
 window.acceptTradeNegotiation = acceptTradeNegotiation;
 window.rejectTradeNegotiation = rejectTradeNegotiation;
