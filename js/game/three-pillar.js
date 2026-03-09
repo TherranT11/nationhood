@@ -33,7 +33,7 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
     // ── 1. Load all party factions ──
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, seats')
+        .select('id, seats, ideology_value_1, ideology_value_2')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
     if (!factions || factions.length === 0) return;
@@ -73,9 +73,27 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
     // Parties without an ideology row get ideoScore=50 for all blocs, locking
     // preference_score at 50. Create a centrist row so computeIdeologyAlignment
     // can produce varied scores (30-70) based on bloc positions.
+    // Map declared ideology values to axis columns with ±30 strength
+    const IDEOLOGY_AXIS_MAP = {
+        'LIBERTY': { axis: 'liberty_equality', val: -30 },
+        'EQUALITY': { axis: 'liberty_equality', val: 30 },
+        'TRADITION': { axis: 'tradition_progress', val: -30 },
+        'PROGRESS': { axis: 'tradition_progress', val: 30 },
+        'SECURITY': { axis: 'security_freedom', val: -30 },
+        'FREEDOM': { axis: 'security_freedom', val: 30 },
+        'GLOBALISM': { axis: 'globalism_nationalism', val: -30 },
+        'NATIONALISM': { axis: 'globalism_nationalism', val: 30 },
+        'INDIVIDUALISM': { axis: 'individualism_collectivism', val: -30 },
+        'COLLECTIVISM': { axis: 'individualism_collectivism', val: 30 },
+    };
+
     const missingIdeoFactions = factionIds.filter(fid => !ideoMap[fid]);
     if (missingIdeoFactions.length > 0) {
+        const factionMap = {};
+        for (const f of factions) factionMap[f.id] = f;
+
         for (const fid of missingIdeoFactions) {
+            const faction = factionMap[fid];
             const newRow = {
                 faction_id: fid,
                 liberty_equality: 0,
@@ -84,16 +102,41 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
                 globalism_nationalism: 0,
                 individualism_collectivism: 0
             };
-            const { data: inserted, error: insErr } = await supabase
+            // Seed from declared ideologies (±30 per axis)
+            for (const iv of [faction?.ideology_value_1, faction?.ideology_value_2]) {
+                if (!iv) continue;
+                const mapping = IDEOLOGY_AXIS_MAP[iv.toUpperCase()];
+                if (mapping) {
+                    newRow[mapping.axis] = Math.max(-100, Math.min(100, (newRow[mapping.axis] || 0) + mapping.val));
+                }
+            }
+            console.log(`[three-pillar] Seeding faction_ideology for ${fid}: ${JSON.stringify(newRow)}`);
+            // Try insert first (works even without unique constraint on faction_id).
+            // Fall back to upsert if a constraint exists.
+            let inserted = null;
+            let insErr = null;
+            const { data: d1, error: e1 } = await supabase
                 .from('faction_ideology')
-                .upsert(newRow, { onConflict: 'faction_id', ignoreDuplicates: true })
+                .insert(newRow)
                 .select()
                 .single();
-            if (!insErr && inserted) {
+            if (!e1 && d1) {
+                inserted = d1;
+            } else if (e1) {
+                // If insert fails (duplicate), try upsert
+                const { data: d2, error: e2 } = await supabase
+                    .from('faction_ideology')
+                    .upsert(newRow, { onConflict: 'faction_id', ignoreDuplicates: true })
+                    .select()
+                    .single();
+                inserted = d2;
+                insErr = e2;
+            }
+            if (inserted) {
                 ideoMap[fid] = inserted;
                 console.log(`[three-pillar] Backfilled missing faction_ideology row for faction ${fid}`);
-            } else if (insErr) {
-                console.error(`[three-pillar] Failed to backfill faction_ideology for ${fid}:`, insErr.message);
+            } else if (insErr || e1) {
+                console.error(`[three-pillar] Failed to backfill faction_ideology for ${fid}:`, (insErr || e1).message);
             }
         }
     }
