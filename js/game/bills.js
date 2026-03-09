@@ -1337,6 +1337,26 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         pending_minister: null,
                         stat_baselines: fullNation ? buildMinistryBaselines(mKey, fullNation) : {}
                     }).eq('id', ministry.id);
+
+                    // If confirming a PM, update government_formations so lead_party_id stays correct
+                    if (mKey === 'prime_minister') {
+                        try {
+                            const { data: activeGovFormation } = await supabase.from('government_formations')
+                                .select('id, ministry_assignments')
+                                .eq('nation_id', bill.nation_id)
+                                .in('status', ['formed', 'caretaker'])
+                                .order('formed_at', { ascending: false })
+                                .limit(1)
+                                .maybeSingle();
+                            if (activeGovFormation) {
+                                const updatedAssignments = { ...(activeGovFormation.ministry_assignments || {}), prime_minister: pm.party_id };
+                                await supabase.from('government_formations')
+                                    .update({ ministry_assignments: updatedAssignments })
+                                    .eq('id', activeGovFormation.id);
+                                console.log(`[resolveExpiredVotes] Updated government_formations PM assignment to ${pm.party_id}`);
+                            }
+                        } catch (gfErr) { console.warn('[resolveExpiredVotes] Failed to update government_formations PM:', gfErr); }
+                    }
                 }
 
                 await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
