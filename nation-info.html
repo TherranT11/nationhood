@@ -463,9 +463,7 @@ function renderGovernment(factions, parties, latestElection) {
     }
     allParties.sort(function(a, b) { return (b.seats || 0) - (a.seats || 0); });
 
-    var totalSeats = 0;
-    for (var i = 0; i < allParties.length; i++) totalSeats += (allParties[i].seats || 0);
-    if (totalSeats === 0) totalSeats = 1;
+    var totalSeats = nation.total_seats || 120;
 
     // Color palette for parties
     var colors = ['#f0c040','#4ea8de','#e06060','#50c878','#c080e0','#e0a050','#60c0c0','#e07090'];
