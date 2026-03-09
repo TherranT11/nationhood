@@ -933,7 +933,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
-    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC) ──
+    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, RT) ──
     var { data: activeTradeAgreements } = await supabase.from('trade_agreements')
         .select('id, nation_a_id, nation_b_id, agreement_type, articles')
         .eq('status', 'active')
@@ -941,7 +941,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
     // Set type-specific affinity flags from trade_agreements
     // Build tariff modifier map: tariffModMap[importerId|exporterId][sector] = reduction fraction (0-1)
-    // Build tariff surcharge map: tariffSurchargeMap[importerId|exporterId][sector] = surcharge fraction
+    // Build tariff surcharge map: tariffSurchargeMap[importerId|exporterId][sector] = surcharge fraction (e.g. 0.25 = +25%)
     var tariffModMap = {};
     var tariffSurchargeMap = {};
     var activeRSCs = [];
@@ -1008,7 +1008,8 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 flagsMap[k2].has_rsc = true;
                 activeRSCs.push(ta);
             } else if (ta.agreement_type === 'retaliatory_tariff') {
-                // Unilateral surcharge: imposer (nation_a) taxes imports from target (nation_b)
+                // Retaliatory tariff: unilateral surcharge on imports from target nation
+                // articles contain tariff_surcharge entries with imposer_nation_id, sector, surcharge_pct
                 var arts = ta.articles || [];
                 for (var ai = 0; ai < arts.length; ai++) {
                     if (arts[ai].type !== 'tariff_surcharge') continue;
@@ -1016,8 +1017,10 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                     var imposerId = d.imposer_nation_id;
                     var targetId = (imposerId === ta.nation_a_id) ? ta.nation_b_id : ta.nation_a_id;
                     var surcharge = (d.surcharge_pct || 0) / 100;
+                    // Key: importer (imposer) | exporter (target) — surcharge on imports FROM target
                     var surKey = imposerId + '|' + targetId;
                     if (!tariffSurchargeMap[surKey]) tariffSurchargeMap[surKey] = {};
+                    // Stack surcharges per sector (take max if multiple)
                     tariffSurchargeMap[surKey][d.sector] = Math.max(tariffSurchargeMap[surKey][d.sector] || 0, surcharge);
                 }
             }
@@ -1581,12 +1584,13 @@ const AID_CONDITION_STATS = [
 /**
  * Trade Agreement types that can be negotiated as Diplomatic Initiatives.
  *
- * 5 types:
+ * 6 types:
  *   FTA  — Free Trade Agreement: comprehensive tariff elimination
  *   PTA  — Preferential Tariff Agreement: sector-specific tariff reduction
  *   RSC  — Resource Supply Contract: guaranteed purchase commitment
  *   ES   — Export Subsidy: unilateral, no partner needed
  *   AID  — Economic Aid Agreement: financial assistance with optional conditions
+ *   RT   — Retaliatory Tariff: unilateral surcharge on specific nation/sectors
  */
 const TRADE_AGREEMENT_TYPES = {
     fta: {
@@ -1639,6 +1643,18 @@ const TRADE_AGREEMENT_TYPES = {
         optional_articles: ['aid_condition', 'text_article'],
         icon: 'aid',
         requires_mot: false  // FM/PM/Ambassador negotiate — no Minister of Trade needed
+    },
+    retaliatory_tariff: {
+        key: 'retaliatory_tariff',
+        label: 'Retaliatory Tariff',
+        shortLabel: 'RT',
+        description: 'Unilateral tariff surcharge on imports from a specific nation. Pick one or more sectors and set a surcharge rate. Damages diplomatic relations.',
+        bilateral: false,
+        unilateral_action: true,
+        required_articles: ['tariff_surcharge', 'duration'],
+        optional_articles: ['text_article'],
+        icon: 'shield',
+        category: 'unilateral'
     }
 };
 
@@ -1803,13 +1819,26 @@ const TRADE_ARTICLE_TYPES = {
         }
     },
 
+    // ── Tariff Surcharge (Retaliatory Tariff, required, repeatable per sector) ──
+    tariff_surcharge: {
+        key: 'tariff_surcharge',
+        label: 'Tariff Surcharge',
+        description: 'Impose an additional tariff on imports from the target nation in a specific sector.',
+        repeatable: true,
+        applies_to: ['retaliatory_tariff'],
+        schema: {
+            sector: 'string',                   // tradeable sector key
+            surcharge_pct: 'number'             // 5-50%
+        }
+    },
+
     // ── Text Article (optional for all types) ──
     text_article: {
         key: 'text_article',
         label: 'Text Article',
         description: 'Free-text article for flavor/RP. No mechanical effect.',
         repeatable: true,
-        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy', 'economic_aid'],
+        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy', 'economic_aid', 'retaliatory_tariff'],
         schema: {
             title: 'string',
             body: 'string'
@@ -2027,9 +2056,11 @@ const RAW_SCALING_DIVISORS = {
     debt: 1_000_000_000
 };
 
-// Stats that must NEVER be modified by generic tick processors.
+// Stats that must NEVER be modified by generic tick processors (processStatEffects,
+// processMinistryActions, processEvents, processCrises, processStatConnections).
 // GDP is driven exclusively by gdp_growth via applyGdpGrowth.
 // Debt is driven exclusively by the budget system (surplus/deficit).
+// Any policy/event/crisis/connection targeting these keys will be silently skipped.
 const STAT_PROCESSOR_SKIP = new Set(['gdp', 'debt']);
 
 
@@ -3735,8 +3766,6 @@ async function isBudgetUnfunded(supabase, nation, currentTick) {
         billId: bill.id
     };
 }
-
-
 
 // Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
 // Formula: monthlyChange% = (gdp_growth - 50) / 50  →  0=-1%, 50=0%, 100=+1%
@@ -5783,15 +5812,16 @@ async function resolveExpiredVotes(supabase, nationId) {
 
                 // Apply relation_score penalty: -surcharge_pct / 2 (max surcharge across all sector articles)
                 var maxSurcharge = 0;
-                var rtArticles = rtData.articles || [];
-                for (var rti = 0; rti < rtArticles.length; rti++) {
-                    if (rtArticles[rti].type === 'tariff_surcharge') {
-                        maxSurcharge = Math.max(maxSurcharge, rtArticles[rti].data.surcharge_pct || 0);
+                var articles = rtData.articles || [];
+                for (var rti = 0; rti < articles.length; rti++) {
+                    if (articles[rti].type === 'tariff_surcharge') {
+                        maxSurcharge = Math.max(maxSurcharge, articles[rti].data.surcharge_pct || 0);
                     }
                 }
                 var relPenalty = Math.round(maxSurcharge / 2);
 
                 if (relPenalty > 0) {
+                    // Use canonical ordering for diplomatic_relations lookup
                     var relA = imposerId < targetId ? imposerId : targetId;
                     var relB = imposerId < targetId ? targetId : imposerId;
                     var { data: rel } = await supabase.from('diplomatic_relations')
@@ -13616,7 +13646,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                 }
 
                 if (ticksSincePassed > delay && ticksSincePassed <= delay + duration) {
-                    // GDP is only changed by gdp_growth via applyGdpGrowth — skip stat effects
+                    // GDP and debt are driven by dedicated systems — skip
                     if (STAT_PROCESSOR_SKIP.has(statKey)) continue;
 
                     const currentVal = nationUpdates[statKey] !== undefined
@@ -14240,7 +14270,7 @@ async function processEvents(supabase, nation, currentTick) {
             }
 
             if (effect.target === 'nation') {
-                // GDP is only changed by gdp_growth via applyGdpGrowth — skip
+                // GDP and debt are driven by dedicated systems — skip
                 if (STAT_PROCESSOR_SKIP.has(evtStatKey)) continue;
                 const currentVal = nation[evtStatKey] !== undefined
                     ? Number(nation[evtStatKey]) : 50;
@@ -14526,14 +14556,14 @@ async function processCrises(supabase, nation, currentTick, budgetItemAllocs) {
             }
 
             if (effect.target === 'nation') {
-                // GDP is only changed by gdp_growth via applyGdpGrowth — skip
-                if (statKey === 'gdp') continue;
+                // GDP and debt are driven by dedicated systems — skip
+                if (STAT_PROCESSOR_SKIP.has(statKey)) continue;
                 const currentVal = nationUpdates[statKey] !== undefined
                     ? nationUpdates[statKey]
                     : (nation[statKey] !== undefined && nation[statKey] !== null
                         ? Number(nation[statKey]) : 50);
 
-                // Raw-value stats (debt, population) must not be clamped to 0-100
+                // Raw-value stats (population) must not be clamped to 0-100
                 let newVal;
                 if (RAW_SCALING_DIVISORS[statKey]) {
                     const scaledCrisisChange = changePT * RAW_SCALING_DIVISORS[statKey];
@@ -15497,7 +15527,7 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
             const currentVal = nation[stat];
             if (currentVal !== undefined && currentVal !== null) {
                 if (RAW_SCALING_DIVISORS[stat]) {
-                    // Raw-value stats (debt, population): scale rate and don't clamp to 0-100
+                    // Raw-value stats (population): scale rate and don't clamp to 0-100
                     updates[stat] = Math.max(0, Number(currentVal) + delta * RAW_SCALING_DIVISORS[stat]);
                 } else {
                     updates[stat] = Math.round(Math.max(0, Math.min(100, Number(currentVal) + delta)) * 10) / 10;
