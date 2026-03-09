@@ -9736,6 +9736,17 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
         .in('faction_id', factionIds);
     if (!allBlocRows || allBlocRows.length === 0) return;
 
+    // Detect rows stuck at seed defaults (preference_score=40, ideology_alignment=50, vote_share=0)
+    const stuckRows = allBlocRows.filter(r =>
+        Number(r.preference_score) === 40 &&
+        Number(r.ideology_alignment) === 50 &&
+        (Number(r.vote_share) === 0 || r.vote_share === null)
+    );
+    if (stuckRows.length > 0) {
+        const stuckFactions = [...new Set(stuckRows.map(r => r.faction_id))];
+        console.warn(`[Three-Pillar] Detected ${stuckRows.length} stuck rows (seed defaults) for ${stuckFactions.length} faction(s): ${stuckFactions.join(', ')}`);
+    }
+
     // ── 3. Load voter blocs (ideology axes + priority issues + k_value + weight) ──
     const { data: voterBlocs } = await supabase
         .from('voter_blocs')
@@ -10006,7 +10017,7 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
 
     // ── 9. Batch-update faction_bloc_approval rows ──
     for (const u of updates) {
-        await supabase.from('faction_bloc_approval')
+        const { error: updateErr } = await supabase.from('faction_bloc_approval')
             .update({
                 ideology_alignment: u.ideology_alignment,
                 performance_perception: u.performance_perception,
@@ -10016,13 +10027,19 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
                 ideology_drift: u.ideology_drift
             })
             .eq('id', u.id);
+        if (updateErr) {
+            console.error(`[Three-Pillar] Failed to update faction_bloc_approval row ${u.id} (faction=${u.faction_id}, bloc=${u.bloc_id}):`, updateErr.message);
+        }
     }
 
     // ── 9b. Write back platform changes (bridge expiry cleanup) ──
     for (const pu of platformUpdates) {
-        await supabase.from('faction_bloc_approval')
+        const { error: platErr } = await supabase.from('faction_bloc_approval')
             .update({ last_platform: pu.last_platform })
             .eq('id', pu.id);
+        if (platErr) {
+            console.error(`[Three-Pillar] Failed to update platform for row ${pu.id}:`, platErr.message);
+        }
     }
 
     // ── 10. Aggregate national_vote_share per faction ──
