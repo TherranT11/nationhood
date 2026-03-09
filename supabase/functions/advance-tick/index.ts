@@ -933,7 +933,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
-    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC) ──
+    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, RT) ──
     var { data: activeTradeAgreements } = await supabase.from('trade_agreements')
         .select('id, nation_a_id, nation_b_id, agreement_type, articles')
         .eq('status', 'active')
@@ -941,7 +941,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
     // Set type-specific affinity flags from trade_agreements
     // Build tariff modifier map: tariffModMap[importerId|exporterId][sector] = reduction fraction (0-1)
-    // Build tariff surcharge map: tariffSurchargeMap[importerId|exporterId][sector] = surcharge fraction
+    // Build tariff surcharge map: tariffSurchargeMap[importerId|exporterId][sector] = surcharge fraction (e.g. 0.25 = +25%)
     var tariffModMap = {};
     var tariffSurchargeMap = {};
     var activeRSCs = [];
@@ -1008,7 +1008,8 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 flagsMap[k2].has_rsc = true;
                 activeRSCs.push(ta);
             } else if (ta.agreement_type === 'retaliatory_tariff') {
-                // Unilateral surcharge: imposer (nation_a) taxes imports from target (nation_b)
+                // Retaliatory tariff: unilateral surcharge on imports from target nation
+                // articles contain tariff_surcharge entries with imposer_nation_id, sector, surcharge_pct
                 var arts = ta.articles || [];
                 for (var ai = 0; ai < arts.length; ai++) {
                     if (arts[ai].type !== 'tariff_surcharge') continue;
@@ -1016,8 +1017,10 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                     var imposerId = d.imposer_nation_id;
                     var targetId = (imposerId === ta.nation_a_id) ? ta.nation_b_id : ta.nation_a_id;
                     var surcharge = (d.surcharge_pct || 0) / 100;
+                    // Key: importer (imposer) | exporter (target) — surcharge on imports FROM target
                     var surKey = imposerId + '|' + targetId;
                     if (!tariffSurchargeMap[surKey]) tariffSurchargeMap[surKey] = {};
+                    // Stack surcharges per sector (take max if multiple)
                     tariffSurchargeMap[surKey][d.sector] = Math.max(tariffSurchargeMap[surKey][d.sector] || 0, surcharge);
                 }
             }
@@ -1581,12 +1584,13 @@ const AID_CONDITION_STATS = [
 /**
  * Trade Agreement types that can be negotiated as Diplomatic Initiatives.
  *
- * 5 types:
+ * 6 types:
  *   FTA  — Free Trade Agreement: comprehensive tariff elimination
  *   PTA  — Preferential Tariff Agreement: sector-specific tariff reduction
  *   RSC  — Resource Supply Contract: guaranteed purchase commitment
  *   ES   — Export Subsidy: unilateral, no partner needed
  *   AID  — Economic Aid Agreement: financial assistance with optional conditions
+ *   RT   — Retaliatory Tariff: unilateral surcharge on specific nation/sectors
  */
 const TRADE_AGREEMENT_TYPES = {
     fta: {
@@ -1639,6 +1643,18 @@ const TRADE_AGREEMENT_TYPES = {
         optional_articles: ['aid_condition', 'text_article'],
         icon: 'aid',
         requires_mot: false  // FM/PM/Ambassador negotiate — no Minister of Trade needed
+    },
+    retaliatory_tariff: {
+        key: 'retaliatory_tariff',
+        label: 'Retaliatory Tariff',
+        shortLabel: 'RT',
+        description: 'Unilateral tariff surcharge on imports from a specific nation. Pick one or more sectors and set a surcharge rate. Damages diplomatic relations.',
+        bilateral: false,
+        unilateral_action: true,
+        required_articles: ['tariff_surcharge', 'duration'],
+        optional_articles: ['text_article'],
+        icon: 'shield',
+        category: 'unilateral'
     }
 };
 
@@ -1803,13 +1819,26 @@ const TRADE_ARTICLE_TYPES = {
         }
     },
 
+    // ── Tariff Surcharge (Retaliatory Tariff, required, repeatable per sector) ──
+    tariff_surcharge: {
+        key: 'tariff_surcharge',
+        label: 'Tariff Surcharge',
+        description: 'Impose an additional tariff on imports from the target nation in a specific sector.',
+        repeatable: true,
+        applies_to: ['retaliatory_tariff'],
+        schema: {
+            sector: 'string',                   // tradeable sector key
+            surcharge_pct: 'number'             // 5-50%
+        }
+    },
+
     // ── Text Article (optional for all types) ──
     text_article: {
         key: 'text_article',
         label: 'Text Article',
         description: 'Free-text article for flavor/RP. No mechanical effect.',
         repeatable: true,
-        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy', 'economic_aid'],
+        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy', 'economic_aid', 'retaliatory_tariff'],
         schema: {
             title: 'string',
             body: 'string'
@@ -2027,9 +2056,11 @@ const RAW_SCALING_DIVISORS = {
     debt: 1_000_000_000
 };
 
-// Stats that must NEVER be modified by generic tick processors.
+// Stats that must NEVER be modified by generic tick processors (processStatEffects,
+// processMinistryActions, processEvents, processCrises, processStatConnections).
 // GDP is driven exclusively by gdp_growth via applyGdpGrowth.
 // Debt is driven exclusively by the budget system (surplus/deficit).
+// Any policy/event/crisis/connection targeting these keys will be silently skipped.
 const STAT_PROCESSOR_SKIP = new Set(['gdp', 'debt']);
 
 
@@ -3735,8 +3766,6 @@ async function isBudgetUnfunded(supabase, nation, currentTick) {
         billId: bill.id
     };
 }
-
-
 
 // Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
 // Formula: monthlyChange% = (gdp_growth - 50) / 50  →  0=-1%, 50=0%, 100=+1%
@@ -5534,6 +5563,26 @@ async function resolveExpiredVotes(supabase, nationId) {
                         pending_minister: null,
                         stat_baselines: fullNation ? buildMinistryBaselines(mKey, fullNation) : {}
                     }).eq('id', ministry.id);
+
+                    // If confirming a PM, update government_formations so lead_party_id stays correct
+                    if (mKey === 'prime_minister') {
+                        try {
+                            const { data: activeGovFormation } = await supabase.from('government_formations')
+                                .select('id, ministry_assignments')
+                                .eq('nation_id', bill.nation_id)
+                                .in('status', ['formed', 'caretaker'])
+                                .order('formed_at', { ascending: false })
+                                .limit(1)
+                                .maybeSingle();
+                            if (activeGovFormation) {
+                                const updatedAssignments = { ...(activeGovFormation.ministry_assignments || {}), prime_minister: pm.party_id };
+                                await supabase.from('government_formations')
+                                    .update({ ministry_assignments: updatedAssignments })
+                                    .eq('id', activeGovFormation.id);
+                                console.log(`[resolveExpiredVotes] Updated government_formations PM assignment to ${pm.party_id}`);
+                            }
+                        } catch (gfErr) { console.warn('[resolveExpiredVotes] Failed to update government_formations PM:', gfErr); }
+                    }
                 }
 
                 await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
@@ -5783,15 +5832,16 @@ async function resolveExpiredVotes(supabase, nationId) {
 
                 // Apply relation_score penalty: -surcharge_pct / 2 (max surcharge across all sector articles)
                 var maxSurcharge = 0;
-                var rtArticles = rtData.articles || [];
-                for (var rti = 0; rti < rtArticles.length; rti++) {
-                    if (rtArticles[rti].type === 'tariff_surcharge') {
-                        maxSurcharge = Math.max(maxSurcharge, rtArticles[rti].data.surcharge_pct || 0);
+                var articles = rtData.articles || [];
+                for (var rti = 0; rti < articles.length; rti++) {
+                    if (articles[rti].type === 'tariff_surcharge') {
+                        maxSurcharge = Math.max(maxSurcharge, articles[rti].data.surcharge_pct || 0);
                     }
                 }
                 var relPenalty = Math.round(maxSurcharge / 2);
 
                 if (relPenalty > 0) {
+                    // Use canonical ordering for diplomatic_relations lookup
                     var relA = imposerId < targetId ? imposerId : targetId;
                     var relB = imposerId < targetId ? targetId : imposerId;
                     var { data: rel } = await supabase.from('diplomatic_relations')
@@ -6310,6 +6360,58 @@ async function enactBill(supabase, bill, currentTick) {
                     }
                 }
             }
+        }
+    }
+
+    // ── Apply funding articles (per-institution level changes & discretionary grants) ──
+    for (const art of (bill.bill_articles || [])) {
+        const fd = art.funding_data;
+        if (!fd || !fd.ministry_key) continue;
+
+        // Per-institution funding changes: update budget_item_allocations
+        const instChanges = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
+        if (instChanges.length > 0 && nation.last_budget_bill_id) {
+            for (const inst of instChanges) {
+                // Fetch current allocation to get needed_amount
+                const { data: existing } = await supabase.from('budget_item_allocations')
+                    .select('id, needed_amount')
+                    .eq('bill_id', nation.last_budget_bill_id)
+                    .eq('item_id', inst.id)
+                    .eq('item_type', 'institution')
+                    .maybeSingle();
+
+                if (existing) {
+                    const newAlloc = (inst.proposed_pct / 100) * Number(existing.needed_amount);
+                    await supabase.from('budget_item_allocations')
+                        .update({ allocation_amount: newAlloc })
+                        .eq('id', existing.id);
+                    console.log(`[enactBill] Institution funding: ${inst.id} → ${inst.proposed_pct}% (alloc $${Math.round(newAlloc)}M)`);
+                } else {
+                    console.warn(`[enactBill] No budget_item_allocation found for ${inst.id}, skipping`);
+                }
+            }
+        }
+
+        // Also update the ministry-level funding_level as a weighted average
+        if (instChanges.length > 0) {
+            const allInst = fd.institutions || [];
+            const avgPct = allInst.reduce((sum, i) => sum + i.proposed_pct, 0) / (allInst.length || 1);
+            const newLevel = avgPct / 100;
+            await supabase.from('ministries')
+                .update({ funding_level: newLevel })
+                .eq('nation_id', bill.nation_id)
+                .eq('ministry_key', fd.ministry_key)
+                .eq('is_active', true);
+            console.log(`[enactBill] Ministry funding_level: ${fd.ministry_key} → ${Math.round(avgPct)}%`);
+        }
+
+        // Discretionary grant: add to national debt
+        const grantAmount = Number(fd.discretionary) || 0;
+        if (grantAmount > 0) {
+            const newDebt = (Number(nation.debt) || 0) + grantAmount;
+            await supabase.from('nations').update({ debt: newDebt }).eq('id', bill.nation_id);
+            nation.debt = newDebt;
+            console.log(`[enactBill] Discretionary grant: $${grantAmount}M to ${fd.ministry_key}, debt now $${newDebt}M`);
         }
     }
 
@@ -9605,10 +9707,10 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     const coalitionPartyIds = new Set(coalition?.party_ids || []);
 
-    // ── 2. Load all faction_bloc_approval rows ──
+    // ── 2. Load all faction_bloc_approval rows (including last_platform for narrative action effects) ──
     const { data: allBlocRows } = await supabase
         .from('faction_bloc_approval')
-        .select('id, faction_id, bloc_id, ideology_alignment, performance_perception, momentum, preference_score')
+        .select('id, faction_id, bloc_id, ideology_alignment, performance_perception, momentum, preference_score, last_platform')
         .in('faction_id', factionIds);
     if (!allBlocRows || allBlocRows.length === 0) return;
 
@@ -9623,10 +9725,10 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     const blocMap = {};
     for (const b of voterBlocs) blocMap[b.id] = b;
 
-    // ── 4. Load faction ideologies (dynamic axis scores) ──
+    // ── 4. Load faction ideologies (dynamic axis scores + conviction stacks) ──
     const { data: ideologies } = await supabase
         .from('faction_ideology')
-        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism, convictions')
         .in('faction_id', factionIds);
 
     const ideoMap = {};
@@ -9648,10 +9750,15 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
 
     const updates = [];
 
+    // Track platform updates that need writing back (bridge expiry, etc.)
+    const platformUpdates = [];
+
     for (const row of allBlocRows) {
         const bloc = blocMap[row.bloc_id];
         if (!bloc) continue;
         const ideo = ideoMap[row.faction_id];
+        const platform = row.last_platform || {};
+        let platformChanged = false;
 
         // ─── PILLAR 1: Ideology Alignment (0-100) ───
         const ideoScore = ideo ? computeIdeologyAlignment(ideo, bloc) : 50;
@@ -9660,13 +9767,68 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
         const newPerf = 50; // neutral; column still written for schema compat
 
         // ─── PILLAR 3: Momentum (-50 to +50) ───
-        // Decays 15% per tick. Adjusted externally via adjustMomentum().
+        // Base decay: 30% per tick. Conviction stacks reduce decay for aligned blocs.
         const oldMomentum = Number(row.momentum ?? 0);
-        let newMomentum = Math.round(oldMomentum * MOMENTUM_DECAY * 100) / 100;
+        let effectiveDecay = MOMENTUM_DECAY;
+
+        // ─── Double Down: conviction stacks reduce positive momentum decay for aligned blocs ───
+        const convictions = ideo?.convictions || {};
+        if (oldMomentum > 0 && Object.keys(convictions).length > 0) {
+            // Find highest conviction stack on an axis where this bloc aligns with the faction
+            let maxConvictionBonus = 0;
+            for (const [axisKey, stacks] of Object.entries(convictions)) {
+                if (!stacks || stacks <= 0) continue;
+                const partyVal = ideo[axisKey] || 0; // -50 to +50
+                const blocVal = bloc['axis_' + axisKey] ?? 50; // 0 to 100
+                const partyNorm = 50 + partyVal; // map to 0-100
+                const distance = Math.abs(partyNorm - blocVal);
+                // Bloc must be aligned (within 30 points) for conviction to help
+                if (distance <= 30) {
+                    maxConvictionBonus = Math.max(maxConvictionBonus, stacks);
+                }
+            }
+            // Each conviction stack reduces decay by 8% (3 stacks: 30% decay → 6% decay)
+            if (maxConvictionBonus > 0) {
+                effectiveDecay = Math.min(1.0, MOMENTUM_DECAY + maxConvictionBonus * 0.08);
+            }
+        }
+
+        let newMomentum = Math.round(oldMomentum * effectiveDecay * 100) / 100;
+
+        // ─── Champion a Community: 2× governance momentum for championed blocs ───
+        let govMultiplier = 1;
+        if (platform.championed === true) {
+            govMultiplier = 2;
+        }
 
         // Governance momentum feed: coalition parties get nudge from gov_approval
         if (coalitionPartyIds.has(row.faction_id)) {
-            newMomentum += govMomentumNudge;
+            newMomentum += govMomentumNudge * govMultiplier;
+        }
+
+        // ─── Build a Bridge: ongoing momentum boost from active bridges ───
+        if (platform.bridges && Array.isArray(platform.bridges)) {
+            const activeBridges = [];
+            for (const bridge of platform.bridges) {
+                if (bridge.expires_tick > currentTick) {
+                    // Active bridge: apply per-tick momentum boost
+                    newMomentum += (bridge.boost || 2) * 0.5; // half the initial boost per tick
+                    activeBridges.push(bridge);
+                } else {
+                    // Expired bridge: leave +1 permanent goodwill via momentum bump
+                    newMomentum += 1;
+                    platformChanged = true;
+                }
+            }
+            // Keep only active bridges
+            if (activeBridges.length !== platform.bridges.length) {
+                platform.bridges = activeBridges;
+                if (activeBridges.length === 0) {
+                    delete platform.bridges;
+                    delete platform.bridge;
+                }
+                platformChanged = true;
+            }
         }
 
         // Clamp to [-50, +50] and zero out negligible values
@@ -9708,6 +9870,10 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
             preference_score: prefScore,
             ideology_drift: ideoDrift
         });
+
+        if (platformChanged) {
+            platformUpdates.push({ id: row.id, last_platform: platform });
+        }
     }
 
     // ── 8. Softmax vote share per bloc ──
@@ -9745,6 +9911,13 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
                 ideology_drift: u.ideology_drift
             })
             .eq('id', u.id);
+    }
+
+    // ── 9b. Write back platform changes (bridge expiry cleanup) ──
+    for (const pu of platformUpdates) {
+        await supabase.from('faction_bloc_approval')
+            .update({ last_platform: pu.last_platform })
+            .eq('id', pu.id);
     }
 
     // ── 10. Aggregate national_vote_share per faction ──
@@ -13616,7 +13789,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                 }
 
                 if (ticksSincePassed > delay && ticksSincePassed <= delay + duration) {
-                    // GDP is only changed by gdp_growth via applyGdpGrowth — skip stat effects
+                    // GDP and debt are driven by dedicated systems — skip
                     if (STAT_PROCESSOR_SKIP.has(statKey)) continue;
 
                     const currentVal = nationUpdates[statKey] !== undefined
@@ -14240,7 +14413,7 @@ async function processEvents(supabase, nation, currentTick) {
             }
 
             if (effect.target === 'nation') {
-                // GDP is only changed by gdp_growth via applyGdpGrowth — skip
+                // GDP and debt are driven by dedicated systems — skip
                 if (STAT_PROCESSOR_SKIP.has(evtStatKey)) continue;
                 const currentVal = nation[evtStatKey] !== undefined
                     ? Number(nation[evtStatKey]) : 50;
@@ -14526,14 +14699,14 @@ async function processCrises(supabase, nation, currentTick, budgetItemAllocs) {
             }
 
             if (effect.target === 'nation') {
-                // GDP is only changed by gdp_growth via applyGdpGrowth — skip
-                if (statKey === 'gdp') continue;
+                // GDP and debt are driven by dedicated systems — skip
+                if (STAT_PROCESSOR_SKIP.has(statKey)) continue;
                 const currentVal = nationUpdates[statKey] !== undefined
                     ? nationUpdates[statKey]
                     : (nation[statKey] !== undefined && nation[statKey] !== null
                         ? Number(nation[statKey]) : 50);
 
-                // Raw-value stats (debt, population) must not be clamped to 0-100
+                // Raw-value stats (population) must not be clamped to 0-100
                 let newVal;
                 if (RAW_SCALING_DIVISORS[statKey]) {
                     const scaledCrisisChange = changePT * RAW_SCALING_DIVISORS[statKey];
@@ -15497,7 +15670,7 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
             const currentVal = nation[stat];
             if (currentVal !== undefined && currentVal !== null) {
                 if (RAW_SCALING_DIVISORS[stat]) {
-                    // Raw-value stats (debt, population): scale rate and don't clamp to 0-100
+                    // Raw-value stats (population): scale rate and don't clamp to 0-100
                     updates[stat] = Math.max(0, Number(currentVal) + delta * RAW_SCALING_DIVISORS[stat]);
                 } else {
                     updates[stat] = Math.round(Math.max(0, Math.min(100, Number(currentVal) + delta)) * 10) / 10;

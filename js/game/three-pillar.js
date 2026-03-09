@@ -42,10 +42,10 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     const coalitionPartyIds = new Set(coalition?.party_ids || []);
 
-    // ── 2. Load all faction_bloc_approval rows ──
+    // ── 2. Load all faction_bloc_approval rows (including last_platform for narrative action effects) ──
     const { data: allBlocRows } = await supabase
         .from('faction_bloc_approval')
-        .select('id, faction_id, bloc_id, ideology_alignment, performance_perception, momentum, preference_score')
+        .select('id, faction_id, bloc_id, ideology_alignment, performance_perception, momentum, preference_score, last_platform')
         .in('faction_id', factionIds);
     if (!allBlocRows || allBlocRows.length === 0) return;
 
@@ -60,10 +60,10 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
     const blocMap = {};
     for (const b of voterBlocs) blocMap[b.id] = b;
 
-    // ── 4. Load faction ideologies (dynamic axis scores) ──
+    // ── 4. Load faction ideologies (dynamic axis scores + conviction stacks) ──
     const { data: ideologies } = await supabase
         .from('faction_ideology')
-        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism, convictions')
         .in('faction_id', factionIds);
 
     const ideoMap = {};
@@ -85,10 +85,15 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
 
     const updates = [];
 
+    // Track platform updates that need writing back (bridge expiry, etc.)
+    const platformUpdates = [];
+
     for (const row of allBlocRows) {
         const bloc = blocMap[row.bloc_id];
         if (!bloc) continue;
         const ideo = ideoMap[row.faction_id];
+        const platform = row.last_platform || {};
+        let platformChanged = false;
 
         // ─── PILLAR 1: Ideology Alignment (0-100) ───
         const ideoScore = ideo ? computeIdeologyAlignment(ideo, bloc) : 50;
@@ -97,13 +102,68 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         const newPerf = 50; // neutral; column still written for schema compat
 
         // ─── PILLAR 3: Momentum (-50 to +50) ───
-        // Decays 15% per tick. Adjusted externally via adjustMomentum().
+        // Base decay: 30% per tick. Conviction stacks reduce decay for aligned blocs.
         const oldMomentum = Number(row.momentum ?? 0);
-        let newMomentum = Math.round(oldMomentum * MOMENTUM_DECAY * 100) / 100;
+        let effectiveDecay = MOMENTUM_DECAY;
+
+        // ─── Double Down: conviction stacks reduce positive momentum decay for aligned blocs ───
+        const convictions = ideo?.convictions || {};
+        if (oldMomentum > 0 && Object.keys(convictions).length > 0) {
+            // Find highest conviction stack on an axis where this bloc aligns with the faction
+            let maxConvictionBonus = 0;
+            for (const [axisKey, stacks] of Object.entries(convictions)) {
+                if (!stacks || stacks <= 0) continue;
+                const partyVal = ideo[axisKey] || 0; // -50 to +50
+                const blocVal = bloc['axis_' + axisKey] ?? 50; // 0 to 100
+                const partyNorm = 50 + partyVal; // map to 0-100
+                const distance = Math.abs(partyNorm - blocVal);
+                // Bloc must be aligned (within 30 points) for conviction to help
+                if (distance <= 30) {
+                    maxConvictionBonus = Math.max(maxConvictionBonus, stacks);
+                }
+            }
+            // Each conviction stack reduces decay by 8% (3 stacks: 30% decay → 6% decay)
+            if (maxConvictionBonus > 0) {
+                effectiveDecay = Math.min(1.0, MOMENTUM_DECAY + maxConvictionBonus * 0.08);
+            }
+        }
+
+        let newMomentum = Math.round(oldMomentum * effectiveDecay * 100) / 100;
+
+        // ─── Champion a Community: 2× governance momentum for championed blocs ───
+        let govMultiplier = 1;
+        if (platform.championed === true) {
+            govMultiplier = 2;
+        }
 
         // Governance momentum feed: coalition parties get nudge from gov_approval
         if (coalitionPartyIds.has(row.faction_id)) {
-            newMomentum += govMomentumNudge;
+            newMomentum += govMomentumNudge * govMultiplier;
+        }
+
+        // ─── Build a Bridge: ongoing momentum boost from active bridges ───
+        if (platform.bridges && Array.isArray(platform.bridges)) {
+            const activeBridges = [];
+            for (const bridge of platform.bridges) {
+                if (bridge.expires_tick > currentTick) {
+                    // Active bridge: apply per-tick momentum boost
+                    newMomentum += (bridge.boost || 2) * 0.5; // half the initial boost per tick
+                    activeBridges.push(bridge);
+                } else {
+                    // Expired bridge: leave +1 permanent goodwill via momentum bump
+                    newMomentum += 1;
+                    platformChanged = true;
+                }
+            }
+            // Keep only active bridges
+            if (activeBridges.length !== platform.bridges.length) {
+                platform.bridges = activeBridges;
+                if (activeBridges.length === 0) {
+                    delete platform.bridges;
+                    delete platform.bridge;
+                }
+                platformChanged = true;
+            }
         }
 
         // Clamp to [-50, +50] and zero out negligible values
@@ -145,6 +205,10 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
             preference_score: prefScore,
             ideology_drift: ideoDrift
         });
+
+        if (platformChanged) {
+            platformUpdates.push({ id: row.id, last_platform: platform });
+        }
     }
 
     // ── 8. Softmax vote share per bloc ──
@@ -182,6 +246,13 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
                 ideology_drift: u.ideology_drift
             })
             .eq('id', u.id);
+    }
+
+    // ── 9b. Write back platform changes (bridge expiry cleanup) ──
+    for (const pu of platformUpdates) {
+        await supabase.from('faction_bloc_approval')
+            .update({ last_platform: pu.last_platform })
+            .eq('id', pu.id);
     }
 
     // ── 10. Aggregate national_vote_share per faction ──
