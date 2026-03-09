@@ -1315,47 +1315,82 @@ function renderStateVisitInboxCard(p, pd) {
     `;
 }
 
-function renderTradeNegInboxCard(p, pd) {
-    const isIncoming = p.target_nation_id === currentNation.id;
-    const needsOurAction = p.status === 'proposed' && isIncoming;
+// ==================== TRADE NEGOTIATION HELPERS ====================
 
-    const statusBadge = needsOurAction
-        ? '<span class="proposal-status-badge badge-action">Awaiting Your Response</span>'
-        : '<span class="proposal-status-badge badge-waiting">Awaiting Response</span>';
-
-    const typeBadge = '<span class="classification-badge" style="background:#1a3a5c;color:#90caf9;">TRADE</span>';
-
-    const apCost = DIPLOMACY_CONFIG.ACCEPT_TRADE_NEGOTIATION_AP;
-
-    let actionsHTML = '';
-    if (needsOurAction) {
-        actionsHTML = `
-            <div class="inbox-card-actions">
-                <button class="proposal-accept-btn" onclick="acceptTradeNegotiation('${p.id}', '${pd.negotiation_id || ''}')">Accept (${apCost} AP)</button>
-                <button class="proposal-reject-btn" onclick="rejectTradeNegotiation('${p.id}', '${pd.negotiation_id || ''}')">Reject</button>
-            </div>
-        `;
+async function fetchNegotiation(negotiationId, fields) {
+    const { data, error } = await _supabase
+        .from('trade_negotiations')
+        .select(fields || '*')
+        .eq('id', negotiationId)
+        .single();
+    if (error || !data) {
+        alert('Could not load negotiation: ' + (error?.message || 'not found'));
+        return null;
     }
+    return data;
+}
+
+async function requireNegStatus(negotiationId, allowedStatuses, refreshFn) {
+    const neg = await fetchNegotiation(negotiationId, 'status');
+    if (!neg) return null;
+    if (!allowedStatuses.includes(neg.status)) {
+        alert('This negotiation is no longer available (status: ' + neg.status + ').');
+        if (refreshFn) await refreshFn();
+        return null;
+    }
+    return neg;
+}
+
+async function refreshDiplomacyUI() {
+    await renderInboxTab();
+    const initPanel = document.getElementById('tab-initiative');
+    if (initPanel && initPanel.style.display !== 'none') {
+        await renderInitiativeWizard();
+    }
+    await renderDiploHeader();
+}
+
+async function findProposalByNegotiationId(negotiationId) {
+    const { data: proposals } = await _supabase
+        .from('diplomatic_proposals')
+        .select('id, proposal_data')
+        .eq('proposal_type', 'trade_negotiation')
+        .in('status', ['proposed', 'revised'])
+        .or('target_nation_id.eq.' + currentNation.id + ',proposing_nation_id.eq.' + currentNation.id);
+    const match = (proposals || []).find(p => p.proposal_data?.negotiation_id === negotiationId);
+    return match ? match.id : null;
+}
+
+function renderTradeNegInboxCard(p, pd) {
+    const needsOurAction = p.status === 'proposed' && p.target_nation_id === currentNation.id;
+    const negId = pd.negotiation_id || '';
+    const proposer = escapeHtml(pd.proposer_nation_name || 'Unknown');
+    const target = escapeHtml(pd.target_nation_name || 'Unknown');
 
     return `
         <div class="inbox-card ${needsOurAction ? 'requires-action' : ''}">
             <div class="inbox-card-header">
                 <div class="inbox-card-name">&#128220; ${escapeHtml(pd.name || 'Trade Negotiations')}</div>
                 <div class="inbox-card-badges">
-                    ${typeBadge}
-                    ${statusBadge}
+                    <span class="classification-badge" style="background:#1a3a5c;color:#90caf9;">TRADE</span>
+                    <span class="proposal-status-badge ${needsOurAction ? 'badge-action' : 'badge-waiting'}">${needsOurAction ? 'Awaiting Your Response' : 'Awaiting Response'}</span>
                 </div>
             </div>
             <div class="inbox-card-meta">
-                ${escapeHtml(pd.proposer_nation_name || 'Unknown')} &amp; ${escapeHtml(pd.target_nation_name || 'Unknown')}
+                ${proposer} &amp; ${target}
                 &middot; Proposed ${p.proposed_at_tick != null ? tickToDate(p.proposed_at_tick) : '—'}
                 ${pd.expires_at_tick ? ' &middot; Expires tick ' + pd.expires_at_tick : ''}
             </div>
             <div style="font-size:0.78rem;color:var(--text-muted);padding:8px 0;line-height:1.5;">
-                ${escapeHtml(pd.proposer_nation_name || 'Unknown')} proposes opening trade negotiations.
+                ${proposer} proposes opening trade negotiations.
                 ${needsOurAction ? 'If you accept, both sides can choose an agreement type and draft terms together.' : 'Waiting for the other side to respond.'}
             </div>
-            ${actionsHTML}
+            ${needsOurAction ? `
+                <div class="inbox-card-actions">
+                    <button class="proposal-accept-btn" onclick="acceptTradeNegotiation('${p.id}', '${negId}')">Accept (${DIPLOMACY_CONFIG.ACCEPT_TRADE_NEGOTIATION_AP} AP)</button>
+                    <button class="proposal-reject-btn" onclick="rejectTradeNegotiation('${p.id}', '${negId}')">Reject</button>
+                </div>
+            ` : ''}
         </div>
     `;
 }
@@ -1363,29 +1398,17 @@ function renderTradeNegInboxCard(p, pd) {
 async function acceptTradeNegotiation(proposalId, negotiationId) {
     if (!negotiationId) { alert('Missing negotiation ID.'); return; }
 
-    // Validate negotiation status BEFORE deducting AP
-    const { data: neg, error: negErr } = await _supabase
-        .from('trade_negotiations')
-        .select('*')
-        .eq('id', negotiationId)
-        .single();
-
-    if (negErr || !neg) {
-        alert('Could not load negotiation: ' + (negErr?.message || 'not found'));
-        return;
-    }
-
+    const neg = await fetchNegotiation(negotiationId);
+    if (!neg) return;
     if (neg.status !== 'open') {
         alert('This negotiation is no longer awaiting acceptance (status: ' + neg.status + ').');
-        await renderInboxTab();
-        await renderDiploHeader();
+        await refreshDiplomacyUI();
         return;
     }
 
     const apCost = DIPLOMACY_CONFIG.ACCEPT_TRADE_NEGOTIATION_AP;
     if (!confirm('Accept trade negotiations? This costs ' + apCost + ' AP.\n\nOnce accepted, the negotiation table opens and both sides can choose an agreement type and draft articles.')) return;
 
-    // Deduct AP (only after status validation passes)
     const apResult = await deductAP(_supabase, currentFaction.id, apCost, currentFaction.action_points);
     if (!apResult.success) {
         alert('Not enough AP. Need ' + apCost + ' AP, have ' + (currentFaction.action_points || 0) + '.');
@@ -1393,131 +1416,67 @@ async function acceptTradeNegotiation(proposalId, negotiationId) {
     }
     currentFaction.action_points = apResult.newBalance;
 
-    // If proposalId wasn't provided, look it up from the negotiation
-    if (!proposalId) {
-        const { data: proposals } = await _supabase
-            .from('diplomatic_proposals')
-            .select('id, proposal_data')
-            .eq('proposal_type', 'trade_negotiation')
-            .in('status', ['proposed', 'revised'])
-            .or('target_nation_id.eq.' + currentNation.id + ',proposing_nation_id.eq.' + currentNation.id);
-        // Match by negotiation_id to avoid grabbing a different nation's proposal
-        const match = (proposals || []).find(p => p.proposal_data?.negotiation_id === negotiationId);
-        if (match) proposalId = match.id;
-    }
+    if (!proposalId) proposalId = await findProposalByNegotiationId(negotiationId);
 
-    // Determine our role
+    // Determine our highest-priority role for this negotiation
     const ourAmb = diplomaticRoles.ambassadorTo.find(a =>
         a.target_nation_id === neg.nation_a_id || a.target_nation_id === neg.nation_b_id
     );
-    const isMoTAcceptor = diplomaticRoles.isMoT && !ourAmb;
-    const isFMAcceptor = diplomaticRoles.isFM && !ourAmb && !isMoTAcceptor;
-    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !isMoTAcceptor && !isFMAcceptor;
-    const role = isHoGOnly ? 'head_of_government' : isMoTAcceptor ? 'trade_minister' : isFMAcceptor ? 'foreign_minister' : 'ambassador';
+    const role = ourAmb ? 'ambassador'
+        : diplomaticRoles.isMoT ? 'trade_minister'
+        : diplomaticRoles.isFM ? 'foreign_minister'
+        : 'head_of_government';
 
-    // Add ourselves as a participant
     const participants = neg.participants || [];
-    participants.push({
-        faction_id: currentFaction.id,
-        role: role,
-        joined_at_tick: shardTick,
-        nation_id: currentNation.id
-    });
+    participants.push({ faction_id: currentFaction.id, role, joined_at_tick: shardTick, nation_id: currentNation.id });
 
-    // Update negotiation: status → active, add participant
-    const { error: updateErr } = await _supabase
-        .from('trade_negotiations')
-        .update({
-            status: 'active',
-            participants: participants
-        })
+    const { error: updateErr } = await _supabase.from('trade_negotiations')
+        .update({ status: 'active', participants })
         .eq('id', negotiationId);
+    if (updateErr) { alert('Error accepting negotiation: ' + updateErr.message); return; }
 
-    if (updateErr) {
-        alert('Error accepting negotiation: ' + updateErr.message);
-        return;
-    }
-
-    // Mark the diplomatic proposal as active (removes from inbox)
     if (proposalId) {
         await _supabase.from('diplomatic_proposals').update({ status: 'active' }).eq('id', proposalId);
     }
 
-    // Fire event
+    // Fire event (non-blocking)
     const partnerId = neg.nation_a_id === currentNation.id ? neg.nation_b_id : neg.nation_a_id;
     const { data: partnerNation } = await _supabase.from('nations').select('name').eq('id', partnerId).single();
-    await _supabase.from('event_log').insert({
+    _supabase.from('event_log').insert({
         nation_id: currentNation.id,
         event_name: 'Trade Negotiations Accepted',
         category: 'Trade',
         description_chosen: currentNation.name + ' has accepted trade negotiations with ' + (partnerNation?.name || 'Unknown') + '. The negotiation table is now open.',
         fired_at_tick: shardTick
-    });
+    }).then(() => {});
 
     alert('Trade negotiations accepted! The negotiation table is now open.\n\nGo to the Initiative tab to choose an agreement type and begin drafting articles.');
-
-    // Refresh inbox and initiative
-    await renderInboxTab();
-    // Also refresh initiative tab if it was the source of the action
-    const initPanel = document.getElementById('tab-initiative');
-    if (initPanel && initPanel.style.display !== 'none') {
-        await renderInitiativeWizard();
-    }
-    await renderDiploHeader();
+    await refreshDiplomacyUI();
 }
 
 async function rejectTradeNegotiation(proposalId, negotiationId) {
-    // Validate status before allowing reject
     if (negotiationId) {
-        const { data: neg } = await _supabase
-            .from('trade_negotiations')
-            .select('status')
-            .eq('id', negotiationId)
-            .single();
-        if (neg && neg.status !== 'open') {
-            alert('This negotiation is no longer awaiting acceptance (status: ' + neg.status + ').');
-            await renderInboxTab();
-            await renderDiploHeader();
-            return;
-        }
+        if (!await requireNegStatus(negotiationId, ['open'], refreshDiplomacyUI)) return;
     }
 
     if (!confirm('Reject these trade negotiations? This cannot be undone.')) return;
 
-    // Cancel the negotiation
     if (negotiationId) {
         await _supabase.from('trade_negotiations').update({
-            status: 'cancelled',
-            concluded_at_tick: shardTick
+            status: 'cancelled', concluded_at_tick: shardTick
         }).eq('id', negotiationId);
     }
 
-    // If proposalId wasn't provided, look it up
     if (!proposalId && negotiationId) {
-        const { data: proposals } = await _supabase
-            .from('diplomatic_proposals')
-            .select('id, proposal_data')
-            .eq('proposal_type', 'trade_negotiation')
-            .in('status', ['proposed', 'revised'])
-            .or('target_nation_id.eq.' + currentNation.id + ',proposing_nation_id.eq.' + currentNation.id);
-        // Match by negotiation_id to avoid grabbing a different nation's proposal
-        const match = (proposals || []).find(p => p.proposal_data?.negotiation_id === negotiationId);
-        if (match) proposalId = match.id;
+        proposalId = await findProposalByNegotiationId(negotiationId);
     }
 
-    // Mark the proposal as rejected
     if (proposalId) {
         await _supabase.from('diplomatic_proposals').update({ status: 'rejected' }).eq('id', proposalId);
     }
 
     alert('Trade negotiations rejected.');
-    await renderInboxTab();
-    // Also refresh initiative tab if it was the source of the action
-    const initPanel = document.getElementById('tab-initiative');
-    if (initPanel && initPanel.style.display !== 'none') {
-        await renderInitiativeWizard();
-    }
-    await renderDiploHeader();
+    await refreshDiplomacyUI();
 }
 
 function inboxStrikeArticles(proposalId) {
@@ -4661,45 +4620,30 @@ function checkRequiredArticles(agreementType, draftArticles) {
 }
 
 async function joinTradeNegotiation(negotiationId, role, apCost) {
-    // Validate status BEFORE deducting AP
-    const { data: neg } = await _supabase.from('trade_negotiations').select('status, participants').eq('id', negotiationId).single();
-    if (!neg) { alert('Negotiation not found.'); return; }
-    if (neg.status !== 'active') {
-        alert('This negotiation is not active (status: ' + neg.status + ').');
-        await openTradeNegotiation(negotiationId);
-        return;
-    }
-
+    if (!await requireNegStatus(negotiationId, ['active'], () => openTradeNegotiation(negotiationId))) return;
     if (!confirm('Join trade negotiations as ' + role.replace('_', ' ') + '? This costs ' + apCost + ' AP.')) return;
 
     const apResult = await deductAP(_supabase, currentFaction.id, apCost, currentFaction.action_points);
-    if (!apResult.success) {
-        alert('Not enough AP. Need ' + apCost + ' AP.');
-        return;
-    }
+    if (!apResult.success) { alert('Not enough AP. Need ' + apCost + ' AP.'); return; }
     currentFaction.action_points = apResult.newBalance;
 
+    const neg = await fetchNegotiation(negotiationId, 'participants');
+    if (!neg) return;
     const participants = neg.participants || [];
-    participants.push({
-        faction_id: currentFaction.id,
-        role: role,
-        joined_at_tick: shardTick,
-        nation_id: currentNation.id
-    });
+    participants.push({ faction_id: currentFaction.id, role, joined_at_tick: shardTick, nation_id: currentNation.id });
 
-    await _supabase.from('trade_negotiations').update({ participants: participants }).eq('id', negotiationId);
-
+    await _supabase.from('trade_negotiations').update({ participants }).eq('id', negotiationId);
     await openTradeNegotiation(negotiationId);
 }
 
 async function extendNegotiation(negotiationId) {
     await refreshRoles();
     if (!hasAnyDiplomaticRole()) {
-        alert('You need a diplomatic role (Head of Government, Foreign Minister, Minister of Trade, or Ambassador) to extend negotiations.');
+        alert('You need a diplomatic role to extend negotiations.');
         return;
     }
 
-    const { data: neg } = await _supabase.from('trade_negotiations').select('*').eq('id', negotiationId).single();
+    const neg = await fetchNegotiation(negotiationId);
     if (!neg) return;
 
     const weAreA = currentNation.id === neg.nation_a_id;
@@ -4727,26 +4671,17 @@ async function extendNegotiation(negotiationId) {
 async function cancelTradeNegotiation(negotiationId) {
     await refreshRoles();
     if (!hasAnyDiplomaticRole()) {
-        alert('You need a diplomatic role (Head of Government, Foreign Minister, Minister of Trade, or Ambassador) to cancel negotiations.');
+        alert('You need a diplomatic role to cancel negotiations.');
         return;
     }
-
-    // Validate the negotiation is still cancellable
-    const { data: neg } = await _supabase.from('trade_negotiations').select('status').eq('id', negotiationId).single();
-    if (!neg || !['open', 'active'].includes(neg.status)) {
-        alert('This negotiation cannot be cancelled (status: ' + (neg?.status || 'unknown') + ').');
-        await renderInitiativeWizard();
-        return;
-    }
-
+    if (!await requireNegStatus(negotiationId, ['open', 'active'], renderInitiativeWizard)) return;
     if (!confirm('Cancel these trade negotiations? This cannot be undone.')) return;
 
     await _supabase.from('trade_negotiations').update({
-        status: 'cancelled',
-        concluded_at_tick: shardTick
+        status: 'cancelled', concluded_at_tick: shardTick
     }).eq('id', negotiationId);
 
-    // Also reject any linked proposals still in proposed state
+    // Reject any linked proposals still pending
     await _supabase.from('diplomatic_proposals')
         .update({ status: 'rejected' })
         .eq('proposal_type', 'trade_negotiation')
@@ -4773,7 +4708,7 @@ async function addTradeNegArticle(negotiationId) {
 async function removeTradeNegArticle(negotiationId, index) {
     if (!confirm('Remove this article?')) return;
 
-    const { data: neg } = await _supabase.from('trade_negotiations').select('draft_articles').eq('id', negotiationId).single();
+    const neg = await fetchNegotiation(negotiationId, 'draft_articles');
     if (!neg) return;
 
     const articles = neg.draft_articles || [];
@@ -4784,135 +4719,81 @@ async function removeTradeNegArticle(negotiationId, index) {
 }
 
 async function approveTradeNegotiation(negotiationId) {
-    const { data: neg } = await _supabase.from('trade_negotiations').select('*').eq('id', negotiationId).single();
+    const neg = await fetchNegotiation(negotiationId);
     if (!neg) return;
-
     if (neg.status !== 'active') {
         alert('This negotiation is not active (status: ' + neg.status + ').');
         await openTradeNegotiation(negotiationId);
         return;
     }
-
-    const draftArticles = neg.draft_articles || [];
-    if (!checkRequiredArticles(neg.agreement_type, draftArticles)) {
+    if (!checkRequiredArticles(neg.agreement_type, neg.draft_articles || [])) {
         alert('Cannot approve: missing required articles.');
         return;
     }
-
     if (!confirm('Approve this trade agreement? Once both sides approve, ratification bills will be auto-generated in both parliaments.')) return;
 
     const weAreA = currentNation.id === neg.nation_a_id;
-    const participants = neg.participants || [];
-    const myPart = participants.find(p => p.faction_id === currentFaction.id);
+    const side = weAreA ? 'a' : 'b';
+    const myRole = (neg.participants || []).find(p => p.faction_id === currentFaction.id)?.role || 'ambassador';
 
-    const updateData = {};
-    if (weAreA) {
-        updateData.approved_by_a = currentFaction.id;
-        updateData.approved_by_a_role = myPart?.role || 'ambassador';
-        updateData.approved_at_a_tick = shardTick;
-    } else {
-        updateData.approved_by_b = currentFaction.id;
-        updateData.approved_by_b_role = myPart?.role || 'ambassador';
-        updateData.approved_at_b_tick = shardTick;
-    }
+    const updateData = {
+        ['approved_by_' + side]: currentFaction.id,
+        ['approved_by_' + side + '_role']: myRole,
+        ['approved_at_' + side + '_tick']: shardTick
+    };
 
-    // Check if other side already approved
     const otherApproved = weAreA ? neg.approved_by_b : neg.approved_by_a;
     if (otherApproved) {
-        // Both sides approved — generate ratification bills in both parliaments
         updateData.status = 'ratification';
 
-        // Fetch nation names for bill text
-        const { data: nationA } = await _supabase.from('nations').select('id, name').eq('id', neg.nation_a_id).single();
-        const { data: nationB } = await _supabase.from('nations').select('id, name').eq('id', neg.nation_b_id).single();
-        const nationAName = nationA?.name || 'Unknown';
-        const nationBName = nationB?.name || 'Unknown';
-        const typeInfo = neg.agreement_type ? TRADE_AGREEMENT_TYPES[neg.agreement_type] : null;
-        const typeLabel = typeInfo ? typeInfo.label : 'Trade Agreement';
+        // Fetch both nation names in parallel
+        const [{ data: nationA }, { data: nationB }] = await Promise.all([
+            _supabase.from('nations').select('name').eq('id', neg.nation_a_id).single(),
+            _supabase.from('nations').select('name').eq('id', neg.nation_b_id).single()
+        ]);
+        const nameA = nationA?.name || 'Unknown';
+        const nameB = nationB?.name || 'Unknown';
+        const typeLabel = TRADE_AGREEMENT_TYPES[neg.agreement_type]?.label || 'Trade Agreement';
+        const agreementName = neg.agreement_name || 'Unnamed Agreement';
 
         const billTitle = 'Ratify: ' + (neg.agreement_name || typeLabel);
-        const billPreamble = 'Ratification of the ' + typeLabel + ' "' +
-            (neg.agreement_name || 'Unnamed Agreement') + '" between ' +
-            nationAName + ' and ' + nationBName + '. ' +
-            'This agreement was negotiated by diplomatic representatives of both nations. ' +
+        const billPreamble = 'Ratification of the ' + typeLabel + ' "' + agreementName + '" between ' +
+            nameA + ' and ' + nameB + '. This agreement was negotiated by diplomatic representatives of both nations. ' +
             'A YES vote enacts the agreement; a NO vote rejects it.';
 
-        // Insert bill for nation A
-        const { data: billA, error: billAErr } = await _supabase.from('bills').insert({
-            nation_id: neg.nation_a_id,
-            bill_type: 'ratification',
-            bill_name: billTitle,
-            preamble: billPreamble,
-            proposed_by: neg.approved_by_a,
-            trade_negotiation_id: negotiationId,
-            status: 'floor',
-            proposed_tick: shardTick,
-            floor_tick: shardTick,
+        const billBase = {
+            bill_type: 'ratification', bill_name: billTitle, preamble: billPreamble,
+            trade_negotiation_id: negotiationId, status: 'floor',
+            proposed_tick: shardTick, floor_tick: shardTick,
             voting_ends_tick: shardTick + GAME_CONFIG.VOTING_WINDOW_TICKS
-        }).select('id').single();
+        };
 
-        if (billAErr) {
-            console.error('Error creating ratification bill for nation A:', billAErr);
-            alert('Error creating ratification bill: ' + billAErr.message);
-            return;
-        }
+        // Create both ratification bills in parallel
+        const [resultA, resultB] = await Promise.all([
+            _supabase.from('bills').insert({ ...billBase, nation_id: neg.nation_a_id, proposed_by: neg.approved_by_a }).select('id').single(),
+            _supabase.from('bills').insert({ ...billBase, nation_id: neg.nation_b_id, proposed_by: neg.approved_by_b }).select('id').single()
+        ]);
 
-        // Insert bill for nation B
-        const { data: billB, error: billBErr } = await _supabase.from('bills').insert({
-            nation_id: neg.nation_b_id,
-            bill_type: 'ratification',
-            bill_name: billTitle,
-            preamble: billPreamble,
-            proposed_by: neg.approved_by_b,
-            trade_negotiation_id: negotiationId,
-            status: 'floor',
-            proposed_tick: shardTick,
-            floor_tick: shardTick,
-            voting_ends_tick: shardTick + GAME_CONFIG.VOTING_WINDOW_TICKS
-        }).select('id').single();
+        if (resultA.error) { alert('Error creating ratification bill: ' + resultA.error.message); return; }
+        if (resultB.error) { alert('Error creating ratification bill: ' + resultB.error.message); return; }
 
-        if (billBErr) {
-            console.error('Error creating ratification bill for nation B:', billBErr);
-            alert('Error creating ratification bill: ' + billBErr.message);
-            return;
-        }
+        updateData.bill_a_id = resultA.data?.id || null;
+        updateData.bill_b_id = resultB.data?.id || null;
 
-        // Store bill IDs on the negotiation
-        updateData.bill_a_id = billA?.id || null;
-        updateData.bill_b_id = billB?.id || null;
-
-        // Fire news events for both nations
-        try {
-            const eventRows = [
-                {
-                    nation_id: neg.nation_a_id,
-                    event_name: (neg.agreement_name || typeLabel) + ' — Ratification',
-                    category: 'Diplomatic',
-                    description_chosen: 'The ' + typeLabel + ' "' + (neg.agreement_name || 'Unnamed') + '" between ' + nationAName + ' and ' + nationBName + ' has been sent to both parliaments for ratification.',
-                    fired_at_tick: shardTick
-                },
-                {
-                    nation_id: neg.nation_b_id,
-                    event_name: (neg.agreement_name || typeLabel) + ' — Ratification',
-                    category: 'Diplomatic',
-                    description_chosen: 'The ' + typeLabel + ' "' + (neg.agreement_name || 'Unnamed') + '" between ' + nationAName + ' and ' + nationBName + ' has been sent to both parliaments for ratification.',
-                    fired_at_tick: shardTick
-                }
-            ];
-            await _supabase.from('event_log').insert(eventRows);
-        } catch (e) {
-            console.warn('Error firing trade ratification events:', e);
-        }
+        // Fire events (non-blocking)
+        const eventDesc = 'The ' + typeLabel + ' "' + (neg.agreement_name || 'Unnamed') + '" between ' + nameA + ' and ' + nameB + ' has been sent to both parliaments for ratification.';
+        _supabase.from('event_log').insert([neg.nation_a_id, neg.nation_b_id].map(nid => ({
+            nation_id: nid,
+            event_name: (neg.agreement_name || typeLabel) + ' — Ratification',
+            category: 'Diplomatic', description_chosen: eventDesc, fired_at_tick: shardTick
+        }))).then(() => {});
     }
 
     await _supabase.from('trade_negotiations').update(updateData).eq('id', negotiationId);
 
-    if (otherApproved) {
-        alert('Both sides have approved! Ratification bills have been submitted to both parliaments.');
-    } else {
-        alert('You have approved the agreement. Waiting for the other side to approve.');
-    }
-
+    alert(otherApproved
+        ? 'Both sides have approved! Ratification bills have been submitted to both parliaments.'
+        : 'You have approved the agreement. Waiting for the other side to approve.');
     await openTradeNegotiation(negotiationId);
 }
 
