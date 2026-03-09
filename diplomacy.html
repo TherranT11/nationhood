@@ -768,7 +768,11 @@ async function renderAgreementsTab() {
                                 </div>
                             </div>
                             <div class="agreement-card-meta">
-                                ${escapeHtml(currentNation.name)} &amp; ${escapeHtml(partnerName)}
+                                ${ta.agreement_type === 'retaliatory_tariff'
+                                    ? (ta.nation_a_id === currentNation.id
+                                        ? 'Imposed on ' + escapeHtml(partnerName)
+                                        : 'Imposed by ' + escapeHtml(partnerName))
+                                    : escapeHtml(currentNation.name) + ' &amp; ' + escapeHtml(partnerName)}
                                 ${typeInfo ? ' &middot; ' + escapeHtml(typeInfo.label) : ''}
                                 ${ta.duration_ticks ? ' &middot; ' + ta.duration_ticks + ' ticks' : ' &middot; Permanent'}
                                 ${ta.auto_renew ? ' (auto-renew)' : ''}
