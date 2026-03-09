@@ -197,7 +197,20 @@ export function computeIdeologyAlignment(factionIdeology, bloc) {
         totalWeight += partyStrength;
     }
 
-    if (totalWeight === 0) return 50; // Fully centrist → neutral
+    // If party has no strong positions, compute centrist affinity:
+    // centrist parties naturally align better with moderate blocs
+    // and worse with extreme blocs on any axis.
+    if (totalWeight === 0) {
+        let centristAlignment = 0;
+        for (const axisKey of AXIS_KEYS) {
+            const blocScore = bloc['axis_' + axisKey] ?? 50;
+            // Distance from center (50): extreme blocs score lower
+            const distFromCenter = Math.abs(blocScore - 50) / 50; // 0 to 1
+            centristAlignment += (1 - distFromCenter);
+        }
+        // Average across axes, scale to 30-70 range (centrist shouldn't be extreme)
+        return 30 + (centristAlignment / AXIS_KEYS.length) * 40;
+    }
     return (weightedAlignment / totalWeight) * 100;
 }
 
@@ -260,7 +273,16 @@ export function ideologyOppositionMultiplier(factionIdeology, bloc) {
 
     if (opposed >= 2) return 0.70;
     if (opposed === 1) return 0.80;
-    if (aligned === 0) return 0.90;
+    // Only penalize if the party actually has positions but none align.
+    // A fully centrist party (no strong positions) should not be penalized —
+    // they just don't benefit from alignment bonuses.
+    if (aligned === 0) {
+        // Check if the party has ANY strong position (|score| >= 20)
+        const hasPosition = IDEOLOGY_AXES.some(ax =>
+            Math.abs(factionIdeology[ax.key] || 0) >= 20
+        );
+        return hasPosition ? 0.90 : 1.0;
+    }
     return 1.0;
 }
 

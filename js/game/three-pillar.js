@@ -184,13 +184,19 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         prefScore = Math.round(prefScore * oppositionMult * 100) / 100;
 
         // ─── IDEOLOGY DRIFT: per-tick erosion based on opposition count ───
-        // 2+ opposing → -1/tick, 1 opposing → -0.5/tick, 0 aligned → -0.25/tick
+        // 2+ opposing → -1/tick, 1 opposing → -0.5/tick, 0 aligned (with positions) → -0.25/tick
         let ideoDrift = 0;
         if (ideo) {
             const { opposed, aligned } = countIdeologyRelationship(ideo, bloc);
             if (opposed >= 2)       ideoDrift = -1;
             else if (opposed === 1) ideoDrift = -0.5;
-            else if (aligned === 0) ideoDrift = -0.25;
+            else if (aligned === 0) {
+                // Only drift if the party actually has strong positions but none align.
+                // Centrist parties with no positions should not be penalized.
+                const IDEOLOGY_AXIS_KEYS = ['liberty_equality','tradition_progress','security_freedom','globalism_nationalism','individualism_collectivism'];
+                const hasPosition = IDEOLOGY_AXIS_KEYS.some(k => Math.abs(ideo[k] || 0) >= 20);
+                if (hasPosition) ideoDrift = -0.25;
+            }
         }
         prefScore = Math.max(0, prefScore + ideoDrift);
         prefScore = Math.round(prefScore * 100) / 100;
