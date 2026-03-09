@@ -32,6 +32,9 @@
         <div class="add-text-article-section" id="add-text-article-section" onclick="showTextArticleForm()">
             <span class="add-text-article-btn-text">+ Add Text Article</span>
         </div>
+        <div class="add-text-article-section" id="add-funding-article-section" onclick="showFundingArticleForm()">
+            <span class="add-text-article-btn-text">+ Funding Article</span>
+        </div>
         <div id="add-article-form" style="display:none;">
             <div class="form-group">
                 <label class="form-label">Select Sector</label>
@@ -63,6 +66,41 @@
             <div style="display:flex;gap:8px;margin-top:12px;">
                 <button class="btn-cancel" onclick="hideTextArticleForm()">Cancel</button>
                 <button class="btn-add" onclick="addTextArticle()">Add to Bill</button>
+            </div>
+        </div>
+        <div id="add-funding-article-form" style="display:none;">
+            <div class="form-group">
+                <label class="form-label">Select Ministry</label>
+                <select class="form-select" id="funding-ministry-select" onchange="onFundingMinistryChange()">
+                    <option value="">-- Choose a ministry --</option>
+                </select>
+            </div>
+            <div id="funding-controls" style="display:none;">
+                <div class="form-group">
+                    <label class="form-label">Action</label>
+                    <select class="form-select" id="funding-action-select" onchange="onFundingActionChange()">
+                        <option value="increase">Increase Funding</option>
+                        <option value="decrease">Decrease Funding</option>
+                        <option value="discretionary">Discretionary Grant</option>
+                    </select>
+                </div>
+                <div id="funding-level-group">
+                    <label class="form-label">Proposed Funding Level: <strong id="funding-level-display">100%</strong></label>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="color:#ef4444;font-size:0.8rem;">0%</span>
+                        <input type="range" id="funding-level-slider" min="0" max="300" value="100" step="5" style="flex:1;" oninput="onFundingSliderChange()">
+                        <span style="color:#22c55e;font-size:0.8rem;">300%</span>
+                    </div>
+                    <div id="funding-status-preview" style="margin-top:6px;font-size:0.8rem;"></div>
+                </div>
+                <div id="funding-grant-group" style="display:none;">
+                    <label class="form-label">Grant Amount ($M)</label>
+                    <input type="number" class="form-input" id="funding-grant-amount" min="1" max="50000" value="100" placeholder="e.g., 500">
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn-cancel" onclick="hideFundingArticleForm()">Cancel</button>
+                <button class="btn-add" id="add-funding-btn" disabled onclick="addFundingArticle()">Add to Bill</button>
             </div>
         </div>
         <div class="bill-name-section" id="bill-name-section" style="display:none;">
@@ -749,7 +787,11 @@ function renderFloorBill(bill, isVetoed) {
                 (bill.bill_type === 'impeachment_conviction' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#B71C1C;">⚖ Impeachment Trial — Conviction Vote</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to convict and remove the president.</div></div></div>' :
                 (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number).map(art => {
                     if (!art.policies) {
-                        return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.article_title || 'Untitled Provision'} <span style="background:#2196F3;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">TEXT</span></span><div class="article-desc" style="white-space:pre-wrap;">${art.article_text || ''}</div></div></div>`;
+                        const _fd = art.funding_data;
+                        const _badge = _fd
+                            ? `<span style="background:${_fd.action === 'decrease' ? '#ef4444' : _fd.action === 'discretionary' ? '#2196F3' : '#22c55e'};color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">${_fd.action === 'decrease' ? 'DEFUND' : _fd.action === 'discretionary' ? 'GRANT' : 'FUND'}</span>`
+                            : `<span style="background:#2196F3;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">TEXT</span>`;
+                        return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.article_title || 'Untitled Provision'} ${_badge}</span><div class="article-desc" style="white-space:pre-wrap;">${art.article_text || ''}</div></div></div>`;
                     }
                     const chipHTML = renderIdeologyChips(art.policies);
                     return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
@@ -996,7 +1038,11 @@ function renderCommitteeBill(bill) {
                 (bill.bill_type === 'impeachment_motion' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#D32F2F;">⚖ Impeachment Motion — Committee Debate</span><div class="article-desc">Will proceed to floor vote after committee debate period.</div></div></div>' :
                 (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number).map(art => {
                     if (!art.policies) {
-                        return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.article_title || 'Untitled Provision'} <span style="background:#2196F3;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">TEXT</span></span><div class="article-desc" style="white-space:pre-wrap;">${art.article_text || ''}</div></div></div>`;
+                        const _fd = art.funding_data;
+                        const _badge = _fd
+                            ? `<span style="background:${_fd.action === 'decrease' ? '#ef4444' : _fd.action === 'discretionary' ? '#2196F3' : '#22c55e'};color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">${_fd.action === 'decrease' ? 'DEFUND' : _fd.action === 'discretionary' ? 'GRANT' : 'FUND'}</span>`
+                            : `<span style="background:#2196F3;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">TEXT</span>`;
+                        return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.article_title || 'Untitled Provision'} ${_badge}</span><div class="article-desc" style="white-space:pre-wrap;">${art.article_text || ''}</div></div></div>`;
                     }
                     const chipHTML = renderIdeologyChips(art.policies, !!art.repeal_active_law_id);
                     return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
@@ -1140,10 +1186,12 @@ function openDraftModal() {
     populateSectorDropdown('sector-select');
     const ideo1 = currentFaction.ideology_value_1 || '', ideo2 = currentFaction.ideology_value_2 || '';
     document.getElementById('party-ideologies').textContent = (ideo1 || ideo2) ? [ideo1, ideo2].filter(Boolean).join(' + ') : 'None (all policies available)';
-    renderDraftArticles(); hideAddArticleForm();
+    renderDraftArticles(); _hideAllArticleForms(); _showAllArticleButtons();
     document.getElementById('bill-name-section').style.display = 'none';
     document.getElementById('submit-bill-btn').disabled = true;
     document.getElementById('draft-modal').classList.add('active');
+    // Fetch ministries for funding articles
+    _supabase.from('ministries').select('ministry_key, funding_level').eq('nation_id', currentNation.id).eq('is_active', true).then(({ data }) => { window._allMinistries = data || []; });
 }
 
 function closeModal() { document.getElementById('draft-modal').classList.remove('active'); }
@@ -1161,9 +1209,24 @@ function populateSectorDropdown(selectId) {
     }
 }
 
-function showAddArticleForm() {
+function _hideAllArticleForms() {
+    document.getElementById('add-article-form').style.display = 'none';
+    document.getElementById('add-text-article-form').style.display = 'none';
+    document.getElementById('add-funding-article-form').style.display = 'none';
+}
+function _showAllArticleButtons() {
+    document.getElementById('add-article-section').style.display = 'block';
+    document.getElementById('add-text-article-section').style.display = 'block';
+    document.getElementById('add-funding-article-section').style.display = 'block';
+}
+function _hideAllArticleButtons() {
     document.getElementById('add-article-section').style.display = 'none';
     document.getElementById('add-text-article-section').style.display = 'none';
+    document.getElementById('add-funding-article-section').style.display = 'none';
+}
+
+function showAddArticleForm() {
+    _hideAllArticleButtons(); _hideAllArticleForms();
     document.getElementById('add-article-form').style.display = 'block';
     document.getElementById('sector-select').value = '';
     document.getElementById('ideology-hint').style.display = 'none';
@@ -1173,23 +1236,110 @@ function showAddArticleForm() {
 }
 
 function hideAddArticleForm() {
-    document.getElementById('add-article-section').style.display = 'block';
-    document.getElementById('add-text-article-section').style.display = 'block';
-    document.getElementById('add-article-form').style.display = 'none';
+    _showAllArticleButtons(); _hideAllArticleForms();
 }
 
 function showTextArticleForm() {
-    document.getElementById('add-article-section').style.display = 'none';
-    document.getElementById('add-text-article-section').style.display = 'none';
+    _hideAllArticleButtons(); _hideAllArticleForms();
     document.getElementById('add-text-article-form').style.display = 'block';
     document.getElementById('text-article-title').value = '';
     document.getElementById('text-article-body').value = '';
 }
 
 function hideTextArticleForm() {
-    document.getElementById('add-article-section').style.display = 'block';
-    document.getElementById('add-text-article-section').style.display = 'block';
-    document.getElementById('add-text-article-form').style.display = 'none';
+    _showAllArticleButtons(); _hideAllArticleForms();
+}
+
+function showFundingArticleForm() {
+    _hideAllArticleButtons(); _hideAllArticleForms();
+    document.getElementById('add-funding-article-form').style.display = 'block';
+    // Populate ministry dropdown from ministryData (fetched at page load)
+    const sel = document.getElementById('funding-ministry-select');
+    const FUNDING_MINISTRY_LABELS = { interior:'Interior', foreign:'Foreign Affairs', defense:'Defense', finance:'Finance', education:'Education', healthcare:'Healthcare', labor:'Labor', justice:'Justice', trade:'Trade', energy:'Energy', transportation:'Transport' };
+    sel.innerHTML = '<option value="">-- Choose a ministry --</option>';
+    // Get ministry keys already in draft funding articles
+    const usedKeys = new Set(draftArticles.filter(a => a.isFunding).map(a => a.fundingData.ministry_key));
+    for (const [key, label] of Object.entries(FUNDING_MINISTRY_LABELS)) {
+        if (usedKeys.has(key)) continue; // one per ministry per bill
+        sel.innerHTML += `<option value="${key}">${label}</option>`;
+    }
+    document.getElementById('funding-controls').style.display = 'none';
+    document.getElementById('add-funding-btn').disabled = true;
+}
+
+function hideFundingArticleForm() {
+    _showAllArticleButtons(); _hideAllArticleForms();
+}
+
+function onFundingMinistryChange() {
+    const key = document.getElementById('funding-ministry-select').value;
+    if (!key) { document.getElementById('funding-controls').style.display = 'none'; document.getElementById('add-funding-btn').disabled = true; return; }
+    document.getElementById('funding-controls').style.display = 'block';
+    document.getElementById('add-funding-btn').disabled = false;
+    // Set slider to current funding level
+    const ministry = (window._allMinistries || []).find(m => m.ministry_key === key);
+    const currentPct = Math.round((ministry?.funding_level ?? 1.0) * 100);
+    document.getElementById('funding-level-slider').value = currentPct;
+    document.getElementById('funding-action-select').value = 'increase';
+    onFundingActionChange();
+    onFundingSliderChange();
+}
+
+function onFundingActionChange() {
+    const action = document.getElementById('funding-action-select').value;
+    document.getElementById('funding-level-group').style.display = action !== 'discretionary' ? 'block' : 'none';
+    document.getElementById('funding-grant-group').style.display = action === 'discretionary' ? 'block' : 'none';
+}
+
+function onFundingSliderChange() {
+    const pct = parseInt(document.getElementById('funding-level-slider').value);
+    document.getElementById('funding-level-display').textContent = pct + '%';
+    // Show status preview
+    let status, color;
+    if (pct >= 100) { status = 'Fully Funded'; color = '#22c55e'; }
+    else if (pct >= 90) { status = 'Stretched — primary stat decays -0.3/tick'; color = '#a3e635'; }
+    else if (pct >= 75) { status = 'Strained — primary -0.5/tick, secondary -0.2/tick'; color = '#facc15'; }
+    else if (pct >= 50) { status = 'Underfunded — primary -0.9/tick, secondary -0.5/tick'; color = '#f97316'; }
+    else if (pct >= 25) { status = 'Critical — primary -1.7/tick, secondary -0.9/tick'; color = '#ef4444'; }
+    else { status = 'Collapsed — primary -2.7/tick, secondary -1.7/tick'; color = '#dc2626'; }
+    if (pct > 100) { status = 'Overfunded (' + pct + '%) — enhanced stat maintenance'; color = '#22c55e'; }
+    document.getElementById('funding-status-preview').innerHTML = `<span style="color:${color};">${status}</span>`;
+}
+
+function addFundingArticle() {
+    const key = document.getElementById('funding-ministry-select').value;
+    if (!key) return;
+    const action = document.getElementById('funding-action-select').value;
+    const ministry = (window._allMinistries || []).find(m => m.ministry_key === key);
+    const currentLevel = ministry?.funding_level ?? 1.0;
+    const FUNDING_MINISTRY_LABELS = { interior:'Interior', foreign:'Foreign Affairs', defense:'Defense', finance:'Finance', education:'Education', healthcare:'Healthcare', labor:'Labor', justice:'Justice', trade:'Trade', energy:'Energy', transportation:'Transport' };
+    const label = FUNDING_MINISTRY_LABELS[key] || key;
+
+    let proposedLevel = null, grantAmount = null;
+    if (action === 'discretionary') {
+        grantAmount = parseInt(document.getElementById('funding-grant-amount').value);
+        if (isNaN(grantAmount) || grantAmount < 1) { alert('Please enter a valid grant amount.'); return; }
+    } else {
+        proposedLevel = parseInt(document.getElementById('funding-level-slider').value) / 100;
+        if (proposedLevel === currentLevel) { alert('Proposed funding is the same as current level.'); return; }
+    }
+
+    draftArticles.push({
+        articleNumber: draftArticles.length + 2,
+        isFunding: true,
+        policy: null,
+        fundingData: {
+            ministry_key: key,
+            ministry_label: label,
+            action: action,
+            current_level: currentLevel,
+            proposed_level: proposedLevel,
+            grant_amount: grantAmount
+        }
+    });
+    renderDraftArticles();
+    hideFundingArticleForm();
+    if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
 }
 
 function addTextArticle() {
@@ -1425,6 +1575,28 @@ function renderDraftArticles() {
                 <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
             </div>`;
         }
+        if (art.isFunding) {
+            const fd = art.fundingData;
+            const curPct = Math.round(fd.current_level * 100);
+            let desc, borderColor;
+            if (fd.action === 'discretionary') {
+                desc = `Discretionary grant of $${fd.grant_amount}M to ${fd.ministry_label}`;
+                borderColor = '#2196F3';
+            } else {
+                const propPct = Math.round(fd.proposed_level * 100);
+                const arrow = propPct > curPct ? '↑' : '↓';
+                desc = `${fd.ministry_label}: ${curPct}% → ${propPct}% ${arrow}`;
+                borderColor = propPct > curPct ? '#22c55e' : '#ef4444';
+            }
+            return `<div class="draft-article-card" style="border-left:3px solid ${borderColor};">
+                <div class="draft-article-info">
+                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:${borderColor};">Funding</span></div>
+                    <div class="draft-article-name">${escapeHtml(fd.ministry_label)} Ministry Funding</div>
+                    <div class="draft-article-meta">${escapeHtml(desc)}</div>
+                </div>
+                <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+            </div>`;
+        }
         if (art.isRepeal) {
             const p = art.policy;
             const ideos = p.ideologies || (p.ideology ? [p.ideology] : []);
@@ -1478,8 +1650,7 @@ function removeArticle(index) {
     draftArticles.forEach((art, i) => { art.articleNumber = i + 2; });
     renderDraftArticles();
     // Re-show add buttons (they may have been hidden for foundational bills)
-    document.getElementById('add-article-section').style.display = 'block';
-    document.getElementById('add-text-article-section').style.display = 'block';
+    _showAllArticleButtons();
     if (draftArticles.length === 0) { document.getElementById('bill-name-section').style.display = 'none'; document.getElementById('submit-bill-btn').disabled = true; }
 }
 
@@ -1508,8 +1679,15 @@ async function submitToCommittee() {
             } else if (policyNames.length > 2) {
                 billName = 'The ' + policyNames[0] + ' & ' + (policyNames.length - 1) + ' More Provisions Act';
             } else {
-                const textTitle = draftArticles.find(a => a.isText)?.textTitle;
-                billName = textTitle && textTitle !== 'Untitled Provision' ? 'The ' + textTitle + ' Act' : ('Unnamed ' + termBill);
+                const fundingArts = draftArticles.filter(a => a.isFunding);
+                if (fundingArts.length === 1) {
+                    billName = fundingArts[0].fundingData.ministry_label + ' Funding Act';
+                } else if (fundingArts.length > 1) {
+                    billName = 'Ministry Funding Act';
+                } else {
+                    const textTitle = draftArticles.find(a => a.isText)?.textTitle;
+                    billName = textTitle && textTitle !== 'Untitled Provision' ? 'The ' + textTitle + ' Act' : ('Unnamed ' + termBill);
+                }
             }
         }
     }
@@ -1566,6 +1744,18 @@ async function submitToCommittee() {
             const articles = draftArticles.map(art => {
                 if (art.isText) {
                     return { bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id, article_title: art.textTitle, article_text: art.textBody };
+                }
+                if (art.isFunding) {
+                    const fd = art.fundingData;
+                    const title = fd.action === 'discretionary'
+                        ? `${fd.ministry_label} Discretionary Grant`
+                        : `${fd.ministry_label} Funding ${fd.action === 'increase' ? 'Increase' : 'Decrease'}`;
+                    const propPct = fd.proposed_level != null ? Math.round(fd.proposed_level * 100) : null;
+                    const curPct = Math.round(fd.current_level * 100);
+                    const text = fd.action === 'discretionary'
+                        ? `Allocate $${fd.grant_amount}M in discretionary funds to the ${fd.ministry_label} ministry.`
+                        : `Adjust ${fd.ministry_label} ministry funding from ${curPct}% to ${propPct}%.`;
+                    return { bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id, article_title: title, article_text: text, funding_data: fd };
                 }
                 const articleRow = { bill_id: bill.id, policy_id: art.policy.id, article_number: art.articleNumber, added_by: currentFaction.id };
                 if (art.isRepeal && art.repealActiveLawId) {
@@ -2003,7 +2193,7 @@ async function sendToFloor(billId) {
     const bill = committeeBills.find(b => b.id === billId);
     // Require at least one article for non-budget, non-repeal bills
     if (bill && bill.bill_type !== 'budget' && bill.bill_type !== 'repeal'
-        && (!bill.bill_articles || bill.bill_articles.filter(a => a.policy_id || a.effect_data || a.repeal_active_law_id).length === 0)) {
+        && (!bill.bill_articles || bill.bill_articles.filter(a => a.policy_id || a.effect_data || a.repeal_active_law_id || a.funding_data).length === 0)) {
         alert('This bill has no policy articles. Add at least one article before sending to the floor.');
         return;
     }
@@ -2049,6 +2239,12 @@ window.hideAddArticleForm = hideAddArticleForm;
 window.addArticle = addArticle;
 window.hideTextArticleForm = hideTextArticleForm;
 window.addTextArticle = addTextArticle;
+window.showFundingArticleForm = showFundingArticleForm;
+window.hideFundingArticleForm = hideFundingArticleForm;
+window.onFundingMinistryChange = onFundingMinistryChange;
+window.onFundingActionChange = onFundingActionChange;
+window.onFundingSliderChange = onFundingSliderChange;
+window.addFundingArticle = addFundingArticle;
 window.submitToCommittee = submitToCommittee;
 window.closeCommitteeAddModal = closeCommitteeAddModal;
 window.submitCommitteeArticle = submitCommitteeArticle;
