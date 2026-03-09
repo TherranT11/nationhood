@@ -605,7 +605,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName, STAT_DECAY_CONFIG, normalizeNationStatKey, SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS, generateArticle, generateTickArticles } from './js/game-common.js';
+import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName, STAT_DECAY_CONFIG, normalizeNationStatKey, SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS, generateArticle, generateTickArticles, ideologyOppositionMultiplier } from './js/game-common.js';
 
     const ADMIN_PW_HASH = 'dd5e5d55d1f108d2d4706f35672acf7eef98156c70101dd07279c1aa436de3b4';
     async function hashPassword(pw) {
@@ -2098,23 +2098,6 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         statusEl.innerHTML = html;
     }
 
-    // ---- Ideology opposition penalty (inline version for seeding) ----
-    // Mirrors ideologyOppositionMultiplier() from ideology.js
-    function _seedOppositionMultiplier(factionIdeo, bloc) {
-        const AXES = ['liberty_equality','tradition_progress','security_freedom','globalism_nationalism','individualism_collectivism'];
-        let opposed = 0, aligned = 0;
-        for (const ax of AXES) {
-            const ps = factionIdeo[ax] || 0;
-            const bs = bloc['axis_' + ax] ?? 50;
-            if (Math.abs(ps) < 20 || Math.abs(bs - 50) < 10) continue;
-            if ((ps < 0 ? 'L' : 'R') === (bs < 50 ? 'L' : 'R')) aligned++; else opposed++;
-        }
-        if (opposed >= 2) return 0.70;
-        if (opposed === 1) return 0.80;
-        if (aligned === 0) return 0.90;
-        return 1.0;
-    }
-
     // ---- Initialize party approvals for all blocs ----
     async function initializeBlocApprovals() {
         if (!voterNationData) return;
@@ -2154,7 +2137,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 for (const bloc of voterBlocsCache) {
                     const jitter = Math.floor(Math.random() * 21) - 10; // -10 to +10
                     const base = Math.max(0, Math.min(100, 40 + jitter));
-                    const mult = ideo ? _seedOppositionMultiplier(ideo, bloc) : 1.0;
+                    const mult = ideo ? ideologyOppositionMultiplier(ideo, bloc) : 1.0;
                     rows.push({
                         faction_id: party.id,
                         bloc_id: bloc.id,

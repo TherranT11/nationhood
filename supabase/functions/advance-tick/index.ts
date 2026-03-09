@@ -10648,28 +10648,10 @@ const OUTREACH_AXIS_KEYS = [
 
 /**
  * Compute ideology alignment between a faction and a voter bloc (0-100).
- * Uses the same logic as the server-side computeIdeologyAlignment in advance-tick.
+ * Delegates to the canonical computeIdeologyAlignment in ideology.js.
  */
 function computeOutreachAlignment(factionIdeology, bloc) {
-    let weightedAlignment = 0;
-    let totalWeight = 0;
-
-    for (const axisKey of OUTREACH_AXIS_KEYS) {
-        const partyScore = factionIdeology[axisKey] || 0; // -100 to +100
-        const blocScore = bloc['axis_' + axisKey] ?? 50;  // 0-100
-
-        const partyStrength = Math.abs(partyScore) / 100;
-        if (partyStrength < 0.01) continue;
-
-        const partyNorm = (partyScore + 100) / 2; // -100→0, 0→50, +100→100
-        const alignment = 1 - Math.abs(partyNorm - blocScore) / 100;
-
-        weightedAlignment += alignment * partyStrength;
-        totalWeight += partyStrength;
-    }
-
-    if (totalWeight === 0) return 50;
-    return Math.round((weightedAlignment / totalWeight) * 100);
+    return computeIdeologyAlignment(factionIdeology, bloc);
 }
 
 /**
@@ -18991,9 +18973,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     // Accumulate AP for party factions each tick:
     // base 3 AP, +2 if in government coalition or strongman. Capped at MAX_AP (10).
     // Uses atomic RPC to prevent race conditions with concurrent player deductions.
+    // Skip AP accumulation in reprocess mode — AP was already granted on the original tick.
     let apDistributed = 0;
     let apFailed = 0;
-    for (const nation of nationList) {
+    if (reprocess) {
+        console.log(`[advanceTick] REPROCESS mode — skipping AP accumulation`);
+    }
+    for (const nation of (reprocess ? [] : nationList)) {
       try {
         const { data: factions } = await supabase
             .from('factions')

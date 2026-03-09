@@ -6,7 +6,7 @@
 import { deductAP, GAME_CONFIG } from './config.js';
 import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic } from './government-types.js';
 import { RAW_SCALING_DIVISORS, STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
-import { IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, loadFactionIdeology } from './ideology.js';
+import { IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, loadFactionIdeology, computeIdeologyAlignment } from './ideology.js';
 import { MINISTER_APPROVAL_CONFIG, ISSUE_CATEGORY_STATS, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, STAT_TO_MINISTRY, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, statDirectionSign } from './stats.js';
 import { adjustGovernmentApprovalEvent, adjustMomentum, adjustMomentumAll } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
@@ -581,28 +581,10 @@ const OUTREACH_AXIS_KEYS = [
 
 /**
  * Compute ideology alignment between a faction and a voter bloc (0-100).
- * Uses the same logic as the server-side computeIdeologyAlignment in advance-tick.
+ * Delegates to the canonical computeIdeologyAlignment in ideology.js.
  */
 export function computeOutreachAlignment(factionIdeology, bloc) {
-    let weightedAlignment = 0;
-    let totalWeight = 0;
-
-    for (const axisKey of OUTREACH_AXIS_KEYS) {
-        const partyScore = factionIdeology[axisKey] || 0; // -100 to +100
-        const blocScore = bloc['axis_' + axisKey] ?? 50;  // 0-100
-
-        const partyStrength = Math.abs(partyScore) / 100;
-        if (partyStrength < 0.01) continue;
-
-        const partyNorm = (partyScore + 100) / 2; // -100→0, 0→50, +100→100
-        const alignment = 1 - Math.abs(partyNorm - blocScore) / 100;
-
-        weightedAlignment += alignment * partyStrength;
-        totalWeight += partyStrength;
-    }
-
-    if (totalWeight === 0) return 50;
-    return Math.round((weightedAlignment / totalWeight) * 100);
+    return computeIdeologyAlignment(factionIdeology, bloc);
 }
 
 /**
