@@ -9705,7 +9705,7 @@ async function rejectOwnNomination(supabase, billId, nomineePartyId) {
  *                  + clamp(momentum, 0, 100) × 0.40
  *
  * Governance feed: coalition parties get per-tick momentum nudge
- * from gov_approval: (gov_approval - 50) / 16, capped ±3.
+ * from gov_approval: (gov_approval - 50) / 10, capped ±5.
  *
  * Then runs softmax per bloc to produce vote_share, and aggregates
  * national_vote_share weighted by bloc population.
@@ -9756,9 +9756,38 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     const ideoMap = {};
     for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
 
+    // ── 4b. Backfill missing faction_ideology rows ──
+    // Parties without an ideology row get ideoScore=50 for all blocs, locking
+    // preference_score at 50. Create a centrist row so computeIdeologyAlignment
+    // can produce varied scores (30-70) based on bloc positions.
+    const missingIdeoFactions = factionIds.filter(fid => !ideoMap[fid]);
+    if (missingIdeoFactions.length > 0) {
+        for (const fid of missingIdeoFactions) {
+            const newRow = {
+                faction_id: fid,
+                liberty_equality: 0,
+                tradition_progress: 0,
+                security_freedom: 0,
+                globalism_nationalism: 0,
+                individualism_collectivism: 0
+            };
+            const { data: inserted, error: insErr } = await supabase
+                .from('faction_ideology')
+                .upsert(newRow, { onConflict: 'faction_id', ignoreDuplicates: true })
+                .select()
+                .single();
+            if (!insErr && inserted) {
+                ideoMap[fid] = inserted;
+                console.log(`[three-pillar] Backfilled missing faction_ideology row for faction ${fid}`);
+            } else if (insErr) {
+                console.error(`[three-pillar] Failed to backfill faction_ideology for ${fid}:`, insErr.message);
+            }
+        }
+    }
+
     // ── 5. Calculate pillars for each faction-bloc pair ──
-    const PILLAR_WEIGHT_IDEO = 0.50;
-    const PILLAR_WEIGHT_MOM  = 0.50;
+    const PILLAR_WEIGHT_IDEO = 0.60;
+    const PILLAR_WEIGHT_MOM  = 0.40;
     const MOMENTUM_DECAY     = 0.70; // 30% decay per tick
 
     // ── 5b. Governance → momentum feed ──
