@@ -808,6 +808,17 @@ async function withdrawTradeAgreement(agreementId) {
     const { data: ta } = await _supabase.from('trade_agreements').select('*').eq('id', agreementId).single();
     if (!ta) { alert('Could not load agreement.'); return; }
 
+    // Nation guard: only parties to the agreement can withdraw
+    if (ta.nation_a_id !== currentNation.id && ta.nation_b_id !== currentNation.id) {
+        alert('Your nation is not a party to this agreement.');
+        return;
+    }
+
+    if (ta.status !== 'active') {
+        alert('This agreement is not active (status: ' + ta.status + ').');
+        return;
+    }
+
     const isRetaliatory = ta.agreement_type === 'retaliatory_tariff';
     const noticeTicks = isRetaliatory ? 0 : (ta.withdrawal_notice_ticks || 3);
     const articles = ta.articles || [];
@@ -1352,18 +1363,7 @@ function renderTradeNegInboxCard(p, pd) {
 async function acceptTradeNegotiation(proposalId, negotiationId) {
     if (!negotiationId) { alert('Missing negotiation ID.'); return; }
 
-    const apCost = DIPLOMACY_CONFIG.ACCEPT_TRADE_NEGOTIATION_AP;
-    if (!confirm('Accept trade negotiations? This costs ' + apCost + ' AP.\n\nOnce accepted, the negotiation table opens and both sides can choose an agreement type and draft articles.')) return;
-
-    // Deduct AP
-    const apResult = await deductAP(_supabase, currentFaction.id, apCost, currentFaction.action_points);
-    if (!apResult.success) {
-        alert('Not enough AP. Need ' + apCost + ' AP, have ' + (currentFaction.action_points || 0) + '.');
-        return;
-    }
-    currentFaction.action_points = apResult.newBalance;
-
-    // Fetch the negotiation to get current participants
+    // Validate negotiation status BEFORE deducting AP
     const { data: neg, error: negErr } = await _supabase
         .from('trade_negotiations')
         .select('*')
@@ -1377,18 +1377,32 @@ async function acceptTradeNegotiation(proposalId, negotiationId) {
 
     if (neg.status !== 'open') {
         alert('This negotiation is no longer awaiting acceptance (status: ' + neg.status + ').');
+        await renderInboxTab();
+        await renderDiploHeader();
         return;
     }
+
+    const apCost = DIPLOMACY_CONFIG.ACCEPT_TRADE_NEGOTIATION_AP;
+    if (!confirm('Accept trade negotiations? This costs ' + apCost + ' AP.\n\nOnce accepted, the negotiation table opens and both sides can choose an agreement type and draft articles.')) return;
+
+    // Deduct AP (only after status validation passes)
+    const apResult = await deductAP(_supabase, currentFaction.id, apCost, currentFaction.action_points);
+    if (!apResult.success) {
+        alert('Not enough AP. Need ' + apCost + ' AP, have ' + (currentFaction.action_points || 0) + '.');
+        return;
+    }
+    currentFaction.action_points = apResult.newBalance;
 
     // If proposalId wasn't provided, look it up from the negotiation
     if (!proposalId) {
         const { data: proposals } = await _supabase
             .from('diplomatic_proposals')
-            .select('id')
+            .select('id, proposal_data')
             .eq('proposal_type', 'trade_negotiation')
             .in('status', ['proposed', 'revised'])
             .or('target_nation_id.eq.' + currentNation.id + ',proposing_nation_id.eq.' + currentNation.id);
-        const match = (proposals || []).find(p => true); // Any trade negotiation proposal for our nation
+        // Match by negotiation_id to avoid grabbing a different nation's proposal
+        const match = (proposals || []).find(p => p.proposal_data?.negotiation_id === negotiationId);
         if (match) proposalId = match.id;
     }
 
@@ -1453,6 +1467,21 @@ async function acceptTradeNegotiation(proposalId, negotiationId) {
 }
 
 async function rejectTradeNegotiation(proposalId, negotiationId) {
+    // Validate status before allowing reject
+    if (negotiationId) {
+        const { data: neg } = await _supabase
+            .from('trade_negotiations')
+            .select('status')
+            .eq('id', negotiationId)
+            .single();
+        if (neg && neg.status !== 'open') {
+            alert('This negotiation is no longer awaiting acceptance (status: ' + neg.status + ').');
+            await renderInboxTab();
+            await renderDiploHeader();
+            return;
+        }
+    }
+
     if (!confirm('Reject these trade negotiations? This cannot be undone.')) return;
 
     // Cancel the negotiation
@@ -1467,11 +1496,12 @@ async function rejectTradeNegotiation(proposalId, negotiationId) {
     if (!proposalId && negotiationId) {
         const { data: proposals } = await _supabase
             .from('diplomatic_proposals')
-            .select('id')
+            .select('id, proposal_data')
             .eq('proposal_type', 'trade_negotiation')
             .in('status', ['proposed', 'revised'])
             .or('target_nation_id.eq.' + currentNation.id + ',proposing_nation_id.eq.' + currentNation.id);
-        const match = (proposals || []).find(p => true);
+        // Match by negotiation_id to avoid grabbing a different nation's proposal
+        const match = (proposals || []).find(p => p.proposal_data?.negotiation_id === negotiationId);
         if (match) proposalId = match.id;
     }
 
@@ -4631,6 +4661,15 @@ function checkRequiredArticles(agreementType, draftArticles) {
 }
 
 async function joinTradeNegotiation(negotiationId, role, apCost) {
+    // Validate status BEFORE deducting AP
+    const { data: neg } = await _supabase.from('trade_negotiations').select('status, participants').eq('id', negotiationId).single();
+    if (!neg) { alert('Negotiation not found.'); return; }
+    if (neg.status !== 'active') {
+        alert('This negotiation is not active (status: ' + neg.status + ').');
+        await openTradeNegotiation(negotiationId);
+        return;
+    }
+
     if (!confirm('Join trade negotiations as ' + role.replace('_', ' ') + '? This costs ' + apCost + ' AP.')) return;
 
     const apResult = await deductAP(_supabase, currentFaction.id, apCost, currentFaction.action_points);
@@ -4639,9 +4678,6 @@ async function joinTradeNegotiation(negotiationId, role, apCost) {
         return;
     }
     currentFaction.action_points = apResult.newBalance;
-
-    const { data: neg } = await _supabase.from('trade_negotiations').select('participants').eq('id', negotiationId).single();
-    if (!neg) { alert('Negotiation not found.'); return; }
 
     const participants = neg.participants || [];
     participants.push({
@@ -4695,12 +4731,27 @@ async function cancelTradeNegotiation(negotiationId) {
         return;
     }
 
+    // Validate the negotiation is still cancellable
+    const { data: neg } = await _supabase.from('trade_negotiations').select('status').eq('id', negotiationId).single();
+    if (!neg || !['open', 'active'].includes(neg.status)) {
+        alert('This negotiation cannot be cancelled (status: ' + (neg?.status || 'unknown') + ').');
+        await renderInitiativeWizard();
+        return;
+    }
+
     if (!confirm('Cancel these trade negotiations? This cannot be undone.')) return;
 
     await _supabase.from('trade_negotiations').update({
         status: 'cancelled',
         concluded_at_tick: shardTick
     }).eq('id', negotiationId);
+
+    // Also reject any linked proposals still in proposed state
+    await _supabase.from('diplomatic_proposals')
+        .update({ status: 'rejected' })
+        .eq('proposal_type', 'trade_negotiation')
+        .in('status', ['proposed', 'revised'])
+        .or('target_nation_id.eq.' + currentNation.id + ',proposing_nation_id.eq.' + currentNation.id);
 
     alert('Trade negotiations cancelled.');
     await renderInitiativeWizard();
@@ -4735,6 +4786,12 @@ async function removeTradeNegArticle(negotiationId, index) {
 async function approveTradeNegotiation(negotiationId) {
     const { data: neg } = await _supabase.from('trade_negotiations').select('*').eq('id', negotiationId).single();
     if (!neg) return;
+
+    if (neg.status !== 'active') {
+        alert('This negotiation is not active (status: ' + neg.status + ').');
+        await openTradeNegotiation(negotiationId);
+        return;
+    }
 
     const draftArticles = neg.draft_articles || [];
     if (!checkRequiredArticles(neg.agreement_type, draftArticles)) {
@@ -5993,6 +6050,13 @@ async function acceptProposal(proposalId) {
 
     if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
 
+    // Status guard: only accept proposals that are still actionable
+    if (!['proposed', 'revised'].includes(proposal.status)) {
+        alert('This proposal is no longer actionable (status: ' + proposal.status + ').');
+        if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
+        return;
+    }
+
     // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
     await refreshRoles();
     const isTargetNation = proposal.target_nation_id === currentNation.id;
@@ -6089,14 +6153,21 @@ async function acceptProposal(proposalId) {
 }
 
 async function rejectProposal(proposalId) {
-    // Fetch proposal for authorization check
+    // Fetch proposal for authorization and status check
     const { data: proposal } = await _supabase
         .from('diplomatic_proposals')
-        .select('proposing_nation_id, target_nation_id')
+        .select('proposing_nation_id, target_nation_id, status')
         .eq('id', proposalId)
         .single();
 
     if (!proposal) { alert('Could not load proposal.'); return; }
+
+    // Status guard: only reject proposals that are still actionable
+    if (!['proposed', 'revised'].includes(proposal.status)) {
+        alert('This proposal is no longer actionable (status: ' + proposal.status + ').');
+        if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
+        return;
+    }
 
     // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
     await refreshRoles();
@@ -6118,6 +6189,7 @@ async function rejectProposal(proposalId) {
 
     alert('Proposal rejected.');
     if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
+    await renderDiploHeader();
 }
 
 async function strikeArticles(proposalId) {
@@ -6562,6 +6634,15 @@ async function acceptStateVisit(proposalId) {
 }
 
 async function declineStateVisit(proposalId) {
+    // Validate proposal is still actionable
+    const { data: proposal } = await _supabase.from('diplomatic_proposals')
+        .select('status').eq('id', proposalId).single();
+    if (!proposal || proposal.status !== 'proposed') {
+        alert('This invitation is no longer actionable (status: ' + (proposal?.status || 'unknown') + ').');
+        await renderInboxTab();
+        return;
+    }
+
     if (!confirm('Decline this State Visit invitation? The visiting nation will not be refunded their AP.')) return;
 
     await _supabase.from('diplomatic_proposals').update({ status: 'rejected' }).eq('id', proposalId);
