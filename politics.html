@@ -6290,8 +6290,8 @@ function renderPlankConfig(blocs, partyIdeo) {
                 const d = Math.abs(target - blocVal);
                 const th = _narrPlankStr === 'strong' ? 20 : 30;
                 let effect = null;
-                if (d <= th) effect = _narrPlankStr === 'strong' ? '+5' : '+2';
-                else if (_narrPlankStr === 'strong' && d > 50) effect = '-3';
+                if (d <= th) effect = _narrPlankStr === 'strong' ? '+8' : '+4';
+                else if (_narrPlankStr === 'strong' && d > 50) effect = '-5';
                 if (!effect) continue;
                 const pos = effect.startsWith('+');
                 html += `<div class="narr-effect-chip ${pos ? 'positive' : 'negative'}">
@@ -6658,7 +6658,7 @@ async function executeNarrPlank(f, n, blocs, partyIdeo, tick, cost) {
         await _supabase.from('faction_ideology').update({ [colKey]: newVal }).eq('faction_id', f.id);
     }
 
-    // Update bloc approvals based on alignment
+    // Update bloc momentum based on alignment (momentum feeds into preference_score via tick calc)
     const target = isStrong ? (end === 'left' ? 15 : 85) : (end === 'left' ? 35 : 65);
     const effects = [];
     for (const b of blocs) {
@@ -6666,15 +6666,15 @@ async function executeNarrPlank(f, n, blocs, partyIdeo, tick, cost) {
         const d = Math.abs(target - blocVal);
         const th = isStrong ? 20 : 30;
         let delta = 0;
-        if (d <= th) delta = isStrong ? 5 : 2;
-        else if (isStrong && d > 50) delta = -3;
+        if (d <= th) delta = isStrong ? 8 : 4;
+        else if (isStrong && d > 50) delta = -5;
         if (delta === 0) continue;
 
         effects.push({ bloc_id: b.id, bloc_name: b.bloc_name, delta });
 
-        // Update preference_score in faction_bloc_approval (creates row if missing)
+        // Update momentum in faction_bloc_approval (creates row if missing)
         await upsertBlocApproval(f.id, b.id, (row) => ({
-            preference_score: Math.max(0, Math.min(100, (row.preference_score ?? 50) + delta))
+            momentum: Math.max(-50, Math.min(50, (row.momentum ?? 0) + delta))
         }));
     }
 
@@ -6703,13 +6703,13 @@ async function executeNarrChampion(f, n, blocs, tick, cost) {
     const { error: apErr } = await _supabase.from('factions').update({ action_points: newAp }).eq('id', f.id);
     if (apErr) return { success: false, error: 'Failed to deduct AP.' };
 
-    // Immediate approval boost from championing (creates row if missing)
+    // Immediate momentum boost from championing + flag for tick-processor amplification
     await upsertBlocApproval(f.id, bloc.id, (row) => {
         const platform = row.last_platform || {};
         platform.championed = true;
         platform.championed_at_tick = tick;
         return {
-            preference_score: Math.min(100, (row.preference_score ?? 50) + 8),
+            momentum: Math.max(-50, Math.min(50, (row.momentum ?? 0) + 12)),
             last_platform: platform
         };
     });
@@ -6747,12 +6747,16 @@ async function executeNarrBridge(f, n, blocs, partyIdeo, tick, cost) {
     const distance = Math.abs(pVal - bVal);
     const boost = distance <= 15 ? 6 : distance <= 30 ? 4 : 2;
 
-    // Update approval (creates row if missing)
+    // Update momentum + store bridge data for tick-processor ongoing boost
     await upsertBlocApproval(f.id, bloc.id, (row) => {
         const platform = row.last_platform || {};
+        // Stack bridges in an array so tick processor can track all active bridges
+        if (!platform.bridges) platform.bridges = [];
+        platform.bridges.push({ axis: ax.key, expires_tick: tick + 10, boost });
+        // Also keep singular for backwards compat
         platform.bridge = { axis: ax.key, expires_tick: tick + 10, boost };
         return {
-            preference_score: Math.min(100, (row.preference_score ?? 50) + boost),
+            momentum: Math.max(-50, Math.min(50, (row.momentum ?? 0) + boost * 2)),
             last_platform: platform
         };
     });
@@ -6844,9 +6848,9 @@ async function executeNarrCampaign(f, n, blocs, otherParties, tick, cost) {
         const newTurnout = Math.min(95, (bloc.turnout_rate ?? 50) + 8);
         await _supabase.from('voter_blocs').update({ turnout_rate: newTurnout }).eq('id', bloc.id);
 
-        // Small approval boost from visible effort (+3)
+        // Momentum boost from visible mobilization effort (+5)
         await upsertBlocApproval(f.id, bloc.id, (row) => ({
-            preference_score: Math.min(100, (row.preference_score ?? 50) + 3)
+            momentum: Math.max(-50, Math.min(50, (row.momentum ?? 0) + 5))
         }));
 
         result = {
@@ -6860,10 +6864,10 @@ async function executeNarrCampaign(f, n, blocs, otherParties, tick, cost) {
         const effects = [];
         for (const b of blocs) {
             if (b.tier === 'HOSTILE') continue;
-            // Aligned blocs benefit more, swing blocs get a smaller nudge
-            const boost = b.tier === 'BASE' ? 3 : b.tier === 'LEAN' ? 2 : 1;
+            // Aligned blocs benefit more, swing blocs get a smaller nudge (momentum)
+            const boost = b.tier === 'BASE' ? 5 : b.tier === 'LEAN' ? 3 : 2;
             await upsertBlocApproval(f.id, b.id, (row) => ({
-                preference_score: Math.min(100, (row.preference_score ?? 50) + boost)
+                momentum: Math.max(-50, Math.min(50, (row.momentum ?? 0) + boost))
             }));
             effects.push({ bloc_name: b.bloc_name, delta: boost });
         }
@@ -6879,21 +6883,21 @@ async function executeNarrCampaign(f, n, blocs, otherParties, tick, cost) {
         const bloc = blocs.find(b => b.id === _narrBloc);
         if (!rival || !bloc) return { success: true, newAp };
 
-        // Damage rival's approval with this bloc (-6)
+        // Damage rival's momentum with this bloc (-10)
         await upsertBlocApproval(rival.id, bloc.id, (row) => ({
-            preference_score: Math.max(0, (row.preference_score ?? 50) - 6)
+            momentum: Math.max(-50, Math.min(50, (row.momentum ?? 0) - 10))
         }));
 
-        // Small boost for attacker with this bloc (+2)
+        // Momentum boost for attacker with this bloc (+4)
         await upsertBlocApproval(f.id, bloc.id, (row) => ({
-            preference_score: Math.min(100, (row.preference_score ?? 50) + 2)
+            momentum: Math.max(-50, Math.min(50, (row.momentum ?? 0) + 4))
         }));
 
-        // Backlash risk: slight approval hit with all SWING blocs (-1) — voters dislike mudslinging
+        // Backlash risk: slight momentum hit with all SWING blocs (-2) — voters dislike mudslinging
         const backlashBlocs = blocs.filter(b => b.tier === 'SWING' && b.id !== bloc.id);
         for (const b of backlashBlocs) {
             await upsertBlocApproval(f.id, b.id, (row) => ({
-                preference_score: Math.max(0, (row.preference_score ?? 50) - 1)
+                momentum: Math.max(-50, Math.min(50, (row.momentum ?? 0) - 2))
             }));
         }
 
