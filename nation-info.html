@@ -350,7 +350,7 @@ async function loadPage() {
         document.getElementById('gov-type').textContent = nation.government_type || '';
 
         // Parallel: profile, previous tick, factions, parties, relations, user faction check
-        var [profileRes, shardRes, factionsRes, partiesRes, relationsRes, ambFromRes, ambToRes, userFactionRes] = await Promise.all([
+        var [profileRes, shardRes, factionsRes, partiesRes, relationsRes, ambFromRes, ambToRes, electionRes, userFactionRes] = await Promise.all([
             _supabase.from('nation_profiles').select('*').eq('nation_id', nation.id).limit(1),
             _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
             _supabase.from('factions').select('*').eq('nation_id', nation.id).eq('faction_type', 'party'),
@@ -358,6 +358,7 @@ async function loadPage() {
             _supabase.from('diplomatic_relations').select('*, nation_a:nations!diplomatic_relations_nation_a_id_fkey(id,name), nation_b:nations!diplomatic_relations_nation_b_id_fkey(id,name)').or('nation_a_id.eq.' + nation.id + ',nation_b_id.eq.' + nation.id),
             _supabase.from('ambassadors').select('target_nation_id').eq('nation_id', nation.id).eq('is_active', true).eq('status', 'active'),
             _supabase.from('ambassadors').select('nation_id').eq('target_nation_id', nation.id).eq('is_active', true).eq('status', 'active'),
+            _supabase.from('elections').select('results').eq('nation_id', nation.id).eq('status', 'completed').eq('election_type', 'parliamentary').order('election_tick', { ascending: false }).limit(1).maybeSingle(),
             _supabase.from('factions').select('nation_id').eq('id', userRes.data.user.id).eq('nation_id', nation.id).eq('faction_type', 'party').limit(1)
         ]);
 
@@ -373,7 +374,7 @@ async function loadPage() {
             historyFetchFailed = histState.historyFetchFailed;
         }
 
-        render(factionsRes.data || [], partiesRes.data || [], relationsRes.data || [], ambFromRes.data || [], ambToRes.data || []);
+        render(factionsRes.data || [], partiesRes.data || [], relationsRes.data || [], ambFromRes.data || [], ambToRes.data || [], electionRes.data);
     } catch (err) {
         console.error('Load error:', err);
         document.getElementById('loading').innerHTML = '<div style="color:#ff5555;">Error: ' + err.message + '</div>';
@@ -381,7 +382,7 @@ async function loadPage() {
 }
 
 // ---------- Render ----------
-function render(factions, parties, relations, ambFrom, ambTo) {
+function render(factions, parties, relations, ambFrom, ambTo, latestElection) {
     // Flag from profile
     if (profile.flag_url) document.getElementById('nation-flag').src = profile.flag_url;
 
@@ -397,7 +398,7 @@ function render(factions, parties, relations, ambFrom, ambTo) {
     renderTimeline(profile.history_timeline || []);
 
     // Government
-    renderGovernment(factions, parties);
+    renderGovernment(factions, parties, latestElection);
 
     // Relations
     renderRelations(relations, ambFrom, ambTo);
@@ -443,13 +444,22 @@ function renderTimeline(entries) {
 }
 
 // ---------- Government ----------
-function renderGovernment(factions, parties) {
+function renderGovernment(factions, parties, latestElection) {
+    // Build seat map from latest election results (authoritative source)
+    var electionSeats = {};
+    var electionVotes = (latestElection && latestElection.results && latestElection.results.votes) || (latestElection && latestElection.results && latestElection.results.seats) || [];
+    for (var i = 0; i < electionVotes.length; i++) {
+        electionSeats[electionVotes[i].party_id] = electionVotes[i].seats;
+    }
+
     var allParties = [];
     for (var i = 0; i < (parties || []).length; i++) {
-        allParties.push({ name: parties[i].name, seats: parties[i].seats || 0, isNPC: true });
+        var seats = electionSeats[parties[i].id] !== undefined ? electionSeats[parties[i].id] : (parties[i].seats || 0);
+        allParties.push({ name: parties[i].name, seats: seats, isNPC: true });
     }
     for (var i = 0; i < (factions || []).length; i++) {
-        allParties.push({ name: factions[i].faction_name, seats: factions[i].seats || 0, isNPC: false });
+        var seats = electionSeats[factions[i].id] !== undefined ? electionSeats[factions[i].id] : (factions[i].seats || 0);
+        allParties.push({ name: factions[i].faction_name, seats: seats, isNPC: false });
     }
     allParties.sort(function(a, b) { return (b.seats || 0) - (a.seats || 0); });
 
