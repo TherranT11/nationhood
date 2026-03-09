@@ -9720,7 +9720,7 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     // ── 1. Load all party factions ──
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, seats, ideology_value_1, ideology_value_2')
+        .select('id, seats')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
     if (!factions || factions.length === 0) return;
@@ -9776,8 +9776,13 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
 
     const missingIdeoFactions = factionIds.filter(fid => !ideoMap[fid]);
     if (missingIdeoFactions.length > 0) {
+        // Fetch declared ideologies for missing factions to seed axis values
+        const { data: factionDetails } = await supabase
+            .from('factions')
+            .select('id, ideology_value_1, ideology_value_2')
+            .in('id', missingIdeoFactions);
         const factionMap = {};
-        for (const f of factions) factionMap[f.id] = f;
+        for (const f of (factionDetails || [])) factionMap[f.id] = f;
 
         for (const fid of missingIdeoFactions) {
             const faction = factionMap[fid];
