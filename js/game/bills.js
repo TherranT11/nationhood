@@ -2117,6 +2117,38 @@ export async function enactBill(supabase, bill, currentTick) {
         }
     }
 
+    // ── Apply funding articles (ministry funding_level changes & discretionary grants) ──
+    for (const art of (bill.bill_articles || [])) {
+        const fd = art.funding_data;
+        if (!fd || !fd.ministry_key) continue;
+
+        if (fd.action === 'discretionary') {
+            // Deduct grant from treasury (add to national debt)
+            const grantAmount = Number(fd.grant_amount) || 0;
+            if (grantAmount > 0) {
+                const newDebt = (Number(nation.debt) || 0) + grantAmount;
+                await supabase.from('nations').update({ debt: newDebt }).eq('id', bill.nation_id);
+                nation.debt = newDebt; // keep in-memory copy consistent
+                console.log(`[enactBill] Discretionary grant: $${grantAmount}M to ${fd.ministry_key}, debt now $${newDebt}M`);
+            }
+        } else {
+            // Increase or decrease — set funding_level on the ministry
+            const proposedLevel = Number(fd.proposed_level);
+            if (!isNaN(proposedLevel) && proposedLevel >= 0) {
+                const { error: fundErr } = await supabase.from('ministries')
+                    .update({ funding_level: proposedLevel })
+                    .eq('nation_id', bill.nation_id)
+                    .eq('ministry_key', fd.ministry_key)
+                    .eq('is_active', true);
+                if (fundErr) {
+                    console.error(`[enactBill] Failed to update funding_level for ${fd.ministry_key}:`, fundErr.message);
+                } else {
+                    console.log(`[enactBill] Ministry funding: ${fd.ministry_key} → ${Math.round(proposedLevel * 100)}%`);
+                }
+            }
+        }
+    }
+
     // Load ideology axes for all voting factions (sponsor + voters)
     const voterFactionIds = [bill.proposed_by, ...(bill.bill_support || []).map(s => s.faction_id)];
     const uniqueFactionIds = [...new Set(voterFactionIds.filter(Boolean))];

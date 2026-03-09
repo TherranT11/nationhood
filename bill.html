@@ -888,6 +888,26 @@ function renderArticles() {
         </div>
         ${articles.map(art => {
             const p = art.policies;
+
+            // Funding article
+            if (art.funding_data) {
+                const fd = art.funding_data;
+                const isCut = fd.action === 'decrease';
+                const isGrant = fd.action === 'discretionary';
+                const borderColor = isGrant ? '#2196F3' : isCut ? '#ef4444' : '#22c55e';
+                const tagLabel = isGrant ? 'GRANT' : isCut ? 'DEFUND' : 'FUND';
+                const fundingActions = canEditArticles ? '<div class="article-sponsor-actions">' +
+                    '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
+                '</div>' : '';
+                return '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
+                    '<div class="article-number">Article ' + art.article_number + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + tagLabel + '</span></div>' +
+                    '<div class="article-title">' + escapeHtml(art.article_title || 'Ministry Funding') + '</div>' +
+                    '<div class="article-description">' + escapeHtml(art.article_text || '') + '</div>' +
+                    '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
+                    fundingActions +
+                '</div>';
+            }
+
             if (!p) {
                 // Text-only article
                 const hasEffectData = !!art.effect_data;
@@ -2207,7 +2227,7 @@ async function rescindArticle(articleId) {
 
 function openEditArticleModal(articleId) {
     const art = (currentBill.bill_articles || []).find(a => a.id === articleId);
-    if (!art || art.policy_id || art.effect_data) return; // Only text articles can be edited (not policy or tax-rate articles)
+    if (!art || art.policy_id || art.effect_data || art.funding_data) return; // Only text articles can be edited (not policy, tax-rate, or funding articles)
     editingArticleId = articleId;
     document.getElementById('edit-article-title').value = art.article_title || '';
     document.getElementById('edit-article-body').value = art.article_text || '';
