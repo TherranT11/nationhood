@@ -274,7 +274,7 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
             console.warn('Ambassador query error:', JSON.stringify(ambErr));
         } else if (allNationAmbassadors && allNationAmbassadors.length > 0) {
             // Filter to ambassadors belonging to this faction
-            const myAmbassadors = allNationAmbassadors.filter(a => a.faction_id === faction.id);
+            const myAmbassadors = allNationAmbassadors.filter(a => String(a.faction_id) === String(faction.id));
 
             console.log('[Diplo] Active ambassadors from nation:', allNationAmbassadors.length,
                 '| Matched to faction ' + faction.id + ':', myAmbassadors.length,
@@ -315,13 +315,18 @@ async function refreshRoles() {
     return diplomaticRoles;
 }
 
+// Safe accessor — returns a default roles object when diplomaticRoles is null
+function dr() {
+    return diplomaticRoles || { isHoG: false, isFM: false, isMoT: false, ambassadorTo: [] };
+}
+
 // Check if the current player has any qualifying diplomatic role
 function hasAnyDiplomaticRole() {
     return diplomaticRoles && (
-        diplomaticRoles.isHoG ||
-        diplomaticRoles.isFM ||
-        diplomaticRoles.isMoT ||
-        (diplomaticRoles.ambassadorTo && diplomaticRoles.ambassadorTo.length > 0)
+        dr().isHoG ||
+        dr().isFM ||
+        dr().isMoT ||
+        (dr().ambassadorTo && dr().ambassadorTo.length > 0)
     );
 }
 
@@ -351,10 +356,10 @@ async function renderDiploHeader() {
     } catch (e) { console.warn('Error fetching header counts:', e); }
 
     const roleBadges = [];
-    if (diplomaticRoles.isHoG) roleBadges.push('<span class="diplo-role-badge role-hog">Head of Gov</span>');
-    if (diplomaticRoles.isFM)  roleBadges.push('<span class="diplo-role-badge role-fm">Foreign Minister</span>');
-    if (diplomaticRoles.isMoT) roleBadges.push('<span class="diplo-role-badge role-mot">Minister of Trade</span>');
-    diplomaticRoles.ambassadorTo.forEach(a => {
+    if (dr().isHoG) roleBadges.push('<span class="diplo-role-badge role-hog">Head of Gov</span>');
+    if (dr().isFM)  roleBadges.push('<span class="diplo-role-badge role-fm">Foreign Minister</span>');
+    if (dr().isMoT) roleBadges.push('<span class="diplo-role-badge role-mot">Minister of Trade</span>');
+    dr().ambassadorTo.forEach(a => {
         roleBadges.push('<span class="diplo-role-badge role-amb">Amb. to ' + escapeHtml(a.target_nation_name) + '</span>');
     });
     if (roleBadges.length === 0) {
@@ -372,10 +377,10 @@ async function renderDiploHeader() {
     // Populate ambassador dropdown in toolbar
     const dropdown = document.getElementById('diplo-amb-dropdown');
     const select = document.getElementById('amb-select');
-    if (diplomaticRoles.ambassadorTo.length > 0) {
+    if (dr().ambassadorTo.length > 0) {
         dropdown.style.display = '';
         select.innerHTML = '<option value="">Select...</option>' +
-            diplomaticRoles.ambassadorTo.map(a =>
+            dr().ambassadorTo.map(a =>
                 '<option value="' + a.target_nation_id + '">' + a.target_nation_name + '</option>'
             ).join('');
     } else {
@@ -425,9 +430,9 @@ async function updateTabBadges() {
             const revisedByThem = isRevised && p.target_nation_id === currentNation.id;
             if ((p.status === 'proposed' && isIncoming) || (isRevised && !revisedByThem)) {
                 inboxCount++;
-            } else if (p.status === 'fm_review' && diplomaticRoles.isFM) {
+            } else if (p.status === 'fm_review' && dr().isFM) {
                 inboxCount++;
-            } else if ((p.status === 'ratification' || p.status === 'ratification_failed') && (diplomaticRoles.isFM || diplomaticRoles.isHoG)) {
+            } else if ((p.status === 'ratification' || p.status === 'ratification_failed') && (dr().isFM || dr().isHoG)) {
                 inboxCount++;
             }
         });
@@ -668,7 +673,7 @@ async function renderAgreementsTab() {
 
             // Withdraw button — only FM or HoG can withdraw
             let withdrawHTML = '';
-            if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
+            if (dr().isFM || dr().isHoG) {
                 const penalty = totalRel * 2;
                 const penaltyStr = penalty > 0 ? '-' + penalty + ' Relations penalty' : '';
                 withdrawHTML = '<button class="agreement-withdraw-btn" onclick="withdrawAgreement(\'' + ag.id + '\')" title="' + escapeHtml(penaltyStr) + '">Withdraw</button>';
@@ -748,7 +753,7 @@ async function renderAgreementsTab() {
                     let withdrawBtn = '';
                     if (withdrawalPending) {
                         withdrawBtn = '<span class="trade-neg-status-value expiring" title="Withdrawal notice filed">Withdrawing in ' + withdrawalTicksLeft + ' tick' + (withdrawalTicksLeft !== 1 ? 's' : '') + '</span>';
-                    } else if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
+                    } else if (dr().isFM || dr().isHoG) {
                         const noticeLabel = ta.withdrawal_notice_ticks ? ta.withdrawal_notice_ticks + ' tick notice' : 'immediate';
                         withdrawBtn = '<button class="agreement-withdraw-btn" onclick="withdrawTradeAgreement(\'' + ta.id + '\')" title="' + noticeLabel + '">Withdraw</button>';
                     }
@@ -800,7 +805,7 @@ async function renderAgreementsTab() {
 }
 
 async function withdrawTradeAgreement(agreementId) {
-    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+    if (!dr().isFM && !dr().isHoG) {
         alert('Only the Foreign Minister or Head of Government can withdraw trade agreements.');
         return;
     }
@@ -927,7 +932,7 @@ async function withdrawTradeAgreement(agreementId) {
 async function withdrawAgreement(agreementId) {
     // Authorization: must be FM or HoG
     await refreshRoles();
-    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+    if (!dr().isFM && !dr().isHoG) {
         alert('Only the Foreign Minister or Head of Government can withdraw agreements.');
         return;
     }
@@ -1190,14 +1195,14 @@ function renderInboxCard(p) {
             '<button class="proposal-strike-btn" onclick="inboxStrikeArticles(\'' + p.id + '\')">Strike Articles</button>' +
             '<button class="proposal-reject-btn" onclick="rejectProposal(\'' + p.id + '\')">Reject</button>' +
         '</div>';
-    } else if (p.status === 'fm_review' && diplomaticRoles.isFM) {
+    } else if (p.status === 'fm_review' && dr().isFM) {
         // FM can approve (MINOR → activate, MAJOR → escalate to parliament)
         actionsHTML = '<div class="inbox-card-actions">' +
             '<button class="fm-approve-btn" onclick="fmApprove(\'' + p.id + '\')">Approve</button>' +
             '<button class="fm-escalate-btn" onclick="fmEscalate(\'' + p.id + '\')">Escalate to Parliament</button>' +
             '<button class="fm-reject-btn" onclick="fmReject(\'' + p.id + '\')">Reject</button>' +
         '</div>';
-    } else if (p.status === 'ratification_failed' && (diplomaticRoles.isFM || diplomaticRoles.isHoG)) {
+    } else if (p.status === 'ratification_failed' && (dr().isFM || dr().isHoG)) {
         actionsHTML = '<div class="inbox-card-actions">' +
             '<button class="fm-escalate-btn" onclick="fmEscalate(\'' + p.id + '\')">Resubmit to Parliament</button>' +
             '<button class="fm-reject-btn" onclick="fmReject(\'' + p.id + '\')">Abandon</button>' +
@@ -1334,7 +1339,7 @@ async function requireNegStatus(negotiationId, allowedStatuses, refreshFn) {
     const neg = await fetchNegotiation(negotiationId, 'status');
     if (!neg) return null;
     if (!allowedStatuses.includes(neg.status)) {
-        alert('This negotiation is no longer available (status: ' + neg.status + ').');
+        console.warn('[Diplo] Negotiation ' + negotiationId + ' status is "' + neg.status + '", expected one of: ' + allowedStatuses.join(', '));
         if (refreshFn) await refreshFn();
         return null;
     }
@@ -1401,7 +1406,7 @@ async function acceptTradeNegotiation(proposalId, negotiationId) {
     const neg = await fetchNegotiation(negotiationId);
     if (!neg) return;
     if (neg.status !== 'open') {
-        alert('This negotiation is no longer awaiting acceptance (status: ' + neg.status + ').');
+        console.warn('[Diplo] Negotiation ' + negotiationId + ' is no longer open (status: ' + neg.status + ')');
         await refreshDiplomacyUI();
         return;
     }
@@ -1419,12 +1424,12 @@ async function acceptTradeNegotiation(proposalId, negotiationId) {
     if (!proposalId) proposalId = await findProposalByNegotiationId(negotiationId);
 
     // Determine our highest-priority role for this negotiation
-    const ourAmb = diplomaticRoles.ambassadorTo.find(a =>
+    const ourAmb = dr().ambassadorTo.find(a =>
         a.target_nation_id === neg.nation_a_id || a.target_nation_id === neg.nation_b_id
     );
     const role = ourAmb ? 'ambassador'
-        : diplomaticRoles.isMoT ? 'trade_minister'
-        : diplomaticRoles.isFM ? 'foreign_minister'
+        : dr().isMoT ? 'trade_minister'
+        : dr().isFM ? 'foreign_minister'
         : 'head_of_government';
 
     const participants = neg.participants || [];
@@ -1558,7 +1563,7 @@ function renderPipelineTracker(proposal) {
 async function fmApprove(proposalId) {
     // Authorization: must be FM or HoG
     await refreshRoles();
-    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+    if (!dr().isFM && !dr().isHoG) {
         alert('Only the Foreign Minister or Head of Government can approve proposals.');
         return;
     }
@@ -1622,7 +1627,7 @@ async function fmApprove(proposalId) {
 async function fmEscalate(proposalId) {
     // Authorization: must be FM or HoG
     await refreshRoles();
-    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+    if (!dr().isFM && !dr().isHoG) {
         alert('Only the Foreign Minister or Head of Government can escalate proposals.');
         return;
     }
@@ -1701,7 +1706,7 @@ async function fmEscalate(proposalId) {
 async function fmReject(proposalId) {
     // Authorization: must be FM or HoG
     await refreshRoles();
-    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+    if (!dr().isFM && !dr().isHoG) {
         alert('Only the Foreign Minister or Head of Government can reject proposals.');
         return;
     }
@@ -2481,7 +2486,7 @@ async function resignAmbassador(ambassadorId, nationName) {
 async function recallAmbassador(ambassadorId, nationName) {
     // Authorization: must be FM or HoG
     await refreshRoles();
-    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+    if (!dr().isFM && !dr().isHoG) {
         alert('Only the Foreign Minister or Head of Government can recall ambassadors.');
         return;
     }
@@ -2535,7 +2540,7 @@ async function recallAmbassador(ambassadorId, nationName) {
 async function cancelPendingAmbassador(ambassadorId, nationName) {
     // Authorization: must be FM or HoG
     await refreshRoles();
-    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+    if (!dr().isFM && !dr().isHoG) {
         alert('Only the Foreign Minister or Head of Government can cancel ambassador nominations.');
         return;
     }
@@ -2665,8 +2670,8 @@ async function sendDiploMessage(targetNationId, targetNationName) {
     if (!text) return;
 
     // Authorization: must have an active ambassador to the target nation, or be FM/HoG
-    const isAmbToTarget = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === targetNationId);
-    if (!isAmbToTarget && !diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+    const isAmbToTarget = dr().ambassadorTo.some(a => a.target_nation_id === targetNationId);
+    if (!isAmbToTarget && !dr().isFM && !dr().isHoG) {
         alert('You must have an active ambassador to send diplomatic messages.');
         return;
     }
@@ -2736,7 +2741,7 @@ function jumpToAmbNation(targetNationId) {
     const paths = document.querySelectorAll('.land');
     for (const path of paths) {
         // We need to match by nation name — fetch from roles
-        const ambInfo = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === targetNationId);
+        const ambInfo = dr().ambassadorTo.find(a => a.target_nation_id === targetNationId);
         if (ambInfo) {
             const nationName = ambInfo.target_nation_name;
             const matchPath = document.querySelector('.land[data-nation-name="' + nationName + '"]');
@@ -2768,8 +2773,8 @@ async function renderInitiativeWizard() {
     // Check if player has any diplomatic role that can propose
     // HoG can draft at 3 AP penalty if no ambassador exists
     // MoT can propose trade negotiations directly
-    const hasAmbassador = diplomaticRoles && diplomaticRoles.ambassadorTo.length > 0;
-    const canPropose = diplomaticRoles && (diplomaticRoles.isFM || diplomaticRoles.isMoT || hasAmbassador || diplomaticRoles.isHoG);
+    const hasAmbassador = diplomaticRoles && dr().ambassadorTo.length > 0;
+    const canPropose = diplomaticRoles && (dr().isFM || dr().isMoT || hasAmbassador || dr().isHoG);
     if (!canPropose) {
         panel.innerHTML = '<p class="diplo-tab-placeholder">You need to be a Foreign Minister, Minister of Trade, Ambassador, or Head of Government to propose initiatives.</p>';
         return;
@@ -2924,7 +2929,7 @@ async function renderWizardStep1() {
     panel.innerHTML = '<p style="color:#6b6a5e;font-style:italic;font-size:0.82rem;">Loading nations...</p>';
 
     // Fetch nations we have ambassadors to (with active counterpart ambassadors)
-    const ambNationIds = diplomaticRoles.ambassadorTo.map(a => a.target_nation_id);
+    const ambNationIds = dr().ambassadorTo.map(a => a.target_nation_id);
     const hasAmbassador = ambNationIds.length > 0;
 
     // Also fetch ALL other nations for HoG fallback
@@ -2942,9 +2947,9 @@ async function renderWizardStep1() {
     const nationsWithCounterAmb = new Set(theirAmbs.map(a => a.nation_id));
 
     // Determine AP cost
-    const isHoGOnly = diplomaticRoles.isHoG && !hasAmbassador && !diplomaticRoles.isMoT && !diplomaticRoles.isFM;
-    const isMoTOnly = diplomaticRoles.isMoT && !hasAmbassador && !diplomaticRoles.isHoG;
-    const isFMOnly = diplomaticRoles.isFM && !hasAmbassador && !diplomaticRoles.isMoT && !diplomaticRoles.isHoG;
+    const isHoGOnly = dr().isHoG && !hasAmbassador && !dr().isMoT && !dr().isFM;
+    const isMoTOnly = dr().isMoT && !hasAmbassador && !dr().isHoG;
+    const isFMOnly = dr().isFM && !hasAmbassador && !dr().isMoT && !dr().isHoG;
     const canSelectAny = isHoGOnly || isMoTOnly || isFMOnly; // HoG, MoT, or FM can select any nation
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
@@ -2967,7 +2972,7 @@ async function renderWizardStep1() {
         const mutualAmbs = weHaveAmb && hasCounter;
         const canSelect = mutualAmbs || canSelectAny;
         const flagUrl = FLAG_URLS[nation.name] || null;
-        const ambInfo = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === nation.id);
+        const ambInfo = dr().ambassadorTo.find(a => a.target_nation_id === nation.id);
         const ambName = ambInfo ? ((ambInfo.ambassador_first_name || '') + ' ' + (ambInfo.ambassador_last_name || '')).trim() : '';
         const ambPartyInit = ambInfo?.factions?.abbreviation ? ' (' + ambInfo.factions.abbreviation + ')' : '';
 
@@ -3018,8 +3023,8 @@ function renderWizardStep2() {
     if (!panel) return;
 
     // MoT-only (no ambassador, no FM, no HoG) can only propose trade
-    const hasAmbassador = diplomaticRoles && diplomaticRoles.ambassadorTo.length > 0;
-    const isMoTOnly = diplomaticRoles.isMoT && !hasAmbassador && !diplomaticRoles.isFM && !diplomaticRoles.isHoG;
+    const hasAmbassador = diplomaticRoles && dr().ambassadorTo.length > 0;
+    const isMoTOnly = dr().isMoT && !hasAmbassador && !dr().isFM && !dr().isHoG;
 
     let html = '<p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;">What kind of initiative do you want to propose?</p>';
 
@@ -3085,8 +3090,8 @@ function renderWizardStep2() {
 function wizardSelectCategory(category) {
     // MoT-only players cannot select diplomatic initiatives
     if (category === 'diplomatic') {
-        const hasAmbassador = diplomaticRoles && diplomaticRoles.ambassadorTo.length > 0;
-        const isMoTOnly = diplomaticRoles.isMoT && !hasAmbassador && !diplomaticRoles.isFM && !diplomaticRoles.isHoG;
+        const hasAmbassador = diplomaticRoles && dr().ambassadorTo.length > 0;
+        const isMoTOnly = dr().isMoT && !hasAmbassador && !dr().isFM && !dr().isHoG;
         if (isMoTOnly) return;
     }
 
@@ -3112,8 +3117,8 @@ async function wizardGoToStep3() {
 
     // Block MoT-only players from the diplomatic initiative path
     if (wizardCategory === 'diplomatic') {
-        const hasAmbassador = diplomaticRoles && diplomaticRoles.ambassadorTo.length > 0;
-        const isMoTOnly = diplomaticRoles.isMoT && !hasAmbassador && !diplomaticRoles.isFM && !diplomaticRoles.isHoG;
+        const hasAmbassador = diplomaticRoles && dr().ambassadorTo.length > 0;
+        const isMoTOnly = dr().isMoT && !hasAmbassador && !dr().isFM && !dr().isHoG;
         if (isMoTOnly) {
             alert('The Minister of Trade can only propose Trade Agreements, not Diplomatic Initiatives.');
             return;
@@ -3223,7 +3228,7 @@ async function renderDiploDraftSection() {
     const { data: targetNation } = await _supabase.from('nations').select('id, name').eq('id', wizardTargetNation).single();
     const targetName = targetNation?.name || 'Unknown';
 
-    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    const ourAmb = dr().ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
     const ourAmbName = ourAmb ? ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim() : '?';
     const ourAmbParty = ourAmb?.factions?.abbreviation ? ' (' + ourAmb.factions.abbreviation + ')' : '';
 
@@ -3325,8 +3330,8 @@ async function renderWizardStep3TradeProposal() {
         return;
     }
 
-    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
-    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isMoT && !diplomaticRoles.isFM;
+    const ourAmb = dr().ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    const isHoGOnly = dr().isHoG && !ourAmb && !dr().isMoT && !dr().isFM;
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
     let html = `
@@ -3409,8 +3414,8 @@ async function renderWizardStep3AidProposal() {
         return;
     }
 
-    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
-    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isFM && !diplomaticRoles.isMoT;
+    const ourAmb = dr().ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    const isHoGOnly = dr().isHoG && !ourAmb && !dr().isFM && !dr().isMoT;
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
     let html = `
@@ -3492,8 +3497,8 @@ async function submitAidProposal() {
     const nameInput = document.getElementById('aid-neg-name');
     const agreementName = (nameInput?.value || '').trim() || 'Economic Aid Negotiations';
 
-    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
-    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isFM && !diplomaticRoles.isMoT;
+    const ourAmb = dr().ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    const isHoGOnly = dr().isHoG && !ourAmb && !dr().isFM && !dr().isMoT;
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
     // Deduct AP
@@ -3506,8 +3511,8 @@ async function submitAidProposal() {
 
     // Determine role
     let myRole = 'ambassador';
-    if (diplomaticRoles.isFM) myRole = 'foreign_minister';
-    if (diplomaticRoles.isHoG) myRole = 'prime_minister';
+    if (dr().isFM) myRole = 'foreign_minister';
+    if (dr().isHoG) myRole = 'prime_minister';
 
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
@@ -3609,8 +3614,8 @@ async function renderWizardStep3Unilateral() {
         return;
     }
 
-    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
-    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isFM && !diplomaticRoles.isMoT;
+    const ourAmb = dr().ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    const isHoGOnly = dr().isHoG && !ourAmb && !dr().isFM && !dr().isMoT;
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
     const sectorOpts = TRADEABLE_SECTORS.map(s =>
@@ -3755,8 +3760,8 @@ async function submitRetaliatory() {
     const durType = document.querySelector('input[name="rt-dur-type"]:checked')?.value || 'fixed';
     const durTicks = durType === 'fixed' ? Math.min(48, Math.max(4, parseInt(document.getElementById('rt-dur-ticks')?.value || '12'))) : null;
 
-    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
-    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isFM && !diplomaticRoles.isMoT;
+    const ourAmb = dr().ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    const isHoGOnly = dr().isHoG && !ourAmb && !dr().isFM && !dr().isMoT;
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
     // Deduct AP
@@ -3947,8 +3952,8 @@ async function wizardSubmit() {
 
     // MoT-only players cannot submit diplomatic initiatives
     await refreshRoles();
-    const hasAmbassador = diplomaticRoles && diplomaticRoles.ambassadorTo.length > 0;
-    const isMoTOnly = diplomaticRoles.isMoT && !hasAmbassador && !diplomaticRoles.isFM && !diplomaticRoles.isHoG;
+    const hasAmbassador = diplomaticRoles && dr().ambassadorTo.length > 0;
+    const isMoTOnly = dr().isMoT && !hasAmbassador && !dr().isFM && !dr().isHoG;
     if (isMoTOnly) {
         alert('The Minister of Trade can only propose Trade Agreements, not Diplomatic Initiatives.');
         return;
@@ -3957,7 +3962,7 @@ async function wizardSubmit() {
     const typeInfo = INITIATIVE_TYPES[wizardAgreementType];
     if (!typeInfo) { alert('Invalid agreement type.'); return; }
 
-    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    const ourAmb = dr().ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
     if (!ourAmb) { alert('You are not ambassador to this nation.'); return; }
 
     // Deduct AP for diplomatic initiative
@@ -4053,10 +4058,10 @@ async function submitTradeProposal() {
         return;
     }
 
-    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
-    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isMoT && !diplomaticRoles.isFM;
-    const isMoTProposer = diplomaticRoles.isMoT && !ourAmb && !isHoGOnly;
-    const isFMProposer = diplomaticRoles.isFM && !ourAmb && !diplomaticRoles.isMoT && !isHoGOnly;
+    const ourAmb = dr().ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    const isHoGOnly = dr().isHoG && !ourAmb && !dr().isMoT && !dr().isFM;
+    const isMoTProposer = dr().isMoT && !ourAmb && !isHoGOnly;
+    const isFMProposer = dr().isFM && !ourAmb && !dr().isMoT && !isHoGOnly;
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
     // Deduct AP
@@ -4268,9 +4273,9 @@ async function openTradeNegotiation(negotiationId) {
     // Can FM, PM, or MoT join?
     const myParticipant = participants.find(p => p.faction_id === currentFaction.id);
     if (!myParticipant && neg.status === 'active') {
-        const isFM = diplomaticRoles.isFM;
-        const isPM = diplomaticRoles.isHoG;
-        const isMoT = diplomaticRoles.isMoT;
+        const isFM = dr().isFM;
+        const isPM = dr().isHoG;
+        const isMoT = dr().isMoT;
         if (isMoT) {
             const joinCost = DIPLOMACY_CONFIG.JOIN_NEGOTIATION_MOT_AP;
             html += `
@@ -5628,7 +5633,7 @@ async function openInitiativeForm() {
     const theirAmb = selectedTheirAmbassador;
     if (!target || !theirAmb) return;
 
-    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === target.id);
+    const ourAmb = dr().ambassadorTo.find(a => a.target_nation_id === target.id);
     if (!ourAmb) return;
 
     // Fetch our ambassador's full name
@@ -5812,7 +5817,7 @@ function updateInitiativePreview() {
 
     const target = selectedTargetNation;
     const theirAmb = selectedTheirAmbassador;
-    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === target?.id);
+    const ourAmb = dr().ambassadorTo.find(a => a.target_nation_id === target?.id);
     const ourAmbName = ourAmb ? ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim() + (ourAmb.factions?.abbreviation ? ' (' + ourAmb.factions.abbreviation + ')' : '') : '?';
     const theirAmbName = theirAmb ? ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim() + (theirAmb.factions?.abbreviation ? ' (' + theirAmb.factions.abbreviation + ')' : '') : '?';
 
@@ -5859,7 +5864,7 @@ async function submitInitiative() {
     const theirAmb = selectedTheirAmbassador;
     if (!target || !theirAmb) { alert('No target nation or ambassador.'); return; }
 
-    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === target.id);
+    const ourAmb = dr().ambassadorTo.find(a => a.target_nation_id === target.id);
     if (!ourAmb) { alert('You are not ambassador to this nation.'); return; }
 
     // Deduct AP for diplomatic initiative
@@ -5941,8 +5946,8 @@ async function acceptProposal(proposalId) {
     // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
     await refreshRoles();
     const isTargetNation = proposal.target_nation_id === currentNation.id;
-    const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
-    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG)) {
+    const isAmbToProposer = dr().ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
+    if (!isTargetNation || (!isAmbToProposer && !dr().isFM && !dr().isHoG)) {
         alert('You are not authorized to accept this proposal.');
         return;
     }
@@ -6053,8 +6058,8 @@ async function rejectProposal(proposalId) {
     // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
     await refreshRoles();
     const isTargetNation = proposal.target_nation_id === currentNation.id;
-    const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
-    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG)) {
+    const isAmbToProposer = dr().ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
+    if (!isTargetNation || (!isAmbToProposer && !dr().isFM && !dr().isHoG)) {
         alert('You are not authorized to reject this proposal.');
         return;
     }
@@ -6092,8 +6097,8 @@ async function strikeArticles(proposalId) {
     // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
     await refreshRoles();
     const isTargetNation = proposal.target_nation_id === currentNation.id;
-    const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
-    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG)) {
+    const isAmbToProposer = dr().ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
+    if (!isTargetNation || (!isAmbToProposer && !dr().isFM && !dr().isHoG)) {
         alert('You are not authorized to revise this proposal.');
         return;
     }
@@ -6129,7 +6134,7 @@ async function strikeArticles(proposalId) {
 
 async function initiateStateVisit(targetNationId) {
     if (!currentNation || !currentFaction) { alert('No nation/faction loaded.'); return; }
-    if (!diplomaticRoles.isHoG) { alert('Only the Head of Government can initiate a State Visit.'); return; }
+    if (!dr().isHoG) { alert('Only the Head of Government can initiate a State Visit.'); return; }
 
     // Fetch target nation
     const { data: targetNation } = await _supabase.from('nations').select('*').eq('id', targetNationId).single();
@@ -6311,7 +6316,7 @@ async function acceptStateVisit(proposalId) {
 
     // Authorization: caller must be target nation's HoG
     await refreshRoles();
-    if (!diplomaticRoles.isHoG || proposal.target_nation_id !== currentNation.id) {
+    if (!dr().isHoG || proposal.target_nation_id !== currentNation.id) {
         alert('Only the Head of Government of the visited nation can accept a State Visit.');
         return;
     }

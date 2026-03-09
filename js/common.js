@@ -157,9 +157,16 @@ export function setCachedState(user, faction, nation, shard) {
     sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
 }
 
+let _loadGameStatePromise = null;
 export async function loadGameState(requireFaction = true) {
     const cached = getCachedState();
     if (cached) { console.log('Using cached state'); return cached; }
+    // Deduplicate concurrent calls (e.g. double-init from admin override)
+    if (_loadGameStatePromise) { console.log('Reusing in-flight loadGameState'); return _loadGameStatePromise; }
+    _loadGameStatePromise = _loadGameStateImpl(requireFaction);
+    try { return await _loadGameStatePromise; } finally { _loadGameStatePromise = null; }
+}
+async function _loadGameStateImpl(requireFaction) {
     console.log('Fetching fresh state from Supabase');
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return null; }
@@ -728,23 +735,7 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     }
     // Update presidential nominee badge (non-blocking)
     updatePresNomineeBadge(state.faction, state.nation);
-    // Record browser fingerprint (non-blocking, fire-and-forget)
-    recordFingerprint(_supabase);
-    // Check ban status (non-blocking, redirects if banned)
-    checkBanStatus(_supabase).then(result => {
-        if (result.banned) {
-            document.body.innerHTML = `
-                <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0d1117;color:#e0e0e0;font-family:sans-serif;">
-                    <div style="text-align:center;max-width:480px;padding:40px;">
-                        <div style="font-size:48px;margin-bottom:16px;">&#x1F6AB;</div>
-                        <h1 style="color:#ff4444;margin-bottom:12px;">Account ${result.ban_type === 'banned' ? 'Banned' : 'Suspended'}</h1>
-                        <p style="color:#aaa;margin-bottom:8px;">${result.reason}</p>
-                        ${result.banned_until ? `<p style="color:#888;font-size:0.85rem;">Until: ${new Date(result.banned_until).toLocaleString()}</p>` : '<p style="color:#888;font-size:0.85rem;">This action is permanent.</p>'}
-                        <button onclick="handleLogout()" style="margin-top:24px;padding:10px 24px;background:#333;color:#fff;border:none;cursor:pointer;">Log Out</button>
-                    </div>
-                </div>`;
-        }
-    });
+
     if (onReady) {
         await onReady(state);
     }
