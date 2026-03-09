@@ -2117,35 +2117,55 @@ export async function enactBill(supabase, bill, currentTick) {
         }
     }
 
-    // ── Apply funding articles (ministry funding_level changes & discretionary grants) ──
+    // ── Apply funding articles (per-institution level changes & discretionary grants) ──
     for (const art of (bill.bill_articles || [])) {
         const fd = art.funding_data;
         if (!fd || !fd.ministry_key) continue;
 
-        if (fd.action === 'discretionary') {
-            // Deduct grant from treasury (add to national debt)
-            const grantAmount = Number(fd.grant_amount) || 0;
-            if (grantAmount > 0) {
-                const newDebt = (Number(nation.debt) || 0) + grantAmount;
-                await supabase.from('nations').update({ debt: newDebt }).eq('id', bill.nation_id);
-                nation.debt = newDebt; // keep in-memory copy consistent
-                console.log(`[enactBill] Discretionary grant: $${grantAmount}M to ${fd.ministry_key}, debt now $${newDebt}M`);
-            }
-        } else {
-            // Increase or decrease — set funding_level on the ministry
-            const proposedLevel = Number(fd.proposed_level);
-            if (!isNaN(proposedLevel) && proposedLevel >= 0) {
-                const { error: fundErr } = await supabase.from('ministries')
-                    .update({ funding_level: proposedLevel })
-                    .eq('nation_id', bill.nation_id)
-                    .eq('ministry_key', fd.ministry_key)
-                    .eq('is_active', true);
-                if (fundErr) {
-                    console.error(`[enactBill] Failed to update funding_level for ${fd.ministry_key}:`, fundErr.message);
+        // Per-institution funding changes: update budget_item_allocations
+        const instChanges = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
+        if (instChanges.length > 0 && nation.last_budget_bill_id) {
+            for (const inst of instChanges) {
+                // Fetch current allocation to get needed_amount
+                const { data: existing } = await supabase.from('budget_item_allocations')
+                    .select('id, needed_amount')
+                    .eq('bill_id', nation.last_budget_bill_id)
+                    .eq('item_id', inst.id)
+                    .eq('item_type', 'institution')
+                    .maybeSingle();
+
+                if (existing) {
+                    const newAlloc = (inst.proposed_pct / 100) * Number(existing.needed_amount);
+                    await supabase.from('budget_item_allocations')
+                        .update({ allocation_amount: newAlloc })
+                        .eq('id', existing.id);
+                    console.log(`[enactBill] Institution funding: ${inst.id} → ${inst.proposed_pct}% (alloc $${Math.round(newAlloc)}M)`);
                 } else {
-                    console.log(`[enactBill] Ministry funding: ${fd.ministry_key} → ${Math.round(proposedLevel * 100)}%`);
+                    console.warn(`[enactBill] No budget_item_allocation found for ${inst.id}, skipping`);
                 }
             }
+        }
+
+        // Also update the ministry-level funding_level as a weighted average
+        if (instChanges.length > 0) {
+            const allInst = fd.institutions || [];
+            const avgPct = allInst.reduce((sum, i) => sum + i.proposed_pct, 0) / (allInst.length || 1);
+            const newLevel = avgPct / 100;
+            await supabase.from('ministries')
+                .update({ funding_level: newLevel })
+                .eq('nation_id', bill.nation_id)
+                .eq('ministry_key', fd.ministry_key)
+                .eq('is_active', true);
+            console.log(`[enactBill] Ministry funding_level: ${fd.ministry_key} → ${Math.round(avgPct)}%`);
+        }
+
+        // Discretionary grant: add to national debt
+        const grantAmount = Number(fd.discretionary) || 0;
+        if (grantAmount > 0) {
+            const newDebt = (Number(nation.debt) || 0) + grantAmount;
+            await supabase.from('nations').update({ debt: newDebt }).eq('id', bill.nation_id);
+            nation.debt = newDebt;
+            console.log(`[enactBill] Discretionary grant: $${grantAmount}M to ${fd.ministry_key}, debt now $${newDebt}M`);
         }
     }
 

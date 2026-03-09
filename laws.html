@@ -76,26 +76,11 @@
                 </select>
             </div>
             <div id="funding-controls" style="display:none;">
-                <div class="form-group">
-                    <label class="form-label">Action</label>
-                    <select class="form-select" id="funding-action-select" onchange="onFundingActionChange()">
-                        <option value="increase">Increase Funding</option>
-                        <option value="decrease">Decrease Funding</option>
-                        <option value="discretionary">Discretionary Grant</option>
-                    </select>
-                </div>
-                <div id="funding-level-group">
-                    <label class="form-label">Proposed Funding Level: <strong id="funding-level-display">100%</strong></label>
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span style="color:#ef4444;font-size:0.8rem;">0%</span>
-                        <input type="range" id="funding-level-slider" min="0" max="300" value="100" step="5" style="flex:1;" oninput="onFundingSliderChange()">
-                        <span style="color:#22c55e;font-size:0.8rem;">300%</span>
-                    </div>
-                    <div id="funding-status-preview" style="margin-top:6px;font-size:0.8rem;"></div>
-                </div>
-                <div id="funding-grant-group" style="display:none;">
-                    <label class="form-label">Grant Amount ($M)</label>
-                    <input type="number" class="form-input" id="funding-grant-amount" min="1" max="50000" value="100" placeholder="e.g., 500">
+                <div id="funding-institutions"></div>
+                <div style="margin-top:12px;padding-top:10px;border-top:1px solid #333;">
+                    <label class="form-label">Discretionary Funds ($M)</label>
+                    <input type="number" class="form-input" id="funding-discretionary" min="0" max="50000" value="0" placeholder="0">
+                    <div style="font-size:0.7rem;color:#888;margin-top:4px;">One-time treasury expenditure added to national debt.</div>
                 </div>
             </div>
             <div style="display:flex;gap:8px;margin-top:12px;">
@@ -788,9 +773,17 @@ function renderFloorBill(bill, isVetoed) {
                 (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number).map(art => {
                     if (!art.policies) {
                         const _fd = art.funding_data;
-                        const _badge = _fd
-                            ? `<span style="background:${_fd.action === 'decrease' ? '#ef4444' : _fd.action === 'discretionary' ? '#2196F3' : '#22c55e'};color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">${_fd.action === 'decrease' ? 'DEFUND' : _fd.action === 'discretionary' ? 'GRANT' : 'FUND'}</span>`
-                            : `<span style="background:#2196F3;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">TEXT</span>`;
+                        let _badge;
+                        if (_fd) {
+                            const _chs = (_fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
+                            const _hasInc = _chs.some(i => i.proposed_pct > i.current_pct);
+                            const _hasDec = _chs.some(i => i.proposed_pct < i.current_pct);
+                            const _bc = _hasDec ? '#ef4444' : _hasInc ? '#22c55e' : '#2196F3';
+                            const _bl = _hasDec && !_hasInc ? 'DEFUND' : _hasInc && !_hasDec ? 'FUND' : 'FUNDING';
+                            _badge = `<span style="background:${_bc};color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">${_bl}</span>`;
+                        } else {
+                            _badge = `<span style="background:#2196F3;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">TEXT</span>`;
+                        }
                         return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.article_title || 'Untitled Provision'} ${_badge}</span><div class="article-desc" style="white-space:pre-wrap;">${art.article_text || ''}</div></div></div>`;
                     }
                     const chipHTML = renderIdeologyChips(art.policies);
@@ -1039,9 +1032,17 @@ function renderCommitteeBill(bill) {
                 (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number).map(art => {
                     if (!art.policies) {
                         const _fd = art.funding_data;
-                        const _badge = _fd
-                            ? `<span style="background:${_fd.action === 'decrease' ? '#ef4444' : _fd.action === 'discretionary' ? '#2196F3' : '#22c55e'};color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">${_fd.action === 'decrease' ? 'DEFUND' : _fd.action === 'discretionary' ? 'GRANT' : 'FUND'}</span>`
-                            : `<span style="background:#2196F3;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">TEXT</span>`;
+                        let _badge;
+                        if (_fd) {
+                            const _chs = (_fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
+                            const _hasInc = _chs.some(i => i.proposed_pct > i.current_pct);
+                            const _hasDec = _chs.some(i => i.proposed_pct < i.current_pct);
+                            const _bc = _hasDec ? '#ef4444' : _hasInc ? '#22c55e' : '#2196F3';
+                            const _bl = _hasDec && !_hasInc ? 'DEFUND' : _hasInc && !_hasDec ? 'FUND' : 'FUNDING';
+                            _badge = `<span style="background:${_bc};color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">${_bl}</span>`;
+                        } else {
+                            _badge = `<span style="background:#2196F3;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">TEXT</span>`;
+                        }
                         return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.article_title || 'Untitled Provision'} ${_badge}</span><div class="article-desc" style="white-space:pre-wrap;">${art.article_text || ''}</div></div></div>`;
                     }
                     const chipHTML = renderIdeologyChips(art.policies, !!art.repeal_active_law_id);
@@ -1190,8 +1191,21 @@ function openDraftModal() {
     document.getElementById('bill-name-section').style.display = 'none';
     document.getElementById('submit-bill-btn').disabled = true;
     document.getElementById('draft-modal').classList.add('active');
-    // Fetch ministries for funding articles
-    _supabase.from('ministries').select('ministry_key, funding_level').eq('nation_id', currentNation.id).eq('is_active', true).then(({ data }) => { window._allMinistries = data || []; });
+    // Fetch data needed for funding articles
+    Promise.all([
+        _supabase.from('ministries').select('ministry_key, funding_level').eq('nation_id', currentNation.id).eq('is_active', true),
+        _supabase.from('ministry_institution_config').select('*'),
+        currentNation.last_budget_bill_id
+            ? _supabase.from('budget_item_allocations').select('item_id, allocation_amount, needed_amount').eq('bill_id', currentNation.last_budget_bill_id).eq('item_type', 'institution')
+            : Promise.resolve({ data: [] })
+    ]).then(([ministries, instConfig, itemAllocs]) => {
+        window._allMinistries = ministries.data || [];
+        window._instConfig = instConfig.data || [];
+        window._itemAllocations = {};
+        for (const ia of (itemAllocs.data || [])) {
+            window._itemAllocations[ia.item_id] = { allocated: Number(ia.allocation_amount || 0), needed: Number(ia.needed_amount || 0) };
+        }
+    });
 }
 
 function closeModal() { document.getElementById('draft-modal').classList.remove('active'); }
@@ -1250,17 +1264,91 @@ function hideTextArticleForm() {
     _showAllArticleButtons(); _hideAllArticleForms();
 }
 
+const FUNDING_MINISTRY_LABELS = { interior:'Interior', foreign:'Foreign Affairs', defense:'Defense', finance:'Finance', education:'Education', healthcare:'Healthcare', labor:'Labor', justice:'Justice', trade:'Trade', energy:'Energy', transportation:'Transport' };
+
+// Hardcoded institution map (mirrors MINISTRY_INSTITUTIONS from ministry-actions.html)
+const FUNDING_INSTITUTIONS = {
+    healthcare: [
+        { id: 'hospitals', name: 'Public Hospital Network', desc: 'Buildings, beds, equipment, ERs, operating rooms, ambulances.', primaryStat: 'Healthcare Access', secondaryStat: 'Happiness' },
+        { id: 'workforce', name: 'Medical Workforce', desc: 'Doctors, nurses, surgeons, specialists, paramedics.', primaryStat: 'Healthcare Quality', secondaryStat: 'Happiness' },
+        { id: 'prevention', name: 'Public Health & Disease Prevention', desc: 'Vaccinations, disease surveillance, clean water, epidemic prep.', primaryStat: 'Healthcare Quality', secondaryStat: 'Stability' }
+    ],
+    education: [
+        { id: 'primary_schools', name: 'Primary & Secondary Schools', desc: 'Public schools, teachers, textbooks, school infrastructure.', primaryStat: 'Primary Education', secondaryStat: 'Happiness' },
+        { id: 'universities', name: 'Universities & Research', desc: 'Higher education, research grants, labs, academic institutions.', primaryStat: 'Higher Education', secondaryStat: 'Digital Infrastructure' },
+        { id: 'vocational', name: 'Vocational Training', desc: 'Trade schools, apprenticeships, workforce development programs.', primaryStat: 'Primary Education', secondaryStat: 'Unemployment' }
+    ],
+    defense: [
+        { id: 'military', name: 'Armed Forces', desc: 'Army, navy, air force personnel, equipment, bases.', primaryStat: 'Military Strength', secondaryStat: 'Stability' },
+        { id: 'intelligence', name: 'Intelligence & Cybersecurity', desc: 'Intelligence agencies, cyber defense, counter-terrorism.', primaryStat: 'Digital Infrastructure', secondaryStat: 'Stability' },
+        { id: 'veterans', name: 'Veterans Affairs', desc: 'Veteran healthcare, pensions, rehabilitation services.', primaryStat: 'Happiness', secondaryStat: 'Stability' }
+    ],
+    labor: [
+        { id: 'employment_services', name: 'Employment Services', desc: 'Job centers, unemployment benefits, retraining programs.', primaryStat: 'Unemployment', secondaryStat: 'Happiness' },
+        { id: 'worker_safety', name: 'Worker Safety & Standards', desc: 'Workplace safety inspections, labor law enforcement.', primaryStat: 'Stability', secondaryStat: 'Happiness' },
+        { id: 'social_security', name: 'Social Security & Pensions', desc: 'Retirement pensions, disability benefits, social safety net.', primaryStat: 'Happiness', secondaryStat: 'Stability' }
+    ],
+    justice: [
+        { id: 'courts', name: 'Courts & Legal System', desc: 'Courthouses, judges, prosecutors, public defenders.', primaryStat: 'Rule of Law', secondaryStat: 'Stability' },
+        { id: 'corrections', name: 'Corrections & Prisons', desc: 'Prisons, rehabilitation, parole systems.', primaryStat: 'Stability', secondaryStat: 'Rule of Law' },
+        { id: 'law_enforcement', name: 'Law Enforcement', desc: 'Police force, crime prevention, investigations.', primaryStat: 'Stability', secondaryStat: 'Happiness' }
+    ],
+    energy: [
+        { id: 'power_grid', name: 'Power Grid & Distribution', desc: 'Electrical grid, substations, power distribution networks.', primaryStat: 'Physical Infrastructure', secondaryStat: 'Digital Infrastructure' },
+        { id: 'generation', name: 'Power Generation', desc: 'Power plants, renewable energy, fuel procurement.', primaryStat: 'Physical Infrastructure', secondaryStat: 'Environment' },
+        { id: 'regulation', name: 'Energy Regulation', desc: 'Price controls, safety standards, environmental compliance.', primaryStat: 'Environment', secondaryStat: 'Stability' }
+    ],
+    transportation: [
+        { id: 'roads', name: 'Roads & Highways', desc: 'Road construction, maintenance, bridges, tunnels.', primaryStat: 'Physical Infrastructure', secondaryStat: 'Happiness' },
+        { id: 'public_transit', name: 'Public Transit', desc: 'Buses, metro, rail, ferries, transit infrastructure.', primaryStat: 'Physical Infrastructure', secondaryStat: 'Environment' },
+        { id: 'aviation', name: 'Ports & Aviation', desc: 'Airports, seaports, customs facilities.', primaryStat: 'Physical Infrastructure', secondaryStat: 'Credit' }
+    ],
+    finance: [
+        { id: 'tax_admin', name: 'Tax Administration', desc: 'Tax collection, auditing, compliance enforcement.', primaryStat: 'Credit', secondaryStat: 'Rule of Law' },
+        { id: 'central_bank', name: 'Central Bank & Monetary Policy', desc: 'Interest rates, currency stability, banking regulation.', primaryStat: 'Inflation', secondaryStat: 'Credit' },
+        { id: 'development_bank', name: 'Development & Investment', desc: 'Development loans, infrastructure investment, economic zones.', primaryStat: 'GDP Growth', secondaryStat: 'Unemployment' }
+    ],
+    foreign: [
+        { id: 'embassies', name: 'Embassies & Consulates', desc: 'Diplomatic missions, foreign service officers.', primaryStat: 'Diplomacy', secondaryStat: 'Stability' },
+        { id: 'foreign_aid', name: 'Foreign Aid Programs', desc: 'Humanitarian aid, development assistance, disaster relief.', primaryStat: 'Diplomacy', secondaryStat: 'Happiness' },
+        { id: 'trade_missions', name: 'Trade Missions', desc: 'Trade negotiations, export promotion, trade agreements.', primaryStat: 'Credit', secondaryStat: 'GDP Growth' }
+    ],
+    interior: [
+        { id: 'civil_service', name: 'Civil Service', desc: 'Public administration, government offices, civil servants.', primaryStat: 'Govt. Capacity', secondaryStat: 'Rule of Law' },
+        { id: 'emergency_services', name: 'Emergency Services', desc: 'Fire departments, disaster response, emergency management.', primaryStat: 'Stability', secondaryStat: 'Happiness' },
+        { id: 'census', name: 'Census & Statistics', desc: 'Population data, economic surveys, national statistics.', primaryStat: 'Govt. Capacity', secondaryStat: 'Credit' }
+    ],
+    trade: [
+        { id: 'customs', name: 'Customs & Border Trade', desc: 'Customs enforcement, tariff collection, trade compliance.', primaryStat: 'Credit', secondaryStat: 'Rule of Law' },
+        { id: 'export_promotion', name: 'Export Promotion Agency', desc: 'Export incentives, trade shows, market access programs.', primaryStat: 'GDP Growth', secondaryStat: 'Credit' },
+        { id: 'competition', name: 'Competition & Consumer Protection', desc: 'Anti-monopoly enforcement, consumer rights, market fairness.', primaryStat: 'Rule of Law', secondaryStat: 'Happiness' }
+    ]
+};
+
+function _getFundingLabel(pct) {
+    if (pct > 100) return { label: 'OVERFUNDED', color: '#22c55e' };
+    if (pct >= 100) return { label: 'FULLY FUNDED', color: '#22c55e' };
+    if (pct >= 90) return { label: 'STRETCHED', color: '#a3e635' };
+    if (pct >= 75) return { label: 'STRAINED', color: '#facc15' };
+    if (pct >= 50) return { label: 'UNDERFUNDED', color: '#f97316' };
+    if (pct >= 25) return { label: 'CRITICAL', color: '#ef4444' };
+    return { label: 'COLLAPSED', color: '#dc2626' };
+}
+
+function _getInstFundingPct(instId) {
+    const ia = (window._itemAllocations || {})[instId];
+    if (ia && ia.needed > 0) return Math.round((ia.allocated / ia.needed) * 100);
+    return 100; // default fully funded when no allocation data
+}
+
 function showFundingArticleForm() {
     _hideAllArticleButtons(); _hideAllArticleForms();
     document.getElementById('add-funding-article-form').style.display = 'block';
-    // Populate ministry dropdown from ministryData (fetched at page load)
     const sel = document.getElementById('funding-ministry-select');
-    const FUNDING_MINISTRY_LABELS = { interior:'Interior', foreign:'Foreign Affairs', defense:'Defense', finance:'Finance', education:'Education', healthcare:'Healthcare', labor:'Labor', justice:'Justice', trade:'Trade', energy:'Energy', transportation:'Transport' };
     sel.innerHTML = '<option value="">-- Choose a ministry --</option>';
-    // Get ministry keys already in draft funding articles
     const usedKeys = new Set(draftArticles.filter(a => a.isFunding).map(a => a.fundingData.ministry_key));
     for (const [key, label] of Object.entries(FUNDING_MINISTRY_LABELS)) {
-        if (usedKeys.has(key)) continue; // one per ministry per bill
+        if (usedKeys.has(key)) continue;
         sel.innerHTML += `<option value="${key}">${label}</option>`;
     }
     document.getElementById('funding-controls').style.display = 'none';
@@ -1276,53 +1364,70 @@ function onFundingMinistryChange() {
     if (!key) { document.getElementById('funding-controls').style.display = 'none'; document.getElementById('add-funding-btn').disabled = true; return; }
     document.getElementById('funding-controls').style.display = 'block';
     document.getElementById('add-funding-btn').disabled = false;
-    // Set slider to current funding level
-    const ministry = (window._allMinistries || []).find(m => m.ministry_key === key);
-    const currentPct = Math.round((ministry?.funding_level ?? 1.0) * 100);
-    document.getElementById('funding-level-slider').value = currentPct;
-    document.getElementById('funding-action-select').value = 'increase';
-    onFundingActionChange();
-    onFundingSliderChange();
+    document.getElementById('funding-discretionary').value = 0;
+    // Render institution sliders
+    const institutions = FUNDING_INSTITUTIONS[key] || [];
+    const container = document.getElementById('funding-institutions');
+    container.innerHTML = institutions.map(inst => {
+        const currentPct = _getInstFundingPct(inst.id);
+        const fl = _getFundingLabel(currentPct);
+        return `<div class="funding-inst-card" style="border-left:3px solid ${fl.color};background:#1a1a1a;padding:10px 12px;margin-bottom:8px;border-radius:4px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <div style="font-weight:600;font-size:0.85rem;color:#eee;">${escapeHtml(inst.name)}</div>
+                    <div style="font-size:0.7rem;color:#888;">${escapeHtml(inst.desc)}</div>
+                </div>
+                <div style="text-align:right;">
+                    <span style="font-size:0.65rem;font-weight:bold;color:${fl.color};text-transform:uppercase;">${fl.label}</span>
+                    <div style="font-size:0.9rem;font-weight:700;color:${fl.color};" id="funding-pct-${inst.id}">${currentPct}%</div>
+                </div>
+            </div>
+            <div style="margin-top:6px;">
+                <input type="range" id="funding-slider-${inst.id}" data-inst-id="${inst.id}" min="0" max="200" value="${currentPct}" step="5" style="width:100%;" oninput="onInstSliderChange('${inst.id}')">
+                <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#555;"><span>0%</span><span>100%</span><span>200%</span></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:4px;">
+                <span style="font-size:0.65rem;color:#888;">▸ ${inst.primaryStat}</span>
+                <span style="font-size:0.65rem;color:#666;">${inst.secondaryStat}</span>
+            </div>
+        </div>`;
+    }).join('');
 }
 
-function onFundingActionChange() {
-    const action = document.getElementById('funding-action-select').value;
-    document.getElementById('funding-level-group').style.display = action !== 'discretionary' ? 'block' : 'none';
-    document.getElementById('funding-grant-group').style.display = action === 'discretionary' ? 'block' : 'none';
-}
-
-function onFundingSliderChange() {
-    const pct = parseInt(document.getElementById('funding-level-slider').value);
-    document.getElementById('funding-level-display').textContent = pct + '%';
-    // Show status preview
-    let status, color;
-    if (pct >= 100) { status = 'Fully Funded'; color = '#22c55e'; }
-    else if (pct >= 90) { status = 'Stretched — primary stat decays -0.3/tick'; color = '#a3e635'; }
-    else if (pct >= 75) { status = 'Strained — primary -0.5/tick, secondary -0.2/tick'; color = '#facc15'; }
-    else if (pct >= 50) { status = 'Underfunded — primary -0.9/tick, secondary -0.5/tick'; color = '#f97316'; }
-    else if (pct >= 25) { status = 'Critical — primary -1.7/tick, secondary -0.9/tick'; color = '#ef4444'; }
-    else { status = 'Collapsed — primary -2.7/tick, secondary -1.7/tick'; color = '#dc2626'; }
-    if (pct > 100) { status = 'Overfunded (' + pct + '%) — enhanced stat maintenance'; color = '#22c55e'; }
-    document.getElementById('funding-status-preview').innerHTML = `<span style="color:${color};">${status}</span>`;
+function onInstSliderChange(instId) {
+    const slider = document.getElementById('funding-slider-' + instId);
+    const pct = parseInt(slider.value);
+    const fl = _getFundingLabel(pct);
+    const pctEl = document.getElementById('funding-pct-' + instId);
+    pctEl.textContent = pct + '%';
+    pctEl.style.color = fl.color;
+    // Update card border
+    const card = slider.closest('.funding-inst-card');
+    if (card) card.style.borderLeftColor = fl.color;
+    // Update badge
+    const badge = card?.querySelector('span[style*="text-transform:uppercase"]');
+    if (badge) { badge.textContent = fl.label; badge.style.color = fl.color; }
 }
 
 function addFundingArticle() {
     const key = document.getElementById('funding-ministry-select').value;
     if (!key) return;
-    const action = document.getElementById('funding-action-select').value;
-    const ministry = (window._allMinistries || []).find(m => m.ministry_key === key);
-    const currentLevel = ministry?.funding_level ?? 1.0;
-    const FUNDING_MINISTRY_LABELS = { interior:'Interior', foreign:'Foreign Affairs', defense:'Defense', finance:'Finance', education:'Education', healthcare:'Healthcare', labor:'Labor', justice:'Justice', trade:'Trade', energy:'Energy', transportation:'Transport' };
     const label = FUNDING_MINISTRY_LABELS[key] || key;
+    const institutions = FUNDING_INSTITUTIONS[key] || [];
 
-    let proposedLevel = null, grantAmount = null;
-    if (action === 'discretionary') {
-        grantAmount = parseInt(document.getElementById('funding-grant-amount').value);
-        if (isNaN(grantAmount) || grantAmount < 1) { alert('Please enter a valid grant amount.'); return; }
-    } else {
-        proposedLevel = parseInt(document.getElementById('funding-level-slider').value) / 100;
-        if (proposedLevel === currentLevel) { alert('Proposed funding is the same as current level.'); return; }
+    // Gather per-institution proposed levels
+    const instLevels = [];
+    let anyChange = false;
+    for (const inst of institutions) {
+        const slider = document.getElementById('funding-slider-' + inst.id);
+        const proposedPct = parseInt(slider.value);
+        const currentPct = _getInstFundingPct(inst.id);
+        instLevels.push({ id: inst.id, name: inst.name, current_pct: currentPct, proposed_pct: proposedPct });
+        if (proposedPct !== currentPct) anyChange = true;
     }
+
+    const discretionary = parseInt(document.getElementById('funding-discretionary').value) || 0;
+    if (!anyChange && discretionary <= 0) { alert('No funding changes made. Adjust at least one institution or add discretionary funds.'); return; }
 
     draftArticles.push({
         articleNumber: draftArticles.length + 2,
@@ -1331,10 +1436,8 @@ function addFundingArticle() {
         fundingData: {
             ministry_key: key,
             ministry_label: label,
-            action: action,
-            current_level: currentLevel,
-            proposed_level: proposedLevel,
-            grant_amount: grantAmount
+            institutions: instLevels,
+            discretionary: discretionary > 0 ? discretionary : null
         }
     });
     renderDraftArticles();
@@ -1576,22 +1679,20 @@ function renderDraftArticles() {
         }
         if (art.isFunding) {
             const fd = art.fundingData;
-            const curPct = Math.round(fd.current_level * 100);
-            let desc, borderColor;
-            if (fd.action === 'discretionary') {
-                desc = `Discretionary grant of $${fd.grant_amount}M to ${fd.ministry_label}`;
-                borderColor = '#2196F3';
-            } else {
-                const propPct = Math.round(fd.proposed_level * 100);
-                const arrow = propPct > curPct ? '↑' : '↓';
-                desc = `${fd.ministry_label}: ${curPct}% → ${propPct}% ${arrow}`;
-                borderColor = propPct > curPct ? '#22c55e' : '#ef4444';
-            }
+            const changes = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
+            const summaryParts = changes.map(i => {
+                const arrow = i.proposed_pct > i.current_pct ? '↑' : '↓';
+                return `${i.name}: ${i.current_pct}% → ${i.proposed_pct}% ${arrow}`;
+            });
+            if (fd.discretionary) summaryParts.push(`+$${fd.discretionary}M discretionary`);
+            const hasIncrease = changes.some(i => i.proposed_pct > i.current_pct);
+            const hasDecrease = changes.some(i => i.proposed_pct < i.current_pct);
+            const borderColor = hasDecrease ? '#ef4444' : hasIncrease ? '#22c55e' : '#2196F3';
             return `<div class="draft-article-card" style="border-left:3px solid ${borderColor};">
                 <div class="draft-article-info">
                     <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:${borderColor};">Funding</span></div>
                     <div class="draft-article-name">${escapeHtml(fd.ministry_label)} Ministry Funding</div>
-                    <div class="draft-article-meta">${escapeHtml(desc)}</div>
+                    <div class="draft-article-meta">${summaryParts.map(s => escapeHtml(s)).join('<br>')}</div>
                 </div>
                 <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
             </div>`;
@@ -1746,14 +1847,11 @@ async function submitToCommittee() {
                 }
                 if (art.isFunding) {
                     const fd = art.fundingData;
-                    const title = fd.action === 'discretionary'
-                        ? `${fd.ministry_label} Discretionary Grant`
-                        : `${fd.ministry_label} Funding ${fd.action === 'increase' ? 'Increase' : 'Decrease'}`;
-                    const propPct = fd.proposed_level != null ? Math.round(fd.proposed_level * 100) : null;
-                    const curPct = Math.round(fd.current_level * 100);
-                    const text = fd.action === 'discretionary'
-                        ? `Allocate $${fd.grant_amount}M in discretionary funds to the ${fd.ministry_label} ministry.`
-                        : `Adjust ${fd.ministry_label} ministry funding from ${curPct}% to ${propPct}%.`;
+                    const changes = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
+                    const textParts = changes.map(i => `${i.name}: ${i.current_pct}% → ${i.proposed_pct}%`);
+                    if (fd.discretionary) textParts.push(`Discretionary funds: $${fd.discretionary}M`);
+                    const title = `${fd.ministry_label} Funding`;
+                    const text = textParts.join('. ') + '.';
                     return { bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id, article_title: title, article_text: text, funding_data: fd };
                 }
                 const articleRow = { bill_id: bill.id, policy_id: art.policy.id, article_number: art.articleNumber, added_by: currentFaction.id };
@@ -2241,8 +2339,7 @@ window.addTextArticle = addTextArticle;
 window.showFundingArticleForm = showFundingArticleForm;
 window.hideFundingArticleForm = hideFundingArticleForm;
 window.onFundingMinistryChange = onFundingMinistryChange;
-window.onFundingActionChange = onFundingActionChange;
-window.onFundingSliderChange = onFundingSliderChange;
+window.onInstSliderChange = onInstSliderChange;
 window.addFundingArticle = addFundingArticle;
 window.submitToCommittee = submitToCommittee;
 window.closeCommitteeAddModal = closeCommitteeAddModal;

@@ -892,17 +892,29 @@ function renderArticles() {
             // Funding article
             if (art.funding_data) {
                 const fd = art.funding_data;
-                const isCut = fd.action === 'decrease';
-                const isGrant = fd.action === 'discretionary';
-                const borderColor = isGrant ? '#2196F3' : isCut ? '#ef4444' : '#22c55e';
-                const tagLabel = isGrant ? 'GRANT' : isCut ? 'DEFUND' : 'FUND';
+                const changes = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
+                const hasIncrease = changes.some(i => i.proposed_pct > i.current_pct);
+                const hasDecrease = changes.some(i => i.proposed_pct < i.current_pct);
+                const borderColor = hasDecrease ? '#ef4444' : hasIncrease ? '#22c55e' : '#2196F3';
+                const tagLabel = hasDecrease && !hasIncrease ? 'DEFUND' : hasIncrease && !hasDecrease ? 'FUND' : 'FUNDING';
                 const fundingActions = canEditArticles ? '<div class="article-sponsor-actions">' +
                     '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
                 '</div>' : '';
+                let instHTML = changes.map(function(i) {
+                    const arrow = i.proposed_pct > i.current_pct ? '↑' : '↓';
+                    const c = i.proposed_pct > i.current_pct ? '#22c55e' : '#ef4444';
+                    return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #222;font-size:0.8rem;">' +
+                        '<span style="color:#ccc;">' + escapeHtml(i.name) + '</span>' +
+                        '<span style="color:' + c + ';font-weight:600;">' + i.current_pct + '% → ' + i.proposed_pct + '% ' + arrow + '</span>' +
+                    '</div>';
+                }).join('');
+                if (fd.discretionary) {
+                    instHTML += '<div style="padding:4px 0;font-size:0.8rem;color:#2196F3;">Discretionary: +$' + fd.discretionary + 'M</div>';
+                }
                 return '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
                     '<div class="article-number">Article ' + art.article_number + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + tagLabel + '</span></div>' +
-                    '<div class="article-title">' + escapeHtml(art.article_title || 'Ministry Funding') + '</div>' +
-                    '<div class="article-description">' + escapeHtml(art.article_text || '') + '</div>' +
+                    '<div class="article-title">' + escapeHtml(art.article_title || (fd.ministry_label + ' Ministry Funding')) + '</div>' +
+                    '<div class="article-description" style="padding:4px 0;">' + instHTML + '</div>' +
                     '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
                     fundingActions +
                 '</div>';
