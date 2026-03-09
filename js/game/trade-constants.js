@@ -632,15 +632,17 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
-    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC) ──
+    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, RT) ──
     var { data: activeTradeAgreements } = await supabase.from('trade_agreements')
         .select('id, nation_a_id, nation_b_id, agreement_type, articles')
         .eq('status', 'active')
-        .in('agreement_type', ['fta', 'pta', 'resource_supply']);
+        .in('agreement_type', ['fta', 'pta', 'resource_supply', 'retaliatory_tariff']);
 
     // Set type-specific affinity flags from trade_agreements
     // Build tariff modifier map: tariffModMap[importerId|exporterId][sector] = reduction fraction (0-1)
+    // Build tariff surcharge map: tariffSurchargeMap[importerId|exporterId][sector] = surcharge fraction (e.g. 0.25 = +25%)
     var tariffModMap = {};
+    var tariffSurchargeMap = {};
     var activeRSCs = [];
 
     if (activeTradeAgreements) {
@@ -704,6 +706,22 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                 flagsMap[k1].has_rsc = true;
                 flagsMap[k2].has_rsc = true;
                 activeRSCs.push(ta);
+            } else if (ta.agreement_type === 'retaliatory_tariff') {
+                // Retaliatory tariff: unilateral surcharge on imports from target nation
+                // articles contain tariff_surcharge entries with imposer_nation_id, sector, surcharge_pct
+                var arts = ta.articles || [];
+                for (var ai = 0; ai < arts.length; ai++) {
+                    if (arts[ai].type !== 'tariff_surcharge') continue;
+                    var d = arts[ai].data;
+                    var imposerId = d.imposer_nation_id;
+                    var targetId = (imposerId === ta.nation_a_id) ? ta.nation_b_id : ta.nation_a_id;
+                    var surcharge = (d.surcharge_pct || 0) / 100;
+                    // Key: importer (imposer) | exporter (target) — surcharge on imports FROM target
+                    var surKey = imposerId + '|' + targetId;
+                    if (!tariffSurchargeMap[surKey]) tariffSurchargeMap[surKey] = {};
+                    // Stack surcharges per sector (take max if multiple)
+                    tariffSurchargeMap[surKey][d.sector] = Math.max(tariffSurchargeMap[surKey][d.sector] || 0, surcharge);
+                }
             }
         }
     }
@@ -1021,6 +1039,10 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
             var modKey = n.id + '|' + pr.exporter_nation_id;
             if (tariffModMap[modKey] && tariffModMap[modKey][pr.sector] !== undefined) {
                 effectiveRate = baseTariffRate * (1 - tariffModMap[modKey][pr.sector]);
+            }
+            // Apply retaliatory tariff surcharge (stacks on top of effective rate)
+            if (tariffSurchargeMap[modKey] && tariffSurchargeMap[modKey][pr.sector]) {
+                effectiveRate += tariffSurchargeMap[modKey][pr.sector];
             }
             tariffRev += pr.trade_volume * effectiveRate * collectionRate;
         }

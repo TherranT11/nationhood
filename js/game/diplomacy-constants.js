@@ -120,12 +120,13 @@ export const AID_CONDITION_STATS = [
 /**
  * Trade Agreement types that can be negotiated as Diplomatic Initiatives.
  *
- * 5 types:
+ * 6 types:
  *   FTA  — Free Trade Agreement: comprehensive tariff elimination
  *   PTA  — Preferential Tariff Agreement: sector-specific tariff reduction
  *   RSC  — Resource Supply Contract: guaranteed purchase commitment
  *   ES   — Export Subsidy: unilateral, no partner needed
  *   AID  — Economic Aid Agreement: financial assistance with optional conditions
+ *   RT   — Retaliatory Tariff: unilateral surcharge on specific nation/sectors
  */
 export const TRADE_AGREEMENT_TYPES = {
     fta: {
@@ -178,6 +179,18 @@ export const TRADE_AGREEMENT_TYPES = {
         optional_articles: ['aid_condition', 'text_article'],
         icon: 'aid',
         requires_mot: false  // FM/PM/Ambassador negotiate — no Minister of Trade needed
+    },
+    retaliatory_tariff: {
+        key: 'retaliatory_tariff',
+        label: 'Retaliatory Tariff',
+        shortLabel: 'RT',
+        description: 'Unilateral tariff surcharge on imports from a specific nation. Pick one or more sectors and set a surcharge rate. Damages diplomatic relations.',
+        bilateral: false,
+        unilateral_action: true,
+        required_articles: ['tariff_surcharge', 'duration'],
+        optional_articles: ['text_article'],
+        icon: 'shield',
+        category: 'unilateral'
     }
 };
 
@@ -342,13 +355,26 @@ export const TRADE_ARTICLE_TYPES = {
         }
     },
 
+    // ── Tariff Surcharge (Retaliatory Tariff, required, repeatable per sector) ──
+    tariff_surcharge: {
+        key: 'tariff_surcharge',
+        label: 'Tariff Surcharge',
+        description: 'Impose an additional tariff on imports from the target nation in a specific sector.',
+        repeatable: true,
+        applies_to: ['retaliatory_tariff'],
+        schema: {
+            sector: 'string',                   // tradeable sector key
+            surcharge_pct: 'number'             // 5-50%
+        }
+    },
+
     // ── Text Article (optional for all types) ──
     text_article: {
         key: 'text_article',
         label: 'Text Article',
         description: 'Free-text article for flavor/RP. No mechanical effect.',
         repeatable: true,
-        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy', 'economic_aid'],
+        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy', 'economic_aid', 'retaliatory_tariff'],
         schema: {
             title: 'string',
             body: 'string'

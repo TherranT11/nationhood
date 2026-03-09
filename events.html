@@ -1735,7 +1735,12 @@ function setupArticleModal(faction, nation, shard) {
         .from('public-assets')
         .upload(filePath, selectedFile, { contentType: selectedFile.type, upsert: true });
       if (uploadErr) {
-        console.warn('Image upload failed (continuing without image):', uploadErr.message);
+        errorEl.textContent = 'Image upload failed: ' + uploadErr.message;
+        errorEl.classList.add('np-oped-editor__error--visible');
+        submitBtn.disabled = false;
+        submitText.textContent = 'Submit Article';
+        console.error('Image upload failed:', uploadErr.message);
+        return;
       } else {
         const { data: urlData } = _supabase.storage.from('public-assets').getPublicUrl(filePath);
         imageUrl = urlData?.publicUrl || null;

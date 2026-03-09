@@ -937,11 +937,13 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     var { data: activeTradeAgreements } = await supabase.from('trade_agreements')
         .select('id, nation_a_id, nation_b_id, agreement_type, articles')
         .eq('status', 'active')
-        .in('agreement_type', ['fta', 'pta', 'resource_supply']);
+        .in('agreement_type', ['fta', 'pta', 'resource_supply', 'retaliatory_tariff']);
 
     // Set type-specific affinity flags from trade_agreements
     // Build tariff modifier map: tariffModMap[importerId|exporterId][sector] = reduction fraction (0-1)
+    // Build tariff surcharge map: tariffSurchargeMap[importerId|exporterId][sector] = surcharge fraction
     var tariffModMap = {};
+    var tariffSurchargeMap = {};
     var activeRSCs = [];
 
     if (activeTradeAgreements) {
@@ -1005,6 +1007,19 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 flagsMap[k1].has_rsc = true;
                 flagsMap[k2].has_rsc = true;
                 activeRSCs.push(ta);
+            } else if (ta.agreement_type === 'retaliatory_tariff') {
+                // Unilateral surcharge: imposer (nation_a) taxes imports from target (nation_b)
+                var arts = ta.articles || [];
+                for (var ai = 0; ai < arts.length; ai++) {
+                    if (arts[ai].type !== 'tariff_surcharge') continue;
+                    var d = arts[ai].data;
+                    var imposerId = d.imposer_nation_id;
+                    var targetId = (imposerId === ta.nation_a_id) ? ta.nation_b_id : ta.nation_a_id;
+                    var surcharge = (d.surcharge_pct || 0) / 100;
+                    var surKey = imposerId + '|' + targetId;
+                    if (!tariffSurchargeMap[surKey]) tariffSurchargeMap[surKey] = {};
+                    tariffSurchargeMap[surKey][d.sector] = Math.max(tariffSurchargeMap[surKey][d.sector] || 0, surcharge);
+                }
             }
         }
     }
@@ -1322,6 +1337,10 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             var modKey = n.id + '|' + pr.exporter_nation_id;
             if (tariffModMap[modKey] && tariffModMap[modKey][pr.sector] !== undefined) {
                 effectiveRate = baseTariffRate * (1 - tariffModMap[modKey][pr.sector]);
+            }
+            // Apply retaliatory tariff surcharge (stacks on top of effective rate)
+            if (tariffSurchargeMap[modKey] && tariffSurchargeMap[modKey][pr.sector]) {
+                effectiveRate += tariffSurchargeMap[modKey][pr.sector];
             }
             tariffRev += pr.trade_volume * effectiveRate * collectionRate;
         }
@@ -5733,6 +5752,77 @@ async function resolveExpiredVotes(supabase, nationId) {
                     .eq('id', bill.trade_negotiation_id);
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
+            }
+        } else if (bill.bill_type === 'ratification' && bill.trade_agreement_data && bill.trade_agreement_data.type === 'retaliatory_tariff') {
+            // Unilateral retaliatory tariff ratification
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+                var rtData = bill.trade_agreement_data;
+                var imposerId = rtData.imposer_nation_id;
+                var targetId = rtData.target_nation_id;
+                var isPermanent = rtData.duration_type === 'permanent';
+                var durationTicks = rtData.duration_ticks || null;
+
+                // Insert trade_agreement (retaliatory_tariff bypasses nation ordering constraint — imposer is always nation_a)
+                await supabase.from('trade_agreements').insert({
+                    nation_a_id: imposerId,
+                    nation_b_id: targetId,
+                    bill_a_id: bill.id,
+                    agreement_type: 'retaliatory_tariff',
+                    agreement_name: rtData.agreement_name || 'Retaliatory Tariff',
+                    articles: rtData.articles || [],
+                    duration_type: isPermanent ? 'permanent' : 'fixed',
+                    duration_ticks: isPermanent ? null : durationTicks,
+                    auto_renew: false,
+                    withdrawal_notice_ticks: 1,
+                    status: 'active',
+                    enacted_at_tick: currentTick,
+                    expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null)
+                });
+
+                // Apply relation_score penalty: -surcharge_pct / 2 (max surcharge across all sector articles)
+                var maxSurcharge = 0;
+                var rtArticles = rtData.articles || [];
+                for (var rti = 0; rti < rtArticles.length; rti++) {
+                    if (rtArticles[rti].type === 'tariff_surcharge') {
+                        maxSurcharge = Math.max(maxSurcharge, rtArticles[rti].data.surcharge_pct || 0);
+                    }
+                }
+                var relPenalty = Math.round(maxSurcharge / 2);
+
+                if (relPenalty > 0) {
+                    var relA = imposerId < targetId ? imposerId : targetId;
+                    var relB = imposerId < targetId ? targetId : imposerId;
+                    var { data: rel } = await supabase.from('diplomatic_relations')
+                        .select('id, relation_score')
+                        .eq('nation_a_id', relA).eq('nation_b_id', relB).maybeSingle();
+                    if (rel) {
+                        var newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) - relPenalty));
+                        await supabase.from('diplomatic_relations')
+                            .update({ relation_score: newScore }).eq('id', rel.id);
+                    }
+                }
+
+                // Fire enactment event for target nation
+                try {
+                    var { data: imposerNation } = await supabase.from('nations').select('name').eq('id', imposerId).single();
+                    var imposerName = imposerNation?.name || 'Unknown';
+                    await supabase.from('event_log').insert({
+                        nation_id: targetId,
+                        event_name: 'Retaliatory Tariff Enacted',
+                        category: 'Trade',
+                        description_chosen: imposerName + ' has enacted a retaliatory tariff on your exports. Relations have decreased by ' + relPenalty + '.',
+                        fired_at_tick: currentTick
+                    });
+                } catch (e) { /* non-blocking */ }
+
+                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'retaliatory_tariff', earlyResolution: bill.early_resolution_status || null });
+            } else {
+                await failBill(supabase, bill);
+                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'retaliatory_tariff', earlyResolution: bill.early_resolution_status || null });
             }
         } else if (bill.bill_type === 'budget') {
             // Budget bill resolution — budget bills can NEVER fail
