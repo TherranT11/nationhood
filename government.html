@@ -1585,7 +1585,7 @@ async function confirmAssign() {
             }
         });
 
-        // If assigning PM, also update head_of_government and roll over administration
+        // If assigning PM, also update head_of_government, government_formations, and roll over administration
         if (assignMinistryKey === 'prime_minister') {
             // Deactivate any current PM
             await _supabase.from('head_of_government')
@@ -1602,6 +1602,24 @@ async function confirmAssign() {
                 age: selectedCandidate.age,
                 active: true
             }, { onConflict: 'nation_id' });
+
+            // Update government_formations.ministry_assignments.prime_minister so
+            // coalition.lead_party_id correctly reflects the new PM's party
+            try {
+                const { data: activeGovFormation } = await _supabase.from('government_formations')
+                    .select('id, ministry_assignments')
+                    .eq('nation_id', currentNation.id)
+                    .in('status', ['formed', 'caretaker'])
+                    .order('formed_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (activeGovFormation) {
+                    const updatedAssignments = { ...(activeGovFormation.ministry_assignments || {}), prime_minister: selectedCandidate.partyId };
+                    await _supabase.from('government_formations')
+                        .update({ ministry_assignments: updatedAssignments })
+                        .eq('id', activeGovFormation.id);
+                }
+            } catch (gfErr) { console.warn('Failed to update government_formations PM assignment:', gfErr); }
 
             const { data: freshNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
             const coalition = await fetchActiveCoalition(_supabase, currentNation.id);
