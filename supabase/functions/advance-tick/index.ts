@@ -18923,6 +18923,37 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     const failedNationIds = new Set();
     const failedFactionIds = new Set();
 
+    // ── REPROCESS MODE: skip all cumulative side effects ──
+    // Reprocess only re-runs calculations (preferences, approvals) without
+    // applying AP, stat decay, crises, elections, or other per-tick mutations.
+    if (reprocess) {
+        for (const nation of nationList) {
+            try {
+                initGameConfigForNation(nation);
+                // Re-fetch nation to get latest stat values
+                const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+                if (freshNation) Object.assign(nation, freshNation);
+
+                // Re-run minister approvals (read-only recalculation)
+                await updateMinisterApprovals(supabase, nation, newTick);
+
+                // Re-run government approval
+                await calculateGovernmentApprovalTick(supabase, nation, newTick);
+
+                // Re-run three-pillar voter preference recalculation
+                await calculateThreePillarPreferences(supabase, nation, newTick);
+
+                // History snapshot (safe to re-run, upserts on same tick)
+                await recordStatHistory(supabase, nation, newTick);
+                await snapshotNationHistory(supabase, nation, newTick);
+            } catch (err) {
+                console.error(`[advanceTick] REPROCESS failed for ${nation.name}:`, err);
+            }
+        }
+        console.log(`[advanceTick] REPROCESS complete for tick ${newTick}. Shard NOT updated (no advance).`);
+        return summary;
+    }
+
     // Accumulate AP for party factions each tick:
     // base 3 AP, +2 if in government coalition or strongman. Capped at MAX_AP (10).
     // Uses atomic RPC to prevent race conditions with concurrent player deductions.
@@ -19840,10 +19871,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     // 5. Commit shard tick/date AFTER all nation processing completes.
     // This is the last step — if the function timed out earlier, the tick
     // number stays unchanged and the cron will re-process on the next run.
-    // Commit shard update — skip entirely in reprocess mode
-    if (reprocess) {
-        console.log(`[advanceTick] REPROCESS complete for tick ${newTick}. Shard NOT updated (no advance).`);
-    } else {
+    // Commit shard update (reprocess mode already returned early above)
+    {
         console.log(`[advanceTick] All nations processed. Committing tick ${newTick}...`);
         await supabase.from('shard').update({
             current_tick: newTick,
