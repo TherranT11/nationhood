@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Diplomacy | Nationhood Alpha</title>
 
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
     <!-- Supabase SDK -->
 
     <!-- Shared Styles -->
@@ -70,8 +75,8 @@
             <div class="diplo-tab-bar">
                 <button class="diplo-tab active" data-tab="relations" onclick="showDiploTab('relations')">Relations</button>
                 <button class="diplo-tab" data-tab="agreements" onclick="showDiploTab('agreements')">Agreements</button>
-                <button class="diplo-tab" data-tab="initiative" onclick="showDiploTab('initiative')">Initiative<span id="initiative-badge" class="diplo-tab-badge" style="background:#d32f2f;"></span></button>
-                <button class="diplo-tab" data-tab="inbox" onclick="showDiploTab('inbox')">Inbox<span id="inbox-badge" class="diplo-tab-badge" style="background:#d32f2f;"></span></button>
+                <button class="diplo-tab" data-tab="initiative" onclick="showDiploTab('initiative')">Initiative<span id="initiative-badge" class="diplo-tab-badge" style="background:rgba(239,68,68,0.08);color:#ef4444;border:1px solid rgba(239,68,68,0.2);"></span></button>
+                <button class="diplo-tab" data-tab="inbox" onclick="showDiploTab('inbox')">Inbox<span id="inbox-badge" class="diplo-tab-badge" style="background:rgba(239,68,68,0.08);color:#ef4444;border:1px solid rgba(239,68,68,0.2);"></span></button>
             </div>
 
             <!-- Tab Panels -->
@@ -470,7 +475,7 @@ function showDiploTab(tabName) {
 async function renderRelationsTab() {
     const panel = document.getElementById('tab-relations');
     if (!panel) return;
-    panel.innerHTML = '<p style="color:#888;font-style:italic;text-align:center;padding:20px;">Loading nations...</p>';
+    panel.innerHTML = '<p style="color:#6b6a5e;font-style:italic;text-align:center;padding:20px;">Loading nations...</p>';
 
     if (!currentNation) {
         panel.innerHTML = '<p class="diplo-tab-placeholder">No nation data available.</p>';
@@ -536,7 +541,7 @@ async function renderRelationsTab() {
                     embassyStatus = relation.embassy_status_b || 'open';
                 }
             }
-            const embassyColor = embassyStatus === 'open' ? '#4CAF50' : embassyStatus === 'closed' ? '#f44' : '#888';
+            const embassyColor = embassyStatus === 'open' ? '#4ade80' : embassyStatus === 'closed' ? '#ef4444' : '#6b6a5e';
 
             // Find our ambassador to this nation
             const ambassador = ourAmbassadors.find(a => a.target_nation_id === nation.id);
@@ -600,7 +605,7 @@ async function renderRelationsTab() {
 async function renderAgreementsTab() {
     const panel = document.getElementById('tab-agreements');
     if (!panel) return;
-    panel.innerHTML = '<p style="color:#888;font-style:italic;text-align:center;padding:20px;">Loading agreements...</p>';
+    panel.innerHTML = '<p style="color:#6b6a5e;font-style:italic;text-align:center;padding:20px;">Loading agreements...</p>';
 
     if (!currentNation) {
         panel.innerHTML = '<p class="diplo-tab-placeholder">No nation data available.</p>';
@@ -1001,7 +1006,7 @@ async function renderInboxTab(filter) {
 
     if (filter) inboxFilter = filter;
 
-    panel.innerHTML = '<p style="color:#888;font-style:italic;text-align:center;padding:20px;">Loading inbox...</p>';
+    panel.innerHTML = '<p style="color:#6b6a5e;font-style:italic;text-align:center;padding:20px;">Loading inbox...</p>';
 
     if (!currentNation) {
         panel.innerHTML = '<p class="diplo-tab-placeholder">No nation data available.</p>';
@@ -1125,11 +1130,11 @@ function renderInboxCard(p) {
     } else if (isRevised && revisedByUs) {
         statusBadge = '<span class="proposal-status-badge badge-waiting">Revision Sent</span>';
     } else if (p.status === 'fm_review') {
-        statusBadge = '<span class="proposal-status-badge" style="background:#1a5276;color:#85c1e9;">FM Review</span>';
+        statusBadge = '<span class="proposal-status-badge" style="background:rgba(96,165,250,0.08);color:#60a5fa;border:1px solid rgba(96,165,250,0.2);">FM Review</span>';
     } else if (p.status === 'ratification') {
-        statusBadge = '<span class="proposal-status-badge" style="background:#6a1b9a;color:#ce93d8;">Parliament</span>';
+        statusBadge = '<span class="proposal-status-badge" style="background:rgba(167,139,250,0.08);color:#a78bfa;border:1px solid rgba(167,139,250,0.2);">Parliament</span>';
     } else if (p.status === 'ratification_failed') {
-        statusBadge = '<span class="proposal-status-badge" style="background:#b71c1c;color:#ef9a9a;">Ratification Failed</span>';
+        statusBadge = '<span class="proposal-status-badge" style="background:rgba(239,68,68,0.08);color:#ef4444;border:1px solid rgba(239,68,68,0.2);">Ratification Failed</span>';
     }
 
     // Pipeline tracker for MAJOR proposals
@@ -1270,7 +1275,7 @@ function renderStateVisitInboxCard(p, pd) {
         benefitsHTML += '<br>&nbsp;&nbsp;+' + DIPLOMACY_CONFIG.STATE_VISIT_FIRST_STABILITY + ' Stability <span style="color:#FFD700;">(first-ever visit!)</span>';
     }
     if (pd.is_target_autocracy) {
-        benefitsHTML += '<br><br><span style="color:#ff9800;">Autocracy domestic risk: 1D12 dice roll on visitor\'s gov approval</span>';
+        benefitsHTML += '<br><br><span style="color:#f97316;">Autocracy domestic risk: 1D12 dice roll on visitor\'s gov approval</span>';
     }
     benefitsHTML += '</div>';
 
@@ -1843,7 +1848,7 @@ async function toggleNationCard(nationId) {
 
     if (!isExpanded) {
         body.style.display = '';
-        body.innerHTML = '<p style="color:#888;font-style:italic;font-size:0.82rem;padding:8px 0;">Loading details...</p>';
+        body.innerHTML = '<p style="color:#6b6a5e;font-style:italic;font-size:0.82rem;padding:8px 0;">Loading details...</p>';
         card.classList.add('expanded');
 
         // Highlight corresponding nation on the map
@@ -2029,19 +2034,19 @@ function getRelationTier(score, hasCeasefire) {
 }
 
 function getRelationBarColor(score) {
-    if (score >= 90) return '#1b5e20';
-    if (score >= 70) return '#2e7d32';
-    if (score >= 50) return '#558b2f';
-    if (score >= 35) return '#827717';
-    if (score >= 20) return '#e65100';
-    if (score >= 5)  return '#b71c1c';
-    return '#4a0000';
+    if (score >= 90) return '#34d399';
+    if (score >= 70) return '#4ade80';
+    if (score >= 50) return '#22d3ee';
+    if (score >= 35) return '#facc15';
+    if (score >= 20) return '#ef4444';
+    if (score >= 5)  return '#dc2626';
+    return '#dc2626';
 }
 
 // ==================== RELATION SECTION ====================
 
 function renderRelationSection(relType, relClass, embassyStatus, ambassador) {
-    const embassyColor = embassyStatus === 'open' ? '#4CAF50' : embassyStatus === 'closed' ? '#f44' : '#888';
+    const embassyColor = embassyStatus === 'open' ? '#4ade80' : embassyStatus === 'closed' ? '#ef4444' : '#6b6a5e';
     const ambName = ambassador
         ? (ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '')
         : null;
@@ -2071,7 +2076,7 @@ function renderRelationSection(relType, relClass, embassyStatus, ambassador) {
             </div>
             <div class="info-row">
                 <span class="info-label">Remaining</span>
-                <span class="info-value" style="font-size:0.78rem;color:${ticksRemaining <= 3 ? '#f44' : ticksRemaining <= 6 ? '#ff9800' : '#4CAF50'};">${remainingStr}</span>
+                <span class="info-value" style="font-size:0.78rem;color:${ticksRemaining <= 3 ? '#ef4444' : ticksRemaining <= 6 ? '#f97316' : '#4ade80'};">${remainingStr}</span>
             </div>`;
     }
 
@@ -2082,7 +2087,7 @@ function renderRelationSection(relType, relClass, embassyStatus, ambassador) {
         const ticksRemaining = Math.max(0, termLength - (shardTick - ambassador.appointed_at_tick));
         if (ticksRemaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && ticksRemaining > 0) {
             warningHTML = `
-                <div style="background:#3a2a00;border:1px solid #ff9800;border-radius:6px;padding:8px 10px;margin-top:8px;font-size:0.78rem;color:#ff9800;">
+                <div style="background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.2);border-radius:6px;padding:8px 10px;margin-top:8px;font-size:0.78rem;color:#f97316;">
                     &#9888; Ambassador ${ambName ? ambName.trim() : ''} will retire in ${ticksRemaining} tick${ticksRemaining !== 1 ? 's' : ''}. Conclude any active negotiations.
                 </div>`;
         }
@@ -2285,7 +2290,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
             const remaining = Math.max(0, tl - (shardTick - myAmb.appointed_at_tick));
             if (remaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && remaining > 0) {
                 const ambFullName = ((myAmb.ambassador_first_name || '') + ' ' + (myAmb.ambassador_last_name || '')).trim() + (myAmb.factions?.abbreviation ? ' (' + myAmb.factions.abbreviation + ')' : '');
-                ambWarningHTML = `<div style="background:#3a2a00;border:1px solid #ff9800;border-radius:6px;padding:8px 10px;margin-top:8px;font-size:0.78rem;color:#ff9800;">&#9888; Ambassador ${ambFullName} will retire in ${remaining} tick${remaining !== 1 ? 's' : ''}. Conclude any active negotiations.</div>`;
+                ambWarningHTML = `<div style="background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.2);border-radius:6px;padding:8px 10px;margin-top:8px;font-size:0.78rem;color:#f97316;">&#9888; Ambassador ${ambFullName} will retire in ${remaining} tick${remaining !== 1 ? 's' : ''}. Conclude any active negotiations.</div>`;
             }
         }
 
@@ -2385,10 +2390,10 @@ async function fetchAmbassador(myNationId, targetNationId) {
 // ==================== HELPERS ====================
 
 function getStatColor(value) {
-    if (value == null) return '#888';
-    if (value >= 70) return '#4CAF50';
-    if (value >= 40) return '#ffcc00';
-    return '#f44';
+    if (value == null) return '#6b6a5e';
+    if (value >= 70) return '#4ade80';
+    if (value >= 40) return '#facc15';
+    return '#ef4444';
 }
 
 // ==================== PENDING AMBASSADOR FETCH ====================
@@ -2655,7 +2660,7 @@ async function renderChatSection(targetNation, roles, ourAmbassador, theirAmbass
                 <div class="diplo-msg ${isMine ? 'mine' : 'theirs'}">
                     <div class="diplo-msg-sender">
                         ${m.sender_name || 'Unknown'}
-                        <span class="role-badge" style="background:${isMine ? '#1a5276' : '#2e7d32'};color:#fff;">${m.sender_role || 'diplomat'}</span>
+                        <span class="role-badge" style="background:${isMine ? 'rgba(96,165,250,0.08)' : 'rgba(74,222,128,0.08)'};color:${isMine ? '#60a5fa' : '#4ade80'};border:1px solid ${isMine ? 'rgba(96,165,250,0.2)' : 'rgba(74,222,128,0.2)'};">${m.sender_role || 'diplomat'}</span>
                     </div>
                     <div class="diplo-msg-text">${escapeHtml(m.message_text)}</div>
                     <div class="diplo-msg-tick">Tick ${m.sent_at_tick}</div>
@@ -2733,7 +2738,7 @@ async function sendDiploMessage(targetNationId, targetNationName) {
                 <div class="diplo-msg mine">
                     <div class="diplo-msg-sender">
                         ${senderName}
-                        <span class="role-badge" style="background:#1a5276;color:#fff;">ambassador</span>
+                        <span class="role-badge" style="background:rgba(96,165,250,0.08);color:#60a5fa;border:1px solid rgba(96,165,250,0.2);">ambassador</span>
                     </div>
                     <div class="diplo-msg-text">${escapeHtml(text)}</div>
                     <div class="diplo-msg-tick">Tick ${tick}</div>
@@ -2941,7 +2946,7 @@ async function renderWizardStep1() {
     const panel = document.getElementById('wizard-panel-1');
     if (!panel) return;
 
-    panel.innerHTML = '<p style="color:#888;font-style:italic;font-size:0.82rem;">Loading nations...</p>';
+    panel.innerHTML = '<p style="color:#6b6a5e;font-style:italic;font-size:0.82rem;">Loading nations...</p>';
 
     // Fetch nations we have ambassadors to (with active counterpart ambassadors)
     const ambNationIds = diplomaticRoles.ambassadorTo.map(a => a.target_nation_id);
@@ -2992,8 +2997,8 @@ async function renderWizardStep1() {
         const ambPartyInit = ambInfo?.factions?.abbreviation ? ' (' + ambInfo.factions.abbreviation + ')' : '';
 
         let statusNote = '';
-        if (!weHaveAmb && !canSelectAny) statusNote = '<span style="color:#ff9800;">No ambassador posted</span>';
-        else if (weHaveAmb && !hasCounter) statusNote = '<span style="color:#ff9800;">No counterpart ambassador</span>';
+        if (!weHaveAmb && !canSelectAny) statusNote = '<span style="color:#f97316;">No ambassador posted</span>';
+        else if (weHaveAmb && !hasCounter) statusNote = '<span style="color:#f97316;">No counterpart ambassador</span>';
 
         const roleLabel = ambName ? 'Your Amb: ' + escapeHtml(ambName + ambPartyInit) : isHoGOnly ? 'Drafting as HoG' : isMoTOnly ? 'Drafting as Min. of Trade' : isFMOnly ? 'Drafting as FM' : 'No ambassador';
 
@@ -3053,7 +3058,7 @@ function renderWizardStep2() {
             <div class="type-card-effects">
                 <span class="trade-type-tag bilateral">BILATERAL</span>
             </div>
-            ${isMoTOnly ? '<div style="font-size:0.68rem;color:#ff9800;margin-top:4px;">Requires an Ambassador or FM</div>' : ''}
+            ${isMoTOnly ? '<div style="font-size:0.68rem;color:#f97316;margin-top:4px;">Requires an Ambassador or FM</div>' : ''}
         </div>
     `;
 
@@ -3084,11 +3089,11 @@ function renderWizardStep2() {
     // Unilateral Actions category
     html += `
         <div class="type-card" data-category="unilateral" onclick="wizardSelectCategory('unilateral')">
-            <div class="type-card-title" style="color:#ff5722;">Unilateral Action</div>
+            <div class="type-card-title" style="color:#ef4444;">Unilateral Action</div>
             <div class="type-card-desc">Impose retaliatory tariffs on a specific nation's imports. No negotiation required — your parliament ratifies.</div>
             <div class="type-card-effects">
                 <span class="trade-type-tag unilateral">UNILATERAL</span>
-                <span class="trade-type-tag" style="background:rgba(255,87,34,0.15);color:#ff5722;">TARGETED</span>
+                <span class="trade-type-tag" style="background:rgba(239,68,68,0.08);color:#ef4444;border:1px solid rgba(239,68,68,0.2);">TARGETED</span>
             </div>
         </div>
     `;
@@ -3161,7 +3166,7 @@ async function renderWizardStep3Diplomatic() {
     const panel = document.getElementById('wizard-panel-3');
     if (!panel) return;
 
-    panel.innerHTML = '<p style="color:#888;font-style:italic;font-size:0.82rem;">Loading...</p>';
+    panel.innerHTML = '<p style="color:#6b6a5e;font-style:italic;font-size:0.82rem;">Loading...</p>';
 
     // Fetch existing active/pending agreements between these nations to disable used types
     const usedTypes = new Set();
@@ -3317,7 +3322,7 @@ async function renderWizardStep3TradeProposal() {
     const panel = document.getElementById('wizard-panel-3');
     if (!panel) return;
 
-    panel.innerHTML = '<p style="color:#888;font-style:italic;font-size:0.82rem;">Loading...</p>';
+    panel.innerHTML = '<p style="color:#6b6a5e;font-style:italic;font-size:0.82rem;">Loading...</p>';
 
     // Fetch target nation name
     const { data: targetNation } = await _supabase.from('nations').select('id, name').eq('id', wizardTargetNation).single();
@@ -3400,7 +3405,7 @@ async function renderWizardStep3AidProposal() {
     const panel = document.getElementById('wizard-panel-3');
     if (!panel) return;
 
-    panel.innerHTML = '<p style="color:#888;font-style:italic;font-size:0.82rem;">Loading...</p>';
+    panel.innerHTML = '<p style="color:#6b6a5e;font-style:italic;font-size:0.82rem;">Loading...</p>';
 
     // Fetch target nation name
     const { data: targetNation } = await _supabase.from('nations').select('id, name').eq('id', wizardTargetNation).single();
@@ -3603,7 +3608,7 @@ async function renderWizardStep3Unilateral() {
     const panel = document.getElementById('wizard-panel-3');
     if (!panel) return;
 
-    panel.innerHTML = '<p style="color:#888;font-style:italic;font-size:0.82rem;">Loading...</p>';
+    panel.innerHTML = '<p style="color:#6b6a5e;font-style:italic;font-size:0.82rem;">Loading...</p>';
 
     const { data: targetNation } = await _supabase.from('nations').select('id, name').eq('id', wizardTargetNation).single();
     const targetName = targetNation?.name || 'Unknown';
@@ -3643,7 +3648,7 @@ async function renderWizardStep3Unilateral() {
     let html = `
         <div class="trade-article-builder">
             <div class="trade-article-header">
-                <span class="trade-article-title" style="color:#ff5722;">Retaliatory Tariff against ${escapeHtml(targetName)}</span>
+                <span class="trade-article-title" style="color:#ef4444;">Retaliatory Tariff against ${escapeHtml(targetName)}</span>
             </div>
 
             <p style="font-size:0.78rem;color:var(--text-muted);line-height:1.5;margin-bottom:14px;">
@@ -4461,7 +4466,7 @@ async function openTradeNegotiation(negotiationId) {
             if (!weApproved) {
                 html += '<button class="proposal-accept-btn" style="font-size:0.72rem;padding:5px 12px;" onclick="approveTradeNegotiation(\'' + neg.id + '\')">Approve Agreement</button>';
             } else {
-                html += '<span style="font-size:0.72rem;color:#4CAF50;padding:5px 0;">You have approved &mdash; awaiting partner</span>';
+                html += '<span style="font-size:0.72rem;color:#4ade80;padding:5px 0;">You have approved &mdash; awaiting partner</span>';
             }
         }
 
@@ -4492,7 +4497,7 @@ async function openTradeNegotiation(negotiationId) {
                 const { data: bData } = await _supabase.from('bills').select('status').eq('id', entry.billId).single();
                 billStatus = bData?.status || 'unknown';
             }
-            const statusColor = billStatus === 'passed' ? '#4CAF50' : billStatus === 'failed' ? '#ff4444' : billStatus === 'floor' ? '#ffcc00' : '#888';
+            const statusColor = billStatus === 'passed' ? '#4ade80' : billStatus === 'failed' ? '#ef4444' : billStatus === 'floor' ? '#facc15' : '#6b6a5e';
             const statusText = billStatus === 'passed' ? 'RATIFIED' : billStatus === 'failed' ? 'REJECTED' : billStatus === 'floor' ? 'VOTING' : 'PENDING';
             const isOurs = entry.nationId === currentNation.id;
             const linkHtml = isOurs && entry.billId ? ' <a href="bill.html?id=' + entry.billId + '" style="color:var(--accent);font-size:0.7rem;text-decoration:underline;">View Bill</a>' : '';
