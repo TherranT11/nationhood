@@ -6063,21 +6063,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         }
     }
 
-    // 9. Clean up all faction-related data from the old nation
-    await supabase.from('faction_bloc_approval').delete().eq('faction_id', factionId);
-    await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
-    await supabase.from('ideology_history').delete().eq('faction_id', factionId);
-    await supabase.from('momentum_log').delete().eq('faction_id', factionId);
-    await supabase.from('fundraiser_promises').delete().eq('party_id', factionId);
-    await supabase.from('donor_trust').delete().eq('party_id', factionId);
-    await supabase.from('bill_support').delete().eq('faction_id', factionId);
-    await supabase.from('campaign_actions').delete().eq('party_id', factionId);
-    await supabase.from('faction_coalitions').delete().eq('faction_a_id', factionId);
-    await supabase.from('faction_coalitions').delete().eq('faction_b_id', factionId);
-    await supabase.from('loyalty_demands').delete().eq('strongman_faction_id', factionId);
-    await supabase.from('loyalty_demands').delete().eq('target_faction_id', factionId);
-
-    // 10. Audit log
+    // 9. Audit log (before cleanup so the insert isn't immediately deleted)
     const { error: logErr } = await supabase
         .from('campaign_actions')
         .insert({
@@ -6088,6 +6074,20 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
             result: { faction_name: faction?.faction_name || 'Unknown' }
         });
     if (logErr) console.warn('disbandParty: could not log action:', logErr);
+
+    // 10. Clean up all faction-related data from the old nation
+    await supabase.from('faction_bloc_approval').delete().eq('faction_id', factionId);
+    await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
+    await supabase.from('ideology_history').delete().eq('faction_id', factionId);
+    await supabase.from('momentum_log').delete().eq('faction_id', factionId);
+    await supabase.from('fundraiser_promises').delete().eq('party_id', factionId);
+    await supabase.from('donor_trust').delete().eq('party_id', factionId);
+    await supabase.from('bill_support').delete().eq('faction_id', factionId);
+    await supabase.from('campaign_actions').delete().eq('party_id', factionId).neq('action_type', 'party_disbanded');
+    await supabase.from('faction_coalitions').delete().eq('faction_a_id', factionId);
+    await supabase.from('faction_coalitions').delete().eq('faction_b_id', factionId);
+    await supabase.from('loyalty_demands').delete().eq('strongman_faction_id', factionId);
+    await supabase.from('loyalty_demands').delete().eq('target_faction_id', factionId);
 
     return { result: 'disbanded' };
 }
