@@ -477,439 +477,174 @@ const MINISTRY_INSTITUTIONS = {
     ]
 };
 
-// ==================== POLICY DEFINITIONS ====================
-const MINISTRY_POLICIES = {
-    healthcare: [
-        {
-            id: 'recruitment_drive',
-            name: 'Medical Recruitment Drive',
-            icon: '',
-            description: 'Launch a campaign to recruit doctors and nurses from abroad and incentivize medical school enrollment.',
-            affects: [
-                { stat: 'Healthcare Quality', statKey: 'healthcare_quality', change: '+2.5', diminished: '+1.8', direction: 'up', rate: 2.5, diminishedRate: 1.8 },
-                { stat: 'Happiness', statKey: 'happiness', change: '+0.3', diminished: '+0.1', direction: 'up', rate: 0.3, diminishedRate: 0.1 }
-            ],
-            costAmount: 1_200_000_000,
-            costLabel: '\u00A71.2B',
-            durationTicks: 3,
-            cooldownLabel: '3 ticks',
-            fiscalCategory: 'Healthcare',
-            maxUses: 4
+// ==================== ENERGY DISPATCH CARDS ====================
+// 10-card deck for the Ministry of Energy. Each card presents a binary choice.
+// {nation} in context text is replaced with currentNation.name at render time.
+// Stat deltas are applied immediately server-side (clamped 0-100).
+// Bloc approval deltas affect both the player's party and the PM/president's party.
+
+const ENERGY_CARDS = [
+    {
+        id: 0,
+        title: 'Fuel Subsidy Debate',
+        source: 'Ministry of Finance / Energy Joint Report',
+        context: 'Fuel prices in {nation} have climbed 14% this quarter. The Finance Ministry is pushing to cut fuel subsidies to reduce the deficit, while consumer groups demand relief. Your call.',
+        left: {
+            label: 'Cut subsidies',
+            statDeltas: { fuel_prices: +3, inflation: -1, debt_growth: -2 },
+            blocApprovals: { 'Business Owners': +4, 'Urban Workers': -4, 'Rural Traditionalists': -4 }
         },
-        {
-            id: 'hospital_expansion',
-            name: 'Hospital Expansion Program',
-            icon: '',
-            description: 'Build new hospital wings and rural clinics to increase bed capacity and reduce ER wait times.',
-            affects: [
-                { stat: 'Healthcare Access', statKey: 'healthcare_accessibility', change: '+4', diminished: '+2.5', direction: 'up', rate: 4, diminishedRate: 2.5 },
-                { stat: 'Healthcare Quality', statKey: 'healthcare_quality', change: '+3', diminished: '+1.5', direction: 'up', rate: 3, diminishedRate: 1.5 }
-            ],
-            costAmount: 2_800_000_000,
-            costLabel: '\u00A72.8B',
-            durationTicks: 5,
-            cooldownLabel: '5 ticks',
-            fiscalCategory: 'Healthcare',
-            maxUses: 3
-        },
-        {
-            id: 'vaccination_campaign',
-            name: 'National Vaccination Campaign',
-            icon: '',
-            description: 'Mass immunization push targeting undervaccinated regions. Reduces disease outbreak risk.',
-            affects: [
-                { stat: 'Healthcare Quality', statKey: 'healthcare_quality', change: '+1.5', diminished: '+0.8', direction: 'up', rate: 1.5, diminishedRate: 0.8 },
-                { stat: 'Happiness', statKey: 'happiness', change: '+1', diminished: '+0.4', direction: 'up', rate: 1, diminishedRate: 0.4 }
-            ],
-            costAmount: 600_000_000,
-            costLabel: '\u00A70.6B',
-            durationTicks: 2,
-            cooldownLabel: '2 ticks',
-            fiscalCategory: 'Healthcare',
-            maxUses: 5
+        right: {
+            label: 'Expand subsidies',
+            statDeltas: { fuel_prices: -3, debt_growth: +2, happiness: +1 },
+            blocApprovals: { 'Urban Workers': +4, 'Rural Traditionalists': +4, 'Business Owners': -4 }
         }
-    ],
-    education: [
-        {
-            id: 'teacher_salary_recruitment',
-            name: 'Teacher Salary & Recruitment Initiative',
-            icon: 'T$',
-            description: 'Raise teacher salaries, offer signing bonuses for rural placements, and fund scholarship-to-teaching pipelines to fill classroom vacancies.',
-            affects: [
-                { stat: 'Education Access', statKey: 'education_accessibility', change: '+2', direction: 'up', rate: 2 },
-                { stat: 'Literacy', statKey: 'literacy', change: '+1', direction: 'up', rate: 1 },
-                { stat: 'Unemployment', statKey: 'unemployment', change: '-0.5', direction: 'down', rate: 0.5 },
-                { stat: 'Debt Growth', statKey: 'debt_growth', change: '+0.5', direction: 'up', rate: 0.5, negative: true },
-                { stat: 'Income Inequality', statKey: 'income_inequality', change: '+0.3', direction: 'up', rate: 0.3, negative: true }
-            ],
-            costPerCapita: 0.75,
-            durationTicks: 4,
-            cooldownLabel: '4 ticks',
-            fiscalCategory: 'Education',
-            maxUses: 5,
-            ideologyAxes: ['EQUALITY', 'COLLECTIVISM'],
-            ideologyConflicts: ['LIBERTY', 'INDIVIDUALISM'],
-            blocReactions: [
-                { bloc: 'Urban Progressives', pct: 12, reaction: 'strong_positive', desc: 'State investment in public education — a loyalty-builder for this bloc.' },
-                { bloc: 'Academics & Professionals', pct: 9, reaction: 'positive', desc: 'Better teacher recruitment improves the education pipeline they value.' },
-                { bloc: 'Urban Workers', pct: 15, reaction: 'positive', desc: 'A wages-and-jobs policy for public sector workers. Equality-Collectivism alignment.' },
-                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'mild_positive', desc: 'Rural signing bonuses may improve underserved schools in minority communities.' },
-                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'mixed', desc: 'Signing bonuses help, but government salary intervention clashes with Liberty values.' },
-                { bloc: 'Business Owners', pct: 6, reaction: 'negative', desc: 'Government wage intervention sets a precedent. Funded through taxation.' },
-                { bloc: 'Religious Conservatives', pct: 13, reaction: 'mild_negative', desc: 'Ideological tags conflict with state economic intervention and debt burden.' },
-                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'neutral', desc: 'Education policy is not their priority. Low salience.' },
-                { bloc: 'Military & Security', pct: 5, reaction: 'neutral', desc: 'This policy is invisible to them unless it affects the defense budget.' }
-            ]
+    },
+    {
+        id: 1,
+        title: 'Solar Mandate',
+        source: 'Environmental Policy Bureau',
+        context: 'A draft mandate would require all new commercial buildings in {nation} to install rooftop solar panels. Industry lobbyists call it an overreach. Environmental groups say it\'s overdue.',
+        left: {
+            label: 'Impose the mandate',
+            statDeltas: { renewable_energy_percentage: +3, carbon_emissions: -2, energy_generation: +1 },
+            blocApprovals: { 'Urban Progressives': +4, 'Academics & Professionals': +4, 'Business Owners': -4 }
         },
-        {
-            id: 'university_research_grants',
-            name: 'University Research Grants Program',
-            icon: 'RG',
-            description: 'Fund competitive research grants across public universities to attract top faculty, retain graduate talent, and boost institutional rankings.',
-            affects: [
-                { stat: 'Higher Education', statKey: 'higher_education', change: '+3', direction: 'up', rate: 3 },
-                { stat: 'Academic Immigration', statKey: 'immigration', change: '+2', direction: 'up', rate: 2 },
-                { stat: 'Intl Reputation', statKey: 'international_reputation', change: '+1', direction: 'up', rate: 1 },
-                { stat: 'Education Access', statKey: 'education_accessibility', change: '-0.5', direction: 'down', rate: 0.5, negative: true },
-                { stat: 'Corruption', statKey: 'corruption', change: '+0.4', direction: 'up', rate: 0.4, negative: true },
-                { stat: 'Income Inequality', statKey: 'income_inequality', change: '+0.3', direction: 'up', rate: 0.3, negative: true }
-            ],
-            costPerCapita: 1.15,
-            durationTicks: 4,
-            cooldownLabel: '4 ticks',
-            fiscalCategory: 'Education',
-            maxUses: 4,
-            ideologyAxes: ['GLOBALISM', 'EQUALITY'],
-            ideologyConflicts: ['NATIONALISM', 'LIBERTY'],
-            blocReactions: [
-                { bloc: 'Academics & Professionals', pct: 9, reaction: 'strong_positive', desc: 'This is their policy. Direct beneficiaries — more research funding and prestige.' },
-                { bloc: 'Urban Progressives', pct: 12, reaction: 'mixed', desc: 'Progress values say yes, but Equality worries about elite concentration.' },
-                { bloc: 'Business Owners', pct: 6, reaction: 'positive', desc: 'University research produces commercializable innovation and skilled graduates.' },
-                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'strong_negative', desc: 'Globalism is the opposite of their identity. Academic immigration triggers them.' },
-                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'mild_positive', desc: 'Academic immigration brings diversity, but Equality clashes with elite funding.' },
-                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'negative', desc: 'Urban elitist spending while rural schools crumble.' },
-                { bloc: 'Religious Conservatives', pct: 13, reaction: 'negative', desc: 'Tradition conflicts with globalist academic culture and foreign faculty.' },
-                { bloc: 'Urban Workers', pct: 15, reaction: 'negative', desc: 'Zero tangible benefit. This money could fund vocational programs instead.' },
-                { bloc: 'Military & Security', pct: 5, reaction: 'neutral', desc: 'No strong feeling unless research specifically funds defense projects.' }
-            ]
-        },
-        {
-            id: 'national_apprenticeship',
-            name: 'National Apprenticeship Expansion',
-            icon: 'AP',
-            description: 'Partner with industry to double apprenticeship placements in construction, electrical, plumbing, and manufacturing trades.',
-            affects: [
-                { stat: 'Labor Force', statKey: 'labor_force_participation', change: '+2', direction: 'up', rate: 2 },
-                { stat: 'Unemployment', statKey: 'unemployment', change: '-1.5', direction: 'down', rate: 1.5 },
-                { stat: 'Education Access', statKey: 'education_accessibility', change: '+1', direction: 'up', rate: 1 },
-                { stat: 'Higher Education', statKey: 'higher_education', change: '-0.8', direction: 'down', rate: 0.8, negative: true },
-                { stat: 'Union Strength', statKey: 'union_strength', change: '+0.5', direction: 'up', rate: 0.5 },
-                { stat: 'Income Inequality', statKey: 'income_inequality', change: '-0.5', direction: 'down', rate: 0.5 }
-            ],
-            costPerCapita: 0.6,
-            durationTicks: 4,
-            cooldownLabel: '4 ticks',
-            fiscalCategory: 'Education',
-            maxUses: 5,
-            ideologyAxes: ['TRADITION', 'INDIVIDUALISM'],
-            ideologyConflicts: ['PROGRESS', 'COLLECTIVISM'],
-            blocReactions: [
-                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'strong_positive', desc: 'Perfect alignment. Trades are culturally respected. Keeps young people local.' },
-                { bloc: 'Urban Workers', pct: 15, reaction: 'strong_positive', desc: 'Directly creates well-paying jobs. Union strength bonus appreciated.' },
-                { bloc: 'Business Owners', pct: 6, reaction: 'positive', desc: 'Subsidized workforce training reduces their own costs.' },
-                { bloc: 'Religious Conservatives', pct: 13, reaction: 'positive', desc: 'Practical, grounded education. Trades represent honest, traditional work.' },
-                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'mild_positive', desc: 'Building domestic workforce skills rather than chasing academic globalism.' },
-                { bloc: 'Military & Security', pct: 5, reaction: 'mild_positive', desc: 'Manufacturing and construction trades feed defense infrastructure.' },
-                { bloc: 'Academics & Professionals', pct: 9, reaction: 'negative', desc: 'Higher education decline is a direct threat to their institutions.' },
-                { bloc: 'Urban Progressives', pct: 12, reaction: 'mild_negative', desc: 'Progress conflicts with Tradition-coded policy. Worried about corporate influence.' },
-                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'mild_positive', desc: 'Non-discriminatory pathways to employment — judged on skill, not credentials.' }
-            ]
-        },
-        {
-            id: 'curriculum_modernization',
-            name: 'Curriculum Modernization Initiative',
-            icon: 'CM',
-            description: 'Overhaul the national curriculum — replace outdated textbooks, introduce digital literacy, align coursework with modern job market demands.',
-            affects: [
-                { stat: 'Education Access', statKey: 'education_accessibility', change: '+1.5', direction: 'up', rate: 1.5 },
-                { stat: 'Higher Education', statKey: 'higher_education', change: '+1', direction: 'up', rate: 1 },
-                { stat: 'Digital Infrastructure', statKey: 'digital_infrastructure', change: '+0.5', direction: 'up', rate: 0.5 },
-                { stat: 'Happiness', statKey: 'happiness', change: '-1.5', direction: 'down', rate: 1.5, negative: true },
-                { stat: 'Polarization', statKey: 'polarization', change: '+1', direction: 'up', rate: 1, negative: true },
-                { stat: 'Stability', statKey: 'stability', change: '-0.3', direction: 'down', rate: 0.3, negative: true }
-            ],
-            costPerCapita: 0.85,
-            durationTicks: 5,
-            cooldownLabel: '5 ticks',
-            fiscalCategory: 'Education',
-            maxUses: 4,
-            ideologyAxes: ['PROGRESS', 'SECURITY'],
-            ideologyConflicts: ['TRADITION', 'FREEDOM'],
-            blocReactions: [
-                { bloc: 'Urban Progressives', pct: 12, reaction: 'strong_positive', desc: 'Maximum alignment. Modernizing institutions is their identity.' },
-                { bloc: 'Academics & Professionals', pct: 9, reaction: 'strong_positive', desc: 'Forward-thinking curriculum aligned with the knowledge economy.' },
-                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'positive', desc: 'Modernized curricula tend to be more inclusive of marginalized communities.' },
-                { bloc: 'Urban Workers', pct: 15, reaction: 'mild_positive', desc: 'Modern job market alignment means better-prepared kids.' },
-                { bloc: 'Religious Conservatives', pct: 13, reaction: 'strong_negative', desc: 'Fear secular indoctrination and removal of religious/moral content.' },
-                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'strong_negative', desc: 'City bureaucrats deciding what children learn. Hostile to curriculum upheaval.' },
-                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'negative', desc: 'Suspicious of what "modernization" means for national identity content.' },
-                { bloc: 'Business Owners', pct: 6, reaction: 'mixed', desc: 'Digital literacy produces better employees, but dislikes government mandates.' },
-                { bloc: 'Military & Security', pct: 5, reaction: 'mild_negative', desc: 'Tradition conflict. Low salience overall.' }
-            ]
-        },
-        {
-            id: 'rural_school_consolidation',
-            name: 'Rural School Consolidation Program',
-            icon: 'SC',
-            description: 'Close underperforming rural schools and bus students to larger, better-equipped regional centers. Fewer schools, but properly funded and staffed.',
-            affects: [
-                { stat: 'Literacy', statKey: 'literacy', change: '+2', direction: 'up', rate: 2 },
-                { stat: 'Education Access', statKey: 'education_accessibility', change: '+1', direction: 'up', rate: 1 },
-                { stat: 'Efficiency', statKey: 'efficiency', change: '+0.5', direction: 'up', rate: 0.5 },
-                { stat: 'Happiness', statKey: 'happiness', change: '-2', direction: 'down', rate: 2, negative: true },
-                { stat: 'Urbanization', statKey: 'urbanization', change: '+1', direction: 'up', rate: 1, negative: true },
-                { stat: 'Civil Unrest', statKey: 'civil_unrest', change: '+0.5', direction: 'up', rate: 0.5, negative: true },
-                { stat: 'Social Mobility', statKey: 'social_mobility', change: '-0.3', direction: 'down', rate: 0.3, negative: true }
-            ],
-            costPerCapita: 0.5,
-            durationTicks: 4,
-            cooldownLabel: '4 ticks',
-            fiscalCategory: 'Education',
-            maxUses: 3,
-            ideologyAxes: ['EQUALITY', 'PROGRESS'],
-            ideologyConflicts: ['LIBERTY', 'TRADITION'],
-            blocReactions: [
-                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'strong_negative', desc: 'Closing a community\'s school is closing the community. Maximum hostility.' },
-                { bloc: 'Religious Conservatives', pct: 13, reaction: 'strong_negative', desc: 'Consolidated centers are larger, more secular, further from community control.' },
-                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'negative', desc: 'Tradition alignment hostile to dismantling rural institutions.' },
-                { bloc: 'Urban Progressives', pct: 12, reaction: 'positive', desc: 'Evidence-based consolidation improves outcomes. Technocratic sensibility.' },
-                { bloc: 'Academics & Professionals', pct: 9, reaction: 'positive', desc: 'Data supports consolidation for academic outcomes.' },
-                { bloc: 'Business Owners', pct: 6, reaction: 'mild_positive', desc: 'Efficiency and reduced overhead resonate.' },
-                { bloc: 'Urban Workers', pct: 15, reaction: 'neutral', desc: 'Doesn\'t affect urban schools. Not their concern.' },
-                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'mild_positive', desc: 'May improve access for minority students in underserved rural areas.' },
-                { bloc: 'Military & Security', pct: 5, reaction: 'mild_negative', desc: 'Tradition and Freedom conflict. Low salience.' }
-            ]
-        },
-        {
-            id: 'performance_based_funding',
-            name: 'Performance-Based School Funding',
-            icon: 'PF',
-            description: 'Tie school budgets to student outcomes — graduation rates, employment metrics, standardized scores. Top performers get bonuses. Underperformers get intervention teams.',
-            affects: [
-                { stat: 'Literacy', statKey: 'literacy', change: '+2', direction: 'up', rate: 2 },
-                { stat: 'Education Access', statKey: 'education_accessibility', change: '+0.5', direction: 'up', rate: 0.5 },
-                { stat: 'Efficiency', statKey: 'efficiency', change: '+1', direction: 'up', rate: 1 },
-                { stat: 'Social Mobility', statKey: 'social_mobility', change: '-1.5', direction: 'down', rate: 1.5, negative: true },
-                { stat: 'Corruption', statKey: 'corruption', change: '+0.5', direction: 'up', rate: 0.5, negative: true },
-                { stat: 'Income Inequality', statKey: 'income_inequality', change: '+0.5', direction: 'up', rate: 0.5, negative: true },
-                { stat: 'Happiness', statKey: 'happiness', change: '-0.5', direction: 'down', rate: 0.5, negative: true }
-            ],
-            costPerCapita: 0.6,
-            durationTicks: 4,
-            cooldownLabel: '4 ticks',
-            fiscalCategory: 'Education',
-            maxUses: 4,
-            ideologyAxes: ['LIBERTY', 'INDIVIDUALISM'],
-            ideologyConflicts: ['EQUALITY', 'COLLECTIVISM'],
-            blocReactions: [
-                { bloc: 'Business Owners', pct: 6, reaction: 'strong_positive', desc: 'Perfect ideological alignment. Accountability and competition are their language.' },
-                { bloc: 'Religious Conservatives', pct: 13, reaction: 'positive', desc: 'Liberty-Individualism alignment. Rewards hard work, merit, discipline.' },
-                { bloc: 'Military & Security', pct: 5, reaction: 'positive', desc: 'Accountability structures and performance metrics — how institutions should run.' },
-                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'mild_positive', desc: 'Liberty alignment. Meritocratic framework resonates.' },
-                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'mixed', desc: 'Ideologically sympathetic but rural schools score lower due to resource disadvantages.' },
-                { bloc: 'Urban Progressives', pct: 12, reaction: 'strong_negative', desc: 'Institutionalizing class stratification. "Punishing poor children for being poor."' },
-                { bloc: 'Academics & Professionals', pct: 9, reaction: 'mixed', desc: 'Appreciate data-driven evaluation but uneasy with crude metrics and gaming.' },
-                { bloc: 'Urban Workers', pct: 15, reaction: 'negative', desc: 'Working-class districts lose funding. Wealth gap in education widens.' },
-                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'strong_negative', desc: 'Minority communities disproportionately attend underfunded schools that score lowest.' }
-            ]
+        right: {
+            label: 'Voluntary incentives only',
+            statDeltas: { renewable_energy_percentage: +1, energy_generation: +1 },
+            blocApprovals: { 'Business Owners': +4, 'Urban Progressives': -4, 'Rural Traditionalists': +4 }
         }
-    ],
-    finance: [
-        {
-            id: 'tax_compliance_crackdown',
-            name: 'Tax Compliance Crackdown',
-            icon: '🔍',
-            description: 'Double audit teams, cross-reference bank records with tax filings, pursue high-profile evasion cases. Name and shame corporate tax dodgers.',
-            affects: [
-                { stat: 'Efficiency', statKey: 'efficiency', change: '+1.5', direction: 'up', rate: 1.5 },
-                { stat: 'Happiness', statKey: 'happiness', change: '-1', direction: 'down', rate: 1, negative: true },
-                { stat: 'Foreign Investment', statKey: 'foreign_investment', change: '-0.5', direction: 'down', rate: 0.5, negative: true }
-            ],
-            costPerCapita: 4.5,
-            durationTicks: 3,
-            cooldownLabel: '3 ticks',
-            fiscalCategory: 'Finance',
-            maxUses: 4,
-            ideologyAxes: ['EQUALITY', 'SECURITY'],
-            ideologyConflicts: ['LIBERTY', 'FREEDOM'],
-            blocReactions: [
-                { bloc: 'Urban Progressives', pct: 12, reaction: 'strong_positive', desc: 'Redistributive justice — the rich finally paying their share. Name and shame is catnip.' },
-                { bloc: 'Urban Workers', pct: 15, reaction: 'positive', desc: 'Cracking down on corporate evasion feels like justice, though audit paperwork is miserable.' },
-                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'positive', desc: 'Support enforcement against the wealthy, though wary small businesses get targeted harder.' },
-                { bloc: 'Academics & Professionals', pct: 9, reaction: 'mild_positive', desc: 'Institutional credibility matters. Approve intellectually but hate the audit paperwork.' },
-                { bloc: 'Business Owners', pct: 6, reaction: 'strong_negative', desc: 'Government intrusion into private financial affairs. Name and shame is existentially threatening.' },
-                { bloc: 'Religious Conservatives', pct: 13, reaction: 'negative', desc: 'Expands state surveillance apparatus. Today bank accounts, tomorrow everything.' },
-                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'mild_negative', desc: 'Rural businesses with informal cash economies feel exposed. Admin burden falls harder on small operations.' },
-                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'neutral', desc: 'No strong interest. Could flip positive if framed as targeting foreign-owned companies.' },
-                { bloc: 'Military & Security', pct: 5, reaction: 'neutral', desc: 'Respect institutional enforcement but Liberty-Freedom alignment conflicts. Net wash.' }
-            ]
+    },
+    {
+        id: 2,
+        title: 'Coal Phase-Out Timeline',
+        source: 'Energy Transition Commission',
+        context: 'The commission recommends closing {nation}\'s remaining coal plants within 5 years. Mining unions warn of mass layoffs. Climate scientists say it\'s already behind schedule.',
+        left: {
+            label: 'Accelerate phase-out (3 years)',
+            statDeltas: { carbon_emissions: -3, pollution: -2, energy_generation: -2 },
+            blocApprovals: { 'Urban Progressives': +4, 'Academics & Professionals': +4, 'Urban Workers': -4, 'Nationalist Bloc': -4 }
         },
-        {
-            id: 'banking_stress_tests',
-            name: 'Banking Sector Stress Tests',
-            icon: '🏦',
-            description: 'Force all major banks to undergo rigorous stress testing. Publish results publicly. Undercapitalized banks must raise reserves or face restrictions.',
-            affects: [
-                { stat: 'Currency Strength', statKey: 'currency_strength', change: '+1.5', direction: 'up', rate: 1.5 },
-                { stat: 'Foreign Investment', statKey: 'foreign_investment', change: '+1', direction: 'up', rate: 1 },
-                { stat: 'Credit', statKey: 'credit', change: '-1.2', direction: 'down', rate: 1.2, negative: true },
-                { stat: 'GDP Growth', statKey: 'gdp_growth', change: '-0.3', direction: 'down', rate: 0.3, negative: true }
-            ],
-            costPerCapita: 6.0,
-            durationTicks: 4,
-            cooldownLabel: '4 ticks',
-            fiscalCategory: 'Finance',
-            maxUses: 4,
-            ideologyAxes: ['SECURITY', 'PROGRESS'],
-            ideologyConflicts: ['FREEDOM', 'TRADITION'],
-            blocReactions: [
-                { bloc: 'Academics & Professionals', pct: 9, reaction: 'strong_positive', desc: 'Perfect alignment. Institutional reform that international credit agencies reward.' },
-                { bloc: 'Urban Progressives', pct: 12, reaction: 'positive', desc: 'Government holding banks accountable. Credit tightening worries them only for working people.' },
-                { bloc: 'Business Owners', pct: 6, reaction: 'negative', desc: 'Credit squeeze is devastating for businesses relying on bank lending.' },
-                { bloc: 'Urban Workers', pct: 15, reaction: 'mixed', desc: 'Like banks being held accountable but the credit squeeze means harder mortgages and potential layoffs.' },
-                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'mild_negative', desc: 'Agricultural lending is heavily credit-dependent. Seasonal farming operations are directly hurt.' },
-                { bloc: 'Religious Conservatives', pct: 13, reaction: 'mild_negative', desc: 'Government restructuring financial institutions. Banking regulation is abstract enough that salience is low.' },
-                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'neutral', desc: 'Low salience. Banking regulation isn\'t their concern unless framed as financial sovereignty.' },
-                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'neutral', desc: 'Banking regulation is outside their primary concerns.' },
-                { bloc: 'Military & Security', pct: 5, reaction: 'neutral', desc: 'Respect institutional discipline but Liberty-Freedom alignment conflicts.' }
-            ]
-        },
-        {
-            id: 'sovereign_debt_restructuring',
-            name: 'Sovereign Debt Restructuring',
-            icon: '📉',
-            description: 'Renegotiate terms on existing government debt — extend maturities, lower interest rates, consolidate scattered obligations.',
-            affects: [
-                { stat: 'Debt Growth', statKey: 'debt_growth', change: '-2', direction: 'down', rate: 2 },
-                { stat: 'Efficiency', statKey: 'efficiency', change: '+0.8', direction: 'up', rate: 0.8 },
-                { stat: 'Intl Reputation', statKey: 'international_reputation', change: '-1', direction: 'down', rate: 1, negative: true },
-                { stat: 'Currency Strength', statKey: 'currency_strength', change: '-0.8', direction: 'down', rate: 0.8, negative: true }
-            ],
-            costPerCapita: 4.5,
-            durationTicks: 5,
-            cooldownLabel: '5 ticks',
-            fiscalCategory: 'Finance',
-            maxUses: 3,
-            ideologyAxes: ['EQUALITY', 'NATIONALISM'],
-            ideologyConflicts: ['LIBERTY', 'GLOBALISM'],
-            blocReactions: [
-                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'positive', desc: 'Refusing to honor terms set by international creditors is a sovereignty assertion.' },
-                { bloc: 'Urban Progressives', pct: 12, reaction: 'positive', desc: 'Debt restructuring frees up budget for public services — education, healthcare, social programs.' },
-                { bloc: 'Urban Workers', pct: 15, reaction: 'positive', desc: 'Lower debt means more room for spending that benefits them. Currency hit is abstract.' },
-                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'mild_positive', desc: 'Debt restructuring leading to more social spending benefits them. Low salience overall.' },
-                { bloc: 'Academics & Professionals', pct: 9, reaction: 'mild_negative', desc: 'INTERNATIONAL alarm. Reputation damage and currency weakness are exactly what they fear.' },
-                { bloc: 'Business Owners', pct: 6, reaction: 'negative', desc: 'Currency weakness makes imports expensive. Renegotiating debt sets a dangerous precedent.' },
-                { bloc: 'Religious Conservatives', pct: 13, reaction: 'mild_negative', desc: 'Debt obligations are sacred. You made a promise — keep it.' },
-                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'mild_negative', desc: 'Uncomfortable with broken financial commitments. Currency decline raises import costs.' },
-                { bloc: 'Military & Security', pct: 5, reaction: 'mild_negative', desc: 'Reduced credibility could affect defense procurement from foreign suppliers.' }
-            ]
-        },
-        {
-            id: 'small_business_deregulation',
-            name: 'Small Business Deregulation Program',
-            icon: '✂️',
-            description: 'Slash red tape for small and medium enterprises. Simplify business registration, reduce reporting requirements, streamline permits.',
-            affects: [
-                { stat: 'GDP Growth', statKey: 'gdp_growth', change: '+1', direction: 'up', rate: 1 },
-                { stat: 'Unemployment', statKey: 'unemployment', change: '-0.8', direction: 'down', rate: 0.8 },
-                { stat: 'Corruption', statKey: 'corruption', change: '+1', direction: 'up', rate: 1, negative: true },
-                { stat: 'Stability', statKey: 'stability', change: '-0.3', direction: 'down', rate: 0.3, negative: true },
-                { stat: 'Civil Unrest', statKey: 'civil_unrest', change: '+0.2', direction: 'up', rate: 0.2, negative: true }
-            ],
-            costPerCapita: 7.5,
-            durationTicks: 3,
-            cooldownLabel: '3 ticks',
-            fiscalCategory: 'Finance',
-            maxUses: 5,
-            ideologyAxes: ['LIBERTY', 'INDIVIDUALISM'],
-            ideologyConflicts: ['EQUALITY', 'COLLECTIVISM'],
-            blocReactions: [
-                { bloc: 'Business Owners', pct: 6, reaction: 'strong_positive', desc: 'Their policy. Deregulation directly reduces operating costs and gives workforce flexibility.' },
-                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'strong_positive', desc: 'Agricultural businesses drowning in permits and inspections. Family farms benefit disproportionately.' },
-                { bloc: 'Religious Conservatives', pct: 13, reaction: 'positive', desc: 'Shrinking government regulatory footprint. Self-reliance and limited state interference.' },
-                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'mild_positive', desc: 'Less government interference resonates. Passively supportive.' },
-                { bloc: 'Military & Security', pct: 5, reaction: 'mild_positive', desc: 'Approve of streamlining. Low salience.' },
-                { bloc: 'Urban Workers', pct: 15, reaction: 'negative', desc: 'Fewer workplace protections, fewer safety inspections. They\'re the ones in the unsafe buildings.' },
-                { bloc: 'Urban Progressives', pct: 12, reaction: 'strong_negative', desc: 'Deregulation as a license to steal. Corruption +1 is their headline stat.' },
-                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'negative', desc: 'Deregulation means minority-owned businesses lose protections while larger businesses exploit reduced oversight.' },
-                { bloc: 'Academics & Professionals', pct: 9, reaction: 'mild_negative', desc: 'They want smarter regulation, not less regulation. Anti-evidence approach.' }
-            ]
-        },
-        {
-            id: 'foreign_investment_zones',
-            name: 'Foreign Investment Incentive Zones',
-            icon: '🌐',
-            description: 'Designate special economic zones with tax holidays, fast-tracked permits, and dedicated infrastructure for foreign companies.',
-            affects: [
-                { stat: 'Foreign Investment', statKey: 'foreign_investment', change: '+2.5', direction: 'up', rate: 2.5 },
-                { stat: 'Unemployment', statKey: 'unemployment', change: '-1', direction: 'down', rate: 1 },
-                { stat: 'Debt Growth', statKey: 'debt_growth', change: '+0.8', direction: 'up', rate: 0.8, negative: true },
-                { stat: 'Happiness', statKey: 'happiness', change: '-0.5', direction: 'down', rate: 0.5, negative: true },
-                { stat: 'Corruption', statKey: 'corruption', change: '+0.5', direction: 'up', rate: 0.5, negative: true }
-            ],
-            costPerCapita: 27.0,
-            durationTicks: 5,
-            cooldownLabel: '5 ticks',
-            fiscalCategory: 'Finance',
-            maxUses: 4,
-            ideologyAxes: ['GLOBALISM', 'LIBERTY'],
-            ideologyConflicts: ['NATIONALISM', 'EQUALITY'],
-            blocReactions: [
-                { bloc: 'Academics & Professionals', pct: 9, reaction: 'positive', desc: 'Attracting foreign capital, technology transfer, global supply chain integration.' },
-                { bloc: 'Business Owners', pct: 6, reaction: 'mixed', desc: 'Split — some can partner with foreign firms, others compete against them with worse tax terms.' },
-                { bloc: 'Urban Workers', pct: 15, reaction: 'mixed', desc: 'Jobs are good, but preferential treatment for foreign capital offends Equality values.' },
-                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'mild_positive', desc: 'Foreign investment brings cultural exchange, but questions who actually benefits.' },
-                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'strong_negative', desc: 'Economic sovereignty sold to foreign companies. Building a foreign country inside ours.' },
-                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'negative', desc: 'Zones often built on agricultural land. Losing farmland to foreign factories is cultural loss.' },
-                { bloc: 'Religious Conservatives', pct: 13, reaction: 'negative', desc: 'Foreign corporate presence brings foreign cultural values. Zones are governance exceptions.' },
-                { bloc: 'Military & Security', pct: 5, reaction: 'mild_negative', desc: 'Sovereign territory carved out for foreign interests. Could flip if defense contractors involved.' },
-                { bloc: 'Urban Progressives', pct: 12, reaction: 'neutral', desc: 'Ambivalent — jobs are good but tax holidays for corporations are ideologically hostile.' }
-            ]
-        },
-        {
-            id: 'anti_money_laundering',
-            name: 'Anti-Money Laundering Enforcement',
-            icon: '🛡️',
-            description: 'Upgrade financial surveillance systems, hire forensic accountants, mandate suspicious transaction reporting, crack down on shell companies.',
-            affects: [
-                { stat: 'Corruption', statKey: 'corruption', change: '-1.5', direction: 'down', rate: 1.5 },
-                { stat: 'Intl Reputation', statKey: 'international_reputation', change: '+1', direction: 'up', rate: 1 },
-                { stat: 'Currency Strength', statKey: 'currency_strength', change: '+0.5', direction: 'up', rate: 0.5 },
-                { stat: 'Efficiency', statKey: 'efficiency', change: '-0.8', direction: 'down', rate: 0.8, negative: true },
-                { stat: 'Foreign Investment', statKey: 'foreign_investment', change: '-0.5', direction: 'down', rate: 0.5, negative: true },
-                { stat: 'GDP Growth', statKey: 'gdp_growth', change: '-0.3', direction: 'down', rate: 0.3, negative: true }
-            ],
-            costPerCapita: 18.0,
-            durationTicks: 4,
-            cooldownLabel: '4 ticks',
-            fiscalCategory: 'Finance',
-            maxUses: 4,
-            ideologyAxes: ['SECURITY', 'EQUALITY'],
-            ideologyConflicts: ['FREEDOM', 'LIBERTY'],
-            blocReactions: [
-                { bloc: 'Academics & Professionals', pct: 9, reaction: 'strong_positive', desc: 'Institutional credibility and international reputation are exactly what they care about.' },
-                { bloc: 'Urban Progressives', pct: 12, reaction: 'strong_positive', desc: 'Corruption -1.5 is their most valued stat effect. Money laundering connects to exploitation.' },
-                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'positive', desc: 'Organized financial crime disproportionately affects their communities.' },
-                { bloc: 'Urban Workers', pct: 15, reaction: 'mild_positive', desc: 'Like anti-corruption in principle but the GDP drag means fewer jobs and less wage growth.' },
-                { bloc: 'Business Owners', pct: 6, reaction: 'strong_negative', desc: 'Efficiency and GDP hits are direct costs. Mandatory transaction reporting is surveillance.' },
-                { bloc: 'Religious Conservatives', pct: 13, reaction: 'negative', desc: 'Major expansion of state surveillance infrastructure. Treating every citizen like a suspect.' },
-                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'mild_negative', desc: 'Rural cash transactions flagged by systems designed for urban banking. Compliance burden is higher per dollar.' },
-                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'neutral', desc: 'Could go positive if framed as targeting foreign money laundering operations.' },
-                { bloc: 'Military & Security', pct: 5, reaction: 'mixed', desc: 'Respect intelligence-style financial surveillance but Liberty-Freedom alignment conflicts.' }
-            ]
+        right: {
+            label: 'Extend timeline (8 years)',
+            statDeltas: { carbon_emissions: -1, energy_generation: +1, unemployment: -1 },
+            blocApprovals: { 'Urban Workers': +4, 'Nationalist Bloc': +4, 'Urban Progressives': -4 }
         }
-    ]
-};
+    },
+    {
+        id: 3,
+        title: 'Grid Modernization',
+        source: 'National Infrastructure Review',
+        context: '{nation}\'s power grid lost 12% of generated electricity to transmission inefficiency last year. Engineers propose a $2B smart grid upgrade. Treasury says the money isn\'t there.',
+        left: {
+            label: 'Fund the full upgrade',
+            statDeltas: { energy_generation: +3, physical_infrastructure: +2, debt_growth: +2 },
+            blocApprovals: { 'Academics & Professionals': +4, 'Urban Progressives': +4, 'Religious Conservatives': -4 }
+        },
+        right: {
+            label: 'Patch critical segments only',
+            statDeltas: { energy_generation: +1, physical_infrastructure: +1 },
+            blocApprovals: { 'Business Owners': +4, 'Religious Conservatives': +4, 'Academics & Professionals': -4 }
+        }
+    },
+    {
+        id: 4,
+        title: 'Foreign Energy Deal',
+        source: 'Foreign Ministry / Energy Desk',
+        context: 'A neighboring state offers {nation} a 10-year natural gas supply contract at below-market rates. Critics warn it creates dangerous dependency on a rival power.',
+        left: {
+            label: 'Sign the contract',
+            statDeltas: { fuel_prices: -2, energy_generation: +2, foreign_investment: +1 },
+            blocApprovals: { 'Business Owners': +4, 'Urban Workers': +4, 'Nationalist Bloc': -4, 'Military & Security': -4 }
+        },
+        right: {
+            label: 'Reject and invest domestically',
+            statDeltas: { energy_generation: +1, debt_growth: +1 },
+            blocApprovals: { 'Nationalist Bloc': +4, 'Military & Security': +4, 'Business Owners': -4 }
+        }
+    },
+    {
+        id: 5,
+        title: 'Nuclear Reactor Proposal',
+        source: 'Energy Research Institute',
+        context: 'Scientists in {nation} propose a new-generation nuclear reactor. Supporters cite zero-carbon baseload power. Opponents raise safety and waste storage concerns.',
+        left: {
+            label: 'Approve construction',
+            statDeltas: { energy_generation: +3, carbon_emissions: -2, pollution: +1 },
+            blocApprovals: { 'Military & Security': +4, 'Academics & Professionals': +4, 'Religious Conservatives': -4, 'Rural Traditionalists': -4 }
+        },
+        right: {
+            label: 'Block and fund wind farms instead',
+            statDeltas: { renewable_energy_percentage: +3, energy_generation: +1, carbon_emissions: -1 },
+            blocApprovals: { 'Urban Progressives': +4, 'Rural Traditionalists': +4, 'Military & Security': -4 }
+        }
+    },
+    {
+        id: 6,
+        title: 'Electricity Price Cap',
+        source: 'Consumer Protection Agency',
+        context: 'Electricity bills in {nation} have spiked 20% this winter. The agency recommends a temporary price cap. Energy companies warn it will kill investment in new capacity.',
+        left: {
+            label: 'Impose price cap',
+            statDeltas: { fuel_prices: -3, energy_generation: -1, happiness: +2 },
+            blocApprovals: { 'Urban Workers': +4, 'Ethnic Minorities': +4, 'Business Owners': -4 }
+        },
+        right: {
+            label: 'Let market prices stand',
+            statDeltas: { energy_generation: +1, fuel_prices: +1, foreign_investment: +1 },
+            blocApprovals: { 'Business Owners': +4, 'Urban Workers': -4, 'Ethnic Minorities': -4 }
+        }
+    },
+    {
+        id: 7,
+        title: 'Military Base Power Supply',
+        source: 'Ministry of Defense / Energy Liaison',
+        context: 'Defense requests {nation}\'s energy ministry fund dedicated power infrastructure for three military installations. The ask is significant and comes at the expense of civilian grid expansion.',
+        left: {
+            label: 'Fund military power infrastructure',
+            statDeltas: { energy_generation: -1, physical_infrastructure: +1 },
+            blocApprovals: { 'Military & Security': +4, 'Nationalist Bloc': +4, 'Urban Progressives': -4, 'Urban Workers': -4 }
+        },
+        right: {
+            label: 'Prioritize civilian grid',
+            statDeltas: { energy_generation: +2, happiness: +1 },
+            blocApprovals: { 'Urban Workers': +4, 'Urban Progressives': +4, 'Military & Security': -4, 'Nationalist Bloc': -4 }
+        }
+    },
+    {
+        id: 8,
+        title: 'Oil Exploration License',
+        source: 'Natural Resources Bureau',
+        context: 'A survey reveals potentially large oil reserves off the coast of {nation}. Issuing exploration licenses would boost energy independence but risks marine ecosystems.',
+        left: {
+            label: 'Issue exploration licenses',
+            statDeltas: { oil_and_gas: +3, energy_generation: +2, pollution: +2 },
+            blocApprovals: { 'Business Owners': +4, 'Nationalist Bloc': +4, 'Urban Progressives': -4, 'Academics & Professionals': -4 }
+        },
+        right: {
+            label: 'Designate a marine protected zone',
+            statDeltas: { pollution: -2, carbon_emissions: -1 },
+            blocApprovals: { 'Urban Progressives': +4, 'Academics & Professionals': +4, 'Business Owners': -4, 'Nationalist Bloc': -4 }
+        }
+    },
+    {
+        id: 9,
+        title: 'Price Harmonization',
+        source: 'Regional Energy Authority',
+        context: 'The regional bloc proposes harmonizing energy prices across member states. {nation} currently has lower rates. Harmonization would raise domestic prices but open export markets.',
+        left: {
+            label: 'Agree to harmonization',
+            statDeltas: { fuel_prices: +2, trade_balance: +2, foreign_investment: +1 },
+            blocApprovals: { 'Business Owners': +4, 'Academics & Professionals': +4, 'Urban Workers': -4, 'Religious Conservatives': -4 }
+        },
+        right: {
+            label: 'Opt out to protect domestic prices',
+            statDeltas: { fuel_prices: -1, trade_balance: -1, happiness: +1 },
+            blocApprovals: { 'Urban Workers': +4, 'Religious Conservatives': +4, 'Nationalist Bloc': +4, 'Business Owners': -4 }
+        }
+    }
+];
 
 // ==================== DECAY TABLE ====================
 // Funding % -> decay per tick (your adjusted version: <100% starts losing)
@@ -940,8 +675,10 @@ let budgetAllocations = {};
 let budgetItemAllocations = {};  // { itemId: { allocated, needed } } from budget_item_allocations
 let selectedMinistryKey = null;
 let activeDetailTab = 'institutions';
-let policyUsage = {};     // { action_key: count }
-let policyCooldowns = {}; // { action_key: tickWhenReady }
+// Energy dispatch state
+let energyDispatchState = null;  // { deckOrder, deckIndex, pendingCardId, pendingSinceTick, lastResult }
+let energySelectedChoice = null; // 'left' or 'right'
+let energyConfirmInFlight = false; // state-based guard against double-click
 
 // ==================== INIT ====================
 initPage('ministry-actions', async (state) => {
@@ -1007,18 +744,16 @@ initPage('ministry-actions', async (state) => {
         }
     }
 
-    // Fetch policy usage counts from ministry_action_log
-    const { data: actionLogs } = await _supabase.from('ministry_action_log')
-        .select('action_key, applied_at_tick, processed')
-        .eq('nation_id', currentNation.id);
-    if (actionLogs) {
-        for (const log of actionLogs) {
-            policyUsage[log.action_key] = (policyUsage[log.action_key] || 0) + 1;
-            // Track cooldowns: find the most recent use
-            if (!log.processed) {
-                policyCooldowns[log.action_key] = log.applied_at_tick;
-            }
-        }
+    // Load energy dispatch state from the energy ministry record
+    const energyMinistry = ministryData.find(m => m.ministry_key === 'energy');
+    if (energyMinistry) {
+        energyDispatchState = {
+            deckOrder: energyMinistry.energy_deck_order,
+            deckIndex: energyMinistry.energy_deck_index ?? 0,
+            pendingCardId: energyMinistry.energy_pending_card_id,
+            pendingSinceTick: energyMinistry.energy_pending_since_tick,
+            lastResult: energyMinistry.energy_last_result
+        };
     }
 
     renderPage();
@@ -1069,10 +804,16 @@ function renderPage() {
         const pName = ministry?.factions?.faction_name || null;
         const dot = isFilled ? '<span class="msb-dot filled"></span>' : '<span class="msb-dot vacant"></span>';
 
+        // Energy dispatch badge: red [1] when a card is pending and unresolved
+        const dispatchBadge = (key === 'energy' && energyDispatchState &&
+            energyDispatchState.pendingCardId != null && !energyDispatchState.lastResult)
+            ? '<span class="msb-dispatch-badge">1</span>' : '';
+
         h += `<button class="msb-btn${isActive ? ' active' : ''}${isMyMinistry ? ' mine' : ''}" data-key="${key}" onclick="selectMinistry('${key}')">`;
         h += `<span class="msb-icon">${icon}</span>`;
         h += `<span class="msb-label">${label}</span>`;
         h += dot;
+        h += dispatchBadge;
         h += '</button>';
     }
     h += '</div>';
@@ -1129,8 +870,10 @@ function renderMinistryContent(key) {
     const overallPct = alloc.needed > 0 ? Math.round((alloc.allocated / alloc.needed) * 100) : 100;
     const overallFunding = getFundingLabel(overallPct);
     const institutions = MINISTRY_INSTITUTIONS[key] || [];
-    const policies = MINISTRY_POLICIES[key] || [];
     const activeCrises = getActiveCrises(key, institutions).length;
+    const hasEnergyDispatch = key === 'energy';
+    const hasPendingDispatch = hasEnergyDispatch && energyDispatchState &&
+        energyDispatchState.pendingCardId != null && !energyDispatchState.lastResult;
 
     let h = '';
 
@@ -1174,14 +917,21 @@ function renderMinistryContent(key) {
     h += '<div class="mdet-tabs">';
     const tabs = [
         { key: 'institutions', label: 'INSTITUTIONS', count: institutions.length },
-        { key: 'policies', label: 'POLICIES', count: policies.length },
         { key: 'crises', label: 'CRISIS EVENTS', count: activeCrises }
     ];
+    if (hasEnergyDispatch) {
+        tabs.splice(1, 0, { key: 'dispatch', label: 'DISPATCH', pending: hasPendingDispatch });
+    }
     for (const tab of tabs) {
         const isActive = activeDetailTab === tab.key;
-        const badge = tab.key === 'crises' && tab.count > 0
-            ? `<span class="mdet-tab-badge-alert">${tab.count}</span>`
-            : `<span class="mdet-tab-count">${tab.count}</span>`;
+        let badge = '';
+        if (tab.key === 'crises' && tab.count > 0) {
+            badge = `<span class="mdet-tab-badge-alert">${tab.count}</span>`;
+        } else if (tab.key === 'dispatch' && tab.pending) {
+            badge = '<span class="mdet-tab-badge-dispatch">1</span>';
+        } else if (tab.count != null) {
+            badge = `<span class="mdet-tab-count">${tab.count}</span>`;
+        }
         h += `<button class="mdet-tab${isActive ? ' active' : ''}" onclick="switchDetailTab('${tab.key}')">${tab.label} ${badge}</button>`;
     }
     h += '</div>';
@@ -1191,8 +941,8 @@ function renderMinistryContent(key) {
 
     if (activeDetailTab === 'institutions') {
         h += renderInstitutionsTab(key, institutions, alloc);
-    } else if (activeDetailTab === 'policies') {
-        h += renderPoliciesTab(policies, key);
+    } else if (activeDetailTab === 'dispatch' && hasEnergyDispatch) {
+        h += renderEnergyDispatchTab();
     } else if (activeDetailTab === 'crises') {
         h += renderCrisesTab();
     }
@@ -1313,178 +1063,7 @@ function renderStatPill(label, value, decayStr, isPrimary) {
     return h;
 }
 
-// ==================== POLICY COST & EFFECT HELPERS ====================
-
-/**
- * Compute population-scaled cost for a policy at a given use count.
- * Uses costPerCapita if available, else falls back to costAmount.
- * Diminishing returns: cost × (1.5 ^ timesUsed)
- */
-function getPolicyCost(policy, timesUsed) {
-    const pop = currentNation?.population || 1;
-    const baseCost = policy.costPerCapita != null
-        ? policy.costPerCapita * pop
-        : (policy.costAmount || 0);
-    return baseCost * Math.pow(1.5, timesUsed);
-}
-
-/**
- * Compute diminished effect rate at a given use count.
- * effect × (0.6 ^ timesUsed)
- */
-function getDiminishedRate(baseRate, timesUsed) {
-    return baseRate * Math.pow(0.6, timesUsed);
-}
-
-function fmtRate(rate, direction) {
-    const sign = direction === 'down' ? '-' : '+';
-    const val = Math.round(rate * 100) / 100;
-    return sign + val;
-}
-
-const REACTION_META = {
-    strong_positive: { label: 'STRONG +', color: '#5cb85c', bg: 'rgba(92,184,92,0.08)', border: 'rgba(92,184,92,0.18)' },
-    positive:        { label: 'POSITIVE', color: '#5cb85c', bg: 'rgba(92,184,92,0.06)', border: 'rgba(92,184,92,0.12)' },
-    mild_positive:   { label: 'MILD +',  color: '#8a9a5c', bg: 'rgba(138,154,92,0.06)', border: 'rgba(138,154,92,0.12)' },
-    mixed:           { label: 'MIXED',   color: '#c8a64e', bg: 'rgba(200,166,78,0.06)', border: 'rgba(200,166,78,0.12)' },
-    neutral:         { label: 'NEUTRAL', color: '#6b6a5e', bg: 'rgba(255,255,255,0.02)', border: 'rgba(255,255,255,0.06)' },
-    mild_negative:   { label: 'MILD -',  color: '#b87c4e', bg: 'rgba(184,124,78,0.06)', border: 'rgba(184,124,78,0.12)' },
-    negative:        { label: 'NEGATIVE', color: '#d9534f', bg: 'rgba(217,83,79,0.06)', border: 'rgba(217,83,79,0.12)' },
-    strong_negative: { label: 'STRONG -', color: '#d9534f', bg: 'rgba(217,83,79,0.08)', border: 'rgba(217,83,79,0.18)' }
-};
-
-// ==================== POLICIES TAB ====================
-function renderPoliciesTab(policies, ministryKey) {
-    let h = '';
-    h += '<div class="mdet-tab-intro">Policies actively improve stats — but each use yields less return and costs more. Institutions maintain; policies push forward.</div>';
-
-    if (policies.length === 0) {
-        h += '<div class="mdet-empty">No policies available for this ministry yet.</div>';
-        return h;
-    }
-
-    const fiscalCat = MINISTRY_FISCAL_MAP[ministryKey];
-    const alloc = budgetAllocations[fiscalCat] || { allocated: 0, needed: 0 };
-
-    for (const policy of policies) {
-        const timesUsed = policyUsage[policy.id] || 0;
-        const isExhausted = timesUsed >= policy.maxUses;
-        const isOnCooldown = policyCooldowns[policy.id] != null;
-        const currentCost = getPolicyCost(policy, timesUsed);
-        const canAfford = alloc.allocated >= currentCost;
-
-        let btnLabel = 'ENACT';
-        let btnDisabled = false;
-        if (isExhausted) { btnLabel = 'EXHAUSTED'; btnDisabled = true; }
-        else if (isOnCooldown) { btnLabel = 'ON COOLDOWN'; btnDisabled = true; }
-        else if (!canAfford) { btnLabel = 'NO BUDGET'; btnDisabled = true; }
-
-        h += `<div class="pol-card${isExhausted ? ' exhausted' : ''}${!canAfford && !isExhausted ? ' no-budget' : ''}">`;
-
-        h += '<div class="pol-card-top">';
-        h += '<div class="pol-card-info">';
-
-        // Title with icon glyph
-        h += `<div class="pol-card-title"><span class="pol-icon-glyph">${policy.icon}</span><span>${esc(policy.name)}</span></div>`;
-
-        // Ideology axes
-        if (policy.ideologyAxes && policy.ideologyAxes.length > 0) {
-            h += '<div class="pol-ideology-row">';
-            for (const axis of policy.ideologyAxes) {
-                h += `<span class="pol-ideo-tag pol-ideo-align">${axis}</span>`;
-            }
-            if (policy.ideologyConflicts) {
-                h += '<span class="pol-ideo-vs">vs</span>';
-                for (const axis of policy.ideologyConflicts) {
-                    h += `<span class="pol-ideo-tag pol-ideo-oppose">${axis}</span>`;
-                }
-            }
-            h += '</div>';
-        }
-
-        h += `<div class="pol-card-desc">${esc(policy.description)}</div>`;
-
-        // Stat effects with diminishing returns
-        h += '<div class="pol-effects">';
-        for (const a of policy.affects) {
-            const currentRate = getDiminishedRate(a.rate, timesUsed);
-            const isNeg = a.negative;
-            const displayVal = fmtRate(currentRate, a.direction);
-            const baseVal = fmtRate(a.rate, a.direction);
-            const wasStr = timesUsed > 0 ? ` <span class="pol-was">(base ${baseVal})</span>` : '';
-            const pillCls = isNeg ? 'pol-effect-pill pol-effect-neg' : 'pol-effect-pill';
-            const valCls = isNeg ? 'pol-effect-val pol-val-neg' : 'pol-effect-val';
-            h += `<span class="${pillCls}"><span class="pol-effect-stat">${esc(a.stat)}</span> <span class="${valCls}">${displayVal}</span>${wasStr}</span>`;
-        }
-        h += '</div>';
-        h += '</div>'; // .pol-card-info
-
-        // Right: cost + button
-        h += '<div class="pol-card-right">';
-        h += `<div class="pol-cost">${fmtCurrency(currentCost)}</div>`;
-        if (timesUsed > 0) {
-            const baseCost = getPolicyCost(policy, 0);
-            h += `<div class="pol-cost-base">base ${fmtCurrency(baseCost)}</div>`;
-        }
-        h += `<div class="pol-cooldown">${policy.cooldownLabel}</div>`;
-        h += `<button class="pol-enact-btn${btnDisabled ? ' disabled' : ''}" ${btnDisabled ? 'disabled' : ''} onclick="enactPolicy('${policy.id}', '${ministryKey}')">${btnLabel}</button>`;
-        h += '</div>';
-
-        h += '</div>'; // .pol-card-top
-
-        // Diminishing returns bar
-        h += '<div class="pol-diminishing">';
-        h += '<div class="pol-dim-header">';
-        h += '<span>DIMINISHING RETURNS</span>';
-        h += `<span>${timesUsed}/${policy.maxUses} uses</span>`;
-        h += '</div>';
-        h += '<div class="pol-dim-bar">';
-        for (let i = 0; i < policy.maxUses; i++) {
-            const filled = i < timesUsed;
-            const pct = (i + 1) / policy.maxUses;
-            const color = filled
-                ? (pct >= 0.8 ? '#d9534f' : pct >= 0.6 ? '#c8a64e' : '#5cb85c')
-                : 'rgba(255,255,255,0.04)';
-            h += `<div class="pol-dim-seg" style="background:${color}"></div>`;
-        }
-        h += '</div>';
-
-        // Cost/effect scaling preview
-        if (!isExhausted) {
-            const nextCost = getPolicyCost(policy, timesUsed + 1);
-            const sampleEffect = policy.affects.find(a => !a.negative);
-            const nextEffectStr = sampleEffect
-                ? fmtRate(getDiminishedRate(sampleEffect.rate, timesUsed + 1), sampleEffect.direction)
-                : '';
-            h += '<div class="pol-dim-preview">';
-            h += `<span>Next use: ${fmtCurrency(nextCost)}</span>`;
-            if (nextEffectStr) h += `<span>${esc(sampleEffect.stat)}: ${nextEffectStr}</span>`;
-            h += '</div>';
-        }
-        h += '</div>'; // .pol-diminishing
-
-        // Voter bloc reactions (collapsible)
-        if (policy.blocReactions && policy.blocReactions.length > 0) {
-            h += `<details class="pol-bloc-reactions">`;
-            h += `<summary class="pol-bloc-summary">VOTER BLOC REACTIONS</summary>`;
-            h += '<div class="pol-bloc-grid">';
-            for (const br of policy.blocReactions) {
-                const meta = REACTION_META[br.reaction] || REACTION_META.neutral;
-                h += `<div class="pol-bloc-row" style="border-left:3px solid ${meta.color};background:${meta.bg}">`;
-                h += `<div class="pol-bloc-name">${esc(br.bloc)} <span class="pol-bloc-pct">${br.pct}%</span></div>`;
-                h += `<div class="pol-bloc-reaction"><span class="pol-bloc-badge" style="color:${meta.color};border-color:${meta.border}">${meta.label}</span></div>`;
-                h += `<div class="pol-bloc-desc">${esc(br.desc)}</div>`;
-                h += '</div>';
-            }
-            h += '</div></details>';
-        }
-
-        h += '</div>'; // .pol-card
-    }
-
-    return h;
-}
-
+// ==================== CRISES TAB ====================
 // ==================== CRISES TAB ====================
 // ==================== EDUCATION CRISIS DEFINITIONS ====================
 
@@ -2151,6 +1730,341 @@ function renderCrisesTab() {
     return h;
 }
 
+// ==================== ENERGY DISPATCH TAB ====================
+
+function renderEnergyDispatchTab() {
+    let h = '';
+
+    if (!energyDispatchState) {
+        h += '<div class="mdet-empty">Energy dispatch system not initialized. Check back next tick.</div>';
+        return h;
+    }
+
+    // If last result exists, show the result overlay (terminal for this tick)
+    if (energyDispatchState.lastResult) {
+        h += renderEnergyResult(energyDispatchState.lastResult);
+        return h;
+    }
+
+    // If a card is pending, show the card UI
+    if (energyDispatchState.pendingCardId != null) {
+        const card = ENERGY_CARDS[energyDispatchState.pendingCardId];
+        if (!card) {
+            h += '<div class="mdet-empty">Invalid dispatch card. Contact an administrator.</div>';
+            return h;
+        }
+
+        const nationName = currentNation?.name || 'your nation';
+        const contextText = card.context.replace(/\{nation\}/g, nationName);
+
+        h += '<div class="energy-dispatch">';
+
+        // Dispatch panel header
+        h += '<div class="ed-panel">';
+        h += `<div class="ed-panel-source">${esc(card.source)}</div>`;
+        h += `<div class="ed-panel-title">${esc(card.title)}</div>`;
+        h += `<div class="ed-panel-context">${esc(contextText)}</div>`;
+        h += '</div>';
+
+        // Two choice cards
+        h += '<div class="ed-choices">';
+        h += renderEnergyChoiceCard(card, 'left');
+        h += renderEnergyChoiceCard(card, 'right');
+        h += '</div>';
+
+        // Confirm bar (visible only when a choice is selected)
+        h += `<div class="ed-confirm-bar${energySelectedChoice ? '' : ' hidden'}" id="ed-confirm-bar">`;
+        h += `<span class="ed-confirm-label">Confirm: <strong id="ed-confirm-choice-label">${energySelectedChoice ? esc(card[energySelectedChoice].label) : ''}</strong></span>`;
+        h += '<button class="ed-confirm-btn" onclick="confirmEnergyChoice()">CONFIRM DECISION</button>';
+        h += '<button class="ed-cancel-btn" onclick="cancelEnergyChoice()">CANCEL</button>';
+        h += '</div>';
+
+        // Card counter
+        const deckIdx = energyDispatchState.deckIndex || 0;
+        h += `<div class="ed-deck-counter">Card ${deckIdx} of ${ENERGY_CARDS.length}</div>`;
+
+        h += '</div>'; // .energy-dispatch
+        return h;
+    }
+
+    // No pending card
+    h += '<div class="mdet-empty">No dispatch pending. A new energy decision will arrive next month.</div>';
+    return h;
+}
+
+function renderEnergyChoiceCard(card, dir) {
+    const choice = card[dir];
+    const isSelected = energySelectedChoice === dir;
+    const isDimmed = energySelectedChoice && energySelectedChoice !== dir;
+    let h = '';
+
+    h += `<div class="ed-card${isSelected ? ' selected' : ''}${isDimmed ? ' dimmed' : ''}" onclick="selectEnergyChoice('${dir}')">`;
+    h += `<div class="ed-card-dir">${dir === 'left' ? 'OPTION A' : 'OPTION B'}</div>`;
+    h += `<div class="ed-card-label">${esc(choice.label)}</div>`;
+
+    // Stat deltas
+    h += '<div class="ed-card-stats">';
+    for (const [key, delta] of Object.entries(choice.statDeltas)) {
+        const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const sign = delta > 0 ? '+' : '';
+        const cls = delta > 0 ? 'ed-stat-up' : 'ed-stat-down';
+        h += `<span class="ed-stat-pill ${cls}">${esc(label)} ${sign}${delta}</span>`;
+    }
+    h += '</div>';
+
+    // Bloc approval tags
+    h += '<div class="ed-card-blocs">';
+    for (const [bloc, delta] of Object.entries(choice.blocApprovals)) {
+        const cls = delta > 0 ? 'ed-bloc-pos' : 'ed-bloc-neg';
+        const sign = delta > 0 ? '+' : '';
+        h += `<span class="ed-bloc-tag ${cls}">${esc(bloc)} ${sign}${delta}</span>`;
+    }
+    h += '</div>';
+
+    h += '</div>'; // .ed-card
+    return h;
+}
+
+function renderEnergyResult(result) {
+    let h = '';
+    h += '<div class="ed-result">';
+    h += '<div class="ed-result-header">DISPATCH RESOLVED</div>';
+    h += `<div class="ed-result-choice">Decision: <strong>${esc(result.chosenLabel)}</strong></div>`;
+
+    // Stat changes
+    h += '<div class="ed-result-section">';
+    h += '<div class="ed-result-section-title">STAT CHANGES</div>';
+    h += '<div class="ed-result-stats">';
+    for (const [key, delta] of Object.entries(result.statDeltas || {})) {
+        const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const sign = delta > 0 ? '+' : '';
+        const cls = delta > 0 ? 'ed-stat-up' : 'ed-stat-down';
+        h += `<span class="ed-stat-pill ${cls}">${esc(label)} ${sign}${delta}</span>`;
+    }
+    h += '</div></div>';
+
+    // Two-column bloc approval grid
+    h += '<div class="ed-result-section">';
+    h += '<div class="ed-result-section-title">VOTER BLOC IMPACT</div>';
+    h += '<div class="ed-result-blocs-grid">';
+    h += '<div class="ed-result-blocs-header"><span>Bloc</span><span>Your Party</span><span>PM\'s Party</span></div>';
+    for (const entry of (result.blocResults || [])) {
+        const yourCls = entry.yourDelta > 0 ? 'ed-stat-up' : entry.yourDelta < 0 ? 'ed-stat-down' : '';
+        const pmCls = entry.pmDelta > 0 ? 'ed-stat-up' : entry.pmDelta < 0 ? 'ed-stat-down' : '';
+        const yourSign = entry.yourDelta > 0 ? '+' : '';
+        const pmSign = entry.pmDelta > 0 ? '+' : '';
+        h += '<div class="ed-result-bloc-row">';
+        h += `<span class="ed-result-bloc-name">${esc(entry.bloc)}</span>`;
+        h += `<span class="${yourCls}">${yourSign}${entry.yourDelta}</span>`;
+        h += `<span class="${pmCls}">${pmSign}${entry.pmDelta}</span>`;
+        h += '</div>';
+    }
+    h += '</div></div>';
+
+    h += '<div class="ed-result-footer">Event finished. Next dispatch arrives next month.</div>';
+    h += '</div>'; // .ed-result
+    return h;
+}
+
+// ==================== ENERGY DISPATCH ACTIONS ====================
+
+window.selectEnergyChoice = function(dir) {
+    energySelectedChoice = dir;
+    const content = document.getElementById('ministry-content');
+    if (content) content.innerHTML = renderMinistryContent(selectedMinistryKey);
+};
+
+window.cancelEnergyChoice = function() {
+    energySelectedChoice = null;
+    const content = document.getElementById('ministry-content');
+    if (content) content.innerHTML = renderMinistryContent(selectedMinistryKey);
+};
+
+window.confirmEnergyChoice = async function() {
+    // State-based guard against double-click / concurrent tabs
+    if (energyConfirmInFlight) return;
+    if (!energySelectedChoice || !energyDispatchState || energyDispatchState.pendingCardId == null) return;
+
+    const card = ENERGY_CARDS[energyDispatchState.pendingCardId];
+    if (!card) return;
+    const choice = card[energySelectedChoice];
+    if (!choice) return;
+
+    const energyMinistry = ministryData.find(m => m.ministry_key === 'energy');
+    if (!energyMinistry) return;
+
+    energyConfirmInFlight = true;
+    const btn = document.querySelector('.ed-confirm-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'PROCESSING...'; }
+
+    // Track what was written so we can show accurate results
+    const blocResults = [];
+    let statUpdateSucceeded = false;
+
+    try {
+        // 0. Verify the pending card hasn't been changed by the tick processor (race guard)
+        const { data: freshMinistry } = await _supabase.from('ministries')
+            .select('energy_pending_card_id')
+            .eq('id', energyMinistry.id)
+            .single();
+        if (!freshMinistry || freshMinistry.energy_pending_card_id !== card.id) {
+            // Card was replaced by the tick — reload state and re-render
+            const { data: fullMinistry } = await _supabase.from('ministries')
+                .select('*')
+                .eq('id', energyMinistry.id)
+                .single();
+            if (fullMinistry) {
+                Object.assign(energyMinistry, fullMinistry);
+                energyDispatchState = {
+                    deckOrder: fullMinistry.energy_deck_order,
+                    deckIndex: fullMinistry.energy_deck_index ?? 0,
+                    pendingCardId: fullMinistry.energy_pending_card_id,
+                    pendingSinceTick: fullMinistry.energy_pending_since_tick,
+                    lastResult: fullMinistry.energy_last_result
+                };
+            }
+            energySelectedChoice = null;
+            energyConfirmInFlight = false;
+            const content = document.getElementById('ministry-content');
+            if (content) content.innerHTML = renderMinistryContent(selectedMinistryKey);
+            return;
+        }
+
+        // 1. Apply stat deltas to nations table (server-side, clamped 0-100)
+        const nationUpdates = {};
+        for (const [key, delta] of Object.entries(choice.statDeltas)) {
+            const currentVal = Number(currentNation[key] ?? 50);
+            nationUpdates[key] = Math.max(0, Math.min(100, currentVal + delta));
+        }
+        const { error: nationErr } = await _supabase.from('nations')
+            .update(nationUpdates)
+            .eq('id', currentNation.id);
+        if (nationErr) throw new Error('Failed to update nation stats: ' + nationErr.message);
+        statUpdateSucceeded = true;
+
+        // Update local state
+        for (const [key, val] of Object.entries(nationUpdates)) {
+            currentNation[key] = val;
+        }
+
+        // 2. Apply bloc approval deltas
+        const playerFactionId = currentFaction?.id;
+        const pmMinistry = ministryData.find(m => m.ministry_key === 'prime_minister');
+        const pmFactionId = pmMinistry?.party_id || null;
+
+        const { data: voterBlocs } = await _supabase.from('voter_blocs')
+            .select('id, bloc_name')
+            .eq('nation_id', currentNation.id)
+            .eq('is_active', true);
+
+        if (voterBlocs && voterBlocs.length > 0) {
+            const blocMap = {};
+            for (const vb of voterBlocs) blocMap[vb.bloc_name] = vb.id;
+
+            for (const [blocName, delta] of Object.entries(choice.blocApprovals)) {
+                const blocId = blocMap[blocName];
+                if (!blocId) {
+                    console.warn(`[confirmEnergyChoice] Bloc "${blocName}" not found in voter_blocs — skipping`);
+                    continue;
+                }
+
+                const sign = delta > 0 ? 1 : -1;
+                const yourRoll = sign * (Math.floor(Math.random() * 4) + 2);
+                const pmRoll = sign * (Math.floor(Math.random() * 4) + 2);
+
+                // Update player's faction bloc approval (upsert pattern)
+                if (playerFactionId) {
+                    const { error: yourErr } = await _supabase.from('faction_bloc_approval')
+                        .upsert(
+                            { faction_id: playerFactionId, bloc_id: blocId, preference_score: 50 },
+                            { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true }
+                        );
+                    if (!yourErr) {
+                        // Now update with the delta (read-then-write to clamp properly)
+                        const { data: fbaRow } = await _supabase.from('faction_bloc_approval')
+                            .select('id, preference_score')
+                            .eq('faction_id', playerFactionId)
+                            .eq('bloc_id', blocId)
+                            .single();
+                        if (fbaRow) {
+                            const newScore = Math.max(0, Math.min(100, (fbaRow.preference_score ?? 50) + yourRoll));
+                            await _supabase.from('faction_bloc_approval')
+                                .update({ preference_score: newScore })
+                                .eq('id', fbaRow.id);
+                        }
+                    }
+                }
+
+                // Update PM's faction bloc approval (if different from player)
+                let actualPmRoll = pmRoll;
+                if (pmFactionId && pmFactionId !== playerFactionId) {
+                    const { error: pmErr } = await _supabase.from('faction_bloc_approval')
+                        .upsert(
+                            { faction_id: pmFactionId, bloc_id: blocId, preference_score: 50 },
+                            { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true }
+                        );
+                    if (!pmErr) {
+                        const { data: pmFbaRow } = await _supabase.from('faction_bloc_approval')
+                            .select('id, preference_score')
+                            .eq('faction_id', pmFactionId)
+                            .eq('bloc_id', blocId)
+                            .single();
+                        if (pmFbaRow) {
+                            const newScore = Math.max(0, Math.min(100, (pmFbaRow.preference_score ?? 50) + pmRoll));
+                            await _supabase.from('faction_bloc_approval')
+                                .update({ preference_score: newScore })
+                                .eq('id', pmFbaRow.id);
+                        }
+                    }
+                } else {
+                    actualPmRoll = yourRoll;
+                }
+
+                blocResults.push({ bloc: blocName, yourDelta: yourRoll, pmDelta: actualPmRoll });
+            }
+        }
+
+        // 3. Store result and clear pending card
+        const resultData = {
+            cardId: card.id,
+            chosenDirection: energySelectedChoice,
+            chosenLabel: choice.label,
+            statDeltas: choice.statDeltas,
+            blocResults: blocResults
+        };
+
+        const { error: updateErr } = await _supabase.from('ministries')
+            .update({
+                energy_pending_card_id: null,
+                energy_pending_since_tick: null,
+                energy_last_result: resultData
+            })
+            .eq('id', energyMinistry.id);
+        if (updateErr) throw new Error('Failed to update ministry: ' + updateErr.message);
+
+        // Update local state
+        energyDispatchState.pendingCardId = null;
+        energyDispatchState.pendingSinceTick = null;
+        energyDispatchState.lastResult = resultData;
+        energySelectedChoice = null;
+
+        // Re-render
+        const content = document.getElementById('ministry-content');
+        if (content) content.innerHTML = renderMinistryContent(selectedMinistryKey);
+
+    } catch (err) {
+        console.error('[confirmEnergyChoice]', err);
+        // If stats were committed but blocs failed, still show partial result
+        if (statUpdateSucceeded && blocResults.length > 0) {
+            console.warn('[confirmEnergyChoice] Partial success: stats committed, some bloc updates may have failed');
+        }
+        alert('Failed to process energy dispatch: ' + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = 'CONFIRM DECISION'; }
+    } finally {
+        energyConfirmInFlight = false;
+    }
+};
+
 // Handle crisis option selection
 window.selectCrisisOption = async function(crisisId, optionId) {
     const crisis = EDUCATION_CRISES.find(c => c.id === crisisId);
@@ -2190,7 +2104,14 @@ window.selectCrisisOption = async function(crisisId, optionId) {
 // ==================== GLOBAL HANDLERS ====================
 window.selectMinistry = function(key) {
     selectedMinistryKey = key;
-    activeDetailTab = 'institutions'; // reset tab on ministry switch
+    energySelectedChoice = null; // clear any pending energy choice selection
+    // Auto-switch to dispatch tab if energy ministry has a pending unresolved card
+    if (key === 'energy' && energyDispatchState &&
+        energyDispatchState.pendingCardId != null && !energyDispatchState.lastResult) {
+        activeDetailTab = 'dispatch';
+    } else {
+        activeDetailTab = 'institutions';
+    }
     document.querySelectorAll('.msb-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.key === key);
     });
@@ -2202,77 +2123,6 @@ window.selectMinistry = function(key) {
 
 window.switchDetailTab = function(tab) {
     activeDetailTab = tab;
-    const content = document.getElementById('ministry-content');
-    if (content) content.innerHTML = renderMinistryContent(selectedMinistryKey);
-};
-
-window.enactPolicy = async function(policyId, ministryKey) {
-    const policies = MINISTRY_POLICIES[ministryKey] || [];
-    const policy = policies.find(p => p.id === policyId);
-    if (!policy) return;
-
-    const timesUsed = policyUsage[policyId] || 0;
-    if (timesUsed >= policy.maxUses) return;
-
-    // Compute population-scaled cost with diminishing returns
-    const currentCost = getPolicyCost(policy, timesUsed);
-
-    // Budget check
-    const fiscalCat = MINISTRY_FISCAL_MAP[ministryKey];
-    const alloc = budgetAllocations[fiscalCat] || { allocated: 0, needed: 0 };
-    if (alloc.allocated < currentCost) {
-        alert('Insufficient budget allocated to this ministry.');
-        return;
-    }
-
-    // Cooldown check
-    if (policyCooldowns[policyId] != null) {
-        alert('This policy is still on cooldown.');
-        return;
-    }
-
-    // Find the ministry's faction_id
-    const ministry = ministryData.find(m => m.ministry_key === ministryKey);
-    const factionId = ministry?.party_id || currentFaction?.id;
-    if (!factionId) {
-        alert('No minister assigned to this ministry.');
-        return;
-    }
-
-    // Build stat_effects with exponential diminishing returns: rate × (0.6 ^ timesUsed)
-    const statEffects = policy.affects.map(a => ({
-        stat_key: a.statKey,
-        direction: a.direction,
-        rate: getDiminishedRate(a.rate, timesUsed),
-        delay_ticks: 0,
-        duration_ticks: policy.durationTicks,
-        target: 'nation'
-    }));
-
-    const currentTick = currentNation.current_tick || 0;
-
-    const { error } = await _supabase.from('ministry_action_log').insert({
-        nation_id: currentNation.id,
-        faction_id: factionId,
-        ministry_key: ministryKey,
-        action_key: policyId,
-        applied_at_tick: currentTick,
-        money_cost: Math.round(currentCost),
-        stat_effects: statEffects,
-        processed: false
-    });
-
-    if (error) {
-        console.error('[enactPolicy] Insert failed:', error.message);
-        alert('Failed to enact policy: ' + error.message);
-        return;
-    }
-
-    // Update local state
-    policyUsage[policyId] = timesUsed + 1;
-    policyCooldowns[policyId] = currentTick;
-
-    // Re-render
     const content = document.getElementById('ministry-content');
     if (content) content.innerHTML = renderMinistryContent(selectedMinistryKey);
 };

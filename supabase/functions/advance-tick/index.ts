@@ -18019,6 +18019,73 @@ function formatDebtToGDP(ratio) {
 
 // ===== TICK-ONLY HELPERS (edge-function-only — not in game-common.js) =====
 
+// ==================== ENERGY DISPATCH (card system) ====================
+/**
+ * Process energy dispatch each tick:
+ *   1. If a card is pending and unresolved → apply -2 minister_approval, clear card
+ *   2. Clear last result from previous tick
+ *   3. Draw the next card from the shuffled deck (reshuffle if exhausted)
+ */
+async function processEnergyDispatch(supabase: any, nation: any, currentTick: number) {
+    const { data: energyMinistry, error: fetchErr } = await supabase
+        .from('ministries')
+        .select('id, minister_approval, energy_deck_order, energy_deck_index, energy_pending_card_id, energy_pending_since_tick, energy_last_result')
+        .eq('nation_id', nation.id)
+        .eq('ministry_key', 'energy')
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+
+    if (fetchErr || !energyMinistry) return;
+
+    const updates: any = {};
+
+    // 1. Inactivity penalty: card was pending and player didn't respond
+    if (energyMinistry.energy_pending_card_id != null && !energyMinistry.energy_last_result) {
+        const newApproval = Math.max(0, (energyMinistry.minister_approval ?? 50) - 2);
+        updates.minister_approval = newApproval;
+        updates.energy_pending_card_id = null;
+        updates.energy_pending_since_tick = null;
+        console.log(`[processEnergyDispatch] ${nation.name}: No response to energy dispatch card ${energyMinistry.energy_pending_card_id}. Minister approval -2 (now ${newApproval}).`);
+    }
+
+    // 2. Clear last result so next tick starts fresh
+    updates.energy_last_result = null;
+
+    // 3. Draw the next card
+    let deckOrder = energyMinistry.energy_deck_order;
+    let deckIndex = energyMinistry.energy_deck_index ?? 0;
+
+    // Initialize or reshuffle the deck
+    if (!deckOrder || !Array.isArray(deckOrder) || deckIndex >= 10) {
+        // Fisher-Yates shuffle of [0..9]
+        deckOrder = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        for (let i = deckOrder.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [deckOrder[i], deckOrder[j]] = [deckOrder[j], deckOrder[i]];
+        }
+        deckIndex = 0;
+        console.log(`[processEnergyDispatch] ${nation.name}: Deck shuffled: [${deckOrder.join(',')}]`);
+    }
+
+    const nextCardId = deckOrder[deckIndex];
+    updates.energy_deck_order = deckOrder;
+    updates.energy_deck_index = deckIndex + 1;
+    updates.energy_pending_card_id = nextCardId;
+    updates.energy_pending_since_tick = currentTick;
+
+    console.log(`[processEnergyDispatch] ${nation.name}: Drew card ${nextCardId} (deck position ${deckIndex + 1}/10)`);
+
+    const { error: updateErr } = await supabase
+        .from('ministries')
+        .update(updates)
+        .eq('id', energyMinistry.id);
+
+    if (updateErr) {
+        console.error(`[processEnergyDispatch] Failed to update energy ministry for ${nation.name}:`, updateErr.message);
+    }
+}
+
 // ==================== POPULATION GROWTH ====================
 //
 // Population growth is derived from birth_rate and death_rate each tick:
@@ -18947,6 +19014,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         if (ministryResults.length > 0) {
             summary.ministryActions = summary.ministryActions || [];
             summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
+        }
+
+        // Energy dispatch: inactivity penalty + draw next card
+        try {
+            await processEnergyDispatch(supabase, nation, newTick);
+        } catch (edErr) {
+            console.error(`[advanceTick] Energy dispatch failed for ${nation.name} (non-fatal):`, edErr);
         }
 
         // Apply GDP growth rate
