@@ -392,35 +392,6 @@ async function updateBillsBadge(faction, nation, shard) {
 }
 
 
-// ===== PRESIDENTIAL NOMINEE BADGE =====
-
-async function updatePresNomineeBadge(faction, nation) {
-    const badge = document.getElementById('parties-nominee-badge');
-    if (!badge || !faction || !nation) return;
-    try {
-        // Only for presidential republics (canonical: 'Presidential', legacy: 'Presidential Republic')
-        const gt = (nation.government_type || '').toLowerCase();
-        if (gt !== 'presidential' && gt !== 'presidential republic') return;
-        // Check for unselected presidential candidates for this faction
-        const { count } = await _supabase
-            .from('pm_candidates')
-            .select('*', { count: 'exact', head: true })
-            .eq('nation_id', nation.id)
-            .eq('faction_id', faction.id)
-            .eq('candidate_type', 'presidential')
-            .eq('selected', false);
-        if ((count || 0) > 0) {
-            badge.textContent = '!';
-            badge.style.display = '';
-        } else {
-            badge.style.display = 'none';
-        }
-    } catch (e) {
-        console.error('Error updating presidential nominee badge:', e);
-    }
-}
-
-
 // ===== TICK COUNTDOWN =====
 
 let tickInterval = null;
@@ -743,8 +714,6 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (activeTab !== 'laws') {
         updateBillsBadge(state.faction, state.nation, state.shard);
     }
-    // Update presidential nominee badge (non-blocking)
-    updatePresNomineeBadge(state.faction, state.nation);
     // Record browser fingerprint (non-blocking, fire-and-forget)
     recordFingerprint(_supabase);
     // Check ban status (non-blocking, redirects if banned)
