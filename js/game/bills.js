@@ -464,33 +464,8 @@ export async function recalcDerivedApproval(supabase, factionId, blocRows) {
  * Returns the (possibly newly created) bloc approval rows, or null on failure.
  */
 export async function ensureBlocApprovals(supabase, factionId, nationId) {
-    // Ensure faction_ideology row exists (required for preference_score calculation)
-    const { data: ideoRow, error: ideoCheckErr } = await supabase
-        .from('faction_ideology')
-        .select('faction_id')
-        .eq('faction_id', factionId)
-        .maybeSingle();
-
-    if (ideoCheckErr) {
-        console.error('[ensureBlocApprovals] Error checking faction_ideology:', ideoCheckErr.message);
-        // Don't create a zero row on error — the row likely exists but the query failed
-    } else if (!ideoRow) {
-        const { error: ideoErr } = await supabase
-            .from('faction_ideology')
-            .insert({
-                faction_id: factionId,
-                liberty_equality: 0,
-                tradition_progress: 0,
-                security_freedom: 0,
-                globalism_nationalism: 0,
-                individualism_collectivism: 0
-            });
-        if (ideoErr) {
-            console.error('[ensureBlocApprovals] Failed to create faction_ideology row:', ideoErr.message);
-        } else {
-            console.log(`[ensureBlocApprovals] Created missing faction_ideology row for faction ${factionId}`);
-        }
-    }
+    // Note: faction_ideology row should exist from party creation.
+    // If missing, three-pillar recalc will treat the party as centrist — no zero-row creation here.
 
     const { data: existing, error: checkErr } = await supabase
         .from('faction_bloc_approval')
@@ -632,20 +607,9 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
 
     for (const [factionId, axisShifts] of Object.entries(factionShifts)) {
         let ideologyRow = await loadFactionIdeology(supabase, factionId);
-        if (ideologyRow?._error) {
-            console.error(`[processIdeologyShifts] Skipping faction ${factionId}: DB error loading ideology`);
+        if (ideologyRow?._error || !ideologyRow) {
+            console.warn(`[processIdeologyShifts] Skipping faction ${factionId}: ${ideologyRow?._error ? 'DB error' : 'no ideology row'}`);
             continue;
-        }
-        if (!ideologyRow) {
-            const newRow = { faction_id: factionId, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0 };
-            await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id', ignoreDuplicates: true });
-            // Re-read actual row in case it already existed with real values
-            ideologyRow = await loadFactionIdeology(supabase, factionId);
-            if (!ideologyRow || ideologyRow._error) {
-                console.error(`[processIdeologyShifts] Cannot load ideology for ${factionId} after upsert, skipping`);
-                continue;
-            }
-            console.warn(`Created missing faction_ideology row for faction ${factionId}`);
         }
 
         const currentScores = extractAxisScores(ideologyRow);

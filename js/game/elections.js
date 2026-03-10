@@ -1938,22 +1938,7 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
     if (axisKey && typeof direction === 'number') {
         const shift = 15 * direction;
         let factionIdeology = await loadFactionIdeology(supabase, factionId);
-        if (factionIdeology?._error) {
-            console.error(`[installPresidentialWinner] DB error loading ideology for ${factionId}, skipping ideology shift`);
-            factionIdeology = null;
-        }
-        if (!factionIdeology) {
-            const newRow = { faction_id: factionId, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0 };
-            await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id', ignoreDuplicates: true });
-            // Re-read actual row in case it already existed with real values
-            factionIdeology = await loadFactionIdeology(supabase, factionId);
-            if (!factionIdeology || factionIdeology._error) {
-                console.error(`[installPresidentialWinner] Cannot load ideology for ${factionId} after upsert, skipping ideology shift`);
-                factionIdeology = null;
-            } else {
-                console.warn(`Created missing faction_ideology row for faction ${factionId}`);
-            }
-        }
+        if (factionIdeology?._error) factionIdeology = null;
         if (factionIdeology) {
             const currentVal = factionIdeology[axisKey] || 0;
             const newVal = Math.max(-100, Math.min(100, currentVal + shift));

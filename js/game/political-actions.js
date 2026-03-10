@@ -5464,22 +5464,7 @@ export async function selectPMCandidate(supabase, candidateId, nationId, faction
     const shift = 15 * candidate.ideology_direction;
 
     let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) {
-        console.error(`[selectPMCandidate] DB error loading ideology for ${factionId}, skipping ideology shift`);
-        factionIdeology = null;
-    }
-    if (!factionIdeology) {
-        const newRow = { faction_id: factionId, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0 };
-        await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id', ignoreDuplicates: true });
-        // Re-read actual row in case it already existed with real values
-        factionIdeology = await loadFactionIdeology(supabase, factionId);
-        if (!factionIdeology || factionIdeology._error) {
-            console.error(`[selectPMCandidate] Cannot load ideology for ${factionId} after upsert, skipping ideology shift`);
-            factionIdeology = null;
-        } else {
-            console.warn(`Created missing faction_ideology row for faction ${factionId}`);
-        }
-    }
+    if (factionIdeology?._error) factionIdeology = null;
     if (factionIdeology) {
         const currentVal = factionIdeology[axisKey] || 0;
         const newVal = Math.max(-100, Math.min(100, currentVal + shift));
@@ -5634,19 +5619,8 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
     const axisKey = ideology.axisKey;
     const shift = 5 * ideology.direction;
 
-    let currentIdeology = factionIdeology;
-    if (!currentIdeology) {
-        const newRow = { faction_id: factionId, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0 };
-        await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id', ignoreDuplicates: true });
-        // Re-read actual row in case it already existed with real values
-        currentIdeology = await loadFactionIdeology(supabase, factionId);
-        if (!currentIdeology || currentIdeology._error) {
-            console.error(`[autoAppointPartyLeaderAsPM] Cannot load ideology for ${factionId} after upsert, skipping ideology shift`);
-            currentIdeology = null;
-        }
-    }
-    if (currentIdeology) {
-        const currentVal = currentIdeology[axisKey] || 0;
+    if (factionIdeology) {
+        const currentVal = factionIdeology[axisKey] || 0;
         const newVal = Math.max(-100, Math.min(100, currentVal + shift));
         await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
     }
