@@ -18721,9 +18721,17 @@ async function processAusterityCommitments(supabase, nation, currentTick) {
             const perTickReduction = commitment.reduction / commitment.over_ticks;
             const resolvedKey = normalizeNationStatKey(commitment.stat);
             if (!resolvedKey || !NATION_STAT_COLUMN_SET.has(resolvedKey)) continue;
+            // GDP and debt are driven by dedicated systems — skip
+            if (STAT_PROCESSOR_SKIP.has(resolvedKey)) continue;
 
             const currentVal = Number(nation[resolvedKey] ?? 50);
-            const newVal = Math.max(0, Math.round((currentVal - perTickReduction) * 10) / 10);
+            let newVal;
+            if (RAW_SCALING_DIVISORS[resolvedKey]) {
+                // Raw-value stats (population) must not be clamped to 0-100
+                newVal = Math.max(0, Math.round((currentVal - perTickReduction * RAW_SCALING_DIVISORS[resolvedKey]) * 10) / 10);
+            } else {
+                newVal = Math.max(0, Math.round((currentVal - perTickReduction) * 10) / 10);
+            }
 
             if (newVal !== currentVal) {
                 nationUpdates[resolvedKey] = newVal;
@@ -18930,6 +18938,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
     // 4. Process each nation
     for (const nation of nationList) {
+      // Snapshot raw-value stats (GDP, debt) BEFORE any processing.
+      // These are real-dollar values (billions) that must NEVER be clamped to 0-100.
+      // If any code path accidentally clamps them, we detect and restore here.
+      const _preTickGdp = Number(nation.gdp ?? 0);
+      const _preTickDebt = Number(nation.debt ?? 0);
+
       try {
         // Set correct seat count for this nation (affects supermajority thresholds, etc.)
         initGameConfigForNation(nation);
@@ -19691,6 +19705,41 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         summary.errors = summary.errors || [];
         summary.errors.push({ nation: nation.name, nationId: nation.id, error: String(nationErr) });
       } finally {
+        // ── GDP / Debt clamp guard ──
+        // These are raw-dollar values (e.g. 88 billion). If any code path accidentally
+        // clamped them to the 0-100 index range, detect and restore from the DB snapshot
+        // taken before processing. This is a safety net — the root cause should also be
+        // fixed, but this prevents data corruption in the meantime.
+        try {
+            const { data: postNation } = await supabase.from('nations').select('gdp, debt').eq('id', nation.id).single();
+            if (postNation) {
+                const currentGdp = Number(postNation.gdp ?? 0);
+                const currentDebt = Number(postNation.debt ?? 0);
+                const restoreFields: any = {};
+
+                // If GDP was a large value pre-tick but is now suspiciously in 0-100 range, restore it
+                if (_preTickGdp > 100 && currentGdp >= 0 && currentGdp <= 100) {
+                    console.error(`[GDP_CLAMP_GUARD] ${nation.name}: GDP was clamped from ${_preTickGdp} to ${currentGdp} — restoring to pre-tick value`);
+                    restoreFields.gdp = _preTickGdp;
+                    nation.gdp = _preTickGdp;
+                }
+                // Same guard for debt
+                if (_preTickDebt > 100 && currentDebt >= 0 && currentDebt <= 100) {
+                    console.error(`[GDP_CLAMP_GUARD] ${nation.name}: Debt was clamped from ${_preTickDebt} to ${currentDebt} — restoring to pre-tick value`);
+                    restoreFields.debt = _preTickDebt;
+                    nation.debt = _preTickDebt;
+                }
+
+                if (Object.keys(restoreFields).length > 0) {
+                    await supabase.from('nations').update(restoreFields).eq('id', nation.id);
+                    summary.gdpDebtGuardTriggered = summary.gdpDebtGuardTriggered || [];
+                    summary.gdpDebtGuardTriggered.push({ nation: nation.name, restored: restoreFields });
+                }
+            }
+        } catch (guardErr) {
+            console.error(`[GDP_CLAMP_GUARD] Check failed for ${nation.name} (non-fatal):`, guardErr);
+        }
+
         // Always record history snapshot, even if processing failed partway through.
         // Without this, a crash in any processing step (elections, crises, etc.)
         // causes stat_history / nations_history to have gaps, which makes trend
