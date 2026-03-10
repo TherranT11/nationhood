@@ -27,13 +27,6 @@ const windowExports = {
     'setScope', 'setNationFilter', 'setCategory', 'showMore', 'togglePost', 'submitComment'
   ],
   'map.html': ['viewNation'],
-  'parties.html': [
-    'toggleIdeologyChip', 'onPlatformSectorChange', 'onPlatformStanceChange',
-    'doPolicyPlatform', 'openDonorPanel', 'doRallySupport', 'doUndermine',
-    'doPatronageNetwork', 'doSeizePower', 'doDisbandParty', 'doCourtDonors',
-    'doCourtGrassroots', 'closeDonorPanel', 'togglePollSelectAll', 'updatePollCost',
-    'closePollSelector', 'doGeneratePoll', 'openPollSelector', 'toggleDenounceTarget'
-  ],
   'select-candidate.html': ['selectCandidate', 'confirmSelection', 'regenerate'],
   'admin.html': [
     'authenticate', 'logout', 'showTab', 'setTickInterval', 'advanceTickAdmin',

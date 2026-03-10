@@ -20,8 +20,6 @@
   "ministry-actions.html:currentNation",
   "ministry-actions.html:currentFaction",
   "ministry-actions.html:isAutocracy",
-  "parties.html:currentFaction",
-  "parties.html:currentNation",
   "select-candidate.html:currentNation",
   "select-candidate.html:currentFaction",
   "select-candidate.html:isAutocracy"

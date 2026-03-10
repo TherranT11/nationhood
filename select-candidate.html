@@ -68,7 +68,7 @@ const ROLE_CONFIG = {
         progressLabel: 'Nominating...',
         emptyTitle: 'Presidential Selection',
         initTab: 'government',
-        redirectUrl: 'parties.html',
+        redirectUrl: 'politics.html',
         eventKey: null,
         showTraits: true,
         showIdeology: true,
@@ -601,7 +601,7 @@ async function confirmPresident() {
         }).eq('id', currentFaction.id);
 
         alert(candidate.first_name + ' ' + candidate.last_name + ' has been nominated as your presidential candidate and is now your Party Leader!');
-        window.location.href = 'parties.html';
+        window.location.href = 'politics.html';
 
     } catch (e) {
         console.error('Error nominating candidate:', e);
