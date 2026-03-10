@@ -3230,12 +3230,7 @@ initPage('politics', async (state) => {
         autoMinistries,
         regimeLog,
         loyaltyDemands,
-        autoCoalitions,
-        presNomineeState,
-        presNomineeCandidates,
-        presNomineeSelected,
-        presNomineeTraits,
-        presTicksUntil
+        autoCoalitions
     });
 });
 
@@ -3280,8 +3275,7 @@ async function renderPartyTab(f, nation, data) {
         lastParliamentary, lastPresidential, scheduledElections,
         president, administration,
         voterBlocs, playerBlocApprovals,
-        regimePillars, stewardRows, autoMinistries, regimeLog, loyaltyDemands, autoCoalitions,
-        presNomineeState, presNomineeCandidates, presNomineeSelected, presNomineeTraits, presTicksUntil
+        regimePillars, stewardRows, autoMinistries, regimeLog, loyaltyDemands, autoCoalitions
     } = data;
     const faction = f; // alias for compatibility with sub-renderers
 
