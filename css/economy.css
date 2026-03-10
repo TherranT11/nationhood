@@ -158,7 +158,6 @@ body.light-mode .econ-section-header {
     padding: 12px 14px;
     text-align: left;
     position: relative;
-    overflow: hidden;
 }
 
 .econ-card::before {
