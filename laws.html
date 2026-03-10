@@ -205,7 +205,6 @@ let showingAllLaws = false;
 let factionIdeology = null; // Dynamic ideology scores for current player
 let archiveBills = null; // null = not loaded yet; array once fetched
 let showingPassedLaws = false;
-// (Budget bill UI removed)
 const FALLBACK_COLORS = ['#ff4444','#4CAF50','#2196F3','#ff9800','#9C27B0','#00BCD4','#E91E63','#CDDC39'];
 
 function _getCompatiblePolicies(sector) {
@@ -543,79 +542,6 @@ function filterAllLaws() {
         </div>`;
     }).join('');
 }
-
-// ==================== BUDGET BILL (REMOVED) ====================
-// Budget bill system has been fully removed.
-function toggleBudgetBill() { }
-
-// Legacy rendering stub — never called, kept to avoid reference errors
-function _removed_renderBudgetMinistryPanel(tab, instByMinistry, budgetLaws, nation) {
-    var insts = instByMinistry[tab.key] || [];
-    var population = Number(nation.population || 0);
-    var gdpVal = Number(nation.gdp ?? nation.GDP ?? 0);
-    var inflationMult = getInflationMultiplier(nation.inflation);
-    var instTotal = 0;
-    var h = '';
-
-    // INSTITUTIONS section
-    h += '<div class="bp-sub-section">';
-    h += '<div class="bp-sub-header">INSTITUTIONS</div>';
-    if (insts.length === 0) {
-        h += '<div class="bp-empty-notice">No institutions configured.</div>';
-    } else {
-        for (var i = 0; i < insts.length; i++) {
-            var inst = insts[i];
-            var baseVal = Number(inst.base_cost_per_capita || 0);
-            var isGdpScaled = inst.scaling_type === 'gdp';
-            var cost = isGdpScaled ? (baseVal / 100) * gdpVal * inflationMult : baseVal * population * inflationMult;
-            instTotal += cost;
-            h += '<div class="bp-inst-line">';
-            h += '<span class="bp-inst-name">' + inst.institution_name;
-            if (isGdpScaled) {
-                h += ' <span style="color:#666;font-size:0.75rem;">(' + baseVal.toFixed(2) + '% × ' + fmtBudgetVal(gdpVal) + ' GDP)</span>';
-            } else {
-                h += ' <span style="color:#666;font-size:0.75rem;">($' + baseVal.toFixed(2) + ' × ' + population.toLocaleString() + ' pop)</span>';
-            }
-            h += '</span>';
-            h += '<span class="bp-inst-cost">' + fmtBudgetVal(cost) + '</span>';
-            h += '</div>';
-        }
-    }
-    h += '<div class="bp-sub-total"><span>Institution Subtotal</span><span>' + fmtBudgetVal(instTotal) + '</span></div>';
-    h += '</div>';
-
-    // POLICIES section
-    h += '<div class="bp-sub-section">';
-    h += '<div class="bp-sub-header">POLICIES</div>';
-    if (tab.fiscalCat) {
-        var polData = computeMinistryPolicyCost(budgetLaws, tab.fiscalCat, nation);
-        if (polData.policies.length === 0) {
-            h += '<div class="bp-empty-notice">No active policies in this ministry.</div>';
-        } else {
-            for (var j = 0; j < polData.policies.length; j++) {
-                var p = polData.policies[j];
-                h += '<div class="bp-pol-line">';
-                h += '<span class="bp-pol-name">' + p.policy_name + '</span>';
-                h += '<span class="bp-pol-cost">' + fmtBudgetVal(p.cost) + '</span>';
-                h += '</div>';
-            }
-        }
-        h += '<div class="bp-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetVal(polData.total) + '</span></div>';
-        var polTotal = polData.total;
-    } else {
-        h += '<div class="bp-empty-notice">No active policies in this ministry.</div>';
-        h += '<div class="bp-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetVal(0) + '</span></div>';
-        var polTotal = 0;
-    }
-    h += '</div>';
-
-    // MINISTRY TOTAL
-    var ministryTotal = instTotal + polTotal;
-    h += '<div class="bp-ministry-total"><span>MINISTRY TOTAL</span><span>' + fmtBudgetVal(ministryTotal) + '</span></div>';
-
-    return h;
-}
-
 
 // ==================== FLOOR BILLS ====================
 
@@ -1193,9 +1119,7 @@ function openDraftModal() {
     Promise.all([
         _supabase.from('ministries').select('ministry_key, funding_level').eq('nation_id', currentNation.id).eq('is_active', true),
         _supabase.from('ministry_institution_config').select('*'),
-        currentNation.last_budget_bill_id
-            ? _supabase.from('budget_item_allocations').select('item_id, allocation_amount, needed_amount').eq('bill_id', currentNation.last_budget_bill_id).eq('item_type', 'institution')
-            : Promise.resolve({ data: [] })
+        Promise.resolve({ data: [] })
     ]).then(([ministries, instConfig, itemAllocs]) => {
         window._allMinistries = ministries.data || [];
         window._instConfig = instConfig.data || [];

@@ -3017,7 +3017,7 @@ function snapshotNationStats(nation) {
  * @param {string} factionId - faction UUID
  * @param {string|null} blocId - specific bloc UUID, or null for all blocs
  * @param {number} amount    - positive = boost, negative = penalty
- * @param {string} source    - audit tag, e.g. 'crisis:government_shutdown'
+ * @param {string} source    - audit tag, e.g. 'legislation:veto'
  */
 async function adjustMomentum(supabase, nationId, factionId, blocId, amount, source) {
     if (amount === 0) return;
@@ -3069,7 +3069,7 @@ async function adjustMomentumAll(supabase, nationId, factionId, amount, source) 
  * @param {object} supabase
  * @param {string} nationId
  * @param {number} amount   - signed delta (positive = boost, negative = shock)
- * @param {string} source   - audit tag, e.g. 'crisis:government_shutdown'
+ * @param {string} source   - audit tag, e.g. 'legislation:veto'
  */
 async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source) {
     if (amount === 0) return;
@@ -3322,7 +3322,7 @@ function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions, a
     applyTradeTariffOverride(budget, tradeTariffRevenue);
     const inflationStat = Number(nation.inflation || 0);
     const inflationPct = Math.pow(Math.max(0, inflationStat), 1.5) / 100;
-    const reserves = Number(nation.budget_reserves || 0);
+    const reserves = 0;
 
     // Foreign aid: received adds to revenue, given is a mandatory expenditure
     const aidReceived = Number(aidData?.received || 0);
@@ -6149,31 +6149,10 @@ async function enactBill(supabase, bill, currentTick) {
         const fd = art.funding_data;
         if (!fd || !fd.ministry_key) continue;
 
-        // Per-institution funding changes: update budget_item_allocations
+        // Per-institution funding changes: update ministry funding_level
         const instChanges = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
-        if (instChanges.length > 0 && nation.last_budget_bill_id) {
-            for (const inst of instChanges) {
-                // Fetch current allocation to get needed_amount
-                const { data: existing } = await supabase.from('budget_item_allocations')
-                    .select('id, needed_amount')
-                    .eq('bill_id', nation.last_budget_bill_id)
-                    .eq('item_id', inst.id)
-                    .eq('item_type', 'institution')
-                    .maybeSingle();
 
-                if (existing) {
-                    const newAlloc = (inst.proposed_pct / 100) * Number(existing.needed_amount);
-                    await supabase.from('budget_item_allocations')
-                        .update({ allocation_amount: newAlloc })
-                        .eq('id', existing.id);
-                    console.log(`[enactBill] Institution funding: ${inst.id} → ${inst.proposed_pct}% (alloc $${Math.round(newAlloc)}M)`);
-                } else {
-                    console.warn(`[enactBill] No budget_item_allocation found for ${inst.id}, skipping`);
-                }
-            }
-        }
-
-        // Also update the ministry-level funding_level as a weighted average
+        // Update the ministry-level funding_level as a weighted average
         if (instChanges.length > 0) {
             const allInst = fd.institutions || [];
             const avgPct = allInst.reduce((sum, i) => sum + i.proposed_pct, 0) / (allInst.length || 1);
@@ -12210,23 +12189,8 @@ async function processRegimePillars(supabase, nation) {
     const pillarMap = {};
     for (const p of pillars) pillarMap[p.pillar_key] = p;
 
-    // Compute special synthetic stats:
-    // _armed_forces_funding: % funding of the 'military' institution from the active budget
-    let armedForcesFunding = 0;
-    if (nation.last_budget_bill_id) {
-        const { data: milAlloc } = await supabase
-            .from('budget_item_allocations')
-            .select('allocation_amount, needed_amount')
-            .eq('bill_id', nation.last_budget_bill_id)
-            .eq('item_type', 'institution')
-            .eq('item_id', 'military')
-            .maybeSingle();
-        if (milAlloc && Number(milAlloc.needed_amount) > 0) {
-            armedForcesFunding = Math.min(100, Math.round(
-                (Number(milAlloc.allocation_amount) / Number(milAlloc.needed_amount)) * 100
-            ));
-        }
-    }
+    // _armed_forces_funding: auto-funded at 100% (no budget bill system)
+    let armedForcesFunding = 100;
 
     // _debt_ratio: simple 0-100 where lower is better
     // Use debt relative to GDP: debt/gdp * 100, clamped 0-100
@@ -14416,7 +14380,7 @@ async function processEvents(supabase, nation, currentTick) {
  * - Deactivates crises when ALL recovery conditions are met
  * - Effects cascade: nation stats, government/coalition approval, minister approval
  */
-async function processCrises(supabase, nation, currentTick, budgetItemAllocs) {
+async function processCrises(supabase, nation, currentTick) {
     // 1. Load all active crisis templates
     const { data: crisisTemplates } = await supabase
         .from('crisis_templates')
@@ -14440,25 +14404,9 @@ async function processCrises(supabase, nation, currentTick, budgetItemAllocs) {
     const nationUpdates = {};
     const statBounds = {}; // { stat_key: { floor: highestFloor, ceiling: lowestCeiling } }
 
-    // Helper: compute institution funding % from budget_item_allocations
-    // If no budget exists or institution not found, returns 100 (no crisis)
-    let _instFundingCache = null;
+    // Institution funding: always 100% (no budget bill system)
     function getInstitutionFundingPct(instId) {
-        if (!_instFundingCache) {
-            _instFundingCache = {};
-            if (budgetItemAllocs) {
-                for (const alloc of budgetItemAllocs) {
-                    if (alloc.item_type === 'institution') {
-                        const needed = Number(alloc.needed_amount) || 0;
-                        const allocated = Number(alloc.allocation_amount) || 0;
-                        _instFundingCache[alloc.item_id] = needed > 0
-                            ? Math.min(100, Math.round((allocated / needed) * 100))
-                            : 100;
-                    }
-                }
-            }
-        }
-        return _instFundingCache[instId] !== undefined ? _instFundingCache[instId] : 100;
+        return 100;
     }
 
     // 3. Check inactive crises for activation
@@ -14471,7 +14419,7 @@ async function processCrises(supabase, nation, currentTick, budgetItemAllocs) {
             // Ministry crisis: check institution funding levels
             const institutionIds = template.institution_ids || [];
             const threshold = Number(template.funding_threshold_pct) || 0;
-            if (institutionIds.length === 0 || !nation.last_budget_bill_id) continue;
+            if (institutionIds.length === 0) continue;
 
             allTriggersMet = true;
             for (const instId of institutionIds) {
@@ -19005,15 +18953,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             _institutionConfig = icRows || [];
         }
         let statInstMap = null;
-        let budgetItemAllocs = null;   // hoisted for minister approval funding check
-        if (nation.last_budget_bill_id && _institutionConfig.length > 0) {
-            const { data: itemAllocs } = await supabase.from('budget_item_allocations')
-                .select('item_type, item_id, allocation_amount, needed_amount')
-                .eq('bill_id', nation.last_budget_bill_id)
-                .eq('item_type', 'institution');
-            budgetItemAllocs = itemAllocs;
-            statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs);
-        }
         const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
         const decayResults = await processStatDecay(supabase, nation, statInstMap, policyDecayAdj);
         if (decayResults.length > 0) {
@@ -19031,8 +18970,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.statConnections = summary.statConnections || [];
             summary.statConnections.push({ nation: nation.name, effects: connResults });
         }
-
-        // (Budget bill auto-generation and committee expiry removed — budget system disabled)
 
         // Ongoing costs
         const costResult = await processOngoingCosts(supabase, nation, newTick);
@@ -19303,7 +19240,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Crises (persistent negative events that apply effects every tick)
         // Runs BEFORE approval calculations so crisis stat/event effects propagate in the same tick.
-        const crisisResults = await processCrises(supabase, nation, newTick, budgetItemAllocs);
+        const crisisResults = await processCrises(supabase, nation, newTick);
         if (crisisResults.length > 0) {
             summary.crises = summary.crises || [];
             summary.crises.push({ nation: nation.name, crises: crisisResults });
