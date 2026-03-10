@@ -22,6 +22,7 @@
     border: 1px solid var(--border-main);
     border-radius: 8px;
     padding: 28px 24px;
+    width: 380px;
   }
   .dash-card-header {
     display: flex;
@@ -152,11 +153,17 @@ initPage('home', async (state) => {
 
   // ── Flag ──
   const flagBox = document.getElementById('nation-flag-box');
-  const flagPath = profile.flag_url || 'assets/flags/' + nation.name.replace(/\s+/g, '').toLowerCase() + '.png';
+  const localPath = 'assets/flags/' + nation.name.replace(/\s+/g, '').toLowerCase() + '.png';
   const img = document.createElement('img');
   img.alt = nation.name + ' flag';
-  img.src = flagPath;
+  img.src = profile.flag_url || localPath;
+  let triedLocal = !profile.flag_url;
   img.onerror = () => {
+    if (!triedLocal) {
+      triedLocal = true;
+      img.src = localPath;
+      return;
+    }
     flagBox.innerHTML = '';
     const span = document.createElement('span');
     span.className = 'abbr-fallback';
