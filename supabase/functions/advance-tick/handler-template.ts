@@ -1589,17 +1589,19 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                                     // === CLEAN SUCCESSION ===
                                     console.log(`[LeaderAging] Clean succession: ${chosenSuccessor.first_name} ${chosenSuccessor.last_name} takes power`);
 
-                                    // 1. Successor becomes new head of state
+                                    // 1. Successor becomes new head of state (transfer ruling faction)
                                     await supabase.from('nations').update({
                                         head_of_state_first_name: chosenSuccessor.first_name,
                                         head_of_state_last_name: chosenSuccessor.last_name,
                                         head_of_state_age: chosenSuccessor.age,
+                                        ruling_faction_id: chosenSuccessor.faction_id,
                                         successor_cooldown_end_tick: null,
                                         successor_is_family_member: false,
                                     }).eq('id', nation.id);
                                     nation.head_of_state_first_name = chosenSuccessor.first_name;
                                     nation.head_of_state_last_name = chosenSuccessor.last_name;
                                     nation.head_of_state_age = chosenSuccessor.age;
+                                    nation.ruling_faction_id = chosenSuccessor.faction_id;
 
                                     // 2. Clear successor tag
                                     await supabase.from('stewards').update({

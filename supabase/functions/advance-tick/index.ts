@@ -12560,7 +12560,7 @@ async function executeEmbezzleFunds(supabase, factionId, nationId, currentTick) 
     // Security faction detection bonus
     let securityBonus = 0;
     const { data: secFactions } = await supabase
-        .from('factions').select('seats')
+        .from('factions').select('id, seats')
         .eq('nation_id', nationId)
         .eq('faction_type', 'party')
         .neq('id', factionId);
@@ -15766,8 +15766,10 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
                 .update({ ruling_faction_id: null })
                 .eq('id', nationId);
         }
+    }
 
-        // Remove departing faction's steward and free their pillar
+    // 2c. Autocracy: clean up departing faction's steward and pillar (ruling or non-ruling)
+    if (isAutocracy(nation)) {
         await supabase.from('stewards')
             .update({ is_alive: false })
             .eq('nation_id', nationId)
@@ -15832,14 +15834,30 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
         }
     }
 
-    // 5. Zero seats first (while nation_id still set so rebalance can find remaining parties)
+    // 5. Zero seats and redistribute to remaining parties
+    const { data: dyingFaction } = await supabase
+        .from('factions').select('seats').eq('id', factionId).single();
+    const vacatedSeats = dyingFaction?.seats || 0;
+
     await supabase.from('factions')
         .update({ seats: 0 })
         .eq('id', factionId);
 
     // 6. Immediately redistribute vacated seats to remaining parties
-    if (nation) {
-        await rebalanceVacantSeats(supabase, nation);
+    if (nation && vacatedSeats > 0) {
+        if (isAutocracy(nation)) {
+            // Autocracy: give all vacated seats to ruling faction
+            const rulingId = nation.ruling_faction_id;
+            if (rulingId && rulingId !== factionId) {
+                const { data: ruler } = await supabase
+                    .from('factions').select('seats').eq('id', rulingId).single();
+                await supabase.from('factions')
+                    .update({ seats: (ruler?.seats || 0) + vacatedSeats })
+                    .eq('id', rulingId);
+            }
+        } else {
+            await rebalanceVacantSeats(supabase, nation);
+        }
     }
 
     // 7. Core disband — null out nation_id, reset all stats to fresh defaults
@@ -15885,6 +15903,10 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
     await supabase.from('donor_trust').delete().eq('party_id', factionId);
     await supabase.from('bill_support').delete().eq('faction_id', factionId);
     await supabase.from('campaign_actions').delete().eq('party_id', factionId);
+    await supabase.from('faction_coalitions').delete().eq('faction_a_id', factionId);
+    await supabase.from('faction_coalitions').delete().eq('faction_b_id', factionId);
+    await supabase.from('loyalty_demands').delete().eq('strongman_faction_id', factionId);
+    await supabase.from('loyalty_demands').delete().eq('target_faction_id', factionId);
 
     // 10. Audit log
     const { error: logErr } = await supabase
@@ -16445,7 +16467,7 @@ async function handleRegimeCollapse(supabase, nation, currentTick) {
             .neq('id', nation.ruling_faction_id)
             .order('standing', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
         if (factions) {
             await supabase.from('nations').update({
@@ -19532,17 +19554,19 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                                     // === CLEAN SUCCESSION ===
                                     console.log(`[LeaderAging] Clean succession: ${chosenSuccessor.first_name} ${chosenSuccessor.last_name} takes power`);
 
-                                    // 1. Successor becomes new head of state
+                                    // 1. Successor becomes new head of state (transfer ruling faction)
                                     await supabase.from('nations').update({
                                         head_of_state_first_name: chosenSuccessor.first_name,
                                         head_of_state_last_name: chosenSuccessor.last_name,
                                         head_of_state_age: chosenSuccessor.age,
+                                        ruling_faction_id: chosenSuccessor.faction_id,
                                         successor_cooldown_end_tick: null,
                                         successor_is_family_member: false,
                                     }).eq('id', nation.id);
                                     nation.head_of_state_first_name = chosenSuccessor.first_name;
                                     nation.head_of_state_last_name = chosenSuccessor.last_name;
                                     nation.head_of_state_age = chosenSuccessor.age;
+                                    nation.ruling_faction_id = chosenSuccessor.faction_id;
 
                                     // 2. Clear successor tag
                                     await supabase.from('stewards').update({
