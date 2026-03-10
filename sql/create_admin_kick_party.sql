@@ -162,6 +162,16 @@ BEGIN
     GET DIAGNOSTICS cnt = ROW_COUNT;
     IF cnt > 0 THEN result := result || jsonb_build_object('coalitions_updated', cnt); END IF;
 
+    -- ---- 6b. Dissolve active coalitions led by kicked party ----
+    DELETE FROM active_coalitions WHERE lead_party_id = p_faction_id;
+    GET DIAGNOSTICS cnt = ROW_COUNT;
+    IF cnt > 0 THEN result := result || jsonb_build_object('active_coalitions_dissolved', cnt); END IF;
+
+    -- ---- 6c. Remove pending coalition proposals ----
+    DELETE FROM coalition_proposals WHERE faction_id = p_faction_id;
+    GET DIAGNOSTICS cnt = ROW_COUNT;
+    IF cnt > 0 THEN result := result || jsonb_build_object('coalition_proposals_removed', cnt); END IF;
+
     -- ---- 7. Fail open bills proposed by this faction ----
     UPDATE bills SET status = 'failed'
     WHERE nation_id = p_nation_id
@@ -193,6 +203,10 @@ BEGIN
     DELETE FROM ideology_history WHERE faction_id = p_faction_id;
     GET DIAGNOSTICS cnt = ROW_COUNT;
     IF cnt > 0 THEN result := result || jsonb_build_object('ideology_history', cnt); END IF;
+
+    DELETE FROM bill_comments WHERE faction_id = p_faction_id;
+    GET DIAGNOSTICS cnt = ROW_COUNT;
+    IF cnt > 0 THEN result := result || jsonb_build_object('bill_comments', cnt); END IF;
 
     DELETE FROM bill_amendment_requests WHERE faction_id = p_faction_id;
     GET DIAGNOSTICS cnt = ROW_COUNT;

@@ -37,6 +37,8 @@ DECLARE
         ARRAY['government_formations',         $$DELETE FROM government_formations WHERE proposed_by = '%s'$$],
         ARRAY['government_formation_chat',    $$DELETE FROM government_formation_chat WHERE faction_id = '%s'$$],
         ARRAY['shakeups',                     $$DELETE FROM shakeups WHERE faction_id = '%s'$$],
+        ARRAY['bill_comments',               $$DELETE FROM bill_comments WHERE faction_id = '%s'$$],
+        ARRAY['bill_amendment_requests',     $$DELETE FROM bill_amendment_requests WHERE faction_id = '%s'$$],
         ARRAY['bill_support',                 $$DELETE FROM bill_support WHERE faction_id = '%s'$$],
         ARRAY['bills',                        $$DELETE FROM bills WHERE proposed_by = '%s'$$],
         ARRAY['campaign_actions',             $$DELETE FROM campaign_actions WHERE party_id = '%s'$$],
@@ -56,7 +58,10 @@ DECLARE
         ARRAY['forum_threads',                $$DELETE FROM forum_threads WHERE faction_id = '%s'$$],
         ARRAY['player_articles',              $$DELETE FROM player_articles WHERE author_faction_id = '%s'$$],
         ARRAY['op_eds(author)',               $$DELETE FROM op_eds WHERE author_faction_id = '%s'$$],
-        ARRAY['ministry_requests',            $$DELETE FROM ministry_requests WHERE faction_id = '%s'$$]
+        ARRAY['ministry_requests',            $$DELETE FROM ministry_requests WHERE faction_id = '%s'$$],
+        ARRAY['momentum_log',                $$DELETE FROM momentum_log WHERE faction_id = '%s'$$],
+        ARRAY['fundraiser_promises',         $$DELETE FROM fundraiser_promises WHERE party_id = '%s'$$],
+        ARRAY['donor_trust',                 $$DELETE FROM donor_trust WHERE party_id = '%s'$$]
     ];
     i INT;
 BEGIN
