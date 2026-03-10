@@ -12,8 +12,8 @@
 <style>
   #content-area {
     max-width: 900px;
-    margin: 60px auto;
-    padding: 40px 20px;
+    margin: 16px auto;
+    padding: 20px 20px;
   }
 
   /* ── Nation Card ── */
@@ -45,7 +45,7 @@
   .nation-identity {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     gap: 4px;
     margin-bottom: 24px;
   }
@@ -150,19 +150,35 @@ initPage('home', async (state) => {
     .limit(1);
   const profile = (profiles && profiles.length > 0) ? profiles[0] : {};
 
-  // ── Flag or abbreviation fallback ──
+  // ── Flag: try local assets/flags/ path, then profile flag_url, then abbreviation ──
   const flagBox = document.getElementById('nation-flag-box');
-  if (profile.flag_url) {
-    const img = document.createElement('img');
-    img.src = profile.flag_url;
-    img.alt = nation.name + ' flag';
-    flagBox.innerHTML = '';
-    flagBox.appendChild(img);
-  } else {
-    // Generate abbreviation from nation name (first letters of each word, max 3)
-    const abbr = nation.name.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3);
-    document.getElementById('nation-abbr').textContent = abbr;
-  }
+  const nameCleaned = nation.name.replace(/\s+/g, '');
+  // Try profile flag_url first, then CamelCase, then lowercase
+  const flagCandidates = [
+    profile.flag_url,
+    'assets/flags/' + nameCleaned + '.png',
+    'assets/flags/' + nameCleaned.toLowerCase() + '.png',
+  ].filter(Boolean);
+
+  const img = document.createElement('img');
+  img.alt = nation.name + ' flag';
+  let attempt = 0;
+  img.onerror = () => {
+    attempt++;
+    if (attempt < flagCandidates.length) {
+      img.src = flagCandidates[attempt];
+    } else {
+      // All failed — show abbreviation
+      flagBox.innerHTML = '';
+      const span = document.createElement('span');
+      span.className = 'abbr-fallback';
+      span.textContent = nation.name.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3);
+      flagBox.appendChild(span);
+    }
+  };
+  img.src = flagCandidates[0];
+  flagBox.innerHTML = '';
+  flagBox.appendChild(img);
 
   // ── Name & Motto ──
   document.getElementById('nation-name').textContent = nation.name;
