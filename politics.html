@@ -7190,7 +7190,7 @@ function renderRedistributePanel(n, f, ap, tick, nonRuling) {
     const apCost = GAME_CONFIG.REDISTRIBUTE_SEATS_AP || 2;
 
     // Need at least 2 non-ruling factions to transfer between, or any non-ruling to transfer to ruling
-    const otherFactions = nonRuling.filter(p => (p.seats || 0) > 0 || true);
+    const otherFactions = nonRuling.filter(p => (p.seats || 0) > 0);
 
     let content = '';
     if (onCooldown) {
@@ -7276,6 +7276,11 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
         .select('id, faction_name, abbreviation, party_color, action_points, loyalty, seats, standing, embezzled_funds')
         .eq('nation_id', n.id).eq('faction_type', 'party');
     const nonRuling = (allFactions || []).filter(p => p.id !== rulingId);
+
+    // Fetch pending loyalty demands
+    const { data: pendingDemands } = await _supabase
+        .from('loyalty_demands').select('id, target_faction_id')
+        .eq('nation_id', n.id).eq('status', 'pending');
 
     // Fetch ministries
     const { data: ministries } = await _supabase
@@ -7415,7 +7420,7 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
                         <span class="pol-action-cost">2 AP</span>
                     </div>
                     <div class="pol-action-tagline">Target a faction. They must comply or refuse.</div>
-                    <div class="pol-bloc-select-grid">${nonRuling.map(p => `<button class="pol-action-execute" style="margin:4px;border-left:3px solid ${p.party_color || '#888'}" data-demand-target="${p.id}">${escapeHtml(p.faction_name)}</button>`).join('')}</div>
+                    <div class="pol-bloc-select-grid">${nonRuling.length > 0 ? nonRuling.map(p => `<button class="pol-action-execute" style="margin:4px;border-left:3px solid ${p.party_color || '#888'}" data-demand-target="${p.id}">${escapeHtml(p.faction_name)}</button>`).join('') : '<div style="color:var(--dtext-3);font-size:10px;padding:4px 0">No factions to demand loyalty from.</div>'}</div>
                 </div>
                 ${renderSuccessorPanel(n, f, ap, tick, allStewardRows, allFactions, nonRuling, stewardByFaction)}
                 ${renderPurgePanel(n, f, ap, tick, nonRuling, stewardByFaction)}
@@ -7424,7 +7429,7 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
             </div>`;
     } else {
         // Steward faction actions + steward-specific actions
-        const hasPendingDemand = false; // TODO: check loyalty demands
+        const hasPendingDemand = (pendingDemands || []).some(d => d.target_faction_id === f.id);
         const demoCanAfford = factionFunds >= (GAME_CONFIG.DEMONSTRATE_COMPETENCE_COST || 2);
 
         html = `
@@ -7629,7 +7634,7 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
     // Strongman demand loyalty buttons
     container.querySelectorAll('[data-demand-target]').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if (ap < 2) { alert('Not enough AP (need 2).'); return; }
+            if (ap < 2) { alert('Not enough AP (need 2).'); await reRender(); return; }
             btn.disabled = true; btn.textContent = 'DEMANDING...';
             const apResult = await deductAP(_supabase, f.id, 2);
             if (!apResult.success) { alert('Not enough AP.'); await reRender(); return; }
@@ -7652,7 +7657,7 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
     // ── Appoint Successor: steward target buttons ──
     container.querySelectorAll('[data-successor-target]').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if (ap < SUCCESSOR_CONFIG.AP_COST) { alert(`Not enough AP (need ${SUCCESSOR_CONFIG.AP_COST}).`); return; }
+            if (ap < SUCCESSOR_CONFIG.AP_COST) { alert(`Not enough AP (need ${SUCCESSOR_CONFIG.AP_COST}).`); await reRender(); return; }
             const targetId = btn.dataset.successorTarget;
             const targetFac = (allFactions || []).find(p => p.id === targetId);
             if (!confirm(`Appoint ${targetFac?.faction_name || 'this faction'}'s steward as successor?\n\nCost: ${SUCCESSOR_CONFIG.AP_COST} AP\nStability +${SUCCESSOR_CONFIG.STABILITY_BOOST}\nTarget pillar +${SUCCESSOR_CONFIG.PILLAR_BOOST}\nOther factions: Loyalty -${SUCCESSOR_CONFIG.OTHER_LOYALTY_DROP}, Coup Readiness +${SUCCESSOR_CONFIG.OTHER_COUP_READINESS}\n\nCooldown: ${SUCCESSOR_CONFIG.COOLDOWN_TICKS} ticks`)) return;
@@ -7775,7 +7780,7 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
             if (coal) {
                 await _supabase.from('campaign_actions').insert({
                     party_id: f.id, nation_id: n.id, action_type: 'accept_coalition',
-                    tick_performed: tick, result: { partner: factionNameMap[coal.faction_a_id] || '?' }
+                    tick_performed: tick, result: { partner: factionNameMap[coal.faction_a_id === f.id ? coal.faction_b_id : coal.faction_a_id] || '?' }
                 });
             }
             alert('Coalition accepted.');
@@ -7803,8 +7808,8 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
             await _supabase.from('faction_coalitions').update({ status: 'betrayed' }).eq('id', coalId);
             if (coal) {
                 // Report to strongman — proposer loses loyalty
-                const proposerId = coal.faction_a_id;
-                const { data: proposer } = await _supabase.from('factions').select('loyalty').eq('id', proposerId).single();
+                const proposerId = coal.proposed_by_faction_id || (coal.faction_a_id === f.id ? coal.faction_b_id : coal.faction_a_id);
+                const { data: proposer } = await _supabase.from('factions').select('loyalty').eq('id', proposerId).maybeSingle();
                 if (proposer) {
                     const newLoy = Math.max(0, (proposer.loyalty ?? 50) - 15);
                     await _supabase.from('factions').update({ loyalty: newLoy }).eq('id', proposerId);
