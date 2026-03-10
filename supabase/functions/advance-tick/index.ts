@@ -9994,7 +9994,7 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
             newVal = Math.min(target, currentVal + speed);
         }
 
-        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+        newVal = Math.round(Math.max(0, newVal) * 10) / 10;
 
         if (newVal !== Math.round(currentVal * 10) / 10) {
             nationUpdates[statKey] = newVal;
@@ -10096,12 +10096,7 @@ async function processStatConnections(supabase, nation, currentTick, connections
             ? targetVal + effectiveMag
             : targetVal - effectiveMag;
 
-        // Raw-value stats (gdp, debt, population) must not be clamped to 0-100
-        if (RAW_SCALING_DIVISORS[conn.target_stat]) {
-            newVal = Math.max(0, newVal);
-        } else {
-            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
-        }
+        newVal = Math.round(Math.max(0, newVal) * 10) / 10;
 
         if (newVal !== Math.round(targetVal * 10) / 10) {
             // Accumulate — multiple connections can affect the same target
@@ -10110,9 +10105,7 @@ async function processStatConnections(supabase, nation, currentTick, connections
                 const prevDelta = nationUpdates[conn.target_stat] - targetVal;
                 const thisDelta = newVal - targetVal;
                 const accumulated = targetVal + prevDelta + thisDelta;
-                nationUpdates[conn.target_stat] = RAW_SCALING_DIVISORS[conn.target_stat]
-                    ? Math.max(0, accumulated)
-                    : Math.round(Math.max(0, Math.min(100, accumulated)) * 10) / 10;
+                nationUpdates[conn.target_stat] = Math.round(Math.max(0, accumulated) * 10) / 10;
             } else {
                 nationUpdates[conn.target_stat] = newVal;
             }
@@ -13733,12 +13726,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                         newVal = currentVal - scaledRate;
                     }
 
-                    // Raw-value stats — don't clamp to 0-100
-                    if (RAW_SCALING_DIVISORS[statKey]) {
-                        newVal = Math.max(0, newVal);
-                    } else {
-                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
-                    }
+                    newVal = Math.round(Math.max(0, newVal) * 10) / 10;
                     nationUpdates[statKey] = newVal;
                     anyEffectApplied = true;
 
@@ -13909,12 +13897,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
                             : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
                         let scaledMinistryRate = RAW_SCALING_DIVISORS[statKey] ? rate * RAW_SCALING_DIVISORS[statKey] : rate;
                         newVal = eff.direction === 'up' ? currentVal + scaledMinistryRate : currentVal - scaledMinistryRate;
-                        // Raw-value stats (debt, population) must not be clamped to 0-100
-                        if (RAW_SCALING_DIVISORS[statKey]) {
-                            newVal = Math.max(0, newVal);
-                        } else {
-                            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
-                        }
+                        newVal = Math.round(Math.max(0, newVal) * 10) / 10;
                         nationUpdates[statKey] = newVal;
                     }
 
@@ -14341,10 +14324,7 @@ async function processEvents(supabase, nation, currentTick) {
                 const scaledChange = RAW_SCALING_DIVISORS[evtStatKey]
                     ? effect.change_value * RAW_SCALING_DIVISORS[evtStatKey]
                     : effect.change_value;
-                // Raw-value stats (debt, population) must not be clamped to 0-100
-                const newVal = RAW_SCALING_DIVISORS[evtStatKey]
-                    ? Math.max(0, currentVal + scaledChange)
-                    : Math.max(0, Math.min(100, currentVal + scaledChange));
+                const newVal = Math.max(0, currentVal + scaledChange);
                 nationUpdates[evtStatKey] = newVal;
                 nation[evtStatKey] = newVal;
 
@@ -14627,14 +14607,10 @@ async function processCrises(supabase, nation, currentTick, budgetItemAllocs) {
                     : (nation[statKey] !== undefined && nation[statKey] !== null
                         ? Number(nation[statKey]) : 50);
 
-                // Raw-value stats (population) must not be clamped to 0-100
-                let newVal;
-                if (RAW_SCALING_DIVISORS[statKey]) {
-                    const scaledCrisisChange = changePT * RAW_SCALING_DIVISORS[statKey];
-                    newVal = Math.max(0, currentVal + scaledCrisisChange);
-                } else {
-                    newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
-                }
+                const scaledCrisisChange = RAW_SCALING_DIVISORS[statKey]
+                    ? changePT * RAW_SCALING_DIVISORS[statKey]
+                    : changePT;
+                let newVal = Math.round(Math.max(0, currentVal + scaledCrisisChange) * 10) / 10;
                 nationUpdates[statKey] = newVal;
                 nation[statKey] = newVal;
 
@@ -15590,12 +15566,8 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
             if (STAT_PROCESSOR_SKIP.has(stat)) continue;
             const currentVal = nation[stat];
             if (currentVal !== undefined && currentVal !== null) {
-                if (RAW_SCALING_DIVISORS[stat]) {
-                    // Raw-value stats (population): scale rate and don't clamp to 0-100
-                    updates[stat] = Math.max(0, Number(currentVal) + delta * RAW_SCALING_DIVISORS[stat]);
-                } else {
-                    updates[stat] = Math.round(Math.max(0, Math.min(100, Number(currentVal) + delta)) * 10) / 10;
-                }
+                const scaledDelta = RAW_SCALING_DIVISORS[stat] ? delta * RAW_SCALING_DIVISORS[stat] : delta;
+                updates[stat] = Math.round(Math.max(0, Number(currentVal) + scaledDelta) * 10) / 10;
             }
         }
         if (Object.keys(updates).length > 0) {
@@ -18938,12 +18910,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
     // 4. Process each nation
     for (const nation of nationList) {
-      // Snapshot raw-value stats (GDP, debt) BEFORE any processing.
-      // These are real-dollar values (billions) that must NEVER be clamped to 0-100.
-      // If any code path accidentally clamps them, we detect and restore here.
-      const _preTickGdp = Number(nation.gdp ?? 0);
-      const _preTickDebt = Number(nation.debt ?? 0);
-
       try {
         // Set correct seat count for this nation (affects supermajority thresholds, etc.)
         initGameConfigForNation(nation);
@@ -19705,41 +19671,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         summary.errors = summary.errors || [];
         summary.errors.push({ nation: nation.name, nationId: nation.id, error: String(nationErr) });
       } finally {
-        // ── GDP / Debt clamp guard ──
-        // These are raw-dollar values (e.g. 88 billion). If any code path accidentally
-        // clamped them to the 0-100 index range, detect and restore from the DB snapshot
-        // taken before processing. This is a safety net — the root cause should also be
-        // fixed, but this prevents data corruption in the meantime.
-        try {
-            const { data: postNation } = await supabase.from('nations').select('gdp, debt').eq('id', nation.id).single();
-            if (postNation) {
-                const currentGdp = Number(postNation.gdp ?? 0);
-                const currentDebt = Number(postNation.debt ?? 0);
-                const restoreFields: any = {};
-
-                // If GDP was a large value pre-tick but is now suspiciously in 0-100 range, restore it
-                if (_preTickGdp > 100 && currentGdp >= 0 && currentGdp <= 100) {
-                    console.error(`[GDP_CLAMP_GUARD] ${nation.name}: GDP was clamped from ${_preTickGdp} to ${currentGdp} — restoring to pre-tick value`);
-                    restoreFields.gdp = _preTickGdp;
-                    nation.gdp = _preTickGdp;
-                }
-                // Same guard for debt
-                if (_preTickDebt > 100 && currentDebt >= 0 && currentDebt <= 100) {
-                    console.error(`[GDP_CLAMP_GUARD] ${nation.name}: Debt was clamped from ${_preTickDebt} to ${currentDebt} — restoring to pre-tick value`);
-                    restoreFields.debt = _preTickDebt;
-                    nation.debt = _preTickDebt;
-                }
-
-                if (Object.keys(restoreFields).length > 0) {
-                    await supabase.from('nations').update(restoreFields).eq('id', nation.id);
-                    summary.gdpDebtGuardTriggered = summary.gdpDebtGuardTriggered || [];
-                    summary.gdpDebtGuardTriggered.push({ nation: nation.name, restored: restoreFields });
-                }
-            }
-        } catch (guardErr) {
-            console.error(`[GDP_CLAMP_GUARD] Check failed for ${nation.name} (non-fatal):`, guardErr);
-        }
-
         // Always record history snapshot, even if processing failed partway through.
         // Without this, a crash in any processing step (elections, crises, etc.)
         // causes stat_history / nations_history to have gaps, which makes trend
