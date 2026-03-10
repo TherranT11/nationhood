@@ -11910,11 +11910,14 @@ async function rebalanceVacantSeats(supabase, nation) {
     if (error || !factions || factions.length === 0) return null;
 
     const currentSum = factions.reduce((s, f) => s + (f.seats || 0), 0);
-    const vacantSeats = totalSeats - currentSum;
+    // Subtract unaligned seats (autocracy pool) — those are intentionally
+    // held outside factions and should not be treated as vacant.
+    const unalignedSeats = nation.unaligned_seats || 0;
+    const vacantSeats = totalSeats - currentSum - unalignedSeats;
 
     if (vacantSeats <= 0) return null; // No vacant seats
 
-    console.log(`[rebalanceVacantSeats] ${nation.name}: ${vacantSeats} vacant seat(s) detected (${currentSum}/${totalSeats}). Redistributing.`);
+    console.log(`[rebalanceVacantSeats] ${nation.name}: ${vacantSeats} vacant seat(s) detected (${currentSum}/${totalSeats}, ${unalignedSeats} unaligned). Redistributing.`);
 
     // Proportional redistribution using Largest Remainder (Hamilton) method
     // Weight = each faction's current seats
