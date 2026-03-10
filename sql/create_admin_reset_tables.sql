@@ -13,6 +13,8 @@ DECLARE
     cnt BIGINT;
     tables TEXT[] := ARRAY[
         -- Tables that reference factions (must clear before factions)
+        'bill_comments',
+        'bill_amendment_requests',
         'campaign_actions',
         'bill_support',
         'faction_bloc_approval',
