@@ -6,7 +6,7 @@
 import { deductAP, GAME_CONFIG } from './config.js';
 import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic } from './government-types.js';
 import { RAW_SCALING_DIVISORS, STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
-import { IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, loadFactionIdeology, computeIdeologyAlignment } from './ideology.js';
+import { IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, loadFactionIdeology, applyIdeologyShift, computeIdeologyAlignment } from './ideology.js';
 import { MINISTER_APPROVAL_CONFIG, ISSUE_CATEGORY_STATS, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, STAT_TO_MINISTRY, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, statDirectionSign } from './stats.js';
 import { adjustGovernmentApprovalEvent, adjustMomentum, adjustMomentumAll } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
@@ -5463,18 +5463,9 @@ export async function selectPMCandidate(supabase, candidateId, nationId, faction
     const axisKey = candidate.ideology_axis;
     const shift = 15 * candidate.ideology_direction;
 
-    let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) factionIdeology = null;
-    if (factionIdeology) {
-        const currentVal = factionIdeology[axisKey] || 0;
-        const newVal = Math.max(-100, Math.min(100, currentVal + shift));
-
-        await supabase
-            .from('faction_ideology')
-            .update({ [axisKey]: newVal })
-            .eq('faction_id', factionId);
-
-        console.log(`Ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
+    const shiftResult = await applyIdeologyShift(supabase, factionId, axisKey, shift);
+    if (shiftResult) {
+        console.log(`Ideology shift: ${axisKey} ${shiftResult.oldVal} → ${shiftResult.newVal} (${shift > 0 ? '+' : ''}${shift})`);
     }
 
 
@@ -5620,9 +5611,7 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
     const shift = 5 * ideology.direction;
 
     if (factionIdeology) {
-        const currentVal = factionIdeology[axisKey] || 0;
-        const newVal = Math.max(-100, Math.min(100, currentVal + shift));
-        await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
+        await applyIdeologyShift(supabase, factionId, axisKey, shift);
     }
 
     // Apply trait effects

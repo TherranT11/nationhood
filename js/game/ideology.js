@@ -345,3 +345,19 @@ export function extractAxisScores(ideologyRow) {
     }
     return scores;
 }
+
+/**
+ * Load a faction's ideology, apply a clamped shift on one axis, and save.
+ * Returns { oldVal, newVal } on success, or null if ideology row is missing/errored.
+ */
+export async function applyIdeologyShift(supabase, factionId, axisKey, shift) {
+    let row = await loadFactionIdeology(supabase, factionId);
+    if (row?._error) row = null;
+    if (!row) return null;
+    const oldVal = row[axisKey] || 0;
+    const newVal = Math.max(-100, Math.min(100, oldVal + shift));
+    if (newVal !== oldVal) {
+        await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
+    }
+    return { oldVal, newVal };
+}

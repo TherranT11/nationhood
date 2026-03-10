@@ -6,7 +6,7 @@
 import { GAME_CONFIG, initGameConfigForNation } from './config.js';
 import { isPresidentialRepublic } from './government-types.js';
 import { DIPLOMACY_CONFIG } from './diplomacy-constants.js';
-import { IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology } from './ideology.js';
+import { IDEOLOGY_TO_AXIS, extractAxisScores, loadNationIdeologies } from './ideology.js';
 import { adjustMomentum, adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
@@ -603,12 +603,19 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
     }
 
     // Apply accumulated shifts to faction_ideology
+    // Batch-load all faction ideologies in one query instead of N individual loads
+    const allIdeologies = await loadNationIdeologies(supabase, nationId);
+    const ideologyByFaction = {};
+    for (const row of allIdeologies) {
+        ideologyByFaction[row.faction_id] = row;
+    }
+
     const historyRows = [];
 
     for (const [factionId, axisShifts] of Object.entries(factionShifts)) {
-        let ideologyRow = await loadFactionIdeology(supabase, factionId);
-        if (ideologyRow?._error || !ideologyRow) {
-            console.warn(`[processIdeologyShifts] Skipping faction ${factionId}: ${ideologyRow?._error ? 'DB error' : 'no ideology row'}`);
+        const ideologyRow = ideologyByFaction[factionId];
+        if (!ideologyRow) {
+            console.warn(`[processIdeologyShifts] Skipping faction ${factionId}: no ideology row`);
             continue;
         }
 

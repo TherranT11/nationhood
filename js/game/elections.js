@@ -5,7 +5,7 @@
 
 import { FORMATION_DEADLINE_TICKS, GAME_CONFIG, SNAP_COOLDOWN_GAP } from './config.js';
 import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isAutocracy, isPresidentialRepublic } from './government-types.js';
-import { loadFactionIdeology } from './ideology.js';
+import { applyIdeologyShift } from './ideology.js';
 import { snapshotNationStats } from './stats.js';
 import { adjustMomentumAll } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
@@ -1937,13 +1937,9 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
     const direction = candidate.ideology_direction;
     if (axisKey && typeof direction === 'number') {
         const shift = 15 * direction;
-        let factionIdeology = await loadFactionIdeology(supabase, factionId);
-        if (factionIdeology?._error) factionIdeology = null;
-        if (factionIdeology) {
-            const currentVal = factionIdeology[axisKey] || 0;
-            const newVal = Math.max(-100, Math.min(100, currentVal + shift));
-            await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
-            console.log(`President ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
+        const shiftResult = await applyIdeologyShift(supabase, factionId, axisKey, shift);
+        if (shiftResult) {
+            console.log(`President ideology shift: ${axisKey} ${shiftResult.oldVal} → ${shiftResult.newVal} (${shift > 0 ? '+' : ''}${shift})`);
         }
     }
 

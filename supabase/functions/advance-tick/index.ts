@@ -2408,6 +2408,22 @@ function extractAxisScores(ideologyRow) {
     return scores;
 }
 
+/**
+ * Load a faction's ideology, apply a clamped shift on one axis, and save.
+ * Returns { oldVal, newVal } on success, or null if ideology row is missing/errored.
+ */
+async function applyIdeologyShift(supabase, factionId, axisKey, shift) {
+    let row = await loadFactionIdeology(supabase, factionId);
+    if (row?._error) row = null;
+    if (!row) return null;
+    const oldVal = row[axisKey] || 0;
+    const newVal = Math.max(-100, Math.min(100, oldVal + shift));
+    if (newVal !== oldVal) {
+        await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
+    }
+    return { oldVal, newVal };
+}
+
 // ────────── stats ──────────
 
 
@@ -4728,12 +4744,19 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
     }
 
     // Apply accumulated shifts to faction_ideology
+    // Batch-load all faction ideologies in one query instead of N individual loads
+    const allIdeologies = await loadNationIdeologies(supabase, nationId);
+    const ideologyByFaction = {};
+    for (const row of allIdeologies) {
+        ideologyByFaction[row.faction_id] = row;
+    }
+
     const historyRows = [];
 
     for (const [factionId, axisShifts] of Object.entries(factionShifts)) {
-        let ideologyRow = await loadFactionIdeology(supabase, factionId);
-        if (ideologyRow?._error || !ideologyRow) {
-            console.warn(`[processIdeologyShifts] Skipping faction ${factionId}: ${ideologyRow?._error ? 'DB error' : 'no ideology row'}`);
+        const ideologyRow = ideologyByFaction[factionId];
+        if (!ideologyRow) {
+            console.warn(`[processIdeologyShifts] Skipping faction ${factionId}: no ideology row`);
             continue;
         }
 
@@ -8573,13 +8596,9 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
     const direction = candidate.ideology_direction;
     if (axisKey && typeof direction === 'number') {
         const shift = 15 * direction;
-        let factionIdeology = await loadFactionIdeology(supabase, factionId);
-        if (factionIdeology?._error) factionIdeology = null;
-        if (factionIdeology) {
-            const currentVal = factionIdeology[axisKey] || 0;
-            const newVal = Math.max(-100, Math.min(100, currentVal + shift));
-            await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
-            console.log(`President ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
+        const shiftResult = await applyIdeologyShift(supabase, factionId, axisKey, shift);
+        if (shiftResult) {
+            console.log(`President ideology shift: ${axisKey} ${shiftResult.oldVal} → ${shiftResult.newVal} (${shift > 0 ? '+' : ''}${shift})`);
         }
     }
 
@@ -15322,18 +15341,9 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
     const axisKey = candidate.ideology_axis;
     const shift = 15 * candidate.ideology_direction;
 
-    let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) factionIdeology = null;
-    if (factionIdeology) {
-        const currentVal = factionIdeology[axisKey] || 0;
-        const newVal = Math.max(-100, Math.min(100, currentVal + shift));
-
-        await supabase
-            .from('faction_ideology')
-            .update({ [axisKey]: newVal })
-            .eq('faction_id', factionId);
-
-        console.log(`Ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
+    const shiftResult = await applyIdeologyShift(supabase, factionId, axisKey, shift);
+    if (shiftResult) {
+        console.log(`Ideology shift: ${axisKey} ${shiftResult.oldVal} → ${shiftResult.newVal} (${shift > 0 ? '+' : ''}${shift})`);
     }
 
 
@@ -15479,9 +15489,7 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
     const shift = 5 * ideology.direction;
 
     if (factionIdeology) {
-        const currentVal = factionIdeology[axisKey] || 0;
-        const newVal = Math.max(-100, Math.min(100, currentVal + shift));
-        await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
+        await applyIdeologyShift(supabase, factionId, axisKey, shift);
     }
 
     // Apply trait effects
