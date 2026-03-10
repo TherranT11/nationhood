@@ -1153,7 +1153,7 @@ function renderQuickActions(faction, nation, coalition, govType, isPresidential,
         actions.push({ name: 'Decree', cost: 2, href: 'government.html#cabinet-section' });
         actions.push({ name: 'Purge Dissidents', cost: 4, href: 'government.html#cabinet-section' });
         if (isStrongman) {
-            actions.push({ name: 'Demand Loyalty', cost: 2, href: 'parties.html#demand-loyalty-section' });
+            actions.push({ name: 'Demand Loyalty', cost: 2, href: 'politics.html#demand-loyalty-section' });
         } else if (mySteward) {
             // Steward-specific action based on steward_type
             const stewardActions = {
@@ -1163,7 +1163,7 @@ function renderQuickActions(faction, nation, coalition, govType, isPresidential,
             };
             const sa = stewardActions[mySteward.steward_type];
             if (sa) {
-                actions.push({ name: sa.name, cost: sa.cost, href: 'parties.html' + sa.hash });
+                actions.push({ name: sa.name, cost: sa.cost, href: 'politics.html' + sa.hash });
             }
         }
     } else if (isPresidential) {

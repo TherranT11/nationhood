@@ -24,11 +24,6 @@ const imports = {
     `import { initPage } from './js/common.js';`,
     `import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP } from './js/game-common.js';`,
   ],
-  'parties.html': [
-    `import { _supabase } from './js/supabase-client.js';`,
-    `import { initPage, qCache, qCacheSet, formatNumber } from './js/common.js';`,
-    `import { loadSeats, loadFactionIdeology, IDEOLOGY_TO_AXIS, GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, detectHeadFaction, fetchActiveCoalition, deductAP, getIdeologyLabel, IDEOLOGY_AXES, disbandParty } from './js/game-common.js';`,
-  ],
   'elections.html': [
     `import { _supabase } from './js/supabase-client.js';`,
     `import { initPage, formatNumber } from './js/common.js';`,
