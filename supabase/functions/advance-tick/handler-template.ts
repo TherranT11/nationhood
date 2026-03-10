@@ -1496,6 +1496,143 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
         }
 
+        // ── Succession helper: updates HOS, syncs nation object, logs action ──
+        async function handleStrongmanSuccession(
+            supabase: any, nation: any, hosName: string, hosAge: number, newTick: number
+        ) {
+            const FIRST = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
+            const LAST = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
+            const randFirst = () => FIRST[Math.floor(Math.random() * FIRST.length)];
+            const randLast = () => LAST[Math.floor(Math.random() * LAST.length)];
+
+            // Check for chosen successor
+            const { data: chosenSuccessor } = await supabase.from('stewards')
+                .select('id, faction_id, first_name, last_name, age, pillar_key, steward_type, succession_strength')
+                .eq('nation_id', nation.id).eq('is_chosen_successor', true).eq('is_alive', true)
+                .maybeSingle();
+
+            if (chosenSuccessor) {
+                // === CLEAN SUCCESSION ===
+                const successorName = `${chosenSuccessor.first_name} ${chosenSuccessor.last_name}`;
+                console.log(`[LeaderAging] Clean succession: ${successorName} takes power`);
+
+                await supabase.from('nations').update({
+                    head_of_state_first_name: chosenSuccessor.first_name,
+                    head_of_state_last_name: chosenSuccessor.last_name,
+                    head_of_state_age: chosenSuccessor.age,
+                    ruling_faction_id: chosenSuccessor.faction_id,
+                    successor_cooldown_end_tick: null, successor_is_family_member: false,
+                }).eq('id', nation.id);
+                nation.head_of_state_first_name = chosenSuccessor.first_name;
+                nation.head_of_state_last_name = chosenSuccessor.last_name;
+                nation.head_of_state_age = chosenSuccessor.age;
+                nation.ruling_faction_id = chosenSuccessor.faction_id;
+
+                // Retire old steward, reset coup readiness
+                await supabase.from('stewards').update({
+                    is_chosen_successor: false, succession_strength: 0,
+                    successor_appointed_tick: null, is_alive: false, died_at_tick: newTick,
+                }).eq('id', chosenSuccessor.id);
+                await supabase.from('stewards').update({ coup_readiness: 0 })
+                    .eq('nation_id', nation.id).eq('is_alive', true);
+
+                // Loyalty: new ruler -5, others -15
+                const { data: factions } = await supabase.from('factions')
+                    .select('id, loyalty').eq('nation_id', nation.id).eq('faction_type', 'party');
+                for (const fac of (factions || [])) {
+                    const drop = fac.id === chosenSuccessor.faction_id ? 5 : 15;
+                    await supabase.from('factions').update({
+                        loyalty: Math.max(0, (fac.loyalty ?? 50) - drop)
+                    }).eq('id', fac.id);
+                }
+
+                // Generate replacement steward
+                const stewardType = PILLAR_TO_STEWARD_TYPE[chosenSuccessor.pillar_key] || 'technocrat';
+                await supabase.from('stewards').insert({
+                    nation_id: nation.id, faction_id: chosenSuccessor.faction_id,
+                    pillar_key: chosenSuccessor.pillar_key, steward_type: stewardType,
+                    first_name: randFirst(), last_name: randLast(),
+                    age: 40 + Math.floor(Math.random() * 16),
+                    standing: 40, power_base: 30, true_loyalty: 50, estimated_loyalty: 55,
+                    personal_wealth: 0, exit_readiness: 0, coup_readiness: 0,
+                    is_alive: true, is_chosen_successor: false, succession_strength: 0,
+                    created_at_tick: newTick,
+                });
+
+                await supabase.from('campaign_actions').insert({
+                    party_id: chosenSuccessor.faction_id, nation_id: nation.id,
+                    action_type: 'clean_succession', tick_performed: newTick,
+                    result: { deceased_name: hosName, deceased_age: hosAge,
+                        successor_name: successorName, successor_faction_id: chosenSuccessor.faction_id,
+                        succession_strength: chosenSuccessor.succession_strength ?? 0, cause: 'natural_causes' },
+                });
+                return { type: 'clean_succession', deceased: hosName, deceasedAge: hosAge,
+                    successor: successorName, successorAge: chosenSuccessor.age };
+
+            } else if (nation.successor_is_family_member) {
+                // === FAMILY MEMBER SUCCESSION ===
+                console.log(`[LeaderAging] Family succession in ${nation.name}`);
+                const famFirst = randFirst();
+                const famLast = nation.head_of_state_last_name || 'Unknown';
+                const famAge = 30 + Math.floor(Math.random() * 16);
+                const famName = `${famFirst} ${famLast}`;
+
+                await supabase.from('nations').update({
+                    head_of_state_first_name: famFirst, head_of_state_last_name: famLast,
+                    head_of_state_age: famAge,
+                    successor_cooldown_end_tick: null, successor_is_family_member: false,
+                }).eq('id', nation.id);
+                nation.head_of_state_first_name = famFirst;
+                nation.head_of_state_last_name = famLast;
+                nation.head_of_state_age = famAge;
+
+                await supabase.from('stewards').update({ coup_readiness: 0 })
+                    .eq('nation_id', nation.id).eq('is_alive', true);
+
+                const { data: factions } = await supabase.from('factions')
+                    .select('id, loyalty').eq('nation_id', nation.id).eq('faction_type', 'party');
+                for (const fac of (factions || [])) {
+                    await supabase.from('factions').update({
+                        loyalty: Math.max(0, (fac.loyalty ?? 50) - 5)
+                    }).eq('id', fac.id);
+                }
+
+                await supabase.from('campaign_actions').insert({
+                    party_id: nation.ruling_faction_id, nation_id: nation.id,
+                    action_type: 'family_succession', tick_performed: newTick,
+                    result: { deceased_name: hosName, deceased_age: hosAge,
+                        successor_name: famName, is_family_member: true, cause: 'natural_causes' },
+                });
+                return { type: 'family_succession', deceased: hosName, deceasedAge: hosAge,
+                    successor: famName, successorAge: famAge };
+
+            } else {
+                // === NO SUCCESSOR — random replacement ===
+                const newFirst = randFirst();
+                const newLast = randLast();
+                const newAge = 45 + Math.floor(Math.random() * 16);
+                const newName = `${newFirst} ${newLast}`;
+
+                await supabase.from('nations').update({
+                    head_of_state_first_name: newFirst, head_of_state_last_name: newLast,
+                    head_of_state_age: newAge,
+                    successor_cooldown_end_tick: null, successor_is_family_member: false,
+                }).eq('id', nation.id);
+                nation.head_of_state_first_name = newFirst;
+                nation.head_of_state_last_name = newLast;
+                nation.head_of_state_age = newAge;
+
+                await supabase.from('campaign_actions').insert({
+                    party_id: nation.ruling_faction_id, nation_id: nation.id,
+                    action_type: 'strongman_death', tick_performed: newTick,
+                    result: { deceased_name: hosName, deceased_age: hosAge,
+                        successor_name: newName, successor_age: newAge, cause: 'natural_causes' },
+                });
+                return { type: 'strongman_death', deceased: hosName, deceasedAge: hosAge,
+                    successor: newName, successorAge: newAge };
+            }
+        }
+
         // ── Leader aging (every January — tick % 12 === 0) ──
         // All party leaders, stewards, and the strongman age 1 year.
         // The strongman also rolls health checks starting at age 70.
@@ -1573,216 +1710,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             console.log(`[LeaderAging] Strongman health check for ${nation.name}: age=${newHosAge}, deathChance=${(deathChance * 100).toFixed(1)}%, roll=${roll.toFixed(3)}`);
 
                             if (roll < deathChance) {
-                                // Strongman has died of natural causes
                                 const hosName = `${nation.head_of_state_first_name || 'The Strongman'} ${nation.head_of_state_last_name || ''}`.trim();
                                 console.log(`[LeaderAging] Strongman ${hosName} of ${nation.name} has died at age ${newHosAge}`);
-
-                                // Shared name pools for succession
-                                const SUCCESSION_FIRST_NAMES = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
-                                const SUCCESSION_LAST_NAMES = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
-
-                                // Check for Chosen Successor
-                                const { data: chosenSuccessor } = await supabase.from('stewards')
-                                    .select('id, faction_id, first_name, last_name, age, pillar_key, steward_type, succession_strength')
-                                    .eq('nation_id', nation.id)
-                                    .eq('is_chosen_successor', true)
-                                    .eq('is_alive', true)
-                                    .maybeSingle();
-
-                                if (chosenSuccessor) {
-                                    // === CLEAN SUCCESSION ===
-                                    console.log(`[LeaderAging] Clean succession: ${chosenSuccessor.first_name} ${chosenSuccessor.last_name} takes power`);
-
-                                    // 1. Successor becomes new head of state (transfer ruling faction)
-                                    await supabase.from('nations').update({
-                                        head_of_state_first_name: chosenSuccessor.first_name,
-                                        head_of_state_last_name: chosenSuccessor.last_name,
-                                        head_of_state_age: chosenSuccessor.age,
-                                        ruling_faction_id: chosenSuccessor.faction_id,
-                                        successor_cooldown_end_tick: null,
-                                        successor_is_family_member: false,
-                                    }).eq('id', nation.id);
-                                    nation.head_of_state_first_name = chosenSuccessor.first_name;
-                                    nation.head_of_state_last_name = chosenSuccessor.last_name;
-                                    nation.head_of_state_age = chosenSuccessor.age;
-                                    nation.ruling_faction_id = chosenSuccessor.faction_id;
-
-                                    // 2. Clear successor tag
-                                    await supabase.from('stewards').update({
-                                        is_chosen_successor: false,
-                                        succession_strength: 0,
-                                        successor_appointed_tick: null,
-                                        is_alive: false,
-                                        died_at_tick: newTick,
-                                    }).eq('id', chosenSuccessor.id);
-
-                                    // 3. Post-succession loyalty effects
-                                    const { data: allFactions } = await supabase.from('factions')
-                                        .select('id, loyalty')
-                                        .eq('nation_id', nation.id)
-                                        .eq('faction_type', 'party');
-                                    for (const fac of (allFactions || [])) {
-                                        const loyDrop = fac.id === chosenSuccessor.faction_id ? 5 : 15;
-                                        const newLoy = Math.max(0, (fac.loyalty ?? 50) - loyDrop);
-                                        await supabase.from('factions').update({ loyalty: newLoy }).eq('id', fac.id);
-                                    }
-
-                                    // 4. Reset all stewards' coup_readiness to 0
-                                    await supabase.from('stewards').update({ coup_readiness: 0 })
-                                        .eq('nation_id', nation.id).eq('is_alive', true);
-
-                                    // 5. Generate replacement steward for the successor's old faction
-                                    const replFirst = SUCCESSION_FIRST_NAMES[Math.floor(Math.random() * SUCCESSION_FIRST_NAMES.length)];
-                                    const replLast = SUCCESSION_LAST_NAMES[Math.floor(Math.random() * SUCCESSION_LAST_NAMES.length)];
-                                    const replAge = 40 + Math.floor(Math.random() * 16); // 40-55
-
-                                    const PILLAR_TO_STEWARD_TYPE: Record<string, string> = {
-                                        military: 'general', security: 'intelligence_director',
-                                        bureaucracy: 'technocrat', oligarchy: 'oligarch',
-                                        media: 'media_mogul', religion: 'cleric',
-                                        legislature: 'party_chairman', judiciary: 'legal_authority',
-                                    };
-                                    const newStewardType = PILLAR_TO_STEWARD_TYPE[chosenSuccessor.pillar_key] || 'technocrat';
-
-                                    await supabase.from('stewards').insert({
-                                        nation_id: nation.id,
-                                        faction_id: chosenSuccessor.faction_id,
-                                        pillar_key: chosenSuccessor.pillar_key,
-                                        steward_type: newStewardType,
-                                        first_name: replFirst,
-                                        last_name: replLast,
-                                        age: replAge,
-                                        standing: 40,
-                                        power_base: 30,
-                                        true_loyalty: 50,
-                                        estimated_loyalty: 55,
-                                        personal_wealth: 0,
-                                        exit_readiness: 0,
-                                        coup_readiness: 0,
-                                        is_alive: true,
-                                        is_chosen_successor: false,
-                                        succession_strength: 0,
-                                        created_at_tick: newTick,
-                                    });
-
-                                    // 6. Log clean succession
-                                    const successorFullName = `${chosenSuccessor.first_name} ${chosenSuccessor.last_name}`;
-                                    await supabase.from('campaign_actions').insert({
-                                        party_id: chosenSuccessor.faction_id,
-                                        nation_id: nation.id,
-                                        action_type: 'clean_succession',
-                                        tick_performed: newTick,
-                                        result: {
-                                            deceased_name: hosName,
-                                            deceased_age: newHosAge,
-                                            successor_name: successorFullName,
-                                            successor_faction_id: chosenSuccessor.faction_id,
-                                            succession_strength: chosenSuccessor.succession_strength,
-                                            cause: 'natural_causes',
-                                        },
-                                    });
-
-                                    agingResults.push({
-                                        type: 'clean_succession',
-                                        deceased: hosName,
-                                        deceasedAge: newHosAge,
-                                        successor: successorFullName,
-                                        successorAge: chosenSuccessor.age,
-                                    });
-                                } else if (nation.successor_is_family_member) {
-                                    // === FAMILY MEMBER SUCCESSION ===
-                                    console.log(`[LeaderAging] Family succession in ${nation.name}`);
-                                    const famFirst = SUCCESSION_FIRST_NAMES[Math.floor(Math.random() * SUCCESSION_FIRST_NAMES.length)];
-                                    // Family member keeps the dynasty name
-                                    const famLast = nation.head_of_state_last_name || 'Unknown';
-                                    const famAge = 30 + Math.floor(Math.random() * 16); // 30-45
-
-                                    await supabase.from('nations').update({
-                                        head_of_state_first_name: famFirst,
-                                        head_of_state_last_name: famLast,
-                                        head_of_state_age: famAge,
-                                        successor_cooldown_end_tick: null,
-                                        successor_is_family_member: false,
-                                    }).eq('id', nation.id);
-                                    nation.head_of_state_first_name = famFirst;
-                                    nation.head_of_state_last_name = famLast;
-                                    nation.head_of_state_age = famAge;
-
-                                    // Reset coup readiness
-                                    await supabase.from('stewards').update({ coup_readiness: 0 })
-                                        .eq('nation_id', nation.id).eq('is_alive', true);
-
-                                    // Mild loyalty hit — all factions -5
-                                    const { data: famFactions } = await supabase.from('factions')
-                                        .select('id, loyalty')
-                                        .eq('nation_id', nation.id)
-                                        .eq('faction_type', 'party');
-                                    for (const fac of (famFactions || [])) {
-                                        const newLoy = Math.max(0, (fac.loyalty ?? 50) - 5);
-                                        await supabase.from('factions').update({ loyalty: newLoy }).eq('id', fac.id);
-                                    }
-
-                                    const famFullName = `${famFirst} ${famLast}`;
-                                    await supabase.from('campaign_actions').insert({
-                                        party_id: nation.ruling_faction_id,
-                                        nation_id: nation.id,
-                                        action_type: 'clean_succession',
-                                        tick_performed: newTick,
-                                        result: {
-                                            deceased_name: hosName,
-                                            deceased_age: newHosAge,
-                                            successor_name: famFullName,
-                                            is_family_member: true,
-                                            cause: 'natural_causes',
-                                        },
-                                    });
-
-                                    agingResults.push({
-                                        type: 'clean_succession',
-                                        deceased: hosName,
-                                        deceasedAge: newHosAge,
-                                        successor: famFullName,
-                                        successorAge: famAge,
-                                    });
-                                } else {
-                                    // === NO SUCCESSOR — random replacement (existing behavior) ===
-                                    const newFirst = SUCCESSION_FIRST_NAMES[Math.floor(Math.random() * SUCCESSION_FIRST_NAMES.length)];
-                                    const newLast = SUCCESSION_LAST_NAMES[Math.floor(Math.random() * SUCCESSION_LAST_NAMES.length)];
-                                    const newSuccessorAge = 45 + Math.floor(Math.random() * 16); // 45-60
-
-                                    await supabase.from('nations').update({
-                                        head_of_state_first_name: newFirst,
-                                        head_of_state_last_name: newLast,
-                                        head_of_state_age: newSuccessorAge,
-                                        successor_cooldown_end_tick: null,
-                                        successor_is_family_member: false,
-                                    }).eq('id', nation.id);
-                                    nation.head_of_state_first_name = newFirst;
-                                    nation.head_of_state_last_name = newLast;
-                                    nation.head_of_state_age = newSuccessorAge;
-
-                                    await supabase.from('campaign_actions').insert({
-                                        party_id: nation.ruling_faction_id,
-                                        nation_id: nation.id,
-                                        action_type: 'strongman_death',
-                                        tick_performed: newTick,
-                                        result: {
-                                            deceased_name: hosName,
-                                            deceased_age: newHosAge,
-                                            successor_name: `${newFirst} ${newLast}`,
-                                            successor_age: newSuccessorAge,
-                                            cause: 'natural_causes',
-                                        },
-                                    });
-
-                                    agingResults.push({
-                                        type: 'strongman_death',
-                                        deceased: hosName,
-                                        deceasedAge: newHosAge,
-                                        successor: `${newFirst} ${newLast}`,
-                                        successorAge: newSuccessorAge,
-                                    });
-                                }
+                                const result = await handleStrongmanSuccession(supabase, nation, hosName, newHosAge, newTick);
+                                agingResults.push(result);
                             }
                         }
                     }

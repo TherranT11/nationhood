@@ -7282,19 +7282,8 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
         .from('loyalty_demands').select('id, target_faction_id')
         .eq('nation_id', n.id).eq('status', 'pending');
 
-    // Fetch ministries
-    const { data: ministries } = await _supabase
-        .from('ministries').select('ministry_key, party_id').eq('nation_id', n.id).not('party_id', 'is', null);
-    const ministryByParty = {};
-    for (const m of (ministries || [])) {
-        if (!ministryByParty[m.party_id]) ministryByParty[m.party_id] = [];
-        ministryByParty[m.party_id].push(m.ministry_key);
-    }
-    const hasMinistry = (ministryByParty[f.id] || []).length > 0;
-
     const isChosenSuccessor = mySteward?.is_chosen_successor;
     const isGeneral = mySteward?.steward_type === 'general';
-    const isSecurityChief = mySteward?.steward_type === 'security_chief';
     const isPartyChairman = mySteward?.steward_type === 'party_chairman' && !isStrongman;
 
     const factionFunds = Number(f.embezzled_funds ?? 0);
@@ -7309,15 +7298,16 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
     // Fetch existing coalitions
     const { data: coalitionRows } = await _supabase
         .from('faction_coalitions').select('*').eq('nation_id', n.id).in('status', ['active', 'pending']);
-    const myActiveCoalitions = (coalitionRows || []).filter(c =>
-        c.status === 'active' && (c.faction_a_id === f.id || c.faction_b_id === f.id));
-    const myPendingIncoming = (coalitionRows || []).filter(c =>
-        c.status === 'pending' && (c.faction_a_id === f.id || c.faction_b_id === f.id) && c.proposed_by_faction_id !== f.id);
-    const myPendingOutgoing = (coalitionRows || []).filter(c =>
-        c.status === 'pending' && (c.faction_a_id === f.id || c.faction_b_id === f.id) && c.proposed_by_faction_id === f.id);
+    const myActiveCoalitions = [], myPendingIncoming = [], myPendingOutgoing = [];
     const existingPartners = new Set();
-    for (const c of [...myActiveCoalitions, ...myPendingOutgoing, ...myPendingIncoming]) {
-        existingPartners.add(c.faction_a_id === f.id ? c.faction_b_id : c.faction_a_id);
+    for (const c of (coalitionRows || [])) {
+        const isMine = c.faction_a_id === f.id || c.faction_b_id === f.id;
+        if (!isMine) continue;
+        const partner = c.faction_a_id === f.id ? c.faction_b_id : c.faction_a_id;
+        existingPartners.add(partner);
+        if (c.status === 'active') myActiveCoalitions.push(c);
+        else if (c.proposed_by_faction_id === f.id) myPendingOutgoing.push(c);
+        else myPendingIncoming.push(c);
     }
 
     // Eligible coalition targets: factions with stewards (non-strongman) or any faction (strongman), not already partnered
