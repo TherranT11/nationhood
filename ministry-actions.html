@@ -1949,6 +1949,11 @@ window.confirmEnergyChoice = async function() {
                         await _supabase.from('faction_bloc_approval')
                             .update({ preference_score: newScore })
                             .eq('id', fbaRow.id);
+                    } else {
+                        // Create row if it doesn't exist (baseline 50)
+                        const newScore = Math.max(0, Math.min(100, 50 + yourRoll));
+                        await _supabase.from('faction_bloc_approval')
+                            .insert({ faction_id: playerFactionId, bloc_id: blocId, preference_score: newScore });
                     }
                 }
 
@@ -1965,6 +1970,11 @@ window.confirmEnergyChoice = async function() {
                         await _supabase.from('faction_bloc_approval')
                             .update({ preference_score: newScore })
                             .eq('id', pmFbaRow.id);
+                    } else {
+                        // Create row if it doesn't exist (baseline 50)
+                        const newScore = Math.max(0, Math.min(100, 50 + pmRoll));
+                        await _supabase.from('faction_bloc_approval')
+                            .insert({ faction_id: pmFactionId, bloc_id: blocId, preference_score: newScore });
                     }
                 } else {
                     actualPmRoll = yourRoll; // Same party
@@ -2048,7 +2058,14 @@ window.selectCrisisOption = async function(crisisId, optionId) {
 // ==================== GLOBAL HANDLERS ====================
 window.selectMinistry = function(key) {
     selectedMinistryKey = key;
-    activeDetailTab = 'institutions'; // reset tab on ministry switch
+    energySelectedChoice = null; // clear any pending energy choice selection
+    // Auto-switch to dispatch tab if energy ministry has a pending unresolved card
+    if (key === 'energy' && energyDispatchState &&
+        energyDispatchState.pendingCardId != null && !energyDispatchState.lastResult) {
+        activeDetailTab = 'dispatch';
+    } else {
+        activeDetailTab = 'institutions';
+    }
     document.querySelectorAll('.msb-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.key === key);
     });
