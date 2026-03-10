@@ -18945,6 +18945,25 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     try {
         const { data: freshNations } = await supabase.from('nations').select('*');
         const tradeNationList = freshNations || nationList;
+
+        // Pre-trade GDP recovery: ensure no nation has stat-scale GDP (0-100) when
+        // trade calculates capacity/demand. Without this, gdpModifier ≈ 0 and all
+        // trade rounds to $0. The per-nation applyGdpGrowth recovery runs AFTER trade,
+        // so we must fix corrupted GDP here first.
+        for (const tn of tradeNationList) {
+            const tnGdp = Number(tn.gdp ?? 0);
+            if (tnGdp > 0 && tnGdp < 1_000_000_000) {
+                const pop = Number(tn.population) || 5_000_000;
+                const sol = Number(tn.standard_of_living) || 50;
+                const perCapita = 10000 + (sol / 100) * 50000;
+                const recoveredGdp = Math.round(pop * perCapita);
+                console.warn('[pre-trade GDP recovery] ' + tn.name +
+                    ' GDP=' + tnGdp + ' (sub-$1B) → recovered to $' + recoveredGdp.toLocaleString());
+                tn.gdp = recoveredGdp;
+                await supabase.from('nations').update({ gdp: recoveredGdp }).eq('id', tn.id);
+            }
+        }
+
         const tradeResult = await processTradeFlows(supabase, tradeNationList, newTick);
         if (tradeResult.processed > 0) {
             summary.trade = tradeResult;
