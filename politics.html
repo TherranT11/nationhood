@@ -7307,11 +7307,11 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
     const myActiveCoalitions = (coalitionRows || []).filter(c =>
         c.status === 'active' && (c.faction_a_id === f.id || c.faction_b_id === f.id));
     const myPendingIncoming = (coalitionRows || []).filter(c =>
-        c.status === 'pending' && c.faction_b_id === f.id);
+        c.status === 'pending' && (c.faction_a_id === f.id || c.faction_b_id === f.id) && c.proposed_by_faction_id !== f.id);
     const myPendingOutgoing = (coalitionRows || []).filter(c =>
-        c.status === 'pending' && c.faction_a_id === f.id);
+        c.status === 'pending' && (c.faction_a_id === f.id || c.faction_b_id === f.id) && c.proposed_by_faction_id === f.id);
     const existingPartners = new Set();
-    for (const c of [...myActiveCoalitions, ...myPendingOutgoing]) {
+    for (const c of [...myActiveCoalitions, ...myPendingOutgoing, ...myPendingIncoming]) {
         existingPartners.add(c.faction_a_id === f.id ? c.faction_b_id : c.faction_a_id);
     }
 
@@ -7330,7 +7330,7 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
     // Pending incoming requests
     if (myPendingIncoming.length > 0) {
         coalitionHtml += myPendingIncoming.map(c => {
-            const proposer = factionNameMap[c.faction_a_id] || '?';
+            const proposer = factionNameMap[c.proposed_by_faction_id] || '?';
             const isSecret = c.coalition_type === 'secret';
             return `<div class="pol-action-panel" style="border-left:3px solid #FFD700">
                 <div class="pol-action-header">
@@ -7748,9 +7748,12 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
         if (!apResult.success) { alert('Not enough AP.'); await reRender(); return; }
         f.action_points = apResult.newAp;
 
+        const aId = f.id < targetId ? f.id : targetId;
+        const bId = f.id < targetId ? targetId : f.id;
         await _supabase.from('faction_coalitions').insert({
-            nation_id: n.id, faction_a_id: f.id, faction_b_id: targetId,
+            nation_id: n.id, faction_a_id: aId, faction_b_id: bId,
             coalition_type: coalType, status: 'pending',
+            proposed_by_faction_id: f.id,
             proposed_at_tick: tick, expires_at_tick: tick + 20
         });
         const targetName = factionNameMap[targetId] || 'Unknown';

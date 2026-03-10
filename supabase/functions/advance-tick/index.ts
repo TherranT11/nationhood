@@ -12970,7 +12970,7 @@ async function executeIntimidationResponse(supabase, factionId, nationId, eventI
     if (response === 'retaliate') {
         // Check funds
         const { data: retaliator } = await supabase
-            .from('factions').select('id, loyalty, embezzled_funds').eq('id', factionId).single();
+            .from('factions').select('id, loyalty, seats, embezzled_funds').eq('id', factionId).single();
         if (!retaliator || Number(retaliator.embezzled_funds ?? 0) < GAME_CONFIG.INTIMIDATE_RETALIATE_COST)
             return { success: false, error: `Need $${GAME_CONFIG.INTIMIDATE_RETALIATE_COST}M to retaliate.` };
 
@@ -12980,14 +12980,20 @@ async function executeIntimidationResponse(supabase, factionId, nationId, eventI
             embezzled_funds: Math.max(0, Number(retaliator.embezzled_funds ?? 0) - GAME_CONFIG.INTIMIDATE_RETALIATE_COST),
         }).eq('id', factionId);
 
-        // Intimidator: standing -2, seats -2
+        // Intimidator: standing -2, seats -2 (transferred to retaliator)
         const { data: intimidator } = await supabase
             .from('factions').select('id, standing, seats').eq('id', intimidatorId).single();
         if (intimidator) {
+            const seatLoss = Math.min(intimidator.seats || 0, Math.abs(GAME_CONFIG.INTIMIDATE_RETALIATE_SEATS));
             await supabase.from('factions').update({
                 standing: Math.max(0, (intimidator.standing ?? 30) + GAME_CONFIG.INTIMIDATE_RETALIATE_STANDING),
-                seats: Math.max(0, (intimidator.seats || 0) + GAME_CONFIG.INTIMIDATE_RETALIATE_SEATS),
+                seats: Math.max(0, (intimidator.seats || 0) - seatLoss),
             }).eq('id', intimidatorId);
+            if (seatLoss > 0) {
+                await supabase.from('factions').update({
+                    seats: (retaliator.seats || 0) + seatLoss,
+                }).eq('id', factionId);
+            }
         }
 
         await supabase.from('campaign_actions').insert({
