@@ -5249,7 +5249,8 @@ export const PM_TRAIT_KEYS = [
 ];
 
 export async function generatePMCandidates(supabase, nationId, factionId, currentTick) {
-    const factionIdeology = await loadFactionIdeology(supabase, factionId);
+    let factionIdeology = await loadFactionIdeology(supabase, factionId);
+    if (factionIdeology?._error) factionIdeology = null;
 
     await supabase
         .from('pm_candidates')

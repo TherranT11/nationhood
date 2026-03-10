@@ -8757,7 +8757,8 @@ async function scheduleNextPresidentialElections(supabase, nation, currentTick) 
  * @param {string} candidateType - 'presidential' (default)
  */
 async function generatePresidentCandidates(supabase, nationId, factionId, currentTick, candidateType = 'presidential') {
-    const factionIdeology = await loadFactionIdeology(supabase, factionId);
+    let factionIdeology = await loadFactionIdeology(supabase, factionId);
+    if (factionIdeology?._error) factionIdeology = null;
 
     // Clear any existing unselected presidential candidates for this faction
     await supabase
@@ -9183,7 +9184,8 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
                 // === INCUMBENT LOCK-IN: auto-create incumbent as their party's candidate ===
                 // The incumbent president is automatically locked in as their faction's nominee.
                 // No player choice — they must run for re-election. Player must impeach/resign to change.
-                const factionIdeology = await loadFactionIdeology(supabase, incumbentPresident.faction_id);
+                let factionIdeology = await loadFactionIdeology(supabase, incumbentPresident.faction_id);
+                if (factionIdeology?._error) factionIdeology = null;
 
                 // Determine the incumbent's ideology axis from faction ideology
                 // Use the faction's strongest axis as a proxy since we don't store axis on presidents
@@ -15157,7 +15159,8 @@ const PM_TRAIT_KEYS = [
 ];
 
 async function generatePMCandidates(supabase, nationId, factionId, currentTick) {
-    const factionIdeology = await loadFactionIdeology(supabase, factionId);
+    let factionIdeology = await loadFactionIdeology(supabase, factionId);
+    if (factionIdeology?._error) factionIdeology = null;
 
     await supabase
         .from('pm_candidates')
