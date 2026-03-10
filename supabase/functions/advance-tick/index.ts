@@ -2365,7 +2365,7 @@ async function loadFactionIdeology(supabase, factionId) {
 
     if (error) {
         console.error('Error loading faction ideology:', error);
-        return { _error: true, message: error.message };
+        return null;
     }
     if (data && typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 2 * 60 * 1000);
     return data;
@@ -2413,8 +2413,7 @@ function extractAxisScores(ideologyRow) {
  * Returns { oldVal, newVal } on success, or null if ideology row is missing/errored.
  */
 async function applyIdeologyShift(supabase, factionId, axisKey, shift) {
-    let row = await loadFactionIdeology(supabase, factionId);
-    if (row?._error) row = null;
+    const row = await loadFactionIdeology(supabase, factionId);
     if (!row) return null;
     const oldVal = row[axisKey] || 0;
     const newVal = Math.max(-100, Math.min(100, oldVal + shift));
@@ -8725,8 +8724,7 @@ async function scheduleNextPresidentialElections(supabase, nation, currentTick) 
  * @param {string} candidateType - 'presidential' (default)
  */
 async function generatePresidentCandidates(supabase, nationId, factionId, currentTick, candidateType = 'presidential') {
-    let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) factionIdeology = null;
+    const factionIdeology = await loadFactionIdeology(supabase, factionId);
 
     // Clear any existing unselected presidential candidates for this faction
     await supabase
@@ -9152,8 +9150,7 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
                 // === INCUMBENT LOCK-IN: auto-create incumbent as their party's candidate ===
                 // The incumbent president is automatically locked in as their faction's nominee.
                 // No player choice — they must run for re-election. Player must impeach/resign to change.
-                let factionIdeology = await loadFactionIdeology(supabase, incumbentPresident.faction_id);
-                if (factionIdeology?._error) factionIdeology = null;
+                const factionIdeology = await loadFactionIdeology(supabase, incumbentPresident.faction_id);
 
                 // Determine the incumbent's ideology axis from faction ideology
                 // Use the faction's strongest axis as a proxy since we don't store axis on presidents
@@ -15127,8 +15124,7 @@ const PM_TRAIT_KEYS = [
 ];
 
 async function generatePMCandidates(supabase, nationId, factionId, currentTick) {
-    let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) factionIdeology = null;
+    const factionIdeology = await loadFactionIdeology(supabase, factionId);
 
     await supabase
         .from('pm_candidates')
@@ -15346,7 +15342,6 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
         console.log(`Ideology shift: ${axisKey} ${shiftResult.oldVal} → ${shiftResult.newVal} (${shift > 0 ? '+' : ''}${shift})`);
     }
 
-
     const { data: trait } = await supabase
         .from('leader_traits')
         .select('*')
@@ -15403,11 +15398,7 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
     }
 
     // Pick a weighted ideology based on faction's ideology profile
-    let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) {
-        console.error(`[autoAppointPartyLeaderAsPM] DB error loading ideology for ${factionId}, using neutral weights`);
-        factionIdeology = null;
-    }
+    const factionIdeology = await loadFactionIdeology(supabase, factionId);
     const weightedIdeologies = getWeightedIdeologies(factionIdeology);
     const ideologyPick = weightedRandomPick(weightedIdeologies);
     const ideology = ideologyPick.item;
@@ -15488,9 +15479,7 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
     const axisKey = ideology.axisKey;
     const shift = 5 * ideology.direction;
 
-    if (factionIdeology) {
-        await applyIdeologyShift(supabase, factionId, axisKey, shift);
-    }
+    await applyIdeologyShift(supabase, factionId, axisKey, shift);
 
     // Apply trait effects
     const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', traitKey).single();

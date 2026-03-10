@@ -303,7 +303,7 @@ export async function loadFactionIdeology(supabase, factionId) {
 
     if (error) {
         console.error('Error loading faction ideology:', error);
-        return { _error: true, message: error.message };
+        return null;
     }
     if (data && typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 2 * 60 * 1000);
     return data;
@@ -351,8 +351,7 @@ export function extractAxisScores(ideologyRow) {
  * Returns { oldVal, newVal } on success, or null if ideology row is missing/errored.
  */
 export async function applyIdeologyShift(supabase, factionId, axisKey, shift) {
-    let row = await loadFactionIdeology(supabase, factionId);
-    if (row?._error) row = null;
+    const row = await loadFactionIdeology(supabase, factionId);
     if (!row) return null;
     const oldVal = row[axisKey] || 0;
     const newVal = Math.max(-100, Math.min(100, oldVal + shift));

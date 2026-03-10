@@ -5249,8 +5249,7 @@ export const PM_TRAIT_KEYS = [
 ];
 
 export async function generatePMCandidates(supabase, nationId, factionId, currentTick) {
-    let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) factionIdeology = null;
+    const factionIdeology = await loadFactionIdeology(supabase, factionId);
 
     await supabase
         .from('pm_candidates')
@@ -5468,7 +5467,6 @@ export async function selectPMCandidate(supabase, candidateId, nationId, faction
         console.log(`Ideology shift: ${axisKey} ${shiftResult.oldVal} → ${shiftResult.newVal} (${shift > 0 ? '+' : ''}${shift})`);
     }
 
-
     const { data: trait } = await supabase
         .from('leader_traits')
         .select('*')
@@ -5525,11 +5523,7 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
     }
 
     // Pick a weighted ideology based on faction's ideology profile
-    let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) {
-        console.error(`[autoAppointPartyLeaderAsPM] DB error loading ideology for ${factionId}, using neutral weights`);
-        factionIdeology = null;
-    }
+    const factionIdeology = await loadFactionIdeology(supabase, factionId);
     const weightedIdeologies = getWeightedIdeologies(factionIdeology);
     const ideologyPick = weightedRandomPick(weightedIdeologies);
     const ideology = ideologyPick.item;
@@ -5610,9 +5604,7 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
     const axisKey = ideology.axisKey;
     const shift = 5 * ideology.direction;
 
-    if (factionIdeology) {
-        await applyIdeologyShift(supabase, factionId, axisKey, shift);
-    }
+    await applyIdeologyShift(supabase, factionId, axisKey, shift);
 
     // Apply trait effects
     const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', traitKey).single();

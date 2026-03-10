@@ -343,7 +343,6 @@ async function loadLawsData() {
         // Load dynamic ideology scores for current player
         if (currentFaction) {
             factionIdeology = await loadFactionIdeology(_supabase, currentFaction.id);
-            if (factionIdeology?._error) factionIdeology = null;
         }
 
         // Collect policy IDs already in active bills (committee or floor)
@@ -1066,8 +1065,7 @@ async function enactDecree(billId) {
 
         // Apply dynamic ideology penalty to sponsor (skip for system-generated bills)
         if (bill && bill.proposed_by) {
-            let sponsorIdeology = await loadFactionIdeology(_supabase, bill.proposed_by);
-            if (sponsorIdeology?._error) sponsorIdeology = null;
+            const sponsorIdeology = await loadFactionIdeology(_supabase, bill.proposed_by);
             if (sponsorIdeology) {
                 const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, bill.bill_articles || []);
                 if (dynamicPenalty < 0) {
@@ -2201,8 +2199,7 @@ async function retractBill(billId) {
 
         // Reverse ideology shift: -1 per ideology tag (mirrors +1 proposer bonus)
         if (bill && bill.proposed_by === currentFaction?.id) {
-            let ideo = await loadFactionIdeology(_supabase, bill.proposed_by);
-            if (ideo?._error) ideo = null;
+            const ideo = await loadFactionIdeology(_supabase, bill.proposed_by);
             if (ideo) {
                 const updateObj = {};
                 for (const art of (bill.bill_articles || [])) {
