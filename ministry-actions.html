@@ -678,6 +678,7 @@ let activeDetailTab = 'institutions';
 // Energy dispatch state
 let energyDispatchState = null;  // { deckOrder, deckIndex, pendingCardId, pendingSinceTick, lastResult }
 let energySelectedChoice = null; // 'left' or 'right'
+let energyConfirmInFlight = false; // state-based guard against double-click
 
 // ==================== INIT ====================
 initPage('ministry-actions', async (state) => {
@@ -1880,6 +1881,8 @@ window.cancelEnergyChoice = function() {
 };
 
 window.confirmEnergyChoice = async function() {
+    // State-based guard against double-click / concurrent tabs
+    if (energyConfirmInFlight) return;
     if (!energySelectedChoice || !energyDispatchState || energyDispatchState.pendingCardId == null) return;
 
     const card = ENERGY_CARDS[energyDispatchState.pendingCardId];
@@ -1890,11 +1893,43 @@ window.confirmEnergyChoice = async function() {
     const energyMinistry = ministryData.find(m => m.ministry_key === 'energy');
     if (!energyMinistry) return;
 
-    // Disable confirm button to prevent double-click
+    energyConfirmInFlight = true;
     const btn = document.querySelector('.ed-confirm-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'PROCESSING...'; }
 
+    // Track what was written so we can show accurate results
+    const blocResults = [];
+    let statUpdateSucceeded = false;
+
     try {
+        // 0. Verify the pending card hasn't been changed by the tick processor (race guard)
+        const { data: freshMinistry } = await _supabase.from('ministries')
+            .select('energy_pending_card_id')
+            .eq('id', energyMinistry.id)
+            .single();
+        if (!freshMinistry || freshMinistry.energy_pending_card_id !== card.id) {
+            // Card was replaced by the tick — reload state and re-render
+            const { data: fullMinistry } = await _supabase.from('ministries')
+                .select('*')
+                .eq('id', energyMinistry.id)
+                .single();
+            if (fullMinistry) {
+                Object.assign(energyMinistry, fullMinistry);
+                energyDispatchState = {
+                    deckOrder: fullMinistry.energy_deck_order,
+                    deckIndex: fullMinistry.energy_deck_index ?? 0,
+                    pendingCardId: fullMinistry.energy_pending_card_id,
+                    pendingSinceTick: fullMinistry.energy_pending_since_tick,
+                    lastResult: fullMinistry.energy_last_result
+                };
+            }
+            energySelectedChoice = null;
+            energyConfirmInFlight = false;
+            const content = document.getElementById('ministry-content');
+            if (content) content.innerHTML = renderMinistryContent(selectedMinistryKey);
+            return;
+        }
+
         // 1. Apply stat deltas to nations table (server-side, clamped 0-100)
         const nationUpdates = {};
         for (const [key, delta] of Object.entries(choice.statDeltas)) {
@@ -1905,6 +1940,7 @@ window.confirmEnergyChoice = async function() {
             .update(nationUpdates)
             .eq('id', currentNation.id);
         if (nationErr) throw new Error('Failed to update nation stats: ' + nationErr.message);
+        statUpdateSucceeded = true;
 
         // Update local state
         for (const [key, val] of Object.entries(nationUpdates)) {
@@ -1913,71 +1949,75 @@ window.confirmEnergyChoice = async function() {
 
         // 2. Apply bloc approval deltas
         const playerFactionId = currentFaction?.id;
-        // Find PM/president's party
         const pmMinistry = ministryData.find(m => m.ministry_key === 'prime_minister');
         const pmFactionId = pmMinistry?.party_id || null;
 
-        // Fetch voter blocs for this nation
         const { data: voterBlocs } = await _supabase.from('voter_blocs')
             .select('id, bloc_name')
             .eq('nation_id', currentNation.id)
             .eq('is_active', true);
 
-        const blocResults = [];
         if (voterBlocs && voterBlocs.length > 0) {
             const blocMap = {};
             for (const vb of voterBlocs) blocMap[vb.bloc_name] = vb.id;
 
             for (const [blocName, delta] of Object.entries(choice.blocApprovals)) {
                 const blocId = blocMap[blocName];
-                if (!blocId) continue;
+                if (!blocId) {
+                    console.warn(`[confirmEnergyChoice] Bloc "${blocName}" not found in voter_blocs — skipping`);
+                    continue;
+                }
 
-                // Roll 1d4+1 for each party, same sign as delta
                 const sign = delta > 0 ? 1 : -1;
-                const yourRoll = sign * (Math.floor(Math.random() * 4) + 2);  // 1d4+1 = 2-5
+                const yourRoll = sign * (Math.floor(Math.random() * 4) + 2);
                 const pmRoll = sign * (Math.floor(Math.random() * 4) + 2);
 
-                // Update player's faction bloc approval
+                // Update player's faction bloc approval (upsert pattern)
                 if (playerFactionId) {
-                    const { data: fbaRow } = await _supabase.from('faction_bloc_approval')
-                        .select('id, preference_score')
-                        .eq('faction_id', playerFactionId)
-                        .eq('bloc_id', blocId)
-                        .maybeSingle();
-                    if (fbaRow) {
-                        const newScore = Math.max(0, Math.min(100, (fbaRow.preference_score ?? 50) + yourRoll));
-                        await _supabase.from('faction_bloc_approval')
-                            .update({ preference_score: newScore })
-                            .eq('id', fbaRow.id);
-                    } else {
-                        // Create row if it doesn't exist (baseline 50)
-                        const newScore = Math.max(0, Math.min(100, 50 + yourRoll));
-                        await _supabase.from('faction_bloc_approval')
-                            .insert({ faction_id: playerFactionId, bloc_id: blocId, preference_score: newScore });
+                    const { error: yourErr } = await _supabase.from('faction_bloc_approval')
+                        .upsert(
+                            { faction_id: playerFactionId, bloc_id: blocId, preference_score: 50 },
+                            { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true }
+                        );
+                    if (!yourErr) {
+                        // Now update with the delta (read-then-write to clamp properly)
+                        const { data: fbaRow } = await _supabase.from('faction_bloc_approval')
+                            .select('id, preference_score')
+                            .eq('faction_id', playerFactionId)
+                            .eq('bloc_id', blocId)
+                            .single();
+                        if (fbaRow) {
+                            const newScore = Math.max(0, Math.min(100, (fbaRow.preference_score ?? 50) + yourRoll));
+                            await _supabase.from('faction_bloc_approval')
+                                .update({ preference_score: newScore })
+                                .eq('id', fbaRow.id);
+                        }
                     }
                 }
 
                 // Update PM's faction bloc approval (if different from player)
                 let actualPmRoll = pmRoll;
                 if (pmFactionId && pmFactionId !== playerFactionId) {
-                    const { data: pmFbaRow } = await _supabase.from('faction_bloc_approval')
-                        .select('id, preference_score')
-                        .eq('faction_id', pmFactionId)
-                        .eq('bloc_id', blocId)
-                        .maybeSingle();
-                    if (pmFbaRow) {
-                        const newScore = Math.max(0, Math.min(100, (pmFbaRow.preference_score ?? 50) + pmRoll));
-                        await _supabase.from('faction_bloc_approval')
-                            .update({ preference_score: newScore })
-                            .eq('id', pmFbaRow.id);
-                    } else {
-                        // Create row if it doesn't exist (baseline 50)
-                        const newScore = Math.max(0, Math.min(100, 50 + pmRoll));
-                        await _supabase.from('faction_bloc_approval')
-                            .insert({ faction_id: pmFactionId, bloc_id: blocId, preference_score: newScore });
+                    const { error: pmErr } = await _supabase.from('faction_bloc_approval')
+                        .upsert(
+                            { faction_id: pmFactionId, bloc_id: blocId, preference_score: 50 },
+                            { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true }
+                        );
+                    if (!pmErr) {
+                        const { data: pmFbaRow } = await _supabase.from('faction_bloc_approval')
+                            .select('id, preference_score')
+                            .eq('faction_id', pmFactionId)
+                            .eq('bloc_id', blocId)
+                            .single();
+                        if (pmFbaRow) {
+                            const newScore = Math.max(0, Math.min(100, (pmFbaRow.preference_score ?? 50) + pmRoll));
+                            await _supabase.from('faction_bloc_approval')
+                                .update({ preference_score: newScore })
+                                .eq('id', pmFbaRow.id);
+                        }
                     }
                 } else {
-                    actualPmRoll = yourRoll; // Same party
+                    actualPmRoll = yourRoll;
                 }
 
                 blocResults.push({ bloc: blocName, yourDelta: yourRoll, pmDelta: actualPmRoll });
@@ -2014,8 +2054,14 @@ window.confirmEnergyChoice = async function() {
 
     } catch (err) {
         console.error('[confirmEnergyChoice]', err);
+        // If stats were committed but blocs failed, still show partial result
+        if (statUpdateSucceeded && blocResults.length > 0) {
+            console.warn('[confirmEnergyChoice] Partial success: stats committed, some bloc updates may have failed');
+        }
         alert('Failed to process energy dispatch: ' + err.message);
         if (btn) { btn.disabled = false; btn.textContent = 'CONFIRM DECISION'; }
+    } finally {
+        energyConfirmInFlight = false;
     }
 };
 

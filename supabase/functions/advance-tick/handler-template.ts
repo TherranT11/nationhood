@@ -76,6 +76,7 @@ async function processEnergyDispatch(supabase: any, nation: any, currentTick: nu
         .eq('nation_id', nation.id)
         .eq('ministry_key', 'energy')
         .eq('is_active', true)
+        .limit(1)
         .maybeSingle();
 
     if (fetchErr || !energyMinistry) return;
