@@ -44,5 +44,5 @@ export async function handleLogout() {
     sessionStorage.removeItem('nationhood_state');
 
     await _supabase.auth.signOut();
-    window.location.href = 'index.html';
+    window.location.href = 'https://www.nationhoodgame.com';
 }
