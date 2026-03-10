@@ -744,7 +744,7 @@ async function renderRevolutionBanner(nation) {
 
 function formatGdpGrowth(rawValue) {
     var v = Number(rawValue ?? 50);
-    var pct = (v - 50) / 50;
+    var pct = ((v - 50) / 50) * 3;
     return (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
 }
 
@@ -1018,6 +1018,15 @@ function renderStatCard(stat, nation) {
     h += '<span class="stat-card__desc">' + escapeHtml(stat.desc || '') + '</span>';
     h += rankHTML;
     h += '</div>';
+
+    // Predicted yearly growth for GDP Growth
+    if (stat.key === 'gdp_growth') {
+        var monthlyPct = ((numVal - 50) / 50) * 3;
+        var yearlyPct = (Math.pow(1 + monthlyPct / 100, 12) - 1) * 100;
+        var yearlyStr = (yearlyPct >= 0 ? '+' : '') + yearlyPct.toFixed(2) + '%';
+        var yearlyColor = yearlyPct >= 0 ? 'var(--n-green)' : 'var(--n-red)';
+        h += '<div style="padding:4px 10px 2px;font-size:11px;color:var(--dtxt-muted);letter-spacing:0.3px;">Predicted Yearly Growth: <span style="color:' + yearlyColor + ';font-weight:600;">' + yearlyStr + '</span></div>';
+    }
 
     // Alert message
     if (isAlert) {
