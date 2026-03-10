@@ -6024,7 +6024,8 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     // 6. Immediately redistribute vacated seats to remaining parties
     if (nation && vacatedSeats > 0) {
         if (isAutocracy(nation)) {
-            // Autocracy: give all vacated seats to ruling faction
+            // Autocracy: give all vacated seats to ruling faction (if different),
+            // or to the highest-standing remaining party, or to the unaligned pool.
             const rulingId = nation.ruling_faction_id;
             if (rulingId && rulingId !== factionId) {
                 const { data: ruler } = await supabase
@@ -6032,6 +6033,28 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
                 await supabase.from('factions')
                     .update({ seats: (ruler?.seats || 0) + vacatedSeats })
                     .eq('id', rulingId);
+            } else {
+                // Ruling faction is disbanding itself or ruling_faction_id is null —
+                // find the highest-standing remaining party faction to receive seats
+                const { data: topFaction } = await supabase
+                    .from('factions')
+                    .select('id, seats')
+                    .eq('nation_id', nationId)
+                    .eq('faction_type', 'party')
+                    .neq('id', factionId)
+                    .order('standing', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (topFaction) {
+                    await supabase.from('factions')
+                        .update({ seats: (topFaction.seats || 0) + vacatedSeats })
+                        .eq('id', topFaction.id);
+                } else {
+                    // No other party factions exist — return seats to unaligned pool
+                    await supabase.from('nations')
+                        .update({ unaligned_seats: (nation.unaligned_seats || 0) + vacatedSeats })
+                        .eq('id', nationId);
+                }
             }
         } else {
             await rebalanceVacantSeats(supabase, nation);
@@ -6623,19 +6646,53 @@ async function handleRegimeCollapse(supabase, nation, currentTick) {
         });
     } else {
         // Power vacuum — highest standing faction takes over with penalties
-        const { data: factions } = await supabase
+        let query = supabase
             .from('factions')
             .select('id, standing, faction_name')
             .eq('nation_id', nation.id)
-            .eq('faction_type', 'party')
-            .neq('id', nation.ruling_faction_id)
+            .eq('faction_type', 'party');
+
+        // Only exclude the old ruler if it's not null (SQL .neq(col, NULL) doesn't work)
+        if (nation.ruling_faction_id) {
+            query = query.neq('id', nation.ruling_faction_id);
+        }
+
+        const { data: newRuler } = await query
             .order('standing', { ascending: false })
             .limit(1)
             .maybeSingle();
 
-        if (factions) {
+        if (!newRuler && nation.ruling_faction_id) {
+            // Only one faction exists (the current ruler) — it inherits power vacuum
+            const { data: onlyFaction } = await supabase
+                .from('factions')
+                .select('id, standing, faction_name')
+                .eq('nation_id', nation.id)
+                .eq('faction_type', 'party')
+                .eq('id', nation.ruling_faction_id)
+                .maybeSingle();
+            if (onlyFaction) {
+                await supabase.from('nations').update({
+                    ruling_faction_id: onlyFaction.id,
+                    regime_health: 30,
+                    stability: Math.max(0, (nation.stability ?? 50) - 10),
+                }).eq('id', nation.id);
+
+                await supabase.from('campaign_actions').insert({
+                    party_id: onlyFaction.id,
+                    nation_id: nation.id,
+                    action_type: 'power_vacuum',
+                    tick_performed: currentTick,
+                    result: {
+                        new_ruler: onlyFaction.faction_name,
+                        faction_id: onlyFaction.id,
+                        reason: 'regime_collapse_single_faction',
+                    },
+                });
+            }
+        } else if (newRuler) {
             await supabase.from('nations').update({
-                ruling_faction_id: factions.id,
+                ruling_faction_id: newRuler.id,
                 regime_health: 30, // low recovery on power vacuum
                 stability: Math.max(0, (nation.stability ?? 50) - 10),
             }).eq('id', nation.id);
@@ -6643,16 +6700,16 @@ async function handleRegimeCollapse(supabase, nation, currentTick) {
             // All loyalties reset to 30 (chaotic transition)
             await supabase.from('factions').update({ loyalty: 30 })
                 .eq('nation_id', nation.id)
-                .neq('id', factions.id);
+                .neq('id', newRuler.id);
 
             await supabase.from('campaign_actions').insert({
-                party_id: factions.id,
+                party_id: newRuler.id,
                 nation_id: nation.id,
                 action_type: 'power_vacuum',
                 tick_performed: currentTick,
                 result: {
-                    new_ruler: factions.faction_name,
-                    faction_id: factions.id,
+                    new_ruler: newRuler.faction_name,
+                    faction_id: newRuler.id,
                     reason: 'regime_collapse',
                 },
             });
@@ -7006,10 +7063,12 @@ export async function executeCoupAttempt(supabase, factionId, nationId, fundsCom
 
         // Non-involved factions: loyalty reset to 40
         const involvedIds = [factionId, ...allyIds, oldRulingId].filter(Boolean);
-        await supabase.from('factions').update({ loyalty: 40 })
-            .eq('nation_id', nationId)
-            .eq('faction_type', 'party')
-            .not('id', 'in', `(${involvedIds.join(',')})`);
+        if (involvedIds.length > 0) {
+            await supabase.from('factions').update({ loyalty: 40 })
+                .eq('nation_id', nationId)
+                .eq('faction_type', 'party')
+                .not('id', 'in', `(${involvedIds.join(',')})`);
+        }
 
         await supabase.from('campaign_actions').insert({
             party_id: factionId,
@@ -7077,14 +7136,24 @@ export async function executeCoupAttempt(supabase, factionId, nationId, fundsCom
             coup_lockout_until_tick: currentTick + GAME_CONFIG.COUP_LOCKOUT_TICKS,
         }).eq('id', factionId);
 
-        // Distribute lost seats to ruling faction
-        if (seatLoss > 0 && nation.ruling_faction_id) {
-            const { data: ruler } = await supabase
-                .from('factions').select('id, seats').eq('id', nation.ruling_faction_id).single();
-            if (ruler) {
-                await supabase.from('factions').update({
-                    seats: (ruler.seats ?? 0) + seatLoss,
-                }).eq('id', ruler.id);
+        // Distribute lost seats to ruling faction (or unaligned pool if no ruler)
+        if (seatLoss > 0) {
+            let seatsRedistributed = false;
+            if (nation.ruling_faction_id) {
+                const { data: ruler } = await supabase
+                    .from('factions').select('id, seats').eq('id', nation.ruling_faction_id).maybeSingle();
+                if (ruler) {
+                    await supabase.from('factions').update({
+                        seats: (ruler.seats ?? 0) + seatLoss,
+                    }).eq('id', ruler.id);
+                    seatsRedistributed = true;
+                }
+            }
+            if (!seatsRedistributed) {
+                // No ruling faction — return seats to unaligned pool
+                await supabase.from('nations').update({
+                    unaligned_seats: (nation.unaligned_seats || 0) + seatLoss,
+                }).eq('id', nationId);
             }
         }
 
@@ -7094,7 +7163,7 @@ export async function executeCoupAttempt(supabase, factionId, nationId, fundsCom
             const allySeatLoss = Math.floor((ally.seats ?? 0) * 0.20);
             const { data: allyFaction } = await supabase
                 .from('factions').select('id, loyalty, standing, seats')
-                .eq('id', ally.id).single();
+                .eq('id', ally.id).maybeSingle();
             if (allyFaction) {
                 const actualLoss = Math.min(allySeatLoss, (allyFaction.seats ?? 0) - 1); // keep at least 1
                 await supabase.from('factions').update({
@@ -7105,14 +7174,23 @@ export async function executeCoupAttempt(supabase, factionId, nationId, fundsCom
                 totalAllySeatLoss += actualLoss;
             }
         }
-        // Transfer ally lost seats to ruling faction
-        if (totalAllySeatLoss > 0 && nation.ruling_faction_id) {
-            const { data: ruler2 } = await supabase
-                .from('factions').select('id, seats').eq('id', nation.ruling_faction_id).single();
-            if (ruler2) {
-                await supabase.from('factions').update({
-                    seats: (ruler2.seats ?? 0) + totalAllySeatLoss,
-                }).eq('id', ruler2.id);
+        // Transfer ally lost seats to ruling faction (or unaligned pool if no ruler)
+        if (totalAllySeatLoss > 0) {
+            let allySeatsRedistributed = false;
+            if (nation.ruling_faction_id) {
+                const { data: ruler2 } = await supabase
+                    .from('factions').select('id, seats').eq('id', nation.ruling_faction_id).maybeSingle();
+                if (ruler2) {
+                    await supabase.from('factions').update({
+                        seats: (ruler2.seats ?? 0) + totalAllySeatLoss,
+                    }).eq('id', ruler2.id);
+                    allySeatsRedistributed = true;
+                }
+            }
+            if (!allySeatsRedistributed) {
+                await supabase.from('nations').update({
+                    unaligned_seats: (nation.unaligned_seats || 0) + totalAllySeatLoss,
+                }).eq('id', nationId);
             }
         }
 
