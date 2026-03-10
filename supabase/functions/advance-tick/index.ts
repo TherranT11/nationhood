@@ -12813,7 +12813,7 @@ async function executeIntimidate(supabase, factionId, nationId, targetId, curren
     if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
 
     // 4. Calculate seats gained
-    const yourStanding = faction.standing ?? 30;
+    const yourStanding = Math.max(1, faction.standing ?? 30);
     const targetStanding = Math.max(1, target.standing ?? 30);
     const yourSeats = faction.seats || 0;
     let effectiveness = GAME_CONFIG.INTIMIDATE_BASE_EFFECTIVENESS * (yourStanding / targetStanding) * (yourSeats / 20);
@@ -16430,7 +16430,7 @@ async function handleRegimeCollapse(supabase, nation, currentTick) {
         .eq('is_chosen_successor', true)
         .eq('is_alive', true)
         .limit(1)
-        .single();
+        .maybeSingle();
 
     if (successor) {
         // Successor takes over
@@ -16878,12 +16878,12 @@ async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted,
         // Leader: steward dies, standing -25, loyalty 10, lose 40% seats, 6-tick lockout
         const { data: leaderSteward } = await supabase
             .from('stewards')
-            .select('id, first_name, last_name')
+            .select('id, first_name, last_name, steward_type, pillar_key')
             .eq('faction_id', factionId)
             .eq('nation_id', nationId)
             .eq('is_alive', true)
             .limit(1)
-            .single();
+            .maybeSingle();
 
         if (leaderSteward) {
             await supabase.from('stewards').update({ is_alive: false }).eq('id', leaderSteward.id);
@@ -16891,17 +16891,14 @@ async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted,
             // Generate new steward
             const newFirstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)];
             const newLastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)];
-            const { data: oldSteward } = await supabase
-                .from('stewards').select('steward_type, pillar_key')
-                .eq('id', leaderSteward.id).single();
             await supabase.from('stewards').insert({
                 faction_id: factionId,
                 nation_id: nationId,
                 first_name: newFirstName,
                 last_name: newLastName,
                 age: 35 + Math.floor(Math.random() * 20),
-                steward_type: oldSteward?.steward_type || 'party_chairman',
-                pillar_key: oldSteward?.pillar_key,
+                steward_type: leaderSteward.steward_type || 'party_chairman',
+                pillar_key: leaderSteward.pillar_key,
                 standing: 10,
                 power_base: 15,
                 true_loyalty: 50,
