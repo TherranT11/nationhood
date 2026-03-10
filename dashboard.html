@@ -21,26 +21,22 @@
     background: var(--bg-panel);
     border: 1px solid var(--border-main);
     border-radius: 8px;
-    padding: 28px 24px;
+    overflow: hidden;
     width: 380px;
   }
   .dash-card-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    background: var(--bg-card);
+    padding: 14px 24px;
     margin-bottom: 22px;
-    font-size: 0.75rem;
+    font-size: 0.9rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--text-secondary);
+    text-align: center;
   }
-  .dash-card-header .dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--accent);
-    flex-shrink: 0;
+  .dash-card-body {
+    padding: 6px 24px 28px;
   }
 
   .nation-identity {
@@ -123,7 +119,8 @@
 
   <!-- ── Nation Card ── -->
   <div class="dash-card" id="nation-card">
-    <div class="dash-card-header"><span class="dot"></span> NATION</div>
+    <div class="dash-card-header">NATION</div>
+    <div class="dash-card-body">
     <div class="nation-identity">
       <div class="nation-flag-box" id="nation-flag-box">
         <span class="abbr-fallback" id="nation-abbr"></span>
@@ -132,6 +129,7 @@
       <div class="motto" id="nation-motto"></div>
     </div>
     <div class="nation-stats-list" id="nation-stats-list"></div>
+    </div>
   </div>
 
 </div>
