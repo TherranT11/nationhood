@@ -282,7 +282,7 @@ async function loadTradeData(nationId) {
     var summary = sumRes.data[0];
 
     var flowRes = await _supabase.from('trade_flows')
-        .select('sector, export_volume, import_volume, net_flow, price_modifier')
+        .select('sector, export_capacity, export_volume, import_demand, import_volume, net_flow, price_modifier')
         .eq('nation_id', nationId)
         .eq('tick', summary.tick);
 
@@ -345,50 +345,58 @@ async function loadTradeData(nationId) {
         }
     }
 
-    // Fetch diplomatic relations for affinity breakdown tooltips
-    var partnerIds = Object.keys(partners);
-    if (partnerIds.length > 0) {
-        var relRes = await _supabase.from('diplomatic_relations')
-            .select('nation_a_id, nation_b_id, relation_score, proximity, active_treaties');
+    // Fetch diplomatic relations for affinity breakdown (always, for diagnostics)
+    var allAffinities = [];
+    var relRes = await _supabase.from('diplomatic_relations')
+        .select('nation_a_id, nation_b_id, relation_score, proximity, active_treaties');
 
-        if (relRes.data) {
-            for (var i = 0; i < relRes.data.length; i++) {
-                var r = relRes.data[i];
-                var partnerId = null;
-                if (r.nation_a_id === nationId) partnerId = r.nation_b_id;
-                else if (r.nation_b_id === nationId) partnerId = r.nation_a_id;
-                if (partnerId && partners[partnerId]) {
-                    var relScore = Number(r.relation_score) || 0;
-                    var prox = (r.proximity != null) ? Number(r.proximity) : 50;
-                    var treaties = r.active_treaties || [];
-                    var hasFTA = false, hasRSC = false, hasPTA = false, hasEmbargo = false;
-                    for (var t = 0; t < treaties.length; t++) {
-                        var ty = treaties[t].agreement_type || treaties[t].type || '';
-                        if (ty === 'free_trade') hasFTA = true;
-                        else if (ty === 'resource_supply') hasRSC = true;
-                        else if (ty === 'partial_trade') hasPTA = true;
-                        else if (ty === 'embargo') hasEmbargo = true;
-                    }
-                    var tradeBonus = hasFTA ? 25 : hasRSC ? 20 : hasPTA ? 15 : 0;
-                    var diplomaticBonus = relScore * 0.3;
-                    var proximityBonus = (prox / 100) * 20;
-                    var embargoPenalty = hasEmbargo ? -40 : 0;
-                    partners[partnerId].affinityBreakdown = {
-                        base: 50,
-                        diplomatic: Math.round(diplomaticBonus * 10) / 10,
-                        relScore: relScore,
-                        trade: tradeBonus,
-                        tradeType: hasFTA ? 'FTA' : hasRSC ? 'RSC' : hasPTA ? 'PTA' : null,
-                        proximity: Math.round(proximityBonus * 10) / 10,
-                        proximityRaw: prox,
-                        embargo: embargoPenalty
-                    };
-                }
+    if (relRes.data) {
+        for (var i = 0; i < relRes.data.length; i++) {
+            var r = relRes.data[i];
+            var partnerId = null;
+            if (r.nation_a_id === nationId) partnerId = r.nation_b_id;
+            else if (r.nation_b_id === nationId) partnerId = r.nation_a_id;
+            if (!partnerId) continue;
+
+            var relScore = Number(r.relation_score) || 0;
+            var prox = (r.proximity != null) ? Number(r.proximity) : 50;
+            var treaties = r.active_treaties || [];
+            var hasFTA = false, hasRSC = false, hasPTA = false, hasEmbargo = false;
+            for (var t = 0; t < treaties.length; t++) {
+                var ty = treaties[t].agreement_type || treaties[t].type || '';
+                if (ty === 'free_trade') hasFTA = true;
+                else if (ty === 'resource_supply') hasRSC = true;
+                else if (ty === 'partial_trade') hasPTA = true;
+                else if (ty === 'embargo') hasEmbargo = true;
             }
+            var tradeBonus = hasFTA ? 25 : hasRSC ? 20 : hasPTA ? 15 : 0;
+            var diplomaticBonus = relScore * 0.3;
+            var proximityBonus = (prox / 100) * 20;
+            var embargoPenalty = hasEmbargo ? -40 : 0;
+            var totalAffinity = Math.max(0, Math.min(100, 50 + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus));
+            var breakdown = {
+                base: 50,
+                diplomatic: Math.round(diplomaticBonus * 10) / 10,
+                relScore: relScore,
+                trade: tradeBonus,
+                tradeType: hasFTA ? 'FTA' : hasRSC ? 'RSC' : hasPTA ? 'PTA' : null,
+                proximity: Math.round(proximityBonus * 10) / 10,
+                proximityRaw: prox,
+                embargo: embargoPenalty,
+                total: Math.round(totalAffinity * 10) / 10
+            };
+
+            // Attach to existing trade partners
+            if (partners[partnerId]) {
+                partners[partnerId].affinityBreakdown = breakdown;
+            }
+
+            // Collect all affinities for diagnostics
+            allAffinities.push({ partnerId: partnerId, name: nationNames[partnerId] || 'Unknown', breakdown: breakdown });
         }
     }
 
-    tradeData = { summary: summary, flows: flows, prevFlows: prevFlows, partners: partners };
+    tradeData = { summary: summary, flows: flows, prevFlows: prevFlows, partners: partners, allAffinities: allAffinities };
     qCacheSet(cacheKey, tradeData, 2 * 60 * 1000);
 }
 
@@ -779,6 +787,117 @@ function renderOverviewTab(nation) {
     } else {
         h += '<div class="econ-placeholder">Trade data will appear after the next tick.</div>';
     }
+
+    // Trade Diagnostics — show inputs that drive trade
+    if (tradeData && tradeData.summary) {
+        var _totalExp = Number(tradeData.summary.total_exports) || 0;
+        var _totalImp = Number(tradeData.summary.total_imports) || 0;
+
+        h += '<div class="trade-diagnostics">';
+        h += '<div class="trade-diag-header" onclick="this.parentElement.classList.toggle(\'expanded\')">TRADE INPUTS <span class="trade-diag-toggle">&#9662;</span></div>';
+        h += '<div class="trade-diag-body">';
+
+        // Global modifiers row
+        var tariffVal = Number(nation.tariffs) || 0;
+        var tariffDampener = 1 - (tariffVal / 200);
+        var currencyVal = Number(nation.currency_strength) || 50;
+        var currencyMod = currencyVal / 50;
+        var stabilityVal = Number(nation.stability) || 50;
+        var stabilityMod = Math.min(1.0, stabilityVal / 40);
+
+        h += '<div class="trade-diag-modifiers">';
+        h += '<div class="trade-diag-mod">';
+        h += '<span class="trade-diag-label">Tariff Rate</span>';
+        h += '<span class="trade-diag-value" style="color:' + (tariffVal > 50 ? 'var(--red, #f44336)' : tariffVal > 25 ? 'var(--accent, #ffcc00)' : 'var(--green, #4CAF50)') + '">' + tariffVal + '%</span>';
+        h += '<span class="trade-diag-effect">Import dampening: ' + (tariffDampener * 100).toFixed(0) + '%</span>';
+        h += '</div>';
+        h += '<div class="trade-diag-mod">';
+        h += '<span class="trade-diag-label">Currency Strength</span>';
+        h += '<span class="trade-diag-value">' + currencyVal.toFixed(0) + '/100</span>';
+        h += '<span class="trade-diag-effect">Trade modifier: ' + currencyMod.toFixed(2) + 'x</span>';
+        h += '</div>';
+        h += '<div class="trade-diag-mod">';
+        h += '<span class="trade-diag-label">Stability</span>';
+        h += '<span class="trade-diag-value" style="color:' + (stabilityVal < 25 ? 'var(--red, #f44336)' : stabilityVal < 40 ? 'var(--accent, #ffcc00)' : 'var(--green, #4CAF50)') + '">' + stabilityVal.toFixed(0) + '/100</span>';
+        h += '<span class="trade-diag-effect">Export modifier: ' + stabilityMod.toFixed(2) + 'x</span>';
+        h += '</div>';
+        h += '</div>';
+
+        // Per-sector capacity vs demand from trade_flows
+        if (tradeData.flows && Object.keys(tradeData.flows).length > 0) {
+            h += '<table class="trade-diag-table">';
+            h += '<thead><tr><th>Sector</th><th>Export Capacity</th><th>Actual Exports</th><th>Import Demand</th><th>Actual Imports</th></tr></thead>';
+            h += '<tbody>';
+            for (var _si = 0; _si < TRADE_SECTORS.length; _si++) {
+                var _s = TRADE_SECTORS[_si];
+                var _f = tradeData.flows[_s.key];
+                if (!_f) continue;
+                var _expCap = Number(_f.export_capacity) || 0;
+                var _expVol = Number(_f.export_volume) || 0;
+                var _impDem = Number(_f.import_demand) || 0;
+                var _impVol = Number(_f.import_volume) || 0;
+                var _capCls = _expCap > 0 ? 'surplus' : 'muted';
+                var _demCls = _impDem > 0 ? 'deficit' : 'muted';
+                h += '<tr>';
+                h += '<td>' + escapeHtml(_s.label) + '</td>';
+                h += '<td class="' + _capCls + '">' + formatBudgetCurrency(_expCap) + '</td>';
+                h += '<td class="' + (_expVol > 0 ? 'surplus' : 'muted') + '">' + formatBudgetCurrency(_expVol) + '</td>';
+                h += '<td class="' + _demCls + '">' + formatBudgetCurrency(_impDem) + '</td>';
+                h += '<td class="' + (_impVol > 0 ? 'deficit' : 'muted') + '">' + formatBudgetCurrency(_impVol) + '</td>';
+                h += '</tr>';
+            }
+            h += '</tbody></table>';
+        }
+
+        // Affinity summary
+        if (tradeData.allAffinities && tradeData.allAffinities.length > 0) {
+            var positiveAffinities = 0;
+            var blockedAffinities = 0;
+            var affinityDetails = [];
+            for (var _ai = 0; _ai < tradeData.allAffinities.length; _ai++) {
+                var _a = tradeData.allAffinities[_ai];
+                if (_a.breakdown.total > 0) positiveAffinities++;
+                else blockedAffinities++;
+                affinityDetails.push(_a);
+            }
+            h += '<div class="trade-diag-affinity-summary">';
+            h += '<span class="trade-diag-label">Trade Partners</span>';
+            h += '<span class="trade-diag-value">' + positiveAffinities + ' eligible</span>';
+            if (blockedAffinities > 0) {
+                h += '<span class="trade-diag-effect" style="color:var(--red, #f44336)">' + blockedAffinities + ' blocked (affinity ≤ 0)</span>';
+            }
+            h += '</div>';
+
+            // Show top affinities with breakdown
+            affinityDetails.sort(function(a, b) { return b.breakdown.total - a.breakdown.total; });
+            var showCount = Math.min(5, affinityDetails.length);
+            if (showCount > 0) {
+                h += '<div class="trade-diag-affinity-list">';
+                for (var _aj = 0; _aj < showCount; _aj++) {
+                    var _ad = affinityDetails[_aj];
+                    var _name = _ad.name || 'Nation';
+                    var _b = _ad.breakdown;
+                    var _affColor = _b.total > 50 ? 'var(--green, #4CAF50)' : _b.total > 0 ? 'var(--accent, #ffcc00)' : 'var(--red, #f44336)';
+                    h += '<div class="trade-diag-affinity-row">';
+                    h += '<span class="trade-diag-affinity-name">' + escapeHtml(_name) + '</span>';
+                    h += '<span class="trade-diag-affinity-score" style="color:' + _affColor + '">' + _b.total.toFixed(0) + '</span>';
+                    h += '<span class="trade-diag-affinity-breakdown">';
+                    h += 'Base ' + _b.base;
+                    h += ' + Diplo ' + (_b.diplomatic >= 0 ? '+' : '') + _b.diplomatic.toFixed(0);
+                    if (_b.trade > 0) h += ' + ' + (_b.tradeType || 'Agreement') + ' +' + _b.trade;
+                    h += ' + Prox +' + _b.proximity.toFixed(0);
+                    if (_b.embargo < 0) h += ' + Embargo ' + _b.embargo;
+                    h += '</span>';
+                    h += '</div>';
+                }
+                h += '</div>';
+            }
+        }
+
+        h += '</div>'; // .trade-diag-body
+        h += '</div>'; // .trade-diagnostics
+    }
+
     h += '</div>';
 
     // Debt

@@ -863,6 +863,20 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             sectorAgg[sector.key].totalSupply += expCap;
             sectorAgg[sector.key].totalDemand += impDem;
         }
+
+        // Log trade inputs for nations with zero total capacity + demand (diagnostic)
+        var _totalCap = 0, _totalDem = 0;
+        for (var _dsi = 0; _dsi < sectors.length; _dsi++) {
+            var _dk = sectors[_dsi].key;
+            _totalCap += nationFlows[n.id][_dk].exportCapacity;
+            _totalDem += nationFlows[n.id][_dk].importDemand;
+        }
+        if (_totalCap === 0 && _totalDem === 0) {
+            console.warn('[processTradeFlows] ZERO TRADE CAPACITY: ' + n.name +
+                ' | GDP=' + n.gdp + ' | gdpMod=' + ((Number(n.gdp) || 0) / cfg.BASELINE_GDP).toFixed(6) +
+                ' | stability=' + n.stability + ' | currency=' + n.currency_strength +
+                ' | tariffs=' + n.tariffs + ' | pop=' + n.population);
+        }
     }
 
     // ── Step 3: Price modifiers per sector (with smoothing from previous tick) ──
@@ -3708,7 +3722,24 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
 // Formula: monthlyChange% = (gdp_growth - 50) / 50  →  0=-1%, 50=0%, 100=+1%
 async function applyGdpGrowth(supabase, nation) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
-    const currentGdp = Number(nation.gdp ?? 0);
+    var currentGdp = Number(nation.gdp ?? 0);
+
+    // Recovery: detect GDP stuck at stat-score values (0-100 or corrupted sub-million).
+    // Real GDP should be >= $1B for any nation. If it's absurdly low, reconstruct from
+    // population × estimated per-capita GDP based on standard_of_living.
+    // This handles cases where GDP was previously corrupted by stat-system writes.
+    if (currentGdp < 1_000_000_000) {
+        var pop = Number(nation.population) || 5_000_000;
+        var sol = Number(nation.standard_of_living) || 50;
+        // Per-capita GDP estimate: $10K at sol=0, $60K at sol=100 (linear interpolation)
+        var perCapita = 10000 + (sol / 100) * 50000;
+        var recoveredGdp = Math.round(pop * perCapita);
+        console.warn('[applyGdpGrowth] GDP RECOVERY: ' + nation.name +
+            ' GDP=' + currentGdp + ' (sub-$1B) → recovered to $' + recoveredGdp.toLocaleString() +
+            ' (pop=' + pop + ', sol=' + sol + ', perCapita=$' + Math.round(perCapita) + ')');
+        currentGdp = recoveredGdp;
+    }
+
     if (currentGdp <= 0) return;
 
     const monthlyChangePercent = (gdpGrowth - 50) / 50;
@@ -18909,8 +18940,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // 3.5 Trade engine — runs across ALL nations simultaneously
+    // Re-fetch nations so trade sees updated GDP/debt/stats from nation processing above.
+    // nationList was loaded before processing and is now stale.
     try {
-        const tradeResult = await processTradeFlows(supabase, nationList, newTick);
+        const { data: freshNations } = await supabase.from('nations').select('*');
+        const tradeNationList = freshNations || nationList;
+        const tradeResult = await processTradeFlows(supabase, tradeNationList, newTick);
         if (tradeResult.processed > 0) {
             summary.trade = tradeResult;
             console.log(`[advanceTick] Trade: ${tradeResult.processed} nations, $${Math.round(tradeResult.totalVolume).toLocaleString()} volume`);
