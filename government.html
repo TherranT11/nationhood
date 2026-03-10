@@ -546,7 +546,6 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                 const events = currentNation._govApprovalEvents || [];
                 if (events.length === 0) return '';
                 const GOV_SOURCE_LABELS = {
-                    'crisis:government_shutdown': 'Gov shutdown',
                     'crisis:scandal': 'Scandal',
                     'crisis:natural_disaster': 'Natural disaster',
                     'minister:fired': 'Minister fired',

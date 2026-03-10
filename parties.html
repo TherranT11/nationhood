@@ -95,13 +95,6 @@ async function renderAutocracyParties(el, f, n) {
         transportation: 'Transport', security: 'Security'
     };
 
-    const MINISTRY_FISCAL_MAP = {
-        prime_minister: 'Interior', interior: 'Interior', foreign: 'Foreign Ministry',
-        defense: 'Defense', finance: 'Finance', education: 'Education',
-        healthcare: 'Healthcare', labor: 'Labor', justice: 'Justice',
-        trade: 'Interior', energy: 'Energy', transportation: 'Transportation'
-    };
-
     // Fetch regime pillars (including steward)
     const { data: regimePillars } = await _supabase
         .from('regime_pillars')
@@ -2342,7 +2335,6 @@ async function renderAutocracyParties(el, f, n) {
 
             // Pick random ministry from faction's ministries
             const targetMinKey = myMins[Math.floor(Math.random() * myMins.length)];
-            const fiscalCat = MINISTRY_FISCAL_MAP[targetMinKey] || targetMinKey;
 
             // Roll 1D6 (1-6 million)
             const diceRoll = Math.floor(Math.random() * 6) + 1;
@@ -2378,7 +2370,7 @@ async function renderAutocracyParties(el, f, n) {
                 party_id: f.id, nation_id: n.id,
                 action_type: 'steward_embezzle',
                 tick_performed: currentTick,
-                result: { dice_roll: diceRoll, embezzled, ministry: targetMinKey, fiscal_category: fiscalCat, detected }
+                result: { dice_roll: diceRoll, embezzled, ministry: targetMinKey, detected }
             });
 
             await renderAutocracyParties(el, f, n);
@@ -3706,7 +3698,6 @@ async function renderParties() {
             ${(() => {
                 if (!momentumLog || momentumLog.length === 0) return '';
                 const SOURCE_LABELS = {
-                    'crisis:government_shutdown': 'Government shutdown',
                     'penalty:no_vote': 'Didn\'t vote on bill',
                     'campaign:press_conference': 'Press conference',
                     'campaign:press_conference_target': 'Targeted by press conference',

@@ -3017,7 +3017,7 @@ function snapshotNationStats(nation) {
  * @param {string} factionId - faction UUID
  * @param {string|null} blocId - specific bloc UUID, or null for all blocs
  * @param {number} amount    - positive = boost, negative = penalty
- * @param {string} source    - audit tag, e.g. 'crisis:government_shutdown'
+ * @param {string} source    - audit tag, e.g. 'legislation:veto'
  */
 async function adjustMomentum(supabase, nationId, factionId, blocId, amount, source) {
     if (amount === 0) return;
@@ -3069,7 +3069,7 @@ async function adjustMomentumAll(supabase, nationId, factionId, amount, source) 
  * @param {object} supabase
  * @param {string} nationId
  * @param {number} amount   - signed delta (positive = boost, negative = shock)
- * @param {string} source   - audit tag, e.g. 'crisis:government_shutdown'
+ * @param {string} source   - audit tag, e.g. 'legislation:veto'
  */
 async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source) {
     if (amount === 0) return;
