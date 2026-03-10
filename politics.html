@@ -4306,11 +4306,13 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
         const detail = electionTick > 0
             ? `Forecast available in <span style="color:var(--dtxt-secondary);font-weight:700">${ticksUntilForecast} ticks</span><br>Polling begins ${FORECAST_START} ticks before election`
             : 'No election currently scheduled';
+        const earlyElectionDate = electionTick > 0 ? tickToDate(electionTick) : null;
         return `
             <div class="pol-forecast-box">
                 <div class="pol-fc-header">
                     <span class="pol-mod-title">Election Forecast</span>
                 </div>
+                ${earlyElectionDate ? `<div style="text-align:center;padding:6px 0 2px;font-size:13px;letter-spacing:0.5px;color:var(--dtxt-secondary)">Next Election: <span style="color:var(--dtxt-primary);font-weight:600">${earlyElectionDate}</span></div>` : ''}
                 <div class="pol-fc-empty">
                     <div class="pol-fc-empty-title">Insufficient polling data</div>
                     <div class="pol-fc-empty-detail">${detail}</div>
@@ -4409,12 +4411,14 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
             </div>`;
     }
 
+    const nextElectionDate = electionTick > 0 ? tickToDate(electionTick) : null;
     return `
         <div class="pol-forecast-box">
             <div class="pol-fc-header">
                 <span class="pol-mod-title">Election Forecast</span>
                 <span class="pol-fc-phase" style="color:${phaseColor};background:${phaseColor}15">${phase}</span>
             </div>
+            ${nextElectionDate ? `<div style="text-align:center;padding:6px 0 2px;font-size:13px;letter-spacing:0.5px;color:var(--dtxt-secondary)">Next Election: <span style="color:var(--dtxt-primary);font-weight:600">${nextElectionDate}</span></div>` : ''}
             <div class="pol-fc-countdown">
                 <div>
                     <span class="pol-fc-ticks-big" style="color:${phaseColor}">${ticksLeft}</span>
