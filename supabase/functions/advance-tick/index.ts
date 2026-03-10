@@ -9948,7 +9948,7 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
             newVal = Math.min(target, currentVal + speed);
         }
 
-        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+        newVal = Math.round(Math.max(0, newVal) * 10) / 10;
 
         if (newVal !== Math.round(currentVal * 10) / 10) {
             nationUpdates[statKey] = newVal;
@@ -10050,12 +10050,7 @@ async function processStatConnections(supabase, nation, currentTick, connections
             ? targetVal + effectiveMag
             : targetVal - effectiveMag;
 
-        // Raw-value stats (gdp, debt, population) must not be clamped to 0-100
-        if (RAW_SCALING_DIVISORS[conn.target_stat]) {
-            newVal = Math.max(0, newVal);
-        } else {
-            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
-        }
+        newVal = Math.round(Math.max(0, newVal) * 10) / 10;
 
         if (newVal !== Math.round(targetVal * 10) / 10) {
             // Accumulate — multiple connections can affect the same target
@@ -10064,9 +10059,7 @@ async function processStatConnections(supabase, nation, currentTick, connections
                 const prevDelta = nationUpdates[conn.target_stat] - targetVal;
                 const thisDelta = newVal - targetVal;
                 const accumulated = targetVal + prevDelta + thisDelta;
-                nationUpdates[conn.target_stat] = RAW_SCALING_DIVISORS[conn.target_stat]
-                    ? Math.max(0, accumulated)
-                    : Math.round(Math.max(0, Math.min(100, accumulated)) * 10) / 10;
+                nationUpdates[conn.target_stat] = Math.round(Math.max(0, accumulated) * 10) / 10;
             } else {
                 nationUpdates[conn.target_stat] = newVal;
             }
@@ -13736,12 +13729,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                         newVal = currentVal - scaledRate;
                     }
 
-                    // Raw-value stats — don't clamp to 0-100
-                    if (RAW_SCALING_DIVISORS[statKey]) {
-                        newVal = Math.max(0, newVal);
-                    } else {
-                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
-                    }
+                    newVal = Math.round(Math.max(0, newVal) * 10) / 10;
                     nationUpdates[statKey] = newVal;
                     anyEffectApplied = true;
 
@@ -13912,12 +13900,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
                             : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
                         let scaledMinistryRate = RAW_SCALING_DIVISORS[statKey] ? rate * RAW_SCALING_DIVISORS[statKey] : rate;
                         newVal = eff.direction === 'up' ? currentVal + scaledMinistryRate : currentVal - scaledMinistryRate;
-                        // Raw-value stats (debt, population) must not be clamped to 0-100
-                        if (RAW_SCALING_DIVISORS[statKey]) {
-                            newVal = Math.max(0, newVal);
-                        } else {
-                            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
-                        }
+                        newVal = Math.round(Math.max(0, newVal) * 10) / 10;
                         nationUpdates[statKey] = newVal;
                     }
 
@@ -14344,10 +14327,7 @@ async function processEvents(supabase, nation, currentTick) {
                 const scaledChange = RAW_SCALING_DIVISORS[evtStatKey]
                     ? effect.change_value * RAW_SCALING_DIVISORS[evtStatKey]
                     : effect.change_value;
-                // Raw-value stats (debt, population) must not be clamped to 0-100
-                const newVal = RAW_SCALING_DIVISORS[evtStatKey]
-                    ? Math.max(0, currentVal + scaledChange)
-                    : Math.max(0, Math.min(100, currentVal + scaledChange));
+                const newVal = Math.max(0, currentVal + scaledChange);
                 nationUpdates[evtStatKey] = newVal;
                 nation[evtStatKey] = newVal;
 
@@ -14614,14 +14594,10 @@ async function processCrises(supabase, nation, currentTick) {
                     : (nation[statKey] !== undefined && nation[statKey] !== null
                         ? Number(nation[statKey]) : 50);
 
-                // Raw-value stats (population) must not be clamped to 0-100
-                let newVal;
-                if (RAW_SCALING_DIVISORS[statKey]) {
-                    const scaledCrisisChange = changePT * RAW_SCALING_DIVISORS[statKey];
-                    newVal = Math.max(0, currentVal + scaledCrisisChange);
-                } else {
-                    newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
-                }
+                const scaledCrisisChange = RAW_SCALING_DIVISORS[statKey]
+                    ? changePT * RAW_SCALING_DIVISORS[statKey]
+                    : changePT;
+                let newVal = Math.round(Math.max(0, currentVal + scaledCrisisChange) * 10) / 10;
                 nationUpdates[statKey] = newVal;
                 nation[statKey] = newVal;
 
@@ -15575,12 +15551,8 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
             if (STAT_PROCESSOR_SKIP.has(stat)) continue;
             const currentVal = nation[stat];
             if (currentVal !== undefined && currentVal !== null) {
-                if (RAW_SCALING_DIVISORS[stat]) {
-                    // Raw-value stats (population): scale rate and don't clamp to 0-100
-                    updates[stat] = Math.max(0, Number(currentVal) + delta * RAW_SCALING_DIVISORS[stat]);
-                } else {
-                    updates[stat] = Math.round(Math.max(0, Math.min(100, Number(currentVal) + delta)) * 10) / 10;
-                }
+                const scaledDelta = RAW_SCALING_DIVISORS[stat] ? delta * RAW_SCALING_DIVISORS[stat] : delta;
+                updates[stat] = Math.round(Math.max(0, Number(currentVal) + scaledDelta) * 10) / 10;
             }
         }
         if (Object.keys(updates).length > 0) {
@@ -18795,9 +18767,17 @@ async function processAusterityCommitments(supabase, nation, currentTick) {
             const perTickReduction = commitment.reduction / commitment.over_ticks;
             const resolvedKey = normalizeNationStatKey(commitment.stat);
             if (!resolvedKey || !NATION_STAT_COLUMN_SET.has(resolvedKey)) continue;
+            // GDP and debt are driven by dedicated systems — skip
+            if (STAT_PROCESSOR_SKIP.has(resolvedKey)) continue;
 
             const currentVal = Number(nation[resolvedKey] ?? 50);
-            const newVal = Math.max(0, Math.round((currentVal - perTickReduction) * 10) / 10);
+            let newVal;
+            if (RAW_SCALING_DIVISORS[resolvedKey]) {
+                // Raw-value stats (population) must not be clamped to 0-100
+                newVal = Math.max(0, Math.round((currentVal - perTickReduction * RAW_SCALING_DIVISORS[resolvedKey]) * 10) / 10);
+            } else {
+                newVal = Math.max(0, Math.round((currentVal - perTickReduction) * 10) / 10);
+            }
 
             if (newVal !== currentVal) {
                 nationUpdates[resolvedKey] = newVal;
