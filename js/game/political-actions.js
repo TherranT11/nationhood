@@ -2351,23 +2351,8 @@ export async function processRegimePillars(supabase, nation) {
     const pillarMap = {};
     for (const p of pillars) pillarMap[p.pillar_key] = p;
 
-    // Compute special synthetic stats:
-    // _armed_forces_funding: % funding of the 'military' institution from the active budget
-    let armedForcesFunding = 0;
-    if (nation.last_budget_bill_id) {
-        const { data: milAlloc } = await supabase
-            .from('budget_item_allocations')
-            .select('allocation_amount, needed_amount')
-            .eq('bill_id', nation.last_budget_bill_id)
-            .eq('item_type', 'institution')
-            .eq('item_id', 'military')
-            .maybeSingle();
-        if (milAlloc && Number(milAlloc.needed_amount) > 0) {
-            armedForcesFunding = Math.min(100, Math.round(
-                (Number(milAlloc.allocation_amount) / Number(milAlloc.needed_amount)) * 100
-            ));
-        }
-    }
+    // _armed_forces_funding: auto-funded at 100% (no budget bill system)
+    let armedForcesFunding = 100;
 
     // _debt_ratio: simple 0-100 where lower is better
     // Use debt relative to GDP: debt/gdp * 100, clamped 0-100
@@ -4557,7 +4542,7 @@ export async function processEvents(supabase, nation, currentTick) {
  * - Deactivates crises when ALL recovery conditions are met
  * - Effects cascade: nation stats, government/coalition approval, minister approval
  */
-export async function processCrises(supabase, nation, currentTick, budgetItemAllocs) {
+export async function processCrises(supabase, nation, currentTick) {
     // 1. Load all active crisis templates
     const { data: crisisTemplates } = await supabase
         .from('crisis_templates')
@@ -4581,25 +4566,9 @@ export async function processCrises(supabase, nation, currentTick, budgetItemAll
     const nationUpdates = {};
     const statBounds = {}; // { stat_key: { floor: highestFloor, ceiling: lowestCeiling } }
 
-    // Helper: compute institution funding % from budget_item_allocations
-    // If no budget exists or institution not found, returns 100 (no crisis)
-    let _instFundingCache = null;
+    // Institution funding: always 100% (no budget bill system)
     function getInstitutionFundingPct(instId) {
-        if (!_instFundingCache) {
-            _instFundingCache = {};
-            if (budgetItemAllocs) {
-                for (const alloc of budgetItemAllocs) {
-                    if (alloc.item_type === 'institution') {
-                        const needed = Number(alloc.needed_amount) || 0;
-                        const allocated = Number(alloc.allocation_amount) || 0;
-                        _instFundingCache[alloc.item_id] = needed > 0
-                            ? Math.min(100, Math.round((allocated / needed) * 100))
-                            : 100;
-                    }
-                }
-            }
-        }
-        return _instFundingCache[instId] !== undefined ? _instFundingCache[instId] : 100;
+        return 100;
     }
 
     // 3. Check inactive crises for activation
@@ -4612,7 +4581,7 @@ export async function processCrises(supabase, nation, currentTick, budgetItemAll
             // Ministry crisis: check institution funding levels
             const institutionIds = template.institution_ids || [];
             const threshold = Number(template.funding_threshold_pct) || 0;
-            if (institutionIds.length === 0 || !nation.last_budget_bill_id) continue;
+            if (institutionIds.length === 0) continue;
 
             allTriggersMet = true;
             for (const instId of institutionIds) {

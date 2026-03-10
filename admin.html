@@ -2648,35 +2648,9 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             let updatedCount = 0;
             let nationCount = 0;
 
-            for (const nation of allNations) {
-                if (!nation.last_budget_bill_id) continue;
-
-                // Fetch active laws with policy data for this nation
-                const { data: activeLaws, error: lawErr } = await _supabase.from('active_laws')
-                    .select('*, policies(*)')
-                    .eq('nation_id', nation.id);
-                if (lawErr) throw lawErr;
-
-                // Recompute fulfilled_cost per fiscal category using the shared function
-                for (const cat of FISCAL_CATEGORIES) {
-                    const result = computeMinistryPolicyCost(activeLaws || [], cat, nation);
-
-                    const { error: updateErr } = await _supabase.from('budget_allocations')
-                        .update({ fulfilled_cost: result.total, updated_at: new Date().toISOString() })
-                        .eq('bill_id', nation.last_budget_bill_id)
-                        .eq('fiscal_category', cat);
-
-                    if (updateErr) {
-                        console.warn(`[recalculate] Failed to update ${cat} for ${nation.name}:`, updateErr.message);
-                    } else {
-                        updatedCount++;
-                    }
-                }
-                nationCount++;
-            }
-
-            status.className = 'status success';
-            status.textContent = `✅ Recalculation complete — updated ${updatedCount} allocations across ${nationCount} nations. Run the audit to see updated numbers.`;
+            // Budget allocation system has been removed — nothing to recalculate
+            status.className = 'status info';
+            status.textContent = 'Budget allocation system has been removed. No recalculation needed.';
 
             // Auto-run the audit to show fresh numbers
             await runPolicyAudit();
@@ -3399,22 +3373,11 @@ async function runStatAudit() {
     const covering = (instConfig || []).filter(ic => ic.primary_stat === sk || ic.secondary_stat === sk);
     if (covering.length === 0) {
         log('  No institutions cover this stat. Natural decay rate applies.', '#888');
-    } else if (!nation.last_budget_bill_id) {
-        log('  No budget passed — all institutions are UNFUNDED (0%).', '#f44');
     } else {
-        const { data: allocs } = await _supabase.from('budget_item_allocations')
-            .select('item_id, allocation_amount, needed_amount')
-            .eq('bill_id', nation.last_budget_bill_id)
-            .eq('item_type', 'institution');
-        const allocMap = {};
-        for (const a of (allocs || [])) allocMap[a.item_id] = a;
+        // No budget bill system — institutions auto-fund at 100%
         for (const ic of covering) {
             const role = ic.primary_stat === sk ? 'primary' : 'secondary';
-            const a = allocMap[ic.id];
-            const pct = a && a.needed_amount > 0 ? Math.min(100, Math.round((a.allocation_amount / a.needed_amount) * 100)) : 0;
-            const tierLabel = pct >= 100 ? 'Fully Funded (decay blocked)' : pct >= 90 ? 'Stretched' : pct >= 75 ? 'Strained' : pct >= 50 ? 'Underfunded' : pct >= 25 ? 'Critical' : 'Collapsed';
-            log(`  ${ic.institution_name || ic.id} (${role}) — ${pct}% funded → ${tierLabel}`,
-                pct >= 100 ? '#4f4' : pct >= 75 ? '#fa0' : '#f44');
+            log(`  ${ic.institution_name || ic.id} (${role}) — 100% funded (auto-funded, no budget system)`, '#4f4');
         }
     }
 

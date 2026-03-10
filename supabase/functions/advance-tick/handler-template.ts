@@ -1075,15 +1075,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             _institutionConfig = icRows || [];
         }
         let statInstMap = null;
-        let budgetItemAllocs = null;   // hoisted for minister approval funding check
-        if (nation.last_budget_bill_id && _institutionConfig.length > 0) {
-            const { data: itemAllocs } = await supabase.from('budget_item_allocations')
-                .select('item_type, item_id, allocation_amount, needed_amount')
-                .eq('bill_id', nation.last_budget_bill_id)
-                .eq('item_type', 'institution');
-            budgetItemAllocs = itemAllocs;
-            statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs);
-        }
         const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
         const decayResults = await processStatDecay(supabase, nation, statInstMap, policyDecayAdj);
         if (decayResults.length > 0) {
@@ -1101,8 +1092,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.statConnections = summary.statConnections || [];
             summary.statConnections.push({ nation: nation.name, effects: connResults });
         }
-
-        // (Budget bill auto-generation and committee expiry removed — budget system disabled)
 
         // Ongoing costs
         const costResult = await processOngoingCosts(supabase, nation, newTick);
@@ -1373,7 +1362,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Crises (persistent negative events that apply effects every tick)
         // Runs BEFORE approval calculations so crisis stat/event effects propagate in the same tick.
-        const crisisResults = await processCrises(supabase, nation, newTick, budgetItemAllocs);
+        const crisisResults = await processCrises(supabase, nation, newTick);
         if (crisisResults.length > 0) {
             summary.crises = summary.crises || [];
             summary.crises.push({ nation: nation.name, crises: crisisResults });

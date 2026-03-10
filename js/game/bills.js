@@ -2024,31 +2024,10 @@ export async function enactBill(supabase, bill, currentTick) {
         const fd = art.funding_data;
         if (!fd || !fd.ministry_key) continue;
 
-        // Per-institution funding changes: update budget_item_allocations
+        // Per-institution funding changes: update ministry funding_level
         const instChanges = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
-        if (instChanges.length > 0 && nation.last_budget_bill_id) {
-            for (const inst of instChanges) {
-                // Fetch current allocation to get needed_amount
-                const { data: existing } = await supabase.from('budget_item_allocations')
-                    .select('id, needed_amount')
-                    .eq('bill_id', nation.last_budget_bill_id)
-                    .eq('item_id', inst.id)
-                    .eq('item_type', 'institution')
-                    .maybeSingle();
 
-                if (existing) {
-                    const newAlloc = (inst.proposed_pct / 100) * Number(existing.needed_amount);
-                    await supabase.from('budget_item_allocations')
-                        .update({ allocation_amount: newAlloc })
-                        .eq('id', existing.id);
-                    console.log(`[enactBill] Institution funding: ${inst.id} → ${inst.proposed_pct}% (alloc $${Math.round(newAlloc)}M)`);
-                } else {
-                    console.warn(`[enactBill] No budget_item_allocation found for ${inst.id}, skipping`);
-                }
-            }
-        }
-
-        // Also update the ministry-level funding_level as a weighted average
+        // Update the ministry-level funding_level as a weighted average
         if (instChanges.length > 0) {
             const allInst = fd.institutions || [];
             const avgPct = allInst.reduce((sum, i) => sum + i.proposed_pct, 0) / (allInst.length || 1);

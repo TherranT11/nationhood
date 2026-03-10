@@ -1193,9 +1193,7 @@ function openDraftModal() {
     Promise.all([
         _supabase.from('ministries').select('ministry_key, funding_level').eq('nation_id', currentNation.id).eq('is_active', true),
         _supabase.from('ministry_institution_config').select('*'),
-        currentNation.last_budget_bill_id
-            ? _supabase.from('budget_item_allocations').select('item_id, allocation_amount, needed_amount').eq('bill_id', currentNation.last_budget_bill_id).eq('item_type', 'institution')
-            : Promise.resolve({ data: [] })
+        Promise.resolve({ data: [] })
     ]).then(([ministries, instConfig, itemAllocs]) => {
         window._allMinistries = ministries.data || [];
         window._instConfig = instConfig.data || [];

@@ -2347,24 +2347,8 @@ async function renderAutocracyParties(el, f, n) {
             // Roll 1D6 (1-6 million)
             const diceRoll = Math.floor(Math.random() * 6) + 1;
 
-            // Fetch discretionary budget for this ministry
-            let embezzled = 0;
-            if (n.last_budget_bill_id) {
-                const { data: allocRow } = await _supabase.from('budget_allocations')
-                    .select('id, discretionary_amount')
-                    .eq('bill_id', n.last_budget_bill_id)
-                    .eq('fiscal_category', fiscalCat)
-                    .maybeSingle();
-                if (allocRow) {
-                    const available = Number(allocRow.discretionary_amount) || 0;
-                    embezzled = Math.min(diceRoll, available);
-                    if (embezzled > 0) {
-                        await _supabase.from('budget_allocations')
-                            .update({ discretionary_amount: available - embezzled })
-                            .eq('id', allocRow.id);
-                    }
-                }
-            }
+            // Embezzle the dice roll directly (no budget allocation system)
+            let embezzled = diceRoll;
 
             // Add embezzled amount to personal wealth
             if (embezzled > 0) {
