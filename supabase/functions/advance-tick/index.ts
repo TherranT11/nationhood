@@ -19546,6 +19546,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                                 const hosName = `${nation.head_of_state_first_name || 'The Strongman'} ${nation.head_of_state_last_name || ''}`.trim();
                                 console.log(`[LeaderAging] Strongman ${hosName} of ${nation.name} has died at age ${newHosAge}`);
 
+                                // Shared name pools for succession
+                                const SUCCESSION_FIRST_NAMES = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
+                                const SUCCESSION_LAST_NAMES = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
+
                                 // Check for Chosen Successor
                                 const { data: chosenSuccessor } = await supabase.from('stewards')
                                     .select('id, faction_id, first_name, last_name, age, pillar_key, steward_type, succession_strength')
@@ -19587,7 +19591,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                                         .eq('nation_id', nation.id)
                                         .eq('faction_type', 'party');
                                     for (const fac of (allFactions || [])) {
-                                        const loyDrop = fac.id === chosenSuccessor.faction_id ? 15 : 5;
+                                        const loyDrop = fac.id === chosenSuccessor.faction_id ? 5 : 15;
                                         const newLoy = Math.max(0, (fac.loyalty ?? 50) - loyDrop);
                                         await supabase.from('factions').update({ loyalty: newLoy }).eq('id', fac.id);
                                     }
@@ -19597,10 +19601,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                                         .eq('nation_id', nation.id).eq('is_alive', true);
 
                                     // 5. Generate replacement steward for the successor's old faction
-                                    const FIRST_NAMES = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
-                                    const LAST_NAMES = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
-                                    const replFirst = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
-                                    const replLast = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)];
+                                    const replFirst = SUCCESSION_FIRST_NAMES[Math.floor(Math.random() * SUCCESSION_FIRST_NAMES.length)];
+                                    const replLast = SUCCESSION_LAST_NAMES[Math.floor(Math.random() * SUCCESSION_LAST_NAMES.length)];
                                     const replAge = 40 + Math.floor(Math.random() * 16); // 40-55
 
                                     const PILLAR_TO_STEWARD_TYPE: Record<string, string> = {
@@ -19659,8 +19661,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                                 } else if (nation.successor_is_family_member) {
                                     // === FAMILY MEMBER SUCCESSION ===
                                     console.log(`[LeaderAging] Family succession in ${nation.name}`);
-                                    const FIRST_NAMES = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
-                                    const famFirst = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
+                                    const famFirst = SUCCESSION_FIRST_NAMES[Math.floor(Math.random() * SUCCESSION_FIRST_NAMES.length)];
                                     // Family member keeps the dynasty name
                                     const famLast = nation.head_of_state_last_name || 'Unknown';
                                     const famAge = 30 + Math.floor(Math.random() * 16); // 30-45
@@ -19714,10 +19715,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                                     });
                                 } else {
                                     // === NO SUCCESSOR — random replacement (existing behavior) ===
-                                    const FIRST_NAMES = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
-                                    const LAST_NAMES = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
-                                    const newFirst = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
-                                    const newLast = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)];
+                                    const newFirst = SUCCESSION_FIRST_NAMES[Math.floor(Math.random() * SUCCESSION_FIRST_NAMES.length)];
+                                    const newLast = SUCCESSION_LAST_NAMES[Math.floor(Math.random() * SUCCESSION_LAST_NAMES.length)];
                                     const newSuccessorAge = 45 + Math.floor(Math.random() * 16); // 45-60
 
                                     await supabase.from('nations').update({
