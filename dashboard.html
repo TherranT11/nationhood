@@ -151,27 +151,18 @@ initPage('home', async (state) => {
     .limit(1);
   const profile = (profiles && profiles.length > 0) ? profiles[0] : {};
 
-  // ── Flag ──
+  // ── Flag (same source as top bar: nation.flag_url) ──
   const flagBox = document.getElementById('nation-flag-box');
-  const localPath = 'assets/flags/' + nation.name.replace(/\s+/g, '').toLowerCase() + '.png';
-  const img = document.createElement('img');
-  img.alt = nation.name + ' flag';
-  img.src = profile.flag_url || localPath;
-  let triedLocal = !profile.flag_url;
-  img.onerror = () => {
-    if (!triedLocal) {
-      triedLocal = true;
-      img.src = localPath;
-      return;
-    }
+  if (nation.flag_url) {
+    const img = document.createElement('img');
+    img.src = nation.flag_url;
+    img.alt = nation.name + ' flag';
     flagBox.innerHTML = '';
-    const span = document.createElement('span');
-    span.className = 'abbr-fallback';
-    span.textContent = nation.name.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3);
-    flagBox.appendChild(span);
-  };
-  flagBox.innerHTML = '';
-  flagBox.appendChild(img);
+    flagBox.appendChild(img);
+  } else {
+    document.getElementById('nation-abbr').textContent =
+      nation.name.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3);
+  }
 
   // ── Name & Motto ──
   document.getElementById('nation-name').textContent = nation.name;
