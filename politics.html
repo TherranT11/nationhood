@@ -3410,7 +3410,7 @@ async function renderPartyTab(f, nation, data) {
 
         <div class="pol-row-3">
         ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties)}
-        ${renderBlocVotingBox(lastParliamentary, allParties)}
+        ${renderBlocVotingBox(lastParliamentary, lastPresidential, allParties)}
         </div>
     </div>`;
     }
@@ -5843,7 +5843,7 @@ function renderUpcomingElectionsBox(scheduledElections, currentTick) {
     </div>`;
 }
 
-function renderBlocVotingBox(lastParliamentary, allParties) {
+function renderBlocVotingBox(lastParliamentary, lastPresidential, allParties) {
     const colorMap = {};
     const nameMap = {};
     (allParties || []).forEach(p => {
@@ -5851,15 +5851,27 @@ function renderBlocVotingBox(lastParliamentary, allParties) {
         nameMap[p.id] = p.abbreviation || p.faction_name || '?';
     });
 
-    if (!lastParliamentary || !lastParliamentary.results || !lastParliamentary.results.bloc_details) {
+    // Pick the most recent election that has bloc_details
+    const parlHasBlocs = lastParliamentary?.results?.bloc_details?.length > 0;
+    const presHasBlocs = lastPresidential?.results?.bloc_details?.length > 0;
+    let sourceElection = null;
+    if (parlHasBlocs && presHasBlocs) {
+        sourceElection = (lastPresidential.election_tick > lastParliamentary.election_tick) ? lastPresidential : lastParliamentary;
+    } else if (presHasBlocs) {
+        sourceElection = lastPresidential;
+    } else if (parlHasBlocs) {
+        sourceElection = lastParliamentary;
+    }
+
+    if (!sourceElection) {
         return `<div class="pol-blocs-box">
             <div class="pol-section-label" style="margin-bottom:12px">HOW BLOCS VOTED</div>
             <div class="pol-el-empty">No bloc voting data available.</div>
         </div>`;
     }
 
-    const blocs = lastParliamentary.results.bloc_details;
-    const date = tickToDate(lastParliamentary.election_tick);
+    const blocs = sourceElection.results.bloc_details;
+    const date = tickToDate(sourceElection.election_tick);
 
     let rows = blocs.map(bloc => {
         // Tags

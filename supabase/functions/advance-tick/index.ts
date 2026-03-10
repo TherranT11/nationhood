@@ -863,20 +863,6 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             sectorAgg[sector.key].totalSupply += expCap;
             sectorAgg[sector.key].totalDemand += impDem;
         }
-
-        // Log trade inputs for nations with zero total capacity + demand (diagnostic)
-        var _totalCap = 0, _totalDem = 0;
-        for (var _dsi = 0; _dsi < sectors.length; _dsi++) {
-            var _dk = sectors[_dsi].key;
-            _totalCap += nationFlows[n.id][_dk].exportCapacity;
-            _totalDem += nationFlows[n.id][_dk].importDemand;
-        }
-        if (_totalCap === 0 && _totalDem === 0) {
-            console.warn('[processTradeFlows] ZERO TRADE CAPACITY: ' + n.name +
-                ' | GDP=' + n.gdp + ' | gdpMod=' + ((Number(n.gdp) || 0) / cfg.BASELINE_GDP).toFixed(6) +
-                ' | stability=' + n.stability + ' | currency=' + n.currency_strength +
-                ' | tariffs=' + n.tariffs + ' | pop=' + n.population);
-        }
     }
 
     // ── Step 3: Price modifiers per sector (with smoothing from previous tick) ──
@@ -1435,7 +1421,6 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             }
         }
 
-        sanitizeNationUpdates(nationUpdates, n.name);
         await supabase.from('nations')
             .update(nationUpdates)
             .eq('id', n.id);
@@ -2077,43 +2062,6 @@ const RAW_SCALING_DIVISORS = {
 // Debt is driven exclusively by the budget system (surplus/deficit).
 // Any policy/event/crisis/connection targeting these keys will be silently skipped.
 const STAT_PROCESSOR_SKIP = new Set(['gdp', 'debt']);
-
-/**
- * Clamp a nation stat value to the appropriate range.
- * Raw-value stats (GDP, debt, population, eligible_voters) are never clamped to 0-100.
- * All other stats are clamped to [0, 100] and rounded to 1 decimal place.
- *
- * This is the SINGLE function that should be used for all nation stat clamping.
- * Any new stat processor must use this instead of inline Math.min/max.
- */
-function clampNationStat(statKey: string, value: number): number {
-    if (RAW_SCALING_DIVISORS[statKey]) return Math.max(0, value);
-    return Math.round(Math.max(0, Math.min(100, value)) * 10) / 10;
-}
-
-/**
- * Write-side sanitizer: validates nation updates before DB write.
- * Blocks any attempt to write GDP/debt/population with values that look like
- * 0-100 stat scores instead of raw values. This catches bugs that bypass
- * STAT_PROCESSOR_SKIP or clampNationStat.
- */
-function sanitizeNationUpdates(updates: Record<string, any>, nationName: string): Record<string, any> {
-    for (const [key, threshold] of Object.entries(RAW_SCALING_DIVISORS)) {
-        if (key in updates) {
-            const val = Number(updates[key]);
-            // Raw-value fields should never be in the 0-100,000 range
-            // (GDP is in billions, debt is in billions, population is in millions)
-            if (val >= 0 && val <= 100_000) {
-                console.error(
-                    `[WRITE FENCE] BLOCKED: ${nationName} ${key}=${val} looks like a 0-100 stat score, ` +
-                    `not a raw value (threshold: ${threshold}). Removing from update to prevent data corruption.`
-                );
-                delete updates[key];
-            }
-        }
-    }
-    return updates;
-}
 
 
 // ────────── ideology ──────────
@@ -3722,24 +3670,7 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
 // Formula: monthlyChange% = ((gdp_growth - 50) / 50) * 3  →  0=-3%, 50=0%, 100=+3%
 async function applyGdpGrowth(supabase, nation) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
-    var currentGdp = Number(nation.gdp ?? 0);
-
-    // Recovery: detect GDP stuck at stat-score values (0-100 or corrupted sub-million).
-    // Real GDP should be >= $1B for any nation. If it's absurdly low, reconstruct from
-    // population × estimated per-capita GDP based on standard_of_living.
-    // This handles cases where GDP was previously corrupted by stat-system writes.
-    if (currentGdp < 1_000_000_000) {
-        var pop = Number(nation.population) || 5_000_000;
-        var sol = Number(nation.standard_of_living) || 50;
-        // Per-capita GDP estimate: $10K at sol=0, $60K at sol=100 (linear interpolation)
-        var perCapita = 10000 + (sol / 100) * 50000;
-        var recoveredGdp = Math.round(pop * perCapita);
-        console.warn('[applyGdpGrowth] GDP RECOVERY: ' + nation.name +
-            ' GDP=' + currentGdp + ' (sub-$1B) → recovered to $' + recoveredGdp.toLocaleString() +
-            ' (pop=' + pop + ', sol=' + sol + ', perCapita=$' + Math.round(perCapita) + ')');
-        currentGdp = recoveredGdp;
-    }
-
+    const currentGdp = Number(nation.gdp ?? 0);
     if (currentGdp <= 0) return;
 
     const monthlyChangePercent = ((gdpGrowth - 50) / 50) * 3;
@@ -10063,7 +9994,7 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
             newVal = Math.min(target, currentVal + speed);
         }
 
-        newVal = clampNationStat(statKey, newVal);
+        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
 
         if (newVal !== Math.round(currentVal * 10) / 10) {
             nationUpdates[statKey] = newVal;
@@ -10080,7 +10011,6 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
     }
 
     if (Object.keys(nationUpdates).length > 0) {
-        sanitizeNationUpdates(nationUpdates, nation.name);
         const { error } = await supabase
             .from('nations')
             .update(nationUpdates)
@@ -10166,7 +10096,12 @@ async function processStatConnections(supabase, nation, currentTick, connections
             ? targetVal + effectiveMag
             : targetVal - effectiveMag;
 
-        newVal = clampNationStat(conn.target_stat, newVal);
+        // Raw-value stats (gdp, debt, population) must not be clamped to 0-100
+        if (RAW_SCALING_DIVISORS[conn.target_stat]) {
+            newVal = Math.max(0, newVal);
+        } else {
+            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+        }
 
         if (newVal !== Math.round(targetVal * 10) / 10) {
             // Accumulate — multiple connections can affect the same target
@@ -10175,7 +10110,9 @@ async function processStatConnections(supabase, nation, currentTick, connections
                 const prevDelta = nationUpdates[conn.target_stat] - targetVal;
                 const thisDelta = newVal - targetVal;
                 const accumulated = targetVal + prevDelta + thisDelta;
-                nationUpdates[conn.target_stat] = clampNationStat(conn.target_stat, accumulated);
+                nationUpdates[conn.target_stat] = RAW_SCALING_DIVISORS[conn.target_stat]
+                    ? Math.max(0, accumulated)
+                    : Math.round(Math.max(0, Math.min(100, accumulated)) * 10) / 10;
             } else {
                 nationUpdates[conn.target_stat] = newVal;
             }
@@ -10196,7 +10133,6 @@ async function processStatConnections(supabase, nation, currentTick, connections
     }
 
     if (Object.keys(nationUpdates).length > 0) {
-        sanitizeNationUpdates(nationUpdates, nation.name);
         const { error } = await supabase
             .from('nations')
             .update(nationUpdates)
@@ -13797,7 +13733,12 @@ async function processStatEffects(supabase, nation, currentTick) {
                         newVal = currentVal - scaledRate;
                     }
 
-                    newVal = clampNationStat(statKey, newVal);
+                    // Raw-value stats — don't clamp to 0-100
+                    if (RAW_SCALING_DIVISORS[statKey]) {
+                        newVal = Math.max(0, newVal);
+                    } else {
+                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                    }
                     nationUpdates[statKey] = newVal;
                     anyEffectApplied = true;
 
@@ -13822,7 +13763,6 @@ async function processStatEffects(supabase, nation, currentTick) {
 
     let nationUpdateError = null;
     if (Object.keys(nationUpdates).length > 0) {
-        sanitizeNationUpdates(nationUpdates, nation.name);
         const { error } = await supabase
             .from('nations')
             .update(nationUpdates)
@@ -13969,7 +13909,12 @@ async function processMinistryActions(supabase, nation, currentTick) {
                             : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
                         let scaledMinistryRate = RAW_SCALING_DIVISORS[statKey] ? rate * RAW_SCALING_DIVISORS[statKey] : rate;
                         newVal = eff.direction === 'up' ? currentVal + scaledMinistryRate : currentVal - scaledMinistryRate;
-                        newVal = clampNationStat(statKey, newVal);
+                        // Raw-value stats (debt, population) must not be clamped to 0-100
+                        if (RAW_SCALING_DIVISORS[statKey]) {
+                            newVal = Math.max(0, newVal);
+                        } else {
+                            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                        }
                         nationUpdates[statKey] = newVal;
                     }
 
@@ -13994,7 +13939,6 @@ async function processMinistryActions(supabase, nation, currentTick) {
     // Bulk update nation stats FIRST — before advancing tracking
     let nationUpdateFailed = false;
     if (Object.keys(nationUpdates).length > 0) {
-        sanitizeNationUpdates(nationUpdates, nation.name);
         const { error: nationError } = await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
         if (nationError) {
             console.error('[processMinistryActions] Nation stat update FAILED — effects will be retried next tick',
@@ -14397,7 +14341,10 @@ async function processEvents(supabase, nation, currentTick) {
                 const scaledChange = RAW_SCALING_DIVISORS[evtStatKey]
                     ? effect.change_value * RAW_SCALING_DIVISORS[evtStatKey]
                     : effect.change_value;
-                const newVal = clampNationStat(evtStatKey, currentVal + scaledChange);
+                // Raw-value stats (debt, population) must not be clamped to 0-100
+                const newVal = RAW_SCALING_DIVISORS[evtStatKey]
+                    ? Math.max(0, currentVal + scaledChange)
+                    : Math.max(0, Math.min(100, currentVal + scaledChange));
                 nationUpdates[evtStatKey] = newVal;
                 nation[evtStatKey] = newVal;
 
@@ -14456,7 +14403,6 @@ async function processEvents(supabase, nation, currentTick) {
         }
 
         if (Object.keys(nationUpdates).length > 0) {
-            sanitizeNationUpdates(nationUpdates, nation.name);
             await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
         }
 
@@ -14681,10 +14627,14 @@ async function processCrises(supabase, nation, currentTick, budgetItemAllocs) {
                     : (nation[statKey] !== undefined && nation[statKey] !== null
                         ? Number(nation[statKey]) : 50);
 
-                const scaledCrisisChange = RAW_SCALING_DIVISORS[statKey]
-                    ? changePT * RAW_SCALING_DIVISORS[statKey]
-                    : changePT;
-                const newVal = clampNationStat(statKey, currentVal + scaledCrisisChange);
+                // Raw-value stats (population) must not be clamped to 0-100
+                let newVal;
+                if (RAW_SCALING_DIVISORS[statKey]) {
+                    const scaledCrisisChange = changePT * RAW_SCALING_DIVISORS[statKey];
+                    newVal = Math.max(0, currentVal + scaledCrisisChange);
+                } else {
+                    newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
+                }
                 nationUpdates[statKey] = newVal;
                 nation[statKey] = newVal;
 
@@ -14896,7 +14846,6 @@ async function processCrises(supabase, nation, currentTick, budgetItemAllocs) {
 
     // 5. Bulk update nation stats
     if (Object.keys(nationUpdates).length > 0) {
-        sanitizeNationUpdates(nationUpdates, nation.name);
         const { error: crisisUpdateErr } = await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
         if (crisisUpdateErr) {
             console.error(`[processCrises] Nation stat update FAILED for ${nation.name}:`, crisisUpdateErr.message, JSON.stringify(nationUpdates));
@@ -15641,12 +15590,15 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
             if (STAT_PROCESSOR_SKIP.has(stat)) continue;
             const currentVal = nation[stat];
             if (currentVal !== undefined && currentVal !== null) {
-                const scaledDelta = RAW_SCALING_DIVISORS[stat] ? delta * RAW_SCALING_DIVISORS[stat] : delta;
-                updates[stat] = clampNationStat(stat, Number(currentVal) + scaledDelta);
+                if (RAW_SCALING_DIVISORS[stat]) {
+                    // Raw-value stats (population): scale rate and don't clamp to 0-100
+                    updates[stat] = Math.max(0, Number(currentVal) + delta * RAW_SCALING_DIVISORS[stat]);
+                } else {
+                    updates[stat] = Math.round(Math.max(0, Math.min(100, Number(currentVal) + delta)) * 10) / 10;
+                }
             }
         }
         if (Object.keys(updates).length > 0) {
-            sanitizeNationUpdates(updates, nation.name);
             await supabase.from('nations').update(updates).eq('id', nation.id);
         }
     }
@@ -18559,7 +18511,6 @@ async function enactSovereignDefault(supabase, bill, currentTick) {
     })();
     nationUpdates.credit_locked_out = nationUpdates.credit <= cfg.CREDIT_LOCKOUT_THRESHOLD;
 
-    sanitizeNationUpdates(nationUpdates, nation.name);
     const { error: updateErr } = await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
     if (updateErr) {
         console.error(`[enactSovereignDefault] Nation update failed:`, updateErr.message);
@@ -18783,7 +18734,6 @@ async function processAusterityCommitments(supabase, nation, currentTick) {
     }
 
     if (Object.keys(nationUpdates).length > 0) {
-        sanitizeNationUpdates(nationUpdates, nation.name);
         await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
         console.log(`[Austerity] ${nation.name}: applied ${results.length} commitment adjustment(s)`);
     }
@@ -18940,31 +18890,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // 3.5 Trade engine — runs across ALL nations simultaneously
-    // Re-fetch nations so trade sees updated GDP/debt/stats from nation processing above.
-    // nationList was loaded before processing and is now stale.
     try {
-        const { data: freshNations } = await supabase.from('nations').select('*');
-        const tradeNationList = freshNations || nationList;
-
-        // Pre-trade GDP recovery: ensure no nation has stat-scale GDP (0-100) when
-        // trade calculates capacity/demand. Without this, gdpModifier ≈ 0 and all
-        // trade rounds to $0. The per-nation applyGdpGrowth recovery runs AFTER trade,
-        // so we must fix corrupted GDP here first.
-        for (const tn of tradeNationList) {
-            const tnGdp = Number(tn.gdp ?? 0);
-            if (tnGdp > 0 && tnGdp < 1_000_000_000) {
-                const pop = Number(tn.population) || 5_000_000;
-                const sol = Number(tn.standard_of_living) || 50;
-                const perCapita = 10000 + (sol / 100) * 50000;
-                const recoveredGdp = Math.round(pop * perCapita);
-                console.warn('[pre-trade GDP recovery] ' + tn.name +
-                    ' GDP=' + tnGdp + ' (sub-$1B) → recovered to $' + recoveredGdp.toLocaleString());
-                tn.gdp = recoveredGdp;
-                await supabase.from('nations').update({ gdp: recoveredGdp }).eq('id', tn.id);
-            }
-        }
-
-        const tradeResult = await processTradeFlows(supabase, tradeNationList, newTick);
+        const tradeResult = await processTradeFlows(supabase, nationList, newTick);
         if (tradeResult.processed > 0) {
             summary.trade = tradeResult;
             console.log(`[advanceTick] Trade: ${tradeResult.processed} nations, $${Math.round(tradeResult.totalVolume).toLocaleString()} volume`);
