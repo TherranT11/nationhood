@@ -11943,14 +11943,14 @@ function getAutocracyLoyaltyDecay(regimeHealth) {
 }
 
 async function processLoyaltyTick(supabase, nation) {
+    if (!isAutocracy(nation)) return;
+
     const rulingId = nation.ruling_faction_id;
     if (!rulingId) return;
 
-    const nationIsAutocracy = isAutocracy(nation);
-
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, loyalty, seats')
+        .select('id, loyalty')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -11971,7 +11971,6 @@ async function processLoyaltyTick(supabase, nation) {
 
     for (const faction of factions) {
         let loyalty = faction.loyalty ?? 50;
-        let seats = faction.seats || 0;
 
         if (faction.id === rulingId) {
             if (nationIsAutocracy) {
@@ -12009,25 +12008,27 @@ async function processLoyaltyTick(supabase, nation) {
         } else {
             // ── Democracy/Presidential loyalty ──
             const ministryCount = ministryCounts[faction.id] || 0;
-
-            if (ministryCount > 0) {
-                loyalty += ministryCount * 0.5;
-            } else {
-                loyalty -= 2;
-            }
-
-            if (loyalty > 50) {
-                loyalty -= 1;
-            } else if (loyalty < 50) {
-                loyalty += 1;
-            }
-
+            if (loyalty > 80) loyalty -= 1;
+            else if (loyalty < 80) loyalty += 1;
+            loyalty += ministryCount * 0.5;
             loyalty = Math.max(0, Math.min(100, Math.round(loyalty * 10) / 10));
-
             await supabase.from('factions')
-                .update({ loyalty, seats })
+                .update({ loyalty })
                 .eq('id', faction.id);
+            continue;
         }
+
+        // v2 Autocracy Loyalty Decay
+        // Flat decay based on Regime Health thresholds. No ministry bonus.
+        // Loyalty cap: 95 (inherent paranoia of autocratic rule).
+        const regimeHealth = Number(nation.regime_health ?? 80);
+        const decayRate = getAutocracyLoyaltyDecay(regimeHealth);
+        loyalty += decayRate;
+        loyalty = Math.max(0, Math.min(95, Math.round(loyalty * 10) / 10));
+
+        await supabase.from('factions')
+            .update({ loyalty })
+            .eq('id', faction.id);
     }
 }
 
