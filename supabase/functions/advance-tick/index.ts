@@ -11987,7 +11987,8 @@ function getAutocracyLoyaltyDecay(regimeHealth) {
     if (regimeHealth >= 60) return -2;
     if (regimeHealth >= 40) return -2.5;
     if (regimeHealth >= 20) return -3;
-    return -4;
+    if (regimeHealth >= 1) return -4;
+    return -5; // COLLAPSED tier — matches getRegimeHealthTier
 }
 
 async function processLoyaltyTick(supabase, nation) {
