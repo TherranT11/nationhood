@@ -139,11 +139,8 @@
 import { initPage, formatNumber } from './js/common.js';
 import { _supabase } from './js/supabase-client.js';
 
-(async () => {
-  const ctx = await initPage({ requireAuth: true, requireNation: true });
-  if (!ctx) return;
-
-  const { nation } = ctx;
+initPage('home', async (state) => {
+  const { nation } = state;
 
   // Fetch nation profile for flag, motto, founded_year, languages
   const { data: profiles } = await _supabase
@@ -189,7 +186,7 @@ import { _supabase } from './js/supabase-client.js';
        <span class="value">${r.value}</span>
      </div>`
   ).join('');
-})();
+});
 
 /** Simple deterministic motto generator based on nation name */
 function generateMotto(name) {
