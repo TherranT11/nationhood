@@ -3718,8 +3718,8 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
 }
 
 
-// Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
-// Formula: monthlyChange% = (gdp_growth - 50) / 50  →  0=-1%, 50=0%, 100=+1%
+// Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -3% to +3% per month
+// Formula: monthlyChange% = ((gdp_growth - 50) / 50) * 3  →  0=-3%, 50=0%, 100=+3%
 async function applyGdpGrowth(supabase, nation) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
     var currentGdp = Number(nation.gdp ?? 0);
@@ -3742,7 +3742,7 @@ async function applyGdpGrowth(supabase, nation) {
 
     if (currentGdp <= 0) return;
 
-    const monthlyChangePercent = (gdpGrowth - 50) / 50;
+    const monthlyChangePercent = ((gdpGrowth - 50) / 50) * 3;
     const newGdp = Math.max(0, currentGdp * (1 + monthlyChangePercent / 100));
     nation.gdp = newGdp;
 
