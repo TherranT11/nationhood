@@ -2365,7 +2365,7 @@ async function loadFactionIdeology(supabase, factionId) {
 
     if (error) {
         console.error('Error loading faction ideology:', error);
-        return null;
+        return { _error: true, message: error.message };
     }
     if (data && typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 2 * 60 * 1000);
     return data;
@@ -4590,13 +4590,16 @@ async function recalcDerivedApproval(supabase, factionId, blocRows) {
  */
 async function ensureBlocApprovals(supabase, factionId, nationId) {
     // Ensure faction_ideology row exists (required for preference_score calculation)
-    const { data: ideoRow } = await supabase
+    const { data: ideoRow, error: ideoCheckErr } = await supabase
         .from('faction_ideology')
         .select('faction_id')
         .eq('faction_id', factionId)
         .maybeSingle();
 
-    if (!ideoRow) {
+    if (ideoCheckErr) {
+        console.error('[ensureBlocApprovals] Error checking faction_ideology:', ideoCheckErr.message);
+        // Don't create a zero row on error — the row likely exists but the query failed
+    } else if (!ideoRow) {
         const { error: ideoErr } = await supabase
             .from('faction_ideology')
             .insert({
@@ -4754,10 +4757,19 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
 
     for (const [factionId, axisShifts] of Object.entries(factionShifts)) {
         let ideologyRow = await loadFactionIdeology(supabase, factionId);
+        if (ideologyRow?._error) {
+            console.error(`[processIdeologyShifts] Skipping faction ${factionId}: DB error loading ideology`);
+            continue;
+        }
         if (!ideologyRow) {
             const newRow = { faction_id: factionId, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0 };
-            await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id' });
-            ideologyRow = newRow;
+            await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id', ignoreDuplicates: true });
+            // Re-read actual row in case it already existed with real values
+            ideologyRow = await loadFactionIdeology(supabase, factionId);
+            if (!ideologyRow || ideologyRow._error) {
+                console.error(`[processIdeologyShifts] Cannot load ideology for ${factionId} after upsert, skipping`);
+                continue;
+            }
             console.warn(`Created missing faction_ideology row for faction ${factionId}`);
         }
 
@@ -8598,16 +8610,28 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
     if (axisKey && typeof direction === 'number') {
         const shift = 15 * direction;
         let factionIdeology = await loadFactionIdeology(supabase, factionId);
+        if (factionIdeology?._error) {
+            console.error(`[installPresidentialWinner] DB error loading ideology for ${factionId}, skipping ideology shift`);
+            factionIdeology = null;
+        }
         if (!factionIdeology) {
             const newRow = { faction_id: factionId, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0 };
-            await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id' });
-            factionIdeology = newRow;
-            console.warn(`Created missing faction_ideology row for faction ${factionId}`);
+            await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id', ignoreDuplicates: true });
+            // Re-read actual row in case it already existed with real values
+            factionIdeology = await loadFactionIdeology(supabase, factionId);
+            if (!factionIdeology || factionIdeology._error) {
+                console.error(`[installPresidentialWinner] Cannot load ideology for ${factionId} after upsert, skipping ideology shift`);
+                factionIdeology = null;
+            } else {
+                console.warn(`Created missing faction_ideology row for faction ${factionId}`);
+            }
         }
-        const currentVal = factionIdeology[axisKey] || 0;
-        const newVal = Math.max(-100, Math.min(100, currentVal + shift));
-        await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
-        console.log(`President ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
+        if (factionIdeology) {
+            const currentVal = factionIdeology[axisKey] || 0;
+            const newVal = Math.max(-100, Math.min(100, currentVal + shift));
+            await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
+            console.log(`President ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
+        }
     }
 
     // Apply trait effects (same logic as PM)
@@ -15347,21 +15371,33 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
     const shift = 15 * candidate.ideology_direction;
 
     let factionIdeology = await loadFactionIdeology(supabase, factionId);
+    if (factionIdeology?._error) {
+        console.error(`[selectPMCandidate] DB error loading ideology for ${factionId}, skipping ideology shift`);
+        factionIdeology = null;
+    }
     if (!factionIdeology) {
         const newRow = { faction_id: factionId, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0 };
-        await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id' });
-        factionIdeology = newRow;
-        console.warn(`Created missing faction_ideology row for faction ${factionId}`);
+        await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id', ignoreDuplicates: true });
+        // Re-read actual row in case it already existed with real values
+        factionIdeology = await loadFactionIdeology(supabase, factionId);
+        if (!factionIdeology || factionIdeology._error) {
+            console.error(`[selectPMCandidate] Cannot load ideology for ${factionId} after upsert, skipping ideology shift`);
+            factionIdeology = null;
+        } else {
+            console.warn(`Created missing faction_ideology row for faction ${factionId}`);
+        }
     }
-    const currentVal = factionIdeology[axisKey] || 0;
-    const newVal = Math.max(-100, Math.min(100, currentVal + shift));
+    if (factionIdeology) {
+        const currentVal = factionIdeology[axisKey] || 0;
+        const newVal = Math.max(-100, Math.min(100, currentVal + shift));
 
-    await supabase
-        .from('faction_ideology')
-        .update({ [axisKey]: newVal })
-        .eq('faction_id', factionId);
+        await supabase
+            .from('faction_ideology')
+            .update({ [axisKey]: newVal })
+            .eq('faction_id', factionId);
 
-    console.log(`Ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
+        console.log(`Ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
+    }
 
 
     const { data: trait } = await supabase
@@ -15420,7 +15456,11 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
     }
 
     // Pick a weighted ideology based on faction's ideology profile
-    const factionIdeology = await loadFactionIdeology(supabase, factionId);
+    let factionIdeology = await loadFactionIdeology(supabase, factionId);
+    if (factionIdeology?._error) {
+        console.error(`[autoAppointPartyLeaderAsPM] DB error loading ideology for ${factionId}, using neutral weights`);
+        factionIdeology = null;
+    }
     const weightedIdeologies = getWeightedIdeologies(factionIdeology);
     const ideologyPick = weightedRandomPick(weightedIdeologies);
     const ideology = ideologyPick.item;
@@ -15504,12 +15544,19 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
     let currentIdeology = factionIdeology;
     if (!currentIdeology) {
         const newRow = { faction_id: factionId, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0 };
-        await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id' });
-        currentIdeology = newRow;
+        await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id', ignoreDuplicates: true });
+        // Re-read actual row in case it already existed with real values
+        currentIdeology = await loadFactionIdeology(supabase, factionId);
+        if (!currentIdeology || currentIdeology._error) {
+            console.error(`[autoAppointPartyLeaderAsPM] Cannot load ideology for ${factionId} after upsert, skipping ideology shift`);
+            currentIdeology = null;
+        }
     }
-    const currentVal = currentIdeology[axisKey] || 0;
-    const newVal = Math.max(-100, Math.min(100, currentVal + shift));
-    await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
+    if (currentIdeology) {
+        const currentVal = currentIdeology[axisKey] || 0;
+        const newVal = Math.max(-100, Math.min(100, currentVal + shift));
+        await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
+    }
 
     // Apply trait effects
     const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', traitKey).single();

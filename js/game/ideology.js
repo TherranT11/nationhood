@@ -303,7 +303,7 @@ export async function loadFactionIdeology(supabase, factionId) {
 
     if (error) {
         console.error('Error loading faction ideology:', error);
-        return null;
+        return { _error: true, message: error.message };
     }
     if (data && typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 2 * 60 * 1000);
     return data;

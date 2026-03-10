@@ -465,13 +465,16 @@ export async function recalcDerivedApproval(supabase, factionId, blocRows) {
  */
 export async function ensureBlocApprovals(supabase, factionId, nationId) {
     // Ensure faction_ideology row exists (required for preference_score calculation)
-    const { data: ideoRow } = await supabase
+    const { data: ideoRow, error: ideoCheckErr } = await supabase
         .from('faction_ideology')
         .select('faction_id')
         .eq('faction_id', factionId)
         .maybeSingle();
 
-    if (!ideoRow) {
+    if (ideoCheckErr) {
+        console.error('[ensureBlocApprovals] Error checking faction_ideology:', ideoCheckErr.message);
+        // Don't create a zero row on error — the row likely exists but the query failed
+    } else if (!ideoRow) {
         const { error: ideoErr } = await supabase
             .from('faction_ideology')
             .insert({
@@ -629,10 +632,19 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
 
     for (const [factionId, axisShifts] of Object.entries(factionShifts)) {
         let ideologyRow = await loadFactionIdeology(supabase, factionId);
+        if (ideologyRow?._error) {
+            console.error(`[processIdeologyShifts] Skipping faction ${factionId}: DB error loading ideology`);
+            continue;
+        }
         if (!ideologyRow) {
             const newRow = { faction_id: factionId, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0 };
-            await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id' });
-            ideologyRow = newRow;
+            await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id', ignoreDuplicates: true });
+            // Re-read actual row in case it already existed with real values
+            ideologyRow = await loadFactionIdeology(supabase, factionId);
+            if (!ideologyRow || ideologyRow._error) {
+                console.error(`[processIdeologyShifts] Cannot load ideology for ${factionId} after upsert, skipping`);
+                continue;
+            }
             console.warn(`Created missing faction_ideology row for faction ${factionId}`);
         }
 
