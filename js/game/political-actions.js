@@ -2212,7 +2212,7 @@ export async function processLoyaltyTick(supabase, nation) {
             const regimeHealth = Number(nation.regime_health ?? 80);
             const decayRate = getAutocracyLoyaltyDecay(regimeHealth);
             loyalty += decayRate;
-            loyalty = Math.max(0, Math.min(95, Math.round(loyalty * 10) / 10));
+            loyalty = Math.max(0, Math.min(GAME_CONFIG.LOYALTY_CAP, Math.round(loyalty * 10) / 10));
 
             await supabase.from('factions')
                 .update({ loyalty })
@@ -2457,6 +2457,17 @@ export const PILLAR_TO_STEWARD_TYPE = {
     foreign_patrons: 'intelligence_director',
     religious:       'religious_authority',
 };
+
+/** Adjust coup_readiness for all living stewards in a nation by a delta. */
+async function adjustStewardsCoupReadiness(supabase, nationId, delta) {
+    const { data: stewards } = await supabase
+        .from('stewards').select('id, coup_readiness')
+        .eq('nation_id', nationId).eq('is_alive', true);
+    for (const s of (stewards || [])) {
+        const newCR = Math.min(100, Math.max(0, (s.coup_readiness ?? 0) + delta));
+        await supabase.from('stewards').update({ coup_readiness: newCR }).eq('id', s.id);
+    }
+}
 
 // ==================== AUTOCRACY v2 FACTION ACTIONS ====================
 
@@ -2992,12 +3003,10 @@ export async function executeIntimidate(supabase, factionId, nationId, targetId,
     let newLoyalty = Math.max(0, (faction.loyalty ?? 50) + GAME_CONFIG.INTIMIDATE_LOYALTY);
     let newStanding = faction.standing ?? 30;
     let newFunds = funds - GAME_CONFIG.INTIMIDATE_COST;
-    let targetStandingChange = 0;
 
     if (failed) {
         // Failed intimidation — humiliation
         newStanding = Math.max(0, newStanding + GAME_CONFIG.INTIMIDATE_FAIL_STANDING);
-        targetStandingChange = 1;
         await supabase.from('factions').update({
             standing: Math.min(GAME_CONFIG.STANDING_CAP, (target.standing ?? 30) + 1)
         }).eq('id', targetId);
@@ -3041,7 +3050,7 @@ export async function executeIntimidate(supabase, factionId, nationId, targetId,
             target_faction_id: targetId, target_name: target.faction_name,
             loyalty_change: GAME_CONFIG.INTIMIDATE_LOYALTY,
             standing_change: failed ? GAME_CONFIG.INTIMIDATE_FAIL_STANDING : GAME_CONFIG.INTIMIDATE_STANDING,
-            target_standing_change: targetStandingChange,
+            target_standing_change: failed ? 1 : 0,
             event_id: eventId,
             faction_name: faction.faction_name,
         }
@@ -6157,13 +6166,7 @@ export async function executeAppointSuccessor(supabase, nationId, strongmanFacti
         }).eq('id', nationId);
 
         // 7a. All stewards: coup_readiness +7
-        const { data: allStewards } = await supabase
-            .from('stewards').select('id, coup_readiness')
-            .eq('nation_id', nationId).eq('is_alive', true);
-        for (const s of (allStewards || [])) {
-            const newCR = Math.min(100, (s.coup_readiness ?? 0) + SUCCESSOR_CONFIG.FAMILY_COUP_READINESS);
-            await supabase.from('stewards').update({ coup_readiness: newCR }).eq('id', s.id);
-        }
+        await adjustStewardsCoupReadiness(supabase, nationId, SUCCESSOR_CONFIG.FAMILY_COUP_READINESS);
 
         // 8a. All regime pillars: -5 support
         const { data: pillars } = await supabase
@@ -6337,15 +6340,7 @@ export async function executeRevokeSuccessor(supabase, nationId, strongmanFactio
     await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
 
     // All stewards: coup_readiness +3
-    const { data: allStewards } = await supabase
-        .from('stewards')
-        .select('id, coup_readiness')
-        .eq('nation_id', nationId)
-        .eq('is_alive', true);
-    for (const s of (allStewards || [])) {
-        const newCR = Math.min(100, (s.coup_readiness ?? 0) + SUCCESSOR_CONFIG.REVOKE_COUP_READINESS);
-        await supabase.from('stewards').update({ coup_readiness: newCR }).eq('id', s.id);
-    }
+    await adjustStewardsCoupReadiness(supabase, nationId, SUCCESSOR_CONFIG.REVOKE_COUP_READINESS);
 
     return { success: true, revokedName: isFamilyRevoke ? 'Close Family Member' : undefined };
 }
