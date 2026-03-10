@@ -14,11 +14,101 @@
     max-width: 900px;
     margin: 60px auto;
     padding: 40px 20px;
-    text-align: center;
   }
-  .empty-msg {
+
+  /* ── Nation Card ── */
+  .dash-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-main);
+    border-radius: 8px;
+    padding: 28px 24px;
+  }
+  .dash-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 22px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+  }
+  .dash-card-header .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .nation-identity {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 24px;
+  }
+  .nation-flag-box {
+    width: 80px;
+    height: 56px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-main);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .nation-flag-box img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  .nation-flag-box .abbr-fallback {
+    font-family: 'JetBrains Mono', monospace;
     font-size: 1.1rem;
-    color: #6b6a5e;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.05em;
+  }
+  .nation-identity h2 {
+    font-family: 'IBM Plex Serif', serif;
+    font-size: 1.35rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .nation-identity .motto {
+    font-family: 'IBM Plex Serif', serif;
+    font-style: italic;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+  }
+
+  .nation-stats-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .nation-stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 4px;
+    border-top: 1px solid var(--border-light);
+    font-size: 0.9rem;
+  }
+  .nation-stat-row:last-child {
+    padding-bottom: 0;
+  }
+  .nation-stat-row .label {
+    color: var(--text-secondary);
+  }
+  .nation-stat-row .value {
+    color: var(--text-primary);
+    font-weight: 500;
+    text-align: right;
   }
 </style>
 </head>
@@ -29,16 +119,97 @@
 <div id="top-bar"></div>
 
 <div id="content-area">
-  <p class="empty-msg">Dashboard is being rebuilt.</p>
+
+  <!-- ── Nation Card ── -->
+  <div class="dash-card" id="nation-card">
+    <div class="dash-card-header"><span class="dot"></span> NATION</div>
+    <div class="nation-identity">
+      <div class="nation-flag-box" id="nation-flag-box">
+        <span class="abbr-fallback" id="nation-abbr"></span>
+      </div>
+      <h2 id="nation-name"></h2>
+      <div class="motto" id="nation-motto"></div>
+    </div>
+    <div class="nation-stats-list" id="nation-stats-list"></div>
+  </div>
+
 </div>
 
 <script type="module">
-import { initPage } from './js/common.js';
+import { initPage, formatNumber } from './js/common.js';
+import { _supabase } from './js/supabase-client.js';
 
 (async () => {
   const ctx = await initPage({ requireAuth: true, requireNation: true });
   if (!ctx) return;
+
+  const { nation } = ctx;
+
+  // Fetch nation profile for flag, motto, founded_year, languages
+  const { data: profiles } = await _supabase
+    .from('nation_profiles')
+    .select('flag_url, motto, founded_year, languages')
+    .eq('nation_id', nation.id)
+    .limit(1);
+  const profile = (profiles && profiles.length > 0) ? profiles[0] : {};
+
+  // ── Flag or abbreviation fallback ──
+  const flagBox = document.getElementById('nation-flag-box');
+  if (profile.flag_url) {
+    const img = document.createElement('img');
+    img.src = profile.flag_url;
+    img.alt = nation.name + ' flag';
+    flagBox.innerHTML = '';
+    flagBox.appendChild(img);
+  } else {
+    // Generate abbreviation from nation name (first letters of each word, max 3)
+    const abbr = nation.name.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3);
+    document.getElementById('nation-abbr').textContent = abbr;
+  }
+
+  // ── Name & Motto ──
+  document.getElementById('nation-name').textContent = nation.name;
+
+  const motto = profile.motto || generateMotto(nation.name);
+  document.getElementById('nation-motto').textContent = '\u201C' + motto + '\u201D';
+
+  // ── Stats rows ──
+  const rows = [
+    { label: 'Established', value: profile.founded_year || '\u2014' },
+    { label: 'Government', value: nation.government_type || '\u2014' },
+    { label: 'Capital', value: nation.capital || '\u2014' },
+    { label: 'Language', value: profile.languages || 'Estrellan' },
+    { label: 'Population', value: formatNumber(nation.population) },
+  ];
+
+  const list = document.getElementById('nation-stats-list');
+  list.innerHTML = rows.map(r =>
+    `<div class="nation-stat-row">
+       <span class="label">${r.label}</span>
+       <span class="value">${r.value}</span>
+     </div>`
+  ).join('');
 })();
+
+/** Simple deterministic motto generator based on nation name */
+function generateMotto(name) {
+  const mottos = [
+    'Forged in Unity, Bound by Liberty',
+    'Strength Through the People',
+    'One Land, One Purpose',
+    'From Many, Greatness',
+    'Liberty and Justice for All',
+    'Progress, Honor, Unity',
+    'Built on Courage, Sustained by Hope',
+    'In Unity We Prosper',
+    'A Nation of the People',
+    'Forward Together, Backward Never',
+  ];
+  // Deterministic pick based on character sum
+  let sum = 0;
+  for (let i = 0; i < name.length; i++) sum += name.charCodeAt(i);
+  return mottos[sum % mottos.length];
+}
 </script>
 
 </body>
