@@ -1142,20 +1142,7 @@ async function loadTaxAdminFunding(nation) {
     var allocated = 0;
     var needed = 0;
 
-    if (nation.last_budget_bill_id) {
-        // Check budget allocations for Tax Administration institution
-        var { data: items } = await _supabase.from('budget_item_allocations')
-            .select('allocation_amount, needed_amount')
-            .eq('bill_id', nation.last_budget_bill_id)
-            .eq('item_type', 'institution')
-            .ilike('item_name', '%Tax Administration%');
-        if (items && items.length > 0) {
-            allocated = Number(items[0].allocation_amount || 0);
-            needed = Number(items[0].needed_amount || 0);
-        }
-    }
-
-    // Fallback: compute needed from ministry_institution_config
+    // Compute needed from ministry_institution_config (no budget bill system)
     if (needed === 0) {
         var { data: cfg } = await _supabase.from('ministry_institution_config')
             .select('base_cost_per_capita, scaling_type')

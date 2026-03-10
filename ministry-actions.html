@@ -99,24 +99,8 @@ const MINISTRY_ICONS = {
     transportation:''
 };
 
-// Map ministry_key -> fiscal_category name in budget_allocations
-const MINISTRY_FISCAL_MAP = {
-    prime_minister: 'Interior',
-    interior:      'Interior',
-    foreign:       'Foreign Ministry',
-    defense:       'Defense',
-    finance:       'Finance',
-    education:     'Education',
-    healthcare:    'Healthcare',
-    labor:         'Labor',
-    justice:       'Justice',
-    trade:         'Interior',
-    energy:        'Energy',
-    transportation:'Transportation'
-};
-
 // ==================== INSTITUTION DEFINITIONS ====================
-// Each ministry has institutions that need funding via the budget bill.
+// Each ministry has institutions that need funding.
 // Institutions MAINTAIN stats — they prevent decay. Policies IMPROVE stats.
 
 const MINISTRY_INSTITUTIONS = {
@@ -671,8 +655,6 @@ let currentNation = null;
 let currentFaction = null;
 let isPresidential = false;
 let ministryData = [];
-let budgetAllocations = {};
-let budgetItemAllocations = {};  // { itemId: { allocated, needed } } from budget_item_allocations
 let selectedMinistryKey = null;
 let activeDetailTab = 'institutions';
 // Energy dispatch state
@@ -692,36 +674,6 @@ initPage('ministry-actions', async (state) => {
         .eq('nation_id', currentNation.id)
         .eq('is_active', true);
     ministryData = data || [];
-
-    // Fetch current budget allocations (from last passed budget bill)
-    if (currentNation.last_budget_bill_id) {
-        const { data: allocs } = await _supabase.from('budget_allocations')
-            .select('fiscal_category, allocation_amount, fulfilled_cost, discretionary_amount')
-            .eq('bill_id', currentNation.last_budget_bill_id);
-        if (allocs) {
-            for (const a of allocs) {
-                budgetAllocations[a.fiscal_category] = {
-                    allocated: Number(a.allocation_amount) || 0,
-                    needed: Number(a.fulfilled_cost) || 0,
-                    discretionary: Number(a.discretionary_amount) || 0
-                };
-            }
-        }
-
-        // Fetch per-institution allocations from budget_item_allocations
-        const { data: itemAllocs } = await _supabase.from('budget_item_allocations')
-            .select('item_id, allocation_amount, needed_amount')
-            .eq('bill_id', currentNation.last_budget_bill_id)
-            .eq('item_type', 'institution');
-        if (itemAllocs) {
-            for (const ia of itemAllocs) {
-                budgetItemAllocations[ia.item_id] = {
-                    allocated: Number(ia.allocation_amount) || 0,
-                    needed: Number(ia.needed_amount) || 0
-                };
-            }
-        }
-    }
 
     // Load admin-configured institution overrides from DB
     const { data: instConfig, error: instConfigErr } = await _supabase.from('ministry_institution_config').select('*');
@@ -851,22 +803,18 @@ function renderMinistryContent(key) {
     const ministry = ministryData.find(m => m.ministry_key === key);
     const fullName = MINISTRY_FULL_NAMES[key] || getButtonLabel(key);
     const icon = MINISTRY_ICONS[key] || '';
-    const fiscalCat = MINISTRY_FISCAL_MAP[key];
-    let alloc = budgetAllocations[fiscalCat] || null;
-    // When no budget bill exists, compute actual institution costs and auto-fund at 100%
-    if (!alloc) {
-        let totalNeeded = 0;
-        for (const inst of (MINISTRY_INSTITUTIONS[key] || [])) {
-            if (inst.baseCostPerCapita) {
-                if (inst.scalingType === 'gdp') {
-                    totalNeeded += (inst.baseCostPerCapita / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0);
-                } else {
-                    totalNeeded += inst.baseCostPerCapita * (currentNation.population || 0);
-                }
+    // Compute actual institution costs — auto-fund at 100% (no budget bill system)
+    let totalNeeded = 0;
+    for (const inst of (MINISTRY_INSTITUTIONS[key] || [])) {
+        if (inst.baseCostPerCapita) {
+            if (inst.scalingType === 'gdp') {
+                totalNeeded += (inst.baseCostPerCapita / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0);
+            } else {
+                totalNeeded += inst.baseCostPerCapita * (currentNation.population || 0);
             }
         }
-        alloc = { allocated: totalNeeded, needed: totalNeeded };
     }
+    const alloc = { allocated: totalNeeded, needed: totalNeeded };
     const overallPct = alloc.needed > 0 ? Math.round((alloc.allocated / alloc.needed) * 100) : 100;
     const overallFunding = getFundingLabel(overallPct);
     const institutions = MINISTRY_INSTITUTIONS[key] || [];
@@ -962,14 +910,9 @@ function renderInstitutionsTab(ministryKey, institutions, alloc) {
     }
 
     for (const inst of institutions) {
-        // Use actual per-institution allocations from budget_item_allocations if available
-        const itemAlloc = budgetItemAllocations[inst.id];
+        // Compute needed cost and auto-fund at 100%
         let instAllocated, instNeeded;
-        if (itemAlloc) {
-            instAllocated = itemAlloc.allocated;
-            instNeeded = itemAlloc.needed;
-        } else {
-            // No per-institution allocation — compute needed cost and auto-fund at 100%
+        {
             if (inst.baseCostPerCapita) {
                 if (inst.scalingType === 'gdp') {
                     instNeeded = (inst.baseCostPerCapita / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0);
@@ -979,7 +922,7 @@ function renderInstitutionsTab(ministryKey, institutions, alloc) {
             } else {
                 instNeeded = alloc.needed * inst.costShare;
             }
-            instAllocated = instNeeded; // Auto-fund at 100%
+            instAllocated = instNeeded;
         }
         const pct = instNeeded > 0 ? Math.round((instAllocated / instNeeded) * 100) : 100;
         const funding = getFundingLabel(pct);
@@ -1532,29 +1475,8 @@ function getInstitutionFundingPct(instId, ministryKey) {
     const inst = institutions.find(i => i.id === instId);
     if (!inst) return 100;
 
-    const fiscalCat = MINISTRY_FISCAL_MAP[ministryKey];
-    const alloc = budgetAllocations[fiscalCat] || null;
-    const itemAlloc = budgetItemAllocations[instId];
-
-    let instAllocated, instNeeded;
-    if (itemAlloc) {
-        instAllocated = itemAlloc.allocated;
-        instNeeded = itemAlloc.needed;
-    } else {
-        // No per-institution allocation — compute needed and auto-fund at 100%
-        if (inst.baseCostPerCapita) {
-            if (inst.scalingType === 'gdp') {
-                instNeeded = (inst.baseCostPerCapita / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0);
-            } else {
-                instNeeded = inst.baseCostPerCapita * (currentNation.population || 0);
-            }
-        } else {
-            instNeeded = alloc ? alloc.needed * inst.costShare : 0;
-        }
-        instAllocated = instNeeded; // Auto-fund at 100%
-    }
-
-    return instNeeded > 0 ? Math.round((instAllocated / instNeeded) * 100) : 100;
+    // Auto-fund at 100% — no budget bill system
+    return 100;
 }
 
 // Determine which crises are active for the current ministry
