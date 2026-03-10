@@ -2061,6 +2061,9 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
  * election-simulation.js) with existing seat counts as weights.
  */
 export async function rebalanceVacantSeats(supabase, nation) {
+    // Autocracies never auto-redistribute seats — factions must earn them.
+    if (isAutocracy(nation)) return null;
+
     const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
 
     const { data: factions, error } = await supabase
@@ -2072,10 +2075,7 @@ export async function rebalanceVacantSeats(supabase, nation) {
     if (error || !factions || factions.length === 0) return null;
 
     const currentSum = factions.reduce((s, f) => s + (f.seats || 0), 0);
-    // Subtract unaligned seats (autocracy pool) — those are intentionally
-    // held outside factions and should not be treated as vacant.
-    const unalignedSeats = nation.unaligned_seats || 0;
-    const vacantSeats = totalSeats - currentSum - unalignedSeats;
+    const vacantSeats = totalSeats - currentSum;
 
     if (vacantSeats <= 0) return null; // No vacant seats
 
