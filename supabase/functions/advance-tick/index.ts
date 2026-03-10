@@ -12088,6 +12088,46 @@ async function processLoyaltyTick(supabase, nation) {
  * standing decays at -1/tick until a standing-building action is taken.
  * Standing cap: 90.
  */
+/**
+ * Expire pending loyalty demands past their deadline (server-side).
+ * Treats expiry as a refusal: reveals true loyalty, standing -10.
+ */
+async function processLoyaltyDemandExpiry(supabase, nation, currentTick) {
+    if (!isAutocracy(nation)) return;
+
+    const { data: expired } = await supabase
+        .from('loyalty_demands')
+        .select('id, target_faction_id, strongman_faction_id')
+        .eq('nation_id', nation.id)
+        .eq('status', 'pending')
+        .lte('deadline_tick', currentTick);
+
+    if (!expired || expired.length === 0) return;
+
+    for (const d of expired) {
+        await supabase.from('loyalty_demands').update({
+            status: 'expired', resolved_at_tick: currentTick,
+        }).eq('id', d.id);
+
+        // Standing penalty for refusal
+        const { data: targetFaction } = await supabase
+            .from('factions').select('id, standing, faction_name')
+            .eq('id', d.target_faction_id).single();
+        if (targetFaction) {
+            await supabase.from('factions').update({
+                standing: Math.max(0, (targetFaction.standing ?? 30) - 10),
+            }).eq('id', d.target_faction_id);
+        }
+
+        await supabase.from('campaign_actions').insert({
+            party_id: d.target_faction_id, nation_id: nation.id,
+            action_type: 'loyalty_demand_expired',
+            tick_performed: currentTick,
+            result: { faction_name: targetFaction?.faction_name || 'Unknown' },
+        });
+    }
+}
+
 async function processStandingTick(supabase, nation, currentTick) {
     if (!isAutocracy(nation)) return;
 
@@ -12312,7 +12352,7 @@ async function executePledgeAllegiance(supabase, factionId, nationId, currentTic
     // 6. Log action
     await supabase.from('campaign_actions').insert({
         party_id: factionId, nation_id: nationId,
-        action_type: 'pledge_allegiance',
+        action_type: 'faction_pledge_allegiance',
         tick_performed: currentTick,
         result: {
             loyalty_change: loyaltyGain, standing_change: standingPenalty,
@@ -12366,7 +12406,7 @@ async function executeConsolidatePower(supabase, factionId, nationId, currentTic
     // 4. Log action
     await supabase.from('campaign_actions').insert({
         party_id: factionId, nation_id: nationId,
-        action_type: 'consolidate_power',
+        action_type: 'faction_consolidate_power',
         tick_performed: currentTick,
         result: {
             standing_change: GAME_CONFIG.CONSOLIDATE_POWER_STANDING,
@@ -12453,7 +12493,7 @@ async function executeDemonstrateCompetence(supabase, factionId, nationId, curre
     // 5. Log action
     await supabase.from('campaign_actions').insert({
         party_id: factionId, nation_id: nationId,
-        action_type: 'demonstrate_competence',
+        action_type: 'faction_demonstrate_competence',
         tick_performed: currentTick,
         result: {
             standing_change: standingGain, loyalty_change: loyaltyGain,
@@ -12972,15 +13012,15 @@ async function executeIntimidationResponse(supabase, factionId, nationId, eventI
 async function executePurge(supabase, factionId, nationId, targetFactionId, currentTick) {
     // 1. Validate caller is Strongman
     const { data: nation } = await supabase
-        .from('nations').select('id, ruling_faction_id, stability, civil_unrest, regime_health, international_reputation, total_seats')
+        .from('nations').select('id, ruling_faction_id, stability, civil_unrest, regime_health, international_reputation, total_seats, successor_is_family_member')
         .eq('id', nationId).single();
     if (!nation) return { success: false, error: 'Nation not found.' };
     if (nation.ruling_faction_id !== factionId) return { success: false, error: 'Only the Strongman can purge.' };
 
-    // 2. Validate target
+    // 2. Validate target (must belong to same nation)
     const { data: target } = await supabase
         .from('factions').select('id, loyalty, standing, seats, embezzled_funds, faction_name')
-        .eq('id', targetFactionId).single();
+        .eq('id', targetFactionId).eq('nation_id', nationId).single();
     if (!target) return { success: false, error: 'Target faction not found.' };
     if ((target.loyalty ?? 50) >= GAME_CONFIG.PURGE_LOYALTY_THRESHOLD)
         return { success: false, error: `Target loyalty must be below ${GAME_CONFIG.PURGE_LOYALTY_THRESHOLD}. Current: ${target.loyalty ?? 50}.` };
@@ -13005,6 +13045,11 @@ async function executePurge(supabase, factionId, nationId, targetFactionId, curr
             is_alive: false, died_at_tick: currentTick,
             is_chosen_successor: false,
         }).eq('id', targetSteward.id);
+
+        // If the purged steward was chosen successor, clear the family flag to restore AP generation
+        if (targetSteward.is_chosen_successor && nation.successor_is_family_member) {
+            await supabase.from('nations').update({ successor_is_family_member: false }).eq('id', nationId);
+        }
     }
 
     // 5. Create new steward (weaker stats)
@@ -13151,13 +13196,13 @@ async function executeRedistributeSeats(supabase, factionId, nationId, loserId, 
     if ((strongman?.action_points || 0) < GAME_CONFIG.REDISTRIBUTE_SEATS_AP)
         return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.REDISTRIBUTE_SEATS_AP}.` };
 
-    // 4. Validate loser and gainer
+    // 4. Validate loser and gainer (must belong to same nation)
     const { data: loser } = await supabase
         .from('factions').select('id, seats, standing, loyalty, faction_name')
-        .eq('id', loserId).single();
+        .eq('id', loserId).eq('nation_id', nationId).single();
     const { data: gainer } = await supabase
         .from('factions').select('id, seats, loyalty, faction_name')
-        .eq('id', gainerId).single();
+        .eq('id', gainerId).eq('nation_id', nationId).single();
     if (!loser || !gainer) return { success: false, error: 'Faction not found.' };
     if (loserId === gainerId) return { success: false, error: 'Loser and gainer must be different.' };
 
@@ -15722,11 +15767,15 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
                 .eq('id', nationId);
         }
 
-        // Remove departing faction's steward
+        // Remove departing faction's steward and free their pillar
         await supabase.from('stewards')
             .update({ is_alive: false })
             .eq('nation_id', nationId)
             .eq('faction_id', factionId);
+        await supabase.from('regime_pillars')
+            .update({ steward_faction_id: null })
+            .eq('nation_id', nationId)
+            .eq('steward_faction_id', factionId);
     }
 
     // 3. PM check — if this faction is the active PM, resign first
@@ -16856,18 +16905,31 @@ async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted,
             }
         }
 
-        // Allies: standing -15, loyalty -20, lose 20% seats
+        // Allies: standing -15, loyalty -20, lose 20% seats (transferred to ruling faction)
+        let totalAllySeatLoss = 0;
         for (const ally of allies) {
             const allySeatLoss = Math.floor((ally.seats ?? 0) * 0.20);
             const { data: allyFaction } = await supabase
                 .from('factions').select('id, loyalty, standing, seats')
                 .eq('id', ally.id).single();
             if (allyFaction) {
+                const actualLoss = Math.min(allySeatLoss, (allyFaction.seats ?? 0) - 1); // keep at least 1
                 await supabase.from('factions').update({
                     standing: Math.max(0, (allyFaction.standing ?? 30) - 15),
                     loyalty: Math.max(0, (allyFaction.loyalty ?? 50) - 20),
-                    seats: Math.max(1, (allyFaction.seats ?? 0) - allySeatLoss),
+                    seats: (allyFaction.seats ?? 0) - actualLoss,
                 }).eq('id', ally.id);
+                totalAllySeatLoss += actualLoss;
+            }
+        }
+        // Transfer ally lost seats to ruling faction
+        if (totalAllySeatLoss > 0 && nation.ruling_faction_id) {
+            const { data: ruler2 } = await supabase
+                .from('factions').select('id, seats').eq('id', nation.ruling_faction_id).single();
+            if (ruler2) {
+                await supabase.from('factions').update({
+                    seats: (ruler2.seats ?? 0) + totalAllySeatLoss,
+                }).eq('id', ruler2.id);
             }
         }
 
@@ -19283,6 +19345,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Three-pillar voter preference recalculation
         await calculateThreePillarPreferences(supabase, nation, newTick);
+
+        // Expire pending loyalty demands (autocracy)
+        if (isAutocracy(nation)) {
+            await processLoyaltyDemandExpiry(supabase, nation, newTick);
+        }
 
         // Faction loyalty (autocracy)
         if (isAutocracy(nation)) {

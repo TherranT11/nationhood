@@ -1403,6 +1403,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Three-pillar voter preference recalculation
         await calculateThreePillarPreferences(supabase, nation, newTick);
 
+        // Expire pending loyalty demands (autocracy)
+        if (isAutocracy(nation)) {
+            await processLoyaltyDemandExpiry(supabase, nation, newTick);
+        }
+
         // Faction loyalty (autocracy)
         if (isAutocracy(nation)) {
             await processLoyaltyTick(supabase, nation);
