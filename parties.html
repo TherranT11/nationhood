@@ -1901,13 +1901,16 @@ async function renderAutocracyParties(el, f, n) {
                 status: 'complied', resolved_at_tick: currentTick
             }).eq('id', demandId);
 
-            // Loyalty +8
+            // Loyalty +8 (update both steward true_loyalty and faction loyalty)
             const mySteward = stewardByFaction[f.id];
             if (mySteward) {
                 await _supabase.from('stewards').update({
                     true_loyalty: Math.min(100, (mySteward.true_loyalty ?? 50) + 8)
                 }).eq('id', mySteward.id);
             }
+            await _supabase.from('factions').update({
+                loyalty: Math.min(95, (f.loyalty ?? 50) + 8)
+            }).eq('id', f.id);
 
             await _supabase.from('campaign_actions').insert({
                 party_id: f.id, nation_id: n.id,

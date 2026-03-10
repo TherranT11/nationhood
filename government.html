@@ -2911,7 +2911,7 @@ async function purgeMinister(ministryKey) {
             .select('tick_performed')
             .eq('party_id', currentFaction.id)
             .eq('action_type', 'purge_minister')
-            .gte('tick_performed', tick - 6);
+            .gte('tick_performed', tick - 5);
         const purgeCount = (recentPurges || []).length;
 
         const loyaltyLoss = 2 + Math.floor(Math.random() * 3);
