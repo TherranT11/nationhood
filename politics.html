@@ -3532,7 +3532,7 @@ async function renderPartyTab(f, nation, data) {
         </div>
 
         <div class="pol-row-3">
-        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames)}
+        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames, scheduledElections, currentTick)}
         ${renderBlocVotingBox(lastParliamentary, lastPresidential, allParties)}
         </div>
         <div class="pol-row-4" style="margin-top:24px;text-align:center">
@@ -5544,7 +5544,46 @@ function initEditIdentityBox(f) {
     }
 }
 
-function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames = []) {
+function getEndorsementButtonState(scheduledElections, currentTick, lastPresidential) {
+    const presidentialElection = (scheduledElections || []).find(e => e.election_type === 'presidential');
+
+    if (!presidentialElection) {
+        if (lastPresidential) {
+            return {
+                disabled: true,
+                reason: 'Endorsement closed: the last presidential election already fired. Wait for the next presidential election to be scheduled.'
+            };
+        }
+        return {
+            disabled: true,
+            reason: 'Endorsement unavailable: no upcoming presidential election is scheduled yet.'
+        };
+    }
+
+    const ticksUntilElection = Number(presidentialElection.election_tick) - Number(currentTick || 0);
+
+    if (ticksUntilElection <= 0) {
+        return {
+            disabled: true,
+            reason: 'Endorsement closed: this presidential election already fired or is firing this tick.'
+        };
+    }
+
+    if (ticksUntilElection > 6) {
+        const ticksUntilOpen = ticksUntilElection - 6;
+        return {
+            disabled: true,
+            reason: `Endorsement opens 6 ticks before the next presidential election. Opens in ${ticksUntilOpen} tick${ticksUntilOpen === 1 ? '' : 's'}.`
+        };
+    }
+
+    return {
+        disabled: false,
+        reason: `Endorsement is open for the next presidential election (${ticksUntilElection} tick${ticksUntilElection === 1 ? '' : 's'} remaining).`
+    };
+}
+
+function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames = [], scheduledElections = [], currentTick = 0) {
     // Build a color map from allParties
     const colorMap = {};
     (allParties || []).forEach(p => { colorMap[p.id] = p.party_color || '#888'; });
@@ -5662,11 +5701,14 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         </div>`
         : '';
 
+    const endorsementState = getEndorsementButtonState(scheduledElections, currentTick, lastPresidential);
+
     return `<div class="pol-election-box">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <div class="pol-section-label" style="margin-bottom:0">ELECTION RESULTS</div>
-            <button class="pol-endorse-btn" disabled>Endorse Candidate</button>
+            <button class="pol-endorse-btn" ${endorsementState.disabled ? 'disabled' : ''} title="${escapeHtml(endorsementState.reason)}">Endorse Candidate</button>
         </div>
+        <div class="pol-endorsement-subtitle" style="margin-top:-6px;margin-bottom:8px;">${escapeHtml(endorsementState.reason)}</div>
         ${endorsementNotesHtml}
         <div class="pol-el-tabs">
             <button class="pol-el-tab active" data-tab="parl">Parliamentary</button>
