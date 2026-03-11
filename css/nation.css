@@ -630,6 +630,8 @@
     flex-direction: column;
     flex-shrink: 0;
     height: 450px;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 .featured-card--gdp,
 .featured-card--inflation,
