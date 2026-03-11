@@ -114,14 +114,9 @@
   }
 
   /* ── Government Card ── */
-  .dash-card-header .gov-status-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--green);
-    margin-right: 6px;
-    vertical-align: middle;
+  #gov-card {
+    height: 450px;
+    overflow-y: auto;
   }
   .gov-admin-name {
     font-family: 'IBM Plex Sans', sans-serif;
@@ -301,7 +296,7 @@
 
     <!-- ── Government Card ── -->
     <div class="dash-card" id="gov-card" style="display:none;">
-      <div class="dash-card-header"><span class="gov-status-dot"></span> GOVERNMENT</div>
+      <div class="dash-card-header">GOVERNMENT</div>
       <div class="dash-card-body" id="gov-card-body"></div>
     </div>
 
