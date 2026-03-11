@@ -2388,7 +2388,7 @@ async function loadNationIdeologies(supabase, nationId) {
     const factionIds = factions.map(f => f.id);
     const { data, error } = await supabase
         .from('faction_ideology')
-        .select('*, factions(id, faction_name, faction_type, is_npc, nation_id)')
+        .select('*, factions(id, faction_name, faction_type, nation_id)')
         .in('faction_id', factionIds);
 
     if (error) {
@@ -14357,8 +14357,7 @@ async function processEvents(supabase, nation, currentTick) {
                     .from('factions')
                     .select('id, ' + effect.stat_key)
                     .eq('nation_id', nation.id)
-                    .eq('faction_type', 'party')
-                    .eq('is_npc', false);
+                    .eq('faction_type', 'party');
 
                 if (factions && factions.length > 0) {
                     const target = factions[Math.floor(Math.random() * factions.length)];
