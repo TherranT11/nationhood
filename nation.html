@@ -1014,73 +1014,83 @@ function renderFeaturedGDPGrowth(nation) {
     var yearlyStr = (yearlyPct >= 0 ? '+' : '') + yearlyPct.toFixed(2) + '%';
 
     // Color based on growth
-    var growthColor, borderColor, dotColor;
-    if (monthlyPct >= 0.5) { growthColor = '#4ade80'; borderColor = '#4ade80'; dotColor = 'var(--n-green)'; }
-    else if (monthlyPct >= 0) { growthColor = '#facc15'; borderColor = '#facc15'; dotColor = 'var(--n-yellow)'; }
-    else { growthColor = '#ef4444'; borderColor = '#ef4444'; dotColor = 'var(--n-red)'; }
+    var growthColor, borderColor, dotColor, tagColor, tagBorder;
+    if (monthlyPct >= 0.5) { growthColor = '#4ade80'; borderColor = '#4ade80'; dotColor = 'var(--n-green)'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
+    else if (monthlyPct >= 0) { growthColor = '#facc15'; borderColor = '#facc15'; dotColor = 'var(--n-yellow)'; tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; }
+    else { growthColor = '#ef4444'; borderColor = '#ef4444'; dotColor = 'var(--n-red)'; tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; }
 
     var yearlyColor = yearlyPct >= 0 ? 'var(--n-green)' : 'var(--n-red)';
 
-    // Trend arrow
-    var trendArrow = '';
+    // Growth label
+    var gdpLabel;
+    if (monthlyPct < -1) { gdpLabel = 'Collapse'; }
+    else if (monthlyPct < 0) { gdpLabel = 'Recession'; }
+    else if (monthlyPct < 0.5) { gdpLabel = 'Stagnant'; }
+    else if (monthlyPct < 3) { gdpLabel = 'Growing'; }
+    else { gdpLabel = 'Booming'; }
+
+    // Delta per tick
+    var deltaStr = '';
     if (previousTickData && previousTickData.gdp_growth != null) {
         var prevGrowthRaw = Number(previousTickData.gdp_growth);
         var delta = gdpGrowthRaw - prevGrowthRaw;
         if (Math.abs(delta) >= 0.01) {
-            var tDir = delta > 0 ? '\u25B2' : '\u25BC';
-            var tColor = delta > 0 ? 'var(--n-green)' : 'var(--n-red)';
-            trendArrow = '<span style="color:' + tColor + ';font-size:10px;margin-left:4px;">' + tDir + '</span>';
+            var deltaDir = delta > 0 ? '\u25B2' : '\u25BC';
+            var deltaColor = delta > 0 ? 'var(--n-green)' : 'var(--n-red)';
+            deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + ' ' + Math.abs(((delta) / 50) * 3).toFixed(2) + '% per tick</span>';
         }
     }
 
-    // Sparkline (inline compact)
+    // Scale items
+    var scaleItems = [
+        { label: 'Collapse', range: '<0%', active: monthlyPct < -1 },
+        { label: 'Recession', range: '0-0.5%', active: monthlyPct >= -1 && monthlyPct < 0 },
+        { label: 'Stagnant', range: '0.5-70%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
+        { label: 'Growing', range: '1.0-3.00%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
+        { label: 'Booming', range: '>3.00%', active: monthlyPct >= 3 }
+    ];
+
+    // Sparkline (large chart)
     var sparkData = sparklineHistory['gdp_growth'] ? sparklineHistory['gdp_growth'].slice() : [];
     if (gdpGrowthRaw != null) sparkData.push(gdpGrowthRaw);
-    var sparkSVG = '';
-    if (sparkData.length >= 2) {
-        var sw = 50, sh = 16;
-        var mn = Math.min.apply(null, sparkData), mx = Math.max.apply(null, sparkData), r = mx - mn || 1;
-        var pts = sparkData.map(function(v, i) {
-            return ((i / (sparkData.length - 1)) * sw).toFixed(1) + ',' + (sh - ((v - mn) / r) * sh).toFixed(1);
-        }).join(' ');
-        sparkSVG = '<svg width="' + sw + '" height="' + sh + '" style="display:block;"><polyline points="' + pts + '" fill="none" stroke="' + growthColor + '" stroke-width="1.5" stroke-linejoin="round"/></svg>';
-    }
-
-    // Ranking (higher gdp_growth = better)
-    var rank = calculateRanking('gdp_growth', gdpGrowthRaw, false);
-    var rankHTML = '';
-    if (rank) {
-        var total = totalNations || 6;
-        var pipColor = rank <= 2 ? '#4ade80' : rank <= 4 ? '#facc15' : '#ef4444';
-        rankHTML = '<div class="compact-bottom__rank">';
-        for (var i = 0; i < total; i++) {
-            if (i < rank) {
-                rankHTML += '<div class="compact-bottom__rank-pip" style="background:' + pipColor + ';"></div>';
-            } else {
-                rankHTML += '<div class="compact-bottom__rank-pip compact-bottom__rank-pip--empty"></div>';
-            }
-        }
-        rankHTML += '<span class="compact-bottom__rank-label">#' + rank + '</span></div>';
-    }
+    var chartSVG = buildFeaturedSparkSVG(sparkData, growthColor);
 
     var h = '<div class="featured-card featured-card--compact" style="border-left-color:' + borderColor + ';">';
-
-    // Top row: title + trend + sparkline + value
-    h += '<div class="compact-top">';
-    h += '<span class="compact-top__title">GDP Growth</span>';
-    h += trendArrow;
-    if (sparkSVG) h += '<span class="compact-top__spark">' + sparkSVG + '</span>';
-    h += '<span class="compact-top__value" style="color:' + growthColor + ';">' + growthStr + '</span>';
+    // Header
+    h += '<div class="featured-card__header">';
+    h += '<div class="featured-card__dot" style="background:' + dotColor + ';"></div>';
+    h += '<span class="featured-card__title">GDP Growth</span>';
+    h += '<span class="featured-card__tag" style="color:' + tagColor + ';border-color:' + tagBorder + ';">' + escapeHtml(gdpLabel) + '</span>';
     h += '</div>';
 
-    // Bottom row: description + rank
-    h += '<div class="compact-bottom">';
-    h += '<span class="compact-bottom__desc">Monthly economic growth rate</span>';
-    h += rankHTML;
+    // Description
+    h += '<div class="featured-card__desc">Monthly economic growth rate</div>';
+
+    // Value + side stats
+    h += '<div class="featured-card__value-row">';
+    h += '<div><span class="featured-card__big-value" style="color:' + tagColor + ';">' + growthStr + '</span></div>';
+    h += '<div class="featured-card__side-stats">';
+    h += '<div><span class="featured-card__side-label">Yearly Forecast</span></div>';
+    h += '<div><span class="featured-card__side-value" style="color:' + yearlyColor + ';">' + yearlyStr + '</span></div>';
+    h += '</div>';
     h += '</div>';
 
-    // Predicted yearly growth
-    h += '<div class="compact-yearly" style="font-family:var(--n-font-sans);font-size:12px;color:var(--n-secondary);margin-bottom:12px;text-align:center;">Predicted Yearly Growth: <span style="color:' + yearlyColor + ';font-weight:700;">' + yearlyStr + '</span></div>';
+    // Delta
+    if (deltaStr) h += deltaStr;
+
+    // Chart (large sparkline)
+    h += '<div class="featured-card__chart">' + chartSVG + '</div>';
+
+    // Scale
+    h += '<div class="featured-card__scale">';
+    for (var i = 0; i < scaleItems.length; i++) {
+        var si = scaleItems[i];
+        h += '<div class="featured-card__scale-item' + (si.active ? ' featured-card__scale-item--active' : '') + '">';
+        h += escapeHtml(si.label);
+        h += '<span class="featured-card__scale-range">' + escapeHtml(si.range) + '</span>';
+        h += '</div>';
+    }
+    h += '</div>';
 
     // Affected by
     var effects = statEffectsByKey['gdp_growth'] || [];
@@ -1103,25 +1113,26 @@ function renderFeaturedDebt(nation) {
     var debtUnit = parts ? parts[2] : '';
 
     // Debt is inverted: higher = worse → red
-    var numVal = (debtRaw != null) ? Number(debtRaw) : 0;
-    var hcRaw = '#ef4444'; // debt is always shown in red tones
+    var hcRaw = '#ef4444';
     var borderColor = hcRaw;
+    var dotColor = 'var(--n-red)';
+    var tagColor = 'var(--n-red)';
+    var tagBorder = 'rgba(239,68,68,0.3)';
 
-    // Sparkline (compact, inline)
+    // Delta per tick
+    var deltaStr = '';
+    if (previousTickData && previousTickData.debt != null && debtRaw != null) {
+        var debtDelta = Number(debtRaw) - Number(previousTickData.debt);
+        var deltaDir = debtDelta >= 0 ? '\u25B2' : '\u25BC';
+        // For debt, down is good
+        var deltaColor = debtDelta <= 0 ? 'var(--n-green)' : 'var(--n-red)';
+        deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + ' ' + Math.abs(debtDelta).toFixed(1) + ' per tick</span>';
+    }
+
+    // Sparkline (large chart)
     var sparkData = sparklineHistory['debt'] ? sparklineHistory['debt'].slice() : [];
     if (debtRaw != null) sparkData.push(Number(debtRaw));
-    var sparkSVG = buildFeaturedSparkSVG(sparkData, hcRaw, 50, 16);
-    // Inline SVG override for compact sizing
-    if (sparkData.length >= 2) {
-        var sw = 50, sh = 16;
-        var mn = Math.min.apply(null, sparkData), mx = Math.max.apply(null, sparkData), r = mx - mn || 1;
-        var pts = sparkData.map(function(v, i) {
-            return ((i / (sparkData.length - 1)) * sw).toFixed(1) + ',' + (sh - ((v - mn) / r) * sh).toFixed(1);
-        }).join(' ');
-        sparkSVG = '<svg width="' + sw + '" height="' + sh + '" style="display:block;"><polyline points="' + pts + '" fill="none" stroke="' + hcRaw + '" stroke-width="1.5" stroke-linejoin="round"/></svg>';
-    } else {
-        sparkSVG = '';
-    }
+    var chartSVG = buildFeaturedSparkSVG(sparkData, hcRaw);
 
     // Ranking (debt is inverted — lower is better)
     var rank = calculateRanking('debt', debtRaw, true);
@@ -1144,21 +1155,28 @@ function renderFeaturedDebt(nation) {
     var effects = statEffectsByKey['debt'] || [];
 
     var h = '<div class="featured-card featured-card--compact" style="border-left-color:' + borderColor + ';">';
-
-    // Top row: title + sparkline + value
-    h += '<div class="compact-top">';
-    h += '<span class="compact-top__title">National<br>Debt</span>';
-    if (sparkSVG) h += '<span class="compact-top__spark">' + sparkSVG + '</span>';
-    h += '<span class="compact-top__value" style="color:' + hcRaw + ';">' + debtVal;
-    if (debtUnit) h += '<span class="compact-top__unit" style="color:' + hcRaw + ';">' + escapeHtml(debtUnit) + '</span>';
-    h += '</span>';
+    // Header
+    h += '<div class="featured-card__header">';
+    h += '<div class="featured-card__dot" style="background:' + dotColor + ';"></div>';
+    h += '<span class="featured-card__title">National Debt</span>';
     h += '</div>';
 
-    // Bottom row: description + rank
-    h += '<div class="compact-bottom">';
-    h += '<span class="compact-bottom__desc">Government debt obligations</span>';
+    // Description
+    h += '<div class="featured-card__desc">Government debt obligations</div>';
+
+    // Value row
+    h += '<div class="featured-card__value-row">';
+    h += '<div><span class="featured-card__big-value" style="color:' + tagColor + ';">' + debtVal + '</span>';
+    if (debtUnit) h += '<span class="featured-card__big-unit" style="color:' + tagColor + ';">' + escapeHtml(debtUnit) + '</span>';
+    h += '</div>';
     h += rankHTML;
     h += '</div>';
+
+    // Delta
+    if (deltaStr) h += deltaStr;
+
+    // Chart (large sparkline)
+    h += '<div class="featured-card__chart">' + chartSVG + '</div>';
 
     // Affected by
     if (effects.length > 0) {
