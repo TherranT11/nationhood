@@ -413,16 +413,17 @@
 
       </div>
 
-      <!-- ── Elections Card (below Nation row) ── -->
-      <div class="dash-card" id="elections-card" style="width:380px;">
-        <div class="dash-card-header">ELECTIONS</div>
-        <div class="dash-card-body" id="elections-card-body"></div>
-      </div>
+      <!-- ── Elections + Events Row ── -->
+      <div class="dash-row">
+        <div class="dash-card" id="elections-card">
+          <div class="dash-card-header">ELECTIONS</div>
+          <div class="dash-card-body" id="elections-card-body"></div>
+        </div>
 
-      <!-- ── Events Card (below Elections) ── -->
-      <div class="dash-card" id="events-card" style="width:380px; height:auto; max-height:520px;">
-        <div class="dash-card-header">EVENTS</div>
-        <div class="dash-events-scroll" id="dash-events-list"></div>
+        <div class="dash-card" id="events-card">
+          <div class="dash-card-header">EVENTS</div>
+          <div class="dash-events-scroll" id="dash-events-list"></div>
+        </div>
       </div>
 
     </div>
@@ -874,7 +875,7 @@ async function loadDashEvents(nationId, currentTick) {
     // Fetch from event_log — covers crises, bills, government events, trade, diplomatic
     const { data: events, error } = await _supabase
       .from('event_log')
-      .select('event_name, category, description_chosen, description_used, fired_at_tick, faction_id')
+      .select('event_name, category, description_chosen, description_used, fired_at_tick')
       .eq('nation_id', nationId)
       .order('fired_at_tick', { ascending: false })
       .limit(50);
