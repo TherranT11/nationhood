@@ -4248,8 +4248,15 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
 
         newApproval = Math.round(Math.max(0, Math.min(100, newApproval)) * 10) / 10;
 
+        // Update baselines to current values so next tick only sees incremental change
+        const updatedBaselines = {};
+        for (const statKey of ownedStats) {
+            if (statDirectionSign(statKey) === 0) continue;
+            updatedBaselines[statKey] = Number(nation[statKey] ?? 50);
+        }
+
         await supabase.from('ministries')
-            .update({ minister_approval: newApproval })
+            .update({ minister_approval: newApproval, stat_baselines: updatedBaselines })
             .eq('id', ministry.id);
 
         results.push({
@@ -4312,10 +4319,16 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
     // Event modifier (decayed before this call by the tick processor)
     const eventModifier = Number(nation.gov_approval_events ?? 0);
 
-    // Composite
+    // Composite target from minister averages + penalties + events
     let rawApproval = ministerAvg + vacancyPenalty + eventModifier;
+    rawApproval = Math.max(0, Math.min(100, rawApproval));
 
-    const govApproval = Math.round(Math.max(0, Math.min(100, rawApproval)));
+    // Cap per-tick change to ±3 so approval moves gradually
+    const MAX_TICK_CHANGE = 3;
+    const previousApproval = Number(nation.gov_approval ?? 50);
+    const delta = rawApproval - previousApproval;
+    const clampedDelta = Math.max(-MAX_TICK_CHANGE, Math.min(MAX_TICK_CHANGE, delta));
+    const govApproval = Math.round(Math.max(0, Math.min(100, previousApproval + clampedDelta)));
 
     // Store on nation
     await supabase.from('nations')
@@ -4325,7 +4338,7 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
     // Update in-memory nation object
     nation.gov_approval = govApproval;
 
-    console.log(`[GovApproval] ${nation.name}: ${govApproval} (avg=${Math.round(ministerAvg)}, vacancies=${vacantCount}×${cfg.VACANCY_PENALTY}=${vacancyPenalty}, events=${eventModifier})`);
+    console.log(`[GovApproval] ${nation.name}: ${govApproval} (target=${Math.round(rawApproval)}, delta=${Math.round(clampedDelta)}, prev=${previousApproval}, avg=${Math.round(ministerAvg)}, vacancies=${vacantCount}×${cfg.VACANCY_PENALTY}=${vacancyPenalty}, events=${eventModifier})`);
 
     return govApproval;
 }

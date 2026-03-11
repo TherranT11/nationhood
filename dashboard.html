@@ -38,7 +38,7 @@
     border-radius: 8px;
     overflow: hidden;
     width: 380px;
-    height: 450px;
+    height: 520px;
   }
   .dash-card-header {
     background: var(--bg-card);
@@ -347,6 +347,34 @@
     color: var(--text-muted);
     font-weight: 400;
   }
+
+  /* ── Elections Card ── */
+  .election-item {
+    border-left: 3px solid #888;
+    padding: 8px 14px;
+    margin-bottom: 12px;
+  }
+  .election-item.midterm { border-left-color: #e8a435; }
+  .election-item.presidential { border-left-color: #e05c4d; }
+  .election-item.parliamentary { border-left-color: #4da6e0; }
+  .election-item-type {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .election-item-date {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+  .elections-suspended {
+    font-style: italic;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    padding: 20px 0;
+  }
 </style>
 </head>
 
@@ -392,12 +420,21 @@
         </div>
 
       </div>
+
+      <!-- ── Elections Card (below Nation row) ── -->
+      <div class="dash-card" id="elections-card" style="width:380px;">
+        <div class="dash-card-header">ELECTIONS</div>
+        <div class="dash-card-body" id="elections-card-body"></div>
+      </div>
+
     </div>
 
     <!-- ── Right Column: World Map ── -->
     <div class="dash-card" id="world-map-card" style="flex:1; min-width:760px; height:900px;">
       <div class="dash-card-header">WORLD MAP</div>
-      <div class="dash-card-body" id="world-map-body"></div>
+      <div class="dash-card-body" id="world-map-body" style="padding:0; flex:1; overflow:hidden;">
+        <img src="./assets/World Map Crucera3.svg" alt="World Map" style="width:100%; height:100%; object-fit:fill; display:block;">
+      </div>
     </div>
 
   </div>
@@ -407,8 +444,8 @@
 import { initPage, formatNumber } from './js/common.js';
 import { _supabase } from './js/supabase-client.js';
 import { fetchActiveCoalition } from './js/game/government-structure.js';
-import { isPresidentialRepublic, isAutocracy } from './js/game/government-types.js';
-import { tickToDate } from './js/utils.js';
+import { isPresidentialRepublic, isAutocracy, isParliamentaryDemocracy } from './js/game/government-types.js';
+import { tickToDate, MONTHS } from './js/utils.js';
 
 function esc(str) {
   if (!str) return '';
@@ -733,6 +770,105 @@ initPage('home', async (state) => {
 
   } catch (e) {
     console.error('Government card error:', e);
+  }
+
+  // ══════════════════════════════════════
+  // ── Elections Card ──
+  // ══════════════════════════════════════
+  try {
+    const isPres = isPresidentialRepublic(nation);
+    const isAuto = isAutocracy(nation);
+    const elBody = document.getElementById('elections-card-body');
+
+    if (isAuto) {
+      elBody.innerHTML = `<div class="elections-suspended">Elections are suspended.</div>`;
+    } else {
+      // Fetch current tick
+      const { data: shardData } = await _supabase
+        .from('shard')
+        .select('current_tick')
+        .eq('name', 'Alpha Shard')
+        .single();
+      const currentTick = shardData?.current_tick ?? 0;
+
+      // Fetch scheduled elections ordered by tick
+      const { data: scheduled } = await _supabase
+        .from('elections')
+        .select('election_tick, election_type')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .gt('election_tick', currentTick)
+        .order('election_tick', { ascending: true })
+        .limit(10);
+
+      // Build the list of next 5 elections
+      let elections = [];
+
+      if (isPres) {
+        // For presidential: need alternating Midterm / Presidential pattern
+        // Midterm = parliamentary election in a presidential system
+        const parlElections = (scheduled || []).filter(e => e.election_type === 'parliamentary');
+        const presElections = (scheduled || []).filter(e => e.election_type === 'presidential');
+
+        // Merge and sort by tick, label midterm vs presidential
+        const merged = [
+          ...parlElections.map(e => ({ tick: e.election_tick, type: 'Midterms', css: 'midterm' })),
+          ...presElections.map(e => ({ tick: e.election_tick, type: 'Presidential', css: 'presidential' }))
+        ].sort((a, b) => a.tick - b.tick);
+
+        elections = merged.slice(0, 5);
+
+        // If not enough scheduled, project future ones
+        if (elections.length < 5) {
+          const lastParl = parlElections.length ? parlElections[parlElections.length - 1].election_tick : null;
+          const lastPres = presElections.length ? presElections[presElections.length - 1].election_tick : null;
+          let nextParl = lastParl ? lastParl + 24 : currentTick + 24;
+          let nextPres = lastPres ? lastPres + 48 : currentTick + 48;
+
+          while (elections.length < 5) {
+            if (nextParl <= nextPres) {
+              elections.push({ tick: nextParl, type: 'Midterms', css: 'midterm' });
+              nextParl += 24;
+            } else {
+              elections.push({ tick: nextPres, type: 'Presidential', css: 'presidential' });
+              nextPres += 48;
+            }
+          }
+          elections.sort((a, b) => a.tick - b.tick);
+          elections = elections.slice(0, 5);
+        }
+      } else {
+        // Parliamentary: all elections are simply "Parliamentary"
+        const parlScheduled = (scheduled || []).map(e => ({
+          tick: e.election_tick, type: 'Parliamentary', css: 'parliamentary'
+        }));
+
+        elections = parlScheduled.slice(0, 5);
+
+        // Project if not enough
+        if (elections.length < 5) {
+          const lastTick = parlScheduled.length
+            ? parlScheduled[parlScheduled.length - 1].tick
+            : currentTick;
+          let next = lastTick + 24;
+          while (elections.length < 5) {
+            elections.push({ tick: next, type: 'Parliamentary', css: 'parliamentary' });
+            next += 24;
+          }
+        }
+      }
+
+      elBody.innerHTML = elections.map(e => {
+        const year = 2000 + Math.floor(e.tick / 12);
+        const month = MONTHS[e.tick % 12];
+        return `<div class="election-item ${e.css}">
+          <div class="election-item-type">${e.type}</div>
+          <div class="election-item-date">${month}, ${year}</div>
+        </div>`;
+      }).join('');
+    }
+  } catch (e) {
+    console.error('Elections card error:', e);
   }
 });
 
