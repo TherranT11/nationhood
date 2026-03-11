@@ -4071,13 +4071,30 @@ async function fireBillEvent(supabase, triggerKey, bill, opts = {}) {
     if (opts.extra) {
         Object.assign(placeholders, opts.extra);
     }
+    const nationId = opts.nationId || bill.nation_id;
     try {
         await supabase.rpc('fire_system_event', {
             p_trigger_key: triggerKey,
-            p_nation_id: opts.nationId || bill.nation_id,
+            p_nation_id: nationId,
             p_tick: opts.currentTick,
             p_placeholders: placeholders
         });
+    } catch (e) { /* non-blocking */ }
+    // Backfill effects_applied on the row the RPC just created (RPC leaves it null)
+    try {
+        const { data: rows } = await supabase.from('event_log')
+            .select('id')
+            .eq('nation_id', nationId)
+            .eq('fired_at_tick', opts.currentTick)
+            .ilike('event_name', `%${triggerKey.includes('passed') ? 'Passed' : triggerKey.includes('failed') ? 'Failed' : triggerKey}%`)
+            .is('effects_applied', null)
+            .order('created_at', { ascending: false })
+            .limit(1);
+        if (rows && rows.length > 0) {
+            await supabase.from('event_log')
+                .update({ effects_applied: placeholders })
+                .eq('id', rows[0].id);
+        }
     } catch (e) { /* non-blocking */ }
 }
 
@@ -8868,6 +8885,20 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
 // ==================== PRESIDENTIAL VETO SYSTEM ====================
 
 /**
+ * Tally floor votes from bill_support records (already loaded via join).
+ */
+function tallyFloorVotes(bill) {
+    let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
+    for (const s of (bill.bill_support || [])) {
+        const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+        if (stance === 'yes') votesFor += (s.seat_count || 0);
+        else if (stance === 'no') votesAgainst += (s.seat_count || 0);
+        else if (stance === 'abstain') votesAbstain += (s.seat_count || 0);
+    }
+    return { votesFor, votesAgainst, votesAbstain };
+}
+
+/**
  * President signs a bill into law.
  * Called from the UI when the President's party clicks "Sign Into Law".
  */
@@ -8902,7 +8933,8 @@ async function signPresidentialBill(supabase, billId, presidentFactionId) {
             president_action_tick: currentTick
         }).eq('id', bill.id);
 
-    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, votesFor: 0, votesAgainst: 0, votesAbstain: 0, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (signed by President)' });
+    const floorVotes = tallyFloorVotes(bill);
+    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, votesFor: floorVotes.votesFor, votesAgainst: floorVotes.votesAgainst, votesAbstain: floorVotes.votesAbstain, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (signed by President)' });
 }
 
 /**
@@ -8911,7 +8943,7 @@ async function signPresidentialBill(supabase, billId, presidentFactionId) {
  */
 async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
     const { data: bill } = await supabase.from('bills')
-        .select('*, factions(faction_name)')
+        .select('*, factions(faction_name), bill_support(stance, seat_count)')
         .eq('id', billId).single();
     if (!bill || bill.status !== 'president_desk') throw new Error('Bill is not on the president\'s desk');
 
@@ -8944,7 +8976,8 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
         preamble: `The President has vetoed "${bill.bill_name}". The legislature may override this veto with a two-thirds supermajority (${overrideSeats} of ${GAME_CONFIG.TOTAL_SEATS} seats).`
     }).select().single();
 
-    await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, votesFor: 0, votesAgainst: 0, votesAbstain: 0, billNameOverride: bill.bill_name + ' (VETOED by President)' });
+    const floorVotes = tallyFloorVotes(bill);
+    await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, votesFor: floorVotes.votesFor, votesAgainst: floorVotes.votesAgainst, votesAbstain: floorVotes.votesAbstain, billNameOverride: bill.bill_name + ' (VETOED by President)' });
 
     return overrideBill;
 }
@@ -8987,7 +9020,8 @@ async function processPresidentDesk(supabase, nation, currentTick) {
             continue;
         }
 
-        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationId: nation.id, nationName: nation.name, votesFor: 0, votesAgainst: 0, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (auto-signed by President)' });
+        const floorVotes = tallyFloorVotes(bill);
+        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationId: nation.id, nationName: nation.name, votesFor: floorVotes.votesFor, votesAgainst: floorVotes.votesAgainst, votesAbstain: floorVotes.votesAbstain, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (auto-signed by President)' });
 
         results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed' });
     }
