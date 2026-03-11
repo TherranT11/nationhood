@@ -307,8 +307,6 @@ export function renderNavTabs(activeTab) {
         { id: 'nation', label: 'Nation', href: 'nation.html' },
         { id: 'government', label: 'Government', href: 'government.html' },
         { id: 'politics', label: 'Politics', href: 'politics.html' },
-        { id: 'ministry-actions', label: 'Ministry', href: 'ministry-actions.html' },
-
         { id: 'laws', label: 'Bills', href: 'laws.html' },
         { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
         { id: 'economy', label: 'Economy', href: 'economy.html' },

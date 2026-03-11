@@ -58,11 +58,6 @@ const imports = {
     `import { initPage, loadGameState, updateTopBarInfo } from './js/common.js';`,
     `import { initGameConfigForNation } from './js/game-common.js';`,
   ],
-  'ministry-actions.html': [
-    `import { _supabase } from './js/supabase-client.js';`,
-    `import { initPage } from './js/common.js';`,
-    `import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, GAME_CONFIG, initGameConfigForNation, loadSeats, deductAP } from './js/game-common.js';`,
-  ],
   'economy.html': [
     `import { initPage } from './js/common.js';`,
   ],
