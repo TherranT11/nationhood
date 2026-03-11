@@ -3350,7 +3350,7 @@ async function renderPartyTab(f, nation, data) {
         <div class="pol-section-label">Politics</div>
 
         <div class="pol-columns">
-        ${renderAdminBox(nation, coalition, allParties, currentTick, prevApproval, president, administration)}
+        ${renderGovCard(nation, coalition, allParties, currentTick, prevApproval, president, administration)}
         <div class="pol-party-card">
         <div class="pol-header">
             <div class="pol-logo">${logoSvg}</div>
@@ -4807,285 +4807,163 @@ function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIde
     </div>`;
 }
 
-function renderAdminBox(nation, coalition, allParties, currentTick, prevApproval, president, administration) {
-    const approval = Math.round(Number(nation.gov_approval ?? 50));
-    const ac = approval >= 50 ? 'var(--dgreen)' : approval >= 35 ? 'var(--damber)' : approval >= 20 ? 'var(--damber)' : 'var(--dred)';
-
-    // Delta from previous tick
-    let deltaHtml = '';
-    if (prevApproval !== null && prevApproval !== undefined) {
-        const delta = Math.round((approval - prevApproval) * 10) / 10;
-        if (delta !== 0) {
-            const dColor = delta > 0 ? 'var(--dgreen)' : 'var(--dred)';
-            const arrow = delta > 0 ? '▲' : '▼';
-            deltaHtml = `<span class="pol-sc-approval-delta" style="color:${dColor}">${arrow}${Math.abs(delta)}</span>`;
-        } else {
-            deltaHtml = `<span class="pol-sc-approval-delta" style="color:var(--dtext-3)">—</span>`;
-        }
-    } else {
-        deltaHtml = `<span class="pol-sc-approval-delta" style="color:var(--dtext-3)">—</span>`;
-    }
-
-    // Admin name
-    const adminName = administration?.admin_name || 'Government';
-
-    // Government type label
-    const govType = nation.government_type || administration?.government_type || '';
+function renderGovCard(nation, coalition, allParties, currentTick, prevApproval, president, administration) {
     const isPres = isPresidentialRepublic(nation);
     const isAuto = isAutocracy(nation);
+    const parties = allParties || [];
+    const approval = Math.round(Number(nation.gov_approval ?? 50));
+    const ac = approval >= 50 ? 'var(--dgreen)' : approval >= 35 ? 'var(--damber)' : 'var(--dred)';
+    const adminName = administration?.admin_name || 'Government';
     const govTypeLabel = isAuto ? 'Autocracy' : isPres ? 'Presidential' : 'Parliamentary';
 
-    // Divided government detection (president's party vs parliament majority)
-    let govStatusLabel = '';
-    let govStatusColor = 'var(--dtext-3)';
-    if (isPres && president && coalition) {
-        const presPartySeats = (allParties || []).find(p => p.id === president.faction_id)?.seats || 0;
-        const totalSeats = (allParties || []).reduce((s, p) => s + (p.seats || 0), 0);
-        if (presPartySeats > totalSeats / 2) {
-            govStatusLabel = 'Unified Gov.';
-            govStatusColor = 'var(--dgreen)';
-        } else {
-            govStatusLabel = 'Divided Gov.';
-            govStatusColor = 'var(--damber)';
-        }
+    // Coalition info
+    const coalitionIds = new Set(coalition?.party_ids || []);
+    const governing = parties.filter(p => coalitionIds.has(p.id));
+    const govSeats = governing.reduce((s, p) => s + (p.seats || 0), 0);
+    const totalSeats = parties.reduce((s, p) => s + (p.seats || 0), 0);
+    const majority = Math.ceil(totalSeats / 2);
+    const isMajority = govSeats >= majority;
+    const coalitionBadge = governing.length > 1 ? 'Coalition' : governing.length === 1 ? 'Single Party' : '';
+
+    // Helper: initials
+    function initials(first, last) {
+        return ((first || '?')[0] + (last || '?')[0]).toUpperCase();
     }
 
-    // Compute contributions (reusing existing functions)
-    const categories = Object.entries(ISSUE_CATEGORY_STATS).map(([key, statKeys]) => {
-        const { score } = computeCategoryContribution(nation, statKeys);
-        const rep = getRepresentativeStat(nation, statKeys);
-        return {
-            name: ISSUE_DISPLAY_NAMES[key] || key,
-            score,
-            repStat: rep ? rep.val : '—',
-            critical: score <= -6
-        };
-    });
-    const positives = categories.filter(c => c.score > 0).sort((a, b) => b.score - a.score);
-    const negatives = categories.filter(c => c.score < 0).sort((a, b) => a.score - b.score);
-    const totalPos = positives.reduce((s, c) => s + c.score, 0);
-    const totalNeg = Math.abs(negatives.reduce((s, c) => s + c.score, 0));
-    const topVulns = negatives.slice(0, 4);
-
-    // President section
-    let presidentHtml = '';
+    // ── Leader 1 (President or PM) ──
+    let leader1Html = '';
     if (isPres && president) {
-        const presParty = (allParties || []).find(p => p.id === president.faction_id);
+        const presParty = parties.find(p => p.id === president.faction_id);
         const presColor = presParty?.party_color || '#888';
-        const presPartyName = presParty?.faction_name || 'Unknown Party';
-        const presAbbr = presParty?.abbreviation || presPartyName.substring(0, 3).toUpperCase();
-        const termLabel = president.terms_served > 1 ? `${president.terms_served}${president.terms_served === 2 ? 'nd' : 'rd'} Term` : '1st Term';
-        const ticksLeft = president.term_ends_tick - currentTick;
-        const monthsLeft = Math.max(0, ticksLeft);
-        const termEndStr = monthsLeft > 0 ? `Term ends: ${monthsLeft} Month${monthsLeft !== 1 ? 's' : ''}` : 'Term ending';
-
-        // Ideology display
-        const ideoRaw = president.ideology || '';
-        const ideoDisplay = ideoRaw.charAt(0).toUpperCase() + ideoRaw.slice(1).toLowerCase();
-        const ideoColor = presColor;
-
-        // Trait section
-        let traitHtml = '';
-        if (president.trait) {
-            const traitName = president.trait.charAt(0).toUpperCase() + president.trait.slice(1).replace(/_/g, ' ');
-            traitHtml = `
-            <div class="pol-admin-trait-box">
-                <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px">
-                    <span style="font-family:var(--dfont-mono);font-size:10px;color:${ideoColor}">&#9670;</span>
-                    <span class="pol-admin-trait-name">${escapeHtml(traitName)}</span>
-                </div>
-                ${president.trait_upside ? `<div class="pol-admin-trait-effect">
-                    <span class="pol-admin-trait-sign" style="color:var(--dgreen)">+</span>
-                    <span class="pol-admin-trait-text">${escapeHtml(president.trait_upside)}</span>
-                </div>` : ''}
-                ${president.trait_downside ? `<div class="pol-admin-trait-effect">
-                    <span class="pol-admin-trait-sign" style="color:var(--dred)">&minus;</span>
-                    <span class="pol-admin-trait-text">${escapeHtml(president.trait_downside)}</span>
-                </div>` : ''}
-            </div>`;
-        }
-
-        presidentHtml = `
-        <div class="pol-admin-pres-header">
-            <span style="font-family:var(--dfont-ui);font-size:11px;font-weight:500;letter-spacing:0.04em;color:var(--dtext-2);text-transform:uppercase">President — ${termLabel}</span>
-            <span style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3)">${termEndStr}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:flex-start">
-            <div>
-                <div class="pol-admin-pres-name">${escapeHtml(president.first_name + ' ' + president.last_name)} <span class="pol-admin-pres-age">(${president.age || '?'})</span></div>
-                <div class="pol-admin-party-badge">
-                    <div class="pol-admin-party-dot" style="background:${presColor}"></div>
-                    <span style="font-family:var(--dfont-ui);font-size:10px;color:${presColor}">${escapeHtml(presPartyName)}</span>
-                </div>
+        const presAbbr = presParty?.abbreviation || (presParty?.faction_name || '??').substring(0, 3).toUpperCase();
+        const termOrd = president.terms_served > 1 ? (president.terms_served === 2 ? '2nd' : president.terms_served + 'th') : '1st';
+        const ini = initials(president.first_name, president.last_name);
+        leader1Html = `
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px">
+          <div style="width:32px;height:32px;border-radius:4px;background:var(--dbg-4);border:1px solid var(--dborder-0);display:flex;align-items:center;justify-content:center;font-family:var(--dfont-mono);font-size:10px;font-weight:600;color:var(--dtext-2);flex-shrink:0">${escapeHtml(ini)}</div>
+          <div>
+            <div style="font-family:var(--dfont-ui);font-size:14px;font-weight:600;color:var(--dtext-0)">${escapeHtml(president.first_name + ' ' + president.last_name)}</div>
+            <div style="font-family:var(--dfont-ui);font-size:11px;color:var(--dtext-2);margin-top:1px">President &middot; Age ${president.age || '?'} &middot; ${termOrd} Term</div>
+            <div style="display:flex;align-items:center;gap:5px;margin-top:3px">
+              <div style="width:7px;height:7px;border-radius:2px;background:${presColor}"></div>
+              <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:500;color:${presColor}">${escapeHtml(presAbbr)}</span>
             </div>
-            <div class="pol-admin-ideo-badge">
-                <span class="pol-admin-ideo-label">Ideology</span>
-                <span class="pol-admin-ideo-value" style="color:${ideoColor}">${escapeHtml(ideoDisplay)}</span>
-            </div>
-        </div>
-        ${traitHtml}`;
-    } else if (isAuto) {
-        // Autocracy — show Generalísimo / Head of State
-        const hosName = (nation.head_of_state_first_name && nation.head_of_state_last_name)
-            ? nation.head_of_state_first_name + ' ' + nation.head_of_state_last_name
-            : 'Unknown';
-        const hosAge = nation.head_of_state_age ? `, Age ${nation.head_of_state_age}` : '';
-        const rulingParty = nation.ruling_faction_id ? (allParties || []).find(p => p.id === nation.ruling_faction_id) : null;
-        const rpColor = rulingParty?.party_color || '#c8a64e';
-        const rpName = rulingParty?.faction_name || 'Ruling Party';
-        presidentHtml = `
-        <div style="margin-bottom:6px">
-            <span style="font-family:var(--dfont-ui);font-size:11px;font-weight:500;letter-spacing:0.04em;color:var(--dtext-2);text-transform:uppercase">Generalísimo</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-            <div>
-                <div style="font-family:var(--dfont-ui);font-size:15px;font-weight:700;color:var(--dtext-0)">${escapeHtml(hosName)}</div>
-                <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3)">${escapeHtml(hosAge)}</div>
-            </div>
-        </div>
-        <div class="pol-admin-party-badge">
-            <div class="pol-admin-party-dot" style="background:${rpColor}"></div>
-            <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:${rpColor}">${escapeHtml(rpName)}</span>
-        </div>
-        <div style="font-family:var(--dfont-mono);font-size:9px;color:var(--damber);margin-top:6px">Rules until dead or deposed</div>`;
-    } else if (!isPres) {
-        // Parliamentary — show PM from coalition lead party
-        const leadPartyId = coalition?.lead_party_id || null;
-        const leadParty = leadPartyId ? (allParties || []).find(p => p.id === leadPartyId) : null;
+          </div>
+        </div>`;
+    } else if (!isPres && !isAuto && coalition) {
+        const leadParty = parties.find(p => p.id === coalition.lead_party_id);
         const pmColor = leadParty?.party_color || '#888';
-        const pmPartyName = leadParty?.faction_name || 'Unknown';
-        presidentHtml = `
-        <div style="margin-bottom:6px">
-            <span style="font-family:var(--dfont-ui);font-size:11px;font-weight:500;letter-spacing:0.04em;color:var(--dtext-2);text-transform:uppercase">Head of Government</span>
-        </div>
-        <div class="pol-admin-party-badge">
-            <div class="pol-admin-party-dot" style="background:${pmColor}"></div>
-            <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:${pmColor}">${escapeHtml(pmPartyName)}</span>
-        </div>`;
-    }
-
-    // Vulnerabilities
-    const vulnsHtml = topVulns.map(v => {
-        const isCritical = v.critical;
-        const bg = isCritical ? 'var(--dred-faint)' : 'rgba(255,255,255,0.02)';
-        const border = isCritical ? 'var(--dred)' : 'var(--damber)';
-        return `<div style="display:flex;align-items:center;padding:4px 8px;margin-bottom:3px;border-radius:3px;background:${bg};border-left:3px solid ${border}">
-            <span style="font-family:var(--dfont-ui);font-size:10px;color:var(--dtext-0);flex:1">${escapeHtml(v.name)}</span>
-            <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:700;color:var(--dtext-2);width:36px;text-align:right">${v.repStat}</span>
-            <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:700;color:var(--dred);width:34px;text-align:right">${v.score}</span>
-        </div>`;
-    }).join('');
-
-    // Breakdown rows
-    const posRowsHtml = positives.map(c =>
-        `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--dborder-0)">
-            <span style="font-family:var(--dfont-ui);font-size:10px;color:var(--dtext-2)">${escapeHtml(c.name)}</span>
-            <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;color:var(--dgreen)">+${c.score}</span>
-        </div>`
-    ).join('');
-    const negRowsHtml = negatives.map(c =>
-        `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--dborder-0)">
-            <span style="font-family:var(--dfont-ui);font-size:10px;color:var(--dtext-2)">${escapeHtml(c.name)}</span>
-            <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;color:var(--dred)">${c.score}</span>
-        </div>`
-    ).join('');
-
-    // Strategic read
-    let stratLabel, stratColor, stratText;
-    const worstDrag = negatives.length > 0 ? negatives[0].name : 'unknown factors';
-    const secondDrag = negatives.length > 1 ? negatives[1].name : null;
-    if (approval >= 50) {
-        stratLabel = 'STRONG'; stratColor = 'var(--dgreen)';
-        stratText = 'Government is popular and delivering results.';
-    } else if (approval >= 40) {
-        stratLabel = 'VULNERABLE'; stratColor = 'var(--damber)';
-        stratText = `Government is holding but trending down. ${escapeHtml(worstDrag)} is the primary drag.`;
-    } else if (approval >= 25) {
-        stratLabel = 'WEAK'; stratColor = 'var(--dred)';
-        stratText = `Government approval below 40%. ${escapeHtml(worstDrag)}${secondDrag ? ' and ' + escapeHtml(secondDrag) : ''} ${secondDrag ? 'are' : 'is'} the biggest drag${secondDrag ? 's' : ''}.`;
-    } else {
-        stratLabel = 'COLLAPSING'; stratColor = 'var(--dred)';
-        stratText = `Government approval critically low. Voters are looking for alternatives.`;
-    }
-
-    // Impeach button (presidential only)
-    const impeachHtml = isPres && president ? `
-        <div style="display:flex;justify-content:center;margin-top:2px">
-            <div class="pol-admin-impeach-btn">
-                <span class="pol-admin-impeach-label">Impeach President</span>
-                <span class="pol-admin-impeach-cost">7 AP</span>
+        const pmName = leadParty?.faction_name || 'Unknown';
+        const pmAbbr = leadParty?.abbreviation || pmName.substring(0, 3).toUpperCase();
+        const ini = pmName.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
+        leader1Html = `
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px">
+          <div style="width:32px;height:32px;border-radius:4px;background:var(--dbg-4);border:1px solid var(--dborder-0);display:flex;align-items:center;justify-content:center;font-family:var(--dfont-mono);font-size:10px;font-weight:600;color:var(--dtext-2);flex-shrink:0">${escapeHtml(ini)}</div>
+          <div>
+            <div style="font-family:var(--dfont-ui);font-size:14px;font-weight:600;color:var(--dtext-0)">${escapeHtml(pmName)}</div>
+            <div style="font-family:var(--dfont-ui);font-size:11px;color:var(--dtext-2);margin-top:1px">Head of Government</div>
+            <div style="display:flex;align-items:center;gap:5px;margin-top:3px">
+              <div style="width:7px;height:7px;border-radius:2px;background:${pmColor}"></div>
+              <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:500;color:${pmColor}">${escapeHtml(pmAbbr)}</span>
             </div>
-        </div>` : '';
+          </div>
+        </div>`;
+    } else if (isAuto) {
+        const hosName = (nation.head_of_state_first_name && nation.head_of_state_last_name)
+            ? nation.head_of_state_first_name + ' ' + nation.head_of_state_last_name : 'Unknown';
+        const ini = initials(nation.head_of_state_first_name, nation.head_of_state_last_name);
+        const rulingParty = nation.ruling_faction_id ? parties.find(p => p.id === nation.ruling_faction_id) : null;
+        const rpColor = rulingParty?.party_color || '#c8a64e';
+        const rpAbbr = rulingParty?.abbreviation || (rulingParty?.faction_name || '??').substring(0, 3).toUpperCase();
+        leader1Html = `
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px">
+          <div style="width:32px;height:32px;border-radius:4px;background:var(--dbg-4);border:1px solid var(--dborder-0);display:flex;align-items:center;justify-content:center;font-family:var(--dfont-mono);font-size:10px;font-weight:600;color:var(--dtext-2);flex-shrink:0">${escapeHtml(ini)}</div>
+          <div>
+            <div style="font-family:var(--dfont-ui);font-size:14px;font-weight:600;color:var(--dtext-0)">${escapeHtml(hosName)}</div>
+            <div style="font-family:var(--dfont-ui);font-size:11px;color:var(--dtext-2);margin-top:1px">Generalísimo${nation.head_of_state_age ? ' &middot; Age ' + nation.head_of_state_age : ''}</div>
+            <div style="display:flex;align-items:center;gap:5px;margin-top:3px">
+              <div style="width:7px;height:7px;border-radius:2px;background:${rpColor}"></div>
+              <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:500;color:${rpColor}">${escapeHtml(rpAbbr)}</span>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // ── Leader 2 (VP or Head of State) ──
+    let leader2Html = '';
+    const hosFirst = nation.head_of_state_first_name || '';
+    const hosLast = nation.head_of_state_last_name || '';
+    if (isPres && hosFirst && hosLast) {
+        const ini = initials(hosFirst, hosLast);
+        leader2Html = `
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px">
+          <div style="width:32px;height:32px;border-radius:4px;background:var(--dbg-4);border:1px solid var(--dborder-0);display:flex;align-items:center;justify-content:center;font-family:var(--dfont-mono);font-size:10px;font-weight:600;color:var(--dtext-2);flex-shrink:0">${escapeHtml(ini)}</div>
+          <div>
+            <div style="font-family:var(--dfont-ui);font-size:14px;font-weight:600;color:var(--dtext-0)">${escapeHtml(hosFirst + ' ' + hosLast)}</div>
+            <div style="font-family:var(--dfont-ui);font-size:11px;color:var(--dtext-2);margin-top:1px">Vice President</div>
+          </div>
+        </div>`;
+    } else if (!isPres && !isAuto && hosFirst && hosLast) {
+        const ini = initials(hosFirst, hosLast);
+        leader2Html = `
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px">
+          <div style="width:32px;height:32px;border-radius:4px;background:var(--dbg-4);border:1px solid var(--dborder-0);display:flex;align-items:center;justify-content:center;font-family:var(--dfont-mono);font-size:10px;font-weight:600;color:var(--dtext-2);flex-shrink:0">${escapeHtml(ini)}</div>
+          <div>
+            <div style="font-family:var(--dfont-ui);font-size:14px;font-weight:600;color:var(--dtext-0)">${escapeHtml(hosFirst + ' ' + hosLast)}</div>
+            <div style="font-family:var(--dfont-ui);font-size:11px;color:var(--dtext-2);margin-top:1px">Head of State</div>
+          </div>
+        </div>`;
+    }
+
+    // ── Coalition bar ──
+    const sortedGov = [...governing].sort((a, b) => (b.seats || 0) - (a.seats || 0));
+    const barHtml = totalSeats > 0
+        ? sortedGov.map(p => {
+            const pct = ((p.seats || 0) / totalSeats) * 100;
+            if (pct <= 0) return '';
+            return `<div style="width:${pct.toFixed(2)}%;height:100%;background:${p.party_color || '#8a8778'}"></div>`;
+          }).join('')
+        : '';
+
+    // ── Coalition party rows ──
+    const partyRowsHtml = sortedGov.map(p =>
+        `<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+            <div style="width:7px;height:7px;border-radius:2px;background:${p.party_color || '#8a8778'};flex-shrink:0"></div>
+            <span style="font-family:var(--dfont-ui);font-size:12px;color:var(--dtext-0);flex:1">${escapeHtml(p.faction_name || 'Unknown')}</span>
+            <span style="font-family:var(--dfont-mono);font-size:12px;font-weight:600;color:${p.party_color || 'var(--dtext-0)'}">${p.seats || 0}</span>
+        </div>`
+    ).join('');
+
+    // ── Footer ──
+    const govLabel = isMajority ? 'Majority Government' : 'Minority Government';
+    const footerDetail = `${govSeats}/${totalSeats} seats (${majority} needed)`;
 
     return `<div class="pol-admin-box">
-        <!-- Header: Admin name + Approval -->
-        <div class="pol-admin-header">
-            <div>
-                <div class="pol-admin-name">${escapeHtml(adminName)}</div>
-                <div class="pol-admin-meta">
-                    <span style="color:var(--dtext-2)">${govTypeLabel}</span>
-                    ${govStatusLabel ? `<span style="color:var(--dtext-3)">&middot;</span><span style="font-weight:600;color:${govStatusColor}">${govStatusLabel}</span>` : ''}
-                </div>
-            </div>
-            <div class="pol-admin-approval-block">
-                <div style="font-family:var(--dfont-mono);font-size:8px;color:var(--dtext-3)">APPROVAL</div>
-                <div style="display:flex;align-items:baseline;gap:4px;justify-content:flex-end">
-                    <span class="pol-sc-approval-big" style="font-size:24px;color:${ac}">${approval}%</span>
-                    ${deltaHtml}
-                </div>
-            </div>
+        <div style="font-family:var(--dfont-ui);font-size:16px;font-weight:700;color:var(--dtext-0);margin-bottom:8px">${escapeHtml(adminName)}</div>
+        <div style="display:flex;gap:6px;margin-bottom:16px">
+            <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;padding:3px 8px;border-radius:3px;border:1px solid var(--dborder-1);color:var(--dtext-0);background:var(--dbg-4)">${escapeHtml(govTypeLabel)}</span>
+            ${coalitionBadge ? `<span style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;padding:3px 8px;border-radius:3px;border:1px solid var(--dborder-1);color:var(--dtext-0);background:var(--dbg-4)">${escapeHtml(coalitionBadge)}</span>` : ''}
         </div>
 
-        <!-- Approval bar -->
-        <div class="pol-sc-bar" style="height:6px">
-            <div class="pol-sc-bar-fill" style="width:${approval}%;background:${ac}"></div>
-            <div class="pol-sc-bar-midline"></div>
+        ${leader1Html}
+        ${leader2Html}
+
+        <div style="height:1px;background:var(--dborder-0);margin:14px 0"></div>
+
+        <div style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--dtext-2);margin-bottom:8px">Governing Coalition</div>
+        <div style="display:flex;height:10px;border-radius:3px;overflow:hidden;background:rgba(255,255,255,0.04);margin-bottom:10px">${barHtml}</div>
+        ${partyRowsHtml}
+        <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);text-align:right;margin-top:4px">${govSeats} seats combined</div>
+
+        <div style="height:1px;background:var(--dborder-0);margin:14px 0"></div>
+
+        <div style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--dtext-2);margin-bottom:8px">Approval</div>
+        <div style="font-family:var(--dfont-mono);font-size:28px;font-weight:700;line-height:1;color:${ac}">${approval}%</div>
+
+        <div style="background:var(--dbg-4);border-top:1px solid var(--dborder-0);margin:16px -20px -16px;padding:10px 20px;font-family:var(--dfont-mono);font-size:10px;font-weight:600;color:var(--dtext-2);letter-spacing:0.04em;display:flex;align-items:center;gap:8px;border-radius:0 0 4px 4px">
+            <span style="text-transform:uppercase">${escapeHtml(govLabel)}</span>
+            <span style="color:var(--dtext-3);font-weight:400">${escapeHtml(footerDetail)}</span>
         </div>
-        <div class="pol-sc-bar-labels">
-            <span>+${Math.round(totalPos * 10) / 10} positive</span>
-            <span>50%</span>
-            <span>-${Math.round(totalNeg * 10) / 10} negative</span>
-        </div>
-
-        <div class="pol-sc-divider"></div>
-
-        <!-- President / Head of Government -->
-        <div class="pol-admin-president-section">
-            ${presidentHtml}
-        </div>
-
-        <div class="pol-sc-divider"></div>
-
-        <!-- Top Vulnerabilities -->
-        <div style="margin-bottom:2px">
-            <div class="pol-sc-vuln-header">
-                <span class="pol-sc-vuln-title">Top Vulnerabilities</span>
-                <span class="pol-sc-vuln-count">${topVulns.filter(v => v.critical).length} critical</span>
-            </div>
-            ${vulnsHtml}
-        </div>
-
-        <!-- Collapsible breakdown -->
-        <div class="pol-sc-toggle" onclick="var bd=this.nextElementSibling;bd.classList.toggle('open');this.querySelector('.pol-sc-toggle-arrow').style.transform=bd.classList.contains('open')?'rotate(180deg)':'rotate(0)'">
-            <span class="pol-sc-toggle-text">Full breakdown</span>
-            <span class="pol-sc-toggle-arrow">▼</span>
-        </div>
-        <div class="pol-sc-breakdown">
-            <span class="pol-sc-section-label" style="color:var(--dgreen)">POSITIVE</span>
-            <div style="margin-top:4px;margin-bottom:8px">${posRowsHtml || '<div style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3);padding:4px 0">None</div>'}</div>
-            <span class="pol-sc-section-label" style="color:var(--dred)">NEGATIVE</span>
-            <div style="margin-top:4px;margin-bottom:8px">${negRowsHtml || '<div style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3);padding:4px 0">None</div>'}</div>
-        </div>
-
-        <div class="pol-sc-divider"></div>
-
-        <!-- Strategic read -->
-        <div class="pol-sc-strategic" style="border-left-color:${stratColor}">
-            <span class="pol-sc-strategic-label" style="color:${stratColor}">${stratLabel}</span>
-            <div class="pol-sc-strategic-text">${stratText}</div>
-        </div>
-
-        ${impeachHtml}
     </div>`;
 }
 

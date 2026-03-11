@@ -21,26 +21,22 @@
     background: var(--bg-panel);
     border: 1px solid var(--border-main);
     border-radius: 8px;
-    padding: 28px 24px;
+    overflow: hidden;
     width: 380px;
   }
   .dash-card-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    background: var(--bg-card);
+    padding: 14px 24px;
     margin-bottom: 22px;
-    font-size: 0.75rem;
+    font-size: 0.9rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--text-secondary);
+    text-align: center;
   }
-  .dash-card-header .dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--accent);
-    flex-shrink: 0;
+  .dash-card-body {
+    padding: 6px 24px 28px;
   }
 
   .nation-identity {
@@ -111,6 +107,167 @@
     font-weight: 500;
     text-align: right;
   }
+
+  /* ── Government Card ── */
+  .dash-card-header .gov-status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .gov-admin-name {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+  }
+  .gov-badges {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .gov-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 3px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--border-main);
+    color: var(--text-primary);
+    background: var(--bg-card);
+  }
+  .gov-leader-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .gov-initials {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-main);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+  .gov-leader-name {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .gov-leader-meta {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin-top: 1px;
+  }
+  .gov-leader-party {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 3px;
+  }
+  .gov-party-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .gov-party-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 500;
+  }
+  .gov-section-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+  .gov-divider {
+    height: 1px;
+    background: var(--border-light);
+    margin: 14px 0;
+  }
+  .gov-seat-bar {
+    display: flex;
+    height: 10px;
+    border-radius: 3px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.04);
+    margin-bottom: 10px;
+  }
+  .gov-seat-segment {
+    height: 100%;
+  }
+  .gov-coalition-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+  }
+  .gov-coalition-name {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    flex: 1;
+  }
+  .gov-coalition-seats {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+  .gov-seats-combined {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-align: right;
+    margin-top: 4px;
+  }
+  .gov-approval-big {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .gov-footer {
+    background: var(--bg-card);
+    border-top: 1px solid var(--border-main);
+    margin: 16px -24px -28px;
+    padding: 10px 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .gov-footer-label {
+    text-transform: uppercase;
+  }
+  .gov-footer-detail {
+    color: var(--text-muted);
+    font-weight: 400;
+  }
 </style>
 </head>
 
@@ -123,7 +280,8 @@
 
   <!-- ── Nation Card ── -->
   <div class="dash-card" id="nation-card">
-    <div class="dash-card-header"><span class="dot"></span> NATION</div>
+    <div class="dash-card-header">NATION</div>
+    <div class="dash-card-body">
     <div class="nation-identity">
       <div class="nation-flag-box" id="nation-flag-box">
         <span class="abbr-fallback" id="nation-abbr"></span>
@@ -132,6 +290,13 @@
       <div class="motto" id="nation-motto"></div>
     </div>
     <div class="nation-stats-list" id="nation-stats-list"></div>
+    </div>
+  </div>
+
+  <!-- ── Government Card ── -->
+  <div class="dash-card" id="gov-card" style="display:none; margin-top:20px;">
+    <div class="dash-card-header"><span class="gov-status-dot"></span> GOVERNMENT</div>
+    <div class="dash-card-body" id="gov-card-body"></div>
   </div>
 
 </div>
@@ -139,6 +304,13 @@
 <script type="module">
 import { initPage, formatNumber } from './js/common.js';
 import { _supabase } from './js/supabase-client.js';
+import { fetchActiveCoalition } from './js/game/government-structure.js';
+import { isPresidentialRepublic, isAutocracy } from './js/game/government-types.js';
+
+function esc(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
 initPage('home', async (state) => {
   const { nation } = state;
@@ -186,6 +358,235 @@ initPage('home', async (state) => {
        <span class="value">${r.value}</span>
      </div>`
   ).join('');
+
+  // ══════════════════════════════════════
+  // ── Government Card ──
+  // ══════════════════════════════════════
+  try {
+    const isPres = isPresidentialRepublic(nation);
+    const isAuto = isAutocracy(nation);
+
+    // Parallel data fetches
+    const [
+      { data: allParties },
+      { data: shardRow },
+      { data: administration },
+      coalitionResult,
+      presidentResult
+    ] = await Promise.all([
+      _supabase.from('factions')
+        .select('id, seats, faction_name, abbreviation, party_color')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party'),
+      _supabase.from('shard')
+        .select('current_tick')
+        .eq('name', 'Alpha Shard')
+        .single(),
+      _supabase.from('administrations')
+        .select('admin_name, government_type, coalition_parties, total_seats')
+        .eq('nation_id', nation.id)
+        .is('ended_at_tick', null)
+        .order('started_at_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      fetchActiveCoalition(_supabase, nation.id),
+      isPres
+        ? _supabase.from('presidents')
+            .select('id, faction_id, first_name, last_name, age, terms_served, elected_tick, term_ends_tick, is_active')
+            .eq('nation_id', nation.id)
+            .eq('is_active', true)
+            .order('elected_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null })
+    ]);
+
+    const coalition = coalitionResult;
+    const president = presidentResult?.data ?? presidentResult;
+    const currentTick = shardRow?.data?.current_tick ?? shardRow?.current_tick ?? 0;
+    const parties = allParties || [];
+
+    // Previous approval for delta
+    let prevApproval = null;
+    if (currentTick > 0) {
+      const { data: prevSnap } = await _supabase
+        .from('nations_history')
+        .select('gov_approval')
+        .eq('nation_id', nation.id)
+        .eq('tick', currentTick - 1)
+        .single();
+      prevApproval = prevSnap?.gov_approval ?? null;
+    }
+
+    // ── Compute values ──
+    const approval = Math.round(Number(nation.gov_approval ?? 50));
+    const approvalColor = approval >= 50 ? 'var(--green)' : approval >= 35 ? 'var(--orange)' : 'var(--red)';
+    const adminName = administration?.admin_name || 'Government';
+
+    // Gov type badge
+    const govTypeLabel = isAuto ? 'Autocracy' : isPres ? 'Presidential' : 'Parliamentary';
+
+    // Coalition info
+    const coalitionIds = new Set(coalition?.party_ids || []);
+    const governing = parties.filter(p => coalitionIds.has(p.id));
+    const govSeats = governing.reduce((s, p) => s + (p.seats || 0), 0);
+    const totalSeats = parties.reduce((s, p) => s + (p.seats || 0), 0);
+    const majority = Math.ceil(totalSeats / 2);
+    const isMajority = govSeats >= majority;
+
+    // Coalition type badge
+    const coalitionBadge = governing.length > 1 ? 'Coalition' : governing.length === 1 ? 'Single Party' : '';
+
+    // ── Leader 1 (President or PM) ──
+    let leader1Html = '';
+    if (isPres && president) {
+      const presParty = parties.find(p => p.id === president.faction_id);
+      const presColor = presParty?.party_color || '#888';
+      const presAbbr = presParty?.abbreviation || (presParty?.faction_name || '??').substring(0, 3).toUpperCase();
+      const termOrd = president.terms_served > 1 ? (president.terms_served === 2 ? '2nd' : president.terms_served + 'th') : '1st';
+      const initials = ((president.first_name || '?')[0] + (president.last_name || '?')[0]).toUpperCase();
+      leader1Html = `
+        <div class="gov-leader-row">
+          <div class="gov-initials">${esc(initials)}</div>
+          <div>
+            <div class="gov-leader-name">${esc(president.first_name + ' ' + president.last_name)}</div>
+            <div class="gov-leader-meta">President &middot; Age ${president.age || '?'} &middot; ${termOrd} Term</div>
+            <div class="gov-leader-party">
+              <div class="gov-party-dot" style="background:${presColor}"></div>
+              <span class="gov-party-label" style="color:${presColor}">${esc(presAbbr)}</span>
+            </div>
+          </div>
+        </div>`;
+    } else if (!isPres && !isAuto && coalition) {
+      // Parliamentary: PM from lead party
+      const leadParty = parties.find(p => p.id === coalition.lead_party_id);
+      const pmColor = leadParty?.party_color || '#888';
+      const pmName = leadParty?.faction_name || 'Unknown';
+      const pmAbbr = leadParty?.abbreviation || pmName.substring(0, 3).toUpperCase();
+      const initials = pmName.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
+      leader1Html = `
+        <div class="gov-leader-row">
+          <div class="gov-initials">${esc(initials)}</div>
+          <div>
+            <div class="gov-leader-name">${esc(pmName)}</div>
+            <div class="gov-leader-meta">Head of Government</div>
+            <div class="gov-leader-party">
+              <div class="gov-party-dot" style="background:${pmColor}"></div>
+              <span class="gov-party-label" style="color:${pmColor}">${esc(pmAbbr)}</span>
+            </div>
+          </div>
+        </div>`;
+    } else if (isAuto) {
+      const hosName = (nation.head_of_state_first_name && nation.head_of_state_last_name)
+        ? nation.head_of_state_first_name + ' ' + nation.head_of_state_last_name : 'Unknown';
+      const initials = ((nation.head_of_state_first_name || '?')[0] + (nation.head_of_state_last_name || '?')[0]).toUpperCase();
+      const rulingParty = nation.ruling_faction_id ? parties.find(p => p.id === nation.ruling_faction_id) : null;
+      const rpColor = rulingParty?.party_color || '#c8a64e';
+      const rpAbbr = rulingParty?.abbreviation || (rulingParty?.faction_name || '??').substring(0, 3).toUpperCase();
+      leader1Html = `
+        <div class="gov-leader-row">
+          <div class="gov-initials">${esc(initials)}</div>
+          <div>
+            <div class="gov-leader-name">${esc(hosName)}</div>
+            <div class="gov-leader-meta">Generalísimo${nation.head_of_state_age ? ' &middot; Age ' + nation.head_of_state_age : ''}</div>
+            <div class="gov-leader-party">
+              <div class="gov-party-dot" style="background:${rpColor}"></div>
+              <span class="gov-party-label" style="color:${rpColor}">${esc(rpAbbr)}</span>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // ── Leader 2 (VP or Head of State) ──
+    let leader2Html = '';
+    const hosFirst = nation.head_of_state_first_name || '';
+    const hosLast = nation.head_of_state_last_name || '';
+    if (isPres && hosFirst && hosLast) {
+      const initials = (hosFirst[0] + hosLast[0]).toUpperCase();
+      leader2Html = `
+        <div class="gov-leader-row">
+          <div class="gov-initials">${esc(initials)}</div>
+          <div>
+            <div class="gov-leader-name">${esc(hosFirst + ' ' + hosLast)}</div>
+            <div class="gov-leader-meta">Vice President</div>
+          </div>
+        </div>`;
+    } else if (!isPres && !isAuto && hosFirst && hosLast) {
+      const initials = (hosFirst[0] + hosLast[0]).toUpperCase();
+      leader2Html = `
+        <div class="gov-leader-row">
+          <div class="gov-initials">${esc(initials)}</div>
+          <div>
+            <div class="gov-leader-name">${esc(hosFirst + ' ' + hosLast)}</div>
+            <div class="gov-leader-meta">Head of State</div>
+          </div>
+        </div>`;
+    }
+
+    // ── Coalition bar ──
+    const sortedGov = [...governing].sort((a, b) => (b.seats || 0) - (a.seats || 0));
+    const barHtml = totalSeats > 0
+      ? sortedGov.map(p => {
+          const pct = ((p.seats || 0) / totalSeats) * 100;
+          if (pct <= 0) return '';
+          return `<div class="gov-seat-segment" style="width:${pct.toFixed(2)}%;background:${p.party_color || '#8a8778'}"></div>`;
+        }).join('')
+      : '';
+
+    // ── Coalition party rows ──
+    const partyRowsHtml = sortedGov.map(p =>
+      `<div class="gov-coalition-row">
+        <div class="gov-party-dot" style="background:${p.party_color || '#8a8778'}"></div>
+        <span class="gov-coalition-name">${esc(p.faction_name || 'Unknown')}</span>
+        <span class="gov-coalition-seats" style="color:${p.party_color || 'var(--text-primary)'}">${p.seats || 0}</span>
+      </div>`
+    ).join('');
+
+    // ── Footer ──
+    const govLabel = isMajority ? 'Majority Government' : 'Minority Government';
+    const footerDetail = `${govSeats}/${totalSeats} seats (${majority} needed)`;
+
+    // ── Build card ──
+    document.getElementById('gov-card-body').innerHTML = `
+      <div class="gov-admin-name">${esc(adminName)}</div>
+      <div class="gov-badges">
+        <span class="gov-badge">${esc(govTypeLabel)}</span>
+        ${coalitionBadge ? `<span class="gov-badge">${esc(coalitionBadge)}</span>` : ''}
+      </div>
+
+      ${leader1Html}
+      ${leader2Html}
+
+      <div class="gov-divider"></div>
+
+      <div class="gov-section-title">Governing Coalition</div>
+      <div class="gov-seat-bar">${barHtml}</div>
+      ${partyRowsHtml}
+      <div class="gov-seats-combined">${govSeats} seats combined</div>
+
+      <div class="gov-divider"></div>
+
+      <div class="gov-section-title">Approval</div>
+      <div class="gov-approval-big" style="color:${approvalColor}">${approval}%</div>
+    `;
+
+    // Footer (outside body padding)
+    const govCard = document.getElementById('gov-card');
+    let footer = govCard.querySelector('.gov-footer');
+    if (!footer) {
+      footer = document.createElement('div');
+      footer.className = 'gov-footer';
+      govCard.appendChild(footer);
+    }
+    footer.innerHTML = `
+      <span class="gov-footer-label">${esc(govLabel)}</span>
+      <span class="gov-footer-detail">${esc(footerDetail)}</span>
+    `;
+
+    govCard.style.display = '';
+  } catch (e) {
+    console.error('Government card error:', e);
+  }
 });
 
 /** Simple deterministic motto generator based on nation name */
