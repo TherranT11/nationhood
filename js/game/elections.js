@@ -9,7 +9,7 @@ import { loadFactionIdeology } from './ideology.js';
 import { snapshotNationStats } from './stats.js';
 import { adjustMomentumAll } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
-import { syncAmbassadorsForFailedConfirmationBills } from './bills.js';
+import { syncAmbassadorsForFailedConfirmationBills, syncMinistriesForFailedConfirmationBills } from './bills.js';
 import { autoSelectPresidentialCandidates, generatePresidentCandidates } from './presidential.js';
 import { runElectionSimulation } from './election-simulation.js';
 
@@ -1265,8 +1265,9 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
         .update({ status: 'failed' })
         .eq('nation_id', nation.id)
         .in('status', ['committee', 'floor'])
-        .select('id, bill_type, ambassador_id');
+        .select('id, nation_id, bill_type, ambassador_id, ministry_key');
     await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
+    await syncMinistriesForFailedConfirmationBills(supabase, dissolvedBills);
 
     if (isPresidential && normalizedElectionType === 'presidential') {
         // Fail bills on president's desk
@@ -1274,8 +1275,9 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
             .eq('status', 'president_desk')
-            .select('id, bill_type, ambassador_id');
+            .select('id, nation_id, bill_type, ambassador_id, ministry_key');
         await syncAmbassadorsForFailedConfirmationBills(supabase, deskBills);
+        await syncMinistriesForFailedConfirmationBills(supabase, deskBills);
         await processPresidentialElectionResult(supabase, nation, completedElection, currentTick, completedElection.id);
     } else if (isPresidential && normalizedElectionType === 'parliamentary') {
         // Midterm parliamentary election — seats reshuffled, president stays
@@ -1286,8 +1288,9 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
             .eq('status', 'frozen')
-            .select('id, bill_type, ambassador_id');
+            .select('id, nation_id, bill_type, ambassador_id, ministry_key');
         await syncAmbassadorsForFailedConfirmationBills(supabase, frozenBills);
+        await syncMinistriesForFailedConfirmationBills(supabase, frozenBills);
 
         let existingGov = null;
         const { data: govFormation } = await supabase
@@ -1457,9 +1460,10 @@ export async function processElections(supabase, nation, currentTick) {
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
             .in('status', ['committee', 'floor'])
-            .select('id, bill_type, ambassador_id');
+            .select('id, nation_id, bill_type, ambassador_id, ministry_key');
 
         await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
+        await syncMinistriesForFailedConfirmationBills(supabase, dissolvedBills);
 
         if (dissolvedBills?.length > 0) {
             console.log(`Dissolved ${dissolvedBills.length} pending bill(s) after election for ${nation.name}`);
@@ -1472,8 +1476,9 @@ export async function processElections(supabase, nation, currentTick) {
                 .update({ status: 'failed' })
                 .eq('nation_id', nation.id)
                 .eq('status', 'president_desk')
-                .select('id, bill_type, ambassador_id');
+                .select('id, nation_id, bill_type, ambassador_id, ministry_key');
             await syncAmbassadorsForFailedConfirmationBills(supabase, deskBills);
+            await syncMinistriesForFailedConfirmationBills(supabase, deskBills);
             if (deskBills?.length > 0) {
                 console.log(`Failed ${deskBills.length} bill(s) on president's desk after presidential election for ${nation.name}`);
             }
@@ -1518,9 +1523,10 @@ export async function processElections(supabase, nation, currentTick) {
                 .update({ status: 'failed' })
                 .eq('nation_id', nation.id)
                 .eq('status', 'frozen')
-                .select('id, bill_type, ambassador_id');
+                .select('id, nation_id, bill_type, ambassador_id, ministry_key');
 
             await syncAmbassadorsForFailedConfirmationBills(supabase, frozenBills);
+            await syncMinistriesForFailedConfirmationBills(supabase, frozenBills);
 
             if (existingGov) {
                 console.log(`Dissolving ${existingGov.status} government after election for ${nation.name} (source: ${existingGovSource})`);
