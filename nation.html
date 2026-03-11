@@ -519,7 +519,7 @@ async function loadStatEffectSources(nationId, nation) {
 
     var results = await Promise.all([
         _supabase.from('active_laws')
-            .select('is_reversal, passed_tick, policies(policy_name, stat_effects)')
+            .select('is_reversal, passed_tick, effects_applied_through_tick, policies(policy_name, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)')
             .eq('nation_id', nationId),
         _supabase.from('active_crises')
             .select('crisis_id, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')
@@ -585,11 +585,18 @@ function addEffectToMap(map, statKey, name, direction, type, rate) {
     var key = normalizeNationStatKey(statKey);
     if (!key) return;
     if (!map[key]) map[key] = [];
-    // Deduplicate
+    var parsedRate = (rate === null || rate === undefined || rate === '') ? null : Number(rate);
+    if (!Number.isFinite(parsedRate)) parsedRate = null;
+    // Deduplicate and backfill missing rate where available
     for (var i = 0; i < map[key].length; i++) {
-        if (map[key][i].name === name && map[key][i].direction === direction && map[key][i].type === type) return;
+        if (map[key][i].name === name && map[key][i].direction === direction && map[key][i].type === type) {
+            if ((map[key][i].rate === null || map[key][i].rate === undefined) && parsedRate !== null) {
+                map[key][i].rate = parsedRate;
+            }
+            return;
+        }
     }
-    map[key].push({ name: name, direction: direction, type: type, rate: rate || null });
+    map[key].push({ name: name, direction: direction, type: type, rate: parsedRate });
 }
 
 function parsePolicyEffects(laws, map, currentTick) {
@@ -597,23 +604,38 @@ function parsePolicyEffects(laws, map, currentTick) {
         var law = laws[i];
         var policy = law.policies;
         if (!policy) continue;
-        var effects = policy.stat_effects;
-        if (!effects || !Array.isArray(effects)) continue;
         var ticksSince = currentTick - (law.passed_tick || 0);
-        for (var j = 0; j < effects.length; j++) {
-            var eff = effects[j];
-            if (!eff.stat_key) continue;
-            var delay = Number(eff.delay_ticks) || 0;
-            var dur = Number(eff.duration_ticks) || 12;
-            // Skip effects that haven't started yet or have expired
-            if (ticksSince <= delay || ticksSince > delay + dur) continue;
-            var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
-            // Reversal laws flip the effect direction
-            if (law.is_reversal) dir = (dir === 'up') ? 'down' : 'up';
-            var label = law.is_reversal ? policy.policy_name + ' (Repeal)' : policy.policy_name;
-            var rate = Number(eff.rate) || 1;
-            addEffectToMap(map, eff.stat_key, label, dir, 'Policy', rate);
+        var label = law.is_reversal ? policy.policy_name + ' (Repeal)' : policy.policy_name;
+
+        var effects = policy.stat_effects;
+        if (effects && Array.isArray(effects) && effects.length > 0) {
+            for (var j = 0; j < effects.length; j++) {
+                var eff = effects[j];
+                if (!eff.stat_key) continue;
+                var delay = Number(eff.delay_ticks) || 0;
+                var dur = Number(eff.duration_ticks) || 12;
+                // Skip effects that haven't started yet or have expired
+                if (ticksSince <= delay || ticksSince > delay + dur) continue;
+                var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
+                // Reversal laws flip the effect direction
+                if (law.is_reversal) dir = (dir === 'up') ? 'down' : 'up';
+                var rate = Number(eff.rate);
+                if (!Number.isFinite(rate)) rate = Number(policy.stat_change_per_tick);
+                if (!Number.isFinite(rate)) rate = 1;
+                addEffectToMap(map, eff.stat_key, label, dir, 'Policy', rate);
+            }
+            continue;
         }
+
+        // Legacy policy fallback when stat_effects JSON is missing
+        if (!policy.target_stat) continue;
+        var legacyDur = Number(policy.duration_months) || 12;
+        if (ticksSince <= 0 || ticksSince > legacyDur) continue;
+        var legacyDir = (policy.stat_direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
+        if (law.is_reversal) legacyDir = (legacyDir === 'up') ? 'down' : 'up';
+        var legacyRate = Number(policy.stat_change_per_tick);
+        if (!Number.isFinite(legacyRate)) legacyRate = 1;
+        addEffectToMap(map, policy.target_stat, label, legacyDir, 'Policy', legacyRate);
     }
 }
 
@@ -821,9 +843,9 @@ function buildFeaturedAbpHTML(statKey) {
         h += '<div class="featured-card__abp-row">';
         h += '<span class="featured-card__abp-name">' + escapeHtml(eff.name) + '</span>';
         h += '<span class="featured-card__abp-arrow ' + arrowClass + '">' + arrow + '</span>';
-        if (eff.rate) {
+        if (eff.rate !== null && eff.rate !== undefined) {
             var sign = eff.direction === 'up' ? '+' : '-';
-            h += '<span class="featured-card__abp-rate">' + sign + eff.rate + '/tick</span>';
+            h += '<span class="featured-card__abp-rate">' + sign + (Math.round(Number(eff.rate) * 100) / 100) + '/tick</span>';
         }
         h += '<span class="featured-card__abp-type ' + typeClass + '">' + escapeHtml(eff.type) + '</span>';
         h += '</div>';
@@ -1598,9 +1620,9 @@ function buildAffectedByContent(statKey) {
         h += '<div class="abp-row">';
         h += '<span class="abp-name">' + escapeHtml(eff.name) + '</span>';
         h += '<span class="abp-arrow ' + arrowClass + '">' + arrow + '</span>';
-        if (eff.rate) {
+        if (eff.rate !== null && eff.rate !== undefined) {
             var sign = eff.direction === 'up' ? '+' : '-';
-            h += '<span class="abp-rate">' + sign + eff.rate + '/tick</span>';
+            h += '<span class="abp-rate">' + sign + (Math.round(Number(eff.rate) * 100) / 100) + '/tick</span>';
         }
         h += '<span class="abp-type ' + typeClass + '">' + escapeHtml(eff.type) + '</span>';
         h += '</div>';
