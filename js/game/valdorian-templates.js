@@ -293,19 +293,21 @@ export const HEADLINE_TEMPLATES = {
 
     // ─────────── BILL VOTE (PASS) ───────────
     bill_vote_pass: [
-        { id: 'bill_pass_h_01', template: "Parliament Passes {bill_name}", conditions: [], weight: 1 },
-        { id: 'bill_pass_h_02', template: "{bill_name} Clears Parliament in Decisive Vote", conditions: [{ field: 'margin', op: '>', value: 20 }], weight: 2 },
-        { id: 'bill_pass_h_03', template: "{bill_name} Squeaks Through Parliament — Narrow Victory for {party_name}", conditions: [{ field: 'margin', op: '<', value: 5 }, { field: 'party_name', op: '!=', value: '' }], weight: 2 },
-        { id: 'bill_pass_h_03b', template: "{bill_name} Squeaks Through Parliament — Narrow Victory", conditions: [{ field: 'margin', op: '<', value: 5 }], weight: 1 },
-        { id: 'bill_pass_h_04', template: "Landmark: {bill_name} Becomes Law After Contentious Debate", conditions: [{ field: 'defection_count', op: '>', value: 3 }], weight: 2 },
+        { id: 'bill_pass_h_01', template: "Parliament Passes {bill_name}", conditions: [{ field: 'bill_name', op: '!=', value: '' }], weight: 1 },
+        { id: 'bill_pass_h_01b', template: "Parliament Passes New Legislation", conditions: [], weight: 1 },
+        { id: 'bill_pass_h_02', template: "{bill_name} Clears Parliament in Decisive Vote", conditions: [{ field: 'bill_name', op: '!=', value: '' }, { field: 'margin', op: '>', value: 20 }], weight: 2 },
+        { id: 'bill_pass_h_03', template: "{bill_name} Squeaks Through Parliament — Narrow Victory for {party_name}", conditions: [{ field: 'bill_name', op: '!=', value: '' }, { field: 'margin', op: '<', value: 5 }, { field: 'party_name', op: '!=', value: '' }], weight: 2 },
+        { id: 'bill_pass_h_03b', template: "{bill_name} Squeaks Through Parliament — Narrow Victory", conditions: [{ field: 'bill_name', op: '!=', value: '' }, { field: 'margin', op: '<', value: 5 }], weight: 1 },
+        { id: 'bill_pass_h_04', template: "Landmark: {bill_name} Becomes Law After Contentious Debate", conditions: [{ field: 'bill_name', op: '!=', value: '' }, { field: 'defection_count', op: '>', value: 3 }], weight: 2 },
     ],
 
     // ─────────── BILL VOTE (FAIL) ───────────
     bill_vote_fail: [
-        { id: 'bill_fail_h_01', template: "Parliament Rejects {bill_name}", conditions: [], weight: 1 },
-        { id: 'bill_fail_h_02', template: "{bill_name} Defeated in Parliament — Government Embarrassed", conditions: [{ field: 'defection_count', op: '>', value: 3 }], weight: 2 },
-        { id: 'bill_fail_h_03', template: "{bill_name} Falls Short — Coalition Fractures on Display", conditions: [{ field: 'defection_count', op: '>', value: 5 }], weight: 3 },
-        { id: 'bill_fail_h_04', template: "Bill Blocked: {bill_name} Voted Down", conditions: [], weight: 1 },
+        { id: 'bill_fail_h_01', template: "Parliament Rejects {bill_name}", conditions: [{ field: 'bill_name', op: '!=', value: '' }], weight: 1 },
+        { id: 'bill_fail_h_01b', template: "Parliament Rejects Proposed Legislation", conditions: [], weight: 1 },
+        { id: 'bill_fail_h_02', template: "{bill_name} Defeated in Parliament — Government Embarrassed", conditions: [{ field: 'bill_name', op: '!=', value: '' }, { field: 'defection_count', op: '>', value: 3 }], weight: 2 },
+        { id: 'bill_fail_h_03', template: "{bill_name} Falls Short — Coalition Fractures on Display", conditions: [{ field: 'bill_name', op: '!=', value: '' }, { field: 'defection_count', op: '>', value: 5 }], weight: 3 },
+        { id: 'bill_fail_h_04', template: "Bill Blocked: {bill_name} Voted Down", conditions: [{ field: 'bill_name', op: '!=', value: '' }], weight: 1 },
     ],
 
     // ─────────── ELECTION ───────────
@@ -339,8 +341,8 @@ export const HEADLINE_TEMPLATES = {
         { id: 'noc_h_01', template: "No-Confidence Motion Filed Against {pm_name}", conditions: [{ field: 'status', op: '==', value: 'filed' }], weight: 1 },
         { id: 'noc_h_02', template: "No-Confidence Vote Succeeds — {pm_name} Ousted", conditions: [{ field: 'status', op: '==', value: 'passed' }], weight: 3 },
         { id: 'noc_h_03', template: "{pm_name} Survives No-Confidence Vote", conditions: [{ field: 'status', op: '==', value: 'failed' }], weight: 2 },
-        { id: 'noc_h_04', template: "Parliament Turns on {pm_name} — No-Confidence Succeeds {vote_for}-{vote_against}", conditions: [{ field: 'status', op: '==', value: 'passed' }], weight: 2 },
-        { id: 'noc_h_05', template: "{pm_name} Hangs On — No-Confidence Defeated by {margin} Votes", conditions: [{ field: 'status', op: '==', value: 'failed' }], weight: 1 },
+        { id: 'noc_h_04', template: "Parliament Turns on {pm_name} — No-Confidence Succeeds {vote_for}-{vote_against}", conditions: [{ field: 'status', op: '==', value: 'passed' }, { field: 'vote_for', op: '!=', value: '' }], weight: 2 },
+        { id: 'noc_h_05', template: "{pm_name} Hangs On — No-Confidence Defeated by {margin} Votes", conditions: [{ field: 'status', op: '==', value: 'failed' }, { field: 'margin', op: '!=', value: '' }], weight: 1 },
         { id: 'noc_h_06', template: "No-Confidence Vote Shakes {nation_name} Government", conditions: [], weight: 1 },
     ],
 
@@ -352,7 +354,7 @@ export const HEADLINE_TEMPLATES = {
         { id: 'imp_h_04', template: "President {president_name} Convicted and Removed From Office", conditions: [{ field: 'status', op: '==', value: 'convicted' }], weight: 3 },
         { id: 'imp_h_05', template: "President {president_name} Acquitted — Survives Impeachment Trial", conditions: [{ field: 'status', op: '==', value: 'acquitted' }], weight: 2 },
         { id: 'imp_h_06', template: "Charges Filed: {charges} — Impeachment Proceedings Begin", conditions: [{ field: 'status', op: '==', value: 'filed' }], weight: 2 },
-        { id: 'imp_h_07', template: "Historic Vote: {president_name} Impeached {vote_for}-{vote_against}", conditions: [{ field: 'status', op: '==', value: 'impeached' }], weight: 2 },
+        { id: 'imp_h_07', template: "Historic Vote: {president_name} Impeached {vote_for}-{vote_against}", conditions: [{ field: 'status', op: '==', value: 'impeached' }, { field: 'vote_for', op: '!=', value: '' }], weight: 2 },
         { id: 'imp_h_08', template: "VP {vp_name} Sworn In as Acting President After {president_name} Removed", conditions: [{ field: 'status', op: '==', value: 'convicted' }], weight: 2 },
         { id: 'imp_h_09', template: "Impeachment Crisis Rocks {nation_name}", conditions: [], weight: 1 },
     ],
@@ -464,7 +466,7 @@ export const HEADLINE_TEMPLATES = {
     war_failed: [
         { id: 'war_fail_h_01', template: "Parliament Blocks War — {declarer} Cannot Attack {target}", conditions: [], weight: 1 },
         { id: 'war_fail_h_02', template: "War Vote Fails: {declarer} Pulls Back from Brink", conditions: [], weight: 2 },
-        { id: 'war_fail_h_03', template: "Parliament Says No: War Motion Defeated {vote_against}-{vote_for}", conditions: [], weight: 1 },
+        { id: 'war_fail_h_03', template: "Parliament Says No: War Motion Defeated {vote_against}-{vote_for}", conditions: [{ field: 'vote_for', op: '!=', value: '' }], weight: 1 },
         { id: 'war_fail_h_04', template: "{declarer_pm} Humiliated as War Resolution Fails", conditions: [{ field: 'margin', op: '>', value: 15 }], weight: 2 },
     ],
 
@@ -743,13 +745,17 @@ export const LEDE_TEMPLATES = {
 
     // ─── Bill Pass/Fail ───
     bill_vote_pass: [
-        { id: 'bill_pass_l_01', conditions: [{ field: 'party_name', op: '!=', value: '' }], template: "Parliament has passed {bill_name} in a {vote_for}-{vote_against} vote. The legislation, sponsored by {party_name}, will now take effect." },
-        { id: 'bill_pass_l_02', conditions: [], template: "Parliament has passed {bill_name} in a {vote_for}-{vote_against} vote. The legislation will now take effect." },
+        { id: 'bill_pass_l_01', conditions: [{ field: 'party_name', op: '!=', value: '' }, { field: 'vote_for', op: '!=', value: '' }], template: "Parliament has passed {bill_name} in a {vote_for}-{vote_against} vote. The legislation, sponsored by {party_name}, will now take effect." },
+        { id: 'bill_pass_l_02', conditions: [{ field: 'vote_for', op: '!=', value: '' }], template: "Parliament has passed {bill_name} in a {vote_for}-{vote_against} vote. The legislation will now take effect." },
+        { id: 'bill_pass_l_03', conditions: [{ field: 'party_name', op: '!=', value: '' }], template: "Parliament has passed {bill_name}. The legislation, sponsored by {party_name}, will now take effect." },
+        { id: 'bill_pass_l_04', conditions: [], template: "Parliament has passed {bill_name}. The legislation will now take effect." },
     ],
 
     bill_vote_fail: [
-        { id: 'bill_fail_l_01', conditions: [{ field: 'party_name', op: '!=', value: '' }], template: "Parliament has rejected {bill_name} in a {vote_for}-{vote_against} vote. {party_name}'s legislative agenda has suffered a setback." },
-        { id: 'bill_fail_l_02', conditions: [], template: "Parliament has rejected {bill_name} in a {vote_for}-{vote_against} vote. The proposed legislation has been defeated." },
+        { id: 'bill_fail_l_01', conditions: [{ field: 'party_name', op: '!=', value: '' }, { field: 'vote_for', op: '!=', value: '' }], template: "Parliament has rejected {bill_name} in a {vote_for}-{vote_against} vote. {party_name}'s legislative agenda has suffered a setback." },
+        { id: 'bill_fail_l_02', conditions: [{ field: 'vote_for', op: '!=', value: '' }], template: "Parliament has rejected {bill_name} in a {vote_for}-{vote_against} vote. The proposed legislation has been defeated." },
+        { id: 'bill_fail_l_03', conditions: [{ field: 'party_name', op: '!=', value: '' }], template: "Parliament has rejected {bill_name}. {party_name}'s legislative agenda has suffered a setback." },
+        { id: 'bill_fail_l_04', conditions: [], template: "Parliament has rejected {bill_name}. The proposed legislation has been defeated." },
     ],
 };
 
