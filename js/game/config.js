@@ -130,6 +130,15 @@ export const GAME_CONFIG = {
     UNALIGNED_POOL_MAX_RATIO: 0.10,           // max 10% of legislature
     NEW_FACTION_MIN_SEATS: 8,
 };
+
+export const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;
+export const ENDORSEMENT_SWITCH_WINDOW_ERROR = `Endorsements can only be changed in the last ${ENDORSEMENT_SWITCH_WINDOW_TICKS} ticks before a presidential election.`;
+
+export function isEndorsementSwitchWindowOpen(currentTick, nextPresidentialTick) {
+    if (!Number.isFinite(currentTick) || !Number.isFinite(nextPresidentialTick)) return false;
+    const ticksUntilElection = nextPresidentialTick - currentTick;
+    return ticksUntilElection >= 1 && ticksUntilElection <= ENDORSEMENT_SWITCH_WINDOW_TICKS;
+}
 /**
  * Update GAME_CONFIG with nation-specific seat values.
  * Call after loading the nation on each page.
@@ -188,4 +197,38 @@ export async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFI
         return { success: false, error: 'Faction not found' };
     }
     return { success: true, newAp: data };
+}
+
+/**
+ * Atomically switch a party endorsement target.
+ *
+ * Server-side RPC behavior:
+ * - Reads the existing endorsement preference
+ * - Deducts 1 AP only if switching from an existing different target
+ * - Upserts the preference row
+ *
+ * Returns { success: true, newAp, endorsedPartyId } on success.
+ */
+export async function switchPartyEndorsement(supabase, endorsingPartyId, newEndorsedPartyId, currentTick) {
+    const { data, error } = await supabase.rpc('switch_party_endorsement', {
+        endorsing_party_id: endorsingPartyId,
+        new_endorsed_party_id: newEndorsedPartyId,
+        current_tick: currentTick
+    });
+
+    if (error) {
+        console.error('[switchPartyEndorsement] RPC failed:', error.message);
+        const rpcMessage = String(error.message || '');
+        if (rpcMessage.includes('last 6 ticks before a presidential election')) {
+            return { success: false, error: ENDORSEMENT_SWITCH_WINDOW_ERROR };
+        }
+        return { success: false, error: error.message };
+    }
+
+    const row = Array.isArray(data) ? data[0] : data;
+    return {
+        success: true,
+        newAp: row?.updated_ap,
+        endorsedPartyId: row?.endorsed_party_id
+    };
 }

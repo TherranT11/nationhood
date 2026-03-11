@@ -1,16 +1,77 @@
--- ============================================================
--- run_presidential_election(p_nation_id UUID, p_election_id UUID)
---
--- Candidate-based presidential election simulation.
---
--- 1. Loads selected presidential candidates + parent faction ideology
--- 2. Builds "virtual party" objects per candidate (faction profile + candidate bonus)
--- 3. For each bloc, loads per-bloc approval from presidential_endorsements snapshot
--- 4. All candidates compete via Weighted Competition Model (same as parliamentary)
--- 5. Tallies popular votes per candidate (no seat allocation)
--- 6. Writes results to elections table
--- ============================================================
+-- Snapshot faction->bloc presidential endorsements per election,
+-- so transfer math is immutable for the election being resolved.
 
+CREATE TABLE IF NOT EXISTS presidential_endorsements (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    election_id UUID NOT NULL REFERENCES elections(id) ON DELETE CASCADE,
+    nation_id UUID NOT NULL REFERENCES nations(id) ON DELETE CASCADE,
+    faction_id UUID NOT NULL REFERENCES factions(id) ON DELETE CASCADE,
+    bloc_id UUID NOT NULL REFERENCES voter_blocs(id) ON DELETE CASCADE,
+    preference_score NUMERIC NOT NULL,
+    compatibility_snapshot JSONB NOT NULL DEFAULT '{}'::JSONB,
+    status TEXT NOT NULL DEFAULT 'snapshotted' CHECK (status IN ('snapshotted', 'consumed', 'archived', 'superseded')),
+    snapshotted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    consumed_at TIMESTAMPTZ,
+    archived_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (election_id, faction_id, bloc_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pres_endorsements_election ON presidential_endorsements(election_id);
+CREATE INDEX IF NOT EXISTS idx_pres_endorsements_nation_status ON presidential_endorsements(nation_id, status);
+
+CREATE OR REPLACE FUNCTION snapshot_presidential_endorsements(
+    p_nation_id UUID,
+    p_election_id UUID
+)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    INSERT INTO presidential_endorsements (
+        election_id,
+        nation_id,
+        faction_id,
+        bloc_id,
+        preference_score,
+        compatibility_snapshot,
+        status
+    )
+    SELECT
+        p_election_id,
+        p_nation_id,
+        fba.faction_id,
+        fba.bloc_id,
+        COALESCE(fba.preference_score, 40),
+        jsonb_build_object(
+            'ideology_alignment', fba.ideology_alignment,
+            'momentum', fba.momentum,
+            'vote_share', fba.vote_share,
+            'last_platform', fba.last_platform,
+            'captured_at', now()
+        ),
+        'snapshotted'
+    FROM faction_bloc_approval fba
+    JOIN factions f
+      ON f.id = fba.faction_id
+     AND f.nation_id = p_nation_id
+     AND f.faction_type = 'party'
+     AND f.abandoned_at IS NULL
+    JOIN voter_blocs vb
+      ON vb.id = fba.bloc_id
+     AND vb.nation_id = p_nation_id
+     AND vb.is_active = true
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM presidential_endorsements pe
+        WHERE pe.election_id = p_election_id
+    )
+    ON CONFLICT (election_id, faction_id, bloc_id) DO NOTHING;
+END;
+$$;
+
+-- Keep SQL source-of-truth in sync with runtime function.
 CREATE OR REPLACE FUNCTION run_presidential_election(
     p_nation_id UUID,
     p_election_id UUID
@@ -42,7 +103,6 @@ DECLARE
     v_bloc_approvals JSONB;
     v_election_id UUID := p_election_id;
 BEGIN
-    -- ---- Load nation ----
     SELECT id, name, population, eligible_voters
     INTO v_nation
     FROM nations
@@ -56,12 +116,6 @@ BEGIN
         RAISE EXCEPTION 'Election id is required for presidential election snapshots';
     END IF;
 
-    -- ---- Build candidate "virtual party" objects ----
-    -- Each candidate inherits their faction's ideology profile + a +15 bonus
-    -- on their personal ideology axis. This lets us reuse the existing
-    -- _election_process_bloc / _election_distribute_votes helpers unchanged.
-    -- Note: approval_rating and ideology_modifiers are no longer loaded here;
-    -- per-bloc approval is fetched from presidential_endorsements in the bloc loop.
     SELECT COALESCE(jsonb_agg(row_to_json(t)::JSONB), '[]'::JSONB)
     INTO v_candidates
     FROM (
@@ -72,8 +126,6 @@ BEGIN
             f.faction_name,
             pc.ideology,
             pc.trait_key,
-            -- Inherit party axes with candidate ideology bonus (+15 on personal axis)
-            -- For globalism_nationalism, negate ideology_direction (JS/SQL convention mismatch)
             LEAST(100, GREATEST(-100,
                 COALESCE(fi.liberty_equality, 0) +
                 CASE WHEN pc.ideology_axis = 'liberty_equality'
@@ -113,19 +165,17 @@ BEGIN
         RAISE EXCEPTION 'No presidential candidates found for nation %', p_nation_id;
     END IF;
 
-        IF NOT EXISTS (
+    IF NOT EXISTS (
         SELECT 1 FROM presidential_endorsements pe WHERE pe.election_id = v_election_id
     ) THEN
         RAISE EXCEPTION 'No presidential endorsement snapshot found for election %', v_election_id;
     END IF;
 
-    -- ---- Initialise tally to 0 for each candidate ----
     FOR v_cand IN SELECT * FROM jsonb_array_elements(v_candidates)
     LOOP
         v_tally := v_tally || jsonb_build_object(v_cand.value->>'id', 0);
     END LOOP;
 
-    -- ---- Compute ideology saturation ----
     DECLARE
         v_saturation     JSONB := '{}'::JSONB;
         v_avg_saturation NUMERIC := 1;
@@ -151,8 +201,6 @@ BEGIN
         END LOOP;
         IF v_sat_active > 0 THEN v_avg_saturation := v_sat_total / v_sat_active; END IF;
 
-    -- ---- Compute voter bloc scale factor ----
-    -- eligible_voters is a raw count (actual number of eligible voters).
     DECLARE
         v_total_bloc_voters BIGINT;
         v_eligible          BIGINT := COALESCE(v_nation.eligible_voters, 0);
@@ -166,7 +214,6 @@ BEGIN
             END IF;
         END IF;
 
-    -- ---- Process voter blocs (reusing existing cascade) ----
     FOR v_bloc IN
         SELECT id, bloc_name, ROUND(voter_count * v_bloc_scale)::INT AS voter_count,
                ideology_1, ideology_2, ideology_3, ideology_4, ideology_5,
@@ -178,7 +225,6 @@ BEGIN
             CONTINUE;
         END IF;
 
-        -- Collect non-null, non-Unaligned tags
         v_tags := ARRAY[]::TEXT[];
         IF v_bloc.ideology_1 IS NOT NULL AND v_bloc.ideology_1 != 'Unaligned' THEN
             v_tags := v_tags || UPPER(v_bloc.ideology_1);
@@ -196,7 +242,6 @@ BEGIN
             v_tags := v_tags || UPPER(v_bloc.ideology_5);
         END IF;
 
-        -- Build per-bloc approval map for candidates (keyed by candidate ID, looked up by faction_id)
         SELECT COALESCE(
             jsonb_object_agg(sub.candidate_id, sub.approval),
             '{}'::JSONB
@@ -214,13 +259,11 @@ BEGIN
                 AND pe.status IN ('snapshotted', 'consumed')
         ) sub;
 
-        -- Run cascade + distribute (candidates used in place of parties)
         v_tally_before := v_tally;
         SELECT r.step, r.abstentions, r.updated_tally
         INTO v_step, v_abstentions, v_tally
         FROM _election_process_bloc(v_candidates, v_tags, v_bloc.voter_count, v_tally, v_bloc_approvals, v_saturation, v_avg_saturation) r;
 
-        -- Snapshot bloc-level vote deltas per candidate (keyed by faction for UI compatibility)
         v_bloc_party_votes := '[]'::JSONB;
         FOR v_cand IN SELECT * FROM jsonb_array_elements(v_candidates)
         LOOP
@@ -244,16 +287,14 @@ BEGIN
 
         v_total_abstentions := v_total_abstentions + COALESCE(v_abstentions, 0);
     END LOOP;
-    END; -- close DECLARE block for v_bloc_scale
-    END; -- close DECLARE block for v_saturation
+    END;
+    END;
 
-    -- ---- Calculate total votes ----
     FOR v_cand IN SELECT * FROM jsonb_each_text(v_tally)
     LOOP
         v_total_votes := v_total_votes + v_cand.value::BIGINT;
     END LOOP;
 
-    -- ---- Determine winner (highest votes, tiebreak by avg endorsement snapshot preference) ----
     FOR v_cand IN SELECT * FROM jsonb_array_elements(v_candidates)
     LOOP
         DECLARE
@@ -276,7 +317,6 @@ BEGIN
         END;
     END LOOP;
 
-    -- ---- Build result array ----
     FOR v_cand IN SELECT * FROM jsonb_array_elements(v_candidates)
     LOOP
         DECLARE
@@ -302,7 +342,8 @@ BEGIN
 
     UPDATE presidential_endorsements
     SET status = 'consumed',
-        consumed_at = COALESCE(consumed_at, now())
+        consumed_at = COALESCE(consumed_at, now()),
+        updated_at = now()
     WHERE election_id = v_election_id
       AND status = 'snapshotted';
 
@@ -311,8 +352,8 @@ BEGIN
         'bloc_details', v_bloc_details,
         'total_votes_cast', v_total_votes,
         'total_abstentions', v_total_abstentions,
-        'turnout_pct', CASE WHEN v_eligible > 0
-            THEN ROUND((v_total_votes::NUMERIC / v_eligible) * 100, 2)
+        'turnout_pct', CASE WHEN v_nation.eligible_voters > 0
+            THEN ROUND((v_total_votes::NUMERIC / v_nation.eligible_voters) * 100, 2)
             ELSE 0 END
     );
 

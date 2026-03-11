@@ -752,6 +752,101 @@ export async function executeOutreach(supabase, factionId, nationId, blocId, cur
     };
 }
 
+/**
+ * Set or change a party endorsement preference.
+ *
+ * Rules:
+ * - First endorsement preference for a faction is free.
+ * - Changing to a different endorsed faction costs 1 AP (atomic deduct_ap RPC).
+ * - Re-selecting the same endorsed faction is a no-op (no AP cost).
+ * - Always writes a campaign_actions audit row with a reason string.
+ */
+export async function executeEndorsementPreference(supabase, factionId, nationId, endorsedFactionId, currentTick, reason = 'endorsement_preference_update') {
+    if (!factionId || !nationId || !endorsedFactionId) {
+        return { success: false, error: 'Missing endorsement parameters.' };
+    }
+
+    const normalizedReason = String(reason || 'endorsement_preference_update').trim() || 'endorsement_preference_update';
+
+    const { data: existingPref, error: prefErr } = await supabase
+        .from('faction_endorsements')
+        .select('id, endorsed_faction_id')
+        .eq('faction_id', factionId)
+        .maybeSingle();
+    if (prefErr) {
+        return { success: false, error: prefErr.message || 'Failed to load endorsement preference.' };
+    }
+
+    let newAp = null;
+    let apCharged = 0;
+    const existingTarget = existingPref?.endorsed_faction_id || null;
+
+    // First preference: create for free
+    if (!existingPref) {
+        const { error: insertErr } = await supabase.from('faction_endorsements').insert({
+            faction_id: factionId,
+            nation_id: nationId,
+            endorsed_faction_id: endorsedFactionId,
+            updated_at_tick: currentTick
+        });
+        if (insertErr) {
+            return { success: false, error: insertErr.message || 'Failed to create endorsement preference.' };
+        }
+    }
+    // Same target: no AP charge, but refresh timestamp for history visibility
+    else if (existingTarget === endorsedFactionId) {
+        const { error: sameErr } = await supabase
+            .from('faction_endorsements')
+            .update({ updated_at_tick: currentTick })
+            .eq('id', existingPref.id);
+        if (sameErr) {
+            return { success: false, error: sameErr.message || 'Failed to keep endorsement preference.' };
+        }
+    }
+    // Preference change: charge 1 AP through atomic RPC
+    else {
+        const apResult = await deductAP(supabase, factionId, 1);
+        if (!apResult.success) {
+            return { success: false, error: apResult.error || 'Not enough AP to change endorsement.' };
+        }
+        newAp = apResult.newAp;
+        apCharged = 1;
+
+        const { error: updateErr } = await supabase
+            .from('faction_endorsements')
+            .update({
+                endorsed_faction_id: endorsedFactionId,
+                updated_at_tick: currentTick
+            })
+            .eq('id', existingPref.id);
+        if (updateErr) {
+            return { success: false, error: updateErr.message || 'Failed to update endorsement preference.' };
+        }
+    }
+
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId,
+        nation_id: nationId,
+        action_type: 'endorsement_preference',
+        tick_performed: currentTick,
+        ap_cost: apCharged,
+        result: {
+            reason: normalizedReason,
+            previous_endorsed_faction_id: existingTarget,
+            endorsed_faction_id: endorsedFactionId,
+            ap_charged: apCharged
+        }
+    });
+
+    return {
+        success: true,
+        newAp,
+        apCharged,
+        changed: existingTarget !== endorsedFactionId,
+        alreadySelected: existingTarget === endorsedFactionId
+    };
+}
+
 
 // ==================== ATTACK CAMPAIGN ====================
 
@@ -4560,8 +4655,7 @@ export async function processEvents(supabase, nation, currentTick) {
                     .from('factions')
                     .select('id, ' + effect.stat_key)
                     .eq('nation_id', nation.id)
-                    .eq('faction_type', 'party')
-                    .eq('is_npc', false);
+                    .eq('faction_type', 'party');
 
                 if (factions && factions.length > 0) {
                     const target = factions[Math.floor(Math.random() * factions.length)];
@@ -7144,4 +7238,3 @@ export async function executeCoupAttempt(supabase, factionId, nationId, fundsCom
         };
     }
 }
-

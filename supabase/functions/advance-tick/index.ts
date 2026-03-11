@@ -2388,7 +2388,7 @@ async function loadNationIdeologies(supabase, nationId) {
     const factionIds = factions.map(f => f.id);
     const { data, error } = await supabase
         .from('faction_ideology')
-        .select('*, factions(id, faction_name, faction_type, is_npc, nation_id)')
+        .select('*, factions(id, faction_name, faction_type, nation_id)')
         .in('faction_id', factionIds);
 
     if (error) {
@@ -8227,10 +8227,25 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
     let winner;
     let wasRunoff = false;
     let runoffResults = null;
+    const snappedEndorsements = completedElection?.results?.snapped_endorsements || [];
+    let endorsementResolution = resolvePresidentialRunoffEndorsements({
+        wasRunoff: false,
+        round1Results: candidateResults,
+        runoffCandidates: [],
+        snappedEndorsements,
+        compatibilityTable: completedElection?.results?.transfer_rate_compatibility || {}
+    });
 
     if (topPct > 50 || candidateResults.length <= 2) {
         // Clear winner with majority — no runoff needed
         winner = topCandidate;
+        endorsementResolution = resolvePresidentialRunoffEndorsements({
+            wasRunoff: false,
+            round1Results: candidateResults,
+            runoffCandidates: [],
+            snappedEndorsements,
+            compatibilityTable: completedElection?.results?.transfer_rate_compatibility || {}
+        });
         console.log(`Presidential election Round 1 winner: ${winner.candidate_name} (${winner.party_name}) with ${topPct.toFixed(1)}% — majority achieved (${nation.name})`);
     } else {
         // === RUNOFF: No majority — top 2 candidates advance ===
@@ -8261,6 +8276,13 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
             winner = topCandidate;
         } else {
             runoffResults = runoffData?.presidential_candidates || [];
+            endorsementResolution = resolvePresidentialRunoffEndorsements({
+                wasRunoff: true,
+                round1Results: candidateResults,
+                runoffCandidates,
+                snappedEndorsements,
+                compatibilityTable: completedElection?.results?.transfer_rate_compatibility || {}
+            });
             const runoffSorted = [...runoffResults].sort((a, b) => b.votes - a.votes);
             winner = runoffSorted[0] || topCandidate;
             console.log(`Runoff winner: ${winner.candidate_name} (${winner.party_name}) with ${winner.vote_percentage}% (${nation.name})`);
@@ -8273,7 +8295,9 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
                 round_1_candidates: candidateResults,
                 runoff_candidates: runoffResults,
                 total_votes_cast: runoffData?.total_votes_cast || completedElection.results?.total_votes_cast,
-                was_runoff: true
+                was_runoff: true,
+                snapped_endorsements: endorsementResolution.endorsements,
+                runoff_endorsement_summary: endorsementResolution.summary
             };
             const targetId = electionId || completedElection.id;
             const { error: runoffUpdateErr } = await supabase.from('elections')
@@ -8473,6 +8497,63 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
     try {
         await scheduleNextPresidentialElections(supabase, nation, currentTick);
     } catch (e) { console.warn('Could not schedule next presidential elections:', e); }
+}
+
+
+function resolvePresidentialRunoffEndorsements({ wasRunoff, round1Results = [], runoffCandidates = [], snappedEndorsements = [], compatibilityTable = {} }) {
+    const runoffCandidateIds = new Set((runoffCandidates || []).map(c => c.candidate_id));
+    const round1ByFaction = new Map((round1Results || []).map(c => [c.faction_id, c]));
+    const candidateTotals: Record<string, { transfer_votes: number; protest_votes: number }> = {};
+    for (const c of (runoffCandidates || [])) {
+        candidateTotals[c.candidate_id] = { transfer_votes: 0, protest_votes: 0 };
+    }
+
+    const resolved = (snappedEndorsements || []).map((raw: Record<string, any>) => {
+        const item = { ...raw };
+        if ((item.status || 'PENDING') !== 'PENDING') return item;
+        if (!wasRunoff) return { ...item, status: 'VOID', void_reason: 'no_runoff' };
+        const endorsing = round1ByFaction.get(item.endorsing_faction_id);
+        if (!endorsing) return { ...item, status: 'VOID', void_reason: 'endorsing_not_found' };
+        if (runoffCandidateIds.has(endorsing.candidate_id)) return { ...item, status: 'VOID', void_reason: 'endorsing_party_in_runoff' };
+        if (!runoffCandidateIds.has(item.endorsed_candidate_id)) return { ...item, status: 'VOID', void_reason: 'endorsed_eliminated' };
+
+        const compKey = item.compatibility || item.compatibility_tier || item.relationship || 'neutral';
+        const transferRate = Math.max(0, Math.min(1,
+            Number(item.transfer_rate ?? (compatibilityTable as any)[compKey] ?? (compatibilityTable as any).neutral ?? 0.65)
+        ));
+        const baseVotes = Math.max(0, Number(endorsing.votes || 0));
+        const transferVotes = Math.round(baseVotes * transferRate);
+        const protestVotes = Math.max(0, baseVotes - transferVotes);
+
+        const otherRunoffId = (runoffCandidates || []).find(c => c.candidate_id !== item.endorsed_candidate_id)?.candidate_id || null;
+        const protestSplit = item.protest_split || {};
+        const endorsedProtestRate = Math.max(0, Math.min(1, Number(protestSplit.endorsed ?? 0.5)));
+        const otherProtestRate = Math.max(0, Math.min(1, Number(protestSplit.other ?? (1 - endorsedProtestRate))));
+        const abstainRate = Math.max(0, 1 - endorsedProtestRate - otherProtestRate);
+
+        if (candidateTotals[item.endorsed_candidate_id]) {
+            candidateTotals[item.endorsed_candidate_id].transfer_votes += transferVotes;
+            candidateTotals[item.endorsed_candidate_id].protest_votes += Math.round(protestVotes * endorsedProtestRate);
+        }
+        if (otherRunoffId && candidateTotals[otherRunoffId]) {
+            candidateTotals[otherRunoffId].protest_votes += Math.round(protestVotes * otherProtestRate);
+        }
+
+        return {
+            ...item,
+            status: 'RESOLVED',
+            transfer_votes: transferVotes,
+            protest_votes: protestVotes,
+            protest_abstain_votes: Math.round(protestVotes * abstainRate)
+        };
+    });
+
+    const summary = {
+        total_transfer_votes: Object.values(candidateTotals).reduce((s, v) => s + v.transfer_votes, 0),
+        total_protest_votes: Object.values(candidateTotals).reduce((s, v) => s + v.protest_votes, 0),
+        candidate_totals: candidateTotals
+    };
+    return { endorsements: resolved, summary };
 }
 
 /**
@@ -14357,8 +14438,7 @@ async function processEvents(supabase, nation, currentTick) {
                     .from('factions')
                     .select('id, ' + effect.stat_key)
                     .eq('nation_id', nation.id)
-                    .eq('faction_type', 'party')
-                    .eq('is_npc', false);
+                    .eq('faction_type', 'party');
 
                 if (factions && factions.length > 0) {
                     const target = factions[Math.floor(Math.random() * factions.length)];
