@@ -2401,6 +2401,12 @@
 .pol-endorse-btn:disabled {
     pointer-events: none;
 }
+.pol-endorse-hint {
+    margin-top: 8px;
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-2);
+}
 
 /* Upcoming Elections panel */
 .pol-upcoming-box {
@@ -3185,6 +3191,9 @@ initPage('politics', async (state) => {
         .eq('status', 'scheduled')
         .order('election_tick', { ascending: true });
 
+    const hasScheduledPresidentialElection = (scheduledElections || []).some(e => e.election_type === 'presidential');
+    const isPresidentialNation = isPresidentialRepublic(nation?.government_type);
+
     // Fetch voter blocs for coalition overview
     const { data: voterBlocs } = await _supabase
         .from('voter_blocs')
@@ -3409,7 +3418,10 @@ async function renderPartyTab(f, nation, data) {
         </div>
 
         <div class="pol-row-3">
-        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties)}
+        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, {
+            isPresidentialNation,
+            hasScheduledPresidentialElection
+        })}
         ${renderBlocVotingBox(lastParliamentary, lastPresidential, allParties)}
         </div>
         <div class="pol-row-4" style="margin-top:24px;text-align:center">
@@ -5421,7 +5433,9 @@ function initEditIdentityBox(f) {
     }
 }
 
-function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties) {
+function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, opts = {}) {
+    const isPresidentialNation = opts.isPresidentialNation !== false;
+    const hasScheduledPresidentialElection = !!opts.hasScheduledPresidentialElection;
     // Build a color map from allParties
     const colorMap = {};
     (allParties || []).forEach(p => { colorMap[p.id] = p.party_color || '#888'; });
@@ -5522,10 +5536,19 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         presContents = `<div class="pol-el-content" data-content="pres">${renderPresidentialContent(lastPresidential)}</div>`;
     }
 
+    const endorseDisabledReason = !isPresidentialNation
+        ? 'Unavailable: This nation does not use presidential elections.'
+        : !hasScheduledPresidentialElection
+            ? 'Unavailable: No presidential election is scheduled yet; preferences stay pending until one is created.'
+            : 'Endorsements are not available yet.';
+
     return `<div class="pol-election-box">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:10px">
             <div class="pol-section-label" style="margin-bottom:0">ELECTION RESULTS</div>
-            <button class="pol-endorse-btn" disabled>Endorse Candidate</button>
+            <div style="text-align:right;max-width:300px;">
+                <button class="pol-endorse-btn" disabled title="${escapeHtml(endorseDisabledReason)}">Endorse Candidate</button>
+                <div class="pol-endorse-hint">${escapeHtml(endorseDisabledReason)}</div>
+            </div>
         </div>
         <div class="pol-el-tabs">
             <button class="pol-el-tab active" data-tab="parl">Parliamentary</button>
