@@ -157,9 +157,44 @@ export function setCachedState(user, faction, nation, shard) {
     sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
 }
 
+function shouldRefreshNationForPage() {
+    try {
+        const page = (window.location.pathname || '').split('/').pop()?.toLowerCase() || '';
+        return page === 'economy.html' || page === 'laws.html' || page === 'bill.html';
+    } catch (e) {
+        return false;
+    }
+}
+
+async function refreshCachedNation(cached) {
+    if (!cached?.faction?.nation_id && !cached?.nation?.id) return cached;
+    const nationId = cached.faction?.nation_id || cached.nation?.id;
+    const { data: freshNation, error } = await _supabase
+        .from('nations')
+        .select('*')
+        .eq('id', nationId)
+        .single();
+
+    if (error || !freshNation) {
+        console.warn('Failed to refresh cached nation for page, using cached nation', error?.message || error);
+        return cached;
+    }
+
+    const refreshed = { ...cached, nation: freshNation, timestamp: Date.now() };
+    sessionStorage.setItem(STATE_KEY, JSON.stringify(refreshed));
+    return refreshed;
+}
+
 export async function loadGameState(requireFaction = true) {
     const cached = getCachedState();
-    if (cached) { console.log('Using cached state'); return cached; }
+    if (cached) {
+        if (shouldRefreshNationForPage()) {
+            console.log('Using cached user/faction/shard with fresh nation for current page');
+            return await refreshCachedNation(cached);
+        }
+        console.log('Using cached state');
+        return cached;
+    }
     console.log('Fetching fresh state from Supabase');
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return null; }
