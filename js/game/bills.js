@@ -1103,6 +1103,8 @@ export async function resolveExpiredVotes(supabase, nationId) {
         // Handle second quorum failure: bill dies
         if (resolution === 'failed_no_quorum') {
             await failBill(supabase, bill);
+            await syncFailedMinisterConfirmationBill(supabase, bill);
+            await syncFailedAmbassadorConfirmationBill(supabase, bill);
             const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
             const participating = votesFor + votesAgainst + votesAbstain;
             await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, extra: { reason: `quorum not met after two attempts (${participating}/${quorumThreshold} participating)` } });
@@ -2474,6 +2476,67 @@ export async function syncAmbassadorsForFailedConfirmationBills(supabase, failed
 
     if (error) {
         console.warn('[syncAmbassadorsForFailedConfirmationBills] Failed to reject ambassadors:', error.message);
+    }
+}
+
+async function syncFailedAmbassadorConfirmationBill(supabase, bill) {
+    if (!bill || bill.bill_type !== 'confirmation' || !bill.ambassador_id) return;
+
+    const { error } = await supabase
+        .from('ambassadors')
+        .update({
+            status: 'rejected',
+            is_active: false
+        })
+        .eq('id', bill.ambassador_id);
+
+    if (error) {
+        console.warn('[syncFailedAmbassadorConfirmationBill] Failed to reject ambassador:', error.message);
+    }
+}
+
+async function syncFailedMinisterConfirmationBill(supabase, bill) {
+    if (!bill || bill.bill_type !== 'minister_confirmation' || !bill.ministry_key) return;
+
+    const { data: ministry, error: fetchErr } = await supabase
+        .from('ministries')
+        .select('id, pending_minister, rejected_parties')
+        .eq('nation_id', bill.nation_id)
+        .eq('ministry_key', bill.ministry_key)
+        .eq('is_active', true)
+        .maybeSingle();
+
+    if (fetchErr) {
+        console.warn('[syncFailedMinisterConfirmationBill] Failed to fetch ministry row:', fetchErr.message);
+        return;
+    }
+    if (!ministry) return;
+
+    const rejectedPartyId = ministry.pending_minister?.party_id;
+    const existingRejected = Array.isArray(ministry.rejected_parties) ? ministry.rejected_parties : [];
+    const rejectedParties = rejectedPartyId && !existingRejected.includes(rejectedPartyId)
+        ? [...existingRejected, rejectedPartyId]
+        : existingRejected;
+
+    const { error: updateErr } = await supabase
+        .from('ministries')
+        .update({
+            confirmation_status: 'rejected',
+            pending_minister: null,
+            rejected_parties: rejectedParties
+        })
+        .eq('id', ministry.id);
+
+    if (updateErr) {
+        console.warn('[syncFailedMinisterConfirmationBill] Failed to clear pending minister:', updateErr.message);
+    }
+}
+
+export async function syncMinistriesForFailedConfirmationBills(supabase, failedBills) {
+    if (!Array.isArray(failedBills) || failedBills.length === 0) return;
+
+    for (const bill of failedBills) {
+        await syncFailedMinisterConfirmationBill(supabase, bill);
     }
 }
 
