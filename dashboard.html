@@ -405,18 +405,10 @@
           </div>
         </div>
 
-        <!-- ── Government / Events Card ── -->
+        <!-- ── Government Card ── -->
         <div class="dash-card" id="gov-card" style="display:none;">
-          <div class="dash-card-tabs">
-            <button class="dash-card-tab active" data-dash-tab="gov">Government</button>
-            <button class="dash-card-tab" data-dash-tab="events">Events</button>
-          </div>
-          <div class="dash-tab-pane active" data-dash-pane="gov">
-            <div class="dash-card-body" id="gov-card-body"></div>
-          </div>
-          <div class="dash-tab-pane" data-dash-pane="events">
-            <div class="dash-events-scroll" id="dash-events-list"></div>
-          </div>
+          <div class="dash-card-header">GOVERNMENT</div>
+          <div class="dash-card-body" id="gov-card-body"></div>
         </div>
 
       </div>
@@ -425,6 +417,12 @@
       <div class="dash-card" id="elections-card" style="width:380px;">
         <div class="dash-card-header">ELECTIONS</div>
         <div class="dash-card-body" id="elections-card-body"></div>
+      </div>
+
+      <!-- ── Events Card (below Elections) ── -->
+      <div class="dash-card" id="events-card" style="width:380px; height:auto; max-height:520px;">
+        <div class="dash-card-header">EVENTS</div>
+        <div class="dash-events-scroll" id="dash-events-list"></div>
       </div>
 
     </div>
@@ -734,13 +732,12 @@ initPage('home', async (state) => {
       <div class="gov-approval-big" style="color:${approvalColor}">${approval}%</div>
     `;
 
-    // Footer (inside gov pane, outside body padding)
-    const govPane = govCard.querySelector('.dash-tab-pane[data-dash-pane="gov"]');
-    let footer = govPane.querySelector('.gov-footer');
+    // Footer (inside gov card, outside body padding)
+    let footer = govCard.querySelector('.gov-footer');
     if (!footer) {
       footer = document.createElement('div');
       footer.className = 'gov-footer';
-      govPane.appendChild(footer);
+      govCard.appendChild(footer);
     }
     footer.innerHTML = `
       <span class="gov-footer-label">${esc(govLabel)}</span>
@@ -749,24 +746,8 @@ initPage('home', async (state) => {
 
     govCard.style.display = '';
 
-    // ── Tab switching ──
-    const tabs = govCard.querySelectorAll('.dash-card-tab');
-    const panes = govCard.querySelectorAll('.dash-tab-pane');
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        tabs.forEach(t => t.classList.remove('active'));
-        panes.forEach(p => p.classList.remove('active'));
-        tab.classList.add('active');
-        const target = tab.getAttribute('data-dash-tab');
-        const pane = govCard.querySelector(`.dash-tab-pane[data-dash-pane="${target}"]`);
-        if (pane) pane.classList.add('active');
-        // Lazy-load events on first click
-        if (target === 'events' && !govCard._eventsLoaded) {
-          govCard._eventsLoaded = true;
-          loadDashEvents(nation.id, currentTick);
-        }
-      });
-    });
+    // ── Load Events card ──
+    loadDashEvents(nation.id, currentTick);
 
   } catch (e) {
     console.error('Government card error:', e);
