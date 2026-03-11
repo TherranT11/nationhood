@@ -35,7 +35,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatNumber, scaleRawToDollars, assertRawEconomicValue } from './js/common.js';
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
 import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
-import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
+import { formatInflationRate, getInflationLabel, inflationColorClass, inflationRate } from './js/game/stats.js';
 /**
  * Nation Page - Comprehensive Stats Display
  * With Rankings and Trend Arrows
@@ -783,6 +783,229 @@ function getDisplayValue(stat, nation) {
     return Math.round(Number(raw) * 10) / 10;
 }
 
+// ===== FEATURED CONTAINERS =====
+
+function buildFeaturedSparkSVG(data, color, w, h) {
+    w = w || 200; h = h || 50;
+    if (!data || data.length < 2) return '';
+    var mn = Math.min.apply(null, data), mx = Math.max.apply(null, data), r = mx - mn || 1;
+    var pts = data.map(function(v, i) {
+        return ((i / (data.length - 1)) * w).toFixed(1) + ',' + (h - ((v - mn) / r) * h).toFixed(1);
+    }).join(' ');
+    // Build a filled area polygon
+    var firstY = (h - ((data[0] - mn) / r) * h).toFixed(1);
+    var lastX = w.toFixed(1);
+    var lastY = (h - ((data[data.length - 1] - mn) / r) * h).toFixed(1);
+    var areaPts = '0,' + h + ' 0,' + firstY + ' ' + pts + ' ' + lastX + ',' + h;
+    return '<svg width="' + w + '" height="' + h + '" style="display:block;width:100%;height:100%;" preserveAspectRatio="none">' +
+        '<polygon points="' + areaPts + '" fill="' + color + '" fill-opacity="0.08"/>' +
+        '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linejoin="round"/>' +
+        '<circle cx="' + lastX + '" cy="' + lastY + '" r="2" fill="' + color + '"/></svg>';
+}
+
+function buildFeaturedAbpHTML(statKey) {
+    var effects = statEffectsByKey[statKey] || [];
+    if (effects.length === 0) return '';
+    var h = '<div class="featured-card__abp-title">Affected By</div>';
+    for (var i = 0; i < effects.length; i++) {
+        var eff = effects[i];
+        var arrow = eff.direction === 'up' ? '&#9650;' : '&#9660;';
+        var arrowClass = eff.direction === 'up' ? 'featured-card__abp-arrow--up' : 'featured-card__abp-arrow--down';
+        var typeClass = 'featured-card__abp-type--' + eff.type.toLowerCase().replace(/ /g, '-');
+        h += '<div class="featured-card__abp-row">';
+        h += '<span class="featured-card__abp-name">' + escapeHtml(eff.name) + '</span>';
+        h += '<span class="featured-card__abp-arrow ' + arrowClass + '">' + arrow + '</span>';
+        h += '<span class="featured-card__abp-type ' + typeClass + '">' + escapeHtml(eff.type) + '</span>';
+        h += '</div>';
+    }
+    return h;
+}
+
+function renderFeaturedGDP(nation) {
+    var gdpRaw = nation.gdp;
+    var gdpGrowthRaw = Number(nation.gdp_growth ?? 50);
+    var monthlyPct = ((gdpGrowthRaw - 50) / 50) * 3;
+    var yearlyPct = (Math.pow(1 + monthlyPct / 100, 12) - 1) * 100;
+    var gdpDisplay = formatCurrencyShort(scaleRawToDollars(gdpRaw));
+    // Split "$88.7 Billion" into value + unit
+    var parts = gdpDisplay.match(/^(\$[\d,.]+)\s*(.*)$/);
+    var gdpVal = parts ? parts[1] : gdpDisplay;
+    var gdpUnit = parts ? parts[2] : '';
+
+    // Delta per tick
+    var deltaStr = '';
+    if (previousTickData && previousTickData.gdp != null && gdpRaw != null) {
+        var gdpDelta = Number(gdpRaw) - Number(previousTickData.gdp);
+        var deltaDir = gdpDelta >= 0 ? '\u25B2' : '\u25BC';
+        var deltaColor = gdpDelta >= 0 ? 'var(--n-green)' : 'var(--n-red)';
+        deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + ' ' + Math.abs(gdpDelta).toFixed(1) + ' per tick</span>';
+    }
+
+    // Growth rate color
+    var growthColor = monthlyPct >= 0 ? 'var(--n-green)' : 'var(--n-red)';
+    var yearlyColor = yearlyPct >= 0 ? 'var(--n-green)' : 'var(--n-red)';
+    var growthStr = (monthlyPct >= 0 ? '+' : '') + monthlyPct.toFixed(2) + '%';
+    var yearlyStr = (yearlyPct >= 0 ? '+' : '') + yearlyPct.toFixed(2) + '%';
+
+    // GDP growth label
+    var gdpLabel, tagColor, tagBorder;
+    if (monthlyPct < -1) { gdpLabel = 'Collapse'; tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; }
+    else if (monthlyPct < 0) { gdpLabel = 'Recession'; tagColor = 'var(--n-orange)'; tagBorder = 'rgba(249,115,22,0.3)'; }
+    else if (monthlyPct < 0.5) { gdpLabel = 'Stagnant'; tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; }
+    else if (monthlyPct < 3) { gdpLabel = 'Growing'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
+    else { gdpLabel = 'Booming'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
+
+    // Dot color matches tag
+    var dotColor = tagColor;
+
+    // Scale items
+    var scaleItems = [
+        { label: 'Collapse', range: '<0%', active: monthlyPct < -1 },
+        { label: 'Recession', range: '0-0.5%', active: monthlyPct >= -1 && monthlyPct < 0 },
+        { label: 'Stagnant', range: '0.5-70%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
+        { label: 'Growing', range: '1.0-3.00%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
+        { label: 'Booming', range: '>3.00%', active: monthlyPct >= 3 }
+    ];
+
+    // Sparkline
+    var sparkData = sparklineHistory['gdp'] ? sparklineHistory['gdp'].slice() : [];
+    if (gdpRaw != null) sparkData.push(Number(gdpRaw));
+    var chartColor = monthlyPct >= 0 ? '#4ade80' : '#ef4444';
+    var chartSVG = buildFeaturedSparkSVG(sparkData, chartColor);
+
+    var h = '<div class="featured-card featured-card--gdp">';
+    // Header
+    h += '<div class="featured-card__header">';
+    h += '<div class="featured-card__dot" style="background:' + dotColor + ';"></div>';
+    h += '<span class="featured-card__title">Gross Domestic Product</span>';
+    h += '<span class="featured-card__tag" style="color:' + tagColor + ';border-color:' + tagBorder + ';">' + escapeHtml(gdpLabel) + '</span>';
+    h += '</div>';
+
+    // Description
+    h += '<div class="featured-card__desc">Gross domestic product</div>';
+
+    // Value + side stats
+    h += '<div class="featured-card__value-row">';
+    h += '<div><span class="featured-card__big-value" style="color:' + tagColor + ';">' + gdpVal + '</span>';
+    if (gdpUnit) h += '<span class="featured-card__big-unit" style="color:' + tagColor + ';">' + escapeHtml(gdpUnit) + '</span>';
+    h += '</div>';
+    h += '<div class="featured-card__side-stats">';
+    h += '<div><span class="featured-card__side-label">Growth Rate</span></div>';
+    h += '<div><span class="featured-card__side-value" style="color:' + growthColor + ';">' + growthStr + '</span></div>';
+    h += '<div><span class="featured-card__side-label">Yearly Forecast</span></div>';
+    h += '<div><span class="featured-card__side-value" style="color:' + yearlyColor + ';">' + yearlyStr + '</span></div>';
+    h += '</div>';
+    h += '</div>';
+
+    // Delta
+    if (deltaStr) h += deltaStr;
+
+    // Chart
+    h += '<div class="featured-card__chart">' + chartSVG + '</div>';
+
+    // Scale
+    h += '<div class="featured-card__scale">';
+    for (var i = 0; i < scaleItems.length; i++) {
+        var si = scaleItems[i];
+        h += '<div class="featured-card__scale-item' + (si.active ? ' featured-card__scale-item--active' : '') + '">';
+        h += escapeHtml(si.label);
+        h += '<span class="featured-card__scale-range">' + escapeHtml(si.range) + '</span>';
+        h += '</div>';
+    }
+    h += '</div>';
+
+    // Affected by
+    h += buildFeaturedAbpHTML('gdp');
+    // Also include gdp_growth effects
+    var gdpGrowthEffects = statEffectsByKey['gdp_growth'] || [];
+    if (gdpGrowthEffects.length > 0 && !(statEffectsByKey['gdp'] || []).length) {
+        h += buildFeaturedAbpHTML('gdp_growth');
+    }
+
+    h += '</div>';
+    return h;
+}
+
+function renderFeaturedInflation(nation) {
+    var inflRaw = Number(nation.inflation ?? 0);
+    var rate = inflationRate(inflRaw);
+    var rateStr = formatInflationRate(inflRaw);
+    var label = getInflationLabel(inflRaw);
+
+    // Tag color
+    var iClass = inflationColorClass(inflRaw);
+    var tagColor, tagBorder, dotColor;
+    if (iClass === 'good') { tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; dotColor = 'var(--n-green)'; }
+    else if (iClass === 'medium') { tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; dotColor = 'var(--n-yellow)'; }
+    else { tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; dotColor = 'var(--n-red)'; }
+
+    // Delta per tick
+    var deltaStr = '';
+    if (previousTickData && previousTickData.inflation != null) {
+        var prevRate = inflationRate(Number(previousTickData.inflation));
+        var rateDelta = rate - prevRate;
+        // For inflation, down is good
+        var deltaDir = rateDelta >= 0 ? '\u25B2' : '\u25BC';
+        var deltaColor = rateDelta <= 0 ? 'var(--n-green)' : 'var(--n-red)';
+        deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + Math.abs(rateDelta).toFixed(2) + ' per tick</span>';
+    }
+
+    // Scale items
+    var scaleItems = [
+        { label: 'Minimal', range: '<0.25%', active: rate < 0.25 },
+        { label: 'Low', range: '0.25-1%', active: rate >= 0.25 && rate < 1 },
+        { label: 'Moderate', range: '1-3%', active: rate >= 1 && rate < 3 },
+        { label: 'High', range: '3-8%', active: rate >= 3 && rate < 8 },
+        { label: 'Hyper', range: '8%+', active: rate >= 8 }
+    ];
+
+    // Sparkline — for inflation, invert visually: down line = good
+    var sparkData = sparklineHistory['inflation'] ? sparklineHistory['inflation'].slice() : [];
+    if (inflRaw != null) sparkData.push(inflRaw);
+    // Color: green if good/stable, red if bad
+    var chartColor = iClass === 'good' ? '#4ade80' : iClass === 'medium' ? '#facc15' : '#ef4444';
+    var chartSVG = buildFeaturedSparkSVG(sparkData, chartColor);
+
+    var h = '<div class="featured-card featured-card--inflation">';
+    // Header
+    h += '<div class="featured-card__header">';
+    h += '<div class="featured-card__dot" style="background:' + dotColor + ';"></div>';
+    h += '<span class="featured-card__title">Inflation</span>';
+    h += '<span class="featured-card__tag" style="color:' + tagColor + ';border-color:' + tagBorder + ';">' + escapeHtml(label) + '</span>';
+    h += '</div>';
+
+    // Description
+    h += '<div class="featured-card__desc">Inflation growth rate</div>';
+
+    // Value row
+    h += '<div class="featured-card__value-row">';
+    h += '<div><span class="featured-card__big-value" style="color:' + tagColor + ';">' + rateStr + '</span></div>';
+    h += '</div>';
+
+    // Delta
+    if (deltaStr) h += deltaStr;
+
+    // Chart
+    h += '<div class="featured-card__chart">' + chartSVG + '</div>';
+
+    // Scale
+    h += '<div class="featured-card__scale">';
+    for (var i = 0; i < scaleItems.length; i++) {
+        var si = scaleItems[i];
+        h += '<div class="featured-card__scale-item' + (si.active ? ' featured-card__scale-item--active' : '') + '">';
+        h += escapeHtml(si.label);
+        h += '<span class="featured-card__scale-range">' + escapeHtml(si.range) + '</span>';
+        h += '</div>';
+    }
+    h += '</div>';
+
+    // Affected by
+    h += buildFeaturedAbpHTML('inflation');
+
+    h += '</div>';
+    return h;
+}
+
 // ===== MAIN RENDER =====
 
 async function renderNationPage(nation) {
@@ -792,6 +1015,12 @@ async function renderNationPage(nation) {
 
     // Revolution banner
     h += await renderRevolutionBanner(nation);
+
+    // ---- Featured GDP + Inflation containers ----
+    h += '<div class="featured-row">';
+    h += renderFeaturedGDP(nation);
+    h += renderFeaturedInflation(nation);
+    h += '</div>';
 
     // ---- Category sections ----
     for (var ci = 0; ci < STAT_CATEGORIES.length; ci++) {
