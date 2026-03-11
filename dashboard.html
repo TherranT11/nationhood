@@ -875,7 +875,7 @@ async function loadDashEvents(nationId, currentTick) {
     // Fetch from event_log — covers crises, bills, government events, trade, diplomatic
     const { data: events, error } = await _supabase
       .from('event_log')
-      .select('event_name, category, description_chosen, description_used, fired_at_tick')
+      .select('*')
       .eq('nation_id', nationId)
       .order('fired_at_tick', { ascending: false })
       .limit(50);
