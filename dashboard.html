@@ -38,7 +38,7 @@
     border-radius: 8px;
     overflow: hidden;
     width: 380px;
-    height: 450px;
+    height: 520px;
   }
   .dash-card-header {
     background: var(--bg-card);
@@ -701,7 +701,7 @@ initPage('home', async (state) => {
         .order('election_tick', { ascending: true })
         .limit(10);
 
-      // Build the list of next 4 elections
+      // Build the list of next 5 elections
       let elections = [];
 
       if (isPres) {
@@ -716,16 +716,16 @@ initPage('home', async (state) => {
           ...presElections.map(e => ({ tick: e.election_tick, type: 'Presidential', css: 'presidential' }))
         ].sort((a, b) => a.tick - b.tick);
 
-        elections = merged.slice(0, 4);
+        elections = merged.slice(0, 5);
 
         // If not enough scheduled, project future ones
-        if (elections.length < 4) {
+        if (elections.length < 5) {
           const lastParl = parlElections.length ? parlElections[parlElections.length - 1].election_tick : null;
           const lastPres = presElections.length ? presElections[presElections.length - 1].election_tick : null;
           let nextParl = lastParl ? lastParl + 24 : currentTick + 24;
           let nextPres = lastPres ? lastPres + 48 : currentTick + 48;
 
-          while (elections.length < 4) {
+          while (elections.length < 5) {
             if (nextParl <= nextPres) {
               elections.push({ tick: nextParl, type: 'Midterms', css: 'midterm' });
               nextParl += 24;
@@ -735,7 +735,7 @@ initPage('home', async (state) => {
             }
           }
           elections.sort((a, b) => a.tick - b.tick);
-          elections = elections.slice(0, 4);
+          elections = elections.slice(0, 5);
         }
       } else {
         // Parliamentary: all elections are simply "Parliamentary"
@@ -743,15 +743,15 @@ initPage('home', async (state) => {
           tick: e.election_tick, type: 'Parliamentary', css: 'parliamentary'
         }));
 
-        elections = parlScheduled.slice(0, 4);
+        elections = parlScheduled.slice(0, 5);
 
         // Project if not enough
-        if (elections.length < 4) {
+        if (elections.length < 5) {
           const lastTick = parlScheduled.length
             ? parlScheduled[parlScheduled.length - 1].tick
             : currentTick;
           let next = lastTick + 24;
-          while (elections.length < 4) {
+          while (elections.length < 5) {
             elections.push({ tick: next, type: 'Parliamentary', css: 'parliamentary' });
             next += 24;
           }
