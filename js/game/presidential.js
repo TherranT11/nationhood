@@ -13,6 +13,18 @@ import { fetchActiveCoalition } from './government-structure.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fireBillEvent } from './event-helpers.js';
 
+/** Tally floor votes from bill_support records (already loaded via join). */
+function tallyFloorVotes(bill) {
+    let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
+    for (const s of (bill.bill_support || [])) {
+        const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+        if (stance === 'yes') votesFor += (s.seat_count || 0);
+        else if (stance === 'no') votesAgainst += (s.seat_count || 0);
+        else if (stance === 'abstain') votesAbstain += (s.seat_count || 0);
+    }
+    return { votesFor, votesAgainst, votesAbstain };
+}
+
 /**
  * Generate 3 president candidates for a party (reuses PM candidate generation pattern).
  * Candidates are stored in pm_candidates table with candidate_type = 'presidential';
@@ -280,7 +292,8 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
             president_action_tick: currentTick
         }).eq('id', bill.id);
 
-    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, votesFor: 0, votesAgainst: 0, votesAbstain: 0, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (signed by President)' });
+    const floorVotes = tallyFloorVotes(bill);
+    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, votesFor: floorVotes.votesFor, votesAgainst: floorVotes.votesAgainst, votesAbstain: floorVotes.votesAbstain, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (signed by President)' });
 }
 
 /**
@@ -289,7 +302,7 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
  */
 export async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
     const { data: bill } = await supabase.from('bills')
-        .select('*, factions(faction_name)')
+        .select('*, factions(faction_name), bill_support(stance, seat_count)')
         .eq('id', billId).single();
     if (!bill || bill.status !== 'president_desk') throw new Error('Bill is not on the president\'s desk');
 
@@ -322,7 +335,8 @@ export async function vetoPresidentialBill(supabase, billId, presidentFactionId)
         preamble: `The President has vetoed "${bill.bill_name}". The legislature may override this veto with a two-thirds supermajority (${overrideSeats} of ${GAME_CONFIG.TOTAL_SEATS} seats).`
     }).select().single();
 
-    await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, votesFor: 0, votesAgainst: 0, votesAbstain: 0, billNameOverride: bill.bill_name + ' (VETOED by President)' });
+    const floorVotes = tallyFloorVotes(bill);
+    await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, votesFor: floorVotes.votesFor, votesAgainst: floorVotes.votesAgainst, votesAbstain: floorVotes.votesAbstain, billNameOverride: bill.bill_name + ' (VETOED by President)' });
 
     return overrideBill;
 }
@@ -365,7 +379,8 @@ export async function processPresidentDesk(supabase, nation, currentTick) {
             continue;
         }
 
-        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationId: nation.id, nationName: nation.name, votesFor: 0, votesAgainst: 0, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (auto-signed by President)' });
+        const floorVotes = tallyFloorVotes(bill);
+        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationId: nation.id, nationName: nation.name, votesFor: floorVotes.votesFor, votesAgainst: floorVotes.votesAgainst, votesAbstain: floorVotes.votesAbstain, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (auto-signed by President)' });
 
         results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed' });
     }
