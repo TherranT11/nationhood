@@ -603,15 +603,14 @@ function parsePolicyEffects(laws, map, currentTick) {
         for (var j = 0; j < effects.length; j++) {
             var eff = effects[j];
             if (!eff.stat_key) continue;
-            // Filter out effects that haven't started or have expired
             var delay = Number(eff.delay_ticks) || 0;
             var dur = Number(eff.duration_ticks) || 12;
-            if (ticksSince <= delay || ticksSince > delay + dur) continue;
+            var isActive = ticksSince > delay && ticksSince <= delay + dur;
             var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
             // Reversal laws flip the effect direction
             if (law.is_reversal) dir = (dir === 'up') ? 'down' : 'up';
             var label = law.is_reversal ? policy.policy_name + ' (Repeal)' : policy.policy_name;
-            var rate = Number(eff.rate) || 1;
+            var rate = isActive ? (Number(eff.rate) || 1) : null;
             addEffectToMap(map, eff.stat_key, label, dir, 'Policy', rate);
         }
     }
