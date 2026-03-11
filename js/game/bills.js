@@ -1934,6 +1934,7 @@ export async function enactBill(supabase, bill, currentTick) {
                 }, { onConflict: 'nation_id,policy_id' });
             if (activeLawError) {
                 console.error(`[enactBill] Failed to upsert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
+                return { success: false, error: `Active law upsert failed for policy ${policy.policy_name || policy.id}: ${activeLawError.message}` };
             }
         }
     }
@@ -2032,11 +2033,14 @@ export async function enactBill(supabase, bill, currentTick) {
             const allInst = fd.institutions || [];
             const avgPct = allInst.reduce((sum, i) => sum + i.proposed_pct, 0) / (allInst.length || 1);
             const newLevel = avgPct / 100;
-            await supabase.from('ministries')
+            const { error: ministryFundingErr } = await supabase.from('ministries')
                 .update({ funding_level: newLevel })
                 .eq('nation_id', bill.nation_id)
                 .eq('ministry_key', fd.ministry_key)
                 .eq('is_active', true);
+            if (ministryFundingErr) {
+                return { success: false, error: `Ministry funding update failed for ${fd.ministry_key}: ${ministryFundingErr.message}` };
+            }
             console.log(`[enactBill] Ministry funding_level: ${fd.ministry_key} → ${Math.round(avgPct)}%`);
         }
 
@@ -2074,10 +2078,13 @@ export async function enactBill(supabase, bill, currentTick) {
     // Sponsor gains/loses preference with voter blocs based on bill ideology alignment
     await applyBlocPreferenceOnPassage(supabase, bill, bill.nation_id);
 
-    await supabase.from('bills').update({
+    const { error: billUpdateErr } = await supabase.from('bills').update({
         status: 'passed',
         passed_tick: currentTick
     }).eq('id', bill.id);
+    if (billUpdateErr) {
+        return { success: false, error: `Bill status update failed: ${billUpdateErr.message}` };
+    }
 
     // Legislative activity: boost gov_approval_events
     await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
