@@ -325,7 +325,7 @@ async function loadBillData() {
 
         const { data: parties } = await _supabase
             .from('factions')
-            .select('id, faction_name, is_npc, seats')
+            .select('id, faction_name, seats')
             .eq('nation_id', bill.nation_id).eq('faction_type', 'party');
         allParties = parties || [];
 
