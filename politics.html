@@ -2438,6 +2438,110 @@
 .pol-endorse-btn:disabled {
     pointer-events: none;
 }
+.pol-endorsement-panel {
+    border: 1px solid var(--dborder-0);
+    border-radius: 4px;
+    background: var(--dbg-3);
+    padding: 10px;
+    margin-bottom: 12px;
+}
+.pol-endorsement-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.pol-endorsement-title {
+    font-family: var(--dfont-ui);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--dtext-0);
+}
+.pol-endorsement-sub {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-3);
+}
+.pol-endorsement-meta {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-2);
+    margin-bottom: 8px;
+}
+.pol-endorsement-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.pol-endorsement-select {
+    flex: 1;
+    min-width: 0;
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-1);
+    color: var(--dtext-0);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: var(--dfont-ui);
+    font-size: 12px;
+}
+.pol-endorsement-warning {
+    margin-top: 8px;
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--damber);
+}
+.pol-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+}
+.pol-modal {
+    width: min(420px, calc(100vw - 24px));
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-1);
+    border-radius: 6px;
+    padding: 18px;
+}
+.pol-modal-title {
+    font-family: var(--dfont-ui);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--dtext-0);
+    margin-bottom: 6px;
+}
+.pol-modal-body {
+    font-family: var(--dfont-ui);
+    font-size: 13px;
+    color: var(--dtext-1);
+}
+.pol-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 14px;
+}
+.pol-modal-btn {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border: 1px solid var(--dborder-1);
+    border-radius: 4px;
+    padding: 6px 10px;
+    cursor: pointer;
+    background: var(--dbg-3);
+    color: var(--dtext-1);
+}
+.pol-modal-btn.confirm {
+    border-color: var(--damber-border);
+    color: var(--damber);
+    background: var(--damber-faint);
+}
 
 /* Upcoming Elections panel */
 .pol-upcoming-box {
@@ -3532,6 +3636,7 @@ async function renderPartyTab(f, nation, data) {
         </div>
 
         <div class="pol-row-3">
+        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, f.id)}
         ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames)}
         ${renderBlocVotingBox(lastParliamentary, lastPresidential, allParties)}
         </div>
@@ -5544,6 +5649,26 @@ function initEditIdentityBox(f) {
     }
 }
 
+function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, playerFactionId) {
+    const endorsementKey = `pol_endorsement_${playerFactionId}`;
+    const storedEndorsementRaw = localStorage.getItem(endorsementKey);
+    let storedEndorsement = null;
+    try {
+        storedEndorsement = storedEndorsementRaw ? JSON.parse(storedEndorsementRaw) : null;
+    } catch {
+        storedEndorsement = null;
+    }
+
+    const eligibleTargets = (allParties || []).filter(p => p.id !== playerFactionId);
+    const currentTarget = storedEndorsement
+        ? eligibleTargets.find(p => p.id === storedEndorsement.targetFactionId)
+        : null;
+    const currentEndorsementLabel = currentTarget
+        ? currentTarget.faction_name
+        : 'None selected';
+    const lastUpdatedLabel = typeof storedEndorsement?.updatedTick === 'number'
+        ? `Tick ${storedEndorsement.updatedTick}`
+        : '—';
 function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames = []) {
     // Build a color map from allParties
     const colorMap = {};
@@ -5665,7 +5790,21 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
     return `<div class="pol-election-box">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <div class="pol-section-label" style="margin-bottom:0">ELECTION RESULTS</div>
-            <button class="pol-endorse-btn" disabled>Endorse Candidate</button>
+        </div>
+        <div class="pol-endorsement-panel">
+            <div class="pol-endorsement-head">
+                <div class="pol-endorsement-title">Endorse Candidate (Next Presidential Election)</div>
+                <div class="pol-endorsement-sub">Costs 1 AP</div>
+            </div>
+            <div class="pol-endorsement-meta">Current endorsement: <strong>${escapeHtml(currentEndorsementLabel)}</strong> &middot; Last updated: ${escapeHtml(lastUpdatedLabel)}</div>
+            <div class="pol-endorsement-controls">
+                <select class="pol-endorsement-select" id="pol-endorsement-select">
+                    <option value="">Select endorsement target</option>
+                    ${eligibleTargets.map(p => `<option value="${p.id}" ${currentTarget?.id === p.id ? 'selected' : ''}>${escapeHtml(p.faction_name)}</option>`).join('')}
+                </select>
+                <button class="pol-endorse-btn" id="pol-endorse-submit" ${eligibleTargets.length === 0 ? 'disabled' : ''}>Set Endorsement</button>
+            </div>
+            <div class="pol-endorsement-warning">Changing endorsement costs 1 AP.</div>
         </div>
         ${endorsementNotesHtml}
         <div class="pol-el-tabs">
@@ -5674,6 +5813,16 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         </div>
         <div class="pol-el-content active" data-content="parl">${renderParliamentaryContent(lastParliamentary)}</div>
         ${presContents}
+        <div class="pol-modal-overlay" id="pol-endorse-modal">
+            <div class="pol-modal">
+                <div class="pol-modal-title">Confirm Endorsement Change</div>
+                <div class="pol-modal-body" id="pol-endorse-modal-body">Changing endorsement costs 1 AP.</div>
+                <div class="pol-modal-actions">
+                    <button class="pol-modal-btn" id="pol-endorse-cancel">Cancel</button>
+                    <button class="pol-modal-btn confirm" id="pol-endorse-confirm">Confirm</button>
+                </div>
+            </div>
+        </div>
     </div>`;
 }
 
@@ -5691,6 +5840,69 @@ function initElectionResultsBox() {
             const content = box.querySelector(`.pol-el-content[data-content="${target}"]`);
             if (content) content.classList.add('active');
         });
+    });
+
+    const selectEl = box.querySelector('#pol-endorsement-select');
+    const submitBtn = box.querySelector('#pol-endorse-submit');
+    const modal = box.querySelector('#pol-endorse-modal');
+    const modalBody = box.querySelector('#pol-endorse-modal-body');
+    const cancelBtn = box.querySelector('#pol-endorse-cancel');
+    const confirmBtn = box.querySelector('#pol-endorse-confirm');
+
+    if (!selectEl || !submitBtn || !modal || !modalBody || !cancelBtn || !confirmBtn) return;
+
+    submitBtn.addEventListener('click', () => {
+        const selectedOption = selectEl.options[selectEl.selectedIndex];
+        if (!selectedOption || !selectedOption.value) return;
+        modalBody.textContent = `Switch endorsement to ${selectedOption.textContent}? Changing endorsement costs 1 AP.`;
+        modal.style.display = 'flex';
+    });
+
+    cancelBtn.addEventListener('click', () => {
+        modal.style.display = 'none';
+    });
+
+    confirmBtn.addEventListener('click', async () => {
+        const selectedOption = selectEl.options[selectEl.selectedIndex];
+        if (!selectedOption || !selectedOption.value) return;
+        const factionId = _currentFaction?.id;
+        const currentTick = _currentShard?.current_tick || 0;
+        if (!factionId) return;
+
+        let existing = null;
+        try {
+            existing = JSON.parse(localStorage.getItem(`pol_endorsement_${factionId}`) || 'null');
+        } catch {
+            existing = null;
+        }
+
+        const isSwitch = existing?.targetFactionId && existing.targetFactionId !== selectedOption.value;
+        const isFirstSet = !existing?.targetFactionId;
+        if (!(isSwitch || isFirstSet)) {
+            modal.style.display = 'none';
+            return;
+        }
+
+        const apResult = await deductAP(_supabase, factionId, 1);
+        if (!apResult?.success) {
+            alert('Not enough AP. Changing endorsement costs 1 AP.');
+            modal.style.display = 'none';
+            await reRender();
+            return;
+        }
+
+        localStorage.setItem(`pol_endorsement_${factionId}`, JSON.stringify({
+            targetFactionId: selectedOption.value,
+            updatedTick: currentTick,
+        }));
+        modal.style.display = 'none';
+        await reRender();
+    });
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
     });
 }
 
