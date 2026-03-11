@@ -18,7 +18,7 @@
   .dash-row {
     display: flex;
     gap: 20px;
-    align-items: stretch;
+    align-items: flex-start;
   }
 
   /* ── Nation Card ── */
@@ -582,6 +582,12 @@ initPage('home', async (state) => {
     `;
 
     govCard.style.display = '';
+
+    // Match Government card height to Nation card
+    const nationCard = document.getElementById('nation-card');
+    const nationH = nationCard.offsetHeight;
+    govCard.style.height = nationH + 'px';
+    govCard.style.overflow = 'hidden';
   } catch (e) {
     console.error('Government card error:', e);
   }
