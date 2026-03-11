@@ -99,6 +99,8 @@ BEGIN
         WHERE pc.nation_id = p_nation_id
           AND pc.candidate_type = 'presidential'
           AND pc.selected = true
+          AND f.faction_type = 'party'
+          AND f.abandoned_at IS NULL
     ) t;
 
     IF jsonb_array_length(v_candidates) = 0 THEN
