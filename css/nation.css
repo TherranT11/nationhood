@@ -516,6 +516,13 @@
 }
 .abp-arrow--up { color: var(--n-green); }
 .abp-arrow--down { color: var(--n-red); }
+.abp-rate {
+    font-size: 9px;
+    font-family: var(--n-font-mono);
+    color: var(--n-tertiary);
+    margin-right: auto;
+    padding-left: 2px;
+}
 .abp-type {
     font-size: 8px;
     font-family: var(--n-font-mono);

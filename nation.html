@@ -519,7 +519,7 @@ async function loadStatEffectSources(nationId, nation) {
 
     var results = await Promise.all([
         _supabase.from('active_laws')
-            .select('is_reversal, policies(policy_name, stat_effects)')
+            .select('is_reversal, passed_tick, policies(policy_name, stat_effects)')
             .eq('nation_id', nationId),
         _supabase.from('active_crises')
             .select('crisis_id, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')
@@ -535,8 +535,9 @@ async function loadStatEffectSources(nationId, nation) {
         loadLeaderTraitEffects(nationId, nation)
     ]);
 
+    var currentTick = await getShardTick();
     var map = {};
-    parsePolicyEffects(results[0].data || [], map);
+    parsePolicyEffects(results[0].data || [], map, currentTick);
     parseCrisisEffects(results[1].data || [], map);
     parseMinistryEffects(results[2].data || [], map);
     parseDiplomaticEffects(results[3].data || [], map);
@@ -580,7 +581,7 @@ async function loadLeaderTraitEffects(nationId, nation) {
     }
 }
 
-function addEffectToMap(map, statKey, name, direction, type) {
+function addEffectToMap(map, statKey, name, direction, type, rate) {
     var key = normalizeNationStatKey(statKey);
     if (!key) return;
     if (!map[key]) map[key] = [];
@@ -588,24 +589,30 @@ function addEffectToMap(map, statKey, name, direction, type) {
     for (var i = 0; i < map[key].length; i++) {
         if (map[key][i].name === name && map[key][i].direction === direction && map[key][i].type === type) return;
     }
-    map[key].push({ name: name, direction: direction, type: type });
+    map[key].push({ name: name, direction: direction, type: type, rate: rate || null });
 }
 
-function parsePolicyEffects(laws, map) {
+function parsePolicyEffects(laws, map, currentTick) {
     for (var i = 0; i < laws.length; i++) {
         var law = laws[i];
         var policy = law.policies;
         if (!policy) continue;
         var effects = policy.stat_effects;
         if (!effects || !Array.isArray(effects)) continue;
+        var ticksSince = currentTick - (law.passed_tick || 0);
         for (var j = 0; j < effects.length; j++) {
             var eff = effects[j];
             if (!eff.stat_key) continue;
+            // Filter out effects that haven't started or have expired
+            var delay = Number(eff.delay_ticks) || 0;
+            var dur = Number(eff.duration_ticks) || 12;
+            if (ticksSince <= delay || ticksSince > delay + dur) continue;
             var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
             // Reversal laws flip the effect direction
             if (law.is_reversal) dir = (dir === 'up') ? 'down' : 'up';
             var label = law.is_reversal ? policy.policy_name + ' (Repeal)' : policy.policy_name;
-            addEffectToMap(map, eff.stat_key, label, dir, 'Policy');
+            var rate = Number(eff.rate) || 1;
+            addEffectToMap(map, eff.stat_key, label, dir, 'Policy', rate);
         }
     }
 }
@@ -1428,6 +1435,10 @@ function buildAffectedByContent(statKey) {
         h += '<div class="abp-row">';
         h += '<span class="abp-name">' + escapeHtml(eff.name) + '</span>';
         h += '<span class="abp-arrow ' + arrowClass + '">' + arrow + '</span>';
+        if (eff.rate) {
+            var sign = eff.direction === 'up' ? '+' : '-';
+            h += '<span class="abp-rate">' + sign + eff.rate + '/tick</span>';
+        }
         h += '<span class="abp-type ' + typeClass + '">' + escapeHtml(eff.type) + '</span>';
         h += '</div>';
     }
