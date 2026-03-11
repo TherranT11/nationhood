@@ -6,8 +6,7 @@ This plan defines prerequisite removals that **must** be completed before any en
 
 1. Remove NPC references in client/UI.
 2. Remove NPC dependency in SQL/RPC.
-3. Remove coalition debt references.
-4. Only then start endorsement schema + flows.
+3. Only then start endorsement schema + flows.
 
 ## Merge gate checklist for endorsement PRs
 
@@ -15,8 +14,7 @@ This plan defines prerequisite removals that **must** be completed before any en
 
 - [ ] **P1 — Client/UI cleanup complete:** NPC references removed in frontend/UI.
 - [ ] **P2 — SQL/RPC cleanup complete:** NPC dependency removed in database schema, SQL, and RPC layers.
-- [ ] **P3 — Coalition debt cleanup complete:** coalition debt references removed.
-- [ ] **P4 — Endorsement work start approved:** endorsement schema + flows started only after P1-P3 are checked.
+- [ ] **P3 — Endorsement work start approved:** endorsement schema + flows started only after P1-P2 are checked.
 
 ## PR template snippet (copy into endorsement PR descriptions)
 
@@ -24,6 +22,5 @@ This plan defines prerequisite removals that **must** be completed before any en
 ### Endorsement Migration Gate
 - [ ] P1 complete (NPC references removed in client/UI)
 - [ ] P2 complete (NPC dependency removed in SQL/RPC)
-- [ ] P3 complete (coalition debt references removed)
-- [ ] P4 confirmed (endorsement schema + flows started after P1-P3)
+- [ ] P3 confirmed (endorsement schema + flows started after P1-P2)
 ```
