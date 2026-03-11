@@ -1006,6 +1006,94 @@ function renderFeaturedInflation(nation) {
     return h;
 }
 
+function renderFeaturedGDPGrowth(nation) {
+    var gdpGrowthRaw = Number(nation.gdp_growth ?? 50);
+    var monthlyPct = ((gdpGrowthRaw - 50) / 50) * 3;
+    var yearlyPct = (Math.pow(1 + monthlyPct / 100, 12) - 1) * 100;
+    var growthStr = (monthlyPct >= 0 ? '+' : '') + monthlyPct.toFixed(2) + '%';
+    var yearlyStr = (yearlyPct >= 0 ? '+' : '') + yearlyPct.toFixed(2) + '%';
+
+    // Color based on growth
+    var growthColor, borderColor, dotColor;
+    if (monthlyPct >= 0.5) { growthColor = '#4ade80'; borderColor = '#4ade80'; dotColor = 'var(--n-green)'; }
+    else if (monthlyPct >= 0) { growthColor = '#facc15'; borderColor = '#facc15'; dotColor = 'var(--n-yellow)'; }
+    else { growthColor = '#ef4444'; borderColor = '#ef4444'; dotColor = 'var(--n-red)'; }
+
+    var yearlyColor = yearlyPct >= 0 ? 'var(--n-green)' : 'var(--n-red)';
+
+    // Trend arrow
+    var trendArrow = '';
+    if (previousTickData && previousTickData.gdp_growth != null) {
+        var prevGrowthRaw = Number(previousTickData.gdp_growth);
+        var delta = gdpGrowthRaw - prevGrowthRaw;
+        if (Math.abs(delta) >= 0.01) {
+            var tDir = delta > 0 ? '\u25B2' : '\u25BC';
+            var tColor = delta > 0 ? 'var(--n-green)' : 'var(--n-red)';
+            trendArrow = '<span style="color:' + tColor + ';font-size:10px;margin-left:4px;">' + tDir + '</span>';
+        }
+    }
+
+    // Sparkline (inline compact)
+    var sparkData = sparklineHistory['gdp_growth'] ? sparklineHistory['gdp_growth'].slice() : [];
+    if (gdpGrowthRaw != null) sparkData.push(gdpGrowthRaw);
+    var sparkSVG = '';
+    if (sparkData.length >= 2) {
+        var sw = 50, sh = 16;
+        var mn = Math.min.apply(null, sparkData), mx = Math.max.apply(null, sparkData), r = mx - mn || 1;
+        var pts = sparkData.map(function(v, i) {
+            return ((i / (sparkData.length - 1)) * sw).toFixed(1) + ',' + (sh - ((v - mn) / r) * sh).toFixed(1);
+        }).join(' ');
+        sparkSVG = '<svg width="' + sw + '" height="' + sh + '" style="display:block;"><polyline points="' + pts + '" fill="none" stroke="' + growthColor + '" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+    }
+
+    // Ranking (higher gdp_growth = better)
+    var rank = calculateRanking('gdp_growth', gdpGrowthRaw, false);
+    var rankHTML = '';
+    if (rank) {
+        var total = totalNations || 6;
+        var pipColor = rank <= 2 ? '#4ade80' : rank <= 4 ? '#facc15' : '#ef4444';
+        rankHTML = '<div class="compact-bottom__rank">';
+        for (var i = 0; i < total; i++) {
+            if (i < rank) {
+                rankHTML += '<div class="compact-bottom__rank-pip" style="background:' + pipColor + ';"></div>';
+            } else {
+                rankHTML += '<div class="compact-bottom__rank-pip compact-bottom__rank-pip--empty"></div>';
+            }
+        }
+        rankHTML += '<span class="compact-bottom__rank-label">#' + rank + '</span></div>';
+    }
+
+    var h = '<div class="featured-card featured-card--compact" style="border-left-color:' + borderColor + ';">';
+
+    // Top row: title + trend + sparkline + value
+    h += '<div class="compact-top">';
+    h += '<span class="compact-top__title">GDP Growth</span>';
+    h += trendArrow;
+    if (sparkSVG) h += '<span class="compact-top__spark">' + sparkSVG + '</span>';
+    h += '<span class="compact-top__value" style="color:' + growthColor + ';">' + growthStr + '</span>';
+    h += '</div>';
+
+    // Bottom row: description + rank
+    h += '<div class="compact-bottom">';
+    h += '<span class="compact-bottom__desc">Monthly economic growth rate</span>';
+    h += rankHTML;
+    h += '</div>';
+
+    // Predicted yearly growth
+    h += '<div class="compact-yearly" style="font-family:var(--n-font-sans);font-size:12px;color:var(--n-secondary);margin-bottom:12px;text-align:center;">Predicted Yearly Growth: <span style="color:' + yearlyColor + ';font-weight:700;">' + yearlyStr + '</span></div>';
+
+    // Affected by
+    var effects = statEffectsByKey['gdp_growth'] || [];
+    if (effects.length > 0) {
+        h += buildFeaturedAbpHTML('gdp_growth');
+    } else {
+        h += '<div class="compact-empty">No active effects</div>';
+    }
+
+    h += '</div>';
+    return h;
+}
+
 function renderFeaturedDebt(nation) {
     var debtRaw = nation.debt;
     var debtDisplay = formatCurrencyShort(scaleRawToDollars(debtRaw));
@@ -1093,9 +1181,10 @@ async function renderNationPage(nation) {
     // Revolution banner
     h += await renderRevolutionBanner(nation);
 
-    // ---- Featured GDP + Inflation + Debt containers ----
+    // ---- Featured containers ----
     h += '<div class="featured-row">';
     h += renderFeaturedGDP(nation);
+    h += renderFeaturedGDPGrowth(nation);
     h += renderFeaturedInflation(nation);
     h += renderFeaturedDebt(nation);
     h += '</div>';
