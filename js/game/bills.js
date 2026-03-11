@@ -1203,7 +1203,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
             // Minister confirmation bill (Presidential systems)
             const mKey = bill.ministry_key;
             const { data: ministry } = await supabase.from('ministries')
-                .select('id, pending_minister, rejected_parties')
+                .select('id, pending_minister')
                 .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
                 .maybeSingle();
 
@@ -1227,9 +1227,8 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         ministry_name: mKey,
                         is_active: true,
                         confirmation_status: 'pending',
-                        pending_minister: null,
-                        rejected_parties: []
-                    }).select('id, pending_minister, rejected_parties').single();
+                        pending_minister: null
+                    }).select('id, pending_minister').single();
                     // Use the bill's metadata as fallback for pending_minister
                     if (createdMinistry && bill.metadata?.pending_minister) {
                         await supabase.from('ministries').update({
@@ -1288,17 +1287,11 @@ export async function resolveExpiredVotes(supabase, nationId) {
             } else {
                 await failBill(supabase, bill);
 
-                // Record rejected party so President can't re-nominate same party for this slot
+                // Clear pending nominee after failed confirmation
                 if (ministry?.pending_minister) {
-                    const rejectedPartyId = ministry.pending_minister.party_id;
-                    const existingRejected = ministry.rejected_parties || [];
-                    if (!existingRejected.includes(rejectedPartyId)) {
-                        existingRejected.push(rejectedPartyId);
-                    }
                     await supabase.from('ministries').update({
                         confirmation_status: 'rejected',
-                        pending_minister: null,
-                        rejected_parties: existingRejected
+                        pending_minister: null
                     }).eq('id', ministry.id);
                 }
 
@@ -2500,7 +2493,7 @@ async function syncFailedMinisterConfirmationBill(supabase, bill) {
 
     const { data: ministry, error: fetchErr } = await supabase
         .from('ministries')
-        .select('id, pending_minister, rejected_parties')
+        .select('id')
         .eq('nation_id', bill.nation_id)
         .eq('ministry_key', bill.ministry_key)
         .eq('is_active', true)
@@ -2512,18 +2505,11 @@ async function syncFailedMinisterConfirmationBill(supabase, bill) {
     }
     if (!ministry) return;
 
-    const rejectedPartyId = ministry.pending_minister?.party_id;
-    const existingRejected = Array.isArray(ministry.rejected_parties) ? ministry.rejected_parties : [];
-    const rejectedParties = rejectedPartyId && !existingRejected.includes(rejectedPartyId)
-        ? [...existingRejected, rejectedPartyId]
-        : existingRejected;
-
     const { error: updateErr } = await supabase
         .from('ministries')
         .update({
             confirmation_status: 'rejected',
-            pending_minister: null,
-            rejected_parties: rejectedParties
+            pending_minister: null
         })
         .eq('id', ministry.id);
 

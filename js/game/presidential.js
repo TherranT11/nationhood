@@ -145,7 +145,7 @@ export async function selectPresidentCandidate(supabase, candidateId, nationId, 
 /**
  * President nominates a minister for a cabinet slot.
  * Writes pending data to the ministries table and creates a confirmation bill.
- * Parliament votes simple majority; if rejected, the party is blocked for that slot.
+ * Parliament votes simple majority.
  *
  * @param {object} supabase
  * @param {string} nationId
@@ -167,18 +167,12 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
 
     // Validate: no existing pending confirmation for this slot
     const { data: existingMinistry } = await supabase.from('ministries')
-        .select('id, confirmation_status, rejected_parties')
+        .select('id, confirmation_status')
         .eq('nation_id', nationId).eq('ministry_key', ministryKey).eq('is_active', true)
         .maybeSingle();
 
     if (existingMinistry?.confirmation_status === 'pending') {
         throw new Error('A confirmation vote is already pending for this ministry');
-    }
-
-    // Validate: nominee's party was not already rejected for this slot
-    const rejectedParties = existingMinistry?.rejected_parties || [];
-    if (rejectedParties.includes(nominee.partyId)) {
-        throw new Error('This party\'s nominee was already rejected for this ministry slot');
     }
 
     // Get current tick
@@ -216,8 +210,7 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
             ministry_name: ministryDisplayName,
             is_active: true,
             confirmation_status: 'pending',
-            pending_minister: pendingData,
-            rejected_parties: []
+            pending_minister: pendingData
         });
         if (insErr) throw new Error('Failed to create ministry row: ' + insErr.message);
     }
@@ -695,7 +688,7 @@ export async function processParliamentaryPMTimeout(supabase, nation, currentTic
 /**
  * Called when the nominated party votes NO on their own minister confirmation bill.
  * Immediately ends the vote as failed, applies -2 gov approval to the president,
- * adds the party to rejected_parties so the president cannot re-nominate them.
+ * and clears the pending nominee.
  *
  * @param {object} supabase
  * @param {string} billId - The minister_confirmation bill
@@ -714,7 +707,7 @@ export async function rejectOwnNomination(supabase, billId, nomineePartyId) {
 
     // Validate the nominee is actually the pending nominee for this ministry
     const { data: ministry } = await supabase.from('ministries')
-        .select('id, pending_minister, rejected_parties')
+        .select('id, pending_minister')
         .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
         .maybeSingle();
 
@@ -725,15 +718,10 @@ export async function rejectOwnNomination(supabase, billId, nomineePartyId) {
     // 1. Fail the bill immediately
     await failBill(supabase, bill);
 
-    // 2. Add nominee's party to rejected_parties so President cannot re-nominate them
-    const existingRejected = ministry.rejected_parties || [];
-    if (!existingRejected.includes(nomineePartyId)) {
-        existingRejected.push(nomineePartyId);
-    }
+    // 2. Clear pending nomination
     await supabase.from('ministries').update({
         confirmation_status: 'rejected',
-        pending_minister: null,
-        rejected_parties: existingRejected
+        pending_minister: null
     }).eq('id', ministry.id);
 
     // 3. Apply -2 government approval event (penalty to the president)
