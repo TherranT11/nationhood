@@ -734,6 +734,7 @@ initPage('home', async (state) => {
               nextPres += 48;
             }
           }
+          elections.sort((a, b) => a.tick - b.tick);
           elections = elections.slice(0, 4);
         }
       } else {
