@@ -605,12 +605,11 @@ function parsePolicyEffects(laws, map, currentTick) {
             if (!eff.stat_key) continue;
             var delay = Number(eff.delay_ticks) || 0;
             var dur = Number(eff.duration_ticks) || 12;
-            var isActive = ticksSince > delay && ticksSince <= delay + dur;
             var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
             // Reversal laws flip the effect direction
             if (law.is_reversal) dir = (dir === 'up') ? 'down' : 'up';
             var label = law.is_reversal ? policy.policy_name + ' (Repeal)' : policy.policy_name;
-            var rate = isActive ? (Number(eff.rate) || 1) : null;
+            var rate = Number(eff.rate) || 1;
             addEffectToMap(map, eff.stat_key, label, dir, 'Policy', rate);
         }
     }
