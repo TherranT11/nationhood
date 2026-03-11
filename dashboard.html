@@ -32,8 +32,8 @@
   }
   .dash-card-header {
     background: var(--bg-card);
-    padding: 14px 24px;
-    margin-bottom: 22px;
+    padding: 10px 20px;
+    margin-bottom: 14px;
     font-size: 0.9rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -42,7 +42,7 @@
     text-align: center;
   }
   .dash-card-body {
-    padding: 6px 24px 28px;
+    padding: 6px 20px 20px;
   }
 
   .nation-identity {
@@ -117,15 +117,15 @@
   /* ── Government Card ── */
   .gov-admin-name {
     font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 1.15rem;
+    font-size: 1.05rem;
     font-weight: 700;
     color: var(--text-primary);
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
   .gov-badges {
     display: flex;
     gap: 6px;
-    margin-bottom: 16px;
+    margin-bottom: 10px;
   }
   .gov-badge {
     font-family: 'JetBrains Mono', monospace;
@@ -143,11 +143,11 @@
     display: flex;
     align-items: flex-start;
     gap: 10px;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
   }
   .gov-initials {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border-radius: 4px;
     background: var(--bg-card);
     border: 1px solid var(--border-main);
@@ -162,13 +162,13 @@
   }
   .gov-leader-name {
     font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.95rem;
+    font-size: 0.88rem;
     font-weight: 600;
     color: var(--text-primary);
   }
   .gov-leader-meta {
     font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     color: var(--text-secondary);
     margin-top: 1px;
   }
@@ -196,12 +196,12 @@
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--text-secondary);
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
   .gov-divider {
     height: 1px;
     background: var(--border-light);
-    margin: 14px 0;
+    margin: 10px 0;
   }
   .gov-seat-bar {
     display: flex;
@@ -209,7 +209,7 @@
     border-radius: 3px;
     overflow: hidden;
     background: rgba(255,255,255,0.04);
-    margin-bottom: 10px;
+    margin-bottom: 6px;
   }
   .gov-seat-segment {
     height: 100%;
@@ -222,13 +222,13 @@
   }
   .gov-coalition-name {
     font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     color: var(--text-primary);
     flex: 1;
   }
   .gov-coalition-seats {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     font-weight: 600;
   }
   .gov-seats-combined {
@@ -236,19 +236,19 @@
     font-size: 0.68rem;
     color: var(--text-muted);
     text-align: right;
-    margin-top: 4px;
+    margin-top: 2px;
   }
   .gov-approval-big {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 2rem;
+    font-size: 1.6rem;
     font-weight: 700;
     line-height: 1;
   }
   .gov-footer {
     background: var(--bg-card);
     border-top: 1px solid var(--border-main);
-    margin: 16px -24px -28px;
-    padding: 10px 24px;
+    margin: 12px -20px -20px;
+    padding: 8px 20px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.68rem;
     font-weight: 600;
@@ -382,7 +382,7 @@ initPage('home', async (state) => {
         .eq('name', 'Alpha Shard')
         .single(),
       _supabase.from('administrations')
-        .select('admin_name, government_type, coalition_parties, total_seats')
+        .select('admin_name, government_type, coalition_parties, total_seats, started_at_tick')
         .eq('nation_id', nation.id)
         .is('ended_at_tick', null)
         .order('started_at_tick', { ascending: false })
@@ -404,6 +404,18 @@ initPage('home', async (state) => {
     const president = presidentResult?.data ?? presidentResult;
     const currentTick = shardRow?.data?.current_tick ?? shardRow?.current_tick ?? 0;
     const parties = allParties || [];
+    const govCard = document.getElementById('gov-card');
+
+    // Empty state: no active coalition
+    if (!coalition) {
+      document.getElementById('gov-card-body').innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:center;height:340px;color:var(--text-secondary);font-style:italic;font-size:0.9rem;">
+          Government is currently being formed
+        </div>
+      `;
+      govCard.style.display = '';
+      return;
+    }
 
     // Previous approval for delta
     let prevApproval = null;
@@ -421,6 +433,7 @@ initPage('home', async (state) => {
     const approval = Math.round(Number(nation.gov_approval ?? 50));
     const approvalColor = approval >= 50 ? 'var(--green)' : approval >= 35 ? 'var(--orange)' : 'var(--red)';
     const adminName = administration?.admin_name || 'Government';
+    const startYear = (administration?.started_at_tick != null) ? 2000 + Math.floor(administration.started_at_tick / 12) : null;
 
     // Gov type badge
     const govTypeLabel = isAuto ? 'Autocracy' : isPres ? 'Presidential' : 'Parliamentary';
@@ -547,7 +560,7 @@ initPage('home', async (state) => {
 
     // ── Build card ──
     document.getElementById('gov-card-body').innerHTML = `
-      <div class="gov-admin-name">${esc(adminName)}</div>
+      <div class="gov-admin-name">${esc(adminName)}${startYear ? ', ' + startYear + '-' : ''}</div>
       <div class="gov-badges">
         <span class="gov-badge">${esc(govTypeLabel)}</span>
         ${coalitionBadge ? `<span class="gov-badge">${esc(coalitionBadge)}</span>` : ''}
@@ -570,7 +583,6 @@ initPage('home', async (state) => {
     `;
 
     // Footer (outside body padding)
-    const govCard = document.getElementById('gov-card');
     let footer = govCard.querySelector('.gov-footer');
     if (!footer) {
       footer = document.createElement('div');
