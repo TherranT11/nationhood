@@ -553,8 +553,11 @@ function campaignActionToEvent(action, nationNames, leaderMap) {
     case 'no_confidence_failed':
       return { ...base, event_type: 'no_confidence', section: 'politics', tier: 1,
         topic_tags: ['government', 'no_confidence'], party_name: partyName,
-        pm_name: r.pm_name || 'the Prime Minister',
-        votes_for: r.votes_for || 0, votes_against: r.votes_against || 0, outcome: 'failed' };
+        pm_name: r.pm_name || 'the Prime Minister', status: 'failed',
+        vote_for: r.votes_for ?? '', vote_against: r.votes_against ?? '',
+        votes_for: r.votes_for ?? '', votes_against: r.votes_against ?? '',
+        margin: (r.votes_for != null && r.votes_against != null) ? Math.abs(r.votes_for - r.votes_against) : '',
+        outcome: 'failed' };
     case 'party_disbanded':
       return { ...base, event_type: 'coalition_collapsed', section: 'politics', tier: 1,
         topic_tags: ['party', 'disbanded'], party_name: r.faction_name || partyName,
@@ -680,19 +683,44 @@ function eventLogToEvent(entry, nationNames, leaderMap) {
   // Look up faction leader if faction_id is present
   const factionLeader = entry.faction_id ? (leaderMap[entry.faction_id] || null) : null;
 
-  // Extract bill name from description, falling back to effects.bill_name
-  const billDescMatch = desc.match(/(?:passed|rejected|signed|vetoed)\s+(?:the\s+)?(.+?)(?:\s+in\s+a\s|\.\s|,\s)/i);
-  const billMatch = desc.match(/(?:bill|act|law)\s+"?([^".,]+)"?/i);
-  const billName = billDescMatch ? billDescMatch[1] : (billMatch ? billMatch[1] : (effects.bill_name || subjectName));
+  // Extract bill name — prioritize structured data over description parsing
+  const effectsBillName = effects.bill_name || effects.billName || '';
+  let billName = '';
+  if (effectsBillName) {
+    billName = effectsBillName;
+  } else {
+    const billDescMatch = desc.match(/(?:passed|rejected|signed|vetoed)\s+(?:the\s+)?(.+?)(?:\s+in\s+a\s|\.\s|,\s)/i);
+    const billMatch = desc.match(/(?:bill|act|law|reform|amendment)\s+"?([^".,]+)"?/i);
+    const candidate = billDescMatch ? billDescMatch[1].trim() : '';
+    // Reject captures that look like locations ("in City"), event verbs, or are too short
+    const isGarbage = !candidate || /^in\s/i.test(candidate) || /^(?:bill\s*)?(?:passed|failed|rejected|signed)$/i.test(candidate) || candidate.length < 4;
+    billName = !isGarbage ? candidate : (billMatch ? billMatch[1].trim() : '');
+  }
+  // Final fallback: extract from event_name, but reject "Bill Passed"/"Bill Failed" style names
+  if (!billName) {
+    const cleanSubject = subjectName
+      .replace(/^(?:BILL[_ ]?(?:PASSED|FAILED|SIGNED|REJECTED|VETOED))$/i, '')
+      .trim();
+    billName = cleanSubject || '';
+  }
+  // If still empty for a bill event, use a generic noun so templates read naturally
+  if (!billName && (event_type === 'bill_vote_pass' || event_type === 'bill_vote_fail')) billName = 'the proposed legislation';
 
   // Extract sponsor/party name from description, falling back to effects.sponsor
   const sponsorMatch = desc.match(/sponsored by\s+(.+?)(?:[,.]|$)/i);
   const billPartyName = sponsorMatch ? sponsorMatch[1].trim() : (effects.sponsor || null);
 
   // Extract vote counts from description or effects (effects values may be strings)
+  // Use empty string (not 0) when data is absent so templates can gate on vote availability
   const voteMatch = desc.match(/(\d+)\s*[-–]\s*(\d+)\s*vote/i) || desc.match(/(\d+)\s+(?:for|to)\s+(?:and\s+)?(\d+)\s*(?:against)?/i);
-  const parsedVotesFor = voteMatch ? parseInt(voteMatch[1]) : (parseInt(effects.votes_for) || 0);
-  const parsedVotesAgainst = voteMatch ? parseInt(voteMatch[2]) : (parseInt(effects.votes_against) || 0);
+  const rawVotesFor = voteMatch ? parseInt(voteMatch[1])
+    : (effects.votes_for != null ? parseInt(effects.votes_for)
+    : (effects.votesFor != null ? parseInt(effects.votesFor) : null));
+  const rawVotesAgainst = voteMatch ? parseInt(voteMatch[2])
+    : (effects.votes_against != null ? parseInt(effects.votes_against)
+    : (effects.votesAgainst != null ? parseInt(effects.votesAgainst) : null));
+  const parsedVotesFor = (rawVotesFor != null && !isNaN(rawVotesFor)) ? rawVotesFor : '';
+  const parsedVotesAgainst = (rawVotesAgainst != null && !isNaN(rawVotesAgainst)) ? rawVotesAgainst : '';
 
   // ── Determine status for conditional templates ──
   let status = '';
@@ -761,7 +789,9 @@ function eventLogToEvent(entry, nationNames, leaderMap) {
     vote_against: parsedVotesAgainst,
     votes_for: parsedVotesFor,
     votes_against: parsedVotesAgainst,
-    margin: Math.abs(parsedVotesFor - parsedVotesAgainst),
+    margin: (parsedVotesFor !== '' && parsedVotesAgainst !== '')
+      ? Math.abs(parsedVotesFor - parsedVotesAgainst) : '',
+    defection_count: parseInt(effects.defection_count) || parseInt(effects.defections) || 0,
     tick,
 
     // Two-nation events (war, peace, alliance, ambassador, exercises)
