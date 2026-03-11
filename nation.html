@@ -787,90 +787,11 @@ function getDisplayValue(stat, nation) {
 
 async function renderNationPage(nation) {
     var h = '';
-    var govAppr = nation.gov_approval ?? 50;
-    var apprColor = govAppr < 40 ? 'var(--n-red)' : govAppr < 60 ? 'var(--n-yellow)' : 'var(--n-green)';
-
-    // ---- Header bar ----
-    h += '<div class="nation-header">';
-    h += '<div class="nation-header__name">' + escapeHtml(nation.name) + '</div>';
-    h += '<div class="nation-header__stats">';
-    var headerStats = [
-        { l: 'Capital', v: escapeHtml(nation.capital || '\u2014') },
-        { l: 'Government', v: isPresidentialRepublic(nation) ? 'Presidential Republic' : getCanonicalGovernmentType(nation, nation.government_type || '\u2014') },
-        { l: 'Population', v: formatNumber(nation.population) },
-        { l: 'Approval', v: govAppr + '%', c: apprColor },
-        { l: 'GDP', v: formatCurrencyShort(scaleRawToDollars(nation.gdp)), c: 'var(--n-green)' }
-    ];
-    for (var hi = 0; hi < headerStats.length; hi++) {
-        var hs = headerStats[hi];
-        h += '<div class="nation-header__stat"><div class="nation-header__stat-label">' + hs.l + '</div>';
-        h += '<div class="nation-header__stat-value"' + (hs.c ? ' style="color:' + hs.c + '"' : '') + '>' + hs.v + '</div></div>';
-    }
-    h += '</div></div>';
-
     // ---- Body ----
     h += '<div class="nation-body">';
 
     // Revolution banner
     h += await renderRevolutionBanner(nation);
-
-    // ---- Summary row ----
-    var alertCount = 0;
-    for (var ci = 0; ci < STAT_CATEGORIES.length; ci++) {
-        for (var si = 0; si < STAT_CATEGORIES[ci].stats.length; si++) {
-            var _s = STAT_CATEGORIES[ci].stats[si];
-            if (_s.noHealth) continue;
-            var sv = Number(nation[_s.key] ?? 50);
-            var inv = _s.inverted;
-            var effective = inv ? 100 - sv : sv;
-            if (effective < 15) alertCount++;
-        }
-    }
-
-    h += '<div class="nation-summary">';
-    // Crises card
-    h += '<div class="nation-summary__card">';
-    h += '<span class="nation-summary__label">Ongoing Crises</span>';
-    var hasRevolution = isAutocracy(nation) && nation.revolution_started_tick != null && nation.revolution_duration != null;
-    if (activeCrises.length === 0 && !hasRevolution) {
-        h += '<span class="nation-summary__empty">No active crises</span>';
-    } else {
-        if (hasRevolution) {
-            h += '<div class="crisis-summary-item"><span class="crisis-summary-item__name">Democratic Revolution</span></div>';
-        }
-        for (var cri = 0; cri < activeCrises.length; cri++) {
-            var ct = activeCrises[cri].crisis_templates;
-            if (!ct) continue;
-            h += '<div class="crisis-summary-item"><span class="crisis-summary-item__name">' + escapeHtml(ct.name) + '</span>';
-            h += '<span class="crisis-summary-item__desc">' + escapeHtml(ct.description || '') + '</span></div>';
-        }
-    }
-    h += '</div>';
-
-    // Alerts card
-    h += '<div class="nation-summary__card' + (alertCount > 0 ? ' nation-summary__card--alerts' : '') + '">';
-    h += '<span class="nation-summary__label">Stat Alerts</span>';
-    if (alertCount === 0) {
-        h += '<span style="font-family:var(--n-font-sans);font-size:12px;color:var(--n-green);">All stats within normal range</span>';
-    } else {
-        h += '<span class="nation-summary__count" style="color:var(--n-orange);">' + alertCount + '</span>';
-        h += '<span class="nation-summary__count-text">stats flagged \u2014 approaching crisis thresholds or bloc pain points</span>';
-    }
-    h += '</div>';
-
-    // Nation health grid
-    h += '<div class="nation-summary__card nation-summary__card--health">';
-    h += '<span class="nation-summary__label">Nation Health</span>';
-    h += '<div class="nation-health-grid">';
-    for (var gi = 0; gi < STAT_CATEGORIES.length; gi++) {
-        var gCat = STAT_CATEGORIES[gi];
-        var gH = catHealth(gCat, nation);
-        var gC = healthColorRaw(gH, false);
-        h += '<div class="nation-health-cell" data-scroll-cat="' + gCat.id + '" title="' + gCat.label + ': ' + Math.round(gH) + '" style="background:' + gC + '22;border:1px solid ' + gC + '44;">';
-        h += '<span>' + gCat.icon + '</span></div>';
-    }
-    h += '</div></div>';
-    h += '</div>'; // end summary row
 
     // ---- Category sections ----
     for (var ci = 0; ci < STAT_CATEGORIES.length; ci++) {
@@ -1048,18 +969,6 @@ function attachHandlers() {
     for (var i = 0; i < headers.length; i++) {
         headers[i].addEventListener('click', function() {
             toggleSection(this.getAttribute('data-cat'));
-        });
-    }
-
-    // Health grid cells → scroll to category
-    var cells = document.querySelectorAll('.nation-health-cell[data-scroll-cat]');
-    for (var i = 0; i < cells.length; i++) {
-        cells[i].addEventListener('click', function() {
-            var catId = this.getAttribute('data-scroll-cat');
-            // Open the section if closed
-            if (!isSectionOpen(catId)) toggleSection(catId);
-            var el = document.querySelector('.cat-header[data-cat="' + catId + '"]');
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
     }
 
