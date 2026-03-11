@@ -1396,11 +1396,7 @@ async function renderNationPage(nation) {
 
     // ---- Category sections ----
     for (var ci = 0; ci < STAT_CATEGORIES.length; ci++) {
-        if (STAT_CATEGORIES[ci].id === 'economic') {
-            h += renderFeaturedCategory(STAT_CATEGORIES[ci], nation);
-        } else {
-            h += renderCategory(STAT_CATEGORIES[ci], nation);
-        }
+        h += renderFeaturedCategory(STAT_CATEGORIES[ci], nation);
     }
 
     h += '</div>'; // end nation-body
