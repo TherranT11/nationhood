@@ -189,3 +189,33 @@ export async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFI
     }
     return { success: true, newAp: data };
 }
+
+/**
+ * Atomically switch a party endorsement target.
+ *
+ * Server-side RPC behavior:
+ * - Reads the existing endorsement preference
+ * - Deducts 1 AP only if switching from an existing different target
+ * - Upserts the preference row
+ *
+ * Returns { success: true, newAp, endorsedPartyId } on success.
+ */
+export async function switchPartyEndorsement(supabase, endorsingPartyId, newEndorsedPartyId, currentTick) {
+    const { data, error } = await supabase.rpc('switch_party_endorsement', {
+        endorsing_party_id: endorsingPartyId,
+        new_endorsed_party_id: newEndorsedPartyId,
+        current_tick: currentTick
+    });
+
+    if (error) {
+        console.error('[switchPartyEndorsement] RPC failed:', error.message);
+        return { success: false, error: error.message };
+    }
+
+    const row = Array.isArray(data) ? data[0] : data;
+    return {
+        success: true,
+        newAp: row?.updated_ap,
+        endorsedPartyId: row?.endorsed_party_id
+    };
+}
