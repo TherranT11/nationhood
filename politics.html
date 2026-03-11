@@ -3457,6 +3457,11 @@ async function renderPartyTab(f, nation, data) {
     }
 
     // ── Build politics tab content based on government type ──
+    const nextScheduledPresidentialElection = (scheduledElections || []).find(el => el.election_type === 'presidential');
+    const presidentialEndorsementState = getPresidentialEndorsementWindowState(nextScheduledPresidentialElection?.election_tick, currentTick);
+    window._presidentialEndorsementElectionTick = nextScheduledPresidentialElection?.election_tick ?? null;
+    window._presidentialEndorsementCurrentTick = currentTick;
+
     let politicsTabContent;
     if (isAutoNation) {
         politicsTabContent = renderAutocracyPoliticsContent(f, nation, {
@@ -3532,7 +3537,7 @@ async function renderPartyTab(f, nation, data) {
         </div>
 
         <div class="pol-row-3">
-        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames)}
+        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames, presidentialEndorsementState)}
         ${renderBlocVotingBox(lastParliamentary, lastPresidential, allParties)}
         </div>
         <div class="pol-row-4" style="margin-top:24px;text-align:center">
@@ -3586,7 +3591,7 @@ async function renderPartyTab(f, nation, data) {
             });
         }
         initEditIdentityBox(f);
-        initElectionResultsBox();
+        initElectionResultsBox(presidentialEndorsementState);
         initBlocAlignment();
     } else {
         // Wire up autocracy steward claim buttons
@@ -5544,7 +5549,30 @@ function initEditIdentityBox(f) {
     }
 }
 
-function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames = []) {
+const PRESIDENTIAL_ENDORSEMENT_WINDOW_TICKS = 6; // 6 ticks/months prior (inclusive)
+
+function getPresidentialEndorsementWindowState(scheduledPresidentialElectionTick, currentTick) {
+    const electionTick = Number(scheduledPresidentialElectionTick);
+    const tickNow = Number(currentTick);
+
+    if (!Number.isFinite(electionTick) || !Number.isFinite(tickNow)) {
+        return {
+            canEndorse: false,
+            ticksUntilElection: null,
+            tooltip: 'No presidential election is currently scheduled.',
+        };
+    }
+
+    const ticksUntilElection = electionTick - tickNow;
+    const canEndorse = ticksUntilElection >= 0 && ticksUntilElection <= PRESIDENTIAL_ENDORSEMENT_WINDOW_TICKS;
+    const tooltip = canEndorse
+        ? `Endorsements are open (${ticksUntilElection} tick${ticksUntilElection === 1 ? '' : 's'} until election).`
+        : `Endorsements open only within ${PRESIDENTIAL_ENDORSEMENT_WINDOW_TICKS} ticks/months before a scheduled presidential election.`;
+
+    return { canEndorse, ticksUntilElection, tooltip };
+}
+
+function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames = [], endorsementState = { canEndorse: false, tooltip: 'Endorsements unavailable.' }) {
     // Build a color map from allParties
     const colorMap = {};
     (allParties || []).forEach(p => { colorMap[p.id] = p.party_color || '#888'; });
@@ -5665,7 +5693,7 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
     return `<div class="pol-election-box">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <div class="pol-section-label" style="margin-bottom:0">ELECTION RESULTS</div>
-            <button class="pol-endorse-btn" disabled>Endorse Candidate</button>
+            <button class="pol-endorse-btn" title="${escapeHtml(endorsementState.tooltip)}" ${endorsementState.canEndorse ? '' : 'disabled'}>Endorse Candidate</button>
         </div>
         ${endorsementNotesHtml}
         <div class="pol-el-tabs">
@@ -5677,7 +5705,7 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
     </div>`;
 }
 
-function initElectionResultsBox() {
+function initElectionResultsBox(endorsementState) {
     const box = document.querySelector('.pol-election-box');
     if (!box) return;
     const tabs = box.querySelectorAll('.pol-el-tab');
@@ -5691,6 +5719,22 @@ function initElectionResultsBox() {
             const content = box.querySelector(`.pol-el-content[data-content="${target}"]`);
             if (content) content.classList.add('active');
         });
+    });
+
+    const endorseBtn = box.querySelector('.pol-endorse-btn');
+    if (!endorseBtn) return;
+
+    endorseBtn.title = endorsementState?.tooltip || endorseBtn.title || 'Endorsements unavailable.';
+    endorseBtn.addEventListener('click', () => {
+        const currentState = getPresidentialEndorsementWindowState(
+            window._presidentialEndorsementElectionTick,
+            window._presidentialEndorsementCurrentTick
+        );
+        if (!currentState.canEndorse) {
+            alert(currentState.tooltip);
+            return;
+        }
+        alert('Endorsement selection will open in a follow-up update.');
     });
 }
 
