@@ -15,6 +15,11 @@
     margin: 16px 20px;
     padding: 20px 0;
   }
+  .dash-row {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+  }
 
   /* ── Nation Card ── */
   .dash-card {
@@ -277,28 +282,30 @@
 <div id="top-bar"></div>
 
 <div id="content-area">
+  <div class="dash-row">
 
-  <!-- ── Nation Card ── -->
-  <div class="dash-card" id="nation-card">
-    <div class="dash-card-header">NATION</div>
-    <div class="dash-card-body">
-    <div class="nation-identity">
-      <div class="nation-flag-box" id="nation-flag-box">
-        <span class="abbr-fallback" id="nation-abbr"></span>
+    <!-- ── Nation Card ── -->
+    <div class="dash-card" id="nation-card">
+      <div class="dash-card-header">NATION</div>
+      <div class="dash-card-body">
+      <div class="nation-identity">
+        <div class="nation-flag-box" id="nation-flag-box">
+          <span class="abbr-fallback" id="nation-abbr"></span>
+        </div>
+        <h2 id="nation-name"></h2>
+        <div class="motto" id="nation-motto"></div>
       </div>
-      <h2 id="nation-name"></h2>
-      <div class="motto" id="nation-motto"></div>
+      <div class="nation-stats-list" id="nation-stats-list"></div>
+      </div>
     </div>
-    <div class="nation-stats-list" id="nation-stats-list"></div>
+
+    <!-- ── Government Card ── -->
+    <div class="dash-card" id="gov-card" style="display:none;">
+      <div class="dash-card-header"><span class="gov-status-dot"></span> GOVERNMENT</div>
+      <div class="dash-card-body" id="gov-card-body"></div>
     </div>
-  </div>
 
-  <!-- ── Government Card ── -->
-  <div class="dash-card" id="gov-card" style="display:none; margin-top:20px;">
-    <div class="dash-card-header"><span class="gov-status-dot"></span> GOVERNMENT</div>
-    <div class="dash-card-body" id="gov-card-body"></div>
   </div>
-
 </div>
 
 <script type="module">
