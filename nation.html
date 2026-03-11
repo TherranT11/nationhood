@@ -1006,6 +1006,83 @@ function renderFeaturedInflation(nation) {
     return h;
 }
 
+function renderFeaturedDebt(nation) {
+    var debtRaw = nation.debt;
+    var debtDisplay = formatCurrencyShort(scaleRawToDollars(debtRaw));
+    // Split "$81.0 Billion" into value + unit
+    var parts = debtDisplay.match(/^(\$[\d,.]+)\s*(.*)$/);
+    var debtVal = parts ? parts[1] : debtDisplay;
+    var debtUnit = parts ? parts[2] : '';
+
+    // Debt is inverted: higher = worse → red
+    var numVal = (debtRaw != null) ? Number(debtRaw) : 0;
+    var hcRaw = '#ef4444'; // debt is always shown in red tones
+    var borderColor = hcRaw;
+
+    // Sparkline (compact, inline)
+    var sparkData = sparklineHistory['debt'] ? sparklineHistory['debt'].slice() : [];
+    if (debtRaw != null) sparkData.push(Number(debtRaw));
+    var sparkSVG = buildFeaturedSparkSVG(sparkData, hcRaw, 50, 16);
+    // Inline SVG override for compact sizing
+    if (sparkData.length >= 2) {
+        var sw = 50, sh = 16;
+        var mn = Math.min.apply(null, sparkData), mx = Math.max.apply(null, sparkData), r = mx - mn || 1;
+        var pts = sparkData.map(function(v, i) {
+            return ((i / (sparkData.length - 1)) * sw).toFixed(1) + ',' + (sh - ((v - mn) / r) * sh).toFixed(1);
+        }).join(' ');
+        sparkSVG = '<svg width="' + sw + '" height="' + sh + '" style="display:block;"><polyline points="' + pts + '" fill="none" stroke="' + hcRaw + '" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+    } else {
+        sparkSVG = '';
+    }
+
+    // Ranking (debt is inverted — lower is better)
+    var rank = calculateRanking('debt', debtRaw, true);
+    var rankHTML = '';
+    if (rank) {
+        var total = totalNations || 6;
+        var pipColor = rank <= 2 ? '#4ade80' : rank <= 4 ? '#facc15' : '#ef4444';
+        rankHTML = '<div class="compact-bottom__rank">';
+        for (var i = 0; i < total; i++) {
+            if (i < rank) {
+                rankHTML += '<div class="compact-bottom__rank-pip" style="background:' + pipColor + ';"></div>';
+            } else {
+                rankHTML += '<div class="compact-bottom__rank-pip compact-bottom__rank-pip--empty"></div>';
+            }
+        }
+        rankHTML += '<span class="compact-bottom__rank-label">#' + rank + '</span></div>';
+    }
+
+    // Effects
+    var effects = statEffectsByKey['debt'] || [];
+
+    var h = '<div class="featured-card featured-card--compact" style="border-left-color:' + borderColor + ';">';
+
+    // Top row: title + sparkline + value
+    h += '<div class="compact-top">';
+    h += '<span class="compact-top__title">National<br>Debt</span>';
+    if (sparkSVG) h += '<span class="compact-top__spark">' + sparkSVG + '</span>';
+    h += '<span class="compact-top__value" style="color:' + hcRaw + ';">' + debtVal;
+    if (debtUnit) h += '<span class="compact-top__unit" style="color:' + hcRaw + ';">' + escapeHtml(debtUnit) + '</span>';
+    h += '</span>';
+    h += '</div>';
+
+    // Bottom row: description + rank
+    h += '<div class="compact-bottom">';
+    h += '<span class="compact-bottom__desc">Government debt obligations</span>';
+    h += rankHTML;
+    h += '</div>';
+
+    // Affected by
+    if (effects.length > 0) {
+        h += buildFeaturedAbpHTML('debt');
+    } else {
+        h += '<div class="compact-empty">No active effects</div>';
+    }
+
+    h += '</div>';
+    return h;
+}
+
 // ===== MAIN RENDER =====
 
 async function renderNationPage(nation) {
@@ -1016,10 +1093,11 @@ async function renderNationPage(nation) {
     // Revolution banner
     h += await renderRevolutionBanner(nation);
 
-    // ---- Featured GDP + Inflation containers ----
+    // ---- Featured GDP + Inflation + Debt containers ----
     h += '<div class="featured-row">';
     h += renderFeaturedGDP(nation);
     h += renderFeaturedInflation(nation);
+    h += renderFeaturedDebt(nation);
     h += '</div>';
 
     // ---- Category sections ----

@@ -631,6 +631,94 @@
 .featured-card--gdp { width: 380px; }
 .featured-card--inflation { width: 450px; }
 
+/* Compact variant (National Debt, etc.) */
+.featured-card--compact {
+    padding: 12px 16px;
+    border-left-width: 3px;
+}
+.featured-card--compact .featured-card__header {
+    margin-bottom: 0;
+}
+.featured-card--compact .featured-card__title {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+}
+
+/* Compact top row: title + sparkline + value */
+.compact-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.compact-top__title {
+    font-family: var(--n-font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--n-primary);
+    white-space: nowrap;
+}
+.compact-top__spark {
+    flex-shrink: 0;
+}
+.compact-top__value {
+    font-family: var(--n-font-mono);
+    font-size: 18px;
+    font-weight: 700;
+    white-space: nowrap;
+    margin-left: auto;
+}
+.compact-top__unit {
+    font-family: var(--n-font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    margin-left: 3px;
+}
+
+/* Compact bottom row: description + rank */
+.compact-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+.compact-bottom__desc {
+    font-family: var(--n-font-sans);
+    font-size: 11px;
+    color: var(--n-secondary);
+}
+.compact-bottom__rank {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+}
+.compact-bottom__rank-pip {
+    width: 5px;
+    height: 10px;
+    border-radius: 1px;
+}
+.compact-bottom__rank-pip--empty {
+    background: rgba(255,255,255,0.04);
+}
+.compact-bottom__rank-label {
+    font-family: var(--n-font-mono);
+    font-size: 9px;
+    color: var(--n-tertiary);
+    margin-left: 4px;
+}
+
+/* Compact empty effects */
+.compact-empty {
+    font-family: var(--n-font-sans);
+    font-size: 11px;
+    color: var(--n-tertiary);
+    font-style: italic;
+    padding-top: 8px;
+    border-top: 1px solid var(--n-border);
+}
+
 /* Header row */
 .featured-card__header {
     display: flex;
