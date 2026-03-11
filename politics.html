@@ -2385,6 +2385,43 @@
     text-align: center;
     padding: 40px 0;
 }
+.pol-endorsement-notes {
+    margin: -2px 0 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--dborder-1);
+    border-radius: 5px;
+    background: var(--dbg-3);
+}
+.pol-endorsement-subtitle {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dtxt-muted);
+    margin-bottom: 7px;
+}
+.pol-endorsement-list {
+    margin: 0;
+    padding-left: 16px;
+    display: grid;
+    gap: 4px;
+}
+.pol-endorsement-list li {
+    font-family: var(--dfont-ui);
+    font-size: 12px;
+    color: var(--dtext-1);
+    line-height: 1.35;
+}
+.pol-endorsement-more {
+    margin-top: 6px;
+}
+.pol-endorsement-more summary {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dblue);
+    cursor: pointer;
+}
 .pol-endorse-btn {
     font-family: var(--dfont-mono);
     font-size: 9px;
@@ -3185,6 +3222,24 @@ initPage('politics', async (state) => {
         .eq('status', 'scheduled')
         .order('election_tick', { ascending: true });
 
+    // Next-election endorsements targeting the player's candidate.
+    const { data: activeEndorsementRows } = await _supabase
+        .from('active_endorsement_preferences')
+        .select('*')
+        .eq('endorsed_party_id', f.id);
+
+    const partyById = new Map((allParties || []).map(p => [p.id, p]));
+    const endorserNameSet = new Set();
+    (activeEndorsementRows || []).forEach(row => {
+        const endorserPartyId = row.party_id || row.endorser_party_id || row.endorsing_party_id || row.faction_id;
+        if (!endorserPartyId || endorserPartyId === f.id) return;
+        const endorserParty = partyById.get(endorserPartyId);
+        if (!endorserParty) return;
+        const label = endorserParty.faction_name || endorserParty.abbreviation;
+        if (label) endorserNameSet.add(label);
+    });
+    const endorserNames = Array.from(endorserNameSet).sort((a, b) => a.localeCompare(b));
+
     // Fetch voter blocs for coalition overview
     const { data: voterBlocs } = await _supabase
         .from('voter_blocs')
@@ -3220,6 +3275,7 @@ initPage('politics', async (state) => {
         lastParliamentary,
         lastPresidential,
         scheduledElections,
+        endorserNames,
         president,
         administration,
         voterBlocs,
@@ -3271,7 +3327,7 @@ async function renderPartyTab(f, nation, data) {
         shard, totalSeats, mySeats, voteSharePct, lastElectionDate,
         seatDelta, role, isAutoNation, officerNames, allParties, allPartyIdeologies, coalition, activeCrises, currentTick,
         nextElection, blocApprovals, prevApproval,
-        lastParliamentary, lastPresidential, scheduledElections,
+        lastParliamentary, lastPresidential, scheduledElections, endorserNames,
         president, administration,
         voterBlocs, playerBlocApprovals,
         regimePillars, stewardRows, autoMinistries, regimeLog, loyaltyDemands, autoCoalitions
@@ -3409,7 +3465,7 @@ async function renderPartyTab(f, nation, data) {
         </div>
 
         <div class="pol-row-3">
-        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties)}
+        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames)}
         ${renderBlocVotingBox(lastParliamentary, lastPresidential, allParties)}
         </div>
         <div class="pol-row-4" style="margin-top:24px;text-align:center">
@@ -5421,7 +5477,7 @@ function initEditIdentityBox(f) {
     }
 }
 
-function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties) {
+function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames = []) {
     // Build a color map from allParties
     const colorMap = {};
     (allParties || []).forEach(p => { colorMap[p.id] = p.party_color || '#888'; });
@@ -5522,11 +5578,29 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         presContents = `<div class="pol-el-content" data-content="pres">${renderPresidentialContent(lastPresidential)}</div>`;
     }
 
+    const visibleEndorsers = endorserNames.slice(0, 3);
+    const hiddenEndorsers = endorserNames.slice(3);
+    const endorsementNotesHtml = endorserNames.length
+        ? `<div class="pol-endorsement-notes">
+            <div class="pol-endorsement-subtitle">For Next Election</div>
+            <ul class="pol-endorsement-list">
+                ${visibleEndorsers.map(name => `<li>${escapeHtml(name)} is endorsing your candidate.</li>`).join('')}
+            </ul>
+            ${hiddenEndorsers.length ? `<details class="pol-endorsement-more">
+                <summary>+${hiddenEndorsers.length} more endorsers</summary>
+                <ul class="pol-endorsement-list" style="margin-top:6px;">
+                    ${hiddenEndorsers.map(name => `<li>${escapeHtml(name)} is endorsing your candidate.</li>`).join('')}
+                </ul>
+            </details>` : ''}
+        </div>`
+        : '';
+
     return `<div class="pol-election-box">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <div class="pol-section-label" style="margin-bottom:0">ELECTION RESULTS</div>
             <button class="pol-endorse-btn" disabled>Endorse Candidate</button>
         </div>
+        ${endorsementNotesHtml}
         <div class="pol-el-tabs">
             <button class="pol-el-tab active" data-tab="parl">Parliamentary</button>
             ${presTabs}
