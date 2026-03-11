@@ -401,6 +401,9 @@
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
+    width: 380px;
+    min-width: 380px;
+    max-width: 380px;
     height: 450px;
     overflow-y: auto;
     overflow-x: hidden;
@@ -409,9 +412,8 @@
 .featured-card--inflation,
 .featured-card--compact,
 .featured-card--generic {
-    width: 380px;
-    min-width: 380px;
-    max-width: 380px;
+    /* Intentionally inherits universal 380x450 sizing from .featured-card. */
+    /* Add explicit width overrides per variant here only when intentionally needed. */
 }
 
 /* Compact variant (National Debt, etc.) */
