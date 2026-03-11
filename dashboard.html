@@ -343,7 +343,7 @@
       </div>
 
       <!-- ── Elections Card (below Nation row) ── -->
-      <div class="dash-card" id="elections-card" style="height:auto;width:380px;">
+      <div class="dash-card" id="elections-card" style="width:380px;">
         <div class="dash-card-header">ELECTIONS</div>
         <div class="dash-card-body" id="elections-card-body"></div>
       </div>
@@ -734,6 +734,7 @@ initPage('home', async (state) => {
               nextPres += 48;
             }
           }
+          elections.sort((a, b) => a.tick - b.tick);
           elections = elections.slice(0, 4);
         }
       } else {
