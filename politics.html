@@ -3634,8 +3634,7 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
     } else {
         const risks = [];
         if (stability < 25) risks.push('Stability critically low');
-        if (freedomIdx > 40) risks.push('Freedom Index high');
-        if (civilUnrest > 55) risks.push('Civil Unrest dangerously high');
+        if (civilUnrest > 40) risks.push('Civil Unrest dangerously high');
         if (risks.length > 0) {
             threatHtml = `<div class="reg-section"><div class="reg-section-title" style="color:#ff9800">REVOLUTION THREAT</div>
                 <div style="color:#ff9800;font-size:11px;padding:4px 0">${risks.join(' · ')}</div></div>`;
