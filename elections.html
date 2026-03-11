@@ -123,7 +123,6 @@ async function renderDemocracyPage() {
         .select('id, faction_name, seats, approval_rating, abbreviation, ideology_value_1, ideology_value_2, party_color, party_logo, custom_logo_url')
         .eq('nation_id', currentNation.id)
         .eq('faction_type', 'party')
-        .eq('is_npc', false)
         .order('seats', { ascending: false });
     allParties = parties || [];
 
@@ -572,7 +571,7 @@ async function renderPresidentialResults(election) {
 async function renderAutocracyPage() {
     const { data: allFactions } = await _supabase
         .from('factions').select('id, faction_name, seats, approval_rating')
-        .eq('nation_id', currentNation.id).eq('faction_type', 'party').eq('is_npc', false)
+        .eq('nation_id', currentNation.id).eq('faction_type', 'party')
         .order('seats', { ascending: false });
 
     const { data: activeShakeup } = await _supabase

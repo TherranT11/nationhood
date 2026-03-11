@@ -294,7 +294,7 @@ async function loadLawsData() {
         // Policies are static game data — cache aggressively
         const cachedPolicies = qCache('policies_active');
 
-        const { data: parties } = await _supabase.from('factions').select('id, faction_name, is_npc, seats, action_points, abbreviation, party_color').eq('nation_id', nid).eq('faction_type', 'party');
+        const { data: parties } = await _supabase.from('factions').select('id, faction_name, seats, action_points, abbreviation, party_color').eq('nation_id', nid).eq('faction_type', 'party');
         allParties = parties || [];
         const seatData = await loadSeats(_supabase, nid, lawsIsAutocracy, allParties, currentFaction?.id);
         allPartySeats = seatData.allPartySeats; currentSeats = seatData.currentSeats;
@@ -2077,7 +2077,7 @@ async function submitDefaultResolution() {
             foreign_investment: clamp(Number(currentNation.foreign_investment ?? 50), cfg.FILING_FOREIGN_INV_HIT)
         }).eq('id', currentNation.id);
 
-        // Trigger NPC voting
+        // Trigger party voting
         // Event log
         await _supabase.from('event_log').insert({
             nation_id: currentNation.id,

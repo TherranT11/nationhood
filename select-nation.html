@@ -569,7 +569,7 @@ async function init() {
 async function loadNations() {
   const [nationsRes, partiesRes, crisesRes, ideologiesRes] = await Promise.all([
     _supabase.from('nations').select('*'),
-    _supabase.from('factions').select('id, faction_name, abbreviation, seats, nation_id, party_color, ideology_value_1, ideology_value_2, is_npc').eq('faction_type', 'party'),
+    _supabase.from('factions').select('id, faction_name, abbreviation, seats, nation_id, party_color, ideology_value_1, ideology_value_2').eq('faction_type', 'party'),
     _supabase.from('active_crises').select('nation_id, crisis_id, crisis_templates(name)'),
     _supabase.from('faction_ideology').select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
   ]);
@@ -646,7 +646,7 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
     const nCrises = crisesByNation[nation.id] || [];
     const totalSeats = nation.total_seats || 100;
     const maxParties = nation.max_parties || 8;
-    const isFull = nParties.filter(p => !p.is_npc).length >= maxParties;
+    const isFull = nParties.length >= maxParties;
     const flagUrl = nation.flag_url || '';
     const govClass = getGovTypeClass(nation.government_type);
     const govLabel = getGovTypeLabel(nation.government_type);
@@ -705,7 +705,7 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
           </div>
           <div class="stat-row">
             <span class="stat-row__label">Factions</span>
-            <span class="stat-row__value" style="color:${isFull ? 'var(--red)' : 'var(--text-secondary)'};">${nParties.filter(p => !p.is_npc).length}${maxParties ? ' / ' + maxParties : ''}</span>
+            <span class="stat-row__value" style="color:${isFull ? 'var(--red)' : 'var(--text-secondary)'};">${nParties.length}${maxParties ? ' / ' + maxParties : ''}</span>
           </div>
           <div class="stat-row">
             <span class="stat-row__label">Stability</span>

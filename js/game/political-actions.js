@@ -4560,8 +4560,7 @@ export async function processEvents(supabase, nation, currentTick) {
                     .from('factions')
                     .select('id, ' + effect.stat_key)
                     .eq('nation_id', nation.id)
-                    .eq('faction_type', 'party')
-                    .eq('is_npc', false);
+                    .eq('faction_type', 'party');
 
                 if (factions && factions.length > 0) {
                     const target = factions[Math.floor(Math.random() * factions.length)];

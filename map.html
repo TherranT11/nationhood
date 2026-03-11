@@ -173,15 +173,14 @@ if (!faction) {
                 // Store selected nation
                 selectedNation = nation;
                 
-                // Count active player parties for this nation
+                // Count active parties for this nation
                 const { data: playerParties, error: partiesError } = await _supabase
                     .from('factions')
                     .select('id')
                     .eq('nation_id', nation.id)
-                    .eq('faction_type', 'party')
-                    .eq('is_npc', false);
+                    .eq('faction_type', 'party');
 
-                const activePlayerParties = playerParties ? playerParties.length : 0;
+                const activeParties = playerParties ? playerParties.length : 0;
                 const maxParties = nation.max_parties || 8;
                 
                 // Format numbers
@@ -232,7 +231,7 @@ if (!faction) {
                         
                         <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; border-left: 3px solid #9c27b0;">
                             <div style="font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 5px;">Political Parties</div>
-                            <div style="font-size: 1.1rem; color: #fff; font-weight: bold;">${activePlayerParties} / ${maxParties}</div>
+                            <div style="font-size: 1.1rem; color: #fff; font-weight: bold;">${activeParties} / ${maxParties}</div>
                         </div>
                     </div>
                     
