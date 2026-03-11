@@ -14,6 +14,9 @@ DECLARE
     v_existing_target UUID;
     v_new_ap INT;
     v_has_tick_column BOOLEAN;
+    v_nation_id UUID;
+    v_next_presidential_tick INT;
+    v_ticks_until_election INT;
 BEGIN
     IF endorsing_party_id IS NULL OR new_endorsed_party_id IS NULL THEN
         RAISE EXCEPTION 'endorsing_party_id and new_endorsed_party_id are required';
@@ -22,6 +25,33 @@ BEGIN
     -- Ownership check for authenticated clients. service_role bypasses with auth.uid() IS NULL.
     IF auth.uid() IS NOT NULL AND endorsing_party_id != auth.uid() THEN
         RAISE EXCEPTION 'permission denied for endorsement switch';
+    END IF;
+
+    SELECT f.nation_id
+    INTO v_nation_id
+    FROM factions f
+    WHERE f.id = endorsing_party_id;
+
+    IF v_nation_id IS NULL THEN
+        RAISE EXCEPTION 'endorsing party not found';
+    END IF;
+
+    SELECT e.election_tick
+    INTO v_next_presidential_tick
+    FROM elections e
+    WHERE e.nation_id = v_nation_id
+      AND e.election_type = 'presidential'
+      AND e.election_tick > current_tick
+    ORDER BY e.election_tick ASC
+    LIMIT 1;
+
+    IF v_next_presidential_tick IS NULL THEN
+        RAISE EXCEPTION 'Endorsements can only be changed in the last 6 ticks before a presidential election.';
+    END IF;
+
+    v_ticks_until_election := v_next_presidential_tick - current_tick;
+    IF v_ticks_until_election < 1 OR v_ticks_until_election > 6 THEN
+        RAISE EXCEPTION 'Endorsements can only be changed in the last 6 ticks before a presidential election.';
     END IF;
 
     SELECT pep.endorsed_party_id
