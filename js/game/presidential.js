@@ -266,19 +266,25 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
     const enactment = await enactBill(supabase, bill, currentTick);
     if (!enactment?.success) {
         // Mark bill as failed so it doesn't stay stuck on the desk
-        await supabase.from('bills').update({
+        const { error: fallbackFailErr } = await supabase.from('bills').update({
             status: 'failed',
             president_action: 'signed',
             president_action_tick: currentTick
         }).eq('id', bill.id);
+        if (fallbackFailErr) {
+            throw new Error(`Bill enactment failed and fallback status update failed: ${fallbackFailErr.message}`);
+        }
         throw new Error(enactment?.error || 'Bill enactment failed after presidential signature');
     }
     // Only mark president_action after successful enactment
     // (enactBill already sets status='passed')
-    await supabase.from('bills').update({
+    const { error: presidentActionErr } = await supabase.from('bills').update({
             president_action: 'signed',
             president_action_tick: currentTick
         }).eq('id', bill.id);
+    if (presidentActionErr) {
+        throw new Error(`Failed to record presidential signature: ${presidentActionErr.message}`);
+    }
 
     await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, votesFor: 0, votesAgainst: 0, votesAbstain: 0, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (signed by President)' });
 }
