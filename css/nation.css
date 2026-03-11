@@ -628,6 +628,13 @@
     margin-top: 8px;
     justify-content: center;
 }
+.featured-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: center;
+    padding: 12px 0;
+}
 .featured-card {
     background: var(--n-bg-card);
     border: 1px solid var(--n-border);
@@ -642,7 +649,8 @@
 }
 .featured-card--gdp,
 .featured-card--inflation,
-.featured-card--compact {
+.featured-card--compact,
+.featured-card--generic {
     width: 380px;
     min-width: 380px;
     max-width: 380px;
@@ -908,6 +916,13 @@
 }
 .featured-card__abp-arrow--up { color: var(--n-green); }
 .featured-card__abp-arrow--down { color: var(--n-red); }
+.featured-card__abp-rate {
+    font-size: 9px;
+    font-family: var(--n-font-mono);
+    color: var(--n-tertiary);
+    margin-right: auto;
+    padding-left: 2px;
+}
 .featured-card__abp-type {
     font-size: 8px;
     font-family: var(--n-font-mono);
