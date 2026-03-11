@@ -11,9 +11,19 @@
 
 <style>
   #content-area {
-    max-width: 900px;
+    max-width: 1680px;
     margin: 16px 20px;
     padding: 20px 0;
+  }
+  .dash-layout {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+  }
+  .dash-left-col {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
   }
   .dash-row {
     display: flex;
@@ -274,27 +284,40 @@
 <div id="top-bar"></div>
 
 <div id="content-area">
-  <div class="dash-row">
+  <div class="dash-layout">
 
-    <!-- ── Nation Card ── -->
-    <div class="dash-card" id="nation-card">
-      <div class="dash-card-header">NATION</div>
-      <div class="dash-card-body">
-      <div class="nation-identity">
-        <div class="nation-flag-box" id="nation-flag-box">
-          <span class="abbr-fallback" id="nation-abbr"></span>
+    <!-- ── Left Column ── -->
+    <div class="dash-left-col">
+      <div class="dash-row">
+
+        <!-- ── Nation Card ── -->
+        <div class="dash-card" id="nation-card">
+          <div class="dash-card-header">NATION</div>
+          <div class="dash-card-body">
+          <div class="nation-identity">
+            <div class="nation-flag-box" id="nation-flag-box">
+              <span class="abbr-fallback" id="nation-abbr"></span>
+            </div>
+            <h2 id="nation-name"></h2>
+            <div class="motto" id="nation-motto"></div>
+          </div>
+          <div class="nation-stats-list" id="nation-stats-list"></div>
+          </div>
         </div>
-        <h2 id="nation-name"></h2>
-        <div class="motto" id="nation-motto"></div>
-      </div>
-      <div class="nation-stats-list" id="nation-stats-list"></div>
+
+        <!-- ── Government Card ── -->
+        <div class="dash-card" id="gov-card" style="display:none;">
+          <div class="dash-card-header">GOVERNMENT</div>
+          <div class="dash-card-body" id="gov-card-body"></div>
+        </div>
+
       </div>
     </div>
 
-    <!-- ── Government Card ── -->
-    <div class="dash-card" id="gov-card" style="display:none;">
-      <div class="dash-card-header">GOVERNMENT</div>
-      <div class="dash-card-body" id="gov-card-body"></div>
+    <!-- ── Right Column: World Map ── -->
+    <div class="dash-card" id="world-map-card" style="width:760px; height:900px;">
+      <div class="dash-card-header">WORLD MAP</div>
+      <div class="dash-card-body" id="world-map-body"></div>
     </div>
 
   </div>
