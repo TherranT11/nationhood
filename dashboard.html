@@ -85,8 +85,6 @@
 
   /* ── Events list ── */
   .dash-events-scroll {
-    overflow-y: auto;
-    max-height: 390px;
     padding: 0 14px 14px;
   }
   .dash-event-row {
@@ -415,12 +413,12 @@
 
       <!-- ── Elections + Events Row ── -->
       <div class="dash-row">
-        <div class="dash-card" id="elections-card">
+        <div class="dash-card" id="elections-card" style="height:auto;">
           <div class="dash-card-header">ELECTIONS</div>
           <div class="dash-card-body" id="elections-card-body"></div>
         </div>
 
-        <div class="dash-card" id="events-card">
+        <div class="dash-card" id="events-card" style="height:auto;">
           <div class="dash-card-header">EVENTS</div>
           <div class="dash-events-scroll" id="dash-events-list"></div>
         </div>
@@ -748,7 +746,7 @@ initPage('home', async (state) => {
     govCard.style.display = '';
 
     // ── Load Events card ──
-    loadDashEvents(nation.id, currentTick);
+    loadDashEvents(nation.id, currentTick, parties);
 
   } catch (e) {
     console.error('Government card error:', e);
@@ -866,10 +864,35 @@ const EVENT_CATEGORY_STYLES = {
 };
 const EVENT_CATEGORY_DEFAULT = { icon: '\u2022', color: '#888', bg: 'rgba(136,136,136,0.08)', label: '' };
 
-async function loadDashEvents(nationId, currentTick) {
+async function loadDashEvents(nationId, currentTick, parties) {
   const container = document.getElementById('dash-events-list');
   if (!container) return;
   container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.75rem;text-align:center;">Loading events\u2026</div>';
+
+  // Build party name → color map for highlighting
+  const partyColorMap = {};
+  (parties || []).forEach(p => {
+    if (p.faction_name && p.party_color) {
+      partyColorMap[p.faction_name] = p.party_color;
+    }
+  });
+
+  /** Escape HTML then apply party color + bold event-name highlighting */
+  function colorizeText(text, eventName) {
+    let html = esc(text);
+    // Bold the event/bill name if it appears in the description
+    if (eventName && text.includes(eventName)) {
+      const escaped = esc(eventName);
+      html = html.replace(escaped, `<strong>${escaped}</strong>`);
+    }
+    // Color-code party names
+    for (const [name, color] of Object.entries(partyColorMap)) {
+      const escaped = esc(name);
+      const safeColor = color.replace(/[^a-zA-Z0-9#(),.\s%]/g, '');
+      html = html.replaceAll(escaped, `<span style="color:${safeColor};font-weight:600">${escaped}</span>`);
+    }
+    return html;
+  }
 
   try {
     // Fetch from event_log — covers crises, bills, government events, trade, diplomatic
@@ -889,13 +912,19 @@ async function loadDashEvents(nationId, currentTick) {
 
     const rows = events.map(ev => {
       const dateStr = tickToDate(ev.fired_at_tick);
-      const desc = ev.description_chosen || ev.description_used || ev.event_name || 'Event';
+      const desc = ev.description_chosen || ev.description_used || '';
+      const eventName = ev.event_name || '';
       const cat = EVENT_CATEGORY_STYLES[ev.category] || EVENT_CATEGORY_DEFAULT;
+
+      // Show bold event name as headline, colorized description below
+      const headline = eventName ? `<strong>${esc(eventName)}</strong>` : '';
+      const body = desc ? colorizeText(desc, eventName) : '';
+      const displayText = headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
 
       return `<div class="dash-event-row">
         <span class="dash-event-date">${esc(dateStr)}</span>
         <span class="dash-event-icon" style="color:${cat.color}">${cat.icon}</span>
-        <span class="dash-event-text">${esc(desc)}</span>
+        <span class="dash-event-text">${displayText}</span>
         ${cat.label ? `<span class="dash-event-category" style="color:${cat.color};background:${cat.bg}">${cat.label}</span>` : ''}
       </div>`;
     }).join('');
