@@ -820,6 +820,10 @@ function buildFeaturedAbpHTML(statKey) {
         h += '<div class="featured-card__abp-row">';
         h += '<span class="featured-card__abp-name">' + escapeHtml(eff.name) + '</span>';
         h += '<span class="featured-card__abp-arrow ' + arrowClass + '">' + arrow + '</span>';
+        if (eff.rate) {
+            var sign = eff.direction === 'up' ? '+' : '-';
+            h += '<span class="featured-card__abp-rate">' + sign + eff.rate + '/tick</span>';
+        }
         h += '<span class="featured-card__abp-type ' + typeClass + '">' + escapeHtml(eff.type) + '</span>';
         h += '</div>';
     }
@@ -1194,6 +1198,169 @@ function renderFeaturedDebt(nation) {
     return h;
 }
 
+// ===== GENERIC FEATURED CARD =====
+
+function renderFeaturedStatCard(stat, nation) {
+    var raw = nation[stat.key];
+    var numVal = (raw !== null && raw !== undefined) ? Number(raw) : 50;
+    if (isNaN(numVal)) numVal = 50;
+    var inv = stat.inverted || false;
+    var hc = healthColor(numVal, inv);
+    var hcRaw = healthColorRaw(numVal, inv);
+    var displayVal = getDisplayValue(stat, nation);
+    var borderColor = hcRaw;
+    var dotColor = hc;
+
+    // Delta per tick
+    var deltaStr = '';
+    if (previousTickData && previousTickData[stat.key] != null && raw != null) {
+        var delta = Number(raw) - Number(previousTickData[stat.key]);
+        if (Math.abs(delta) >= 0.01) {
+            var deltaDir = delta >= 0 ? '\u25B2' : '\u25BC';
+            var deltaGood = inv ? delta <= 0 : delta >= 0;
+            var deltaColor = deltaGood ? 'var(--n-green)' : 'var(--n-red)';
+            deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + ' ' + Math.abs(delta).toFixed(2) + ' per tick</span>';
+        }
+    }
+
+    // Sparkline
+    var sparkData = sparklineHistory[stat.key] ? sparklineHistory[stat.key].slice() : [];
+    if (raw != null) sparkData.push(numVal);
+    var chartSVG = buildFeaturedSparkSVG(sparkData, hcRaw);
+
+    // Ranking
+    var rank = calculateRanking(stat.key, raw, inv);
+    var rankHTML = '';
+    if (rank) {
+        var total = totalNations || 6;
+        var pipColor = rank <= 2 ? '#4ade80' : rank <= 4 ? '#facc15' : '#ef4444';
+        rankHTML = '<div class="compact-bottom__rank">';
+        for (var ri = 0; ri < total; ri++) {
+            if (ri < rank) {
+                rankHTML += '<div class="compact-bottom__rank-pip" style="background:' + pipColor + ';"></div>';
+            } else {
+                rankHTML += '<div class="compact-bottom__rank-pip compact-bottom__rank-pip--empty"></div>';
+            }
+        }
+        rankHTML += '<span class="compact-bottom__rank-label">#' + rank + '</span></div>';
+    }
+
+    // Scale tiers (generic 0-100 scale)
+    var effective = inv ? 100 - numVal : numVal;
+    var scaleItems = [
+        { label: 'Critical', range: '0-20', active: effective < 20 },
+        { label: 'Low', range: '20-40', active: effective >= 20 && effective < 40 },
+        { label: 'Moderate', range: '40-60', active: effective >= 40 && effective < 60 },
+        { label: 'Good', range: '60-80', active: effective >= 60 && effective < 80 },
+        { label: 'Excellent', range: '80+', active: effective >= 80 }
+    ];
+
+    var h = '<div class="featured-card featured-card--generic" style="border-left:3px solid ' + borderColor + ';">';
+
+    // Header
+    h += '<div class="featured-card__header">';
+    h += '<div class="featured-card__dot" style="background:' + dotColor + ';"></div>';
+    h += '<span class="featured-card__title">' + escapeHtml(stat.name) + '</span>';
+    if (rankHTML) h += rankHTML;
+    h += '</div>';
+
+    // Description
+    h += '<div class="featured-card__desc">' + escapeHtml(stat.desc) + '</div>';
+
+    // Value row
+    h += '<div class="featured-card__value-row">';
+    h += '<div><span class="featured-card__big-value" style="color:' + hc + ';">' + escapeHtml(String(displayVal)) + '</span></div>';
+    h += '</div>';
+
+    // Delta
+    if (deltaStr) h += deltaStr;
+
+    // Chart
+    h += '<div class="featured-card__chart">' + chartSVG + '</div>';
+
+    // Scale
+    h += '<div class="featured-card__scale">';
+    for (var i = 0; i < scaleItems.length; i++) {
+        var si = scaleItems[i];
+        h += '<div class="featured-card__scale-item' + (si.active ? ' featured-card__scale-item--active' : '') + '">';
+        h += escapeHtml(si.label);
+        h += '<span class="featured-card__scale-range">' + escapeHtml(si.range) + '</span>';
+        h += '</div>';
+    }
+    h += '</div>';
+
+    // Affected by
+    var effects = statEffectsByKey[stat.key] || [];
+    if (effects.length > 0) {
+        h += buildFeaturedAbpHTML(stat.key);
+    } else {
+        h += '<div class="compact-empty">No active effects</div>';
+    }
+
+    h += '</div>';
+    return h;
+}
+
+// Map of stat keys to their custom featured renderers
+var FEATURED_RENDERERS = {
+    gdp: 'renderFeaturedGDP',
+    gdp_growth: 'renderFeaturedGDPGrowth',
+    inflation: 'renderFeaturedInflation',
+    debt: 'renderFeaturedDebt'
+};
+
+function renderFeaturedCategory(cat, nation) {
+    var hScore = catHealth(cat, nation);
+    var hc = healthColor(hScore, false);
+    var isOpen = isSectionOpen(cat.id);
+
+    // Count alerts
+    var alerts = 0;
+    for (var i = 0; i < cat.stats.length; i++) {
+        if (cat.stats[i].noHealth) continue;
+        var sv = Number(nation[cat.stats[i].key] ?? 50);
+        var effective = cat.stats[i].inverted ? 100 - sv : sv;
+        if (effective < 15) alerts++;
+    }
+
+    var h = '<div class="cat-section">';
+
+    // Header (identical structure to renderCategory)
+    h += '<div class="cat-header' + (isOpen ? ' cat-header--open' : '') + '" data-cat="' + cat.id + '">';
+    h += '<span class="cat-header__icon">' + cat.icon + '</span>';
+    h += '<span class="cat-header__label" style="color:' + hc + ';">' + cat.label + '</span>';
+    if (cat.blocs && cat.blocs.length > 0) {
+        h += '<div class="cat-header__blocs">';
+        for (var bi = 0; bi < cat.blocs.length; bi++) {
+            h += '<span class="cat-header__bloc">' + escapeHtml(cat.blocs[bi]) + '</span>';
+        }
+        h += '</div>';
+    }
+    if (alerts > 0) {
+        h += '<span class="cat-header__alert-badge">\u26A0 ' + alerts + '</span>';
+    }
+    h += '<div class="cat-header__health-bar"><div class="cat-header__health-fill" style="width:' + Math.min(hScore, 100) + '%;background:' + hc + ';"></div></div>';
+    h += '<span class="cat-header__health-score" style="color:' + hc + ';">' + Math.round(hScore) + '</span>';
+    h += '<span class="cat-header__chevron">\u25BC</span>';
+    h += '</div>';
+
+    // Body with featured grid
+    h += '<div class="cat-body' + (isOpen ? ' cat-body--open' : '') + '" id="cat-body-' + cat.id + '">';
+    h += '<div class="featured-grid">';
+    for (var si = 0; si < cat.stats.length; si++) {
+        var stat = cat.stats[si];
+        if (FEATURED_RENDERERS[stat.key]) {
+            h += window[FEATURED_RENDERERS[stat.key]](nation);
+        } else {
+            h += renderFeaturedStatCard(stat, nation);
+        }
+    }
+    h += '</div>';
+    h += '</div>';
+    h += '</div>';
+    return h;
+}
+
 // ===== MAIN RENDER =====
 
 async function renderNationPage(nation) {
@@ -1204,17 +1371,13 @@ async function renderNationPage(nation) {
     // Revolution banner
     h += await renderRevolutionBanner(nation);
 
-    // ---- Featured containers ----
-    h += '<div class="featured-row">';
-    h += renderFeaturedGDP(nation);
-    h += renderFeaturedGDPGrowth(nation);
-    h += renderFeaturedInflation(nation);
-    h += renderFeaturedDebt(nation);
-    h += '</div>';
-
     // ---- Category sections ----
     for (var ci = 0; ci < STAT_CATEGORIES.length; ci++) {
-        h += renderCategory(STAT_CATEGORIES[ci], nation);
+        if (STAT_CATEGORIES[ci].id === 'economic') {
+            h += renderFeaturedCategory(STAT_CATEGORIES[ci], nation);
+        } else {
+            h += renderCategory(STAT_CATEGORIES[ci], nation);
+        }
     }
 
     h += '</div>'; // end nation-body
