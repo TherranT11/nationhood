@@ -28,6 +28,7 @@
     border-radius: 8px;
     overflow: hidden;
     width: 380px;
+    height: 450px;
   }
   .dash-card-header {
     background: var(--bg-card);
@@ -582,12 +583,6 @@ initPage('home', async (state) => {
     `;
 
     govCard.style.display = '';
-
-    // Match Government card height to Nation card
-    const nationCard = document.getElementById('nation-card');
-    const nationH = nationCard.offsetHeight;
-    govCard.style.height = nationH + 'px';
-    govCard.style.overflow = 'hidden';
   } catch (e) {
     console.error('Government card error:', e);
   }
