@@ -262,38 +262,53 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
  * Called from the UI when the President's party clicks "Sign Into Law".
  */
 export async function signPresidentialBill(supabase, billId, presidentFactionId) {
-    const { data: bill } = await supabase.from('bills')
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
-        .eq('id', billId).single();
-    if (!bill || bill.status !== 'president_desk') throw new Error('Bill is not on the president\'s desk');
+    const context = { billId, presidentFactionId };
+    console.log('[signPresidentialBill] stage=rpc_start', context);
 
-    // Validate caller is president's party
-    const { data: president } = await supabase.from('presidents')
-        .select('faction_id').eq('nation_id', bill.nation_id).eq('is_active', true).limit(1).maybeSingle();
-    if (!president || president.faction_id !== presidentFactionId) throw new Error('Only the President\'s party can sign bills');
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('sign_presidential_bill', {
+        p_bill_id: billId
+    });
 
-    const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
-
-    const enactment = await enactBill(supabase, bill, currentTick);
-    if (!enactment?.success) {
-        // Mark bill as failed so it doesn't stay stuck on the desk
-        await supabase.from('bills').update({
-            status: 'failed',
-            president_action: 'signed',
-            president_action_tick: currentTick
-        }).eq('id', bill.id);
-        throw new Error(enactment?.error || 'Bill enactment failed after presidential signature');
+    if (rpcError) {
+        console.error('[signPresidentialBill] stage=rpc_error', {
+            ...context,
+            error: rpcError.message
+        });
+        throw new Error(`Presidential signing failed: ${rpcError.message}`);
     }
-    // Only mark president_action after successful enactment
-    // (enactBill already sets status='passed')
-    await supabase.from('bills').update({
-            president_action: 'signed',
-            president_action_tick: currentTick
-        }).eq('id', bill.id);
 
-    const floorVotes = tallyFloorVotes(bill);
-    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, votesFor: floorVotes.votesFor, votesAgainst: floorVotes.votesAgainst, votesAbstain: floorVotes.votesAbstain, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (signed by President)' });
+    if (!rpcResult?.ok) {
+        console.error('[signPresidentialBill] stage=rpc_rejected', {
+            ...context,
+            result: rpcResult
+        });
+        throw new Error(rpcResult?.message || 'Presidential signing was rejected.');
+    }
+
+    console.log('[signPresidentialBill] stage=rpc_success', {
+        ...context,
+        code: rpcResult.code
+    });
+
+    const { data: signedBill, error: signedBillErr } = await supabase.from('bills')
+        .select('id, bill_name, nation_id, bill_articles(id)')
+        .eq('id', billId)
+        .single();
+
+    if (signedBillErr || !signedBill) {
+        throw new Error(`Bill signed but failed to reload bill metadata: ${signedBillErr?.message || 'not found'}`);
+    }
+
+    await fireBillEvent(supabase, 'bill_passed', signedBill, {
+        currentTick: rpcResult.tick || 0,
+        votesFor: 0,
+        votesAgainst: 0,
+        votesAbstain: 0,
+        articleCount: (signedBill.bill_articles || []).length,
+        billNameOverride: `${signedBill.bill_name} (signed by President)`
+    });
+
+    console.log('[signPresidentialBill] stage=terminal_result result=success', context);
 }
 
 /**
@@ -734,4 +749,3 @@ export async function rejectOwnNomination(supabase, billId, nomineePartyId) {
 }
 
 // Tick lock and tick mutation are intentionally Edge Function only.
-

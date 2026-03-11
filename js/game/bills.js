@@ -1834,21 +1834,40 @@ async function markBillEnactmentFailed(supabase, bill, currentTick, enactError) 
 
 export async function enactBill(supabase, bill, currentTick) {
     let enactError = null;
+    const logContext = {
+        billId: bill?.id,
+        billStatus: bill?.status,
+        billNationId: bill?.nation_id,
+        presidentFactionId: null
+    };
+    console.log('[enactBill] stage=preflight_context', logContext);
 
+    console.log('[enactBill] stage=load_nation attempt', logContext);
     const { data: nation } = await supabase
         .from('nations')
         .select('*')
         .eq('id', bill.nation_id)
         .single();
-    if (!nation) return { success: false, error: `Nation ${bill.nation_id} not found` };
+    if (!nation) {
+        console.error('[enactBill] stage=load_nation result=failed_nation_not_found', logContext);
+        console.error('[enactBill] stage=terminal_result result=failed_nation_not_found', logContext);
+        return { success: false, error: `Nation ${bill.nation_id} not found` };
+    }
+    console.log('[enactBill] stage=load_nation result=success', logContext);
 
+    console.log('[enactBill] stage=load_active_laws attempt', logContext);
     const { data: currentActiveLaws } = await supabase
         .from('active_laws')
         .select('*, policies(*)')
         .eq('nation_id', bill.nation_id);
+    console.log('[enactBill] stage=load_active_laws result=success', {
+        ...logContext,
+        activeLawCount: (currentActiveLaws || []).length
+    });
 
     // ── Repeal bill handling ──
     if (bill.bill_type === 'repeal') {
+        console.log('[enactBill] stage=repeal_bill attempt', logContext);
         const repealResult = await repealActiveLaw({
             supabase,
             nation,
@@ -1870,11 +1889,24 @@ export async function enactBill(supabase, bill, currentTick) {
             } else {
                 enactError = `Unknown repeal failure (${repealResult.reason})`;
             }
-            console.error(`[enactBill] Repeal bill ${bill.id} ("${bill.bill_name}") failed: ${enactError}`);
+            console.error('[enactBill] stage=repeal_bill result=failed_enactment', {
+                ...logContext,
+                error: enactError,
+                reason: repealResult.reason,
+                targetLawId: repealResult.targetLawId || null
+            });
+            console.error('[enactBill] stage=terminal_result result=failed_enactment', {
+                ...logContext,
+                error: enactError
+            });
             return { success: false, error: enactError, repealResult };
         }
 
-        console.log(`[enactBill] Repealed active law ${repealResult.targetLawId} (${repealResult.policyName})`);
+        console.log('[enactBill] stage=repeal_bill result=success', {
+            ...logContext,
+            targetLawId: repealResult.targetLawId,
+            policyName: repealResult.policyName
+        });
     } else {
         const articles = (bill.bill_articles || []).filter(a => a.policy_id);
 
@@ -1884,6 +1916,11 @@ export async function enactBill(supabase, bill, currentTick) {
 
             // Repeal article — reverse and delete the targeted active law
             if (art.repeal_active_law_id) {
+                console.log('[enactBill] stage=repeal_article attempt', {
+                    ...logContext,
+                    articleId: art.id,
+                    repealActiveLawId: art.repeal_active_law_id
+                });
                 const repealResult = await repealActiveLaw({
                     supabase,
                     nation,
@@ -1893,9 +1930,19 @@ export async function enactBill(supabase, bill, currentTick) {
                     article: art,
                 });
                 if (!repealResult.success) {
-                    console.error(`[enactBill] Repeal article failure (${repealResult.reason}) for active_law ${repealResult.targetLawId || 'n/a'}`);
+                    console.error('[enactBill] stage=repeal_article result=failed_enactment', {
+                        ...logContext,
+                        articleId: art.id,
+                        reason: repealResult.reason,
+                        targetLawId: repealResult.targetLawId || null
+                    });
                 } else {
-                    console.log(`[enactBill] Repealed active law ${repealResult.targetLawId} (${repealResult.policyName})`);
+                    console.log('[enactBill] stage=repeal_article result=success', {
+                        ...logContext,
+                        articleId: art.id,
+                        targetLawId: repealResult.targetLawId,
+                        policyName: repealResult.policyName
+                    });
                 }
                 continue;
             }
@@ -1924,6 +1971,11 @@ export async function enactBill(supabase, bill, currentTick) {
                 await supabase.from('bills').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingActiveLaw.id);
                 await supabase.from('bill_articles').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingActiveLaw.id);
             }
+            console.log('[enactBill] stage=upsert_active_law attempt', {
+                ...logContext,
+                policyId: policy.id,
+                policyName: policy.policy_name
+            });
             const { error: activeLawError } = await supabase.from('active_laws')
                 .upsert({
                     nation_id: bill.nation_id,
@@ -1933,8 +1985,23 @@ export async function enactBill(supabase, bill, currentTick) {
                     effects_applied_through_tick: currentTick - 1
                 }, { onConflict: 'nation_id,policy_id' });
             if (activeLawError) {
-                console.error(`[enactBill] Failed to upsert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
+                console.error('[enactBill] stage=upsert_active_law result=rls_blocked', {
+                    ...logContext,
+                    policyId: policy.id,
+                    policyName: policy.policy_name,
+                    error: activeLawError.message
+                });
+                console.error('[enactBill] stage=terminal_result result=rls_blocked', {
+                    ...logContext,
+                    error: activeLawError.message
+                });
+                return { success: false, error: `Active law upsert failed for policy ${policy.policy_name || policy.id}: ${activeLawError.message}` };
             }
+            console.log('[enactBill] stage=upsert_active_law result=success', {
+                ...logContext,
+                policyId: policy.id,
+                policyName: policy.policy_name
+            });
         }
     }
 
@@ -1950,6 +2017,18 @@ export async function enactBill(supabase, bill, currentTick) {
             const newRate = Math.max(0, Math.min(50, Number(effect.new_rate)));
             taxUpdates[effect.tax_key] = newRate;
             console.log(`[enactBill] Tax rate change: ${effect.tax_key} ${effect.old_rate}% → ${newRate}%`);
+        } else if (typeof effect.target_stat === 'string' && typeof effect.delta === 'number') {
+            // Backward compatibility: parse legacy stat_effect-like payloads
+            const key = effect.target_stat.toLowerCase();
+            const newRate = Math.max(0, Math.min(50, Number(effect.delta)));
+            const taxKey = key === 'income_tax' ? 'income_tax'
+                : key === 'sales_tax' ? 'sales_tax'
+                    : key === 'corporate_tax' ? 'corporate_tax'
+                        : null;
+            if (taxKey) {
+                taxUpdates[taxKey] = newRate;
+                console.log(`[enactBill] Tax rate change (parsed): ${taxKey} → ${newRate}%`);
+            }
         }
     }
 
@@ -1976,14 +2055,28 @@ export async function enactBill(supabase, bill, currentTick) {
     }
 
     if (Object.keys(taxUpdates).length > 0) {
+        console.log('[enactBill] stage=apply_tax_updates attempt', {
+            ...logContext,
+            taxUpdates
+        });
         const { error: taxErr } = await supabase.from('nations')
             .update(taxUpdates)
             .eq('id', bill.nation_id);
         if (taxErr) {
-            console.error(`[enactBill] Failed to apply tax rate changes:`, taxErr.message);
+            console.error('[enactBill] stage=apply_tax_updates result=rls_blocked', {
+                ...logContext,
+                error: taxErr.message
+            });
+            console.error('[enactBill] stage=terminal_result result=rls_blocked', {
+                ...logContext,
+                error: taxErr.message
+            });
             return { success: false, error: `Tax rate update failed: ${taxErr.message}` };
         }
-        console.log(`[enactBill] Tax rates applied to nation ${bill.nation_id}:`, JSON.stringify(taxUpdates));
+        console.log('[enactBill] stage=apply_tax_updates result=success', {
+            ...logContext,
+            taxUpdates
+        });
 
         // ── Apply tax-change approval/momentum effects ──
         // These match the preview shown in the economy.html tax cards.
@@ -2032,21 +2125,53 @@ export async function enactBill(supabase, bill, currentTick) {
             const allInst = fd.institutions || [];
             const avgPct = allInst.reduce((sum, i) => sum + i.proposed_pct, 0) / (allInst.length || 1);
             const newLevel = avgPct / 100;
-            await supabase.from('ministries')
+            console.log('[enactBill] stage=update_ministry_funding attempt', {
+                ...logContext,
+                ministryKey: fd.ministry_key,
+                newLevel
+            });
+            const { error: ministryFundingErr } = await supabase.from('ministries')
                 .update({ funding_level: newLevel })
                 .eq('nation_id', bill.nation_id)
                 .eq('ministry_key', fd.ministry_key)
                 .eq('is_active', true);
-            console.log(`[enactBill] Ministry funding_level: ${fd.ministry_key} → ${Math.round(avgPct)}%`);
+            if (ministryFundingErr) {
+                console.error('[enactBill] stage=update_ministry_funding result=rls_blocked', {
+                    ...logContext,
+                    ministryKey: fd.ministry_key,
+                    error: ministryFundingErr.message
+                });
+                console.error('[enactBill] stage=terminal_result result=rls_blocked', {
+                    ...logContext,
+                    error: ministryFundingErr.message
+                });
+                return { success: false, error: `Ministry funding update failed for ${fd.ministry_key}: ${ministryFundingErr.message}` };
+            }
+            console.log('[enactBill] stage=update_ministry_funding result=success', {
+                ...logContext,
+                ministryKey: fd.ministry_key,
+                avgPercent: Math.round(avgPct)
+            });
         }
 
         // Discretionary grant: add to national debt
         const grantAmount = Number(fd.discretionary) || 0;
         if (grantAmount > 0) {
             const newDebt = (Number(nation.debt) || 0) + grantAmount;
+            console.log('[enactBill] stage=update_debt_for_grant attempt', {
+                ...logContext,
+                ministryKey: fd.ministry_key,
+                grantAmount,
+                newDebt
+            });
             await supabase.from('nations').update({ debt: newDebt }).eq('id', bill.nation_id);
             nation.debt = newDebt;
-            console.log(`[enactBill] Discretionary grant: $${grantAmount}M to ${fd.ministry_key}, debt now $${newDebt}M`);
+            console.log('[enactBill] stage=update_debt_for_grant result=success', {
+                ...logContext,
+                ministryKey: fd.ministry_key,
+                grantAmount,
+                newDebt
+            });
         }
     }
 
@@ -2074,16 +2199,31 @@ export async function enactBill(supabase, bill, currentTick) {
     // Sponsor gains/loses preference with voter blocs based on bill ideology alignment
     await applyBlocPreferenceOnPassage(supabase, bill, bill.nation_id);
 
-    await supabase.from('bills').update({
+    console.log('[enactBill] stage=update_bill_status attempt', logContext);
+    const { error: billUpdateErr } = await supabase.from('bills').update({
         status: 'passed',
         passed_tick: currentTick
     }).eq('id', bill.id);
+    if (billUpdateErr) {
+        console.error('[enactBill] stage=update_bill_status error=rls_blocked', {
+            ...logContext,
+            error: billUpdateErr.message
+        });
+        console.error('[enactBill] stage=terminal_result result=rls_blocked', {
+            ...logContext,
+            error: billUpdateErr.message
+        });
+        return { success: false, error: `Bill status update failed: ${billUpdateErr.message}` };
+    }
+    console.log('[enactBill] stage=update_bill_status result=success', logContext);
 
     // Legislative activity: boost gov_approval_events
     await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
 
+    console.log('[enactBill] stage=terminal_result result=success', logContext);
     return { success: true };
 }
+
 
 export async function reversePolicy(supabase, nation, policy, passedTick, currentTick) {
     const ticksActive = currentTick - (passedTick || 0);
