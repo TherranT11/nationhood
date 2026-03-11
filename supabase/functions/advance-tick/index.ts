@@ -14817,7 +14817,7 @@ async function processCrises(supabase, nation, currentTick) {
 
 /**
  * Process democratic revolution for autocracies.
- * Triggers when: stability < 15, freedom_index > 50, civil_unrest > 70 (Autocracy only).
+ * Triggers when: stability < 20, civil_unrest > 50 (Autocracy only).
  * Random 13-22 tick duration. Per-tick: stability -1, civil_unrest +1, intl_reputation -1.
  * Avertable if ANY trigger condition breaks. Fires regime change if duration expires.
  */
@@ -14832,15 +14832,10 @@ async function processRevolution(supabase, nation, currentTick) {
         return null;
     }
 
-    // Re-fetch nation to get post-effect stat values (processStatEffects etc. update DB but not in-memory)
-    const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
-    if (freshNation) Object.assign(nation, freshNation);
-
-    // Check all trigger conditions
+    // Check trigger conditions
     const conditionsMet =
-        Number(nation.stability) < 15 &&
-        Number(nation.freedom_index) > 50 &&
-        Number(nation.civil_unrest) > 70;
+        Number(nation.stability) < 20 &&
+        Number(nation.civil_unrest) > 50;
 
     const crisisActive = nation.revolution_started_tick != null;
 
@@ -14866,19 +14861,7 @@ async function processRevolution(supabase, nation, currentTick) {
 
     // --- Conditions ARE met ---
 
-    // Apply per-tick effects (stability -1, civil_unrest +1, intl_reputation -1)
-    const newStability = Math.max(0, Math.round((Number(nation.stability) - 1) * 10) / 10);
-    const newUnrest = Math.min(100, Math.round((Number(nation.civil_unrest) + 1) * 10) / 10);
-    const newReputation = Math.max(0, Math.round((Number(nation.international_reputation) - 1) * 10) / 10);
-
-    await supabase.from('nations').update({
-        stability: newStability,
-        civil_unrest: newUnrest,
-        international_reputation: newReputation
-    }).eq('id', nation.id);
-    Object.assign(nation, { stability: newStability, civil_unrest: newUnrest, international_reputation: newReputation });
-
-    // START new crisis
+    // START new crisis (no per-tick effects on the starting tick)
     if (!crisisActive) {
         const duration = Math.floor(Math.random() * 10) + 13; // 13-22 ticks
         await supabase.from('nations').update({
@@ -14893,16 +14876,24 @@ async function processRevolution(supabase, nation, currentTick) {
             event_name: 'REVOLUTION_WARNING',
             description_used: 'Pro-democracy demonstrations have erupted across multiple cities. Opposition groups are calling for free elections. The regime must act to restore order — or face revolution.',
             category: 'crisis',
-            effects_applied: [
-                { stat: 'stability', change: -1, target: 'nation' },
-                { stat: 'civil_unrest', change: 1, target: 'nation' },
-                { stat: 'international_reputation', change: -1, target: 'nation' }
-            ],
+            effects_applied: [],
             fired_at_tick: currentTick
         });
         console.log(`[Revolution] WARNING — crisis started for ${nation.name}, duration ${duration} ticks`);
         return { phase: 'warning', nation: nation.name, tick: currentTick, duration };
     }
+
+    // Apply per-tick effects (stability -1, civil_unrest +1, intl_reputation -1)
+    const newStability = Math.max(0, Math.round((Number(nation.stability) - 1) * 10) / 10);
+    const newUnrest = Math.min(100, Math.round((Number(nation.civil_unrest) + 1) * 10) / 10);
+    const newReputation = Math.max(0, Math.round((Number(nation.international_reputation) - 1) * 10) / 10);
+
+    await supabase.from('nations').update({
+        stability: newStability,
+        civil_unrest: newUnrest,
+        international_reputation: newReputation
+    }).eq('id', nation.id);
+    Object.assign(nation, { stability: newStability, civil_unrest: newUnrest, international_reputation: newReputation });
 
     // ONGOING crisis — check if duration expired
     const ticksElapsed = currentTick - nation.revolution_started_tick;
@@ -14982,19 +14973,13 @@ async function processRevolution(supabase, nation, currentTick) {
         }
     }
 
-    // 4b. Reset all faction loyalty to 50
+    // 4b. Reset all faction loyalty to 50 and flag for rebuild
     await supabase.from('factions')
-        .update({ loyalty: 50 })
+        .update({ loyalty: 50, needs_rebuild: true })
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
-    // 5. Flag factions for rebuild
-    await supabase.from('factions')
-        .update({ needs_rebuild: true })
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'party');
-
-    // 5b. Freeze all active bills — government has fallen
+    // 5. Freeze all active bills — government has fallen
     await supabase.from('bills')
         .update({ status: 'frozen' })
         .eq('nation_id', nation.id)
