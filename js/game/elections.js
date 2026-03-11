@@ -1178,6 +1178,29 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
     const isPresidential = context.governmentType === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC;
     const normalizedElectionType = context.electionType || 'parliamentary';
 
+    // Resolve the target election record up-front so presidential endorsement snapshots
+    // can be tied to a concrete election before vote resolution.
+    const { data: scheduledElection } = await supabase
+        .from('elections')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .eq('election_type', normalizedElectionType)
+        .order('election_tick', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+    const targetElectionId = scheduledElection?.id || (await (async () => {
+        const { data: inserted, error: insertErr } = await supabase.from('elections').insert({
+            nation_id: nation.id,
+            election_tick: currentTick,
+            election_type: normalizedElectionType,
+            status: 'scheduled'
+        }).select('id').single();
+        if (insertErr) throw insertErr;
+        return inserted.id;
+    })());
+
     // Use candidate-based voting for presidential elections, party-based for parliamentary
     let electionResults;
     if (isPresidential && normalizedElectionType === 'presidential') {
@@ -1205,7 +1228,17 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
 
         // Auto-select candidates for any party that hasn't chosen
         await autoSelectPresidentialCandidates(supabase, nation, currentTick);
-        const { data, error: runError } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id });
+
+        const { error: snapshotErr } = await supabase.rpc('snapshot_presidential_endorsements', {
+            p_nation_id: nation.id,
+            p_election_id: targetElectionId
+        });
+        if (snapshotErr) throw snapshotErr;
+
+        const { data, error: runError } = await supabase.rpc('run_presidential_election', {
+            p_nation_id: nation.id,
+            p_election_id: targetElectionId
+        });
         if (runError) throw runError;
         electionResults = data;
     } else {
@@ -1215,33 +1248,11 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
     }
 
     // Create the election record (SQL RPCs no longer insert their own)
-    const { data: scheduledElection } = await supabase
-        .from('elections')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('status', 'scheduled')
-        .eq('election_type', normalizedElectionType)
-        .order('election_tick', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
     let completedElectionId;
-    if (scheduledElection) {
-        await supabase.from('elections')
-            .update({ status: 'completed', results: electionResults, election_tick: currentTick })
-            .eq('id', scheduledElection.id);
-        completedElectionId = scheduledElection.id;
-    } else {
-        const { data: inserted, error: insertErr } = await supabase.from('elections').insert({
-            nation_id: nation.id,
-            election_tick: currentTick,
-            election_type: normalizedElectionType,
-            status: 'completed',
-            results: electionResults
-        }).select('id').single();
-        if (insertErr) throw insertErr;
-        completedElectionId = inserted.id;
-    }
+    await supabase.from('elections')
+        .update({ status: 'completed', results: electionResults, election_tick: currentTick })
+        .eq('id', targetElectionId);
+    completedElectionId = targetElectionId;
 
     // Fetch the specific election we just completed (not a generic "most recent" query)
     const { data: completedElection, error: electionError } = await supabase
@@ -1408,7 +1419,19 @@ export async function processElections(supabase, nation, currentTick) {
         // Use candidate-based voting for presidential elections, party-based for parliamentary
         let data, error;
         if (electionType === 'presidential') {
-            ({ data, error } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id }));
+            const { error: snapshotErr } = await supabase.rpc('snapshot_presidential_endorsements', {
+                p_nation_id: nation.id,
+                p_election_id: election.id
+            });
+            if (snapshotErr) {
+                console.error(`Failed to snapshot presidential endorsements for ${nation.name}:`, snapshotErr);
+                continue;
+            }
+
+            ({ data, error } = await supabase.rpc('run_presidential_election', {
+                p_nation_id: nation.id,
+                p_election_id: election.id
+            }));
         } else {
             ({ data, error } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: electionType }));
         }
@@ -1417,7 +1440,10 @@ export async function processElections(supabase, nation, currentTick) {
             console.error(`Election RPC failed (attempt 1) for ${nation.name}:`, error);
             // Retry once
             if (electionType === 'presidential') {
-                ({ data, error } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id }));
+                ({ data, error } = await supabase.rpc('run_presidential_election', {
+                    p_nation_id: nation.id,
+                    p_election_id: election.id
+                }));
             } else {
                 ({ data, error } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: electionType }));
             }
@@ -1669,7 +1695,10 @@ export async function processPresidentialElectionResult(supabase, nation, comple
         }
 
         // Run the presidential election RPC again with only the top 2
-        const { data: runoffData, error: runoffErr } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id });
+        const { data: runoffData, error: runoffErr } = await supabase.rpc('run_presidential_election', {
+            p_nation_id: nation.id,
+            p_election_id: completedElection.id
+        });
 
         if (runoffErr) {
             console.error(`Runoff RPC failed for ${nation.name}:`, runoffErr);
