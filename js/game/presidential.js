@@ -291,7 +291,7 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
     });
 
     const { data: signedBill, error: signedBillErr } = await supabase.from('bills')
-        .select('id, bill_name, nation_id, bill_articles(id)')
+        .select('id, bill_name, nation_id, bill_articles(id), bill_support(stance, seat_count)')
         .eq('id', billId)
         .single();
 
@@ -299,11 +299,12 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
         throw new Error(`Bill signed but failed to reload bill metadata: ${signedBillErr?.message || 'not found'}`);
     }
 
+    const floorVotes = tallyFloorVotes(signedBill);
     await fireBillEvent(supabase, 'bill_passed', signedBill, {
         currentTick: rpcResult.tick || 0,
-        votesFor: 0,
-        votesAgainst: 0,
-        votesAbstain: 0,
+        votesFor: floorVotes.votesFor,
+        votesAgainst: floorVotes.votesAgainst,
+        votesAbstain: floorVotes.votesAbstain,
         articleCount: (signedBill.bill_articles || []).length,
         billNameOverride: `${signedBill.bill_name} (signed by President)`
     });
