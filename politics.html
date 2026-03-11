@@ -5160,6 +5160,7 @@ function renderEditIdentityBox(f, currentTick) {
     }
 
     // Rename section
+    const apColor = ap >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)';
     let renameHtml;
     if (onCooldown) {
         const pct = (cooldownRemaining / RENAME_COOLDOWN * 100).toFixed(1);
@@ -5183,7 +5184,7 @@ function renderEditIdentityBox(f, currentTick) {
                 </div>
                 <div class="pol-id-rename-meta">
                     <span>Costs <span style="color:var(--damber)">${RENAME_AP_COST} AP</span> · locks rename for <span style="color:var(--damber)">${RENAME_COOLDOWN} ticks</span></span>
-                    <span id="pol-id-ap-available" style="color:${ap >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)'}">${ap} AP available</span>
+                    <span id="pol-id-ap-available" style="color:${apColor}">${ap} AP available</span>
                 </div>
                 <div class="pol-id-error" id="pol-id-rename-error" style="display:none"></div>
             </div>`;
@@ -5211,7 +5212,7 @@ function renderEditIdentityBox(f, currentTick) {
         <div style="margin-bottom:14px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <span class="pol-id-section-label">Party Name</span>
-                <span class="pol-id-ap-badge">AP: <span id="pol-id-ap-display" style="color:${ap >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)'}">${ap}</span></span>
+                <span class="pol-id-ap-badge">AP: <span id="pol-id-ap-display" style="color:${apColor}">${ap}</span></span>
             </div>
             <div class="pol-id-name-display">
                 <span id="pol-id-current-name">${escapeHtml(f.faction_name)}</span>
