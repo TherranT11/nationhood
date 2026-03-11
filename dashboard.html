@@ -248,7 +248,7 @@
     background: var(--bg-card);
     border-top: 1px solid var(--border-main);
     margin: 12px -20px -20px;
-    padding: 8px 20px;
+    padding: 8px 20px 8px 24px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.68rem;
     font-weight: 600;
@@ -432,8 +432,19 @@ initPage('home', async (state) => {
     // ── Compute values ──
     const approval = Math.round(Number(nation.gov_approval ?? 50));
     const approvalColor = approval >= 50 ? 'var(--green)' : approval >= 35 ? 'var(--orange)' : 'var(--red)';
-    const adminName = administration?.admin_name || 'Government';
+    // Strip any trailing ", YYYY" from stored admin_name to avoid duplication
+    const rawAdminName = administration?.admin_name || 'Government';
+    const adminName = rawAdminName.replace(/,\s*\d{4}$/, '');
     const startYear = (administration?.started_at_tick != null) ? 2000 + Math.floor(administration.started_at_tick / 12) : null;
+    const currentYear = 2000 + Math.floor(currentTick / 12);
+    let yearSuffix = '';
+    if (startYear != null) {
+      if (currentYear > startYear) {
+        yearSuffix = `, ${startYear}-${currentYear}`;
+      } else {
+        yearSuffix = `, ${startYear}`;
+      }
+    }
 
     // Gov type badge
     const govTypeLabel = isAuto ? 'Autocracy' : isPres ? 'Presidential' : 'Parliamentary';
@@ -560,7 +571,7 @@ initPage('home', async (state) => {
 
     // ── Build card ──
     document.getElementById('gov-card-body').innerHTML = `
-      <div class="gov-admin-name">${esc(adminName)}${startYear ? ', ' + startYear + '-' : ''}</div>
+      <div class="gov-admin-name">${esc(adminName)}${yearSuffix}</div>
       <div class="gov-badges">
         <span class="gov-badge">${esc(govTypeLabel)}</span>
         ${coalitionBadge ? `<span class="gov-badge">${esc(coalitionBadge)}</span>` : ''}
