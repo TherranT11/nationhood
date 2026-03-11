@@ -74,7 +74,7 @@
 
 /* ---------- Body padding ---------- */
 .nation-body {
-    padding: 16px 24px;
+    padding: 28px 24px;
 }
 
 /* ---------- Summary row ---------- */
@@ -611,6 +611,214 @@
 .revolution-complete-banner .revolution-banner__subtitle {
     color: var(--n-secondary);
 }
+
+/* ---------- Featured stat containers ---------- */
+.featured-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    margin-top: 8px;
+}
+.featured-card {
+    background: var(--n-bg-card);
+    border: 1px solid var(--n-border);
+    border-radius: 4px;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+.featured-card--gdp { width: 380px; }
+.featured-card--inflation { width: 450px; }
+
+/* Header row */
+.featured-card__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+.featured-card__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.featured-card__title {
+    font-family: var(--n-font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--n-primary);
+    flex: 1;
+}
+.featured-card__tag {
+    font-family: var(--n-font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 3px 8px;
+    border-radius: 2px;
+    border: 1px solid;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+/* Description */
+.featured-card__desc {
+    font-family: var(--n-font-sans);
+    font-size: 12px;
+    color: var(--n-secondary);
+    margin-bottom: 6px;
+}
+
+/* Value section */
+.featured-card__value-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 2px;
+}
+.featured-card__big-value {
+    font-family: var(--n-font-mono);
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.1;
+}
+.featured-card__big-unit {
+    font-family: var(--n-font-sans);
+    font-size: 14px;
+    font-weight: 500;
+    margin-left: 4px;
+}
+.featured-card__side-stats {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+}
+.featured-card__side-label {
+    font-family: var(--n-font-mono);
+    font-size: 9px;
+    color: var(--n-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.featured-card__side-value {
+    font-family: var(--n-font-mono);
+    font-size: 13px;
+    font-weight: 700;
+}
+.featured-card__delta {
+    font-family: var(--n-font-mono);
+    font-size: 11px;
+    color: var(--n-secondary);
+    margin-bottom: 10px;
+}
+
+/* Chart area */
+.featured-card__chart {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--n-border);
+    border-radius: 3px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    height: 70px;
+    display: flex;
+    align-items: flex-end;
+}
+
+/* Scale bar */
+.featured-card__scale {
+    display: flex;
+    gap: 0;
+    margin-bottom: 14px;
+}
+.featured-card__scale-item {
+    flex: 1;
+    text-align: center;
+    font-family: var(--n-font-mono);
+    font-size: 8px;
+    color: var(--n-tertiary);
+    padding: 5px 2px 3px;
+    border: 1px solid var(--n-border);
+    border-right: none;
+    cursor: default;
+}
+.featured-card__scale-item:first-child {
+    border-radius: 2px 0 0 2px;
+}
+.featured-card__scale-item:last-child {
+    border-radius: 0 2px 2px 0;
+    border-right: 1px solid var(--n-border);
+}
+.featured-card__scale-item--active {
+    background: rgba(255,255,255,0.04);
+    border-color: var(--n-border-hi);
+    color: var(--n-primary);
+    font-weight: 700;
+}
+.featured-card__scale-item--active + .featured-card__scale-item {
+    border-left-color: var(--n-border-hi);
+}
+.featured-card__scale-range {
+    display: block;
+    font-size: 7px;
+    font-weight: 400;
+    color: var(--n-tertiary);
+    margin-top: 1px;
+}
+
+/* Affected-by section */
+.featured-card__abp-title {
+    font-family: var(--n-font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--n-tertiary);
+    margin-bottom: 6px;
+    padding-top: 4px;
+    border-top: 1px solid var(--n-border);
+}
+.featured-card__abp-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 12px;
+}
+.featured-card__abp-name {
+    color: var(--n-primary);
+    flex: 1;
+    font-weight: 500;
+    font-family: var(--n-font-sans);
+}
+.featured-card__abp-arrow {
+    font-size: 10px;
+    width: 16px;
+    text-align: center;
+}
+.featured-card__abp-arrow--up { color: var(--n-green); }
+.featured-card__abp-arrow--down { color: var(--n-red); }
+.featured-card__abp-type {
+    font-size: 8px;
+    font-family: var(--n-font-mono);
+    padding: 2px 6px;
+    border-radius: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.featured-card__abp-type--policy { background: rgba(96,165,250,0.12); color: var(--n-blue); }
+.featured-card__abp-type--crisis { background: var(--n-red-dim); color: var(--n-red); }
+.featured-card__abp-type--ministry-action { background: var(--n-green-dim); color: var(--n-green); }
+.featured-card__abp-type--diplomatic-action { background: var(--n-orange-dim); color: var(--n-orange); }
+.featured-card__abp-type--leader-trait { background: var(--n-yellow-dim); color: var(--n-yellow); }
+.featured-card__abp-type--decay { background: rgba(158,158,158,0.12); color: var(--n-tertiary); }
 
 /* ---------- Loading ---------- */
 .loading-container {
