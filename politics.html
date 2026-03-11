@@ -2438,6 +2438,22 @@
 .pol-endorse-btn:disabled {
     pointer-events: none;
 }
+.pol-endorse-btn--disabled {
+    color: var(--dtext-3);
+    border-color: var(--dborder-1);
+    background: rgba(255,255,255,0.02);
+    opacity: 0.55;
+}
+.pol-endorse-helper {
+    margin-top: 6px;
+    font-family: var(--dfont-ui);
+    font-size: 11px;
+    color: var(--dtext-2);
+    line-height: 1.4;
+}
+.pol-endorse-helper--disabled {
+    color: var(--dtext-3);
+}
 
 /* Upcoming Elections panel */
 .pol-upcoming-box {
@@ -3031,6 +3047,7 @@ import { tickToDate, escapeHtml as utilEscapeHtml, getIdeologyClass } from './js
 import { fetchActiveCoalition, loadSeats, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, ensureBlocApprovals, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, PM_FIRST_NAMES, PM_LAST_NAMES, loadNationIdeologies, getFullIdeologyProfile, getIdeologyLabel, IDEOLOGY_AXES, selectPresidentCandidate, generatePresidentCandidates } from './js/game-common.js';
 import { isAutocracy } from './js/game/government-types.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './js/game/stats.js';
+import { computeEndorsementButtonState } from './js/ui/endorsement-ui.js';
 
 let _politicsRealtimeChannel = null;
 let _politicsRefreshTimer = null;
@@ -3532,7 +3549,12 @@ async function renderPartyTab(f, nation, data) {
         </div>
 
         <div class="pol-row-3">
-        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames)}
+        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames, {
+            isPresidentialSystem: isPresidentialRepublic(nation),
+            scheduledElections,
+            currentTick,
+            playerSeats: mySeats
+        })}
         ${renderBlocVotingBox(lastParliamentary, lastPresidential, allParties)}
         </div>
         <div class="pol-row-4" style="margin-top:24px;text-align:center">
@@ -5544,7 +5566,7 @@ function initEditIdentityBox(f) {
     }
 }
 
-function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames = []) {
+function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, endorserNames = [], endorsementContext = {}) {
     // Build a color map from allParties
     const colorMap = {};
     (allParties || []).forEach(p => { colorMap[p.id] = p.party_color || '#888'; });
@@ -5647,6 +5669,12 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
 
     const visibleEndorsers = endorserNames.slice(0, 3);
     const hiddenEndorsers = endorserNames.slice(3);
+    const endorsementButtonState = computeEndorsementButtonState(endorsementContext);
+    const endorsementButtonTitle = endorsementButtonState.disabled ? ` title="${escapeHtml(endorsementButtonState.disabledReason)}"` : '';
+    const endorsementHelperHtml = endorsementButtonState.disabled
+        ? `<div class="pol-endorse-helper pol-endorse-helper--disabled">${escapeHtml(endorsementButtonState.disabledReason)}</div>`
+        : `<div class="pol-endorse-helper">You can endorse a candidate for the next presidential election in this window.</div>`;
+
     const endorsementNotesHtml = endorserNames.length
         ? `<div class="pol-endorsement-notes">
             <div class="pol-endorsement-subtitle">For Next Election</div>
@@ -5665,8 +5693,9 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
     return `<div class="pol-election-box">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <div class="pol-section-label" style="margin-bottom:0">ELECTION RESULTS</div>
-            <button class="pol-endorse-btn" disabled>Endorse Candidate</button>
+            <button class="pol-endorse-btn ${endorsementButtonState.disabled ? 'pol-endorse-btn--disabled' : ''}" ${endorsementButtonState.disabled ? 'disabled' : ''}${endorsementButtonTitle}>Endorse Candidate</button>
         </div>
+        ${endorsementHelperHtml}
         ${endorsementNotesHtml}
         <div class="pol-el-tabs">
             <button class="pol-el-tab active" data-tab="parl">Parliamentary</button>
