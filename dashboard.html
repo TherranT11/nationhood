@@ -85,7 +85,9 @@
 
   /* ── Events list ── */
   .dash-events-scroll {
+    overflow-y: auto;
     padding: 0 14px 14px;
+    flex: 1;
   }
   .dash-event-row {
     display: flex;
@@ -413,12 +415,12 @@
 
       <!-- ── Elections + Events Row ── -->
       <div class="dash-row">
-        <div class="dash-card" id="elections-card" style="height:auto;">
+        <div class="dash-card" id="elections-card">
           <div class="dash-card-header">ELECTIONS</div>
           <div class="dash-card-body" id="elections-card-body"></div>
         </div>
 
-        <div class="dash-card" id="events-card" style="height:auto;">
+        <div class="dash-card" id="events-card" style="display:flex;flex-direction:column;">
           <div class="dash-card-header">EVENTS</div>
           <div class="dash-events-scroll" id="dash-events-list"></div>
         </div>

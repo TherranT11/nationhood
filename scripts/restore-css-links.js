@@ -14,7 +14,7 @@ const cssDir = path.join(root, 'css');
 // Pages that need dashboard.css (the standard game pages that use common.js)
 const dashboardPages = new Set([
   'world', 'nation', 'government', 'parties', 'elections', 'laws', 'bill',
-  'diplomacy', 'events', 'factions', 'map', 'ministry-actions', 'economy',
+  'diplomacy', 'events', 'factions', 'map', 'economy',
   'conflict', 'select-candidate'
 ]);
 
