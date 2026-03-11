@@ -22,7 +22,7 @@
             <label>Admin Password</label>
             <input type="password" id="admin-password" placeholder="Enter admin password">
         </div>
-        <button class="btn btn-danger btn-full" onclick="authenticate()">AUTHENTICATE</button>
+        <button class="btn btn-danger btn-full" id="admin-auth-btn">AUTHENTICATE</button>
         <div id="auth-error" class="status error hidden"></div>
         <div class="back-link"><a href="index.html">← Back to Game</a></div>
     </div>
@@ -632,6 +632,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         document.getElementById('admin-section').classList.add('hidden');
         document.getElementById('admin-password').value = '';
     }
+    document.getElementById('admin-auth-btn').addEventListener('click', authenticate);
     document.getElementById('admin-password').addEventListener('keypress', (e) => { if (e.key === 'Enter') authenticate(); });
 
     async function loadAllData() {
@@ -2660,7 +2661,6 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     }
 
 // Expose functions for HTML onclick/onchange handlers
-window.authenticate = authenticate;
 window.logout = logout;
 window.showTab = showTab;
 window.setTickInterval = setTickInterval;
