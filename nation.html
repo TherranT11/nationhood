@@ -605,6 +605,8 @@ function parsePolicyEffects(laws, map, currentTick) {
             if (!eff.stat_key) continue;
             var delay = Number(eff.delay_ticks) || 0;
             var dur = Number(eff.duration_ticks) || 12;
+            // Skip effects that haven't started yet or have expired
+            if (ticksSince <= delay || ticksSince > delay + dur) continue;
             var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
             // Reversal laws flip the effect direction
             if (law.is_reversal) dir = (dir === 'up') ? 'down' : 'up';
