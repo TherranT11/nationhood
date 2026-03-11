@@ -615,6 +615,7 @@
 /* ---------- Featured stat containers ---------- */
 .featured-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 16px;
     margin-bottom: 20px;
     margin-top: 8px;
@@ -628,13 +629,19 @@
     flex-direction: column;
     flex-shrink: 0;
 }
-.featured-card--gdp { width: 380px; }
-.featured-card--inflation { width: 450px; }
+.featured-card--gdp,
+.featured-card--inflation,
+.featured-card--compact {
+    width: 380px;
+    min-width: 380px;
+    max-width: 380px;
+}
 
 /* Compact variant (National Debt, etc.) */
 .featured-card--compact {
     padding: 12px 16px;
     border-left-width: 3px;
+    height: 450px;
 }
 .featured-card--compact .featured-card__header {
     margin-bottom: 0;
