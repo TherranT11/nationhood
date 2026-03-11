@@ -642,13 +642,32 @@ async function submitTaxBill(nation) {
             ', proposes changes to the tax rates of ' + escapeHtml(nation.name) + '.';
 
         // Insert bill
+        var taxChangeSummary = changedKeys.map(function(key) {
+            return {
+                tax_key: key,
+                old_rate: originalRates[key],
+                new_rate: taxRateChanges[key]
+            };
+        });
         var { data: bill, error: billError } = await _supabase.from('bills').insert({
             nation_id: nation.id,
             proposed_by: currentFaction.id,
             proposed_tick: tick,
             bill_name: billName,
+            bill_type: 'tax_reform',
             status: 'committee',
-            preamble: preamble
+            preamble: preamble,
+            metadata: {
+                tax_changes: taxChangeSummary,
+                proposer: {
+                    faction_id: currentFaction.id,
+                    faction_name: currentFaction.faction_name
+                },
+                context: {
+                    tick: tick,
+                    nation_id: nation.id
+                }
+            }
         }).select().single();
         if (billError) throw billError;
 
@@ -1167,10 +1186,10 @@ async function loadTaxPendingBills(nationId) {
     var cached = qCache(cacheKey);
     if (cached) { taxPendingBills = cached; return; }
     var { data } = await _supabase.from('bills')
-        .select('id, bill_name, status, proposed_by, bill_articles(article_title, article_text)')
+        .select('id, bill_name, bill_type, status, proposed_by, metadata, bill_articles(article_title, article_text, effect_data)')
         .eq('nation_id', nationId)
-        .in('status', ['committee', 'floor'])
-        .ilike('bill_name', '%Tax%');
+        .eq('bill_type', 'tax_reform')
+        .in('status', ['committee', 'floor', 'president_desk']);
     taxPendingBills = data || [];
     qCacheSet(cacheKey, taxPendingBills, 2 * 60 * 1000);
 }
@@ -1505,20 +1524,33 @@ function renderTaxCard(config, nation, budget) {
     h += '</div>'; // .tax-bottom
 
     // ── PENDING BILL BANNER ──
-    var taxName = config.name.toLowerCase();
     for (var p = 0; p < taxPendingBills.length; p++) {
         var pb = taxPendingBills[p];
+        var matchesTax = false;
+        var metadataChanges = pb.metadata && Array.isArray(pb.metadata.tax_changes)
+            ? pb.metadata.tax_changes
+            : [];
+        for (var mt = 0; mt < metadataChanges.length; mt++) {
+            var metaKey = metadataChanges[mt] ? (metadataChanges[mt].tax_key || metadataChanges[mt].key) : null;
+            if (metaKey === config.key) {
+                matchesTax = true;
+                break;
+            }
+        }
+
         var billArticles = pb.bill_articles || [];
-        var matchesTax = (pb.bill_name || '').toLowerCase().indexOf(taxName) >= 0;
         if (!matchesTax) {
             for (var pa = 0; pa < billArticles.length; pa++) {
-                if ((billArticles[pa].article_title || '').toLowerCase().indexOf(taxName) >= 0) {
+                var ed = billArticles[pa].effect_data || {};
+                if (ed.tax_key === config.key) {
                     matchesTax = true; break;
                 }
             }
         }
         if (matchesTax) {
-            var statusLabel = pb.status === 'floor' ? 'Floor Vote' : 'Committee';
+            var statusLabel = pb.status === 'floor'
+                ? 'Floor Vote'
+                : (pb.status === 'president_desk' ? 'President Desk' : 'Committee');
             h += '<a href="bill.html?id=' + pb.id + '" class="tax-proposed-change">';
             h += '<span class="tax-proposed-icon">&#128203;</span>';
             h += '<span class="tax-proposed-text">Pending: <strong>' + escapeHtml(pb.bill_name) + '</strong></span>';
