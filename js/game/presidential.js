@@ -250,43 +250,100 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
  * Called from the UI when the President's party clicks "Sign Into Law".
  */
 export async function signPresidentialBill(supabase, billId, presidentFactionId) {
+    const preflightContext = { billId, presidentFactionId };
+    console.log('[signPresidentialBill] stage=preflight_start', preflightContext);
+
+    console.log('[signPresidentialBill] stage=load_bill attempt', preflightContext);
     const { data: bill } = await supabase.from('bills')
         .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
         .eq('id', billId).single();
-    if (!bill || bill.status !== 'president_desk') throw new Error('Bill is not on the president\'s desk');
+    console.log('[signPresidentialBill] stage=load_bill success', {
+        ...preflightContext,
+        billStatus: bill?.status,
+        billNationId: bill?.nation_id
+    });
+    if (!bill || bill.status !== 'president_desk') {
+        console.error('[signPresidentialBill] stage=load_bill result=invalid_status', {
+            ...preflightContext,
+            billStatus: bill?.status,
+            billNationId: bill?.nation_id
+        });
+        throw new Error('Bill is not on the president\'s desk');
+    }
+
+    const runContext = {
+        billId,
+        billStatus: bill.status,
+        billNationId: bill.nation_id,
+        presidentFactionId
+    };
+    console.log('[signPresidentialBill] stage=preflight_context', runContext);
 
     // Validate caller is president's party
+    console.log('[signPresidentialBill] stage=load_president attempt', runContext);
     const { data: president } = await supabase.from('presidents')
         .select('faction_id').eq('nation_id', bill.nation_id).eq('is_active', true).limit(1).maybeSingle();
-    if (!president || president.faction_id !== presidentFactionId) throw new Error('Only the President\'s party can sign bills');
+    console.log('[signPresidentialBill] stage=load_president success', {
+        ...runContext,
+        presidentFactionIdActive: president?.faction_id
+    });
+    if (!president || president.faction_id !== presidentFactionId) {
+        console.error('[signPresidentialBill] stage=load_president result=unauthorized_signer', {
+            ...runContext,
+            presidentFactionIdActive: president?.faction_id
+        });
+        throw new Error('Only the President\'s party can sign bills');
+    }
 
     const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
 
+    console.log('[signPresidentialBill] stage=enactBill attempt', runContext);
     const enactment = await enactBill(supabase, bill, currentTick);
+    console.log(`[signPresidentialBill] stage=enactBill result=${enactment?.success ? 'success' : 'failed_enactment'}`, {
+        ...runContext,
+        enactmentError: enactment?.error || null
+    });
     if (!enactment?.success) {
         // Mark bill as failed so it doesn't stay stuck on the desk
+        console.log('[signPresidentialBill] stage=update_failed_status attempt', runContext);
         const { error: fallbackFailErr } = await supabase.from('bills').update({
             status: 'failed',
             president_action: 'signed',
             president_action_tick: currentTick
         }).eq('id', bill.id);
         if (fallbackFailErr) {
+            console.error('[signPresidentialBill] stage=update_failed_status result=rls_blocked', {
+                ...runContext,
+                error: fallbackFailErr.message
+            });
             throw new Error(`Bill enactment failed and fallback status update failed: ${fallbackFailErr.message}`);
         }
+        console.log('[signPresidentialBill] stage=update_failed_status result=failed_enactment_recorded', runContext);
+        console.error('[signPresidentialBill] stage=terminal_result result=failed_enactment', {
+            ...runContext,
+            error: enactment?.error || 'Bill enactment failed after presidential signature'
+        });
         throw new Error(enactment?.error || 'Bill enactment failed after presidential signature');
     }
     // Only mark president_action after successful enactment
     // (enactBill already sets status='passed')
+    console.log('[signPresidentialBill] stage=update_president_action attempt', runContext);
     const { error: presidentActionErr } = await supabase.from('bills').update({
             president_action: 'signed',
             president_action_tick: currentTick
         }).eq('id', bill.id);
     if (presidentActionErr) {
+        console.error('[signPresidentialBill] stage=update_president_action result=rls_blocked', {
+            ...runContext,
+            error: presidentActionErr.message
+        });
         throw new Error(`Failed to record presidential signature: ${presidentActionErr.message}`);
     }
+    console.log('[signPresidentialBill] stage=update_president_action result=success', runContext);
 
     await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, votesFor: 0, votesAgainst: 0, votesAbstain: 0, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (signed by President)' });
+    console.log('[signPresidentialBill] stage=terminal_result result=success', runContext);
 }
 
 /**
@@ -725,4 +782,3 @@ export async function rejectOwnNomination(supabase, billId, nomineePartyId) {
 }
 
 // Tick lock and tick mutation are intentionally Edge Function only.
-
