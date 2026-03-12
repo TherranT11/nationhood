@@ -9616,11 +9616,14 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     const INACTIVITY_THRESHOLD = 3;  // ticks without any campaign action to trigger drain
 
     // ── 5a. Fetch last campaign action tick per faction (for inactivity detection) ──
+    // Only look at recent ticks to avoid fetching the entire action history.
     const { data: lastActions } = await supabase
         .from('campaign_actions')
         .select('party_id, tick_performed')
         .in('party_id', factionIds)
-        .order('tick_performed', { ascending: false });
+        .gte('tick_performed', currentTick - INACTIVITY_THRESHOLD)
+        .order('tick_performed', { ascending: false })
+        .limit(factionIds.length * 2);
     const lastActionTickMap = new Map();
     for (const action of (lastActions || [])) {
         if (!lastActionTickMap.has(action.party_id)) {
@@ -9685,8 +9688,9 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
         let newMomentum = Math.round(oldMomentum * effectiveDecay * 100) / 100;
 
         // ─── Inactivity drain: parties with no campaign actions in recent ticks lose momentum ───
+        // Skip drain in early ticks so parties aren't penalized before they've had a chance to act.
         const lastActionTick = lastActionTickMap.get(row.faction_id) ?? -999;
-        if ((currentTick - lastActionTick) >= INACTIVITY_THRESHOLD) {
+        if (currentTick >= INACTIVITY_THRESHOLD && (currentTick - lastActionTick) >= INACTIVITY_THRESHOLD) {
             newMomentum -= INACTIVITY_DRAIN;
         }
 
