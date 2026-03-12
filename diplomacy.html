@@ -7822,12 +7822,21 @@ async function renderRecallAmbassadorPanel(body, statusEl) {
 
     // Fetch active ambassadors (cached to avoid re-fetching on reason selection)
     if (!recallCachedAmbassadors) {
-        const { data } = await _supabase
+        const { data, error } = await _supabase
             .from('ambassadors')
-            .select('id, target_nation_id, ambassador_first_name, ambassador_last_name, faction_id, appointed_at_tick, term_length, approval_rating, factions(abbreviation), nations!ambassadors_target_nation_id_fkey(id, name)')
+            .select('*, factions(abbreviation)')
             .eq('nation_id', currentNation.id)
             .eq('is_active', true)
             .eq('status', 'active');
+        if (error) console.error('Recall ambassador query error:', error);
+        // Attach nation names from the nations table
+        if (data && data.length > 0) {
+            const targetIds = data.map(a => a.target_nation_id);
+            const { data: nations } = await _supabase.from('nations').select('id, name').in('id', targetIds);
+            const nationMap = {};
+            (nations || []).forEach(n => { nationMap[n.id] = n; });
+            data.forEach(a => { a.nations = nationMap[a.target_nation_id] || null; });
+        }
         recallCachedAmbassadors = data;
     }
     const activeAmbs = recallCachedAmbassadors;
@@ -7865,7 +7874,7 @@ async function renderRecallAmbassadorPanel(body, statusEl) {
         const amb = recallTargetAmbassador;
         const ambName = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim();
         const partyAbbr = amb.factions?.abbreviation || '—';
-        const approval = amb.approval_rating ?? '—';
+        const approval = amb.ambassador_approval ?? '—';
         const termLen = amb.term_length || 60;
         const termRemaining = Math.max(0, termLen - (shardTick - (amb.appointed_at_tick || 0)));
         const targetNationName = amb.nations?.name || 'Unknown';
@@ -7978,10 +7987,15 @@ async function selectRecallTarget(ambassadorId) {
     // Fetch ambassador details
     const { data: amb } = await _supabase
         .from('ambassadors')
-        .select('id, target_nation_id, ambassador_first_name, ambassador_last_name, faction_id, appointed_at_tick, term_length, approval_rating, factions(abbreviation), nations!ambassadors_target_nation_id_fkey(id, name)')
+        .select('*, factions(abbreviation)')
         .eq('id', ambassadorId)
         .single();
     if (!amb) { recallTargetAmbassador = null; renderDraftBox(); return; }
+    // Attach target nation name
+    if (amb.target_nation_id) {
+        const { data: nation } = await _supabase.from('nations').select('id, name').eq('id', amb.target_nation_id).single();
+        amb.nations = nation || null;
+    }
     recallTargetAmbassador = amb;
 
     // Fetch relation
