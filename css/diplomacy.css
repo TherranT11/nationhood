@@ -322,6 +322,12 @@
 }
 .action-item:hover { background: var(--bg-hover); }
 .action-item.is-active { background: var(--bg-4); }
+.role-header.role-disabled { opacity: 0.35; }
+.action-item.action-disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
 .action-name {
   font-family: var(--font-sans);
   font-size: 12px;
