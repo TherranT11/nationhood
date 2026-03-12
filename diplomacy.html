@@ -6511,44 +6511,64 @@ function saveCounterTradeArticle(articleType, proposalId) {
         }
         case 'subsidized_sector': {
             const sector = document.getElementById('subsidy-sector')?.value;
-            const direction = document.querySelector('input[name="subsidy-dir"]:checked')?.value || 'mutual';
-            const pct = Math.min(50, Math.max(5, parseInt(document.getElementById('subsidy-pct')?.value || '20')));
+            const pct = Math.min(30, Math.max(5, parseInt(document.getElementById('subsidy-pct')?.value || '15')));
             if (!sector) { alert('Please select a sector.'); return; }
-            articleData = { sector, direction, subsidy_pct: pct, author_nation_id: currentNation.id };
+            articleData = { sector, subsidy_pct: pct, author_nation_id: currentNation.id };
             break;
         }
         case 'funding_source': {
-            const source = document.querySelector('input[name="fund-source"]:checked')?.value || 'split';
-            const splitPct = source === 'split' ? Math.min(90, Math.max(10, parseInt(document.getElementById('fund-split')?.value || '50'))) : null;
-            articleData = { source, proposer_share_pct: splitPct, author_nation_id: currentNation.id };
+            const source = document.querySelector('input[name="fund-source"]:checked')?.value || 'general_treasury';
+            articleData = { source };
             break;
         }
         case 'text_article': {
-            const text = document.getElementById('text-article-content')?.value?.trim();
-            if (!text) { alert('Please enter article text.'); return; }
-            articleData = { text };
+            const title = document.getElementById('text-art-title')?.value?.trim() || '';
+            const body = document.getElementById('text-art-body')?.value?.trim() || '';
+            if (!body) { alert('Please enter article body text.'); return; }
+            articleData = { title, body };
             break;
         }
         case 'aid_terms': {
-            const aidType = document.querySelector('input[name="aid-type"]:checked')?.value || 'grant';
-            const amount = Math.max(1, parseInt(document.getElementById('aid-amount')?.value || '100'));
-            const sector = document.getElementById('aid-sector')?.value || '';
-            articleData = { aid_type: aidType, amount_millions: amount, sector, author_nation_id: currentNation.id };
+            const amount = Number(document.getElementById('aid-amount')?.value || 0);
+            const gdpCap = Math.min(25, Math.max(1, parseInt(document.getElementById('aid-gdp-cap')?.value || '10')));
+            if (amount < DIPLOMACY_CONFIG.AID_MIN_AMOUNT) {
+                alert('Minimum aid amount is $' + (DIPLOMACY_CONFIG.AID_MIN_AMOUNT / 1e9).toFixed(0) + 'B.');
+                return;
+            }
+            articleData = { donor_nation_id: currentNation.id, annual_amount: amount, gdp_cap_pct: gdpCap };
             break;
         }
         case 'aid_condition': {
-            const condType = document.getElementById('cond-type')?.value || 'reform';
-            const desc = document.getElementById('cond-desc')?.value?.trim() || '';
-            if (!desc) { alert('Please describe the condition.'); return; }
-            articleData = { condition_type: condType, description: desc };
+            const statKey = document.getElementById('cond-stat')?.value;
+            const operator = document.querySelector('input[name="cond-op"]:checked')?.value || 'gte';
+            const threshold = Math.min(100, Math.max(0, parseInt(document.getElementById('cond-threshold')?.value || '50')));
+            const onFailure = document.querySelector('input[name="cond-fail"]:checked')?.value || 'suspend';
+            const grace = Math.min(2, Math.max(0, parseInt(document.getElementById('cond-grace')?.value || '1')));
+            if (!statKey) { alert('Please select a stat to monitor.'); return; }
+            // Check max conditions
+            const existingConditions = counterTradeArticles.filter(a => a.type === 'aid_condition');
+            if (existingConditions.length >= DIPLOMACY_CONFIG.AID_MAX_CONDITIONS) {
+                alert('Maximum ' + DIPLOMACY_CONFIG.AID_MAX_CONDITIONS + ' conditions per agreement.');
+                return;
+            }
+            articleData = { stat_key: statKey, operator, threshold, on_failure: onFailure, grace_periods: grace };
             break;
         }
         case 'tariff_surcharge': {
             const sector = document.getElementById('surcharge-sector')?.value;
-            const pct = Math.min(200, Math.max(5, parseInt(document.getElementById('surcharge-pct')?.value || '25')));
+            const pct = Math.min(50, Math.max(5, parseInt(document.getElementById('surcharge-pct')?.value || '25')));
             if (!sector) { alert('Please select a sector.'); return; }
-            articleData = { sector, surcharge_pct: pct, author_nation_id: currentNation.id };
+            articleData = { sector, surcharge_pct: pct, imposer_nation_id: currentNation.id };
             break;
+        }
+    }
+
+    // Check non-repeatable constraint
+    const artDef = TRADE_ARTICLE_TYPES[articleType];
+    if (artDef && !artDef.repeatable) {
+        if (counterTradeArticles.some(a => a.type === articleType)) {
+            alert('This article type can only be added once.');
+            return;
         }
     }
 
@@ -6609,13 +6629,19 @@ async function strikeTradeArticles(proposalId) {
 
     if (!proposal) { alert('Could not load proposal.'); return; }
 
-    // Authorization: caller must be target nation's authorized diplomat
+    // Authorization: caller must be an authorized diplomat and it must be their turn
     await refreshRoles();
+    const pd0 = proposal.proposal_data || {};
     const isProposer = proposal.proposing_nation_id === currentNation.id;
     const isTarget = proposal.target_nation_id === currentNation.id;
-    // Either side can counter when it's their turn
-    const isOurTurn = (proposal.status === 'proposed' && isTarget) || (proposal.status === 'revised' && isProposer);
-    if (!isOurTurn || (!diplomaticRoles.isFM && !diplomaticRoles.isHoG && !diplomaticRoles.isMoT)) {
+    // Use revised_by_nation_id to determine whose turn it is
+    const revisedByUs = pd0.revised_by_nation_id === currentNation.id;
+    const isOurTurn = (proposal.status === 'proposed' && isTarget) ||
+        (proposal.status === 'revised' && !revisedByUs && (isProposer || isTarget));
+    // Allow ambassadors, FM, HoG, or MoT to counter
+    const otherNationId = isProposer ? proposal.target_nation_id : proposal.proposing_nation_id;
+    const isAmbToOther = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === otherNationId);
+    if (!isOurTurn || (!isAmbToOther && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !diplomaticRoles.isMoT)) {
         alert('You are not authorized to counter this proposal.');
         return;
     }
@@ -7598,7 +7624,7 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
     }
 
     // Counter panel for trade agreements (hidden by default, toggled by Counter button)
-    if (needsOurAction && isTradeAgreement && articles.length > 0) {
+    if (needsOurAction && isTradeAgreement) {
         html += '<div id="counter-panel-' + p.id + '" style="display:none;margin:8px 0;border:1px solid var(--border-subtle);padding:8px;background:var(--bg-3);">';
         html += '<div style="font-size:10px;color:var(--text-dim);margin-bottom:6px;">Strike articles and/or add new ones:</div>';
 
@@ -7620,7 +7646,7 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
         // Add article dropdown
         const agreementType = pd.agreement_type;
         if (agreementType) {
-            const existingArticles = [...articles, ...addedArticles];
+            const existingArticles = [...articles, ...addedArticles, ...counterTradeArticles];
             const availableTypes = getAvailableArticleTypes(agreementType, existingArticles);
             if (availableTypes.length > 0) {
                 html += '<div style="margin-top:8px;">';
