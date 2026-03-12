@@ -23,7 +23,7 @@
 
 <!-- ===== CONTENT AREA ===== -->
 <div id="content-area">
-    <div class="page-header" style="display:none;"></div>
+    <div class="page-header" id="diplo-header"></div>
     <div class="dashboard">
         <!-- ═══ ROW 1 ═══ -->
         <div class="row">
@@ -339,11 +339,11 @@ async function renderDiploHeader() {
     } catch (e) { console.warn('Error fetching header counts:', e); }
 
     const roleBadges = [];
-    if (diplomaticRoles.isHoG) roleBadges.push('<span class="diplo-role-badge role-hog">Head of Gov</span>');
+    if (diplomaticRoles.isHoG) roleBadges.push('<span class="diplo-role-badge role-hog">' + (isGovernmentAutocracy(currentNation) ? 'Head of Government' : 'Prime Minister') + '</span>');
     if (diplomaticRoles.isFM)  roleBadges.push('<span class="diplo-role-badge role-fm">Foreign Minister</span>');
     if (diplomaticRoles.isMoT) roleBadges.push('<span class="diplo-role-badge role-mot">Minister of Trade</span>');
     diplomaticRoles.ambassadorTo.forEach(a => {
-        roleBadges.push('<span class="diplo-role-badge role-amb">Amb. to ' + escapeHtml(a.target_nation_name) + '</span>');
+        roleBadges.push('<span class="diplo-role-badge role-amb">Ambassador to ' + escapeHtml(a.target_nation_name) + '</span>');
     });
     if (roleBadges.length === 0) {
         roleBadges.push('<span class="diplo-role-badge role-none">No Diplomatic Role</span>');
