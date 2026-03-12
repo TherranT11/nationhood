@@ -763,6 +763,128 @@
   background: rgba(245,158,11,0.06);
 }
 
+/* ── APPOINT AMBASSADOR PANEL ── */
+.appoint-status-bar {
+  display: flex;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-hair);
+  flex-wrap: wrap;
+}
+.appoint-status-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+.appoint-status-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.appoint-status-value {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border: 1px solid var(--border-subtle);
+}
+.appoint-table {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 14px;
+}
+.appoint-table-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border-hair);
+}
+.appoint-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-hair);
+  font-size: 12px;
+  transition: background 0.1s;
+}
+.appoint-row:hover { background: var(--bg-hover); }
+.appoint-row-selected {
+  background: rgba(45,212,191,0.04);
+  border-left: 2px solid var(--teal);
+  margin-left: -2px;
+}
+.appoint-radio {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.appoint-row-selected .appoint-radio { border-color: var(--teal); }
+.appoint-radio-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--teal);
+}
+.appoint-party-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border: 1px solid;
+  color: var(--text-primary);
+}
+.appoint-party-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.appoint-details {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-hair);
+  background: var(--bg-3);
+}
+.appoint-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.appoint-detail-label {
+  color: var(--teal);
+  font-size: 11px;
+  font-weight: 500;
+}
+.appoint-detail-value {
+  color: var(--text-primary);
+  font-weight: 500;
+  text-align: right;
+}
+
 /* ── RESPONSIVE ── */
 @media (max-width: 1080px) {
   .row { flex-direction: column; }

@@ -76,7 +76,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS } from './js/game-common.js';
+import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -121,6 +121,28 @@ let recallSelectedReason = null;
 let recallTargetAmbassador = null;
 let recallTargetRelation = null;
 let recallCachedAmbassadors = null; // cached active ambassador list for panel re-renders
+
+// Appoint Ambassador state
+const APPOINT_AMBASSADOR_AP = 1;
+const AMB_FIRST_NAMES = [
+    'Carlos','Diego','Fernando','Héctor','Marcos','Ramón','José','Luis','Miguel',
+    'Antonio','Roberto','Francisco','Eduardo','Pablo','Alejandro','Rafael','Gabriel',
+    'Santiago','Andrés','Javier','Ricardo','Tomás','Emilio','Sergio','Nicolás',
+    'Arturo','Enrique','Oscar','Felipe','Gonzalo','Ignacio','Mateo','Dante',
+    'Sofia','Isabella','Valentina','Camila','Lucía','Elena','Mariana','Gabriela',
+    'Andrea','Carolina','Paula','Diana','Natalia','Fernanda','Daniela','Laura'
+];
+const AMB_LAST_NAMES = [
+    'Velasco','Salazar','Guerrero','Ríos','Morales','Torres','Mendoza','Castillo',
+    'Herrera','Vargas','Reyes','Cruz','Navarro','Delgado','Ortiz','Romero','Flores',
+    'Ramírez','Guzmán','Medina','Soto','Pacheco','Ibarra','Carrasco','Espinoza',
+    'Montenegro','Echeverría','Valdez','Córdoba','Aguilar','Paredes','Lara'
+];
+let appointTargetNation = null;
+let appointCandidates = [];
+let appointSelectedIndex = null;
+let appointTargetRelation = null;
+let appointCachedExistingAmbs = null; // cache of existing ambassadors for filtering
 
 const INITIATIVE_TYPES = {
     visa_agreement: {
@@ -2245,12 +2267,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
                 <button class="action-btn" disabled style="opacity:0.6;">Awaiting Confirmation: ${escapeHtml(pendName.trim())}${escapeHtml(pendPartyFM)}</button>
                 <button class="action-btn" style="margin-top:8px;" onclick="cancelPendingAmbassador('${pendingAmbassador.id}', '${targetNation.name}')">Cancel Nomination</button>`;
         } else {
-            const urlParams = new URLSearchParams(window.location.search);
-            const adminNation = urlParams.get('nation_id') || sessionStorage.getItem('_admin_nation') || '';
-            const adminFaction = urlParams.get('faction_id') || sessionStorage.getItem('_admin_faction') || '';
-            const adminParams = [adminNation ? 'nation_id=' + adminNation : '', adminFaction ? 'faction_id=' + adminFaction : ''].filter(Boolean).join('&');
-            const ambUrl = 'select-candidate.html?role=ambassador&target=' + targetNation.id + (adminParams ? '&' + adminParams : '');
-            fmButtons = `<button class="action-btn" onclick="window.location.href='${ambUrl}'">Appoint Ambassador</button>`;
+            fmButtons = `<button class="action-btn" onclick="selectDraftAction('appoint_ambassador','Appoint Ambassador',${APPOINT_AMBASSADOR_AP},'fm','fm')">Appoint Ambassador</button>`;
         }
         fmButtons += `<button class="action-btn" style="margin-top:8px;" disabled>Formal Protest (Coming Soon)</button>`;
 
@@ -7348,6 +7365,7 @@ function renderActionsBox() {
     // Foreign Minister
     html += '<div class="role-header' + (hasFM ? '' : ' role-disabled') + '">Foreign Minister</div>';
     [
+        { key: 'appoint_ambassador', label: 'Appoint Ambassador', ap: 1, type: 'fm' },
         { key: 'major_initiative', label: 'Major Diplomatic Initiative', ap: 2, type: 'fm' },
         { key: 'formal_protest', label: 'Formal Protest', ap: 2, type: 'fm' },
         { key: 'covert_ops', label: 'Covert Operations', ap: 4, type: 'fm' },
@@ -7703,6 +7721,12 @@ function renderDraftBox() {
     // Special branch for Recall Ambassador
     if (activeDraftAction.key === 'recall_ambassador') {
         renderRecallAmbassadorPanel(body, statusEl);
+        return;
+    }
+
+    // Special branch for Appoint Ambassador
+    if (activeDraftAction.key === 'appoint_ambassador') {
+        renderAppointAmbassadorPanel(body, statusEl);
         return;
     }
 
@@ -8220,6 +8244,345 @@ async function executeRecallAmbassador() {
     }
 }
 
+// ══════════════════════════════════════════════════════
+// APPOINT AMBASSADOR PANEL
+// ══════════════════════════════════════════════════════
+async function renderAppointAmbassadorPanel(body, statusEl) {
+    if (statusEl) statusEl.textContent = 'Appoint Ambassador';
+
+    // Fetch existing active/pending ambassadors (cached)
+    if (!appointCachedExistingAmbs) {
+        const { data } = await _supabase
+            .from('ambassadors')
+            .select('target_nation_id')
+            .eq('nation_id', currentNation.id)
+            .eq('is_active', true);
+        appointCachedExistingAmbs = (data || []).map(a => a.target_nation_id);
+    }
+
+    // Filter nations: exclude those with existing ambassadors
+    const eligibleNations = cachedOtherNations.filter(n => !appointCachedExistingAmbs.includes(n.id));
+
+    let html = '<div class="draft-panel">';
+
+    // Header with badges
+    html += '<div class="draft-header" style="display:flex;justify-content:space-between;align-items:flex-start;">';
+    html += '<div style="font-family:var(--font-mono);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--teal);">&#9679; Appoint Ambassador</div>';
+    html += '<div style="display:flex;gap:6px;">';
+    html += '<span style="font-family:var(--font-mono);font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--teal);border:1px solid var(--teal-border);padding:2px 6px;">Foreign Minister</span>';
+    html += '<span style="font-family:var(--font-mono);font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);border:1px solid var(--border-subtle);padding:2px 6px;">' + APPOINT_AMBASSADOR_AP + ' AP</span>';
+    html += '</div></div>';
+
+    // Posting dropdown
+    html += '<div style="padding:8px 14px;">';
+    html += '<div class="draft-field"><div class="draft-field-label">Posting</div>';
+    if (eligibleNations.length === 0) {
+        html += '<div class="draft-field-input" style="color:var(--text-dim);">All nations already have ambassadors</div>';
+        html += '</div></div>';
+        html += '<div class="detail-actions" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hair);">';
+        html += '<button class="detail-btn" onclick="cancelDraft()">Cancel</button>';
+        html += '</div></div>';
+        body.innerHTML = html;
+        return;
+    }
+    html += '<select id="appoint-target-select" style="flex:1;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);font-size:12px;padding:4px 8px;" onchange="selectAppointTarget(this.value)">';
+    html += '<option value="">Select a nation...</option>';
+    eligibleNations.forEach(n => {
+        const sel = appointTargetNation && appointTargetNation.id === n.id ? ' selected' : '';
+        html += '<option value="' + n.id + '"' + sel + '>' + escapeHtml(n.name) + '</option>';
+    });
+    html += '</select></div></div>';
+
+    // Status bar + candidate table (shown when target selected)
+    if (appointTargetNation) {
+        const relScore = appointTargetRelation ? appointTargetRelation.relation_score : 35;
+        const relTier = getRelationTier(relScore);
+        const isNationA = currentNation.id < appointTargetNation.id;
+        const embStatus = appointTargetRelation
+            ? (isNationA ? appointTargetRelation.embassy_status_a : appointTargetRelation.embassy_status_b) || 'None'
+            : 'None';
+        const agreementCount = appointTargetRelation?.active_treaties?.length || 0;
+
+        // Status bar
+        html += '<div class="appoint-status-bar">';
+        html += '<div class="appoint-status-item"><span class="appoint-status-label">Status</span> <span class="appoint-status-value" style="color:var(--green);border-color:var(--green-border);">Vacant</span></div>';
+        html += '<div class="appoint-status-item"><span class="appoint-status-label">Relations</span> <span class="appoint-status-value ' + relTier.cssClass + '">' + relTier.label.toUpperCase() + '</span> <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">+' + relScore + '</span></div>';
+        html += '<div class="appoint-status-item"><span class="appoint-status-label">Embassy</span> <span class="appoint-status-value" style="font-weight:600;">' + embStatus.charAt(0).toUpperCase() + embStatus.slice(1) + '</span></div>';
+        html += '<div class="appoint-status-item"><span class="appoint-status-label">Agreements</span> <span class="appoint-status-value" style="color:var(--teal);font-weight:700;">' + agreementCount + '</span></div>';
+        html += '</div>';
+
+        // Candidate table
+        html += '<div style="padding:0 14px;"><div style="font-family:var(--font-mono);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:6px;">Select Candidate</div></div>';
+
+        if (appointCandidates.length === 0) {
+            html += '<div class="empty-state" style="padding:20px 0;"><div class="empty-state-text">No candidates available.</div></div>';
+        } else {
+            html += '<div class="appoint-table">';
+            // Header
+            html += '<div class="appoint-table-header">';
+            html += '<div style="width:28px;"></div>';
+            html += '<div style="flex:2;">Name</div>';
+            html += '<div style="flex:0.7;text-align:center;">Age</div>';
+            html += '<div style="flex:1;text-align:center;">Party</div>';
+            html += '<div style="flex:1;text-align:right;">Experience</div>';
+            html += '</div>';
+
+            appointCandidates.forEach((c, i) => {
+                const isSelected = appointSelectedIndex === i;
+                const selectedClass = isSelected ? ' appoint-row-selected' : '';
+                const exp = Math.max(1, c.age - 26);
+                html += '<div class="appoint-row' + selectedClass + '" onclick="selectAppointCandidate(' + i + ')">';
+                html += '<div style="width:28px;display:flex;align-items:center;justify-content:center;">';
+                html += '<div class="appoint-radio">' + (isSelected ? '<div class="appoint-radio-dot"></div>' : '') + '</div>';
+                html += '</div>';
+                html += '<div style="flex:2;font-weight:500;color:var(--text-primary);">' + escapeHtml(c.firstName) + ' ' + escapeHtml(c.lastName) + '</div>';
+                html += '<div style="flex:0.7;text-align:center;color:var(--text-muted);">' + c.age + '</div>';
+                html += '<div style="flex:1;text-align:center;"><span class="appoint-party-badge" style="border-color:' + c.partyColor + ';"><span class="appoint-party-dot" style="background:' + c.partyColor + ';"></span>' + escapeHtml(c.partyAbbr) + '</span></div>';
+                html += '<div style="flex:1;text-align:right;font-family:var(--font-mono);font-size:11px;color:var(--text-muted);">' + exp + ' yr</div>';
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+    }
+
+    // Footer bar
+    html += '<div class="detail-actions" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hair);">';
+    if (appointSelectedIndex !== null && appointCandidates[appointSelectedIndex]) {
+        const c = appointCandidates[appointSelectedIndex];
+        const exp = Math.max(1, c.age - 26);
+        html += '<span style="font-family:var(--font-mono);font-size:8.5px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);flex:1;">' + escapeHtml(c.firstName) + ' ' + escapeHtml(c.lastName) + ' / ' + escapeHtml(c.partyAbbr) + ' / ' + exp + ' yr exp.</span>';
+    } else {
+        html += '<span style="flex:1;"></span>';
+    }
+    html += '<button class="detail-btn" onclick="cancelDraft()">Cancel</button>';
+    const canNominate = appointTargetNation && appointSelectedIndex !== null;
+    html += '<button class="detail-btn" style="color:' + (canNominate ? 'var(--teal)' : 'var(--text-dim)') + ';border-color:' + (canNominate ? 'var(--teal-border)' : 'var(--border-subtle)') + ';" ' + (canNominate ? 'onclick="executeAppointAmbassador()"' : 'disabled') + '>Nominate (' + APPOINT_AMBASSADOR_AP + ' AP)</button>';
+    html += '</div>';
+
+    // Appointment Details (shown when candidate selected)
+    if (appointSelectedIndex !== null && appointCandidates[appointSelectedIndex] && appointTargetNation) {
+        const c = appointCandidates[appointSelectedIndex];
+        const termTicks = DIPLOMACY_CONFIG.AMBASSADOR_TERM_LENGTH || 60;
+        const termYears = Math.round(termTicks / 12);
+        html += '<div class="appoint-details">';
+        html += '<div style="font-family:var(--font-mono);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--teal);margin-bottom:8px;">&#9679; Appointment Details</div>';
+        html += '<div class="appoint-detail-row"><span class="appoint-detail-label">Nominee</span><span class="appoint-detail-value">' + escapeHtml(c.firstName) + ' ' + escapeHtml(c.lastName) + '</span></div>';
+        html += '<div class="appoint-detail-row"><span class="appoint-detail-label">Party</span><span class="appoint-detail-value"><span class="appoint-party-badge" style="border-color:' + c.partyColor + ';"><span class="appoint-party-dot" style="background:' + c.partyColor + ';"></span>' + escapeHtml(c.partyAbbr) + '</span></span></div>';
+        html += '<div class="appoint-detail-row"><span class="appoint-detail-label">Posting</span><span class="appoint-detail-value">' + escapeHtml(appointTargetNation.name) + '</span></div>';
+        html += '<div class="appoint-detail-row"><span class="appoint-detail-label">Term</span><span class="appoint-detail-value" style="font-family:var(--font-mono);font-size:11px;">' + termTicks + ' ticks (' + termYears + ' years)</span></div>';
+        html += '<div class="appoint-detail-row"><span class="appoint-detail-label">AP Cost</span><span class="appoint-detail-value" style="font-family:var(--font-mono);font-size:11px;">' + APPOINT_AMBASSADOR_AP + ' AP</span></div>';
+        html += '</div>';
+    }
+
+    html += '</div>';
+    body.innerHTML = html;
+}
+
+async function selectAppointTarget(nationId) {
+    if (!nationId) {
+        appointTargetNation = null;
+        appointTargetRelation = null;
+        appointCandidates = [];
+        appointSelectedIndex = null;
+        renderDraftBox();
+        return;
+    }
+
+    // Fetch nation
+    const nation = cachedOtherNations.find(n => n.id === nationId);
+    if (!nation) {
+        const { data } = await _supabase.from('nations').select('*').eq('id', nationId).single();
+        appointTargetNation = data;
+    } else {
+        appointTargetNation = nation;
+    }
+
+    // Fetch relation
+    const natA = currentNation.id < nationId ? currentNation.id : nationId;
+    const natB = currentNation.id < nationId ? nationId : currentNation.id;
+    const { data: rel } = await _supabase
+        .from('diplomatic_relations')
+        .select('*')
+        .eq('nation_a_id', natA)
+        .eq('nation_b_id', natB)
+        .maybeSingle();
+    appointTargetRelation = rel;
+
+    // Generate candidates from all parties in current nation
+    const { data: parties } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, color')
+        .eq('nation_id', currentNation.id);
+
+    appointCandidates = (parties || []).map(p => ({
+        partyId: p.id,
+        partyName: p.faction_name,
+        partyAbbr: p.abbreviation || p.faction_name.substring(0, 3).toUpperCase(),
+        partyColor: p.color || '#888',
+        firstName: AMB_FIRST_NAMES[Math.floor(Math.random() * AMB_FIRST_NAMES.length)],
+        lastName: AMB_LAST_NAMES[Math.floor(Math.random() * AMB_LAST_NAMES.length)],
+        age: 35 + Math.floor(Math.random() * 31)
+    }));
+    appointSelectedIndex = null;
+    renderDraftBox();
+}
+
+function selectAppointCandidate(index) {
+    appointSelectedIndex = appointSelectedIndex === index ? null : index;
+    renderDraftBox();
+}
+
+async function executeAppointAmbassador() {
+    // 1. Auth check
+    await refreshRoles();
+    if (!diplomaticRoles.isFM) {
+        alert('Only the Foreign Minister can appoint ambassadors.');
+        return;
+    }
+
+    // 2. Guard
+    if (!appointTargetNation || appointSelectedIndex === null) {
+        alert('Please select a target nation and candidate.');
+        return;
+    }
+
+    const candidate = appointCandidates[appointSelectedIndex];
+    if (!candidate) { alert('Invalid candidate selection.'); return; }
+
+    // 3. Double-click protection
+    const confirmBtns = document.querySelectorAll('.detail-btn');
+    confirmBtns.forEach(btn => { if (btn.textContent.includes('Nominate')) { btn.disabled = true; btn.style.opacity = '0.5'; } });
+
+    try {
+        // 4. Check for existing ambassador (race condition prevention)
+        const { data: existing } = await _supabase
+            .from('ambassadors')
+            .select('id')
+            .eq('nation_id', currentNation.id)
+            .eq('target_nation_id', appointTargetNation.id)
+            .eq('is_active', true)
+            .maybeSingle();
+        if (existing) {
+            alert('An ambassador is already active or pending for ' + appointTargetNation.name + '.');
+            return;
+        }
+
+        // Check caretaker
+        const coalition = await fetchActiveCoalition(_supabase, currentNation.id);
+        const isAutocracy = isGovernmentAutocracy(currentNation);
+        if (!isAutocracy && coalition?.status === 'caretaker') {
+            alert('Appointments are suspended during caretaker government.');
+            return;
+        }
+
+        // 5. Deduct AP
+        const apResult = await deductAP(_supabase, currentFaction.id, APPOINT_AMBASSADOR_AP);
+        if (!apResult.success) {
+            alert(apResult.error || 'Insufficient AP.');
+            return;
+        }
+        currentFaction.action_points = apResult.newAp;
+
+        // 6. Get current tick
+        const { data: shard } = await _supabase
+            .from('shard')
+            .select('current_tick')
+            .eq('name', 'Alpha Shard')
+            .single();
+        const currentTick = shard?.current_tick || 0;
+
+        // 7. Autocracy vs Democracy
+        let confirmationBillId = null;
+        if (isAutocracy) {
+            const { error: ambError } = await _supabase
+                .from('ambassadors')
+                .insert({
+                    nation_id: currentNation.id,
+                    target_nation_id: appointTargetNation.id,
+                    faction_id: candidate.partyId,
+                    ambassador_first_name: candidate.firstName,
+                    ambassador_last_name: candidate.lastName,
+                    ambassador_age: candidate.age,
+                    status: 'active',
+                    is_active: true,
+                    appointed_at_tick: currentTick
+                });
+            if (ambError) throw ambError;
+        } else {
+            const billName = 'Confirmation of ' + candidate.firstName + ' ' + candidate.lastName + ' as Ambassador to ' + appointTargetNation.name;
+            const preamble = 'This motion, filed by the ' + currentFaction.faction_name + ', confirms the appointment of ' + candidate.firstName + ' ' + candidate.lastName + ' (' + candidate.partyName + ') as Ambassador to ' + appointTargetNation.name + '. A simple majority (51%) is required for confirmation.';
+
+            const { data: nominationResult, error: nominationError } = await _supabase.rpc('create_ambassador_nomination_with_bill', {
+                p_nation_id: currentNation.id,
+                p_target_nation_id: appointTargetNation.id,
+                p_faction_id: candidate.partyId,
+                p_proposed_by: currentFaction.id,
+                p_first_name: candidate.firstName,
+                p_last_name: candidate.lastName,
+                p_age: candidate.age,
+                p_current_tick: currentTick,
+                p_bill_name: billName,
+                p_preamble: preamble,
+                p_voting_ends_tick: currentTick + (DIPLOMACY_CONFIG.AMBASSADOR_CONFIRMATION_VOTING_TICKS || 6)
+            });
+            if (nominationError) throw nominationError;
+
+            const nominationRow = Array.isArray(nominationResult) ? nominationResult[0] : nominationResult;
+            if (!nominationRow?.ambassador_id || !nominationRow?.bill_id) {
+                throw new Error('Ambassador nomination failed: server did not return expected IDs.');
+            }
+            confirmationBillId = nominationRow.bill_id;
+
+            // Auto-cast FM's party votes on confirmation bill
+            const { data: parties } = await _supabase
+                .from('factions')
+                .select('id, faction_name')
+                .eq('nation_id', currentNation.id);
+            const seatData = await loadSeats(_supabase, currentNation.id, false, parties || [], currentFaction.id);
+            const mySeats = seatData.allPartySeats[currentFaction.id] || 0;
+
+            if (mySeats > 0) {
+                await _supabase.from('bill_support').upsert({
+                    bill_id: confirmationBillId,
+                    faction_id: currentFaction.id,
+                    stance: 'yes',
+                    seat_count: mySeats
+                });
+            }
+            await syncVoteTallies(_supabase, confirmationBillId);
+        }
+
+        // 8. Momentum bonus
+        await adjustMomentumAll(_supabase, currentNation.id, candidate.partyId, 1, 'diplomacy:ambassador_selected');
+
+        // 9. Alert result
+        const msg = isAutocracy
+            ? candidate.firstName + ' ' + candidate.lastName + ' has been appointed Ambassador to ' + appointTargetNation.name + '!'
+            : candidate.firstName + ' ' + candidate.lastName + ' has been nominated as Ambassador to ' + appointTargetNation.name + '.\nA confirmation vote has been filed in Parliament.';
+        alert('Ambassador ' + (isAutocracy ? 'Appointed' : 'Nominated') + '\n\n' + msg + '\n\n+1 Momentum to ' + candidate.partyName + '\nCost: ' + APPOINT_AMBASSADOR_AP + ' AP');
+
+        // 10. Reset state
+        appointTargetNation = null;
+        appointCandidates = [];
+        appointSelectedIndex = null;
+        appointTargetRelation = null;
+        appointCachedExistingAmbs = null;
+        activeDraftAction = null;
+        activeDraftTarget = null;
+        document.querySelectorAll('.action-item.is-active').forEach(el => el.classList.remove('is-active'));
+
+        // Refresh UI
+        diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
+        const apEl = document.getElementById('diplo-ap');
+        if (apEl) apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP';
+        await Promise.all([renderRelationsTab(), renderDraftBox()]);
+
+    } catch (e) {
+        console.error('Error appointing ambassador:', e);
+        alert('Error: ' + e.message);
+    }
+}
+
 function cancelDraft() {
     activeDraftAction = null;
     activeDraftTarget = null;
@@ -8229,6 +8592,11 @@ function cancelDraft() {
     recallTargetAmbassador = null;
     recallTargetRelation = null;
     recallCachedAmbassadors = null;
+    appointTargetNation = null;
+    appointCandidates = [];
+    appointSelectedIndex = null;
+    appointTargetRelation = null;
+    appointCachedExistingAmbs = null;
     document.querySelectorAll('.action-item.is-active').forEach(el => el.classList.remove('is-active'));
     renderDraftBox();
 }
@@ -8414,6 +8782,10 @@ window.declineStateVisit = declineStateVisit;
 window.selectRecallTarget = selectRecallTarget;
 window.selectRecallReason = selectRecallReason;
 window.executeRecallAmbassador = executeRecallAmbassador;
+// Appoint Ambassador exports
+window.selectAppointTarget = selectAppointTarget;
+window.selectAppointCandidate = selectAppointCandidate;
+window.executeAppointAmbassador = executeAppointAmbassador;
 </script>
 
 </body>
