@@ -306,12 +306,31 @@ function closeGuide() {
     if (overlayEl) overlayEl.classList.remove('active');
 }
 
+// Tab ID to display label
+const TAB_LABELS = {
+    dashboard: 'Home', nation: 'Nation', government: 'Government',
+    politics: 'Politics', laws: 'Bills', diplomacy: 'Diplomacy',
+    economy: 'Economy', events: 'Events', elections: 'Elections'
+};
+
+// Hidden on dashboard (no guide needed there)
+const HIDDEN_TABS = ['dashboard', 'home'];
+
 // Attach to guide button once DOM is ready
 function attachGuideButton() {
     const btn = document.getElementById('guide-btn');
-    if (btn) {
-        btn.addEventListener('click', openGuide);
+    if (!btn) return;
+
+    const tab = window.__currentTab || 'dashboard';
+    if (HIDDEN_TABS.includes(tab)) {
+        btn.style.display = 'none';
+        return;
     }
+
+    const label = TAB_LABELS[tab] || tab.charAt(0).toUpperCase() + tab.slice(1);
+    btn.textContent = label + ' Guide';
+    btn.style.display = '';
+    btn.addEventListener('click', openGuide);
 }
 
 // Run on import - use MutationObserver in case top bar renders after import
