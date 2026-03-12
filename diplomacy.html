@@ -7961,7 +7961,7 @@ async function renderRecallAmbassadorPanel(body, statusEl) {
     // Action bar
     const canConfirm = recallTargetAmbassador && recallSelectedReason;
     html += '<div class="detail-actions" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hair);">';
-    html += '<button class="detail-btn" onclick="cancelDraft()">Cancel</button>';
+    html += '<button class="detail-btn" style="color:var(--text-muted);" onclick="cancelDraft()">Cancel</button>';
     html += '<button class="detail-btn" style="color:' + (canConfirm ? 'var(--red)' : 'var(--text-dim)') + ';border-color:' + (canConfirm ? 'var(--red-border)' : 'var(--border-subtle)') + ';" ' + (canConfirm ? 'onclick="executeRecallAmbassador()"' : 'disabled') + '>Recall Ambassador (' + DIPLOMACY_CONFIG.RECALL_AMBASSADOR_AP + ' AP)</button>';
     html += '</div>';
 
@@ -8020,8 +8020,8 @@ function selectRecallReason(key) {
 async function executeRecallAmbassador() {
     // 1. Auth check
     await refreshRoles();
-    if (!diplomaticRoles.isHoG) {
-        alert('Only the Head of Government can recall ambassadors.');
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can recall ambassadors.');
         return;
     }
 
