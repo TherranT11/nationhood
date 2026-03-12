@@ -36,7 +36,7 @@ import { escapeHtml } from './js/utils.js';
 import { fetchPage, fetchPageList, fetchExistingSlugs, renderWikiLinks, renderInfobox, slugify, fetchFactionNames } from './js/wiki.js';
 
 initPage('wiki', async (state) => {
-    const { nation } = state;
+    const { faction } = state;
     const root = document.getElementById('wiki-root');
     const params = new URLSearchParams(window.location.search);
     const slug = params.get('slug') || 'home';
@@ -45,7 +45,7 @@ initPage('wiki', async (state) => {
     if (slug === 'home') {
         let allPages = [];
         try {
-            allPages = await fetchPageList(_supabase, nation.id);
+            allPages = await fetchPageList(_supabase);
         } catch (_) {}
 
         // Important pages = pages with a template type
@@ -94,8 +94,8 @@ initPage('wiki', async (state) => {
                 <div class="wiki-home-card">
                     <div class="wiki-home-card-title">About</div>
                     <div class="wiki-home-card-body">
-                        <p>Welcome to the <strong>${escapeHtml(nation.name)}</strong> wiki — the living encyclopedia of your nation.</p>
-                        <p>Document your nation's history, key figures, corporations, religions, and cultures. Every faction can create and edit pages. Use <code>[[Page Name]]</code> in the editor to link between pages.</p>
+                        <p>Welcome to the <strong>Nationhood Wiki</strong> — the living encyclopedia of your world.</p>
+                        <p>Document nations, history, key figures, corporations, religions, and cultures. Every player can create and edit pages. Use <code>[[Page Name]]</code> in the editor to link between pages.</p>
                         <p><strong>${allPages.length}</strong> page${allPages.length !== 1 ? 's' : ''} and counting.</p>
                     </div>
                 </div>
@@ -148,7 +148,7 @@ initPage('wiki', async (state) => {
     // --- REGULAR PAGE VIEW ---
     let page;
     try {
-        page = await fetchPage(_supabase, nation.id, slug);
+        page = await fetchPage(_supabase, slug);
     } catch (err) {
         root.innerHTML = `<div class="wiki-empty"><h2>Error</h2><p>${escapeHtml(err.message)}</p></div>`;
         return;
@@ -172,7 +172,7 @@ initPage('wiki', async (state) => {
     // Fetch existing slugs for link colouring
     let existingSlugs = new Set();
     try {
-        existingSlugs = await fetchExistingSlugs(_supabase, nation.id);
+        existingSlugs = await fetchExistingSlugs(_supabase);
     } catch (_) { /* non-critical */ }
 
     const bodyHtml = renderWikiLinks(page.body || '<p><em>This page is empty.</em></p>', existingSlugs);
@@ -205,7 +205,6 @@ initPage('wiki', async (state) => {
         const { data: byTitle } = await _supabase
             .from('wiki_pages')
             .select('slug, title')
-            .eq('nation_id', nation.id)
             .neq('slug', page.slug)
             .ilike('body', `%[[${page.title}]]%`);
         backlinks = byTitle || [];
@@ -215,7 +214,6 @@ initPage('wiki', async (state) => {
             const { data: bySlug } = await _supabase
                 .from('wiki_pages')
                 .select('slug, title')
-                .eq('nation_id', nation.id)
                 .neq('slug', page.slug)
                 .ilike('body', `%[[${page.slug}]]%`);
             if (bySlug) {
@@ -235,7 +233,7 @@ initPage('wiki', async (state) => {
         : '';
 
     // Check if current faction is the creator (for lock indicator)
-    const isCreator = page.created_by === state.faction.id;
+    const isCreator = page.created_by === faction.id;
     const isLocked = !!page.locked_by;
     const lockHtml = isLocked
         ? `<span class="wiki-lock-badge" title="Locked by creator — only they can edit">Locked</span>`
