@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wiki | Nationhood Alpha</title>
+<link rel="stylesheet" href="css/dashboard.css">
+<link rel="stylesheet" href="css/wiki.css">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="top-bar"></div>
+
+<div class="wiki-container" id="wiki-root">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:40vh;">
+    <div class="loading-container">
+      <div class="loading-spinner"></div>
+      <div style="color:var(--text-secondary)">Loading wiki...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Wiki defaults to light mode — apply immediately to prevent flash
+(function() {
+    const saved = localStorage.getItem('nationhood_theme');
+    if (saved !== 'dark') {
+        document.body.classList.add('light-mode');
+    }
+})();
+</script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage } from './js/common.js';
+import { escapeHtml } from './js/utils.js';
+import { fetchPage, fetchPageList, fetchExistingSlugs, renderWikiLinks, renderInfobox, slugify, fetchFactionNames } from './js/wiki.js';
+
+initPage('wiki', async (state) => {
+    const { nation } = state;
+    const root = document.getElementById('wiki-root');
+    const params = new URLSearchParams(window.location.search);
+    const slug = params.get('slug') || 'home';
+
+    // --- HOME PAGE: curated landing ---
+    if (slug === 'home') {
+        let allPages = [];
+        try {
+            allPages = await fetchPageList(_supabase, nation.id);
+        } catch (_) {}
+
+        // Important pages = pages with a template type
+        const importantPages = allPages.filter(p => p.template_type);
+        // Recent pages = last 10 updated
+        const recentPages = [...allPages]
+            .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
+            .slice(0, 10);
+
+        const importantHtml = importantPages.length
+            ? importantPages.map(p => {
+                const badge = p.template_type
+                    ? `<span class="wiki-page-row-type">${escapeHtml(p.template_type)}</span>`
+                    : '';
+                return `<a href="wiki.html?slug=${encodeURIComponent(p.slug)}" class="wiki-page-row">
+                    <span class="wiki-page-row-title">${escapeHtml(p.title)}</span>${badge}
+                </a>`;
+            }).join('')
+            : '<p style="color:var(--text-muted);font-size:13px;padding:10px 0;">No pages with templates yet. Create a Nation, Person, Corporation, Religion, or Culture page to see it here.</p>';
+
+        const recentHtml = recentPages.length
+            ? recentPages.map(p => {
+                const updated = p.updated_at ? new Date(p.updated_at).toLocaleDateString() : '';
+                return `<a href="wiki.html?slug=${encodeURIComponent(p.slug)}" class="wiki-page-row">
+                    <span class="wiki-page-row-title">${escapeHtml(p.title)}</span>
+                    <span class="wiki-page-row-meta">${updated}</span>
+                </a>`;
+            }).join('')
+            : '<p style="color:var(--text-muted);font-size:13px;padding:10px 0;">No pages yet.</p>';
+
+        root.innerHTML = `
+            <div class="wiki-page-header">
+                <h1 class="wiki-page-title">Wiki</h1>
+                <div class="wiki-header-actions">
+                    <a href="wiki-edit.html?new=1" class="wiki-btn wiki-btn-primary">New Page</a>
+                    <a href="wiki-list.html" class="wiki-btn">All Pages</a>
+                </div>
+            </div>
+
+            <div class="wiki-search-bar" style="margin-top:16px;position:relative;">
+                <input type="text" class="wiki-search-input" id="wiki-home-search" placeholder="Search wiki pages..." style="width:100%;">
+                <div id="wiki-search-results" class="wiki-search-dropdown"></div>
+            </div>
+
+            <div class="wiki-home-section" style="margin-top:20px;">
+                <div class="wiki-home-card">
+                    <div class="wiki-home-card-title">About</div>
+                    <div class="wiki-home-card-body">
+                        <p>Welcome to the <strong>${escapeHtml(nation.name)}</strong> wiki — the living encyclopedia of your nation.</p>
+                        <p>Document your nation's history, key figures, corporations, religions, and cultures. Every faction can create and edit pages. Use <code>[[Page Name]]</code> in the editor to link between pages.</p>
+                        <p><strong>${allPages.length}</strong> page${allPages.length !== 1 ? 's' : ''} and counting.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="wiki-home-columns">
+                <div class="wiki-home-section">
+                    <div class="wiki-home-card">
+                        <div class="wiki-home-card-title">Important Pages</div>
+                        <div class="wiki-page-list">${importantHtml}</div>
+                    </div>
+                </div>
+                <div class="wiki-home-section">
+                    <div class="wiki-home-card">
+                        <div class="wiki-home-card-title">Recently Updated</div>
+                        <div class="wiki-page-list">${recentHtml}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // --- Home page search ---
+        const searchInput = document.getElementById('wiki-home-search');
+        const searchResults = document.getElementById('wiki-search-results');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                const q = searchInput.value.trim().toLowerCase();
+                if (!q) { searchResults.innerHTML = ''; searchResults.style.display = 'none'; return; }
+                const matches = allPages.filter(p => p.title.toLowerCase().includes(q)).slice(0, 8);
+                if (!matches.length) {
+                    searchResults.innerHTML = `<div class="wiki-search-item wiki-search-empty">No pages match "${escapeHtml(q)}"</div>
+                        <a href="wiki-edit.html?new=1&title=${encodeURIComponent(searchInput.value.trim())}" class="wiki-search-item wiki-search-create">Create "${escapeHtml(searchInput.value.trim())}"</a>`;
+                } else {
+                    searchResults.innerHTML = matches.map(p =>
+                        `<a href="wiki.html?slug=${encodeURIComponent(p.slug)}" class="wiki-search-item">${escapeHtml(p.title)}${p.template_type ? ` <span class="wiki-page-row-type">${escapeHtml(p.template_type)}</span>` : ''}</a>`
+                    ).join('');
+                }
+                searchResults.style.display = 'block';
+            });
+            document.addEventListener('click', (e) => {
+                if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+                    searchResults.style.display = 'none';
+                }
+            });
+        }
+
+        return;
+    }
+
+    // --- REGULAR PAGE VIEW ---
+    let page;
+    try {
+        page = await fetchPage(_supabase, nation.id, slug);
+    } catch (err) {
+        root.innerHTML = `<div class="wiki-empty"><h2>Error</h2><p>${escapeHtml(err.message)}</p></div>`;
+        return;
+    }
+
+    if (!page) {
+        root.innerHTML = `
+            <div class="wiki-empty">
+                <h2>Page Not Found</h2>
+                <p>The wiki page "<strong>${escapeHtml(slug)}</strong>" doesn't exist yet.</p>
+                <a href="wiki-edit.html?new=1&title=${encodeURIComponent(slug)}" class="wiki-btn wiki-btn-primary">Create This Page</a>
+                <div style="margin-top:12px;">
+                    <a href="wiki.html" class="wiki-btn">Wiki Home</a>
+                    <a href="wiki-list.html" class="wiki-btn">All Pages</a>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    // Fetch existing slugs for link colouring
+    let existingSlugs = new Set();
+    try {
+        existingSlugs = await fetchExistingSlugs(_supabase, nation.id);
+    } catch (_) { /* non-critical */ }
+
+    const bodyHtml = renderWikiLinks(page.body || '<p><em>This page is empty.</em></p>', existingSlugs);
+    const infoboxHtml = renderInfobox(page);
+
+    // Fetch faction names for attribution
+    const factionIds = [page.created_by, page.updated_by].filter(Boolean);
+    const factionNames = await fetchFactionNames(_supabase, factionIds);
+    const createdName = factionNames[page.created_by] || null;
+    const updatedName = factionNames[page.updated_by] || null;
+    const createdDate = page.created_at ? new Date(page.created_at).toLocaleDateString() : '';
+    const updatedDate = page.updated_at ? new Date(page.updated_at).toLocaleDateString() : '';
+
+    let metaHtml = '';
+    const metaParts = [];
+    if (createdName) metaParts.push(`Created by <strong>${escapeHtml(createdName)}</strong> on ${createdDate}`);
+    if (updatedName && page.updated_by !== page.created_by) {
+        metaParts.push(`Last edited by <strong>${escapeHtml(updatedName)}</strong> on ${updatedDate}`);
+    } else if (updatedDate && updatedDate !== createdDate) {
+        metaParts.push(`Last edited on ${updatedDate}`);
+    }
+    if (metaParts.length) {
+        metaHtml = `<div class="wiki-page-meta">${metaParts.join(' · ')}</div>`;
+    }
+
+    // Find backlinks — pages whose body contains [[This Page Title]] or [[slug]]
+    let backlinks = [];
+    try {
+        // Search by title match
+        const { data: byTitle } = await _supabase
+            .from('wiki_pages')
+            .select('slug, title')
+            .eq('nation_id', nation.id)
+            .neq('slug', page.slug)
+            .ilike('body', `%[[${page.title}]]%`);
+        backlinks = byTitle || [];
+
+        // Also search by slug if different from title
+        if (page.slug !== slugify(page.title)) {
+            const { data: bySlug } = await _supabase
+                .from('wiki_pages')
+                .select('slug, title')
+                .eq('nation_id', nation.id)
+                .neq('slug', page.slug)
+                .ilike('body', `%[[${page.slug}]]%`);
+            if (bySlug) {
+                const existingSlugs2 = new Set(backlinks.map(b => b.slug));
+                bySlug.forEach(b => { if (!existingSlugs2.has(b.slug)) backlinks.push(b); });
+            }
+        }
+    } catch (_) {}
+
+    const backlinksHtml = backlinks.length
+        ? `<div class="wiki-backlinks">
+            <div class="wiki-backlinks-title">What links here</div>
+            <div class="wiki-backlinks-list">${backlinks.map(b =>
+                `<a href="wiki.html?slug=${encodeURIComponent(b.slug)}" class="wiki-backlink-item">${escapeHtml(b.title)}</a>`
+            ).join('')}</div>
+           </div>`
+        : '';
+
+    // Check if current faction is the creator (for lock indicator)
+    const isCreator = page.created_by === state.faction.id;
+    const isLocked = !!page.locked_by;
+    const lockHtml = isLocked
+        ? `<span class="wiki-lock-badge" title="Locked by creator — only they can edit">Locked</span>`
+        : '';
+
+    const canEdit = !isLocked || isCreator;
+    const editBtnHtml = canEdit
+        ? `<a href="wiki-edit.html?slug=${encodeURIComponent(page.slug)}" class="wiki-btn">Edit</a>`
+        : `<span class="wiki-btn wiki-btn-disabled" title="This page is locked by its creator">Locked</span>`;
+
+    root.innerHTML = `
+        <div class="wiki-page-header">
+            <h1 class="wiki-page-title">${escapeHtml(page.title)} ${lockHtml}</h1>
+            <div class="wiki-header-actions">
+                ${editBtnHtml}
+                <a href="wiki.html" class="wiki-btn">Wiki Home</a>
+                <a href="wiki-list.html" class="wiki-btn">All Pages</a>
+            </div>
+        </div>
+        ${metaHtml}
+        <div class="wiki-page-layout">
+            <div class="wiki-body-col">
+                <div class="wiki-body-content">${bodyHtml}</div>
+                ${backlinksHtml}
+            </div>
+            ${infoboxHtml}
+        </div>
+    `;
+});
+</script>
+</body>
+</html>

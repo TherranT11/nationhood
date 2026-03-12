@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wiki Pages | Nationhood Alpha</title>
+<link rel="stylesheet" href="css/dashboard.css">
+<link rel="stylesheet" href="css/wiki.css">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="top-bar"></div>
+
+<div class="wiki-container" id="wiki-root">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:40vh;">
+    <div class="loading-container">
+      <div class="loading-spinner"></div>
+      <div style="color:var(--text-secondary)">Loading pages...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Wiki defaults to light mode — apply immediately to prevent flash
+(function() {
+    const saved = localStorage.getItem('nationhood_theme');
+    if (saved !== 'dark') {
+        document.body.classList.add('light-mode');
+    }
+})();
+</script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage } from './js/common.js';
+import { escapeHtml } from './js/utils.js';
+import { fetchPageList } from './js/wiki.js';
+
+const TEMPLATE_TYPES = ['nation', 'person', 'corporation', 'religion', 'culture'];
+
+initPage('wiki', async (state) => {
+    const { nation } = state;
+    const root = document.getElementById('wiki-root');
+
+    let pages = [];
+    try {
+        pages = await fetchPageList(_supabase, nation.id);
+    } catch (err) {
+        root.innerHTML = `<div class="wiki-empty"><h2>Error</h2><p>${escapeHtml(err.message)}</p></div>`;
+        return;
+    }
+
+    let activeFilter = 'all';
+    let searchTerm = '';
+
+    function render() {
+        const filtered = pages.filter(p => {
+            if (activeFilter !== 'all' && p.template_type !== activeFilter) return false;
+            if (searchTerm && !p.title.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+            return true;
+        });
+
+        const filterBtns = ['all', ...TEMPLATE_TYPES].map(f => {
+            const label = f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1);
+            return `<button class="wiki-filter-btn ${f === activeFilter ? 'active' : ''}" data-filter="${f}">${label}</button>`;
+        }).join('');
+
+        const rowsHtml = filtered.length
+            ? filtered.map(p => {
+                const typeBadge = p.template_type
+                    ? `<span class="wiki-page-row-type">${escapeHtml(p.template_type)}</span>`
+                    : '';
+                const lockBadge = p.locked_by
+                    ? `<span class="wiki-lock-badge">Locked</span>`
+                    : '';
+                const updated = p.updated_at
+                    ? new Date(p.updated_at).toLocaleDateString()
+                    : '';
+                return `
+                    <a href="wiki.html?slug=${encodeURIComponent(p.slug)}" class="wiki-page-row">
+                        <span class="wiki-page-row-title">${escapeHtml(p.title)}</span>
+                        ${lockBadge}
+                        ${typeBadge}
+                        <span class="wiki-page-row-meta">${updated}</span>
+                    </a>
+                `;
+            }).join('')
+            : `<div class="wiki-empty" style="padding:30px"><p>No pages found.</p></div>`;
+
+        root.innerHTML = `
+            <div class="wiki-list-header">
+                <h1>Wiki</h1>
+                <div class="wiki-list-filters">
+                    <input type="text" class="wiki-search-input" id="wiki-search" placeholder="Search pages..." value="${escapeHtml(searchTerm)}">
+                    ${filterBtns}
+                    <a href="wiki.html" class="wiki-btn">Wiki Home</a>
+                    <a href="wiki-edit.html?new=1" class="wiki-btn wiki-btn-primary">New Page</a>
+                </div>
+            </div>
+            <div class="wiki-page-list">${rowsHtml}</div>
+        `;
+
+        // Bind events
+        document.getElementById('wiki-search').addEventListener('input', (e) => {
+            searchTerm = e.target.value;
+            render();
+        });
+
+        root.querySelectorAll('.wiki-filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                activeFilter = btn.dataset.filter;
+                render();
+            });
+        });
+
+        // Restore focus to search if user was typing
+        if (searchTerm) {
+            const input = document.getElementById('wiki-search');
+            input.focus();
+            input.setSelectionRange(input.value.length, input.value.length);
+        }
+    }
+
+    render();
+});
+</script>
+</body>
+</html>

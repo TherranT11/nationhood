@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edit Wiki | Nationhood Alpha</title>
+<link rel="stylesheet" href="css/dashboard.css">
+<link rel="stylesheet" href="css/wiki.css">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+</head>
+<body>
+<div id="top-bar"></div>
+
+<div class="wiki-container" id="wiki-root">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:40vh;">
+    <div class="loading-container">
+      <div class="loading-spinner"></div>
+      <div style="color:var(--text-secondary)">Loading editor...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Wiki defaults to light mode — apply immediately to prevent flash
+(function() {
+    const saved = localStorage.getItem('nationhood_theme');
+    if (saved !== 'dark') {
+        document.body.classList.add('light-mode');
+    }
+})();
+</script>
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage } from './js/common.js';
+import { escapeHtml } from './js/utils.js';
+import { slugify, fetchPage, uploadWikiImage } from './js/wiki.js';
+
+const TEMPLATE_TYPES = [
+    { value: '', label: 'None' },
+    { value: 'nation', label: 'Nation' },
+    { value: 'person', label: 'Person' },
+    { value: 'corporation', label: 'Corporation' },
+    { value: 'religion', label: 'Religion' },
+    { value: 'culture', label: 'Culture' }
+];
+
+initPage('wiki', async (state) => {
+    const { faction, nation } = state;
+    const root = document.getElementById('wiki-root');
+    const params = new URLSearchParams(window.location.search);
+    const isNew = params.has('new');
+    const editSlug = params.get('slug');
+
+    let existingPage = null;
+    if (editSlug && !isNew) {
+        try {
+            existingPage = await fetchPage(_supabase, nation.id, editSlug);
+        } catch (err) {
+            root.innerHTML = `<div class="wiki-empty"><h2>Error</h2><p>${escapeHtml(err.message)}</p></div>`;
+            return;
+        }
+        if (!existingPage) {
+            root.innerHTML = `<div class="wiki-empty"><h2>Page Not Found</h2><p><a href="wiki-list.html" class="wiki-btn">Back to Wiki</a></p></div>`;
+            return;
+        }
+    }
+
+    // Check page lock
+    if (existingPage && existingPage.locked_by && existingPage.locked_by !== faction.id) {
+        root.innerHTML = `<div class="wiki-empty"><h2>Page Locked</h2><p>This page is locked by its creator. Only they can edit it.</p>
+            <a href="wiki.html?slug=${encodeURIComponent(existingPage.slug)}" class="wiki-btn">Back to Page</a></div>`;
+        return;
+    }
+
+    // Initial values
+    const initTitle = existingPage ? existingPage.title : (params.get('title') || '');
+    const initBody = existingPage ? existingPage.body : '';
+    const initTemplateType = existingPage ? (existingPage.template_type || '') : '';
+    const initTemplateData = existingPage && Array.isArray(existingPage.template_data) ? existingPage.template_data : [];
+    let infoboxImageUrl = existingPage ? (existingPage.infobox_image || '') : '';
+    const isCreator = existingPage ? existingPage.created_by === faction.id : true;
+    const isLocked = existingPage ? !!existingPage.locked_by : false;
+
+    // Build template options
+    const templateOpts = TEMPLATE_TYPES.map(t =>
+        `<option value="${t.value}" ${t.value === initTemplateType ? 'selected' : ''}>${t.label}</option>`
+    ).join('');
+
+    // Fetch existing images for gallery
+    let existingImages = [];
+    try {
+        const { data } = await _supabase.storage.from('wiki-images').list(nation.id, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+        if (data) {
+            existingImages = data.filter(f => /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(f.name)).map(f => {
+                const { data: urlData } = _supabase.storage.from('wiki-images').getPublicUrl(`${nation.id}/${f.name}`);
+                return { name: f.name, url: urlData?.publicUrl || '' };
+            }).filter(f => f.url);
+        }
+    } catch (_) {}
+
+    const galleryHtml = existingImages.length
+        ? `<div class="wiki-image-gallery" id="image-gallery" style="display:none;">
+            <div class="wiki-infobox-editor-title">Existing Images <button class="wiki-btn" id="close-gallery" type="button" style="float:right;font-size:10px;">Close</button></div>
+            <div class="wiki-gallery-grid">${existingImages.map(img =>
+                `<img src="${escapeHtml(img.url)}" class="wiki-gallery-thumb" data-url="${escapeHtml(img.url)}" title="${escapeHtml(img.name)}">`
+            ).join('')}</div>
+           </div>`
+        : '';
+
+    root.innerHTML = `
+        <div class="wiki-editor-form">
+            <div class="wiki-page-header">
+                <h1 class="wiki-page-title">${existingPage ? 'Edit Page' : 'New Page'}</h1>
+                <div class="wiki-header-actions">
+                    ${existingPage ? `<a href="wiki.html?slug=${encodeURIComponent(existingPage.slug)}" class="wiki-btn">View Page</a>` : ''}
+                    <a href="wiki.html" class="wiki-btn">Wiki Home</a>
+                    <a href="wiki-list.html" class="wiki-btn">All Pages</a>
+                </div>
+            </div>
+
+            <div class="wiki-field">
+                <label for="wiki-title">Title</label>
+                <input type="text" id="wiki-title" class="wiki-input" value="${escapeHtml(initTitle)}" placeholder="Page title..." maxlength="200">
+            </div>
+
+            ${existingPage ? `<div class="wiki-field">
+                <label for="wiki-slug">Slug (URL)</label>
+                <input type="text" id="wiki-slug" class="wiki-input" value="${escapeHtml(existingPage.slug)}" placeholder="page-slug" maxlength="200">
+                <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">Changing the slug will break existing wiki links to this page.</div>
+            </div>` : ''}
+
+            ${isCreator ? `<div class="wiki-field" style="display:flex;align-items:center;gap:10px;">
+                <label class="wiki-lock-toggle" style="margin:0;display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" id="wiki-lock" ${isLocked ? 'checked' : ''}>
+                    <span style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--text-secondary);">Lock page (only you can edit)</span>
+                </label>
+            </div>` : ''}
+
+            <div class="wiki-field">
+                <label for="wiki-template">Template</label>
+                <select id="wiki-template" class="wiki-select">${templateOpts}</select>
+            </div>
+
+            <div id="infobox-section" class="wiki-infobox-editor" style="display:${initTemplateType ? 'block' : 'none'}">
+                <div class="wiki-infobox-editor-title">Infobox</div>
+
+                <div class="wiki-image-upload-area">
+                    <img class="wiki-image-preview" id="infobox-preview"
+                         src="${infoboxImageUrl || 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22><rect fill=%22%23252525%22 width=%2280%22 height=%2280%22/><text x=%2240%22 y=%2244%22 text-anchor=%22middle%22 fill=%22%23666%22 font-size=%2211%22>No image</text></svg>'}"
+                         alt="Infobox image">
+                    <div>
+                        <input type="file" id="infobox-file" accept="image/*" style="display:none">
+                        <button class="wiki-btn" id="infobox-upload-btn" type="button">Upload Image</button>
+                        ${infoboxImageUrl ? '<button class="wiki-btn wiki-btn-danger" id="infobox-remove-img" type="button" style="margin-left:6px">Remove</button>' : ''}
+                    </div>
+                </div>
+
+                <div class="wiki-infobox-editor-title" style="margin-top:8px;">Details</div>
+                <div id="kv-rows"></div>
+                <button class="wiki-btn" id="add-kv-btn" type="button" style="margin-top:6px;">+ Add Row</button>
+            </div>
+
+            <div class="wiki-field">
+                <label>Content ${existingImages.length ? '<button class="wiki-btn" id="toggle-gallery" type="button" style="float:right;font-size:10px;">Browse Images</button>' : ''}</label>
+                <div id="quill-editor"></div>
+                ${galleryHtml}
+            </div>
+
+            <div class="wiki-editor-actions">
+                <div class="wiki-editor-actions-left">
+                    <button class="wiki-btn wiki-btn-primary" id="save-btn" type="button">Save Page</button>
+                    <a href="${existingPage ? `wiki.html?slug=${encodeURIComponent(existingPage.slug)}` : 'wiki-list.html'}" class="wiki-btn">Cancel</a>
+                </div>
+                ${existingPage ? '<button class="wiki-btn wiki-btn-danger" id="delete-btn" type="button">Delete Page</button>' : ''}
+            </div>
+
+            <div id="wiki-status" style="margin-top:10px;font-size:12px;color:var(--text-secondary);"></div>
+        </div>
+    `;
+
+    // --- Quill Editor ---
+    const quill = new Quill('#quill-editor', {
+        theme: 'snow',
+        placeholder: 'Write your page content here... Use [[Page Name]] to link to other wiki pages.',
+        modules: {
+            toolbar: {
+                container: [
+                    [{ header: [1, 2, 3, false] }],
+                    ['bold', 'italic', 'underline'],
+                    [{ list: 'ordered' }, { list: 'bullet' }],
+                    ['link', 'image', 'wiki-link'],
+                    ['clean']
+                ],
+                handlers: {
+                    image: imageHandler,
+                    'wiki-link': wikiLinkHandler
+                }
+            }
+        }
+    });
+
+    if (initBody) {
+        quill.root.innerHTML = initBody;
+    }
+
+    // Label the custom wiki-link toolbar button
+    const wikiLinkBtn = document.querySelector('.ql-wiki-link');
+    if (wikiLinkBtn) {
+        wikiLinkBtn.innerHTML = '[[]]';
+        wikiLinkBtn.title = 'Insert wiki link';
+        wikiLinkBtn.style.cssText = 'font-size:11px;font-weight:700;width:auto;padding:0 4px;color:var(--text-secondary);';
+    }
+
+    // Wiki-link handler — wraps selected text in [[brackets]] or prompts for page name
+    function wikiLinkHandler() {
+        const range = quill.getSelection(true);
+        if (range.length > 0) {
+            const text = quill.getText(range.index, range.length);
+            quill.deleteText(range.index, range.length);
+            quill.insertText(range.index, `[[${text}]]`);
+            quill.setSelection(range.index + text.length + 4);
+        } else {
+            const pageName = prompt('Enter the wiki page name to link to:');
+            if (pageName) {
+                quill.insertText(range.index, `[[${pageName}]]`);
+                quill.setSelection(range.index + pageName.length + 4);
+            }
+        }
+    }
+
+    // Custom image handler — upload to Supabase Storage then insert
+    async function imageHandler() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = async () => {
+            const file = input.files[0];
+            if (!file) return;
+            const statusEl = document.getElementById('wiki-status');
+            statusEl.textContent = 'Uploading image...';
+            try {
+                const url = await uploadWikiImage(_supabase, nation.id, file);
+                const range = quill.getSelection(true);
+                quill.insertEmbed(range.index, 'image', url);
+                quill.setSelection(range.index + 1);
+                statusEl.textContent = '';
+            } catch (err) {
+                statusEl.textContent = 'Image upload failed: ' + err.message;
+                statusEl.style.color = 'var(--red)';
+            }
+        };
+        input.click();
+    }
+
+    // --- Template selector ---
+    document.getElementById('wiki-template').addEventListener('change', (e) => {
+        document.getElementById('infobox-section').style.display = e.target.value ? 'block' : 'none';
+    });
+
+    // --- Infobox image upload ---
+    document.getElementById('infobox-upload-btn').addEventListener('click', () => {
+        document.getElementById('infobox-file').click();
+    });
+
+    document.getElementById('infobox-file').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const statusEl = document.getElementById('wiki-status');
+        const btn = document.getElementById('infobox-upload-btn');
+        btn.textContent = 'Uploading...';
+        btn.disabled = true;
+        try {
+            infoboxImageUrl = await uploadWikiImage(_supabase, nation.id, file);
+            document.getElementById('infobox-preview').src = infoboxImageUrl;
+            btn.textContent = 'Upload Image';
+            btn.disabled = false;
+            statusEl.textContent = '';
+        } catch (err) {
+            btn.textContent = 'Upload Image';
+            btn.disabled = false;
+            statusEl.textContent = 'Image upload failed: ' + err.message;
+            statusEl.style.color = 'var(--red)';
+        }
+    });
+
+    const removeImgBtn = document.getElementById('infobox-remove-img');
+    if (removeImgBtn) {
+        removeImgBtn.addEventListener('click', () => {
+            infoboxImageUrl = '';
+            document.getElementById('infobox-preview').src = 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22><rect fill=%22%23252525%22 width=%2280%22 height=%2280%22/><text x=%2240%22 y=%2244%22 text-anchor=%22middle%22 fill=%22%23666%22 font-size=%2211%22>No image</text></svg>';
+            removeImgBtn.remove();
+        });
+    }
+
+    // --- Key-Value rows ---
+    const kvContainer = document.getElementById('kv-rows');
+
+    function addKvRow(label = '', value = '') {
+        const row = document.createElement('div');
+        row.className = 'wiki-kv-row';
+        row.innerHTML = `
+            <input type="text" placeholder="Label" value="${escapeHtml(label)}" class="kv-label">
+            <input type="text" placeholder="Value" value="${escapeHtml(value)}" class="kv-value">
+            <button type="button" class="wiki-kv-remove">&times;</button>
+        `;
+        row.querySelector('.wiki-kv-remove').addEventListener('click', () => row.remove());
+        kvContainer.appendChild(row);
+    }
+
+    // Populate existing rows
+    initTemplateData.forEach(r => addKvRow(r.label, r.value));
+
+    document.getElementById('add-kv-btn').addEventListener('click', () => addKvRow());
+
+    // --- Collect KV data ---
+    function getTemplateData() {
+        const rows = [];
+        kvContainer.querySelectorAll('.wiki-kv-row').forEach(row => {
+            const label = row.querySelector('.kv-label').value.trim();
+            const value = row.querySelector('.kv-value').value.trim();
+            if (label || value) rows.push({ label, value });
+        });
+        return rows;
+    }
+
+    // --- Unsaved changes tracking ---
+    let _dirty = false;
+    const markDirty = () => { _dirty = true; };
+    document.getElementById('wiki-title').addEventListener('input', markDirty);
+    document.getElementById('wiki-template').addEventListener('change', markDirty);
+    quill.on('text-change', markDirty);
+    const slugInput = document.getElementById('wiki-slug');
+    if (slugInput) slugInput.addEventListener('input', markDirty);
+    window.addEventListener('beforeunload', (e) => {
+        if (_dirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+
+    // --- Save ---
+    document.getElementById('save-btn').addEventListener('click', async () => {
+        const title = document.getElementById('wiki-title').value.trim();
+        if (!title) {
+            document.getElementById('wiki-status').textContent = 'Title is required.';
+            document.getElementById('wiki-status').style.color = 'var(--red)';
+            return;
+        }
+
+        // Use editable slug for existing pages, generate for new
+        const slugInputEl = document.getElementById('wiki-slug');
+        let slug;
+        if (existingPage && slugInputEl) {
+            slug = slugify(slugInputEl.value.trim()) || existingPage.slug;
+        } else {
+            slug = slugify(title);
+        }
+        if (!slug) {
+            document.getElementById('wiki-status').textContent = 'Could not generate a valid slug from the title.';
+            document.getElementById('wiki-status').style.color = 'var(--red)';
+            return;
+        }
+
+        const templateType = document.getElementById('wiki-template').value || null;
+        const body = quill.root.innerHTML;
+        const templateData = templateType ? getTemplateData() : [];
+
+        // Lock toggle
+        const lockCheckbox = document.getElementById('wiki-lock');
+        const lockedBy = (lockCheckbox && lockCheckbox.checked) ? faction.id : null;
+
+        const saveBtn = document.getElementById('save-btn');
+        saveBtn.textContent = 'Saving...';
+        saveBtn.disabled = true;
+        const statusEl = document.getElementById('wiki-status');
+
+        const record = {
+            nation_id: nation.id,
+            slug,
+            title,
+            body,
+            template_type: templateType,
+            template_data: templateData,
+            infobox_image: infoboxImageUrl || null,
+            locked_by: lockedBy,
+            updated_by: faction.id,
+            updated_at: new Date().toISOString()
+        };
+
+        try {
+            if (existingPage) {
+                const { error } = await _supabase
+                    .from('wiki_pages')
+                    .update(record)
+                    .eq('id', existingPage.id);
+                if (error) throw error;
+            } else {
+                record.created_by = faction.id;
+                const { error } = await _supabase
+                    .from('wiki_pages')
+                    .insert(record);
+                if (error) throw error;
+            }
+            _dirty = false;
+            window.location.href = `wiki.html?slug=${encodeURIComponent(slug)}`;
+        } catch (err) {
+            saveBtn.textContent = 'Save Page';
+            saveBtn.disabled = false;
+            statusEl.textContent = 'Save failed: ' + err.message;
+            statusEl.style.color = 'var(--red)';
+        }
+    });
+
+    // --- Delete ---
+    const deleteBtn = document.getElementById('delete-btn');
+    if (deleteBtn && existingPage) {
+        deleteBtn.addEventListener('click', async () => {
+            if (!confirm('Delete this wiki page? This cannot be undone.')) return;
+            deleteBtn.textContent = 'Deleting...';
+            deleteBtn.disabled = true;
+            try {
+                const { error } = await _supabase
+                    .from('wiki_pages')
+                    .delete()
+                    .eq('id', existingPage.id);
+                if (error) throw error;
+                _dirty = false;
+                window.location.href = 'wiki-list.html';
+            } catch (err) {
+                deleteBtn.textContent = 'Delete Page';
+                deleteBtn.disabled = false;
+                document.getElementById('wiki-status').textContent = 'Delete failed: ' + err.message;
+                document.getElementById('wiki-status').style.color = 'var(--red)';
+            }
+        });
+    }
+
+    // --- Image gallery ---
+    const toggleGalleryBtn = document.getElementById('toggle-gallery');
+    const galleryEl = document.getElementById('image-gallery');
+    if (toggleGalleryBtn && galleryEl) {
+        toggleGalleryBtn.addEventListener('click', () => {
+            galleryEl.style.display = galleryEl.style.display === 'none' ? 'block' : 'none';
+        });
+        document.getElementById('close-gallery')?.addEventListener('click', () => {
+            galleryEl.style.display = 'none';
+        });
+        galleryEl.querySelectorAll('.wiki-gallery-thumb').forEach(img => {
+            img.addEventListener('click', () => {
+                const url = img.dataset.url;
+                const range = quill.getSelection(true);
+                quill.insertEmbed(range.index, 'image', url);
+                quill.setSelection(range.index + 1);
+                galleryEl.style.display = 'none';
+            });
+        });
+    }
+});
+</script>
+</body>
+</html>
