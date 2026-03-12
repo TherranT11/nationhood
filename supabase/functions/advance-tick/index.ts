@@ -9609,9 +9609,24 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     }
 
     // ── 5. Calculate pillars for each faction-bloc pair ──
-    const PILLAR_WEIGHT_IDEO = 0.60;
-    const PILLAR_WEIGHT_MOM  = 0.40;
+    const PILLAR_WEIGHT_IDEO = 0.45;
+    const PILLAR_WEIGHT_MOM  = 0.55;
     const MOMENTUM_DECAY     = 0.70; // 30% decay per tick
+    const INACTIVITY_DRAIN   = 1.5;  // momentum drain per tick when inactive
+    const INACTIVITY_THRESHOLD = 3;  // ticks without any campaign action to trigger drain
+
+    // ── 5a. Fetch last campaign action tick per faction (for inactivity detection) ──
+    const { data: lastActions } = await supabase
+        .from('campaign_actions')
+        .select('party_id, tick_performed')
+        .in('party_id', factionIds)
+        .order('tick_performed', { ascending: false });
+    const lastActionTickMap = new Map();
+    for (const action of (lastActions || [])) {
+        if (!lastActionTickMap.has(action.party_id)) {
+            lastActionTickMap.set(action.party_id, action.tick_performed);
+        }
+    }
 
     // ── 5b. Governance → momentum feed ──
     // Coalition parties get a per-tick momentum nudge based on gov_approval.
@@ -9669,6 +9684,12 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
 
         let newMomentum = Math.round(oldMomentum * effectiveDecay * 100) / 100;
 
+        // ─── Inactivity drain: parties with no campaign actions in recent ticks lose momentum ───
+        const lastActionTick = lastActionTickMap.get(row.faction_id) ?? -999;
+        if ((currentTick - lastActionTick) >= INACTIVITY_THRESHOLD) {
+            newMomentum -= INACTIVITY_DRAIN;
+        }
+
         // ─── Champion a Community: 2× governance momentum for championed blocs ───
         let govMultiplier = 1;
         if (platform.championed === true) {
@@ -9711,8 +9732,10 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
         if (Math.abs(newMomentum) < 0.05) newMomentum = 0;
 
         // ─── COMBINE: preference_score ───
-        // Map momentum from [-50,+50] to [0,100] for blending
-        const momMapped = Math.max(0, Math.min(100, 50 + newMomentum));
+        // Map momentum from [-50,+50] to [0,100] for blending.
+        // Zero momentum maps to 35 (not 50) so inactive parties start below neutral.
+        // Multiplier 1.3 stretches the active range to still reach 100 at +50.
+        const momMapped = Math.max(0, Math.min(100, 35 + newMomentum * 1.3));
         let prefScore = Math.round(
             (ideoScore * PILLAR_WEIGHT_IDEO + momMapped * PILLAR_WEIGHT_MOM) * 100
         ) / 100;
@@ -9723,18 +9746,18 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
         prefScore = Math.round(prefScore * oppositionMult * 100) / 100;
 
         // ─── IDEOLOGY DRIFT: per-tick erosion based on opposition count ───
-        // 2+ opposing → -1/tick, 1 opposing → -0.5/tick, 0 aligned (with positions) → -0.25/tick
+        // 2+ opposing → -2/tick, 1 opposing → -1/tick, 0 aligned (with positions) → -0.5/tick
         let ideoDrift = 0;
         if (ideo) {
             const { opposed, aligned } = countIdeologyRelationship(ideo, bloc);
-            if (opposed >= 2)       ideoDrift = -1;
-            else if (opposed === 1) ideoDrift = -0.5;
+            if (opposed >= 2)       ideoDrift = -2;
+            else if (opposed === 1) ideoDrift = -1;
             else if (aligned === 0) {
                 // Only drift if the party actually has strong positions but none align.
                 // Centrist parties with no positions should not be penalized.
                 const IDEOLOGY_AXIS_KEYS = ['liberty_equality','tradition_progress','security_freedom','globalism_nationalism','individualism_collectivism'];
                 const hasPosition = IDEOLOGY_AXIS_KEYS.some(k => Math.abs(ideo[k] || 0) >= 20);
-                if (hasPosition) ideoDrift = -0.25;
+                if (hasPosition) ideoDrift = -0.5;
             }
         }
         prefScore = Math.max(0, prefScore + ideoDrift);
@@ -9765,7 +9788,7 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
 
     for (const blocId of Object.keys(byBloc)) {
         const bloc = blocMap[blocId];
-        const k = Number(bloc?.k_value ?? 10);
+        const k = Number(bloc?.k_value ?? 7);
         const entries = byBloc[blocId];
 
         const maxPref = Math.max(...entries.map(e => e.preference_score));
@@ -17021,7 +17044,7 @@ function distributeVotes(parties, tags, blocCount, tally, blocApprovals, ideolog
     if (voters <= 0) return blocCount;
 
     // ---- Calculate softmax-sharpened weights for ALL parties ----
-    const K_TEMP = 10;  // softmax temperature (matches tick-system k_value)
+    const K_TEMP = 7;  // softmax temperature (matches tick-system k_value)
 
     // Find max approval for numerical stability
     let maxApproval = 0;

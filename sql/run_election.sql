@@ -320,7 +320,7 @@ $$;
 --   softmax_weight = exp((preference_score - max_score) / K) × ideology_multiplier
 --   ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
 --
--- K = 10 (softmax temperature, matching tick-system k_value).
+-- K = 7 (softmax temperature, matching tick-system k_value).
 -- This exponential sharpening amplifies small differences in preference_score
 -- into meaningful vote share gaps, preventing near-uniform election results.
 -- ============================================================
@@ -363,7 +363,7 @@ DECLARE
     c_MULT_MIN       CONSTANT NUMERIC := 0.2;   -- min ideology multiplier
     c_MULT_MAX       CONSTANT NUMERIC := 2.0;   -- max ideology multiplier
     -- Softmax sharpening (matches tick-system k_value default)
-    c_K_TEMP         CONSTANT NUMERIC := 10;    -- softmax temperature
+    c_K_TEMP         CONSTANT NUMERIC := 7;    -- softmax temperature
     v_max_approval   NUMERIC := 0;
     v_softmax_exp    NUMERIC;
     v_pid          TEXT;
@@ -509,7 +509,7 @@ DROP FUNCTION IF EXISTS _election_distribute_votes(JSONB, TEXT[], TEXT[], BIGINT
 -- -> JSONB (updated tally)
 --
 -- For Unaligned blocs: distribute by softmax-sharpened approval rating.
--- Uses same K=10 temperature as the main election model.
+-- Uses same K=7 temperature as the main election model.
 -- ============================================================
 
 DROP FUNCTION IF EXISTS _election_distribute_votes_approval_only(JSONB, INT, JSONB);
@@ -542,7 +542,7 @@ DECLARE
     v_remainder      INT;
     v_frac           RECORD;
     v_count          INT := 0;
-    c_K_TEMP         CONSTANT NUMERIC := 10;
+    c_K_TEMP         CONSTANT NUMERIC := 7;
 BEGIN
     -- First pass: find max approval for softmax numerical stability
     FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
