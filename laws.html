@@ -1756,6 +1756,64 @@ async function submitToCommittee() {
         }
     }
 
+    const normalizedArticles = isFoundationalBill
+        ? []
+        : draftArticles.map(art => {
+            if (art.isText) {
+                return {
+                    policy_id: null,
+                    article_number: art.articleNumber,
+                    added_by: currentFaction.id,
+                    article_title: art.textTitle,
+                    article_text: art.textBody
+                };
+            }
+            if (art.isFunding) {
+                const fd = art.fundingData;
+                const changes = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
+                const textParts = changes.map(i => `${i.name}: ${i.current_pct}% → ${i.proposed_pct}%`);
+                if (fd.discretionary) textParts.push(`Discretionary funds: $${fd.discretionary}M`);
+                const title = `${fd.ministry_label} Funding`;
+                const text = textParts.join('. ') + '.';
+                return {
+                    policy_id: null,
+                    article_number: art.articleNumber,
+                    added_by: currentFaction.id,
+                    article_title: title,
+                    article_text: text,
+                    funding_data: {
+                        ministry_key: fd.ministry_key,
+                        institutions: fd.institutions || [],
+                        discretionary: fd.discretionary ?? 0,
+                        ministry_label: fd.ministry_label
+                    }
+                };
+            }
+            const articleRow = {
+                policy_id: art.policy.id,
+                article_number: art.articleNumber,
+                added_by: currentFaction.id
+            };
+            if (art.isRepeal && art.repealActiveLawId) {
+                articleRow.repeal_active_law_id = art.repealActiveLawId;
+            }
+            return articleRow;
+        });
+
+    const billPayload = {
+        bill_name: billName,
+        nation_id: currentNation.id,
+        proposed_by: currentFaction.id,
+        status: 'committee',
+        ...(isFoundationalBill ? { bill_type: 'foundational' } : {}),
+        articles: normalizedArticles
+    };
+
+    const debugBillSubmission = window.NATIONHOOD_DEBUG_BILL_SUBMISSION ?? true;
+    if (debugBillSubmission) {
+        console.log('Submitting bill:', JSON.stringify(billPayload, null, 2));
+    }
+
     // Atomic AP deduction — prevents race conditions and double-spend
     const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.DRAFT_BILL_AP_COST);
     if (!apResult.success) {
