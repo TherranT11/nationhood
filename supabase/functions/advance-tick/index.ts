@@ -5444,12 +5444,12 @@ async function resolveExpiredVotes(supabase, nationId) {
                     const articles = pd.articles || [];
                     const struckIndices = new Set(pd.struck_articles || []);
                     let totalRel = 0;
-                    articles.forEach((art, i) => {
+                    articles.forEach((art: any, i: number) => {
                         if (!struckIndices.has(i)) totalRel += art.relations || 0;
                     });
+                    const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                    const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
                     if (totalRel !== 0) {
-                        const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-                        const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
                         const { data: rel } = await supabase.from('diplomatic_relations')
                             .select('id, relation_score, active_treaties')
                             .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
@@ -5460,6 +5460,77 @@ async function resolveExpiredVotes(supabase, nationId) {
                                 .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
                         }
                     }
+
+                    // For trade_agreement proposals, create the trade_agreements row
+                    if (proposal.proposal_type === 'trade_agreement') {
+                        const activeArticles = articles.filter((_: any, i: number) => !struckIndices.has(i));
+                        const addedArticles = pd.added_articles || [];
+                        const allArticles = [...activeArticles, ...addedArticles];
+
+                        const durationArt = allArticles.find((a: any) => a.type === 'duration');
+                        const durData = durationArt?.data || {};
+                        const isPermanent = durData.duration_type === 'permanent';
+                        const durationTicks = durData.duration_ticks || null;
+                        const autoRenew = durData.auto_renew || false;
+                        const withdrawalNotice = durData.withdrawal_notice_ticks || 3;
+
+                        const { data: newAgreement, error: taErr } = await supabase.from('trade_agreements').insert({
+                            nation_a_id: nationA,
+                            nation_b_id: nationB,
+                            agreement_type: pd.agreement_type,
+                            agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
+                            articles: allArticles,
+                            duration_type: isPermanent ? 'permanent' : 'fixed',
+                            duration_ticks: isPermanent ? null : durationTicks,
+                            auto_renew: autoRenew,
+                            withdrawal_notice_ticks: withdrawalNotice,
+                            status: 'active',
+                            enacted_at_tick: currentTick,
+                            expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null),
+                            diplomatic_proposal_id: proposal.id
+                        }).select('id').single();
+
+                        if (taErr) {
+                            console.error(`[resolveExpiredVotes] Failed to create trade_agreements row for proposal ${proposal.id}:`, taErr.message);
+                        } else {
+                            console.log(`[resolveExpiredVotes] Trade agreement activated from diplomatic proposal ${proposal.id}, agreement ID: ${newAgreement?.id}`);
+
+                            // For economic aid agreements, create the aid_agreement_state row
+                            if (pd.agreement_type === 'economic_aid' && newAgreement) {
+                                const aidTerms = allArticles.find((a: any) => a.type === 'aid_terms');
+                                if (aidTerms) {
+                                    const donorId = aidTerms.data.donor_nation_id;
+                                    if (donorId !== nationA && donorId !== nationB) {
+                                        console.error(`[resolveExpiredVotes] Invalid donor_nation_id ${donorId} for proposal ${proposal.id}`);
+                                    } else {
+                                        const recipientId = donorId === nationA ? nationB : nationA;
+                                        const annualAmount = Number(aidTerms.data.annual_amount || 0);
+                                        await supabase.from('aid_agreement_state').insert({
+                                            agreement_id: newAgreement.id,
+                                            donor_nation_id: donorId,
+                                            recipient_nation_id: recipientId,
+                                            current_annual_amount: annualAmount,
+                                            original_annual_amount: annualAmount,
+                                            next_review_tick: currentTick + DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL,
+                                            condition_failures: {}
+                                        });
+                                    }
+                                }
+                            }
+
+                            // Update diplomatic relations with trade agreement bonus
+                            const { data: relForTrade } = await supabase.from('diplomatic_relations')
+                                .select('id, relation_score')
+                                .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
+                            if (relForTrade) {
+                                const bonus = pd.agreement_type === 'economic_aid' ? DIPLOMACY_CONFIG.AID_RELATION_BONUS : 5;
+                                const newScore = Math.max(-100, Math.min(100, (relForTrade.relation_score || 0) + bonus));
+                                await supabase.from('diplomatic_relations')
+                                    .update({ relation_score: newScore }).eq('id', relForTrade.id);
+                            }
+                        }
+                    }
+
                     await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
                 }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });

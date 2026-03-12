@@ -40,8 +40,59 @@
 .page-header {
   padding: 20px 24px 0;
   display: flex;
-  align-items: baseline;
-  gap: 16px;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.diplo-header-roles {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.diplo-header-stats {
+  margin-left: auto;
+  display: flex;
+  gap: 14px;
+}
+.diplo-header-stat {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+.diplo-role-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 3px 10px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+.diplo-role-badge.role-hog {
+  background: rgba(255, 183, 77, 0.15);
+  color: #ffb74d;
+  border: 1px solid rgba(255, 183, 77, 0.3);
+}
+.diplo-role-badge.role-fm {
+  background: rgba(100, 181, 246, 0.15);
+  color: #64b5f6;
+  border: 1px solid rgba(100, 181, 246, 0.3);
+}
+.diplo-role-badge.role-mot {
+  background: rgba(129, 199, 132, 0.15);
+  color: #81c784;
+  border: 1px solid rgba(129, 199, 132, 0.3);
+}
+.diplo-role-badge.role-amb {
+  background: rgba(186, 104, 200, 0.15);
+  color: #ba68c8;
+  border: 1px solid rgba(186, 104, 200, 0.3);
+}
+.diplo-role-badge.role-none {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-dim);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 .page-title {
   font-family: var(--font-serif);
@@ -637,6 +688,202 @@
 .btn--dim     { color: var(--text-dim); border-color: var(--border-subtle); }
 .btn--dim:hover { color: var(--text-muted); background: var(--bg-hover); }
 .btn--sm { font-size: 8px; padding: 3px 8px; }
+
+/* ── RECALL AMBASSADOR PANEL ── */
+.recall-info-card {
+  background: var(--bg-3);
+  border: 1px solid var(--border-hair);
+  padding: 12px 14px;
+  margin: 10px 14px;
+}
+.recall-rel-bar {
+  height: 6px;
+  background: var(--bg-4);
+  border: 1px solid var(--border-hair);
+  position: relative;
+  overflow: visible;
+}
+.recall-rel-bar-fill {
+  height: 100%;
+  transition: width 0.3s;
+}
+.recall-rel-bar-projected {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 12px;
+  background: var(--red);
+  transition: left 0.3s;
+}
+.recall-reasons {
+  padding: 10px 0;
+  overflow-y: auto;
+  flex: 1;
+}
+.recall-reason-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: all 0.12s;
+}
+.recall-reason-card:hover {
+  background: var(--bg-hover);
+}
+.recall-reason-card.recall-reason-selected {
+  background: rgba(239,68,68,0.04);
+  border-left-color: var(--red);
+}
+.recall-reason-radio {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.recall-reason-selected .recall-reason-radio {
+  border-color: var(--red);
+}
+.recall-reason-radio-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--red);
+}
+.recall-warning {
+  margin: 0 14px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--amber);
+  background: rgba(245,158,11,0.06);
+}
+
+/* ── APPOINT AMBASSADOR PANEL ── */
+.appoint-status-bar {
+  display: flex;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-hair);
+  flex-wrap: wrap;
+}
+.appoint-status-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+.appoint-status-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.appoint-status-value {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border: 1px solid var(--border-subtle);
+}
+.appoint-table {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 14px;
+}
+.appoint-table-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border-hair);
+}
+.appoint-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-hair);
+  font-size: 12px;
+  transition: background 0.1s;
+}
+.appoint-row:hover { background: var(--bg-hover); }
+.appoint-row-selected {
+  background: rgba(45,212,191,0.04);
+  border-left: 2px solid var(--teal);
+  margin-left: -2px;
+}
+.appoint-radio {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.appoint-row-selected .appoint-radio { border-color: var(--teal); }
+.appoint-radio-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--teal);
+}
+.appoint-party-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border: 1px solid;
+  color: var(--text-primary);
+}
+.appoint-party-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.appoint-details {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-hair);
+  background: var(--bg-3);
+}
+.appoint-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.appoint-detail-label {
+  color: var(--teal);
+  font-size: 11px;
+  font-weight: 500;
+}
+.appoint-detail-value {
+  color: var(--text-primary);
+  font-weight: 500;
+  text-align: right;
+}
 
 /* ── RESPONSIVE ── */
 @media (max-width: 1080px) {

@@ -731,11 +731,13 @@ async function vetoDecree(billId) {
     if (!lawsIsAutocracy || !isHeadFaction) return;
     if (!confirm(`⛔ VETO this decree?\nYour faction loses -${GAME_CONFIG.VETO_APPROVAL_COST} Approval.\nProceed?`)) return;
     try {
-        await _supabase.from('bills').update({ status: 'vetoed' }).eq('id', billId);
+        const { error: vetoErr } = await _supabase.from('bills').update({ status: 'vetoed' }).eq('id', billId);
+        if (vetoErr) throw vetoErr;
         await adjustMomentumAll(_supabase, currentNation.id, currentFaction.id, -GAME_CONFIG.VETO_APPROVAL_COST, 'legislation:veto');
         currentFaction.approval_rating = Math.max(0, (currentFaction.approval_rating || 0) - GAME_CONFIG.VETO_APPROVAL_COST);
         alert(`⛔ Decree vetoed. Lost ${GAME_CONFIG.VETO_APPROVAL_COST}% approval.`);
         await loadLawsData(); renderLawsPage();
+        document.getElementById('content-area').scrollTop = 0;
     } catch (error) { console.error('Veto error:', error); alert('Error: ' + error.message); }
 }
 
@@ -990,10 +992,21 @@ async function enactDecree(billId) {
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const bill = committeeBills.find(b => b.id === billId);
-        const decreeFields = { status: 'floor', floor_tick: shard?.current_tick || 0 };
-        decreeFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
-        decreeFields.floor_tick = shard?.current_tick || 0;
-        await _supabase.from('bills').update(decreeFields).eq('id', billId);
+        const currentTick = shard?.current_tick || 0;
+        const decreeFields = {
+            status: 'floor',
+            floor_tick: currentTick,
+            voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
+            early_resolution_status: null,
+            early_resolution_tick: null,
+            passed_tick: null,
+            votes_for: 0,
+            votes_against: 0,
+            votes_abstain: 0,
+            quorum_failures: 0
+        };
+        const { error: updateError } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
+        if (updateError) throw updateError;
 
         // Apply dynamic ideology penalty to sponsor (skip for system-generated bills)
         if (bill && bill.proposed_by) {
@@ -1010,6 +1023,8 @@ async function enactDecree(billId) {
 
         alert('⚡ Decree sent to the floor!');
         await loadLawsData(); renderLawsPage();
+        // Scroll to the floor section so the enacted decree is visible
+        document.getElementById('content-area').scrollTop = 0;
     } catch (error) { console.error('Enact error:', error); alert('Error: ' + error.message); }
 }
 
