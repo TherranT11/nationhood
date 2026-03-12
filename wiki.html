@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wiki | Nationhood Alpha</title>
+<link rel="stylesheet" href="css/dashboard.css">
+<link rel="stylesheet" href="css/wiki.css">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="top-bar"></div>
+
+<div class="wiki-container" id="wiki-root">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:40vh;">
+    <div class="loading-container">
+      <div class="loading-spinner"></div>
+      <div style="color:var(--text-secondary)">Loading wiki...</div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage } from './js/common.js';
+import { escapeHtml } from './js/utils.js';
+import { fetchPage, fetchExistingSlugs, renderWikiLinks, renderInfobox } from './js/wiki.js';
+
+initPage('wiki', async (state) => {
+    const { nation } = state;
+    const root = document.getElementById('wiki-root');
+    const params = new URLSearchParams(window.location.search);
+    const slug = params.get('slug') || 'home';
+
+    let page;
+    try {
+        page = await fetchPage(_supabase, nation.id, slug);
+    } catch (err) {
+        root.innerHTML = `<div class="wiki-empty"><h2>Error</h2><p>${escapeHtml(err.message)}</p></div>`;
+        return;
+    }
+
+    if (!page) {
+        root.innerHTML = `
+            <div class="wiki-empty">
+                <h2>Page Not Found</h2>
+                <p>The wiki page "<strong>${escapeHtml(slug)}</strong>" doesn't exist yet.</p>
+                <a href="wiki-edit.html?new=1&title=${encodeURIComponent(slug)}" class="wiki-btn wiki-btn-primary">Create This Page</a>
+                <div style="margin-top:12px;">
+                    <a href="wiki-list.html" class="wiki-btn">All Pages</a>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    // Fetch existing slugs for link colouring
+    let existingSlugs = new Set();
+    try {
+        existingSlugs = await fetchExistingSlugs(_supabase, nation.id);
+    } catch (_) { /* non-critical */ }
+
+    const bodyHtml = renderWikiLinks(page.body || '<p><em>This page is empty.</em></p>', existingSlugs);
+    const infoboxHtml = renderInfobox(page);
+
+    root.innerHTML = `
+        <div class="wiki-page-header">
+            <h1 class="wiki-page-title">${escapeHtml(page.title)}</h1>
+            <div class="wiki-header-actions">
+                <a href="wiki-edit.html?slug=${encodeURIComponent(page.slug)}" class="wiki-btn">Edit</a>
+                <a href="wiki-list.html" class="wiki-btn">All Pages</a>
+            </div>
+        </div>
+        <div class="wiki-page-layout">
+            <div class="wiki-body-col">
+                <div class="wiki-body-content">${bodyHtml}</div>
+            </div>
+            ${infoboxHtml}
+        </div>
+    `;
+});
+</script>
+</body>
+</html>
