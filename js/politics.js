@@ -1584,16 +1584,16 @@ function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIde
     const blocs = voterBlocs || [];
     const approvalMap = {};
     for (const row of (playerBlocApprovals || [])) {
-        approvalMap[row.bloc_id] = Number(row.preference_score ?? 50);
+        approvalMap[row.bloc_id] = Number(row.preference_score ?? 40);
     }
 
     // Classify blocs into tiers based on preference_score
-    // BASE: >= 70, LEAN: 55-69, SWING: 45-54, SKEPTICAL: 30-44, HOSTILE: < 30
+    // BASE: >= 55, LEAN: 42-54, SWING: 30-41, SKEPTICAL: 18-29, HOSTILE: < 18
     const TIER_DEFS = [
-        { key: 'BASE', label: 'BASE', min: 70, color: 'var(--dgreen)', dimColor: 'rgba(74,222,128,0.08)' },
-        { key: 'LEAN', label: 'LEAN', min: 55, color: '#22d3ee', dimColor: 'rgba(34,211,238,0.08)' },
-        { key: 'SWING', label: 'SWING', min: 45, color: 'var(--damber)', dimColor: 'rgba(250,204,21,0.08)' },
-        { key: 'SKEPTICAL', label: 'SKEPTICAL', min: 30, color: '#f97316', dimColor: 'rgba(249,115,22,0.08)' },
+        { key: 'BASE', label: 'BASE', min: 55, color: 'var(--dgreen)', dimColor: 'rgba(74,222,128,0.08)' },
+        { key: 'LEAN', label: 'LEAN', min: 42, color: '#22d3ee', dimColor: 'rgba(34,211,238,0.08)' },
+        { key: 'SWING', label: 'SWING', min: 30, color: 'var(--damber)', dimColor: 'rgba(250,204,21,0.08)' },
+        { key: 'SKEPTICAL', label: 'SKEPTICAL', min: 18, color: '#f97316', dimColor: 'rgba(249,115,22,0.08)' },
         { key: 'HOSTILE', label: 'HOSTILE', min: 0, color: 'var(--dred)', dimColor: 'rgba(239,68,68,0.08)' },
     ];
 
@@ -1612,7 +1612,7 @@ function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIde
 
     const enrichedBlocs = [];
     for (const bloc of blocs) {
-        const pref = approvalMap[bloc.id] ?? 50;
+        const pref = approvalMap[bloc.id] ?? 40;
         const w = Number(bloc.population_weight || 0);
         let tierKey = 'HOSTILE';
         for (const tier of tierData) {
@@ -1705,7 +1705,7 @@ function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIde
     // Pre-compute party positions on 0-100 scale
     const partyPositions = {};
     for (const ax of IDEOLOGY_AXES) {
-        partyPositions[ax.key] = Math.round((Number(playerIdeo[ax.key] ?? 0) + 100) / 2);
+        partyPositions[ax.key] = Math.round(50 + Number(playerIdeo[ax.key] ?? 0));
     }
 
     // Bloc dropdown options — sorted by preference descending
@@ -3089,12 +3089,12 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     // Determine bloc tiers from approval data
     const blocs = (voterBlocs || []).map(b => {
         const ba = approvalByBloc[b.id];
-        const pref = ba?.preference_score ?? 50;
-        let tier = 'SWING';
-        if (pref >= 65) tier = 'BASE';
-        else if (pref >= 55) tier = 'LEAN';
-        else if (pref < 35) tier = 'HOSTILE';
-        else if (pref < 45) tier = 'SKEPTICAL';
+        const pref = ba?.preference_score ?? 40;
+        let tier = 'HOSTILE';
+        if (pref >= 55) tier = 'BASE';
+        else if (pref >= 42) tier = 'LEAN';
+        else if (pref >= 30) tier = 'SWING';
+        else if (pref >= 18) tier = 'SKEPTICAL';
         return { ...b, tier, approval: Math.round(pref), turnout: b.turnout_rate ?? 50, ideology: b };
     });
 
@@ -3556,7 +3556,7 @@ async function upsertBlocApproval(factionId, blocId, updateFn) {
         const updates = updateFn(fba);
         await _supabase.from('faction_bloc_approval').update(updates).eq('id', fba.id);
     } else {
-        const defaults = { faction_id: factionId, bloc_id: blocId, preference_score: 50, momentum: 0 };
+        const defaults = { faction_id: factionId, bloc_id: blocId, preference_score: 40, momentum: 0 };
         const updates = updateFn(defaults);
         await _supabase.from('faction_bloc_approval').insert({ ...defaults, ...updates });
     }

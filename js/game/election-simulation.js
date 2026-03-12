@@ -72,7 +72,7 @@ export function distributeVotes(parties, tags, blocCount, tally, blocApprovals, 
     if (voters <= 0) return blocCount;
 
     // ---- Calculate softmax-sharpened weights for ALL parties ----
-    const K_TEMP = 10;  // softmax temperature (matches tick-system k_value)
+    const K_TEMP = 7;  // softmax temperature (matches tick-system k_value)
 
     // Find max approval for numerical stability
     let maxApproval = 0;

@@ -1,0 +1,372 @@
+================================================================================
+DESIGN PLAN: NERF INACTIVE PARTY VOTE RETENTION
+================================================================================
+
+PROBLEM
+-------
+Parties that never log in retain ~54-59 preference score indefinitely because:
+- Ideology alignment (60% of score) is free and recalculated from static axes
+- Zero momentum maps to 50 (neutral), not 0
+- Ideology drift is only -0.25/tick (mild) to -1.0/tick (strongly opposed)
+- No penalty exists for taking zero actions
+
+After 20 ticks of total inactivity, an aligned party only loses ~5 preference
+points and still captures ~27% of aligned bloc votes via softmax.
+
+GOAL
+----
+Active parties should meaningfully outperform inactive ones. After 10-20 ticks
+of inactivity, a party should lose significant voter support. Active play
+(even 1-2 actions/tick) should produce a clear, growing advantage.
+
+
+================================================================================
+CHANGE 1: Reweight Pillars (Ideology 45%, Momentum 55%)
+================================================================================
+
+WHY: Shifts power from the passive ideology score to the action-driven momentum
+score. Makes active campaigning ~37% more impactful than before.
+
+Old:  preference = ideology * 0.60 + momMapped * 0.40
+New:  preference = ideology * 0.45 + momMapped * 0.55
+
+IMPACT ON INACTIVE PARTY (zero momentum, ideology=65):
+  Old: 65*0.60 + 50*0.40 = 59.0
+  New: 65*0.45 + 50*0.55 = 56.75  (floor drops ~2.25 points)
+
+IMPACT ON ACTIVE PARTY (momentum=+13 steady-state, ideology=65):
+  Old: 65*0.60 + 63*0.40 = 64.2
+  New: 65*0.45 + 63*0.55 = 63.9   (roughly same)
+
+Net effect: active party doesn't change much, but the *gap* widens because
+inactive party's floor drops. The real payoff comes when combined with changes
+2 and 3 below.
+
+FILES TO CHANGE:
+
+  1. supabase/functions/advance-tick/index.ts  (line 9612-9613)
+     BEFORE:
+       const PILLAR_WEIGHT_IDEO = 0.60;
+       const PILLAR_WEIGHT_MOM  = 0.40;
+     AFTER:
+       const PILLAR_WEIGHT_IDEO = 0.45;
+       const PILLAR_WEIGHT_MOM  = 0.55;
+
+  2. js/game/three-pillar.js  (line 211-212)
+     BEFORE:
+       const PILLAR_WEIGHT_IDEO = 0.60;
+       const PILLAR_WEIGHT_MOM  = 0.40;
+     AFTER:
+       const PILLAR_WEIGHT_IDEO = 0.45;
+       const PILLAR_WEIGHT_MOM  = 0.55;
+
+
+================================================================================
+CHANGE 2: Lower the Zero-Momentum Baseline (map 0 momentum to 35, not 50)
+================================================================================
+
+WHY: Currently, zero momentum maps to 50 on a 0-100 scale — that's neutral,
+not bad. An inactive party gets a free 50*weight bonus. By mapping zero
+momentum to 35, the "doing nothing" baseline drops significantly.
+
+Old mapping:  momMapped = 50 + momentum         (range: 0 to 100)
+New mapping:  momMapped = 35 + momentum * 1.3   (range: 0 to 100)
+
+At momentum  0: old=50, new=35   (inactive penalty)
+At momentum +10: old=60, new=48  (mild activity)
+At momentum +30: old=80, new=74  (strong activity)
+At momentum +50: old=100, new=100 (cap, unchanged)
+At momentum -27: old=23, new=0   (floor reached sooner for negative momentum)
+At momentum -50: old=0, new=0    (floor, unchanged)
+
+The formula: momMapped = clamp(0, 100, 35 + momentum * 1.3)
+
+This ensures:
+- Negative momentum still bottoms at 0
+- Positive momentum still caps at 100
+- Zero momentum (inactive) maps to 35 instead of 50
+- The full range is still utilized for active parties
+
+IMPACT ON INACTIVE PARTY (momentum=0, ideology=65, with new weights):
+  Old: 65*0.45 + 50*0.55 = 56.75
+  New: 65*0.45 + 35*0.55 = 48.50   (floor drops another ~8 points!)
+
+IMPACT ON ACTIVE PARTY (momentum=+13 steady-state):
+  momMapped = 35 + 13*1.3 = 51.9
+  New: 65*0.45 + 51.9*0.55 = 57.8  (vs old 63.9 — lower, but gap to inactive
+  is now 57.8 - 48.5 = 9.3 points, which the softmax amplifies nicely)
+
+COMBINED IMPACT OF CHANGES 1+2:
+  Inactive party: 59.0 -> 48.5  (lost 10.5 points)
+  Active party:   64.2 -> 57.8  (lost 6.4 points)
+  Gap:            5.2  -> 9.3   (nearly doubled)
+
+FILES TO CHANGE:
+
+  1. supabase/functions/advance-tick/index.ts  (line 9715)
+     BEFORE:
+       const momMapped = Math.max(0, Math.min(100, 50 + newMomentum));
+     AFTER:
+       const momMapped = Math.max(0, Math.min(100, 35 + newMomentum * 1.3));
+
+  2. js/game/three-pillar.js  (line 314)
+     BEFORE:
+       const momMapped = Math.max(0, Math.min(100, 50 + newMomentum));
+     AFTER:
+       const momMapped = Math.max(0, Math.min(100, 35 + newMomentum * 1.3));
+
+
+================================================================================
+CHANGE 3: Inactivity Momentum Drain
+================================================================================
+
+WHY: Currently there is zero penalty for taking no actions. Momentum simply
+decays toward 0 and stays there. We add a per-tick momentum drain when a
+party has taken no campaign actions in the last 3 ticks, pushing momentum
+negative (below zero = below the baseline).
+
+MECHANIC:
+  - Each tick, during the three-pillar calculation, query campaign_actions
+    for each faction to find their most recent action tick
+  - If (currentTick - lastActionTick) >= 3 (or no actions ever), apply:
+      momentum -= 1.5 per tick (INACTIVITY_DRAIN)
+  - Momentum still clamped to [-50, +50]
+  - This stacks with normal momentum decay
+
+EFFECT OVER TIME (inactive party, starting momentum=0):
+  Tick 3: drain kicks in. momentum = 0 - 1.5 = -1.5
+  Tick 4: decay(-1.5 * 0.70 = -1.05) + drain(-1.5) = -2.55
+  Tick 5: decay(-2.55 * 0.70 = -1.79) + drain(-1.5) = -3.29
+  ...
+  Steady state: drain / (1 - 0.70) = -1.5 / 0.30 = -5.0 momentum
+
+  At momentum = -5.0 with new mapping:
+    momMapped = 35 + (-5.0 * 1.3) = 28.5
+    preference = 65*0.45 + 28.5*0.55 = 44.9
+
+So after ~10 ticks of inactivity the preference drops from 59 to ~45.
+That's a massive 14-point drop, which through softmax produces roughly a
+80/20 split favoring the active party (vs the old 73/27).
+
+IMPLEMENTATION:
+
+  We need the most recent campaign_action tick per faction. To avoid N+1
+  queries, we'll do a single bulk query at the start of the three-pillar
+  function for all factions in the nation, returning a Map of
+  factionId -> lastActionTick.
+
+  In the per-faction-per-bloc loop, before momentum decay:
+    if (currentTick - lastActionTick >= 3) {
+        newMomentum -= INACTIVITY_DRAIN;
+    }
+
+  The drain is applied BEFORE the normal decay multiplication, so:
+    newMomentum = (oldMomentum - inactivityDrain) * effectiveDecay
+
+  Wait — actually, applying drain before decay means it decays away too.
+  Better to apply drain AFTER decay so it's a flat per-tick cost:
+    newMomentum = oldMomentum * effectiveDecay;
+    if (inactive) newMomentum -= INACTIVITY_DRAIN;
+
+FILES TO CHANGE:
+
+  1. supabase/functions/advance-tick/index.ts
+
+     a) Add constant near line 9614:
+          const INACTIVITY_DRAIN = 1.5;       // momentum drain per tick when inactive
+          const INACTIVITY_THRESHOLD = 3;     // ticks without action to trigger drain
+
+     b) Add bulk query near the top of calculateThreePillarPreferences(),
+        after fetching factions but before the per-faction loop (around line 9470):
+
+          // Fetch last action tick per faction for inactivity detection
+          const { data: lastActions } = await supabase
+              .from('campaign_actions')
+              .select('party_id, tick_performed')
+              .in('party_id', allFactionIds)
+              .order('tick_performed', { ascending: false });
+
+          const lastActionTickMap = new Map();
+          for (const row of (lastActions || [])) {
+              if (!lastActionTickMap.has(row.party_id)) {
+                  lastActionTickMap.set(row.party_id, row.tick_performed);
+              }
+          }
+
+     c) In the per-faction-per-bloc momentum calculation, after the decay
+        line (~line 9670) and before governance nudge, add:
+
+          // Inactivity drain: if no campaign actions in last N ticks
+          const lastActionTick = lastActionTickMap.get(factionId) ?? -999;
+          if ((currentTick - lastActionTick) >= INACTIVITY_THRESHOLD) {
+              newMomentum -= INACTIVITY_DRAIN;
+          }
+
+  2. js/game/three-pillar.js — Mirror the same changes:
+
+     a) Add constants near line 213
+     b) Add bulk query near top of function (around line 70)
+     c) Add drain logic after decay (around line 269)
+
+
+================================================================================
+CHANGE 4: Increase Ideology Drift
+================================================================================
+
+WHY: The current drift rates are too slow. A mildly misaligned party loses
+only 0.25 preference/tick. Double these rates.
+
+Old -> New:
+  2+ opposing axes:  -1.0/tick  ->  -2.0/tick
+  1 opposing axis:   -0.5/tick  ->  -1.0/tick
+  No alignment:      -0.25/tick ->  -0.5/tick
+
+EFFECT: After 20 ticks, a mildly misaligned inactive party loses 10 points
+from drift alone (vs 5 before), compounding with the momentum drain.
+
+FILES TO CHANGE:
+
+  1. supabase/functions/advance-tick/index.ts  (lines 9730-9737)
+     BEFORE:
+       if (opposed >= 2)       ideoDrift = -1;
+       else if (opposed === 1) ideoDrift = -0.5;
+       ...
+       if (hasPosition) ideoDrift = -0.25;
+     AFTER:
+       if (opposed >= 2)       ideoDrift = -2;
+       else if (opposed === 1) ideoDrift = -1;
+       ...
+       if (hasPosition) ideoDrift = -0.5;
+
+  2. js/game/three-pillar.js  (lines 329-336)
+     Same changes as above.
+
+
+================================================================================
+CHANGE 5: Lower Softmax Temperature (K=10 -> K=7)
+================================================================================
+
+WHY: Lower K sharpens vote distribution, making preference gaps matter more.
+A 10-point gap at K=10 gives 73/27 split; at K=7 it gives 81/19.
+
+We change the DEFAULT fallback from 10 to 7 in code. Note: individual
+voter blocs may have custom k_value in the database which we don't touch.
+We only change the fallback used when k_value is NULL.
+
+Also need a SQL migration to update the column default and existing rows
+that have the old default of 10.
+
+FILES TO CHANGE:
+
+  1. supabase/functions/advance-tick/index.ts  (line 9768)
+     BEFORE: const k = Number(bloc?.k_value ?? 10);
+     AFTER:  const k = Number(bloc?.k_value ?? 7);
+
+  2. js/game/three-pillar.js  (line 367)
+     BEFORE: const k = Number(bloc?.k_value ?? 10);
+     AFTER:  const k = Number(bloc?.k_value ?? 7);
+
+  3. js/game/election-simulation.js  (line 75)
+     BEFORE: const K_TEMP = 10;
+     AFTER:  const K_TEMP = 7;
+
+  4. sql/run_election.sql  (lines 366, 545)
+     BEFORE: c_K_TEMP  CONSTANT NUMERIC := 10;
+     AFTER:  c_K_TEMP  CONSTANT NUMERIC := 7;
+
+  5. NEW SQL migration file: sql/migrations/20260312_nerf_inactive_voters.sql
+     Contents:
+       -- Lower default softmax temperature from 10 to 7
+       ALTER TABLE voter_blocs ALTER COLUMN k_value SET DEFAULT 7;
+
+       -- Update existing blocs that were using the old default
+       UPDATE voter_blocs SET k_value = 7 WHERE k_value = 10;
+
+
+================================================================================
+COMBINED EFFECT: 20-TURN SIMULATION (POST-CHANGES)
+================================================================================
+
+Setup: Both parties opposition, ideology alignment = 65 with target bloc.
+
+PARTY B (INACTIVE):
+  Tick 0:  momentum=0,    momMapped=35, pref = 65*0.45 + 35*0.55 = 48.5
+  Tick 3:  inactivity drain starts (-1.5/tick)
+  Tick 5:  momentum≈-3.3, momMapped=30.7, drift=-2.5 cumulative
+           pref = 65*0.45 + 30.7*0.55 - 2.5 = 43.6
+  Tick 10: momentum≈-5.0 (steady state), momMapped=28.5, drift=-5.0
+           pref = 65*0.45 + 28.5*0.55 - 5.0 = 39.9
+  Tick 20: momentum≈-5.0, momMapped=28.5, drift=-10.0
+           pref = 65*0.45 + 28.5*0.55 - 10.0 = 34.9
+
+PARTY A (1 rally/tick, avg +4 momentum):
+  Steady-state momentum ≈ +13.3
+  momMapped = 35 + 13.3*1.3 = 52.3
+  pref = 65*0.45 + 52.3*0.55 = 58.0 (stable, no drift if aligned)
+
+GAP AT 20 TICKS: 58.0 - 34.9 = 23.1 points
+
+SOFTMAX VOTE SPLIT (K=7):
+  Party A: exp(0/7)     = 1.000
+  Party B: exp(-23.1/7) = 0.037
+
+  Split: 96.4% / 3.6%  — inactive party is effectively wiped out.
+
+COMPARISON:
+  Before changes: 73/27 split (inactive still gets 27% of bloc)
+  After changes:  96/4  split (inactive is crushed)
+
+Even at tick 10 (gap ≈ 18 points):
+  Split: 93/7 — already decisive.
+
+
+================================================================================
+IMPLEMENTATION ORDER
+================================================================================
+
+Step 1: Change pillar weights (Change 1)
+        - 2 files, 2 lines each. Lowest risk.
+
+Step 2: Change momentum mapping (Change 2)
+        - 2 files, 1 line each. Medium impact.
+
+Step 3: Add inactivity drain (Change 3)
+        - 2 files, new query + logic. Most complex change.
+        - Add constants, bulk query, drain logic.
+
+Step 4: Increase ideology drift (Change 4)
+        - 2 files, ~3 lines each. Simple constant changes.
+
+Step 5: Lower softmax K (Change 5)
+        - 4 files + 1 new migration. Multiple locations but simple.
+
+Step 6: Error/bug review
+        - Verify all 5 changes are mirrored between advance-tick and
+          three-pillar.js (they must stay in sync)
+        - Verify momentum clamping [-50, +50] still applied after drain
+        - Verify momMapped clamping [0, 100] works with new formula
+        - Verify edge cases: negative momentum * 1.3 doesn't undershoot 0
+          (it can't, because of the Math.max(0,...) clamp)
+        - Verify inactivity query doesn't break for factions with zero
+          campaign_actions rows (handled by ?? -999 fallback)
+        - Verify SQL migration is safe (idempotent ALTER + targeted UPDATE)
+        - Check that run_election.sql changes match the JS changes
+        - Check election-simulation.js uses same K as run_election.sql
+        - Test: brand new party with no actions should start at ~48.5 pref
+          (not 59), confirming the new floor is working
+
+Step 7: Commit all changes together.
+
+
+================================================================================
+FILES TOUCHED (SUMMARY)
+================================================================================
+
+MODIFIED:
+  supabase/functions/advance-tick/index.ts  (Changes 1-5)
+  js/game/three-pillar.js                   (Changes 1-5)
+  js/game/election-simulation.js            (Change 5)
+  sql/run_election.sql                      (Change 5)
+
+NEW:
+  sql/migrations/20260312_nerf_inactive_voters.sql  (Change 5)
