@@ -993,7 +993,20 @@ async function enactDecree(billId) {
         const decreeFields = { status: 'floor', floor_tick: shard?.current_tick || 0 };
         decreeFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
         decreeFields.floor_tick = shard?.current_tick || 0;
-        await _supabase.from('bills').update(decreeFields).eq('id', billId);
+        const { error } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
+        if (error) throw error;
+
+        const { data: verificationRow, error: verificationError } = await _supabase.from('bills').select('id,status').eq('id', billId).single();
+        if (verificationError || !verificationRow || verificationRow.status !== 'floor') {
+            console.error('Decree floor verification failed after enact', {
+                billId,
+                nationId: currentNation?.id || null,
+                verificationError,
+                verificationRow
+            });
+            alert('Could not confirm this decree reached the floor. Please refresh and try again.');
+            return;
+        }
 
         // Apply dynamic ideology penalty to sponsor (skip for system-generated bills)
         if (bill && bill.proposed_by) {
