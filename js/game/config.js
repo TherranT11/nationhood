@@ -83,6 +83,8 @@ export const GAME_CONFIG = {
     BUY_INFLUENCE_BASE_COST: 3,               // $3M per seat base
     BUY_INFLUENCE_UNALIGNED_COST: 2,          // $2M per seat from unaligned pool
     BUY_INFLUENCE_VULNERABILITY_DISCOUNT: 0.20, // 20% cheaper vs demonstrating faction
+    BUY_INFLUENCE_STRONGMAN_BASE_COST: 5,      // $5M per seat base when targeting ruling faction
+    BUY_INFLUENCE_STRONGMAN_HEALTH_SCALE: 0.02, // multiplier per regime_health point (0-100)
 
     INTIMIDATE_AP: 2,
     INTIMIDATE_COST: 1,                        // $1M flat
