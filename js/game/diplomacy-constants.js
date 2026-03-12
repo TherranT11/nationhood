@@ -12,7 +12,7 @@ export const DIPLOMACY_CONFIG = {
     COVERT_OP_AP: 4,
 
     // Foreign Minister actions
-    RECALL_AMBASSADOR_AP: 2,
+    RECALL_AMBASSADOR_AP: 1,
     IMPOSE_EMBARGO_AP: 5,
     FOREIGN_AID_AP: 4,
     ISSUE_ULTIMATUM_AP: 3,
