@@ -161,14 +161,14 @@ body {
 }
 /* ===== GUIDE BUTTON ===== */
 .guide-btn {
-    font-size: 15px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 700;
     color: #d4b45c;
     background: rgba(200,166,78,0.08);
     border: 1px solid rgba(200,166,78,0.18);
-    padding: 2px 7px;
+    padding: 3px 8px;
     cursor: pointer;
     transition: background 0.15s;
-    line-height: 1;
 }
 .guide-btn:hover { background: rgba(200,166,78,0.18); }
 
