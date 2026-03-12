@@ -136,11 +136,12 @@ initPage('wiki', async (state) => {
                     [{ header: [1, 2, 3, false] }],
                     ['bold', 'italic', 'underline'],
                     [{ list: 'ordered' }, { list: 'bullet' }],
-                    ['link', 'image'],
+                    ['link', 'image', 'wiki-link'],
                     ['clean']
                 ],
                 handlers: {
-                    image: imageHandler
+                    image: imageHandler,
+                    'wiki-link': wikiLinkHandler
                 }
             }
         }
@@ -148,6 +149,31 @@ initPage('wiki', async (state) => {
 
     if (initBody) {
         quill.root.innerHTML = initBody;
+    }
+
+    // Label the custom wiki-link toolbar button
+    const wikiLinkBtn = document.querySelector('.ql-wiki-link');
+    if (wikiLinkBtn) {
+        wikiLinkBtn.innerHTML = '[[]]';
+        wikiLinkBtn.title = 'Insert wiki link';
+        wikiLinkBtn.style.cssText = 'font-size:11px;font-weight:700;width:auto;padding:0 4px;color:var(--text-secondary);';
+    }
+
+    // Wiki-link handler — wraps selected text in [[brackets]] or prompts for page name
+    function wikiLinkHandler() {
+        const range = quill.getSelection(true);
+        if (range.length > 0) {
+            const text = quill.getText(range.index, range.length);
+            quill.deleteText(range.index, range.length);
+            quill.insertText(range.index, `[[${text}]]`);
+            quill.setSelection(range.index + text.length + 4);
+        } else {
+            const pageName = prompt('Enter the wiki page name to link to:');
+            if (pageName) {
+                quill.insertText(range.index, `[[${pageName}]]`);
+                quill.setSelection(range.index + pageName.length + 4);
+            }
+        }
     }
 
     // Custom image handler — upload to Supabase Storage then insert

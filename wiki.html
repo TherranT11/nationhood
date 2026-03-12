@@ -24,7 +24,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { fetchPage, fetchExistingSlugs, renderWikiLinks, renderInfobox } from './js/wiki.js';
+import { fetchPage, fetchPageList, fetchExistingSlugs, renderWikiLinks, renderInfobox } from './js/wiki.js';
 
 initPage('wiki', async (state) => {
     const { nation } = state;
@@ -32,6 +32,80 @@ initPage('wiki', async (state) => {
     const params = new URLSearchParams(window.location.search);
     const slug = params.get('slug') || 'home';
 
+    // --- HOME PAGE: curated landing ---
+    if (slug === 'home') {
+        let allPages = [];
+        try {
+            allPages = await fetchPageList(_supabase, nation.id);
+        } catch (_) {}
+
+        // Important pages = pages with a template type
+        const importantPages = allPages.filter(p => p.template_type);
+        // Recent pages = last 10 updated
+        const recentPages = [...allPages]
+            .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
+            .slice(0, 10);
+
+        const importantHtml = importantPages.length
+            ? importantPages.map(p => {
+                const badge = p.template_type
+                    ? `<span class="wiki-page-row-type">${escapeHtml(p.template_type)}</span>`
+                    : '';
+                return `<a href="wiki.html?slug=${encodeURIComponent(p.slug)}" class="wiki-page-row">
+                    <span class="wiki-page-row-title">${escapeHtml(p.title)}</span>${badge}
+                </a>`;
+            }).join('')
+            : '<p style="color:var(--text-muted);font-size:13px;padding:10px 0;">No pages with templates yet. Create a Nation, Person, Corporation, Religion, or Culture page to see it here.</p>';
+
+        const recentHtml = recentPages.length
+            ? recentPages.map(p => {
+                const updated = p.updated_at ? new Date(p.updated_at).toLocaleDateString() : '';
+                return `<a href="wiki.html?slug=${encodeURIComponent(p.slug)}" class="wiki-page-row">
+                    <span class="wiki-page-row-title">${escapeHtml(p.title)}</span>
+                    <span class="wiki-page-row-meta">${updated}</span>
+                </a>`;
+            }).join('')
+            : '<p style="color:var(--text-muted);font-size:13px;padding:10px 0;">No pages yet.</p>';
+
+        root.innerHTML = `
+            <div class="wiki-page-header">
+                <h1 class="wiki-page-title">Wiki</h1>
+                <div class="wiki-header-actions">
+                    <a href="wiki-edit.html?new=1" class="wiki-btn wiki-btn-primary">New Page</a>
+                    <a href="wiki-list.html" class="wiki-btn">All Pages</a>
+                </div>
+            </div>
+
+            <div class="wiki-home-section">
+                <div class="wiki-home-card">
+                    <div class="wiki-home-card-title">About</div>
+                    <div class="wiki-home-card-body">
+                        <p>Welcome to the <strong>${escapeHtml(nation.name)}</strong> wiki — the living encyclopedia of your nation.</p>
+                        <p>Document your nation's history, key figures, corporations, religions, and cultures. Every faction can create and edit pages. Use <code>[[Page Name]]</code> in the editor to link between pages.</p>
+                        <p><strong>${allPages.length}</strong> page${allPages.length !== 1 ? 's' : ''} and counting.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="wiki-home-columns">
+                <div class="wiki-home-section">
+                    <div class="wiki-home-card">
+                        <div class="wiki-home-card-title">Important Pages</div>
+                        <div class="wiki-page-list">${importantHtml}</div>
+                    </div>
+                </div>
+                <div class="wiki-home-section">
+                    <div class="wiki-home-card">
+                        <div class="wiki-home-card-title">Recently Updated</div>
+                        <div class="wiki-page-list">${recentHtml}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    // --- REGULAR PAGE VIEW ---
     let page;
     try {
         page = await fetchPage(_supabase, nation.id, slug);
@@ -68,6 +142,7 @@ initPage('wiki', async (state) => {
             <h1 class="wiki-page-title">${escapeHtml(page.title)}</h1>
             <div class="wiki-header-actions">
                 <a href="wiki-edit.html?slug=${encodeURIComponent(page.slug)}" class="wiki-btn">Edit</a>
+                <a href="wiki.html" class="wiki-btn">Wiki Home</a>
                 <a href="wiki-list.html" class="wiki-btn">All Pages</a>
             </div>
         </div>
