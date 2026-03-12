@@ -689,6 +689,80 @@
 .btn--dim:hover { color: var(--text-muted); background: var(--bg-hover); }
 .btn--sm { font-size: 8px; padding: 3px 8px; }
 
+/* ── RECALL AMBASSADOR PANEL ── */
+.recall-info-card {
+  background: var(--bg-3);
+  border: 1px solid var(--border-hair);
+  padding: 12px 14px;
+  margin: 10px 14px;
+}
+.recall-rel-bar {
+  height: 6px;
+  background: var(--bg-4);
+  border: 1px solid var(--border-hair);
+  position: relative;
+  overflow: visible;
+}
+.recall-rel-bar-fill {
+  height: 100%;
+  transition: width 0.3s;
+}
+.recall-rel-bar-projected {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 12px;
+  background: var(--red);
+  transition: left 0.3s;
+}
+.recall-reasons {
+  padding: 10px 0;
+  overflow-y: auto;
+  flex: 1;
+}
+.recall-reason-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: all 0.12s;
+}
+.recall-reason-card:hover {
+  background: var(--bg-hover);
+}
+.recall-reason-card.recall-reason-selected {
+  background: rgba(239,68,68,0.04);
+  border-left-color: var(--red);
+}
+.recall-reason-radio {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.recall-reason-selected .recall-reason-radio {
+  border-color: var(--red);
+}
+.recall-reason-radio-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--red);
+}
+.recall-warning {
+  margin: 0 14px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--amber);
+  background: rgba(245,158,11,0.06);
+}
+
 /* ── RESPONSIVE ── */
 @media (max-width: 1080px) {
   .row { flex-direction: column; }
