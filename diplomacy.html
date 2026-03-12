@@ -7358,14 +7358,14 @@ function renderActionsBox() {
         { key: 'declare_war', label: 'Declare War', ap: 8, type: 'hog', comingSoon: true },
         { key: 'call_ceasefire', label: 'Call for Ceasefire', ap: 4, type: 'hog', comingSoon: true },
         { key: 'sign_alliance', label: 'Sign Alliance', ap: 6, type: 'hog' },
-        { key: 'state_visit', label: 'State Visit', ap: DIPLOMACY_CONFIG.STATE_VISIT_AP || 4, type: 'hog' },
-        { key: 'recall_ambassador', label: 'Recall Ambassador', ap: 1, type: 'hog' }
+        { key: 'state_visit', label: 'State Visit', ap: DIPLOMACY_CONFIG.STATE_VISIT_AP || 4, type: 'hog' }
     ].forEach(a => { html += actionHtml(a, hasHoG, 'hog'); });
 
     // Foreign Minister
     html += '<div class="role-header' + (hasFM ? '' : ' role-disabled') + '">Foreign Minister</div>';
     [
         { key: 'appoint_ambassador', label: 'Appoint Ambassador', ap: 1, type: 'fm' },
+        { key: 'recall_ambassador', label: 'Recall Ambassador', ap: 1, type: 'fm' },
         { key: 'major_initiative', label: 'Major Diplomatic Initiative', ap: 2, type: 'fm' },
         { key: 'formal_protest', label: 'Formal Protest', ap: 2, type: 'fm' },
         { key: 'covert_ops', label: 'Covert Operations', ap: 4, type: 'fm' },
@@ -7702,97 +7702,6 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
 }
 
 // ══════════════════════════════════════════════════════
-// SPECIAL ACTION DRAFT PANELS
-// ══════════════════════════════════════════════════════
-
-async function renderRecallAmbassadorDraft(body) {
-    const apCost = DIPLOMACY_CONFIG.RECALL_AMBASSADOR_AP || 1;
-    let html = '<div class="draft-panel">';
-    html += '<div class="draft-header">';
-    html += '<div class="draft-field"><div class="draft-field-label">Action</div><div class="draft-field-input">Recall Ambassador <span style="color:var(--teal);">(' + apCost + ' AP)</span></div></div>';
-    html += '</div>';
-
-    // Fetch active ambassadors for our nation
-    const { data: ambassadors } = await _supabase
-        .from('ambassadors')
-        .select('*, factions(abbreviation), nations!ambassadors_target_nation_id_fkey(name)')
-        .eq('nation_id', currentNation.id)
-        .eq('is_active', true)
-        .eq('status', 'active');
-
-    if (!ambassadors || ambassadors.length === 0) {
-        html += '<div class="empty-state"><div class="empty-state-text">No active ambassadors to recall.</div></div>';
-    } else {
-        html += '<div style="padding:8px 0;">';
-        ambassadors.forEach(amb => {
-            const ambName = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim();
-            const party = amb.factions?.abbreviation ? ' (' + amb.factions.abbreviation + ')' : '';
-            const targetName = amb.nations?.name || 'Unknown';
-            html += `<div class="action-item" onclick="recallAmbassador('${amb.id}', '${escapeHtml(targetName)}')">
-                <span class="action-name">${escapeHtml(ambName)}${party} — ${escapeHtml(targetName)}</span>
-                <span class="action-type">Recall</span>
-            </div>`;
-        });
-        html += '</div>';
-    }
-
-    html += '<div class="detail-actions" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hair);">';
-    html += '<button class="detail-btn" onclick="cancelDraft()">Cancel</button>';
-    html += '</div>';
-    html += '</div>';
-    body.innerHTML = html;
-}
-
-async function renderAppointAmbassadorDraft(body) {
-    let html = '<div class="draft-panel">';
-    html += '<div class="draft-header">';
-    html += '<div class="draft-field"><div class="draft-field-label">Action</div><div class="draft-field-input">Appoint Ambassador <span style="color:var(--teal);">(1 AP)</span></div></div>';
-    html += '</div>';
-
-    // Fetch nations that don't have an active or pending ambassador from us
-    const { data: existingAmbs } = await _supabase
-        .from('ambassadors')
-        .select('target_nation_id')
-        .eq('nation_id', currentNation.id)
-        .eq('is_active', true)
-        .in('status', ['active', 'pending_confirmation']);
-
-    const coveredNationIds = (existingAmbs || []).map(a => a.target_nation_id);
-
-    const { data: allNations } = await _supabase
-        .from('nations')
-        .select('id, name')
-        .neq('id', currentNation.id)
-        .order('name');
-
-    const openNations = (allNations || []).filter(n => !coveredNationIds.includes(n.id));
-
-    if (openNations.length === 0) {
-        html += '<div class="empty-state"><div class="empty-state-text">All nations already have an ambassador assigned.</div></div>';
-    } else {
-        html += '<div style="padding:8px 0;">';
-        openNations.forEach(n => {
-            const urlParams = new URLSearchParams(window.location.search);
-            const adminNation = urlParams.get('nation_id') || sessionStorage.getItem('_admin_nation') || '';
-            const adminFaction = urlParams.get('faction_id') || sessionStorage.getItem('_admin_faction') || '';
-            const adminParams = [adminNation ? 'nation_id=' + adminNation : '', adminFaction ? 'faction_id=' + adminFaction : ''].filter(Boolean).join('&');
-            const ambUrl = 'select-candidate.html?role=ambassador&target=' + n.id + (adminParams ? '&' + adminParams : '');
-            html += `<div class="action-item" onclick="window.location.href='${ambUrl}'">
-                <span class="action-name">${escapeHtml(n.name)}</span>
-                <span class="action-type">Appoint</span>
-            </div>`;
-        });
-        html += '</div>';
-    }
-
-    html += '<div class="detail-actions" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hair);">';
-    html += '<button class="detail-btn" onclick="cancelDraft()">Cancel</button>';
-    html += '</div>';
-    html += '</div>';
-    body.innerHTML = html;
-}
-
-// ══════════════════════════════════════════════════════
 // DRAFT INITIATIVE BOX
 // ══════════════════════════════════════════════════════
 function renderDraftBox() {
@@ -7804,20 +7713,6 @@ function renderDraftBox() {
     if (!activeDraftAction) {
         if (statusEl) statusEl.textContent = '';
         body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Select an action from the right panel to begin drafting.</div></div>';
-        return;
-    }
-
-    // Special handling for Recall Ambassador
-    if (activeDraftAction.key === 'recall_ambassador') {
-        if (statusEl) statusEl.textContent = 'Recall Ambassador';
-        renderRecallAmbassadorDraft(body);
-        return;
-    }
-
-    // Special handling for Appoint Ambassador
-    if (activeDraftAction.key === 'appoint_ambassador') {
-        if (statusEl) statusEl.textContent = 'Appoint Ambassador';
-        renderAppointAmbassadorDraft(body);
         return;
     }
 
