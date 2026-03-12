@@ -76,7 +76,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { isGovernmentAutocracy, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS } from './js/game-common.js';
+import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -217,7 +217,11 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
     // Head of Government
     if (isGovernmentAutocracy(nation)) {
         roles.isHoG = nation.ruling_faction_id === faction.id;
+    } else if (isGovernmentPresidential(nation)) {
+        // Presidential: president's faction is stored as lead_party_id in virtual coalition
+        roles.isHoG = coalition?.lead_party_id === faction.id;
     } else {
+        // Parliamentary: prime minister from coalition allocations
         const alloc = coalition?.ministry_allocations || {};
         roles.isHoG = alloc.prime_minister === faction.id;
     }
@@ -337,7 +341,10 @@ async function renderDiploHeader() {
     } catch (e) { console.warn('Error fetching header counts:', e); }
 
     const roleBadges = [];
-    if (diplomaticRoles.isHoG) roleBadges.push('<span class="diplo-role-badge role-hog">' + (isGovernmentAutocracy(currentNation) ? 'Head of Government' : 'Prime Minister') + '</span>');
+    if (diplomaticRoles.isHoG) {
+        const hogLabel = isGovernmentAutocracy(currentNation) ? 'Head of Government' : isGovernmentPresidential(currentNation) ? 'President' : 'Prime Minister';
+        roleBadges.push('<span class="diplo-role-badge role-hog">' + hogLabel + '</span>');
+    }
     if (diplomaticRoles.isFM)  roleBadges.push('<span class="diplo-role-badge role-fm">Foreign Minister</span>');
     if (diplomaticRoles.isMoT) roleBadges.push('<span class="diplo-role-badge role-mot">Minister of Trade</span>');
     diplomaticRoles.ambassadorTo.forEach(a => {
