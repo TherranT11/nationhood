@@ -10207,10 +10207,10 @@ const RALLY_OUTCOMES = [
 function getRallyOutcomeWeights(blocApproval, ralliedRecently, nationState) {
     const weights = { rousing: 20, solid: 38, low: 15, gaffe: 12, divisive: 8, counter: 5 };
 
-    // High approval → more rousing
-    if (blocApproval > 60) {
+    // High approval → more rousing (thresholds calibrated for 45/55 pillar weights)
+    if (blocApproval > 45) {
         weights.rousing += 12; weights.low -= 5; weights.gaffe -= 4;
-    } else if (blocApproval < 30) {
+    } else if (blocApproval < 20) {
         weights.rousing -= 10; weights.low += 10; weights.gaffe += 8;
     }
 
@@ -15612,9 +15612,9 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
 
         if (faction) {
             let delta = 0;
-            if (faction.approval_rating < 50 && effects.approval_below_50_bonus) {
+            if (faction.approval_rating < 40 && effects.approval_below_50_bonus) {
                 delta = effects.approval_below_50_bonus;
-            } else if (faction.approval_rating > 60 && effects.approval_above_60_penalty) {
+            } else if (faction.approval_rating > 50 && effects.approval_above_60_penalty) {
                 delta = effects.approval_above_60_penalty;
             }
             if (delta !== 0) {

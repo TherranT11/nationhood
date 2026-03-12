@@ -6641,7 +6641,7 @@ async function upsertBlocApproval(factionId, blocId, updateFn) {
         const updates = updateFn(fba);
         await _supabase.from('faction_bloc_approval').update(updates).eq('id', fba.id);
     } else {
-        const defaults = { faction_id: factionId, bloc_id: blocId, preference_score: 50, momentum: 0 };
+        const defaults = { faction_id: factionId, bloc_id: blocId, preference_score: 40, momentum: 0 };
         const updates = updateFn(defaults);
         await _supabase.from('faction_bloc_approval').insert({ ...defaults, ...updates });
     }

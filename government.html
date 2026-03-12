@@ -2051,7 +2051,7 @@ async function formGovernmentFallback(ministryBaselines) {
             const coalitionFactions = (allFactions || []).filter(f =>
                 (newFormation.party_ids || []).includes(f.id));
             const govApproval = coalitionFactions.length > 0
-                ? Math.round(coalitionFactions.reduce((sum, f) => sum + (f.approval_rating ?? 50), 0) / coalitionFactions.length)
+                ? Math.round(coalitionFactions.reduce((sum, f) => sum + (f.approval_rating ?? 40), 0) / coalitionFactions.length)
                 : null;
 
             try {
@@ -2591,7 +2591,7 @@ async function confirmAssign() {
         // +3% approval to the receiving party
         const receivingParty = allParties.find(p => p.id === selectedCandidate.partyId);
         if (receivingParty) {
-            const newApproval = Math.min(100, (receivingParty.approval_rating || 50) + 3);
+            const newApproval = Math.min(100, (receivingParty.approval_rating || 40) + 3);
             await _supabase.from('factions').update({ approval_rating: newApproval })
                 .eq('id', selectedCandidate.partyId);
         }
@@ -2953,7 +2953,7 @@ async function purgeMinister(ministryKey) {
             }
         }
 
-        const rulerApproval = currentFaction.approval_rating ?? 50;
+        const rulerApproval = currentFaction.approval_rating ?? 40;
         const newRulerApproval = Math.min(100, rulerApproval + approvalBoost);
         await _supabase.from('factions').update({
             approval_rating: newRulerApproval

@@ -1976,7 +1976,7 @@ window.confirmEnergyChoice = async function() {
                 if (playerFactionId) {
                     const { error: yourErr } = await _supabase.from('faction_bloc_approval')
                         .upsert(
-                            { faction_id: playerFactionId, bloc_id: blocId, preference_score: 50 },
+                            { faction_id: playerFactionId, bloc_id: blocId, preference_score: 40 },
                             { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true }
                         );
                     if (!yourErr) {
@@ -2000,7 +2000,7 @@ window.confirmEnergyChoice = async function() {
                 if (pmFactionId && pmFactionId !== playerFactionId) {
                     const { error: pmErr } = await _supabase.from('faction_bloc_approval')
                         .upsert(
-                            { faction_id: pmFactionId, bloc_id: blocId, preference_score: 50 },
+                            { faction_id: pmFactionId, bloc_id: blocId, preference_score: 40 },
                             { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true }
                         );
                     if (!pmErr) {
