@@ -7720,12 +7720,14 @@ function renderDraftBox() {
 
     // Special branch for Recall Ambassador
     if (activeDraftAction.key === 'recall_ambassador') {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
         renderRecallAmbassadorPanel(body, statusEl);
         return;
     }
 
     // Special branch for Appoint Ambassador
     if (activeDraftAction.key === 'appoint_ambassador') {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
         renderAppointAmbassadorPanel(body, statusEl);
         return;
     }
