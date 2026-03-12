@@ -355,17 +355,19 @@ async function renderDiploHeader() {
         </div>
     `;
 
-    // Populate ambassador dropdown in toolbar
+    // Populate ambassador dropdown in toolbar (if element exists)
     const dropdown = document.getElementById('diplo-amb-dropdown');
     const select = document.getElementById('amb-select');
-    if (diplomaticRoles.ambassadorTo.length > 0) {
-        dropdown.style.display = '';
-        select.innerHTML = '<option value="">Select...</option>' +
-            diplomaticRoles.ambassadorTo.map(a =>
-                '<option value="' + a.target_nation_id + '">' + a.target_nation_name + '</option>'
-            ).join('');
-    } else {
-        dropdown.style.display = 'none';
+    if (dropdown && select) {
+        if (diplomaticRoles.ambassadorTo.length > 0) {
+            dropdown.style.display = '';
+            select.innerHTML = '<option value="">Select...</option>' +
+                diplomaticRoles.ambassadorTo.map(a =>
+                    '<option value="' + a.target_nation_id + '">' + a.target_nation_name + '</option>'
+                ).join('');
+        } else {
+            dropdown.style.display = 'none';
+        }
     }
 
     // Refresh tab notification badges
