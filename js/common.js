@@ -309,7 +309,7 @@ export function renderTopBar(activeTab) {
                 </div>
             </div>
             <div class="top-bar-right">
-                <button class="guide-btn" id="guide-btn" title="Page Guide">&#x1F4D6;</button>
+                <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
                 <span class="party-badge" id="party-badge">--</span>
                 <span class="topbar-ap" id="topbar-ap"></span>
                 <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle" title="Toggle light/dark mode">Light</button>
