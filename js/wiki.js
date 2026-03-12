@@ -41,35 +41,32 @@ export async function uploadWikiImage(supabase, nationId, file) {
     return data?.publicUrl || null;
 }
 
-/** Fetch a single wiki page by slug */
-export async function fetchPage(supabase, nationId, slug) {
+/** Fetch a single wiki page by slug (global — no nation filter) */
+export async function fetchPage(supabase, slug) {
     const { data, error } = await supabase
         .from('wiki_pages')
         .select('*')
-        .eq('nation_id', nationId)
         .eq('slug', slug)
         .maybeSingle();
     if (error) throw error;
     return data;
 }
 
-/** Fetch all wiki pages for a nation (lightweight — no body) */
-export async function fetchPageList(supabase, nationId) {
+/** Fetch all wiki pages (lightweight — no body) */
+export async function fetchPageList(supabase) {
     const { data, error } = await supabase
         .from('wiki_pages')
         .select('id, slug, title, template_type, updated_at, updated_by, created_by, locked_by')
-        .eq('nation_id', nationId)
         .order('title', { ascending: true });
     if (error) throw error;
     return data || [];
 }
 
 /** Fetch the set of existing slugs for link colouring */
-export async function fetchExistingSlugs(supabase, nationId) {
+export async function fetchExistingSlugs(supabase) {
     const { data, error } = await supabase
         .from('wiki_pages')
-        .select('slug')
-        .eq('nation_id', nationId);
+        .select('slug');
     if (error) throw error;
     return new Set((data || []).map(r => r.slug));
 }

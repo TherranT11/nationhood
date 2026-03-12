@@ -38,12 +38,11 @@ import { fetchPageList } from './js/wiki.js';
 const TEMPLATE_TYPES = ['nation', 'person', 'corporation', 'religion', 'culture'];
 
 initPage('wiki', async (state) => {
-    const { nation } = state;
     const root = document.getElementById('wiki-root');
 
     let pages = [];
     try {
-        pages = await fetchPageList(_supabase, nation.id);
+        pages = await fetchPageList(_supabase);
     } catch (err) {
         root.innerHTML = `<div class="wiki-empty"><h2>Error</h2><p>${escapeHtml(err.message)}</p></div>`;
         return;

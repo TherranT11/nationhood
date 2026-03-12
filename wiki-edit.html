@@ -56,7 +56,7 @@ initPage('wiki', async (state) => {
     let existingPage = null;
     if (editSlug && !isNew) {
         try {
-            existingPage = await fetchPage(_supabase, nation.id, editSlug);
+            existingPage = await fetchPage(_supabase, editSlug);
         } catch (err) {
             root.innerHTML = `<div class="wiki-empty"><h2>Error</h2><p>${escapeHtml(err.message)}</p></div>`;
             return;
