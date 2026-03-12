@@ -1758,7 +1758,12 @@ async function submitToCommittee() {
 
     // Atomic AP deduction — prevents race conditions and double-spend
     const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.DRAFT_BILL_AP_COST);
-    if (!apResult.success) { alert('Not enough AP to draft this bill.'); isSubmitting = false; return; }
+    if (!apResult.success) {
+        alert('Not enough AP to draft this bill.');
+        isSubmitting = false;
+        document.getElementById('submit-bill-btn').disabled = draftArticles.length === 0;
+        return;
+    }
     currentFaction.action_points = apResult.newAp;
     sessionStorage.removeItem('nationhood_state'); // bust stale AP cache
 
@@ -1802,12 +1807,30 @@ async function submitToCommittee() {
                 }
                 return articleRow;
             });
-            await _supabase.from('bill_articles').insert(articles);
+            const { error: articlesError } = await _supabase.from('bill_articles').insert(articles);
+            if (articlesError) {
+                const { error: rollbackError } = await _supabase.from('bills').delete().eq('id', bill.id);
+                if (rollbackError) {
+                    console.error('Rollback failed after bill_articles insert error:', rollbackError);
+                }
+                articlesError.isArticlesError = true;
+                throw articlesError;
+            }
         }
 
         closeModal(); await loadLawsData(); renderLawsPage();
         alert(`"${billName}" submitted to committee!${isFoundationalBill ? '\n\nYou need at least one co-sponsor to send it to the floor.' : ''}`);
-    } catch (error) { console.error('Error submitting:', error); alert('Error submitting. Please try again.'); } finally { isSubmitting = false; }
+    } catch (error) {
+        console.error('Error submitting:', error);
+        if (error?.isArticlesError) {
+            alert(`Error saving bill articles: ${error.message}`);
+        } else {
+            alert('Error submitting. Please try again.');
+        }
+    } finally {
+        isSubmitting = false;
+        document.getElementById('submit-bill-btn').disabled = draftArticles.length === 0;
+    }
 }
 
 // ==================== DEFAULT RESOLUTION ====================
