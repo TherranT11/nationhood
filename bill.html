@@ -1811,25 +1811,6 @@ async function enactDecree() {
         const { error } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
         if (error) throw error;
 
-        const { data: verificationRow, error: verificationError } = await _supabase.from('bills').select('id,status').eq('id', billId).single();
-        if (verificationError || !verificationRow || verificationRow.status !== 'floor') {
-            console.error('Decree floor verification failed after enact', {
-                billId,
-                nationId: currentNation?.id || null,
-                verificationError,
-                verificationRow
-            });
-        const { data: refreshedBill, error: refreshError } = await _supabase
-            .from('bills')
-            .select('id, status')
-            .eq('id', billId)
-            .single();
-        if (refreshError) throw refreshError;
-        if (!refreshedBill || refreshedBill.status !== 'floor') {
-            alert('Error: decree was not moved to the floor. Please refresh and try again.');
-            return;
-        }
-
         // Apply dynamic ideology penalty to sponsor (skip for system-generated bills)
         if (currentBill.proposed_by) {
             let sponsorIdeology = await loadFactionIdeology(_supabase, currentBill.proposed_by);
@@ -1837,7 +1818,7 @@ async function enactDecree() {
             if (sponsorIdeology) {
                 const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, currentBill.bill_articles || []);
                 if (dynamicPenalty < 0) {
-                    await adjustMomentumAll(_supabase, currentNation.id, currentBill.proposed_by, dynamicPenalty, 'legislation:withdraw');
+                    await adjustMomentumAll(_supabase, currentNation.id, currentBill.proposed_by, dynamicPenalty, 'legislation:floor');
                     console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
                 }
             }
