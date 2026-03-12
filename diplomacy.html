@@ -76,7 +76,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { isGovernmentAutocracy, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS } from './js/game-common.js';
+import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -217,7 +217,11 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
     // Head of Government
     if (isGovernmentAutocracy(nation)) {
         roles.isHoG = nation.ruling_faction_id === faction.id;
+    } else if (isGovernmentPresidential(nation)) {
+        // Presidential: president's faction is stored as lead_party_id in virtual coalition
+        roles.isHoG = coalition?.lead_party_id === faction.id;
     } else {
+        // Parliamentary: prime minister from coalition allocations
         const alloc = coalition?.ministry_allocations || {};
         roles.isHoG = alloc.prime_minister === faction.id;
     }
@@ -337,7 +341,10 @@ async function renderDiploHeader() {
     } catch (e) { console.warn('Error fetching header counts:', e); }
 
     const roleBadges = [];
-    if (diplomaticRoles.isHoG) roleBadges.push('<span class="diplo-role-badge role-hog">' + (isGovernmentAutocracy(currentNation) ? 'Head of Government' : 'Prime Minister') + '</span>');
+    if (diplomaticRoles.isHoG) {
+        const hogLabel = isGovernmentAutocracy(currentNation) ? 'Head of Government' : isGovernmentPresidential(currentNation) ? 'President' : 'Prime Minister';
+        roleBadges.push('<span class="diplo-role-badge role-hog">' + hogLabel + '</span>');
+    }
     if (diplomaticRoles.isFM)  roleBadges.push('<span class="diplo-role-badge role-fm">Foreign Minister</span>');
     if (diplomaticRoles.isMoT) roleBadges.push('<span class="diplo-role-badge role-mot">Minister of Trade</span>');
     diplomaticRoles.ambassadorTo.forEach(a => {
@@ -410,8 +417,9 @@ async function updateTabBadges() {
         (inboxProposals || []).forEach(p => {
             const isIncoming = p.target_nation_id === currentNation.id;
             const isRevised = p.status === 'revised';
-            const revisedByThem = isRevised && p.target_nation_id === currentNation.id;
-            if ((p.status === 'proposed' && isIncoming) || (isRevised && !revisedByThem)) {
+            const pd = p.proposal_data || {};
+            const revisedByUs = isRevised && (pd.revised_by_nation_id ? pd.revised_by_nation_id === currentNation.id : !isIncoming);
+            if ((p.status === 'proposed' && isIncoming) || (isRevised && !revisedByUs)) {
                 inboxCount++;
             } else if (p.status === 'fm_review' && diplomaticRoles.isFM) {
                 inboxCount++;
@@ -1022,8 +1030,9 @@ async function renderInboxTab(filter) {
         allProposals.forEach(p => {
             const isIncoming = p.target_nation_id === currentNation.id;
             const isRevised = p.status === 'revised';
-            const revisedByThem = isRevised && p.target_nation_id === currentNation.id;
-            const needsOurAction = (p.status === 'proposed' && isIncoming) || (isRevised && !revisedByThem);
+            const rpd = p.proposal_data || {};
+            const revisedByUs = isRevised && (rpd.revised_by_nation_id ? rpd.revised_by_nation_id === currentNation.id : !isIncoming);
+            const needsOurAction = (p.status === 'proposed' && isIncoming) || (isRevised && !revisedByUs);
             const isFmReview = p.status === 'fm_review';
             const isRatification = p.status === 'ratification' || p.status === 'ratification_failed';
 
@@ -1053,8 +1062,9 @@ async function renderInboxTab(filter) {
             if (inboxFilter === 'all') return true;
             const isIncoming = p.target_nation_id === currentNation.id;
             const isRevised = p.status === 'revised';
-            const revisedByThem = isRevised && p.target_nation_id === currentNation.id;
-            const needsOurAction = (p.status === 'proposed' && isIncoming) || (isRevised && !revisedByThem);
+            const fpd = p.proposal_data || {};
+            const revisedByUs = isRevised && (fpd.revised_by_nation_id ? fpd.revised_by_nation_id === currentNation.id : !isIncoming);
+            const needsOurAction = (p.status === 'proposed' && isIncoming) || (isRevised && !revisedByUs);
 
             if (inboxFilter === 'action') return needsOurAction;
             if (inboxFilter === 'fm_review') return p.status === 'fm_review';
@@ -1102,8 +1112,11 @@ function renderInboxCard(p) {
     const struckIndices = new Set(pd.struck_articles || []);
     const isIncoming = p.target_nation_id === currentNation.id;
     const isRevised = p.status === 'revised';
-    const revisedByUs = isRevised && p.target_nation_id !== currentNation.id;
-    const revisedByThem = isRevised && p.target_nation_id === currentNation.id;
+    // For trade_agreement proposals, track who revised using revised_by_nation_id
+    const revisedByUs = isRevised && (
+        pd.revised_by_nation_id ? pd.revised_by_nation_id === currentNation.id : p.target_nation_id !== currentNation.id
+    );
+    const revisedByThem = isRevised && !revisedByUs;
     const needsOurAction = (p.status === 'proposed' && isIncoming) || (isRevised && !revisedByUs);
 
     // Classification
@@ -1585,6 +1598,11 @@ async function fmApprove(proposalId) {
         .eq('id', proposalId);
 
     if (updateErr) { alert('Error approving: ' + updateErr.message); return; }
+
+    // For trade_agreement proposals, create the trade_agreements row
+    if (proposal.proposal_type === 'trade_agreement') {
+        await activateTradeAgreement(proposal, currentTick);
+    }
 
     // Apply relation effects
     await applyProposalEffects(proposal, currentTick);
@@ -3273,30 +3291,35 @@ async function renderDiploDraftSection() {
 }
 
 // ==================== STEP 3B: PROPOSE TRADE NEGOTIATIONS ====================
+var wizardTradeAgreementType = null;  // selected trade agreement type key
+var counterTradeArticles = [];  // articles added during counter-proposal
+
 async function renderWizardStep3TradeProposal() {
     const panel = document.getElementById('wizard-panel-3');
     if (!panel) return;
 
     panel.innerHTML = '<p style="color:#6b6a5e;font-style:italic;font-size:0.82rem;">Loading...</p>';
 
-    // Fetch target nation name
     const { data: targetNation } = await _supabase.from('nations').select('id, name').eq('id', wizardTargetNation).single();
     const targetName = targetNation?.name || 'Unknown';
 
-    // Check if there's already an open/active negotiation with this nation
-    const aId = currentNation.id < wizardTargetNation ? currentNation.id : wizardTargetNation;
-    const bId = currentNation.id < wizardTargetNation ? wizardTargetNation : currentNation.id;
-    const { data: existingNegs } = await _supabase
-        .from('trade_negotiations')
-        .select('id, status, agreement_name')
-        .in('status', ['open', 'active'])
-        .eq('nation_a_id', aId)
-        .eq('nation_b_id', bId);
+    // Check for existing pending trade proposals with this nation
+    const { data: existingProposals } = await _supabase
+        .from('diplomatic_proposals')
+        .select('id, status, proposal_data')
+        .eq('proposal_type', 'trade_agreement')
+        .in('status', ['proposed', 'revised', 'fm_review', 'ratification'])
+        .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id);
 
-    if (existingNegs && existingNegs.length > 0) {
+    const existingWithTarget = (existingProposals || []).filter(p => {
+        const pd = p.proposal_data || {};
+        return pd.target_nation_id === wizardTargetNation || pd.proposer_nation_id === wizardTargetNation;
+    });
+
+    if (existingWithTarget.length > 0) {
         panel.innerHTML = `
             <div class="trade-info-box warning">
-                You already have active trade negotiations with ${escapeHtml(targetName)}. Open the existing negotiation from the list above.
+                You already have a pending trade proposal with ${escapeHtml(targetName)}. Check the Negotiations panel.
             </div>
             <div class="wizard-nav" style="margin-top:12px;">
                 <button class="wizard-back-btn" onclick="wizardBackToStep2()">Back</button>
@@ -3309,50 +3332,280 @@ async function renderWizardStep3TradeProposal() {
     const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isMoT && !diplomaticRoles.isFM;
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
+    // If no agreement type selected yet, show type selection
+    if (!wizardTradeAgreementType) {
+        let html = `
+            <div class="trade-article-builder">
+                <div class="trade-article-header">
+                    <span class="trade-article-title">Propose Trade Agreement with ${escapeHtml(targetName)}</span>
+                </div>
+                <p style="font-size:0.78rem;color:var(--text-muted);line-height:1.5;margin-bottom:14px;">
+                    Choose the type of trade agreement to propose. You will draft the articles before sending.
+                </p>
+                ${isHoGOnly ? '<div class="trade-info-box warning" style="margin-bottom:12px;">No Trade Minister, Foreign Minister, or ambassador appointed. Drafting as Head of Government costs ' + apCost + ' AP.</div>' : ''}
+                <div class="type-card-grid">`;
+
+        // Show bilateral trade agreement types (not unilateral like export_subsidy or retaliatory_tariff)
+        for (const [key, typeInfo] of Object.entries(TRADE_AGREEMENT_TYPES)) {
+            if (typeInfo.unilateral_action || !typeInfo.bilateral) continue;
+            if (key === 'economic_aid') continue;  // aid has its own wizard path
+            html += `
+                <div class="type-card" onclick="selectTradeAgreementType('${key}')">
+                    <div class="type-card-title">${escapeHtml(typeInfo.label)}</div>
+                    <div class="type-card-desc">${escapeHtml(typeInfo.description)}</div>
+                </div>`;
+        }
+        html += '</div></div>';
+        html += '<div class="wizard-nav" style="margin-top:12px;"><button class="wizard-back-btn" onclick="wizardBackToStep2()">Back</button></div>';
+        panel.innerHTML = html;
+        return;
+    }
+
+    // Agreement type selected — show article drafting
+    const typeInfo = TRADE_AGREEMENT_TYPES[wizardTradeAgreementType];
+    const typeName = typeInfo?.label || wizardTradeAgreementType;
+    const availableTypes = getAvailableArticleTypes(wizardTradeAgreementType, tradeArticles);
+    const hasRequired = checkRequiredArticles(wizardTradeAgreementType, tradeArticles);
+
     let html = `
         <div class="trade-article-builder">
             <div class="trade-article-header">
-                <span class="trade-article-title">Propose Trade Negotiations</span>
+                <span class="trade-article-title">${escapeHtml(typeName)} with ${escapeHtml(targetName)}</span>
+                <span class="badge badge--dim" style="margin-left:8px;">${typeInfo?.shortLabel || ''}</span>
             </div>
-
-            <p style="font-size:0.78rem;color:var(--text-muted);line-height:1.5;margin-bottom:14px;">
-                Open a trade negotiation channel with ${escapeHtml(targetName)}. Their Trade Minister, Ambassador, or Head of Government must accept before the negotiation table opens.
-                Once open, both sides can choose the agreement type, draft articles, and negotiate terms.
-            </p>
-
-            ${isHoGOnly ? '<div class="trade-info-box warning" style="margin-bottom:12px;">No Trade Minister, Foreign Minister, or ambassador appointed. Drafting as Head of Government costs ' + apCost + ' AP instead of ' + DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP + ' AP.</div>' : ''}
 
             <div class="trade-field">
-                <label>Negotiation Name</label>
-                <input type="text" id="trade-neg-name" placeholder="e.g. ${escapeHtml(currentNation.name)}-${escapeHtml(targetName)} Trade Talks" maxlength="120" />
-            </div>
+                <label>Agreement Name</label>
+                <input type="text" id="trade-neg-name" placeholder="e.g. ${escapeHtml(currentNation.name)}-${escapeHtml(targetName)} ${escapeHtml(typeInfo?.shortLabel || 'Trade')} Agreement" maxlength="120" value="${escapeHtml(wizardName || '')}" onchange="wizardName=this.value" />
+            </div>`;
 
-            <div style="font-size:0.78rem;color:var(--text-muted);margin:12px 0;line-height:1.6;">
+    // Show existing articles
+    if (tradeArticles.length > 0) {
+        html += '<div style="margin-top:12px;">';
+        for (let i = 0; i < tradeArticles.length; i++) {
+            const art = tradeArticles[i];
+            const summary = renderTradeArticleSummary(art);
+            const artLabel = TRADE_ARTICLE_TYPES[art.type]?.label || art.type;
+            html += `
+                <div class="article-card" style="margin-bottom:6px;">
+                    <div class="article-card-type">Art. ${toRoman(i + 1)} — ${escapeHtml(artLabel)}</div>
+                    <div class="article-card-title" style="font-size:0.75rem;">${summary}</div>
+                    <button style="position:absolute;top:6px;right:8px;background:none;border:none;color:var(--red);cursor:pointer;font-size:0.7rem;" onclick="removeWizardTradeArticle(${i})">Remove</button>
+                </div>`;
+        }
+        html += '</div>';
+    }
+
+    // Add article dropdown
+    if (availableTypes.length > 0) {
+        html += `
+            <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+                <select id="wizard-trade-article-type" style="font-size:0.75rem;padding:4px 8px;background:var(--bg-1);color:var(--text-primary);border:1px solid var(--border-hair);border-radius:3px;">
+                    <option value="">Add article...</option>
+                    ${availableTypes.map(t => '<option value="' + t.key + '">' + escapeHtml(t.label) + (t.required ? ' (required)' : '') + '</option>').join('')}
+                </select>
+                <button class="wizard-next-btn" style="font-size:0.72rem;padding:4px 12px;" onclick="showWizardTradeArticleEditor()">Add</button>
+            </div>
+            <div id="wizard-trade-article-editor"></div>`;
+    }
+
+    // Required articles check
+    if (!hasRequired) {
+        const missing = (typeInfo.required_articles || []).filter(req => !tradeArticles.some(a => a.type === req));
+        const missingLabels = missing.map(m => TRADE_ARTICLE_TYPES[m]?.label || m).join(', ');
+        html += `<div class="trade-info-box warning" style="margin-top:12px;">Required articles missing: ${escapeHtml(missingLabels)}</div>`;
+    }
+
+    html += `
+            <div style="font-size:0.75rem;color:var(--text-muted);margin-top:14px;line-height:1.5;">
                 <strong>What happens next:</strong><br/>
-                1. You propose trade negotiations (${apCost} AP)<br/>
-                2. ${escapeHtml(targetName)}'s ambassador accepts (1 AP)<br/>
-                3. Negotiation table opens &mdash; choose agreement type (FTA, PTA, etc.)<br/>
-                4. FM (1 AP) and PM (2 AP) can join the negotiation<br/>
-                5. Both sides draft and agree on articles<br/>
-                6. Highest representative on each side approves<br/>
-                7. Ratification bill auto-generated in both parliaments
-            </div>
-
-            <div class="trade-info-box info">
-                The specific agreement type (Free Trade, Preferential Tariff, Resource Supply, or Export Subsidy) is chosen during negotiations, not now.
-                This proposal simply opens the channel.
+                1. You send the complete proposal with articles (${apCost} AP)<br/>
+                2. ${escapeHtml(targetName)} reviews the articles<br/>
+                3. They can accept, reject, or counter (strike/add articles)<br/>
+                4. If countered, you review their changes and accept or reject
             </div>
         </div>
 
         <div class="wizard-nav" style="margin-top:12px;">
-            <button class="wizard-back-btn" onclick="wizardBackToStep2()">Back</button>
-            <button class="wizard-next-btn" id="trade-propose-btn" onclick="submitTradeProposal()">
-                Propose Trade Negotiations (${apCost} AP)
+            <button class="wizard-back-btn" onclick="wizardTradeAgreementType=null;tradeArticles=[];renderWizardStep3TradeProposal()">Back (Change Type)</button>
+            <button class="wizard-next-btn" id="trade-propose-btn" ${hasRequired ? '' : 'disabled'} onclick="submitTradeProposal()">
+                Send Trade Proposal (${apCost} AP)
             </button>
-        </div>
-    `;
+        </div>`;
 
     panel.innerHTML = html;
+}
+
+function selectTradeAgreementType(typeKey) {
+    wizardTradeAgreementType = typeKey;
+    tradeArticles = [];
+    wizardName = '';
+    renderWizardStep3TradeProposal();
+}
+
+function showWizardTradeArticleEditor() {
+    const select = document.getElementById('wizard-trade-article-type');
+    const articleType = select?.value;
+    if (!articleType) { alert('Select an article type first.'); return; }
+    const container = document.getElementById('wizard-trade-article-editor');
+    if (!container) return;
+    renderTradeArticleEditorLocal(container, articleType);
+}
+
+function renderTradeArticleEditorLocal(container, articleType) {
+    const artTypeInfo = TRADE_ARTICLE_TYPES[articleType];
+    if (!artTypeInfo) return;
+
+    let html = '<div class="trade-article-builder" style="margin-top:10px;border-color:var(--accent);">';
+    html += '<div class="trade-article-header"><span class="trade-article-title">New: ' + escapeHtml(artTypeInfo.label) + '</span></div>';
+
+    switch (articleType) {
+        case 'duration': html += renderDurationEditor(); break;
+        case 'sector_exemption': html += renderSectorExemptionEditor(); break;
+        case 'tariff_reduction': html += renderTariffReductionEditor(); break;
+        case 'supply_commitment': html += renderSupplyCommitmentEditor(); break;
+        case 'price_terms': html += renderPriceTermsEditor(); break;
+        case 'breach_penalty': html += renderBreachPenaltyEditor(); break;
+        case 'subsidized_sector': html += renderSubsidizedSectorEditor(); break;
+        case 'funding_source': html += renderFundingSourceEditor(); break;
+        case 'text_article': html += renderTextArticleEditor(); break;
+        case 'aid_terms': html += renderAidTermsEditor(); break;
+        case 'aid_condition': html += renderAidConditionEditor(); break;
+        case 'tariff_surcharge': html += renderTariffSurchargeEditor(); break;
+    }
+
+    html += `
+        <div style="display:flex;gap:8px;margin-top:12px;">
+            <button class="wizard-next-btn" style="font-size:0.75rem;padding:6px 14px;" onclick="saveWizardTradeArticle('${articleType}')">Add Article</button>
+            <button class="wizard-back-btn" style="font-size:0.75rem;padding:6px 14px;" onclick="document.getElementById('wizard-trade-article-editor').innerHTML=''">Cancel</button>
+        </div>
+    `;
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function saveWizardTradeArticle(articleType) {
+    let articleData = {};
+
+    switch (articleType) {
+        case 'duration': {
+            const durType = document.querySelector('input[name="dur-type"]:checked')?.value || 'fixed';
+            const ticks = Math.min(120, Math.max(4, parseInt(document.getElementById('dur-ticks')?.value || '12')));
+            const autoRenew = document.getElementById('dur-autorenew')?.checked || false;
+            const withdrawal = Math.min(6, Math.max(1, parseInt(document.getElementById('dur-withdrawal')?.value || '3')));
+            articleData = { duration_type: durType, duration_ticks: durType === 'fixed' ? ticks : null, auto_renew: autoRenew, withdrawal_notice_ticks: withdrawal };
+            break;
+        }
+        case 'sector_exemption': {
+            const sector = document.getElementById('exempt-sector')?.value;
+            const reason = document.getElementById('exempt-reason')?.value?.trim() || '';
+            if (!sector) { alert('Please select a sector.'); return; }
+            articleData = { sector, reason };
+            break;
+        }
+        case 'tariff_reduction': {
+            const sector = document.getElementById('tariff-sector')?.value;
+            const direction = document.querySelector('input[name="tariff-dir"]:checked')?.value || 'mutual';
+            const pct = Math.min(100, Math.max(0, parseInt(document.getElementById('tariff-pct')?.value || '50')));
+            if (!sector) { alert('Please select a sector.'); return; }
+            articleData = { sector, direction, reduction_pct: pct, author_nation_id: currentNation.id };
+            break;
+        }
+        case 'supply_commitment': {
+            const sector = document.getElementById('supply-sector')?.value;
+            const direction = document.querySelector('input[name="supply-dir"]:checked')?.value || 'we_buy';
+            const pct = Math.min(90, Math.max(10, parseInt(document.getElementById('supply-pct')?.value || '60')));
+            if (!sector) { alert('Please select a resource.'); return; }
+            articleData = { sector, direction, commitment_pct: pct, author_nation_id: currentNation.id };
+            break;
+        }
+        case 'price_terms': {
+            const priceType = document.querySelector('input[name="price-type"]:checked')?.value || 'market';
+            const modifier = Math.min(25, Math.max(0, parseInt(document.getElementById('price-modifier')?.value || '10')));
+            articleData = { price_type: priceType, modifier_pct: (priceType === 'discounted' || priceType === 'premium') ? modifier : 0 };
+            break;
+        }
+        case 'breach_penalty': {
+            articleData = {
+                relations_penalty: Math.min(8, Math.max(1, parseInt(document.getElementById('breach-relations')?.value || '5'))),
+                reputation_penalty: Math.min(4, Math.max(0, parseInt(document.getElementById('breach-reputation')?.value || '2'))),
+                financial_penalty: Math.min(500, Math.max(0, parseInt(document.getElementById('breach-financial')?.value || '200')))
+            };
+            break;
+        }
+        case 'subsidized_sector': {
+            const sector = document.getElementById('subsidy-sector')?.value;
+            const pct = Math.min(30, Math.max(5, parseInt(document.getElementById('subsidy-pct')?.value || '15')));
+            if (!sector) { alert('Please select a sector.'); return; }
+            articleData = { sector, subsidy_pct: pct, author_nation_id: currentNation.id };
+            break;
+        }
+        case 'funding_source': {
+            const source = document.querySelector('input[name="fund-source"]:checked')?.value || 'general_treasury';
+            articleData = { source };
+            break;
+        }
+        case 'text_article': {
+            const title = document.getElementById('text-art-title')?.value?.trim() || '';
+            const body = document.getElementById('text-art-body')?.value?.trim() || '';
+            if (!body) { alert('Please enter article body text.'); return; }
+            articleData = { title, body };
+            break;
+        }
+        case 'aid_terms': {
+            const amount = Number(document.getElementById('aid-amount')?.value || 0);
+            const gdpCap = Math.min(25, Math.max(1, parseInt(document.getElementById('aid-gdp-cap')?.value || '10')));
+            if (amount < DIPLOMACY_CONFIG.AID_MIN_AMOUNT) {
+                alert('Minimum aid amount is $' + (DIPLOMACY_CONFIG.AID_MIN_AMOUNT / 1e9).toFixed(0) + 'B.');
+                return;
+            }
+            articleData = { donor_nation_id: currentNation.id, annual_amount: amount, gdp_cap_pct: gdpCap };
+            break;
+        }
+        case 'aid_condition': {
+            const statKey = document.getElementById('cond-stat')?.value;
+            const operator = document.querySelector('input[name="cond-op"]:checked')?.value || 'gte';
+            const threshold = Math.min(100, Math.max(0, parseInt(document.getElementById('cond-threshold')?.value || '50')));
+            const onFailure = document.querySelector('input[name="cond-fail"]:checked')?.value || 'suspend';
+            const grace = Math.min(2, Math.max(0, parseInt(document.getElementById('cond-grace')?.value || '1')));
+            if (!statKey) { alert('Please select a stat to monitor.'); return; }
+            const existingConditions = tradeArticles.filter(a => a.type === 'aid_condition');
+            if (existingConditions.length >= DIPLOMACY_CONFIG.AID_MAX_CONDITIONS) {
+                alert('Maximum ' + DIPLOMACY_CONFIG.AID_MAX_CONDITIONS + ' conditions per agreement.');
+                return;
+            }
+            articleData = { stat_key: statKey, operator, threshold, on_failure: onFailure, grace_periods: grace };
+            break;
+        }
+        case 'tariff_surcharge': {
+            const sector = document.getElementById('surcharge-sector')?.value;
+            const pct = Math.min(50, Math.max(5, parseInt(document.getElementById('surcharge-pct')?.value || '25')));
+            if (!sector) { alert('Please select a sector.'); return; }
+            articleData = { sector, surcharge_pct: pct, imposer_nation_id: currentNation.id };
+            break;
+        }
+    }
+
+    // Add to local state
+    const artDef = TRADE_ARTICLE_TYPES[articleType];
+    if (artDef && !artDef.repeatable) {
+        const existingIdx = tradeArticles.findIndex(a => a.type === articleType);
+        if (existingIdx >= 0) {
+            tradeArticles[existingIdx] = { type: articleType, data: articleData };
+        } else {
+            tradeArticles.push({ type: articleType, data: articleData });
+        }
+    } else {
+        tradeArticles.push({ type: articleType, data: articleData });
+    }
+
+    // Re-render the wizard to show updated articles
+    renderWizardStep3TradeProposal();
+}
+
+function removeWizardTradeArticle(index) {
+    tradeArticles.splice(index, 1);
+    renderWizardStep3TradeProposal();
 }
 
 // ==================== STEP 3C: PROPOSE ECONOMIC AID NEGOTIATIONS ====================
@@ -4022,26 +4275,29 @@ async function wizardSubmit() {
 // (Step 4B removed — trade type selection now happens inside negotiations)
 
 async function submitTradeProposal() {
-    if (!wizardTargetNation) {
-        alert('Missing target nation.');
+    if (!wizardTargetNation || !wizardTradeAgreementType) {
+        alert('Missing target nation or agreement type.');
+        return;
+    }
+
+    if (!checkRequiredArticles(wizardTradeAgreementType, tradeArticles)) {
+        alert('Please add all required articles before sending.');
         return;
     }
 
     const nameInput = document.getElementById('trade-neg-name');
-    const agreementName = nameInput?.value?.trim() || '';
+    const agreementName = (nameInput?.value?.trim() || wizardName || '').trim();
     if (!agreementName) {
-        alert('Please enter a name for the negotiations.');
+        alert('Please enter a name for the agreement.');
         return;
     }
 
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
     const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isMoT && !diplomaticRoles.isFM;
-    const isMoTProposer = diplomaticRoles.isMoT && !ourAmb && !isHoGOnly;
-    const isFMProposer = diplomaticRoles.isFM && !ourAmb && !diplomaticRoles.isMoT && !isHoGOnly;
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
     // Deduct AP
-    const apResult = await deductAP(_supabase, currentFaction.id, apCost, currentFaction.action_points);
+    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
     if (!apResult.success) {
         alert('Not enough AP. Need ' + apCost + ' AP, have ' + (currentFaction.action_points || 0) + '.');
         return;
@@ -4052,74 +4308,66 @@ async function submitTradeProposal() {
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
 
-    // Canonical nation ordering for the trade_negotiations table (nation_a_id < nation_b_id)
-    const nationAId = currentNation.id < wizardTargetNation ? currentNation.id : wizardTargetNation;
-    const nationBId = currentNation.id < wizardTargetNation ? wizardTargetNation : currentNation.id;
+    // Fetch target nation name
+    const { data: targetNation } = await _supabase.from('nations').select('name').eq('id', wizardTargetNation).single();
+    const targetName = targetNation?.name || 'Unknown';
 
-    const expiresAt = currentTick + DIPLOMACY_CONFIG.NEGOTIATION_DEFAULT_DURATION;
+    // Determine classification based on agreement type
+    const typeInfo = TRADE_AGREEMENT_TYPES[wizardTradeAgreementType];
+    const classification = 'MAJOR';  // All trade agreements go through FM review + ratification
 
-    // Determine proposer role
-    const proposerRole = isHoGOnly ? 'head_of_government' : isMoTProposer ? 'trade_minister' : isFMProposer ? 'foreign_minister' : 'ambassador';
-
-    // Build participant entry for the proposer
-    const proposerParticipant = {
-        faction_id: currentFaction.id,
-        role: proposerRole,
-        joined_at_tick: currentTick,
-        nation_id: currentNation.id
+    // Build proposal_data with trade articles
+    const proposalData = {
+        name: agreementName,
+        classification: classification,
+        agreement_type: wizardTradeAgreementType,
+        agreement_name: agreementName,
+        articles: tradeArticles,
+        proposer_nation_name: currentNation.name,
+        target_nation_name: targetName,
+        proposer_faction_id: currentFaction.id,
+        duration_years: null  // duration is in the articles
     };
 
-    // No agreement_type yet — that is chosen during negotiations after both sides join
-    const { data: negData, error: negError } = await _supabase.from('trade_negotiations').insert({
-        nation_a_id: nationAId,
-        nation_b_id: nationBId,
-        agreement_type: 'pending',
-        status: 'open',
-        participants: [proposerParticipant],
-        draft_articles: [],
-        agreement_name: agreementName,
-        expires_at_tick: expiresAt,
-        opened_at_tick: currentTick
-    }).select('id').single();
-
-    if (negError) {
-        console.error('Error creating trade negotiation:', negError);
-        alert('Error proposing trade negotiations: ' + negError.message);
-        return;
+    // Get duration from articles for display
+    const durationArt = tradeArticles.find(a => a.type === 'duration');
+    if (durationArt?.data) {
+        const dt = durationArt.data;
+        proposalData.duration_years = dt.duration_type === 'permanent' ? 'Permanent' : Math.round((dt.duration_ticks || 12) / 12);
     }
 
-    // Create a diplomatic_proposals entry so the other side sees it in their inbox
-    const { data: targetNation } = await _supabase.from('nations').select('name').eq('id', wizardTargetNation).single();
-
-    await _supabase.from('diplomatic_proposals').insert({
+    const { error: propErr } = await _supabase.from('diplomatic_proposals').insert({
         proposing_nation_id: currentNation.id,
         target_nation_id: wizardTargetNation,
         proposed_by_faction_id: currentFaction.id,
-        proposal_type: 'trade_negotiation',
-        proposal_tier: 1,
+        proposal_type: 'trade_agreement',
+        proposal_tier: 2,  // trade agreements are tier 2 (MAJOR)
         status: 'proposed',
-        proposal_data: {
-            name: agreementName,
-            negotiation_id: negData.id,
-            proposer_nation_name: currentNation.name,
-            target_nation_name: targetNation?.name || 'Unknown',
-            expires_at_tick: expiresAt
-        },
+        proposal_data: proposalData,
         proposed_at_tick: currentTick
     });
+
+    if (propErr) {
+        console.error('Error creating trade proposal:', propErr);
+        alert('Error proposing trade agreement: ' + propErr.message);
+        return;
+    }
 
     // Fire event
     await _supabase.from('event_log').insert({
         nation_id: currentNation.id,
-        event_name: 'Trade Negotiations Proposed',
+        event_name: 'Trade Agreement Proposed',
         category: 'Trade',
-        description_chosen: currentNation.name + ' has proposed trade negotiations with ' + (targetNation?.name || 'Unknown') + '. Awaiting acceptance.',
+        description_chosen: currentNation.name + ' has proposed a ' + (typeInfo?.label || 'trade agreement') + ' ("' + agreementName + '") with ' + targetName + '.',
         fired_at_tick: currentTick
     });
 
-    alert('"' + agreementName + '" trade negotiations proposed to ' + (targetNation?.name || 'Unknown') + '!\n\nTheir Trade Minister, Ambassador, or Head of Government must accept (' + DIPLOMACY_CONFIG.ACCEPT_TRADE_NEGOTIATION_AP + ' AP) to open the negotiation table.');
+    alert('"' + agreementName + '" (' + (typeInfo?.shortLabel || 'Trade') + ') proposed to ' + targetName + ' with ' + tradeArticles.length + ' article(s).\n\nThey can accept, reject, or counter with modifications.');
 
-    // Reset and re-render wizard
+    // Reset wizard state
+    wizardTradeAgreementType = null;
+    tradeArticles = [];
+    wizardName = '';
     await renderInitiativeWizard();
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
 }
@@ -5496,8 +5744,8 @@ function renderPendingProposals(proposals, targetNation) {
         const struckIndices = new Set(pd.struck_articles || []);
         const isIncoming = p.target_nation_id === currentNation.id;
         const isRevised = p.status === 'revised';
-        const revisedByUs = isRevised && p.target_nation_id !== currentNation.id;
-        const revisedByThem = isRevised && p.target_nation_id === currentNation.id;
+        const revisedByUs = isRevised && (pd.revised_by_nation_id ? pd.revised_by_nation_id === currentNation.id : !isIncoming);
+        const revisedByThem = isRevised && !revisedByUs;
 
         // Determine who needs to act
         let statusBadge = '';
@@ -5905,6 +6153,51 @@ async function submitInitiative() {
     if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
 }
 
+// ==================== ACTIVATE TRADE AGREEMENT ====================
+async function activateTradeAgreement(proposal, currentTick) {
+    const pd = proposal.proposal_data || {};
+    const allArticles = pd.articles || [];
+    const struckIndices = new Set(pd.struck_articles || []);
+
+    // Collect non-struck original articles
+    const activeArticles = allArticles.filter((_, i) => !struckIndices.has(i));
+    // Add counter-party's added articles
+    if (pd.added_articles && pd.added_articles.length > 0) {
+        activeArticles.push(...pd.added_articles);
+    }
+
+    // Get duration from articles
+    const durationArt = activeArticles.find(a => a.type === 'duration');
+    const dt = durationArt?.data || {};
+    const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
+    const expiresAt = durationTicks ? currentTick + durationTicks : null;
+
+    // Canonical nation ordering
+    const nationAId = Math.min(proposal.proposing_nation_id, proposal.target_nation_id);
+    const nationBId = Math.max(proposal.proposing_nation_id, proposal.target_nation_id);
+
+    const { error } = await _supabase.from('trade_agreements').insert({
+        nation_a_id: nationAId,
+        nation_b_id: nationBId,
+        agreement_type: pd.agreement_type,
+        agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
+        articles: activeArticles,
+        status: 'active',
+        enacted_at_tick: currentTick,
+        expires_at_tick: expiresAt,
+        auto_renew: dt.auto_renew || false,
+        withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
+        diplomatic_proposal_id: proposal.id
+    });
+
+    if (error) {
+        console.error('Error creating trade agreement:', error);
+        alert('Error activating trade agreement: ' + error.message);
+        return false;
+    }
+    return true;
+}
+
 async function acceptProposal(proposalId) {
     // Fetch the proposal
     const { data: proposal, error: fetchErr } = await _supabase
@@ -5999,7 +6292,12 @@ async function acceptProposal(proposalId) {
 
         if (updateErr) { alert('Error accepting proposal: ' + updateErr.message); return; }
 
-        // Apply effects
+        // For trade_agreement proposals, create the trade_agreements row
+        if (proposal.proposal_type === 'trade_agreement') {
+            await activateTradeAgreement(proposal, currentTick);
+        }
+
+        // Apply effects (for diplomatic initiatives with relation/money effects)
         await applyProposalEffects(proposal, currentTick);
 
         // Fire event for ALL nations
@@ -6097,6 +6395,7 @@ async function strikeArticles(proposalId) {
     if (!confirm('Strike ' + struckIndices.length + ' article(s) and send revised agreement back?')) return;
 
     pd.struck_articles = allStruck;
+    pd.revised_by_nation_id = currentNation.id;
 
     const { error } = await _supabase
         .from('diplomatic_proposals')
@@ -6106,6 +6405,286 @@ async function strikeArticles(proposalId) {
     if (error) { alert('Error sending revision: ' + error.message); return; }
 
     alert('Revised agreement sent back with ' + struckIndices.length + ' article(s) struck.');
+    if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
+}
+
+// ==================== TRADE COUNTER-PROPOSAL ====================
+
+function toggleCounterPanel(proposalId) {
+    counterTradeArticles = [];
+    const panel = document.getElementById('counter-panel-' + proposalId);
+    if (panel) {
+        panel.style.display = panel.style.display === 'none' ? '' : 'none';
+        // Clear any added articles list and editor on close
+        if (panel.style.display === 'none') {
+            const list = document.getElementById('counter-added-list-' + proposalId);
+            if (list) list.innerHTML = '';
+            const editor = document.getElementById('counter-article-editor-' + proposalId);
+            if (editor) editor.innerHTML = '';
+        }
+    }
+}
+
+function showCounterArticleEditor(proposalId, agreementType) {
+    const select = document.getElementById('counter-article-type-' + proposalId);
+    const articleType = select?.value;
+    if (!articleType) { alert('Select an article type first.'); return; }
+    const container = document.getElementById('counter-article-editor-' + proposalId);
+    if (!container) return;
+    renderCounterArticleEditor(container, articleType, proposalId);
+}
+
+function renderCounterArticleEditor(container, articleType, proposalId) {
+    const artTypeInfo = TRADE_ARTICLE_TYPES[articleType];
+    if (!artTypeInfo) return;
+
+    let html = '<div class="trade-article-builder" style="margin-top:10px;border-color:var(--accent);">';
+    html += '<div class="trade-article-header"><span class="trade-article-title">New: ' + escapeHtml(artTypeInfo.label) + '</span></div>';
+
+    switch (articleType) {
+        case 'duration': html += renderDurationEditor(); break;
+        case 'sector_exemption': html += renderSectorExemptionEditor(); break;
+        case 'tariff_reduction': html += renderTariffReductionEditor(); break;
+        case 'supply_commitment': html += renderSupplyCommitmentEditor(); break;
+        case 'price_terms': html += renderPriceTermsEditor(); break;
+        case 'breach_penalty': html += renderBreachPenaltyEditor(); break;
+        case 'subsidized_sector': html += renderSubsidizedSectorEditor(); break;
+        case 'funding_source': html += renderFundingSourceEditor(); break;
+        case 'text_article': html += renderTextArticleEditor(); break;
+        case 'aid_terms': html += renderAidTermsEditor(); break;
+        case 'aid_condition': html += renderAidConditionEditor(); break;
+        case 'tariff_surcharge': html += renderTariffSurchargeEditor(); break;
+    }
+
+    html += `
+        <div style="display:flex;gap:8px;margin-top:12px;">
+            <button class="wizard-next-btn" style="font-size:0.75rem;padding:6px 14px;" onclick="saveCounterTradeArticle('${articleType}', '${proposalId}')">Add Article</button>
+            <button class="wizard-back-btn" style="font-size:0.75rem;padding:6px 14px;" onclick="document.getElementById('counter-article-editor-${proposalId}').innerHTML=''">Cancel</button>
+        </div>
+    `;
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function saveCounterTradeArticle(articleType, proposalId) {
+    // Reuse the same parsing logic as saveWizardTradeArticle
+    let articleData = {};
+
+    switch (articleType) {
+        case 'duration': {
+            const durType = document.querySelector('input[name="dur-type"]:checked')?.value || 'fixed';
+            const ticks = Math.min(120, Math.max(4, parseInt(document.getElementById('dur-ticks')?.value || '12')));
+            const autoRenew = document.getElementById('dur-autorenew')?.checked || false;
+            const withdrawal = Math.min(6, Math.max(1, parseInt(document.getElementById('dur-withdrawal')?.value || '3')));
+            articleData = { duration_type: durType, duration_ticks: durType === 'fixed' ? ticks : null, auto_renew: autoRenew, withdrawal_notice_ticks: withdrawal };
+            break;
+        }
+        case 'sector_exemption': {
+            const sector = document.getElementById('exempt-sector')?.value;
+            const reason = document.getElementById('exempt-reason')?.value?.trim() || '';
+            if (!sector) { alert('Please select a sector.'); return; }
+            articleData = { sector, reason };
+            break;
+        }
+        case 'tariff_reduction': {
+            const sector = document.getElementById('tariff-sector')?.value;
+            const direction = document.querySelector('input[name="tariff-dir"]:checked')?.value || 'mutual';
+            const pct = Math.min(100, Math.max(0, parseInt(document.getElementById('tariff-pct')?.value || '50')));
+            if (!sector) { alert('Please select a sector.'); return; }
+            articleData = { sector, direction, reduction_pct: pct, author_nation_id: currentNation.id };
+            break;
+        }
+        case 'supply_commitment': {
+            const sector = document.getElementById('supply-sector')?.value;
+            const direction = document.querySelector('input[name="supply-dir"]:checked')?.value || 'we_buy';
+            const pct = Math.min(90, Math.max(10, parseInt(document.getElementById('supply-pct')?.value || '60')));
+            if (!sector) { alert('Please select a resource.'); return; }
+            articleData = { sector, direction, commitment_pct: pct, author_nation_id: currentNation.id };
+            break;
+        }
+        case 'price_terms': {
+            const priceType = document.querySelector('input[name="price-type"]:checked')?.value || 'market';
+            const modifier = Math.min(25, Math.max(0, parseInt(document.getElementById('price-modifier')?.value || '10')));
+            articleData = { price_type: priceType, modifier_pct: (priceType === 'discounted' || priceType === 'premium') ? modifier : 0 };
+            break;
+        }
+        case 'breach_penalty': {
+            articleData = {
+                relations_penalty: Math.min(8, Math.max(1, parseInt(document.getElementById('breach-relations')?.value || '5'))),
+                reputation_penalty: Math.min(4, Math.max(0, parseInt(document.getElementById('breach-reputation')?.value || '2'))),
+                financial_penalty: Math.min(500, Math.max(0, parseInt(document.getElementById('breach-financial')?.value || '200')))
+            };
+            break;
+        }
+        case 'subsidized_sector': {
+            const sector = document.getElementById('subsidy-sector')?.value;
+            const pct = Math.min(30, Math.max(5, parseInt(document.getElementById('subsidy-pct')?.value || '15')));
+            if (!sector) { alert('Please select a sector.'); return; }
+            articleData = { sector, subsidy_pct: pct, author_nation_id: currentNation.id };
+            break;
+        }
+        case 'funding_source': {
+            const source = document.querySelector('input[name="fund-source"]:checked')?.value || 'general_treasury';
+            articleData = { source };
+            break;
+        }
+        case 'text_article': {
+            const title = document.getElementById('text-art-title')?.value?.trim() || '';
+            const body = document.getElementById('text-art-body')?.value?.trim() || '';
+            if (!body) { alert('Please enter article body text.'); return; }
+            articleData = { title, body };
+            break;
+        }
+        case 'aid_terms': {
+            const amount = Number(document.getElementById('aid-amount')?.value || 0);
+            const gdpCap = Math.min(25, Math.max(1, parseInt(document.getElementById('aid-gdp-cap')?.value || '10')));
+            if (amount < DIPLOMACY_CONFIG.AID_MIN_AMOUNT) {
+                alert('Minimum aid amount is $' + (DIPLOMACY_CONFIG.AID_MIN_AMOUNT / 1e9).toFixed(0) + 'B.');
+                return;
+            }
+            articleData = { donor_nation_id: currentNation.id, annual_amount: amount, gdp_cap_pct: gdpCap };
+            break;
+        }
+        case 'aid_condition': {
+            const statKey = document.getElementById('cond-stat')?.value;
+            const operator = document.querySelector('input[name="cond-op"]:checked')?.value || 'gte';
+            const threshold = Math.min(100, Math.max(0, parseInt(document.getElementById('cond-threshold')?.value || '50')));
+            const onFailure = document.querySelector('input[name="cond-fail"]:checked')?.value || 'suspend';
+            const grace = Math.min(2, Math.max(0, parseInt(document.getElementById('cond-grace')?.value || '1')));
+            if (!statKey) { alert('Please select a stat to monitor.'); return; }
+            // Check max conditions
+            const existingConditions = counterTradeArticles.filter(a => a.type === 'aid_condition');
+            if (existingConditions.length >= DIPLOMACY_CONFIG.AID_MAX_CONDITIONS) {
+                alert('Maximum ' + DIPLOMACY_CONFIG.AID_MAX_CONDITIONS + ' conditions per agreement.');
+                return;
+            }
+            articleData = { stat_key: statKey, operator, threshold, on_failure: onFailure, grace_periods: grace };
+            break;
+        }
+        case 'tariff_surcharge': {
+            const sector = document.getElementById('surcharge-sector')?.value;
+            const pct = Math.min(50, Math.max(5, parseInt(document.getElementById('surcharge-pct')?.value || '25')));
+            if (!sector) { alert('Please select a sector.'); return; }
+            articleData = { sector, surcharge_pct: pct, imposer_nation_id: currentNation.id };
+            break;
+        }
+    }
+
+    // Check non-repeatable constraint
+    const artDef = TRADE_ARTICLE_TYPES[articleType];
+    if (artDef && !artDef.repeatable) {
+        if (counterTradeArticles.some(a => a.type === articleType)) {
+            alert('This article type can only be added once.');
+            return;
+        }
+    }
+
+    const article = { type: articleType, data: articleData };
+    counterTradeArticles.push(article);
+
+    // Update the added articles list display
+    renderCounterAddedList(proposalId);
+
+    // Clear editor
+    const editor = document.getElementById('counter-article-editor-' + proposalId);
+    if (editor) editor.innerHTML = '';
+}
+
+function removeCounterTradeArticle(index, proposalId) {
+    counterTradeArticles.splice(index, 1);
+    renderCounterAddedList(proposalId);
+}
+
+function renderCounterAddedList(proposalId) {
+    const list = document.getElementById('counter-added-list-' + proposalId);
+    if (!list) return;
+    if (counterTradeArticles.length === 0) { list.innerHTML = ''; return; }
+
+    let html = '<div style="font-size:10px;color:var(--green);margin:8px 0 4px;">Your additions:</div>';
+    counterTradeArticles.forEach((art, i) => {
+        const artLabel = renderTradeArticleSummary(art);
+        const artTypeName = TRADE_ARTICLE_TYPES[art.type]?.label || art.type;
+        html += `
+            <div class="article-card article-card--added" style="display:flex;align-items:flex-start;justify-content:space-between;">
+                <div>
+                    <div class="article-card-type">Added ${toRoman(i + 1)} — ${escapeHtml(artTypeName)}</div>
+                    <div class="article-card-title">${artLabel}</div>
+                </div>
+                <button style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;" onclick="removeCounterTradeArticle(${i}, '${proposalId}')">&#10005;</button>
+            </div>
+        `;
+    });
+    list.innerHTML = html;
+}
+
+async function strikeTradeArticles(proposalId) {
+    const checkboxes = document.querySelectorAll('.strike-checkbox[data-proposal-id="' + proposalId + '"]:checked');
+    const struckIndices = [];
+    checkboxes.forEach(cb => struckIndices.push(parseInt(cb.dataset.articleIndex)));
+
+    if (struckIndices.length === 0 && counterTradeArticles.length === 0) {
+        alert('Strike at least one article or add new articles to counter.');
+        return;
+    }
+
+    // Fetch proposal
+    const { data: proposal } = await _supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('id', proposalId)
+        .single();
+
+    if (!proposal) { alert('Could not load proposal.'); return; }
+
+    // Authorization: caller must be an authorized diplomat and it must be their turn
+    await refreshRoles();
+    const pd0 = proposal.proposal_data || {};
+    const isProposer = proposal.proposing_nation_id === currentNation.id;
+    const isTarget = proposal.target_nation_id === currentNation.id;
+    // Use revised_by_nation_id to determine whose turn it is
+    const revisedByUs = pd0.revised_by_nation_id === currentNation.id;
+    const isOurTurn = (proposal.status === 'proposed' && isTarget) ||
+        (proposal.status === 'revised' && !revisedByUs && (isProposer || isTarget));
+    // Allow ambassadors, FM, HoG, or MoT to counter
+    const otherNationId = isProposer ? proposal.target_nation_id : proposal.proposing_nation_id;
+    const isAmbToOther = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === otherNationId);
+    if (!isOurTurn || (!isAmbToOther && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !diplomaticRoles.isMoT)) {
+        alert('You are not authorized to counter this proposal.');
+        return;
+    }
+
+    const pd = proposal.proposal_data || {};
+    const totalArticles = (pd.articles || []).length;
+    const existingStruck = pd.struck_articles || [];
+    const allStruck = [...new Set([...existingStruck, ...struckIndices])];
+
+    // Can't strike all articles unless adding new ones
+    if (allStruck.length >= totalArticles && counterTradeArticles.length === 0) {
+        alert('Cannot strike all articles without adding alternatives. Use Reject instead.');
+        return;
+    }
+
+    const strikeSummary = struckIndices.length > 0 ? struckIndices.length + ' article(s) struck' : '';
+    const addSummary = counterTradeArticles.length > 0 ? counterTradeArticles.length + ' article(s) added' : '';
+    const summary = [strikeSummary, addSummary].filter(Boolean).join(', ');
+    if (!confirm('Send counter-proposal? ' + summary)) return;
+
+    pd.struck_articles = allStruck;
+    pd.revised_by_nation_id = currentNation.id;
+
+    // Merge counter articles into added_articles
+    const existingAdded = pd.added_articles || [];
+    pd.added_articles = [...existingAdded, ...counterTradeArticles];
+
+    const { error } = await _supabase
+        .from('diplomatic_proposals')
+        .update({ status: 'revised', proposal_data: pd })
+        .eq('id', proposalId);
+
+    if (error) { alert('Error sending counter: ' + error.message); return; }
+
+    counterTradeArticles = [];
+    alert('Counter-proposal sent. ' + summary + '.');
     if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
 }
 
@@ -6875,7 +7454,7 @@ async function renderNegotiationsBox() {
 
             // Determine if we need to act
             const isRevised = p.status === 'revised';
-            const revisedByUs = isRevised && p.target_nation_id !== currentNation.id;
+            const revisedByUs = isRevised && (pd.revised_by_nation_id ? pd.revised_by_nation_id === currentNation.id : !isIncoming);
             const needsOurAction = (p.status === 'proposed' && isIncoming) || (isRevised && !revisedByUs);
             const isFmReview = p.status === 'fm_review';
             const isRatification = p.status === 'ratification' || p.status === 'ratification_failed';
@@ -6985,11 +7564,17 @@ window.toggleNegRow = toggleNegRow;
 function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatification) {
     const articles = pd.articles || [];
     const struckIndices = new Set(pd.struck_articles || []);
+    const addedArticles = pd.added_articles || [];
     const classification = pd.classification || '';
+    const isTradeAgreement = p.proposal_type === 'trade_agreement';
 
     let html = '<div class="neg-detail-header">';
     html += '<div class="neg-detail-title">' + escapeHtml(pd.name || 'Unnamed') + '</div>';
     if (classification) html += '<span class="badge badge--dim">' + classification + '</span>';
+    if (isTradeAgreement && pd.agreement_type) {
+        const typeInfo = TRADE_AGREEMENT_TYPES[pd.agreement_type];
+        if (typeInfo) html += '<span class="badge badge--dim" style="margin-left:4px;">' + escapeHtml(typeInfo.shortLabel) + '</span>';
+    }
     html += '</div>';
 
     // Articles
@@ -6997,29 +7582,98 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
         for (let i = 0; i < articles.length; i++) {
             const art = articles[i];
             const isStruck = struckIndices.has(i);
-            const artLabel = art.text || art.label || art.type || 'Unknown';
+            // Use trade article summary for trade agreements, fallback to text/label for diplomatic
+            const artLabel = isTradeAgreement
+                ? renderTradeArticleSummary(art)
+                : escapeHtml(art.text || art.label || art.type || 'Unknown');
+            const artTypeName = isTradeAgreement ? (TRADE_ARTICLE_TYPES[art.type]?.label || art.type) : '';
             const cardClass = isStruck ? 'article-card article-card--struck' : 'article-card';
             html += `
                 <div class="${cardClass}">
-                    <div class="article-card-type">Art. ${toRoman(i + 1)}${isStruck ? ' — STRUCK' : ''}</div>
-                    <div class="article-card-title">${escapeHtml(artLabel)}</div>
+                    <div class="article-card-type">Art. ${toRoman(i + 1)}${artTypeName ? ' — ' + escapeHtml(artTypeName) : ''}${isStruck ? ' — STRUCK' : ''}</div>
+                    <div class="article-card-title">${isTradeAgreement ? artLabel : escapeHtml(art.text || art.label || '')}</div>
                 </div>
             `;
         }
     }
 
-    // Effects summary
-    let totalRel = 0, totalMoney = 0;
-    articles.forEach((art, i) => {
-        if (!struckIndices.has(i)) {
-            totalRel += art.relations || 0;
-            totalMoney += art.money || 0;
+    // Show added articles from counter-party
+    if (addedArticles.length > 0) {
+        html += '<div style="font-size:10px;color:var(--green);margin:8px 0 4px;">Counter-party additions:</div>';
+        for (let i = 0; i < addedArticles.length; i++) {
+            const art = addedArticles[i];
+            const artLabel = isTradeAgreement ? renderTradeArticleSummary(art) : escapeHtml(art.text || art.label || 'Unknown');
+            const artTypeName = isTradeAgreement ? (TRADE_ARTICLE_TYPES[art.type]?.label || art.type) : '';
+            html += `
+                <div class="article-card article-card--added">
+                    <div class="article-card-type">Added ${toRoman(i + 1)}${artTypeName ? ' — ' + escapeHtml(artTypeName) : ''}</div>
+                    <div class="article-card-title">${artLabel}</div>
+                </div>
+            `;
         }
-    });
-    if (totalRel || totalMoney) {
-        html += '<div style="font-size:10px;color:var(--text-dim);margin:6px 0;">';
-        if (totalRel) html += (totalRel > 0 ? '+' : '') + totalRel + ' Relations ';
-        if (totalMoney) html += (totalMoney > 0 ? '+$' : '-$') + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M';
+    }
+
+    // Effects summary (for diplomatic initiatives with relation/money effects)
+    if (!isTradeAgreement) {
+        let totalRel = 0, totalMoney = 0;
+        articles.forEach((art, i) => {
+            if (!struckIndices.has(i)) {
+                totalRel += art.relations || 0;
+                totalMoney += art.money || 0;
+            }
+        });
+        if (totalRel || totalMoney) {
+            html += '<div style="font-size:10px;color:var(--text-dim);margin:6px 0;">';
+            if (totalRel) html += (totalRel > 0 ? '+' : '') + totalRel + ' Relations ';
+            if (totalMoney) html += (totalMoney > 0 ? '+$' : '-$') + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M';
+            html += '</div>';
+        }
+    }
+
+    // Counter panel for trade agreements (hidden by default, toggled by Counter button)
+    if (needsOurAction && isTradeAgreement) {
+        html += '<div id="counter-panel-' + p.id + '" style="display:none;margin:8px 0;border:1px solid var(--border-subtle);padding:8px;background:var(--bg-3);">';
+        html += '<div style="font-size:10px;color:var(--text-dim);margin-bottom:6px;">Strike articles and/or add new ones:</div>';
+
+        // Strike checkboxes for original articles
+        for (let i = 0; i < articles.length; i++) {
+            if (struckIndices.has(i)) continue; // already struck, skip
+            const art = articles[i];
+            const artLabel = renderTradeArticleSummary(art);
+            const artTypeName = TRADE_ARTICLE_TYPES[art.type]?.label || art.type;
+            html += '<div style="display:flex;align-items:flex-start;gap:6px;margin:4px 0;">' +
+                '<input type="checkbox" class="strike-checkbox" data-proposal-id="' + p.id + '" data-article-index="' + i + '" style="margin-top:2px;" />' +
+                '<div style="font-size:11px;"><span style="color:var(--text-dim);">Art. ' + toRoman(i + 1) + ' — ' + escapeHtml(artTypeName) + ':</span> ' + artLabel + '</div>' +
+            '</div>';
+        }
+
+        // Added articles list (from counter)
+        html += '<div id="counter-added-list-' + p.id + '"></div>';
+
+        // Add article dropdown
+        const agreementType = pd.agreement_type;
+        if (agreementType) {
+            const existingArticles = [...articles, ...addedArticles, ...counterTradeArticles];
+            const availableTypes = getAvailableArticleTypes(agreementType, existingArticles);
+            if (availableTypes.length > 0) {
+                html += '<div style="margin-top:8px;">';
+                html += '<select id="counter-article-type-' + p.id + '" style="width:100%;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-size:11px;padding:4px 8px;">';
+                html += '<option value="">Add an article...</option>';
+                availableTypes.forEach(at => {
+                    html += '<option value="' + at.key + '">' + escapeHtml(at.label) + (at.required ? ' (required)' : '') + '</option>';
+                });
+                html += '</select>';
+                html += '<button class="detail-btn" style="margin-top:4px;" onclick="showCounterArticleEditor(\'' + p.id + '\', \'' + agreementType + '\')">Add</button>';
+                html += '</div>';
+                html += '<div id="counter-article-editor-' + p.id + '"></div>';
+            }
+        }
+
+        // Confirm counter button
+        html += '<div style="margin-top:8px;display:flex;gap:6px;">';
+        html += '<button class="detail-btn" style="color:var(--teal);border-color:var(--teal-border);" onclick="strikeTradeArticles(\'' + p.id + '\')">Send Counter</button>';
+        html += '<button class="detail-btn" onclick="toggleCounterPanel(\'' + p.id + '\')">Cancel</button>';
+        html += '</div>';
         html += '</div>';
     }
 
@@ -7027,7 +7681,11 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
     html += '<div class="detail-actions">';
     if (needsOurAction) {
         html += '<button class="detail-btn" onclick="acceptProposal(\'' + p.id + '\')">Accept</button>';
-        html += '<button class="detail-btn" onclick="inboxStrikeArticles(\'' + p.id + '\')">Strike</button>';
+        if (isTradeAgreement) {
+            html += '<button class="detail-btn" onclick="toggleCounterPanel(\'' + p.id + '\')">Counter</button>';
+        } else {
+            html += '<button class="detail-btn" onclick="inboxStrikeArticles(\'' + p.id + '\')">Counter</button>';
+        }
         html += '<button class="detail-btn" onclick="rejectProposal(\'' + p.id + '\')">Reject</button>';
     } else if (isFmReview && diplomaticRoles.isFM) {
         html += '<button class="detail-btn" onclick="fmApprove(\'' + p.id + '\')">Approve</button>';
@@ -7279,6 +7937,15 @@ window.submitAidProposal = submitAidProposal;
 window.updateConditionDefaults = updateConditionDefaults;
 // Trade negotiation exports
 window.submitTradeProposal = submitTradeProposal;
+window.selectTradeAgreementType = selectTradeAgreementType;
+window.showWizardTradeArticleEditor = showWizardTradeArticleEditor;
+window.saveWizardTradeArticle = saveWizardTradeArticle;
+window.removeWizardTradeArticle = removeWizardTradeArticle;
+window.toggleCounterPanel = toggleCounterPanel;
+window.showCounterArticleEditor = showCounterArticleEditor;
+window.saveCounterTradeArticle = saveCounterTradeArticle;
+window.removeCounterTradeArticle = removeCounterTradeArticle;
+window.strikeTradeArticles = strikeTradeArticles;
 window.openTradeNegotiation = openTradeNegotiation;
 window.selectNegotiationType = selectNegotiationType;
 window.joinTradeNegotiation = joinTradeNegotiation;
