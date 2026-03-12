@@ -88,6 +88,9 @@ let currentCoalition = null;
 let diplomaticRoles = { isHoG: false, isFM: false, isMoT: false, ambassadorTo: [] };
 let shardTick = 0;
 
+// Cached list of other nations for dropdowns
+let cachedOtherNations = [];
+
 // Track the currently-selected target nation for initiative form
 let selectedTargetNation = null;
 let selectedTheirAmbassador = null;
@@ -7122,6 +7125,20 @@ function tierToDotColor(tier) {
 // ══════════════════════════════════════════════════════
 // FOREIGN RELATIONS BOX
 // ══════════════════════════════════════════════════════
+// Nation map colors from World Map Crucera3.svg
+const NATION_MAP_COLORS = {
+    'avelia':      '#ddafe9',
+    'melizea':     '#eeffaa',
+    'sangreza':    '#5599ff',
+    'san estrella':'#ffb380',
+    'montequilla': '#aade87',
+    'veldaria':    '#e3e2db',
+    'palvera':     '#5599ff'
+};
+function getNationMapColor(name) {
+    return NATION_MAP_COLORS[(name || '').toLowerCase()] || '';
+}
+
 async function renderRelationsBox() {
     const body = document.getElementById('relations-body');
     if (!body) return;
@@ -7158,6 +7175,7 @@ async function renderRelationsBox() {
         const activeAgreements = agreementsRes.data || [];
 
         const otherNations = allNations.filter(n => n.id !== currentNation.id);
+        cachedOtherNations = otherNations.map(n => ({ id: n.id, name: n.name }));
         const countEl = document.getElementById('relations-count');
         if (countEl) countEl.textContent = otherNations.length;
 
@@ -7200,7 +7218,7 @@ async function renderRelationsBox() {
             html += `
                 <div class="nation-row" data-nation-id="${nation.id}" onclick="toggleRelationRow('${nation.id}')">
                     <div class="nation-dot" style="background:${dotColor}"></div>
-                    <span class="nation-name">${escapeHtml(nation.name)}</span>
+                    <span class="nation-name" ${getNationMapColor(nation.name) ? 'style="color:' + getNationMapColor(nation.name) + '"' : ''}>${escapeHtml(nation.name)}</span>
                     <div class="nation-meta">
                         <span class="pill ${pillClass}">${tier.label}</span>
                         <span class="embassy-tag ${embassyClass}">${embassyLabel}</span>
@@ -7318,6 +7336,12 @@ async function renderRelationDetail(nationId) {
 
 // ── Select target nation for draft panel ──
 async function selectDraftTarget(nationId) {
+    if (!nationId) {
+        activeDraftTarget = null;
+        selectedTargetNation = null;
+        renderDraftBox();
+        return;
+    }
     const { data: nation } = await _supabase.from('nations').select('*').eq('id', nationId).single();
     if (nation) {
         activeDraftTarget = nation;
@@ -7343,8 +7367,9 @@ function renderActionsBox() {
 
     // Helper: render a single action item (enabled or disabled)
     function actionHtml(a, enabled, role) {
-        const disabledClass = enabled ? '' : ' action-disabled';
-        const onclick = enabled ? `onclick="selectDraftAction('${a.key}','${escapeHtml(a.label)}',${a.ap},'${a.type}','${role}')"` : '';
+        const isDisabled = !enabled || a.comingSoon;
+        const disabledClass = isDisabled ? ' action-disabled' : '';
+        const onclick = !isDisabled ? `onclick="selectDraftAction('${a.key}','${escapeHtml(a.label)}',${a.ap},'${a.type}','${role}')"` : '';
         const costLabel = a.ap > 0 ? a.ap + ' AP' : 'Free';
         return `<div class="action-item${disabledClass}" data-action="${a.key}" ${onclick}>
                 <span class="action-name">${a.label}</span>
@@ -7355,8 +7380,8 @@ function renderActionsBox() {
     // Head of Government
     html += '<div class="role-header' + (hasHoG ? '' : ' role-disabled') + '">Head of Government</div>';
     [
-        { key: 'declare_war', label: 'Declare War', ap: 8, type: 'hog' },
-        { key: 'sue_peace', label: 'Sue for Peace', ap: 4, type: 'hog' },
+        { key: 'declare_war', label: 'Declare War', ap: 8, type: 'hog', comingSoon: true },
+        { key: 'call_ceasefire', label: 'Call for Ceasefire', ap: 4, type: 'hog', comingSoon: true },
         { key: 'sign_alliance', label: 'Sign Alliance', ap: 6, type: 'hog' },
         { key: 'state_visit', label: 'State Visit', ap: DIPLOMACY_CONFIG.STATE_VISIT_AP || 4, type: 'hog' },
         { key: 'recall_ambassador', label: 'Recall Ambassador', ap: 2, type: 'hog' }
@@ -7724,7 +7749,14 @@ function renderDraftBox() {
     // Header fields
     html += '<div class="draft-header">';
     html += '<div class="draft-field"><div class="draft-field-label">Action</div><div class="draft-field-input">' + escapeHtml(activeDraftAction.label) + ' <span style="color:var(--teal);">(' + activeDraftAction.apCost + ' AP)</span></div></div>';
-    html += '<div class="draft-field"><div class="draft-field-label">Target Nation</div><div class="draft-field-input">' + targetName + '</div></div>';
+    let targetFieldHtml = '<select id="draft-target-select" style="width:100%;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);font-size:12px;padding:4px 8px;" onchange="selectDraftTarget(this.value)">';
+    targetFieldHtml += '<option value="">Select a nation...</option>';
+    cachedOtherNations.forEach(n => {
+        const sel = activeDraftTarget && activeDraftTarget.id === n.id ? ' selected' : '';
+        targetFieldHtml += '<option value="' + n.id + '"' + sel + '>' + escapeHtml(n.name) + '</option>';
+    });
+    targetFieldHtml += '</select>';
+    html += '<div class="draft-field"><div class="draft-field-label">Target Nation</div>' + targetFieldHtml + '</div>';
     html += '<div class="draft-field"><div class="draft-field-label">Name</div><input type="text" id="draft-name-input" class="draft-field-input" placeholder="Initiative name..." value="' + escapeHtml(wizardName) + '" oninput="wizardName=this.value" style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:4px 8px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
     html += '</div>';
 
