@@ -21,6 +21,15 @@
   </div>
 </div>
 
+<script>
+// Wiki defaults to light mode — apply immediately to prevent flash
+(function() {
+    const saved = localStorage.getItem('nationhood_theme');
+    if (saved !== 'dark') {
+        document.body.classList.add('light-mode');
+    }
+})();
+</script>
 <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
@@ -58,17 +67,47 @@ initPage('wiki', async (state) => {
         }
     }
 
+    // Check page lock
+    if (existingPage && existingPage.locked_by && existingPage.locked_by !== faction.id) {
+        root.innerHTML = `<div class="wiki-empty"><h2>Page Locked</h2><p>This page is locked by its creator. Only they can edit it.</p>
+            <a href="wiki.html?slug=${encodeURIComponent(existingPage.slug)}" class="wiki-btn">Back to Page</a></div>`;
+        return;
+    }
+
     // Initial values
     const initTitle = existingPage ? existingPage.title : (params.get('title') || '');
     const initBody = existingPage ? existingPage.body : '';
     const initTemplateType = existingPage ? (existingPage.template_type || '') : '';
     const initTemplateData = existingPage && Array.isArray(existingPage.template_data) ? existingPage.template_data : [];
     let infoboxImageUrl = existingPage ? (existingPage.infobox_image || '') : '';
+    const isCreator = existingPage ? existingPage.created_by === faction.id : true;
+    const isLocked = existingPage ? !!existingPage.locked_by : false;
 
     // Build template options
     const templateOpts = TEMPLATE_TYPES.map(t =>
         `<option value="${t.value}" ${t.value === initTemplateType ? 'selected' : ''}>${t.label}</option>`
     ).join('');
+
+    // Fetch existing images for gallery
+    let existingImages = [];
+    try {
+        const { data } = await _supabase.storage.from('wiki-images').list(nation.id, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+        if (data) {
+            existingImages = data.filter(f => /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(f.name)).map(f => {
+                const { data: urlData } = _supabase.storage.from('wiki-images').getPublicUrl(`${nation.id}/${f.name}`);
+                return { name: f.name, url: urlData?.publicUrl || '' };
+            }).filter(f => f.url);
+        }
+    } catch (_) {}
+
+    const galleryHtml = existingImages.length
+        ? `<div class="wiki-image-gallery" id="image-gallery" style="display:none;">
+            <div class="wiki-infobox-editor-title">Existing Images <button class="wiki-btn" id="close-gallery" type="button" style="float:right;font-size:10px;">Close</button></div>
+            <div class="wiki-gallery-grid">${existingImages.map(img =>
+                `<img src="${escapeHtml(img.url)}" class="wiki-gallery-thumb" data-url="${escapeHtml(img.url)}" title="${escapeHtml(img.name)}">`
+            ).join('')}</div>
+           </div>`
+        : '';
 
     root.innerHTML = `
         <div class="wiki-editor-form">
@@ -83,8 +122,21 @@ initPage('wiki', async (state) => {
 
             <div class="wiki-field">
                 <label for="wiki-title">Title</label>
-                <input type="text" id="wiki-title" class="wiki-input" value="${escapeHtml(initTitle)}" placeholder="Page title..." maxlength="200" ${existingPage ? '' : ''}>
+                <input type="text" id="wiki-title" class="wiki-input" value="${escapeHtml(initTitle)}" placeholder="Page title..." maxlength="200">
             </div>
+
+            ${existingPage ? `<div class="wiki-field">
+                <label for="wiki-slug">Slug (URL)</label>
+                <input type="text" id="wiki-slug" class="wiki-input" value="${escapeHtml(existingPage.slug)}" placeholder="page-slug" maxlength="200">
+                <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">Changing the slug will break existing wiki links to this page.</div>
+            </div>` : ''}
+
+            ${isCreator ? `<div class="wiki-field" style="display:flex;align-items:center;gap:10px;">
+                <label class="wiki-lock-toggle" style="margin:0;display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" id="wiki-lock" ${isLocked ? 'checked' : ''}>
+                    <span style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--text-secondary);">Lock page (only you can edit)</span>
+                </label>
+            </div>` : ''}
 
             <div class="wiki-field">
                 <label for="wiki-template">Template</label>
@@ -111,8 +163,9 @@ initPage('wiki', async (state) => {
             </div>
 
             <div class="wiki-field">
-                <label>Content</label>
+                <label>Content ${existingImages.length ? '<button class="wiki-btn" id="toggle-gallery" type="button" style="float:right;font-size:10px;">Browse Images</button>' : ''}</label>
                 <div id="quill-editor"></div>
+                ${galleryHtml}
             </div>
 
             <div class="wiki-editor-actions">
@@ -272,6 +325,18 @@ initPage('wiki', async (state) => {
         return rows;
     }
 
+    // --- Unsaved changes tracking ---
+    let _dirty = false;
+    const markDirty = () => { _dirty = true; };
+    document.getElementById('wiki-title').addEventListener('input', markDirty);
+    document.getElementById('wiki-template').addEventListener('change', markDirty);
+    quill.on('text-change', markDirty);
+    const slugInput = document.getElementById('wiki-slug');
+    if (slugInput) slugInput.addEventListener('input', markDirty);
+    window.addEventListener('beforeunload', (e) => {
+        if (_dirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+
     // --- Save ---
     document.getElementById('save-btn').addEventListener('click', async () => {
         const title = document.getElementById('wiki-title').value.trim();
@@ -281,7 +346,14 @@ initPage('wiki', async (state) => {
             return;
         }
 
-        const slug = existingPage ? existingPage.slug : slugify(title);
+        // Use editable slug for existing pages, generate for new
+        const slugInputEl = document.getElementById('wiki-slug');
+        let slug;
+        if (existingPage && slugInputEl) {
+            slug = slugify(slugInputEl.value.trim()) || existingPage.slug;
+        } else {
+            slug = slugify(title);
+        }
         if (!slug) {
             document.getElementById('wiki-status').textContent = 'Could not generate a valid slug from the title.';
             document.getElementById('wiki-status').style.color = 'var(--red)';
@@ -291,6 +363,10 @@ initPage('wiki', async (state) => {
         const templateType = document.getElementById('wiki-template').value || null;
         const body = quill.root.innerHTML;
         const templateData = templateType ? getTemplateData() : [];
+
+        // Lock toggle
+        const lockCheckbox = document.getElementById('wiki-lock');
+        const lockedBy = (lockCheckbox && lockCheckbox.checked) ? faction.id : null;
 
         const saveBtn = document.getElementById('save-btn');
         saveBtn.textContent = 'Saving...';
@@ -305,6 +381,7 @@ initPage('wiki', async (state) => {
             template_type: templateType,
             template_data: templateData,
             infobox_image: infoboxImageUrl || null,
+            locked_by: lockedBy,
             updated_by: faction.id,
             updated_at: new Date().toISOString()
         };
@@ -323,6 +400,7 @@ initPage('wiki', async (state) => {
                     .insert(record);
                 if (error) throw error;
             }
+            _dirty = false;
             window.location.href = `wiki.html?slug=${encodeURIComponent(slug)}`;
         } catch (err) {
             saveBtn.textContent = 'Save Page';
@@ -345,6 +423,7 @@ initPage('wiki', async (state) => {
                     .delete()
                     .eq('id', existingPage.id);
                 if (error) throw error;
+                _dirty = false;
                 window.location.href = 'wiki-list.html';
             } catch (err) {
                 deleteBtn.textContent = 'Delete Page';
@@ -352,6 +431,27 @@ initPage('wiki', async (state) => {
                 document.getElementById('wiki-status').textContent = 'Delete failed: ' + err.message;
                 document.getElementById('wiki-status').style.color = 'var(--red)';
             }
+        });
+    }
+
+    // --- Image gallery ---
+    const toggleGalleryBtn = document.getElementById('toggle-gallery');
+    const galleryEl = document.getElementById('image-gallery');
+    if (toggleGalleryBtn && galleryEl) {
+        toggleGalleryBtn.addEventListener('click', () => {
+            galleryEl.style.display = galleryEl.style.display === 'none' ? 'block' : 'none';
+        });
+        document.getElementById('close-gallery')?.addEventListener('click', () => {
+            galleryEl.style.display = 'none';
+        });
+        galleryEl.querySelectorAll('.wiki-gallery-thumb').forEach(img => {
+            img.addEventListener('click', () => {
+                const url = img.dataset.url;
+                const range = quill.getSelection(true);
+                quill.insertEmbed(range.index, 'image', url);
+                quill.setSelection(range.index + 1);
+                galleryEl.style.display = 'none';
+            });
         });
     }
 });

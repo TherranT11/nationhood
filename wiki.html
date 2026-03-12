@@ -20,11 +20,20 @@
   </div>
 </div>
 
+<script>
+// Wiki defaults to light mode — apply immediately to prevent flash
+(function() {
+    const saved = localStorage.getItem('nationhood_theme');
+    if (saved !== 'dark') {
+        document.body.classList.add('light-mode');
+    }
+})();
+</script>
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { fetchPage, fetchPageList, fetchExistingSlugs, renderWikiLinks, renderInfobox, slugify } from './js/wiki.js';
+import { fetchPage, fetchPageList, fetchExistingSlugs, renderWikiLinks, renderInfobox, slugify, fetchFactionNames } from './js/wiki.js';
 
 initPage('wiki', async (state) => {
     const { nation } = state;
@@ -169,18 +178,88 @@ initPage('wiki', async (state) => {
     const bodyHtml = renderWikiLinks(page.body || '<p><em>This page is empty.</em></p>', existingSlugs);
     const infoboxHtml = renderInfobox(page);
 
+    // Fetch faction names for attribution
+    const factionIds = [page.created_by, page.updated_by].filter(Boolean);
+    const factionNames = await fetchFactionNames(_supabase, factionIds);
+    const createdName = factionNames[page.created_by] || null;
+    const updatedName = factionNames[page.updated_by] || null;
+    const createdDate = page.created_at ? new Date(page.created_at).toLocaleDateString() : '';
+    const updatedDate = page.updated_at ? new Date(page.updated_at).toLocaleDateString() : '';
+
+    let metaHtml = '';
+    const metaParts = [];
+    if (createdName) metaParts.push(`Created by <strong>${escapeHtml(createdName)}</strong> on ${createdDate}`);
+    if (updatedName && page.updated_by !== page.created_by) {
+        metaParts.push(`Last edited by <strong>${escapeHtml(updatedName)}</strong> on ${updatedDate}`);
+    } else if (updatedDate && updatedDate !== createdDate) {
+        metaParts.push(`Last edited on ${updatedDate}`);
+    }
+    if (metaParts.length) {
+        metaHtml = `<div class="wiki-page-meta">${metaParts.join(' · ')}</div>`;
+    }
+
+    // Find backlinks — pages whose body contains [[This Page Title]] or [[slug]]
+    let backlinks = [];
+    try {
+        // Search by title match
+        const { data: byTitle } = await _supabase
+            .from('wiki_pages')
+            .select('slug, title')
+            .eq('nation_id', nation.id)
+            .neq('slug', page.slug)
+            .ilike('body', `%[[${page.title}]]%`);
+        backlinks = byTitle || [];
+
+        // Also search by slug if different from title
+        if (page.slug !== slugify(page.title)) {
+            const { data: bySlug } = await _supabase
+                .from('wiki_pages')
+                .select('slug, title')
+                .eq('nation_id', nation.id)
+                .neq('slug', page.slug)
+                .ilike('body', `%[[${page.slug}]]%`);
+            if (bySlug) {
+                const existingSlugs2 = new Set(backlinks.map(b => b.slug));
+                bySlug.forEach(b => { if (!existingSlugs2.has(b.slug)) backlinks.push(b); });
+            }
+        }
+    } catch (_) {}
+
+    const backlinksHtml = backlinks.length
+        ? `<div class="wiki-backlinks">
+            <div class="wiki-backlinks-title">What links here</div>
+            <div class="wiki-backlinks-list">${backlinks.map(b =>
+                `<a href="wiki.html?slug=${encodeURIComponent(b.slug)}" class="wiki-backlink-item">${escapeHtml(b.title)}</a>`
+            ).join('')}</div>
+           </div>`
+        : '';
+
+    // Check if current faction is the creator (for lock indicator)
+    const isCreator = page.created_by === state.faction.id;
+    const isLocked = !!page.locked_by;
+    const lockHtml = isLocked
+        ? `<span class="wiki-lock-badge" title="Locked by creator — only they can edit">Locked</span>`
+        : '';
+
+    const canEdit = !isLocked || isCreator;
+    const editBtnHtml = canEdit
+        ? `<a href="wiki-edit.html?slug=${encodeURIComponent(page.slug)}" class="wiki-btn">Edit</a>`
+        : `<span class="wiki-btn wiki-btn-disabled" title="This page is locked by its creator">Locked</span>`;
+
     root.innerHTML = `
         <div class="wiki-page-header">
-            <h1 class="wiki-page-title">${escapeHtml(page.title)}</h1>
+            <h1 class="wiki-page-title">${escapeHtml(page.title)} ${lockHtml}</h1>
             <div class="wiki-header-actions">
-                <a href="wiki-edit.html?slug=${encodeURIComponent(page.slug)}" class="wiki-btn">Edit</a>
+                ${editBtnHtml}
                 <a href="wiki.html" class="wiki-btn">Wiki Home</a>
                 <a href="wiki-list.html" class="wiki-btn">All Pages</a>
             </div>
         </div>
+        ${metaHtml}
         <div class="wiki-page-layout">
             <div class="wiki-body-col">
                 <div class="wiki-body-content">${bodyHtml}</div>
+                ${backlinksHtml}
             </div>
             ${infoboxHtml}
         </div>

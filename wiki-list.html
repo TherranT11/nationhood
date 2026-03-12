@@ -20,6 +20,15 @@
   </div>
 </div>
 
+<script>
+// Wiki defaults to light mode — apply immediately to prevent flash
+(function() {
+    const saved = localStorage.getItem('nationhood_theme');
+    if (saved !== 'dark') {
+        document.body.classList.add('light-mode');
+    }
+})();
+</script>
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
@@ -60,12 +69,16 @@ initPage('wiki', async (state) => {
                 const typeBadge = p.template_type
                     ? `<span class="wiki-page-row-type">${escapeHtml(p.template_type)}</span>`
                     : '';
+                const lockBadge = p.locked_by
+                    ? `<span class="wiki-lock-badge">Locked</span>`
+                    : '';
                 const updated = p.updated_at
                     ? new Date(p.updated_at).toLocaleDateString()
                     : '';
                 return `
                     <a href="wiki.html?slug=${encodeURIComponent(p.slug)}" class="wiki-page-row">
                         <span class="wiki-page-row-title">${escapeHtml(p.title)}</span>
+                        ${lockBadge}
                         ${typeBadge}
                         <span class="wiki-page-row-meta">${updated}</span>
                     </a>

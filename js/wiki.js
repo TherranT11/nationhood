@@ -57,7 +57,7 @@ export async function fetchPage(supabase, nationId, slug) {
 export async function fetchPageList(supabase, nationId) {
     const { data, error } = await supabase
         .from('wiki_pages')
-        .select('id, slug, title, template_type, updated_at, updated_by, created_by')
+        .select('id, slug, title, template_type, updated_at, updated_by, created_by, locked_by')
         .eq('nation_id', nationId)
         .order('title', { ascending: true });
     if (error) throw error;
@@ -72,6 +72,20 @@ export async function fetchExistingSlugs(supabase, nationId) {
         .eq('nation_id', nationId);
     if (error) throw error;
     return new Set((data || []).map(r => r.slug));
+}
+
+/** Fetch faction names for a set of faction IDs */
+export async function fetchFactionNames(supabase, factionIds) {
+    const ids = [...new Set(factionIds.filter(Boolean))];
+    if (!ids.length) return {};
+    const { data, error } = await supabase
+        .from('factions')
+        .select('id, faction_name')
+        .in('id', ids);
+    if (error) return {};
+    const map = {};
+    (data || []).forEach(f => { map[f.id] = f.faction_name; });
+    return map;
 }
 
 /** Build infobox HTML for the reader view */
