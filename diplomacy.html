@@ -1333,15 +1333,6 @@ async function requireNegStatus(negotiationId, allowedStatuses, refreshFn) {
     return neg;
 }
 
-async function refreshDiplomacyUI() {
-    await renderNegotiationsBox();
-    const initPanel = document.getElementById('tab-initiative');
-    if (initPanel && initPanel.style.display !== 'none') {
-        await renderInitiativeWizard();
-    }
-    { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
-}
-
 async function findProposalByNegotiationId(negotiationId) {
     const { data: proposals } = await _supabase
         .from('diplomatic_proposals')
