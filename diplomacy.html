@@ -120,6 +120,7 @@ const RECALL_REASONS = {
 let recallSelectedReason = null;
 let recallTargetAmbassador = null;
 let recallTargetRelation = null;
+let recallCachedAmbassadors = null; // cached active ambassador list for panel re-renders
 
 const INITIATIVE_TYPES = {
     visa_agreement: {
@@ -7793,13 +7794,17 @@ window.removeDraftArticle = removeDraftArticle;
 async function renderRecallAmbassadorPanel(body, statusEl) {
     if (statusEl) statusEl.textContent = 'Recall Ambassador';
 
-    // Fetch active ambassadors this nation has posted
-    const { data: activeAmbs } = await _supabase
-        .from('ambassadors')
-        .select('id, target_nation_id, ambassador_first_name, ambassador_last_name, faction_id, appointed_at_tick, term_length, approval_rating, factions(abbreviation), nations!ambassadors_target_nation_id_fkey(id, name)')
-        .eq('nation_id', currentNation.id)
-        .eq('is_active', true)
-        .eq('status', 'active');
+    // Fetch active ambassadors (cached to avoid re-fetching on reason selection)
+    if (!recallCachedAmbassadors) {
+        const { data } = await _supabase
+            .from('ambassadors')
+            .select('id, target_nation_id, ambassador_first_name, ambassador_last_name, faction_id, appointed_at_tick, term_length, approval_rating, factions(abbreviation), nations!ambassadors_target_nation_id_fkey(id, name)')
+            .eq('nation_id', currentNation.id)
+            .eq('is_active', true)
+            .eq('status', 'active');
+        recallCachedAmbassadors = data;
+    }
+    const activeAmbs = recallCachedAmbassadors;
 
     let html = '<div class="draft-panel">';
 
@@ -7910,7 +7915,7 @@ async function renderRecallAmbassadorPanel(body, statusEl) {
         html += '<li>Ambassador deactivated and embassy status set to "recalled"</li>';
         html += '<li>Relations reduced by ' + reason.relationPenalty + ' points</li>';
         html += '<li>1-3 Momentum loss to ambassador\'s party</li>';
-        html += '<li>Active cultural exchanges cancelled</li>';
+        html += '<li>Active diplomatic initiatives cancelled</li>';
         if (reason.hostApprovalPenalty > 0) html += '<li>Host nation loses ' + reason.hostApprovalPenalty + ' Government Approval</li>';
         if (reason.cascadeEffect) html += '<li style="color:var(--red);font-weight:500;">Target\'s allies (relations ≥ 70) lose ' + Math.abs(reason.cascadeAmount) + ' relations with your nation</li>';
         html += '</ul>';
@@ -7985,6 +7990,10 @@ async function executeRecallAmbassador() {
         alert('Please select a target and reason for recall.');
         return;
     }
+
+    // Disable confirm button to prevent double-clicks
+    const confirmBtns = document.querySelectorAll('.detail-btn');
+    confirmBtns.forEach(btn => { if (btn.textContent.includes('Recall Ambassador')) { btn.disabled = true; btn.style.opacity = '0.5'; } });
 
     const reason = RECALL_REASONS[recallSelectedReason];
     const amb = recallTargetAmbassador;
@@ -8109,17 +8118,17 @@ async function executeRecallAmbassador() {
             }
         }
 
-        // 9. Cancel active cultural exchanges
+        // 9. Cancel active diplomatic initiatives (cultural exchanges, etc.) between these nations
+        // Ambassador recall invalidates all active diplomatic initiatives since they require ambassadors
         await _supabase
             .from('diplomatic_proposals')
             .update({ status: 'expired' })
             .eq('status', 'active')
             .eq('proposal_type', 'diplomatic_initiative')
             .or(
-                'and(proposer_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + targetNationId + '),' +
-                'and(proposer_nation_id.eq.' + targetNationId + ',target_nation_id.eq.' + currentNation.id + ')'
-            )
-            .filter('proposal_data->>agreement_type', 'eq', 'cultural_exchange');
+                'and(proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + targetNationId + '),' +
+                'and(proposing_nation_id.eq.' + targetNationId + ',target_nation_id.eq.' + currentNation.id + ')'
+            );
 
         // 10. Momentum penalty: 1d3 loss
         const momentumLoss = Math.floor(Math.random() * 3) + 1;
@@ -8194,6 +8203,7 @@ async function executeRecallAmbassador() {
         recallSelectedReason = null;
         recallTargetAmbassador = null;
         recallTargetRelation = null;
+        recallCachedAmbassadors = null;
         activeDraftAction = null;
         activeDraftTarget = null;
         document.querySelectorAll('.action-item.is-active').forEach(el => el.classList.remove('is-active'));
@@ -8218,6 +8228,7 @@ function cancelDraft() {
     recallSelectedReason = null;
     recallTargetAmbassador = null;
     recallTargetRelation = null;
+    recallCachedAmbassadors = null;
     document.querySelectorAll('.action-item.is-active').forEach(el => el.classList.remove('is-active'));
     renderDraftBox();
 }
