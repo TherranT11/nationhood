@@ -2976,6 +2976,85 @@ body.light-mode .pol-blocs-box {
     flex: 1;
 }
 
+/* ════════════════════════ AUTOCRACY ACTION PANELS ════════════════════════ */
+.pol-actions-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+.pol-action-panel {
+    background: var(--dbg-3);
+    border: 1px solid var(--dborder-1);
+    border-radius: 6px;
+    padding: 14px 16px;
+}
+.pol-action-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+.pol-action-title {
+    font-family: var(--dfont-mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--dtext-0);
+}
+.pol-action-cost {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--damber);
+}
+.pol-action-tagline {
+    font-family: var(--dfont-ui);
+    font-size: 11px;
+    color: var(--dtext-2);
+    line-height: 1.4;
+    margin-bottom: 8px;
+}
+.pol-action-execute {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--dtext-0);
+    background: var(--dbg-5);
+    border: 1px solid var(--dborder-2);
+    border-radius: 4px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.pol-action-execute:hover {
+    background: var(--dbg-hover);
+    border-color: var(--damber-border);
+}
+.pol-action-execute:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+.pol-action-execute:disabled:hover {
+    background: var(--dbg-5);
+    border-color: var(--dborder-2);
+}
+.pol-action-empty {
+    font-family: var(--dfont-ui);
+    font-size: 12px;
+    color: var(--dtext-3);
+    font-style: italic;
+    padding: 16px 0;
+}
+.pol-bloc-select-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
 @media (max-width: 860px) {
     .pol-actions-grid {
         grid-template-columns: 1fr;

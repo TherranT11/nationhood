@@ -55,7 +55,7 @@
             <div class="box box--single box--h480" id="box-negotiations">
                 <div class="box-header">
                     <div class="box-dot box-dot--amber"></div>
-                    <span class="box-label">Negotiations</span>
+                    <span class="box-label">Agreements</span>
                     <div class="box-header-right"><span class="badge badge--amber" id="negotiations-count"></span></div>
                 </div>
                 <div class="box-body" id="negotiations-body"></div>
@@ -6754,79 +6754,58 @@ function renderActionsBox() {
     const body = document.getElementById('actions-body');
     if (!body) return;
 
-    if (!diplomaticRoles || !hasAnyDiplomaticRole()) {
-        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">No diplomatic role held.</div></div>';
-        return;
-    }
+    const hasHoG = diplomaticRoles && diplomaticRoles.isHoG;
+    const hasFM = diplomaticRoles && diplomaticRoles.isFM;
+    const hasMoT = diplomaticRoles && diplomaticRoles.isMoT;
+    const hasAmb = diplomaticRoles && diplomaticRoles.ambassadorTo && diplomaticRoles.ambassadorTo.length > 0;
 
     let html = '';
 
-    // Head of Government
-    if (diplomaticRoles.isHoG) {
-        html += '<div class="role-header">Head of Government</div>';
-        const hogActions = [
-            { key: 'declare_war', label: 'Declare War', ap: 8, type: 'hog' },
-            { key: 'sue_peace', label: 'Sue for Peace', ap: 4, type: 'hog' },
-            { key: 'sign_alliance', label: 'Sign Alliance', ap: 6, type: 'hog' },
-            { key: 'state_visit', label: 'State Visit', ap: DIPLOMACY_CONFIG.STATE_VISIT_AP || 4, type: 'hog' },
-            { key: 'recall_ambassador', label: 'Recall Ambassador', ap: 2, type: 'hog' }
-        ];
-        hogActions.forEach(a => {
-            html += `<div class="action-item" data-action="${a.key}" onclick="selectDraftAction('${a.key}','${escapeHtml(a.label)}',${a.ap},'${a.type}','hog')">
+    // Helper: render a single action item (enabled or disabled)
+    function actionHtml(a, enabled, role) {
+        const disabledClass = enabled ? '' : ' action-disabled';
+        const onclick = enabled ? `onclick="selectDraftAction('${a.key}','${escapeHtml(a.label)}',${a.ap},'${a.type}','${role}')"` : '';
+        const costLabel = a.ap > 0 ? a.ap + ' AP' : 'Free';
+        return `<div class="action-item${disabledClass}" data-action="${a.key}" ${onclick}>
                 <span class="action-name">${a.label}</span>
-                <span class="action-cost">${a.ap} AP</span>
+                <span class="action-cost">${costLabel}</span>
             </div>`;
-        });
     }
+
+    // Head of Government
+    html += '<div class="role-header' + (hasHoG ? '' : ' role-disabled') + '">Head of Government</div>';
+    [
+        { key: 'declare_war', label: 'Declare War', ap: 8, type: 'hog' },
+        { key: 'sue_peace', label: 'Sue for Peace', ap: 4, type: 'hog' },
+        { key: 'sign_alliance', label: 'Sign Alliance', ap: 6, type: 'hog' },
+        { key: 'state_visit', label: 'State Visit', ap: DIPLOMACY_CONFIG.STATE_VISIT_AP || 4, type: 'hog' },
+        { key: 'recall_ambassador', label: 'Recall Ambassador', ap: 2, type: 'hog' }
+    ].forEach(a => { html += actionHtml(a, hasHoG, 'hog'); });
 
     // Foreign Minister
-    if (diplomaticRoles.isFM) {
-        html += '<div class="role-header">Foreign Minister</div>';
-        const fmActions = [
-            { key: 'major_initiative', label: 'Major Diplomatic Initiative', ap: 2, type: 'fm' },
-            { key: 'formal_protest', label: 'Formal Protest', ap: 2, type: 'fm' },
-            { key: 'covert_ops', label: 'Covert Operations', ap: 4, type: 'fm' },
-            { key: 'foreign_aid', label: 'Foreign Aid Proposal', ap: 4, type: 'fm' }
-        ];
-        fmActions.forEach(a => {
-            html += `<div class="action-item" data-action="${a.key}" onclick="selectDraftAction('${a.key}','${escapeHtml(a.label)}',${a.ap},'${a.type}','fm')">
-                <span class="action-name">${a.label}</span>
-                <span class="action-cost">${a.ap} AP</span>
-            </div>`;
-        });
-    }
+    html += '<div class="role-header' + (hasFM ? '' : ' role-disabled') + '">Foreign Minister</div>';
+    [
+        { key: 'major_initiative', label: 'Major Diplomatic Initiative', ap: 2, type: 'fm' },
+        { key: 'formal_protest', label: 'Formal Protest', ap: 2, type: 'fm' },
+        { key: 'covert_ops', label: 'Covert Operations', ap: 4, type: 'fm' },
+        { key: 'foreign_aid', label: 'Foreign Aid Proposal', ap: 4, type: 'fm' }
+    ].forEach(a => { html += actionHtml(a, hasFM, 'fm'); });
 
     // Minister of Trade
-    if (diplomaticRoles.isMoT) {
-        html += '<div class="role-header">Minister of Trade</div>';
-        const motActions = [
-            { key: 'trade_agreement', label: 'Trade Agreement', ap: 2, type: 'mot' },
-            { key: 'impose_embargo', label: 'Impose Embargo', ap: 5, type: 'mot' },
-            { key: 'retaliatory_tariff', label: 'Retaliatory Tariff', ap: 2, type: 'mot' }
-        ];
-        motActions.forEach(a => {
-            html += `<div class="action-item" data-action="${a.key}" onclick="selectDraftAction('${a.key}','${escapeHtml(a.label)}',${a.ap},'${a.type}','mot')">
-                <span class="action-name">${a.label}</span>
-                <span class="action-cost">${a.ap} AP</span>
-            </div>`;
-        });
-    }
+    html += '<div class="role-header' + (hasMoT ? '' : ' role-disabled') + '">Minister of Trade</div>';
+    [
+        { key: 'trade_agreement', label: 'Trade Agreement', ap: 2, type: 'mot' },
+        { key: 'impose_embargo', label: 'Impose Embargo', ap: 5, type: 'mot' },
+        { key: 'retaliatory_tariff', label: 'Retaliatory Tariff', ap: 2, type: 'mot' }
+    ].forEach(a => { html += actionHtml(a, hasMoT, 'mot'); });
 
     // Ambassador
-    if (diplomaticRoles.ambassadorTo && diplomaticRoles.ambassadorTo.length > 0) {
-        html += '<div class="role-header">Ambassador</div>';
-        const ambActions = [
-            { key: 'minor_initiative', label: 'Minor Diplomatic Initiative', ap: 2, type: 'amb' },
-            { key: 'state_visit_amb', label: 'State Visit', ap: DIPLOMACY_CONFIG.STATE_VISIT_AP || 4, type: 'amb' },
-            { key: 'send_message', label: 'Send Message', ap: 0, type: 'amb' }
-        ];
-        ambActions.forEach(a => {
-            html += `<div class="action-item" data-action="${a.key}" onclick="selectDraftAction('${a.key}','${escapeHtml(a.label)}',${a.ap},'${a.type}','amb')">
-                <span class="action-name">${a.label}</span>
-                <span class="action-cost">${a.ap > 0 ? a.ap + ' AP' : 'Free'}</span>
-            </div>`;
-        });
-    }
+    html += '<div class="role-header' + (hasAmb ? '' : ' role-disabled') + '">Ambassador</div>';
+    [
+        { key: 'minor_initiative', label: 'Minor Diplomatic Initiative', ap: 2, type: 'amb' },
+        { key: 'state_visit_amb', label: 'State Visit', ap: DIPLOMACY_CONFIG.STATE_VISIT_AP || 4, type: 'amb' },
+        { key: 'send_message', label: 'Send Message', ap: 0, type: 'amb' }
+    ].forEach(a => { html += actionHtml(a, hasAmb, 'amb'); });
 
     body.innerHTML = html;
 }
