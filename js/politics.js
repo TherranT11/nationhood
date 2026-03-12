@@ -4202,6 +4202,12 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
 
     const factionFunds = Number(f.embezzled_funds ?? 0);
 
+    // Fetch unaligned seats for Buy Influence
+    const { data: nationSeats } = await _supabase.from('nations')
+        .select('unaligned_seats, total_seats')
+        .eq('id', n.id).single();
+    const unalignedSeats = nationSeats?.unaligned_seats || 0;
+
     // Fetch ALL stewards (full data for successor/purge/coalition)
     const { data: allStewardRows } = await _supabase
         .from('stewards').select('*').eq('nation_id', n.id).eq('is_alive', true);
@@ -4373,6 +4379,22 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
                     <div class="pol-action-tagline">Loyalty ${GAME_CONFIG.EMBEZZLE_FUNDS_LOYALTY} · Risk: ${getEmbezzleRiskLabel(f, n)}</div>
                     <button class="pol-action-execute" id="autocracy-embezzle-btn" ${ap < GAME_CONFIG.EMBEZZLE_FUNDS_AP ? 'disabled' : ''}>EMBEZZLE</button>
                 </div>
+                <div class="pol-action-panel">
+                    <div class="pol-action-header">
+                        <span class="pol-action-title">BUY INFLUENCE</span>
+                        <span class="pol-action-cost">${GAME_CONFIG.BUY_INFLUENCE_AP} AP</span>
+                    </div>
+                    <div class="pol-action-tagline">Spend war chest funds to acquire seats. Standing ${GAME_CONFIG.BUY_INFLUENCE_STANDING}</div>
+                    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center">
+                        <select id="buy-influence-target" style="flex:1;min-width:120px;background:var(--dbg-3);color:var(--dtext-1);border:1px solid var(--dborder-1);padding:4px 8px;border-radius:4px;font-size:0.75rem">
+                            <option value="unaligned">Unaligned Pool (${unalignedSeats} seats · $${GAME_CONFIG.BUY_INFLUENCE_UNALIGNED_COST}M/seat)</option>
+                            ${nonRuling.filter(p => p.id !== f.id).map(p => `<option value="${p.id}">${escapeHtml(p.faction_name)} (${p.seats || 0} seats)</option>`).join('')}
+                        </select>
+                        <input type="number" id="buy-influence-funds" min="1" max="${Math.floor(factionFunds)}" value="${Math.min(Math.floor(factionFunds), GAME_CONFIG.BUY_INFLUENCE_UNALIGNED_COST)}" placeholder="$M" style="width:70px;background:var(--dbg-3);color:var(--dtext-1);border:1px solid var(--dborder-1);padding:4px 8px;border-radius:4px;font-size:0.75rem">
+                        <button class="pol-action-execute" id="autocracy-buyinfluence-btn" ${ap < GAME_CONFIG.BUY_INFLUENCE_AP || factionFunds < 1 ? 'disabled' : ''}>BUY</button>
+                    </div>
+                    <div style="font-size:0.65rem;color:var(--dtext-3);margin-top:4px">War Chest: $${Math.round(factionFunds)}M</div>
+                </div>
                 ${isGeneral ? `<div class="pol-action-panel">
                     <div class="pol-action-header">
                         <span class="pol-action-title">SHOW OF FORCE</span>
@@ -4463,6 +4485,24 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
         f.action_points = r.newAp;
         let msg = `Income: +$${r.income}M, Loyalty: ${r.loyaltyChange}`;
         if (r.detected) msg += ` — DETECTED! Funds seized: $${r.fundsSeized}M`;
+        alert(msg);
+        await reRender();
+    });
+
+    // Buy Influence
+    document.getElementById('autocracy-buyinfluence-btn')?.addEventListener('click', async function() {
+        const targetSelect = document.getElementById('buy-influence-target');
+        const fundsInput = document.getElementById('buy-influence-funds');
+        const targetId = targetSelect?.value;
+        const fundsToSpend = Number(fundsInput?.value || 0);
+        if (!targetId || fundsToSpend <= 0) { alert('Select a target and enter funds to spend.'); return; }
+        this.disabled = true; this.textContent = 'BUYING...';
+        const r = await executeBuyInfluence(_supabase, f.id, n.id, targetId, fundsToSpend, tick);
+        if (!r.success) { alert(r.error); await reRender(); return; }
+        f.action_points = r.newAp;
+        let msg = r.seatsGained > 0
+            ? `Bought ${r.seatsGained} seat${r.seatsGained !== 1 ? 's' : ''} from ${r.targetName}.\nSpent: $${Math.round(r.fundsSpent)}M\nStanding: ${GAME_CONFIG.BUY_INFLUENCE_STANDING}`
+            : (r.message || 'No seats acquired.');
         alert(msg);
         await reRender();
     });
