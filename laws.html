@@ -1816,7 +1816,12 @@ async function submitToCommittee() {
 
     // Atomic AP deduction — prevents race conditions and double-spend
     const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.DRAFT_BILL_AP_COST);
-    if (!apResult.success) { alert('Not enough AP to draft this bill.'); isSubmitting = false; return; }
+    if (!apResult.success) {
+        alert('Not enough AP to draft this bill.');
+        isSubmitting = false;
+        document.getElementById('submit-bill-btn').disabled = draftArticles.length === 0;
+        return;
+    }
     currentFaction.action_points = apResult.newAp;
     sessionStorage.removeItem('nationhood_state'); // bust stale AP cache
 
@@ -1841,13 +1846,49 @@ async function submitToCommittee() {
 
         // Only insert bill_articles for non-foundational bills
         if (!isFoundationalBill) {
-            const articles = normalizedArticles.map(art => ({ ...art, bill_id: bill.id }));
-            await _supabase.from('bill_articles').insert(articles);
+            const articles = draftArticles.map(art => {
+                if (art.isText) {
+                    return { bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id, article_title: art.textTitle, article_text: art.textBody };
+                }
+                if (art.isFunding) {
+                    const fd = art.fundingData;
+                    const changes = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
+                    const textParts = changes.map(i => `${i.name}: ${i.current_pct}% → ${i.proposed_pct}%`);
+                    if (fd.discretionary) textParts.push(`Discretionary funds: $${fd.discretionary}M`);
+                    const title = `${fd.ministry_label} Funding`;
+                    const text = textParts.join('. ') + '.';
+                    return { bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id, article_title: title, article_text: text, funding_data: fd };
+                }
+                const articleRow = { bill_id: bill.id, policy_id: art.policy.id, article_number: art.articleNumber, added_by: currentFaction.id };
+                if (art.isRepeal && art.repealActiveLawId) {
+                    articleRow.repeal_active_law_id = art.repealActiveLawId;
+                }
+                return articleRow;
+            });
+            const { error: articlesError } = await _supabase.from('bill_articles').insert(articles);
+            if (articlesError) {
+                const { error: rollbackError } = await _supabase.from('bills').delete().eq('id', bill.id);
+                if (rollbackError) {
+                    console.error('Rollback failed after bill_articles insert error:', rollbackError);
+                }
+                articlesError.isArticlesError = true;
+                throw articlesError;
+            }
         }
 
         closeModal(); await loadLawsData(); renderLawsPage();
         alert(`"${billName}" submitted to committee!${isFoundationalBill ? '\n\nYou need at least one co-sponsor to send it to the floor.' : ''}`);
-    } catch (error) { console.error('Error submitting:', error); alert('Error submitting. Please try again.'); } finally { isSubmitting = false; }
+    } catch (error) {
+        console.error('Error submitting:', error);
+        if (error?.isArticlesError) {
+            alert(`Error saving bill articles: ${error.message}`);
+        } else {
+            alert('Error submitting. Please try again.');
+        }
+    } finally {
+        isSubmitting = false;
+        document.getElementById('submit-bill-btn').disabled = draftArticles.length === 0;
+    }
 }
 
 // ==================== DEFAULT RESOLUTION ====================
