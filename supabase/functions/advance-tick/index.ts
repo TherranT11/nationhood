@@ -138,6 +138,8 @@ const GAME_CONFIG = {
     BUY_INFLUENCE_BASE_COST: 3,               // $3M per seat base
     BUY_INFLUENCE_UNALIGNED_COST: 2,          // $2M per seat from unaligned pool
     BUY_INFLUENCE_VULNERABILITY_DISCOUNT: 0.20, // 20% cheaper vs demonstrating faction
+    BUY_INFLUENCE_STRONGMAN_BASE_COST: 5,      // $5M per seat base when targeting ruling faction
+    BUY_INFLUENCE_STRONGMAN_HEALTH_SCALE: 0.02, // multiplier per regime_health point (0-100)
 
     INTIMIDATE_AP: 2,
     INTIMIDATE_COST: 1,                        // $1M flat
@@ -185,6 +187,15 @@ const GAME_CONFIG = {
     UNALIGNED_POOL_MAX_RATIO: 0.10,           // max 10% of legislature
     NEW_FACTION_MIN_SEATS: 8,
 };
+
+const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;
+const ENDORSEMENT_SWITCH_WINDOW_ERROR = `Endorsements can only be changed in the last ${ENDORSEMENT_SWITCH_WINDOW_TICKS} ticks before a presidential election.`;
+
+function isEndorsementSwitchWindowOpen(currentTick, nextPresidentialTick) {
+    if (!Number.isFinite(currentTick) || !Number.isFinite(nextPresidentialTick)) return false;
+    const ticksUntilElection = nextPresidentialTick - currentTick;
+    return ticksUntilElection >= 1 && ticksUntilElection <= ENDORSEMENT_SWITCH_WINDOW_TICKS;
+}
 /**
  * Update GAME_CONFIG with nation-specific seat values.
  * Call after loading the nation on each page.
@@ -243,6 +254,40 @@ async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFIG.MAX_A
         return { success: false, error: 'Faction not found' };
     }
     return { success: true, newAp: data };
+}
+
+/**
+ * Atomically switch a party endorsement target.
+ *
+ * Server-side RPC behavior:
+ * - Reads the existing endorsement preference
+ * - Deducts 1 AP only if switching from an existing different target
+ * - Upserts the preference row
+ *
+ * Returns { success: true, newAp, endorsedPartyId } on success.
+ */
+async function switchPartyEndorsement(supabase, endorsingPartyId, newEndorsedPartyId, currentTick) {
+    const { data, error } = await supabase.rpc('switch_party_endorsement', {
+        endorsing_party_id: endorsingPartyId,
+        new_endorsed_party_id: newEndorsedPartyId,
+        current_tick: currentTick
+    });
+
+    if (error) {
+        console.error('[switchPartyEndorsement] RPC failed:', error.message);
+        const rpcMessage = String(error.message || '');
+        if (rpcMessage.includes('last 6 ticks before a presidential election')) {
+            return { success: false, error: ENDORSEMENT_SWITCH_WINDOW_ERROR };
+        }
+        return { success: false, error: error.message };
+    }
+
+    const row = Array.isArray(data) ? data[0] : data;
+    return {
+        success: true,
+        newAp: row?.updated_ap,
+        endorsedPartyId: row?.endorsed_party_id
+    };
 }
 
 // ────────── government-types ──────────
@@ -4080,7 +4125,8 @@ async function fireBillEvent(supabase, triggerKey, bill, opts = {}) {
             p_placeholders: placeholders
         });
     } catch (e) { /* non-blocking */ }
-    // Backfill effects_applied on the row the RPC just created (RPC leaves it null)
+    // Backfill effects_applied on the row the RPC just created (RPC leaves it null).
+    // Match on nation + tick + event_name pattern, update the most recent row.
     try {
         const { data: rows } = await supabase.from('event_log')
             .select('id')
@@ -4095,7 +4141,7 @@ async function fireBillEvent(supabase, triggerKey, bill, opts = {}) {
                 .update({ effects_applied: placeholders })
                 .eq('id', rows[0].id);
         }
-    } catch (e) { /* non-blocking */ }
+    } catch (e) { /* non-blocking — effects_applied is a nice-to-have */ }
 }
 
 /**
@@ -5203,6 +5249,8 @@ async function resolveExpiredVotes(supabase, nationId) {
         // Handle second quorum failure: bill dies
         if (resolution === 'failed_no_quorum') {
             await failBill(supabase, bill);
+            await syncFailedMinisterConfirmationBill(supabase, bill);
+            await syncFailedAmbassadorConfirmationBill(supabase, bill);
             const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
             const participating = votesFor + votesAgainst + votesAbstain;
             await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, extra: { reason: `quorum not met after two attempts (${participating}/${quorumThreshold} participating)` } });
@@ -5301,7 +5349,7 @@ async function resolveExpiredVotes(supabase, nationId) {
             // Minister confirmation bill (Presidential systems)
             const mKey = bill.ministry_key;
             const { data: ministry } = await supabase.from('ministries')
-                .select('id, pending_minister, rejected_parties')
+                .select('id, pending_minister')
                 .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
                 .maybeSingle();
 
@@ -5325,9 +5373,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                         ministry_name: mKey,
                         is_active: true,
                         confirmation_status: 'pending',
-                        pending_minister: null,
-                        rejected_parties: []
-                    }).select('id, pending_minister, rejected_parties').single();
+                        pending_minister: null
+                    }).select('id, pending_minister').single();
                     // Use the bill's metadata as fallback for pending_minister
                     if (createdMinistry && bill.metadata?.pending_minister) {
                         await supabase.from('ministries').update({
@@ -5386,17 +5433,11 @@ async function resolveExpiredVotes(supabase, nationId) {
             } else {
                 await failBill(supabase, bill);
 
-                // Record rejected party so President can't re-nominate same party for this slot
+                // Clear pending nominee after failed confirmation
                 if (ministry?.pending_minister) {
-                    const rejectedPartyId = ministry.pending_minister.party_id;
-                    const existingRejected = ministry.rejected_parties || [];
-                    if (!existingRejected.includes(rejectedPartyId)) {
-                        existingRejected.push(rejectedPartyId);
-                    }
                     await supabase.from('ministries').update({
                         confirmation_status: 'rejected',
-                        pending_minister: null,
-                        rejected_parties: existingRejected
+                        pending_minister: null
                     }).eq('id', ministry.id);
                 }
 
@@ -5444,12 +5485,12 @@ async function resolveExpiredVotes(supabase, nationId) {
                     const articles = pd.articles || [];
                     const struckIndices = new Set(pd.struck_articles || []);
                     let totalRel = 0;
-                    articles.forEach((art: any, i: number) => {
+                    articles.forEach((art, i) => {
                         if (!struckIndices.has(i)) totalRel += art.relations || 0;
                     });
-                    const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-                    const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
                     if (totalRel !== 0) {
+                        const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                        const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
                         const { data: rel } = await supabase.from('diplomatic_relations')
                             .select('id, relation_score, active_treaties')
                             .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
@@ -5460,77 +5501,6 @@ async function resolveExpiredVotes(supabase, nationId) {
                                 .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
                         }
                     }
-
-                    // For trade_agreement proposals, create the trade_agreements row
-                    if (proposal.proposal_type === 'trade_agreement') {
-                        const activeArticles = articles.filter((_: any, i: number) => !struckIndices.has(i));
-                        const addedArticles = pd.added_articles || [];
-                        const allArticles = [...activeArticles, ...addedArticles];
-
-                        const durationArt = allArticles.find((a: any) => a.type === 'duration');
-                        const durData = durationArt?.data || {};
-                        const isPermanent = durData.duration_type === 'permanent';
-                        const durationTicks = durData.duration_ticks || null;
-                        const autoRenew = durData.auto_renew || false;
-                        const withdrawalNotice = durData.withdrawal_notice_ticks || 3;
-
-                        const { data: newAgreement, error: taErr } = await supabase.from('trade_agreements').insert({
-                            nation_a_id: nationA,
-                            nation_b_id: nationB,
-                            agreement_type: pd.agreement_type,
-                            agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
-                            articles: allArticles,
-                            duration_type: isPermanent ? 'permanent' : 'fixed',
-                            duration_ticks: isPermanent ? null : durationTicks,
-                            auto_renew: autoRenew,
-                            withdrawal_notice_ticks: withdrawalNotice,
-                            status: 'active',
-                            enacted_at_tick: currentTick,
-                            expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null),
-                            diplomatic_proposal_id: proposal.id
-                        }).select('id').single();
-
-                        if (taErr) {
-                            console.error(`[resolveExpiredVotes] Failed to create trade_agreements row for proposal ${proposal.id}:`, taErr.message);
-                        } else {
-                            console.log(`[resolveExpiredVotes] Trade agreement activated from diplomatic proposal ${proposal.id}, agreement ID: ${newAgreement?.id}`);
-
-                            // For economic aid agreements, create the aid_agreement_state row
-                            if (pd.agreement_type === 'economic_aid' && newAgreement) {
-                                const aidTerms = allArticles.find((a: any) => a.type === 'aid_terms');
-                                if (aidTerms) {
-                                    const donorId = aidTerms.data.donor_nation_id;
-                                    if (donorId !== nationA && donorId !== nationB) {
-                                        console.error(`[resolveExpiredVotes] Invalid donor_nation_id ${donorId} for proposal ${proposal.id}`);
-                                    } else {
-                                        const recipientId = donorId === nationA ? nationB : nationA;
-                                        const annualAmount = Number(aidTerms.data.annual_amount || 0);
-                                        await supabase.from('aid_agreement_state').insert({
-                                            agreement_id: newAgreement.id,
-                                            donor_nation_id: donorId,
-                                            recipient_nation_id: recipientId,
-                                            current_annual_amount: annualAmount,
-                                            original_annual_amount: annualAmount,
-                                            next_review_tick: currentTick + DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL,
-                                            condition_failures: {}
-                                        });
-                                    }
-                                }
-                            }
-
-                            // Update diplomatic relations with trade agreement bonus
-                            const { data: relForTrade } = await supabase.from('diplomatic_relations')
-                                .select('id, relation_score')
-                                .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
-                            if (relForTrade) {
-                                const bonus = pd.agreement_type === 'economic_aid' ? DIPLOMACY_CONFIG.AID_RELATION_BONUS : 5;
-                                const newScore = Math.max(-100, Math.min(100, (relForTrade.relation_score || 0) + bonus));
-                                await supabase.from('diplomatic_relations')
-                                    .update({ relation_score: newScore }).eq('id', relForTrade.id);
-                            }
-                        }
-                    }
-
                     await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
                 }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
@@ -6005,21 +5975,40 @@ async function markBillEnactmentFailed(supabase, bill, currentTick, enactError) 
 
 async function enactBill(supabase, bill, currentTick) {
     let enactError = null;
+    const logContext = {
+        billId: bill?.id,
+        billStatus: bill?.status,
+        billNationId: bill?.nation_id,
+        presidentFactionId: null
+    };
+    console.log('[enactBill] stage=preflight_context', logContext);
 
+    console.log('[enactBill] stage=load_nation attempt', logContext);
     const { data: nation } = await supabase
         .from('nations')
         .select('*')
         .eq('id', bill.nation_id)
         .single();
-    if (!nation) return { success: false, error: `Nation ${bill.nation_id} not found` };
+    if (!nation) {
+        console.error('[enactBill] stage=load_nation result=failed_nation_not_found', logContext);
+        console.error('[enactBill] stage=terminal_result result=failed_nation_not_found', logContext);
+        return { success: false, error: `Nation ${bill.nation_id} not found` };
+    }
+    console.log('[enactBill] stage=load_nation result=success', logContext);
 
+    console.log('[enactBill] stage=load_active_laws attempt', logContext);
     const { data: currentActiveLaws } = await supabase
         .from('active_laws')
         .select('*, policies(*)')
         .eq('nation_id', bill.nation_id);
+    console.log('[enactBill] stage=load_active_laws result=success', {
+        ...logContext,
+        activeLawCount: (currentActiveLaws || []).length
+    });
 
     // ── Repeal bill handling ──
     if (bill.bill_type === 'repeal') {
+        console.log('[enactBill] stage=repeal_bill attempt', logContext);
         const repealResult = await repealActiveLaw({
             supabase,
             nation,
@@ -6041,11 +6030,24 @@ async function enactBill(supabase, bill, currentTick) {
             } else {
                 enactError = `Unknown repeal failure (${repealResult.reason})`;
             }
-            console.error(`[enactBill] Repeal bill ${bill.id} ("${bill.bill_name}") failed: ${enactError}`);
+            console.error('[enactBill] stage=repeal_bill result=failed_enactment', {
+                ...logContext,
+                error: enactError,
+                reason: repealResult.reason,
+                targetLawId: repealResult.targetLawId || null
+            });
+            console.error('[enactBill] stage=terminal_result result=failed_enactment', {
+                ...logContext,
+                error: enactError
+            });
             return { success: false, error: enactError, repealResult };
         }
 
-        console.log(`[enactBill] Repealed active law ${repealResult.targetLawId} (${repealResult.policyName})`);
+        console.log('[enactBill] stage=repeal_bill result=success', {
+            ...logContext,
+            targetLawId: repealResult.targetLawId,
+            policyName: repealResult.policyName
+        });
     } else {
         const articles = (bill.bill_articles || []).filter(a => a.policy_id);
 
@@ -6055,6 +6057,11 @@ async function enactBill(supabase, bill, currentTick) {
 
             // Repeal article — reverse and delete the targeted active law
             if (art.repeal_active_law_id) {
+                console.log('[enactBill] stage=repeal_article attempt', {
+                    ...logContext,
+                    articleId: art.id,
+                    repealActiveLawId: art.repeal_active_law_id
+                });
                 const repealResult = await repealActiveLaw({
                     supabase,
                     nation,
@@ -6064,9 +6071,19 @@ async function enactBill(supabase, bill, currentTick) {
                     article: art,
                 });
                 if (!repealResult.success) {
-                    console.error(`[enactBill] Repeal article failure (${repealResult.reason}) for active_law ${repealResult.targetLawId || 'n/a'}`);
+                    console.error('[enactBill] stage=repeal_article result=failed_enactment', {
+                        ...logContext,
+                        articleId: art.id,
+                        reason: repealResult.reason,
+                        targetLawId: repealResult.targetLawId || null
+                    });
                 } else {
-                    console.log(`[enactBill] Repealed active law ${repealResult.targetLawId} (${repealResult.policyName})`);
+                    console.log('[enactBill] stage=repeal_article result=success', {
+                        ...logContext,
+                        articleId: art.id,
+                        targetLawId: repealResult.targetLawId,
+                        policyName: repealResult.policyName
+                    });
                 }
                 continue;
             }
@@ -6095,6 +6112,11 @@ async function enactBill(supabase, bill, currentTick) {
                 await supabase.from('bills').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingActiveLaw.id);
                 await supabase.from('bill_articles').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingActiveLaw.id);
             }
+            console.log('[enactBill] stage=upsert_active_law attempt', {
+                ...logContext,
+                policyId: policy.id,
+                policyName: policy.policy_name
+            });
             const { error: activeLawError } = await supabase.from('active_laws')
                 .upsert({
                     nation_id: bill.nation_id,
@@ -6104,8 +6126,23 @@ async function enactBill(supabase, bill, currentTick) {
                     effects_applied_through_tick: currentTick - 1
                 }, { onConflict: 'nation_id,policy_id' });
             if (activeLawError) {
-                console.error(`[enactBill] Failed to upsert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
+                console.error('[enactBill] stage=upsert_active_law result=rls_blocked', {
+                    ...logContext,
+                    policyId: policy.id,
+                    policyName: policy.policy_name,
+                    error: activeLawError.message
+                });
+                console.error('[enactBill] stage=terminal_result result=rls_blocked', {
+                    ...logContext,
+                    error: activeLawError.message
+                });
+                return { success: false, error: `Active law upsert failed for policy ${policy.policy_name || policy.id}: ${activeLawError.message}` };
             }
+            console.log('[enactBill] stage=upsert_active_law result=success', {
+                ...logContext,
+                policyId: policy.id,
+                policyName: policy.policy_name
+            });
         }
     }
 
@@ -6121,6 +6158,18 @@ async function enactBill(supabase, bill, currentTick) {
             const newRate = Math.max(0, Math.min(50, Number(effect.new_rate)));
             taxUpdates[effect.tax_key] = newRate;
             console.log(`[enactBill] Tax rate change: ${effect.tax_key} ${effect.old_rate}% → ${newRate}%`);
+        } else if (typeof effect.target_stat === 'string' && typeof effect.delta === 'number') {
+            // Backward compatibility: parse legacy stat_effect-like payloads
+            const key = effect.target_stat.toLowerCase();
+            const newRate = Math.max(0, Math.min(50, Number(effect.delta)));
+            const taxKey = key === 'income_tax' ? 'income_tax'
+                : key === 'sales_tax' ? 'sales_tax'
+                    : key === 'corporate_tax' ? 'corporate_tax'
+                        : null;
+            if (taxKey) {
+                taxUpdates[taxKey] = newRate;
+                console.log(`[enactBill] Tax rate change (parsed): ${taxKey} → ${newRate}%`);
+            }
         }
     }
 
@@ -6147,14 +6196,28 @@ async function enactBill(supabase, bill, currentTick) {
     }
 
     if (Object.keys(taxUpdates).length > 0) {
+        console.log('[enactBill] stage=apply_tax_updates attempt', {
+            ...logContext,
+            taxUpdates
+        });
         const { error: taxErr } = await supabase.from('nations')
             .update(taxUpdates)
             .eq('id', bill.nation_id);
         if (taxErr) {
-            console.error(`[enactBill] Failed to apply tax rate changes:`, taxErr.message);
+            console.error('[enactBill] stage=apply_tax_updates result=rls_blocked', {
+                ...logContext,
+                error: taxErr.message
+            });
+            console.error('[enactBill] stage=terminal_result result=rls_blocked', {
+                ...logContext,
+                error: taxErr.message
+            });
             return { success: false, error: `Tax rate update failed: ${taxErr.message}` };
         }
-        console.log(`[enactBill] Tax rates applied to nation ${bill.nation_id}:`, JSON.stringify(taxUpdates));
+        console.log('[enactBill] stage=apply_tax_updates result=success', {
+            ...logContext,
+            taxUpdates
+        });
 
         // ── Apply tax-change approval/momentum effects ──
         // These match the preview shown in the economy.html tax cards.
@@ -6203,21 +6266,53 @@ async function enactBill(supabase, bill, currentTick) {
             const allInst = fd.institutions || [];
             const avgPct = allInst.reduce((sum, i) => sum + i.proposed_pct, 0) / (allInst.length || 1);
             const newLevel = avgPct / 100;
-            await supabase.from('ministries')
+            console.log('[enactBill] stage=update_ministry_funding attempt', {
+                ...logContext,
+                ministryKey: fd.ministry_key,
+                newLevel
+            });
+            const { error: ministryFundingErr } = await supabase.from('ministries')
                 .update({ funding_level: newLevel })
                 .eq('nation_id', bill.nation_id)
                 .eq('ministry_key', fd.ministry_key)
                 .eq('is_active', true);
-            console.log(`[enactBill] Ministry funding_level: ${fd.ministry_key} → ${Math.round(avgPct)}%`);
+            if (ministryFundingErr) {
+                console.error('[enactBill] stage=update_ministry_funding result=rls_blocked', {
+                    ...logContext,
+                    ministryKey: fd.ministry_key,
+                    error: ministryFundingErr.message
+                });
+                console.error('[enactBill] stage=terminal_result result=rls_blocked', {
+                    ...logContext,
+                    error: ministryFundingErr.message
+                });
+                return { success: false, error: `Ministry funding update failed for ${fd.ministry_key}: ${ministryFundingErr.message}` };
+            }
+            console.log('[enactBill] stage=update_ministry_funding result=success', {
+                ...logContext,
+                ministryKey: fd.ministry_key,
+                avgPercent: Math.round(avgPct)
+            });
         }
 
         // Discretionary grant: add to national debt
         const grantAmount = Number(fd.discretionary) || 0;
         if (grantAmount > 0) {
             const newDebt = (Number(nation.debt) || 0) + grantAmount;
+            console.log('[enactBill] stage=update_debt_for_grant attempt', {
+                ...logContext,
+                ministryKey: fd.ministry_key,
+                grantAmount,
+                newDebt
+            });
             await supabase.from('nations').update({ debt: newDebt }).eq('id', bill.nation_id);
             nation.debt = newDebt;
-            console.log(`[enactBill] Discretionary grant: $${grantAmount}M to ${fd.ministry_key}, debt now $${newDebt}M`);
+            console.log('[enactBill] stage=update_debt_for_grant result=success', {
+                ...logContext,
+                ministryKey: fd.ministry_key,
+                grantAmount,
+                newDebt
+            });
         }
     }
 
@@ -6245,16 +6340,31 @@ async function enactBill(supabase, bill, currentTick) {
     // Sponsor gains/loses preference with voter blocs based on bill ideology alignment
     await applyBlocPreferenceOnPassage(supabase, bill, bill.nation_id);
 
-    await supabase.from('bills').update({
+    console.log('[enactBill] stage=update_bill_status attempt', logContext);
+    const { error: billUpdateErr } = await supabase.from('bills').update({
         status: 'passed',
         passed_tick: currentTick
     }).eq('id', bill.id);
+    if (billUpdateErr) {
+        console.error('[enactBill] stage=update_bill_status error=rls_blocked', {
+            ...logContext,
+            error: billUpdateErr.message
+        });
+        console.error('[enactBill] stage=terminal_result result=rls_blocked', {
+            ...logContext,
+            error: billUpdateErr.message
+        });
+        return { success: false, error: `Bill status update failed: ${billUpdateErr.message}` };
+    }
+    console.log('[enactBill] stage=update_bill_status result=success', logContext);
 
     // Legislative activity: boost gov_approval_events
     await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
 
+    console.log('[enactBill] stage=terminal_result result=success', logContext);
     return { success: true };
 }
+
 
 async function reversePolicy(supabase, nation, policy, passedTick, currentTick) {
     const ticksActive = currentTick - (passedTick || 0);
@@ -6505,6 +6615,60 @@ async function syncAmbassadorsForFailedConfirmationBills(supabase, failedBills) 
 
     if (error) {
         console.warn('[syncAmbassadorsForFailedConfirmationBills] Failed to reject ambassadors:', error.message);
+    }
+}
+
+async function syncFailedAmbassadorConfirmationBill(supabase, bill) {
+    if (!bill || bill.bill_type !== 'confirmation' || !bill.ambassador_id) return;
+
+    const { error } = await supabase
+        .from('ambassadors')
+        .update({
+            status: 'rejected',
+            is_active: false
+        })
+        .eq('id', bill.ambassador_id);
+
+    if (error) {
+        console.warn('[syncFailedAmbassadorConfirmationBill] Failed to reject ambassador:', error.message);
+    }
+}
+
+async function syncFailedMinisterConfirmationBill(supabase, bill) {
+    if (!bill || bill.bill_type !== 'minister_confirmation' || !bill.ministry_key) return;
+
+    const { data: ministry, error: fetchErr } = await supabase
+        .from('ministries')
+        .select('id')
+        .eq('nation_id', bill.nation_id)
+        .eq('ministry_key', bill.ministry_key)
+        .eq('is_active', true)
+        .maybeSingle();
+
+    if (fetchErr) {
+        console.warn('[syncFailedMinisterConfirmationBill] Failed to fetch ministry row:', fetchErr.message);
+        return;
+    }
+    if (!ministry) return;
+
+    const { error: updateErr } = await supabase
+        .from('ministries')
+        .update({
+            confirmation_status: 'rejected',
+            pending_minister: null
+        })
+        .eq('id', ministry.id);
+
+    if (updateErr) {
+        console.warn('[syncFailedMinisterConfirmationBill] Failed to clear pending minister:', updateErr.message);
+    }
+}
+
+async function syncMinistriesForFailedConfirmationBills(supabase, failedBills) {
+    if (!Array.isArray(failedBills) || failedBills.length === 0) return;
+
+    for (const bill of failedBills) {
+        await syncFailedMinisterConfirmationBill(supabase, bill);
     }
 }
 
@@ -7839,6 +8003,29 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
     const isPresidential = context.governmentType === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC;
     const normalizedElectionType = context.electionType || 'parliamentary';
 
+    // Resolve the target election record up-front so presidential endorsement snapshots
+    // can be tied to a concrete election before vote resolution.
+    const { data: scheduledElection } = await supabase
+        .from('elections')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .eq('election_type', normalizedElectionType)
+        .order('election_tick', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+    const targetElectionId = scheduledElection?.id || (await (async () => {
+        const { data: inserted, error: insertErr } = await supabase.from('elections').insert({
+            nation_id: nation.id,
+            election_tick: currentTick,
+            election_type: normalizedElectionType,
+            status: 'scheduled'
+        }).select('id').single();
+        if (insertErr) throw insertErr;
+        return inserted.id;
+    })());
+
     // Use candidate-based voting for presidential elections, party-based for parliamentary
     let electionResults;
     if (isPresidential && normalizedElectionType === 'presidential') {
@@ -7866,7 +8053,17 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
 
         // Auto-select candidates for any party that hasn't chosen
         await autoSelectPresidentialCandidates(supabase, nation, currentTick);
-        const { data, error: runError } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id });
+
+        const { error: snapshotErr } = await supabase.rpc('snapshot_presidential_endorsements', {
+            p_nation_id: nation.id,
+            p_election_id: targetElectionId
+        });
+        if (snapshotErr) throw snapshotErr;
+
+        const { data, error: runError } = await supabase.rpc('run_presidential_election', {
+            p_nation_id: nation.id,
+            p_election_id: targetElectionId
+        });
         if (runError) throw runError;
         electionResults = data;
     } else {
@@ -7876,33 +8073,11 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
     }
 
     // Create the election record (SQL RPCs no longer insert their own)
-    const { data: scheduledElection } = await supabase
-        .from('elections')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('status', 'scheduled')
-        .eq('election_type', normalizedElectionType)
-        .order('election_tick', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
     let completedElectionId;
-    if (scheduledElection) {
-        await supabase.from('elections')
-            .update({ status: 'completed', results: electionResults, election_tick: currentTick })
-            .eq('id', scheduledElection.id);
-        completedElectionId = scheduledElection.id;
-    } else {
-        const { data: inserted, error: insertErr } = await supabase.from('elections').insert({
-            nation_id: nation.id,
-            election_tick: currentTick,
-            election_type: normalizedElectionType,
-            status: 'completed',
-            results: electionResults
-        }).select('id').single();
-        if (insertErr) throw insertErr;
-        completedElectionId = inserted.id;
-    }
+    await supabase.from('elections')
+        .update({ status: 'completed', results: electionResults, election_tick: currentTick })
+        .eq('id', targetElectionId);
+    completedElectionId = targetElectionId;
 
     // Fetch the specific election we just completed (not a generic "most recent" query)
     const { data: completedElection, error: electionError } = await supabase
@@ -7926,8 +8101,9 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
         .update({ status: 'failed' })
         .eq('nation_id', nation.id)
         .in('status', ['committee', 'floor'])
-        .select('id, bill_type, ambassador_id');
+        .select('id, nation_id, bill_type, ambassador_id, ministry_key');
     await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
+    await syncMinistriesForFailedConfirmationBills(supabase, dissolvedBills);
 
     if (isPresidential && normalizedElectionType === 'presidential') {
         // Fail bills on president's desk
@@ -7935,8 +8111,9 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
             .eq('status', 'president_desk')
-            .select('id, bill_type, ambassador_id');
+            .select('id, nation_id, bill_type, ambassador_id, ministry_key');
         await syncAmbassadorsForFailedConfirmationBills(supabase, deskBills);
+        await syncMinistriesForFailedConfirmationBills(supabase, deskBills);
         await processPresidentialElectionResult(supabase, nation, completedElection, currentTick, completedElection.id);
     } else if (isPresidential && normalizedElectionType === 'parliamentary') {
         // Midterm parliamentary election — seats reshuffled, president stays
@@ -7947,8 +8124,9 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
             .eq('status', 'frozen')
-            .select('id, bill_type, ambassador_id');
+            .select('id, nation_id, bill_type, ambassador_id, ministry_key');
         await syncAmbassadorsForFailedConfirmationBills(supabase, frozenBills);
+        await syncMinistriesForFailedConfirmationBills(supabase, frozenBills);
 
         let existingGov = null;
         const { data: govFormation } = await supabase
@@ -8066,7 +8244,19 @@ async function processElections(supabase, nation, currentTick) {
         // Use candidate-based voting for presidential elections, party-based for parliamentary
         let data, error;
         if (electionType === 'presidential') {
-            ({ data, error } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id }));
+            const { error: snapshotErr } = await supabase.rpc('snapshot_presidential_endorsements', {
+                p_nation_id: nation.id,
+                p_election_id: election.id
+            });
+            if (snapshotErr) {
+                console.error(`Failed to snapshot presidential endorsements for ${nation.name}:`, snapshotErr);
+                continue;
+            }
+
+            ({ data, error } = await supabase.rpc('run_presidential_election', {
+                p_nation_id: nation.id,
+                p_election_id: election.id
+            }));
         } else {
             ({ data, error } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: electionType }));
         }
@@ -8075,7 +8265,10 @@ async function processElections(supabase, nation, currentTick) {
             console.error(`Election RPC failed (attempt 1) for ${nation.name}:`, error);
             // Retry once
             if (electionType === 'presidential') {
-                ({ data, error } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id }));
+                ({ data, error } = await supabase.rpc('run_presidential_election', {
+                    p_nation_id: nation.id,
+                    p_election_id: election.id
+                }));
             } else {
                 ({ data, error } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: electionType }));
             }
@@ -8118,9 +8311,10 @@ async function processElections(supabase, nation, currentTick) {
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
             .in('status', ['committee', 'floor'])
-            .select('id, bill_type, ambassador_id');
+            .select('id, nation_id, bill_type, ambassador_id, ministry_key');
 
         await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
+        await syncMinistriesForFailedConfirmationBills(supabase, dissolvedBills);
 
         if (dissolvedBills?.length > 0) {
             console.log(`Dissolved ${dissolvedBills.length} pending bill(s) after election for ${nation.name}`);
@@ -8133,8 +8327,9 @@ async function processElections(supabase, nation, currentTick) {
                 .update({ status: 'failed' })
                 .eq('nation_id', nation.id)
                 .eq('status', 'president_desk')
-                .select('id, bill_type, ambassador_id');
+                .select('id, nation_id, bill_type, ambassador_id, ministry_key');
             await syncAmbassadorsForFailedConfirmationBills(supabase, deskBills);
+            await syncMinistriesForFailedConfirmationBills(supabase, deskBills);
             if (deskBills?.length > 0) {
                 console.log(`Failed ${deskBills.length} bill(s) on president's desk after presidential election for ${nation.name}`);
             }
@@ -8179,9 +8374,10 @@ async function processElections(supabase, nation, currentTick) {
                 .update({ status: 'failed' })
                 .eq('nation_id', nation.id)
                 .eq('status', 'frozen')
-                .select('id, bill_type, ambassador_id');
+                .select('id, nation_id, bill_type, ambassador_id, ministry_key');
 
             await syncAmbassadorsForFailedConfirmationBills(supabase, frozenBills);
+            await syncMinistriesForFailedConfirmationBills(supabase, frozenBills);
 
             if (existingGov) {
                 console.log(`Dissolving ${existingGov.status} government after election for ${nation.name} (source: ${existingGovSource})`);
@@ -8339,7 +8535,10 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
         }
 
         // Run the presidential election RPC again with only the top 2
-        const { data: runoffData, error: runoffErr } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id });
+        const { data: runoffData, error: runoffErr } = await supabase.rpc('run_presidential_election', {
+            p_nation_id: nation.id,
+            p_election_id: completedElection.id
+        });
 
         if (runoffErr) {
             console.error(`Runoff RPC failed for ${nation.name}:`, runoffErr);
@@ -8570,16 +8769,15 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
     } catch (e) { console.warn('Could not schedule next presidential elections:', e); }
 }
 
-
 function resolvePresidentialRunoffEndorsements({ wasRunoff, round1Results = [], runoffCandidates = [], snappedEndorsements = [], compatibilityTable = {} }) {
     const runoffCandidateIds = new Set((runoffCandidates || []).map(c => c.candidate_id));
     const round1ByFaction = new Map((round1Results || []).map(c => [c.faction_id, c]));
-    const candidateTotals: Record<string, { transfer_votes: number; protest_votes: number }> = {};
+    const candidateTotals = {};
     for (const c of (runoffCandidates || [])) {
         candidateTotals[c.candidate_id] = { transfer_votes: 0, protest_votes: 0 };
     }
 
-    const resolved = (snappedEndorsements || []).map((raw: Record<string, any>) => {
+    const resolved = (snappedEndorsements || []).map(raw => {
         const item = { ...raw };
         if ((item.status || 'PENDING') !== 'PENDING') return item;
         if (!wasRunoff) return { ...item, status: 'VOID', void_reason: 'no_runoff' };
@@ -8590,7 +8788,7 @@ function resolvePresidentialRunoffEndorsements({ wasRunoff, round1Results = [], 
 
         const compKey = item.compatibility || item.compatibility_tier || item.relationship || 'neutral';
         const transferRate = Math.max(0, Math.min(1,
-            Number(item.transfer_rate ?? (compatibilityTable as any)[compKey] ?? (compatibilityTable as any).neutral ?? 0.65)
+            Number(item.transfer_rate ?? compatibilityTable[compKey] ?? compatibilityTable.neutral ?? 0.65)
         ));
         const baseVotes = Math.max(0, Number(endorsing.votes || 0));
         const transferVotes = Math.round(baseVotes * transferRate);
@@ -8804,6 +9002,18 @@ async function scheduleNextPresidentialElections(supabase, nation, currentTick) 
 // ────────── presidential ──────────
 
 
+/** Tally floor votes from bill_support records (already loaded via join). */
+function tallyFloorVotes(bill) {
+    let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
+    for (const s of (bill.bill_support || [])) {
+        const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+        if (stance === 'yes') votesFor += (s.seat_count || 0);
+        else if (stance === 'no') votesAgainst += (s.seat_count || 0);
+        else if (stance === 'abstain') votesAbstain += (s.seat_count || 0);
+    }
+    return { votesFor, votesAgainst, votesAbstain };
+}
+
 /**
  * Generate 3 president candidates for a party (reuses PM candidate generation pattern).
  * Candidates are stored in pm_candidates table with candidate_type = 'presidential';
@@ -8924,7 +9134,7 @@ async function selectPresidentCandidate(supabase, candidateId, nationId, faction
 /**
  * President nominates a minister for a cabinet slot.
  * Writes pending data to the ministries table and creates a confirmation bill.
- * Parliament votes simple majority; if rejected, the party is blocked for that slot.
+ * Parliament votes simple majority.
  *
  * @param {object} supabase
  * @param {string} nationId
@@ -8946,18 +9156,12 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
 
     // Validate: no existing pending confirmation for this slot
     const { data: existingMinistry } = await supabase.from('ministries')
-        .select('id, confirmation_status, rejected_parties')
+        .select('id, confirmation_status')
         .eq('nation_id', nationId).eq('ministry_key', ministryKey).eq('is_active', true)
         .maybeSingle();
 
     if (existingMinistry?.confirmation_status === 'pending') {
         throw new Error('A confirmation vote is already pending for this ministry');
-    }
-
-    // Validate: nominee's party was not already rejected for this slot
-    const rejectedParties = existingMinistry?.rejected_parties || [];
-    if (rejectedParties.includes(nominee.partyId)) {
-        throw new Error('This party\'s nominee was already rejected for this ministry slot');
     }
 
     // Get current tick
@@ -8995,8 +9199,7 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
             ministry_name: ministryDisplayName,
             is_active: true,
             confirmation_status: 'pending',
-            pending_minister: pendingData,
-            rejected_parties: []
+            pending_minister: pendingData
         });
         if (insErr) throw new Error('Failed to create ministry row: ' + insErr.message);
     }
@@ -9037,56 +9240,58 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
 // ==================== PRESIDENTIAL VETO SYSTEM ====================
 
 /**
- * Tally floor votes from bill_support records (already loaded via join).
- */
-function tallyFloorVotes(bill) {
-    let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
-    for (const s of (bill.bill_support || [])) {
-        const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
-        if (stance === 'yes') votesFor += (s.seat_count || 0);
-        else if (stance === 'no') votesAgainst += (s.seat_count || 0);
-        else if (stance === 'abstain') votesAbstain += (s.seat_count || 0);
-    }
-    return { votesFor, votesAgainst, votesAbstain };
-}
-
-/**
  * President signs a bill into law.
  * Called from the UI when the President's party clicks "Sign Into Law".
  */
 async function signPresidentialBill(supabase, billId, presidentFactionId) {
-    const { data: bill } = await supabase.from('bills')
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
-        .eq('id', billId).single();
-    if (!bill || bill.status !== 'president_desk') throw new Error('Bill is not on the president\'s desk');
+    const context = { billId, presidentFactionId };
+    console.log('[signPresidentialBill] stage=rpc_start', context);
 
-    // Validate caller is president's party
-    const { data: president } = await supabase.from('presidents')
-        .select('faction_id').eq('nation_id', bill.nation_id).eq('is_active', true).limit(1).maybeSingle();
-    if (!president || president.faction_id !== presidentFactionId) throw new Error('Only the President\'s party can sign bills');
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('sign_presidential_bill', {
+        p_bill_id: billId
+    });
 
-    const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
-
-    const enactment = await enactBill(supabase, bill, currentTick);
-    if (!enactment?.success) {
-        // Mark bill as failed so it doesn't stay stuck on the desk
-        await supabase.from('bills').update({
-            status: 'failed',
-            president_action: 'signed',
-            president_action_tick: currentTick
-        }).eq('id', bill.id);
-        throw new Error(enactment?.error || 'Bill enactment failed after presidential signature');
+    if (rpcError) {
+        console.error('[signPresidentialBill] stage=rpc_error', {
+            ...context,
+            error: rpcError.message
+        });
+        throw new Error(`Presidential signing failed: ${rpcError.message}`);
     }
-    // Only mark president_action after successful enactment
-    // (enactBill already sets status='passed')
-    await supabase.from('bills').update({
-            president_action: 'signed',
-            president_action_tick: currentTick
-        }).eq('id', bill.id);
 
-    const floorVotes = tallyFloorVotes(bill);
-    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, votesFor: floorVotes.votesFor, votesAgainst: floorVotes.votesAgainst, votesAbstain: floorVotes.votesAbstain, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (signed by President)' });
+    if (!rpcResult?.ok) {
+        console.error('[signPresidentialBill] stage=rpc_rejected', {
+            ...context,
+            result: rpcResult
+        });
+        throw new Error(rpcResult?.message || 'Presidential signing was rejected.');
+    }
+
+    console.log('[signPresidentialBill] stage=rpc_success', {
+        ...context,
+        code: rpcResult.code
+    });
+
+    const { data: signedBill, error: signedBillErr } = await supabase.from('bills')
+        .select('id, bill_name, nation_id, bill_articles(id), bill_support(stance, seat_count)')
+        .eq('id', billId)
+        .single();
+
+    if (signedBillErr || !signedBill) {
+        throw new Error(`Bill signed but failed to reload bill metadata: ${signedBillErr?.message || 'not found'}`);
+    }
+
+    const floorVotes = tallyFloorVotes(signedBill);
+    await fireBillEvent(supabase, 'bill_passed', signedBill, {
+        currentTick: rpcResult.tick || 0,
+        votesFor: floorVotes.votesFor,
+        votesAgainst: floorVotes.votesAgainst,
+        votesAbstain: floorVotes.votesAbstain,
+        articleCount: (signedBill.bill_articles || []).length,
+        billNameOverride: `${signedBill.bill_name} (signed by President)`
+    });
+
+    console.log('[signPresidentialBill] stage=terminal_result result=success', context);
 }
 
 /**
@@ -9472,7 +9677,7 @@ async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
 /**
  * Called when the nominated party votes NO on their own minister confirmation bill.
  * Immediately ends the vote as failed, applies -2 gov approval to the president,
- * adds the party to rejected_parties so the president cannot re-nominate them.
+ * and clears the pending nominee.
  *
  * @param {object} supabase
  * @param {string} billId - The minister_confirmation bill
@@ -9491,7 +9696,7 @@ async function rejectOwnNomination(supabase, billId, nomineePartyId) {
 
     // Validate the nominee is actually the pending nominee for this ministry
     const { data: ministry } = await supabase.from('ministries')
-        .select('id, pending_minister, rejected_parties')
+        .select('id, pending_minister')
         .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
         .maybeSingle();
 
@@ -9502,15 +9707,10 @@ async function rejectOwnNomination(supabase, billId, nomineePartyId) {
     // 1. Fail the bill immediately
     await failBill(supabase, bill);
 
-    // 2. Add nominee's party to rejected_parties so President cannot re-nominate them
-    const existingRejected = ministry.rejected_parties || [];
-    if (!existingRejected.includes(nomineePartyId)) {
-        existingRejected.push(nomineePartyId);
-    }
+    // 2. Clear pending nomination
     await supabase.from('ministries').update({
         confirmation_status: 'rejected',
-        pending_minister: null,
-        rejected_parties: existingRejected
+        pending_minister: null
     }).eq('id', ministry.id);
 
     // 3. Apply -2 government approval event (penalty to the president)
@@ -9527,7 +9727,6 @@ async function rejectOwnNomination(supabase, billId, nomineePartyId) {
 }
 
 // Tick lock and tick mutation are intentionally Edge Function only.
-
 
 // ────────── three-pillar ──────────
 
@@ -10092,7 +10291,7 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
             newVal = Math.min(target, currentVal + speed);
         }
 
-        newVal = Math.round(Math.max(0, newVal) * 10) / 10;
+        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
 
         if (newVal !== Math.round(currentVal * 10) / 10) {
             nationUpdates[statKey] = newVal;
@@ -10194,7 +10393,12 @@ async function processStatConnections(supabase, nation, currentTick, connections
             ? targetVal + effectiveMag
             : targetVal - effectiveMag;
 
-        newVal = Math.round(Math.max(0, newVal) * 10) / 10;
+        // Raw-value stats (gdp, debt, population) must not be clamped to 0-100
+        if (RAW_SCALING_DIVISORS[conn.target_stat]) {
+            newVal = Math.max(0, newVal);
+        } else {
+            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+        }
 
         if (newVal !== Math.round(targetVal * 10) / 10) {
             // Accumulate — multiple connections can affect the same target
@@ -10203,7 +10407,9 @@ async function processStatConnections(supabase, nation, currentTick, connections
                 const prevDelta = nationUpdates[conn.target_stat] - targetVal;
                 const thisDelta = newVal - targetVal;
                 const accumulated = targetVal + prevDelta + thisDelta;
-                nationUpdates[conn.target_stat] = Math.round(Math.max(0, accumulated) * 10) / 10;
+                nationUpdates[conn.target_stat] = RAW_SCALING_DIVISORS[conn.target_stat]
+                    ? Math.max(0, accumulated)
+                    : Math.round(Math.max(0, Math.min(100, accumulated)) * 10) / 10;
             } else {
                 nationUpdates[conn.target_stat] = newVal;
             }
@@ -10724,6 +10930,101 @@ async function executeOutreach(supabase, factionId, nationId, blocId, currentTic
         alignment,
         diminished,
         newAp: apResult.newAp ?? ((faction.action_points || 0) - OUTREACH_CONFIG.AP_COST),
+    };
+}
+
+/**
+ * Set or change a party endorsement preference.
+ *
+ * Rules:
+ * - First endorsement preference for a faction is free.
+ * - Changing to a different endorsed faction costs 1 AP (atomic deduct_ap RPC).
+ * - Re-selecting the same endorsed faction is a no-op (no AP cost).
+ * - Always writes a campaign_actions audit row with a reason string.
+ */
+async function executeEndorsementPreference(supabase, factionId, nationId, endorsedFactionId, currentTick, reason = 'endorsement_preference_update') {
+    if (!factionId || !nationId || !endorsedFactionId) {
+        return { success: false, error: 'Missing endorsement parameters.' };
+    }
+
+    const normalizedReason = String(reason || 'endorsement_preference_update').trim() || 'endorsement_preference_update';
+
+    const { data: existingPref, error: prefErr } = await supabase
+        .from('faction_endorsements')
+        .select('id, endorsed_faction_id')
+        .eq('faction_id', factionId)
+        .maybeSingle();
+    if (prefErr) {
+        return { success: false, error: prefErr.message || 'Failed to load endorsement preference.' };
+    }
+
+    let newAp = null;
+    let apCharged = 0;
+    const existingTarget = existingPref?.endorsed_faction_id || null;
+
+    // First preference: create for free
+    if (!existingPref) {
+        const { error: insertErr } = await supabase.from('faction_endorsements').insert({
+            faction_id: factionId,
+            nation_id: nationId,
+            endorsed_faction_id: endorsedFactionId,
+            updated_at_tick: currentTick
+        });
+        if (insertErr) {
+            return { success: false, error: insertErr.message || 'Failed to create endorsement preference.' };
+        }
+    }
+    // Same target: no AP charge, but refresh timestamp for history visibility
+    else if (existingTarget === endorsedFactionId) {
+        const { error: sameErr } = await supabase
+            .from('faction_endorsements')
+            .update({ updated_at_tick: currentTick })
+            .eq('id', existingPref.id);
+        if (sameErr) {
+            return { success: false, error: sameErr.message || 'Failed to keep endorsement preference.' };
+        }
+    }
+    // Preference change: charge 1 AP through atomic RPC
+    else {
+        const apResult = await deductAP(supabase, factionId, 1);
+        if (!apResult.success) {
+            return { success: false, error: apResult.error || 'Not enough AP to change endorsement.' };
+        }
+        newAp = apResult.newAp;
+        apCharged = 1;
+
+        const { error: updateErr } = await supabase
+            .from('faction_endorsements')
+            .update({
+                endorsed_faction_id: endorsedFactionId,
+                updated_at_tick: currentTick
+            })
+            .eq('id', existingPref.id);
+        if (updateErr) {
+            return { success: false, error: updateErr.message || 'Failed to update endorsement preference.' };
+        }
+    }
+
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId,
+        nation_id: nationId,
+        action_type: 'endorsement_preference',
+        tick_performed: currentTick,
+        ap_cost: apCharged,
+        result: {
+            reason: normalizedReason,
+            previous_endorsed_faction_id: existingTarget,
+            endorsed_faction_id: endorsedFactionId,
+            ap_charged: apCharged
+        }
+    });
+
+    return {
+        success: true,
+        newAp,
+        apCharged,
+        changed: existingTarget !== endorsedFactionId,
+        alreadySelected: existingTarget === endorsedFactionId
     };
 }
 
@@ -12823,7 +13124,7 @@ async function executeBuyInfluence(supabase, factionId, nationId, targetId, fund
     if (fundsToSpend <= 0) return { success: false, error: 'Must spend some funds.' };
 
     const { data: nation } = await supabase
-        .from('nations').select('total_seats, unaligned_seats')
+        .from('nations').select('total_seats, unaligned_seats, regime_health, ruling_faction_id')
         .eq('id', nationId).single();
     if (!nation) return { success: false, error: 'Nation not found.' };
     const legislatureMax = nation.total_seats || 120;
@@ -12882,7 +13183,16 @@ async function executeBuyInfluence(supabase, factionId, nationId, targetId, fund
     const yourStanding = Math.max(1, faction.standing ?? 30);
     const targetStanding = target.standing ?? 30;
     const targetSeats = target.seats || 0;
-    let costPerSeat = GAME_CONFIG.BUY_INFLUENCE_BASE_COST * (targetStanding / yourStanding) * (1 + targetSeats / legislatureMax);
+    const isTargetingStrongman = targetId === nation.ruling_faction_id;
+    let costPerSeat;
+
+    if (isTargetingStrongman) {
+        // Strongman cost scales with regime health: expensive when healthy, cheap when collapsing
+        const rh = Math.max(0, Math.min(100, Number(nation.regime_health ?? 80)));
+        costPerSeat = GAME_CONFIG.BUY_INFLUENCE_STRONGMAN_BASE_COST * (1 + rh * GAME_CONFIG.BUY_INFLUENCE_STRONGMAN_HEALTH_SCALE);
+    } else {
+        costPerSeat = GAME_CONFIG.BUY_INFLUENCE_BASE_COST * (targetStanding / yourStanding) * (1 + targetSeats / legislatureMax);
+    }
 
     // Vulnerability discount: if target is demonstrating competence this tick
     if (target.last_action_type === 'demonstrate_competence') {
@@ -13873,7 +14183,12 @@ async function processStatEffects(supabase, nation, currentTick) {
                         newVal = currentVal - scaledRate;
                     }
 
-                    newVal = Math.round(Math.max(0, newVal) * 10) / 10;
+                    // Raw-value stats — don't clamp to 0-100
+                    if (RAW_SCALING_DIVISORS[statKey]) {
+                        newVal = Math.max(0, newVal);
+                    } else {
+                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                    }
                     nationUpdates[statKey] = newVal;
                     anyEffectApplied = true;
 
@@ -14044,7 +14359,12 @@ async function processMinistryActions(supabase, nation, currentTick) {
                             : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
                         let scaledMinistryRate = RAW_SCALING_DIVISORS[statKey] ? rate * RAW_SCALING_DIVISORS[statKey] : rate;
                         newVal = eff.direction === 'up' ? currentVal + scaledMinistryRate : currentVal - scaledMinistryRate;
-                        newVal = Math.round(Math.max(0, newVal) * 10) / 10;
+                        // Raw-value stats (debt, population) must not be clamped to 0-100
+                        if (RAW_SCALING_DIVISORS[statKey]) {
+                            newVal = Math.max(0, newVal);
+                        } else {
+                            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                        }
                         nationUpdates[statKey] = newVal;
                     }
 
@@ -14213,8 +14533,15 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
 
         newApproval = Math.round(Math.max(0, Math.min(100, newApproval)) * 10) / 10;
 
+        // Update baselines to current values so next tick only sees incremental change
+        const updatedBaselines = {};
+        for (const statKey of ownedStats) {
+            if (statDirectionSign(statKey) === 0) continue;
+            updatedBaselines[statKey] = Number(nation[statKey] ?? 50);
+        }
+
         await supabase.from('ministries')
-            .update({ minister_approval: newApproval })
+            .update({ minister_approval: newApproval, stat_baselines: updatedBaselines })
             .eq('id', ministry.id);
 
         results.push({
@@ -14277,10 +14604,16 @@ async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
     // Event modifier (decayed before this call by the tick processor)
     const eventModifier = Number(nation.gov_approval_events ?? 0);
 
-    // Composite
+    // Composite target from minister averages + penalties + events
     let rawApproval = ministerAvg + vacancyPenalty + eventModifier;
+    rawApproval = Math.max(0, Math.min(100, rawApproval));
 
-    const govApproval = Math.round(Math.max(0, Math.min(100, rawApproval)));
+    // Cap per-tick change to ±3 so approval moves gradually
+    const MAX_TICK_CHANGE = 3;
+    const previousApproval = Number(nation.gov_approval ?? 50);
+    const delta = rawApproval - previousApproval;
+    const clampedDelta = Math.max(-MAX_TICK_CHANGE, Math.min(MAX_TICK_CHANGE, delta));
+    const govApproval = Math.round(Math.max(0, Math.min(100, previousApproval + clampedDelta)));
 
     // Store on nation
     await supabase.from('nations')
@@ -14290,7 +14623,7 @@ async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
     // Update in-memory nation object
     nation.gov_approval = govApproval;
 
-    console.log(`[GovApproval] ${nation.name}: ${govApproval} (avg=${Math.round(ministerAvg)}, vacancies=${vacantCount}×${cfg.VACANCY_PENALTY}=${vacancyPenalty}, events=${eventModifier})`);
+    console.log(`[GovApproval] ${nation.name}: ${govApproval} (target=${Math.round(rawApproval)}, delta=${Math.round(clampedDelta)}, prev=${previousApproval}, avg=${Math.round(ministerAvg)}, vacancies=${vacantCount}×${cfg.VACANCY_PENALTY}=${vacancyPenalty}, events=${eventModifier})`);
 
     return govApproval;
 }
@@ -14471,7 +14804,10 @@ async function processEvents(supabase, nation, currentTick) {
                 const scaledChange = RAW_SCALING_DIVISORS[evtStatKey]
                     ? effect.change_value * RAW_SCALING_DIVISORS[evtStatKey]
                     : effect.change_value;
-                const newVal = Math.max(0, currentVal + scaledChange);
+                // Raw-value stats (debt, population) must not be clamped to 0-100
+                const newVal = RAW_SCALING_DIVISORS[evtStatKey]
+                    ? Math.max(0, currentVal + scaledChange)
+                    : Math.max(0, Math.min(100, currentVal + scaledChange));
                 nationUpdates[evtStatKey] = newVal;
                 nation[evtStatKey] = newVal;
 
@@ -14737,10 +15073,14 @@ async function processCrises(supabase, nation, currentTick) {
                     : (nation[statKey] !== undefined && nation[statKey] !== null
                         ? Number(nation[statKey]) : 50);
 
-                const scaledCrisisChange = RAW_SCALING_DIVISORS[statKey]
-                    ? changePT * RAW_SCALING_DIVISORS[statKey]
-                    : changePT;
-                let newVal = Math.round(Math.max(0, currentVal + scaledCrisisChange) * 10) / 10;
+                // Raw-value stats (population) must not be clamped to 0-100
+                let newVal;
+                if (RAW_SCALING_DIVISORS[statKey]) {
+                    const scaledCrisisChange = changePT * RAW_SCALING_DIVISORS[statKey];
+                    newVal = Math.max(0, currentVal + scaledCrisisChange);
+                } else {
+                    newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
+                }
                 nationUpdates[statKey] = newVal;
                 nation[statKey] = newVal;
 
@@ -15679,8 +16019,12 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
             if (STAT_PROCESSOR_SKIP.has(stat)) continue;
             const currentVal = nation[stat];
             if (currentVal !== undefined && currentVal !== null) {
-                const scaledDelta = RAW_SCALING_DIVISORS[stat] ? delta * RAW_SCALING_DIVISORS[stat] : delta;
-                updates[stat] = Math.round(Math.max(0, Number(currentVal) + scaledDelta) * 10) / 10;
+                if (RAW_SCALING_DIVISORS[stat]) {
+                    // Raw-value stats (population): scale rate and don't clamp to 0-100
+                    updates[stat] = Math.max(0, Number(currentVal) + delta * RAW_SCALING_DIVISORS[stat]);
+                } else {
+                    updates[stat] = Math.round(Math.max(0, Math.min(100, Number(currentVal) + delta)) * 10) / 10;
+                }
             }
         }
         if (Object.keys(updates).length > 0) {
@@ -17084,7 +17428,6 @@ async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted,
         };
     }
 }
-
 
 // ────────── election-simulation ──────────
 
@@ -18828,17 +19171,9 @@ async function processAusterityCommitments(supabase, nation, currentTick) {
             const perTickReduction = commitment.reduction / commitment.over_ticks;
             const resolvedKey = normalizeNationStatKey(commitment.stat);
             if (!resolvedKey || !NATION_STAT_COLUMN_SET.has(resolvedKey)) continue;
-            // GDP and debt are driven by dedicated systems — skip
-            if (STAT_PROCESSOR_SKIP.has(resolvedKey)) continue;
 
             const currentVal = Number(nation[resolvedKey] ?? 50);
-            let newVal;
-            if (RAW_SCALING_DIVISORS[resolvedKey]) {
-                // Raw-value stats (population) must not be clamped to 0-100
-                newVal = Math.max(0, Math.round((currentVal - perTickReduction * RAW_SCALING_DIVISORS[resolvedKey]) * 10) / 10);
-            } else {
-                newVal = Math.max(0, Math.round((currentVal - perTickReduction) * 10) / 10);
-            }
+            const newVal = Math.max(0, Math.round((currentVal - perTickReduction) * 10) / 10);
 
             if (newVal !== currentVal) {
                 nationUpdates[resolvedKey] = newVal;
