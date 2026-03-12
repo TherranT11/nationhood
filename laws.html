@@ -1014,6 +1014,16 @@ async function enactDecree(billId) {
                 verificationError,
                 verificationRow
             });
+        const { error: updateError } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
+        if (updateError) throw updateError;
+
+        const { data: refreshedBill, error: refreshError } = await _supabase
+            .from('bills')
+            .select('id, status')
+            .eq('id', billId)
+            .single();
+        if (refreshError) throw refreshError;
+        if (!refreshedBill || refreshedBill.status !== 'floor') {
             alert('Error: decree was not moved to the floor. Please refresh and try again.');
             return;
         }

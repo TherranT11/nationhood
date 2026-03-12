@@ -1819,6 +1819,13 @@ async function enactDecree() {
                 verificationError,
                 verificationRow
             });
+        const { data: refreshedBill, error: refreshError } = await _supabase
+            .from('bills')
+            .select('id, status')
+            .eq('id', billId)
+            .single();
+        if (refreshError) throw refreshError;
+        if (!refreshedBill || refreshedBill.status !== 'floor') {
             alert('Error: decree was not moved to the floor. Please refresh and try again.');
             return;
         }
@@ -1840,6 +1847,7 @@ async function enactDecree() {
         window.location.reload();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
+
 
 async function sendToFloor() {
     if (!currentFaction || currentBill.proposed_by !== currentFaction.id) return;
