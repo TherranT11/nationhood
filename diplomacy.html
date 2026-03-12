@@ -187,11 +187,8 @@ initPage('diplomacy', async (state) => {
         // Detect roles
         diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
 
-        // Populate page header
-        const nameEl = document.getElementById('diplo-nation-name');
-        if (nameEl) nameEl.textContent = currentNation?.name || '';
-        const apEl = document.getElementById('diplo-ap');
-        if (apEl) apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP';
+        // Render role badges in header
+        await renderDiploHeader();
 
         // Render all boxes
         await Promise.all([
@@ -300,6 +297,7 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
 // Re-fetch roles fresh from DB before critical actions (prevents stale cache exploits)
 async function refreshRoles() {
     diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
+    await renderDiploHeader();
     return diplomaticRoles;
 }
 
