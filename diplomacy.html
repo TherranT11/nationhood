@@ -88,6 +88,9 @@ let currentCoalition = null;
 let diplomaticRoles = { isHoG: false, isFM: false, isMoT: false, ambassadorTo: [] };
 let shardTick = 0;
 
+// Cached list of other nations for dropdowns
+let cachedOtherNations = [];
+
 // Track the currently-selected target nation for initiative form
 let selectedTargetNation = null;
 let selectedTheirAmbassador = null;
@@ -7172,6 +7175,7 @@ async function renderRelationsBox() {
         const activeAgreements = agreementsRes.data || [];
 
         const otherNations = allNations.filter(n => n.id !== currentNation.id);
+        cachedOtherNations = otherNations.map(n => ({ id: n.id, name: n.name }));
         const countEl = document.getElementById('relations-count');
         if (countEl) countEl.textContent = otherNations.length;
 
@@ -7332,6 +7336,12 @@ async function renderRelationDetail(nationId) {
 
 // ── Select target nation for draft panel ──
 async function selectDraftTarget(nationId) {
+    if (!nationId) {
+        activeDraftTarget = null;
+        selectedTargetNation = null;
+        renderDraftBox();
+        return;
+    }
     const { data: nation } = await _supabase.from('nations').select('*').eq('id', nationId).single();
     if (nation) {
         activeDraftTarget = nation;
@@ -7739,7 +7749,14 @@ function renderDraftBox() {
     // Header fields
     html += '<div class="draft-header">';
     html += '<div class="draft-field"><div class="draft-field-label">Action</div><div class="draft-field-input">' + escapeHtml(activeDraftAction.label) + ' <span style="color:var(--teal);">(' + activeDraftAction.apCost + ' AP)</span></div></div>';
-    html += '<div class="draft-field"><div class="draft-field-label">Target Nation</div><div class="draft-field-input">' + targetName + '</div></div>';
+    let targetFieldHtml = '<select id="draft-target-select" style="width:100%;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);font-size:12px;padding:4px 8px;" onchange="selectDraftTarget(this.value)">';
+    targetFieldHtml += '<option value="">Select a nation...</option>';
+    cachedOtherNations.forEach(n => {
+        const sel = activeDraftTarget && activeDraftTarget.id === n.id ? ' selected' : '';
+        targetFieldHtml += '<option value="' + n.id + '"' + sel + '>' + escapeHtml(n.name) + '</option>';
+    });
+    targetFieldHtml += '</select>';
+    html += '<div class="draft-field"><div class="draft-field-label">Target Nation</div>' + targetFieldHtml + '</div>';
     html += '<div class="draft-field"><div class="draft-field-label">Name</div><input type="text" id="draft-name-input" class="draft-field-input" placeholder="Initiative name..." value="' + escapeHtml(wizardName) + '" oninput="wizardName=this.value" style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:4px 8px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
     html += '</div>';
 
