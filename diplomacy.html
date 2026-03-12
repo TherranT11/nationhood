@@ -7122,6 +7122,20 @@ function tierToDotColor(tier) {
 // ══════════════════════════════════════════════════════
 // FOREIGN RELATIONS BOX
 // ══════════════════════════════════════════════════════
+// Nation map colors from World Map Crucera3.svg
+const NATION_MAP_COLORS = {
+    'avelia':      '#ddafe9',
+    'melizea':     '#eeffaa',
+    'sangreza':    '#5599ff',
+    'san estrella':'#ffb380',
+    'montequilla': '#aade87',
+    'veldaria':    '#e3e2db',
+    'palvera':     '#5599ff'
+};
+function getNationMapColor(name) {
+    return NATION_MAP_COLORS[(name || '').toLowerCase()] || '';
+}
+
 async function renderRelationsBox() {
     const body = document.getElementById('relations-body');
     if (!body) return;
@@ -7200,7 +7214,7 @@ async function renderRelationsBox() {
             html += `
                 <div class="nation-row" data-nation-id="${nation.id}" onclick="toggleRelationRow('${nation.id}')">
                     <div class="nation-dot" style="background:${dotColor}"></div>
-                    <span class="nation-name">${escapeHtml(nation.name)}</span>
+                    <span class="nation-name" ${getNationMapColor(nation.name) ? 'style="color:' + getNationMapColor(nation.name) + '"' : ''}>${escapeHtml(nation.name)}</span>
                     <div class="nation-meta">
                         <span class="pill ${pillClass}">${tier.label}</span>
                         <span class="embassy-tag ${embassyClass}">${embassyLabel}</span>
@@ -7343,8 +7357,9 @@ function renderActionsBox() {
 
     // Helper: render a single action item (enabled or disabled)
     function actionHtml(a, enabled, role) {
-        const disabledClass = enabled ? '' : ' action-disabled';
-        const onclick = enabled ? `onclick="selectDraftAction('${a.key}','${escapeHtml(a.label)}',${a.ap},'${a.type}','${role}')"` : '';
+        const isDisabled = !enabled || a.comingSoon;
+        const disabledClass = isDisabled ? ' action-disabled' : '';
+        const onclick = !isDisabled ? `onclick="selectDraftAction('${a.key}','${escapeHtml(a.label)}',${a.ap},'${a.type}','${role}')"` : '';
         const costLabel = a.ap > 0 ? a.ap + ' AP' : 'Free';
         return `<div class="action-item${disabledClass}" data-action="${a.key}" ${onclick}>
                 <span class="action-name">${a.label}</span>
@@ -7355,8 +7370,8 @@ function renderActionsBox() {
     // Head of Government
     html += '<div class="role-header' + (hasHoG ? '' : ' role-disabled') + '">Head of Government</div>';
     [
-        { key: 'declare_war', label: 'Declare War', ap: 8, type: 'hog' },
-        { key: 'sue_peace', label: 'Sue for Peace', ap: 4, type: 'hog' },
+        { key: 'declare_war', label: 'Declare War', ap: 8, type: 'hog', comingSoon: true },
+        { key: 'call_ceasefire', label: 'Call for Ceasefire', ap: 4, type: 'hog', comingSoon: true },
         { key: 'sign_alliance', label: 'Sign Alliance', ap: 6, type: 'hog' },
         { key: 'state_visit', label: 'State Visit', ap: DIPLOMACY_CONFIG.STATE_VISIT_AP || 4, type: 'hog' },
         { key: 'recall_ambassador', label: 'Recall Ambassador', ap: 2, type: 'hog' }
