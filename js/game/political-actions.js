@@ -2943,7 +2943,7 @@ export async function executeBuyInfluence(supabase, factionId, nationId, targetI
     if (fundsToSpend <= 0) return { success: false, error: 'Must spend some funds.' };
 
     const { data: nation } = await supabase
-        .from('nations').select('total_seats, unaligned_seats')
+        .from('nations').select('total_seats, unaligned_seats, regime_health, ruling_faction_id')
         .eq('id', nationId).single();
     if (!nation) return { success: false, error: 'Nation not found.' };
     const legislatureMax = nation.total_seats || 120;
@@ -3002,7 +3002,16 @@ export async function executeBuyInfluence(supabase, factionId, nationId, targetI
     const yourStanding = Math.max(1, faction.standing ?? 30);
     const targetStanding = target.standing ?? 30;
     const targetSeats = target.seats || 0;
-    let costPerSeat = GAME_CONFIG.BUY_INFLUENCE_BASE_COST * (targetStanding / yourStanding) * (1 + targetSeats / legislatureMax);
+    const isTargetingStrongman = targetId === nation.ruling_faction_id;
+    let costPerSeat;
+
+    if (isTargetingStrongman) {
+        // Strongman cost scales with regime health: expensive when healthy, cheap when collapsing
+        const rh = Math.max(0, Math.min(100, Number(nation.regime_health ?? 80)));
+        costPerSeat = GAME_CONFIG.BUY_INFLUENCE_STRONGMAN_BASE_COST * (1 + rh * GAME_CONFIG.BUY_INFLUENCE_STRONGMAN_HEALTH_SCALE);
+    } else {
+        costPerSeat = GAME_CONFIG.BUY_INFLUENCE_BASE_COST * (targetStanding / yourStanding) * (1 + targetSeats / legislatureMax);
+    }
 
     // Vulnerability discount: if target is demonstrating competence this tick
     if (target.last_action_type === 'demonstrate_competence') {
