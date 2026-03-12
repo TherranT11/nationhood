@@ -76,6 +76,7 @@ initPage('wiki', async (state) => {
                 <h1 class="wiki-page-title">${existingPage ? 'Edit Page' : 'New Page'}</h1>
                 <div class="wiki-header-actions">
                     ${existingPage ? `<a href="wiki.html?slug=${encodeURIComponent(existingPage.slug)}" class="wiki-btn">View Page</a>` : ''}
+                    <a href="wiki.html" class="wiki-btn">Wiki Home</a>
                     <a href="wiki-list.html" class="wiki-btn">All Pages</a>
                 </div>
             </div>

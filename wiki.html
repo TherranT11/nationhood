@@ -24,7 +24,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { fetchPage, fetchPageList, fetchExistingSlugs, renderWikiLinks, renderInfobox } from './js/wiki.js';
+import { fetchPage, fetchPageList, fetchExistingSlugs, renderWikiLinks, renderInfobox, slugify } from './js/wiki.js';
 
 initPage('wiki', async (state) => {
     const { nation } = state;
@@ -76,7 +76,12 @@ initPage('wiki', async (state) => {
                 </div>
             </div>
 
-            <div class="wiki-home-section">
+            <div class="wiki-search-bar" style="margin-top:16px;position:relative;">
+                <input type="text" class="wiki-search-input" id="wiki-home-search" placeholder="Search wiki pages..." style="width:100%;">
+                <div id="wiki-search-results" class="wiki-search-dropdown"></div>
+            </div>
+
+            <div class="wiki-home-section" style="margin-top:20px;">
                 <div class="wiki-home-card">
                     <div class="wiki-home-card-title">About</div>
                     <div class="wiki-home-card-body">
@@ -102,6 +107,32 @@ initPage('wiki', async (state) => {
                 </div>
             </div>
         `;
+
+        // --- Home page search ---
+        const searchInput = document.getElementById('wiki-home-search');
+        const searchResults = document.getElementById('wiki-search-results');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                const q = searchInput.value.trim().toLowerCase();
+                if (!q) { searchResults.innerHTML = ''; searchResults.style.display = 'none'; return; }
+                const matches = allPages.filter(p => p.title.toLowerCase().includes(q)).slice(0, 8);
+                if (!matches.length) {
+                    searchResults.innerHTML = `<div class="wiki-search-item wiki-search-empty">No pages match "${escapeHtml(q)}"</div>
+                        <a href="wiki-edit.html?new=1&title=${encodeURIComponent(searchInput.value.trim())}" class="wiki-search-item wiki-search-create">Create "${escapeHtml(searchInput.value.trim())}"</a>`;
+                } else {
+                    searchResults.innerHTML = matches.map(p =>
+                        `<a href="wiki.html?slug=${encodeURIComponent(p.slug)}" class="wiki-search-item">${escapeHtml(p.title)}${p.template_type ? ` <span class="wiki-page-row-type">${escapeHtml(p.template_type)}</span>` : ''}</a>`
+                    ).join('');
+                }
+                searchResults.style.display = 'block';
+            });
+            document.addEventListener('click', (e) => {
+                if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+                    searchResults.style.display = 'none';
+                }
+            });
+        }
+
         return;
     }
 
@@ -121,6 +152,7 @@ initPage('wiki', async (state) => {
                 <p>The wiki page "<strong>${escapeHtml(slug)}</strong>" doesn't exist yet.</p>
                 <a href="wiki-edit.html?new=1&title=${encodeURIComponent(slug)}" class="wiki-btn wiki-btn-primary">Create This Page</a>
                 <div style="margin-top:12px;">
+                    <a href="wiki.html" class="wiki-btn">Wiki Home</a>
                     <a href="wiki-list.html" class="wiki-btn">All Pages</a>
                 </div>
             </div>
