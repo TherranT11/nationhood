@@ -8361,20 +8361,6 @@ async function renderAppointAmbassadorPanel(body, statusEl) {
         }
     }
 
-    // Footer bar
-    html += '<div class="detail-actions" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hair);">';
-    if (appointSelectedIndex !== null && appointCandidates[appointSelectedIndex]) {
-        const c = appointCandidates[appointSelectedIndex];
-        const exp = Math.max(1, c.age - 26);
-        html += '<span style="font-family:var(--font-mono);font-size:8.5px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);flex:1;">' + escapeHtml(c.firstName) + ' ' + escapeHtml(c.lastName) + ' / ' + escapeHtml(c.partyAbbr) + ' / ' + exp + ' yr exp.</span>';
-    } else {
-        html += '<span style="flex:1;"></span>';
-    }
-    html += '<button class="detail-btn" style="color:var(--text-muted);" onclick="cancelDraft()">Cancel</button>';
-    const canNominate = appointTargetNation && appointSelectedIndex !== null;
-    html += '<button class="detail-btn" style="color:' + (canNominate ? 'var(--teal)' : 'var(--text-dim)') + ';border-color:' + (canNominate ? 'var(--teal-border)' : 'var(--border-subtle)') + ';" ' + (canNominate ? 'onclick="executeAppointAmbassador()"' : 'disabled') + '>Nominate (' + APPOINT_AMBASSADOR_AP + ' AP)</button>';
-    html += '</div>';
-
     // Appointment Details (shown when candidate selected)
     if (appointSelectedIndex !== null && appointCandidates[appointSelectedIndex] && appointTargetNation) {
         const c = appointCandidates[appointSelectedIndex];
@@ -8389,6 +8375,20 @@ async function renderAppointAmbassadorPanel(body, statusEl) {
         html += '<div class="appoint-detail-row"><span class="appoint-detail-label">AP Cost</span><span class="appoint-detail-value" style="font-family:var(--font-mono);font-size:11px;">' + APPOINT_AMBASSADOR_AP + ' AP</span></div>';
         html += '</div>';
     }
+
+    // Footer bar (below appointment details)
+    html += '<div class="detail-actions" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hair);">';
+    if (appointSelectedIndex !== null && appointCandidates[appointSelectedIndex]) {
+        const c = appointCandidates[appointSelectedIndex];
+        const exp = Math.max(1, c.age - 26);
+        html += '<span style="font-family:var(--font-mono);font-size:8.5px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);flex:1;">' + escapeHtml(c.firstName) + ' ' + escapeHtml(c.lastName) + ' / ' + escapeHtml(c.partyAbbr) + ' / ' + exp + ' yr exp.</span>';
+    } else {
+        html += '<span style="flex:1;"></span>';
+    }
+    html += '<button class="detail-btn" style="color:var(--text-muted);" onclick="cancelDraft()">Cancel</button>';
+    const canNominate = appointTargetNation && appointSelectedIndex !== null;
+    html += '<button class="detail-btn" style="color:' + (canNominate ? 'var(--teal)' : 'var(--text-dim)') + ';border-color:' + (canNominate ? 'var(--teal-border)' : 'var(--border-subtle)') + ';" ' + (canNominate ? 'onclick="executeAppointAmbassador()"' : 'disabled') + '>Nominate (' + APPOINT_AMBASSADOR_AP + ' AP)</button>';
+    html += '</div>';
 
     html += '</div>';
     body.innerHTML = html;
