@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nation Info | Nationhood Alpha</title>
     <link rel="stylesheet" href="css/sanestrella.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -457,11 +456,11 @@ function renderGovernment(factions, parties, latestElection) {
     var allParties = [];
     for (var i = 0; i < (parties || []).length; i++) {
         var seats = electionSeats[parties[i].id] !== undefined ? electionSeats[parties[i].id] : (parties[i].seats || 0);
-        allParties.push({ name: parties[i].name, seats: seats, isNPC: true });
+        allParties.push({ name: parties[i].name, seats: seats });
     }
     for (var i = 0; i < (factions || []).length; i++) {
         var seats = electionSeats[factions[i].id] !== undefined ? electionSeats[factions[i].id] : (factions[i].seats || 0);
-        allParties.push({ name: factions[i].faction_name, seats: seats, isNPC: false });
+        allParties.push({ name: factions[i].faction_name, seats: seats });
     }
     allParties.sort(function(a, b) { return (b.seats || 0) - (a.seats || 0); });
 

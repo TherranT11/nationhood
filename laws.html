@@ -6,7 +6,6 @@
     <title>Bills | Nationhood Alpha</title>
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/laws.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div id="top-bar"></div>
@@ -174,6 +173,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
+import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS, RAW_SCALING_DIVISORS } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
@@ -205,7 +205,6 @@ let showingAllLaws = false;
 let factionIdeology = null; // Dynamic ideology scores for current player
 let archiveBills = null; // null = not loaded yet; array once fetched
 let showingPassedLaws = false;
-// (Budget bill UI removed)
 const FALLBACK_COLORS = ['#ff4444','#4CAF50','#2196F3','#ff9800','#9C27B0','#00BCD4','#E91E63','#CDDC39'];
 
 function _getCompatiblePolicies(sector) {
@@ -296,7 +295,7 @@ async function loadLawsData() {
         // Policies are static game data — cache aggressively
         const cachedPolicies = qCache('policies_active');
 
-        const { data: parties } = await _supabase.from('factions').select('id, faction_name, is_npc, seats, action_points, abbreviation, party_color').eq('nation_id', nid).eq('faction_type', 'party');
+        const { data: parties } = await _supabase.from('factions').select('id, faction_name, seats, action_points, abbreviation, party_color').eq('nation_id', nid).eq('faction_type', 'party');
         allParties = parties || [];
         const seatData = await loadSeats(_supabase, nid, lawsIsAutocracy, allParties, currentFaction?.id);
         allPartySeats = seatData.allPartySeats; currentSeats = seatData.currentSeats;
@@ -544,79 +543,6 @@ function filterAllLaws() {
     }).join('');
 }
 
-// ==================== BUDGET BILL (REMOVED) ====================
-// Budget bill system has been fully removed.
-function toggleBudgetBill() { }
-
-// Legacy rendering stub — never called, kept to avoid reference errors
-function _removed_renderBudgetMinistryPanel(tab, instByMinistry, budgetLaws, nation) {
-    var insts = instByMinistry[tab.key] || [];
-    var population = Number(nation.population || 0);
-    var gdpVal = Number(nation.gdp ?? nation.GDP ?? 0);
-    var inflationMult = getInflationMultiplier(nation.inflation);
-    var instTotal = 0;
-    var h = '';
-
-    // INSTITUTIONS section
-    h += '<div class="bp-sub-section">';
-    h += '<div class="bp-sub-header">INSTITUTIONS</div>';
-    if (insts.length === 0) {
-        h += '<div class="bp-empty-notice">No institutions configured.</div>';
-    } else {
-        for (var i = 0; i < insts.length; i++) {
-            var inst = insts[i];
-            var baseVal = Number(inst.base_cost_per_capita || 0);
-            var isGdpScaled = inst.scaling_type === 'gdp';
-            var cost = isGdpScaled ? (baseVal / 100) * gdpVal * inflationMult : baseVal * population * inflationMult;
-            instTotal += cost;
-            h += '<div class="bp-inst-line">';
-            h += '<span class="bp-inst-name">' + inst.institution_name;
-            if (isGdpScaled) {
-                h += ' <span style="color:#666;font-size:0.75rem;">(' + baseVal.toFixed(2) + '% × ' + fmtBudgetVal(gdpVal) + ' GDP)</span>';
-            } else {
-                h += ' <span style="color:#666;font-size:0.75rem;">($' + baseVal.toFixed(2) + ' × ' + population.toLocaleString() + ' pop)</span>';
-            }
-            h += '</span>';
-            h += '<span class="bp-inst-cost">' + fmtBudgetVal(cost) + '</span>';
-            h += '</div>';
-        }
-    }
-    h += '<div class="bp-sub-total"><span>Institution Subtotal</span><span>' + fmtBudgetVal(instTotal) + '</span></div>';
-    h += '</div>';
-
-    // POLICIES section
-    h += '<div class="bp-sub-section">';
-    h += '<div class="bp-sub-header">POLICIES</div>';
-    if (tab.fiscalCat) {
-        var polData = computeMinistryPolicyCost(budgetLaws, tab.fiscalCat, nation);
-        if (polData.policies.length === 0) {
-            h += '<div class="bp-empty-notice">No active policies in this ministry.</div>';
-        } else {
-            for (var j = 0; j < polData.policies.length; j++) {
-                var p = polData.policies[j];
-                h += '<div class="bp-pol-line">';
-                h += '<span class="bp-pol-name">' + p.policy_name + '</span>';
-                h += '<span class="bp-pol-cost">' + fmtBudgetVal(p.cost) + '</span>';
-                h += '</div>';
-            }
-        }
-        h += '<div class="bp-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetVal(polData.total) + '</span></div>';
-        var polTotal = polData.total;
-    } else {
-        h += '<div class="bp-empty-notice">No active policies in this ministry.</div>';
-        h += '<div class="bp-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetVal(0) + '</span></div>';
-        var polTotal = 0;
-    }
-    h += '</div>';
-
-    // MINISTRY TOTAL
-    var ministryTotal = instTotal + polTotal;
-    h += '<div class="bp-ministry-total"><span>MINISTRY TOTAL</span><span>' + fmtBudgetVal(ministryTotal) + '</span></div>';
-
-    return h;
-}
-
-
 // ==================== FLOOR BILLS ====================
 
 function renderFrozenBills() {
@@ -644,8 +570,10 @@ function renderPresidentDeskBills() {
         const articlesHtml = articles.length > 0
             ? articles.map(art => {
                 if (!art.policies) return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.article_title || 'Untitled'} <span style="background:#2196F3;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;">TEXT</span></span></div></div>`;
-                const chipHTML = renderIdeologyChips(art.policies, !!art.repeal_active_law_id);
-                return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
+                const _isRepeal = !!art.repeal_active_law_id;
+                const chipHTML = renderIdeologyChips(art.policies, _isRepeal);
+                const _repealBadge = _isRepeal ? ' <span style="background:#ff4444;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">REPEAL</span>' : '';
+                return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${_isRepeal ? 'Repeal: ' : ''}${art.policies?.policy_name || 'Unknown'}${_repealBadge}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
             }).join('')
             : (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' : '');
 
@@ -786,8 +714,10 @@ function renderFloorBill(bill, isVetoed) {
                         }
                         return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.article_title || 'Untitled Provision'} ${_badge}</span><div class="article-desc" style="white-space:pre-wrap;">${art.article_text || ''}</div></div></div>`;
                     }
-                    const chipHTML = renderIdeologyChips(art.policies);
-                    return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
+                    const _isRepeal = !!art.repeal_active_law_id;
+                    const chipHTML = renderIdeologyChips(art.policies, _isRepeal);
+                    const _repealBadge = _isRepeal ? ' <span style="background:#ff4444;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">REPEAL</span>' : '';
+                    return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${_isRepeal ? 'Repeal: ' : ''}${art.policies?.policy_name || 'Unknown'}${_repealBadge}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
                 }).join(''))))))))))}
             </div>
             ${isVetoed ? `<div class="vetoed-stamp">${isPresidential ? '⛔ VETOED BY PRESIDENT' : '⛔ VETOED BY HEAD FACTION'}</div>` : `
@@ -802,11 +732,13 @@ async function vetoDecree(billId) {
     if (!lawsIsAutocracy || !isHeadFaction) return;
     if (!confirm(`⛔ VETO this decree?\nYour faction loses -${GAME_CONFIG.VETO_APPROVAL_COST} Approval.\nProceed?`)) return;
     try {
-        await _supabase.from('bills').update({ status: 'vetoed' }).eq('id', billId);
+        const { error: vetoErr } = await _supabase.from('bills').update({ status: 'vetoed' }).eq('id', billId);
+        if (vetoErr) throw vetoErr;
         await adjustMomentumAll(_supabase, currentNation.id, currentFaction.id, -GAME_CONFIG.VETO_APPROVAL_COST, 'legislation:veto');
         currentFaction.approval_rating = Math.max(0, (currentFaction.approval_rating || 0) - GAME_CONFIG.VETO_APPROVAL_COST);
         alert(`⛔ Decree vetoed. Lost ${GAME_CONFIG.VETO_APPROVAL_COST}% approval.`);
         await loadLawsData(); renderLawsPage();
+        document.getElementById('content-area').scrollTop = 0;
     } catch (error) { console.error('Veto error:', error); alert('Error: ' + error.message); }
 }
 
@@ -1044,8 +976,10 @@ function renderCommitteeBill(bill) {
                         }
                         return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.article_title || 'Untitled Provision'} ${_badge}</span><div class="article-desc" style="white-space:pre-wrap;">${art.article_text || ''}</div></div></div>`;
                     }
-                    const chipHTML = renderIdeologyChips(art.policies, !!art.repeal_active_law_id);
-                    return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
+                    const _isRepeal = !!art.repeal_active_law_id;
+                    const chipHTML = renderIdeologyChips(art.policies, _isRepeal);
+                    const _repealBadge = _isRepeal ? ' <span style="background:#ff4444;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">REPEAL</span>' : '';
+                    return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${_isRepeal ? 'Repeal: ' : ''}${art.policies?.policy_name || 'Unknown'}${_repealBadge}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
                 }).join('')))))}
             </div>
             ${decreeActionsHTML}
@@ -1059,10 +993,21 @@ async function enactDecree(billId) {
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const bill = committeeBills.find(b => b.id === billId);
-        const decreeFields = { status: 'floor', floor_tick: shard?.current_tick || 0 };
-        decreeFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
-        decreeFields.floor_tick = shard?.current_tick || 0;
-        await _supabase.from('bills').update(decreeFields).eq('id', billId);
+        const currentTick = shard?.current_tick || 0;
+        const decreeFields = {
+            status: 'floor',
+            floor_tick: currentTick,
+            voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
+            early_resolution_status: null,
+            early_resolution_tick: null,
+            passed_tick: null,
+            votes_for: 0,
+            votes_against: 0,
+            votes_abstain: 0,
+            quorum_failures: 0
+        };
+        const { error: updateError } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
+        if (updateError) throw updateError;
 
         // Apply dynamic ideology penalty to sponsor (skip for system-generated bills)
         if (bill && bill.proposed_by) {
@@ -1079,6 +1024,8 @@ async function enactDecree(billId) {
 
         alert('⚡ Decree sent to the floor!');
         await loadLawsData(); renderLawsPage();
+        // Scroll to the floor section so the enacted decree is visible
+        document.getElementById('content-area').scrollTop = 0;
     } catch (error) { console.error('Enact error:', error); alert('Error: ' + error.message); }
 }
 
@@ -1193,9 +1140,7 @@ function openDraftModal() {
     Promise.all([
         _supabase.from('ministries').select('ministry_key, funding_level').eq('nation_id', currentNation.id).eq('is_active', true),
         _supabase.from('ministry_institution_config').select('*'),
-        currentNation.last_budget_bill_id
-            ? _supabase.from('budget_item_allocations').select('item_id, allocation_amount, needed_amount').eq('bill_id', currentNation.last_budget_bill_id).eq('item_type', 'institution')
-            : Promise.resolve({ data: [] })
+        Promise.resolve({ data: [] })
     ]).then(([ministries, instConfig, itemAllocs]) => {
         window._allMinistries = ministries.data || [];
         window._instConfig = instConfig.data || [];
@@ -1812,9 +1757,72 @@ async function submitToCommittee() {
         }
     }
 
+    const normalizedArticles = isFoundationalBill
+        ? []
+        : draftArticles.map(art => {
+            if (art.isText) {
+                return {
+                    policy_id: null,
+                    article_number: art.articleNumber,
+                    added_by: currentFaction.id,
+                    article_title: art.textTitle,
+                    article_text: art.textBody
+                };
+            }
+            if (art.isFunding) {
+                const fd = art.fundingData;
+                const changes = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
+                const textParts = changes.map(i => `${i.name}: ${i.current_pct}% → ${i.proposed_pct}%`);
+                if (fd.discretionary) textParts.push(`Discretionary funds: $${fd.discretionary}M`);
+                const title = `${fd.ministry_label} Funding`;
+                const text = textParts.join('. ') + '.';
+                return {
+                    policy_id: null,
+                    article_number: art.articleNumber,
+                    added_by: currentFaction.id,
+                    article_title: title,
+                    article_text: text,
+                    funding_data: {
+                        ministry_key: fd.ministry_key,
+                        institutions: fd.institutions || [],
+                        discretionary: fd.discretionary ?? 0,
+                        ministry_label: fd.ministry_label
+                    }
+                };
+            }
+            const articleRow = {
+                policy_id: art.policy.id,
+                article_number: art.articleNumber,
+                added_by: currentFaction.id
+            };
+            if (art.isRepeal && art.repealActiveLawId) {
+                articleRow.repeal_active_law_id = art.repealActiveLawId;
+            }
+            return articleRow;
+        });
+
+    const billPayload = {
+        bill_name: billName,
+        nation_id: currentNation.id,
+        proposed_by: currentFaction.id,
+        status: 'committee',
+        ...(isFoundationalBill ? { bill_type: 'foundational' } : {}),
+        articles: normalizedArticles
+    };
+
+    const debugBillSubmission = window.NATIONHOOD_DEBUG_BILL_SUBMISSION ?? true;
+    if (debugBillSubmission) {
+        console.log('Submitting bill:', JSON.stringify(billPayload, null, 2));
+    }
+
     // Atomic AP deduction — prevents race conditions and double-spend
     const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.DRAFT_BILL_AP_COST);
-    if (!apResult.success) { alert('Not enough AP to draft this bill.'); isSubmitting = false; return; }
+    if (!apResult.success) {
+        alert('Not enough AP to draft this bill.');
+        isSubmitting = false;
+        document.getElementById('submit-bill-btn').disabled = draftArticles.length === 0;
+        return;
+    }
     currentFaction.action_points = apResult.newAp;
     sessionStorage.removeItem('nationhood_state'); // bust stale AP cache
 
@@ -1858,12 +1866,30 @@ async function submitToCommittee() {
                 }
                 return articleRow;
             });
-            await _supabase.from('bill_articles').insert(articles);
+            const { error: articlesError } = await _supabase.from('bill_articles').insert(articles);
+            if (articlesError) {
+                const { error: rollbackError } = await _supabase.from('bills').delete().eq('id', bill.id);
+                if (rollbackError) {
+                    console.error('Rollback failed after bill_articles insert error:', rollbackError);
+                }
+                articlesError.isArticlesError = true;
+                throw articlesError;
+            }
         }
 
         closeModal(); await loadLawsData(); renderLawsPage();
         alert(`"${billName}" submitted to committee!${isFoundationalBill ? '\n\nYou need at least one co-sponsor to send it to the floor.' : ''}`);
-    } catch (error) { console.error('Error submitting:', error); alert('Error submitting. Please try again.'); } finally { isSubmitting = false; }
+    } catch (error) {
+        console.error('Error submitting:', error);
+        if (error?.isArticlesError) {
+            alert(`Error saving bill articles: ${error.message}`);
+        } else {
+            alert('Error submitting. Please try again.');
+        }
+    } finally {
+        isSubmitting = false;
+        document.getElementById('submit-bill-btn').disabled = draftArticles.length === 0;
+    }
 }
 
 // ==================== DEFAULT RESOLUTION ====================
@@ -2148,7 +2174,7 @@ async function submitDefaultResolution() {
             foreign_investment: clamp(Number(currentNation.foreign_investment ?? 50), cfg.FILING_FOREIGN_INV_HIT)
         }).eq('id', currentNation.id);
 
-        // Trigger NPC voting
+        // Trigger party voting
         // Event log
         await _supabase.from('event_log').insert({
             nation_id: currentNation.id,

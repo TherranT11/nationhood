@@ -6,7 +6,6 @@
     <title>Bill Details | Nationhood Alpha</title>
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/bill.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body style="overflow-y: auto !important;">
 <div id="top-bar"></div>
@@ -205,6 +204,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
+import './js/guide.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
@@ -326,7 +326,7 @@ async function loadBillData() {
 
         const { data: parties } = await _supabase
             .from('factions')
-            .select('id, faction_name, is_npc, seats')
+            .select('id, faction_name, seats')
             .eq('nation_id', bill.nation_id).eq('faction_type', 'party');
         allParties = parties || [];
 
@@ -1796,8 +1796,19 @@ async function enactDecree() {
     if (!confirm('⚡ ENACT this decree?\n\nThis will send it directly to the floor for a vote.\n\nProceed?')) return;
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const decreeFields = { status: 'floor', floor_tick: shard?.current_tick || 0 };
-        decreeFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
+        const currentTick = shard?.current_tick || 0;
+        const decreeFields = {
+            status: 'floor',
+            floor_tick: currentTick,
+            voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
+            early_resolution_status: null,
+            early_resolution_tick: null,
+            passed_tick: null,
+            votes_for: 0,
+            votes_against: 0,
+            votes_abstain: 0,
+            quorum_failures: 0
+        };
         const { error } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
         if (error) throw error;
 
@@ -1808,7 +1819,7 @@ async function enactDecree() {
             if (sponsorIdeology) {
                 const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, currentBill.bill_articles || []);
                 if (dynamicPenalty < 0) {
-                    await adjustMomentumAll(_supabase, currentNation.id, currentBill.proposed_by, dynamicPenalty, 'legislation:withdraw');
+                    await adjustMomentumAll(_supabase, currentNation.id, currentBill.proposed_by, dynamicPenalty, 'legislation:floor');
                     console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
                 }
             }
@@ -1818,6 +1829,7 @@ async function enactDecree() {
         window.location.reload();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
+
 
 async function sendToFloor() {
     if (!currentFaction || currentBill.proposed_by !== currentFaction.id) return;

@@ -36,14 +36,32 @@ export async function fireBillEvent(supabase, triggerKey, bill, opts = {}) {
     if (opts.extra) {
         Object.assign(placeholders, opts.extra);
     }
+    const nationId = opts.nationId || bill.nation_id;
     try {
         await supabase.rpc('fire_system_event', {
             p_trigger_key: triggerKey,
-            p_nation_id: opts.nationId || bill.nation_id,
+            p_nation_id: nationId,
             p_tick: opts.currentTick,
             p_placeholders: placeholders
         });
     } catch (e) { /* non-blocking */ }
+    // Backfill effects_applied on the row the RPC just created (RPC leaves it null).
+    // Match on nation + tick + event_name pattern, update the most recent row.
+    try {
+        const { data: rows } = await supabase.from('event_log')
+            .select('id')
+            .eq('nation_id', nationId)
+            .eq('fired_at_tick', opts.currentTick)
+            .ilike('event_name', `%${triggerKey.includes('passed') ? 'Passed' : triggerKey.includes('failed') ? 'Failed' : triggerKey}%`)
+            .is('effects_applied', null)
+            .order('created_at', { ascending: false })
+            .limit(1);
+        if (rows && rows.length > 0) {
+            await supabase.from('event_log')
+                .update({ effects_applied: placeholders })
+                .eq('id', rows[0].id);
+        }
+    } catch (e) { /* non-blocking — effects_applied is a nice-to-have */ }
 }
 
 /**

@@ -103,3 +103,25 @@ export function formatTime(ts) {
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
     return d.toLocaleDateString();
 }
+
+
+// ===== FACTION ELIGIBILITY =====
+
+/**
+ * True when a faction row is eligible to be counted as a political party slot.
+ * Business rule: eligibility is role-based (faction_type === 'party').
+ */
+export function isEligiblePartyFaction(faction) {
+    return !!faction && faction.faction_type === 'party';
+}
+
+/**
+ * Count eligible parties, optionally scoped to one nation.
+ */
+export function countEligibleParties(factions, nationId = null) {
+    if (!Array.isArray(factions) || factions.length === 0) return 0;
+    return factions.filter(f =>
+        isEligiblePartyFaction(f) &&
+        (nationId == null || f.nation_id === nationId)
+    ).length;
+}

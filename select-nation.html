@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Select Nation | Nationhood Alpha</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
   --bg-0: #0e0e0c;
@@ -531,7 +530,7 @@ body {
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { escapeHtml } from './js/utils.js';
+import { escapeHtml, countEligibleParties } from './js/utils.js';
 
 const FALLBACK_COLORS = ['#5b9bd5','#d48a3c','#5aafa5','#8b7ec8','#5cb85c','#d9534f','#c8a64e'];
 
@@ -570,7 +569,7 @@ async function init() {
 async function loadNations() {
   const [nationsRes, partiesRes, crisesRes, ideologiesRes] = await Promise.all([
     _supabase.from('nations').select('*'),
-    _supabase.from('factions').select('id, faction_name, abbreviation, seats, nation_id, party_color, ideology_value_1, ideology_value_2, is_npc').eq('faction_type', 'party'),
+    _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, seats, nation_id, party_color, ideology_value_1, ideology_value_2').eq('faction_type', 'party'),
     _supabase.from('active_crises').select('nation_id, crisis_id, crisis_templates(name)'),
     _supabase.from('faction_ideology').select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
   ]);
@@ -647,7 +646,8 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
     const nCrises = crisesByNation[nation.id] || [];
     const totalSeats = nation.total_seats || 100;
     const maxParties = nation.max_parties || 8;
-    const isFull = nParties.filter(p => !p.is_npc).length >= maxParties;
+    const eligiblePartyCount = countEligibleParties(nParties, nation.id);
+    const isFull = eligiblePartyCount >= maxParties;
     const flagUrl = nation.flag_url || '';
     const govClass = getGovTypeClass(nation.government_type);
     const govLabel = getGovTypeLabel(nation.government_type);
@@ -706,7 +706,7 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
           </div>
           <div class="stat-row">
             <span class="stat-row__label">Factions</span>
-            <span class="stat-row__value" style="color:${isFull ? 'var(--red)' : 'var(--text-secondary)'};">${nParties.filter(p => !p.is_npc).length}${maxParties ? ' / ' + maxParties : ''}</span>
+            <span class="stat-row__value" style="color:${isFull ? 'var(--red)' : 'var(--text-secondary)'};">${eligiblePartyCount}${maxParties ? ' / ' + maxParties : ''}</span>
           </div>
           <div class="stat-row">
             <span class="stat-row__label">Stability</span>
@@ -726,7 +726,7 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
 
           ${nParties.length > 0 ? `
           <div class="party-list">
-            <div class="party-list__header">Factions &mdash; ${nParties.length}</div>
+            <div class="party-list__header">Factions &mdash; ${eligiblePartyCount}</div>
             ${partyRows}
           </div>
           ` : '<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-ghost);padding:6px 0;">No factions yet — be the first</div>'}

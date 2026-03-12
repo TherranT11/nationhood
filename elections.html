@@ -6,7 +6,6 @@
     <title>Elections | Nationhood Alpha</title>
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/elections.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -23,6 +22,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
+import './js/guide.js';
 import { escapeHtml } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, runElectionPreview, getPartyAlignment, distributeVotes, allocateSeatsByVotes } from './js/game-common.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
@@ -31,7 +31,7 @@ import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 /**
  * Elections / Government Formation Page
  * 
- * Campaign actions (Rally, Attack Ad, Fundraiser, Lobby) have been moved to parties.html.
+ * Campaign actions (Rally, Attack Ad, Fundraiser, Lobby) have been moved to politics.html.
  * Autocracy actions (Give Speech, Spread Rumors, Seize Power) remain here.
  *
  * Formation rules:
@@ -124,7 +124,6 @@ async function renderDemocracyPage() {
         .select('id, faction_name, seats, approval_rating, abbreviation, ideology_value_1, ideology_value_2, party_color, party_logo, custom_logo_url')
         .eq('nation_id', currentNation.id)
         .eq('faction_type', 'party')
-        .eq('is_npc', false)
         .order('seats', { ascending: false });
     allParties = parties || [];
 
@@ -498,6 +497,21 @@ async function renderPresidentialResults(election) {
         return tbl;
     }
 
+    function getFirstDefined(...values) {
+        for (const value of values) {
+            if (value !== null && value !== undefined && value !== '') return value;
+        }
+        return null;
+    }
+
+    function formatSignedStat(value, suffix = '') {
+        if (value === null || value === undefined || value === '') return '—';
+        const num = Number(value);
+        if (Number.isNaN(num)) return `${value}${suffix}`;
+        const sign = num > 0 ? '+' : '';
+        return `${sign}${num}${suffix}`;
+    }
+
     // Determine the overall winner from final results
     const finalCandidates = candidates.length > 0 ? candidates : round1Candidates;
     const sorted = [...finalCandidates].sort((a, b) => b.votes - a.votes);
@@ -548,6 +562,78 @@ async function renderPresidentialResults(election) {
         html += renderCandidateTable(candidates, 'Results');
     }
 
+    // Runoff transfer/endorsement details (if present in result payload)
+    const winnerRound1 = round1Candidates.find(c => c.candidate_id === winner.candidate_id) || null;
+    const winnerRound1Votes = winnerRound1?.votes || 0;
+    const winnerTransferredVotes = Math.max(0, (winner.votes || 0) - winnerRound1Votes);
+    const winnerTransferredRate = winnerRound1Votes > 0
+        ? Math.round((winnerTransferredVotes / winnerRound1Votes) * 10000) / 100
+        : 0;
+    const runnerUp = sorted[1] || null;
+    const winnerMarginVotes = runnerUp ? (winner.votes || 0) - (runnerUp.votes || 0) : 0;
+    const winnerMarginPct = runnerUp ? ((winner.vote_percentage || 0) - (runnerUp.vote_percentage || 0)).toFixed(2) : '0.00';
+
+    const runoffMeta = election.results?.runoff_meta || election.results?.runoff_details || election.results?.runoff_transfer || {};
+    const endorsedPartyName = getFirstDefined(
+        winner.endorsed_party_name,
+        winner.endorsed_party,
+        runoffMeta.endorsed_party_name,
+        runoffMeta.endorsed_party,
+        election.results?.endorsed_party_name,
+        election.results?.endorsed_party
+    );
+    const abstainVotes = getFirstDefined(
+        runoffMeta.abstain_votes,
+        runoffMeta.abstentions,
+        runoffMeta.abstain_count,
+        election.results?.runoff_abstentions
+    );
+    const protestVotes = getFirstDefined(
+        runoffMeta.protest_votes,
+        runoffMeta.protest_count,
+        runoffMeta.protests,
+        election.results?.runoff_protest_votes
+    );
+
+    html += `
+        <div style="margin-top:16px;background:#151515;border:1px solid #2b2b2b;border-radius:6px;padding:12px 14px;">
+            <div style="font-size:0.74rem;color:#aaa;text-transform:uppercase;letter-spacing:1px;font-weight:bold;margin-bottom:8px;">Runoff Transfer Snapshot</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px 16px;font-size:0.82rem;color:#bbb;">
+                <div><span style="color:#777;">Endorsed Party:</span> ${escapeHtml(endorsedPartyName || '—')}</div>
+                <div><span style="color:#777;">Round 1 Votes (${escapeHtml(winner.candidate_name)}):</span> ${winnerRound1Votes.toLocaleString()}</div>
+                <div><span style="color:#777;">Transferred Votes:</span> ${winnerTransferredVotes.toLocaleString()} (${winnerTransferredRate}%)</div>
+                <div><span style="color:#777;">Abstain / Protest Split:</span> ${(abstainVotes ?? 0).toLocaleString()} / ${(protestVotes ?? 0).toLocaleString()}</div>
+                <div><span style="color:#777;">Margin vs Runner-up:</span> ${winnerMarginVotes.toLocaleString()} votes (${winnerMarginPct} pp)</div>
+            </div>
+            <div style="margin-top:10px;font-size:0.76rem;color:#888;">Endorsement came from pre-election preference locked for this election.</div>
+        </div>`;
+
+    // Consequences (approval/polarization only; debt intentionally omitted)
+    const consequenceSource = election.results?.consequences || election.results?.runoff_consequences || election.results?.effects_applied || null;
+    if (consequenceSource) {
+        const approvalDelta = getFirstDefined(
+            consequenceSource.approval,
+            consequenceSource.approval_change,
+            consequenceSource.approval_delta
+        );
+        const polarizationDelta = getFirstDefined(
+            consequenceSource.polarization,
+            consequenceSource.polarization_change,
+            consequenceSource.polarization_delta
+        );
+
+        if (approvalDelta !== null || polarizationDelta !== null) {
+            html += `
+                <div style="margin-top:12px;background:#111826;border:1px solid #2a3550;border-radius:6px;padding:12px 14px;">
+                    <div style="font-size:0.74rem;color:#8ab4ff;text-transform:uppercase;letter-spacing:1px;font-weight:bold;margin-bottom:8px;">Post-Election Consequences</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:16px;font-size:0.82rem;color:#c0d4ff;">
+                        ${approvalDelta !== null ? `<div><span style="color:#7f9ad3;">Approval:</span> ${formatSignedStat(approvalDelta, ' pts')}</div>` : ''}
+                        ${polarizationDelta !== null ? `<div><span style="color:#7f9ad3;">Polarization:</span> ${formatSignedStat(polarizationDelta, ' pts')}</div>` : ''}
+                    </div>
+                </div>`;
+        }
+    }
+
     // Turnout info
     const turnout = election.results.turnout_pct || 0;
     const totalVotes = election.results.total_votes_cast || 0;
@@ -573,7 +659,7 @@ async function renderPresidentialResults(election) {
 async function renderAutocracyPage() {
     const { data: allFactions } = await _supabase
         .from('factions').select('id, faction_name, seats, approval_rating')
-        .eq('nation_id', currentNation.id).eq('faction_type', 'party').eq('is_npc', false)
+        .eq('nation_id', currentNation.id).eq('faction_type', 'party')
         .order('seats', { ascending: false });
 
     const { data: activeShakeup } = await _supabase

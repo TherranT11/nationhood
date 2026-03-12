@@ -7,7 +7,6 @@
 
         <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/map.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -69,7 +68,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, loadGameState, updateTopBarInfo, scaleRawToDollars, assertRawEconomicValue } from './js/common.js';
 import { initGameConfigForNation } from './js/game-common.js';
-import { escapeHtml } from './js/utils.js';
+import { escapeHtml, countEligibleParties } from './js/utils.js';
 let currentUser = null;
     let currentFaction = null;
     let selectedNation = null; // Track currently selected nation
@@ -174,16 +173,16 @@ if (!faction) {
                 // Store selected nation
                 selectedNation = nation;
                 
-                // Count active player parties for this nation
+                // Count active parties for this nation
                 const { data: playerParties, error: partiesError } = await _supabase
                     .from('factions')
-                    .select('id')
+                    .select('id, faction_type, nation_id')
                     .eq('nation_id', nation.id)
-                    .eq('faction_type', 'party')
-                    .eq('is_npc', false);
+                    .eq('faction_type', 'party');
 
-                const activePlayerParties = playerParties ? playerParties.length : 0;
+                const activeParties = countEligibleParties(playerParties || [], nation.id);
                 const maxParties = nation.max_parties || 8;
+                const nationFull = activeParties >= maxParties;
                 
                 // Format numbers
                 const formatNumber = (num) => {
@@ -233,7 +232,8 @@ if (!faction) {
                         
                         <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; border-left: 3px solid #9c27b0;">
                             <div style="font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 5px;">Political Parties</div>
-                            <div style="font-size: 1.1rem; color: #fff; font-weight: bold;">${activePlayerParties} / ${maxParties}</div>
+                            <div style="font-size: 1.1rem; color: ${nationFull ? '#ff6b6b' : '#fff'}; font-weight: bold;">${activeParties} / ${maxParties}</div>
+                            ${nationFull ? '<div style="font-size:0.72rem;color:#ff6b6b;margin-top:4px;">Nation at party capacity</div>' : ''}
                         </div>
                     </div>
                     

@@ -17,11 +17,6 @@
   "laws.html:currentNation",
   "laws.html:isAutocracy",
   "map.html:currentFaction",
-  "ministry-actions.html:currentNation",
-  "ministry-actions.html:currentFaction",
-  "ministry-actions.html:isAutocracy",
-  "parties.html:currentFaction",
-  "parties.html:currentNation",
   "select-candidate.html:currentNation",
   "select-candidate.html:currentFaction",
   "select-candidate.html:isAutocracy"

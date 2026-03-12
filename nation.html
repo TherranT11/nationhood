@@ -12,7 +12,6 @@
     <!-- Shared Styles -->
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/nation.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -33,9 +32,10 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatNumber, scaleRawToDollars, assertRawEconomicValue } from './js/common.js';
+import './js/guide.js';
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
 import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
-import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
+import { formatInflationRate, getInflationLabel, inflationColorClass, inflationRate } from './js/game/stats.js';
 /**
  * Nation Page - Comprehensive Stats Display
  * With Rankings and Trend Arrows
@@ -352,21 +352,6 @@ function buildSparklineSVG(data, color, w, h) {
         '<circle cx="' + w + '" cy="' + lastY + '" r="1.5" fill="' + color + '"/></svg>';
 }
 
-function buildRankBar(rank, total) {
-    total = total || totalNations || 6;
-    if (!rank) return '';
-    var pipColor = rank <= 2 ? '#4ade80' : rank <= 4 ? '#facc15' : '#ef4444';
-    var h = '<div class="stat-card__rank">';
-    for (var i = 0; i < total; i++) {
-        if (i < rank) {
-            h += '<div class="stat-card__rank-pip" style="background:' + pipColor + ';"></div>';
-        } else {
-            h += '<div class="stat-card__rank-pip stat-card__rank-pip--empty"></div>';
-        }
-    }
-    h += '<span class="stat-card__rank-label">#' + rank + '</span></div>';
-    return h;
-}
 
 function isSectionOpen(catId) {
     if (sectionState[catId] !== undefined) return sectionState[catId];
@@ -489,7 +474,9 @@ async function loadSparklineHistory(nationId) {
         var vals = [];
         for (var ri = 0; ri < rows.length; ri++) {
             var v = rows[ri][k];
-            if (v !== null && v !== undefined) vals.push(Number(v));
+            if (v === null || v === undefined) continue;
+            var numeric = Number(v);
+            if (!isNaN(numeric) && isFinite(numeric)) vals.push(numeric);
         }
         if (vals.length > 0) map[k] = vals;
     }
@@ -520,7 +507,7 @@ async function loadStatEffectSources(nationId, nation) {
 
     var results = await Promise.all([
         _supabase.from('active_laws')
-            .select('is_reversal, policies(policy_name, stat_effects)')
+            .select('is_reversal, passed_tick, effects_applied_through_tick, policies(policy_name, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)')
             .eq('nation_id', nationId),
         _supabase.from('active_crises')
             .select('crisis_id, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')
@@ -536,8 +523,9 @@ async function loadStatEffectSources(nationId, nation) {
         loadLeaderTraitEffects(nationId, nation)
     ]);
 
+    var currentTick = await getShardTick();
     var map = {};
-    parsePolicyEffects(results[0].data || [], map);
+    parsePolicyEffects(results[0].data || [], map, currentTick);
     parseCrisisEffects(results[1].data || [], map);
     parseMinistryEffects(results[2].data || [], map);
     parseDiplomaticEffects(results[3].data || [], map);
@@ -581,33 +569,61 @@ async function loadLeaderTraitEffects(nationId, nation) {
     }
 }
 
-function addEffectToMap(map, statKey, name, direction, type) {
+function addEffectToMap(map, statKey, name, direction, type, rate) {
     var key = normalizeNationStatKey(statKey);
     if (!key) return;
     if (!map[key]) map[key] = [];
-    // Deduplicate
+    var parsedRate = (rate === null || rate === undefined || rate === '') ? null : Number(rate);
+    if (!Number.isFinite(parsedRate)) parsedRate = null;
+    // Deduplicate and backfill missing rate where available
     for (var i = 0; i < map[key].length; i++) {
-        if (map[key][i].name === name && map[key][i].direction === direction && map[key][i].type === type) return;
+        if (map[key][i].name === name && map[key][i].direction === direction && map[key][i].type === type) {
+            if ((map[key][i].rate === null || map[key][i].rate === undefined) && parsedRate !== null) {
+                map[key][i].rate = parsedRate;
+            }
+            return;
+        }
     }
-    map[key].push({ name: name, direction: direction, type: type });
+    map[key].push({ name: name, direction: direction, type: type, rate: parsedRate });
 }
 
-function parsePolicyEffects(laws, map) {
+function parsePolicyEffects(laws, map, currentTick) {
     for (var i = 0; i < laws.length; i++) {
         var law = laws[i];
         var policy = law.policies;
         if (!policy) continue;
+        var ticksSince = currentTick - (law.passed_tick || 0);
+        var label = law.is_reversal ? policy.policy_name + ' (Repeal)' : policy.policy_name;
+
         var effects = policy.stat_effects;
-        if (!effects || !Array.isArray(effects)) continue;
-        for (var j = 0; j < effects.length; j++) {
-            var eff = effects[j];
-            if (!eff.stat_key) continue;
-            var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
-            // Reversal laws flip the effect direction
-            if (law.is_reversal) dir = (dir === 'up') ? 'down' : 'up';
-            var label = law.is_reversal ? policy.policy_name + ' (Repeal)' : policy.policy_name;
-            addEffectToMap(map, eff.stat_key, label, dir, 'Policy');
+        if (effects && Array.isArray(effects) && effects.length > 0) {
+            for (var j = 0; j < effects.length; j++) {
+                var eff = effects[j];
+                if (!eff.stat_key) continue;
+                var delay = Number(eff.delay_ticks) || 0;
+                var dur = Number(eff.duration_ticks) || 12;
+                // Skip effects that haven't started yet or have expired
+                if (ticksSince <= delay || ticksSince > delay + dur) continue;
+                var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
+                // Reversal laws flip the effect direction
+                if (law.is_reversal) dir = (dir === 'up') ? 'down' : 'up';
+                var rate = Number(eff.rate);
+                if (!Number.isFinite(rate)) rate = Number(policy.stat_change_per_tick);
+                if (!Number.isFinite(rate)) rate = 1;
+                addEffectToMap(map, eff.stat_key, label, dir, 'Policy', rate);
+            }
+            continue;
         }
+
+        // Legacy policy fallback when stat_effects JSON is missing
+        if (!policy.target_stat) continue;
+        var legacyDur = Number(policy.duration_months) || 12;
+        if (ticksSince <= 0 || ticksSince > legacyDur) continue;
+        var legacyDir = (policy.stat_direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
+        if (law.is_reversal) legacyDir = (legacyDir === 'up') ? 'down' : 'up';
+        var legacyRate = Number(policy.stat_change_per_tick);
+        if (!Number.isFinite(legacyRate)) legacyRate = 1;
+        addEffectToMap(map, policy.target_stat, label, legacyDir, 'Policy', legacyRate);
     }
 }
 
@@ -783,112 +799,535 @@ function getDisplayValue(stat, nation) {
     return Math.round(Number(raw) * 10) / 10;
 }
 
-// ===== MAIN RENDER =====
+// ===== FEATURED CONTAINERS =====
 
-async function renderNationPage(nation) {
-    var h = '';
-    var govAppr = nation.gov_approval ?? 50;
-    var apprColor = govAppr < 40 ? 'var(--n-red)' : govAppr < 60 ? 'var(--n-yellow)' : 'var(--n-green)';
-
-    // ---- Header bar ----
-    h += '<div class="nation-header">';
-    h += '<div class="nation-header__name">' + escapeHtml(nation.name) + '</div>';
-    h += '<div class="nation-header__stats">';
-    var headerStats = [
-        { l: 'Capital', v: escapeHtml(nation.capital || '\u2014') },
-        { l: 'Government', v: isPresidentialRepublic(nation) ? 'Presidential Republic' : getCanonicalGovernmentType(nation, nation.government_type || '\u2014') },
-        { l: 'Population', v: formatNumber(nation.population) },
-        { l: 'Approval', v: govAppr + '%', c: apprColor },
-        { l: 'GDP', v: formatCurrencyShort(scaleRawToDollars(nation.gdp)), c: 'var(--n-green)' }
-    ];
-    for (var hi = 0; hi < headerStats.length; hi++) {
-        var hs = headerStats[hi];
-        h += '<div class="nation-header__stat"><div class="nation-header__stat-label">' + hs.l + '</div>';
-        h += '<div class="nation-header__stat-value"' + (hs.c ? ' style="color:' + hs.c + '"' : '') + '>' + hs.v + '</div></div>';
-    }
-    h += '</div></div>';
-
-    // ---- Body ----
-    h += '<div class="nation-body">';
-
-    // Revolution banner
-    h += await renderRevolutionBanner(nation);
-
-    // ---- Summary row ----
-    var alertCount = 0;
-    for (var ci = 0; ci < STAT_CATEGORIES.length; ci++) {
-        for (var si = 0; si < STAT_CATEGORIES[ci].stats.length; si++) {
-            var _s = STAT_CATEGORIES[ci].stats[si];
-            if (_s.noHealth) continue;
-            var sv = Number(nation[_s.key] ?? 50);
-            var inv = _s.inverted;
-            var effective = inv ? 100 - sv : sv;
-            if (effective < 15) alertCount++;
-        }
-    }
-
-    h += '<div class="nation-summary">';
-    // Crises card
-    h += '<div class="nation-summary__card">';
-    h += '<span class="nation-summary__label">Ongoing Crises</span>';
-    var hasRevolution = isAutocracy(nation) && nation.revolution_started_tick != null && nation.revolution_duration != null;
-    if (activeCrises.length === 0 && !hasRevolution) {
-        h += '<span class="nation-summary__empty">No active crises</span>';
-    } else {
-        if (hasRevolution) {
-            h += '<div class="crisis-summary-item"><span class="crisis-summary-item__name">Democratic Revolution</span></div>';
-        }
-        for (var cri = 0; cri < activeCrises.length; cri++) {
-            var ct = activeCrises[cri].crisis_templates;
-            if (!ct) continue;
-            h += '<div class="crisis-summary-item"><span class="crisis-summary-item__name">' + escapeHtml(ct.name) + '</span>';
-            h += '<span class="crisis-summary-item__desc">' + escapeHtml(ct.description || '') + '</span></div>';
-        }
-    }
-    h += '</div>';
-
-    // Alerts card
-    h += '<div class="nation-summary__card' + (alertCount > 0 ? ' nation-summary__card--alerts' : '') + '">';
-    h += '<span class="nation-summary__label">Stat Alerts</span>';
-    if (alertCount === 0) {
-        h += '<span style="font-family:var(--n-font-sans);font-size:12px;color:var(--n-green);">All stats within normal range</span>';
-    } else {
-        h += '<span class="nation-summary__count" style="color:var(--n-orange);">' + alertCount + '</span>';
-        h += '<span class="nation-summary__count-text">stats flagged \u2014 approaching crisis thresholds or bloc pain points</span>';
-    }
-    h += '</div>';
-
-    // Nation health grid
-    h += '<div class="nation-summary__card nation-summary__card--health">';
-    h += '<span class="nation-summary__label">Nation Health</span>';
-    h += '<div class="nation-health-grid">';
-    for (var gi = 0; gi < STAT_CATEGORIES.length; gi++) {
-        var gCat = STAT_CATEGORIES[gi];
-        var gH = catHealth(gCat, nation);
-        var gC = healthColorRaw(gH, false);
-        h += '<div class="nation-health-cell" data-scroll-cat="' + gCat.id + '" title="' + gCat.label + ': ' + Math.round(gH) + '" style="background:' + gC + '22;border:1px solid ' + gC + '44;">';
-        h += '<span>' + gCat.icon + '</span></div>';
-    }
-    h += '</div></div>';
-    h += '</div>'; // end summary row
-
-    // ---- Category sections ----
-    for (var ci = 0; ci < STAT_CATEGORIES.length; ci++) {
-        h += renderCategory(STAT_CATEGORIES[ci], nation);
-    }
-
-    h += '</div>'; // end nation-body
-    document.getElementById('content-area').innerHTML = h;
-    attachHandlers();
+function buildFeaturedSparkSVG(data, color, w, h) {
+    w = w || 200; h = h || 50;
+    if (!data || data.length < 2) return '';
+    var mn = Math.min.apply(null, data), mx = Math.max.apply(null, data), r = mx - mn || 1;
+    var pts = data.map(function(v, i) {
+        return ((i / (data.length - 1)) * w).toFixed(1) + ',' + (h - ((v - mn) / r) * h).toFixed(1);
+    }).join(' ');
+    // Build a filled area polygon
+    var firstY = (h - ((data[0] - mn) / r) * h).toFixed(1);
+    var lastX = w.toFixed(1);
+    var lastY = (h - ((data[data.length - 1] - mn) / r) * h).toFixed(1);
+    var areaPts = '0,' + h + ' 0,' + firstY + ' ' + pts + ' ' + lastX + ',' + h;
+    return '<svg width="' + w + '" height="' + h + '" style="display:block;width:100%;height:100%;" preserveAspectRatio="none">' +
+        '<polygon points="' + areaPts + '" fill="' + color + '" fill-opacity="0.08"/>' +
+        '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linejoin="round"/>' +
+        '<circle cx="' + lastX + '" cy="' + lastY + '" r="2" fill="' + color + '"/></svg>';
 }
 
-function renderCategory(cat, nation) {
+function buildFeaturedAbpHTML(statKey) {
+    var effects = statEffectsByKey[statKey] || [];
+    if (effects.length === 0) return '';
+    var h = '<div class="featured-card__abp-title">Affected By</div>';
+    for (var i = 0; i < effects.length; i++) {
+        var eff = effects[i];
+        var arrow = eff.direction === 'up' ? '&#9650;' : '&#9660;';
+        var arrowClass = eff.direction === 'up' ? 'featured-card__abp-arrow--up' : 'featured-card__abp-arrow--down';
+        var typeClass = 'featured-card__abp-type--' + eff.type.toLowerCase().replace(/ /g, '-');
+        h += '<div class="featured-card__abp-row">';
+        h += '<span class="featured-card__abp-name">' + escapeHtml(eff.name) + '</span>';
+        h += '<span class="featured-card__abp-arrow ' + arrowClass + '">' + arrow + '</span>';
+        if (eff.rate !== null && eff.rate !== undefined) {
+            var sign = eff.direction === 'up' ? '+' : '-';
+            h += '<span class="featured-card__abp-rate">' + sign + (Math.round(Number(eff.rate) * 100) / 100) + '/tick</span>';
+        }
+        h += '<span class="featured-card__abp-type ' + typeClass + '">' + escapeHtml(eff.type) + '</span>';
+        h += '</div>';
+    }
+    return h;
+}
+
+function renderFeaturedGDP(nation) {
+    var gdpRaw = nation.gdp;
+    var gdpGrowthRaw = Number(nation.gdp_growth ?? 50);
+    var monthlyPct = ((gdpGrowthRaw - 50) / 50) * 3;
+    var yearlyPct = (Math.pow(1 + monthlyPct / 100, 12) - 1) * 100;
+    var gdpDisplay = formatCurrencyShort(scaleRawToDollars(gdpRaw));
+    // Split "$88.7 Billion" into value + unit
+    var parts = gdpDisplay.match(/^(\$[\d,.]+)\s*(.*)$/);
+    var gdpVal = parts ? parts[1] : gdpDisplay;
+    var gdpUnit = parts ? parts[2] : '';
+
+    // Delta per tick
+    var deltaStr = '';
+    if (previousTickData && previousTickData.gdp != null && gdpRaw != null) {
+        var gdpDelta = Number(gdpRaw) - Number(previousTickData.gdp);
+        var deltaDir = gdpDelta >= 0 ? '\u25B2' : '\u25BC';
+        var deltaColor = gdpDelta >= 0 ? 'var(--n-green)' : 'var(--n-red)';
+        deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + ' ' + Math.abs(gdpDelta).toFixed(1) + ' per tick</span>';
+    }
+
+    // Growth rate color
+    var growthColor = monthlyPct >= 0 ? 'var(--n-green)' : 'var(--n-red)';
+    var yearlyColor = yearlyPct >= 0 ? 'var(--n-green)' : 'var(--n-red)';
+    var growthStr = (monthlyPct >= 0 ? '+' : '') + monthlyPct.toFixed(2) + '%';
+    var yearlyStr = (yearlyPct >= 0 ? '+' : '') + yearlyPct.toFixed(2) + '%';
+
+    // GDP growth label
+    var gdpLabel, tagColor, tagBorder;
+    if (monthlyPct < -1) { gdpLabel = 'Collapse'; tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; }
+    else if (monthlyPct < 0) { gdpLabel = 'Recession'; tagColor = 'var(--n-orange)'; tagBorder = 'rgba(249,115,22,0.3)'; }
+    else if (monthlyPct < 0.5) { gdpLabel = 'Stagnant'; tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; }
+    else if (monthlyPct < 3) { gdpLabel = 'Growing'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
+    else { gdpLabel = 'Booming'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
+
+    // Dot color matches tag
+    var dotColor = tagColor;
+
+    // Scale items
+    var scaleItems = [
+        { label: 'Collapse', range: '<0%', active: monthlyPct < -1 },
+        { label: 'Recession', range: '0-0.5%', active: monthlyPct >= -1 && monthlyPct < 0 },
+        { label: 'Stagnant', range: '0.5-70%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
+        { label: 'Growing', range: '1.0-3.00%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
+        { label: 'Booming', range: '>3.00%', active: monthlyPct >= 3 }
+    ];
+
+    // Sparkline
+    var sparkData = sparklineHistory['gdp'] ? sparklineHistory['gdp'].slice() : [];
+    if (gdpRaw != null) sparkData.push(Number(gdpRaw));
+    var chartColor = monthlyPct >= 0 ? '#4ade80' : '#ef4444';
+    var chartSVG = buildFeaturedSparkSVG(sparkData, chartColor);
+
+    var h = '<div class="featured-card featured-card--gdp">';
+    // Header
+    h += '<div class="featured-card__header">';
+    h += '<div class="featured-card__dot" style="background:' + dotColor + ';"></div>';
+    h += '<span class="featured-card__title">Gross Domestic Product</span>';
+    h += '<span class="featured-card__tag" style="color:' + tagColor + ';border-color:' + tagBorder + ';">' + escapeHtml(gdpLabel) + '</span>';
+    h += '</div>';
+
+    // Description
+    h += '<div class="featured-card__desc">Gross domestic product</div>';
+
+    // Value + side stats
+    h += '<div class="featured-card__value-row">';
+    h += '<div><span class="featured-card__big-value" style="color:' + tagColor + ';">' + gdpVal + '</span>';
+    if (gdpUnit) h += '<span class="featured-card__big-unit" style="color:' + tagColor + ';">' + escapeHtml(gdpUnit) + '</span>';
+    h += '</div>';
+    h += '<div class="featured-card__side-stats">';
+    h += '<div><span class="featured-card__side-label">Growth Rate</span></div>';
+    h += '<div><span class="featured-card__side-value" style="color:' + growthColor + ';">' + growthStr + '</span></div>';
+    h += '<div><span class="featured-card__side-label">Yearly Forecast</span></div>';
+    h += '<div><span class="featured-card__side-value" style="color:' + yearlyColor + ';">' + yearlyStr + '</span></div>';
+    h += '</div>';
+    h += '</div>';
+
+    // Delta
+    if (deltaStr) h += deltaStr;
+
+    // Chart
+    h += '<div class="featured-card__chart">' + chartSVG + '</div>';
+
+    // Scale
+    h += '<div class="featured-card__scale">';
+    for (var i = 0; i < scaleItems.length; i++) {
+        var si = scaleItems[i];
+        h += '<div class="featured-card__scale-item' + (si.active ? ' featured-card__scale-item--active' : '') + '">';
+        h += escapeHtml(si.label);
+        h += '<span class="featured-card__scale-range">' + escapeHtml(si.range) + '</span>';
+        h += '</div>';
+    }
+    h += '</div>';
+
+    // Affected by
+    h += buildFeaturedAbpHTML('gdp');
+    // Also include gdp_growth effects
+    var gdpGrowthEffects = statEffectsByKey['gdp_growth'] || [];
+    if (gdpGrowthEffects.length > 0 && !(statEffectsByKey['gdp'] || []).length) {
+        h += buildFeaturedAbpHTML('gdp_growth');
+    }
+
+    h += '</div>';
+    return h;
+}
+
+function renderFeaturedInflation(nation) {
+    var inflRaw = Number(nation.inflation ?? 0);
+    var rate = inflationRate(inflRaw);
+    var rateStr = formatInflationRate(inflRaw);
+    var label = getInflationLabel(inflRaw);
+
+    // Tag color
+    var iClass = inflationColorClass(inflRaw);
+    var tagColor, tagBorder, dotColor;
+    if (iClass === 'good') { tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; dotColor = 'var(--n-green)'; }
+    else if (iClass === 'medium') { tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; dotColor = 'var(--n-yellow)'; }
+    else { tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; dotColor = 'var(--n-red)'; }
+
+    // Delta per tick
+    var deltaStr = '';
+    if (previousTickData && previousTickData.inflation != null) {
+        var prevRate = inflationRate(Number(previousTickData.inflation));
+        var rateDelta = rate - prevRate;
+        // For inflation, down is good
+        var deltaDir = rateDelta >= 0 ? '\u25B2' : '\u25BC';
+        var deltaColor = rateDelta <= 0 ? 'var(--n-green)' : 'var(--n-red)';
+        deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + Math.abs(rateDelta).toFixed(2) + ' per tick</span>';
+    }
+
+    // Scale items
+    var scaleItems = [
+        { label: 'Minimal', range: '<0.25%', active: rate < 0.25 },
+        { label: 'Low', range: '0.25-1%', active: rate >= 0.25 && rate < 1 },
+        { label: 'Moderate', range: '1-3%', active: rate >= 1 && rate < 3 },
+        { label: 'High', range: '3-8%', active: rate >= 3 && rate < 8 },
+        { label: 'Hyper', range: '8%+', active: rate >= 8 }
+    ];
+
+    // Sparkline — for inflation, invert visually: down line = good
+    var sparkData = sparklineHistory['inflation'] ? sparklineHistory['inflation'].slice() : [];
+    if (inflRaw != null) sparkData.push(inflRaw);
+    // Color: green if good/stable, red if bad
+    var chartColor = iClass === 'good' ? '#4ade80' : iClass === 'medium' ? '#facc15' : '#ef4444';
+    var chartSVG = buildFeaturedSparkSVG(sparkData, chartColor);
+
+    var h = '<div class="featured-card featured-card--inflation">';
+    // Header
+    h += '<div class="featured-card__header">';
+    h += '<div class="featured-card__dot" style="background:' + dotColor + ';"></div>';
+    h += '<span class="featured-card__title">Inflation</span>';
+    h += '<span class="featured-card__tag" style="color:' + tagColor + ';border-color:' + tagBorder + ';">' + escapeHtml(label) + '</span>';
+    h += '</div>';
+
+    // Description
+    h += '<div class="featured-card__desc">Inflation growth rate</div>';
+
+    // Value row
+    h += '<div class="featured-card__value-row">';
+    h += '<div><span class="featured-card__big-value" style="color:' + tagColor + ';">' + rateStr + '</span></div>';
+    h += '</div>';
+
+    // Delta
+    if (deltaStr) h += deltaStr;
+
+    // Chart
+    h += '<div class="featured-card__chart">' + chartSVG + '</div>';
+
+    // Scale
+    h += '<div class="featured-card__scale">';
+    for (var i = 0; i < scaleItems.length; i++) {
+        var si = scaleItems[i];
+        h += '<div class="featured-card__scale-item' + (si.active ? ' featured-card__scale-item--active' : '') + '">';
+        h += escapeHtml(si.label);
+        h += '<span class="featured-card__scale-range">' + escapeHtml(si.range) + '</span>';
+        h += '</div>';
+    }
+    h += '</div>';
+
+    // Affected by
+    h += buildFeaturedAbpHTML('inflation');
+
+    h += '</div>';
+    return h;
+}
+
+function renderFeaturedGDPGrowth(nation) {
+    var gdpGrowthRaw = Number(nation.gdp_growth ?? 50);
+    var monthlyPct = ((gdpGrowthRaw - 50) / 50) * 3;
+    var yearlyPct = (Math.pow(1 + monthlyPct / 100, 12) - 1) * 100;
+    var growthStr = (monthlyPct >= 0 ? '+' : '') + monthlyPct.toFixed(2) + '%';
+    var yearlyStr = (yearlyPct >= 0 ? '+' : '') + yearlyPct.toFixed(2) + '%';
+
+    // Color based on growth
+    var growthColor, borderColor, dotColor, tagColor, tagBorder;
+    if (monthlyPct >= 0.5) { growthColor = '#4ade80'; borderColor = '#4ade80'; dotColor = 'var(--n-green)'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
+    else if (monthlyPct >= 0) { growthColor = '#facc15'; borderColor = '#facc15'; dotColor = 'var(--n-yellow)'; tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; }
+    else { growthColor = '#ef4444'; borderColor = '#ef4444'; dotColor = 'var(--n-red)'; tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; }
+
+    var yearlyColor = yearlyPct >= 0 ? 'var(--n-green)' : 'var(--n-red)';
+
+    // Growth label
+    var gdpLabel;
+    if (monthlyPct < -1) { gdpLabel = 'Collapse'; }
+    else if (monthlyPct < 0) { gdpLabel = 'Recession'; }
+    else if (monthlyPct < 0.5) { gdpLabel = 'Stagnant'; }
+    else if (monthlyPct < 3) { gdpLabel = 'Growing'; }
+    else { gdpLabel = 'Booming'; }
+
+    // Delta per tick
+    var deltaStr = '';
+    if (previousTickData && previousTickData.gdp_growth != null) {
+        var prevGrowthRaw = Number(previousTickData.gdp_growth);
+        var delta = gdpGrowthRaw - prevGrowthRaw;
+        if (Math.abs(delta) >= 0.01) {
+            var deltaDir = delta > 0 ? '\u25B2' : '\u25BC';
+            var deltaColor = delta > 0 ? 'var(--n-green)' : 'var(--n-red)';
+            deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + ' ' + Math.abs(((delta) / 50) * 3).toFixed(2) + '% per tick</span>';
+        }
+    }
+
+    // Scale items
+    var scaleItems = [
+        { label: 'Collapse', range: '<0%', active: monthlyPct < -1 },
+        { label: 'Recession', range: '0-0.5%', active: monthlyPct >= -1 && monthlyPct < 0 },
+        { label: 'Stagnant', range: '0.5-70%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
+        { label: 'Growing', range: '1.0-3.00%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
+        { label: 'Booming', range: '>3.00%', active: monthlyPct >= 3 }
+    ];
+
+    // Sparkline (large chart)
+    var sparkData = sparklineHistory['gdp_growth'] ? sparklineHistory['gdp_growth'].slice() : [];
+    if (gdpGrowthRaw != null) sparkData.push(gdpGrowthRaw);
+    var chartSVG = buildFeaturedSparkSVG(sparkData, growthColor);
+
+    var h = '<div class="featured-card featured-card--compact" style="border-left-color:' + borderColor + ';">';
+    // Header
+    h += '<div class="featured-card__header">';
+    h += '<div class="featured-card__dot" style="background:' + dotColor + ';"></div>';
+    h += '<span class="featured-card__title">GDP Growth</span>';
+    h += '<span class="featured-card__tag" style="color:' + tagColor + ';border-color:' + tagBorder + ';">' + escapeHtml(gdpLabel) + '</span>';
+    h += '</div>';
+
+    // Description
+    h += '<div class="featured-card__desc">Monthly economic growth rate</div>';
+
+    // Value + side stats
+    h += '<div class="featured-card__value-row">';
+    h += '<div><span class="featured-card__big-value" style="color:' + tagColor + ';">' + growthStr + '</span></div>';
+    h += '<div class="featured-card__side-stats">';
+    h += '<div><span class="featured-card__side-label">Yearly Forecast</span></div>';
+    h += '<div><span class="featured-card__side-value" style="color:' + yearlyColor + ';">' + yearlyStr + '</span></div>';
+    h += '</div>';
+    h += '</div>';
+
+    // Delta
+    if (deltaStr) h += deltaStr;
+
+    // Chart (large sparkline)
+    h += '<div class="featured-card__chart">' + chartSVG + '</div>';
+
+    // Scale
+    h += '<div class="featured-card__scale">';
+    for (var i = 0; i < scaleItems.length; i++) {
+        var si = scaleItems[i];
+        h += '<div class="featured-card__scale-item' + (si.active ? ' featured-card__scale-item--active' : '') + '">';
+        h += escapeHtml(si.label);
+        h += '<span class="featured-card__scale-range">' + escapeHtml(si.range) + '</span>';
+        h += '</div>';
+    }
+    h += '</div>';
+
+    // Affected by
+    var effects = statEffectsByKey['gdp_growth'] || [];
+    if (effects.length > 0) {
+        h += buildFeaturedAbpHTML('gdp_growth');
+    } else {
+        h += '<div class="compact-empty">No active effects</div>';
+    }
+
+    h += '</div>';
+    return h;
+}
+
+function renderFeaturedDebt(nation) {
+    var debtRaw = nation.debt;
+    var debtDisplay = formatCurrencyShort(scaleRawToDollars(debtRaw));
+    // Split "$81.0 Billion" into value + unit
+    var parts = debtDisplay.match(/^(\$[\d,.]+)\s*(.*)$/);
+    var debtVal = parts ? parts[1] : debtDisplay;
+    var debtUnit = parts ? parts[2] : '';
+
+    // Debt is inverted: higher = worse → red
+    var hcRaw = '#ef4444';
+    var borderColor = hcRaw;
+    var dotColor = 'var(--n-red)';
+    var tagColor = 'var(--n-red)';
+    var tagBorder = 'rgba(239,68,68,0.3)';
+
+    // Delta per tick
+    var deltaStr = '';
+    if (previousTickData && previousTickData.debt != null && debtRaw != null) {
+        var debtDelta = Number(debtRaw) - Number(previousTickData.debt);
+        var deltaDir = debtDelta >= 0 ? '\u25B2' : '\u25BC';
+        // For debt, down is good
+        var deltaColor = debtDelta <= 0 ? 'var(--n-green)' : 'var(--n-red)';
+        deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + ' ' + Math.abs(debtDelta).toFixed(1) + ' per tick</span>';
+    }
+
+    // Sparkline (large chart)
+    var sparkData = sparklineHistory['debt'] ? sparklineHistory['debt'].slice() : [];
+    if (debtRaw != null) sparkData.push(Number(debtRaw));
+    var chartSVG = buildFeaturedSparkSVG(sparkData, hcRaw);
+
+    // Ranking (debt is inverted — lower is better)
+    var rank = calculateRanking('debt', debtRaw, true);
+    var rankHTML = '';
+    if (rank) {
+        var total = totalNations || 6;
+        var pipColor = rank <= 2 ? '#4ade80' : rank <= 4 ? '#facc15' : '#ef4444';
+        rankHTML = '<div class="compact-bottom__rank">';
+        for (var i = 0; i < total; i++) {
+            if (i < rank) {
+                rankHTML += '<div class="compact-bottom__rank-pip" style="background:' + pipColor + ';"></div>';
+            } else {
+                rankHTML += '<div class="compact-bottom__rank-pip compact-bottom__rank-pip--empty"></div>';
+            }
+        }
+        rankHTML += '<span class="compact-bottom__rank-label">#' + rank + '</span></div>';
+    }
+
+    // Effects
+    var effects = statEffectsByKey['debt'] || [];
+
+    var h = '<div class="featured-card featured-card--compact" style="border-left-color:' + borderColor + ';">';
+    // Header
+    h += '<div class="featured-card__header">';
+    h += '<div class="featured-card__dot" style="background:' + dotColor + ';"></div>';
+    h += '<span class="featured-card__title">National Debt</span>';
+    h += '</div>';
+
+    // Description
+    h += '<div class="featured-card__desc">Government debt obligations</div>';
+
+    // Value row
+    h += '<div class="featured-card__value-row">';
+    h += '<div><span class="featured-card__big-value" style="color:' + tagColor + ';">' + debtVal + '</span>';
+    if (debtUnit) h += '<span class="featured-card__big-unit" style="color:' + tagColor + ';">' + escapeHtml(debtUnit) + '</span>';
+    h += '</div>';
+    h += rankHTML;
+    h += '</div>';
+
+    // Delta
+    if (deltaStr) h += deltaStr;
+
+    // Chart (large sparkline)
+    h += '<div class="featured-card__chart">' + chartSVG + '</div>';
+
+    // Affected by
+    if (effects.length > 0) {
+        h += buildFeaturedAbpHTML('debt');
+    } else {
+        h += '<div class="compact-empty">No active effects</div>';
+    }
+
+    h += '</div>';
+    return h;
+}
+
+// ===== GENERIC FEATURED CARD =====
+
+function renderFeaturedStatCard(stat, nation) {
+    var raw = nation[stat.key];
+    var numVal = (raw !== null && raw !== undefined) ? Number(raw) : 50;
+    if (isNaN(numVal)) numVal = 50;
+    var inv = stat.inverted || false;
+    var hc = healthColor(numVal, inv);
+    var hcRaw = healthColorRaw(numVal, inv);
+    var displayVal = getDisplayValue(stat, nation);
+    var borderColor = hcRaw;
+    var dotColor = hc;
+
+    // Delta per tick
+    var deltaStr = '';
+    if (previousTickData && previousTickData[stat.key] != null && raw != null) {
+        var delta = Number(raw) - Number(previousTickData[stat.key]);
+        if (Math.abs(delta) >= 0.01) {
+            var deltaDir = delta >= 0 ? '\u25B2' : '\u25BC';
+            var deltaGood = inv ? delta <= 0 : delta >= 0;
+            var deltaColor = deltaGood ? 'var(--n-green)' : 'var(--n-red)';
+            deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + ' ' + Math.abs(delta).toFixed(2) + ' per tick</span>';
+        }
+    }
+
+    // Sparkline
+    var sparkData = sparklineHistory[stat.key] ? sparklineHistory[stat.key].filter(function(v) {
+        return typeof v === 'number' && !isNaN(v) && isFinite(v);
+    }) : [];
+    if (raw != null && !isNaN(numVal) && isFinite(numVal)) sparkData.push(numVal);
+    var chartSVG = buildFeaturedSparkSVG(sparkData, hcRaw);
+
+    // Ranking
+    var rank = calculateRanking(stat.key, raw, inv);
+    var rankHTML = '';
+    if (rank) {
+        var total = totalNations || 6;
+        var pipColor = rank <= 2 ? '#4ade80' : rank <= 4 ? '#facc15' : '#ef4444';
+        rankHTML = '<div class="compact-bottom__rank">';
+        for (var ri = 0; ri < total; ri++) {
+            if (ri < rank) {
+                rankHTML += '<div class="compact-bottom__rank-pip" style="background:' + pipColor + ';"></div>';
+            } else {
+                rankHTML += '<div class="compact-bottom__rank-pip compact-bottom__rank-pip--empty"></div>';
+            }
+        }
+        rankHTML += '<span class="compact-bottom__rank-label">#' + rank + '</span></div>';
+    }
+
+    // Scale tiers (generic 0-100 scale)
+    var effective = inv ? 100 - numVal : numVal;
+    var scaleItems = [
+        { label: 'Critical', range: '0-20', active: effective < 20 },
+        { label: 'Low', range: '20-40', active: effective >= 20 && effective < 40 },
+        { label: 'Moderate', range: '40-60', active: effective >= 40 && effective < 60 },
+        { label: 'Good', range: '60-80', active: effective >= 60 && effective < 80 },
+        { label: 'Excellent', range: '80+', active: effective >= 80 }
+    ];
+
+    var h = '<div class="featured-card featured-card--generic" style="border-left:3px solid ' + borderColor + ';">';
+
+    // Header
+    h += '<div class="featured-card__header">';
+    h += '<div class="featured-card__dot" style="background:' + dotColor + ';"></div>';
+    h += '<span class="featured-card__title">' + escapeHtml(stat.name) + '</span>';
+    if (rankHTML) h += rankHTML;
+    h += '</div>';
+
+    // Description
+    h += '<div class="featured-card__desc">' + escapeHtml(stat.desc) + '</div>';
+
+    // Value row
+    h += '<div class="featured-card__value-row">';
+    h += '<div><span class="featured-card__big-value" style="color:' + hc + ';">' + escapeHtml(String(displayVal)) + '</span></div>';
+    h += '</div>';
+
+    // Delta
+    if (deltaStr) h += deltaStr;
+
+    // Chart
+    h += '<div class="featured-card__chart">' + chartSVG + '</div>';
+
+    // Scale
+    h += '<div class="featured-card__scale">';
+    for (var i = 0; i < scaleItems.length; i++) {
+        var si = scaleItems[i];
+        h += '<div class="featured-card__scale-item' + (si.active ? ' featured-card__scale-item--active' : '') + '">';
+        h += escapeHtml(si.label);
+        h += '<span class="featured-card__scale-range">' + escapeHtml(si.range) + '</span>';
+        h += '</div>';
+    }
+    h += '</div>';
+
+    // Affected by
+    var effects = statEffectsByKey[stat.key] || [];
+    if (effects.length > 0) {
+        h += buildFeaturedAbpHTML(stat.key);
+    } else {
+        h += '<div class="compact-empty">No active effects</div>';
+    }
+
+    h += '</div>';
+    return h;
+}
+
+// Map of stat keys to their custom featured renderers
+var FEATURED_RENDERERS = {
+    gdp: renderFeaturedGDP,
+    gdp_growth: renderFeaturedGDPGrowth,
+    inflation: renderFeaturedInflation,
+    debt: renderFeaturedDebt
+};
+
+function renderFeaturedCategory(cat, nation) {
     var hScore = catHealth(cat, nation);
     var hc = healthColor(hScore, false);
-    var hcRaw = healthColorRaw(hScore, false);
     var isOpen = isSectionOpen(cat.id);
 
-    // Count alerts in this category
+    // Count alerts
     var alerts = 0;
     for (var i = 0; i < cat.stats.length; i++) {
         if (cat.stats[i].noHealth) continue;
@@ -899,11 +1338,10 @@ function renderCategory(cat, nation) {
 
     var h = '<div class="cat-section">';
 
-    // Header
+    // Header (identical structure to renderCategory)
     h += '<div class="cat-header' + (isOpen ? ' cat-header--open' : '') + '" data-cat="' + cat.id + '">';
     h += '<span class="cat-header__icon">' + cat.icon + '</span>';
     h += '<span class="cat-header__label" style="color:' + hc + ';">' + cat.label + '</span>';
-    // Bloc tags
     if (cat.blocs && cat.blocs.length > 0) {
         h += '<div class="cat-header__blocs">';
         for (var bi = 0; bi < cat.blocs.length; bi++) {
@@ -911,133 +1349,49 @@ function renderCategory(cat, nation) {
         }
         h += '</div>';
     }
-    // Alert badge
     if (alerts > 0) {
         h += '<span class="cat-header__alert-badge">\u26A0 ' + alerts + '</span>';
     }
-    // Health bar
     h += '<div class="cat-header__health-bar"><div class="cat-header__health-fill" style="width:' + Math.min(hScore, 100) + '%;background:' + hc + ';"></div></div>';
     h += '<span class="cat-header__health-score" style="color:' + hc + ';">' + Math.round(hScore) + '</span>';
-    // Chevron
     h += '<span class="cat-header__chevron">\u25BC</span>';
     h += '</div>';
 
-    // Body
+    // Body with featured grid
     h += '<div class="cat-body' + (isOpen ? ' cat-body--open' : '') + '" id="cat-body-' + cat.id + '">';
-
-    // Stat cards grid
-    h += '<div class="stat-grid">';
+    h += '<div class="featured-grid">';
     for (var si = 0; si < cat.stats.length; si++) {
-        h += renderStatCard(cat.stats[si], nation);
+        var stat = cat.stats[si];
+        if (FEATURED_RENDERERS[stat.key]) {
+            h += FEATURED_RENDERERS[stat.key](nation);
+        } else {
+            h += renderFeaturedStatCard(stat, nation);
+        }
     }
     h += '</div>';
-
-    h += '</div>'; // end cat-body
-    h += '</div>'; // end cat-section
+    h += '</div>';
+    h += '</div>';
     return h;
 }
 
-function renderStatCard(stat, nation) {
-    var raw = nation[stat.key];
-    var numVal = (raw !== null && raw !== undefined) ? Number(raw) : 50;
-    if (isNaN(numVal)) numVal = 50;
-    var inv = stat.inverted || false;
-    var hc = healthColor(numVal, inv);
-    var hcRaw = healthColorRaw(numVal, inv);
+// ===== MAIN RENDER =====
 
-    var displayVal = getDisplayValue(stat, nation);
+async function renderNationPage(nation) {
+    var h = '';
+    // ---- Body ----
+    h += '<div class="nation-body">';
 
-    // Trend
-    var trendHTML = '';
-    if (previousTickData) {
-        var histKey = stat.key;
-        var prevVal = previousTickData[histKey];
-        if (prevVal !== null && prevVal !== undefined && raw !== null && raw !== undefined) {
-            var delta = Number(raw) - Number(prevVal);
-            if (Math.abs(delta) >= 0.01) {
-                var tDir = inv ? -delta : delta;
-                var tColor = tDir > 0 ? 'var(--n-green)' : 'var(--n-red)';
-                trendHTML = '<span class="stat-card__trend" style="color:' + tColor + ';">' + (tDir > 0 ? '\u25B2' : '\u25BC') + '</span>';
-            }
-        }
+    // Revolution banner
+    h += await renderRevolutionBanner(nation);
+
+    // ---- Category sections ----
+    for (var ci = 0; ci < STAT_CATEGORIES.length; ci++) {
+        h += renderFeaturedCategory(STAT_CATEGORIES[ci], nation);
     }
 
-    // Tag (e.g. inflation label)
-    var tagHTML = '';
-    if (stat.key === 'inflation' && raw !== null && raw !== undefined) {
-        var label = getInflationLabel(raw);
-        if (label) {
-            var tagColor, tagBg, tagBorder;
-            var iClass = inflationColorClass(raw);
-            if (iClass === 'good') { tagColor = 'var(--n-green)'; tagBg = 'var(--n-green-dim)'; tagBorder = 'rgba(74,222,128,0.2)'; }
-            else if (iClass === 'medium') { tagColor = 'var(--n-yellow)'; tagBg = 'var(--n-yellow-dim)'; tagBorder = 'rgba(250,204,21,0.2)'; }
-            else { tagColor = 'var(--n-red)'; tagBg = 'var(--n-red-dim)'; tagBorder = 'rgba(239,68,68,0.2)'; }
-            tagHTML = '<span class="stat-card__tag" style="color:' + tagColor + ';background:' + tagBg + ';border:1px solid ' + tagBorder + ';">' + escapeHtml(label) + '</span>';
-        }
-    }
-
-    // Sparkline — append current value so the line reaches "now"
-    var sparkData = sparklineHistory[stat.key] ? sparklineHistory[stat.key].slice() : null;
-    if (raw !== null && raw !== undefined) {
-        if (!sparkData) sparkData = [];
-        sparkData.push(Number(raw));
-    }
-    var sparkHTML = buildSparklineSVG(sparkData, hcRaw);
-
-    // Rank
-    var rank = calculateRanking(stat.key, raw, inv);
-    var rankHTML = buildRankBar(rank);
-
-    // Alert (stat below 15 effective)
-    var effective = inv ? 100 - numVal : numVal;
-    var isAlert = !stat.noHealth && effective < 15;
-
-    // Effect dot
-    var effectCount = (statEffectsByKey[stat.key] || []).length;
-
-    var h = '<div class="stat-card" data-stat-key="' + stat.key + '" style="border-left-color:' + hcRaw + ';">';
-
-    // Alert triangle
-    if (isAlert) h += '<div class="stat-card__alert-tri"></div>';
-
-    // Top row
-    h += '<div class="stat-card__top">';
-    h += '<div class="stat-card__name-area">';
-    if (effectCount > 0) h += '<span class="stat-card__effect-dot" title="' + effectCount + ' active effect' + (effectCount !== 1 ? 's' : '') + '"></span>';
-    h += '<span class="stat-card__name">' + escapeHtml(stat.name) + '</span>';
-    h += trendHTML;
-    h += tagHTML;
-    h += '</div>';
-    h += '<div class="stat-card__value-area">';
-    h += '<span class="stat-card__sparkline">' + sparkHTML + '</span>';
-    h += '<span class="stat-card__value" style="color:' + hc + ';">' + displayVal + '</span>';
-    h += '</div></div>';
-
-    // Bottom row
-    h += '<div class="stat-card__bottom">';
-    h += '<span class="stat-card__desc">' + escapeHtml(stat.desc || '') + '</span>';
-    h += rankHTML;
-    h += '</div>';
-
-    // Predicted yearly growth for GDP Growth
-    if (stat.key === 'gdp_growth') {
-        var monthlyPct = ((numVal - 50) / 50) * 3;
-        var yearlyPct = (Math.pow(1 + monthlyPct / 100, 12) - 1) * 100;
-        var yearlyStr = (yearlyPct >= 0 ? '+' : '') + yearlyPct.toFixed(2) + '%';
-        var yearlyColor = yearlyPct >= 0 ? 'var(--n-green)' : 'var(--n-red)';
-        h += '<div style="padding:4px 10px 2px;font-size:11px;color:var(--dtxt-muted);letter-spacing:0.3px;">Predicted Yearly Growth: <span style="color:' + yearlyColor + ';font-weight:600;">' + yearlyStr + '</span></div>';
-    }
-
-    // Alert message
-    if (isAlert) {
-        h += '<div class="stat-card__alert-msg">\u26A0 Critical \u2014 approaching crisis threshold</div>';
-    }
-
-    // Affected-by panel
-    h += '<div class="stat-card__abp" id="abp-' + stat.key + '"></div>';
-
-    h += '</div>';
-    return h;
+    h += '</div>'; // end nation-body
+    document.getElementById('content-area').innerHTML = h;
+    attachHandlers();
 }
 
 // ===== CLICK HANDLERS =====
@@ -1050,67 +1404,8 @@ function attachHandlers() {
             toggleSection(this.getAttribute('data-cat'));
         });
     }
-
-    // Health grid cells → scroll to category
-    var cells = document.querySelectorAll('.nation-health-cell[data-scroll-cat]');
-    for (var i = 0; i < cells.length; i++) {
-        cells[i].addEventListener('click', function() {
-            var catId = this.getAttribute('data-scroll-cat');
-            // Open the section if closed
-            if (!isSectionOpen(catId)) toggleSection(catId);
-            var el = document.querySelector('.cat-header[data-cat="' + catId + '"]');
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
-    }
-
-    // Stat card click → affected-by panel
-    var cards = document.querySelectorAll('.stat-card[data-stat-key]');
-    for (var i = 0; i < cards.length; i++) {
-        cards[i].addEventListener('click', handleStatCardClick);
-    }
 }
 
-function handleStatCardClick(e) {
-    var card = this;
-    var statKey = card.getAttribute('data-stat-key');
-    var panel = document.getElementById('abp-' + statKey);
-    if (!panel) return;
-
-    var isOpen = card.classList.contains('stat-card--expanded');
-
-    // Accordion: close all
-    var allExpanded = document.querySelectorAll('.stat-card--expanded');
-    for (var i = 0; i < allExpanded.length; i++) {
-        allExpanded[i].classList.remove('stat-card--expanded');
-        var p = allExpanded[i].querySelector('.stat-card__abp');
-        if (p) p.innerHTML = '';
-    }
-
-    if (isOpen) return;
-
-    card.classList.add('stat-card--expanded');
-    panel.innerHTML = buildAffectedByContent(statKey);
-}
-
-function buildAffectedByContent(statKey) {
-    var effects = statEffectsByKey[statKey] || [];
-    if (effects.length === 0) {
-        return '<div class="abp-empty">No active effects</div>';
-    }
-    var h = '<div class="abp-title">Affected By</div>';
-    for (var i = 0; i < effects.length; i++) {
-        var eff = effects[i];
-        var arrow = eff.direction === 'up' ? '&#9650;' : '&#9660;';
-        var arrowClass = eff.direction === 'up' ? 'abp-arrow--up' : 'abp-arrow--down';
-        var typeClass = 'abp-type--' + eff.type.toLowerCase().replace(/ /g, '-');
-        h += '<div class="abp-row">';
-        h += '<span class="abp-name">' + escapeHtml(eff.name) + '</span>';
-        h += '<span class="abp-arrow ' + arrowClass + '">' + arrow + '</span>';
-        h += '<span class="abp-type ' + typeClass + '">' + escapeHtml(eff.type) + '</span>';
-        h += '</div>';
-    }
-    return h;
-}
 
 </script>
 

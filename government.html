@@ -6,7 +6,6 @@
     <title>Government | Nationhood Alpha</title>
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/government.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -38,6 +37,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
+import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition } from './js/game-common.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
@@ -245,7 +245,7 @@ async function renderGovernmentPage() {
             fetchActiveCoalition(_supabase, currentNation.id),
             fetchMinistries(),
             _supabase.from('factions')
-                .select('id, faction_name, abbreviation, is_npc, seats, approval_rating, loyalty, action_points, party_color, party_logo, custom_logo_url')
+                .select('id, faction_name, abbreviation, seats, approval_rating, loyalty, action_points, party_color, party_logo, custom_logo_url')
                 .eq('nation_id', currentNation.id).eq('faction_type', 'party')
         ]);
 
@@ -546,7 +546,6 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                 const events = currentNation._govApprovalEvents || [];
                 if (events.length === 0) return '';
                 const GOV_SOURCE_LABELS = {
-                    'crisis:government_shutdown': 'Gov shutdown',
                     'crisis:scandal': 'Scandal',
                     'crisis:natural_disaster': 'Natural disaster',
                     'minister:fired': 'Minister fired',
@@ -788,7 +787,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         if (missingGovIds.length > 0) {
             const { data: missingGovParties } = await _supabase
                 .from('factions')
-                .select('id, faction_name, abbreviation, seats, party_color, party_logo, custom_logo_url, is_npc')
+                .select('id, faction_name, abbreviation, seats, party_color, party_logo, custom_logo_url')
                 .in('id', missingGovIds);
             if (missingGovParties) allParties.push(...missingGovParties);
         }
@@ -2320,8 +2319,6 @@ function renderMinistryActions(key, isFilled, requests, ministry) {
 function renderPresidentialMinistryCard(key, ministry) {
     const isFilled = ministry && ministry.minister_first_name && ministry.confirmation_status === 'confirmed';
     const isPending = ministry && ministry.confirmation_status === 'pending' && ministry.pending_minister;
-    const wasRejected = ministry && ministry.confirmation_status === 'rejected';
-    const rejectedParties = ministry?.rejected_parties || [];
 
     if (isFilled) {
         const partyName = ministry.factions?.faction_name || 'Unknown';
@@ -2367,18 +2364,12 @@ function renderPresidentialMinistryCard(key, ministry) {
         </div>`;
     }
 
-    // Vacant or rejected — president can nominate
+    // Vacant slot — president can nominate
     let actionHtml = '';
     if (isPresidentParty) {
-        const rejectedNote = rejectedParties.length > 0
-            ? `<div style="font-size:0.7rem;color:#ff4444;margin-top:4px;">${rejectedParties.length} party nominee${rejectedParties.length > 1 ? 's' : ''} rejected</div>`
-            : '';
         actionHtml = `<div class="ministry-actions">
             <button class="ministry-btn assign" onclick="openNominateModal('${key}')">Nominate</button>
-            ${rejectedNote}
         </div>`;
-    } else if (wasRejected) {
-        actionHtml = `<div style="font-size:0.75rem;color:#ff4444;margin-top:6px;">Last nominee rejected</div>`;
     }
 
     return `<div class="ministry-card vacant" style="padding:10px 12px;">
@@ -2397,13 +2388,8 @@ function openNominateModal(ministryKey) {
     document.getElementById('assign-confirm-btn').textContent = 'Nominate for Confirmation';
     document.getElementById('assign-modal-title').textContent = 'Nominate — ' + (MINISTRY_NAMES[ministryKey] || ministryKey);
 
-    // Find which parties are blocked for this slot
-    const ministry = ministryData.find(m => m.ministry_key === ministryKey);
-    const rejectedParties = ministry?.rejected_parties || [];
-
-    // Generate one candidate per eligible party
+    // Generate one candidate per party
     generatedCandidates = allParties
-        .filter(p => !rejectedParties.includes(p.id))
         .map(party => ({
             partyId: party.id,
             partyName: party.faction_name,
@@ -2411,11 +2397,6 @@ function openNominateModal(ministryKey) {
             lastName: LAST_NAMES_POOL[Math.floor(Math.random() * LAST_NAMES_POOL.length)],
             age: 35 + Math.floor(Math.random() * 31)
         }));
-
-    if (generatedCandidates.length === 0) {
-        alert('No eligible parties remaining — all have been rejected for this slot.');
-        return;
-    }
 
     document.getElementById('assign-candidates').innerHTML = generatedCandidates.map((c, i) => {
         const isPres = c.partyId === presidentFactionId;
@@ -2432,12 +2413,6 @@ function openNominateModal(ministryKey) {
 async function confirmPresidentialNomination() {
     if (!selectedCandidate || !assignMinistryKey) return;
     try {
-        // Deduct 1 AP for filling a vacant ministry
-        if ((currentFaction?.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
-        const apResult = await deductAP(_supabase, currentFaction.id, 1);
-        if (!apResult.success) { alert('Not enough AP (need 1).'); return; }
-        currentFaction.action_points = apResult.newAp;
-
         await nominateMinister(_supabase, currentNation.id, currentFaction.id, assignMinistryKey, selectedCandidate);
         closeAssignModal();
         alert('Nomination submitted — parliament will vote on confirmation.');
@@ -2682,12 +2657,6 @@ async function confirmAssign() {
 async function confirmAppointment() {
     if (!selectedCandidate || !assignMinistryKey) return;
     try {
-        // Deduct 1 AP for filling a vacant ministry
-        if ((currentFaction?.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
-        const apResult = await deductAP(_supabase, currentFaction.id, 1);
-        if (!apResult.success) { alert('Not enough AP (need 1).'); return; }
-        currentFaction.action_points = apResult.newAp;
-
         const { data: fresh } = await _supabase.from('ministries')
             .select('id, minister_first_name')
             .eq('nation_id', currentNation.id)
@@ -2912,7 +2881,7 @@ async function purgeMinister(ministryKey) {
             .select('tick_performed')
             .eq('party_id', currentFaction.id)
             .eq('action_type', 'purge_minister')
-            .gte('tick_performed', tick - 6);
+            .gte('tick_performed', tick - 5);
         const purgeCount = (recentPurges || []).length;
 
         const loyaltyLoss = 2 + Math.floor(Math.random() * 3);

@@ -222,7 +222,7 @@ export function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institut
     applyTradeTariffOverride(budget, tradeTariffRevenue);
     const inflationStat = Number(nation.inflation || 0);
     const inflationPct = Math.pow(Math.max(0, inflationStat), 1.5) / 100;
-    const reserves = Number(nation.budget_reserves || 0);
+    const reserves = 0;
 
     // Foreign aid: received adds to revenue, given is a mandatory expenditure
     const aidReceived = Number(aidData?.received || 0);

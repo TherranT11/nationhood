@@ -76,7 +76,6 @@ BEGIN
         LEFT JOIN faction_ideology fi ON fi.faction_id = f.id
         WHERE f.nation_id = p_nation_id
           AND f.faction_type = 'party'
-          AND f.is_npc = FALSE
           AND f.abandoned_at IS NULL
     ) t;
 

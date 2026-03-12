@@ -157,9 +157,44 @@ export function setCachedState(user, faction, nation, shard) {
     sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
 }
 
+function shouldRefreshNationForPage() {
+    try {
+        const page = (window.location.pathname || '').split('/').pop()?.toLowerCase() || '';
+        return page === 'economy.html' || page === 'laws.html' || page === 'bill.html';
+    } catch (e) {
+        return false;
+    }
+}
+
+async function refreshCachedNation(cached) {
+    if (!cached?.faction?.nation_id && !cached?.nation?.id) return cached;
+    const nationId = cached.faction?.nation_id || cached.nation?.id;
+    const { data: freshNation, error } = await _supabase
+        .from('nations')
+        .select('*')
+        .eq('id', nationId)
+        .single();
+
+    if (error || !freshNation) {
+        console.warn('Failed to refresh cached nation for page, using cached nation', error?.message || error);
+        return cached;
+    }
+
+    const refreshed = { ...cached, nation: freshNation, timestamp: Date.now() };
+    sessionStorage.setItem(STATE_KEY, JSON.stringify(refreshed));
+    return refreshed;
+}
+
 export async function loadGameState(requireFaction = true) {
     const cached = getCachedState();
-    if (cached) { console.log('Using cached state'); return cached; }
+    if (cached) {
+        if (shouldRefreshNationForPage()) {
+            console.log('Using cached user/faction/shard with fresh nation for current page');
+            return await refreshCachedNation(cached);
+        }
+        console.log('Using cached state');
+        return cached;
+    }
     console.log('Fetching fresh state from Supabase');
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return null; }
@@ -274,10 +309,11 @@ export function renderTopBar(activeTab) {
                 </div>
             </div>
             <div class="top-bar-right">
+                <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
                 <span class="party-badge" id="party-badge">--</span>
                 <span class="topbar-ap" id="topbar-ap"></span>
                 <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle" title="Toggle light/dark mode">Light</button>
-                <button class="logout-btn" onclick="handleLogout()">Abandon Session</button>
+                <button class="logout-btn" onclick="handleLogout()">Logout</button>
             </div>
         </div>
         <button class="hamburger-btn" onclick="document.querySelector('.nav-tabs').classList.toggle('nav-open')" aria-label="Toggle navigation">&#9776;</button>
@@ -307,8 +343,6 @@ export function renderNavTabs(activeTab) {
         { id: 'nation', label: 'Nation', href: 'nation.html' },
         { id: 'government', label: 'Government', href: 'government.html' },
         { id: 'politics', label: 'Politics', href: 'politics.html' },
-        { id: 'ministry-actions', label: 'Ministry', href: 'ministry-actions.html' },
-
         { id: 'laws', label: 'Bills', href: 'laws.html' },
         { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
         { id: 'economy', label: 'Economy', href: 'economy.html' },
@@ -392,35 +426,6 @@ async function updateBillsBadge(faction, nation, shard) {
 }
 
 
-// ===== PRESIDENTIAL NOMINEE BADGE =====
-
-async function updatePresNomineeBadge(faction, nation) {
-    const badge = document.getElementById('parties-nominee-badge');
-    if (!badge || !faction || !nation) return;
-    try {
-        // Only for presidential republics (canonical: 'Presidential', legacy: 'Presidential Republic')
-        const gt = (nation.government_type || '').toLowerCase();
-        if (gt !== 'presidential' && gt !== 'presidential republic') return;
-        // Check for unselected presidential candidates for this faction
-        const { count } = await _supabase
-            .from('pm_candidates')
-            .select('*', { count: 'exact', head: true })
-            .eq('nation_id', nation.id)
-            .eq('faction_id', faction.id)
-            .eq('candidate_type', 'presidential')
-            .eq('selected', false);
-        if ((count || 0) > 0) {
-            badge.textContent = '!';
-            badge.style.display = '';
-        } else {
-            badge.style.display = 'none';
-        }
-    } catch (e) {
-        console.error('Error updating presidential nominee badge:', e);
-    }
-}
-
-
 // ===== TICK COUNTDOWN =====
 
 let tickInterval = null;
@@ -440,13 +445,7 @@ export function updateTopBarInfo(faction, shard, nation) {
     const apEl = document.getElementById('topbar-ap');
     if (apEl && faction) {
         const ap = faction.action_points ?? 0;
-        const maxPips = 10; // compact pip display
-        const filled = Math.min(ap, maxPips);
-        let pips = '';
-        for (let i = 0; i < maxPips; i++) {
-            pips += i < filled ? '<span class="topbar-ap__pip"></span>' : '<span class="topbar-ap__pip topbar-ap__pip--empty"></span>';
-        }
-        apEl.innerHTML = '<span class="topbar-ap__label">AP</span>' + pips + '<span class="topbar-ap__count">' + ap + '</span>';
+        apEl.innerHTML = '<span class="topbar-ap__count">' + ap + ' AP</span>';
     }
     
     const nationFlag = document.getElementById('nation-flag');
@@ -462,8 +461,6 @@ export function updateTopBarInfo(faction, shard, nation) {
 
         // Rename tabs for autocracies
         if (nation.government_type === 'Autocracy') {
-            const partiesTab = document.querySelector('.nav-tab[data-tab="parties"]');
-            if (partiesTab) partiesTab.textContent = 'Inner Circle';
             const electionsTab = document.querySelector('.nav-tab[data-tab="elections"]');
             if (electionsTab) electionsTab.textContent = 'Regime';
         }
@@ -728,6 +725,7 @@ export function updateThemeButton() {
 
 export async function initPage(activeTab, onReady, requireFaction = true) {
     renderTopBar(activeTab);
+    window.__currentTab = activeTab;
     updateThemeButton();
 
     // Ban enforcement — check before loading any game state
@@ -745,8 +743,6 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (activeTab !== 'laws') {
         updateBillsBadge(state.faction, state.nation, state.shard);
     }
-    // Update presidential nominee badge (non-blocking)
-    updatePresNomineeBadge(state.faction, state.nation);
     // Record browser fingerprint (non-blocking, fire-and-forget)
     recordFingerprint(_supabase);
     // Check ban status (non-blocking, redirects if banned)

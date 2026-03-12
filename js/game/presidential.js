@@ -13,6 +13,18 @@ import { fetchActiveCoalition } from './government-structure.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fireBillEvent } from './event-helpers.js';
 
+/** Tally floor votes from bill_support records (already loaded via join). */
+function tallyFloorVotes(bill) {
+    let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
+    for (const s of (bill.bill_support || [])) {
+        const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+        if (stance === 'yes') votesFor += (s.seat_count || 0);
+        else if (stance === 'no') votesAgainst += (s.seat_count || 0);
+        else if (stance === 'abstain') votesAbstain += (s.seat_count || 0);
+    }
+    return { votesFor, votesAgainst, votesAbstain };
+}
+
 /**
  * Generate 3 president candidates for a party (reuses PM candidate generation pattern).
  * Candidates are stored in pm_candidates table with candidate_type = 'presidential';
@@ -133,7 +145,7 @@ export async function selectPresidentCandidate(supabase, candidateId, nationId, 
 /**
  * President nominates a minister for a cabinet slot.
  * Writes pending data to the ministries table and creates a confirmation bill.
- * Parliament votes simple majority; if rejected, the party is blocked for that slot.
+ * Parliament votes simple majority.
  *
  * @param {object} supabase
  * @param {string} nationId
@@ -155,18 +167,12 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
 
     // Validate: no existing pending confirmation for this slot
     const { data: existingMinistry } = await supabase.from('ministries')
-        .select('id, confirmation_status, rejected_parties')
+        .select('id, confirmation_status')
         .eq('nation_id', nationId).eq('ministry_key', ministryKey).eq('is_active', true)
         .maybeSingle();
 
     if (existingMinistry?.confirmation_status === 'pending') {
         throw new Error('A confirmation vote is already pending for this ministry');
-    }
-
-    // Validate: nominee's party was not already rejected for this slot
-    const rejectedParties = existingMinistry?.rejected_parties || [];
-    if (rejectedParties.includes(nominee.partyId)) {
-        throw new Error('This party\'s nominee was already rejected for this ministry slot');
     }
 
     // Get current tick
@@ -204,8 +210,7 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
             ministry_name: ministryDisplayName,
             is_active: true,
             confirmation_status: 'pending',
-            pending_minister: pendingData,
-            rejected_parties: []
+            pending_minister: pendingData
         });
         if (insErr) throw new Error('Failed to create ministry row: ' + insErr.message);
     }
@@ -250,37 +255,54 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
  * Called from the UI when the President's party clicks "Sign Into Law".
  */
 export async function signPresidentialBill(supabase, billId, presidentFactionId) {
-    const { data: bill } = await supabase.from('bills')
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
-        .eq('id', billId).single();
-    if (!bill || bill.status !== 'president_desk') throw new Error('Bill is not on the president\'s desk');
+    const context = { billId, presidentFactionId };
+    console.log('[signPresidentialBill] stage=rpc_start', context);
 
-    // Validate caller is president's party
-    const { data: president } = await supabase.from('presidents')
-        .select('faction_id').eq('nation_id', bill.nation_id).eq('is_active', true).limit(1).maybeSingle();
-    if (!president || president.faction_id !== presidentFactionId) throw new Error('Only the President\'s party can sign bills');
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('sign_presidential_bill', {
+        p_bill_id: billId
+    });
 
-    const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
-
-    const enactment = await enactBill(supabase, bill, currentTick);
-    if (!enactment?.success) {
-        // Mark bill as failed so it doesn't stay stuck on the desk
-        await supabase.from('bills').update({
-            status: 'failed',
-            president_action: 'signed',
-            president_action_tick: currentTick
-        }).eq('id', bill.id);
-        throw new Error(enactment?.error || 'Bill enactment failed after presidential signature');
+    if (rpcError) {
+        console.error('[signPresidentialBill] stage=rpc_error', {
+            ...context,
+            error: rpcError.message
+        });
+        throw new Error(`Presidential signing failed: ${rpcError.message}`);
     }
-    // Only mark president_action after successful enactment
-    // (enactBill already sets status='passed')
-    await supabase.from('bills').update({
-            president_action: 'signed',
-            president_action_tick: currentTick
-        }).eq('id', bill.id);
 
-    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, votesFor: 0, votesAgainst: 0, votesAbstain: 0, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (signed by President)' });
+    if (!rpcResult?.ok) {
+        console.error('[signPresidentialBill] stage=rpc_rejected', {
+            ...context,
+            result: rpcResult
+        });
+        throw new Error(rpcResult?.message || 'Presidential signing was rejected.');
+    }
+
+    console.log('[signPresidentialBill] stage=rpc_success', {
+        ...context,
+        code: rpcResult.code
+    });
+
+    const { data: signedBill, error: signedBillErr } = await supabase.from('bills')
+        .select('id, bill_name, nation_id, bill_articles(id), bill_support(stance, seat_count)')
+        .eq('id', billId)
+        .single();
+
+    if (signedBillErr || !signedBill) {
+        throw new Error(`Bill signed but failed to reload bill metadata: ${signedBillErr?.message || 'not found'}`);
+    }
+
+    const floorVotes = tallyFloorVotes(signedBill);
+    await fireBillEvent(supabase, 'bill_passed', signedBill, {
+        currentTick: rpcResult.tick || 0,
+        votesFor: floorVotes.votesFor,
+        votesAgainst: floorVotes.votesAgainst,
+        votesAbstain: floorVotes.votesAbstain,
+        articleCount: (signedBill.bill_articles || []).length,
+        billNameOverride: `${signedBill.bill_name} (signed by President)`
+    });
+
+    console.log('[signPresidentialBill] stage=terminal_result result=success', context);
 }
 
 /**
@@ -289,7 +311,7 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
  */
 export async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
     const { data: bill } = await supabase.from('bills')
-        .select('*, factions(faction_name)')
+        .select('*, factions(faction_name), bill_support(stance, seat_count)')
         .eq('id', billId).single();
     if (!bill || bill.status !== 'president_desk') throw new Error('Bill is not on the president\'s desk');
 
@@ -322,7 +344,8 @@ export async function vetoPresidentialBill(supabase, billId, presidentFactionId)
         preamble: `The President has vetoed "${bill.bill_name}". The legislature may override this veto with a two-thirds supermajority (${overrideSeats} of ${GAME_CONFIG.TOTAL_SEATS} seats).`
     }).select().single();
 
-    await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, votesFor: 0, votesAgainst: 0, votesAbstain: 0, billNameOverride: bill.bill_name + ' (VETOED by President)' });
+    const floorVotes = tallyFloorVotes(bill);
+    await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, votesFor: floorVotes.votesFor, votesAgainst: floorVotes.votesAgainst, votesAbstain: floorVotes.votesAbstain, billNameOverride: bill.bill_name + ' (VETOED by President)' });
 
     return overrideBill;
 }
@@ -365,7 +388,8 @@ export async function processPresidentDesk(supabase, nation, currentTick) {
             continue;
         }
 
-        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationId: nation.id, nationName: nation.name, votesFor: 0, votesAgainst: 0, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (auto-signed by President)' });
+        const floorVotes = tallyFloorVotes(bill);
+        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationId: nation.id, nationName: nation.name, votesFor: floorVotes.votesFor, votesAgainst: floorVotes.votesAgainst, votesAbstain: floorVotes.votesAbstain, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (auto-signed by President)' });
 
         results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed' });
     }
@@ -664,7 +688,7 @@ export async function processParliamentaryPMTimeout(supabase, nation, currentTic
 /**
  * Called when the nominated party votes NO on their own minister confirmation bill.
  * Immediately ends the vote as failed, applies -2 gov approval to the president,
- * adds the party to rejected_parties so the president cannot re-nominate them.
+ * and clears the pending nominee.
  *
  * @param {object} supabase
  * @param {string} billId - The minister_confirmation bill
@@ -683,7 +707,7 @@ export async function rejectOwnNomination(supabase, billId, nomineePartyId) {
 
     // Validate the nominee is actually the pending nominee for this ministry
     const { data: ministry } = await supabase.from('ministries')
-        .select('id, pending_minister, rejected_parties')
+        .select('id, pending_minister')
         .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
         .maybeSingle();
 
@@ -694,15 +718,10 @@ export async function rejectOwnNomination(supabase, billId, nomineePartyId) {
     // 1. Fail the bill immediately
     await failBill(supabase, bill);
 
-    // 2. Add nominee's party to rejected_parties so President cannot re-nominate them
-    const existingRejected = ministry.rejected_parties || [];
-    if (!existingRejected.includes(nomineePartyId)) {
-        existingRejected.push(nomineePartyId);
-    }
+    // 2. Clear pending nomination
     await supabase.from('ministries').update({
         confirmation_status: 'rejected',
-        pending_minister: null,
-        rejected_parties: existingRejected
+        pending_minister: null
     }).eq('id', ministry.id);
 
     // 3. Apply -2 government approval event (penalty to the president)
@@ -719,4 +738,3 @@ export async function rejectOwnNomination(supabase, billId, nomineePartyId) {
 }
 
 // Tick lock and tick mutation are intentionally Edge Function only.
-

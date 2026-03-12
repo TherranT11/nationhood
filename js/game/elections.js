@@ -9,7 +9,7 @@ import { loadFactionIdeology } from './ideology.js';
 import { snapshotNationStats } from './stats.js';
 import { adjustMomentumAll } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
-import { syncAmbassadorsForFailedConfirmationBills } from './bills.js';
+import { syncAmbassadorsForFailedConfirmationBills, syncMinistriesForFailedConfirmationBills } from './bills.js';
 import { autoSelectPresidentialCandidates, generatePresidentCandidates } from './presidential.js';
 import { runElectionSimulation } from './election-simulation.js';
 
@@ -1178,6 +1178,29 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
     const isPresidential = context.governmentType === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC;
     const normalizedElectionType = context.electionType || 'parliamentary';
 
+    // Resolve the target election record up-front so presidential endorsement snapshots
+    // can be tied to a concrete election before vote resolution.
+    const { data: scheduledElection } = await supabase
+        .from('elections')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .eq('election_type', normalizedElectionType)
+        .order('election_tick', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+    const targetElectionId = scheduledElection?.id || (await (async () => {
+        const { data: inserted, error: insertErr } = await supabase.from('elections').insert({
+            nation_id: nation.id,
+            election_tick: currentTick,
+            election_type: normalizedElectionType,
+            status: 'scheduled'
+        }).select('id').single();
+        if (insertErr) throw insertErr;
+        return inserted.id;
+    })());
+
     // Use candidate-based voting for presidential elections, party-based for parliamentary
     let electionResults;
     if (isPresidential && normalizedElectionType === 'presidential') {
@@ -1205,7 +1228,17 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
 
         // Auto-select candidates for any party that hasn't chosen
         await autoSelectPresidentialCandidates(supabase, nation, currentTick);
-        const { data, error: runError } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id });
+
+        const { error: snapshotErr } = await supabase.rpc('snapshot_presidential_endorsements', {
+            p_nation_id: nation.id,
+            p_election_id: targetElectionId
+        });
+        if (snapshotErr) throw snapshotErr;
+
+        const { data, error: runError } = await supabase.rpc('run_presidential_election', {
+            p_nation_id: nation.id,
+            p_election_id: targetElectionId
+        });
         if (runError) throw runError;
         electionResults = data;
     } else {
@@ -1215,33 +1248,11 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
     }
 
     // Create the election record (SQL RPCs no longer insert their own)
-    const { data: scheduledElection } = await supabase
-        .from('elections')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('status', 'scheduled')
-        .eq('election_type', normalizedElectionType)
-        .order('election_tick', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
     let completedElectionId;
-    if (scheduledElection) {
-        await supabase.from('elections')
-            .update({ status: 'completed', results: electionResults, election_tick: currentTick })
-            .eq('id', scheduledElection.id);
-        completedElectionId = scheduledElection.id;
-    } else {
-        const { data: inserted, error: insertErr } = await supabase.from('elections').insert({
-            nation_id: nation.id,
-            election_tick: currentTick,
-            election_type: normalizedElectionType,
-            status: 'completed',
-            results: electionResults
-        }).select('id').single();
-        if (insertErr) throw insertErr;
-        completedElectionId = inserted.id;
-    }
+    await supabase.from('elections')
+        .update({ status: 'completed', results: electionResults, election_tick: currentTick })
+        .eq('id', targetElectionId);
+    completedElectionId = targetElectionId;
 
     // Fetch the specific election we just completed (not a generic "most recent" query)
     const { data: completedElection, error: electionError } = await supabase
@@ -1265,8 +1276,9 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
         .update({ status: 'failed' })
         .eq('nation_id', nation.id)
         .in('status', ['committee', 'floor'])
-        .select('id, bill_type, ambassador_id');
+        .select('id, nation_id, bill_type, ambassador_id, ministry_key');
     await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
+    await syncMinistriesForFailedConfirmationBills(supabase, dissolvedBills);
 
     if (isPresidential && normalizedElectionType === 'presidential') {
         // Fail bills on president's desk
@@ -1274,8 +1286,9 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
             .eq('status', 'president_desk')
-            .select('id, bill_type, ambassador_id');
+            .select('id, nation_id, bill_type, ambassador_id, ministry_key');
         await syncAmbassadorsForFailedConfirmationBills(supabase, deskBills);
+        await syncMinistriesForFailedConfirmationBills(supabase, deskBills);
         await processPresidentialElectionResult(supabase, nation, completedElection, currentTick, completedElection.id);
     } else if (isPresidential && normalizedElectionType === 'parliamentary') {
         // Midterm parliamentary election — seats reshuffled, president stays
@@ -1286,8 +1299,9 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
             .eq('status', 'frozen')
-            .select('id, bill_type, ambassador_id');
+            .select('id, nation_id, bill_type, ambassador_id, ministry_key');
         await syncAmbassadorsForFailedConfirmationBills(supabase, frozenBills);
+        await syncMinistriesForFailedConfirmationBills(supabase, frozenBills);
 
         let existingGov = null;
         const { data: govFormation } = await supabase
@@ -1405,7 +1419,19 @@ export async function processElections(supabase, nation, currentTick) {
         // Use candidate-based voting for presidential elections, party-based for parliamentary
         let data, error;
         if (electionType === 'presidential') {
-            ({ data, error } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id }));
+            const { error: snapshotErr } = await supabase.rpc('snapshot_presidential_endorsements', {
+                p_nation_id: nation.id,
+                p_election_id: election.id
+            });
+            if (snapshotErr) {
+                console.error(`Failed to snapshot presidential endorsements for ${nation.name}:`, snapshotErr);
+                continue;
+            }
+
+            ({ data, error } = await supabase.rpc('run_presidential_election', {
+                p_nation_id: nation.id,
+                p_election_id: election.id
+            }));
         } else {
             ({ data, error } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: electionType }));
         }
@@ -1414,7 +1440,10 @@ export async function processElections(supabase, nation, currentTick) {
             console.error(`Election RPC failed (attempt 1) for ${nation.name}:`, error);
             // Retry once
             if (electionType === 'presidential') {
-                ({ data, error } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id }));
+                ({ data, error } = await supabase.rpc('run_presidential_election', {
+                    p_nation_id: nation.id,
+                    p_election_id: election.id
+                }));
             } else {
                 ({ data, error } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: electionType }));
             }
@@ -1457,9 +1486,10 @@ export async function processElections(supabase, nation, currentTick) {
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
             .in('status', ['committee', 'floor'])
-            .select('id, bill_type, ambassador_id');
+            .select('id, nation_id, bill_type, ambassador_id, ministry_key');
 
         await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
+        await syncMinistriesForFailedConfirmationBills(supabase, dissolvedBills);
 
         if (dissolvedBills?.length > 0) {
             console.log(`Dissolved ${dissolvedBills.length} pending bill(s) after election for ${nation.name}`);
@@ -1472,8 +1502,9 @@ export async function processElections(supabase, nation, currentTick) {
                 .update({ status: 'failed' })
                 .eq('nation_id', nation.id)
                 .eq('status', 'president_desk')
-                .select('id, bill_type, ambassador_id');
+                .select('id, nation_id, bill_type, ambassador_id, ministry_key');
             await syncAmbassadorsForFailedConfirmationBills(supabase, deskBills);
+            await syncMinistriesForFailedConfirmationBills(supabase, deskBills);
             if (deskBills?.length > 0) {
                 console.log(`Failed ${deskBills.length} bill(s) on president's desk after presidential election for ${nation.name}`);
             }
@@ -1518,9 +1549,10 @@ export async function processElections(supabase, nation, currentTick) {
                 .update({ status: 'failed' })
                 .eq('nation_id', nation.id)
                 .eq('status', 'frozen')
-                .select('id, bill_type, ambassador_id');
+                .select('id, nation_id, bill_type, ambassador_id, ministry_key');
 
             await syncAmbassadorsForFailedConfirmationBills(supabase, frozenBills);
+            await syncMinistriesForFailedConfirmationBills(supabase, frozenBills);
 
             if (existingGov) {
                 console.log(`Dissolving ${existingGov.status} government after election for ${nation.name} (source: ${existingGovSource})`);
@@ -1637,10 +1669,25 @@ export async function processPresidentialElectionResult(supabase, nation, comple
     let winner;
     let wasRunoff = false;
     let runoffResults = null;
+    const snappedEndorsements = completedElection?.results?.snapped_endorsements || [];
+    let endorsementResolution = resolvePresidentialRunoffEndorsements({
+        wasRunoff: false,
+        round1Results: candidateResults,
+        runoffCandidates: [],
+        snappedEndorsements,
+        compatibilityTable: completedElection?.results?.transfer_rate_compatibility || {}
+    });
 
     if (topPct > 50 || candidateResults.length <= 2) {
         // Clear winner with majority — no runoff needed
         winner = topCandidate;
+        endorsementResolution = resolvePresidentialRunoffEndorsements({
+            wasRunoff: false,
+            round1Results: candidateResults,
+            runoffCandidates: [],
+            snappedEndorsements,
+            compatibilityTable: completedElection?.results?.transfer_rate_compatibility || {}
+        });
         console.log(`Presidential election Round 1 winner: ${winner.candidate_name} (${winner.party_name}) with ${topPct.toFixed(1)}% — majority achieved (${nation.name})`);
     } else {
         // === RUNOFF: No majority — top 2 candidates advance ===
@@ -1663,7 +1710,10 @@ export async function processPresidentialElectionResult(supabase, nation, comple
         }
 
         // Run the presidential election RPC again with only the top 2
-        const { data: runoffData, error: runoffErr } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id });
+        const { data: runoffData, error: runoffErr } = await supabase.rpc('run_presidential_election', {
+            p_nation_id: nation.id,
+            p_election_id: completedElection.id
+        });
 
         if (runoffErr) {
             console.error(`Runoff RPC failed for ${nation.name}:`, runoffErr);
@@ -1671,6 +1721,13 @@ export async function processPresidentialElectionResult(supabase, nation, comple
             winner = topCandidate;
         } else {
             runoffResults = runoffData?.presidential_candidates || [];
+            endorsementResolution = resolvePresidentialRunoffEndorsements({
+                wasRunoff: true,
+                round1Results: candidateResults,
+                runoffCandidates,
+                snappedEndorsements,
+                compatibilityTable: completedElection?.results?.transfer_rate_compatibility || {}
+            });
             const runoffSorted = [...runoffResults].sort((a, b) => b.votes - a.votes);
             winner = runoffSorted[0] || topCandidate;
             console.log(`Runoff winner: ${winner.candidate_name} (${winner.party_name}) with ${winner.vote_percentage}% (${nation.name})`);
@@ -1683,7 +1740,9 @@ export async function processPresidentialElectionResult(supabase, nation, comple
                 round_1_candidates: candidateResults,
                 runoff_candidates: runoffResults,
                 total_votes_cast: runoffData?.total_votes_cast || completedElection.results?.total_votes_cast,
-                was_runoff: true
+                was_runoff: true,
+                snapped_endorsements: endorsementResolution.endorsements,
+                runoff_endorsement_summary: endorsementResolution.summary
             };
             const targetId = electionId || completedElection.id;
             const { error: runoffUpdateErr } = await supabase.from('elections')
@@ -1883,6 +1942,62 @@ export async function processPresidentialElectionResult(supabase, nation, comple
     try {
         await scheduleNextPresidentialElections(supabase, nation, currentTick);
     } catch (e) { console.warn('Could not schedule next presidential elections:', e); }
+}
+
+function resolvePresidentialRunoffEndorsements({ wasRunoff, round1Results = [], runoffCandidates = [], snappedEndorsements = [], compatibilityTable = {} }) {
+    const runoffCandidateIds = new Set((runoffCandidates || []).map(c => c.candidate_id));
+    const round1ByFaction = new Map((round1Results || []).map(c => [c.faction_id, c]));
+    const candidateTotals = {};
+    for (const c of (runoffCandidates || [])) {
+        candidateTotals[c.candidate_id] = { transfer_votes: 0, protest_votes: 0 };
+    }
+
+    const resolved = (snappedEndorsements || []).map(raw => {
+        const item = { ...raw };
+        if ((item.status || 'PENDING') !== 'PENDING') return item;
+        if (!wasRunoff) return { ...item, status: 'VOID', void_reason: 'no_runoff' };
+        const endorsing = round1ByFaction.get(item.endorsing_faction_id);
+        if (!endorsing) return { ...item, status: 'VOID', void_reason: 'endorsing_not_found' };
+        if (runoffCandidateIds.has(endorsing.candidate_id)) return { ...item, status: 'VOID', void_reason: 'endorsing_party_in_runoff' };
+        if (!runoffCandidateIds.has(item.endorsed_candidate_id)) return { ...item, status: 'VOID', void_reason: 'endorsed_eliminated' };
+
+        const compKey = item.compatibility || item.compatibility_tier || item.relationship || 'neutral';
+        const transferRate = Math.max(0, Math.min(1,
+            Number(item.transfer_rate ?? compatibilityTable[compKey] ?? compatibilityTable.neutral ?? 0.65)
+        ));
+        const baseVotes = Math.max(0, Number(endorsing.votes || 0));
+        const transferVotes = Math.round(baseVotes * transferRate);
+        const protestVotes = Math.max(0, baseVotes - transferVotes);
+
+        const otherRunoffId = (runoffCandidates || []).find(c => c.candidate_id !== item.endorsed_candidate_id)?.candidate_id || null;
+        const protestSplit = item.protest_split || {};
+        const endorsedProtestRate = Math.max(0, Math.min(1, Number(protestSplit.endorsed ?? 0.5)));
+        const otherProtestRate = Math.max(0, Math.min(1, Number(protestSplit.other ?? (1 - endorsedProtestRate))));
+        const abstainRate = Math.max(0, 1 - endorsedProtestRate - otherProtestRate);
+
+        if (candidateTotals[item.endorsed_candidate_id]) {
+            candidateTotals[item.endorsed_candidate_id].transfer_votes += transferVotes;
+            candidateTotals[item.endorsed_candidate_id].protest_votes += Math.round(protestVotes * endorsedProtestRate);
+        }
+        if (otherRunoffId && candidateTotals[otherRunoffId]) {
+            candidateTotals[otherRunoffId].protest_votes += Math.round(protestVotes * otherProtestRate);
+        }
+
+        return {
+            ...item,
+            status: 'RESOLVED',
+            transfer_votes: transferVotes,
+            protest_votes: protestVotes,
+            protest_abstain_votes: Math.round(protestVotes * abstainRate)
+        };
+    });
+
+    const summary = {
+        total_transfer_votes: Object.values(candidateTotals).reduce((s, v) => s + v.transfer_votes, 0),
+        total_protest_votes: Object.values(candidateTotals).reduce((s, v) => s + v.protest_votes, 0),
+        candidate_totals: candidateTotals
+    };
+    return { endorsements: resolved, summary };
 }
 
 /**

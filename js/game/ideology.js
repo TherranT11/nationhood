@@ -326,7 +326,7 @@ export async function loadNationIdeologies(supabase, nationId) {
     const factionIds = factions.map(f => f.id);
     const { data, error } = await supabase
         .from('faction_ideology')
-        .select('*, factions(id, faction_name, faction_type, is_npc, nation_id)')
+        .select('*, factions(id, faction_name, faction_type, nation_id)')
         .in('faction_id', factionIds);
 
     if (error) {

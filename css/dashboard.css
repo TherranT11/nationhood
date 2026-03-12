@@ -159,6 +159,141 @@ body {
     font-size: 16px; font-weight: 800; color: #c8a64e;
     margin-left: 4px; min-width: 16px; text-align: right;
 }
+/* ===== GUIDE BUTTON ===== */
+.guide-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 700;
+    color: #d4b45c;
+    background: rgba(200,166,78,0.08);
+    border: 1px solid rgba(200,166,78,0.18);
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.guide-btn:hover { background: rgba(200,166,78,0.18); }
+
+/* ===== GUIDE OVERLAY ===== */
+.guide-overlay {
+    display: none; position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.8);
+    z-index: 1000;
+    align-items: center; justify-content: center;
+}
+.guide-overlay.active { display: flex; }
+.guide-panel {
+    background: #1a1a1a;
+    border: 2px solid #d4b45c;
+    border-radius: 12px;
+    padding: 28px 32px;
+    max-width: 720px; width: 92%;
+    max-height: 85vh; overflow-y: auto;
+    color: #ccc;
+    font-size: 0.88rem; line-height: 1.6;
+}
+.guide-panel-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 18px; padding-bottom: 14px;
+    border-bottom: 1px solid #333;
+}
+.guide-panel-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1rem; font-weight: 700;
+    color: #d4b45c; text-transform: uppercase;
+    letter-spacing: 1.5px;
+}
+.guide-close {
+    background: none; border: none;
+    color: #666; font-size: 1.5rem;
+    cursor: pointer; padding: 0 4px;
+    transition: color 0.15s;
+}
+.guide-close:hover { color: #d4b45c; }
+
+.guide-panel h2 {
+    color: #d4b45c; font-size: 1.05rem; font-weight: 700;
+    margin: 20px 0 8px; text-transform: uppercase;
+    letter-spacing: 1px; border-bottom: 1px solid #2a2a2a;
+    padding-bottom: 6px;
+}
+.guide-panel h3 {
+    color: #e0d6b8; font-size: 0.92rem; font-weight: 600;
+    margin: 14px 0 6px;
+}
+.guide-panel h4 {
+    color: #bbb; font-size: 0.86rem; font-weight: 600;
+    margin: 10px 0 4px;
+}
+.guide-panel p { margin: 6px 0; }
+.guide-panel strong { color: #e0d6b8; }
+.guide-panel code {
+    background: #111; border: 1px solid #333;
+    padding: 1px 5px; border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem; color: #d4b45c;
+}
+.guide-panel table {
+    width: 100%; border-collapse: collapse; margin: 8px 0 12px;
+    font-size: 0.82rem;
+}
+.guide-panel th {
+    text-align: left; padding: 6px 10px;
+    background: #222; color: #d4b45c;
+    border-bottom: 1px solid #333;
+    font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; font-size: 0.75rem;
+}
+.guide-panel td {
+    padding: 5px 10px; border-bottom: 1px solid #1f1f1f;
+    color: #bbb;
+}
+.guide-panel tr:hover td { background: rgba(200,166,78,0.04); }
+.guide-panel details {
+    margin: 6px 0; border: 1px solid #2a2a2a;
+    border-radius: 6px; overflow: hidden;
+}
+.guide-panel summary {
+    padding: 10px 14px; cursor: pointer;
+    font-weight: 600; color: #e0d6b8;
+    background: #1e1e1e;
+    list-style: none;
+}
+.guide-panel summary::-webkit-details-marker { display: none; }
+.guide-panel summary::before {
+    content: '\25B6'; margin-right: 8px;
+    font-size: 0.7rem; color: #d4b45c;
+    display: inline-block; transition: transform 0.15s;
+}
+.guide-panel details[open] > summary::before { transform: rotate(90deg); }
+.guide-panel details > div { padding: 10px 14px; }
+.guide-panel ul { margin: 4px 0 8px 18px; padding: 0; }
+.guide-panel li { margin: 3px 0; }
+.guide-panel .guide-tip {
+    background: rgba(200,166,78,0.08);
+    border-left: 3px solid #d4b45c;
+    padding: 8px 12px; margin: 8px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.84rem;
+}
+
+/* Light mode overrides */
+body.light-mode .guide-panel { background: #fff; border-color: #b8960a; color: #444; }
+body.light-mode .guide-panel-title { color: #b8960a; }
+body.light-mode .guide-panel-header { border-bottom-color: #e0e0e0; }
+body.light-mode .guide-close:hover { color: #b8960a; }
+body.light-mode .guide-panel h2 { color: #b8960a; border-bottom-color: #e8e8e8; }
+body.light-mode .guide-panel h3 { color: #555; }
+body.light-mode .guide-panel strong { color: #333; }
+body.light-mode .guide-panel code { background: #f5f5f5; border-color: #ddd; color: #b8960a; }
+body.light-mode .guide-panel th { background: #f5f5f5; color: #b8960a; border-bottom-color: #ddd; }
+body.light-mode .guide-panel td { border-bottom-color: #eee; color: #555; }
+body.light-mode .guide-panel details { border-color: #e0e0e0; }
+body.light-mode .guide-panel summary { background: #f8f8f8; color: #333; }
+body.light-mode .guide-panel summary::before { color: #b8960a; }
+body.light-mode .guide-panel .guide-tip { background: rgba(184,150,10,0.08); border-left-color: #b8960a; }
+body.light-mode .guide-btn { color: #b8960a; background: rgba(184,150,10,0.08); border-color: rgba(184,150,10,0.18); }
+body.light-mode .guide-btn:hover { background: rgba(184,150,10,0.18); }
+
 .logout-btn {
     font-family: 'JetBrains Mono', monospace;
     font-size: 9px; font-weight: 700;

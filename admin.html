@@ -6,7 +6,6 @@
     <title>Nationhood | Admin Panel</title>
     
         <link rel="stylesheet" href="css/admin.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -22,7 +21,7 @@
             <label>Admin Password</label>
             <input type="password" id="admin-password" placeholder="Enter admin password">
         </div>
-        <button class="btn btn-danger btn-full" onclick="authenticate()">AUTHENTICATE</button>
+        <button class="btn btn-danger btn-full" id="admin-auth-btn">AUTHENTICATE</button>
         <div id="auth-error" class="status error hidden"></div>
         <div class="back-link"><a href="index.html">← Back to Game</a></div>
     </div>
@@ -316,7 +315,7 @@
                 <div class="input-group" style="flex:1; min-width:200px; margin-bottom:0;">
                     <label>Page</label>
                     <select id="inspector-page-select">
-                        <option value="parties.html">🎭 Parties</option>
+                        <option value="politics.html">🎭 Politics</option>
                         <option value="elections.html">🗳️ Elections</option>
                         <option value="government.html">🏛️ Government</option>
                         <option value="nation.html">📊 Nation Stats</option>
@@ -327,7 +326,6 @@
                         <option value="conflict.html">💥 Conflict</option>
                         <option value="diplomacy.html">🤝 Diplomacy</option>
                         <option value="events.html">📰 Events</option>
-                        <option value="ministry-actions.html">🏢 Ministry Actions</option>
                         <option value="select-candidate.html?role=pm">👤 Select PM</option>
                     </select>
                 </div>
@@ -633,6 +631,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         document.getElementById('admin-section').classList.add('hidden');
         document.getElementById('admin-password').value = '';
     }
+    document.getElementById('admin-auth-btn').addEventListener('click', authenticate);
     document.getElementById('admin-password').addEventListener('keypress', (e) => { if (e.key === 'Enter') authenticate(); });
 
     async function loadAllData() {
@@ -783,7 +782,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     async function loadStats() {
         try {
             const { count: nationCount } = await _supabase.from('nations').select('*', { count: 'exact', head: true });
-            const { count: playerCount } = await _supabase.from('factions').select('*', { count: 'exact', head: true }).eq('faction_type', 'party').eq('is_npc', false);
+            const { count: playerCount } = await _supabase.from('factions').select('*', { count: 'exact', head: true }).eq('faction_type', 'party');
             const { count: partyCount } = await _supabase.from('factions').select('*', { count: 'exact', head: true }).eq('faction_type', 'party');
             const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
             document.getElementById('stat-nations').textContent = nationCount || 0;
@@ -1319,7 +1318,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         try {
             document.getElementById('players-list').innerHTML = '<div class="no-players">Loading...</div>';
             const [{ data: factions }] = await Promise.all([
-                _supabase.from('factions').select('id, faction_name, abbreviation, faction_type, nation_id, nation, seats, approval_rating, action_points, is_npc').eq('is_npc', false).order('faction_name')
+                _supabase.from('factions').select('id, faction_name, abbreviation, faction_type, nation_id, nation, seats, approval_rating, action_points').order('faction_name')
             ]);
             allPlayersCache = factions || [];
             renderPlayers(filter);
@@ -2648,35 +2647,9 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             let updatedCount = 0;
             let nationCount = 0;
 
-            for (const nation of allNations) {
-                if (!nation.last_budget_bill_id) continue;
-
-                // Fetch active laws with policy data for this nation
-                const { data: activeLaws, error: lawErr } = await _supabase.from('active_laws')
-                    .select('*, policies(*)')
-                    .eq('nation_id', nation.id);
-                if (lawErr) throw lawErr;
-
-                // Recompute fulfilled_cost per fiscal category using the shared function
-                for (const cat of FISCAL_CATEGORIES) {
-                    const result = computeMinistryPolicyCost(activeLaws || [], cat, nation);
-
-                    const { error: updateErr } = await _supabase.from('budget_allocations')
-                        .update({ fulfilled_cost: result.total, updated_at: new Date().toISOString() })
-                        .eq('bill_id', nation.last_budget_bill_id)
-                        .eq('fiscal_category', cat);
-
-                    if (updateErr) {
-                        console.warn(`[recalculate] Failed to update ${cat} for ${nation.name}:`, updateErr.message);
-                    } else {
-                        updatedCount++;
-                    }
-                }
-                nationCount++;
-            }
-
-            status.className = 'status success';
-            status.textContent = `✅ Recalculation complete — updated ${updatedCount} allocations across ${nationCount} nations. Run the audit to see updated numbers.`;
+            // Budget allocation system has been removed — nothing to recalculate
+            status.className = 'status info';
+            status.textContent = 'Budget allocation system has been removed. No recalculation needed.';
 
             // Auto-run the audit to show fresh numbers
             await runPolicyAudit();
@@ -2687,7 +2660,6 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     }
 
 // Expose functions for HTML onclick/onchange handlers
-window.authenticate = authenticate;
 window.logout = logout;
 window.showTab = showTab;
 window.setTickInterval = setTickInterval;
@@ -3399,22 +3371,11 @@ async function runStatAudit() {
     const covering = (instConfig || []).filter(ic => ic.primary_stat === sk || ic.secondary_stat === sk);
     if (covering.length === 0) {
         log('  No institutions cover this stat. Natural decay rate applies.', '#888');
-    } else if (!nation.last_budget_bill_id) {
-        log('  No budget passed — all institutions are UNFUNDED (0%).', '#f44');
     } else {
-        const { data: allocs } = await _supabase.from('budget_item_allocations')
-            .select('item_id, allocation_amount, needed_amount')
-            .eq('bill_id', nation.last_budget_bill_id)
-            .eq('item_type', 'institution');
-        const allocMap = {};
-        for (const a of (allocs || [])) allocMap[a.item_id] = a;
+        // No budget bill system — institutions auto-fund at 100%
         for (const ic of covering) {
             const role = ic.primary_stat === sk ? 'primary' : 'secondary';
-            const a = allocMap[ic.id];
-            const pct = a && a.needed_amount > 0 ? Math.min(100, Math.round((a.allocation_amount / a.needed_amount) * 100)) : 0;
-            const tierLabel = pct >= 100 ? 'Fully Funded (decay blocked)' : pct >= 90 ? 'Stretched' : pct >= 75 ? 'Strained' : pct >= 50 ? 'Underfunded' : pct >= 25 ? 'Critical' : 'Collapsed';
-            log(`  ${ic.institution_name || ic.id} (${role}) — ${pct}% funded → ${tierLabel}`,
-                pct >= 100 ? '#4f4' : pct >= 75 ? '#fa0' : '#f44');
+            log(`  ${ic.institution_name || ic.id} (${role}) — 100% funded (auto-funded, no budget system)`, '#4f4');
         }
     }
 
@@ -3662,7 +3623,7 @@ async function loadIntegrityData() {
         const [fpRes, banRes, facRes] = await Promise.all([
             _supabase.from('player_fingerprints').select('*').order('last_seen_at', { ascending: false }),
             _supabase.from('player_bans').select('*').order('banned_at', { ascending: false }),
-            _supabase.from('factions').select('id, faction_name, abbreviation, nation_id, nation, founded_tick, is_npc, is_banned').eq('is_npc', false).order('founded_tick', { ascending: false })
+            _supabase.from('factions').select('id, faction_name, abbreviation, nation_id, nation, founded_tick, is_banned').order('founded_tick', { ascending: false })
         ]);
         if (fpRes.error) throw fpRes.error;
         _integrityFingerprints = fpRes.data || [];

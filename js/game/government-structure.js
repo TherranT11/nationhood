@@ -11,51 +11,9 @@ import { IDEOLOGY_OPPOSITES } from './ideology.js';
 export async function loadSeats(supabase, nationId, isAutocracy, allParties, currentFactionId) {
     const allPartySeats = {};
 
-    if (isAutocracy) {
-        allParties.forEach(p => {
-            allPartySeats[p.id] = p.seats || 0;
-        });
-    } else {
-        const cacheKey = 'seats_' + nationId;
-        let election = null;
-        if (typeof qCache === 'function') {
-            const cached = qCache(cacheKey);
-            if (cached) { election = cached; }
-        }
-        if (!election) {
-            const res = await supabase
-                .from('elections')
-                .select('results')
-                .eq('nation_id', nationId)
-                .eq('status', 'completed')
-                .eq('election_type', 'parliamentary')
-                .order('election_tick', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-            election = res.data;
-            if (election && typeof qCacheSet === 'function') qCacheSet(cacheKey, election, 2 * 60 * 1000);
-        }
-
-        if (election?.results?.votes) {
-            election.results.votes.forEach(s => {
-                allPartySeats[s.party_id] = s.seats;
-            });
-        } else if (election?.results?.seats) {
-            election.results.seats.forEach(s => {
-                allPartySeats[s.party_id] = s.seats;
-            });
-        }
-
-        allParties.forEach(p => {
-            if (allPartySeats[p.id] === undefined) {
-                allPartySeats[p.id] = p.seats || 0;
-            }
-        });
-    }
-
-    // Patch the party objects in-place so callers don't need to
+    // factions.seats is the canonical source of truth — use it directly
     allParties.forEach(p => {
-        if (allPartySeats[p.id] !== undefined) p.seats = allPartySeats[p.id];
+        allPartySeats[p.id] = p.seats || 0;
     });
 
     const currentSeats = allPartySeats[currentFactionId] ??
