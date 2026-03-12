@@ -4552,12 +4552,12 @@ function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIde
     }
 
     // Classify blocs into tiers based on preference_score
-    // BASE: >= 70, LEAN: 55-69, SWING: 45-54, SKEPTICAL: 30-44, HOSTILE: < 30
+    // BASE: >= 55, LEAN: 42-54, SWING: 30-41, SKEPTICAL: 18-29, HOSTILE: < 18
     const TIER_DEFS = [
-        { key: 'BASE', label: 'BASE', min: 70, color: 'var(--dgreen)', dimColor: 'rgba(74,222,128,0.08)' },
-        { key: 'LEAN', label: 'LEAN', min: 55, color: '#22d3ee', dimColor: 'rgba(34,211,238,0.08)' },
-        { key: 'SWING', label: 'SWING', min: 45, color: 'var(--damber)', dimColor: 'rgba(250,204,21,0.08)' },
-        { key: 'SKEPTICAL', label: 'SKEPTICAL', min: 30, color: '#f97316', dimColor: 'rgba(249,115,22,0.08)' },
+        { key: 'BASE', label: 'BASE', min: 55, color: 'var(--dgreen)', dimColor: 'rgba(74,222,128,0.08)' },
+        { key: 'LEAN', label: 'LEAN', min: 42, color: '#22d3ee', dimColor: 'rgba(34,211,238,0.08)' },
+        { key: 'SWING', label: 'SWING', min: 30, color: 'var(--damber)', dimColor: 'rgba(250,204,21,0.08)' },
+        { key: 'SKEPTICAL', label: 'SKEPTICAL', min: 18, color: '#f97316', dimColor: 'rgba(249,115,22,0.08)' },
         { key: 'HOSTILE', label: 'HOSTILE', min: 0, color: 'var(--dred)', dimColor: 'rgba(239,68,68,0.08)' },
     ];
 
@@ -4576,7 +4576,7 @@ function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIde
 
     const enrichedBlocs = [];
     for (const bloc of blocs) {
-        const pref = approvalMap[bloc.id] ?? 50;
+        const pref = approvalMap[bloc.id] ?? 40;
         const w = Number(bloc.population_weight || 0);
         let tierKey = 'HOSTILE';
         for (const tier of tierData) {
@@ -6174,12 +6174,12 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     // Determine bloc tiers from approval data
     const blocs = (voterBlocs || []).map(b => {
         const ba = approvalByBloc[b.id];
-        const pref = ba?.preference_score ?? 50;
+        const pref = ba?.preference_score ?? 40;
         let tier = 'SWING';
-        if (pref >= 65) tier = 'BASE';
-        else if (pref >= 55) tier = 'LEAN';
-        else if (pref < 35) tier = 'HOSTILE';
-        else if (pref < 45) tier = 'SKEPTICAL';
+        if (pref >= 55) tier = 'BASE';
+        else if (pref >= 42) tier = 'LEAN';
+        else if (pref < 18) tier = 'HOSTILE';
+        else if (pref < 30) tier = 'SKEPTICAL';
         return { ...b, tier, approval: Math.round(pref), turnout: b.turnout_rate ?? 50, ideology: b };
     });
 
