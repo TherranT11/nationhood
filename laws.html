@@ -990,10 +990,32 @@ async function enactDecree(billId) {
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const bill = committeeBills.find(b => b.id === billId);
-        const decreeFields = { status: 'floor', floor_tick: shard?.current_tick || 0 };
-        decreeFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
-        decreeFields.floor_tick = shard?.current_tick || 0;
-        await _supabase.from('bills').update(decreeFields).eq('id', billId);
+        const currentTick = shard?.current_tick || 0;
+        const decreeFields = {
+            status: 'floor',
+            floor_tick: currentTick,
+            voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
+            early_resolution_status: null,
+            early_resolution_tick: null,
+            passed_tick: null,
+            votes_for: 0,
+            votes_against: 0,
+            votes_abstain: 0,
+            quorum_failures: 0
+        };
+        const { error: updateError } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
+        if (updateError) throw updateError;
+
+        const { data: refreshedBill, error: refreshError } = await _supabase
+            .from('bills')
+            .select('id, status')
+            .eq('id', billId)
+            .single();
+        if (refreshError) throw refreshError;
+        if (!refreshedBill || refreshedBill.status !== 'floor') {
+            alert('Error: decree was not moved to the floor. Please refresh and try again.');
+            return;
+        }
 
         // Apply dynamic ideology penalty to sponsor (skip for system-generated bills)
         if (bill && bill.proposed_by) {
