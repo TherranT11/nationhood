@@ -8370,7 +8370,7 @@ async function renderAppointAmbassadorPanel(body, statusEl) {
     } else {
         html += '<span style="flex:1;"></span>';
     }
-    html += '<button class="detail-btn" onclick="cancelDraft()">Cancel</button>';
+    html += '<button class="detail-btn" style="color:var(--text-muted);" onclick="cancelDraft()">Cancel</button>';
     const canNominate = appointTargetNation && appointSelectedIndex !== null;
     html += '<button class="detail-btn" style="color:' + (canNominate ? 'var(--teal)' : 'var(--text-dim)') + ';border-color:' + (canNominate ? 'var(--teal-border)' : 'var(--border-subtle)') + ';" ' + (canNominate ? 'onclick="executeAppointAmbassador()"' : 'disabled') + '>Nominate (' + APPOINT_AMBASSADOR_AP + ' AP)</button>';
     html += '</div>';
