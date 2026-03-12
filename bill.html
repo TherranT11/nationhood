@@ -1811,6 +1811,14 @@ async function enactDecree() {
         const { error } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
         if (error) throw error;
 
+        const { data: verificationRow, error: verificationError } = await _supabase.from('bills').select('id,status').eq('id', billId).single();
+        if (verificationError || !verificationRow || verificationRow.status !== 'floor') {
+            console.error('Decree floor verification failed after enact', {
+                billId,
+                nationId: currentNation?.id || null,
+                verificationError,
+                verificationRow
+            });
         const { data: refreshedBill, error: refreshError } = await _supabase
             .from('bills')
             .select('id, status')
