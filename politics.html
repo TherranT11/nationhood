@@ -4548,7 +4548,7 @@ function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIde
     const blocs = voterBlocs || [];
     const approvalMap = {};
     for (const row of (playerBlocApprovals || [])) {
-        approvalMap[row.bloc_id] = Number(row.preference_score ?? 50);
+        approvalMap[row.bloc_id] = Number(row.preference_score ?? 40);
     }
 
     // Classify blocs into tiers based on preference_score
@@ -4669,7 +4669,7 @@ function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIde
     // Pre-compute party positions on 0-100 scale
     const partyPositions = {};
     for (const ax of IDEOLOGY_AXES) {
-        partyPositions[ax.key] = Math.round((Number(playerIdeo[ax.key] ?? 0) + 100) / 2);
+        partyPositions[ax.key] = Math.round(50 + Number(playerIdeo[ax.key] ?? 0));
     }
 
     // Bloc dropdown options — sorted by preference descending
@@ -6175,11 +6175,11 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     const blocs = (voterBlocs || []).map(b => {
         const ba = approvalByBloc[b.id];
         const pref = ba?.preference_score ?? 40;
-        let tier = 'SWING';
+        let tier = 'HOSTILE';
         if (pref >= 55) tier = 'BASE';
         else if (pref >= 42) tier = 'LEAN';
-        else if (pref < 18) tier = 'HOSTILE';
-        else if (pref < 30) tier = 'SKEPTICAL';
+        else if (pref >= 30) tier = 'SWING';
+        else if (pref >= 18) tier = 'SKEPTICAL';
         return { ...b, tier, approval: Math.round(pref), turnout: b.turnout_rate ?? 50, ideology: b };
     });
 
