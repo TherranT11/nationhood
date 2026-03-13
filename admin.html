@@ -593,7 +593,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName, STAT_DECAY_CONFIG, normalizeNationStatKey, SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS, generateArticle, generateTickArticles, ideologyOppositionMultiplier } from './js/game-common.js';
+import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName, STAT_DECAY_CONFIG, normalizeNationStatKey, SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS, generateArticle, generateTickArticles, ideologyOppositionMultiplier, buildFundingPctMap, getInstFundingPct } from './js/game-common.js';
 
     const ADMIN_PW_HASH = 'dd5e5d55d1f108d2d4706f35672acf7eef98156c70101dd07279c1aa436de3b4';
     async function hashPassword(pw) {
@@ -3373,18 +3373,14 @@ async function runStatAudit() {
         log('  No institutions cover this stat. Natural decay rate applies.', '#888');
     } else {
         const { data: allocRows } = await _supabase.from('budget_item_allocations')
-            .select('item_id, allocation_amount, needed_amount')
+            .select('item_id, item_type, allocation_amount, needed_amount')
             .eq('nation_id', nationId)
             .eq('item_type', 'institution')
             .order('created_at', { ascending: true });
-        const allocLookup = {};
-        for (const ar of (allocRows || [])) {
-            const nd = Number(ar.needed_amount || 0);
-            allocLookup[ar.item_id] = nd > 0 ? Math.round((Number(ar.allocation_amount || 0) / nd) * 100) : 100;
-        }
+        const allocLookup = buildFundingPctMap(allocRows);
         for (const ic of covering) {
             const role = ic.primary_stat === sk ? 'primary' : 'secondary';
-            const pct = allocLookup[ic.id] !== undefined ? allocLookup[ic.id] : 100;
+            const pct = getInstFundingPct(allocLookup, ic.id);
             const hasAlloc = allocLookup[ic.id] !== undefined;
             const color = pct >= 100 ? '#4f4' : pct >= 75 ? '#ff0' : pct >= 50 ? '#f90' : '#f44';
             log(`  ${ic.institution_name || ic.id} (${role}) — ${pct}% funded${hasAlloc ? '' : ' (default, no funding bill)'}`, color);
