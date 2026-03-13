@@ -137,6 +137,8 @@
 }
 .box--double { width: 692px; min-width: 0; flex-shrink: 0; }
 .box--single { width: 340px; min-width: 0; flex-shrink: 0; }
+.box--third  { flex: 1 1 0; min-width: 0; }
+.box--full   { width: 100%; min-width: 0; }
 .box--h450 { height: 450px; }
 .box--h480 { height: 480px; }
 .box-header {
@@ -1186,5 +1188,5 @@
 /* ── RESPONSIVE ── */
 @media (max-width: 1080px) {
   .row { flex-direction: column; }
-  .box--double, .box--single { width: 100%; }
+  .box--double, .box--single, .box--third, .box--full { width: 100%; }
 }
