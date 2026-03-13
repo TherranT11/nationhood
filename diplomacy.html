@@ -3469,7 +3469,7 @@ function saveWizardTradeArticle(articleType) {
     switch (articleType) {
         case 'duration': {
             const durType = document.querySelector('input[name="dur-type"]:checked')?.value || 'fixed';
-            const ticks = Math.min(120, Math.max(4, parseInt(document.getElementById('dur-ticks')?.value || '12')));
+            const ticks = Math.min(240, Math.max(4, parseInt(document.getElementById('dur-ticks')?.value || '12')));
             const autoRenew = document.getElementById('dur-autorenew')?.checked || false;
             const withdrawal = Math.min(6, Math.max(1, parseInt(document.getElementById('dur-withdrawal')?.value || '3')));
             articleData = { duration_type: durType, duration_ticks: durType === 'fixed' ? ticks : null, auto_renew: autoRenew, withdrawal_notice_ticks: withdrawal };
@@ -5077,14 +5077,14 @@ function renderTradeArticleEditor(container, articleType, negotiationId) {
 function renderDurationEditor() {
     return `
         <div class="trade-radio-group" style="margin-bottom:10px;">
-            <label class="trade-radio-option" onclick="this.querySelector('input').checked=true;toggleDurationFixedFields()">
+            <label class="trade-radio-option" onclick="selectDurationType(this, 'permanent')">
                 <input type="radio" name="dur-type" value="permanent" />
                 <div>
                     <div class="trade-radio-label">Permanent</div>
                     <div class="trade-radio-hint">Until one party withdraws</div>
                 </div>
             </label>
-            <label class="trade-radio-option selected" onclick="this.querySelector('input').checked=true;toggleDurationFixedFields()">
+            <label class="trade-radio-option selected" onclick="selectDurationType(this, 'fixed')">
                 <input type="radio" name="dur-type" value="fixed" checked />
                 <div>
                     <div class="trade-radio-label">Fixed Term</div>
@@ -5095,8 +5095,8 @@ function renderDurationEditor() {
         <div id="dur-fixed-fields">
             <div class="trade-field">
                 <label>Duration (ticks)</label>
-                <input type="number" id="dur-ticks" value="12" min="4" max="48" />
-                <div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px;">Min 4, max 48 (FTA/PTA). Min 8, max 36 (RSC). Min 4, max 24 (Subsidy).</div>
+                <input type="number" id="dur-ticks" value="12" min="4" max="240" />
+                <div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px;">Min 4, max 240 ticks (20 years).</div>
             </div>
             <div class="trade-checkbox-option">
                 <input type="checkbox" id="dur-autorenew" /> Auto-renew unless either party cancels
@@ -5110,6 +5110,17 @@ function renderDurationEditor() {
             </div>
         </div>
     `;
+}
+
+function selectRadioOption(label) {
+    label.querySelector('input').checked = true;
+    label.closest('.trade-radio-group').querySelectorAll('.trade-radio-option').forEach(el => el.classList.remove('selected'));
+    label.classList.add('selected');
+}
+
+function selectDurationType(label, value) {
+    selectRadioOption(label);
+    toggleDurationFixedFields();
 }
 
 function toggleDurationFixedFields() {
@@ -5148,21 +5159,21 @@ function renderTariffReductionEditor() {
         <div class="trade-field">
             <label>Direction</label>
             <div class="trade-radio-group">
-                <label class="trade-radio-option selected" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option selected" onclick="selectRadioOption(this)">
                     <input type="radio" name="tariff-dir" value="mutual" checked />
                     <div>
                         <div class="trade-radio-label">Mutual</div>
                         <div class="trade-radio-hint">Both sides reduce tariffs on this sector</div>
                     </div>
                 </label>
-                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option" onclick="selectRadioOption(this)">
                     <input type="radio" name="tariff-dir" value="your_exports" />
                     <div>
                         <div class="trade-radio-label">Your exports only</div>
                         <div class="trade-radio-hint">Partner reduces tariffs on YOUR goods</div>
                     </div>
                 </label>
-                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option" onclick="selectRadioOption(this)">
                     <input type="radio" name="tariff-dir" value="their_exports" />
                     <div>
                         <div class="trade-radio-label">Their exports only</div>
@@ -5200,14 +5211,14 @@ function renderSupplyCommitmentEditor() {
         <div class="trade-field">
             <label>Direction: Who is the BUYER?</label>
             <div class="trade-radio-group">
-                <label class="trade-radio-option selected" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option selected" onclick="selectRadioOption(this)">
                     <input type="radio" name="supply-dir" value="we_buy" checked />
                     <div>
                         <div class="trade-radio-label">We BUY from partner</div>
                         <div class="trade-radio-hint">We commit to purchasing from them</div>
                     </div>
                 </label>
-                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option" onclick="selectRadioOption(this)">
                     <input type="radio" name="supply-dir" value="we_sell" />
                     <div>
                         <div class="trade-radio-label">We SELL to partner</div>
@@ -5360,14 +5371,14 @@ function updateSubsidyWarning(val) {
 function renderFundingSourceEditor() {
     return `
         <div class="trade-radio-group">
-            <label class="trade-radio-option selected" onclick="this.querySelector('input').checked=true">
+            <label class="trade-radio-option selected" onclick="selectRadioOption(this)">
                 <input type="radio" name="fund-source" value="general_treasury" checked />
                 <div>
                     <div class="trade-radio-label">General Treasury</div>
                     <div class="trade-radio-hint">Deducted from national budget each tick. Increases the deficit.</div>
                 </div>
             </label>
-            <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+            <label class="trade-radio-option" onclick="selectRadioOption(this)">
                 <input type="radio" name="fund-source" value="ministry_budget" />
                 <div>
                     <div class="trade-radio-label">Ministry of Trade Budget</div>
@@ -5448,14 +5459,14 @@ function renderAidConditionEditor() {
         <div class="trade-field">
             <label>Condition</label>
             <div class="trade-radio-group">
-                <label class="trade-radio-option selected" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option selected" onclick="selectRadioOption(this)">
                     <input type="radio" name="cond-op" value="gte" checked />
                     <div>
                         <div class="trade-radio-label">Must be &ge; threshold</div>
                         <div class="trade-radio-hint">Stat must stay at or above the value</div>
                     </div>
                 </label>
-                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option" onclick="selectRadioOption(this)">
                     <input type="radio" name="cond-op" value="lte" />
                     <div>
                         <div class="trade-radio-label">Must be &le; threshold</div>
@@ -5475,21 +5486,21 @@ function renderAidConditionEditor() {
         <div class="trade-field">
             <label>If Condition Fails</label>
             <div class="trade-radio-group">
-                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option" onclick="selectRadioOption(this)">
                     <input type="radio" name="cond-fail" value="suspend" checked />
                     <div>
                         <div class="trade-radio-label">Suspend Aid</div>
                         <div class="trade-radio-hint">Pause payments. Resumes if condition is met again at next review.</div>
                     </div>
                 </label>
-                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option" onclick="selectRadioOption(this)">
                     <input type="radio" name="cond-fail" value="reduce" />
                     <div>
                         <div class="trade-radio-label">Reduce Aid</div>
                         <div class="trade-radio-hint">Halve payments each failed review. Terminated after 3 consecutive failures.</div>
                     </div>
                 </label>
-                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option" onclick="selectRadioOption(this)">
                     <input type="radio" name="cond-fail" value="terminate" />
                     <div>
                         <div class="trade-radio-label">Terminate Agreement</div>
@@ -5567,7 +5578,7 @@ async function saveTradeArticle(negotiationId, articleType) {
     switch (articleType) {
         case 'duration': {
             const durType = document.querySelector('input[name="dur-type"]:checked')?.value || 'fixed';
-            const ticks = Math.min(120, Math.max(4, parseInt(document.getElementById('dur-ticks')?.value || '12')));
+            const ticks = Math.min(240, Math.max(4, parseInt(document.getElementById('dur-ticks')?.value || '12')));
             const autoRenew = document.getElementById('dur-autorenew')?.checked || false;
             const withdrawal = Math.min(6, Math.max(1, parseInt(document.getElementById('dur-withdrawal')?.value || '3')));
             articleData = { duration_type: durType, duration_ticks: durType === 'fixed' ? ticks : null, auto_renew: autoRenew, withdrawal_notice_ticks: withdrawal };
@@ -6461,7 +6472,7 @@ function saveCounterTradeArticle(articleType, proposalId) {
     switch (articleType) {
         case 'duration': {
             const durType = document.querySelector('input[name="dur-type"]:checked')?.value || 'fixed';
-            const ticks = Math.min(120, Math.max(4, parseInt(document.getElementById('dur-ticks')?.value || '12')));
+            const ticks = Math.min(240, Math.max(4, parseInt(document.getElementById('dur-ticks')?.value || '12')));
             const autoRenew = document.getElementById('dur-autorenew')?.checked || false;
             const withdrawal = Math.min(6, Math.max(1, parseInt(document.getElementById('dur-withdrawal')?.value || '3')));
             articleData = { duration_type: durType, duration_ticks: durType === 'fixed' ? ticks : null, auto_renew: autoRenew, withdrawal_notice_ticks: withdrawal };
