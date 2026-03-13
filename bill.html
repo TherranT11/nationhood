@@ -403,18 +403,24 @@ async function loadBillData() {
     }
 }
 
+function dollarsToMillions(amount) {
+    return Number(amount || 0) / 1_000_000;
+}
+
 function getInstitutionBaseCost(instId) {
     const row = (institutionConfig || []).find(i => i.id === instId);
     if (!row || !currentNation) return 0;
     const inflationMult = getInflationMultiplier(currentNation.inflation);
     const baseVal = Number(row.base_cost_per_capita || 0);
+    // Funding article economics are computed and stored in $M to match formatCurrency.
     if ((row.scaling_type || 'population') === 'gdp') {
-        return (baseVal / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0) * inflationMult;
+        return dollarsToMillions((baseVal / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0) * inflationMult);
     }
-    return baseVal * Number(currentNation.population || 0) * inflationMult;
+    return dollarsToMillions(baseVal * Number(currentNation.population || 0) * inflationMult);
 }
 
 function calculateFundingOngoingCost(fd) {
+    // Expects funding article values (base_cost, discretionary, return value) in $M.
     let ongoing = 0;
     for (const inst of (fd?.institutions || [])) {
         const fromPct = Number(inst.current_pct || 0);
@@ -2444,6 +2450,7 @@ function setupRealtimeComments() {
 // ==================== UTILITIES ====================
 
 function formatCurrency(amt) {
+    // Defensive note: amt must be in millions of dollars ($M); function formats >=1000 as $B.
     if (amt === 0) return '$0';
     const abs = Math.abs(amt), sign = amt < 0 ? '-' : '+';
     if (abs >= 1000) return `${sign}$${(abs / 1000) % 1 === 0 ? (abs / 1000).toFixed(0) : (abs / 1000).toFixed(1)}B`;

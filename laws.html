@@ -1278,18 +1278,24 @@ function _getInstFundingPct(instId) {
     return getInstFundingPct(window._fundingPctMap, instId);
 }
 
+function _dollarsToMillions(amount) {
+    return Number(amount || 0) / 1_000_000;
+}
+
 function _computeInstitutionBaseCost(instId) {
     const cfg = (window._instConfig || []).find(i => i.id === instId);
     if (!cfg || !currentNation) return 0;
     const inflationMult = getInflationMultiplier(currentNation.inflation);
     const baseVal = Number(cfg.base_cost_per_capita || 0);
+    // Funding article economics are computed and stored in $M to match bill rendering logic.
     if ((cfg.scaling_type || 'population') === 'gdp') {
-        return (baseVal / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0) * inflationMult;
+        return _dollarsToMillions((baseVal / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0) * inflationMult);
     }
-    return baseVal * Number(currentNation.population || 0) * inflationMult;
+    return _dollarsToMillions(baseVal * Number(currentNation.population || 0) * inflationMult);
 }
 
 function _calculateFundingArticleOngoingCost(fundingData) {
+    // Expects fundingData institution base_cost and discretionary values in $M.
     let ongoingCost = 0;
     for (const inst of (fundingData?.institutions || [])) {
         const fromPct = Number(inst.current_pct || 0);
@@ -1388,6 +1394,7 @@ function addFundingArticle() {
             name: inst.name,
             current_pct: currentPct,
             proposed_pct: proposedPct,
+            // Stored in $M for cross-page consistency with bill.html formatCurrency expectations.
             base_cost: _computeInstitutionBaseCost(inst.id)
         });
         if (proposedPct !== currentPct) anyChange = true;
