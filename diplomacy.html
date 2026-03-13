@@ -1639,7 +1639,7 @@ async function fmApprove(proposalId) {
 
     // For trade_agreement proposals, create the trade_agreements row
     if (proposal.proposal_type === 'trade_agreement') {
-        await activateTradeAgreement(proposal, currentTick);
+        if (!await activateTradeAgreement(proposal, currentTick)) return;
     }
 
     // Apply relation effects
@@ -4407,10 +4407,8 @@ async function openTradeNegotiation(negotiationId) {
             .eq('proposal_type', 'trade_negotiation')
             .in('status', ['proposed', 'revised'])
             .or('target_nation_id.eq.' + currentNation.id + ',proposing_nation_id.eq.' + currentNation.id);
-        console.log('[Trade] Proposal lookup for neg', neg.id, '- found:', (proposals || []).length, 'proposals, error:', propErr);
         if (proposals) {
             linkedProposal = proposals.find(p => p.proposal_data?.negotiation_id === neg.id) || null;
-            console.log('[Trade] Matched proposal:', linkedProposal?.id || 'NONE');
         }
     }
 
@@ -6203,11 +6201,12 @@ async function acceptProposal(proposalId) {
         return;
     }
 
-    // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
+    // Authorization: caller must be target nation's ambassador to proposer, FM, HoG, or MoT (for trade)
     await refreshRoles();
     const isTargetNation = proposal.target_nation_id === currentNation.id;
     const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
-    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG)) {
+    const isMoTForTrade = proposal.proposal_type === 'trade_agreement' && diplomaticRoles.isMoT;
+    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !isMoTForTrade)) {
         alert('You are not authorized to accept this proposal.');
         return;
     }
@@ -6282,7 +6281,7 @@ async function acceptProposal(proposalId) {
 
         // For trade_agreement proposals, create the trade_agreements row
         if (proposal.proposal_type === 'trade_agreement') {
-            await activateTradeAgreement(proposal, currentTick);
+            if (!await activateTradeAgreement(proposal, currentTick)) return;
         }
 
         // Apply effects (for diplomatic initiatives with relation/money effects)
@@ -6307,7 +6306,7 @@ async function rejectProposal(proposalId) {
     // Fetch proposal for authorization and status check
     const { data: proposal } = await _supabase
         .from('diplomatic_proposals')
-        .select('proposing_nation_id, target_nation_id, status')
+        .select('proposing_nation_id, target_nation_id, status, proposal_type')
         .eq('id', proposalId)
         .single();
 
@@ -6320,11 +6319,12 @@ async function rejectProposal(proposalId) {
         return;
     }
 
-    // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
+    // Authorization: caller must be target nation's ambassador to proposer, FM, HoG, or MoT (for trade)
     await refreshRoles();
     const isTargetNation = proposal.target_nation_id === currentNation.id;
     const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
-    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG)) {
+    const isMoTForTrade = proposal.proposal_type === 'trade_agreement' && diplomaticRoles.isMoT;
+    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !isMoTForTrade)) {
         alert('You are not authorized to reject this proposal.');
         return;
     }
