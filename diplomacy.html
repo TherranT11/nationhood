@@ -352,6 +352,14 @@ async function renderDiploHeader() {
             .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id);
         activeCount = ac || 0;
 
+        // Also count active trade agreements
+        const { count: tac } = await _supabase
+            .from('trade_agreements')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'active')
+            .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id);
+        activeCount += tac || 0;
+
         const { count: pc } = await _supabase
             .from('diplomatic_proposals')
             .select('*', { count: 'exact', head: true })
@@ -7556,21 +7564,168 @@ async function renderNegotiationsBox() {
             .in('status', ['open', 'active', 'ratification'])
             .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id);
 
+        // Fetch active (signed) diplomatic agreements
+        const { data: activeAgreements } = await _supabase
+            .from('diplomatic_proposals')
+            .select('*')
+            .eq('status', 'active')
+            .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id)
+            .order('activated_at_tick', { ascending: false });
+
+        // Fetch active (signed) trade agreements
+        const { data: activeTradeAgs } = await _supabase
+            .from('trade_agreements')
+            .select('*')
+            .eq('status', 'active')
+            .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id)
+            .order('enacted_at_tick', { ascending: false });
+
         const allProposals = proposals || [];
         const allTradeNegs = tradeNegs || [];
-        const totalCount = allProposals.length + allTradeNegs.length;
+        const allActiveAgreements = activeAgreements || [];
+        const allActiveTradeAgs = activeTradeAgs || [];
+        const totalCount = allProposals.length + allTradeNegs.length + allActiveAgreements.length + allActiveTradeAgs.length;
 
         const countEl = document.getElementById('negotiations-count');
         if (countEl) countEl.textContent = totalCount > 0 ? totalCount : '';
 
         if (totalCount === 0) {
-            body.innerHTML = '<div class="empty-state"><div class="empty-state-text">No active negotiations.</div></div>';
+            body.innerHTML = '<div class="empty-state"><div class="empty-state-text">No agreements or negotiations.</div></div>';
             return;
         }
 
         let html = '';
 
-        // Diplomatic proposals
+        // ── Active (signed) diplomatic agreements — shown first, green ──
+        for (const ag of allActiveAgreements) {
+            const pd = ag.proposal_data || {};
+            const title = pd.name || 'Unnamed Agreement';
+            const proposerName = pd.proposer_nation_name || 'Unknown';
+            const targetName = pd.target_nation_name || 'Unknown';
+            const isOutgoing = ag.proposing_nation_id === currentNation.id;
+            const otherNation = isOutgoing ? targetName : proposerName;
+            const classification = pd.classification || '';
+            const classTag = classification ? ' · ' + classification : '';
+            const durationYears = pd.duration_years || 0;
+            const expiresTick = ag.activated_at_tick != null && durationYears > 0
+                ? ag.activated_at_tick + (durationYears * GAME_CONFIG.TICKS_PER_YEAR) : null;
+
+            // Articles summary
+            const articles = pd.articles || [];
+            const struckIndices = new Set(pd.struck_articles || []);
+            let totalRel = 0;
+            articles.forEach((art, i) => { if (!struckIndices.has(i)) totalRel += art.relations || 0; });
+
+            // Withdraw button
+            let withdrawBtn = '';
+            if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
+                withdrawBtn = '<button class="detail-btn" onclick="event.stopPropagation(); withdrawAgreement(\'' + ag.id + '\')">Withdraw</button>';
+            }
+
+            html += `
+                <div class="neg-row neg-row--active" data-neg-id="${ag.id}" onclick="toggleNegRow('${ag.id}')">
+                    <span class="neg-direction neg-direction--active">&#10003;</span>
+                    <div class="neg-info">
+                        <div class="neg-title">${escapeHtml(title)}</div>
+                        <div class="neg-sub">${escapeHtml(otherNation)}${classTag}</div>
+                    </div>
+                    <div class="neg-meta">
+                        <span class="badge badge--green">Active</span>
+                        <span class="neg-expand">&#9654;</span>
+                    </div>
+                </div>
+                <div class="neg-detail" id="neg-detail-${ag.id}">
+                    <div class="neg-detail-header">
+                        <div class="neg-detail-title">${escapeHtml(title)}</div>
+                        <span class="badge badge--green">Active</span>
+                    </div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">
+                        ${escapeHtml(proposerName)} &amp; ${escapeHtml(targetName)}
+                        ${durationYears ? ' · ' + durationYears + ' year' + (durationYears !== 1 ? 's' : '') : ''}
+                        ${totalRel ? ' · ' + (totalRel > 0 ? '+' : '') + totalRel + ' Relations' : ''}
+                    </div>
+                    <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">
+                        Signed: ${ag.activated_at_tick != null ? tickToDate(ag.activated_at_tick) : '—'}
+                        · Expires: ${expiresTick != null ? tickToDate(expiresTick) : '—'}
+                    </div>
+                    <div class="detail-actions">
+                        ${withdrawBtn}
+                    </div>
+                </div>
+            `;
+        }
+
+        // ── Active (signed) trade agreements — green ──
+        if (allActiveTradeAgs.length > 0) {
+            // Fetch nation names for trade agreements
+            const tradeNationIds = new Set();
+            allActiveTradeAgs.forEach(a => { tradeNationIds.add(a.nation_a_id); tradeNationIds.add(a.nation_b_id); });
+            const { data: tradeNations } = await _supabase.from('nations').select('id, name').in('id', [...tradeNationIds]);
+            const tradeNameMap = {};
+            (tradeNations || []).forEach(n => tradeNameMap[n.id] = n.name);
+
+            for (const ta of allActiveTradeAgs) {
+                const typeInfo = TRADE_AGREEMENT_TYPES[ta.agreement_type];
+                const partnerId = ta.nation_a_id === currentNation.id ? ta.nation_b_id : ta.nation_a_id;
+                const partnerName = tradeNameMap[partnerId] || 'Unknown';
+                const typeLabel = typeInfo ? typeInfo.shortLabel : 'Trade';
+                const ticksLeft = ta.expires_at_tick ? ta.expires_at_tick - shardTick : null;
+                const withdrawalPending = ta.withdrawn_at_tick != null && ta.withdrawn_at_tick > shardTick;
+
+                let withdrawBtn = '';
+                const canWithdraw = diplomaticRoles.isFM || diplomaticRoles.isHoG ||
+                    (diplomaticRoles.isMoT && (ta.agreement_type === 'impose_embargo' || ta.agreement_type === 'retaliatory_tariff' || ta.agreement_type === 'export_subsidy'));
+                if (withdrawalPending) {
+                    withdrawBtn = '<span style="font-size:10px;color:var(--amber);">Withdrawing in ' + (ta.withdrawn_at_tick - shardTick) + ' ticks</span>';
+                } else if (canWithdraw) {
+                    const btnLabel = ta.agreement_type === 'impose_embargo' ? 'Lift Embargo' : 'Withdraw';
+                    withdrawBtn = '<button class="detail-btn" onclick="event.stopPropagation(); withdrawTradeAgreement(\'' + ta.id + '\')">' + btnLabel + '</button>';
+                }
+
+                html += `
+                    <div class="neg-row neg-row--active" data-neg-id="ta-${ta.id}" onclick="toggleNegRow('ta-${ta.id}')">
+                        <span class="neg-direction neg-direction--active">&#10003;</span>
+                        <div class="neg-info">
+                            <div class="neg-title">${escapeHtml(ta.agreement_name || 'Unnamed')}</div>
+                            <div class="neg-sub">${escapeHtml(partnerName)} · ${escapeHtml(typeLabel)}</div>
+                        </div>
+                        <div class="neg-meta">
+                            <span class="badge badge--green">Active</span>
+                            <span class="neg-expand">&#9654;</span>
+                        </div>
+                    </div>
+                    <div class="neg-detail" id="neg-detail-ta-${ta.id}">
+                        <div class="neg-detail-header">
+                            <div class="neg-detail-title">${escapeHtml(ta.agreement_name || 'Unnamed')}</div>
+                            <span class="badge badge--green">${typeInfo ? escapeHtml(typeInfo.shortLabel) : 'Trade'}</span>
+                        </div>
+                        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">
+                            ${escapeHtml(currentNation.name)} &amp; ${escapeHtml(partnerName)}
+                            ${typeInfo ? ' · ' + escapeHtml(typeInfo.label) : ''}
+                            ${ta.duration_ticks ? ' · ' + ta.duration_ticks + ' ticks' : ' · Permanent'}
+                            ${ta.auto_renew ? ' (auto-renew)' : ''}
+                        </div>
+                        <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">
+                            Enacted: ${ta.enacted_at_tick != null ? tickToDate(ta.enacted_at_tick) : '—'}
+                            · Expires: ${ta.expires_at_tick != null ? tickToDate(ta.expires_at_tick) : 'Never'}
+                            ${ticksLeft != null && ticksLeft <= 5 ? ' · <span style="color:var(--amber);">' + ticksLeft + ' ticks left</span>' : ''}
+                        </div>
+                        <div class="detail-actions">
+                            ${withdrawBtn}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // ── Separator between active and in-progress if both exist ──
+        const hasActive = allActiveAgreements.length > 0 || allActiveTradeAgs.length > 0;
+        const hasPending = allProposals.length > 0 || allTradeNegs.length > 0;
+        if (hasActive && hasPending) {
+            html += '<div style="border-top:1px solid var(--border-hair);margin:4px 14px;"></div>';
+        }
+
+        // Diplomatic proposals (in-progress)
         for (const p of allProposals) {
             const pd = p.proposal_data || {};
             const isOutgoing = p.proposing_nation_id === currentNation.id;
@@ -7590,7 +7745,7 @@ async function renderNegotiationsBox() {
             } else if (isFmReview && diplomaticRoles.isFM) {
                 statusBadge = '<span class="badge badge--blue">FM Review</span>';
             } else if (isRatification) {
-                statusBadge = '<span class="badge badge--dim">Parliament</span>';
+                statusBadge = '<span class="badge badge--teal">Parliament</span>';
             } else {
                 statusBadge = '<span class="badge badge--dim">Awaiting</span>';
             }
@@ -7632,7 +7787,7 @@ async function renderNegotiationsBox() {
             if (needsAction) {
                 statusBadge = '<span class="badge badge--amber">Join</span>';
             } else if (neg.status === 'ratification') {
-                statusBadge = '<span class="badge badge--amber">Parliament</span>';
+                statusBadge = '<span class="badge badge--teal">Parliament</span>';
             } else {
                 statusBadge = '<span class="badge badge--dim">' + (neg.status === 'open' ? 'Pending' : 'Active') + '</span>';
             }
