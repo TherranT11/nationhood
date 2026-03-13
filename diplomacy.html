@@ -7250,7 +7250,6 @@ function renderActionsBox() {
     html += '<div class="role-header' + (hasAmb ? '' : ' role-disabled') + '">Ambassador</div>';
     [
         { key: 'minor_initiative', label: 'Minor Diplomatic Initiative', ap: 2, type: 'amb' },
-        { key: 'state_visit_amb', label: 'State Visit', ap: DIPLOMACY_CONFIG.STATE_VISIT_AP || 4, type: 'amb' },
         { key: 'send_message', label: 'Send Message', ap: 0, type: 'amb' }
     ].forEach(a => { html += actionHtml(a, hasAmb, 'amb'); });
 
@@ -7623,6 +7622,13 @@ async function renderDraftBox() {
     if (activeDraftAction.key === 'impose_embargo_draft') {
         body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
         await renderEmbargoDraftPanel(body, statusEl);
+        return;
+    }
+
+    // Special branch for Send Message — show diplomatic chat
+    if (activeDraftAction.key === 'send_message') {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
+        await renderSendMessagePanel(body, statusEl);
         return;
     }
 
@@ -8649,6 +8655,99 @@ async function submitEmbargoDraft() {
     cancelDraft();
 }
 window.submitEmbargoDraft = submitEmbargoDraft;
+
+// ── Send Message Panel ──
+async function renderSendMessagePanel(body, statusEl) {
+    if (statusEl) statusEl.textContent = 'Send Message';
+
+    // Check which nations we have ambassadors to
+    const ambTargets = (diplomaticRoles.ambassadorTo || []).map(a => a.target_nation_id);
+    if (ambTargets.length === 0) {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">You need an active ambassador to send messages. Ask your Foreign Minister to appoint one.</div></div>';
+        return;
+    }
+
+    // Fetch nation names for ambassador targets
+    const { data: ambNations } = await _supabase.from('nations').select('id, name').in('id', ambTargets);
+    const nations = (ambNations || []).sort((a, b) => a.name.localeCompare(b.name));
+
+    // Build target selector
+    let html = '<div class="draft-panel">';
+    html += '<div class="draft-header">';
+    html += '<div class="draft-field"><div class="draft-field-label">Action</div><div class="draft-field-input">Send Message <span style="color:var(--teal);">(Free)</span></div></div>';
+    html += '<div class="draft-field"><div class="draft-field-label">To Nation</div><div class="draft-field-input">';
+    html += '<select id="msg-target-select" style="width:100%;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);font-size:12px;padding:4px 8px;" onchange="selectMessageTarget(this.value)">';
+    html += '<option value="">Select a nation...</option>';
+    nations.forEach(n => {
+        const sel = activeDraftTarget && activeDraftTarget.id === n.id ? ' selected' : '';
+        html += '<option value="' + n.id + '"' + sel + '>' + escapeHtml(n.name) + '</option>';
+    });
+    html += '</select></div></div>';
+    html += '</div>';
+
+    if (activeDraftTarget) {
+        // Fetch messages
+        let messages = [];
+        try {
+            const { data } = await _supabase
+                .from('diplomatic_messages')
+                .select('*')
+                .or(
+                    'and(from_nation_id.eq.' + currentNation.id + ',to_nation_id.eq.' + activeDraftTarget.id + '),' +
+                    'and(from_nation_id.eq.' + activeDraftTarget.id + ',to_nation_id.eq.' + currentNation.id + ')'
+                )
+                .order('sent_at_tick', { ascending: true })
+                .order('created_at', { ascending: true })
+                .limit(100);
+            messages = data || [];
+        } catch (e) { /* */ }
+
+        const msgsHTML = messages.length > 0
+            ? messages.map(m => {
+                const isMine = m.from_nation_id === currentNation.id;
+                return '<div class="diplo-msg ' + (isMine ? 'mine' : 'theirs') + '">' +
+                    '<div class="diplo-msg-sender">' + escapeHtml(m.sender_name || 'Unknown') +
+                    ' <span class="role-badge" style="background:' + (isMine ? 'rgba(96,165,250,0.08)' : 'rgba(74,222,128,0.08)') +
+                    ';color:' + (isMine ? '#60a5fa' : '#4ade80') +
+                    ';border:1px solid ' + (isMine ? 'rgba(96,165,250,0.2)' : 'rgba(74,222,128,0.2)') + ';">' +
+                    escapeHtml(m.sender_role || 'diplomat') + '</span></div>' +
+                    '<div class="diplo-msg-text">' + escapeHtml(m.message_text) + '</div>' +
+                    '<div class="diplo-msg-tick">Tick ' + m.sent_at_tick + '</div></div>';
+            }).join('')
+            : '<div class="diplo-chat-empty">No messages yet. Start the conversation.</div>';
+
+        html += '<div class="diplo-chat-box" id="diplo-chat-box" style="max-height:280px;overflow-y:auto;margin:8px 0;">' + msgsHTML + '</div>';
+        html += '<div class="diplo-chat-input" style="display:flex;gap:6px;padding:0;">';
+        html += '<input type="text" id="diplo-msg-input" placeholder="Type a message..." maxlength="500" style="flex:1;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);padding:6px 10px;font-size:12px;font-family:var(--font-sans);" onkeydown="if(event.key===\'Enter\')sendDiploMessage(\'' + activeDraftTarget.id + '\',\'' + escapeHtml(activeDraftTarget.name).replace(/'/g, "\\'") + '\')" />';
+        html += '<button class="draft-submit-btn" style="padding:6px 14px;" onclick="sendDiploMessage(\'' + activeDraftTarget.id + '\',\'' + escapeHtml(activeDraftTarget.name).replace(/'/g, "\\'") + '\')">Send</button>';
+        html += '</div>';
+    } else {
+        html += '<div class="empty-state"><div class="empty-state-text">Select a nation to open the diplomatic channel.</div></div>';
+    }
+
+    html += '</div>';
+    html += '<div class="draft-actions"><button class="draft-cancel-btn" onclick="cancelDraft()">Close</button></div>';
+    body.innerHTML = html;
+
+    // Auto-scroll chat to bottom
+    const chatBox = document.getElementById('diplo-chat-box');
+    if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+function selectMessageTarget(nationId) {
+    if (!nationId) { activeDraftTarget = null; renderDraftBox(); return; }
+    const n = cachedOtherNations.find(n => n.id === nationId);
+    if (!n) {
+        // Might not be in cachedOtherNations, fetch name from the select
+        const sel = document.getElementById('msg-target-select');
+        const name = sel?.options[sel.selectedIndex]?.text || 'Unknown';
+        activeDraftTarget = { id: nationId, name: name };
+    } else {
+        activeDraftTarget = n;
+    }
+    renderDraftBox();
+}
+window.selectMessageTarget = selectMessageTarget;
 
 // ── Draft helpers ──
 function addDraftArticle() {
