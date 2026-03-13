@@ -3560,6 +3560,9 @@ async function handleNarrConfirm(container, f, n, ap, totalAp, committedAp, bloc
     // Re-render everything
     await renderDemocracyActions(n, f, _currentShard, _currentAllParties);
     await renderEventsTab(n.id, f.id, tick);
+    // Update topbar AP display immediately after actions
+    const apEl = document.getElementById('topbar-ap');
+    if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + (f.action_points ?? 0) + ' AP</span>';
 }
 
 // ══════════════════════════════════════════════════════════════
