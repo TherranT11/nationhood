@@ -308,7 +308,16 @@ async function loadBillData() {
                 if (proposal) {
                     const { data: propNation } = await _supabase.from('nations').select('id, name').eq('id', proposal.proposing_nation_id).single();
                     const { data: targNation } = await _supabase.from('nations').select('id, name').eq('id', proposal.target_nation_id).single();
-                    ratificationData = { kind: 'diplomatic', proposal, proposerName: propNation?.name || 'Unknown', targetName: targNation?.name || 'Unknown' };
+                    const isNationA = bill.nation_id === proposal.proposing_nation_id;
+                    ratificationData = {
+                        kind: 'diplomatic',
+                        proposal,
+                        proposerName: propNation?.name || 'Unknown',
+                        targetName: targNation?.name || 'Unknown',
+                        nationA: propNation,
+                        nationB: targNation,
+                        isNationA
+                    };
                 }
             } else if (bill.trade_negotiation_id) {
                 const { data: neg } = await _supabase
@@ -394,18 +403,24 @@ async function loadBillData() {
     }
 }
 
+function dollarsToMillions(amount) {
+    return Number(amount || 0) / 1_000_000;
+}
+
 function getInstitutionBaseCost(instId) {
     const row = (institutionConfig || []).find(i => i.id === instId);
     if (!row || !currentNation) return 0;
     const inflationMult = getInflationMultiplier(currentNation.inflation);
     const baseVal = Number(row.base_cost_per_capita || 0);
+    // Funding article economics are computed and stored in $M to match formatCurrency.
     if ((row.scaling_type || 'population') === 'gdp') {
-        return (baseVal / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0) * inflationMult;
+        return dollarsToMillions((baseVal / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0) * inflationMult);
     }
-    return baseVal * Number(currentNation.population || 0) * inflationMult;
+    return dollarsToMillions(baseVal * Number(currentNation.population || 0) * inflationMult);
 }
 
 function calculateFundingOngoingCost(fd) {
+    // Expects funding article values (base_cost, discretionary, return value) in $M.
     let ongoing = 0;
     for (const inst of (fd?.institutions || [])) {
         const fromPct = Number(inst.current_pct || 0);
@@ -414,14 +429,21 @@ function calculateFundingOngoingCost(fd) {
         const baseCost = Number((inst.base_cost ?? getInstitutionBaseCost(inst.id)) || 0);
         ongoing += ((toPct - fromPct) / 100) * baseCost;
     }
-    ongoing += Number(fd?.discretionary || 0);
     return ongoing;
 }
 
+function calculateFundingUpfrontCost(fd) {
+    return Number(fd?.discretionary || 0);
+}
+
 function formatFundingImpact(ongoingCost) {
-    if (ongoingCost < 0) return `<span class="cost-value" style="color:#4CAF50;font-weight:bold;">Saves ${formatCurrency(Math.abs(ongoingCost)).replace(/^\+/, '')}/mo</span>`;
-    if (ongoingCost > 0) return `<span class="cost-value" style="color:#ff9800;font-weight:bold;">Cost ${formatCurrency(ongoingCost)}/mo</span>`;
-    return '<span class="cost-value">$0/mo</span>';
+    const prefix = ongoingCost > 0 ? '+' : '';
+    return `<span class="cost-value">${prefix}${formatCurrency(ongoingCost).replace(/^\+/, '')}/mo</span>`;
+}
+
+function formatFundingUpfront(upfrontCost) {
+    const prefix = upfrontCost > 0 ? '+' : '';
+    return `<span class="cost-value">${prefix}${formatCurrency(upfrontCost).replace(/^\+/, '')}</span>`;
 }
 
 function renderBill() {
@@ -917,7 +939,9 @@ function renderArticles() {
                     '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
                 '</div>' : '';
                 const ongoingCost = calculateFundingOngoingCost(fd);
+                const upfrontCost = calculateFundingUpfrontCost(fd);
                 totalOngoing += ongoingCost;
+                totalUpfront += upfrontCost;
                 let instHTML = changes.map(function(i) {
                     const arrow = i.proposed_pct > i.current_pct ? '↑' : '↓';
                     const c = i.proposed_pct > i.current_pct ? '#22c55e' : '#ef4444';
@@ -927,14 +951,14 @@ function renderArticles() {
                     '</div>';
                 }).join('');
                 if (fd.discretionary) {
-                    instHTML += '<div style="padding:4px 0;font-size:0.8rem;color:#2196F3;">Discretionary: +' + formatCurrency(Number(fd.discretionary || 0)) + '/mo</div>';
+                    instHTML += '<div style="padding:4px 0;font-size:0.8rem;color:#2196F3;">One-time: +' + formatCurrency(Number(fd.discretionary || 0)).replace(/^[+-]/, '') + '</div>';
                 }
                 return '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
                     '<div class="article-number">Article ' + art.article_number + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + tagLabel + '</span></div>' +
                     '<div class="article-title">' + escapeHtml(art.article_title || (fd.ministry_label + ' Ministry Funding')) + '</div>' +
                     '<div class="article-description" style="padding:4px 0;">' + instHTML + '</div>' +
                     '<div class="article-costs">' +
-                        '<div class="cost-item"><span class="cost-label">Upfront:</span> <span class="cost-value">$0</span></div>' +
+                        '<div class="cost-item"><span class="cost-label">One-time:</span> ' + formatFundingUpfront(upfrontCost) + '</div>' +
                         '<div class="cost-item"><span class="cost-label">Ongoing:</span> ' + formatFundingImpact(ongoingCost) + '</div>' +
                     '</div>' +
                     '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
@@ -1158,9 +1182,18 @@ function renderRatificationBill() {
             articles.forEach((art, i) => {
                 const isStruck = struck.has(i);
                 const numeral = ROMAN[i] || (i + 1);
+                const isStructuredTradeArticle = !!(art && art.type && art.data && typeof art.data === 'object');
+                const artTypeInfo = isStructuredTradeArticle ? (TRADE_ARTICLE_TYPES[art.type] || {}) : {};
+                const typeLabel = artTypeInfo.label || (isStructuredTradeArticle ? (art.type || 'Provision') : '');
+                const descriptionHtml = isStructuredTradeArticle
+                    ? renderTradeArticleDescription(art, rd)
+                    : escapeHtml(art.text || '');
                 html += '<div class="article' + (isStruck ? ' struck-article' : '') + '">' +
-                    '<div class="article-number">Article ' + numeral + (isStruck ? ' <span style="color:#ff4444;font-size:0.7rem;">STRUCK</span>' : '') + '</div>' +
-                    '<div class="article-description" style="white-space:pre-wrap;">' + escapeHtml(art.text || '') + '</div>';
+                    '<div class="article-number">Article ' + numeral +
+                        (typeLabel ? ' <span style="color:#0288D1;font-size:0.7rem;">' + escapeHtml(typeLabel.toUpperCase()) + '</span>' : '') +
+                        (isStruck ? ' <span style="color:#ff4444;font-size:0.7rem;">STRUCK</span>' : '') +
+                    '</div>' +
+                    '<div class="article-description"' + (isStructuredTradeArticle ? '' : ' style="white-space:pre-wrap;"') + '>' + descriptionHtml + '</div>';
                 // Show per-article impact if available
                 const impactParts = [];
                 if (art.relations && art.relations !== 0) impactParts.push('Relations: ' + (art.relations > 0 ? '+' : '') + art.relations);
@@ -2426,6 +2459,7 @@ function setupRealtimeComments() {
 // ==================== UTILITIES ====================
 
 function formatCurrency(amt) {
+    // Defensive note: amt must be in millions of dollars ($M); function formats >=1000 as $B.
     if (amt === 0) return '$0';
     const abs = Math.abs(amt), sign = amt < 0 ? '-' : '+';
     if (abs >= 1000) return `${sign}$${(abs / 1000) % 1 === 0 ? (abs / 1000).toFixed(0) : (abs / 1000).toFixed(1)}B`;

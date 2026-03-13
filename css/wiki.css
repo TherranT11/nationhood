@@ -266,6 +266,26 @@ a.wiki-link-missing:hover {
     color: var(--text-primary);
 }
 
+/* ---------- EXPLORE CARD INFOBOX OVERRIDES ---------- */
+.wiki-explore-sidebar .wiki-infobox {
+    width: 100%;
+    border: none;
+    border-radius: 0;
+    margin: 0;
+    background: transparent;
+}
+.wiki-explore-sidebar .wiki-infobox-image {
+    aspect-ratio: auto;
+    max-height: 160px;
+    border-radius: 4px;
+    border-bottom: none;
+    margin-bottom: 8px;
+}
+.wiki-explore-sidebar .wiki-infobox-table td {
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
 /* ---------- EMPTY STATE ---------- */
 .wiki-empty {
     text-align: center;

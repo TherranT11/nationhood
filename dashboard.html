@@ -405,9 +405,11 @@
         </div>
 
         <!-- ── Government Card ── -->
-        <div class="dash-card" id="gov-card" style="display:none;">
+        <div class="dash-card" id="gov-card">
           <div class="dash-card-header">GOVERNMENT</div>
-          <div class="dash-card-body" id="gov-card-body"></div>
+          <div class="dash-card-body" id="gov-card-body">
+            <div style="display:flex;align-items:center;justify-content:center;height:340px;color:var(--text-secondary);font-size:0.85rem;">Loading government&hellip;</div>
+          </div>
         </div>
 
       </div>
@@ -505,13 +507,14 @@ initPage('home', async (state) => {
     const isPres = isPresidentialRepublic(nation);
     const isAuto = isAutocracy(nation);
 
-    // Parallel data fetches
+    // Parallel data fetches (including previous-tick approval to avoid sequential round-trip)
     const [
       { data: allParties },
       { data: shardRow },
       { data: administration },
       coalitionResult,
-      presidentResult
+      presidentResult,
+      prevApprovalResult
     ] = await Promise.all([
       _supabase.from('factions')
         .select('id, seats, faction_name, abbreviation, party_color')
@@ -537,7 +540,13 @@ initPage('home', async (state) => {
             .order('elected_tick', { ascending: false })
             .limit(1)
             .maybeSingle()
-        : Promise.resolve({ data: null })
+        : Promise.resolve({ data: null }),
+      _supabase.from('nations_history')
+        .select('gov_approval')
+        .eq('nation_id', nation.id)
+        .order('tick', { ascending: false })
+        .limit(1)
+        .maybeSingle()
     ]);
 
     const coalition = coalitionResult;
@@ -553,21 +562,11 @@ initPage('home', async (state) => {
           Government is currently being formed
         </div>
       `;
-      govCard.style.display = '';
       return;
     }
 
-    // Previous approval for delta
-    let prevApproval = null;
-    if (currentTick > 0) {
-      const { data: prevSnap } = await _supabase
-        .from('nations_history')
-        .select('gov_approval')
-        .eq('nation_id', nation.id)
-        .eq('tick', currentTick - 1)
-        .single();
-      prevApproval = prevSnap?.gov_approval ?? null;
-    }
+    // Previous approval for delta (already fetched in parallel)
+    const prevApproval = prevApprovalResult?.data?.gov_approval ?? null;
 
     // ── Compute values ──
     const approval = Math.round(Number(nation.gov_approval ?? 50));
@@ -632,7 +631,7 @@ initPage('home', async (state) => {
           <div class="gov-initials">${esc(initials)}</div>
           <div>
             <div class="gov-leader-name">${esc(pmName)}</div>
-            <div class="gov-leader-meta">Head of Government</div>
+            <div class="gov-leader-meta">Prime Minister</div>
             <div class="gov-leader-party">
               <div class="gov-party-dot" style="background:${pmColor}"></div>
               <span class="gov-party-label" style="color:${pmColor}">${esc(pmAbbr)}</span>
@@ -744,8 +743,6 @@ initPage('home', async (state) => {
       <span class="gov-footer-label">${esc(govLabel)}</span>
       <span class="gov-footer-detail">${esc(footerDetail)}</span>
     `;
-
-    govCard.style.display = '';
 
     // ── Load Events card ──
     loadDashEvents(nation.id, currentTick, parties);
