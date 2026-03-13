@@ -1621,9 +1621,9 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     expires_at_tick: currentTick + durationTicks
                 });
 
-                // Diplomatic penalty: 10 + 5 per embargoed sector (15 targeted, 20-35 partial, 40 total)
+                // Diplomatic penalty: 20 + 5 per embargoed sector (25 targeted, 30-45 partial, 50 total)
                 var embargoedSectors = (embData.articles || []).filter(function(a) { return a.type === 'embargo_sector'; }).length;
-                var relPenalty = Math.round(10 + embargoedSectors * 5);
+                var relPenalty = Math.round(20 + embargoedSectors * 5);
 
                 if (relPenalty > 0) {
                     var relA = imposerId < targetId ? imposerId : targetId;

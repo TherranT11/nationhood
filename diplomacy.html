@@ -784,11 +784,14 @@ async function renderAgreementsTab() {
                     const withdrawalPending = ta.withdrawn_at_tick != null && ta.withdrawn_at_tick > shardTick;
                     const withdrawalTicksLeft = withdrawalPending ? ta.withdrawn_at_tick - shardTick : 0;
                     let withdrawBtn = '';
+                    const canWithdraw = diplomaticRoles.isFM || diplomaticRoles.isHoG ||
+                        (diplomaticRoles.isMoT && (ta.agreement_type === 'impose_embargo' || ta.agreement_type === 'retaliatory_tariff' || ta.agreement_type === 'export_subsidy'));
                     if (withdrawalPending) {
                         withdrawBtn = '<span class="trade-neg-status-value expiring" title="Withdrawal notice filed">Withdrawing in ' + withdrawalTicksLeft + ' tick' + (withdrawalTicksLeft !== 1 ? 's' : '') + '</span>';
-                    } else if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
+                    } else if (canWithdraw) {
                         const noticeLabel = ta.withdrawal_notice_ticks ? ta.withdrawal_notice_ticks + ' tick notice' : 'immediate';
-                        withdrawBtn = '<button class="agreement-withdraw-btn" onclick="withdrawTradeAgreement(\'' + ta.id + '\')" title="' + noticeLabel + '">Withdraw</button>';
+                        const btnLabel = ta.agreement_type === 'impose_embargo' ? 'Lift Embargo' : 'Withdraw';
+                        withdrawBtn = '<button class="agreement-withdraw-btn" onclick="withdrawTradeAgreement(\'' + ta.id + '\')" title="' + noticeLabel + '">' + btnLabel + '</button>';
                     }
 
                     tradeHtml += `
@@ -839,8 +842,8 @@ async function renderAgreementsTab() {
 
 async function withdrawTradeAgreement(agreementId) {
     await refreshRoles();
-    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
-        alert('Only the Foreign Minister or Head of Government can withdraw trade agreements.');
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG && !diplomaticRoles.isMoT) {
+        alert('Only the Foreign Minister, Head of Government, or Minister of Trade can withdraw trade agreements.');
         return;
     }
 
@@ -859,8 +862,63 @@ async function withdrawTradeAgreement(agreementId) {
     }
 
     const isRetaliatory = ta.agreement_type === 'retaliatory_tariff';
-    const noticeTicks = isRetaliatory ? 0 : (ta.withdrawal_notice_ticks || 3);
+    const isEmbargo = ta.agreement_type === 'impose_embargo';
+    const isUnilateral = isRetaliatory || isEmbargo || ta.agreement_type === 'export_subsidy';
+    const noticeTicks = isUnilateral ? 0 : (ta.withdrawal_notice_ticks || 3);
     const articles = ta.articles || [];
+
+    // Allow MoT to withdraw unilateral trade actions
+    if (isUnilateral && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !diplomaticRoles.isMoT) {
+        alert('Only the Minister of Trade, Foreign Minister, or Head of Government can lift this action.');
+        return;
+    }
+
+    // Embargoes: lifting improves relations (partial recovery)
+    if (isEmbargo) {
+        const embargoedSectors = articles.filter(function(a) { return a.type === 'embargo_sector'; }).length;
+        const relBonus = Math.round((20 + embargoedSectors * 5) / 4);
+
+        let confirmMsg = 'Lift "' + (ta.agreement_name || 'embargo') + '"?\n\n' +
+            'This will take effect immediately and trade will resume.\n';
+        if (relBonus > 0) confirmMsg += 'Relations improvement: +' + relBonus + '\n';
+        if (!confirm(confirmMsg)) return;
+
+        await _supabase.from('trade_agreements').update({
+            status: 'withdrawn',
+            withdrawn_at_tick: shardTick,
+            withdrawal_notice_at: shardTick,
+            withdrawn_by_nation: currentNation.id
+        }).eq('id', agreementId);
+
+        if (relBonus > 0) {
+            const otherNationId = (ta.nation_a_id === currentNation.id) ? ta.nation_b_id : ta.nation_a_id;
+            const nA = currentNation.id < otherNationId ? currentNation.id : otherNationId;
+            const nB = currentNation.id < otherNationId ? otherNationId : currentNation.id;
+            const { data: rel } = await _supabase.from('diplomatic_relations')
+                .select('id, relation_score')
+                .eq('nation_a_id', nA).eq('nation_b_id', nB).maybeSingle();
+            if (rel) {
+                const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + relBonus));
+                await _supabase.from('diplomatic_relations')
+                    .update({ relation_score: newScore }).eq('id', rel.id);
+            }
+        }
+
+        try {
+            const otherNationId = (ta.nation_a_id === currentNation.id) ? ta.nation_b_id : ta.nation_a_id;
+            await _supabase.from('event_log').insert({
+                nation_id: otherNationId,
+                event_name: 'Embargo Lifted',
+                category: 'Trade',
+                description_chosen: (currentNation.name || 'A nation') + ' has lifted their embargo. Trade may now resume.',
+                fired_at_tick: shardTick
+            });
+        } catch (e) { /* non-blocking */ }
+
+        alert('Embargo lifted immediately.' + (relBonus > 0 ? ' Relations improved by +' + relBonus + '.' : ''));
+        await renderAgreementsTab();
+        return;
+    }
 
     // Retaliatory tariffs: lifting them improves relations (no penalties)
     if (isRetaliatory) {
