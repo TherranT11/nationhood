@@ -1379,3 +1379,323 @@
   .appoint-row { flex-wrap: wrap; gap: 4px; }
   .appoint-table-header { display: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   MINOR DIPLOMATIC INITIATIVE — Article Config UI
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Initiative Article Card ── */
+.initiative-article {
+  background: var(--bg-3);
+  border: 1px solid var(--border-hair);
+  border-left: 3px solid var(--teal);
+  margin-bottom: 8px;
+  padding: 10px 12px;
+}
+.initiative-article-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.initiative-article-num {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+.initiative-article-type {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--teal);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.initiative-article-title {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+.initiative-article-remove {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--red);
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 0.12s;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+}
+.initiative-article-remove:hover { opacity: 1; }
+
+/* ── Struck Article ── */
+.initiative-article--struck {
+  background: var(--red-faint);
+  border-color: var(--red-border);
+  border-left-color: var(--red);
+  opacity: 0.7;
+}
+.initiative-article--struck .initiative-article-title,
+.initiative-article--struck .config-label,
+.initiative-article--struck .config-value {
+  text-decoration: line-through;
+  color: var(--text-dim);
+}
+.initiative-article--struck .initiative-article-type { color: var(--red); }
+
+/* ── Config Fields Inside Articles ── */
+.config-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.config-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+/* ── Toggle Group (radio-like single selection) ── */
+.toggle-group {
+  display: flex;
+  gap: 0;
+}
+.toggle-opt {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.toggle-opt + .toggle-opt { border-left: none; }
+.toggle-opt.is-selected {
+  background: var(--teal-faint);
+  color: var(--teal);
+  border-color: var(--teal-border);
+}
+.toggle-opt.is-selected + .toggle-opt { border-left-color: var(--teal-border); }
+.toggle-opt:hover:not(.is-selected) {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+
+/* ── Checkbox Group (multi-select) ── */
+.check-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.check-opt {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.check-opt.is-selected {
+  background: var(--teal-faint);
+  color: var(--teal);
+  border-color: var(--teal-border);
+}
+.check-opt:hover:not(.is-selected) {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+
+/* ── Numeric Input ── */
+.config-value {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  color: var(--text-primary);
+  background: var(--bg-input, var(--bg-4));
+  border: 1px solid var(--border-input, var(--border-subtle));
+  padding: 3px 8px;
+  min-width: 50px;
+  outline: none;
+}
+.config-value:focus { border-color: var(--teal-border); }
+.config-value--sm { max-width: 55px; text-align: center; }
+.config-unit {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+.config-note {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-left: 4px;
+}
+
+/* ── Text Area (Joint Statement) ── */
+.initiative-text-area {
+  width: 100%;
+  background: var(--bg-input, var(--bg-4));
+  border: 1px solid var(--border-input, var(--border-subtle));
+  padding: 6px 10px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-primary);
+  line-height: 1.5;
+  min-height: 48px;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+}
+.initiative-text-area:focus { border-color: var(--teal-border); }
+.initiative-text-area::placeholder { color: var(--text-faint); font-style: italic; }
+
+/* ── Effect Tags ── */
+.article-effects {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-hair);
+}
+.effect-tag {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 2px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.effect-tag--positive {
+  color: var(--green);
+  background: var(--green-faint);
+  border: 1px solid var(--green-border);
+}
+.effect-tag--money-pos {
+  color: var(--green);
+  background: var(--green-faint);
+  border: 1px solid var(--green-border);
+}
+.effect-tag--money-neg {
+  color: var(--red);
+  background: var(--red-faint);
+  border: 1px solid var(--red-border);
+}
+.effect-tag--negative {
+  color: var(--red);
+  background: var(--red-faint);
+  border: 1px solid var(--red-border);
+}
+.effect-tag--info {
+  color: var(--blue);
+  background: var(--blue-faint);
+  border: 1px solid var(--blue-border);
+}
+.effect-tag--neutral {
+  color: var(--text-dim);
+  background: rgba(92,90,80,0.08);
+  border: 1px solid rgba(92,90,80,0.15);
+}
+.effect-tag--warning {
+  color: var(--amber);
+  background: var(--amber-faint);
+  border: 1px solid var(--amber-border);
+}
+
+/* ── Article Note ── */
+.article-note {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  color: var(--text-dim);
+  line-height: 1.4;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-hair);
+  font-style: italic;
+}
+
+/* ── Article Selector (bottom of articles area) ── */
+.article-selector {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border-hair);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-3);
+}
+.selector-dropdown {
+  flex: 1;
+  background: var(--bg-input, var(--bg-4));
+  border: 1px solid var(--border-input, var(--border-subtle));
+  padding: 7px 12px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  outline: none;
+}
+.selector-dropdown:hover { border-color: var(--teal-border); }
+.selector-dropdown option { background: var(--bg-3); color: var(--text-primary); }
+
+/* ── Send Button ── */
+.btn--send {
+  color: var(--teal);
+  border-color: rgba(91,154,139,0.35);
+  background: var(--teal-faint);
+}
+.btn--send:hover { background: rgba(91,154,139,0.14); }
+.btn--send:disabled,
+.btn--send[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Initiative Draft Responsive ── */
+@media (max-width: 768px) {
+  .config-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .config-label { min-width: unset; }
+  .toggle-group { flex-wrap: wrap; gap: 2px; }
+  .toggle-opt + .toggle-opt { border-left: 1px solid var(--border-subtle); }
+  .check-group { gap: 4px; }
+  .article-selector {
+    padding: 8px 10px;
+    flex-direction: column;
+  }
+  .selector-dropdown { width: 100%; }
+}

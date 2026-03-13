@@ -599,3 +599,366 @@ export const RAW_SCALING_DIVISORS = {
 // Any policy/event/crisis/connection targeting these keys will be silently skipped.
 export const STAT_PROCESSOR_SKIP = new Set(['gdp', 'debt']);
 
+// ==================== MINOR DIPLOMATIC INITIATIVE ====================
+
+/**
+ * Minor Diplomatic Initiative — Tier 1 negotiated diplomatic action.
+ * Bundled articles proposed by an Ambassador to a target nation.
+ * Accepted directly by target's Ambassador, FM, or HoG (no parliamentary ratification).
+ */
+export const MINOR_INITIATIVE_CONFIG = {
+    AP_COST: 2,
+    TIER: 1,
+    TYPE: 'minor_diplomatic_initiative',
+    BUDGET_SOURCE: 'embassies',              // institution id in budget_item_allocations
+    HOSTILE_RELATION_THRESHOLD: -50,         // cannot propose below this
+    MAX_VISA_AGREEMENTS_PER_INITIATIVE: 1,   // only one visa agreement per initiative
+};
+
+/**
+ * Duration scaling multipliers for visa agreements.
+ */
+export const VISA_DURATION_OPTIONS = [
+    { key: 30,  label: '30 Days',  modifier: 0.6 },
+    { key: 90,  label: '90 Days',  modifier: 1.0 },
+    { key: 180, label: '180 Days', modifier: 1.3 }
+];
+
+/**
+ * Scope scaling multipliers for visa agreements.
+ */
+export const VISA_SCOPE_OPTIONS = [
+    { key: 'tourism',          label: 'Tourism Only',       modifier: 1.0, penalties: false },
+    { key: 'tourism_business', label: 'Tourism + Business', modifier: 1.2, penalties: false },
+    { key: 'all',              label: 'All Purposes',       modifier: 1.5, penalties: true }
+];
+
+/**
+ * Direction options for visa agreements.
+ */
+export const VISA_DIRECTION_OPTIONS = [
+    { key: 'reciprocal',        label: 'Reciprocal' },
+    { key: 'proposer_to_target', label: 'One-way (Our Citizens)' },
+    { key: 'target_to_proposer', label: 'One-way (Their Citizens)' }
+];
+
+/**
+ * Excludes (carve-outs) for visa agreements. Checked = excluded from waiver.
+ */
+export const VISA_EXCLUDES = [
+    { key: 'work_permits',     label: 'Work Permits',     defaultChecked: true },
+    { key: 'residency',        label: 'Residency',        defaultChecked: false },
+    { key: 'diplomatic_staff', label: 'Diplomatic Staff',  defaultChecked: true }
+];
+
+/**
+ * Base effects for visa agreement (at 90 Days / Tourism Only / Reciprocal / Default Excludes).
+ */
+export const VISA_BASE_EFFECTS = {
+    relations: 6,
+    revenue: 12_000_000,
+    intl_reputation: 1,
+    immigration: 1,
+    polarization: 0,
+    terrorism_risk: 0
+};
+
+/**
+ * Cultural Exchange programme options (cosmetic — no mechanical difference).
+ */
+export const CULTURAL_PROGRAMMES = [
+    { key: 'artist_exchange',      label: 'Artist Exchange' },
+    { key: 'museum_exhibits',      label: 'Museum Exhibits' },
+    { key: 'film_festival',        label: 'Film Festival' },
+    { key: 'performance_tours',    label: 'Performance Tours' },
+    { key: 'heritage_cooperation', label: 'Heritage Cooperation' }
+];
+
+/**
+ * Cultural Exchange duration options with cost scaling.
+ */
+export const CULTURAL_DURATION_OPTIONS = [
+    { key: 12, label: '12 Ticks (1 Year)', cost: 20_000_000, permanent: false },
+    { key: 24, label: '24 Ticks (2 Years)', cost: 35_000_000, permanent: false },
+    { key: 0,  label: 'Permanent',          cost: 50_000_000, permanent: true, ongoing_per_tick: 5_000_000 }
+];
+
+/**
+ * Cultural Exchange funding split options.
+ */
+export const CULTURAL_FUNDING_OPTIONS = [
+    { key: '50_50',        label: '50/50',           proposer_share: 0.5, target_share: 0.5 },
+    { key: 'we_pay_more',  label: '60/40 (We Pay More)', proposer_share: 0.6, target_share: 0.4 },
+    { key: 'they_pay_more', label: '60/40 (They Pay More)', proposer_share: 0.4, target_share: 0.6 }
+];
+
+/**
+ * Cultural Exchange base effects (at 24 Ticks / 50/50).
+ */
+export const CULTURAL_BASE_EFFECTS = {
+    relations: 4,
+    intl_reputation: 1,
+    soft_power: 3
+};
+
+/**
+ * Student Exchange level options.
+ */
+export const STUDENT_LEVEL_OPTIONS = [
+    { key: 'undergraduate', label: 'Undergraduate', higher_ed_bonus: 0 },
+    { key: 'graduate',      label: 'Graduate',      higher_ed_bonus: 0.5 },
+    { key: 'both',          label: 'Both',          higher_ed_bonus: 1.0 }
+];
+
+/**
+ * Student Exchange duration options.
+ */
+export const STUDENT_DURATION_OPTIONS = [
+    { key: 'semester',    label: '1 Semester (6 Ticks)', ticks: 6, permanent_bonus: false },
+    { key: 'full_year',   label: 'Full Year (12 Ticks)', ticks: 12, permanent_bonus: false },
+    { key: 'full_degree', label: 'Full Degree (36+ Ticks)', ticks: 36, permanent_bonus: true }
+];
+
+/**
+ * Student Exchange funding options.
+ */
+export const STUDENT_FUNDING_OPTIONS = [
+    { key: 'host_pays',   label: 'Host Pays',    proposer_share: 0, target_share: 1.0 },
+    { key: 'split',        label: 'Split',        proposer_share: 0.5, target_share: 0.5 },
+    { key: 'sender_pays',  label: 'Sender Pays',  proposer_share: 1.0, target_share: 0 }
+];
+
+/**
+ * Student Exchange field options (cosmetic except Sciences/Engineering + Graduate = +0.5 Technology).
+ */
+export const STUDENT_FIELDS = [
+    { key: 'sciences',    label: 'Sciences',    tech_eligible: true },
+    { key: 'engineering', label: 'Engineering', tech_eligible: true },
+    { key: 'medicine',    label: 'Medicine',    tech_eligible: false },
+    { key: 'humanities',  label: 'Humanities',  tech_eligible: false },
+    { key: 'law',         label: 'Law',         tech_eligible: false },
+    { key: 'economics',   label: 'Economics',   tech_eligible: false }
+];
+
+/**
+ * Student Exchange base effects (at 200 seats / Undergraduate / Full Year / Split).
+ */
+export const STUDENT_BASE_EFFECTS = {
+    relations: 3,
+    cost_total: 6_000_000,
+    higher_education: 1,
+    soft_power_per_year: 1
+};
+
+/**
+ * Seats scaling for student exchange (diminishing returns above 200).
+ */
+export function getStudentSeatsModifier(seats) {
+    seats = Math.max(50, Math.min(500, seats));
+    if (seats <= 200) return seats / 200;
+    // Diminishing returns: 200→1.0, 500→1.8
+    return 1.0 + ((seats - 200) / 300) * 0.8;
+}
+
+/**
+ * Joint Statement visibility options.
+ */
+export const STATEMENT_VISIBILITY_OPTIONS = [
+    { key: 'public',  label: 'Public' },
+    { key: 'private', label: 'Private' }
+];
+
+/**
+ * Calculate all effects for a visa agreement article given its config.
+ * Returns an effects object with computed values.
+ */
+export function calculateVisaEffects(config) {
+    const durationOpt = VISA_DURATION_OPTIONS.find(d => d.key === config.duration) || VISA_DURATION_OPTIONS[1];
+    const scopeOpt = VISA_SCOPE_OPTIONS.find(s => s.key === config.scope) || VISA_SCOPE_OPTIONS[0];
+    const dMod = durationOpt.modifier;
+    const sMod = scopeOpt.modifier;
+    const isReciprocal = config.direction === 'reciprocal';
+    const isOneWayProposer = config.direction === 'proposer_to_target';
+    // const isOneWayTarget = config.direction === 'target_to_proposer';
+
+    const excludes = config.excludes || ['work_permits', 'diplomatic_staff'];
+    const workIncluded = !excludes.includes('work_permits');
+
+    let relations = Math.round(VISA_BASE_EFFECTS.relations * dMod * sMod);
+    let revenue = Math.round(VISA_BASE_EFFECTS.revenue * dMod * sMod);
+    let intl_reputation = VISA_BASE_EFFECTS.intl_reputation;
+    let immigration = workIncluded ? 2 : 1;
+
+    // One-way: halve relations for the non-receiving nation, revenue only to receiver
+    let proposer_relations = relations;
+    let target_relations = relations;
+    let proposer_revenue = revenue;
+    let target_revenue = revenue;
+
+    if (!isReciprocal) {
+        if (isOneWayProposer) {
+            // Proposer's citizens go to target → target receives tourists/revenue
+            proposer_relations = Math.round(relations / 2);
+            proposer_revenue = 0;
+        } else {
+            // Target's citizens go to proposer → proposer receives tourists/revenue
+            target_relations = Math.round(relations / 2);
+            target_revenue = 0;
+        }
+    }
+
+    // Polarization + Terrorism from "All Purposes" scope
+    let proposer_polarization = 0, target_polarization = 0;
+    let proposer_terrorism = 0, target_terrorism = 0;
+    if (scopeOpt.penalties) {
+        if (isReciprocal) {
+            proposer_polarization = 1; target_polarization = 1;
+            proposer_terrorism = 0.5; target_terrorism = 0.5;
+        } else if (isOneWayProposer) {
+            // Target receives visitors → penalties on target only
+            target_polarization = 1; target_terrorism = 0.5;
+        } else {
+            // Proposer receives visitors → penalties on proposer only
+            proposer_polarization = 1; proposer_terrorism = 0.5;
+        }
+    }
+
+    return {
+        proposer: {
+            relations: proposer_relations,
+            revenue: proposer_revenue,
+            intl_reputation,
+            immigration: isReciprocal || !isOneWayProposer ? immigration : 0,
+            polarization: proposer_polarization,
+            terrorism_risk: proposer_terrorism
+        },
+        target: {
+            relations: target_relations,
+            revenue: target_revenue,
+            intl_reputation,
+            immigration: isReciprocal || isOneWayProposer ? immigration : 0,
+            polarization: target_polarization,
+            terrorism_risk: target_terrorism
+        },
+        // Summary (for display in proposer's UI — shows total combined)
+        summary: {
+            relations,
+            revenue,
+            intl_reputation,
+            immigration,
+            polarization: proposer_polarization || target_polarization ? 1 : 0,
+            terrorism_risk: proposer_terrorism || target_terrorism ? 0.5 : 0
+        }
+    };
+}
+
+/**
+ * Calculate effects for a cultural exchange article.
+ */
+export function calculateCulturalEffects(config) {
+    const durationOpt = CULTURAL_DURATION_OPTIONS.find(d => d.key === config.duration) || CULTURAL_DURATION_OPTIONS[1];
+    const fundingOpt = CULTURAL_FUNDING_OPTIONS.find(f => f.key === config.funding) || CULTURAL_FUNDING_OPTIONS[0];
+    const totalCost = durationOpt.cost;
+
+    return {
+        relations: CULTURAL_BASE_EFFECTS.relations,
+        intl_reputation: CULTURAL_BASE_EFFECTS.intl_reputation,
+        soft_power: CULTURAL_BASE_EFFECTS.soft_power,
+        soft_power_duration: durationOpt.permanent ? null : durationOpt.key,
+        cost_proposer: Math.round(totalCost * fundingOpt.proposer_share),
+        cost_target: Math.round(totalCost * fundingOpt.target_share),
+        ongoing_per_tick: durationOpt.permanent ? durationOpt.ongoing_per_tick : 0
+    };
+}
+
+/**
+ * Calculate effects for a student exchange article.
+ */
+export function calculateStudentEffects(config) {
+    const seats = config.seats || 200;
+    const seatsMod = getStudentSeatsModifier(seats);
+    const levelOpt = STUDENT_LEVEL_OPTIONS.find(l => l.key === config.level) || STUDENT_LEVEL_OPTIONS[0];
+    const fundingOpt = STUDENT_FUNDING_OPTIONS.find(f => f.key === config.funding) || STUDENT_FUNDING_OPTIONS[1];
+
+    const totalCost = Math.round(STUDENT_BASE_EFFECTS.cost_total * seatsMod);
+    const fields = config.fields || [];
+    const hasTechFields = fields.some(f => {
+        const fi = STUDENT_FIELDS.find(sf => sf.key === f);
+        return fi && fi.tech_eligible;
+    });
+    const techBonus = (hasTechFields && (config.level === 'graduate' || config.level === 'both')) ? 0.5 : 0;
+
+    const durationOpt = STUDENT_DURATION_OPTIONS.find(d => d.key === config.duration) || STUDENT_DURATION_OPTIONS[1];
+
+    return {
+        relations: STUDENT_BASE_EFFECTS.relations,
+        higher_education: STUDENT_BASE_EFFECTS.higher_education + levelOpt.higher_ed_bonus,
+        soft_power_per_year: STUDENT_BASE_EFFECTS.soft_power_per_year,
+        permanent_soft_power: durationOpt.permanent_bonus ? 1 : 0,
+        technology_bonus: techBonus,
+        cost_proposer: Math.round(totalCost * fundingOpt.proposer_share),
+        cost_target: Math.round(totalCost * fundingOpt.target_share),
+        duration_ticks: durationOpt.ticks
+    };
+}
+
+/**
+ * Article type definitions for Minor Diplomatic Initiative.
+ */
+export const INITIATIVE_ARTICLE_TYPES = {
+    visa_agreement: {
+        key: 'visa_agreement',
+        label: 'Visa Agreement',
+        description: 'Establishes visa-free travel between nations.',
+        max_per_initiative: 1,
+        has_config: true,
+        calculateEffects: calculateVisaEffects,
+        default_config: {
+            duration: 90,
+            scope: 'tourism',
+            direction: 'reciprocal',
+            excludes: ['work_permits', 'diplomatic_staff']
+        }
+    },
+    cultural_exchange: {
+        key: 'cultural_exchange',
+        label: 'Cultural Exchange',
+        description: 'Establishes cultural programmes between nations. Builds soft power over time.',
+        max_per_initiative: null,
+        has_config: true,
+        calculateEffects: calculateCulturalEffects,
+        default_config: {
+            programmes: ['artist_exchange'],
+            duration: 24,
+            funding: '50_50'
+        }
+    },
+    student_exchange: {
+        key: 'student_exchange',
+        label: 'Student Exchange Program',
+        description: 'University exchange programme. Cheap, builds long-term soft power and education.',
+        max_per_initiative: null,
+        has_config: true,
+        calculateEffects: calculateStudentEffects,
+        default_config: {
+            seats: 200,
+            level: 'undergraduate',
+            duration: 'full_year',
+            funding: 'split',
+            fields: ['sciences']
+        }
+    },
+    joint_statement: {
+        key: 'joint_statement',
+        label: 'Joint Statement',
+        description: 'Public or private declaration. No mechanical effect.',
+        max_per_initiative: null,
+        has_config: true,
+        calculateEffects: () => ({}),
+        default_config: {
+            text: '',
+            visibility: 'public'
+        }
+    }
+};
+

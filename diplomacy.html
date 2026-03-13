@@ -77,7 +77,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies } from './js/game-common.js';
+import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -149,35 +149,13 @@ let appointSelectedIndex = null;
 let appointTargetRelation = null;
 let appointCachedExistingAmbs = null; // cache of existing ambassadors for filtering
 
+// Legacy INITIATIVE_TYPES kept for backward compat with existing proposals.
+// New proposals use INITIATIVE_ARTICLE_TYPES from diplomacy-constants.js.
 const INITIATIVE_TYPES = {
-    visa_agreement: {
-        label: 'Visa Agreement',
-        classification: 'MINOR',
-        description: 'Streamlined travel between nations. Citizens can cross borders with reduced paperwork.',
-        relations: 6,
-        money: 12000000
-    },
-    cultural_exchange: {
-        label: 'Cultural Exchange',
-        classification: 'MINOR',
-        description: 'Nations agree to fund museums, art exhibitions, film festivals, and media sharing between their countries.',
-        relations: 4,
-        money: -35000000
-    },
-    student_exchange: {
-        label: 'Student Exchange Program',
-        classification: 'MINOR',
-        description: 'Universities in both nations accept exchange students, share research, and collaborate on academic programs.',
-        relations: 3,
-        money: -6000000
-    },
-    joint_statement: {
-        label: 'Joint Statement',
-        classification: 'MINOR',
-        description: 'A coordinated public declaration on a shared concern. Purely cosmetic — no mechanical effect.',
-        relations: 0,
-        money: 0
-    }
+    visa_agreement:    { label: 'Visa Agreement',           classification: 'MINOR', relations: 6,  money: 12000000 },
+    cultural_exchange: { label: 'Cultural Exchange',        classification: 'MINOR', relations: 4,  money: -35000000 },
+    student_exchange:  { label: 'Student Exchange Program', classification: 'MINOR', relations: 3,  money: -6000000 },
+    joint_statement:   { label: 'Joint Statement',          classification: 'MINOR', relations: 0,  money: 0 }
 };
 
 // Trade type icon map
@@ -1852,17 +1830,31 @@ async function fmReject(proposalId) {
 async function applyProposalEffects(proposal, currentTick) {
     const pd = proposal.proposal_data || {};
     const articles = pd.articles || [];
-    const struckIndices = new Set(pd.struck_articles || []);
+    const isV2 = pd.version === 2;
 
+    // V2: filter by article status; V1: filter by struck_articles indices
     let totalRel = 0, totalMoney = 0;
     const activeArticles = [];
-    articles.forEach((art, i) => {
-        if (!struckIndices.has(i)) {
-            totalRel += art.relations || 0;
-            totalMoney += art.money || 0;
-            activeArticles.push(art);
-        }
-    });
+
+    if (isV2) {
+        articles.forEach(art => {
+            if (art.status !== 'struck') {
+                const e = art.effects || {};
+                totalRel += e.relations || 0;
+                totalMoney += (e.revenue || 0) - (e.cost_proposer || 0);
+                activeArticles.push(art);
+            }
+        });
+    } else {
+        const struckIndices = new Set(pd.struck_articles || []);
+        articles.forEach((art, i) => {
+            if (!struckIndices.has(i)) {
+                totalRel += art.relations || 0;
+                totalMoney += art.money || 0;
+                activeArticles.push(art);
+            }
+        });
+    }
 
     // Update relations score
     if (totalRel !== 0) {
@@ -1883,6 +1875,140 @@ async function applyProposalEffects(proposal, currentTick) {
                 .update({ relation_score: newScore, active_treaties: treaties })
                 .eq('id', rel.id);
         }
+    }
+
+    // V2: Apply stat effects and budget costs to Embassies & Consulates institution
+    if (isV2 && activeArticles.length > 0) {
+        // Apply one-time stat modifiers to proposer nation
+        const proposerStatUpdates = {};
+        const targetStatUpdates = {};
+
+        for (const art of activeArticles) {
+            const pe = art.proposer_effects || art.effects || {};
+            const te = art.target_effects || art.effects || {};
+
+            // Proposer stat changes
+            if (pe.intl_reputation) proposerStatUpdates.international_reputation = (proposerStatUpdates.international_reputation || 0) + pe.intl_reputation;
+            if (pe.immigration) proposerStatUpdates.immigration = (proposerStatUpdates.immigration || 0) + pe.immigration;
+            if (pe.polarization) proposerStatUpdates.polarization = (proposerStatUpdates.polarization || 0) + pe.polarization;
+            if (pe.terrorism_risk) proposerStatUpdates.terrorism = (proposerStatUpdates.terrorism || 0) + pe.terrorism_risk;
+
+            // Target stat changes
+            if (te.intl_reputation) targetStatUpdates.international_reputation = (targetStatUpdates.international_reputation || 0) + te.intl_reputation;
+            if (te.immigration) targetStatUpdates.immigration = (targetStatUpdates.immigration || 0) + te.immigration;
+            if (te.polarization) targetStatUpdates.polarization = (targetStatUpdates.polarization || 0) + te.polarization;
+            if (te.terrorism_risk) targetStatUpdates.terrorism = (targetStatUpdates.terrorism || 0) + te.terrorism_risk;
+
+            // Higher education (applies to both)
+            const e = art.effects || {};
+            if (e.higher_education) {
+                proposerStatUpdates.higher_education = (proposerStatUpdates.higher_education || 0) + e.higher_education;
+                targetStatUpdates.higher_education = (targetStatUpdates.higher_education || 0) + e.higher_education;
+            }
+        }
+
+        // Apply stat changes via RPC-style increments
+        if (Object.keys(proposerStatUpdates).length > 0) {
+            await applyStatIncrements(proposal.proposing_nation_id, proposerStatUpdates);
+        }
+        if (Object.keys(targetStatUpdates).length > 0) {
+            await applyStatIncrements(proposal.target_nation_id, targetStatUpdates);
+        }
+
+        // Apply costs to Embassies & Consulates institution (increase needed_amount)
+        let proposerCost = 0, targetCost = 0;
+        for (const art of activeArticles) {
+            const e = art.effects || {};
+            proposerCost += e.cost_proposer || 0;
+            targetCost += e.cost_target || 0;
+        }
+        if (proposerCost > 0) await addEmbassyCost(proposal.proposing_nation_id, proposerCost);
+        if (targetCost > 0) await addEmbassyCost(proposal.target_nation_id, targetCost);
+
+        // Add revenue to proposer's FM institution (decrease needed_amount — more budget headroom)
+        let proposerRevenue = 0, targetRevenue = 0;
+        for (const art of activeArticles) {
+            const pe = art.proposer_effects || art.effects || {};
+            const te = art.target_effects || {};
+            proposerRevenue += pe.revenue || 0;
+            targetRevenue += te.revenue || 0;
+        }
+        // Revenue offsets cost (negative needed_amount adjustment)
+        if (proposerRevenue > 0) await addEmbassyCost(proposal.proposing_nation_id, -proposerRevenue);
+        if (targetRevenue > 0) await addEmbassyCost(proposal.target_nation_id, -targetRevenue);
+
+        // Check for existing visa agreements between these nations and supersede them
+        const hasVisa = activeArticles.some(a => a.type === 'visa_agreement');
+        if (hasVisa) {
+            const { data: existingVisas } = await _supabase
+                .from('diplomatic_proposals')
+                .select('id, proposal_data')
+                .eq('status', 'active')
+                .neq('id', proposal.id)
+                .or('proposing_nation_id.eq.' + proposal.proposing_nation_id + ',target_nation_id.eq.' + proposal.proposing_nation_id)
+                .or('proposing_nation_id.eq.' + proposal.target_nation_id + ',target_nation_id.eq.' + proposal.target_nation_id);
+
+            for (const existing of (existingVisas || [])) {
+                const epd = existing.proposal_data || {};
+                const eArticles = epd.articles || [];
+                const hasExistingVisa = eArticles.some(a => a.type === 'visa_agreement' && a.status !== 'struck');
+                if (hasExistingVisa) {
+                    // Check it's between the same two nations
+                    const involves = (existing.proposing_nation_id === proposal.proposing_nation_id && existing.target_nation_id === proposal.target_nation_id) ||
+                        (existing.proposing_nation_id === proposal.target_nation_id && existing.target_nation_id === proposal.proposing_nation_id);
+                    if (!involves) continue;
+                    await _supabase.from('diplomatic_proposals')
+                        .update({ status: 'superseded' })
+                        .eq('id', existing.id);
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Apply stat increments to a nation (add values to current stats, clamped 0-100).
+ */
+async function applyStatIncrements(nationId, increments) {
+    if (!nationId || Object.keys(increments).length === 0) return;
+    const { data: nation } = await _supabase.from('nations').select('*').eq('id', nationId).single();
+    if (!nation) return;
+    const updates = {};
+    for (const [key, delta] of Object.entries(increments)) {
+        const current = Number(nation[key] || 0);
+        updates[key] = Math.max(0, Math.min(100, current + delta));
+    }
+    if (Object.keys(updates).length > 0) {
+        await _supabase.from('nations').update(updates).eq('id', nationId);
+    }
+}
+
+/**
+ * Add cost to the Embassies & Consulates institution's needed_amount
+ * in budget_item_allocations for the active budget bill.
+ */
+async function addEmbassyCost(nationId, amount) {
+    if (!nationId || !amount) return;
+    try {
+        // Find the active budget bill's allocation for embassies
+        const { data: alloc } = await _supabase
+            .from('budget_item_allocations')
+            .select('id, needed_amount')
+            .eq('nation_id', nationId)
+            .eq('item_type', 'institution')
+            .eq('item_id', 'embassies')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (alloc) {
+            const newNeeded = Math.max(0, Number(alloc.needed_amount || 0) + amount);
+            await _supabase.from('budget_item_allocations')
+                .update({ needed_amount: newNeeded })
+                .eq('id', alloc.id);
+        }
+    } catch (e) {
+        console.warn('Error updating embassy cost for nation', nationId, e);
     }
 }
 
@@ -6197,7 +6323,11 @@ async function strikeArticles(proposalId) {
     if (checkboxes.length === 0) { alert('Select at least one article to strike.'); return; }
 
     const struckIndices = [];
-    checkboxes.forEach(cb => struckIndices.push(parseInt(cb.dataset.articleIndex)));
+    const struckIds = [];
+    checkboxes.forEach(cb => {
+        struckIndices.push(parseInt(cb.dataset.articleIndex));
+        if (cb.dataset.articleId) struckIds.push(cb.dataset.articleId);
+    });
 
     // Fetch proposal to get current data
     const { data: proposal } = await _supabase
@@ -6218,20 +6348,30 @@ async function strikeArticles(proposalId) {
     }
 
     const pd = proposal.proposal_data || {};
+    const isV2 = pd.version === 2;
     const totalArticles = (pd.articles || []).length;
+    const activeCount = isV2
+        ? (pd.articles || []).filter(a => a.status !== 'struck').length
+        : totalArticles - (pd.struck_articles || []).length;
 
-    if (struckIndices.length >= totalArticles) {
+    if (struckIndices.length >= activeCount) {
         alert('Cannot strike all articles. Use Reject instead.');
         return;
     }
 
-    // Merge any previously struck articles
-    const existingStruck = pd.struck_articles || [];
-    const allStruck = [...new Set([...existingStruck, ...struckIndices])];
+    if (!confirm('Strike ' + struckIndices.length + ' article(s) and accept with remaining articles?')) return;
 
-    if (!confirm('Strike ' + struckIndices.length + ' article(s) and send revised agreement back?')) return;
-
-    pd.struck_articles = allStruck;
+    if (isV2) {
+        // V2: mark articles by id as struck
+        const struckSet = new Set(struckIds);
+        (pd.articles || []).forEach(art => {
+            if (struckSet.has(art.id)) art.status = 'struck';
+        });
+    } else {
+        // V1: merge struck indices
+        const existingStruck = pd.struck_articles || [];
+        pd.struck_articles = [...new Set([...existingStruck, ...struckIndices])];
+    }
     pd.revised_by_nation_id = currentNation.id;
 
     const { error } = await _supabase
@@ -6242,6 +6382,7 @@ async function strikeArticles(proposalId) {
     if (error) { alert('Error sending revision: ' + error.message); return; }
 
     alert('Revised agreement sent back with ' + struckIndices.length + ' article(s) struck.');
+    await renderNegotiationsBox();
     if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
 }
 
@@ -7433,6 +7574,7 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
     const addedArticles = pd.added_articles || [];
     const classification = pd.classification || '';
     const isTradeAgreement = p.proposal_type === 'trade_agreement';
+    const isV2 = pd.version === 2;
 
     let html = '<div class="neg-detail-header">';
     html += '<div class="neg-detail-title">' + escapeHtml(pd.name || 'Unnamed') + '</div>';
@@ -7447,19 +7589,54 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
     if (articles.length > 0) {
         for (let i = 0; i < articles.length; i++) {
             const art = articles[i];
-            const isStruck = struckIndices.has(i);
-            // Use trade article summary for trade agreements, fallback to text/label for diplomatic
-            const artLabel = isTradeAgreement
-                ? renderTradeArticleSummary(art)
-                : escapeHtml(art.text || art.label || art.type || 'Unknown');
-            const artTypeName = isTradeAgreement ? (TRADE_ARTICLE_TYPES[art.type]?.label || art.type) : '';
-            const cardClass = isStruck ? 'article-card article-card--struck' : 'article-card';
-            html += `
-                <div class="${cardClass}">
-                    <div class="article-card-type">Art. ${toRoman(i + 1)}${artTypeName ? ' — ' + escapeHtml(artTypeName) : ''}${isStruck ? ' — STRUCK' : ''}</div>
-                    <div class="article-card-title">${isTradeAgreement ? artLabel : escapeHtml(art.text || art.label || '')}</div>
-                </div>
-            `;
+            const isStruck = isV2 ? (art.status === 'struck') : struckIndices.has(i);
+
+            if (isV2) {
+                // Rich v2 article rendering
+                const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type];
+                const typeName = typeInfo ? typeInfo.label : art.type;
+                const cardClass = isStruck ? 'initiative-article initiative-article--struck' : 'initiative-article';
+                html += '<div class="' + cardClass + '">';
+                html += '<div class="initiative-article-head">';
+                html += '<div><span class="initiative-article-num">Art. ' + toRoman(i + 1) + '</span> ';
+                html += '<span class="initiative-article-type">' + escapeHtml(typeName).toUpperCase();
+                if (isStruck) html += ' — STRUCK';
+                html += '</span></div></div>';
+
+                // Config summary (read-only)
+                if (art.config && !isStruck) {
+                    html += '<div style="margin:4px 0 2px;">';
+                    html += renderArticleConfigSummary(art);
+                    html += '</div>';
+                }
+
+                // Effect tags
+                if (art.effects && !isStruck) {
+                    html += renderEffectTagsFromEffects(art.effects, art.type);
+                }
+
+                // Strike checkbox (only for incoming proposals needing action)
+                if (needsOurAction && !isStruck) {
+                    html += '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;">' +
+                        '<input type="checkbox" class="strike-checkbox" data-proposal-id="' + p.id + '" data-article-index="' + i + '" data-article-id="' + (art.id || '') + '">' +
+                        '<span style="font-family:var(--font-mono);font-size:8px;color:var(--red);text-transform:uppercase;">Strike</span></div>';
+                }
+
+                html += '</div>';
+            } else {
+                // V1 legacy rendering
+                const artLabel = isTradeAgreement
+                    ? renderTradeArticleSummary(art)
+                    : escapeHtml(art.text || art.label || art.type || 'Unknown');
+                const artTypeName = isTradeAgreement ? (TRADE_ARTICLE_TYPES[art.type]?.label || art.type) : '';
+                const cardClass = isStruck ? 'article-card article-card--struck' : 'article-card';
+                html += `
+                    <div class="${cardClass}">
+                        <div class="article-card-type">Art. ${toRoman(i + 1)}${artTypeName ? ' — ' + escapeHtml(artTypeName) : ''}${isStruck ? ' — STRUCK' : ''}</div>
+                        <div class="article-card-title">${isTradeAgreement ? artLabel : escapeHtml(art.text || art.label || '')}</div>
+                    </div>
+                `;
+            }
         }
     }
 
@@ -7479,20 +7656,40 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
         }
     }
 
-    // Effects summary (for diplomatic initiatives with relation/money effects)
+    // Effects summary
     if (!isTradeAgreement) {
-        let totalRel = 0, totalMoney = 0;
-        articles.forEach((art, i) => {
-            if (!struckIndices.has(i)) {
-                totalRel += art.relations || 0;
-                totalMoney += art.money || 0;
+        if (isV2) {
+            // V2: compute totals from active articles
+            const totals = { relations: 0, revenue: 0, cost: 0 };
+            articles.forEach(art => {
+                if (art.status !== 'struck' && art.effects) {
+                    const e = art.effects;
+                    totals.relations += e.relations || 0;
+                    totals.revenue += e.revenue || 0;
+                    totals.cost += (e.cost_proposer || 0) + (e.cost_target || 0);
+                }
+            });
+            if (totals.relations || totals.revenue || totals.cost) {
+                html += '<div class="article-effects" style="margin:6px 0;">';
+                if (totals.relations) html += '<span class="effect-tag effect-tag--positive">+' + totals.relations + ' Relations</span>';
+                if (totals.revenue > 0) html += '<span class="effect-tag effect-tag--money-pos">+$' + (totals.revenue / 1e6).toFixed(0) + 'M Revenue</span>';
+                if (totals.cost > 0) html += '<span class="effect-tag effect-tag--money-neg">-$' + (totals.cost / 1e6).toFixed(1) + 'M Cost</span>';
+                html += '</div>';
             }
-        });
-        if (totalRel || totalMoney) {
-            html += '<div style="font-size:10px;color:var(--text-dim);margin:6px 0;">';
-            if (totalRel) html += (totalRel > 0 ? '+' : '') + totalRel + ' Relations ';
-            if (totalMoney) html += (totalMoney > 0 ? '+$' : '-$') + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M';
-            html += '</div>';
+        } else {
+            let totalRel = 0, totalMoney = 0;
+            articles.forEach((art, i) => {
+                if (!struckIndices.has(i)) {
+                    totalRel += art.relations || 0;
+                    totalMoney += art.money || 0;
+                }
+            });
+            if (totalRel || totalMoney) {
+                html += '<div style="font-size:10px;color:var(--text-dim);margin:6px 0;">';
+                if (totalRel) html += (totalRel > 0 ? '+' : '') + totalRel + ' Relations ';
+                if (totalMoney) html += (totalMoney > 0 ? '+$' : '-$') + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M';
+                html += '</div>';
+            }
         }
     }
 
@@ -7632,61 +7829,14 @@ async function renderDraftBox() {
         return;
     }
 
-    const targetName = activeDraftTarget ? escapeHtml(activeDraftTarget.name) : 'None selected';
-
-    let html = '<div class="draft-panel">';
-
-    // Header fields
-    html += '<div class="draft-header">';
-    html += '<div class="draft-field"><div class="draft-field-label">Action</div><div class="draft-field-input">' + escapeHtml(activeDraftAction.label) + ' <span style="color:var(--teal);">(' + activeDraftAction.apCost + ' AP)</span></div></div>';
-    let targetFieldHtml = '<select id="draft-target-select" style="width:100%;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);font-size:12px;padding:4px 8px;" onchange="selectDraftTarget(this.value)">';
-    targetFieldHtml += '<option value="">Select a nation...</option>';
-    cachedOtherNations.forEach(n => {
-        const sel = activeDraftTarget && activeDraftTarget.id === n.id ? ' selected' : '';
-        targetFieldHtml += '<option value="' + n.id + '"' + sel + '>' + escapeHtml(n.name) + '</option>';
-    });
-    targetFieldHtml += '</select>';
-    html += '<div class="draft-field"><div class="draft-field-label">Target Nation</div>' + targetFieldHtml + '</div>';
-    html += '<div class="draft-field"><div class="draft-field-label">Name</div><input type="text" id="draft-name-input" class="draft-field-input" placeholder="Initiative name..." value="' + escapeHtml(wizardName) + '" oninput="wizardName=this.value" style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:4px 8px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
-    html += '</div>';
-
-    // Articles section
-    html += '<div class="draft-articles">';
-    if (wizardArticles.length === 0) {
-        html += '<div class="empty-state" style="padding:20px 0;"><div class="empty-state-text">No articles added yet.</div></div>';
-    } else {
-        wizardArticles.forEach((art, i) => {
-            const artLabel = art.text || art.label || art.type || 'Article ' + (i + 1);
-            html += `
-                <div class="draft-article">
-                    <div class="draft-article-type">Art. ${toRoman(i + 1)}</div>
-                    <div class="draft-article-title">${escapeHtml(artLabel)}</div>
-                    <button class="draft-article-remove" onclick="removeDraftArticle(${i})">&#10005;</button>
-                </div>
-            `;
-        });
+    // Special branch for Minor Diplomatic Initiative — rich article config UI
+    if (activeDraftAction.key === 'minor_initiative') {
+        renderMinorInitiativeDraftPanel(body, statusEl);
+        return;
     }
-    html += '</div>';
 
-    // Add article row
-    html += '<div class="draft-add-row">';
-    html += '<select id="draft-article-type" style="flex:1;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);font-size:11px;padding:4px 8px;">';
-    html += '<option value="">Select article type...</option>';
-    Object.keys(INITIATIVE_TYPES).forEach(key => {
-        html += '<option value="' + key + '">' + escapeHtml(INITIATIVE_TYPES[key].label) + '</option>';
-    });
-    html += '</select>';
-    html += '<button class="detail-btn" onclick="addDraftArticle()">Add</button>';
-    html += '</div>';
-
-    // Action bar
-    html += '<div class="detail-actions" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hair);">';
-    html += '<button class="detail-btn" onclick="cancelDraft()">Cancel</button>';
-    html += '<button class="detail-btn" style="color:var(--teal);border-color:var(--teal-border);" onclick="submitDraft()">Send Initiative</button>';
-    html += '</div>';
-
-    html += '</div>';
-    body.innerHTML = html;
+    // Fallback: generic draft panel (should not reach here for known actions)
+    body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Unknown action: ' + escapeHtml(activeDraftAction.key) + '</div></div>';
 }
 
 // ── Trade Agreement Draft Panel ──
@@ -8749,7 +8899,7 @@ function selectMessageTarget(nationId) {
 }
 window.selectMessageTarget = selectMessageTarget;
 
-// ── Draft helpers ──
+// ── Draft helpers (legacy — kept for backward compat) ──
 function addDraftArticle() {
     const sel = document.getElementById('draft-article-type');
     if (!sel || !sel.value) return;
@@ -8773,6 +8923,481 @@ function removeDraftArticle(index) {
     renderDraftBox();
 }
 window.removeDraftArticle = removeDraftArticle;
+
+// ══════════════════════════════════════════════════════
+// MINOR DIPLOMATIC INITIATIVE — Rich Draft Panel
+// ══════════════════════════════════════════════════════
+
+/**
+ * Render the full Minor Diplomatic Initiative draft panel.
+ * Target nation is auto-filled from ambassador posting (read-only).
+ */
+function renderMinorInitiativeDraftPanel(body, statusEl) {
+    if (statusEl) statusEl.textContent = 'Drafting';
+
+    // Determine the target nation from ambassador posting
+    const ambPostings = diplomaticRoles.ambassadorTo || [];
+    if (ambPostings.length === 0) {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Requires Ambassador posting.</div></div>';
+        return;
+    }
+
+    // If only one ambassador posting, auto-select; otherwise show selector
+    if (!activeDraftTarget && ambPostings.length === 1) {
+        activeDraftTarget = { id: ambPostings[0].target_nation_id, name: ambPostings[0].target_nation_name };
+    }
+
+    let html = '<div class="draft-panel">';
+
+    // ── Header fields ──
+    html += '<div class="draft-header">';
+    html += '<div class="draft-field"><div class="draft-field-label">Action</div><div class="draft-field-input">' +
+        escapeHtml(activeDraftAction.label) + ' <span style="font-family:var(--font-mono);font-size:10px;font-weight:600;color:var(--teal);">' + MINOR_INITIATIVE_CONFIG.AP_COST + ' AP</span></div></div>';
+
+    // Target nation — read-only if single posting, dropdown if multiple
+    if (ambPostings.length === 1) {
+        html += '<div class="draft-field"><div class="draft-field-label">Target</div><div class="draft-field-input">' +
+            escapeHtml(ambPostings[0].target_nation_name) + '</div></div>';
+    } else {
+        html += '<div class="draft-field"><div class="draft-field-label">Target</div>' +
+            '<select class="selector-dropdown" onchange="selectMinorInitiativeTarget(this.value)">' +
+            '<option value="">Select posting...</option>';
+        ambPostings.forEach(a => {
+            const sel = activeDraftTarget && activeDraftTarget.id === a.target_nation_id ? ' selected' : '';
+            html += '<option value="' + a.target_nation_id + '"' + sel + '>' + escapeHtml(a.target_nation_name) + '</option>';
+        });
+        html += '</select></div>';
+    }
+
+    // Initiative name
+    html += '<div class="draft-field"><div class="draft-field-label">Name</div>' +
+        '<input type="text" id="initiative-name-input" class="draft-field-input" ' +
+        'placeholder="e.g. ' + escapeHtml((currentNation?.name || '') + '-' + (activeDraftTarget?.name || '') + ' Friendship Accord') + '" ' +
+        'value="' + escapeHtml(wizardName) + '" oninput="wizardName=this.value" ' +
+        'style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:6px 10px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
+    html += '</div>';
+
+    // ── Articles section ──
+    html += '<div class="draft-articles" style="flex:1;overflow-y:auto;padding:10px 14px;">';
+    if (wizardArticles.length === 0) {
+        html += '<div class="empty-state" style="padding:20px 0;"><div class="empty-state-text">No articles added yet.<br>Use the selector below to add articles.</div></div>';
+    } else {
+        wizardArticles.forEach((art, i) => {
+            html += renderInitiativeArticleCard(art, i, true);
+        });
+    }
+    html += '</div>';
+
+    // ── Article selector ──
+    html += '<div class="article-selector">';
+    html += '<select class="selector-dropdown" id="initiative-article-selector">';
+    html += '<option value="">Add article...</option>';
+    for (const [key, typeInfo] of Object.entries(INITIATIVE_ARTICLE_TYPES)) {
+        // Check if max per initiative reached
+        if (typeInfo.max_per_initiative) {
+            const count = wizardArticles.filter(a => a.type === key).length;
+            if (count >= typeInfo.max_per_initiative) continue;
+        }
+        html += '<option value="' + key + '">' + escapeHtml(typeInfo.label) + '</option>';
+    }
+    html += '</select>';
+    html += '<button class="btn btn--primary btn--sm" onclick="addMinorInitiativeArticle()">Add</button>';
+    html += '</div>';
+
+    // ── Action bar ──
+    const totalEffects = computeInitiativeTotals(wizardArticles);
+    const articleCount = wizardArticles.length;
+    const apCost = MINOR_INITIATIVE_CONFIG.AP_COST;
+    const hasEnoughAP = (currentFaction?.action_points ?? 0) >= apCost;
+    const canSend = articleCount > 0 && activeDraftTarget && wizardName.trim() && hasEnoughAP;
+
+    html += '<div class="action-bar">';
+    html += '<span class="action-bar-info">' + articleCount + ' article' + (articleCount !== 1 ? 's' : '') + ' / Minor / Tier 1</span>';
+    html += '<div class="action-bar-spacer"></div>';
+    html += '<button class="btn btn--dim" onclick="cancelDraft()">Cancel</button>';
+    html += '<button class="btn btn--send' + (canSend ? '' : '" disabled') + '" onclick="submitMinorInitiative()"' +
+        (!canSend ? ' title="' + (!activeDraftTarget ? 'Select a target nation' : articleCount === 0 ? 'Add at least one article' : !wizardName.trim() ? 'Enter an initiative name' : 'Not enough AP (' + apCost + ' required)') + '"' : '') +
+        '>Send Initiative (' + apCost + ' AP)</button>';
+    html += '</div>';
+
+    html += '</div>';
+    body.innerHTML = html;
+}
+
+/**
+ * Select target nation for minor initiative (multi-posting case).
+ */
+function selectMinorInitiativeTarget(nationId) {
+    if (!nationId) { activeDraftTarget = null; renderDraftBox(); return; }
+    const posting = (diplomaticRoles.ambassadorTo || []).find(a => a.target_nation_id === nationId);
+    if (posting) {
+        activeDraftTarget = { id: posting.target_nation_id, name: posting.target_nation_name };
+    }
+    renderDraftBox();
+}
+window.selectMinorInitiativeTarget = selectMinorInitiativeTarget;
+
+/**
+ * Add a new article to the minor initiative draft.
+ */
+function addMinorInitiativeArticle() {
+    const sel = document.getElementById('initiative-article-selector');
+    if (!sel || !sel.value) return;
+    const typeKey = sel.value;
+    const typeInfo = INITIATIVE_ARTICLE_TYPES[typeKey];
+    if (!typeInfo) return;
+
+    // Enforce max per initiative
+    if (typeInfo.max_per_initiative) {
+        const count = wizardArticles.filter(a => a.type === typeKey).length;
+        if (count >= typeInfo.max_per_initiative) {
+            alert('Only one ' + typeInfo.label + ' per initiative.');
+            return;
+        }
+    }
+
+    // Create article with default config
+    const article = {
+        id: crypto.randomUUID ? crypto.randomUUID() : 'art-' + Date.now() + '-' + Math.random().toString(36).slice(2,8),
+        type: typeKey,
+        label: typeInfo.label,
+        config: JSON.parse(JSON.stringify(typeInfo.default_config)),
+        status: 'active'
+    };
+
+    wizardArticles.push(article);
+    renderDraftBox();
+}
+window.addMinorInitiativeArticle = addMinorInitiativeArticle;
+
+/**
+ * Remove article from minor initiative draft.
+ */
+function removeMinorInitiativeArticle(index) {
+    wizardArticles.splice(index, 1);
+    renderDraftBox();
+}
+window.removeMinorInitiativeArticle = removeMinorInitiativeArticle;
+
+/**
+ * Update a config field on an article and re-render.
+ */
+function updateArticleConfig(index, field, value) {
+    if (!wizardArticles[index]) return;
+    wizardArticles[index].config[field] = value;
+    renderDraftBox();
+}
+window.updateArticleConfig = updateArticleConfig;
+
+/**
+ * Toggle a value in an array config field (for checkboxes/multi-select).
+ */
+function toggleArticleConfigArray(index, field, value) {
+    if (!wizardArticles[index]) return;
+    const arr = wizardArticles[index].config[field] || [];
+    const idx = arr.indexOf(value);
+    if (idx >= 0) arr.splice(idx, 1);
+    else arr.push(value);
+    wizardArticles[index].config[field] = arr;
+    renderDraftBox();
+}
+window.toggleArticleConfigArray = toggleArticleConfigArray;
+
+/**
+ * Render a single initiative article card with config controls and effect tags.
+ * @param {Object} art - article object with type, config, id
+ * @param {number} index - index in wizardArticles
+ * @param {boolean} editable - whether config controls are shown
+ */
+function renderInitiativeArticleCard(art, index, editable) {
+    const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type];
+    if (!typeInfo) return '';
+
+    const struckClass = art.status === 'struck' ? ' initiative-article--struck' : '';
+    let html = '<div class="initiative-article' + struckClass + '">';
+
+    // Header: article number + type + remove button
+    html += '<div class="initiative-article-head">';
+    html += '<div><span class="initiative-article-num">Art. ' + toRoman(index + 1) + '</span> ';
+    html += '<span class="initiative-article-type">' + escapeHtml(typeInfo.label).toUpperCase();
+    if (art.type === 'joint_statement') {
+        html += ' <span class="badge badge--dim" style="font-size:7px;">No Mechanical Effect</span>';
+    }
+    html += '</span></div>';
+    if (editable) {
+        html += '<button class="initiative-article-remove" onclick="removeMinorInitiativeArticle(' + index + ')">REMOVE</button>';
+    }
+    html += '</div>';
+
+    // Config controls
+    if (editable && art.status !== 'struck') {
+        html += '<div class="config-grid">';
+        html += renderArticleConfigControls(art, index);
+        html += '</div>';
+    }
+
+    // Effect tags
+    const effects = computeArticleEffects(art);
+    html += renderEffectTags(effects, art.type);
+
+    // Article note for joint statement
+    if (art.type === 'joint_statement') {
+        html += '<div class="article-note">Joint Statements have no mechanical effect. They exist for roleplay and diplomatic signalling.</div>';
+    }
+
+    html += '</div>';
+    return html;
+}
+
+/**
+ * Render config controls for an article type.
+ */
+function renderArticleConfigControls(art, index) {
+    switch (art.type) {
+        case 'visa_agreement': return renderVisaConfig(art, index);
+        case 'cultural_exchange': return renderCulturalConfig(art, index);
+        case 'student_exchange': return renderStudentConfig(art, index);
+        case 'joint_statement': return renderStatementConfig(art, index);
+        default: return '';
+    }
+}
+
+/**
+ * Render a toggle group (single-select radio-like buttons).
+ */
+function renderToggleGroup(options, selectedValue, index, field) {
+    let html = '<div class="toggle-group">';
+    options.forEach(opt => {
+        const sel = (opt.key === selectedValue || opt.key === Number(selectedValue)) ? ' is-selected' : '';
+        html += '<button class="toggle-opt' + sel + '" onclick="updateArticleConfig(' + index + ',\'' + field + '\',' +
+            (typeof opt.key === 'string' ? '\'' + opt.key + '\'' : opt.key) + ')">' + escapeHtml(opt.label) + '</button>';
+    });
+    html += '</div>';
+    return html;
+}
+
+/**
+ * Render a check group (multi-select toggle buttons).
+ */
+function renderCheckGroup(options, selectedArray, index, field) {
+    let html = '<div class="check-group">';
+    options.forEach(opt => {
+        const sel = (selectedArray || []).includes(opt.key) ? ' is-selected' : '';
+        html += '<button class="check-opt' + sel + '" onclick="toggleArticleConfigArray(' + index + ',\'' + field + '\',\'' + opt.key + '\')">' + escapeHtml(opt.label) + '</button>';
+    });
+    html += '</div>';
+    return html;
+}
+
+// ── Visa Agreement Config ──
+function renderVisaConfig(art, index) {
+    const c = art.config;
+    let html = '';
+    html += '<div class="config-row"><span class="config-label">Duration</span>' +
+        renderToggleGroup(VISA_DURATION_OPTIONS, c.duration, index, 'duration') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Scope</span>' +
+        renderToggleGroup(VISA_SCOPE_OPTIONS, c.scope, index, 'scope') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Direction</span>' +
+        renderToggleGroup(VISA_DIRECTION_OPTIONS, c.direction, index, 'direction') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Excludes</span>' +
+        renderCheckGroup(VISA_EXCLUDES, c.excludes, index, 'excludes') + '</div>';
+    return html;
+}
+
+// ── Cultural Exchange Config ──
+function renderCulturalConfig(art, index) {
+    const c = art.config;
+    let html = '';
+    html += '<div class="config-row"><span class="config-label">Programmes</span>' +
+        renderCheckGroup(CULTURAL_PROGRAMMES, c.programmes, index, 'programmes') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Duration</span>' +
+        renderToggleGroup(CULTURAL_DURATION_OPTIONS, c.duration, index, 'duration') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Funding</span>' +
+        renderToggleGroup(CULTURAL_FUNDING_OPTIONS, c.funding, index, 'funding') + '</div>';
+    return html;
+}
+
+// ── Student Exchange Config ──
+function renderStudentConfig(art, index) {
+    const c = art.config;
+    let html = '';
+    html += '<div class="config-row"><span class="config-label">Seats</span>' +
+        '<input type="number" class="config-value config-value--sm" min="50" max="500" step="10" value="' + (c.seats || 200) + '" ' +
+        'onchange="updateArticleConfig(' + index + ',\'seats\',parseInt(this.value)||200)">' +
+        '<span class="config-unit">per nation/yr</span>' +
+        '<span class="config-note">(50-500)</span></div>';
+    html += '<div class="config-row"><span class="config-label">Level</span>' +
+        renderToggleGroup(STUDENT_LEVEL_OPTIONS, c.level, index, 'level') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Duration</span>' +
+        renderToggleGroup(STUDENT_DURATION_OPTIONS, c.duration, index, 'duration') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Funding</span>' +
+        renderToggleGroup(STUDENT_FUNDING_OPTIONS, c.funding, index, 'funding') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Fields</span>' +
+        renderCheckGroup(STUDENT_FIELDS, c.fields, index, 'fields') + '</div>';
+    return html;
+}
+
+// ── Joint Statement Config ──
+function renderStatementConfig(art, index) {
+    const c = art.config;
+    let html = '';
+    html += '<div class="config-row"><span class="config-label">Visibility</span>' +
+        renderToggleGroup(STATEMENT_VISIBILITY_OPTIONS, c.visibility, index, 'visibility') + '</div>';
+    html += '<div class="config-row" style="flex-direction:column;align-items:stretch;">' +
+        '<span class="config-label">Statement</span>' +
+        '<textarea class="initiative-text-area" maxlength="500" placeholder="The Republic of ' + escapeHtml(currentNation?.name || '...') + ' and..." ' +
+        'oninput="updateArticleConfig(' + index + ',\'text\',this.value)">' + escapeHtml(c.text || '') + '</textarea>' +
+        '<span class="config-note" style="margin-left:0;margin-top:2px;">' + ((c.text || '').length) + '/500</span></div>';
+    return html;
+}
+
+/**
+ * Compute effects for a single article based on its type and config.
+ */
+function computeArticleEffects(art) {
+    const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type];
+    if (!typeInfo || !typeInfo.calculateEffects) return {};
+    try {
+        return typeInfo.calculateEffects(art.config);
+    } catch (e) {
+        console.warn('Error computing effects for article:', art.type, e);
+        return {};
+    }
+}
+
+/**
+ * Render effect tags for an article.
+ */
+function renderEffectTags(effects, articleType) {
+    let html = '<div class="article-effects">';
+
+    if (articleType === 'joint_statement') {
+        html += '<span class="effect-tag effect-tag--neutral">No stat effects</span>';
+        html += '</div>';
+        return html;
+    }
+
+    // For visa, use .summary if available
+    const e = effects.summary || effects;
+    const tags = [];
+
+    if (e.relations) tags.push({ label: (e.relations > 0 ? '+' : '') + e.relations + ' Relations', cls: 'effect-tag--positive' });
+    if (e.revenue > 0) tags.push({ label: '+$' + (e.revenue / 1e6).toFixed(0) + 'M Revenue', cls: 'effect-tag--money-pos' });
+    if (e.cost_proposer > 0 || e.cost_target > 0) {
+        const total = (e.cost_proposer || 0) + (e.cost_target || 0);
+        tags.push({ label: '-$' + (total / 1e6).toFixed(1) + 'M Cost', cls: 'effect-tag--money-neg' });
+    }
+    if (e.intl_reputation) tags.push({ label: '+' + e.intl_reputation + ' Int\'l Rep', cls: 'effect-tag--positive' });
+    if (e.immigration) tags.push({ label: '+' + e.immigration + ' Immigration', cls: 'effect-tag--positive' });
+    if (e.higher_education) tags.push({ label: '+' + e.higher_education + ' Higher Ed', cls: 'effect-tag--positive' });
+    if (e.soft_power) tags.push({ label: '+' + e.soft_power + ' Soft Power', cls: 'effect-tag--info' });
+    if (e.soft_power_per_year) tags.push({ label: '+' + e.soft_power_per_year + ' Soft Power/yr', cls: 'effect-tag--info' });
+    if (e.permanent_soft_power) tags.push({ label: '+' + e.permanent_soft_power + ' Permanent Soft Power', cls: 'effect-tag--info' });
+    if (e.technology_bonus) tags.push({ label: '+' + e.technology_bonus + ' Technology', cls: 'effect-tag--info' });
+    if (e.polarization) tags.push({ label: '+' + e.polarization + ' Polarization', cls: 'effect-tag--warning' });
+    if (e.terrorism_risk) tags.push({ label: '+' + e.terrorism_risk + ' Terrorism Risk', cls: 'effect-tag--warning' });
+    if (e.ongoing_per_tick) tags.push({ label: '-$' + (e.ongoing_per_tick / 1e6).toFixed(0) + 'M/tick Ongoing', cls: 'effect-tag--money-neg' });
+
+    if (tags.length === 0) {
+        tags.push({ label: 'No stat effects', cls: 'effect-tag--neutral' });
+    }
+
+    tags.forEach(t => { html += '<span class="effect-tag ' + t.cls + '">' + t.label + '</span>'; });
+    html += '</div>';
+    return html;
+}
+
+/**
+ * Render a read-only config summary for an article in the negotiations view.
+ * Shows the key config choices as a compact text summary.
+ */
+function renderArticleConfigSummary(art) {
+    const c = art.config;
+    if (!c) return '';
+    let lines = [];
+
+    switch (art.type) {
+        case 'visa_agreement': {
+            const dur = VISA_DURATION_OPTIONS.find(d => d.key === c.duration);
+            const scope = VISA_SCOPE_OPTIONS.find(s => s.key === c.scope);
+            const dir = VISA_DIRECTION_OPTIONS.find(d => d.key === c.direction);
+            if (dur) lines.push(dur.label);
+            if (scope) lines.push(scope.label);
+            if (dir) lines.push(dir.label);
+            const excludes = (c.excludes || []).map(k => {
+                const ex = VISA_EXCLUDES.find(e => e.key === k);
+                return ex ? ex.label : k;
+            });
+            if (excludes.length) lines.push('Excludes: ' + excludes.join(', '));
+            break;
+        }
+        case 'cultural_exchange': {
+            const dur = CULTURAL_DURATION_OPTIONS.find(d => d.key === c.duration);
+            const fund = CULTURAL_FUNDING_OPTIONS.find(f => f.key === c.funding);
+            if (dur) lines.push(dur.label);
+            if (fund) lines.push('Funding: ' + fund.label);
+            const progs = (c.programmes || []).map(k => {
+                const p = CULTURAL_PROGRAMMES.find(p => p.key === k);
+                return p ? p.label : k;
+            });
+            if (progs.length) lines.push('Programmes: ' + progs.join(', '));
+            break;
+        }
+        case 'student_exchange': {
+            const lvl = STUDENT_LEVEL_OPTIONS.find(l => l.key === c.level);
+            const dur = STUDENT_DURATION_OPTIONS.find(d => d.key === c.duration);
+            const fund = STUDENT_FUNDING_OPTIONS.find(f => f.key === c.funding);
+            if (lvl) lines.push(lvl.label);
+            if (dur) lines.push(dur.label);
+            if (c.seats) lines.push(c.seats + ' seats');
+            if (fund) lines.push('Funding: ' + fund.label);
+            const fields = (c.fields || []).map(k => {
+                const f = STUDENT_FIELDS.find(sf => sf.key === k);
+                return f ? f.label : k;
+            });
+            if (fields.length) lines.push('Fields: ' + fields.join(', '));
+            break;
+        }
+        case 'joint_statement': {
+            const vis = STATEMENT_VISIBILITY_OPTIONS.find(v => v.key === c.visibility);
+            if (vis) lines.push(vis.label);
+            if (c.text) lines.push('"' + (c.text.length > 120 ? c.text.substring(0, 120) + '…' : c.text) + '"');
+            break;
+        }
+    }
+
+    if (lines.length === 0) return '';
+    return '<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-2);line-height:1.5;">' +
+        lines.map(l => escapeHtml(l)).join(' · ') + '</div>';
+}
+
+/**
+ * Render effect tags from a stored effects object (used in negotiations view).
+ * Unlike renderEffectTags() which computes effects fresh, this reads from the stored proposal_data.
+ */
+function renderEffectTagsFromEffects(effects, articleType) {
+    if (!effects) return '';
+    // Reuse the same rendering logic — the stored effects have the same shape
+    return renderEffectTags(effects, articleType);
+}
+
+/**
+ * Compute combined totals across all articles in the initiative.
+ */
+function computeInitiativeTotals(articles) {
+    const totals = { relations: 0, revenue: 0, cost_proposer: 0, cost_target: 0, intl_reputation: 0 };
+    for (const art of articles) {
+        if (art.status === 'struck') continue;
+        const effects = computeArticleEffects(art);
+        const e = effects.summary || effects;
+        totals.relations += e.relations || 0;
+        totals.revenue += e.revenue || 0;
+        totals.cost_proposer += e.cost_proposer || 0;
+        totals.cost_target += e.cost_target || 0;
+        totals.intl_reputation += e.intl_reputation || 0;
+    }
+    return totals;
+}
 
 // ══════════════════════════════════════════════════════
 // RECALL AMBASSADOR PANEL
@@ -9558,6 +10183,124 @@ async function executeAppointAmbassador() {
         alert('Error: ' + e.message);
     }
 }
+
+// ══════════════════════════════════════════════════════
+// MINOR DIPLOMATIC INITIATIVE — Submit
+// ══════════════════════════════════════════════════════
+async function submitMinorInitiative() {
+    if (!activeDraftTarget) { alert('Please select a target nation.'); return; }
+    if (!wizardName.trim()) { alert('Please enter a name for the initiative.'); return; }
+    if (wizardArticles.length === 0) { alert('Please add at least one article.'); return; }
+
+    const apCost = MINOR_INITIATIVE_CONFIG.AP_COST;
+    if ((currentFaction?.action_points ?? 0) < apCost) {
+        alert('Not enough AP. You need ' + apCost + ' AP.');
+        return;
+    }
+
+    // Validate: hostile nations blocked
+    const targetId = activeDraftTarget.id;
+    const natA = currentNation.id < targetId ? currentNation.id : targetId;
+    const natB = currentNation.id < targetId ? targetId : currentNation.id;
+    const { data: rel } = await _supabase
+        .from('diplomatic_relations')
+        .select('relation_score')
+        .eq('nation_a_id', natA)
+        .eq('nation_b_id', natB)
+        .maybeSingle();
+    if (rel && rel.relation_score <= MINOR_INITIATIVE_CONFIG.HOSTILE_RELATION_THRESHOLD) {
+        alert('Cannot propose diplomatic initiative to hostile nation (relations: ' + rel.relation_score + ').');
+        return;
+    }
+
+    // Validate: one visa agreement per initiative
+    const visaCount = wizardArticles.filter(a => a.type === 'visa_agreement').length;
+    if (visaCount > 1) {
+        alert('Only one Visa Agreement per initiative.');
+        return;
+    }
+
+    // Validate: cultural exchange must have at least 1 programme
+    for (const art of wizardArticles) {
+        if (art.type === 'cultural_exchange' && (!art.config.programmes || art.config.programmes.length === 0)) {
+            alert('Cultural Exchange requires at least one programme selected.');
+            return;
+        }
+        if (art.type === 'student_exchange' && (!art.config.fields || art.config.fields.length === 0)) {
+            alert('Student Exchange requires at least one field selected.');
+            return;
+        }
+    }
+
+    // Build proposal_data with computed effects
+    const articles = wizardArticles.map((art, i) => {
+        const effects = computeArticleEffects(art);
+        return {
+            id: art.id,
+            type: art.type,
+            title: art.label || INITIATIVE_ARTICLE_TYPES[art.type]?.label || art.type,
+            config: art.config,
+            effects: effects.summary || effects,
+            proposer_effects: effects.proposer || null,
+            target_effects: effects.target || null,
+            status: 'active'
+        };
+    });
+
+    // Compute totals for the proposal
+    const totals = computeInitiativeTotals(wizardArticles);
+
+    const proposalData = {
+        name: wizardName.trim(),
+        classification: 'MINOR',
+        version: 2,   // v2 = rich article config format
+        articles: articles,
+        proposer_nation_name: currentNation.name,
+        target_nation_name: activeDraftTarget.name,
+        proposer_faction_id: currentFaction.id,
+        totals: totals
+    };
+
+    try {
+        // Deduct AP
+        const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+        if (!apResult.success) { alert('Failed to deduct AP: ' + (apResult.error || 'Insufficient AP')); return; }
+
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shard?.current_tick || shardTick;
+
+        const { error } = await _supabase.from('diplomatic_proposals').insert({
+            proposing_nation_id: currentNation.id,
+            target_nation_id: activeDraftTarget.id,
+            proposed_by_faction_id: currentFaction.id,
+            proposal_type: MINOR_INITIATIVE_CONFIG.TYPE,
+            proposal_tier: MINOR_INITIATIVE_CONFIG.TIER,
+            status: 'proposed',
+            proposed_at_tick: currentTick,
+            proposal_data: proposalData
+        });
+
+        if (error) {
+            console.error('Submit error:', error);
+            alert('Error submitting initiative: ' + error.message);
+            return;
+        }
+
+        // Update AP display
+        currentFaction.action_points = apResult.newAp;
+        const apEl = document.getElementById('diplo-ap');
+        if (apEl) apEl.textContent = currentFaction.action_points + ' AP';
+
+        alert('Initiative "' + proposalData.name + '" submitted to ' + activeDraftTarget.name + '!');
+        cancelDraft();
+        await renderNegotiationsBox();
+        await renderDiploHeader();
+    } catch (err) {
+        console.error('Submit minor initiative error:', err);
+        alert('Error: ' + err.message);
+    }
+}
+window.submitMinorInitiative = submitMinorInitiative;
 
 function cancelDraft() {
     activeDraftAction = null;
