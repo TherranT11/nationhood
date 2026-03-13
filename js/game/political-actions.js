@@ -7,7 +7,7 @@ import { deductAP, GAME_CONFIG } from './config.js';
 import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic } from './government-types.js';
 import { RAW_SCALING_DIVISORS, STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
 import { IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, loadFactionIdeology, computeIdeologyAlignment } from './ideology.js';
-import { MINISTER_APPROVAL_CONFIG, ISSUE_CATEGORY_STATS, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, STAT_TO_MINISTRY, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, statDirectionSign } from './stats.js';
+import { MINISTER_APPROVAL_CONFIG, ISSUE_CATEGORY_STATS, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, STAT_TO_MINISTRY, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, statDirectionSign, buildFundingPctMap, getInstFundingPct } from './stats.js';
 import { adjustGovernmentApprovalEvent, adjustMomentum, adjustMomentumAll } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { recalcDerivedApproval } from './bills.js';
@@ -4746,9 +4746,15 @@ export async function processCrises(supabase, nation, currentTick) {
     const nationUpdates = {};
     const statBounds = {}; // { stat_key: { floor: highestFloor, ceiling: lowestCeiling } }
 
-    // Institution funding: always 100% (no budget bill system)
+    // Load per-institution funding allocations (written by enactBill funding articles)
+    const { data: _fundingAllocRows } = await supabase.from('budget_item_allocations')
+        .select('item_id, item_type, allocation_amount, needed_amount')
+        .eq('nation_id', nation.id)
+        .eq('item_type', 'institution')
+        .order('created_at', { ascending: true });
+    const _fundingMap = buildFundingPctMap(_fundingAllocRows);
     function getInstitutionFundingPct(instId) {
-        return 100;
+        return getInstFundingPct(_fundingMap, instId);
     }
 
     // 3. Check inactive crises for activation

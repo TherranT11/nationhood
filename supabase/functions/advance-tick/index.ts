@@ -2797,7 +2797,7 @@ function buildStatInstitutionMap(instConfig, itemAllocations) {
         const alloc = allocMap[inst.id];
         const fundingPct = alloc && alloc.needed > 0
             ? Math.min(100, Math.round((alloc.allocated / alloc.needed) * 100))
-            : 0;  // no allocation row = unfunded
+            : 100;  // no allocation row = fully funded by default
 
         for (const role of ['primary', 'secondary']) {
             const statKey = inst[`${role}_stat`];
@@ -6444,7 +6444,7 @@ async function enactBill(supabase, bill, currentTick) {
         const fd = art.funding_data;
         if (!fd || !fd.ministry_key) continue;
 
-        // Per-institution funding changes: update ministry funding_level
+        // Per-institution funding changes: update ministry funding_level + budget_item_allocations
         const instChanges = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
 
         // Update the ministry-level funding_level as a weighted average
@@ -6478,6 +6478,35 @@ async function enactBill(supabase, bill, currentTick) {
                 ...logContext,
                 ministryKey: fd.ministry_key,
                 avgPercent: Math.round(avgPct)
+            });
+
+            // Upsert per-institution funding into budget_item_allocations
+            // Uses proposed_pct as allocation_amount and 100 as needed_amount
+            // so buildStatInstitutionMap computes fundingPct = (proposed_pct / 100) * 100 = proposed_pct
+            for (const inst of allInst) {
+                const { error: allocErr } = await supabase.from('budget_item_allocations')
+                    .upsert({
+                        bill_id: bill.id,
+                        nation_id: bill.nation_id,
+                        fiscal_category: fd.ministry_key,
+                        item_type: 'institution',
+                        item_id: inst.id,
+                        item_name: inst.name,
+                        allocation_amount: inst.proposed_pct,
+                        needed_amount: 100
+                    }, { onConflict: 'bill_id,item_type,item_id' });
+                if (allocErr) {
+                    console.error('[enactBill] stage=upsert_institution_allocation result=error', {
+                        ...logContext,
+                        institutionId: inst.id,
+                        error: allocErr.message
+                    });
+                }
+            }
+            console.log('[enactBill] stage=upsert_institution_allocations result=success', {
+                ...logContext,
+                ministryKey: fd.ministry_key,
+                institutionCount: allInst.length
             });
         }
 
@@ -15140,9 +15169,21 @@ async function processCrises(supabase, nation, currentTick) {
     const nationUpdates = {};
     const statBounds = {}; // { stat_key: { floor: highestFloor, ceiling: lowestCeiling } }
 
-    // Institution funding: always 100% (no budget bill system)
+    // Load per-institution funding allocations (written by enactBill funding articles)
+    const { data: _fundingAllocRows } = await supabase.from('budget_item_allocations')
+        .select('item_id, allocation_amount, needed_amount')
+        .eq('nation_id', nation.id)
+        .eq('item_type', 'institution')
+        .order('created_at', { ascending: true });
+    const _fundingMap = {};
+    for (const row of (_fundingAllocRows || [])) {
+        const needed = Number(row.needed_amount || 0);
+        _fundingMap[row.item_id] = needed > 0
+            ? Math.min(100, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
+            : 100;
+    }
     function getInstitutionFundingPct(instId) {
-        return 100;
+        return _fundingMap[instId] ?? 100;
     }
 
     // 3. Check inactive crises for activation
@@ -19620,7 +19661,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
             _institutionConfig = icRows || [];
         }
-        let statInstMap = null;
+        // Load per-institution funding allocations (written by enactBill funding articles)
+        const { data: allocRows } = await supabase.from('budget_item_allocations')
+            .select('*')
+            .eq('nation_id', nation.id)
+            .eq('item_type', 'institution')
+            .order('created_at', { ascending: true });
+        const statInstMap = buildStatInstitutionMap(_institutionConfig, allocRows || []);
         const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
         const decayResults = await processStatDecay(supabase, nation, statInstMap, policyDecayAdj);
         if (decayResults.length > 0) {

@@ -263,6 +263,34 @@ export function getInstitutionDecayRate(fundingPct, role) {
 }
 
 /**
+ * Build a map of institutionId → fundingPct from budget_item_allocations rows.
+ * This is the single source of truth for computing funding percentages.
+ *
+ * @param {Array} itemAllocations - rows from budget_item_allocations (must have item_id, item_type, allocation_amount, needed_amount)
+ * @returns {Object} e.g. { tax_admin: 85, police_force: 100 }  — default 100 for missing institutions
+ */
+export function buildFundingPctMap(itemAllocations) {
+    const map = {};
+    for (const row of (itemAllocations || [])) {
+        if (row.item_type === 'institution') {
+            const needed = Number(row.needed_amount || 0);
+            map[row.item_id] = needed > 0
+                ? Math.min(100, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
+                : 100;
+        }
+    }
+    return map;
+}
+
+/**
+ * Get the funding percentage for a single institution from a pre-built map.
+ * Returns 100 (fully funded) if no allocation exists.
+ */
+export function getInstFundingPct(fundingPctMap, instId) {
+    return (fundingPctMap && fundingPctMap[instId] !== undefined) ? fundingPctMap[instId] : 100;
+}
+
+/**
  * Build a map of statKey → array of { institutionId, role, fundingPct } from
  * institution config rows and budget_item_allocations for the active budget.
  *
@@ -271,22 +299,11 @@ export function getInstitutionDecayRate(fundingPct, role) {
  * @returns {Object} e.g. { healthcare_quality: [{ id: 'workforce', role: 'primary', fundingPct: 85 }, ...] }
  */
 export function buildStatInstitutionMap(instConfig, itemAllocations) {
-    const allocMap = {};
-    for (const row of (itemAllocations || [])) {
-        if (row.item_type === 'institution') {
-            allocMap[row.item_id] = {
-                allocated: Number(row.allocation_amount || 0),
-                needed: Number(row.needed_amount || 0)
-            };
-        }
-    }
+    const fundingPctMap = buildFundingPctMap(itemAllocations);
 
     const statMap = {};
     for (const inst of (instConfig || [])) {
-        const alloc = allocMap[inst.id];
-        const fundingPct = alloc && alloc.needed > 0
-            ? Math.min(100, Math.round((alloc.allocated / alloc.needed) * 100))
-            : 0;  // no allocation row = unfunded
+        const fundingPct = getInstFundingPct(fundingPctMap, inst.id);
 
         for (const role of ['primary', 'secondary']) {
             const statKey = inst[`${role}_stat`];

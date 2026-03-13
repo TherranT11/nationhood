@@ -27,7 +27,7 @@ import { initPage, qCache, qCacheSet, formatCurrency, assertRawEconomicValue } f
 import './js/guide.js';
 import { escapeHtml } from './js/utils.js';
 import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
-import { calculateNationalBudget, applyTradeTariffOverride, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, isAutocracy, ISSUE_CATEGORY_STATS, formatStatName, deductAP, fetchActiveCoalition, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG } from './js/game-common.js';
+import { calculateNationalBudget, applyTradeTariffOverride, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, isAutocracy, ISSUE_CATEGORY_STATS, formatStatName, deductAP, fetchActiveCoalition, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG, buildFundingPctMap, getInstFundingPct } from './js/game-common.js';
 
 // ==================== STATE ====================
 var previousTickData = null;
@@ -35,6 +35,7 @@ var previousYearData = null;
 var currentTick = 0;
 var expenditureData = null;
 var expenditureDetails = null;
+var ministryFundingPcts = {}; // { fiscalCategory: avgFundingPct }
 var tradeData = null;
 var aidData = null;  // { received: number, given: number, agreements: [...] }
 var currentNation = null;
@@ -177,7 +178,7 @@ async function loadPreviousYearData(nationId) {
 async function loadExpenditureData(nationId, nation) {
     var cacheKey = 'expenditure_data_' + nationId;
     var cached = qCache(cacheKey);
-    if (cached) { expenditureData = cached.totals; expenditureDetails = cached.details; return; }
+    if (cached) { expenditureData = cached.totals; expenditureDetails = cached.details; ministryFundingPcts = cached.fundingPcts || {}; return; }
 
     var totals = {};
     var details = {};
@@ -220,11 +221,18 @@ async function loadExpenditureData(nationId, nation) {
         }
     }
 
-    // Institution costs from config (budget bill system removed)
+    // Institution costs from config, scaled by funding levels from budget_item_allocations
     {
         var configRes = await _supabase.from('ministry_institution_config').select('*');
+        var allocRes = await _supabase.from('budget_item_allocations')
+            .select('item_id, item_type, allocation_amount, needed_amount')
+            .eq('nation_id', nationId)
+            .eq('item_type', 'institution')
+            .order('created_at', { ascending: true });
+        var allocMap = buildFundingPctMap(allocRes.data);
         var population = Number(nation.population || 0);
         var gdp = Number(nation.gdp || 0);
+        var catFundingSums = {}; // { fCat: { totalPct, count } }
         for (var k = 0; k < (configRes.data || []).length; k++) {
             var cfg = configRes.data[k];
             var mKey = cfg.ministry_key;
@@ -235,23 +243,35 @@ async function loadExpenditureData(nationId, nation) {
             if (!fCat) continue;
             var baseVal = Number(cfg.base_cost_per_capita || 0);
             var instNeeded = cfg.scaling_type === 'gdp' ? (baseVal / 100) * gdp : baseVal * population;
+            var instFundPct = getInstFundingPct(allocMap, cfg.id);
+            var instCost = instNeeded * (instFundPct / 100);
+            if (!catFundingSums[fCat]) catFundingSums[fCat] = { totalPct: 0, count: 0 };
+            catFundingSums[fCat].totalPct += instFundPct;
+            catFundingSums[fCat].count += 1;
             if (!totals[fCat]) totals[fCat] = 0;
             if (!details[fCat]) details[fCat] = [];
-            totals[fCat] += instNeeded;
-            if (instNeeded > 0) {
+            totals[fCat] += instCost;
+            if (instCost > 0) {
                 details[fCat].push({
                     name: cfg.institution_name,
-                    cost: instNeeded,
+                    cost: instCost,
                     type: 'institution',
-                    needed: instNeeded
+                    needed: instNeeded,
+                    fundingPct: instFundPct
                 });
             }
+        }
+        ministryFundingPcts = {};
+        for (var mc in catFundingSums) {
+            ministryFundingPcts[mc] = catFundingSums[mc].count > 0
+                ? Math.round(catFundingSums[mc].totalPct / catFundingSums[mc].count)
+                : 100;
         }
     }
 
     expenditureData = totals;
     expenditureDetails = details;
-    qCacheSet(cacheKey, { totals: totals, details: details }, 2 * 60 * 1000);
+    qCacheSet(cacheKey, { totals: totals, details: details, fundingPcts: ministryFundingPcts }, 2 * 60 * 1000);
 }
 
 function scaleCost(baseCost, scalingStat, nation) {
@@ -1161,22 +1181,30 @@ async function loadTaxAdminFunding(nation) {
     var allocated = 0;
     var needed = 0;
 
-    // Compute needed from ministry_institution_config (no budget bill system)
-    if (needed === 0) {
-        var { data: cfg } = await _supabase.from('ministry_institution_config')
-            .select('base_cost_per_capita, scaling_type')
-            .eq('id', 'tax_admin')
-            .single();
-        if (cfg) {
-            var population = Number(nation.population || 0);
-            var gdp = Number(nation.gdp || 0);
-            needed = cfg.scaling_type === 'gdp'
-                ? (Number(cfg.base_cost_per_capita) / 100) * gdp
-                : Number(cfg.base_cost_per_capita) * population;
-        }
+    // Compute needed from ministry_institution_config
+    var { data: cfg } = await _supabase.from('ministry_institution_config')
+        .select('base_cost_per_capita, scaling_type')
+        .eq('id', 'tax_admin')
+        .single();
+    if (cfg) {
+        var population = Number(nation.population || 0);
+        var gdp = Number(nation.gdp || 0);
+        needed = cfg.scaling_type === 'gdp'
+            ? (Number(cfg.base_cost_per_capita) / 100) * gdp
+            : Number(cfg.base_cost_per_capita) * population;
     }
 
-    var fundingPct = needed > 0 ? Math.round((allocated / needed) * 100) : 0;
+    // Read actual allocation from budget_item_allocations (written by funding bill enactment)
+    var { data: allocRows } = await _supabase.from('budget_item_allocations')
+        .select('item_id, item_type, allocation_amount, needed_amount')
+        .eq('nation_id', nation.id)
+        .eq('item_type', 'institution')
+        .eq('item_id', 'tax_admin')
+        .order('created_at', { ascending: false })
+        .limit(1);
+    var fundingPctMap = buildFundingPctMap(allocRows);
+    var fundingPct = getInstFundingPct(fundingPctMap, 'tax_admin');
+    allocated = needed * (fundingPct / 100);
     taxAdminFunding = { allocated: allocated, needed: needed, fundingPct: fundingPct };
     qCacheSet(cacheKey, taxAdminFunding, 5 * 60 * 1000);
 }
@@ -1676,7 +1704,8 @@ function renderBudgetTab(nation) {
         var m = sortedMins[i];
         var dispName = m.name === 'Foreign Ministry' ? 'MINISTRY OF FOREIGN AFFAIRS' : 'MINISTRY OF ' + m.name.toUpperCase();
         var desc = MINISTRY_DESCRIPTIONS[m.name] || '';
-        h += bv2ExpenditureRow(dispName, desc, m.cost, 100);
+        var mFundPct = ministryFundingPcts[m.name] !== undefined ? ministryFundingPcts[m.name] : 100;
+        h += bv2ExpenditureRow(dispName, desc, m.cost, mFundPct);
     }
     if (budget.debtService > 0) {
         h += bv2ExpenditureRow('INTEREST ON DEBT', 'Debt service payments', budget.debtService, null);
@@ -2727,7 +2756,8 @@ function renderMinistryPoliciesHtml(category) {
         h += '<div class="ministry-section-label">Institutions</div>';
         for (var j = 0; j < institutions.length; j++) {
             total += institutions[j].cost;
-            h += budgetLineItem(institutions[j].name, institutions[j].cost, null, null);
+            var fpLabel = institutions[j].fundingPct !== undefined ? institutions[j].fundingPct + '% funded' : null;
+            h += budgetLineItem(institutions[j].name, institutions[j].cost, fpLabel, null);
         }
     }
 

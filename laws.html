@@ -175,7 +175,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS, RAW_SCALING_DIVISORS } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS, RAW_SCALING_DIVISORS, buildFundingPctMap, getInstFundingPct } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 (function () {
     'use strict';
@@ -1139,14 +1139,11 @@ function openDraftModal() {
     Promise.all([
         _supabase.from('ministries').select('ministry_key, funding_level').eq('nation_id', currentNation.id).eq('is_active', true),
         _supabase.from('ministry_institution_config').select('*'),
-        Promise.resolve({ data: [] })
+        _supabase.from('budget_item_allocations').select('item_id, item_type, allocation_amount, needed_amount').eq('nation_id', currentNation.id).eq('item_type', 'institution').order('created_at', { ascending: true })
     ]).then(([ministries, instConfig, itemAllocs]) => {
         window._allMinistries = ministries.data || [];
         window._instConfig = instConfig.data || [];
-        window._itemAllocations = {};
-        for (const ia of (itemAllocs.data || [])) {
-            window._itemAllocations[ia.item_id] = { allocated: Number(ia.allocation_amount || 0), needed: Number(ia.needed_amount || 0) };
-        }
+        window._fundingPctMap = buildFundingPctMap(itemAllocs.data);
     });
 }
 
@@ -1278,16 +1275,10 @@ function _getFundingLabel(pct) {
 }
 
 function _getInstFundingPct(instId) {
-    const ia = (window._itemAllocations || {})[instId];
-    if (ia && ia.needed > 0) return Math.round((ia.allocated / ia.needed) * 100);
-    return 100; // default fully funded when no allocation data
+    return getInstFundingPct(window._fundingPctMap, instId);
 }
 
 function _computeInstitutionBaseCost(instId) {
-    const ia = (window._itemAllocations || {})[instId];
-    if (ia && ia.needed > 0) {
-        return Number(ia.needed);
-    }
     const cfg = (window._instConfig || []).find(i => i.id === instId);
     if (!cfg || !currentNation) return 0;
     const inflationMult = getInflationMultiplier(currentNation.inflation);
