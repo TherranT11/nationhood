@@ -44,7 +44,7 @@ BEGIN
     FROM presidents p
     WHERE p.nation_id = v_bill.nation_id
       AND p.is_active = true
-    ORDER BY p.sworn_in_tick DESC NULLS LAST
+    ORDER BY p.elected_tick DESC NULLS LAST
     LIMIT 1;
 
     IF v_president_faction IS NULL THEN
