@@ -1244,3 +1244,17 @@
   .row { flex-direction: column; }
   .box--double, .box--single, .box--third, .box--full { width: 100%; }
 }
+
+@media (max-width: 768px) {
+  .dashboard { padding: 10px 12px 16px; gap: 10px; }
+  .row { gap: 10px; }
+  .box--h450 { height: auto; min-height: 320px; max-height: 420px; }
+  .box--h480 { height: auto; min-height: 340px; max-height: 450px; }
+}
+
+@media (max-width: 480px) {
+  .dashboard { padding: 8px 8px 12px; gap: 8px; }
+  .row { gap: 8px; }
+  .box--h450 { min-height: 260px; max-height: 360px; }
+  .box--h480 { min-height: 280px; max-height: 380px; }
+}
