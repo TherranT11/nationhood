@@ -76,7 +76,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import './js/guide.js';
-import { escapeHtml, tickToDate } from './js/utils.js';
+import { escapeHtml, tickToDate, fmtBudgetCurrency } from './js/utils.js';
 import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies } from './js/game-common.js';
 /**
  * Diplomacy Page
@@ -7184,7 +7184,8 @@ function renderActionsBox() {
     html += '<div style="padding:2px 14px 4px;"><span style="font-family:var(--font-mono);font-size:7.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);">Unilateral</span></div>';
     [
         { key: 'retaliatory_tariff_draft', label: 'Retaliatory Tariff', ap: 2, type: 'mot' },
-        { key: 'export_subsidy_draft', label: 'Export Subsidy', ap: 2, type: 'mot' }
+        { key: 'export_subsidy_draft', label: 'Export Subsidy', ap: 2, type: 'mot' },
+        { key: 'impose_embargo_draft', label: 'Impose Embargo', ap: 5, type: 'mot' }
     ].forEach(a => { html += actionHtml(a, hasMoT, 'mot'); });
 
     // Ambassador
@@ -7557,6 +7558,13 @@ async function renderDraftBox() {
     if (activeDraftAction.key === 'export_subsidy_draft') {
         body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
         await renderExportSubsidyDraftPanel(body, statusEl);
+        return;
+    }
+
+    // Special branch for Impose Embargo (unilateral)
+    if (activeDraftAction.key === 'impose_embargo_draft') {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
+        await renderEmbargoDraftPanel(body, statusEl);
         return;
     }
 
@@ -8302,6 +8310,287 @@ async function submitESDraft() {
     cancelDraft();
 }
 window.submitESDraft = submitESDraft;
+
+// ── Impose Embargo (unilateral) ──
+
+var _embargoTradeData = {};  // cached trade flow data per target: { sectorKey: { imports, exports } }
+
+async function renderEmbargoDraftPanel(body, statusEl) {
+    if (statusEl) { statusEl.textContent = 'Drafting'; statusEl.className = 'badge badge--amber'; }
+
+    const apCost = 5;
+
+    let html = '<div class="draft-panel"><div class="draft-header">';
+    html += '<div class="draft-field"><div class="draft-field-label">Action</div><div class="draft-field-input">Impose Embargo <span style="float:right;font-size:10px;color:var(--text-dim);">Minister of Trade</span></div></div>';
+    html += '<div style="display:flex;gap:6px;justify-content:flex-end;margin-top:-2px;margin-bottom:4px;">';
+    html += '<span class="badge badge--amber" style="font-size:7px;">Unilateral</span>';
+    html += '<span class="badge badge--amber" style="font-size:7px;">Requires Parliament</span>';
+    html += '<span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">' + apCost + ' AP</span>';
+    html += '</div>';
+
+    // Target selector
+    let targetFieldHtml = '<select id="emb-draft-target" style="width:100%;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);font-size:12px;padding:4px 8px;" onchange="updateEmbargoDraftTarget(this.value)">';
+    targetFieldHtml += '<option value="">Select target nation...</option>';
+    cachedOtherNations.forEach(n => {
+        const sel = activeDraftTarget && activeDraftTarget.id === n.id ? ' selected' : '';
+        targetFieldHtml += '<option value="' + n.id + '"' + sel + '>' + escapeHtml(n.name) + '</option>';
+    });
+    targetFieldHtml += '</select>';
+    html += '<div class="draft-field"><div class="draft-field-label">Target</div>' + targetFieldHtml + '</div>';
+    html += '</div>';  // close draft-header
+
+    if (!activeDraftTarget) {
+        html += '<div class="empty-state" style="padding:20px 0;"><div class="empty-state-text">Select a target nation.</div></div></div>';
+        body.innerHTML = html;
+        return;
+    }
+
+    // Check for existing active embargo
+    const { data: existingEmb } = await _supabase
+        .from('trade_agreements')
+        .select('id')
+        .eq('status', 'active')
+        .eq('agreement_type', 'impose_embargo')
+        .eq('nation_a_id', currentNation.id)
+        .eq('nation_b_id', activeDraftTarget.id);
+
+    if (existingEmb && existingEmb.length > 0) {
+        html += '<div class="trade-info-box warning" style="margin:12px 14px;">You already have an active embargo against ' + escapeHtml(activeDraftTarget.name) + '. Wait for it to expire or withdraw it first.</div></div>';
+        body.innerHTML = html;
+        return;
+    }
+
+    // Fetch trade flow data between our nation and target
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const latestTick = shard?.current_tick || 0;
+
+    const { data: tradeRows } = await _supabase
+        .from('trade_partners')
+        .select('sector, trade_volume, exporter_nation_id, importer_nation_id')
+        .eq('tick', latestTick)
+        .or('and(exporter_nation_id.eq.' + currentNation.id + ',importer_nation_id.eq.' + activeDraftTarget.id + '),' +
+            'and(exporter_nation_id.eq.' + activeDraftTarget.id + ',importer_nation_id.eq.' + currentNation.id + ')');
+
+    _embargoTradeData = {};
+    if (tradeRows) {
+        for (var i = 0; i < tradeRows.length; i++) {
+            var row = tradeRows[i];
+            if (!_embargoTradeData[row.sector]) _embargoTradeData[row.sector] = { imports: 0, exports: 0 };
+            if (row.exporter_nation_id === activeDraftTarget.id) {
+                // Target exports to us = our imports from target
+                _embargoTradeData[row.sector].imports += Number(row.trade_volume) || 0;
+            } else {
+                // We export to target = our exports to target
+                _embargoTradeData[row.sector].exports += Number(row.trade_volume) || 0;
+            }
+        }
+    }
+
+    // Scope
+    html += '<div style="padding:8px 14px 0;">';
+    html += '<div class="draft-field-label">Scope</div>';
+    html += '<div class="trade-radio-group" style="margin-top:4px;">';
+    html += '<label class="trade-radio-option" onclick="selectRadioOption(this);toggleEmbargoScope()"><input type="radio" name="emb-draft-scope" value="targeted" /><div><div class="trade-radio-label">Targeted</div></div></label>';
+    html += '<label class="trade-radio-option selected" onclick="selectRadioOption(this);toggleEmbargoScope()"><input type="radio" name="emb-draft-scope" value="partial" checked /><div><div class="trade-radio-label">Partial</div></div></label>';
+    html += '<label class="trade-radio-option" onclick="selectRadioOption(this);toggleEmbargoScope()"><input type="radio" name="emb-draft-scope" value="total" /><div><div class="trade-radio-label">Total</div></div></label>';
+    html += '</div>';
+    html += '<div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px;">Partial: select sectors. Total: all trade blocked.</div>';
+    html += '</div>';
+
+    // Duration
+    html += '<div style="padding:8px 14px;">';
+    html += '<div class="draft-field-label">Duration</div>';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">';
+    html += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);"></span>';
+    html += '<input type="number" id="emb-draft-ticks" value="12" min="4" max="48" style="width:60px;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);padding:4px 8px;font-size:12px;" oninput="updateEmbargoDraftSummary()" />';
+    html += '<span style="font-size:0.72rem;color:var(--text-primary);">ticks</span>';
+    html += '<span style="font-size:0.62rem;color:var(--text-dim);margin-left:4px;">Range: 4\u201348 ticks</span>';
+    html += '</div></div>';
+
+    // Sector selection
+    html += '<div id="emb-draft-sectors-wrap" style="padding:4px 14px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+    html += '<div class="draft-field-label" style="color:var(--text-dim);">Select Sectors to Embargo</div>';
+    html += '<div id="emb-draft-sector-count" style="font-size:0.62rem;color:var(--text-dim);"></div>';
+    html += '</div>';
+
+    var targetName = escapeHtml(activeDraftTarget.name);
+    TRADEABLE_SECTORS.forEach(function(s) {
+        var td = _embargoTradeData[s.key] || { imports: 0, exports: 0 };
+        var annualImports = td.imports * 12;  // per-tick to annual approximation
+        var annualExports = td.exports * 12;
+        var impactVal = annualImports + annualExports;
+        html += '<label class="emb-sector-row" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-hair);cursor:pointer;">';
+        html += '<input type="checkbox" name="emb-draft-sector" value="' + s.key + '" onchange="updateEmbargoDraftSummary()" style="accent-color:var(--red);" />';
+        html += '<div style="flex:1;">';
+        html += '<div style="font-size:0.78rem;font-weight:600;color:var(--text-primary);">' + escapeHtml(s.label) + '</div>';
+        html += '<div style="font-size:0.62rem;color:var(--text-dim);">Imports ' + fmtBudgetCurrency(annualImports) + '/yr from ' + targetName + ' / Exports ' + fmtBudgetCurrency(annualExports) + '/yr</div>';
+        html += '</div>';
+        html += '<div style="font-family:var(--font-mono);font-size:11px;color:var(--red);min-width:60px;text-align:right;">' + (impactVal > 0 ? '-' + fmtBudgetCurrency(impactVal) : '') + '</div>';
+        html += '</label>';
+    });
+    html += '</div>';
+
+    // Hostile action warning
+    html += '<div class="trade-info-box danger" style="margin:10px 14px;">';
+    html += '<strong style="text-transform:uppercase;font-size:0.68rem;">Hostile Action Warning</strong><br>';
+    html += 'Imposing an embargo is a major escalation. ' + targetName + ' will lose significant trade revenue and may retaliate with their own embargo, tariffs, or diplomatic severance. Existing trade agreements with ' + targetName + ' in embargoed sectors will be suspended for the embargo\'s duration.';
+    html += '</div>';
+
+    // Footer summary + actions
+    html += '<div id="emb-draft-footer" style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-dim);padding:6px 14px;text-transform:uppercase;letter-spacing:0.06em;"></div>';
+    html += '<div class="detail-actions" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hair);">';
+    html += '<button class="detail-btn" onclick="cancelDraft()">Cancel</button>';
+    html += '<button class="detail-btn" id="emb-draft-submit" style="color:var(--teal);border-color:var(--teal-border);" disabled onclick="submitEmbargoDraft()">Submit to Parliament (' + apCost + ' AP)</button>';
+    html += '</div></div>';
+    body.innerHTML = html;
+
+    updateEmbargoDraftSummary();
+}
+
+async function updateEmbargoDraftTarget(nationId) {
+    if (!nationId) { activeDraftTarget = null; }
+    else {
+        var nation = cachedOtherNations.find(function(n) { return n.id === nationId; });
+        activeDraftTarget = nation || null;
+    }
+    var body = document.getElementById('draft-body');
+    var statusEl = document.getElementById('draft-status');
+    if (body) await renderEmbargoDraftPanel(body, statusEl);
+}
+window.updateEmbargoDraftTarget = updateEmbargoDraftTarget;
+
+function toggleEmbargoScope() {
+    var scope = document.querySelector('input[name="emb-draft-scope"]:checked')?.value || 'partial';
+    var checkboxes = document.querySelectorAll('input[name="emb-draft-sector"]');
+    var wrap = document.getElementById('emb-draft-sectors-wrap');
+
+    if (scope === 'total') {
+        // Select all, disable checkboxes
+        checkboxes.forEach(function(cb) { cb.checked = true; cb.disabled = true; });
+        if (wrap) wrap.style.opacity = '0.6';
+    } else {
+        // Enable checkboxes, uncheck all so user can pick
+        checkboxes.forEach(function(cb) { cb.disabled = false; cb.checked = false; });
+        if (wrap) wrap.style.opacity = '1';
+    }
+    updateEmbargoDraftSummary();
+}
+window.toggleEmbargoScope = toggleEmbargoScope;
+
+function updateEmbargoDraftSummary() {
+    var scope = document.querySelector('input[name="emb-draft-scope"]:checked')?.value || 'partial';
+    var checked = document.querySelectorAll('input[name="emb-draft-sector"]:checked');
+    var durTicks = Math.min(48, Math.max(4, parseInt(document.getElementById('emb-draft-ticks')?.value || '12')));
+    var btn = document.getElementById('emb-draft-submit');
+    var footer = document.getElementById('emb-draft-footer');
+    var countEl = document.getElementById('emb-draft-sector-count');
+
+    var sectorCount = checked.length;
+    var totalSectors = TRADEABLE_SECTORS.length;
+
+    if (countEl) countEl.textContent = sectorCount + ' of ' + totalSectors + ' sectors selected';
+
+    // Determine scope label
+    var scopeLabel = scope === 'total' ? 'Total' : scope === 'targeted' ? 'Targeted' : 'Partial';
+
+    // Validate based on scope
+    var valid = false;
+    if (scope === 'targeted') valid = sectorCount === 1;
+    else if (scope === 'partial') valid = sectorCount >= 2 && sectorCount < totalSectors;
+    else if (scope === 'total') valid = sectorCount === totalSectors;
+
+    if (btn) btn.disabled = !valid;
+    if (footer) footer.textContent = scopeLabel + ' / ' + sectorCount + ' sector' + (sectorCount !== 1 ? 's' : '') + ' / ' + durTicks + ' ticks';
+}
+window.updateEmbargoDraftSummary = updateEmbargoDraftSummary;
+
+async function submitEmbargoDraft() {
+    var btn = document.getElementById('emb-draft-submit');
+    if (btn) btn.disabled = true;
+
+    var scope = document.querySelector('input[name="emb-draft-scope"]:checked')?.value || 'partial';
+    var checked = document.querySelectorAll('input[name="emb-draft-sector"]:checked');
+    var durTicks = Math.min(48, Math.max(4, parseInt(document.getElementById('emb-draft-ticks')?.value || '12')));
+    var apCost = 5;
+    var targetId = activeDraftTarget?.id;
+    var targetName = activeDraftTarget?.name || 'Unknown';
+
+    if (!targetId) { alert('Select a target nation.'); if (btn) btn.disabled = false; return; }
+
+    var sectorCount = checked.length;
+    var totalSectors = TRADEABLE_SECTORS.length;
+
+    // Validate scope
+    if (scope === 'targeted' && sectorCount !== 1) { alert('Targeted embargo requires exactly 1 sector.'); if (btn) btn.disabled = false; return; }
+    if (scope === 'partial' && (sectorCount < 2 || sectorCount >= totalSectors)) { alert('Partial embargo requires 2 to ' + (totalSectors - 1) + ' sectors.'); if (btn) btn.disabled = false; return; }
+    if (scope === 'total' && sectorCount !== totalSectors) { alert('Total embargo requires all sectors.'); if (btn) btn.disabled = false; return; }
+
+    var apResult = await deductAP(_supabase, currentFaction.id, apCost);
+    if (!apResult.success) {
+        alert('Not enough AP (' + apCost + ' needed).');
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    var { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    var currentTick = shard?.current_tick || 0;
+
+    var articles = [];
+    var sectorNames = [];
+    checked.forEach(function(cb) {
+        articles.push({ type: 'embargo_sector', data: { sector: cb.value, imposer_nation_id: currentNation.id } });
+        var s = TRADEABLE_SECTORS.find(function(ts) { return ts.key === cb.value; });
+        if (s) sectorNames.push(s.label);
+    });
+    articles.push({ type: 'duration', data: { duration_type: 'fixed', duration_ticks: durTicks, auto_renew: false, withdrawal_notice_ticks: 1 } });
+
+    var scopeLabel = scope === 'total' ? 'Total' : scope === 'targeted' ? 'Targeted' : 'Partial';
+    var agreementName = scopeLabel + ' Embargo on ' + targetName;
+    var billTitle = 'Ratify: ' + agreementName;
+    var billPreamble = scopeLabel + ' embargo on ' + targetName + '. Blocks trade in ' + sectorNames.join(', ') + '. Duration: ' + durTicks + ' ticks.';
+
+    var { data: bill, error: billErr } = await _supabase.from('bills').insert({
+        nation_id: currentNation.id,
+        bill_type: 'ratification',
+        bill_name: billTitle,
+        preamble: billPreamble,
+        proposed_by: currentFaction.id,
+        status: 'floor',
+        proposed_tick: currentTick,
+        floor_tick: currentTick,
+        voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
+        trade_agreement_data: {
+            type: 'impose_embargo',
+            imposer_nation_id: currentNation.id,
+            target_nation_id: targetId,
+            agreement_name: agreementName,
+            articles: articles,
+            scope: scope,
+            duration_type: 'fixed',
+            duration_ticks: durTicks
+        }
+    }).select('id').single();
+
+    if (billErr) { alert('Error: ' + billErr.message); if (btn) btn.disabled = false; return; }
+
+    try {
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation.id, event_name: agreementName + ' — Proposed', category: 'Trade',
+            description_chosen: currentNation.name + ' has submitted an embargo bill targeting ' + targetName + ' (' + sectorNames.join(', ') + ').',
+            fired_at_tick: currentTick
+        });
+        await _supabase.from('event_log').insert({
+            nation_id: targetId, event_name: 'Embargo Proposed', category: 'Trade',
+            description_chosen: currentNation.name + ' has proposed a ' + scopeLabel.toLowerCase() + ' embargo on your ' + sectorNames.join(', ') + ' trade.',
+            fired_at_tick: currentTick
+        });
+    } catch (e) { /* non-blocking */ }
+
+    alert('Embargo bill submitted to parliament!');
+    cancelDraft();
+}
+window.submitEmbargoDraft = submitEmbargoDraft;
 
 // ── Draft helpers ──
 function addDraftArticle() {

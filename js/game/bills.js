@@ -1594,6 +1594,70 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'retaliatory_tariff', earlyResolution: bill.early_resolution_status || null });
             }
+        } else if (bill.bill_type === 'ratification' && bill.trade_agreement_data && bill.trade_agreement_data.type === 'impose_embargo') {
+            // Unilateral embargo ratification
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+                var embData = bill.trade_agreement_data;
+                var imposerId = embData.imposer_nation_id;
+                var targetId = embData.target_nation_id;
+                var durationTicks = embData.duration_ticks || 12;
+
+                // Insert trade_agreement (impose_embargo: imposer = nation_a, target = nation_b)
+                await supabase.from('trade_agreements').insert({
+                    nation_a_id: imposerId,
+                    nation_b_id: targetId,
+                    bill_a_id: bill.id,
+                    agreement_type: 'impose_embargo',
+                    agreement_name: embData.agreement_name || 'Embargo',
+                    articles: embData.articles || [],
+                    duration_type: 'fixed',
+                    duration_ticks: durationTicks,
+                    auto_renew: false,
+                    withdrawal_notice_ticks: 1,
+                    status: 'active',
+                    enacted_at_tick: currentTick,
+                    expires_at_tick: currentTick + durationTicks
+                });
+
+                // Diplomatic penalty: 10 + 5 per embargoed sector (15 targeted, 20-35 partial, 40 total)
+                var embargoedSectors = (embData.articles || []).filter(function(a) { return a.type === 'embargo_sector'; }).length;
+                var relPenalty = Math.round(10 + embargoedSectors * 5);
+
+                if (relPenalty > 0) {
+                    var relA = imposerId < targetId ? imposerId : targetId;
+                    var relB = imposerId < targetId ? targetId : imposerId;
+                    var { data: rel } = await supabase.from('diplomatic_relations')
+                        .select('id, relation_score')
+                        .eq('nation_a_id', relA).eq('nation_b_id', relB).maybeSingle();
+                    if (rel) {
+                        var newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) - relPenalty));
+                        await supabase.from('diplomatic_relations')
+                            .update({ relation_score: newScore }).eq('id', rel.id);
+                    }
+                }
+
+                // Fire enactment event for target nation
+                try {
+                    var { data: imposerNation } = await supabase.from('nations').select('name').eq('id', imposerId).single();
+                    var imposerName = imposerNation?.name || 'Unknown';
+                    await supabase.from('event_log').insert({
+                        nation_id: targetId,
+                        event_name: 'Embargo Enacted',
+                        category: 'Trade',
+                        description_chosen: imposerName + ' has imposed an embargo on your trade. Relations have decreased by ' + relPenalty + '.',
+                        fired_at_tick: currentTick
+                    });
+                } catch (e) { /* non-blocking */ }
+
+                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'impose_embargo', earlyResolution: bill.early_resolution_status || null });
+            } else {
+                await failBill(supabase, bill);
+                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'impose_embargo', earlyResolution: bill.early_resolution_status || null });
+            }
         } else if (bill.bill_type === 'impeachment_motion' && bill.impeachment_id) {
             // ── Impeachment Motion (Phase 1) ──
             if (passed) {
