@@ -243,6 +243,153 @@ const guideContent = {
 <p class="guide-tip"><strong>Run a slight surplus.</strong> Even a small surplus each tick pays down debt, improves credit rating, lowers interest, and gives fiscal breathing room for crises.</p>
 </div></details>
 `
+    },
+    nation: {
+        title: 'Nation Overview Guide',
+        html: `
+<details open><summary>What This Page Is</summary><div>
+<p>The Nation Overview is your country's dashboard &mdash; a snapshot of every national statistic, historical trends, active laws and crises, and what's driving each number up or down.</p>
+
+<h3>Header Area</h3>
+<ul>
+<li><strong>Nation name &amp; flag</strong> &mdash; Your country's identity</li>
+<li><strong>Current game date</strong> &mdash; Derived from the shard tick (1 tick = 1 in-game month, starting Jan Year 1)</li>
+<li><strong>Revolution banner</strong> &mdash; Appears in red when revolution risk is critically high</li>
+</ul>
+
+<h3>Featured Cards</h3>
+<p>Three stats get special large-format cards at the top of the page:</p>
+<ul>
+<li><strong>GDP Growth</strong> &mdash; The headline economic indicator</li>
+<li><strong>Inflation</strong> &mdash; Monetary health</li>
+<li><strong>National Debt</strong> &mdash; Fiscal position</li>
+</ul>
+</div></details>
+
+<details><summary>The 14 National Statistics</summary><div>
+<p>Stats are grouped into themed, collapsible sections:</p>
+<table>
+<tr><th>Section</th><th>Stats</th></tr>
+<tr><td><strong>Economy</strong></td><td>GDP Growth, Inflation, Unemployment, National Debt</td></tr>
+<tr><td><strong>Society</strong></td><td>Healthcare, Education, Crime Rate, Poverty Rate</td></tr>
+<tr><td><strong>Governance</strong></td><td>Corruption, Political Stability, Infrastructure</td></tr>
+<tr><td><strong>Global</strong></td><td>International Reputation, Environmental Index</td></tr>
+<tr><td><strong>Security</strong></td><td>Revolution Risk</td></tr>
+</table>
+
+<h3>Stat Ranges</h3>
+<table>
+<tr><th>Stat</th><th>Range</th><th>Notes</th></tr>
+<tr><td>Most stats</td><td>0 &ndash; 100</td><td>Healthcare, Education, Infrastructure, etc.</td></tr>
+<tr><td>GDP Growth</td><td>Can go negative</td><td>Below 50 = recession</td></tr>
+<tr><td>Inflation</td><td>Can go negative</td><td>Deflation possible</td></tr>
+<tr><td>National Debt</td><td>0 &ndash; 200+</td><td>As % of GDP</td></tr>
+<tr><td>Revolution Risk</td><td>0 &ndash; 100</td><td>Triggers revolution event at very high values</td></tr>
+</table>
+</div></details>
+
+<details><summary>Reading a Stat Card</summary><div>
+<p>Each stat card displays four pieces of information:</p>
+<table>
+<tr><th>Element</th><th>What It Shows</th></tr>
+<tr><td><strong>Current Value</strong></td><td>The live number (e.g. &ldquo;4.2% GDP Growth&rdquo;)</td></tr>
+<tr><td><strong>Ranking Pip</strong></td><td>Colored dot showing where you stand relative to other nations</td></tr>
+<tr><td><strong>Sparkline Chart</strong></td><td>Inline trend graph of the last ~12 ticks of history</td></tr>
+<tr><td><strong>&ldquo;Affected By&rdquo; Panel</strong></td><td>Expandable section listing everything pushing that stat up or down</td></tr>
+</table>
+
+<h3>Ranking Pip Colors</h3>
+<ul>
+<li><span style="color:#4caf50;">&bull;</span> <strong>Green</strong> = Top third of all nations</li>
+<li><span style="color:#ff9800;">&bull;</span> <strong>Amber</strong> = Middle third</li>
+<li><span style="color:#f44336;">&bull;</span> <strong>Red</strong> = Bottom third</li>
+</ul>
+
+<p class="guide-tip">Click any stat card to expand its &ldquo;Affected By&rdquo; breakdown &mdash; this is the most important analytical feature on the page.</p>
+</div></details>
+
+<details><summary>The &ldquo;Affected By&rdquo; System</summary><div>
+<p>Expanding a stat card reveals every force currently pushing that stat up or down. Each influence shows its <strong>source name</strong>, <strong>direction</strong> (positive/negative), and <strong>magnitude</strong>.</p>
+
+<h3>Sources of Influence</h3>
+<table>
+<tr><th>#</th><th>Source</th><th>How It Works</th></tr>
+<tr><td>1</td><td><strong>Active Laws</strong></td><td>Laws passed by parliament with defined stat effects (e.g. &ldquo;Universal Healthcare Act: Healthcare +3, Debt +1&rdquo;)</td></tr>
+<tr><td>2</td><td><strong>Active Crises</strong></td><td>Ongoing crises that penalize stats (e.g. &ldquo;Banking Crisis: GDP &minus;2, Unemployment +1.5&rdquo;)</td></tr>
+<tr><td>3</td><td><strong>Ministry Actions</strong></td><td>Executive actions by the Head of Government. Effects decay over time.</td></tr>
+<tr><td>4</td><td><strong>Diplomatic Actions</strong></td><td>Effects from treaties, trade agreements, and other diplomatic activity</td></tr>
+<tr><td>5</td><td><strong>Presidential Influence</strong></td><td>The sitting president's ideology and trait nudge stats in certain directions</td></tr>
+<tr><td>6</td><td><strong>HoG Trait</strong></td><td>The Head of Government's leader trait provides passive stat bonuses/penalties</td></tr>
+<tr><td>7</td><td><strong>Stat Connections</strong></td><td>Second-order effects &mdash; stats influence each other (e.g. high crime lowers stability)</td></tr>
+<tr><td>8</td><td><strong>Stat Decay</strong></td><td>Stats drift toward baseline over time. Extreme values decay faster.</td></tr>
+</table>
+
+<p class="guide-tip">Laws are the primary lever &mdash; most stat movement comes from active legislation. Check what's already influencing a stat before proposing new laws to stack effects.</p>
+</div></details>
+
+<details><summary>How Stats Change (The Tick System)</summary><div>
+<p>Every <strong>game tick</strong>, the advance-tick function runs and, for each nation:</p>
+<ol>
+<li>Collects all active law effects</li>
+<li>Collects all active crisis effects</li>
+<li>Collects ministry action effects (with time decay)</li>
+<li>Collects diplomatic effects</li>
+<li>Calculates stat-to-stat connections</li>
+<li>Applies natural decay toward baseline</li>
+<li>Sums everything as a <strong>delta</strong> per stat</li>
+<li>Applies the delta to current values</li>
+<li>Clamps results to valid ranges</li>
+<li>Writes new values and a historical snapshot</li>
+</ol>
+
+<h3>Key Relationships</h3>
+<ul>
+<li><strong>Laws are the primary lever</strong> &mdash; Most stat movement comes from active legislation</li>
+<li><strong>Crises are the primary threat</strong> &mdash; Penalties persist until resolved (via laws or ministry actions)</li>
+<li><strong>Ministry actions are temporary</strong> &mdash; Effects decay over several ticks, unlike laws which persist until repealed</li>
+<li><strong>Stats influence each other</strong> &mdash; You can't fix crime without addressing poverty and education; you can't grow GDP while corruption is high</li>
+<li><strong>Decay prevents stagnation</strong> &mdash; Even good stats slowly decline without active maintenance</li>
+</ul>
+
+<p class="guide-tip">Stat decay means you need ongoing policy to maintain extreme positions. A single law isn't enough &mdash; keep legislating.</p>
+</div></details>
+
+<details><summary>Interactive Features</summary><div>
+<h3>Section Collapse / Expand</h3>
+<p>Click any section header to toggle its visibility. This lets you focus on the stat categories that matter to you.</p>
+
+<h3>Sparkline Charts</h3>
+<p>Small inline trend graphs in each stat card, showing approximately the last 12 ticks of history. Use these to spot trends at a glance &mdash; a downward slope means existing policies aren't enough.</p>
+
+<h3>Stat Detail View</h3>
+<p>Click a stat card to expand the &ldquo;Affected By&rdquo; panel below it, revealing the full breakdown of influences on that stat.</p>
+</div></details>
+
+<details><summary>Strategic Tips</summary><div>
+<h3>Identify Weak Spots</h3>
+<p>Look for stats with <span style="color:#f44336;">&bull;</span> red ranking pips &mdash; these are in the bottom third of all nations. Proposing laws that address weak stats will resonate with voter blocs who care about those issues.</p>
+
+<h3>Use &ldquo;Affected By&rdquo; Before Legislating</h3>
+<p>Before proposing a law, check what's already influencing the stat you want to change. Stacking effects in the same direction compounds results. Counteracting existing negatives is often more impactful than boosting already-strong stats.</p>
+
+<h3>Watch Sparkline Trends</h3>
+<ul>
+<li><strong>Downward slope</strong> &mdash; Existing policies aren't enough, new action needed</li>
+<li><strong>Flat line after your law</strong> &mdash; It's working, but barely offsetting decay and other forces</li>
+<li><strong>Upward slope</strong> &mdash; Your policies are winning; maintain course</li>
+</ul>
+
+<h3>Critical Thresholds</h3>
+<table>
+<tr><th>Stat</th><th>Danger Zone</th><th>What Happens</th></tr>
+<tr><td>Revolution Risk</td><td>~70+</td><td>Nation is in danger of revolution. Prioritize stability and crisis management.</td></tr>
+<tr><td>National Debt</td><td>150%+ of GDP</td><td>Sovereign default. Drags down GDP and triggers economic crises.</td></tr>
+<tr><td>Political Stability</td><td>&lt;20</td><td>Governance breakdown, compounding other problems</td></tr>
+</table>
+
+<p class="guide-tip">National Debt is the silent killer. Many popular laws increase debt. If it spirals, it drags GDP and triggers crises that are hard to escape.</p>
+</div></details>
+`
     }
 };
 
