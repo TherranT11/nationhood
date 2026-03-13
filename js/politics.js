@@ -477,11 +477,11 @@ async function renderPartyTab(f, nation, data) {
         initEditIdentityBox(f);
         initElectionResultsBox();
         initBlocAlignment();
-        initIdeologyToggle();
     } else {
         // Wire up autocracy steward claim buttons
         initAutocracyStewardClaims(f, nation, stewardRows, regimePillars);
     }
+    initIdeologyToggle();
 
     // Disband Party handler
     const disbandBtn = document.getElementById('pol-disband-party-btn');
