@@ -370,7 +370,7 @@
   }
   .elections-suspended {
     font-style: italic;
-    color: var(--text-secondary);
+    color: var(--red, #e74c3c);
     font-size: 0.9rem;
     padding: 20px 0;
   }
@@ -501,20 +501,17 @@ initPage('home', async (state) => {
   ).join('');
 
   // ══════════════════════════════════════
-  // ── Government Card ──
+  // ── Shared data for Government, Elections & Events ──
   // ══════════════════════════════════════
-  try {
-    const isPres = isPresidentialRepublic(nation);
-    const isAuto = isAutocracy(nation);
+  const isPres = isPresidentialRepublic(nation);
+  const isAuto = isAutocracy(nation);
 
-    // Parallel data fetches (including previous-tick approval to avoid sequential round-trip)
+  let currentTick = 0;
+  let parties = [];
+  try {
     const [
       { data: allParties },
-      { data: shardRow },
-      { data: administration },
-      coalitionResult,
-      presidentResult,
-      prevApprovalResult
+      { data: shardRow }
     ] = await Promise.all([
       _supabase.from('factions')
         .select('id, seats, faction_name, abbreviation, party_color')
@@ -523,7 +520,25 @@ initPage('home', async (state) => {
       _supabase.from('shard')
         .select('current_tick')
         .eq('name', 'Alpha Shard')
-        .single(),
+        .single()
+    ]);
+    currentTick = shardRow?.current_tick ?? 0;
+    parties = allParties || [];
+  } catch (e) {
+    console.error('Shared data fetch error:', e);
+  }
+
+  // ══════════════════════════════════════
+  // ── Government Card ──
+  // ══════════════════════════════════════
+  try {
+    // Parallel data fetches for government card
+    const [
+      { data: administration },
+      coalitionResult,
+      presidentResult,
+      prevApprovalResult
+    ] = await Promise.all([
       _supabase.from('administrations')
         .select('admin_name, government_type, coalition_parties, total_seats, started_at_tick')
         .eq('nation_id', nation.id)
@@ -551,19 +566,16 @@ initPage('home', async (state) => {
 
     const coalition = coalitionResult;
     const president = presidentResult?.data ?? presidentResult;
-    const currentTick = shardRow?.data?.current_tick ?? shardRow?.current_tick ?? 0;
-    const parties = allParties || [];
     const govCard = document.getElementById('gov-card');
 
-    // Empty state: no active coalition
-    if (!coalition) {
+    // Empty state: no active coalition (democracies only — autocracies handle separately)
+    if (!coalition && !isAuto) {
       document.getElementById('gov-card-body').innerHTML = `
         <div style="display:flex;align-items:center;justify-content:center;height:340px;color:var(--text-secondary);font-style:italic;font-size:0.9rem;">
           Government is currently being formed
         </div>
       `;
-      return;
-    }
+    } else {
 
     // Previous approval for delta (already fetched in parallel)
     const prevApproval = prevApprovalResult?.data?.gov_approval ?? null;
@@ -705,32 +717,64 @@ initPage('home', async (state) => {
     ).join('');
 
     // ── Footer ──
-    const govLabel = isMajority ? 'Majority Government' : 'Minority Government';
-    const footerDetail = `${govSeats}/${totalSeats} seats (${majority} needed)`;
+    const govLabel = isAuto ? 'Authoritarian Regime' : isMajority ? 'Majority Government' : 'Minority Government';
+    const footerDetail = isAuto
+      ? (nation.ruling_faction_id ? (parties.find(p => p.id === nation.ruling_faction_id)?.faction_name || 'Ruling Party') : 'Single-Party State')
+      : `${govSeats}/${totalSeats} seats (${majority} needed)`;
 
     // ── Build card ──
-    document.getElementById('gov-card-body').innerHTML = `
-      <div class="gov-admin-name">${esc(adminName)}${yearSuffix}</div>
-      <div class="gov-badges">
-        <span class="gov-badge">${esc(govTypeLabel)}</span>
-        ${coalitionBadge ? `<span class="gov-badge">${esc(coalitionBadge)}</span>` : ''}
-      </div>
+    if (isAuto) {
+      // Autocracy: show leader, ruling party, approval — no coalition section
+      const rulingParty = nation.ruling_faction_id ? parties.find(p => p.id === nation.ruling_faction_id) : null;
+      const rpColor = rulingParty?.party_color || '#c8a64e';
+      const rpName = rulingParty?.faction_name || 'Ruling Party';
 
-      ${leader1Html}
-      ${leader2Html}
+      document.getElementById('gov-card-body').innerHTML = `
+        <div class="gov-admin-name">${esc(adminName)}${yearSuffix}</div>
+        <div class="gov-badges">
+          <span class="gov-badge">${esc(govTypeLabel)}</span>
+          <span class="gov-badge">Single-Party State</span>
+        </div>
 
-      <div class="gov-divider"></div>
+        ${leader1Html}
 
-      <div class="gov-section-title">Governing Coalition</div>
-      <div class="gov-seat-bar">${barHtml}</div>
-      ${partyRowsHtml}
-      <div class="gov-seats-combined">${govSeats} seats combined</div>
+        <div class="gov-divider"></div>
 
-      <div class="gov-divider"></div>
+        <div class="gov-section-title">Ruling Party</div>
+        <div class="gov-coalition-row">
+          <div class="gov-party-dot" style="background:${rpColor}"></div>
+          <span class="gov-coalition-name">${esc(rpName)}</span>
+        </div>
 
-      <div class="gov-section-title">Approval</div>
-      <div class="gov-approval-big" style="color:${approvalColor}">${approval}%</div>
-    `;
+        <div class="gov-divider"></div>
+
+        <div class="gov-section-title">Approval</div>
+        <div class="gov-approval-big" style="color:${approvalColor}">${approval}%</div>
+      `;
+    } else {
+      document.getElementById('gov-card-body').innerHTML = `
+        <div class="gov-admin-name">${esc(adminName)}${yearSuffix}</div>
+        <div class="gov-badges">
+          <span class="gov-badge">${esc(govTypeLabel)}</span>
+          ${coalitionBadge ? `<span class="gov-badge">${esc(coalitionBadge)}</span>` : ''}
+        </div>
+
+        ${leader1Html}
+        ${leader2Html}
+
+        <div class="gov-divider"></div>
+
+        <div class="gov-section-title">Governing Coalition</div>
+        <div class="gov-seat-bar">${barHtml}</div>
+        ${partyRowsHtml}
+        <div class="gov-seats-combined">${govSeats} seats combined</div>
+
+        <div class="gov-divider"></div>
+
+        <div class="gov-section-title">Approval</div>
+        <div class="gov-approval-big" style="color:${approvalColor}">${approval}%</div>
+      `;
+    }
 
     // Footer (inside gov card, outside body padding)
     let footer = govCard.querySelector('.gov-footer');
@@ -744,32 +788,49 @@ initPage('home', async (state) => {
       <span class="gov-footer-detail">${esc(footerDetail)}</span>
     `;
 
-    // ── Load Events card ──
-    loadDashEvents(nation.id, currentTick, parties);
+    } // end else (coalition exists)
 
   } catch (e) {
     console.error('Government card error:', e);
   }
 
   // ══════════════════════════════════════
+  // ── Events Card ──
+  // ══════════════════════════════════════
+  loadDashEvents(nation.id, currentTick, parties);
+
+  // ══════════════════════════════════════
   // ── Elections Card ──
   // ══════════════════════════════════════
   try {
-    const isPres = isPresidentialRepublic(nation);
-    const isAuto = isAutocracy(nation);
     const elBody = document.getElementById('elections-card-body');
 
     if (isAuto) {
-      elBody.innerHTML = `<div class="elections-suspended">Elections are suspended.</div>`;
+      // Compute revolution chance from stability and civil_unrest
+      const stability = Number(nation.stability ?? 50);
+      const unrest = Number(nation.civil_unrest ?? 10);
+      // Low stability + high unrest = higher revolution chance
+      const revolutionScore = Math.max(0, Math.min(100, (100 - stability) * 0.6 + unrest * 0.4));
+      let revolutionLevel, revolutionColor;
+      if (revolutionScore >= 60) {
+        revolutionLevel = 'High';
+        revolutionColor = 'var(--red, #e74c3c)';
+      } else if (revolutionScore >= 35) {
+        revolutionLevel = 'Moderate';
+        revolutionColor = 'var(--orange, #f39c12)';
+      } else {
+        revolutionLevel = 'Low';
+        revolutionColor = 'var(--green, #2ecc71)';
+      }
+      elBody.innerHTML = `
+        <div style="padding:12px 0;">
+          <div style="color:var(--red, #e74c3c);font-weight:700;font-size:0.85rem;margin-bottom:12px;">Elections are suspended.</div>
+          <div style="font-size:0.78rem;color:var(--text-secondary);">
+            Chance of Democratic Revolution: <span style="color:${revolutionColor};font-weight:700;">${revolutionLevel}</span>
+          </div>
+        </div>
+      `;
     } else {
-      // Fetch current tick
-      const { data: shardData } = await _supabase
-        .from('shard')
-        .select('current_tick')
-        .eq('name', 'Alpha Shard')
-        .single();
-      const currentTick = shardData?.current_tick ?? 0;
-
       // Fetch scheduled elections ordered by tick
       const { data: scheduled } = await _supabase
         .from('elections')
