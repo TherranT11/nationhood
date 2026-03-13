@@ -424,6 +424,8 @@
 }
 .neg-direction--out { color: var(--teal); }
 .neg-direction--in { color: var(--orange); }
+.neg-direction--active { color: var(--green); }
+.neg-row--active { border-left: 3px solid var(--green); }
 .neg-info { flex: 1; min-width: 0; }
 .neg-title {
   font-family: var(--font-sans);
