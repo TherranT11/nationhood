@@ -217,6 +217,7 @@ function scalePolicyCost(baseCost, scalingStat, nation) {
 }
 
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
+let institutionConfig = [];
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
 let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
@@ -290,6 +291,11 @@ async function loadBillData() {
             .eq('id', billId).single();
         if (error) throw error;
         currentBill = bill;
+
+        const { data: instCfg } = await _supabase
+            .from('ministry_institution_config')
+            .select('id, base_cost_per_capita, scaling_type');
+        institutionConfig = instCfg || [];
 
         // Fetch linked agreement data for ratification bills
         ratificationData = null;
@@ -386,6 +392,36 @@ async function loadBillData() {
         console.error('Error loading bill:', error);
         document.getElementById('loading-state').innerHTML = `<div style="text-align:center;color:#ff4444;"><h2>Error Loading Bill</h2><p>${error.message}</p></div>`;
     }
+}
+
+function getInstitutionBaseCost(instId) {
+    const row = (institutionConfig || []).find(i => i.id === instId);
+    if (!row || !currentNation) return 0;
+    const inflationMult = getInflationMultiplier(currentNation.inflation);
+    const baseVal = Number(row.base_cost_per_capita || 0);
+    if ((row.scaling_type || 'population') === 'gdp') {
+        return (baseVal / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0) * inflationMult;
+    }
+    return baseVal * Number(currentNation.population || 0) * inflationMult;
+}
+
+function calculateFundingOngoingCost(fd) {
+    let ongoing = 0;
+    for (const inst of (fd?.institutions || [])) {
+        const fromPct = Number(inst.current_pct || 0);
+        const toPct = Number(inst.proposed_pct || 0);
+        if (fromPct === toPct) continue;
+        const baseCost = Number((inst.base_cost ?? getInstitutionBaseCost(inst.id)) || 0);
+        ongoing += ((toPct - fromPct) / 100) * baseCost;
+    }
+    ongoing += Number(fd?.discretionary || 0);
+    return ongoing;
+}
+
+function formatFundingImpact(ongoingCost) {
+    if (ongoingCost < 0) return `<span class="cost-value" style="color:#4CAF50;font-weight:bold;">Saves ${formatCurrency(Math.abs(ongoingCost)).replace(/^\+/, '')}/mo</span>`;
+    if (ongoingCost > 0) return `<span class="cost-value" style="color:#ff9800;font-weight:bold;">Cost ${formatCurrency(ongoingCost)}/mo</span>`;
+    return '<span class="cost-value">$0/mo</span>';
 }
 
 function renderBill() {
@@ -852,7 +888,13 @@ function renderArticles() {
         return;
     }
 
-    const articles = (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number);
+    const seenArticleKeys = new Set();
+    const articles = (bill.bill_articles || []).filter((a) => {
+        const dedupeKey = a.id || `${a.article_number}:${a.policy_id || ''}:${a.article_title || ''}:${a.article_text || ''}`;
+        if (seenArticleKeys.has(dedupeKey)) return false;
+        seenArticleKeys.add(dedupeKey);
+        return true;
+    }).sort((a,b) => a.article_number - b.article_number);
     let totalUpfront = 0, totalOngoing = 0;
     const html = `
         <div class="article preamble">
@@ -874,6 +916,8 @@ function renderArticles() {
                 const fundingActions = canEditArticles ? '<div class="article-sponsor-actions">' +
                     '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
                 '</div>' : '';
+                const ongoingCost = calculateFundingOngoingCost(fd);
+                totalOngoing += ongoingCost;
                 let instHTML = changes.map(function(i) {
                     const arrow = i.proposed_pct > i.current_pct ? '↑' : '↓';
                     const c = i.proposed_pct > i.current_pct ? '#22c55e' : '#ef4444';
@@ -883,12 +927,16 @@ function renderArticles() {
                     '</div>';
                 }).join('');
                 if (fd.discretionary) {
-                    instHTML += '<div style="padding:4px 0;font-size:0.8rem;color:#2196F3;">Discretionary: +$' + fd.discretionary + 'M</div>';
+                    instHTML += '<div style="padding:4px 0;font-size:0.8rem;color:#2196F3;">Discretionary: +' + formatCurrency(Number(fd.discretionary || 0)) + '/mo</div>';
                 }
                 return '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
                     '<div class="article-number">Article ' + art.article_number + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + tagLabel + '</span></div>' +
                     '<div class="article-title">' + escapeHtml(art.article_title || (fd.ministry_label + ' Ministry Funding')) + '</div>' +
                     '<div class="article-description" style="padding:4px 0;">' + instHTML + '</div>' +
+                    '<div class="article-costs">' +
+                        '<div class="cost-item"><span class="cost-label">Upfront:</span> <span class="cost-value">$0</span></div>' +
+                        '<div class="cost-item"><span class="cost-label">Ongoing:</span> ' + formatFundingImpact(ongoingCost) + '</div>' +
+                    '</div>' +
                     '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
                     fundingActions +
                 '</div>';
