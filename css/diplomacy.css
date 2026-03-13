@@ -885,6 +885,38 @@
   text-align: right;
 }
 
+/* ── Trade Radio Cards ── */
+.trade-radio-group { display: flex; gap: 8px; }
+.trade-radio-option {
+  flex: 1; display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border: 1px solid var(--border-hair);
+  border-radius: 4px; cursor: pointer; background: var(--bg-1);
+  transition: border-color 0.15s, background 0.15s;
+}
+.trade-radio-option:hover { border-color: var(--border-subtle); }
+.trade-radio-option.selected { border-color: var(--accent); background: rgba(200,166,78,0.08); }
+.trade-radio-option input[type="radio"] { display: none; }
+.trade-radio-label { font-size: 0.78rem; font-weight: 600; color: var(--text-primary); }
+.trade-radio-hint { font-size: 0.68rem; color: var(--text-muted); }
+
+/* ── Trade Field & Article Builder ── */
+.trade-field { margin-bottom: 10px; }
+.trade-field label { display: block; font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+.trade-field input[type="text"],
+.trade-field input[type="number"],
+.trade-field select {
+  width: 100%; padding: 4px 8px; font-size: 0.78rem;
+  background: var(--bg-3); border: 1px solid var(--border-subtle);
+  color: var(--text-primary); font-family: var(--font-sans); border-radius: 3px;
+}
+.trade-checkbox-option {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.75rem; color: var(--text-secondary); margin: 6px 0;
+}
+.trade-info-box { font-size: 0.72rem; padding: 6px 10px; border-radius: 4px; line-height: 1.4; }
+.trade-info-box.info { background: rgba(59,130,246,0.08); color: #60a5fa; border: 1px solid rgba(59,130,246,0.15); }
+.trade-info-box.warning { background: rgba(249,115,22,0.08); color: #f97316; border: 1px solid rgba(249,115,22,0.15); }
+
 /* ── RESPONSIVE ── */
 @media (max-width: 1080px) {
   .row { flex-direction: column; }

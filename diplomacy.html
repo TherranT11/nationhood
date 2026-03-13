@@ -1639,7 +1639,7 @@ async function fmApprove(proposalId) {
 
     // For trade_agreement proposals, create the trade_agreements row
     if (proposal.proposal_type === 'trade_agreement') {
-        await activateTradeAgreement(proposal, currentTick);
+        if (!await activateTradeAgreement(proposal, currentTick)) return;
     }
 
     // Apply relation effects
@@ -3578,8 +3578,12 @@ function saveWizardTradeArticle(articleType) {
         tradeArticles.push({ type: articleType, data: articleData });
     }
 
-    // Re-render the wizard to show updated articles
-    renderWizardStep3TradeProposal();
+    // Re-render the appropriate view
+    if (draftTradeMode) {
+        reRenderTradeDraft();
+    } else {
+        renderWizardStep3TradeProposal();
+    }
 }
 
 function removeWizardTradeArticle(index) {
@@ -4343,11 +4347,16 @@ async function submitTradeProposal() {
 
     alert('"' + agreementName + '" (' + (typeInfo?.shortLabel || 'Trade') + ') proposed to ' + targetName + ' with ' + tradeArticles.length + ' article(s).\n\nThey can accept, reject, or counter with modifications.');
 
-    // Reset wizard state
+    // Reset state and re-render
     wizardTradeAgreementType = null;
     tradeArticles = [];
     wizardName = '';
-    await renderInitiativeWizard();
+    if (draftTradeMode) {
+        cancelDraft();
+        await renderNegotiationsBox();
+    } else {
+        await renderInitiativeWizard();
+    }
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
 }
 
@@ -4398,10 +4407,8 @@ async function openTradeNegotiation(negotiationId) {
             .eq('proposal_type', 'trade_negotiation')
             .in('status', ['proposed', 'revised'])
             .or('target_nation_id.eq.' + currentNation.id + ',proposing_nation_id.eq.' + currentNation.id);
-        console.log('[Trade] Proposal lookup for neg', neg.id, '- found:', (proposals || []).length, 'proposals, error:', propErr);
         if (proposals) {
             linkedProposal = proposals.find(p => p.proposal_data?.negotiation_id === neg.id) || null;
-            console.log('[Trade] Matched proposal:', linkedProposal?.id || 'NONE');
         }
     }
 
@@ -6151,9 +6158,9 @@ async function activateTradeAgreement(proposal, currentTick) {
     const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
     const expiresAt = durationTicks ? currentTick + durationTicks : null;
 
-    // Canonical nation ordering
-    const nationAId = Math.min(proposal.proposing_nation_id, proposal.target_nation_id);
-    const nationBId = Math.max(proposal.proposing_nation_id, proposal.target_nation_id);
+    // Canonical nation ordering (lexicographic for UUID strings)
+    const nationAId = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+    const nationBId = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
 
     const { error } = await _supabase.from('trade_agreements').insert({
         nation_a_id: nationAId,
@@ -6194,11 +6201,12 @@ async function acceptProposal(proposalId) {
         return;
     }
 
-    // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
+    // Authorization: caller must be target nation's ambassador to proposer, FM, HoG, or MoT (for trade)
     await refreshRoles();
     const isTargetNation = proposal.target_nation_id === currentNation.id;
     const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
-    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG)) {
+    const isMoTForTrade = proposal.proposal_type === 'trade_agreement' && diplomaticRoles.isMoT;
+    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !isMoTForTrade)) {
         alert('You are not authorized to accept this proposal.');
         return;
     }
@@ -6273,7 +6281,7 @@ async function acceptProposal(proposalId) {
 
         // For trade_agreement proposals, create the trade_agreements row
         if (proposal.proposal_type === 'trade_agreement') {
-            await activateTradeAgreement(proposal, currentTick);
+            if (!await activateTradeAgreement(proposal, currentTick)) return;
         }
 
         // Apply effects (for diplomatic initiatives with relation/money effects)
@@ -6298,7 +6306,7 @@ async function rejectProposal(proposalId) {
     // Fetch proposal for authorization and status check
     const { data: proposal } = await _supabase
         .from('diplomatic_proposals')
-        .select('proposing_nation_id, target_nation_id, status')
+        .select('proposing_nation_id, target_nation_id, status, proposal_type')
         .eq('id', proposalId)
         .single();
 
@@ -6311,11 +6319,12 @@ async function rejectProposal(proposalId) {
         return;
     }
 
-    // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
+    // Authorization: caller must be target nation's ambassador to proposer, FM, HoG, or MoT (for trade)
     await refreshRoles();
     const isTargetNation = proposal.target_nation_id === currentNation.id;
     const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
-    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG)) {
+    const isMoTForTrade = proposal.proposal_type === 'trade_agreement' && diplomaticRoles.isMoT;
+    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !isMoTForTrade)) {
         alert('You are not authorized to reject this proposal.');
         return;
     }
@@ -7358,8 +7367,8 @@ function renderActionsBox() {
     [
         { key: 'declare_war', label: 'Declare War', ap: 8, type: 'hog', comingSoon: true },
         { key: 'call_ceasefire', label: 'Call for Ceasefire', ap: 4, type: 'hog', comingSoon: true },
-        { key: 'sign_alliance', label: 'Sign Alliance', ap: 6, type: 'hog' },
-        { key: 'state_visit', label: 'State Visit', ap: DIPLOMACY_CONFIG.STATE_VISIT_AP || 4, type: 'hog' }
+        { key: 'sign_alliance', label: 'Sign Alliance', ap: 6, type: 'hog', comingSoon: true },
+        { key: 'state_visit', label: 'State Visit', ap: DIPLOMACY_CONFIG.STATE_VISIT_AP || 4, type: 'hog', comingSoon: true }
     ].forEach(a => { html += actionHtml(a, hasHoG, 'hog'); });
 
     // Foreign Minister
@@ -7367,10 +7376,10 @@ function renderActionsBox() {
     [
         { key: 'appoint_ambassador', label: 'Appoint Ambassador', ap: 1, type: 'fm' },
         { key: 'recall_ambassador', label: 'Recall Ambassador', ap: 1, type: 'fm' },
-        { key: 'major_initiative', label: 'Major Diplomatic Initiative', ap: 2, type: 'fm' },
-        { key: 'formal_protest', label: 'Formal Protest', ap: 2, type: 'fm' },
-        { key: 'covert_ops', label: 'Covert Operations', ap: 4, type: 'fm' },
-        { key: 'foreign_aid', label: 'Foreign Aid Proposal', ap: 4, type: 'fm' }
+        { key: 'major_initiative', label: 'Major Diplomatic Initiative', ap: 2, type: 'fm', comingSoon: true },
+        { key: 'formal_protest', label: 'Formal Protest', ap: 2, type: 'fm', comingSoon: true },
+        { key: 'covert_ops', label: 'Covert Operations', ap: 4, type: 'fm', comingSoon: true },
+        { key: 'foreign_aid', label: 'Foreign Aid Proposal', ap: 4, type: 'fm', comingSoon: true }
     ].forEach(a => { html += actionHtml(a, hasFM, 'fm'); });
 
     // Minister of Trade
@@ -7733,6 +7742,13 @@ function renderDraftBox() {
         return;
     }
 
+    // Special branch for Trade Agreement
+    if (activeDraftAction.key === 'trade_agreement') {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
+        renderTradeAgreementDraftPanel(body, statusEl);
+        return;
+    }
+
     const targetName = activeDraftTarget ? escapeHtml(activeDraftTarget.name) : 'None selected';
 
     let html = '<div class="draft-panel">';
@@ -7789,6 +7805,176 @@ function renderDraftBox() {
     html += '</div>';
     body.innerHTML = html;
 }
+
+// ── Trade Agreement Draft Panel ──
+var draftTradeMode = false;  // flag so saveWizardTradeArticle/removeWizardTradeArticle know to re-render draft panel
+
+function renderTradeAgreementDraftPanel(body, statusEl) {
+    if (statusEl) statusEl.textContent = 'Trade Agreement';
+    draftTradeMode = true;
+
+    // Reset trade state when first entering (no type selected yet)
+    if (!wizardTradeAgreementType) {
+        tradeArticles = [];
+        wizardName = '';
+    }
+
+    let html = '<div class="draft-panel">';
+
+    // Header: action label
+    html += '<div class="draft-header">';
+    html += '<div class="draft-field"><div class="draft-field-label">Action</div><div class="draft-field-input">' + escapeHtml(activeDraftAction.label) + ' <span style="color:var(--teal);">(' + activeDraftAction.apCost + ' AP)</span></div></div>';
+
+    // Target Nation dropdown
+    let targetFieldHtml = '<select id="draft-target-select" style="width:100%;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);font-size:12px;padding:4px 8px;" onchange="selectDraftTradeTarget(this.value)">';
+    targetFieldHtml += '<option value="">Select a nation...</option>';
+    cachedOtherNations.forEach(n => {
+        const sel = activeDraftTarget && activeDraftTarget.id === n.id ? ' selected' : '';
+        targetFieldHtml += '<option value="' + n.id + '"' + sel + '>' + escapeHtml(n.name) + '</option>';
+    });
+    targetFieldHtml += '</select>';
+    html += '<div class="draft-field"><div class="draft-field-label">Target Nation</div>' + targetFieldHtml + '</div>';
+    html += '</div>';
+
+    if (!activeDraftTarget) {
+        html += '<div class="empty-state" style="padding:20px 0;"><div class="empty-state-text">Select a target nation to continue.</div></div>';
+        html += '</div>';
+        body.innerHTML = html;
+        return;
+    }
+
+    // Trade type selection cards (bilateral only, exclude aid)
+    if (!wizardTradeAgreementType) {
+        html += '<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;">Choose agreement type:</div>';
+        html += '<div class="type-card-grid">';
+        for (const [key, typeInfo] of Object.entries(TRADE_AGREEMENT_TYPES)) {
+            if (typeInfo.unilateral_action || !typeInfo.bilateral) continue;
+            if (key === 'economic_aid') continue;
+            html += `
+                <div class="type-card" onclick="selectDraftTradeType('${key}')">
+                    <div class="type-card-title">${escapeHtml(typeInfo.label)}</div>
+                    <div class="type-card-desc">${escapeHtml(typeInfo.description)}</div>
+                </div>`;
+        }
+        html += '</div>';
+
+        // Cancel
+        html += '<div class="detail-actions" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hair);">';
+        html += '<button class="detail-btn" onclick="cancelDraft()">Cancel</button>';
+        html += '</div>';
+        html += '</div>';
+        body.innerHTML = html;
+        return;
+    }
+
+    // Type selected — show article builder
+    const typeInfo = TRADE_AGREEMENT_TYPES[wizardTradeAgreementType];
+    const typeName = typeInfo?.label || wizardTradeAgreementType;
+    const availableTypes = getAvailableArticleTypes(wizardTradeAgreementType, tradeArticles);
+    const hasRequired = checkRequiredArticles(wizardTradeAgreementType, tradeArticles);
+
+    html += '<div class="draft-field"><div class="draft-field-label">Type</div><div class="draft-field-input">' + escapeHtml(typeName) + ' <span class="badge badge--dim" style="margin-left:4px;">' + escapeHtml(typeInfo?.shortLabel || '') + '</span></div></div>';
+
+    // Agreement name
+    html += '<div class="draft-field"><div class="draft-field-label">Name</div><input type="text" id="trade-neg-name" class="draft-field-input" placeholder="e.g. ' + escapeHtml(currentNation.name) + '-' + escapeHtml(activeDraftTarget.name) + ' ' + escapeHtml(typeInfo?.shortLabel || 'Trade') + ' Agreement" value="' + escapeHtml(wizardName || '') + '" oninput="wizardName=this.value" style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:4px 8px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
+
+    // Existing articles
+    html += '<div class="draft-articles">';
+    if (tradeArticles.length === 0) {
+        html += '<div class="empty-state" style="padding:20px 0;"><div class="empty-state-text">No articles added yet.</div></div>';
+    } else {
+        for (let i = 0; i < tradeArticles.length; i++) {
+            const art = tradeArticles[i];
+            const summary = renderTradeArticleSummary(art);
+            const artLabel = TRADE_ARTICLE_TYPES[art.type]?.label || art.type;
+            html += `
+                <div class="draft-article">
+                    <div class="draft-article-type">Art. ${toRoman(i + 1)} — ${escapeHtml(artLabel)}</div>
+                    <div class="draft-article-title" style="font-size:0.75rem;">${summary}</div>
+                    <button class="draft-article-remove" onclick="removeDraftTradeArticle(${i})">&#10005;</button>
+                </div>`;
+        }
+    }
+    html += '</div>';
+
+    // Add article dropdown + editor
+    if (availableTypes.length > 0) {
+        html += '<div class="draft-add-row">';
+        html += '<select id="wizard-trade-article-type" style="flex:1;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);font-size:11px;padding:4px 8px;">';
+        html += '<option value="">Add article...</option>';
+        availableTypes.forEach(t => {
+            html += '<option value="' + t.key + '">' + escapeHtml(t.label) + (t.required ? ' (required)' : '') + '</option>';
+        });
+        html += '</select>';
+        html += '<button class="detail-btn" onclick="showDraftTradeArticleEditor()">Add</button>';
+        html += '</div>';
+        html += '<div id="wizard-trade-article-editor"></div>';
+    }
+
+    // Required articles warning
+    if (!hasRequired) {
+        const missing = (typeInfo.required_articles || []).filter(req => !tradeArticles.some(a => a.type === req));
+        const missingLabels = missing.map(m => TRADE_ARTICLE_TYPES[m]?.label || m).join(', ');
+        html += '<div style="font-size:0.72rem;color:#f97316;margin-top:8px;">Required: ' + escapeHtml(missingLabels) + '</div>';
+    }
+
+    // Action bar
+    html += '<div class="detail-actions" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hair);">';
+    html += '<button class="detail-btn" onclick="cancelDraft()">Cancel</button>';
+    html += '<button class="detail-btn" style="margin-left:4px;font-size:0.7rem;color:var(--text-muted);" onclick="wizardTradeAgreementType=null;tradeArticles=[];reRenderTradeDraft()">Change Type</button>';
+    html += '<button class="detail-btn" style="color:var(--teal);border-color:var(--teal-border);" ' + (hasRequired ? '' : 'disabled') + ' onclick="submitDraftTradeProposal()">Send Proposal</button>';
+    html += '</div>';
+
+    html += '</div>';
+    body.innerHTML = html;
+}
+
+function selectDraftTradeTarget(nationId) {
+    if (!nationId) { activeDraftTarget = null; }
+    else {
+        const nation = cachedOtherNations.find(n => n.id === nationId);
+        activeDraftTarget = nation || null;
+    }
+    reRenderTradeDraft();
+}
+window.selectDraftTradeTarget = selectDraftTradeTarget;
+
+function selectDraftTradeType(typeKey) {
+    wizardTradeAgreementType = typeKey;
+    tradeArticles = [];
+    wizardName = '';
+    reRenderTradeDraft();
+}
+window.selectDraftTradeType = selectDraftTradeType;
+
+function showDraftTradeArticleEditor() {
+    const select = document.getElementById('wizard-trade-article-type');
+    const articleType = select?.value;
+    if (!articleType) { alert('Select an article type first.'); return; }
+    const container = document.getElementById('wizard-trade-article-editor');
+    if (!container) return;
+    renderTradeArticleEditorLocal(container, articleType);
+}
+window.showDraftTradeArticleEditor = showDraftTradeArticleEditor;
+
+function removeDraftTradeArticle(index) {
+    tradeArticles.splice(index, 1);
+    reRenderTradeDraft();
+}
+window.removeDraftTradeArticle = removeDraftTradeArticle;
+
+function reRenderTradeDraft() {
+    const body = document.getElementById('draft-body');
+    const statusEl = document.getElementById('draft-status');
+    if (body) renderTradeAgreementDraftPanel(body, statusEl);
+}
+
+async function submitDraftTradeProposal() {
+    // Bridge draft state into wizard state for submitTradeProposal()
+    wizardTargetNation = activeDraftTarget?.id;
+    submitTradeProposal();
+}
+window.submitDraftTradeProposal = submitDraftTradeProposal;
 
 // ── Draft helpers ──
 function addDraftArticle() {
@@ -8614,6 +8800,9 @@ function cancelDraft() {
     appointSelectedIndex = null;
     appointTargetRelation = null;
     appointCachedExistingAmbs = null;
+    wizardTradeAgreementType = null;
+    tradeArticles = [];
+    draftTradeMode = false;
     document.querySelectorAll('.action-item.is-active').forEach(el => el.classList.remove('is-active'));
     renderDraftBox();
 }
