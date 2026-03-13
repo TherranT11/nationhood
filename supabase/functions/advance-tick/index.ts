@@ -4192,11 +4192,20 @@ async function syncVoteTallies(supabase, billId) {
         else if (st === 'abstain')   votesAbstain += (v.seat_count || 0);
     });
 
-    await supabase.from('bills').update({
+    const { error } = await supabase.from('bills').update({
         votes_for: votesFor,
         votes_against: votesAgainst,
         votes_abstain: votesAbstain
     }).eq('id', billId);
+
+    // Fallback: if votes_abstain column doesn't exist yet (PGRST204), update without it
+    if (error && error.code === 'PGRST204' && error.message.includes('votes_abstain')) {
+        console.warn('[syncVoteTallies] votes_abstain column not found, updating without it');
+        await supabase.from('bills').update({
+            votes_for: votesFor,
+            votes_against: votesAgainst
+        }).eq('id', billId);
+    }
 
     return { votesFor, votesAgainst, votesAbstain };
 }
