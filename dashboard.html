@@ -506,22 +506,27 @@ initPage('home', async (state) => {
   const isPres = isPresidentialRepublic(nation);
   const isAuto = isAutocracy(nation);
 
-  const [
-    { data: allParties },
-    { data: shardRow }
-  ] = await Promise.all([
-    _supabase.from('factions')
-      .select('id, seats, faction_name, abbreviation, party_color')
-      .eq('nation_id', nation.id)
-      .eq('faction_type', 'party'),
-    _supabase.from('shard')
-      .select('current_tick')
-      .eq('name', 'Alpha Shard')
-      .single()
-  ]);
-
-  const currentTick = shardRow?.current_tick ?? 0;
-  const parties = allParties || [];
+  let currentTick = 0;
+  let parties = [];
+  try {
+    const [
+      { data: allParties },
+      { data: shardRow }
+    ] = await Promise.all([
+      _supabase.from('factions')
+        .select('id, seats, faction_name, abbreviation, party_color')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party'),
+      _supabase.from('shard')
+        .select('current_tick')
+        .eq('name', 'Alpha Shard')
+        .single()
+    ]);
+    currentTick = shardRow?.current_tick ?? 0;
+    parties = allParties || [];
+  } catch (e) {
+    console.error('Shared data fetch error:', e);
+  }
 
   // ══════════════════════════════════════
   // ── Government Card ──
