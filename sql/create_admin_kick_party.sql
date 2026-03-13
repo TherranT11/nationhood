@@ -168,9 +168,12 @@ BEGIN
     IF cnt > 0 THEN result := result || jsonb_build_object('active_coalitions_dissolved', cnt); END IF;
 
     -- ---- 6c. Remove pending coalition proposals ----
-    DELETE FROM coalition_proposals WHERE faction_id = p_faction_id;
-    GET DIAGNOSTICS cnt = ROW_COUNT;
-    IF cnt > 0 THEN result := result || jsonb_build_object('coalition_proposals_removed', cnt); END IF;
+    BEGIN
+        EXECUTE format('DELETE FROM coalition_proposals WHERE faction_id = %L', p_faction_id);
+        GET DIAGNOSTICS cnt = ROW_COUNT;
+        IF cnt > 0 THEN result := result || jsonb_build_object('coalition_proposals_removed', cnt); END IF;
+    EXCEPTION WHEN undefined_table OR undefined_column THEN NULL;
+    END;
 
     -- ---- 7. Fail open bills proposed by this faction ----
     UPDATE bills SET status = 'failed'
