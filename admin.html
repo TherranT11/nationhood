@@ -3372,10 +3372,22 @@ async function runStatAudit() {
     if (covering.length === 0) {
         log('  No institutions cover this stat. Natural decay rate applies.', '#888');
     } else {
-        // No budget bill system — institutions auto-fund at 100%
+        const { data: allocRows } = await _supabase.from('budget_item_allocations')
+            .select('item_id, allocation_amount, needed_amount')
+            .eq('nation_id', nationId)
+            .eq('item_type', 'institution')
+            .order('created_at', { ascending: true });
+        const allocLookup = {};
+        for (const ar of (allocRows || [])) {
+            const nd = Number(ar.needed_amount || 0);
+            allocLookup[ar.item_id] = nd > 0 ? Math.round((Number(ar.allocation_amount || 0) / nd) * 100) : 100;
+        }
         for (const ic of covering) {
             const role = ic.primary_stat === sk ? 'primary' : 'secondary';
-            log(`  ${ic.institution_name || ic.id} (${role}) — 100% funded (auto-funded, no budget system)`, '#4f4');
+            const pct = allocLookup[ic.id] !== undefined ? allocLookup[ic.id] : 100;
+            const hasAlloc = allocLookup[ic.id] !== undefined;
+            const color = pct >= 100 ? '#4f4' : pct >= 75 ? '#ff0' : pct >= 50 ? '#f90' : '#f44';
+            log(`  ${ic.institution_name || ic.id} (${role}) — ${pct}% funded${hasAlloc ? '' : ' (default, no funding bill)'}`, color);
         }
     }
 
