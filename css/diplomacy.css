@@ -586,6 +586,7 @@
 .draft-article {
   background: var(--bg-3);
   border: 1px solid var(--border-hair);
+  border-left: 3px solid var(--teal);
   margin-bottom: 8px;
   padding: 10px 12px;
 }
@@ -618,10 +619,12 @@
   font-family: var(--font-mono);
   font-size: 8px;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--red);
   cursor: pointer;
-  opacity: 0.6;
-  transition: opacity 0.1s;
+  opacity: 0.5;
+  transition: opacity 0.12s;
 }
 .draft-article-remove:hover { opacity: 1; }
 .draft-add-row {
@@ -916,6 +919,129 @@
 .trade-info-box { font-size: 0.72rem; padding: 6px 10px; border-radius: 4px; line-height: 1.4; }
 .trade-info-box.info { background: rgba(59,130,246,0.08); color: #60a5fa; border: 1px solid rgba(59,130,246,0.15); }
 .trade-info-box.warning { background: rgba(249,115,22,0.08); color: #f97316; border: 1px solid rgba(249,115,22,0.15); }
+
+/* ── TRADE ARTICLE BUILDER ── */
+.trade-article-builder {
+  background: var(--bg-3);
+  border: 1px solid var(--border-hair);
+  padding: 12px 14px;
+  margin-top: 10px;
+}
+.trade-article-header {
+  margin-bottom: 10px;
+}
+.trade-article-title {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.trade-article-card {
+  background: var(--bg-3);
+  border: 1px solid var(--border-hair);
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.trade-article-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+.trade-article-card-type {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+.trade-article-card-summary {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.trade-add-article-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+.trade-add-article-bar select {
+  flex: 1;
+  font-size: 0.75rem;
+  padding: 5px 8px;
+  background: var(--bg-1);
+  color: var(--text-primary);
+  border: 1px solid var(--border-hair);
+  border-radius: 3px;
+  font-family: var(--font-sans);
+}
+.trade-add-article-bar button {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 5px 12px;
+  border: 1px solid var(--teal-border);
+  background: transparent;
+  color: var(--teal);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.trade-add-article-bar button:hover {
+  background: var(--teal-faint);
+}
+
+/* ── WIZARD NAV & BUTTONS ── */
+.wizard-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-hair);
+}
+.wizard-next-btn {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 5px 14px;
+  border: 1px solid var(--teal-border);
+  background: transparent;
+  color: var(--teal);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.wizard-next-btn:hover {
+  background: var(--teal-faint);
+}
+.wizard-next-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+.wizard-back-btn {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 5px 14px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.wizard-back-btn:hover {
+  color: var(--text-muted);
+  background: var(--bg-hover);
+}
 
 /* ── TYPE CARD GRID (Agreement Type Selection) ── */
 .type-card-grid {

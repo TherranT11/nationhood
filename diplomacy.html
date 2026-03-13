@@ -3324,16 +3324,14 @@ async function renderWizardStep3TradeProposal() {
                 ${isHoGOnly ? '<div class="trade-info-box warning" style="margin-bottom:12px;">No Trade Minister, Foreign Minister, or ambassador appointed. Drafting as Head of Government costs ' + apCost + ' AP.</div>' : ''}
                 <div class="type-card-grid">`;
 
-        // Show all trade agreement types
+        // Show bilateral trade agreement types (unilateral types have their own wizard path)
         for (const [key, typeInfo] of Object.entries(TRADE_AGREEMENT_TYPES)) {
-            const bilateralTag = typeInfo.bilateral
-                ? '<span class="trade-type-tag bilateral">BILATERAL</span>'
-                : '<span class="trade-type-tag unilateral">UNILATERAL</span>';
+            if (!typeInfo.bilateral) continue;
             html += `
                 <div class="type-card" onclick="selectTradeAgreementType('${key}')">
                     <div class="type-card-short">${escapeHtml(typeInfo.shortLabel)}</div>
                     <div class="type-card-title">${escapeHtml(typeInfo.label)}</div>
-                    <div class="type-card-effects">${bilateralTag}</div>
+                    <div class="type-card-effects"><span class="trade-type-tag bilateral">BILATERAL</span></div>
                 </div>`;
         }
         html += '</div></div>';
@@ -3360,18 +3358,30 @@ async function renderWizardStep3TradeProposal() {
                 <input type="text" id="trade-neg-name" placeholder="e.g. ${escapeHtml(currentNation.name)}-${escapeHtml(targetName)} ${escapeHtml(typeInfo?.shortLabel || 'Trade')} Agreement" maxlength="120" value="${escapeHtml(wizardName || '')}" onchange="wizardName=this.value" />
             </div>`;
 
+    // Type explainer
+    const explainer = getTradeTypeExplainer(wizardTradeAgreementType);
+    if (explainer) {
+        html += '<div class="trade-info-box info" style="margin-top:8px;">' + explainer + '</div>';
+    }
+
     // Show existing articles
     if (tradeArticles.length > 0) {
         html += '<div style="margin-top:12px;">';
         for (let i = 0; i < tradeArticles.length; i++) {
             const art = tradeArticles[i];
             const summary = renderTradeArticleSummary(art);
-            const artLabel = TRADE_ARTICLE_TYPES[art.type]?.label || art.type;
+            const artTypeInfo = TRADE_ARTICLE_TYPES[art.type];
+            const artLabel = artTypeInfo?.label || art.type;
+            const artDesc = artTypeInfo?.description || '';
+            const isRequired = (typeInfo.required_articles || []).includes(art.type);
             html += `
-                <div class="article-card" style="margin-bottom:6px;">
-                    <div class="article-card-type">Art. ${toRoman(i + 1)} — ${escapeHtml(artLabel)}</div>
-                    <div class="article-card-title" style="font-size:0.75rem;">${summary}</div>
-                    <button style="position:absolute;top:6px;right:8px;background:none;border:none;color:var(--red);cursor:pointer;font-size:0.7rem;" onclick="removeWizardTradeArticle(${i})">Remove</button>
+                <div class="draft-article">
+                    <div class="draft-article-type">
+                        <span>Art. ${toRoman(i + 1)} — ${escapeHtml(artLabel)} ${isRequired ? '<span class="badge badge--teal" style="margin-left:4px;">Required</span>' : '<span class="badge badge--dim" style="margin-left:4px;">Optional</span>'}</span>
+                        <span class="draft-article-remove" onclick="removeWizardTradeArticle(${i})">Remove</span>
+                    </div>
+                    <div class="draft-article-title" style="font-size:0.75rem;">${summary}</div>
+                    <div class="draft-article-body">${escapeHtml(artDesc)}</div>
                 </div>`;
         }
         html += '</div>';
@@ -3471,7 +3481,7 @@ function saveWizardTradeArticle(articleType) {
     switch (articleType) {
         case 'duration': {
             const durType = document.querySelector('input[name="dur-type"]:checked')?.value || 'fixed';
-            const ticks = Math.min(120, Math.max(4, parseInt(document.getElementById('dur-ticks')?.value || '12')));
+            const ticks = Math.min(240, Math.max(4, parseInt(document.getElementById('dur-ticks')?.value || '12')));
             const autoRenew = document.getElementById('dur-autorenew')?.checked || false;
             const withdrawal = Math.min(6, Math.max(1, parseInt(document.getElementById('dur-withdrawal')?.value || '3')));
             articleData = { duration_type: durType, duration_ticks: durType === 'fixed' ? ticks : null, auto_renew: autoRenew, withdrawal_notice_ticks: withdrawal };
@@ -4810,6 +4820,25 @@ function renderTradeArticleSummary(article) {
     }
 }
 
+function getTradeTypeExplainer(agreementType) {
+    switch (agreementType) {
+        case 'fta':
+            return 'An FTA eliminates tariffs on <strong>all 6 trade sectors</strong> by default. '
+                + 'You only need a Duration article. Optionally add <strong>Sector Exemption</strong> articles to protect specific industries from free trade.';
+        case 'pta':
+            return 'A PTA lets you negotiate <strong>sector-by-sector</strong> tariff reductions. '
+                + 'Add one or more <strong>Tariff Reduction</strong> articles specifying which sectors get reduced tariffs and by how much.';
+        case 'resource_supply':
+            return 'An RSC guarantees a <strong>minimum purchase volume</strong> of a raw resource (fuel, minerals, or food). '
+                + 'You must set the <strong>Supply Commitment</strong> (who buys/sells and how much) and <strong>Price Terms</strong> (market, fixed, discount, or premium).';
+        case 'economic_aid':
+            return 'An aid agreement commits the <strong>donor</strong> to annual funding that appears as revenue in the <strong>recipient\'s</strong> budget. '
+                + 'Optionally attach <strong>Conditions</strong> (e.g. maintain corruption below 40) — failure triggers suspension or termination at annual review.';
+        default:
+            return '';
+    }
+}
+
 function getAvailableArticleTypes(agreementType, existingArticles) {
     const typeConfig = TRADE_AGREEMENT_TYPES[agreementType];
     if (!typeConfig) return [];
@@ -5079,14 +5108,14 @@ function renderTradeArticleEditor(container, articleType, negotiationId) {
 function renderDurationEditor() {
     return `
         <div class="trade-radio-group" style="margin-bottom:10px;">
-            <label class="trade-radio-option" onclick="this.querySelector('input').checked=true;toggleDurationFixedFields()">
+            <label class="trade-radio-option" onclick="selectDurationType(this, 'permanent')">
                 <input type="radio" name="dur-type" value="permanent" />
                 <div>
                     <div class="trade-radio-label">Permanent</div>
                     <div class="trade-radio-hint">Until one party withdraws</div>
                 </div>
             </label>
-            <label class="trade-radio-option selected" onclick="this.querySelector('input').checked=true;toggleDurationFixedFields()">
+            <label class="trade-radio-option selected" onclick="selectDurationType(this, 'fixed')">
                 <input type="radio" name="dur-type" value="fixed" checked />
                 <div>
                     <div class="trade-radio-label">Fixed Term</div>
@@ -5097,8 +5126,8 @@ function renderDurationEditor() {
         <div id="dur-fixed-fields">
             <div class="trade-field">
                 <label>Duration (ticks)</label>
-                <input type="number" id="dur-ticks" value="12" min="4" max="48" />
-                <div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px;">Min 4, max 48 (FTA/PTA). Min 8, max 36 (RSC). Min 4, max 24 (Subsidy).</div>
+                <input type="number" id="dur-ticks" value="12" min="4" max="240" />
+                <div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px;">Min 4, max 240 ticks (20 years).</div>
             </div>
             <div class="trade-checkbox-option">
                 <input type="checkbox" id="dur-autorenew" /> Auto-renew unless either party cancels
@@ -5112,6 +5141,17 @@ function renderDurationEditor() {
             </div>
         </div>
     `;
+}
+
+function selectRadioOption(label) {
+    label.querySelector('input').checked = true;
+    label.closest('.trade-radio-group').querySelectorAll('.trade-radio-option').forEach(el => el.classList.remove('selected'));
+    label.classList.add('selected');
+}
+
+function selectDurationType(label, value) {
+    selectRadioOption(label);
+    toggleDurationFixedFields();
 }
 
 function toggleDurationFixedFields() {
@@ -5150,21 +5190,21 @@ function renderTariffReductionEditor() {
         <div class="trade-field">
             <label>Direction</label>
             <div class="trade-radio-group">
-                <label class="trade-radio-option selected" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option selected" onclick="selectRadioOption(this)">
                     <input type="radio" name="tariff-dir" value="mutual" checked />
                     <div>
                         <div class="trade-radio-label">Mutual</div>
                         <div class="trade-radio-hint">Both sides reduce tariffs on this sector</div>
                     </div>
                 </label>
-                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option" onclick="selectRadioOption(this)">
                     <input type="radio" name="tariff-dir" value="your_exports" />
                     <div>
                         <div class="trade-radio-label">Your exports only</div>
                         <div class="trade-radio-hint">Partner reduces tariffs on YOUR goods</div>
                     </div>
                 </label>
-                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option" onclick="selectRadioOption(this)">
                     <input type="radio" name="tariff-dir" value="their_exports" />
                     <div>
                         <div class="trade-radio-label">Their exports only</div>
@@ -5202,14 +5242,14 @@ function renderSupplyCommitmentEditor() {
         <div class="trade-field">
             <label>Direction: Who is the BUYER?</label>
             <div class="trade-radio-group">
-                <label class="trade-radio-option selected" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option selected" onclick="selectRadioOption(this)">
                     <input type="radio" name="supply-dir" value="we_buy" checked />
                     <div>
                         <div class="trade-radio-label">We BUY from partner</div>
                         <div class="trade-radio-hint">We commit to purchasing from them</div>
                     </div>
                 </label>
-                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option" onclick="selectRadioOption(this)">
                     <input type="radio" name="supply-dir" value="we_sell" />
                     <div>
                         <div class="trade-radio-label">We SELL to partner</div>
@@ -5362,14 +5402,14 @@ function updateSubsidyWarning(val) {
 function renderFundingSourceEditor() {
     return `
         <div class="trade-radio-group">
-            <label class="trade-radio-option selected" onclick="this.querySelector('input').checked=true">
+            <label class="trade-radio-option selected" onclick="selectRadioOption(this)">
                 <input type="radio" name="fund-source" value="general_treasury" checked />
                 <div>
                     <div class="trade-radio-label">General Treasury</div>
                     <div class="trade-radio-hint">Deducted from national budget each tick. Increases the deficit.</div>
                 </div>
             </label>
-            <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+            <label class="trade-radio-option" onclick="selectRadioOption(this)">
                 <input type="radio" name="fund-source" value="ministry_budget" />
                 <div>
                     <div class="trade-radio-label">Ministry of Trade Budget</div>
@@ -5450,14 +5490,14 @@ function renderAidConditionEditor() {
         <div class="trade-field">
             <label>Condition</label>
             <div class="trade-radio-group">
-                <label class="trade-radio-option selected" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option selected" onclick="selectRadioOption(this)">
                     <input type="radio" name="cond-op" value="gte" checked />
                     <div>
                         <div class="trade-radio-label">Must be &ge; threshold</div>
                         <div class="trade-radio-hint">Stat must stay at or above the value</div>
                     </div>
                 </label>
-                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option" onclick="selectRadioOption(this)">
                     <input type="radio" name="cond-op" value="lte" />
                     <div>
                         <div class="trade-radio-label">Must be &le; threshold</div>
@@ -5477,21 +5517,21 @@ function renderAidConditionEditor() {
         <div class="trade-field">
             <label>If Condition Fails</label>
             <div class="trade-radio-group">
-                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option" onclick="selectRadioOption(this)">
                     <input type="radio" name="cond-fail" value="suspend" checked />
                     <div>
                         <div class="trade-radio-label">Suspend Aid</div>
                         <div class="trade-radio-hint">Pause payments. Resumes if condition is met again at next review.</div>
                     </div>
                 </label>
-                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option" onclick="selectRadioOption(this)">
                     <input type="radio" name="cond-fail" value="reduce" />
                     <div>
                         <div class="trade-radio-label">Reduce Aid</div>
                         <div class="trade-radio-hint">Halve payments each failed review. Terminated after 3 consecutive failures.</div>
                     </div>
                 </label>
-                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                <label class="trade-radio-option" onclick="selectRadioOption(this)">
                     <input type="radio" name="cond-fail" value="terminate" />
                     <div>
                         <div class="trade-radio-label">Terminate Agreement</div>
@@ -5569,7 +5609,7 @@ async function saveTradeArticle(negotiationId, articleType) {
     switch (articleType) {
         case 'duration': {
             const durType = document.querySelector('input[name="dur-type"]:checked')?.value || 'fixed';
-            const ticks = Math.min(120, Math.max(4, parseInt(document.getElementById('dur-ticks')?.value || '12')));
+            const ticks = Math.min(240, Math.max(4, parseInt(document.getElementById('dur-ticks')?.value || '12')));
             const autoRenew = document.getElementById('dur-autorenew')?.checked || false;
             const withdrawal = Math.min(6, Math.max(1, parseInt(document.getElementById('dur-withdrawal')?.value || '3')));
             articleData = { duration_type: durType, duration_ticks: durType === 'fixed' ? ticks : null, auto_renew: autoRenew, withdrawal_notice_ticks: withdrawal };
@@ -6463,7 +6503,7 @@ function saveCounterTradeArticle(articleType, proposalId) {
     switch (articleType) {
         case 'duration': {
             const durType = document.querySelector('input[name="dur-type"]:checked')?.value || 'fixed';
-            const ticks = Math.min(120, Math.max(4, parseInt(document.getElementById('dur-ticks')?.value || '12')));
+            const ticks = Math.min(240, Math.max(4, parseInt(document.getElementById('dur-ticks')?.value || '12')));
             const autoRenew = document.getElementById('dur-autorenew')?.checked || false;
             const withdrawal = Math.min(6, Math.max(1, parseInt(document.getElementById('dur-withdrawal')?.value || '3')));
             articleData = { duration_type: durType, duration_ticks: durType === 'fixed' ? ticks : null, auto_renew: autoRenew, withdrawal_notice_ticks: withdrawal };
@@ -7845,19 +7885,17 @@ function renderTradeAgreementDraftPanel(body, statusEl) {
         return;
     }
 
-    // Trade type selection cards
+    // Trade type selection cards (bilateral only — unilateral types use separate flows)
     if (!wizardTradeAgreementType) {
         html += '<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;">Choose agreement type:</div>';
         html += '<div class="type-card-grid">';
         for (const [key, typeInfo] of Object.entries(TRADE_AGREEMENT_TYPES)) {
-            const bilateralTag = typeInfo.bilateral
-                ? '<span class="trade-type-tag bilateral">BILATERAL</span>'
-                : '<span class="trade-type-tag unilateral">UNILATERAL</span>';
+            if (!typeInfo.bilateral) continue;
             html += `
                 <div class="type-card" onclick="selectDraftTradeType('${key}')">
                     <div class="type-card-short">${escapeHtml(typeInfo.shortLabel)}</div>
                     <div class="type-card-title">${escapeHtml(typeInfo.label)}</div>
-                    <div class="type-card-effects">${bilateralTag}</div>
+                    <div class="type-card-effects"><span class="trade-type-tag bilateral">BILATERAL</span></div>
                 </div>`;
         }
         html += '</div>';
@@ -7882,6 +7920,12 @@ function renderTradeAgreementDraftPanel(body, statusEl) {
     // Agreement name
     html += '<div class="draft-field"><div class="draft-field-label">Name</div><input type="text" id="trade-neg-name" class="draft-field-input" placeholder="e.g. ' + escapeHtml(currentNation.name) + '-' + escapeHtml(activeDraftTarget.name) + ' ' + escapeHtml(typeInfo?.shortLabel || 'Trade') + ' Agreement" value="' + escapeHtml(wizardName || '') + '" oninput="wizardName=this.value" style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:4px 8px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
 
+    // Type explainer
+    const explainer = getTradeTypeExplainer(wizardTradeAgreementType);
+    if (explainer) {
+        html += '<div class="trade-info-box info" style="margin-top:8px;">' + explainer + '</div>';
+    }
+
     // Existing articles
     html += '<div class="draft-articles">';
     if (tradeArticles.length === 0) {
@@ -7890,12 +7934,18 @@ function renderTradeAgreementDraftPanel(body, statusEl) {
         for (let i = 0; i < tradeArticles.length; i++) {
             const art = tradeArticles[i];
             const summary = renderTradeArticleSummary(art);
-            const artLabel = TRADE_ARTICLE_TYPES[art.type]?.label || art.type;
+            const artTypeInfo = TRADE_ARTICLE_TYPES[art.type];
+            const artLabel = artTypeInfo?.label || art.type;
+            const artDesc = artTypeInfo?.description || '';
+            const isRequired = (typeInfo.required_articles || []).includes(art.type);
             html += `
                 <div class="draft-article">
-                    <div class="draft-article-type">Art. ${toRoman(i + 1)} — ${escapeHtml(artLabel)}</div>
+                    <div class="draft-article-type">
+                        <span>Art. ${toRoman(i + 1)} — ${escapeHtml(artLabel)} ${isRequired ? '<span class="badge badge--teal" style="margin-left:4px;">Required</span>' : '<span class="badge badge--dim" style="margin-left:4px;">Optional</span>'}</span>
+                        <span class="draft-article-remove" onclick="removeDraftTradeArticle(${i})">Remove</span>
+                    </div>
                     <div class="draft-article-title" style="font-size:0.75rem;">${summary}</div>
-                    <button class="draft-article-remove" onclick="removeDraftTradeArticle(${i})">&#10005;</button>
+                    <div class="draft-article-body">${escapeHtml(artDesc)}</div>
                 </div>`;
         }
     }
