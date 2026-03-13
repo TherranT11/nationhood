@@ -2215,7 +2215,7 @@ export async function enactBill(supabase, bill, currentTick) {
         const fd = art.funding_data;
         if (!fd || !fd.ministry_key) continue;
 
-        // Per-institution funding changes: update ministry funding_level
+        // Per-institution funding changes: update ministry funding_level + budget_item_allocations
         const instChanges = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
 
         // Update the ministry-level funding_level as a weighted average
@@ -2249,6 +2249,35 @@ export async function enactBill(supabase, bill, currentTick) {
                 ...logContext,
                 ministryKey: fd.ministry_key,
                 avgPercent: Math.round(avgPct)
+            });
+
+            // Upsert per-institution funding into budget_item_allocations
+            // Uses proposed_pct as allocation_amount and 100 as needed_amount
+            // so buildStatInstitutionMap computes fundingPct = (proposed_pct / 100) * 100 = proposed_pct
+            for (const inst of allInst) {
+                const { error: allocErr } = await supabase.from('budget_item_allocations')
+                    .upsert({
+                        bill_id: bill.id,
+                        nation_id: bill.nation_id,
+                        fiscal_category: fd.ministry_key,
+                        item_type: 'institution',
+                        item_id: inst.id,
+                        item_name: inst.name,
+                        allocation_amount: inst.proposed_pct,
+                        needed_amount: 100
+                    }, { onConflict: 'bill_id,item_type,item_id' });
+                if (allocErr) {
+                    console.error('[enactBill] stage=upsert_institution_allocation result=error', {
+                        ...logContext,
+                        institutionId: inst.id,
+                        error: allocErr.message
+                    });
+                }
+            }
+            console.log('[enactBill] stage=upsert_institution_allocations result=success', {
+                ...logContext,
+                ministryKey: fd.ministry_key,
+                institutionCount: allInst.length
             });
         }
 

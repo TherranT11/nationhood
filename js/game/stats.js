@@ -286,7 +286,7 @@ export function buildStatInstitutionMap(instConfig, itemAllocations) {
         const alloc = allocMap[inst.id];
         const fundingPct = alloc && alloc.needed > 0
             ? Math.min(100, Math.round((alloc.allocated / alloc.needed) * 100))
-            : 0;  // no allocation row = unfunded
+            : 100;  // no allocation row = fully funded by default
 
         for (const role of ['primary', 'secondary']) {
             const statKey = inst[`${role}_stat`];

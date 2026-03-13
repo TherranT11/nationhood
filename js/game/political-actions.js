@@ -4746,9 +4746,21 @@ export async function processCrises(supabase, nation, currentTick) {
     const nationUpdates = {};
     const statBounds = {}; // { stat_key: { floor: highestFloor, ceiling: lowestCeiling } }
 
-    // Institution funding: always 100% (no budget bill system)
+    // Load per-institution funding allocations (written by enactBill funding articles)
+    const { data: _fundingAllocRows } = await supabase.from('budget_item_allocations')
+        .select('item_id, allocation_amount, needed_amount')
+        .eq('nation_id', nation.id)
+        .eq('item_type', 'institution')
+        .order('created_at', { ascending: true });
+    const _fundingMap = {};
+    for (const row of (_fundingAllocRows || [])) {
+        const needed = Number(row.needed_amount || 0);
+        _fundingMap[row.item_id] = needed > 0
+            ? Math.min(100, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
+            : 100;
+    }
     function getInstitutionFundingPct(instId) {
-        return 100;
+        return _fundingMap[instId] ?? 100;
     }
 
     // 3. Check inactive crises for activation
