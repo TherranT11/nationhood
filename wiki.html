@@ -70,10 +70,9 @@ initPage('wiki', async (state) => {
                             <div style="font-weight:700;font-size:13px;color:var(--text-primary);">${escapeHtml(full.title)}</div>
                             ${typeLabel ? `<div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-top:4px;">${escapeHtml(typeLabel)}</div>` : ''}
                         </div>` : '';
-                    // Extract first full paragraph from body
-                    const paraMatch = (full.body || '').match(/<p[^>]*>([\s\S]*?)<\/p>/i);
-                    const firstPara = paraMatch ? paraMatch[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() : '';
-                    const previewText = firstPara || (full.body || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400);
+                    // First 600 chars of raw text for preview
+                    const rawBody = (full.body || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                    const previewText = rawBody.length > 600 ? rawBody.slice(0, 600) + '…' : rawBody;
                     exploreHtml = `
                     <div class="wiki-home-section">
                         <div class="wiki-home-card">
