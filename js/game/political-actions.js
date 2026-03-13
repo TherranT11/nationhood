@@ -5923,11 +5923,13 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
         throw new Error('A Survivor cannot resign. They cling to power.');
     }
 
+    // 1. Deactivate PM
     await supabase
         .from('head_of_government')
         .update({ active: false })
         .eq('id', hog.id);
 
+    // 2. Approval & stability penalties
     await adjustMomentumAll(supabase, nationId, factionId, -5, 'pm:resignation');
 
     const { data: nation } = await supabase
@@ -5944,66 +5946,47 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
             .eq('id', nationId);
     }
 
+    // 3. 12-tick PM cooldown on resigning faction
     await supabase
         .from('factions')
         .update({ pm_cooldown_until: currentTick + 12 })
         .eq('id', factionId);
 
-    if (hog.trait_key === 'iron_will') {
-        console.log('Iron Will resignation — coalition collapses');
-        try {
-            const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
-            const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-            if (fullNation) {
-                await closeAdministration(supabase, nationId, fullNation, 'coalition_collapse', currentTick, shard?.current_date || '', null);
-            }
-        } catch (adminErr) { console.warn('Could not close administration on iron_will collapse:', adminErr); }
-        await dissolveCoalition(supabase, nationId);
-        return { result: 'coalition_collapsed', reason: 'iron_will' };
-    }
-
-    const { data: govFormation } = await supabase
-        .from('government_formations')
-        .select('party_ids')
-        .eq('nation_id', nationId)
-        .eq('status', 'formed')
-        .single();
-
-    if (govFormation) {
-        const partnerIds = (govFormation.party_ids || [])
-            .filter(pid => pid !== factionId);
-
-        const { data: partners } = await supabase
-            .from('factions')
-            .select('id, faction_name, seats, pm_cooldown_until')
-            .in('id', partnerIds)
-            .order('seats', { ascending: false });
-
-        const eligible = (partners || []).find(p =>
-            !p.pm_cooldown_until || p.pm_cooldown_until <= currentTick
-        );
-
-        if (eligible) {
-            await autoAppointPartyLeaderAsPM(supabase, nationId, eligible.id, currentTick);
-            console.log(`PM auto-appointed to ${eligible.faction_name} leader`);
-            return {
-                result: 'pm_appointed',
-                newPmPartyId: eligible.id,
-                newPmPartyName: eligible.faction_name
-            };
-        }
-    }
-
-    console.log('No eligible partner — coalition collapsed');
+    // 4. Always dissolve the coalition — PM resignation triggers immediate elections
+    console.log('PM resignation — dissolving coalition and scheduling immediate election');
     try {
         const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
         const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
         if (fullNation) {
-            await closeAdministration(supabase, nationId, fullNation, 'coalition_collapse', currentTick, shard?.current_date || '', null);
+            await closeAdministration(supabase, nationId, fullNation, 'pm_resignation', currentTick, shard?.current_date || '', null);
         }
-    } catch (adminErr) { console.warn('Could not close administration on coalition collapse:', adminErr); }
+    } catch (adminErr) { console.warn('Could not close administration on PM resignation:', adminErr); }
     await dissolveCoalition(supabase, nationId);
-    return { result: 'coalition_collapsed', reason: 'no_eligible_partner' };
+
+    // 5. Freeze all active bills
+    await supabase
+        .from('bills')
+        .update({ status: 'frozen' })
+        .eq('nation_id', nationId)
+        .in('status', ['committee', 'floor']);
+
+    // 6. Cancel any existing scheduled elections and schedule immediate one
+    await supabase
+        .from('elections')
+        .delete()
+        .eq('nation_id', nationId)
+        .eq('status', 'scheduled');
+
+    await supabase.from('elections').insert({
+        nation_id: nationId,
+        election_tick: currentTick,
+        status: 'scheduled',
+        election_type: 'parliamentary'
+    });
+
+    console.log(`  Scheduled immediate election for tick ${currentTick}`);
+
+    return { result: 'election_called', reason: hog.trait_key === 'iron_will' ? 'iron_will' : 'pm_resignation' };
 }
 
 

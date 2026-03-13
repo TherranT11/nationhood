@@ -3724,7 +3724,8 @@ async function resignPMAction() {
         '• Your party: -5 Approval\n' +
         '• Nation: -3 Stability\n' +
         '• Your party cannot hold PM for 12 ticks (1 year)\n' +
-        '• Coalition partner may take over, or coalition collapses\n\n' +
+        '• Coalition dissolves — emergency elections held immediately\n' +
+        '• All active bills are frozen\n\n' +
         'This cannot be undone. Proceed?'
     )) return;
 
@@ -3745,11 +3746,12 @@ async function resignPMAction() {
         // Bust coalition cache so re-render picks up changed state
         qCacheBust('coalition_');
 
-        if (result.result === 'pm_appointed') {
-            alert(`📋 You have resigned as Prime Minister.\n\n${result.newPmPartyName}'s party leader has been appointed as the new PM.`);
-        } else if (result.result === 'coalition_collapsed') {
-            alert(`📋 You have resigned as Prime Minister.\n\nNo eligible partner — the coalition has collapsed. The nation has no government.`);
-        }
+        alert(
+            '📋 You have resigned as Prime Minister.\n\n' +
+            'The coalition has been dissolved and emergency elections have been called.\n' +
+            'Elections will be held on the next tick. All active bills have been frozen.\n' +
+            'Your party cannot hold the PM seat for 12 ticks.'
+        );
 
         await renderGovernmentPage();
     } catch (e) {
