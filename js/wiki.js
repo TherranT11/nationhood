@@ -1,6 +1,112 @@
 // ===== WIKI SHARED UTILITIES =====
 
 import { escapeHtml } from './utils.js';
+import { _supabase } from './supabase-client.js';
+
+// ===== WIKI TOP BAR & INIT =====
+
+/** Render the minimal wiki-specific top bar (replaces the game top bar) */
+export function renderWikiTopBar() {
+    const topBar = document.getElementById('top-bar');
+    if (!topBar) return;
+    topBar.innerHTML = `
+        <div class="wiki-top-bar">
+            <a href="wiki.html" class="wiki-top-bar-brand">Nationhood Wiki</a>
+            <div class="wiki-top-bar-right">
+                <a href="dashboard.html" class="wiki-btn wiki-btn-return">Return to Game</a>
+                <button class="theme-toggle-btn" onclick="window.__wikiToggleTheme()" id="theme-toggle"></button>
+            </div>
+        </div>
+    `;
+    updateWikiThemeButton();
+}
+
+function updateWikiThemeButton() {
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    btn.textContent = document.body.classList.contains('light-mode') ? 'Dark' : 'Light';
+}
+
+window.__wikiToggleTheme = function() {
+    const isLight = document.body.classList.toggle('light-mode');
+    localStorage.setItem('nationhood_theme', isLight ? 'light' : 'dark');
+    updateWikiThemeButton();
+};
+
+/**
+ * Initialize a wiki page. Works for both logged-in and anonymous users.
+ * Returns { isLoggedIn, faction, nation } or { isLoggedIn: false, faction: null, nation: null }.
+ * If requireAuth is true, redirects to login page if not authenticated.
+ */
+export async function initWikiPage({ requireAuth = false } = {}) {
+    renderWikiTopBar();
+
+    const { data: { user } } = await _supabase.auth.getUser();
+
+    if (!user) {
+        if (requireAuth) {
+            window.location.href = 'login.html';
+            return null;
+        }
+        return { isLoggedIn: false, faction: null, nation: null };
+    }
+
+    // Load faction and nation for logged-in users
+    const { data: faction } = await _supabase
+        .from('factions').select('*').eq('id', user.id).maybeSingle();
+
+    let nation = null;
+    if (faction && faction.nation_id) {
+        const { data: nationData } = await _supabase
+            .from('nations').select('*').eq('id', faction.nation_id).maybeSingle();
+        nation = nationData;
+    }
+
+    return { isLoggedIn: true, faction, nation };
+}
+
+/**
+ * Render the persistent wiki search bar. Call after the page content is set up.
+ * Inserts a search bar at the top of the wiki-root container.
+ */
+export async function renderWikiSearchBar(container) {
+    const searchBarHtml = `
+        <div class="wiki-global-search" id="wiki-global-search">
+            <input type="text" class="wiki-search-input wiki-global-search-input" id="wiki-global-search-input" placeholder="Search wiki pages...">
+            <div class="wiki-search-dropdown" id="wiki-global-search-results"></div>
+        </div>
+    `;
+    container.insertAdjacentHTML('afterbegin', searchBarHtml);
+
+    // Load page list for search
+    let allPages = [];
+    try {
+        allPages = await fetchPageList(_supabase);
+    } catch (_) {}
+
+    const searchInput = document.getElementById('wiki-global-search-input');
+    const searchResults = document.getElementById('wiki-global-search-results');
+
+    searchInput.addEventListener('input', () => {
+        const q = searchInput.value.trim().toLowerCase();
+        if (!q) { searchResults.innerHTML = ''; searchResults.style.display = 'none'; return; }
+        const matches = allPages.filter(p => p.title.toLowerCase().includes(q)).slice(0, 8);
+        if (!matches.length) {
+            searchResults.innerHTML = `<div class="wiki-search-item wiki-search-empty">No pages match "${escapeHtml(q)}"</div>`;
+        } else {
+            searchResults.innerHTML = matches.map(p =>
+                `<a href="wiki.html?slug=${encodeURIComponent(p.slug)}" class="wiki-search-item">${escapeHtml(p.title)}${p.template_type ? ` <span class="wiki-page-row-type">${escapeHtml(p.template_type)}</span>` : ''}</a>`
+            ).join('');
+        }
+        searchResults.style.display = 'block';
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+            searchResults.style.display = 'none';
+        }
+    });
+}
 
 /** Convert a page title to a URL-safe slug */
 export function slugify(title) {

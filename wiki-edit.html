@@ -33,9 +33,8 @@
 <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { slugify, fetchPage, uploadWikiImage } from './js/wiki.js';
+import { initWikiPage, renderWikiSearchBar, slugify, fetchPage, uploadWikiImage } from './js/wiki.js';
 
 const TEMPLATE_TYPES = [
     { value: '', label: 'None' },
@@ -46,7 +45,9 @@ const TEMPLATE_TYPES = [
     { value: 'culture', label: 'Culture' }
 ];
 
-initPage('wiki', async (state) => {
+(async () => {
+    const state = await initWikiPage({ requireAuth: true });
+    if (!state) return;
     const { faction, nation } = state;
     const root = document.getElementById('wiki-root');
     const params = new URLSearchParams(window.location.search);
@@ -454,7 +455,9 @@ initPage('wiki', async (state) => {
             });
         });
     }
-});
+
+    await renderWikiSearchBar(root);
+})();
 </script>
 </body>
 </html>
