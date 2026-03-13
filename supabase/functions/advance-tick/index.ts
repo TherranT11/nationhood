@@ -20119,9 +20119,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Crises (persistent negative events that apply effects every tick)
         // Runs BEFORE approval calculations so crisis stat/event effects propagate in the same tick.
-        let crisisResults = [];
         try {
-            crisisResults = await processCrises(supabase, nation, newTick);
+            const crisisResults = await processCrises(supabase, nation, newTick);
             if (crisisResults.length > 0) {
                 summary.crises = summary.crises || [];
                 summary.crises.push({ nation: nation.name, crises: crisisResults });
@@ -20173,7 +20172,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Layer 2: Calculate government approval (avg minister + vacancy penalty + event modifier)
         try {
-            const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick);
+            await calculateGovernmentApprovalTick(supabase, nation, newTick);
         } catch (govAppErr) {
             console.error(`[advanceTick] Gov approval calc failed for ${nation.name} (non-fatal):`, govAppErr);
         }
@@ -20437,9 +20436,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // ── Leader aging (every January — tick % 12 === 0) ──
         // All party leaders, stewards, and the strongman age 1 year.
         // The strongman also rolls health checks starting at age 70.
-        console.log(`[LeaderAging] ${nation.name}: tick=${newTick}, tick%12=${newTick % 12}, isJanuary=${newTick % 12 === 0}`);
         if (newTick % 12 === 0) {
             try {
+                console.log(`[LeaderAging] ${nation.name}: tick=${newTick} (January — aging leaders)`);
                 const agingResults = [];
 
                 // 1. Age all party faction leaders +1
@@ -20451,8 +20450,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     .not('leader_age', 'is', null);
 
                 if (partyFactions && partyFactions.length > 0) {
+                    const factionIdToAge = {};
                     for (const f of partyFactions) {
                         const newAge = (f.leader_age || 40) + 1;
+                        factionIdToAge[f.id] = newAge;
                         await supabase.from('factions')
                             .update({ leader_age: newAge })
                             .eq('id', f.id);
@@ -20466,10 +20467,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
                     // 1b. Sync PM age in head_of_government (democracy)
                     // The PM record copies faction leader age at appointment but never updates.
-                    const factionIdToAge = {};
-                    for (const f of partyFactions) {
-                        factionIdToAge[f.id] = (f.leader_age || 40) + 1;
-                    }
                     const { data: activeHog } = await supabase
                         .from('head_of_government')
                         .select('id, faction_id')
