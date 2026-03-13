@@ -2509,7 +2509,7 @@ async function renderNationTradeNegotiations(targetNationId) {
             const subLabel = typeInfo ? escapeHtml(typeInfo.shortLabel) : 'Type pending';
 
             html += `
-                <div class="trade-neg-status" style="cursor:pointer;margin-bottom:8px;" onclick="showDiploTab('initiative');setTimeout(()=>openTradeNegotiation('${neg.id}'),100)">
+                <div class="trade-neg-status" style="cursor:pointer;margin-bottom:8px;" onclick="openTradeNegotiation('${neg.id}')">
                     <div style="display:flex;align-items:center;gap:8px;">
                         <div class="trade-type-icon ${typeInfo ? typeInfo.icon : 'chart'}" style="width:22px;height:22px;font-size:0.75rem;">${iconHtml}</div>
                         <div>
@@ -3041,7 +3041,7 @@ function jumpToAmbNation(targetNationId) {
 // ==================== INITIATIVE WIZARD (Phase 2) ====================
 
 async function renderInitiativeWizard() {
-    const panel = document.getElementById('tab-initiative');
+    const panel = document.getElementById('draft-body');
     if (!panel) return;
 
     // Reset wizard state
@@ -4408,11 +4408,269 @@ async function submitTradeProposal() {
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
 }
 
+// ==================== VIEW ACTIVE AGREEMENT IN DRAFT BOX ====================
+async function viewActiveAgreement(agreementId) {
+    const panel = document.getElementById('draft-body');
+    if (!panel) return;
+
+    // Clear any active draft action so Back returns to empty state
+    activeDraftAction = null;
+
+    const draftBox = document.getElementById('box-draft');
+    if (draftBox) draftBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    const statusEl = document.getElementById('draft-status');
+    if (statusEl) statusEl.textContent = 'Viewing';
+
+    panel.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
+
+    const { data: ag, error } = await _supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('id', agreementId)
+        .single();
+
+    if (error || !ag) {
+        panel.innerHTML = '<div class="empty-state"><div class="empty-state-text">Could not load agreement.</div></div>';
+        return;
+    }
+
+    const pd = ag.proposal_data || {};
+    const articles = pd.articles || [];
+    const struckIndices = new Set(pd.struck_articles || []);
+    const isV2 = pd.version === 2;
+    const classification = pd.classification || '';
+    const proposerName = pd.proposer_nation_name || 'Unknown';
+    const targetName = pd.target_nation_name || 'Unknown';
+    const durationYears = pd.duration_years || 0;
+    const signedTick = ag.activated_at_tick;
+    const expiresTick = signedTick != null && durationYears > 0
+        ? signedTick + (durationYears * GAME_CONFIG.TICKS_PER_YEAR) : null;
+
+    let html = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+            <button class="wizard-back-btn" onclick="renderDraftBox()" style="padding:5px 10px;font-size:0.72rem;">Back</button>
+            <div>
+                <div style="font-size:0.95rem;font-weight:bold;color:var(--text-primary);">${escapeHtml(pd.name || 'Unnamed Agreement')}</div>
+                <div style="font-size:0.7rem;color:var(--text-muted);">
+                    ${escapeHtml(proposerName)} &amp; ${escapeHtml(targetName)}
+                    ${classification ? ' · ' + escapeHtml(classification) : ''}
+                </div>
+            </div>
+            <span class="badge badge--green" style="margin-left:auto;">Active</span>
+        </div>
+    `;
+
+    // Agreement info bar
+    html += `
+        <div class="trade-neg-status">
+            <div>
+                <div class="trade-neg-status-label">Agreement</div>
+                <div style="font-size:0.7rem;color:var(--text-muted);">Signed ${signedTick != null ? tickToDate(signedTick) : '—'}</div>
+            </div>
+            <div style="text-align:right;">
+                <div class="trade-neg-status-value active">ACTIVE</div>
+                <div style="font-size:0.62rem;color:var(--text-dim);">Expires ${expiresTick != null ? tickToDate(expiresTick) : '—'}${durationYears ? ' (' + durationYears + ' year' + (durationYears !== 1 ? 's' : '') + ')' : ''}</div>
+            </div>
+        </div>
+    `;
+
+    // Articles
+    if (articles.length > 0) {
+        html += '<div class="diplo-section-title" style="margin-top:16px;">Articles</div>';
+        for (let i = 0; i < articles.length; i++) {
+            const art = articles[i];
+            const isStruck = isV2 ? (art.status === 'struck') : struckIndices.has(i);
+
+            if (isV2 && INITIATIVE_ARTICLE_TYPES) {
+                const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type];
+                const typeName = typeInfo ? typeInfo.label : art.type;
+                const cardClass = isStruck ? 'initiative-article initiative-article--struck' : 'initiative-article';
+                html += '<div class="' + cardClass + '">';
+                html += '<div class="initiative-article-head">';
+                html += '<div><span class="initiative-article-num">Art. ' + toRoman(i + 1) + '</span> ';
+                html += '<span class="initiative-article-type">' + escapeHtml(typeName).toUpperCase();
+                if (isStruck) html += ' — STRUCK';
+                html += '</span></div></div>';
+                if (art.config && !isStruck) {
+                    html += '<div style="margin:4px 0 2px;">';
+                    html += renderArticleConfigSummary(art);
+                    html += '</div>';
+                }
+                if (art.effects && !isStruck) {
+                    html += renderEffectTagsFromEffects(art.effects, art.type);
+                }
+                html += '</div>';
+            } else {
+                const artLabel = escapeHtml(art.text || art.label || art.type || 'Unknown');
+                const cardClass = isStruck ? 'article-card article-card--struck' : 'article-card';
+                html += '<div class="' + cardClass + '">';
+                html += '<div class="article-card-type">Art. ' + toRoman(i + 1) + (isStruck ? ' — STRUCK' : '') + '</div>';
+                html += '<div class="article-card-title">' + artLabel + '</div>';
+                html += '</div>';
+            }
+        }
+    }
+
+    // Effects summary
+    if (isV2) {
+        const totals = { relations: 0, revenue: 0, cost: 0 };
+        articles.forEach(art => {
+            if (art.status !== 'struck' && art.effects) {
+                totals.relations += art.effects.relations || 0;
+                totals.revenue += art.effects.revenue || 0;
+                totals.cost += (art.effects.cost_proposer || 0) + (art.effects.cost_target || 0);
+            }
+        });
+        if (totals.relations || totals.revenue || totals.cost) {
+            html += '<div class="article-effects" style="margin:10px 0;">';
+            if (totals.relations) html += '<span class="effect-tag effect-tag--positive">+' + totals.relations + ' Relations</span>';
+            if (totals.revenue > 0) html += '<span class="effect-tag effect-tag--money-pos">+$' + (totals.revenue / 1e6).toFixed(0) + 'M Revenue</span>';
+            if (totals.cost > 0) html += '<span class="effect-tag effect-tag--money-neg">-$' + (totals.cost / 1e6).toFixed(1) + 'M Cost</span>';
+            html += '</div>';
+        }
+    } else {
+        let totalRel = 0, totalMoney = 0;
+        articles.forEach((art, i) => {
+            if (!struckIndices.has(i)) { totalRel += art.relations || 0; totalMoney += art.money || 0; }
+        });
+        if (totalRel || totalMoney) {
+            html += '<div style="font-size:0.78rem;color:var(--text-dim);margin:10px 0;">';
+            if (totalRel) html += (totalRel > 0 ? '+' : '') + totalRel + ' Relations ';
+            if (totalMoney) html += (totalMoney > 0 ? '+$' : '-$') + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M';
+            html += '</div>';
+        }
+    }
+
+    // Withdraw button
+    if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
+        html += '<div class="detail-actions" style="margin-top:12px;">';
+        html += '<button class="detail-btn" style="color:var(--red);border-color:var(--red);" onclick="withdrawAgreement(\'' + ag.id + '\')">Withdraw Agreement</button>';
+        html += '</div>';
+    }
+
+    panel.innerHTML = html;
+}
+window.viewActiveAgreement = viewActiveAgreement;
+
+// ==================== VIEW ACTIVE TRADE AGREEMENT IN DRAFT BOX ====================
+async function viewActiveTradeAgreement(agreementId) {
+    const panel = document.getElementById('draft-body');
+    if (!panel) return;
+
+    activeDraftAction = null;
+
+    const draftBox = document.getElementById('box-draft');
+    if (draftBox) draftBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    const statusEl = document.getElementById('draft-status');
+    if (statusEl) statusEl.textContent = 'Viewing';
+
+    panel.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
+
+    const { data: ta, error } = await _supabase
+        .from('trade_agreements')
+        .select('*')
+        .eq('id', agreementId)
+        .single();
+
+    if (error || !ta) {
+        panel.innerHTML = '<div class="empty-state"><div class="empty-state-text">Could not load agreement.</div></div>';
+        return;
+    }
+
+    const typeInfo = TRADE_AGREEMENT_TYPES[ta.agreement_type];
+    const partnerId = ta.nation_a_id === currentNation.id ? ta.nation_b_id : ta.nation_a_id;
+    const { data: partnerNation } = await _supabase.from('nations').select('id, name').eq('id', partnerId).single();
+    const partnerName = partnerNation?.name || 'Unknown';
+    const ticksLeft = ta.expires_at_tick ? ta.expires_at_tick - shardTick : null;
+    const iconHtml = typeInfo ? (TRADE_TYPE_ICONS[typeInfo.icon] || '') : '';
+    const withdrawalPending = ta.withdrawn_at_tick != null && ta.withdrawn_at_tick > shardTick;
+
+    let html = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+            <button class="wizard-back-btn" onclick="renderDraftBox()" style="padding:5px 10px;font-size:0.72rem;">Back</button>
+            ${typeInfo ? '<div class="trade-type-icon ' + typeInfo.icon + '" style="width:28px;height:28px;font-size:0.9rem;">' + iconHtml + '</div>' : ''}
+            <div>
+                <div style="font-size:0.95rem;font-weight:bold;color:var(--text-primary);">${escapeHtml(ta.agreement_name || 'Unnamed')}</div>
+                <div style="font-size:0.7rem;color:var(--text-muted);">${typeInfo ? escapeHtml(typeInfo.label) + ' with ' : ''}${escapeHtml(partnerName)}</div>
+            </div>
+            <span class="badge badge--green" style="margin-left:auto;">Active</span>
+        </div>
+    `;
+
+    // Status bar
+    html += `
+        <div class="trade-neg-status">
+            <div>
+                <div class="trade-neg-status-label">Trade Agreement</div>
+                <div style="font-size:0.7rem;color:var(--text-muted);">Enacted ${ta.enacted_at_tick != null ? tickToDate(ta.enacted_at_tick) : '—'}</div>
+            </div>
+            <div style="text-align:right;">
+                <div class="trade-neg-status-value active">ACTIVE</div>
+                <div style="font-size:0.62rem;color:var(--text-dim);">
+                    Expires ${ta.expires_at_tick != null ? tickToDate(ta.expires_at_tick) : 'Never'}
+                    ${ta.duration_ticks ? ' (' + ta.duration_ticks + ' ticks)' : ''}
+                    ${ta.auto_renew ? ' · Auto-renew' : ''}
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Articles
+    const articles = ta.articles || [];
+    if (articles.length > 0) {
+        html += '<div class="diplo-section-title" style="margin-top:16px;">Articles</div>';
+        for (let i = 0; i < articles.length; i++) {
+            const art = articles[i];
+            const artType = TRADE_ARTICLE_TYPES[art.type];
+            html += `
+                <div class="trade-article-card">
+                    <div class="trade-article-card-header">
+                        <span class="trade-article-card-type">Art. ${toRoman(i + 1)} &mdash; ${escapeHtml(artType?.label || art.type)}</span>
+                    </div>
+                    <div class="trade-article-card-summary">${renderTradeArticleSummary(art)}</div>
+                </div>
+            `;
+        }
+    }
+
+    // Withdrawal / actions
+    html += '<div class="detail-actions" style="margin-top:12px;">';
+    if (withdrawalPending) {
+        html += '<span style="font-size:0.78rem;color:var(--amber);">Withdrawal in progress — ' + (ta.withdrawn_at_tick - shardTick) + ' ticks remaining</span>';
+    } else {
+        const canWithdraw = diplomaticRoles.isFM || diplomaticRoles.isHoG ||
+            (diplomaticRoles.isMoT && (ta.agreement_type === 'impose_embargo' || ta.agreement_type === 'retaliatory_tariff' || ta.agreement_type === 'export_subsidy'));
+        if (canWithdraw) {
+            const btnLabel = ta.agreement_type === 'impose_embargo' ? 'Lift Embargo' : 'Withdraw Agreement';
+            html += '<button class="detail-btn" style="color:var(--red);border-color:var(--red);" onclick="withdrawTradeAgreement(\'' + ta.id + '\')">' + btnLabel + '</button>';
+        }
+    }
+    if (ticksLeft != null && ticksLeft <= 5) {
+        html += '<span style="font-size:0.78rem;color:var(--amber);margin-left:8px;">' + ticksLeft + ' ticks until expiration</span>';
+    }
+    html += '</div>';
+
+    panel.innerHTML = html;
+}
+window.viewActiveTradeAgreement = viewActiveTradeAgreement;
+
 // ==================== TRADE NEGOTIATION PANEL ====================
 async function openTradeNegotiation(negotiationId) {
-    // Show the negotiation details in the initiative tab
-    const panel = document.getElementById('tab-initiative');
+    // Show the negotiation details in the draft initiative box
+    const panel = document.getElementById('draft-body');
     if (!panel) return;
+
+    activeDraftAction = null;
+
+    // Scroll the draft box into view
+    const draftBox = document.getElementById('box-draft');
+    if (draftBox) draftBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // Update draft status badge
+    const statusEl = document.getElementById('draft-status');
+    if (statusEl) statusEl.textContent = 'Viewing';
 
     const { data: neg, error } = await _supabase
         .from('trade_negotiations')
@@ -7649,6 +7907,7 @@ async function renderNegotiationsBox() {
                         · Expires: ${expiresTick != null ? tickToDate(expiresTick) : '—'}
                     </div>
                     <div class="detail-actions">
+                        <button class="detail-btn" onclick="viewActiveAgreement('${ag.id}')">View</button>
                         ${withdrawBtn}
                     </div>
                 </div>
@@ -7711,6 +7970,7 @@ async function renderNegotiationsBox() {
                             ${ticksLeft != null && ticksLeft <= 5 ? ' · <span style="color:var(--amber);">' + ticksLeft + ' ticks left</span>' : ''}
                         </div>
                         <div class="detail-actions">
+                            <button class="detail-btn" onclick="viewActiveTradeAgreement('${ta.id}')">View</button>
                             ${withdrawBtn}
                         </div>
                     </div>
@@ -7821,7 +8081,7 @@ async function renderNegotiationsBox() {
                         ${needsAction && diplomaticRoles && diplomaticRoles.isMoT ? '<button class="detail-btn" onclick="joinTradeNegotiation(\'' + neg.id + '\', \'trade_minister\', ' + DIPLOMACY_CONFIG.JOIN_NEGOTIATION_MOT_AP + ')">Join as Min. of Trade (' + DIPLOMACY_CONFIG.JOIN_NEGOTIATION_MOT_AP + ' AP)</button>' : ''}
                         ${needsAction && diplomaticRoles && diplomaticRoles.isHoG ? '<button class="detail-btn" onclick="joinTradeNegotiation(\'' + neg.id + '\', \'prime_minister\', ' + DIPLOMACY_CONFIG.JOIN_NEGOTIATION_PM_AP + ')">Join as PM (' + DIPLOMACY_CONFIG.JOIN_NEGOTIATION_PM_AP + ' AP)</button>' : ''}
                         ${needsAction && diplomaticRoles && diplomaticRoles.isFM && !diplomaticRoles.isHoG ? '<button class="detail-btn" onclick="joinTradeNegotiation(\'' + neg.id + '\', \'foreign_minister\', ' + DIPLOMACY_CONFIG.JOIN_NEGOTIATION_FM_AP + ')">Join as FM (' + DIPLOMACY_CONFIG.JOIN_NEGOTIATION_FM_AP + ' AP)</button>' : ''}
-                        ${isParticipant || neg.status === 'ratification' ? '<button class="detail-btn" onclick="openTradeNegotiation(\'' + neg.id + '\')">Open</button>' : ''}
+                        ${isParticipant || neg.status === 'ratification' ? '<button class="detail-btn" onclick="openTradeNegotiation(\'' + neg.id + '\')">' + (neg.status === 'ratification' ? 'View' : 'Open') + '</button>' : ''}
                     </div>
                 </div>
             `;
@@ -10761,6 +11021,7 @@ window.togglePriceModifier = togglePriceModifier;
 window.updateSupplyWarning = updateSupplyWarning;
 window.updateSubsidyWarning = updateSubsidyWarning;
 window.renderInitiativeWizard = renderInitiativeWizard;
+window.renderDraftBox = renderDraftBox;
 window.withdrawTradeAgreement = withdrawTradeAgreement;
 window.updateSurchargeWarning = updateSurchargeWarning;
 // Phase 3 exports
