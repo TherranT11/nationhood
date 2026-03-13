@@ -27,4 +27,7 @@ CREATE POLICY wiki_pages_delete ON wiki_pages
 -- Change unique constraint from (nation_id, slug) to just (slug)
 -- since slugs are now globally unique
 ALTER TABLE wiki_pages DROP CONSTRAINT IF EXISTS wiki_pages_nation_id_slug_key;
-ALTER TABLE wiki_pages ADD CONSTRAINT wiki_pages_slug_key UNIQUE (slug);
+DO $$ BEGIN
+  ALTER TABLE wiki_pages ADD CONSTRAINT wiki_pages_slug_key UNIQUE (slug);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
