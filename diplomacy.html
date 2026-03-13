@@ -3358,6 +3358,12 @@ async function renderWizardStep3TradeProposal() {
                 <input type="text" id="trade-neg-name" placeholder="e.g. ${escapeHtml(currentNation.name)}-${escapeHtml(targetName)} ${escapeHtml(typeInfo?.shortLabel || 'Trade')} Agreement" maxlength="120" value="${escapeHtml(wizardName || '')}" onchange="wizardName=this.value" />
             </div>`;
 
+    // Type explainer
+    const explainer = getTradeTypeExplainer(wizardTradeAgreementType);
+    if (explainer) {
+        html += '<div class="trade-info-box info" style="margin-top:8px;">' + explainer + '</div>';
+    }
+
     // Show existing articles
     if (tradeArticles.length > 0) {
         html += '<div style="margin-top:12px;">';
@@ -4811,6 +4817,25 @@ function renderTradeArticleSummary(article) {
         }
         default:
             return 'Unknown article type: ' + article.type;
+    }
+}
+
+function getTradeTypeExplainer(agreementType) {
+    switch (agreementType) {
+        case 'fta':
+            return 'An FTA eliminates tariffs on <strong>all 6 trade sectors</strong> by default. '
+                + 'You only need a Duration article. Optionally add <strong>Sector Exemption</strong> articles to protect specific industries from free trade.';
+        case 'pta':
+            return 'A PTA lets you negotiate <strong>sector-by-sector</strong> tariff reductions. '
+                + 'Add one or more <strong>Tariff Reduction</strong> articles specifying which sectors get reduced tariffs and by how much.';
+        case 'resource_supply':
+            return 'An RSC guarantees a <strong>minimum purchase volume</strong> of a raw resource (fuel, minerals, or food). '
+                + 'You must set the <strong>Supply Commitment</strong> (who buys/sells and how much) and <strong>Price Terms</strong> (market, fixed, discount, or premium).';
+        case 'economic_aid':
+            return 'An aid agreement commits the <strong>donor</strong> to annual funding that appears as revenue in the <strong>recipient\'s</strong> budget. '
+                + 'Optionally attach <strong>Conditions</strong> (e.g. maintain corruption below 40) — failure triggers suspension or termination at annual review.';
+        default:
+            return '';
     }
 }
 
@@ -7894,6 +7919,12 @@ function renderTradeAgreementDraftPanel(body, statusEl) {
 
     // Agreement name
     html += '<div class="draft-field"><div class="draft-field-label">Name</div><input type="text" id="trade-neg-name" class="draft-field-input" placeholder="e.g. ' + escapeHtml(currentNation.name) + '-' + escapeHtml(activeDraftTarget.name) + ' ' + escapeHtml(typeInfo?.shortLabel || 'Trade') + ' Agreement" value="' + escapeHtml(wizardName || '') + '" oninput="wizardName=this.value" style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:4px 8px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
+
+    // Type explainer
+    const explainer = getTradeTypeExplainer(wizardTradeAgreementType);
+    if (explainer) {
+        html += '<div class="trade-info-box info" style="margin-top:8px;">' + explainer + '</div>';
+    }
 
     // Existing articles
     html += '<div class="draft-articles">';
