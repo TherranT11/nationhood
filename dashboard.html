@@ -501,29 +501,39 @@ initPage('home', async (state) => {
   ).join('');
 
   // ══════════════════════════════════════
+  // ── Shared data for Government, Elections & Events ──
+  // ══════════════════════════════════════
+  const isPres = isPresidentialRepublic(nation);
+  const isAuto = isAutocracy(nation);
+
+  const [
+    { data: allParties },
+    { data: shardRow }
+  ] = await Promise.all([
+    _supabase.from('factions')
+      .select('id, seats, faction_name, abbreviation, party_color')
+      .eq('nation_id', nation.id)
+      .eq('faction_type', 'party'),
+    _supabase.from('shard')
+      .select('current_tick')
+      .eq('name', 'Alpha Shard')
+      .single()
+  ]);
+
+  const currentTick = shardRow?.current_tick ?? 0;
+  const parties = allParties || [];
+
+  // ══════════════════════════════════════
   // ── Government Card ──
   // ══════════════════════════════════════
   try {
-    const isPres = isPresidentialRepublic(nation);
-    const isAuto = isAutocracy(nation);
-
-    // Parallel data fetches (including previous-tick approval to avoid sequential round-trip)
+    // Parallel data fetches for government card
     const [
-      { data: allParties },
-      { data: shardRow },
       { data: administration },
       coalitionResult,
       presidentResult,
       prevApprovalResult
     ] = await Promise.all([
-      _supabase.from('factions')
-        .select('id, seats, faction_name, abbreviation, party_color')
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'party'),
-      _supabase.from('shard')
-        .select('current_tick')
-        .eq('name', 'Alpha Shard')
-        .single(),
       _supabase.from('administrations')
         .select('admin_name, government_type, coalition_parties, total_seats, started_at_tick')
         .eq('nation_id', nation.id)
@@ -551,8 +561,6 @@ initPage('home', async (state) => {
 
     const coalition = coalitionResult;
     const president = presidentResult?.data ?? presidentResult;
-    const currentTick = shardRow?.data?.current_tick ?? shardRow?.current_tick ?? 0;
-    const parties = allParties || [];
     const govCard = document.getElementById('gov-card');
 
     // Empty state: no active coalition
@@ -562,8 +570,7 @@ initPage('home', async (state) => {
           Government is currently being formed
         </div>
       `;
-      return;
-    }
+    } else {
 
     // Previous approval for delta (already fetched in parallel)
     const prevApproval = prevApprovalResult?.data?.gov_approval ?? null;
@@ -744,32 +751,26 @@ initPage('home', async (state) => {
       <span class="gov-footer-detail">${esc(footerDetail)}</span>
     `;
 
-    // ── Load Events card ──
-    loadDashEvents(nation.id, currentTick, parties);
+    } // end else (coalition exists)
 
   } catch (e) {
     console.error('Government card error:', e);
   }
 
   // ══════════════════════════════════════
+  // ── Events Card ──
+  // ══════════════════════════════════════
+  loadDashEvents(nation.id, currentTick, parties);
+
+  // ══════════════════════════════════════
   // ── Elections Card ──
   // ══════════════════════════════════════
   try {
-    const isPres = isPresidentialRepublic(nation);
-    const isAuto = isAutocracy(nation);
     const elBody = document.getElementById('elections-card-body');
 
     if (isAuto) {
       elBody.innerHTML = `<div class="elections-suspended">Elections are suspended.</div>`;
     } else {
-      // Fetch current tick
-      const { data: shardData } = await _supabase
-        .from('shard')
-        .select('current_tick')
-        .eq('name', 'Alpha Shard')
-        .single();
-      const currentTick = shardData?.current_tick ?? 0;
-
       // Fetch scheduled elections ordered by tick
       const { data: scheduled } = await _supabase
         .from('elections')
