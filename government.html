@@ -4185,6 +4185,14 @@ function renderAdminCard(admin, isCurrent) {
         detailHTML += `<div class="pad-section-title">Legislation</div><div class="pad-no-data">No bills passed during this administration.</div>`;
     }
 
+    // Trade Agreements
+    const tradeAgreements = admin.trade_agreements || [];
+    if (tradeAgreements.length > 0) {
+        const taTypeLabels = { fta: 'Free Trade Agreement', pta: 'Preferential Trade Agreement', resource_supply: 'Resource Supply', export_subsidy: 'Export Subsidy', impose_embargo: 'Embargo', retaliatory_tariff: 'Retaliatory Tariff' };
+        detailHTML += `<div class="pad-section-title">Trade Agreements (${tradeAgreements.length})</div>`;
+        detailHTML += tradeAgreements.map(ta => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(ta.agreement_name || 'Unnamed')}</span><span class="bill-date" style="color:var(--text-dim);">${taTypeLabels[ta.agreement_type] || ta.agreement_type} &middot; ${tickToDate(ta.enacted_at_tick)}</span></div>`).join('');
+    }
+
     // All stat changes table (expandable)
     if (!isCurrent && allChanges.length > 0) {
         detailHTML += `

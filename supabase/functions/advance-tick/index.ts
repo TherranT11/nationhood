@@ -7098,12 +7098,13 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
         const statsAtEnd = snapshotNationStats(nation);
 
         for (const currentAdmin of openAdmins) {
-            // Query bills passed during this administration
+            // Query bills passed during this administration (exclude repeals — tracked separately)
             const { data: passedBills, error: passedBillsErr } = await supabase
                 .from('bills')
                 .select('id, bill_name, passed_tick')
                 .eq('nation_id', nationId)
                 .eq('status', 'passed')
+                .neq('bill_type', 'repeal')
                 .gte('passed_tick', currentAdmin.started_at_tick)
                 .lte('passed_tick', currentTick);
             if (passedBillsErr) throw passedBillsErr;
@@ -7112,6 +7113,23 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
                 bill_id: b.id,
                 bill_name: b.bill_name,
                 passed_tick: b.passed_tick
+            }));
+
+            // Query repeal bills that passed during this administration
+            const { data: repealBills, error: repealBillsErr } = await supabase
+                .from('bills')
+                .select('id, bill_name, passed_tick')
+                .eq('nation_id', nationId)
+                .eq('bill_type', 'repeal')
+                .eq('status', 'passed')
+                .gte('passed_tick', currentAdmin.started_at_tick)
+                .lte('passed_tick', currentTick);
+            if (repealBillsErr) throw repealBillsErr;
+
+            const lawsRepealed = (repealBills || []).map(b => ({
+                bill_id: b.id,
+                bill_name: b.bill_name,
+                repealed_tick: b.passed_tick
             }));
 
             // Query crises (events with category 'crisis' or matching crisis event names)
@@ -7152,6 +7170,24 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
                 .lt('election_tick', currentTick);
             if (electionsErr) throw electionsErr;
 
+            // Query trade agreements enacted during this administration
+            const { data: tradeAgreementsDuring, error: taErr } = await supabase
+                .from('trade_agreements')
+                .select('id, agreement_type, agreement_name, nation_a_id, nation_b_id, enacted_at_tick, status')
+                .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+                .gte('enacted_at_tick', currentAdmin.started_at_tick)
+                .lte('enacted_at_tick', currentTick);
+            if (taErr) throw taErr;
+
+            const tradeAgreements = (tradeAgreementsDuring || []).map(ta => ({
+                agreement_id: ta.id,
+                agreement_type: ta.agreement_type,
+                agreement_name: ta.agreement_name,
+                partner_nation_id: ta.nation_a_id === nationId ? ta.nation_b_id : ta.nation_a_id,
+                enacted_at_tick: ta.enacted_at_tick,
+                status: ta.status
+            }));
+
             // Update the administration record
             const { error: updateErr } = await supabase
                 .from('administrations')
@@ -7162,10 +7198,11 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
                     ended_at_date: currentDate,
                     end_reason: endReason,
                     bills_passed: billsPassed,
-                    laws_repealed: [],
+                    laws_repealed: lawsRepealed,
                     crises_started: crisesStarted,
                     crises_solved: crisesSolved,
                     elections_survived: (electionsDuring || []).length,
+                    trade_agreements: tradeAgreements,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', currentAdmin.id);
