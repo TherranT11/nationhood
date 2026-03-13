@@ -978,17 +978,20 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
-    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, RT) ──
+    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, RT, ES, Embargo) ──
     var { data: activeTradeAgreements } = await supabase.from('trade_agreements')
         .select('id, nation_a_id, nation_b_id, agreement_type, articles')
         .eq('status', 'active')
-        .in('agreement_type', ['fta', 'pta', 'resource_supply', 'retaliatory_tariff']);
+        .in('agreement_type', ['fta', 'pta', 'resource_supply', 'retaliatory_tariff', 'export_subsidy', 'impose_embargo']);
 
     // Set type-specific affinity flags from trade_agreements
     // Build tariff modifier map: tariffModMap[importerId|exporterId][sector] = reduction fraction (0-1)
     // Build tariff surcharge map: tariffSurchargeMap[importerId|exporterId][sector] = surcharge fraction (e.g. 0.25 = +25%)
+    // Build embargo map: embargoMap[nationA|nationB][sector] = true (blocks trade in that sector)
     var tariffModMap = {};
     var tariffSurchargeMap = {};
+    var exportSubsidyMap = {};
+    var embargoMap = {};
     var activeRSCs = [];
 
     if (activeTradeAgreements) {
@@ -1067,6 +1070,32 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                     if (!tariffSurchargeMap[surKey]) tariffSurchargeMap[surKey] = {};
                     // Stack surcharges per sector (take max if multiple)
                     tariffSurchargeMap[surKey][d.sector] = Math.max(tariffSurchargeMap[surKey][d.sector] || 0, surcharge);
+                }
+            } else if (ta.agreement_type === 'export_subsidy') {
+                // Export subsidy: unilateral — nation_a subsidizes its own exports in a sector
+                var arts = ta.articles || [];
+                for (var ai = 0; ai < arts.length; ai++) {
+                    if (arts[ai].type !== 'subsidized_sector') continue;
+                    var d = arts[ai].data;
+                    var subsidyPct = (d.subsidy_pct || 0) / 100;
+                    var nationId = ta.nation_a_id;
+                    if (!exportSubsidyMap[nationId]) exportSubsidyMap[nationId] = {};
+                    exportSubsidyMap[nationId][d.sector] = Math.max(exportSubsidyMap[nationId][d.sector] || 0, subsidyPct);
+                }
+            } else if (ta.agreement_type === 'impose_embargo') {
+                // Impose embargo: per-sector trade blocking between imposer (nation_a) and target (nation_b)
+                var arts = ta.articles || [];
+                for (var ai = 0; ai < arts.length; ai++) {
+                    if (arts[ai].type !== 'embargo_sector') continue;
+                    var d = arts[ai].data;
+                    var imposerId = d.imposer_nation_id || ta.nation_a_id;
+                    var embTargetId = ta.nation_b_id;
+                    var ek1 = imposerId + '|' + embTargetId;
+                    var ek2 = embTargetId + '|' + imposerId;
+                    if (!embargoMap[ek1]) embargoMap[ek1] = {};
+                    if (!embargoMap[ek2]) embargoMap[ek2] = {};
+                    embargoMap[ek1][d.sector] = true;
+                    embargoMap[ek2][d.sector] = true;
                 }
             }
         }
@@ -1217,9 +1246,13 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 if (ii === ei) continue;
                 var importer = nationList[ii];
 
-                // Hard embargo block
+                // Hard embargo block (from diplomatic_proposals — blocks all sectors)
                 var pairFlags = flagsMap[exporter.id + '|' + importer.id];
                 if (pairFlags && pairFlags.has_embargo) continue;
+
+                // Per-sector embargo block (from trade_agreements impose_embargo)
+                var pairEmbargo = embargoMap[exporter.id + '|' + importer.id];
+                if (pairEmbargo && pairEmbargo[sector.key]) continue;
 
                 var impDem = nationFlows[importer.id][sector.key].importDemand;
                 // Subtract RSC pre-allocated imports
@@ -1700,6 +1733,18 @@ const TRADE_AGREEMENT_TYPES = {
         optional_articles: ['text_article'],
         icon: 'shield',
         category: 'unilateral'
+    },
+    impose_embargo: {
+        key: 'impose_embargo',
+        label: 'Impose Embargo',
+        shortLabel: 'EMB',
+        description: 'Unilateral embargo blocking trade with target nation in selected sectors. Major diplomatic escalation.',
+        bilateral: false,
+        unilateral_action: true,
+        required_articles: ['embargo_sector', 'duration'],
+        optional_articles: ['text_article'],
+        icon: 'shield',
+        category: 'unilateral'
     }
 };
 
@@ -1877,13 +1922,26 @@ const TRADE_ARTICLE_TYPES = {
         }
     },
 
+    // ── Embargo Sector (Impose Embargo, required, repeatable per sector) ──
+    embargo_sector: {
+        key: 'embargo_sector',
+        label: 'Embargo Sector',
+        description: 'Block trade in a specific sector with the target nation.',
+        repeatable: true,
+        applies_to: ['impose_embargo'],
+        schema: {
+            sector: 'string',
+            imposer_nation_id: 'uuid'
+        }
+    },
+
     // ── Text Article (optional for all types) ──
     text_article: {
         key: 'text_article',
         label: 'Text Article',
         description: 'Free-text article for flavor/RP. No mechanical effect.',
         repeatable: true,
-        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy', 'economic_aid', 'retaliatory_tariff'],
+        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy', 'economic_aid', 'retaliatory_tariff', 'impose_embargo'],
         schema: {
             title: 'string',
             body: 'string'
@@ -5766,6 +5824,68 @@ async function resolveExpiredVotes(supabase, nationId) {
                 await failBill(supabase, bill);
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'export_subsidy', earlyResolution: bill.early_resolution_status || null });
+            }
+        } else if (bill.bill_type === 'ratification' && bill.trade_agreement_data && bill.trade_agreement_data.type === 'impose_embargo') {
+            // Unilateral embargo ratification
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+                var embData = bill.trade_agreement_data;
+                var imposerId = embData.imposer_nation_id;
+                var targetId = embData.target_nation_id;
+                var durationTicks = embData.duration_ticks || 12;
+
+                await supabase.from('trade_agreements').insert({
+                    nation_a_id: imposerId,
+                    nation_b_id: targetId,
+                    bill_a_id: bill.id,
+                    agreement_type: 'impose_embargo',
+                    agreement_name: embData.agreement_name || 'Embargo',
+                    articles: embData.articles || [],
+                    duration_type: 'fixed',
+                    duration_ticks: durationTicks,
+                    auto_renew: false,
+                    withdrawal_notice_ticks: 1,
+                    status: 'active',
+                    enacted_at_tick: currentTick,
+                    expires_at_tick: currentTick + durationTicks
+                });
+
+                // Diplomatic penalty: 20 + 5 per embargoed sector (25 targeted, 30-45 partial, 50 total)
+                var embargoedSectors = (embData.articles || []).filter(function(a) { return a.type === 'embargo_sector'; }).length;
+                var relPenalty = Math.round(20 + embargoedSectors * 5);
+
+                if (relPenalty > 0) {
+                    var relA = imposerId < targetId ? imposerId : targetId;
+                    var relB = imposerId < targetId ? targetId : imposerId;
+                    var { data: rel } = await supabase.from('diplomatic_relations')
+                        .select('id, relation_score')
+                        .eq('nation_a_id', relA).eq('nation_b_id', relB).maybeSingle();
+                    if (rel) {
+                        var newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) - relPenalty));
+                        await supabase.from('diplomatic_relations')
+                            .update({ relation_score: newScore }).eq('id', rel.id);
+                    }
+                }
+
+                try {
+                    var { data: imposerNation } = await supabase.from('nations').select('name').eq('id', imposerId).single();
+                    var imposerName = imposerNation?.name || 'Unknown';
+                    await supabase.from('event_log').insert({
+                        nation_id: targetId,
+                        event_name: 'Embargo Enacted',
+                        category: 'Trade',
+                        description_chosen: imposerName + ' has imposed an embargo on your trade. Relations have decreased by ' + relPenalty + '.',
+                        fired_at_tick: currentTick
+                    });
+                } catch (e) { /* non-blocking */ }
+
+                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'impose_embargo', earlyResolution: bill.early_resolution_status || null });
+            } else {
+                await failBill(supabase, bill);
+                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'impose_embargo', earlyResolution: bill.early_resolution_status || null });
             }
         } else if (bill.bill_type === 'impeachment_motion' && bill.impeachment_id) {
             // ── Impeachment Motion (Phase 1) ──
@@ -10058,9 +10178,9 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
             let maxConvictionBonus = 0;
             for (const [axisKey, stacks] of Object.entries(convictions)) {
                 if (!stacks || stacks <= 0) continue;
-                const partyVal = ideo[axisKey] || 0; // -50 to +50
+                const partyVal = ideo[axisKey] || 0; // -100 to +100
                 const blocVal = bloc['axis_' + axisKey] ?? 50; // 0 to 100
-                const partyNorm = 50 + partyVal; // map to 0-100
+                const partyNorm = (partyVal + 100) / 2; // map -100..+100 to 0..100
                 const distance = Math.abs(partyNorm - blocVal);
                 // Bloc must be aligned (within 30 points) for conviction to help
                 if (distance <= 30) {

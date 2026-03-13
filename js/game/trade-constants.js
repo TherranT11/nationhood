@@ -632,19 +632,21 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
-    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, RT, ES) ──
+    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, RT, ES, Embargo) ──
     var { data: activeTradeAgreements } = await supabase.from('trade_agreements')
         .select('id, nation_a_id, nation_b_id, agreement_type, articles')
         .eq('status', 'active')
-        .in('agreement_type', ['fta', 'pta', 'resource_supply', 'retaliatory_tariff', 'export_subsidy']);
+        .in('agreement_type', ['fta', 'pta', 'resource_supply', 'retaliatory_tariff', 'export_subsidy', 'impose_embargo']);
 
     // Set type-specific affinity flags from trade_agreements
     // Build tariff modifier map: tariffModMap[importerId|exporterId][sector] = reduction fraction (0-1)
     // Build tariff surcharge map: tariffSurchargeMap[importerId|exporterId][sector] = surcharge fraction (e.g. 0.25 = +25%)
     // Build export subsidy map: exportSubsidyMap[nationId][sector] = subsidy fraction (e.g. 0.15 = +15% export boost)
+    // Build embargo map: embargoMap[nationA|nationB][sector] = true (blocks trade in that sector)
     var tariffModMap = {};
     var tariffSurchargeMap = {};
     var exportSubsidyMap = {};
+    var embargoMap = {};
     var activeRSCs = [];
 
     if (activeTradeAgreements) {
@@ -734,6 +736,22 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                     var nationId = ta.nation_a_id;
                     if (!exportSubsidyMap[nationId]) exportSubsidyMap[nationId] = {};
                     exportSubsidyMap[nationId][d.sector] = Math.max(exportSubsidyMap[nationId][d.sector] || 0, subsidyPct);
+                }
+            } else if (ta.agreement_type === 'impose_embargo') {
+                // Impose embargo: per-sector trade blocking between imposer (nation_a) and target (nation_b)
+                var arts = ta.articles || [];
+                for (var ai = 0; ai < arts.length; ai++) {
+                    if (arts[ai].type !== 'embargo_sector') continue;
+                    var d = arts[ai].data;
+                    var imposerId = d.imposer_nation_id || ta.nation_a_id;
+                    var embTargetId = ta.nation_b_id;
+                    // Block both directions
+                    var ek1 = imposerId + '|' + embTargetId;
+                    var ek2 = embTargetId + '|' + imposerId;
+                    if (!embargoMap[ek1]) embargoMap[ek1] = {};
+                    if (!embargoMap[ek2]) embargoMap[ek2] = {};
+                    embargoMap[ek1][d.sector] = true;
+                    embargoMap[ek2][d.sector] = true;
                 }
             }
         }
@@ -889,9 +907,13 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                 if (ii === ei) continue;
                 var importer = nationList[ii];
 
-                // Hard embargo block
+                // Hard embargo block (from diplomatic_proposals — blocks all sectors)
                 var pairFlags = flagsMap[exporter.id + '|' + importer.id];
                 if (pairFlags && pairFlags.has_embargo) continue;
+
+                // Per-sector embargo block (from trade_agreements impose_embargo)
+                var pairEmbargo = embargoMap[exporter.id + '|' + importer.id];
+                if (pairEmbargo && pairEmbargo[sector.key]) continue;
 
                 var impDem = nationFlows[importer.id][sector.key].importDemand;
                 // Subtract RSC pre-allocated imports
