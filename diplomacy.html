@@ -110,6 +110,10 @@ let wizardDuration = 1;
 // Trade negotiation article builder state
 let tradeArticles = [];   // structured articles for trade agreements
 let editingTradeArticle = null; // index being edited, or null
+// Multi-agreement bundling state
+let draftAgreements = [];      // [{ type: 'free_trade', articles: [] }, ...]
+let activeAgreementTab = -1;   // which tab is active
+let addingNewAgreement = false; // showing type selector for additional agreement
 
 // Recall Ambassador state
 const RECALL_REASONS = {
@@ -4312,10 +4316,14 @@ async function submitTradeProposal() {
     const classification = 'MAJOR';  // All trade agreements go through FM review + ratification
 
     // Build proposal_data with trade articles
+    const allAgreementTypes = draftAgreements.length > 0
+        ? draftAgreements.map(a => a.type)
+        : [wizardTradeAgreementType];
     const proposalData = {
         name: agreementName,
         classification: classification,
         agreement_type: wizardTradeAgreementType,
+        agreement_types: allAgreementTypes,
         agreement_name: agreementName,
         articles: tradeArticles,
         proposer_nation_name: currentNation.name,
@@ -4353,16 +4361,20 @@ async function submitTradeProposal() {
         nation_id: currentNation.id,
         event_name: 'Trade Agreement Proposed',
         category: 'Trade',
-        description_chosen: currentNation.name + ' has proposed a ' + (typeInfo?.label || 'trade agreement') + ' ("' + agreementName + '") with ' + targetName + '.',
+        description_chosen: currentNation.name + ' has proposed a ' + (allAgreementTypes.length > 1 ? 'trade package' : (typeInfo?.label || 'trade agreement')) + ' ("' + agreementName + '") with ' + targetName + '.',
         fired_at_tick: currentTick
     });
 
-    alert('"' + agreementName + '" (' + (typeInfo?.shortLabel || 'Trade') + ') proposed to ' + targetName + ' with ' + tradeArticles.length + ' article(s).\n\nThey can accept, reject, or counter with modifications.');
+    const typeLabels = allAgreementTypes.map(t => TRADE_AGREEMENT_TYPES[t]?.shortLabel || t).join(' + ');
+    alert('"' + agreementName + '" (' + typeLabels + ') proposed to ' + targetName + ' with ' + tradeArticles.length + ' article(s).\n\nThey can accept, reject, or counter with modifications.');
 
     // Reset state and re-render
     wizardTradeAgreementType = null;
     tradeArticles = [];
     wizardName = '';
+    draftAgreements = [];
+    activeAgreementTab = -1;
+    addingNewAgreement = false;
     if (draftTradeMode) {
         cancelDraft();
         await renderNegotiationsBox();
@@ -7873,10 +7885,10 @@ function renderTradeAgreementDraftPanel(body, statusEl) {
     if (statusEl) statusEl.textContent = 'Trade Agreement';
     draftTradeMode = true;
 
-    // Reset trade state when first entering (no type selected yet)
-    if (!wizardTradeAgreementType) {
+    // Sync state: if no agreements, clear wizard pointers
+    if (draftAgreements.length === 0) {
+        wizardTradeAgreementType = null;
         tradeArticles = [];
-        wizardName = '';
     }
 
     let html = '<div class="draft-panel">';
@@ -7903,12 +7915,17 @@ function renderTradeAgreementDraftPanel(body, statusEl) {
         return;
     }
 
-    // Trade type selection cards (bilateral only — unilateral types use separate flows)
-    if (!wizardTradeAgreementType) {
-        html += '<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;">Choose agreement type:</div>';
+    // ── Type selector (shown when no agreements yet, or adding a new one to bundle) ──
+    const usedTypes = draftAgreements.map(a => a.type);
+    const showTypeSelector = draftAgreements.length === 0 || addingNewAgreement;
+
+    if (showTypeSelector) {
+        const prompt = draftAgreements.length === 0 ? 'Choose agreement type:' : 'Add another agreement to the package:';
+        html += '<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;">' + prompt + '</div>';
         html += '<div class="type-card-grid">';
         for (const [key, typeInfo] of Object.entries(TRADE_AGREEMENT_TYPES)) {
             if (!typeInfo.bilateral) continue;
+            if (usedTypes.includes(key)) continue;
             html += `
                 <div class="type-card" onclick="selectDraftTradeType('${key}')">
                     <div class="type-card-short">${escapeHtml(typeInfo.shortLabel)}</div>
@@ -7918,25 +7935,35 @@ function renderTradeAgreementDraftPanel(body, statusEl) {
         }
         html += '</div>';
 
-        // Cancel
+        // Show existing agreement tabs if we're adding to a bundle
+        if (draftAgreements.length > 0) {
+            html += renderAgreementTabs(true);
+        }
+
         html += '<div class="detail-actions" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hair);">';
         html += '<button class="detail-btn" onclick="cancelDraft()">Cancel</button>';
+        if (draftAgreements.length > 0) {
+            html += '<button class="detail-btn" style="margin-left:4px;" onclick="cancelAddAgreement()">Back</button>';
+        }
         html += '</div>';
         html += '</div>';
         body.innerHTML = html;
         return;
     }
 
-    // Type selected — show article builder
+    // ── Agreement name (shared across entire package) ──
+    const activeType = draftAgreements.length === 1 ? TRADE_AGREEMENT_TYPES[draftAgreements[0].type] : null;
+    const placeholderSuffix = draftAgreements.length > 1 ? 'Trade Package' : (activeType?.shortLabel || 'Trade') + ' Agreement';
+    const placeholderName = (currentNation?.name || '') + '-' + (activeDraftTarget?.name || '') + ' ' + placeholderSuffix;
+    html += '<div class="draft-field"><div class="draft-field-label">Name</div><input type="text" id="trade-neg-name" class="draft-field-input" placeholder="e.g. ' + escapeHtml(placeholderName) + '" value="' + escapeHtml(wizardName || '') + '" oninput="wizardName=this.value" style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:4px 8px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
+
+    // ── Agreement Tabs ──
+    html += renderAgreementTabs(false);
+
+    // ── Active tab: article builder ──
     const typeInfo = TRADE_AGREEMENT_TYPES[wizardTradeAgreementType];
-    const typeName = typeInfo?.label || wizardTradeAgreementType;
     const availableTypes = getAvailableArticleTypes(wizardTradeAgreementType, tradeArticles);
     const hasRequired = checkRequiredArticles(wizardTradeAgreementType, tradeArticles);
-
-    html += '<div class="draft-field"><div class="draft-field-label">Type</div><div class="draft-field-input">' + escapeHtml(typeName) + ' <span class="badge badge--dim" style="margin-left:4px;">' + escapeHtml(typeInfo?.shortLabel || '') + '</span></div></div>';
-
-    // Agreement name
-    html += '<div class="draft-field"><div class="draft-field-label">Name</div><input type="text" id="trade-neg-name" class="draft-field-input" placeholder="e.g. ' + escapeHtml(currentNation.name) + '-' + escapeHtml(activeDraftTarget.name) + ' ' + escapeHtml(typeInfo?.shortLabel || 'Trade') + ' Agreement" value="' + escapeHtml(wizardName || '') + '" oninput="wizardName=this.value" style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:4px 8px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
 
     // Type explainer
     const explainer = getTradeTypeExplainer(wizardTradeAgreementType);
@@ -7944,10 +7971,10 @@ function renderTradeAgreementDraftPanel(body, statusEl) {
         html += '<div class="trade-info-box info" style="margin-top:8px;">' + explainer + '</div>';
     }
 
-    // Existing articles
+    // Existing articles for active tab
     html += '<div class="draft-articles">';
     if (tradeArticles.length === 0) {
-        html += '<div class="empty-state" style="padding:20px 0;"><div class="empty-state-text">No articles added yet.</div></div>';
+        html += '<div class="empty-state" style="padding:14px 0;"><div class="empty-state-text">No articles added yet.</div></div>';
     } else {
         for (let i = 0; i < tradeArticles.length; i++) {
             const art = tradeArticles[i];
@@ -7983,22 +8010,51 @@ function renderTradeAgreementDraftPanel(body, statusEl) {
         html += '<div id="wizard-trade-article-editor"></div>';
     }
 
-    // Required articles warning
+    // Required articles warning for active tab
     if (!hasRequired) {
         const missing = (typeInfo.required_articles || []).filter(req => !tradeArticles.some(a => a.type === req));
         const missingLabels = missing.map(m => TRADE_ARTICLE_TYPES[m]?.label || m).join(', ');
         html += '<div style="font-size:0.72rem;color:#f97316;margin-top:8px;">Required: ' + escapeHtml(missingLabels) + '</div>';
     }
 
+    // Check if ALL agreements in the bundle are complete
+    const allComplete = draftAgreements.every(ag => checkRequiredArticles(ag.type, ag.articles));
+
     // Action bar
     html += '<div class="detail-actions" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hair);">';
     html += '<button class="detail-btn" onclick="cancelDraft()">Cancel</button>';
-    html += '<button class="detail-btn" style="margin-left:4px;font-size:0.7rem;color:var(--text-muted);" onclick="wizardTradeAgreementType=null;tradeArticles=[];reRenderTradeDraft()">Change Type</button>';
-    html += '<button class="detail-btn" style="color:var(--teal);border-color:var(--teal-border);" ' + (hasRequired ? '' : 'disabled') + ' onclick="submitDraftTradeProposal()">Send Proposal</button>';
+    if (draftAgreements.length > 1) {
+        html += '<button class="detail-btn" style="margin-left:4px;font-size:0.7rem;color:var(--red);" onclick="removeAgreementTab(' + activeAgreementTab + ')">Remove</button>';
+    }
+    html += '<button class="detail-btn" style="color:var(--teal);border-color:var(--teal-border);" ' + (allComplete ? '' : 'disabled') + ' onclick="submitDraftTradeProposal()">Send Proposal</button>';
     html += '</div>';
 
     html += '</div>';
     body.innerHTML = html;
+}
+
+// ── Agreement Tabs renderer ──
+function renderAgreementTabs(isAddingNew) {
+    if (draftAgreements.length === 0) return '';
+    let html = '<div class="agreement-tabs">';
+    draftAgreements.forEach((ag, i) => {
+        const ti = TRADE_AGREEMENT_TYPES[ag.type];
+        const isActive = !isAddingNew && i === activeAgreementTab;
+        const complete = checkRequiredArticles(ag.type, ag.articles);
+        html += '<div class="agreement-tab' + (isActive ? ' active' : '') + '" onclick="switchAgreementTab(' + i + ')">';
+        html += '<span class="agreement-tab-label">' + escapeHtml(ti?.shortLabel || 'AGR') + '</span>';
+        html += '<span class="agreement-tab-count">' + ag.articles.length + ' art.</span>';
+        if (complete) html += '<span class="agreement-tab-check">\u2713</span>';
+        html += '</div>';
+    });
+    // "+ Add" tab if more bilateral types available
+    const usedTypes = draftAgreements.map(a => a.type);
+    const hasMore = Object.entries(TRADE_AGREEMENT_TYPES).some(([k, v]) => v.bilateral && !usedTypes.includes(k));
+    if (hasMore) {
+        html += '<div class="agreement-tab agreement-tab--add' + (isAddingNew ? ' active' : '') + '" onclick="showAddAgreementSelector()">+ Add</div>';
+    }
+    html += '</div>';
+    return html;
 }
 
 function selectDraftTradeTarget(nationId) {
@@ -8007,17 +8063,65 @@ function selectDraftTradeTarget(nationId) {
         const nation = cachedOtherNations.find(n => n.id === nationId);
         activeDraftTarget = nation || null;
     }
+    // Reset agreements when target changes
+    draftAgreements = [];
+    activeAgreementTab = -1;
+    addingNewAgreement = false;
+    wizardTradeAgreementType = null;
+    tradeArticles = [];
     reRenderTradeDraft();
 }
 window.selectDraftTradeTarget = selectDraftTradeTarget;
 
 function selectDraftTradeType(typeKey) {
+    const newAg = { type: typeKey, articles: [] };
+    draftAgreements.push(newAg);
+    activeAgreementTab = draftAgreements.length - 1;
     wizardTradeAgreementType = typeKey;
-    tradeArticles = [];
-    wizardName = '';
+    tradeArticles = newAg.articles; // reference — mutations flow through
+    addingNewAgreement = false;
+    if (draftAgreements.length === 1) wizardName = '';
     reRenderTradeDraft();
 }
 window.selectDraftTradeType = selectDraftTradeType;
+
+function switchAgreementTab(index) {
+    if (index < 0 || index >= draftAgreements.length) return;
+    activeAgreementTab = index;
+    wizardTradeAgreementType = draftAgreements[index].type;
+    tradeArticles = draftAgreements[index].articles;
+    addingNewAgreement = false;
+    reRenderTradeDraft();
+}
+window.switchAgreementTab = switchAgreementTab;
+
+function showAddAgreementSelector() {
+    addingNewAgreement = true;
+    reRenderTradeDraft();
+}
+window.showAddAgreementSelector = showAddAgreementSelector;
+
+function cancelAddAgreement() {
+    addingNewAgreement = false;
+    if (activeAgreementTab >= 0 && activeAgreementTab < draftAgreements.length) {
+        wizardTradeAgreementType = draftAgreements[activeAgreementTab].type;
+        tradeArticles = draftAgreements[activeAgreementTab].articles;
+    }
+    reRenderTradeDraft();
+}
+window.cancelAddAgreement = cancelAddAgreement;
+
+function removeAgreementTab(index) {
+    if (draftAgreements.length <= 1) return;
+    draftAgreements.splice(index, 1);
+    if (activeAgreementTab >= draftAgreements.length) {
+        activeAgreementTab = draftAgreements.length - 1;
+    }
+    wizardTradeAgreementType = draftAgreements[activeAgreementTab].type;
+    tradeArticles = draftAgreements[activeAgreementTab].articles;
+    reRenderTradeDraft();
+}
+window.removeAgreementTab = removeAgreementTab;
 
 function showDraftTradeArticleEditor() {
     const select = document.getElementById('wizard-trade-article-type');
@@ -8042,8 +8146,27 @@ function reRenderTradeDraft() {
 }
 
 async function submitDraftTradeProposal() {
-    // Bridge draft state into wizard state for submitTradeProposal()
+    // Validate all agreements in the bundle have required articles
+    for (const ag of draftAgreements) {
+        if (!checkRequiredArticles(ag.type, ag.articles)) {
+            const ti = TRADE_AGREEMENT_TYPES[ag.type];
+            alert('Missing required articles for ' + (ti?.label || ag.type) + '.');
+            return;
+        }
+    }
+
+    // Merge all articles from all agreements, tagging each with its parent agreement type
+    const mergedArticles = [];
+    for (const ag of draftAgreements) {
+        for (const art of ag.articles) {
+            mergedArticles.push({ ...art, agreementType: ag.type });
+        }
+    }
+
+    // Bridge into wizard state for submitTradeProposal()
     wizardTargetNation = activeDraftTarget?.id;
+    wizardTradeAgreementType = draftAgreements[0].type; // primary type
+    tradeArticles = mergedArticles;
     submitTradeProposal();
 }
 window.submitDraftTradeProposal = submitDraftTradeProposal;
@@ -9251,6 +9374,9 @@ function cancelDraft() {
     wizardTradeAgreementType = null;
     tradeArticles = [];
     draftTradeMode = false;
+    draftAgreements = [];
+    activeAgreementTab = -1;
+    addingNewAgreement = false;
     document.querySelectorAll('.action-item.is-active').forEach(el => el.classList.remove('is-active'));
     renderDraftBox();
 }
