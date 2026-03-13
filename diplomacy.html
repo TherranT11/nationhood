@@ -4347,11 +4347,16 @@ async function submitTradeProposal() {
 
     alert('"' + agreementName + '" (' + (typeInfo?.shortLabel || 'Trade') + ') proposed to ' + targetName + ' with ' + tradeArticles.length + ' article(s).\n\nThey can accept, reject, or counter with modifications.');
 
-    // Reset wizard state
+    // Reset state and re-render
     wizardTradeAgreementType = null;
     tradeArticles = [];
     wizardName = '';
-    await renderInitiativeWizard();
+    if (draftTradeMode) {
+        cancelDraft();
+        await renderNegotiationsBox();
+    } else {
+        await renderInitiativeWizard();
+    }
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
 }
 
@@ -6155,9 +6160,9 @@ async function activateTradeAgreement(proposal, currentTick) {
     const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
     const expiresAt = durationTicks ? currentTick + durationTicks : null;
 
-    // Canonical nation ordering
-    const nationAId = Math.min(proposal.proposing_nation_id, proposal.target_nation_id);
-    const nationBId = Math.max(proposal.proposing_nation_id, proposal.target_nation_id);
+    // Canonical nation ordering (lexicographic for UUID strings)
+    const nationAId = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+    const nationBId = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
 
     const { error } = await _supabase.from('trade_agreements').insert({
         nation_a_id: nationAId,

@@ -1355,6 +1355,36 @@ export async function resolveExpiredVotes(supabase, nationId) {
                                 .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
                         }
                     }
+
+                    // For trade agreements: create the trade_agreements row so economic effects apply
+                    if (proposal.proposal_type === 'trade_agreement' && pd.agreement_type) {
+                        const activeArticles = articles.filter((_, i) => !struckIndices.has(i));
+                        const addedArticles = pd.added_articles || [];
+                        if (addedArticles.length > 0) activeArticles.push(...addedArticles);
+
+                        const durationArt = activeArticles.find(a => a.type === 'duration');
+                        const dt = durationArt?.data || {};
+                        const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
+                        const expiresAt = durationTicks ? currentTick + durationTicks : null;
+
+                        const taNationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                        const taNationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+
+                        await supabase.from('trade_agreements').insert({
+                            nation_a_id: taNationA,
+                            nation_b_id: taNationB,
+                            agreement_type: pd.agreement_type,
+                            agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
+                            articles: activeArticles,
+                            status: 'active',
+                            enacted_at_tick: currentTick,
+                            expires_at_tick: expiresAt,
+                            auto_renew: dt.auto_renew || false,
+                            withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
+                            diplomatic_proposal_id: proposal.id
+                        });
+                    }
+
                     await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
                 }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
