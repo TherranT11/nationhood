@@ -19591,6 +19591,160 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] State visit expiration check failed (non-fatal):', svExpErr);
     }
 
+    // 3.8 Process active minor diplomatic initiatives (soft power decay, ongoing costs, expiry)
+    try {
+        const { data: activeInitiatives } = await supabase
+            .from('diplomatic_proposals')
+            .select('id, proposing_nation_id, target_nation_id, proposal_data, activated_at_tick')
+            .eq('status', 'active')
+            .eq('proposal_type', 'minor_diplomatic_initiative');
+
+        if (activeInitiatives && activeInitiatives.length > 0) {
+            let expiredCount = 0;
+            let softPowerApplied = 0;
+            let ongoingCostsApplied = 0;
+
+            for (const init of activeInitiatives) {
+                const pd = init.proposal_data || {};
+                const articles = pd.articles || [];
+                const activatedAt = init.activated_at_tick || 0;
+                const ticksActive = newTick - activatedAt;
+                let initiativeExpired = true; // assume expired unless an article keeps it alive
+
+                for (const art of articles) {
+                    if (art.status === 'struck') continue;
+
+                    // Cultural exchange: soft power decay + ongoing costs + expiry
+                    if (art.type === 'cultural_exchange') {
+                        const durOpt = art.config?.duration;
+                        const isPermanent = durOpt === 0;
+                        const totalTicks = isPermanent ? Infinity : (durOpt || 24);
+
+                        // Check expiry for non-permanent
+                        if (!isPermanent && ticksActive >= totalTicks) {
+                            // This article has expired — don't apply effects
+                            continue;
+                        }
+                        initiativeExpired = false;
+
+                        // Soft power decay: first third +3, second third +2, final third +1
+                        let softPowerGain = 1;
+                        if (isPermanent) {
+                            // Permanent: use 36-tick cycle (3 years), repeating
+                            const cyclePos = ticksActive % 36;
+                            if (cyclePos < 12) softPowerGain = 3;
+                            else if (cyclePos < 24) softPowerGain = 2;
+                            else softPowerGain = 1;
+                        } else {
+                            const third = Math.floor(totalTicks / 3);
+                            if (ticksActive < third) softPowerGain = 3;
+                            else if (ticksActive < third * 2) softPowerGain = 2;
+                            else softPowerGain = 1;
+                        }
+
+                        // Apply soft power to both nations
+                        for (const nid of [init.proposing_nation_id, init.target_nation_id]) {
+                            const { data: nat } = await supabase.from('nations').select('soft_power').eq('id', nid).single();
+                            if (nat) {
+                                const newVal = Math.min(100, (Number(nat.soft_power) || 0) + softPowerGain);
+                                await supabase.from('nations').update({ soft_power: newVal }).eq('id', nid);
+                            }
+                        }
+                        softPowerApplied++;
+
+                        // Ongoing costs for permanent cultural exchanges ($5M/tick from each nation's share)
+                        if (isPermanent) {
+                            const fundingOpt = art.config?.funding || '50_50';
+                            let proposerShare = 0.5, targetShare = 0.5;
+                            if (fundingOpt === 'we_pay_more') { proposerShare = 0.6; targetShare = 0.4; }
+                            else if (fundingOpt === 'they_pay_more') { proposerShare = 0.4; targetShare = 0.6; }
+                            const ongoingPerTick = 5_000_000; // $5M per tick
+                            const proposerCost = ongoingPerTick * proposerShare;
+                            const targetCost = ongoingPerTick * targetShare;
+
+                            // Add ongoing cost to embassies institution needed_amount
+                            for (const [nid, cost] of [[init.proposing_nation_id, proposerCost], [init.target_nation_id, targetCost]] as [string, number][]) {
+                                const { data: alloc } = await supabase
+                                    .from('budget_item_allocations')
+                                    .select('id, needed_amount')
+                                    .eq('nation_id', nid)
+                                    .eq('item_type', 'institution')
+                                    .eq('item_id', 'embassies')
+                                    .order('created_at', { ascending: false })
+                                    .limit(1)
+                                    .maybeSingle();
+                                if (alloc) {
+                                    const newNeeded = Math.max(0, Number(alloc.needed_amount || 0) + cost);
+                                    await supabase.from('budget_item_allocations')
+                                        .update({ needed_amount: newNeeded })
+                                        .eq('id', alloc.id);
+                                }
+                            }
+                            ongoingCostsApplied++;
+                        }
+                    }
+
+                    // Student exchange: expiry check (duration-based)
+                    else if (art.type === 'student_exchange') {
+                        const durKey = art.config?.duration || 'full_year';
+                        const durMap: Record<string, number> = { semester: 6, full_year: 12, full_degree: 36 };
+                        const totalTicks = durMap[durKey] || 12;
+                        if (ticksActive >= totalTicks) {
+                            continue; // expired
+                        }
+                        initiativeExpired = false;
+                    }
+
+                    // Visa agreements and joint statements: no expiry (permanent)
+                    else {
+                        initiativeExpired = false;
+                    }
+                }
+
+                // If all articles have expired, mark the initiative as expired
+                if (initiativeExpired && articles.some(a => a.status !== 'struck')) {
+                    await supabase.from('diplomatic_proposals')
+                        .update({ status: 'expired', terminated_at_tick: newTick })
+                        .eq('id', init.id);
+
+                    // Remove persistent stat modifiers by reversing them
+                    for (const art of articles) {
+                        if (art.status === 'struck') continue;
+                        const pe = art.proposer_effects || art.effects || {};
+                        const te = art.target_effects || art.effects || {};
+
+                        // Reverse persistent stats (immigration, polarization, terrorism)
+                        for (const [nid, eff] of [[init.proposing_nation_id, pe], [init.target_nation_id, te]] as [string, any][]) {
+                            const reversals: Record<string, number> = {};
+                            if (eff.immigration) reversals.immigration = -eff.immigration;
+                            if (eff.polarization) reversals.polarization = -eff.polarization;
+                            if (eff.terrorism_risk) reversals.terrorism = -eff.terrorism_risk;
+                            if (Object.keys(reversals).length > 0) {
+                                const { data: nat } = await supabase.from('nations').select('*').eq('id', nid).single();
+                                if (nat) {
+                                    const updates: Record<string, number> = {};
+                                    for (const [key, delta] of Object.entries(reversals)) {
+                                        updates[key] = Math.max(0, Math.min(100, (Number(nat[key]) || 0) + delta));
+                                    }
+                                    await supabase.from('nations').update(updates).eq('id', nid);
+                                }
+                            }
+                        }
+                    }
+
+                    expiredCount++;
+                }
+            }
+
+            if (expiredCount > 0 || softPowerApplied > 0 || ongoingCostsApplied > 0) {
+                summary.diplomaticInitiatives = { expired: expiredCount, softPowerTicks: softPowerApplied, ongoingCosts: ongoingCostsApplied };
+                console.log(`[advanceTick] Diplomatic initiatives: ${expiredCount} expired, ${softPowerApplied} soft power applied, ${ongoingCostsApplied} ongoing costs applied`);
+            }
+        }
+    } catch (initErr) {
+        console.error('[advanceTick] Diplomatic initiative tick processing failed (non-fatal):', initErr);
+    }
+
     // 4. Process each nation
     for (const nation of nationList) {
       try {
