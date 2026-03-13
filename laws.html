@@ -997,13 +997,7 @@ async function enactDecree(billId) {
         const decreeFields = {
             status: 'floor',
             floor_tick: currentTick,
-            voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
-            early_resolution_status: null,
-            early_resolution_tick: null,
-            passed_tick: null,
-            votes_for: 0,
-            votes_against: 0,
-            votes_abstain: 0
+            voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS
         };
         const { error: updateError } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
         if (updateError) throw updateError;
