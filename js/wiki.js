@@ -198,7 +198,7 @@ export function renderInfobox(page) {
     const imageHtml = page.infobox_image
         ? `<img class="wiki-infobox-image" src="${escapeHtml(page.infobox_image)}" alt="${escapeHtml(page.title)}">`
         : '';
-    const typeLabel = page.template_type.charAt(0).toUpperCase() + page.template_type.slice(1);
+    const typeLabel = page.template_type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
     const rowsHtml = rows.map(r =>
         `<tr><td>${escapeHtml(r.label || '')}</td><td>${escapeHtml(r.value || '')}</td></tr>`
     ).join('');
