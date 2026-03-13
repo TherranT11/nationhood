@@ -370,7 +370,7 @@
   }
   .elections-suspended {
     font-style: italic;
-    color: var(--text-secondary);
+    color: var(--red, #e74c3c);
     font-size: 0.9rem;
     padding: 20px 0;
   }
@@ -568,8 +568,8 @@ initPage('home', async (state) => {
     const president = presidentResult?.data ?? presidentResult;
     const govCard = document.getElementById('gov-card');
 
-    // Empty state: no active coalition
-    if (!coalition) {
+    // Empty state: no active coalition (democracies only — autocracies handle separately)
+    if (!coalition && !isAuto) {
       document.getElementById('gov-card-body').innerHTML = `
         <div style="display:flex;align-items:center;justify-content:center;height:340px;color:var(--text-secondary);font-style:italic;font-size:0.9rem;">
           Government is currently being formed
@@ -717,32 +717,64 @@ initPage('home', async (state) => {
     ).join('');
 
     // ── Footer ──
-    const govLabel = isMajority ? 'Majority Government' : 'Minority Government';
-    const footerDetail = `${govSeats}/${totalSeats} seats (${majority} needed)`;
+    const govLabel = isAuto ? 'Authoritarian Regime' : isMajority ? 'Majority Government' : 'Minority Government';
+    const footerDetail = isAuto
+      ? (nation.ruling_faction_id ? (parties.find(p => p.id === nation.ruling_faction_id)?.faction_name || 'Ruling Party') : 'Single-Party State')
+      : `${govSeats}/${totalSeats} seats (${majority} needed)`;
 
     // ── Build card ──
-    document.getElementById('gov-card-body').innerHTML = `
-      <div class="gov-admin-name">${esc(adminName)}${yearSuffix}</div>
-      <div class="gov-badges">
-        <span class="gov-badge">${esc(govTypeLabel)}</span>
-        ${coalitionBadge ? `<span class="gov-badge">${esc(coalitionBadge)}</span>` : ''}
-      </div>
+    if (isAuto) {
+      // Autocracy: show leader, ruling party, approval — no coalition section
+      const rulingParty = nation.ruling_faction_id ? parties.find(p => p.id === nation.ruling_faction_id) : null;
+      const rpColor = rulingParty?.party_color || '#c8a64e';
+      const rpName = rulingParty?.faction_name || 'Ruling Party';
 
-      ${leader1Html}
-      ${leader2Html}
+      document.getElementById('gov-card-body').innerHTML = `
+        <div class="gov-admin-name">${esc(adminName)}${yearSuffix}</div>
+        <div class="gov-badges">
+          <span class="gov-badge">${esc(govTypeLabel)}</span>
+          <span class="gov-badge">Single-Party State</span>
+        </div>
 
-      <div class="gov-divider"></div>
+        ${leader1Html}
 
-      <div class="gov-section-title">Governing Coalition</div>
-      <div class="gov-seat-bar">${barHtml}</div>
-      ${partyRowsHtml}
-      <div class="gov-seats-combined">${govSeats} seats combined</div>
+        <div class="gov-divider"></div>
 
-      <div class="gov-divider"></div>
+        <div class="gov-section-title">Ruling Party</div>
+        <div class="gov-coalition-row">
+          <div class="gov-party-dot" style="background:${rpColor}"></div>
+          <span class="gov-coalition-name">${esc(rpName)}</span>
+        </div>
 
-      <div class="gov-section-title">Approval</div>
-      <div class="gov-approval-big" style="color:${approvalColor}">${approval}%</div>
-    `;
+        <div class="gov-divider"></div>
+
+        <div class="gov-section-title">Approval</div>
+        <div class="gov-approval-big" style="color:${approvalColor}">${approval}%</div>
+      `;
+    } else {
+      document.getElementById('gov-card-body').innerHTML = `
+        <div class="gov-admin-name">${esc(adminName)}${yearSuffix}</div>
+        <div class="gov-badges">
+          <span class="gov-badge">${esc(govTypeLabel)}</span>
+          ${coalitionBadge ? `<span class="gov-badge">${esc(coalitionBadge)}</span>` : ''}
+        </div>
+
+        ${leader1Html}
+        ${leader2Html}
+
+        <div class="gov-divider"></div>
+
+        <div class="gov-section-title">Governing Coalition</div>
+        <div class="gov-seat-bar">${barHtml}</div>
+        ${partyRowsHtml}
+        <div class="gov-seats-combined">${govSeats} seats combined</div>
+
+        <div class="gov-divider"></div>
+
+        <div class="gov-section-title">Approval</div>
+        <div class="gov-approval-big" style="color:${approvalColor}">${approval}%</div>
+      `;
+    }
 
     // Footer (inside gov card, outside body padding)
     let footer = govCard.querySelector('.gov-footer');
@@ -774,7 +806,30 @@ initPage('home', async (state) => {
     const elBody = document.getElementById('elections-card-body');
 
     if (isAuto) {
-      elBody.innerHTML = `<div class="elections-suspended">Elections are suspended.</div>`;
+      // Compute revolution chance from stability and civil_unrest
+      const stability = Number(nation.stability ?? 50);
+      const unrest = Number(nation.civil_unrest ?? 10);
+      // Low stability + high unrest = higher revolution chance
+      const revolutionScore = Math.max(0, Math.min(100, (100 - stability) * 0.6 + unrest * 0.4));
+      let revolutionLevel, revolutionColor;
+      if (revolutionScore >= 60) {
+        revolutionLevel = 'High';
+        revolutionColor = 'var(--red, #e74c3c)';
+      } else if (revolutionScore >= 35) {
+        revolutionLevel = 'Moderate';
+        revolutionColor = 'var(--orange, #f39c12)';
+      } else {
+        revolutionLevel = 'Low';
+        revolutionColor = 'var(--green, #2ecc71)';
+      }
+      elBody.innerHTML = `
+        <div style="padding:12px 0;">
+          <div style="color:var(--red, #e74c3c);font-weight:700;font-size:0.85rem;margin-bottom:12px;">Elections are suspended.</div>
+          <div style="font-size:0.78rem;color:var(--text-secondary);">
+            Chance of Democratic Revolution: <span style="color:${revolutionColor};font-weight:700;">${revolutionLevel}</span>
+          </div>
+        </div>
+      `;
     } else {
       // Fetch scheduled elections ordered by tick
       const { data: scheduled } = await _supabase
