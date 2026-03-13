@@ -3324,16 +3324,14 @@ async function renderWizardStep3TradeProposal() {
                 ${isHoGOnly ? '<div class="trade-info-box warning" style="margin-bottom:12px;">No Trade Minister, Foreign Minister, or ambassador appointed. Drafting as Head of Government costs ' + apCost + ' AP.</div>' : ''}
                 <div class="type-card-grid">`;
 
-        // Show all trade agreement types
+        // Show bilateral trade agreement types (unilateral types have their own wizard path)
         for (const [key, typeInfo] of Object.entries(TRADE_AGREEMENT_TYPES)) {
-            const bilateralTag = typeInfo.bilateral
-                ? '<span class="trade-type-tag bilateral">BILATERAL</span>'
-                : '<span class="trade-type-tag unilateral">UNILATERAL</span>';
+            if (!typeInfo.bilateral) continue;
             html += `
                 <div class="type-card" onclick="selectTradeAgreementType('${key}')">
                     <div class="type-card-short">${escapeHtml(typeInfo.shortLabel)}</div>
                     <div class="type-card-title">${escapeHtml(typeInfo.label)}</div>
-                    <div class="type-card-effects">${bilateralTag}</div>
+                    <div class="type-card-effects"><span class="trade-type-tag bilateral">BILATERAL</span></div>
                 </div>`;
         }
         html += '</div></div>';
@@ -7845,19 +7843,17 @@ function renderTradeAgreementDraftPanel(body, statusEl) {
         return;
     }
 
-    // Trade type selection cards
+    // Trade type selection cards (bilateral only — unilateral types use separate flows)
     if (!wizardTradeAgreementType) {
         html += '<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;">Choose agreement type:</div>';
         html += '<div class="type-card-grid">';
         for (const [key, typeInfo] of Object.entries(TRADE_AGREEMENT_TYPES)) {
-            const bilateralTag = typeInfo.bilateral
-                ? '<span class="trade-type-tag bilateral">BILATERAL</span>'
-                : '<span class="trade-type-tag unilateral">UNILATERAL</span>';
+            if (!typeInfo.bilateral) continue;
             html += `
                 <div class="type-card" onclick="selectDraftTradeType('${key}')">
                     <div class="type-card-short">${escapeHtml(typeInfo.shortLabel)}</div>
                     <div class="type-card-title">${escapeHtml(typeInfo.label)}</div>
-                    <div class="type-card-effects">${bilateralTag}</div>
+                    <div class="type-card-effects"><span class="trade-type-tag bilateral">BILATERAL</span></div>
                 </div>`;
         }
         html += '</div>';
