@@ -1350,7 +1350,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         playersList.innerHTML = filtered.map(player => {
             const hasNation = !!player.nation_id;
             const inactive = player.last_seen_tick != null ? shardCurrentTick - player.last_seen_tick : null;
-            const borderColor = hasNation ? (inactive >= 12 ? '#ff4444' : inactive >= 6 ? '#ff8800' : '#4CAF50') : '#ff4444';
+            const borderColor = hasNation ? (inactive === null ? '#64b5f6' : inactive >= 12 ? '#ff4444' : inactive >= 6 ? '#ff8800' : '#4CAF50') : '#ff4444';
             const nationBadge = hasNation
                 ? `<span style="background:#1a2a1a; color:#4CAF50; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">${escHtml(player.nation || 'Unknown')}</span>`
                 : `<span style="background:#2a1a1a; color:#ff4444; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NO NATION</span>`;

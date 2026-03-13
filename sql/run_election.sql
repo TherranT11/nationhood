@@ -79,7 +79,7 @@ BEGIN
           AND f.abandoned_at IS NULL
           AND (
               f.last_seen_tick IS NULL
-              OR (SELECT current_tick FROM shard WHERE name = 'Alpha Shard') - f.last_seen_tick < 12
+              OR COALESCE((SELECT current_tick FROM shard WHERE name = 'Alpha Shard'), 0) - f.last_seen_tick < 12
           )
     ) t;
 

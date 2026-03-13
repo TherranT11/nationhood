@@ -273,11 +273,12 @@ export async function loadGameState(requireFaction = true) {
     }
 
     // Update last_seen_tick for inactivity tracking (fire-and-forget)
-    if (faction && faction.nation_id && shard && !overrideFactionId) {
+    if (faction && faction.nation_id && shard && shard.current_tick > 0 && !overrideFactionId) {
         _supabase.from('factions')
             .update({ last_seen_tick: shard.current_tick })
             .eq('id', faction.id)
-            .then(() => {});
+            .then(() => {})
+            .catch(err => console.warn('Failed to update last_seen_tick:', err));
     }
 
     setCachedState(user, faction, nation, shard);

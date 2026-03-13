@@ -302,13 +302,20 @@ export async function runElectionPreview(supabase, nationId) {
         }
     }
 
-    // 3. Load parties + their ideology axes
-    const { data: factions } = await supabase
+    // 3. Load parties + their ideology axes (exclude inactive ≥12 ticks)
+    const { data: shard } = await supabase
+        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+    const { data: allFactions } = await supabase
         .from('factions')
-        .select('id, faction_name, seats')
+        .select('id, faction_name, seats, last_seen_tick, abandoned_at')
         .eq('nation_id', nationId)
-        .eq('faction_type', 'party');
-    if (!factions || factions.length === 0) throw new Error('No parties found for this nation');
+        .eq('faction_type', 'party')
+        .is('abandoned_at', null);
+    const factions = (allFactions || []).filter(f =>
+        f.last_seen_tick == null || (currentTick - f.last_seen_tick) < 12
+    );
+    if (!factions || factions.length === 0) throw new Error('No eligible parties found for this nation');
 
     const factionIds = factions.map(f => f.id);
     const { data: ideologies } = await supabase
@@ -440,13 +447,24 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
     if (!candidates || candidates.length === 0) throw new Error('No selected presidential candidates found. Generate and select candidates first.');
 
     // 4. Load faction data + ideology axes for each candidate's party
-    const factionIds = [...new Set(candidates.map(c => c.faction_id))];
+    //    Filter out candidates whose factions are inactive ≥12 ticks
+    const { data: shardData } = await supabase
+        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const presTick = shardData?.current_tick || 0;
+    const allFactionIds = [...new Set(candidates.map(c => c.faction_id))];
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, faction_name')
-        .in('id', factionIds);
+        .select('id, faction_name, last_seen_tick, abandoned_at')
+        .in('id', allFactionIds)
+        .is('abandoned_at', null);
+    const activeFactionIds = new Set((factions || [])
+        .filter(f => f.last_seen_tick == null || (presTick - f.last_seen_tick) < 12)
+        .map(f => f.id));
+    const eligibleCandidates = candidates.filter(c => activeFactionIds.has(c.faction_id));
+    if (eligibleCandidates.length === 0) throw new Error('No eligible presidential candidates (all factions inactive)');
+    const factionIds = [...activeFactionIds];
     const factionMap = {};
-    for (const f of (factions || [])) factionMap[f.id] = f;
+    for (const f of (factions || []).filter(f => activeFactionIds.has(f.id))) factionMap[f.id] = f;
 
     const { data: ideologies } = await supabase
         .from('faction_ideology')
@@ -481,7 +499,7 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
             axes
         };
     }
-    const allCandidateParties = candidates.map(buildCandidateParty);
+    const allCandidateParties = eligibleCandidates.map(buildCandidateParty);
 
     // 6. Load per-bloc approval data (keyed by faction, same as parliamentary)
     const { data: fbaRows } = await supabase
@@ -492,7 +510,7 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
     for (const row of (fbaRows || [])) {
         if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
         // Map faction approval to candidate id (candidate inherits faction approval)
-        for (const cand of candidates) {
+        for (const cand of eligibleCandidates) {
             if (cand.faction_id === row.faction_id) {
                 allBlocApprovals[row.bloc_id][cand.id] = row.preference_score ?? 40;
             }
