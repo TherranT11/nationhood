@@ -3701,8 +3701,20 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
             }).eq('agreement_id', agreement.id);
         }
 
-        // Notify both nations
-        await fireBilateralEvent(supabase, 'trade_agreement_expired', agreement.nation_a_id, agreement.nation_b_id, currentTick, { agreement_name: agreement.agreement_name || 'Agreement' });
+        // Notify nations (unilateral agreements only notify nation_a)
+        if (agreement.nation_b_id) {
+            await fireBilateralEvent(supabase, 'trade_agreement_expired', agreement.nation_a_id, agreement.nation_b_id, currentTick, { agreement_name: agreement.agreement_name || 'Agreement' });
+        } else {
+            try {
+                await supabase.from('event_log').insert({
+                    nation_id: agreement.nation_a_id,
+                    event_name: (agreement.agreement_name || 'Agreement') + ' Expired',
+                    category: 'Trade',
+                    description_chosen: 'Your ' + (agreement.agreement_name || 'trade agreement') + ' has expired.',
+                    fired_at_tick: currentTick
+                });
+            } catch (e) { /* non-blocking */ }
+        }
 
         results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type });
         console.log(`[processExpiredTradeAgreements] Expired: ${agreement.agreement_name} (${agreement.agreement_type})`);
@@ -5709,6 +5721,51 @@ async function resolveExpiredVotes(supabase, nationId) {
                 await failBill(supabase, bill);
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'retaliatory_tariff', earlyResolution: bill.early_resolution_status || null });
+            }
+        } else if (bill.bill_type === 'ratification' && bill.trade_agreement_data && bill.trade_agreement_data.type === 'export_subsidy') {
+            // Unilateral export subsidy ratification
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+                var esData = bill.trade_agreement_data;
+                var esNationId = esData.imposer_nation_id;
+                var esIsPermanent = esData.duration_type === 'permanent';
+                var esDurationTicks = esData.duration_ticks || null;
+
+                // Insert trade_agreement (export_subsidy is unilateral — nation_a is the subsidizer, nation_b is null)
+                await supabase.from('trade_agreements').insert({
+                    nation_a_id: esNationId,
+                    nation_b_id: null,
+                    bill_a_id: bill.id,
+                    agreement_type: 'export_subsidy',
+                    agreement_name: esData.agreement_name || 'Export Subsidy',
+                    articles: esData.articles || [],
+                    duration_type: esIsPermanent ? 'permanent' : 'fixed',
+                    duration_ticks: esIsPermanent ? null : esDurationTicks,
+                    auto_renew: false,
+                    withdrawal_notice_ticks: 1,
+                    status: 'active',
+                    enacted_at_tick: currentTick,
+                    expires_at_tick: esIsPermanent ? null : (esDurationTicks ? currentTick + esDurationTicks : null)
+                });
+
+                // Fire enactment event
+                try {
+                    await supabase.from('event_log').insert({
+                        nation_id: esNationId,
+                        event_name: 'Export Subsidy Enacted',
+                        category: 'Trade',
+                        description_chosen: (nation?.name || 'Unknown') + ' has enacted an export subsidy. Subsidized exports are now cheaper on the international market.',
+                        fired_at_tick: currentTick
+                    });
+                } catch (e) { /* non-blocking */ }
+
+                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'export_subsidy', earlyResolution: bill.early_resolution_status || null });
+            } else {
+                await failBill(supabase, bill);
+                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'export_subsidy', earlyResolution: bill.early_resolution_status || null });
             }
         } else if (bill.bill_type === 'impeachment_motion' && bill.impeachment_id) {
             // ── Impeachment Motion (Phase 1) ──

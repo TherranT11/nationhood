@@ -632,17 +632,19 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
-    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, RT) ──
+    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, RT, ES) ──
     var { data: activeTradeAgreements } = await supabase.from('trade_agreements')
         .select('id, nation_a_id, nation_b_id, agreement_type, articles')
         .eq('status', 'active')
-        .in('agreement_type', ['fta', 'pta', 'resource_supply', 'retaliatory_tariff']);
+        .in('agreement_type', ['fta', 'pta', 'resource_supply', 'retaliatory_tariff', 'export_subsidy']);
 
     // Set type-specific affinity flags from trade_agreements
     // Build tariff modifier map: tariffModMap[importerId|exporterId][sector] = reduction fraction (0-1)
     // Build tariff surcharge map: tariffSurchargeMap[importerId|exporterId][sector] = surcharge fraction (e.g. 0.25 = +25%)
+    // Build export subsidy map: exportSubsidyMap[nationId][sector] = subsidy fraction (e.g. 0.15 = +15% export boost)
     var tariffModMap = {};
     var tariffSurchargeMap = {};
+    var exportSubsidyMap = {};
     var activeRSCs = [];
 
     if (activeTradeAgreements) {
@@ -721,6 +723,17 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                     if (!tariffSurchargeMap[surKey]) tariffSurchargeMap[surKey] = {};
                     // Stack surcharges per sector (take max if multiple)
                     tariffSurchargeMap[surKey][d.sector] = Math.max(tariffSurchargeMap[surKey][d.sector] || 0, surcharge);
+                }
+            } else if (ta.agreement_type === 'export_subsidy') {
+                // Export subsidy: unilateral — nation_a subsidizes its own exports in a sector
+                var arts = ta.articles || [];
+                for (var ai = 0; ai < arts.length; ai++) {
+                    if (arts[ai].type !== 'subsidized_sector') continue;
+                    var d = arts[ai].data;
+                    var subsidyPct = (d.subsidy_pct || 0) / 100;
+                    var nationId = ta.nation_a_id;
+                    if (!exportSubsidyMap[nationId]) exportSubsidyMap[nationId] = {};
+                    exportSubsidyMap[nationId][d.sector] = Math.max(exportSubsidyMap[nationId][d.sector] || 0, subsidyPct);
                 }
             }
         }
@@ -865,6 +878,11 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
             var remainingExpCap = expCap - (actualExports[exporter.id][sector.key] || 0);
             if (remainingExpCap <= 0) continue;
             var adjustedCap = Math.round(remainingExpCap * priceMod);
+            // Apply export subsidy: subsidized sectors get a competitiveness boost
+            var subsidyBoost = exportSubsidyMap[exporter.id] && exportSubsidyMap[exporter.id][sector.key];
+            if (subsidyBoost) {
+                adjustedCap = Math.round(adjustedCap * (1 + subsidyBoost));
+            }
             if (adjustedCap <= 0) continue;
 
             for (var ii = 0; ii < nationCount; ii++) {
