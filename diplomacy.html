@@ -7427,9 +7427,13 @@ function renderActionsBox() {
     // Minister of Trade
     html += '<div class="role-header' + (hasMoT ? '' : ' role-disabled') + '">Minister of Trade</div>';
     [
-        { key: 'trade_agreement', label: 'Trade Agreement', ap: 2, type: 'mot' },
-        { key: 'impose_embargo', label: 'Impose Embargo', ap: 5, type: 'mot' },
-        { key: 'retaliatory_tariff', label: 'Retaliatory Tariff', ap: 2, type: 'mot' }
+        { key: 'trade_agreement', label: 'Trade Agreement', ap: 2, type: 'mot' }
+    ].forEach(a => { html += actionHtml(a, hasMoT, 'mot'); });
+    // Unilateral actions under MoT
+    html += '<div style="padding:2px 14px 4px;"><span style="font-family:var(--font-mono);font-size:7.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);">Unilateral</span></div>';
+    [
+        { key: 'retaliatory_tariff_draft', label: 'Retaliatory Tariff', ap: 2, type: 'mot' },
+        { key: 'export_subsidy_draft', label: 'Export Subsidy', ap: 2, type: 'mot' }
     ].forEach(a => { html += actionHtml(a, hasMoT, 'mot'); });
 
     // Ambassador
@@ -7791,6 +7795,20 @@ function renderDraftBox() {
         return;
     }
 
+    // Special branch for Retaliatory Tariff (unilateral)
+    if (activeDraftAction.key === 'retaliatory_tariff_draft') {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
+        renderRetaliatoryTariffDraftPanel(body, statusEl);
+        return;
+    }
+
+    // Special branch for Export Subsidy (unilateral)
+    if (activeDraftAction.key === 'export_subsidy_draft') {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
+        renderExportSubsidyDraftPanel(body, statusEl);
+        return;
+    }
+
     const targetName = activeDraftTarget ? escapeHtml(activeDraftTarget.name) : 'None selected';
 
     let html = '<div class="draft-panel">';
@@ -8029,6 +8047,382 @@ async function submitDraftTradeProposal() {
     submitTradeProposal();
 }
 window.submitDraftTradeProposal = submitDraftTradeProposal;
+
+// ══════════════════════════════════════════════════════
+// RETALIATORY TARIFF — Streamlined Draft Panel
+// ══════════════════════════════════════════════════════
+async function renderRetaliatoryTariffDraftPanel(body, statusEl) {
+    if (statusEl) { statusEl.textContent = 'Drafting'; statusEl.className = 'badge badge--amber'; }
+
+    const apCost = 2;
+
+    // Nation selector
+    let html = '<div class="draft-panel"><div class="draft-header">';
+    html += '<div class="draft-field"><div class="draft-field-label">Action</div><div class="draft-field-input">Retaliatory Tariff <span style="color:var(--red);">' + apCost + ' AP</span></div></div>';
+
+    let targetFieldHtml = '<select id="rt-draft-target" style="width:100%;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);font-size:12px;padding:4px 8px;" onchange="updateRTDraftTarget(this.value)">';
+    targetFieldHtml += '<option value="">Select target nation...</option>';
+    cachedOtherNations.forEach(n => {
+        const sel = activeDraftTarget && activeDraftTarget.id === n.id ? ' selected' : '';
+        targetFieldHtml += '<option value="' + n.id + '"' + sel + '>' + escapeHtml(n.name) + '</option>';
+    });
+    targetFieldHtml += '</select>';
+    html += '<div class="draft-field"><div class="draft-field-label">Target</div>' + targetFieldHtml + '</div>';
+    html += '</div>';
+
+    if (!activeDraftTarget) {
+        html += '<div class="empty-state" style="padding:20px 0;"><div class="empty-state-text">Select a target nation.</div></div></div>';
+        body.innerHTML = html;
+        return;
+    }
+
+    // Check for existing active RT
+    const { data: existingRT } = await _supabase
+        .from('trade_agreements')
+        .select('id')
+        .eq('status', 'active')
+        .eq('agreement_type', 'retaliatory_tariff')
+        .eq('nation_a_id', currentNation.id)
+        .eq('nation_b_id', activeDraftTarget.id);
+
+    if (existingRT && existingRT.length > 0) {
+        html += '<div class="trade-info-box warning" style="margin:12px 14px;">You already have an active retaliatory tariff against ' + escapeHtml(activeDraftTarget.name) + '. Withdraw the existing one first.</div></div>';
+        body.innerHTML = html;
+        return;
+    }
+
+    html += '<div class="trade-info-box info" style="margin:8px 14px;">Impose a tariff surcharge on imports from ' + escapeHtml(activeDraftTarget.name) + '. No negotiation — your parliament ratifies.</div>';
+
+    // Sectors
+    const sectorOpts = TRADEABLE_SECTORS.map(s =>
+        '<label class="trade-checkbox-option" style="margin-bottom:2px;padding:0 14px;">' +
+            '<input type="checkbox" name="rt-draft-sector" value="' + s.key + '" onchange="updateRTDraftSummary()" /> ' +
+            escapeHtml(s.label) +
+        '</label>'
+    ).join('');
+    html += '<div style="padding:8px 14px 0;"><div class="draft-field-label">Sectors</div></div>';
+    html += sectorOpts;
+
+    // Surcharge rate
+    html += '<div style="padding:8px 14px;">';
+    html += '<div class="draft-field-label">Surcharge Rate</div>';
+    html += '<div style="display:flex;align-items:center;gap:10px;margin-top:4px;">';
+    html += '<input type="range" id="rt-draft-pct" min="5" max="50" value="25" style="flex:1;" oninput="updateRTDraftSummary()" />';
+    html += '<span id="rt-draft-pct-display" style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text-primary);min-width:36px;">25%</span>';
+    html += '</div></div>';
+
+    // Duration
+    html += '<div style="padding:4px 14px;">';
+    html += '<div class="draft-field-label">Duration</div>';
+    html += '<div class="trade-radio-group" style="margin-top:4px;margin-bottom:6px;">';
+    html += '<label class="trade-radio-option selected" onclick="selectRadioOption(this);toggleRTDraftDuration()"><input type="radio" name="rt-draft-dur" value="fixed" checked /><div><div class="trade-radio-label">Fixed Term</div></div></label>';
+    html += '<label class="trade-radio-option" onclick="selectRadioOption(this);toggleRTDraftDuration()"><input type="radio" name="rt-draft-dur" value="permanent" /><div><div class="trade-radio-label">Until Revoked</div></div></label>';
+    html += '</div>';
+    html += '<div id="rt-draft-dur-fields"><input type="number" id="rt-draft-ticks" value="12" min="4" max="48" style="width:80px;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);padding:4px 8px;font-size:12px;" /> <span style="font-size:0.72rem;color:var(--text-dim);">ticks</span></div>';
+    html += '</div>';
+
+    // Summary
+    html += '<div id="rt-draft-summary" class="trade-info-box info" style="margin:8px 14px;">Select sectors to see impact.</div>';
+
+    // Action bar
+    html += '<div class="detail-actions" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hair);">';
+    html += '<button class="detail-btn" onclick="cancelDraft()">Cancel</button>';
+    html += '<button class="detail-btn" id="rt-draft-submit" style="color:var(--teal);border-color:var(--teal-border);" disabled onclick="submitRTDraft()">Submit for Ratification (' + apCost + ' AP)</button>';
+    html += '</div></div>';
+    body.innerHTML = html;
+}
+
+function updateRTDraftTarget(nationId) {
+    if (!nationId) { activeDraftTarget = null; }
+    else {
+        const nation = cachedOtherNations.find(n => n.id === nationId);
+        activeDraftTarget = nation || null;
+    }
+    const body = document.getElementById('draft-body');
+    const statusEl = document.getElementById('draft-status');
+    if (body) renderRetaliatoryTariffDraftPanel(body, statusEl);
+}
+window.updateRTDraftTarget = updateRTDraftTarget;
+
+function toggleRTDraftDuration() {
+    const isPermanent = document.querySelector('input[name="rt-draft-dur"][value="permanent"]')?.checked;
+    const fields = document.getElementById('rt-draft-dur-fields');
+    if (fields) fields.style.display = isPermanent ? 'none' : 'block';
+}
+window.toggleRTDraftDuration = toggleRTDraftDuration;
+
+function updateRTDraftSummary() {
+    const pct = parseInt(document.getElementById('rt-draft-pct')?.value || '25');
+    const display = document.getElementById('rt-draft-pct-display');
+    if (display) display.textContent = pct + '%';
+
+    const checked = document.querySelectorAll('input[name="rt-draft-sector"]:checked');
+    const btn = document.getElementById('rt-draft-submit');
+    const summary = document.getElementById('rt-draft-summary');
+
+    if (checked.length === 0) {
+        if (summary) { summary.className = 'trade-info-box info'; summary.textContent = 'Select sectors to see impact.'; }
+        if (btn) btn.disabled = true;
+        return;
+    }
+    if (btn) btn.disabled = false;
+
+    const sectorNames = [];
+    checked.forEach(cb => { const s = TRADEABLE_SECTORS.find(ts => ts.key === cb.value); if (s) sectorNames.push(s.label); });
+    const relPenalty = Math.round(pct / 2);
+
+    if (summary) {
+        summary.className = 'trade-info-box ' + (pct >= 35 ? 'warning' : 'info');
+        summary.innerHTML = '<strong>+' + pct + '% surcharge</strong> on ' + sectorNames.join(', ') + ' imports. Diplomatic impact: <strong>-' + relPenalty + ' Relations</strong>.';
+    }
+}
+window.updateRTDraftSummary = updateRTDraftSummary;
+
+async function submitRTDraft() {
+    const btn = document.getElementById('rt-draft-submit');
+    if (btn) btn.disabled = true;
+
+    const checked = document.querySelectorAll('input[name="rt-draft-sector"]:checked');
+    if (checked.length === 0) { alert('Select at least one sector.'); if (btn) btn.disabled = false; return; }
+
+    const pct = Math.min(50, Math.max(5, parseInt(document.getElementById('rt-draft-pct')?.value || '25')));
+    const durType = document.querySelector('input[name="rt-draft-dur"]:checked')?.value || 'fixed';
+    const durTicks = durType === 'fixed' ? Math.min(48, Math.max(4, parseInt(document.getElementById('rt-draft-ticks')?.value || '12'))) : null;
+    const apCost = 2;
+    const targetId = activeDraftTarget?.id;
+    const targetName = activeDraftTarget?.name || 'Unknown';
+
+    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+    if (!apResult.success) {
+        alert('Not enough AP (' + apCost + ' needed).');
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    const articles = [];
+    checked.forEach(cb => {
+        articles.push({ type: 'tariff_surcharge', data: { sector: cb.value, surcharge_pct: pct, imposer_nation_id: currentNation.id } });
+    });
+    articles.push({ type: 'duration', data: { duration_type: durType, duration_ticks: durTicks, auto_renew: false, withdrawal_notice_ticks: 1 } });
+
+    const sectorNames = [];
+    checked.forEach(cb => { const s = TRADEABLE_SECTORS.find(ts => ts.key === cb.value); if (s) sectorNames.push(s.label); });
+
+    const agreementName = 'Retaliatory Tariff on ' + targetName;
+    const billTitle = 'Ratify: ' + agreementName;
+    const billPreamble = 'Ratification of retaliatory tariff against ' + targetName + '. Imposes +' + pct + '% tariff surcharge on ' + sectorNames.join(', ') + ' imports. ' +
+        (durType === 'permanent' ? 'Duration: until revoked.' : 'Duration: ' + durTicks + ' ticks.');
+
+    const { data: bill, error: billErr } = await _supabase.from('bills').insert({
+        nation_id: currentNation.id,
+        bill_type: 'ratification',
+        bill_name: billTitle,
+        preamble: billPreamble,
+        proposed_by: currentFaction.id,
+        status: 'floor',
+        proposed_tick: currentTick,
+        floor_tick: currentTick,
+        voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
+        trade_agreement_data: {
+            type: 'retaliatory_tariff',
+            imposer_nation_id: currentNation.id,
+            target_nation_id: targetId,
+            agreement_name: agreementName,
+            articles: articles,
+            duration_type: durType,
+            duration_ticks: durTicks
+        }
+    }).select('id').single();
+
+    if (billErr) { alert('Error: ' + billErr.message); if (btn) btn.disabled = false; return; }
+
+    try {
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation.id, event_name: agreementName + ' — Proposed', category: 'Trade',
+            description_chosen: currentNation.name + ' has submitted a retaliatory tariff bill targeting ' + targetName + ' (' + sectorNames.join(', ') + ' at +' + pct + '%).',
+            fired_at_tick: currentTick
+        });
+        await _supabase.from('event_log').insert({
+            nation_id: targetId, event_name: 'Retaliatory Tariff Proposed', category: 'Trade',
+            description_chosen: currentNation.name + ' has proposed a retaliatory tariff on your ' + sectorNames.join(', ') + ' exports (+' + pct + '%).',
+            fired_at_tick: currentTick
+        });
+    } catch (e) { /* non-blocking */ }
+
+    alert('Retaliatory tariff bill submitted to parliament!');
+    cancelDraft();
+}
+window.submitRTDraft = submitRTDraft;
+
+// ══════════════════════════════════════════════════════
+// EXPORT SUBSIDY — Streamlined Draft Panel
+// ══════════════════════════════════════════════════════
+function renderExportSubsidyDraftPanel(body, statusEl) {
+    if (statusEl) { statusEl.textContent = 'Drafting'; statusEl.className = 'badge badge--amber'; }
+
+    const apCost = 2;
+
+    let html = '<div class="draft-panel"><div class="draft-header">';
+    html += '<div class="draft-field"><div class="draft-field-label">Action</div><div class="draft-field-input">Export Subsidy <span style="color:var(--green);">' + apCost + ' AP</span></div></div>';
+    html += '</div>';
+
+    html += '<div class="trade-info-box info" style="margin:8px 14px;">Subsidize your exporters to make goods cheaper on the international market. Unilateral — no partner nation needed, your parliament ratifies.</div>';
+
+    // Sector
+    html += '<div style="padding:8px 14px;">';
+    html += '<div class="draft-field-label">Sector to Subsidize</div>';
+    html += '<select id="es-draft-sector" onchange="updateESDraftSummary()" style="width:100%;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);font-size:12px;padding:4px 8px;margin-top:4px;">';
+    html += '<option value="">Select sector...</option>';
+    TRADEABLE_SECTORS.forEach(s => { html += '<option value="' + s.key + '">' + escapeHtml(s.label) + '</option>'; });
+    html += '</select></div>';
+
+    // Subsidy rate
+    html += '<div style="padding:4px 14px;">';
+    html += '<div class="draft-field-label">Subsidy Rate</div>';
+    html += '<div style="display:flex;align-items:center;gap:10px;margin-top:4px;">';
+    html += '<input type="range" id="es-draft-pct" min="5" max="30" value="15" style="flex:1;" oninput="updateESDraftSummary()" />';
+    html += '<span id="es-draft-pct-display" style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text-primary);min-width:36px;">15%</span>';
+    html += '</div>';
+    html += '<div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px;">Cost reduction applied to your exports in this sector.</div>';
+    html += '</div>';
+
+    // Funding source
+    html += '<div style="padding:8px 14px;">';
+    html += '<div class="draft-field-label">Funding Source</div>';
+    html += '<div class="trade-radio-group" style="margin-top:4px;">';
+    html += '<label class="trade-radio-option selected" onclick="selectRadioOption(this)"><input type="radio" name="es-draft-fund" value="general_treasury" checked /><div><div class="trade-radio-label">General Treasury</div><div class="trade-radio-hint">Paid from national budget</div></div></label>';
+    html += '<label class="trade-radio-option" onclick="selectRadioOption(this)"><input type="radio" name="es-draft-fund" value="ministry_budget" /><div><div class="trade-radio-label">Ministry Budget</div><div class="trade-radio-hint">Paid from MoT allocation</div></div></label>';
+    html += '</div></div>';
+
+    // Duration
+    html += '<div style="padding:4px 14px;">';
+    html += '<div class="draft-field-label">Duration</div>';
+    html += '<div class="trade-radio-group" style="margin-top:4px;margin-bottom:6px;">';
+    html += '<label class="trade-radio-option selected" onclick="selectRadioOption(this);toggleESDraftDuration()"><input type="radio" name="es-draft-dur" value="fixed" checked /><div><div class="trade-radio-label">Fixed Term</div></div></label>';
+    html += '<label class="trade-radio-option" onclick="selectRadioOption(this);toggleESDraftDuration()"><input type="radio" name="es-draft-dur" value="permanent" /><div><div class="trade-radio-label">Until Revoked</div></div></label>';
+    html += '</div>';
+    html += '<div id="es-draft-dur-fields"><input type="number" id="es-draft-ticks" value="12" min="4" max="24" style="width:80px;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);padding:4px 8px;font-size:12px;" /> <span style="font-size:0.72rem;color:var(--text-dim);">ticks (max 24)</span></div>';
+    html += '</div>';
+
+    // Summary
+    html += '<div id="es-draft-summary" class="trade-info-box info" style="margin:8px 14px;">Select a sector to see impact.</div>';
+
+    // Action bar
+    html += '<div class="detail-actions" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hair);">';
+    html += '<button class="detail-btn" onclick="cancelDraft()">Cancel</button>';
+    html += '<button class="detail-btn" id="es-draft-submit" style="color:var(--teal);border-color:var(--teal-border);" disabled onclick="submitESDraft()">Submit for Ratification (' + apCost + ' AP)</button>';
+    html += '</div></div>';
+    body.innerHTML = html;
+}
+
+function toggleESDraftDuration() {
+    const isPermanent = document.querySelector('input[name="es-draft-dur"][value="permanent"]')?.checked;
+    const fields = document.getElementById('es-draft-dur-fields');
+    if (fields) fields.style.display = isPermanent ? 'none' : 'block';
+}
+window.toggleESDraftDuration = toggleESDraftDuration;
+
+function updateESDraftSummary() {
+    const pct = parseInt(document.getElementById('es-draft-pct')?.value || '15');
+    const display = document.getElementById('es-draft-pct-display');
+    if (display) display.textContent = pct + '%';
+
+    const sector = document.getElementById('es-draft-sector')?.value;
+    const btn = document.getElementById('es-draft-submit');
+    const summary = document.getElementById('es-draft-summary');
+
+    if (!sector) {
+        if (summary) { summary.className = 'trade-info-box info'; summary.textContent = 'Select a sector to see impact.'; }
+        if (btn) btn.disabled = true;
+        return;
+    }
+    if (btn) btn.disabled = false;
+
+    const sectorLabel = TRADEABLE_SECTORS.find(s => s.key === sector)?.label || sector;
+    const budgetCost = pct <= 10 ? 'Low' : pct <= 20 ? 'Moderate' : 'High';
+
+    if (summary) {
+        summary.className = 'trade-info-box ' + (pct >= 20 ? 'warning' : 'info');
+        summary.innerHTML = '<strong>' + pct + '% subsidy</strong> on ' + escapeHtml(sectorLabel) + ' exports. Budget impact: <strong>' + budgetCost + '</strong>. Makes your exports cheaper on the global market.';
+    }
+}
+window.updateESDraftSummary = updateESDraftSummary;
+
+async function submitESDraft() {
+    const btn = document.getElementById('es-draft-submit');
+    if (btn) btn.disabled = true;
+
+    const sector = document.getElementById('es-draft-sector')?.value;
+    if (!sector) { alert('Select a sector.'); if (btn) btn.disabled = false; return; }
+
+    const pct = Math.min(30, Math.max(5, parseInt(document.getElementById('es-draft-pct')?.value || '15')));
+    const fundSource = document.querySelector('input[name="es-draft-fund"]:checked')?.value || 'general_treasury';
+    const durType = document.querySelector('input[name="es-draft-dur"]:checked')?.value || 'fixed';
+    const durTicks = durType === 'fixed' ? Math.min(24, Math.max(4, parseInt(document.getElementById('es-draft-ticks')?.value || '12'))) : null;
+    const apCost = 2;
+
+    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+    if (!apResult.success) {
+        alert('Not enough AP (' + apCost + ' needed).');
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    const sectorLabel = TRADEABLE_SECTORS.find(s => s.key === sector)?.label || sector;
+    const agreementName = sectorLabel + ' Export Subsidy';
+
+    const articles = [
+        { type: 'subsidized_sector', data: { sector: sector, subsidy_pct: pct } },
+        { type: 'funding_source', data: { source: fundSource } },
+        { type: 'duration', data: { duration_type: durType, duration_ticks: durTicks, auto_renew: false, withdrawal_notice_ticks: 1 } }
+    ];
+
+    const billTitle = 'Ratify: ' + agreementName;
+    const billPreamble = 'Ratification of export subsidy. Subsidizes ' + sectorLabel + ' exports at ' + pct + '%, funded from ' +
+        (fundSource === 'general_treasury' ? 'the general treasury' : 'Ministry of Trade budget') + '. ' +
+        (durType === 'permanent' ? 'Duration: until revoked.' : 'Duration: ' + durTicks + ' ticks.');
+
+    const { error: billErr } = await _supabase.from('bills').insert({
+        nation_id: currentNation.id,
+        bill_type: 'ratification',
+        bill_name: billTitle,
+        preamble: billPreamble,
+        proposed_by: currentFaction.id,
+        status: 'floor',
+        proposed_tick: currentTick,
+        floor_tick: currentTick,
+        voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
+        trade_agreement_data: {
+            type: 'export_subsidy',
+            imposer_nation_id: currentNation.id,
+            target_nation_id: null,
+            agreement_name: agreementName,
+            articles: articles,
+            duration_type: durType,
+            duration_ticks: durTicks
+        }
+    }).select('id').single();
+
+    if (billErr) { alert('Error: ' + billErr.message); if (btn) btn.disabled = false; return; }
+
+    try {
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation.id, event_name: agreementName + ' — Proposed', category: 'Trade',
+            description_chosen: currentNation.name + ' has submitted an export subsidy bill for ' + sectorLabel + ' at ' + pct + '%.',
+            fired_at_tick: currentTick
+        });
+    } catch (e) { /* non-blocking */ }
+
+    alert('Export subsidy bill submitted to parliament!');
+    cancelDraft();
+}
+window.submitESDraft = submitESDraft;
 
 // ── Draft helpers ──
 function addDraftArticle() {
