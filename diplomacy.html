@@ -806,11 +806,128 @@ async function renderAgreementsTab() {
             }
         } catch (e) { console.warn('Error loading trade agreements:', e); }
 
-        if (!html && !tradeHtml) {
+        // ── Pending Ratification Section ──
+        let ratifyHtml = '';
+        try {
+            const { data: ratifyNegs } = await _supabase
+                .from('trade_negotiations')
+                .select('*')
+                .eq('status', 'ratification')
+                .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id)
+                .order('approved_at_a_tick', { ascending: false });
+
+            if (ratifyNegs && ratifyNegs.length > 0) {
+                // Fetch nation names and government types for all involved nations
+                const ratifyNationIds = new Set();
+                ratifyNegs.forEach(n => { ratifyNationIds.add(n.nation_a_id); ratifyNationIds.add(n.nation_b_id); });
+                const { data: ratifyNations } = await _supabase.from('nations').select('id, name, government_type').in('id', [...ratifyNationIds]);
+                const ratifyNationMap = {};
+                (ratifyNations || []).forEach(n => ratifyNationMap[n.id] = n);
+
+                // Fetch all bill statuses in one go
+                const billIds = ratifyNegs.flatMap(n => [n.bill_a_id, n.bill_b_id]).filter(Boolean);
+                const billStatusMap = {};
+                if (billIds.length > 0) {
+                    const { data: billRows } = await _supabase.from('bills').select('id, status').in('id', billIds);
+                    (billRows || []).forEach(b => billStatusMap[b.id] = b.status);
+                }
+
+                ratifyHtml += '<div class="diplo-section-title" style="margin-top:20px;">Pending Ratification</div>';
+
+                for (const neg of ratifyNegs) {
+                    const typeInfo = TRADE_AGREEMENT_TYPES[neg.agreement_type];
+                    const partnerId = neg.nation_a_id === currentNation.id ? neg.nation_b_id : neg.nation_a_id;
+                    const partnerInfo = ratifyNationMap[partnerId] || {};
+                    const partnerName = partnerInfo.name || 'Unknown';
+                    const ourInfo = ratifyNationMap[currentNation.id] || {};
+                    const iconHtml = typeInfo ? (TRADE_TYPE_ICONS[typeInfo.icon] || '') : '';
+
+                    // Determine bill IDs for each side
+                    const ourBillId = neg.nation_a_id === currentNation.id ? neg.bill_a_id : neg.bill_b_id;
+                    const theirBillId = neg.nation_a_id === currentNation.id ? neg.bill_b_id : neg.bill_a_id;
+                    const ourBillStatus = ourBillId ? (billStatusMap[ourBillId] || 'unknown') : 'unknown';
+                    const theirBillStatus = theirBillId ? (billStatusMap[theirBillId] || 'unknown') : 'unknown';
+
+                    // Build status lines for each nation
+                    const ourIsPresidential = (ourInfo.government_type === 'Presidential');
+                    const theirIsPresidential = (partnerInfo.government_type === 'Presidential');
+
+                    function ratifyStatusLine(billStatus, nationName, isPresidential, isOurs) {
+                        const label = isOurs ? 'Your' : escapeHtml(nationName) + "'s";
+                        let text, color;
+                        if (billStatus === 'passed') {
+                            text = label + ' Parliament has ratified';
+                            color = '#4ade80';
+                        } else if (billStatus === 'failed') {
+                            text = label + ' Parliament rejected the bill';
+                            color = '#ef4444';
+                        } else if (billStatus === 'president_desk') {
+                            text = isOurs
+                                ? "Pending President's Signature"
+                                : "Pending President's Signature in " + escapeHtml(nationName);
+                            color = '#c084fc';
+                        } else if (billStatus === 'floor') {
+                            text = isOurs
+                                ? 'Pending Vote in Your Parliament'
+                                : 'Pending Vote in ' + escapeHtml(nationName) + "'s Parliament";
+                            color = '#facc15';
+                        } else {
+                            text = isOurs
+                                ? 'Awaiting Your Parliament'
+                                : 'Awaiting ' + escapeHtml(nationName) + "'s Parliament";
+                            color = '#6b6a5e';
+                        }
+                        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--bg-body);border:1px solid var(--border-light);border-radius:4px;margin-bottom:4px;">' +
+                            '<span style="font-size:0.78rem;color:var(--text-primary);">' + (isOurs ? escapeHtml(currentNation.name) : escapeHtml(nationName)) + '</span>' +
+                            '<span style="font-size:0.72rem;font-weight:bold;color:' + color + ';">' + text + '</span>' +
+                            '</div>';
+                    }
+
+                    const articlesHtml = (neg.draft_articles || []).map((art, i) =>
+                        '<div class="agreement-card-term">' +
+                            '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '</span> ' +
+                            '<span class="proposal-article-label">' + escapeHtml(renderTradeArticleSummary(art)) + '</span>' +
+                        '</div>'
+                    ).join('');
+
+                    // View bill link
+                    const billLinkHtml = ourBillId
+                        ? ' <a href="bill.html?id=' + ourBillId + '" style="color:var(--accent);font-size:0.7rem;text-decoration:underline;">View Bill</a>'
+                        : '';
+
+                    ratifyHtml += `
+                        <div class="agreement-card" style="border-left:3px solid #facc15;">
+                            <div class="agreement-card-header">
+                                <div class="agreement-card-name" style="display:flex;align-items:center;gap:8px;">
+                                    ${typeInfo ? '<div class="trade-type-icon ' + typeInfo.icon + '" style="width:24px;height:24px;font-size:0.8rem;">' + iconHtml + '</div>' : ''}
+                                    ${escapeHtml(neg.agreement_name || 'Unnamed')}
+                                </div>
+                                <div class="agreement-card-badges">
+                                    <span class="trade-type-short">${typeInfo ? escapeHtml(typeInfo.shortLabel) : ''}</span>
+                                    <span class="badge badge--amber" style="font-size:0.62rem;">RATIFICATION</span>
+                                </div>
+                            </div>
+                            <div class="agreement-card-meta">
+                                ${escapeHtml(currentNation.name)} &amp; ${escapeHtml(partnerName)}
+                                ${typeInfo ? ' &middot; ' + escapeHtml(typeInfo.label) : ''}
+                                ${billLinkHtml}
+                            </div>
+                            <div style="margin:8px 0 4px;">
+                                ${ratifyStatusLine(ourBillStatus, currentNation.name, ourIsPresidential, true)}
+                                ${ratifyStatusLine(theirBillStatus, partnerName, theirIsPresidential, false)}
+                            </div>
+                            ${articlesHtml ? '<div class="agreement-card-terms">' + articlesHtml + '</div>' : ''}
+                        </div>
+                    `;
+                }
+            }
+        } catch (e) { console.warn('Error loading ratification negotiations:', e); }
+
+        if (!html && !tradeHtml && !ratifyHtml) {
             panel.innerHTML = '<p class="diplo-tab-placeholder">No active agreements.</p>';
         } else {
             if (html) html = '<div class="diplo-section-title">Diplomatic Agreements</div>' + html;
-            panel.innerHTML = html + tradeHtml;
+            panel.innerHTML = html + ratifyHtml + tradeHtml;
         }
     } catch (err) {
         console.error('Error rendering agreements tab:', err);
@@ -7432,11 +7549,11 @@ async function renderNegotiationsBox() {
             .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id)
             .order('proposed_at_tick', { ascending: false });
 
-        // Fetch open/active trade negotiations
+        // Fetch open/active/ratification trade negotiations
         const { data: tradeNegs } = await _supabase
             .from('trade_negotiations')
             .select('*')
-            .in('status', ['open', 'active'])
+            .in('status', ['open', 'active', 'ratification'])
             .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id);
 
         const allProposals = proposals || [];
@@ -7511,9 +7628,14 @@ async function renderNegotiationsBox() {
             const needsAction = !isParticipant && neg.status === 'open';
             const isOutgoing = neg.initiated_by_nation === currentNation.id;
 
-            const statusBadge = needsAction
-                ? '<span class="badge badge--amber">Join</span>'
-                : '<span class="badge badge--dim">' + (neg.status === 'open' ? 'Pending' : 'Active') + '</span>';
+            let statusBadge;
+            if (needsAction) {
+                statusBadge = '<span class="badge badge--amber">Join</span>';
+            } else if (neg.status === 'ratification') {
+                statusBadge = '<span class="badge badge--amber">Parliament</span>';
+            } else {
+                statusBadge = '<span class="badge badge--dim">' + (neg.status === 'open' ? 'Pending' : 'Active') + '</span>';
+            }
 
             const dirClass = isOutgoing ? 'neg-direction--out' : 'neg-direction--in';
             const dirLabel = isOutgoing ? 'OUT' : 'IN';
@@ -7538,13 +7660,13 @@ async function renderNegotiationsBox() {
                         <span class="badge badge--dim">${escapeHtml(typeLabel)}</span>
                     </div>
                     <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">
-                        Status: ${neg.status} · Expires in ${Math.max(0, (neg.expires_at_tick || 0) - shardTick)} ticks
+                        Status: ${neg.status === 'ratification' ? 'Awaiting Parliament' : neg.status} ${neg.status !== 'ratification' ? '· Expires in ' + Math.max(0, (neg.expires_at_tick || 0) - shardTick) + ' ticks' : '· Both sides approved'}
                     </div>
                     <div class="detail-actions">
                         ${needsAction && diplomaticRoles && diplomaticRoles.isMoT ? '<button class="detail-btn" onclick="joinTradeNegotiation(\'' + neg.id + '\', \'trade_minister\', ' + DIPLOMACY_CONFIG.JOIN_NEGOTIATION_MOT_AP + ')">Join as Min. of Trade (' + DIPLOMACY_CONFIG.JOIN_NEGOTIATION_MOT_AP + ' AP)</button>' : ''}
                         ${needsAction && diplomaticRoles && diplomaticRoles.isHoG ? '<button class="detail-btn" onclick="joinTradeNegotiation(\'' + neg.id + '\', \'prime_minister\', ' + DIPLOMACY_CONFIG.JOIN_NEGOTIATION_PM_AP + ')">Join as PM (' + DIPLOMACY_CONFIG.JOIN_NEGOTIATION_PM_AP + ' AP)</button>' : ''}
                         ${needsAction && diplomaticRoles && diplomaticRoles.isFM && !diplomaticRoles.isHoG ? '<button class="detail-btn" onclick="joinTradeNegotiation(\'' + neg.id + '\', \'foreign_minister\', ' + DIPLOMACY_CONFIG.JOIN_NEGOTIATION_FM_AP + ')">Join as FM (' + DIPLOMACY_CONFIG.JOIN_NEGOTIATION_FM_AP + ' AP)</button>' : ''}
-                        ${isParticipant ? '<button class="detail-btn" onclick="openTradeNegotiation(\'' + neg.id + '\')">Open</button>' : ''}
+                        ${isParticipant || neg.status === 'ratification' ? '<button class="detail-btn" onclick="openTradeNegotiation(\'' + neg.id + '\')">Open</button>' : ''}
                     </div>
                 </div>
             `;
