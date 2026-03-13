@@ -78,6 +78,7 @@
                 <div id="funding-institutions"></div>
                 <div style="margin-top:12px;padding-top:10px;border-top:1px solid #333;">
                     <label class="form-label">Discretionary Funds ($M)</label>
+                    <!-- Stored as a one-time amount (in $M): shown in upfront/debt impact, never in recurring monthly totals. -->
                     <input type="number" class="form-input" id="funding-discretionary" min="0" max="50000" value="0" placeholder="0">
                     <div style="font-size:0.7rem;color:#888;margin-top:4px;">One-time treasury expenditure added to national debt.</div>
                 </div>
@@ -1298,8 +1299,11 @@ function _calculateFundingArticleOngoingCost(fundingData) {
         const baseCost = Number((inst.base_cost ?? _computeInstitutionBaseCost(inst.id)) || 0);
         ongoingCost += ((toPct - fromPct) / 100) * baseCost;
     }
-    ongoingCost += Number(fundingData?.discretionary || 0);
     return ongoingCost;
+}
+
+function _calculateFundingArticleUpfrontCost(fundingData) {
+    return Number(fundingData?.discretionary || 0);
 }
 
 function showFundingArticleForm() {
@@ -1664,16 +1668,16 @@ function renderDraftArticles() {
                 const arrow = i.proposed_pct > i.current_pct ? '↑' : '↓';
                 return `${i.name}: ${i.current_pct}% → ${i.proposed_pct}% ${arrow}`;
             });
-            if (fd.discretionary) summaryParts.push(`+$${fd.discretionary}M discretionary`);
+            if (fd.discretionary) summaryParts.push(`One-time: +$${fd.discretionary}M`);
             const hasIncrease = changes.some(i => i.proposed_pct > i.current_pct);
             const hasDecrease = changes.some(i => i.proposed_pct < i.current_pct);
             const borderColor = hasDecrease ? '#ef4444' : hasIncrease ? '#22c55e' : '#2196F3';
             const ongoingCost = _calculateFundingArticleOngoingCost(fd);
-            const budgetImpact = ongoingCost < 0
-                ? `<div style="margin-top:4px;font-size:0.8rem;color:#4CAF50;font-weight:600;">Savings: $${Math.round(Math.abs(ongoingCost))}M/mo</div>`
-                : ongoingCost > 0
-                    ? `<div style="margin-top:4px;font-size:0.8rem;color:#ff9800;font-weight:600;">Cost: +$${Math.round(ongoingCost)}M/mo</div>`
-                    : '<div style="margin-top:4px;font-size:0.8rem;color:#888;">Cost: $0/mo</div>';
+            const upfrontCost = _calculateFundingArticleUpfrontCost(fd);
+            const oneTimeText = `${upfrontCost > 0 ? '+' : ''}$${Math.round(upfrontCost)}M`;
+            const ongoingText = `${ongoingCost > 0 ? '+' : ''}$${Math.round(ongoingCost)}M/mo`;
+            const budgetImpact = `<div style="margin-top:4px;font-size:0.8rem;color:#ccc;font-weight:600;">One-time: ${oneTimeText}</div>` +
+                `<div style="margin-top:2px;font-size:0.8rem;color:#ccc;font-weight:600;">Ongoing: ${ongoingText}</div>`;
             return `<div class="draft-article-card" style="border-left:3px solid ${borderColor};">
                 <div class="draft-article-info">
                     <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:${borderColor};">Funding</span></div>
@@ -1817,7 +1821,7 @@ async function submitToCommittee() {
                 const fd = art.fundingData;
                 const changes = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
                 const textParts = changes.map(i => `${i.name}: ${i.current_pct}% → ${i.proposed_pct}%`);
-                if (fd.discretionary) textParts.push(`Discretionary funds: $${fd.discretionary}M`);
+                if (fd.discretionary) textParts.push(`One-time: +$${fd.discretionary}M`);
                 const title = `${fd.ministry_label} Funding`;
                 const text = textParts.join('. ') + '.';
                 return {
@@ -1899,7 +1903,7 @@ async function submitToCommittee() {
                     const fd = art.fundingData;
                     const changes = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
                     const textParts = changes.map(i => `${i.name}: ${i.current_pct}% → ${i.proposed_pct}%`);
-                    if (fd.discretionary) textParts.push(`Discretionary funds: $${fd.discretionary}M`);
+                    if (fd.discretionary) textParts.push(`One-time: +$${fd.discretionary}M`);
                     const title = `${fd.ministry_label} Funding`;
                     const text = textParts.join('. ') + '.';
                     return { bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id, article_title: title, article_text: text, funding_data: fd };

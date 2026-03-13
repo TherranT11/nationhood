@@ -423,14 +423,21 @@ function calculateFundingOngoingCost(fd) {
         const baseCost = Number((inst.base_cost ?? getInstitutionBaseCost(inst.id)) || 0);
         ongoing += ((toPct - fromPct) / 100) * baseCost;
     }
-    ongoing += Number(fd?.discretionary || 0);
     return ongoing;
 }
 
+function calculateFundingUpfrontCost(fd) {
+    return Number(fd?.discretionary || 0);
+}
+
 function formatFundingImpact(ongoingCost) {
-    if (ongoingCost < 0) return `<span class="cost-value" style="color:#4CAF50;font-weight:bold;">Saves ${formatCurrency(Math.abs(ongoingCost)).replace(/^\+/, '')}/mo</span>`;
-    if (ongoingCost > 0) return `<span class="cost-value" style="color:#ff9800;font-weight:bold;">Cost ${formatCurrency(ongoingCost)}/mo</span>`;
-    return '<span class="cost-value">$0/mo</span>';
+    const prefix = ongoingCost > 0 ? '+' : '';
+    return `<span class="cost-value">${prefix}${formatCurrency(ongoingCost).replace(/^\+/, '')}/mo</span>`;
+}
+
+function formatFundingUpfront(upfrontCost) {
+    const prefix = upfrontCost > 0 ? '+' : '';
+    return `<span class="cost-value">${prefix}${formatCurrency(upfrontCost).replace(/^\+/, '')}</span>`;
 }
 
 function renderBill() {
@@ -926,7 +933,9 @@ function renderArticles() {
                     '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
                 '</div>' : '';
                 const ongoingCost = calculateFundingOngoingCost(fd);
+                const upfrontCost = calculateFundingUpfrontCost(fd);
                 totalOngoing += ongoingCost;
+                totalUpfront += upfrontCost;
                 let instHTML = changes.map(function(i) {
                     const arrow = i.proposed_pct > i.current_pct ? '↑' : '↓';
                     const c = i.proposed_pct > i.current_pct ? '#22c55e' : '#ef4444';
@@ -936,14 +945,14 @@ function renderArticles() {
                     '</div>';
                 }).join('');
                 if (fd.discretionary) {
-                    instHTML += '<div style="padding:4px 0;font-size:0.8rem;color:#2196F3;">Discretionary: +' + formatCurrency(Number(fd.discretionary || 0)) + '/mo</div>';
+                    instHTML += '<div style="padding:4px 0;font-size:0.8rem;color:#2196F3;">One-time: +' + formatCurrency(Number(fd.discretionary || 0)).replace(/^[+-]/, '') + '</div>';
                 }
                 return '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
                     '<div class="article-number">Article ' + art.article_number + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + tagLabel + '</span></div>' +
                     '<div class="article-title">' + escapeHtml(art.article_title || (fd.ministry_label + ' Ministry Funding')) + '</div>' +
                     '<div class="article-description" style="padding:4px 0;">' + instHTML + '</div>' +
                     '<div class="article-costs">' +
-                        '<div class="cost-item"><span class="cost-label">Upfront:</span> <span class="cost-value">$0</span></div>' +
+                        '<div class="cost-item"><span class="cost-label">One-time:</span> ' + formatFundingUpfront(upfrontCost) + '</div>' +
                         '<div class="cost-item"><span class="cost-label">Ongoing:</span> ' + formatFundingImpact(ongoingCost) + '</div>' +
                     '</div>' +
                     '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
