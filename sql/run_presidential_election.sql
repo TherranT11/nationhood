@@ -107,6 +107,10 @@ BEGIN
           AND pc.selected = true
           AND f.faction_type = 'party'
           AND f.abandoned_at IS NULL
+          AND (
+              f.last_seen_tick IS NULL
+              OR (SELECT current_tick FROM shard WHERE name = 'Alpha Shard') - f.last_seen_tick < 12
+          )
     ) t;
 
     IF jsonb_array_length(v_candidates) = 0 THEN
