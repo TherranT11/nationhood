@@ -4466,6 +4466,9 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
     const reRender = async () => {
         await renderAutocracyActionsTab(nation, faction, shard);
         await renderEventsTab(n.id, f.id, tick);
+        // Update topbar AP display immediately after actions
+        const apEl = document.getElementById('topbar-ap');
+        if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + (f.action_points ?? 0) + ' AP</span>';
     };
 
     // Steward actions
