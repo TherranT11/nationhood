@@ -9992,7 +9992,21 @@ async function processInactivityPenalties(supabase, nation, currentTick) {
         // TIER 3 (≥18 ticks): Disband the party entirely
         if (ticksInactive >= INACTIVITY_TIER3_TICKS) {
             console.log(`[INACTIVITY] Disbanding faction ${faction.id} — inactive ${ticksInactive} ticks`);
-            await disbandParty(supabase, nation.id, faction.id, currentTick);
+            try {
+                // Clear cooldown and survivor trait blocks for system-initiated disbands
+                await supabase.from('factions')
+                    .update({ disband_cooldown_until_tick: null })
+                    .eq('id', faction.id);
+                await supabase.from('head_of_government')
+                    .update({ trait_key: null })
+                    .eq('nation_id', nation.id)
+                    .eq('faction_id', faction.id)
+                    .eq('active', true)
+                    .eq('trait_key', 'survivor');
+                await disbandParty(supabase, nation.id, faction.id, currentTick);
+            } catch (err) {
+                console.error(`[INACTIVITY] Failed to disband faction ${faction.id}:`, err.message);
+            }
             continue;
         }
 
