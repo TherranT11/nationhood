@@ -9980,6 +9980,7 @@ async function processInactivityPenalties(supabase, nation, currentTick) {
         .from('factions')
         .select('id, last_seen_tick, approval_rating')
         .eq('nation_id', nation.id)
+        .eq('faction_type', 'party')
         .is('abandoned_at', null);
 
     for (const faction of (factions || [])) {
