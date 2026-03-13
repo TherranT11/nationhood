@@ -20090,37 +20090,56 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         await processIncumbentCampaignBonuses(supabase, nation, newTick);
 
         // Ideology shifts from resolved bills
-        await processIdeologyShifts(supabase, nation.id, resolutions, newTick);
+        try {
+            await processIdeologyShifts(supabase, nation.id, resolutions, newTick);
+        } catch (ideoErr) {
+            console.error(`[advanceTick] Ideology shifts failed for ${nation.name} (non-fatal):`, ideoErr);
+        }
 
         // Purge approval decay (autocracy scapegoat mechanic)
-        if (isAutocracy(nation)) {
-            await processPurgeDecay(supabase, nation.id, newTick);
+        try {
+            if (isAutocracy(nation)) {
+                await processPurgeDecay(supabase, nation.id, newTick);
+            }
+        } catch (purgeErr) {
+            console.error(`[advanceTick] Purge decay failed for ${nation.name} (non-fatal):`, purgeErr);
         }
 
         // Seat rebalancing: if factions were disbanded and seats are vacant,
         // proportionally redistribute the empty seats across remaining factions.
-        {
+        try {
             const seatResult = await rebalanceVacantSeats(supabase, nation);
             if (seatResult) {
                 summary.seatRebalancing = summary.seatRebalancing || [];
                 summary.seatRebalancing.push(seatResult);
             }
+        } catch (seatErr) {
+            console.error(`[advanceTick] Seat rebalancing failed for ${nation.name} (non-fatal):`, seatErr);
         }
 
         // Crises (persistent negative events that apply effects every tick)
         // Runs BEFORE approval calculations so crisis stat/event effects propagate in the same tick.
-        const crisisResults = await processCrises(supabase, nation, newTick);
-        if (crisisResults.length > 0) {
-            summary.crises = summary.crises || [];
-            summary.crises.push({ nation: nation.name, crises: crisisResults });
+        let crisisResults = [];
+        try {
+            crisisResults = await processCrises(supabase, nation, newTick);
+            if (crisisResults.length > 0) {
+                summary.crises = summary.crises || [];
+                summary.crises.push({ nation: nation.name, crises: crisisResults });
+            }
+        } catch (crisisErr) {
+            console.error(`[advanceTick] Crisis processing failed for ${nation.name} (non-fatal):`, crisisErr);
         }
 
         // Population growth: recompute from birth_rate - death_rate base,
         // preserving any policy/crisis deltas, then apply population change.
-        const popGrowthResult = await processPopulationGrowth(supabase, nation, popGrowthBeforeEffects);
-        if (popGrowthResult) {
-            summary.populationGrowth = summary.populationGrowth || [];
-            summary.populationGrowth.push({ nation: nation.name, ...popGrowthResult });
+        try {
+            const popGrowthResult = await processPopulationGrowth(supabase, nation, popGrowthBeforeEffects);
+            if (popGrowthResult) {
+                summary.populationGrowth = summary.populationGrowth || [];
+                summary.populationGrowth.push({ nation: nation.name, ...popGrowthResult });
+            }
+        } catch (popErr) {
+            console.error(`[advanceTick] Population growth failed for ${nation.name} (non-fatal):`, popErr);
         }
 
         // Re-fetch nation to get post-crisis stat values for minister approval
@@ -20128,71 +20147,86 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         if (preApprovalNation) Object.assign(nation, preApprovalNation);
 
         // Layer 1: Update minister approvals (drift-to-performance model)
-        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick);
-        if (ministerApprovalResults.length > 0) {
-            summary.ministerApprovals = summary.ministerApprovals || [];
-            summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
+        try {
+            const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick);
+            if (ministerApprovalResults.length > 0) {
+                summary.ministerApprovals = summary.ministerApprovals || [];
+                summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
+            }
+        } catch (minAppErr) {
+            console.error(`[advanceTick] Minister approvals failed for ${nation.name} (non-fatal):`, minAppErr);
         }
 
         // Decay gov_approval_events by 10% per tick (transient shocks fade naturally)
-        const oldEvents = Number(nation.gov_approval_events ?? 0);
-        if (Math.abs(oldEvents) > 0.01) {
-            const decayed = Math.round(oldEvents * (1 - MINISTER_APPROVAL_CONFIG.EVENTS_DECAY_RATE) * 100) / 100;
-            await supabase.from('nations')
-                .update({ gov_approval_events: decayed })
-                .eq('id', nation.id);
-            nation.gov_approval_events = decayed;
+        try {
+            const oldEvents = Number(nation.gov_approval_events ?? 0);
+            if (Math.abs(oldEvents) > 0.01) {
+                const decayed = Math.round(oldEvents * (1 - MINISTER_APPROVAL_CONFIG.EVENTS_DECAY_RATE) * 100) / 100;
+                await supabase.from('nations')
+                    .update({ gov_approval_events: decayed })
+                    .eq('id', nation.id);
+                nation.gov_approval_events = decayed;
+            }
+        } catch (decayErr) {
+            console.error(`[advanceTick] Approval event decay failed for ${nation.name} (non-fatal):`, decayErr);
         }
 
         // Layer 2: Calculate government approval (avg minister + vacancy penalty + event modifier)
-        const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick);
+        try {
+            const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick);
+        } catch (govAppErr) {
+            console.error(`[advanceTick] Gov approval calc failed for ${nation.name} (non-fatal):`, govAppErr);
+        }
 
         // Three-pillar voter preference recalculation
-        await calculateThreePillarPreferences(supabase, nation, newTick);
-
-        // Expire pending loyalty demands (autocracy)
-        if (isAutocracy(nation)) {
-            await processLoyaltyDemandExpiry(supabase, nation, newTick);
+        try {
+            await calculateThreePillarPreferences(supabase, nation, newTick);
+        } catch (pillarErr) {
+            console.error(`[advanceTick] Three-pillar prefs failed for ${nation.name} (non-fatal):`, pillarErr);
         }
 
-        // Faction loyalty (autocracy)
+        // Autocracy-specific per-tick processing (loyalty, pillars, stewards, standing, regime health, etc.)
         if (isAutocracy(nation)) {
-            await processLoyaltyTick(supabase, nation);
-        }
+            // Expire pending loyalty demands
+            try { await processLoyaltyDemandExpiry(supabase, nation, newTick); }
+            catch (e) { console.error(`[advanceTick] Loyalty demand expiry failed for ${nation.name} (non-fatal):`, e); }
 
-        // Regime pillars decay & bonus (autocracy)
-        if (isAutocracy(nation)) {
-            await processRegimePillars(supabase, nation);
-        }
+            // Faction loyalty
+            try { await processLoyaltyTick(supabase, nation); }
+            catch (e) { console.error(`[advanceTick] Loyalty tick failed for ${nation.name} (non-fatal):`, e); }
 
-        // Steward stats tick (autocracy)
-        if (isAutocracy(nation)) {
-            await processStewardTick(supabase, nation);
-        }
+            // Regime pillars decay & bonus
+            try { await processRegimePillars(supabase, nation); }
+            catch (e) { console.error(`[advanceTick] Regime pillars failed for ${nation.name} (non-fatal):`, e); }
 
-        // Standing relevance decay (autocracy v2)
-        if (isAutocracy(nation)) {
-            await processStandingTick(supabase, nation, newTick);
-        }
+            // Steward stats tick
+            try { await processStewardTick(supabase, nation); }
+            catch (e) { console.error(`[advanceTick] Steward tick failed for ${nation.name} (non-fatal):`, e); }
 
-        // Regime health tick (autocracy v2)
-        if (isAutocracy(nation)) {
-            await processRegimeHealthTick(supabase, nation, newTick);
-        }
+            // Standing relevance decay
+            try { await processStandingTick(supabase, nation, newTick); }
+            catch (e) { console.error(`[advanceTick] Standing tick failed for ${nation.name} (non-fatal):`, e); }
 
-        // Unaligned seat pool regeneration (autocracy v2)
-        if (isAutocracy(nation)) {
-            await processUnalignedPoolTick(supabase, nation, newTick);
-        }
+            // Regime health tick
+            try { await processRegimeHealthTick(supabase, nation, newTick); }
+            catch (e) { console.error(`[advanceTick] Regime health failed for ${nation.name} (non-fatal):`, e); }
 
-        // Secret coalition detection (autocracy)
-        if (isAutocracy(nation)) {
-            await processCoalitionDetection(supabase, nation, newTick);
+            // Unaligned seat pool regeneration
+            try { await processUnalignedPoolTick(supabase, nation, newTick); }
+            catch (e) { console.error(`[advanceTick] Unaligned pool failed for ${nation.name} (non-fatal):`, e); }
+
+            // Secret coalition detection
+            try { await processCoalitionDetection(supabase, nation, newTick); }
+            catch (e) { console.error(`[advanceTick] Coalition detection failed for ${nation.name} (non-fatal):`, e); }
         }
 
         // Auto-resolve shakeups that are 1+ ticks old
-        if (isAutocracy(nation)) {
-            await autoResolveStaleShakeups(supabase, nation.id, newTick);
+        try {
+            if (isAutocracy(nation)) {
+                await autoResolveStaleShakeups(supabase, nation.id, newTick);
+            }
+        } catch (shakeupErr) {
+            console.error(`[advanceTick] Shakeup auto-resolve failed for ${nation.name} (non-fatal):`, shakeupErr);
         }
 
         // Re-fetch nation with post-effect values for remaining processors
@@ -20200,21 +20234,33 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         if (freshNation) Object.assign(nation, freshNation);
 
         // Democratic revolution (autocracy only)
-        const revolutionResult = await processRevolution(supabase, nation, newTick);
-        if (revolutionResult) {
-            summary.revolutions = summary.revolutions || [];
-            summary.revolutions.push(revolutionResult);
+        try {
+            const revolutionResult = await processRevolution(supabase, nation, newTick);
+            if (revolutionResult) {
+                summary.revolutions = summary.revolutions || [];
+                summary.revolutions.push(revolutionResult);
+            }
+        } catch (revErr) {
+            console.error(`[advanceTick] Revolution processing failed for ${nation.name} (non-fatal):`, revErr);
         }
 
         // Random events
-        const eventResults = await processEvents(supabase, nation, newTick);
-        if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
+        try {
+            const eventResults = await processEvents(supabase, nation, newTick);
+            if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
+        } catch (eventErr) {
+            console.error(`[advanceTick] Random events failed for ${nation.name} (non-fatal):`, eventErr);
+        }
 
         // Process active fundraiser promises
-        const promiseResults = await processPromiseTick(supabase, nation, newTick);
-        if (promiseResults.length > 0) {
-            summary.promises = summary.promises || [];
-            summary.promises.push({ nation: nation.name, promises: promiseResults });
+        try {
+            const promiseResults = await processPromiseTick(supabase, nation, newTick);
+            if (promiseResults.length > 0) {
+                summary.promises = summary.promises || [];
+                summary.promises.push({ nation: nation.name, promises: promiseResults });
+            }
+        } catch (promiseErr) {
+            console.error(`[advanceTick] Promise processing failed for ${nation.name} (non-fatal):`, promiseErr);
         }
 
 
@@ -20230,17 +20276,25 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // Economic aid condition reviews (annual, at year boundaries)
-        const aidReviewResults = await processAidConditionReview(supabase, freshNation || nation, newTick);
-        if (aidReviewResults.length > 0) {
-            summary.aidReviews = summary.aidReviews || [];
-            summary.aidReviews.push({ nation: nation.name, reviews: aidReviewResults });
+        try {
+            const aidReviewResults = await processAidConditionReview(supabase, freshNation || nation, newTick);
+            if (aidReviewResults.length > 0) {
+                summary.aidReviews = summary.aidReviews || [];
+                summary.aidReviews.push({ nation: nation.name, reviews: aidReviewResults });
+            }
+        } catch (aidErr) {
+            console.error(`[advanceTick] Aid condition review failed for ${nation.name} (non-fatal):`, aidErr);
         }
 
         // Ambassador term limits (retirements + warnings)
-        const retirementResults = await processAmbassadorRetirements(supabase, freshNation || nation, newTick);
-        if (retirementResults.length > 0) {
-            summary.ambassadorRetirements = summary.ambassadorRetirements || [];
-            summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
+        try {
+            const retirementResults = await processAmbassadorRetirements(supabase, freshNation || nation, newTick);
+            if (retirementResults.length > 0) {
+                summary.ambassadorRetirements = summary.ambassadorRetirements || [];
+                summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
+            }
+        } catch (retireErr) {
+            console.error(`[advanceTick] Ambassador retirements failed for ${nation.name} (non-fatal):`, retireErr);
         }
 
         // ── Succession helper: updates HOS, syncs nation object, logs action ──
@@ -20383,6 +20437,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // ── Leader aging (every January — tick % 12 === 0) ──
         // All party leaders, stewards, and the strongman age 1 year.
         // The strongman also rolls health checks starting at age 70.
+        console.log(`[LeaderAging] ${nation.name}: tick=${newTick}, tick%12=${newTick % 12}, isJanuary=${newTick % 12 === 0}`);
         if (newTick % 12 === 0) {
             try {
                 const agingResults = [];
