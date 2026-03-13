@@ -3367,9 +3367,11 @@ async function renderWizardStep3TradeProposal() {
             const artLabel = TRADE_ARTICLE_TYPES[art.type]?.label || art.type;
             html += `
                 <div class="article-card" style="margin-bottom:6px;">
-                    <div class="article-card-type">Art. ${toRoman(i + 1)} — ${escapeHtml(artLabel)}</div>
+                    <div class="article-card-type">
+                        <span>Art. ${toRoman(i + 1)} — ${escapeHtml(artLabel)}</span>
+                        <span class="draft-article-remove" onclick="removeWizardTradeArticle(${i})">Remove</span>
+                    </div>
                     <div class="article-card-title" style="font-size:0.75rem;">${summary}</div>
-                    <button style="position:absolute;top:6px;right:8px;background:none;border:none;color:var(--red);cursor:pointer;font-size:0.7rem;" onclick="removeWizardTradeArticle(${i})">Remove</button>
                 </div>`;
         }
         html += '</div>';
@@ -7900,9 +7902,11 @@ function renderTradeAgreementDraftPanel(body, statusEl) {
             const artLabel = TRADE_ARTICLE_TYPES[art.type]?.label || art.type;
             html += `
                 <div class="draft-article">
-                    <div class="draft-article-type">Art. ${toRoman(i + 1)} — ${escapeHtml(artLabel)}</div>
+                    <div class="draft-article-type">
+                        <span>Art. ${toRoman(i + 1)} — ${escapeHtml(artLabel)}</span>
+                        <span class="draft-article-remove" onclick="removeDraftTradeArticle(${i})">Remove</span>
+                    </div>
                     <div class="draft-article-title" style="font-size:0.75rem;">${summary}</div>
-                    <button class="draft-article-remove" onclick="removeDraftTradeArticle(${i})">&#10005;</button>
                 </div>`;
         }
     }
