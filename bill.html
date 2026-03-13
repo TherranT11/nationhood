@@ -1806,8 +1806,7 @@ async function enactDecree() {
             passed_tick: null,
             votes_for: 0,
             votes_against: 0,
-            votes_abstain: 0,
-            quorum_failures: 0
+            votes_abstain: 0
         };
         const { error } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
         if (error) throw error;
