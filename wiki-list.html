@@ -34,7 +34,7 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { initWikiPage, renderWikiSearchBar, fetchPageList } from './js/wiki.js';
 
-const TEMPLATE_TYPES = ['nation', 'person', 'corporation', 'religion', 'culture'];
+const TEMPLATE_TYPES = ['nation', 'person', 'corporation', 'religion', 'culture', 'political_party', 'law', 'agreement', 'event', 'organization', 'military_unit', 'product', 'location'];
 
 (async () => {
     const state = await initWikiPage();
@@ -61,7 +61,7 @@ const TEMPLATE_TYPES = ['nation', 'person', 'corporation', 'religion', 'culture'
         });
 
         const filterBtns = ['all', ...TEMPLATE_TYPES].map(f => {
-            const label = f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1);
+            const label = f === 'all' ? 'All' : f.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
             return `<button class="wiki-filter-btn ${f === activeFilter ? 'active' : ''}" data-filter="${f}">${label}</button>`;
         }).join('');
 

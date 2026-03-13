@@ -2238,7 +2238,7 @@ function renderCabinet(ministries, coalition) {
         var title = MINISTRY_NAMES[key] || key;
 
         if (vacant) {
-            var appointBtn = canAppoint ? '<div class="ministry-actions"><button class="ministry-btn assign" onclick="openAssignModal(\'' + key + '\')">✦ Appoint <span class="ap-cost">1 AP</span></button></div>' : '';
+            var appointBtn = canAppoint ? '<div class="ministry-actions"><button class="ministry-btn assign" onclick="openAssignModal(\'' + key + '\')">✦ Appoint</button></div>' : '';
             return '<div class="ministry-card vacant">'
                 + '<div class="ministry-header"><div class="ministry-title">' + title + '</div></div>'
                 + '<div class="ministry-body"><div class="minister-name" style="color:var(--text-muted);">Vacant</div>' + appointBtn + '</div></div>';
@@ -2285,7 +2285,7 @@ function renderMinistryActions(key, isFilled, requests, ministry) {
         if (isFilled) {
             html += `<button class="ministry-btn purge" onclick="purgeMinister('${key}')" ${ap < 1 ? 'disabled title="Need 1 AP"' : ''}>⛔ Purge <span class="ap-cost">1 AP</span></button>`;
         } else {
-            html += `<button class="ministry-btn assign" onclick="openAssignModal('${key}')" ${ap < 1 ? 'disabled title="Need 1 AP"' : ''}>✦ Assign <span class="ap-cost">1 AP</span></button>`;
+            html += `<button class="ministry-btn assign" onclick="openAssignModal('${key}')">✦ Assign</button>`;
         }
         html += '</div>';
         if (requests.length > 0) {
@@ -2516,12 +2516,6 @@ function selectCandidate(index) {
 async function confirmAssign() {
     if (!selectedCandidate || !assignMinistryKey) return;
     try {
-        // Deduct 1 AP for filling a vacant ministry
-        if ((currentFaction?.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
-        const apResult = await deductAP(_supabase, currentFaction.id, 1);
-        if (!apResult.success) { alert('Not enough AP (need 1).'); return; }
-        currentFaction.action_points = apResult.newAp;
-
         // Validate vacancy before executing (prevents double-click / race condition)
         const { data: freshMinistry } = await _supabase.from('ministries')
             .select('minister_first_name')
