@@ -77,6 +77,10 @@ BEGIN
         WHERE f.nation_id = p_nation_id
           AND f.faction_type = 'party'
           AND f.abandoned_at IS NULL
+          AND (
+              f.last_seen_tick IS NULL
+              OR COALESCE((SELECT current_tick FROM shard WHERE name = 'Alpha Shard'), 0) - f.last_seen_tick < 12
+          )
     ) t;
 
     IF jsonb_array_length(v_parties) = 0 THEN

@@ -188,6 +188,11 @@ const GAME_CONFIG = {
     NEW_FACTION_MIN_SEATS: 8,
 };
 
+// ── Inactivity Penalties ──
+const INACTIVITY_TIER1_TICKS = 6;   // ≥6: crush momentum + approval each tick
+const INACTIVITY_TIER2_TICKS = 12;  // ≥12: 0 seats in next election (handled in run_election.sql)
+const INACTIVITY_TIER3_TICKS = 18;  // ≥18: auto-disband
+
 const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;
 const ENDORSEMENT_SWITCH_WINDOW_ERROR = `Endorsements can only be changed in the last ${ENDORSEMENT_SWITCH_WINDOW_TICKS} ticks before a presidential election.`;
 
@@ -10002,6 +10007,61 @@ async function rejectOwnNomination(supabase, billId, nomineePartyId) {
  * @param {object} nation   - Full nation row
  * @param {number} currentTick - The tick just committed
  */
+
+// ── Inactivity Penalty Processing ──
+// Tier 1 (≥6 ticks): crush momentum to 0 and approval to ~0 each tick
+// Tier 2 (≥12 ticks): 0 seats in next election (handled in run_election.sql)
+// Tier 3 (≥18 ticks): auto-disband via existing disbandParty()
+async function processInactivityPenalties(supabase, nation, currentTick) {
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, last_seen_tick, approval_rating')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party')
+        .is('abandoned_at', null);
+
+    for (const faction of (factions || [])) {
+        // Skip factions that haven't loaded a page yet (null = brand new, no penalty)
+        if (faction.last_seen_tick == null) continue;
+
+        const ticksInactive = currentTick - faction.last_seen_tick;
+        if (ticksInactive < INACTIVITY_TIER1_TICKS) continue;
+
+        // TIER 3 (≥18 ticks): Disband the party entirely
+        if (ticksInactive >= INACTIVITY_TIER3_TICKS) {
+            console.log(`[INACTIVITY] Disbanding faction ${faction.id} — inactive ${ticksInactive} ticks`);
+            try {
+                // Clear cooldown and survivor trait blocks for system-initiated disbands
+                await supabase.from('factions')
+                    .update({ disband_cooldown_until_tick: null })
+                    .eq('id', faction.id);
+                await supabase.from('head_of_government')
+                    .update({ trait_key: null })
+                    .eq('nation_id', nation.id)
+                    .eq('faction_id', faction.id)
+                    .eq('active', true)
+                    .eq('trait_key', 'survivor');
+                await disbandParty(supabase, nation.id, faction.id, currentTick);
+            } catch (err) {
+                console.error(`[INACTIVITY] Failed to disband faction ${faction.id}:`, err.message);
+            }
+            continue;
+        }
+
+        // TIER 1 (≥6 ticks): Crush momentum to 0 and approval by 99%
+        console.log(`[INACTIVITY] Draining faction ${faction.id} — inactive ${ticksInactive} ticks`);
+
+        await supabase.from('faction_bloc_approval')
+            .update({ momentum: 0 })
+            .eq('faction_id', faction.id);
+
+        const newApproval = Math.max(0, Math.floor((faction.approval_rating || 0) * 0.01));
+        await supabase.from('factions')
+            .update({ approval_rating: newApproval })
+            .eq('id', faction.id);
+    }
+}
+
 async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     if (isAutocracy(nation)) return;
 
@@ -20213,6 +20273,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         } catch (govAppErr) {
             console.error(`[advanceTick] Gov approval calc failed for ${nation.name} (non-fatal):`, govAppErr);
         }
+
+        // Inactivity penalties (before three-pillar recalc so crushed values take effect)
+        await processInactivityPenalties(supabase, nation, newTick);
 
         // Three-pillar voter preference recalculation
         try {
