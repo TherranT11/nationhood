@@ -1,5 +1,12 @@
 /* ===== WIKI STYLES ===== */
 
+/* Override dashboard body constraints so wiki pages can scroll */
+body:has(.wiki-container) {
+    height: auto;
+    min-height: 100vh;
+    overflow: auto;
+}
+
 /* ---------- LAYOUT ---------- */
 .wiki-container {
     max-width: 1100px;
