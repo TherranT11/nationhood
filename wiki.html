@@ -48,6 +48,47 @@ initPage('wiki', async (state) => {
             allPages = await fetchPageList(_supabase);
         } catch (_) {}
 
+        // Random "Explore" page — pick one random page with content
+        let exploreHtml = '';
+        if (allPages.length > 0) {
+            const randPage = allPages[Math.floor(Math.random() * allPages.length)];
+            try {
+                const { data: full } = await _supabase
+                    .from('wiki_pages')
+                    .select('id, slug, title, body, template_type, template_data, infobox_image')
+                    .eq('id', randPage.id)
+                    .single();
+                if (full) {
+                    const infobox = renderInfobox(full);
+                    // Strip tags, take first ~600 chars for preview
+                    const rawBody = (full.body || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                    const previewText = rawBody.length > 600 ? rawBody.slice(0, 600) + '…' : rawBody;
+                    // Extract first image from body HTML
+                    const imgMatch = (full.body || '').match(/<img[^>]+src="([^"]+)"/);
+                    const bodyImg = imgMatch ? `<img src="${imgMatch[1]}" alt="" style="max-width:100%;max-height:200px;border-radius:4px;margin-bottom:10px;">` : '';
+                    exploreHtml = `
+                    <div class="wiki-home-section">
+                        <div class="wiki-home-card">
+                            <div class="wiki-home-card-title" style="display:flex;align-items:center;justify-content:space-between;">
+                                <span>Explore Nationhood</span>
+                                <a href="wiki.html?slug=${encodeURIComponent(full.slug)}" class="wiki-btn" style="font-size:9px;padding:3px 10px;margin:0;">Read Full Page</a>
+                            </div>
+                            <div class="wiki-home-card-body" style="padding:0;">
+                                <div style="display:flex;gap:0;">
+                                    ${infobox ? `<div class="wiki-explore-sidebar" style="flex:0 0 200px;border-right:1px solid var(--border-color);padding:14px;font-size:12px;">${infobox}</div>` : ''}
+                                    <div style="flex:1;padding:16px;overflow:hidden;">
+                                        <a href="wiki.html?slug=${encodeURIComponent(full.slug)}" style="color:var(--accent);font-weight:700;font-size:15px;text-decoration:none;">${escapeHtml(full.title)}</a>
+                                        ${bodyImg}
+                                        <p style="color:var(--text-secondary);font-size:12.5px;line-height:1.6;margin-top:8px;">${escapeHtml(previewText)}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+                }
+            } catch (_) {}
+        }
+
         // Important pages = pages with a template type
         const importantPages = allPages.filter(p => p.template_type);
         // Recent pages = last 10 updated
@@ -100,6 +141,8 @@ initPage('wiki', async (state) => {
                     </div>
                 </div>
             </div>
+
+            ${exploreHtml}
 
             <div class="wiki-home-columns">
                 <div class="wiki-home-section">
