@@ -1283,6 +1283,34 @@ function _getInstFundingPct(instId) {
     return 100; // default fully funded when no allocation data
 }
 
+function _computeInstitutionBaseCost(instId) {
+    const ia = (window._itemAllocations || {})[instId];
+    if (ia && ia.needed > 0) {
+        return Number(ia.needed);
+    }
+    const cfg = (window._instConfig || []).find(i => i.id === instId);
+    if (!cfg || !currentNation) return 0;
+    const inflationMult = getInflationMultiplier(currentNation.inflation);
+    const baseVal = Number(cfg.base_cost_per_capita || 0);
+    if ((cfg.scaling_type || 'population') === 'gdp') {
+        return (baseVal / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0) * inflationMult;
+    }
+    return baseVal * Number(currentNation.population || 0) * inflationMult;
+}
+
+function _calculateFundingArticleOngoingCost(fundingData) {
+    let ongoingCost = 0;
+    for (const inst of (fundingData?.institutions || [])) {
+        const fromPct = Number(inst.current_pct || 0);
+        const toPct = Number(inst.proposed_pct || 0);
+        if (fromPct === toPct) continue;
+        const baseCost = Number((inst.base_cost ?? _computeInstitutionBaseCost(inst.id)) || 0);
+        ongoingCost += ((toPct - fromPct) / 100) * baseCost;
+    }
+    ongoingCost += Number(fundingData?.discretionary || 0);
+    return ongoingCost;
+}
+
 function showFundingArticleForm() {
     _hideAllArticleButtons(); _hideAllArticleForms();
     document.getElementById('add-funding-article-form').style.display = 'block';
@@ -1364,12 +1392,29 @@ function addFundingArticle() {
         const slider = document.getElementById('funding-slider-' + inst.id);
         const proposedPct = parseInt(slider.value);
         const currentPct = _getInstFundingPct(inst.id);
-        instLevels.push({ id: inst.id, name: inst.name, current_pct: currentPct, proposed_pct: proposedPct });
+        instLevels.push({
+            id: inst.id,
+            name: inst.name,
+            current_pct: currentPct,
+            proposed_pct: proposedPct,
+            base_cost: _computeInstitutionBaseCost(inst.id)
+        });
         if (proposedPct !== currentPct) anyChange = true;
     }
 
     const discretionary = parseInt(document.getElementById('funding-discretionary').value) || 0;
     if (!anyChange && discretionary <= 0) { alert('No funding changes made. Adjust at least one institution or add discretionary funds.'); return; }
+
+    const fundingSignature = JSON.stringify({ key, institutions: instLevels, discretionary: discretionary > 0 ? discretionary : null });
+    const isDuplicateFunding = draftArticles.some(a => a.isFunding && JSON.stringify({
+        key: a.fundingData?.ministry_key,
+        institutions: a.fundingData?.institutions || [],
+        discretionary: a.fundingData?.discretionary ?? null
+    }) === fundingSignature);
+    if (isDuplicateFunding) {
+        alert('This funding article is already in the bill draft.');
+        return;
+    }
 
     draftArticles.push({
         articleNumber: draftArticles.length + 2,
@@ -1382,6 +1427,8 @@ function addFundingArticle() {
             discretionary: discretionary > 0 ? discretionary : null
         }
     });
+    const fundingArticle = draftArticles[draftArticles.length - 1];
+    console.log('Funding article added:', JSON.stringify(fundingArticle, null, 2));
     renderDraftArticles();
     hideFundingArticleForm();
     if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
@@ -1630,11 +1677,18 @@ function renderDraftArticles() {
             const hasIncrease = changes.some(i => i.proposed_pct > i.current_pct);
             const hasDecrease = changes.some(i => i.proposed_pct < i.current_pct);
             const borderColor = hasDecrease ? '#ef4444' : hasIncrease ? '#22c55e' : '#2196F3';
+            const ongoingCost = _calculateFundingArticleOngoingCost(fd);
+            const budgetImpact = ongoingCost < 0
+                ? `<div style="margin-top:4px;font-size:0.8rem;color:#4CAF50;font-weight:600;">Savings: $${Math.round(Math.abs(ongoingCost))}M/mo</div>`
+                : ongoingCost > 0
+                    ? `<div style="margin-top:4px;font-size:0.8rem;color:#ff9800;font-weight:600;">Cost: +$${Math.round(ongoingCost)}M/mo</div>`
+                    : '<div style="margin-top:4px;font-size:0.8rem;color:#888;">Cost: $0/mo</div>';
             return `<div class="draft-article-card" style="border-left:3px solid ${borderColor};">
                 <div class="draft-article-info">
                     <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:${borderColor};">Funding</span></div>
                     <div class="draft-article-name">${escapeHtml(fd.ministry_label)} Ministry Funding</div>
                     <div class="draft-article-meta">${summaryParts.map(s => escapeHtml(s)).join('<br>')}</div>
+                    ${budgetImpact}
                 </div>
                 <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
             </div>`;
