@@ -1705,7 +1705,7 @@ function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIde
     // Pre-compute party positions on 0-100 scale
     const partyPositions = {};
     for (const ax of IDEOLOGY_AXES) {
-        partyPositions[ax.key] = Math.round(50 + Number(playerIdeo[ax.key] ?? 0));
+        partyPositions[ax.key] = Math.round((Number(playerIdeo[ax.key] ?? 0) + 100) / 2);
     }
 
     // Bloc dropdown options — sorted by preference descending

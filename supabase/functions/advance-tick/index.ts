@@ -10178,9 +10178,9 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
             let maxConvictionBonus = 0;
             for (const [axisKey, stacks] of Object.entries(convictions)) {
                 if (!stacks || stacks <= 0) continue;
-                const partyVal = ideo[axisKey] || 0; // -50 to +50
+                const partyVal = ideo[axisKey] || 0; // -100 to +100
                 const blocVal = bloc['axis_' + axisKey] ?? 50; // 0 to 100
-                const partyNorm = 50 + partyVal; // map to 0-100
+                const partyNorm = (partyVal + 100) / 2; // map -100..+100 to 0..100
                 const distance = Math.abs(partyNorm - blocVal);
                 // Bloc must be aligned (within 30 points) for conviction to help
                 if (distance <= 30) {
