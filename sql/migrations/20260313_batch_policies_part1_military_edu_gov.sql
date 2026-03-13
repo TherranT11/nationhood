@@ -138,12 +138,12 @@ FROM unnest(ARRAY[v_me, v_sa]) AS nid WHERE nid IS NOT NULL;
 
 -- Link opposed: "Independent Judicial Review"
 UPDATE policies
-SET opposed_policy_ids = COALESCE(opposed_policy_ids, '[]'::jsonb) || jsonb_build_array(v_policy_id::text)
+SET opposed_policy_ids = array_append(COALESCE(opposed_policy_ids, ARRAY[]::uuid[]), v_policy_id)
 WHERE LOWER(policy_name) = 'independent judicial review';
 
 UPDATE policies
 SET opposed_policy_ids = (
-    SELECT jsonb_agg(p2.id::text)
+    SELECT array_agg(p2.id)
     FROM policies p2
     WHERE LOWER(p2.policy_name) = 'independent judicial review'
 )
