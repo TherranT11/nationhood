@@ -477,6 +477,7 @@ async function renderPartyTab(f, nation, data) {
         initEditIdentityBox(f);
         initElectionResultsBox();
         initBlocAlignment();
+        initIdeologyToggle();
     } else {
         // Wire up autocracy steward claim buttons
         initAutocracyStewardClaims(f, nation, stewardRows, regimePillars);
@@ -1247,9 +1248,9 @@ function renderIdeologyBox(allParties, allPartyIdeologies, playerFactionId) {
         ideo: ideoMap[p.id] || {}
     }));
 
-    // Party legend
+    // Party legend (clickable to toggle visibility)
     const legendHtml = partyData.map(p =>
-        `<div class="pol-ideo-legend-item">
+        `<div class="pol-ideo-legend-item" data-ideo-party="${p.id}" title="Click to toggle">
             <div class="pol-ideo-legend-dot" style="background:${p.color}"></div>
             <span class="pol-ideo-legend-abbr" style="color:${p.color}">${escapeHtml(p.abbr)}</span>
             ${p.isPlayer ? '<span class="pol-ideo-legend-you">YOU</span>' : ''}
@@ -1275,7 +1276,7 @@ function renderIdeologyBox(allParties, allPartyIdeologies, playerFactionId) {
         const markersHtml = partyData.map(p => {
             const rawVal = Number(p.ideo[ax.key] ?? 0); // -100 to +100
             const pos = (rawVal + 100) / 2; // normalize to 0–100
-            return `<div class="pol-ideo-marker" style="left:${pos}%;width:10px;height:10px;background:${p.color}"></div>`;
+            return `<div class="pol-ideo-marker" data-ideo-party="${p.id}" style="left:${pos}%;width:10px;height:10px;background:${p.color}"></div>`;
         }).join('');
 
         return `<div>
@@ -1307,7 +1308,7 @@ function renderIdeologyBox(allParties, allPartyIdeologies, playerFactionId) {
             stances.push(`<span style="color:${zoneColor}">${zone}</span> ${escapeHtml(side)}`);
         }
         if (stances.length === 0) return '';
-        return `<div class="pol-ideo-summary-row">
+        return `<div class="pol-ideo-summary-row" data-ideo-party="${p.id}">
             <span class="pol-ideo-summary-abbr" style="color:${p.color}">${escapeHtml(p.abbr)}:</span>
             <span class="pol-ideo-summary-stances">${stances.join(', ')}</span>
         </div>`;
@@ -1323,6 +1324,23 @@ function renderIdeologyBox(allParties, allPartyIdeologies, playerFactionId) {
             <div class="pol-ideo-axes">${axesHtml}</div>
             ${summariesHtml ? `<div class="pol-ideo-summaries">${summariesHtml}</div>` : ''}
         </div>`;
+}
+
+function initIdeologyToggle() {
+    const box = document.querySelector('.pol-ideology-box');
+    if (!box) return;
+    box.querySelectorAll('.pol-ideo-legend-item[data-ideo-party]').forEach(item => {
+        item.addEventListener('click', () => {
+            const pid = item.getAttribute('data-ideo-party');
+            const hidden = item.classList.toggle('ideo-hidden');
+            box.querySelectorAll(`.pol-ideo-marker[data-ideo-party="${pid}"]`).forEach(m => {
+                m.style.display = hidden ? 'none' : '';
+            });
+            box.querySelectorAll(`.pol-ideo-summary-row[data-ideo-party="${pid}"]`).forEach(s => {
+                s.style.display = hidden ? 'none' : '';
+            });
+        });
+    });
 }
 
 function renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, playerFactionId) {

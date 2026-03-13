@@ -663,10 +663,15 @@
     border-radius: 3px;
     background: rgba(255,255,255,0.02);
     border: 1px solid var(--dborder-0);
-    cursor: default;
+    cursor: pointer;
+    user-select: none;
+    transition: opacity 0.15s;
 }
 .pol-ideo-legend-item:hover {
     border-color: rgba(255,255,255,0.12);
+}
+.pol-ideo-legend-item.ideo-hidden {
+    opacity: 0.3;
 }
 .pol-ideo-legend-dot {
     width: 8px;
