@@ -3701,8 +3701,20 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
             }).eq('agreement_id', agreement.id);
         }
 
-        // Notify both nations
-        await fireBilateralEvent(supabase, 'trade_agreement_expired', agreement.nation_a_id, agreement.nation_b_id, currentTick, { agreement_name: agreement.agreement_name || 'Agreement' });
+        // Notify nations (unilateral agreements only notify nation_a)
+        if (agreement.nation_b_id) {
+            await fireBilateralEvent(supabase, 'trade_agreement_expired', agreement.nation_a_id, agreement.nation_b_id, currentTick, { agreement_name: agreement.agreement_name || 'Agreement' });
+        } else {
+            try {
+                await supabase.from('event_log').insert({
+                    nation_id: agreement.nation_a_id,
+                    event_name: (agreement.agreement_name || 'Agreement') + ' Expired',
+                    category: 'Trade',
+                    description_chosen: 'Your ' + (agreement.agreement_name || 'trade agreement') + ' has expired.',
+                    fired_at_tick: currentTick
+                });
+            } catch (e) { /* non-blocking */ }
+        }
 
         results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type });
         console.log(`[processExpiredTradeAgreements] Expired: ${agreement.agreement_name} (${agreement.agreement_type})`);

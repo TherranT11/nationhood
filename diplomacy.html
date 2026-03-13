@@ -3042,17 +3042,7 @@ function renderWizardStep2() {
         </div>
     `;
 
-    // Unilateral Actions category
-    html += `
-        <div class="type-card" data-category="unilateral" onclick="wizardSelectCategory('unilateral')">
-            <div class="type-card-title" style="color:#ef4444;">Unilateral Action</div>
-            <div class="type-card-desc">Impose retaliatory tariffs on a specific nation's imports. No negotiation required — your parliament ratifies.</div>
-            <div class="type-card-effects">
-                <span class="trade-type-tag unilateral">UNILATERAL</span>
-                <span class="trade-type-tag" style="background:rgba(239,68,68,0.08);color:#ef4444;border:1px solid rgba(239,68,68,0.2);">TARGETED</span>
-            </div>
-        </div>
-    `;
+    // Unilateral actions (Retaliatory Tariff, Export Subsidy) are accessed via MoT draft panels, not the wizard
 
     html += '</div>';
     html += `<div class="wizard-nav">
@@ -4309,7 +4299,7 @@ async function openTradeNegotiation(negotiationId) {
         html += '<div class="trade-type-grid">';
 
         for (const [key, tInfo] of Object.entries(TRADE_AGREEMENT_TYPES)) {
-            // Skip unilateral-only types (retaliatory tariff) — those use a separate flow
+            // Skip unilateral-only types (retaliatory tariff, export subsidy) — those use MoT draft panels
             if (tInfo.category === 'unilateral') continue;
             const tIconHtml = TRADE_TYPE_ICONS[tInfo.icon] || '';
             html += `
@@ -4886,6 +4876,7 @@ function selectRadioOption(label) {
     label.closest('.trade-radio-group').querySelectorAll('.trade-radio-option').forEach(el => el.classList.remove('selected'));
     label.classList.add('selected');
 }
+window.selectRadioOption = selectRadioOption;
 
 function selectDurationType(label, value) {
     selectRadioOption(label);
@@ -8062,6 +8053,7 @@ async function submitRTDraft() {
     const apCost = 2;
     const targetId = activeDraftTarget?.id;
     const targetName = activeDraftTarget?.name || 'Unknown';
+    if (!targetId) { alert('Select a target nation.'); if (btn) btn.disabled = false; return; }
 
     const apResult = await deductAP(_supabase, currentFaction.id, apCost);
     if (!apResult.success) {
