@@ -3364,14 +3364,18 @@ async function renderWizardStep3TradeProposal() {
         for (let i = 0; i < tradeArticles.length; i++) {
             const art = tradeArticles[i];
             const summary = renderTradeArticleSummary(art);
-            const artLabel = TRADE_ARTICLE_TYPES[art.type]?.label || art.type;
+            const artTypeInfo = TRADE_ARTICLE_TYPES[art.type];
+            const artLabel = artTypeInfo?.label || art.type;
+            const artDesc = artTypeInfo?.description || '';
+            const isRequired = (typeInfo.required_articles || []).includes(art.type);
             html += `
-                <div class="article-card" style="margin-bottom:6px;">
-                    <div class="article-card-type">
-                        <span>Art. ${toRoman(i + 1)} — ${escapeHtml(artLabel)}</span>
+                <div class="draft-article">
+                    <div class="draft-article-type">
+                        <span>Art. ${toRoman(i + 1)} — ${escapeHtml(artLabel)} ${isRequired ? '<span class="badge badge--teal" style="margin-left:4px;">Required</span>' : '<span class="badge badge--dim" style="margin-left:4px;">Optional</span>'}</span>
                         <span class="draft-article-remove" onclick="removeWizardTradeArticle(${i})">Remove</span>
                     </div>
-                    <div class="article-card-title" style="font-size:0.75rem;">${summary}</div>
+                    <div class="draft-article-title" style="font-size:0.75rem;">${summary}</div>
+                    <div class="draft-article-body">${escapeHtml(artDesc)}</div>
                 </div>`;
         }
         html += '</div>';
@@ -7899,14 +7903,18 @@ function renderTradeAgreementDraftPanel(body, statusEl) {
         for (let i = 0; i < tradeArticles.length; i++) {
             const art = tradeArticles[i];
             const summary = renderTradeArticleSummary(art);
-            const artLabel = TRADE_ARTICLE_TYPES[art.type]?.label || art.type;
+            const artTypeInfo = TRADE_ARTICLE_TYPES[art.type];
+            const artLabel = artTypeInfo?.label || art.type;
+            const artDesc = artTypeInfo?.description || '';
+            const isRequired = (typeInfo.required_articles || []).includes(art.type);
             html += `
                 <div class="draft-article">
                     <div class="draft-article-type">
-                        <span>Art. ${toRoman(i + 1)} — ${escapeHtml(artLabel)}</span>
+                        <span>Art. ${toRoman(i + 1)} — ${escapeHtml(artLabel)} ${isRequired ? '<span class="badge badge--teal" style="margin-left:4px;">Required</span>' : '<span class="badge badge--dim" style="margin-left:4px;">Optional</span>'}</span>
                         <span class="draft-article-remove" onclick="removeDraftTradeArticle(${i})">Remove</span>
                     </div>
                     <div class="draft-article-title" style="font-size:0.75rem;">${summary}</div>
+                    <div class="draft-article-body">${escapeHtml(artDesc)}</div>
                 </div>`;
         }
     }

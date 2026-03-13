@@ -586,6 +586,7 @@
 .draft-article {
   background: var(--bg-3);
   border: 1px solid var(--border-hair);
+  border-left: 3px solid var(--teal);
   margin-bottom: 8px;
   padding: 10px 12px;
 }
