@@ -3548,13 +3548,15 @@ function saveWizardTradeArticle(articleType) {
             break;
         }
         case 'aid_terms': {
+            const aidDir = document.querySelector('input[name="aid-direction"]:checked')?.value || 'provide';
+            const donorId = aidDir === 'provide' ? currentNation.id : (activeDraftTarget?.id || wizardTargetNation);
             const amount = Number(document.getElementById('aid-amount')?.value || 0);
             const gdpCap = Math.min(25, Math.max(1, parseInt(document.getElementById('aid-gdp-cap')?.value || '10')));
             if (amount < DIPLOMACY_CONFIG.AID_MIN_AMOUNT) {
                 alert('Minimum aid amount is $' + (DIPLOMACY_CONFIG.AID_MIN_AMOUNT / 1e9).toFixed(0) + 'B.');
                 return;
             }
-            articleData = { donor_nation_id: currentNation.id, annual_amount: amount, gdp_cap_pct: gdpCap };
+            articleData = { donor_nation_id: donorId, aid_direction: aidDir, annual_amount: amount, gdp_cap_pct: gdpCap };
             break;
         }
         case 'aid_condition': {
@@ -4812,7 +4814,8 @@ function renderTradeArticleSummary(article) {
             const d = article.data || {};
             const amt = Number(d.annual_amount || 0);
             const amtLabel = amt >= 1e9 ? '$' + (amt / 1e9).toFixed(1) + 'B' : amt >= 1e6 ? '$' + (amt / 1e6).toFixed(0) + 'M' : '$' + amt.toLocaleString();
-            return 'Annual aid: ' + amtLabel + ' (GDP cap: ' + (d.gdp_cap_pct || 10) + '%)';
+            const dirLabel = d.aid_direction === 'request' ? 'We receive' : 'We provide';
+            return dirLabel + ': ' + amtLabel + '/yr (GDP cap: ' + (d.gdp_cap_pct || 10) + '%)';
         }
         case 'aid_condition': {
             const d = article.data || {};
@@ -5449,7 +5452,28 @@ function renderTextArticleEditor() {
 
 // ── Aid Terms Editor ──
 function renderAidTermsEditor() {
+    const targetName = activeDraftTarget?.name || 'the other nation';
+    const ourName = currentNation?.name || 'Our nation';
     return `
+        <div class="trade-field">
+            <label>Direction</label>
+            <div class="trade-radio-group" style="margin-bottom:6px;">
+                <label class="trade-radio-option selected" onclick="selectRadioOption(this)">
+                    <input type="radio" name="aid-direction" value="provide" checked />
+                    <div>
+                        <div class="trade-radio-label">We Provide Aid</div>
+                        <div class="trade-radio-hint">${escapeHtml(ourName)} sends funds to ${escapeHtml(targetName)}</div>
+                    </div>
+                </label>
+                <label class="trade-radio-option" onclick="selectRadioOption(this)">
+                    <input type="radio" name="aid-direction" value="request" />
+                    <div>
+                        <div class="trade-radio-label">We Request Aid</div>
+                        <div class="trade-radio-hint">${escapeHtml(targetName)} sends funds to ${escapeHtml(ourName)}</div>
+                    </div>
+                </label>
+            </div>
+        </div>
         <div class="trade-field">
             <label>Annual Aid Amount ($)</label>
             <input type="number" id="aid-amount" value="10000000000" min="1000000000" step="1000000000" oninput="(function(inp){ var disp=document.getElementById('aid-amount-display'); var v=Number(inp.value||0); disp.textContent=v>=1e9?' = $'+(v/1e9).toFixed(1)+'B':v>=1e6?' = $'+(v/1e6).toFixed(0)+'M':''; })(this)" />
@@ -5470,7 +5494,7 @@ function renderAidTermsEditor() {
             </div>
         </div>
         <div class="trade-info-box info">
-            The donor/recipient direction was set when the negotiation was proposed. Both parliaments must ratify the agreement.
+            Both parliaments must ratify the agreement. The other party can counter-propose to change the direction or terms.
         </div>
     `;
 }
@@ -5687,17 +5711,16 @@ async function saveTradeArticle(negotiationId, articleType) {
             break;
         }
         case 'aid_terms': {
+            const aidDir = document.querySelector('input[name="aid-direction"]:checked')?.value || 'provide';
             const amount = Number(document.getElementById('aid-amount')?.value || 0);
             const gdpCap = Math.min(25, Math.max(1, parseInt(document.getElementById('aid-gdp-cap')?.value || '10')));
             if (amount < DIPLOMACY_CONFIG.AID_MIN_AMOUNT) {
                 alert('Minimum aid amount is $' + (DIPLOMACY_CONFIG.AID_MIN_AMOUNT / 1e9).toFixed(0) + 'B.');
                 return;
             }
-            // Fetch existing aid_terms to get the donor_nation_id (set at proposal time)
-            const { data: existingNeg } = await _supabase.from('trade_negotiations').select('draft_articles').eq('id', negotiationId).single();
-            const existingTerms = (existingNeg?.draft_articles || []).find(a => a.type === 'aid_terms');
-            const donorId = existingTerms?.data?.donor_nation_id || currentNation.id;
-            articleData = { donor_nation_id: donorId, annual_amount: amount, gdp_cap_pct: gdpCap };
+            // Determine donor based on direction selector
+            const donorId = aidDir === 'provide' ? currentNation.id : (activeDraftTarget?.id || wizardTargetNation);
+            articleData = { donor_nation_id: donorId, aid_direction: aidDir, annual_amount: amount, gdp_cap_pct: gdpCap };
             break;
         }
         case 'aid_condition': {
@@ -6578,13 +6601,15 @@ function saveCounterTradeArticle(articleType, proposalId) {
             break;
         }
         case 'aid_terms': {
+            const aidDir = document.querySelector('input[name="aid-direction"]:checked')?.value || 'provide';
+            const donorId = aidDir === 'provide' ? currentNation.id : (activeDraftTarget?.id || wizardTargetNation);
             const amount = Number(document.getElementById('aid-amount')?.value || 0);
             const gdpCap = Math.min(25, Math.max(1, parseInt(document.getElementById('aid-gdp-cap')?.value || '10')));
             if (amount < DIPLOMACY_CONFIG.AID_MIN_AMOUNT) {
                 alert('Minimum aid amount is $' + (DIPLOMACY_CONFIG.AID_MIN_AMOUNT / 1e9).toFixed(0) + 'B.');
                 return;
             }
-            articleData = { donor_nation_id: currentNation.id, annual_amount: amount, gdp_cap_pct: gdpCap };
+            articleData = { donor_nation_id: donorId, aid_direction: aidDir, annual_amount: amount, gdp_cap_pct: gdpCap };
             break;
         }
         case 'aid_condition': {
