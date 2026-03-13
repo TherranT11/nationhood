@@ -308,7 +308,16 @@ async function loadBillData() {
                 if (proposal) {
                     const { data: propNation } = await _supabase.from('nations').select('id, name').eq('id', proposal.proposing_nation_id).single();
                     const { data: targNation } = await _supabase.from('nations').select('id, name').eq('id', proposal.target_nation_id).single();
-                    ratificationData = { kind: 'diplomatic', proposal, proposerName: propNation?.name || 'Unknown', targetName: targNation?.name || 'Unknown' };
+                    const isNationA = bill.nation_id === proposal.proposing_nation_id;
+                    ratificationData = {
+                        kind: 'diplomatic',
+                        proposal,
+                        proposerName: propNation?.name || 'Unknown',
+                        targetName: targNation?.name || 'Unknown',
+                        nationA: propNation,
+                        nationB: targNation,
+                        isNationA
+                    };
                 }
             } else if (bill.trade_negotiation_id) {
                 const { data: neg } = await _supabase
@@ -1158,9 +1167,18 @@ function renderRatificationBill() {
             articles.forEach((art, i) => {
                 const isStruck = struck.has(i);
                 const numeral = ROMAN[i] || (i + 1);
+                const isStructuredTradeArticle = !!(art && art.type && art.data && typeof art.data === 'object');
+                const artTypeInfo = isStructuredTradeArticle ? (TRADE_ARTICLE_TYPES[art.type] || {}) : {};
+                const typeLabel = artTypeInfo.label || (isStructuredTradeArticle ? (art.type || 'Provision') : '');
+                const descriptionHtml = isStructuredTradeArticle
+                    ? renderTradeArticleDescription(art, rd)
+                    : escapeHtml(art.text || '');
                 html += '<div class="article' + (isStruck ? ' struck-article' : '') + '">' +
-                    '<div class="article-number">Article ' + numeral + (isStruck ? ' <span style="color:#ff4444;font-size:0.7rem;">STRUCK</span>' : '') + '</div>' +
-                    '<div class="article-description" style="white-space:pre-wrap;">' + escapeHtml(art.text || '') + '</div>';
+                    '<div class="article-number">Article ' + numeral +
+                        (typeLabel ? ' <span style="color:#0288D1;font-size:0.7rem;">' + escapeHtml(typeLabel.toUpperCase()) + '</span>' : '') +
+                        (isStruck ? ' <span style="color:#ff4444;font-size:0.7rem;">STRUCK</span>' : '') +
+                    '</div>' +
+                    '<div class="article-description"' + (isStructuredTradeArticle ? '' : ' style="white-space:pre-wrap;"') + '>' + descriptionHtml + '</div>';
                 // Show per-article impact if available
                 const impactParts = [];
                 if (art.relations && art.relations !== 0) impactParts.push('Relations: ' + (art.relations > 0 ? '+' : '') + art.relations);
