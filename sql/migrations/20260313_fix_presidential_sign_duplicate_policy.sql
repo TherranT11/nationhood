@@ -1,6 +1,6 @@
--- Sign a bill on the president's desk atomically.
--- Validates bill state + signer authorization, applies enactment effects,
--- and transitions bill state in one transaction.
+-- Fix: "ON CONFLICT DO UPDATE command cannot affect row a second time"
+-- when signing a bill that has multiple articles referencing the same policy_id.
+-- Uses DISTINCT ON to deduplicate before the INSERT.
 
 CREATE OR REPLACE FUNCTION sign_presidential_bill(
     p_bill_id UUID
@@ -44,7 +44,7 @@ BEGIN
     FROM presidents p
     WHERE p.nation_id = v_bill.nation_id
       AND p.is_active = true
-    ORDER BY p.elected_tick DESC NULLS LAST
+    ORDER BY p.sworn_in_tick DESC NULLS LAST
     LIMIT 1;
 
     IF v_president_faction IS NULL THEN
@@ -100,7 +100,7 @@ BEGIN
 
     -- Activate all policy-backed articles (deduplicate to avoid
     -- "ON CONFLICT DO UPDATE cannot affect row a second time" when a
-    -- bill contains multiple articles referencing the same policy).
+    -- bill contains multiple articles referencing the same policy_id).
     INSERT INTO active_laws (
         nation_id,
         policy_id,
