@@ -20463,6 +20463,44 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             newAge
                         });
                     }
+
+                    // 1b. Sync PM age in head_of_government (democracy)
+                    // The PM record copies faction leader age at appointment but never updates.
+                    const factionIdToAge = {};
+                    for (const f of partyFactions) {
+                        factionIdToAge[f.id] = (f.leader_age || 40) + 1;
+                    }
+                    const { data: activeHog } = await supabase
+                        .from('head_of_government')
+                        .select('id, faction_id')
+                        .eq('nation_id', nation.id)
+                        .eq('active', true)
+                        .maybeSingle();
+                    if (activeHog && factionIdToAge[activeHog.faction_id]) {
+                        await supabase.from('head_of_government')
+                            .update({ age: factionIdToAge[activeHog.faction_id] })
+                            .eq('id', activeHog.id);
+                    }
+
+                    // 1c. Age all active ministers +1
+                    const { data: activeMinistries } = await supabase
+                        .from('ministries')
+                        .select('id, minister_age')
+                        .eq('nation_id', nation.id)
+                        .not('minister_age', 'is', null);
+                    if (activeMinistries && activeMinistries.length > 0) {
+                        for (const m of activeMinistries) {
+                            const newMinAge = (m.minister_age || 40) + 1;
+                            await supabase.from('ministries')
+                                .update({ minister_age: newMinAge })
+                                .eq('id', m.id);
+                        }
+                        agingResults.push({
+                            type: 'ministers',
+                            count: activeMinistries.length,
+                            nation: nation.name
+                        });
+                    }
                 }
 
                 // 2. Age all living stewards +1 (autocracy)
