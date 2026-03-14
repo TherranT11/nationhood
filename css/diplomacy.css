@@ -1634,6 +1634,16 @@
 }
 .initiative-article--struck .initiative-article-type { color: var(--red); }
 
+/* ── Initiative articles inside agreement cards ── */
+.agreement-card-terms .initiative-article:last-child {
+  margin-bottom: 0;
+}
+.agreement-card-effects .article-effects {
+  margin: 0;
+  padding: 0;
+  border-top: none;
+}
+
 /* ── Config Fields Inside Articles ── */
 .config-grid {
   display: flex;

@@ -668,32 +668,77 @@ async function renderAgreementsTab() {
 
             // Active articles and effects
             let totalRel = 0, totalMoney = 0;
+            const hasV2Articles = articles.some(a => a.type && INITIATIVE_ARTICLE_TYPES && INITIATIVE_ARTICLE_TYPES[a.type]);
             const termsHTML = articles.map((art, i) => {
                 const isStruck = struckIndices.has(i);
-                if (!isStruck) {
-                    totalRel += art.relations || 0;
-                    totalMoney += art.money || 0;
+                const isV2Art = art.type && INITIATIVE_ARTICLE_TYPES && INITIATIVE_ARTICLE_TYPES[art.type];
+
+                if (isV2Art) {
+                    const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type];
+                    const cardClass = isStruck ? 'initiative-article initiative-article--struck' : 'initiative-article';
+                    let artHtml = '<div class="' + cardClass + '">';
+                    artHtml += '<div class="initiative-article-head">';
+                    artHtml += '<div><span class="initiative-article-num">Art. ' + toRoman(i + 1) + '</span> ';
+                    artHtml += '<span class="initiative-article-type">' + escapeHtml(typeInfo.label).toUpperCase();
+                    if (isStruck) artHtml += ' — STRUCK';
+                    artHtml += '</span></div></div>';
+                    if (typeInfo.description && !isStruck) {
+                        artHtml += '<div class="initiative-article-title">' + escapeHtml(typeInfo.description) + '</div>';
+                    }
+                    if (art.config && !isStruck) {
+                        artHtml += '<div style="margin:4px 0 2px;">' + renderArticleConfigSummary(art) + '</div>';
+                    }
+                    if (!isStruck) {
+                        if (art.effects) {
+                            artHtml += renderEffectTagsFromEffects(art.effects, art.type);
+                        } else {
+                            const effects = computeArticleEffects(art);
+                            artHtml += renderEffectTags(effects, art.type);
+                        }
+                    }
+                    artHtml += '</div>';
+                    return artHtml;
+                } else {
+                    // v1 fallback
+                    if (!isStruck) {
+                        totalRel += art.relations || 0;
+                        totalMoney += art.money || 0;
+                    }
+                    const artLabel = art.text || art.label || art.type || 'Unknown';
+                    return '<div class="agreement-card-term' + (isStruck ? ' term-struck' : '') + '">' +
+                        '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '</span> ' +
+                        '<span class="proposal-article-label">' + escapeHtml(artLabel) + '</span>' +
+                        (isStruck ? ' <span class="struck-label">STRUCK</span>' : '') +
+                    '</div>';
                 }
-                // Backwards-compatible: old proposals may have art.type, new ones have art.text
-                const artLabel = art.text || art.label || art.type || 'Unknown';
-                return '<div class="agreement-card-term' + (isStruck ? ' term-struck' : '') + '">' +
-                    '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '</span> ' +
-                    '<span class="proposal-article-label">' + escapeHtml(artLabel) + '</span>' +
-                    (isStruck ? ' <span class="struck-label">STRUCK</span>' : '') +
-                '</div>';
             }).join('');
 
             // Effects tags
-            const relStr = totalRel > 0 ? '+' + totalRel + ' Relations' : totalRel < 0 ? totalRel + ' Relations' : '';
-            const moneyStr = totalMoney > 0 ? '+$' + (totalMoney / 1e6).toFixed(0) + 'M' : totalMoney < 0 ? '-$' + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M' : '';
             let effectsHTML = '';
-            if (relStr) effectsHTML += '<span class="effect-tag effect-rel">' + relStr + '</span>';
-            if (moneyStr) effectsHTML += '<span class="effect-tag effect-money">' + moneyStr + '</span>';
+            if (hasV2Articles) {
+                const totals = { relations: 0, revenue: 0, cost_proposer: 0, cost_target: 0, intl_reputation: 0, immigration: 0, higher_education: 0, soft_power: 0, soft_power_per_year: 0, permanent_soft_power: 0, technology_bonus: 0, polarization: 0, terrorism_risk: 0, ongoing_per_tick: 0 };
+                articles.forEach((art, i) => {
+                    if (struckIndices.has(i)) return;
+                    const e = art.effects || {};
+                    for (const k in totals) totals[k] += e[k] || 0;
+                });
+                effectsHTML = renderEffectTags(totals, null);
+            } else {
+                const relStr = totalRel > 0 ? '+' + totalRel + ' Relations' : totalRel < 0 ? totalRel + ' Relations' : '';
+                const moneyStr = totalMoney > 0 ? '+$' + (totalMoney / 1e6).toFixed(0) + 'M' : totalMoney < 0 ? '-$' + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M' : '';
+                if (relStr) effectsHTML += '<span class="effect-tag effect-rel">' + relStr + '</span>';
+                if (moneyStr) effectsHTML += '<span class="effect-tag effect-money">' + moneyStr + '</span>';
+            }
 
             // Withdraw button — only FM or HoG can withdraw
+            let totalRelForPenalty = 0;
+            articles.forEach((art, i) => {
+                if (struckIndices.has(i)) return;
+                totalRelForPenalty += (art.effects ? art.effects.relations : art.relations) || 0;
+            });
             let withdrawHTML = '';
             if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
-                const penalty = totalRel * 2;
+                const penalty = totalRelForPenalty * 2;
                 const penaltyStr = penalty > 0 ? '-' + penalty + ' Relations penalty' : '';
                 withdrawHTML = '<button class="agreement-withdraw-btn" onclick="withdrawAgreement(\'' + ag.id + '\')" title="' + escapeHtml(penaltyStr) + '">Withdraw</button>';
             }
@@ -4492,21 +4537,30 @@ async function viewActiveAgreement(agreementId) {
                 html += '<span class="initiative-article-type">' + escapeHtml(typeName).toUpperCase();
                 if (isStruck) html += ' — STRUCK';
                 html += '</span></div></div>';
-                if (art.config && !isStruck) {
-                    html += '<div style="margin:4px 0 2px;">';
-                    html += renderArticleConfigSummary(art);
-                    html += '</div>';
+                if (typeInfo && typeInfo.description && !isStruck) {
+                    html += '<div class="initiative-article-title">' + escapeHtml(typeInfo.description) + '</div>';
                 }
-                if (art.effects && !isStruck) {
-                    html += renderEffectTagsFromEffects(art.effects, art.type);
+                if (art.config && !isStruck) {
+                    html += '<div style="margin:4px 0 2px;">' + renderArticleConfigSummary(art) + '</div>';
+                }
+                if (!isStruck) {
+                    if (art.effects) {
+                        html += renderEffectTagsFromEffects(art.effects, art.type);
+                    } else {
+                        const effects = computeArticleEffects(art);
+                        html += renderEffectTags(effects, art.type);
+                    }
                 }
                 html += '</div>';
             } else {
                 const artLabel = escapeHtml(art.text || art.label || art.type || 'Unknown');
-                const cardClass = isStruck ? 'article-card article-card--struck' : 'article-card';
+                const cardClass = isStruck ? 'initiative-article initiative-article--struck' : 'initiative-article';
                 html += '<div class="' + cardClass + '">';
-                html += '<div class="article-card-type">Art. ' + toRoman(i + 1) + (isStruck ? ' — STRUCK' : '') + '</div>';
-                html += '<div class="article-card-title">' + artLabel + '</div>';
+                html += '<div class="initiative-article-head">';
+                html += '<div><span class="initiative-article-num">Art. ' + toRoman(i + 1) + '</span>';
+                if (isStruck) html += ' <span class="initiative-article-type"> — STRUCK</span>';
+                html += '</div></div>';
+                html += '<div class="initiative-article-title">' + artLabel + '</div>';
                 html += '</div>';
             }
         }
@@ -4514,31 +4568,24 @@ async function viewActiveAgreement(agreementId) {
 
     // Effects summary
     if (isV2) {
-        const totals = { relations: 0, revenue: 0, cost: 0 };
+        const totals = { relations: 0, revenue: 0, cost_proposer: 0, cost_target: 0, intl_reputation: 0, immigration: 0, higher_education: 0, soft_power: 0, soft_power_per_year: 0, permanent_soft_power: 0, technology_bonus: 0, polarization: 0, terrorism_risk: 0, ongoing_per_tick: 0 };
         articles.forEach(art => {
             if (art.status !== 'struck' && art.effects) {
-                totals.relations += art.effects.relations || 0;
-                totals.revenue += art.effects.revenue || 0;
-                totals.cost += (art.effects.cost_proposer || 0) + (art.effects.cost_target || 0);
+                for (const k in totals) totals[k] += art.effects[k] || 0;
             }
         });
-        if (totals.relations || totals.revenue || totals.cost) {
-            html += '<div class="article-effects" style="margin:10px 0;">';
-            if (totals.relations) html += '<span class="effect-tag effect-tag--positive">+' + totals.relations + ' Relations</span>';
-            if (totals.revenue > 0) html += '<span class="effect-tag effect-tag--money-pos">+$' + (totals.revenue / 1e6).toFixed(0) + 'M Revenue</span>';
-            if (totals.cost > 0) html += '<span class="effect-tag effect-tag--money-neg">-$' + (totals.cost / 1e6).toFixed(1) + 'M Cost</span>';
-            html += '</div>';
-        }
+        html += '<div style="margin:10px 0;">' + renderEffectTags(totals, null) + '</div>';
     } else {
         let totalRel = 0, totalMoney = 0;
         articles.forEach((art, i) => {
             if (!struckIndices.has(i)) { totalRel += art.relations || 0; totalMoney += art.money || 0; }
         });
         if (totalRel || totalMoney) {
-            html += '<div style="font-size:0.78rem;color:var(--text-dim);margin:10px 0;">';
-            if (totalRel) html += (totalRel > 0 ? '+' : '') + totalRel + ' Relations ';
-            if (totalMoney) html += (totalMoney > 0 ? '+$' : '-$') + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M';
-            html += '</div>';
+            const legacyEffects = {};
+            if (totalRel) legacyEffects.relations = totalRel;
+            if (totalMoney > 0) legacyEffects.revenue = totalMoney;
+            if (totalMoney < 0) legacyEffects.cost_proposer = Math.abs(totalMoney);
+            html += '<div style="margin:10px 0;">' + renderEffectTags(legacyEffects, null) + '</div>';
         }
     }
 
