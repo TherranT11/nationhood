@@ -432,6 +432,20 @@
 .neg-direction--in { color: var(--orange); }
 .neg-direction--active { color: var(--green); }
 .neg-row--active { border-left: 3px solid var(--green); }
+/* Unseen proposal indicator */
+.neg-row--unseen { background: rgba(91,154,139,0.04); }
+.neg-unseen-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  flex-shrink: 0;
+  box-shadow: 0 0 4px rgba(176,154,91,0.4);
+}
+.neg-unseen-badge {
+  font-size: 9px;
+  min-width: 16px;
+  text-align: center;
+}
 .neg-info { flex: 1; min-width: 0; }
 .neg-title {
   font-family: var(--font-sans);
