@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bill Details | Nationhood Alpha</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/bill.css">
 </head>
@@ -75,7 +78,7 @@
             <div class="modal-title">Propose Conditional Support</div>
             <button class="modal-close" onclick="closeAmendmentModal()">&times;</button>
         </div>
-        <p style="color: #aaa; margin-bottom: 16px; font-size: 0.9rem;">Select a policy you want added to this bill. Your support will be conditional on the sponsor accepting your amendment.</p>
+        <p style="color: var(--text-primary); margin-bottom: 16px; font-size: 0.9rem;">Select a policy you want added to this bill. Your support will be conditional on the sponsor accepting your amendment.</p>
         <div class="form-group">
             <label class="form-label">Select Sector</label>
             <select class="form-select" id="amendment-sector" onchange="onAmendmentSectorChange()">
@@ -100,7 +103,7 @@
             <div class="modal-title">Propose Text Amendment</div>
             <button class="modal-close" onclick="closeTextAmendmentModal()">&times;</button>
         </div>
-        <p style="color: #aaa; margin-bottom: 16px; font-size: 0.9rem;">Write a freeform text article to propose adding to this bill. Your support will be conditional on the sponsor accepting it.</p>
+        <p style="color: var(--text-primary); margin-bottom: 16px; font-size: 0.9rem;">Write a freeform text article to propose adding to this bill. Your support will be conditional on the sponsor accepting it.</p>
         <div class="form-group">
             <label class="form-label">Article Title</label>
             <input type="text" class="form-input" id="text-amendment-title" placeholder="e.g., Transitional Provisions">
@@ -118,16 +121,16 @@
 
 <!-- Strike Article Modal -->
 <div class="modal-overlay" id="strike-amendment-modal">
-    <div class="modal-content" style="border-color: #ff6600;">
+    <div class="modal-content" style="border-color: var(--orange);">
         <div class="modal-header">
-            <div class="modal-title" style="color: #ff6600;">Request Article Removal</div>
+            <div class="modal-title" style="color: var(--orange);">Request Article Removal</div>
             <button class="modal-close" onclick="closeStrikeAmendmentModal()">&times;</button>
         </div>
-        <p style="color: #aaa; margin-bottom: 16px; font-size: 0.9rem;">Select an article you want removed from this bill. Your support will be conditional on the sponsor removing it.</p>
+        <p style="color: var(--text-primary); margin-bottom: 16px; font-size: 0.9rem;">Select an article you want removed from this bill. Your support will be conditional on the sponsor removing it.</p>
         <div id="strike-article-list"></div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeStrikeAmendmentModal()">Cancel</button>
-            <button class="btn-submit" id="submit-strike-btn" disabled onclick="submitStrikeAmendment()" style="background: #ff6600;">Request Removal</button>
+            <button class="btn-submit" id="submit-strike-btn" disabled onclick="submitStrikeAmendment()" style="background: var(--orange);">Request Removal</button>
         </div>
     </div>
 </div>
@@ -161,7 +164,7 @@
             <div class="modal-title">Add Article to Bill</div>
             <button class="modal-close" onclick="closeSponsorAddModal()">&times;</button>
         </div>
-        <p style="color: #aaa; margin-bottom: 16px; font-size: 0.9rem;">Select a policy to add as a new article to your bill.</p>
+        <p style="color: var(--text-primary); margin-bottom: 16px; font-size: 0.9rem;">Select a policy to add as a new article to your bill.</p>
         <div class="form-group">
             <label class="form-label">Select Sector</label>
             <select class="form-select" id="sponsor-add-sector" onchange="onSponsorAddSectorChange()">
@@ -266,14 +269,14 @@ initPage('laws', async (state) => {
         coalitionLeadPartyId = coalition?.lead_party_id || null;
     }
     if (!billId) {
-        document.getElementById('loading-state').innerHTML = '<div style="text-align:center;color:#ff4444;"><h2>No Bill Selected</h2><p>Please select a bill from the <a href="laws.html" style="color:#ffcc00;">Laws</a> page.</p></div>';
+        document.getElementById('loading-state').innerHTML = '<div style="text-align:center;color:var(--red);"><h2>No Bill Selected</h2><p>Please select a bill from the <a href="laws.html" style="color:var(--amber);">Laws</a> page.</p></div>';
         return;
     }
     await loadBillData();
 
     // Nation guard: prevent players from viewing bills belonging to other nations
     if (currentBill && nation && currentBill.nation_id !== nation.id) {
-        document.getElementById('loading-state').innerHTML = '<div style="text-align:center;color:#ff4444;"><h2>Access Denied</h2><p>This bill belongs to another nation.</p><p><a href="laws.html" style="color:#ffcc00;">Back to Bills</a></p></div>';
+        document.getElementById('loading-state').innerHTML = '<div style="text-align:center;color:var(--red);"><h2>Access Denied</h2><p>This bill belongs to another nation.</p><p><a href="laws.html" style="color:var(--amber);">Back to Bills</a></p></div>';
         return;
     }
 
@@ -399,7 +402,7 @@ async function loadBillData() {
         renderBill();
     } catch (error) {
         console.error('Error loading bill:', error);
-        document.getElementById('loading-state').innerHTML = `<div style="text-align:center;color:#ff4444;"><h2>Error Loading Bill</h2><p>${error.message}</p></div>`;
+        document.getElementById('loading-state').innerHTML = `<div style="text-align:center;color:var(--red);"><h2>Error Loading Bill</h2><p>${error.message}</p></div>`;
     }
 }
 
@@ -464,32 +467,32 @@ function renderBill() {
     } else if (bill.bill_type === 'repeal') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal">⚠ Repeal</span>';
     } else if (bill.bill_type === 'foundational') {
-        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#9C27B0;">🏛 Foundational</span>';
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--purple);">🏛 Foundational</span>';
     } else if (bill.bill_type === 'confirmation') {
-        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#1a5276;">🏛 Confirmation</span>';
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--blue);">🏛 Confirmation</span>';
     } else if (bill.bill_type === 'minister_confirmation') {
-        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#E65100;">🏛 Cabinet Confirmation</span>';
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--orange);">🏛 Cabinet Confirmation</span>';
     } else if (bill.bill_type === 'veto_override') {
-        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#B71C1C;">⚖ Veto Override</span>';
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--red);">⚖ Veto Override</span>';
     } else if (bill.bill_type === 'ratification') {
-        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#0288D1;">🌐 Ratification</span>';
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--blue);">🌐 Ratification</span>';
     } else if (bill.bill_type === 'impeachment_motion') {
-        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#D32F2F;">⚖ Impeachment</span>';
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--red);">⚖ Impeachment</span>';
     } else if (bill.bill_type === 'impeachment_conviction') {
-        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#B71C1C;">⚖ Impeachment Trial</span>';
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--red);">⚖ Impeachment Trial</span>';
     }
     if (isFrozen) {
-        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#ff9800;color:#000;">FROZEN</span>';
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--orange);color:#000;">FROZEN</span>';
     }
 
     // Presidential action badges
     if (bill.president_action === 'signed' || bill.president_action === 'auto_signed') {
         const label = bill.president_action === 'auto_signed' ? 'Auto-Signed by President' : 'Signed by President';
-        document.getElementById('bill-title').innerHTML += ` <span class="bill-type-badge repeal" style="background:#2E7D32;">✍ ${label}</span>`;
+        document.getElementById('bill-title').innerHTML += ` <span class="bill-type-badge repeal" style="background:var(--green);">✍ ${label}</span>`;
     } else if (bill.president_action === 'overridden') {
-        document.getElementById('bill-title').innerHTML += ' <span class="bill-type-badge repeal" style="background:#E65100;">⚖ Veto Overridden</span>';
+        document.getElementById('bill-title').innerHTML += ' <span class="bill-type-badge repeal" style="background:var(--orange);">⚖ Veto Overridden</span>';
     } else if (bill.president_action === 'vetoed' && bill.status === 'vetoed') {
-        document.getElementById('bill-title').innerHTML += ' <span class="bill-type-badge repeal" style="background:#B71C1C;">🚫 Vetoed by President</span>';
+        document.getElementById('bill-title').innerHTML += ' <span class="bill-type-badge repeal" style="background:var(--red);">🚫 Vetoed by President</span>';
     }
 
     document.getElementById('bill-sponsor').textContent = bill.proposed_by

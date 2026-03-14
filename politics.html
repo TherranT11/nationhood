@@ -15,7 +15,7 @@
 
 <style>
 /* ═══════════════════════════════════════
-   POLITICS PAGE — DESIGN GUIDE V3 OVERRIDES
+   POLITICS PAGE — DESIGN GUIDE V4
    ═══════════════════════════════════════ */
 :root {
     --dbg-0: #0e0e0c;
@@ -47,6 +47,10 @@
     --dblue: #5b9bd5;
     --dblue-faint: rgba(91,155,213,0.08);
     --dblue-border: rgba(91,155,213,0.18);
+    --dorange: #d48a3c;
+    --dorange-faint: rgba(212,138,60,0.08);
+    --dorange-border: rgba(212,138,60,0.18);
+    --daccent-1: #c8a64e;
     --dtext-0: #e2e0d6;
     --dtext-1: #c4c2b8;
     --dtext-2: #8a8778;
@@ -68,7 +72,7 @@
     flex: 0 1 380px;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
-    border-radius: 6px;
+    border-radius: 3px;
     padding: 22px 24px 24px;
     overflow-y: auto;
 }
@@ -369,7 +373,7 @@
     flex-shrink: 0;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
-    border-radius: 6px;
+    border-radius: 3px;
     padding: 22px 24px 24px;
     display: flex;
     flex-direction: column;
@@ -398,7 +402,7 @@
 .pol-mod-card {
     background: var(--dbg-3);
     border: 1px solid var(--dborder-1);
-    border-left: 3px solid #4ade80;
+    border-left: 3px solid var(--dgreen);
     border-radius: 4px;
     padding: 14px 16px;
 }
@@ -410,7 +414,7 @@
 }
 .pol-mod-icon {
     font-size: 14px;
-    color: #4ade80;
+    color: var(--dgreen);
     flex-shrink: 0;
 }
 .pol-mod-label {
@@ -2286,7 +2290,7 @@
     min-width: 300px;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
-    border-radius: 6px;
+    border-radius: 3px;
     padding: 22px 24px 24px;
     display: flex;
     flex-direction: column;
@@ -2466,7 +2470,7 @@
     flex-shrink: 0;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
-    border-radius: 6px;
+    border-radius: 3px;
     padding: 22px 24px 24px;
     display: flex;
     flex-direction: column;
@@ -2521,7 +2525,7 @@
     flex: 1 1 0;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-0);
-    border-radius: 6px;
+    border-radius: 3px;
     padding: 22px 24px 24px;
     display: flex;
     flex-direction: column;
@@ -2990,7 +2994,7 @@ body.light-mode .pol-blocs-box {
 .pol-action-panel {
     background: var(--dbg-3);
     border: 1px solid var(--dborder-1);
-    border-radius: 6px;
+    border-radius: 3px;
     padding: 14px 16px;
 }
 .pol-action-header {

@@ -545,11 +545,11 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
     const PILLAR_ORDER = ['military', 'security', 'party', 'oligarchs', 'bureaucracy', 'media', 'foreign_patrons', 'religious'];
 
     function pillarColor(val) {
-        if (val >= 70) return '#4CAF50';
-        if (val >= 50) return '#8BC34A';
-        if (val >= 35) return '#ff9800';
-        if (val >= 20) return '#ff5722';
-        return '#ff1744';
+        if (val >= 70) return 'var(--dgreen)';
+        if (val >= 50) return 'var(--dgreen)';
+        if (val >= 35) return 'var(--dorange)';
+        if (val >= 20) return 'var(--dred)';
+        return 'var(--dred)';
     }
     function pillarLabel(val) {
         if (val >= 70) return 'LOYAL';
@@ -603,11 +603,11 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
     }
 
     let gripLabel, gripColor;
-    if (gripClamped >= 85) { gripLabel = 'IRON GRIP'; gripColor = '#4CAF50'; }
-    else if (gripClamped >= 70) { gripLabel = 'FIRM'; gripColor = '#8BC34A'; }
-    else if (gripClamped >= 50) { gripLabel = 'STABLE'; gripColor = '#ff9800'; }
-    else if (gripClamped >= 30) { gripLabel = 'TENUOUS'; gripColor = '#ff5722'; }
-    else { gripLabel = 'CRUMBLING'; gripColor = '#ff1744'; }
+    if (gripClamped >= 85) { gripLabel = 'IRON GRIP'; gripColor = 'var(--dgreen)'; }
+    else if (gripClamped >= 70) { gripLabel = 'FIRM'; gripColor = 'var(--dgreen)'; }
+    else if (gripClamped >= 50) { gripLabel = 'STABLE'; gripColor = 'var(--dorange)'; }
+    else if (gripClamped >= 30) { gripLabel = 'TENUOUS'; gripColor = 'var(--dred)'; }
+    else { gripLabel = 'CRUMBLING'; gripColor = 'var(--dred)'; }
 
     // Succession
     const chosenSuccessorSteward = liveStewards.find(s => s.is_chosen_successor);
@@ -616,20 +616,20 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
     const successionLabel = chosenSuccessorSteward
         ? `${chosenSuccessorSteward.first_name} ${chosenSuccessorSteward.last_name}`
         : isFamilyMemberSuccessor ? 'FAMILY MEMBER' : 'UNDESIGNATED';
-    const successionColor = hasAnySuccessor ? '#FFD700' : '#ff5722';
+    const successionColor = hasAnySuccessor ? 'var(--damber)' : 'var(--dred)';
 
     // Regime Health
     const regimeHealthVal = Math.round(Number(n.regime_health ?? 80));
     const regimeHealthPct = Math.max(0, Math.min(100, regimeHealthVal));
     let regimeHealthLabel, regimeHealthColor;
-    if (regimeHealthVal >= 60) { regimeHealthLabel = 'HEALTHY'; regimeHealthColor = '#4CAF50'; }
-    else if (regimeHealthVal >= 40) { regimeHealthLabel = 'WEAKENING'; regimeHealthColor = '#ff9800'; }
-    else if (regimeHealthVal >= 20) { regimeHealthLabel = 'DECLINING'; regimeHealthColor = '#ff5722'; }
-    else if (regimeHealthVal > 0) { regimeHealthLabel = 'CRITICAL'; regimeHealthColor = '#ff1744'; }
-    else { regimeHealthLabel = 'COLLAPSED'; regimeHealthColor = '#880000'; }
+    if (regimeHealthVal >= 60) { regimeHealthLabel = 'HEALTHY'; regimeHealthColor = 'var(--dgreen)'; }
+    else if (regimeHealthVal >= 40) { regimeHealthLabel = 'WEAKENING'; regimeHealthColor = 'var(--dorange)'; }
+    else if (regimeHealthVal >= 20) { regimeHealthLabel = 'DECLINING'; regimeHealthColor = 'var(--dred)'; }
+    else if (regimeHealthVal > 0) { regimeHealthLabel = 'CRITICAL'; regimeHealthColor = 'var(--dred)'; }
+    else { regimeHealthLabel = 'COLLAPSED'; regimeHealthColor = 'var(--dred)'; }
 
     // Vital helpers
-    function vitalColor(val, inv) { const v = inv ? (100 - val) : val; return v >= 70 ? '#4CAF50' : v >= 45 ? '#ff9800' : '#ff4444'; }
+    function vitalColor(val, inv) { const v = inv ? (100 - val) : val; return v >= 70 ? 'var(--dgreen)' : v >= 45 ? 'var(--dorange)' : 'var(--dred)'; }
     function vitalLabel(val, inv) { const v = inv ? (100 - val) : val; return v >= 70 ? 'HIGH' : v >= 45 ? 'MODERATE' : 'LOW'; }
 
     const pressF = Math.round(Number(n.press_freedom ?? 50));
@@ -641,15 +641,15 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
     const revRemaining = revActive ? Math.max(0, n.revolution_duration - (currentTick - n.revolution_started_tick)) : 0;
     let threatHtml = '';
     if (revActive) {
-        threatHtml = `<div class="reg-section"><div class="reg-section-title" style="color:#ff1744">REVOLUTION THREAT</div>
-            <div style="color:#ff1744;font-weight:700;padding:8px 0">DEMOCRATIC REVOLUTION IN PROGRESS — ${revRemaining} ticks remaining</div></div>`;
+        threatHtml = `<div class="reg-section"><div class="reg-section-title" style="color:var(--dred)">REVOLUTION THREAT</div>
+            <div style="color:var(--dred);font-weight:700;padding:8px 0">DEMOCRATIC REVOLUTION IN PROGRESS — ${revRemaining} ticks remaining</div></div>`;
     } else {
         const risks = [];
         if (stability < 25) risks.push('Stability critically low');
         if (civilUnrest > 40) risks.push('Civil Unrest dangerously high');
         if (risks.length > 0) {
-            threatHtml = `<div class="reg-section"><div class="reg-section-title" style="color:#ff9800">REVOLUTION THREAT</div>
-                <div style="color:#ff9800;font-size:11px;padding:4px 0">${risks.join(' · ')}</div></div>`;
+            threatHtml = `<div class="reg-section"><div class="reg-section-title" style="color:var(--dorange)">REVOLUTION THREAT</div>
+                <div style="color:var(--dorange);font-size:11px;padding:4px 0">${risks.join(' · ')}</div></div>`;
         }
     }
 
@@ -670,7 +670,7 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
         const name = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         const steward = stewardByPillar[key];
         const stewardInfo = steward
-            ? `<div class="reg-pillar-steward">${escapeHtml(steward.first_name + ' ' + steward.last_name)} — ${escapeHtml(factionNameMap[steward.faction_id] || '?')}${steward.is_chosen_successor ? ' <span style="color:#FFD700">HEIR</span>' : ''}</div>`
+            ? `<div class="reg-pillar-steward">${escapeHtml(steward.first_name + ' ' + steward.last_name)} — ${escapeHtml(factionNameMap[steward.faction_id] || '?')}${steward.is_chosen_successor ? ' <span style="color:var(--damber)">HEIR</span>' : ''}</div>`
             : (!isStrongman && !mySteward ? `<button class="reg-pillar-claim-btn" data-pillar-id="${pil.id || ''}" data-pillar-key="${key}" data-pillar-name="${name}">BECOME STEWARD</button>` : `<div class="reg-pillar-steward" style="opacity:0.5">Unclaimed</div>`);
         return `<div class="reg-pillar-card">
             <div class="reg-pillar-icon">${icon}</div>
@@ -692,8 +692,8 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
         const stExitReadiness = Math.round(mySteward.exit_readiness ?? 0);
         const stSuccStrength = mySteward.is_chosen_successor ? Math.round(mySteward.succession_strength ?? 0) : null;
 
-        function loyaltyColor(v) { return v >= 70 ? '#4CAF50' : v >= 50 ? '#8BC34A' : v >= 30 ? '#ff9800' : v >= 15 ? '#ff5722' : '#ff1744'; }
-        function coupColor(v) { return v >= 60 ? '#4CAF50' : v >= 30 ? '#ff9800' : v >= 10 ? '#ff5722' : '#ff1744'; }
+        function loyaltyColor(v) { return v >= 70 ? 'var(--dgreen)' : v >= 50 ? 'var(--dgreen)' : v >= 30 ? 'var(--dorange)' : v >= 15 ? 'var(--dred)' : 'var(--dred)'; }
+        function coupColor(v) { return v >= 60 ? 'var(--dgreen)' : v >= 30 ? 'var(--dorange)' : v >= 10 ? 'var(--dred)' : 'var(--dred)'; }
 
         stewardStatusHtml = `
         <div class="reg-section">
@@ -701,7 +701,7 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
                 <span style="font-weight:700;color:var(--dtext-1)">${escapeHtml(mySteward.first_name + ' ' + mySteward.last_name)}</span>
                 <span style="font-size:10px;color:var(--dtext-3)">${escapeHtml(stType)}</span>
-                ${mySteward.is_chosen_successor ? '<span style="color:#FFD700;font-size:10px;font-weight:700">CHOSEN SUCCESSOR</span>' : ''}
+                ${mySteward.is_chosen_successor ? '<span style="color:var(--damber);font-size:10px;font-weight:700">CHOSEN SUCCESSOR</span>' : ''}
             </div>
             <div style="font-size:10px;color:var(--dtext-3);margin-bottom:12px">${escapeHtml(stDesc)}</div>
             <div class="reg-vitals-grid">
@@ -719,11 +719,11 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
                 </div>
                 <div class="reg-vital">
                     <span class="reg-vital-label">EXIT READINESS</span>
-                    <span class="reg-vital-val" style="color:${stExitReadiness >= 60 ? '#4CAF50' : stExitReadiness >= 30 ? '#ff9800' : '#ff5722'}">${stExitReadiness}</span>
+                    <span class="reg-vital-val" style="color:${stExitReadiness >= 60 ? 'var(--dgreen)' : stExitReadiness >= 30 ? 'var(--dorange)' : 'var(--dred)'}">${stExitReadiness}</span>
                 </div>
                 ${stSuccStrength !== null ? `<div class="reg-vital">
                     <span class="reg-vital-label">SUCCESSION STRENGTH</span>
-                    <span class="reg-vital-val" style="color:#FFD700">${stSuccStrength}</span>
+                    <span class="reg-vital-val" style="color:var(--damber)">${stSuccStrength}</span>
                 </div>` : ''}
             </div>
         </div>`;
@@ -754,11 +754,11 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
             loyaltyDisplay = '<span style="color:var(--dtext-3)">—</span>';
         } else if (canSeeExactLoyalty(p.id)) {
             const loy = Math.round(p.loyalty ?? 50);
-            loyaltyDisplay = `<span style="color:${loy >= 70 ? '#4CAF50' : loy >= 50 ? '#8BC34A' : loy >= 30 ? '#ff9800' : '#ff5722'}">${loy}</span>`;
+            loyaltyDisplay = `<span style="color:${loy >= 70 ? 'var(--dgreen)' : loy >= 50 ? 'var(--dgreen)' : loy >= 30 ? 'var(--dorange)' : 'var(--dred)'}">${loy}</span>`;
         } else if (canSeeLoyaltyLabel(p.id)) {
             const loy = Math.round(p.loyalty ?? 50);
             const ll = loy >= 70 ? 'LOYAL' : loy >= 50 ? 'CONTENT' : loy >= 30 ? 'RESTLESS' : loy >= 15 ? 'HOSTILE' : 'MUTINOUS';
-            loyaltyDisplay = `<span style="color:${loy >= 70 ? '#4CAF50' : loy >= 50 ? '#8BC34A' : loy >= 30 ? '#ff9800' : '#ff5722'}">${ll}</span>`;
+            loyaltyDisplay = `<span style="color:${loy >= 70 ? 'var(--dgreen)' : loy >= 50 ? 'var(--dgreen)' : loy >= 30 ? 'var(--dorange)' : 'var(--dred)'}">${ll}</span>`;
         } else {
             loyaltyDisplay = '<span style="color:var(--dtext-3)">?</span>';
         }
@@ -766,16 +766,16 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
         let stewardHtml = '';
         if (steward) {
             const stLabel = STEWARD_TYPE_LABELS[steward.steward_type] || steward.steward_type;
-            stewardHtml = `<div style="font-size:10px;color:var(--dtext-3);margin-top:4px">${escapeHtml(steward.first_name + ' ' + steward.last_name)} — ${escapeHtml(stLabel)}${steward.is_chosen_successor ? ' <span style="color:#FFD700">HEIR</span>' : ''}</div>`;
+            stewardHtml = `<div style="font-size:10px;color:var(--dtext-3);margin-top:4px">${escapeHtml(steward.first_name + ' ' + steward.last_name)} — ${escapeHtml(stLabel)}${steward.is_chosen_successor ? ' <span style="color:var(--damber)">HEIR</span>' : ''}</div>`;
             if (isStrongman && steward.estimated_loyalty != null) {
                 const est = Math.round(steward.estimated_loyalty);
                 stewardHtml += `<div style="font-size:9px;color:var(--dtext-3)">Est. Loyalty: ${est}</div>`;
             }
         }
 
-        return `<div class="reg-intel-row" style="border-left:3px solid ${p.party_color || '#555'};padding:8px 12px;margin-bottom:6px;background:rgba(255,255,255,0.02);border-radius:4px">
+        return `<div class="reg-intel-row" style="border-left:3px solid ${p.party_color || 'var(--dtext-3)'};padding:8px 12px;margin-bottom:6px;background:rgba(255,255,255,0.02);border-radius:3px">
             <div style="display:flex;justify-content:space-between;align-items:center">
-                <span style="font-weight:700;color:var(--dtext-1)">${escapeHtml(p.faction_name)}${isPlayer ? ' <span style="color:#FFD700;font-size:9px">[YOU]</span>' : ''}${isRuling ? ' <span style="color:#4CAF50;font-size:9px">[RULING]</span>' : ''}</span>
+                <span style="font-weight:700;color:var(--dtext-1)">${escapeHtml(p.faction_name)}${isPlayer ? ' <span style="color:var(--damber);font-size:9px">[YOU]</span>' : ''}${isRuling ? ' <span style="color:var(--dgreen);font-size:9px">[RULING]</span>' : ''}</span>
                 <span style="font-size:11px;color:var(--dtext-2)">${p.seats || 0} seats</span>
             </div>
             <div style="display:flex;gap:16px;margin-top:4px;font-size:11px">
@@ -815,8 +815,8 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
     if (!isStrongman && myPendingDemand) {
         const deadline = myPendingDemand.deadline_tick || (myPendingDemand.demanded_at_tick + 2);
         const ticksLeft = Math.max(0, deadline - currentTick);
-        demandBannerHtml = `<div style="background:linear-gradient(135deg,#4a1010,#2a0808);border:1px solid #ff4444;border-radius:6px;padding:12px;margin:8px 0;text-align:center">
-            <div style="color:#ff4444;font-weight:700;font-size:12px">THE STRONGMAN DEMANDS YOUR LOYALTY</div>
+        demandBannerHtml = `<div style="background:var(--dred-faint);border:1px solid var(--dred-border);border-radius:3px;padding:12px;margin:8px 0;text-align:center">
+            <div style="color:var(--dred);font-weight:700;font-size:12px">THE STRONGMAN DEMANDS YOUR LOYALTY</div>
             <div style="color:var(--dtext-3);font-size:10px;margin-top:4px">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} to respond</div>
         </div>`;
     }
@@ -847,7 +847,7 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
                 <div class="reg-header-ap">
                     <div class="reg-ap-label">ACTION POINTS</div>
                     <div class="reg-ap-value">
-                        <span class="reg-ap-current" style="color:${(f.action_points ?? 0) < 5 ? ((f.action_points ?? 0) < 2 ? '#c45454' : '#d4944a') : '#e2e0d6'}">${f.action_points ?? 0}</span>
+                        <span class="reg-ap-current" style="color:${(f.action_points ?? 0) < 5 ? ((f.action_points ?? 0) < 2 ? 'var(--dred)' : 'var(--dorange)') : 'var(--dtext-0)'}">${f.action_points ?? 0}</span>
                         <span class="reg-ap-max">/ ${GAME_CONFIG.MAX_AP}</span>
                     </div>
                 </div>
@@ -961,12 +961,12 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
         </div>
 
         <div id="steward-confirm-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;align-items:center;justify-content:center">
-            <div style="background:var(--dbg-2);border:1px solid var(--dborder-1);border-radius:8px;padding:24px;max-width:400px;text-align:center">
+            <div style="background:var(--dbg-2);border:1px solid var(--dborder-1);border-radius:3px;padding:24px;max-width:400px;text-align:center">
                 <div id="steward-confirm-title" style="font-weight:700;font-size:16px;color:var(--dtext-1);margin-bottom:12px"></div>
                 <div id="steward-confirm-text" style="font-size:12px;color:var(--dtext-2);margin-bottom:20px"></div>
                 <div style="display:flex;gap:12px;justify-content:center">
-                    <button id="steward-confirm-yes" style="background:#4CAF50;color:#fff;border:none;padding:8px 20px;border-radius:4px;cursor:pointer;font-weight:700">CONFIRM</button>
-                    <button id="steward-confirm-no" style="background:var(--dbg-3);color:var(--dtext-2);border:1px solid var(--dborder-1);padding:8px 20px;border-radius:4px;cursor:pointer">CANCEL</button>
+                    <button id="steward-confirm-yes" style="background:var(--dgreen);color:#fff;border:none;padding:8px 20px;border-radius:3px;cursor:pointer;font-weight:700">CONFIRM</button>
+                    <button id="steward-confirm-no" style="background:var(--dbg-3);color:var(--dtext-2);border:1px solid var(--dborder-1);padding:8px 20px;border-radius:3px;cursor:pointer">CANCEL</button>
                 </div>
             </div>
         </div>
@@ -4001,11 +4001,11 @@ function renderSuccessorPanel(n, f, ap, tick, allStewardRows, allFactions, nonRu
             const stType = STEWARD_TYPE_LABELS[chosenSteward.steward_type] || chosenSteward.steward_type;
             content = `
                 <div style="background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.3);border-radius:6px;padding:12px;margin-top:8px">
-                    <div style="color:#FFD700;font-weight:700;font-size:11px;margin-bottom:6px">CHOSEN SUCCESSOR</div>
+                    <div style="color:var(--damber);font-weight:700;font-size:11px;margin-bottom:6px">CHOSEN SUCCESSOR</div>
                     <div style="font-weight:700;color:var(--dtext-1)">${escapeHtml(chosenSteward.first_name + ' ' + chosenSteward.last_name)}</div>
                     <div style="font-size:10px;color:var(--dtext-3);margin-top:2px">${escapeHtml(stType)} — ${escapeHtml(stFaction?.faction_name || '?')}</div>
                     <div style="display:flex;gap:12px;margin-top:8px;font-size:10px">
-                        <span>Succession Str: <span style="color:#FFD700">${Math.round(chosenSteward.succession_strength ?? 0)}</span></span>
+                        <span>Succession Str: <span style="color:var(--damber)">${Math.round(chosenSteward.succession_strength ?? 0)}</span></span>
                         <span>True Loyalty: <span style="color:var(--dtext-2)">${Math.round(chosenSteward.true_loyalty ?? 50)}</span></span>
                     </div>
                     <div style="font-size:9px;color:var(--dtext-3);margin-top:8px">
@@ -4017,7 +4017,7 @@ function renderSuccessorPanel(n, f, ap, tick, allStewardRows, allFactions, nonRu
             // Family member successor
             content = `
                 <div style="background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.3);border-radius:6px;padding:12px;margin-top:8px">
-                    <div style="color:#FFD700;font-weight:700;font-size:11px;margin-bottom:6px">CHOSEN SUCCESSOR</div>
+                    <div style="color:var(--damber);font-weight:700;font-size:11px;margin-bottom:6px">CHOSEN SUCCESSOR</div>
                     <div style="font-weight:700;color:var(--dtext-1)">Family Member</div>
                     <div style="font-size:10px;color:var(--dtext-3);margin-top:2px">Dynasty succession — costs ${SUCCESSOR_CONFIG.FAMILY_AP_PENALTY} AP/tick while active</div>
                     <div style="font-size:9px;color:#ff9800;margin-top:6px">All pillar support -${SUCCESSOR_CONFIG.FAMILY_PILLAR_PENALTY}, All coup readiness +${SUCCESSOR_CONFIG.FAMILY_COUP_READINESS}</div>
