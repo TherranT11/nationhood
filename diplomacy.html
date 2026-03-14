@@ -1559,9 +1559,9 @@ function renderStateVisitInboxCard(p, pd) {
     const typeBadge = '<span class="classification-badge" style="background:#5c3a1a;color:#FFD700;">STATE VISIT</span>';
 
     // Deadline info
-    const deadlineTick = pd.accept_deadline_tick;
-    const ticksLeft = deadlineTick ? Math.max(0, deadlineTick - shardTick) : '?';
-    const expired = deadlineTick && shardTick > deadlineTick;
+    const deadlineTick = p.fm_review_expires_tick;
+    const ticksLeft = deadlineTick != null ? Math.max(0, deadlineTick - shardTick) : '?';
+    const expired = deadlineTick != null && shardTick > deadlineTick;
 
     // Visit configuration badges
     const vtLabel = STATE_VISIT_TYPES[pd.visit_type]?.label || 'State Visit';
@@ -1571,7 +1571,7 @@ function renderStateVisitInboxCard(p, pd) {
     const computedEffects = pd.computed_effects || {};
 
     let benefitsHTML = '<div style="font-size:0.78rem;color:var(--text-muted);padding:8px 0;line-height:1.6;">';
-    benefitsHTML += '<strong>' + escapeHtml(pd.visitor_pm || 'Unknown') + '</strong> of <strong>' + escapeHtml(pd.visitor_nation || 'Unknown') + '</strong> requests a ' + escapeHtml(vtLabel) + '.';
+    benefitsHTML += '<strong>' + escapeHtml(pd.visitor_leader || 'Unknown') + '</strong> of <strong>' + escapeHtml(pd.visitor_nation || 'Unknown') + '</strong> requests a ' + escapeHtml(vtLabel) + '.';
 
     // Visit config summary
     benefitsHTML += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;">';
@@ -7591,7 +7591,7 @@ async function submitStateVisit() {
     }
     currentFaction.action_points = apResult.newAp;
 
-    const hosName = ((currentNation.head_of_state_first_name || '') + ' ' + (currentNation.head_of_state_last_name || '')).trim() || 'Head of State';
+    const hosName = [currentNation.head_of_state_first_name, currentNation.head_of_state_last_name].filter(Boolean).join(' ') || 'Head of State';
 
     const { error: proposalErr } = await _supabase
         .from('diplomatic_proposals')
@@ -7604,7 +7604,7 @@ async function submitStateVisit() {
             status: 'proposed',
             proposal_data: {
                 name: 'State Visit from ' + currentNation.name,
-                visitor_pm: hosName,
+                visitor_leader: hosName,
                 visitor_nation: currentNation.name,
                 host_nation: ctx.targetNation.name,
                 proposer_nation_name: currentNation.name,
@@ -7619,10 +7619,7 @@ async function submitStateVisit() {
                 unlocks: computed.unlocks,
                 ap_cost: computed.totalAp,
                 is_first: ctx.isFirstVisit,
-                has_trade_agreement: ctx.hasTradeAgreement,
-                high_relations: ctx.relScore > 70,
                 is_target_autocracy: isGovernmentAutocracy(ctx.targetNation),
-                accept_deadline_tick: ctx.currentTick + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW,
                 relation_score: ctx.relScore
             },
             fm_review_expires_tick: ctx.currentTick + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW,
@@ -7667,7 +7664,7 @@ async function acceptStateVisit(proposalId) {
     const currentTick = shard?.current_tick || 0;
     const pd = proposal.proposal_data || {};
 
-    if (pd.accept_deadline_tick && currentTick > pd.accept_deadline_tick) {
+    if (proposal.fm_review_expires_tick && currentTick > proposal.fm_review_expires_tick) {
         alert('This State Visit invitation has expired.');
         await _supabase.from('diplomatic_proposals').update({ status: 'expired' }).eq('id', proposalId);
         await renderNegotiationsBox();
@@ -7770,18 +7767,21 @@ async function acceptStateVisit(proposalId) {
         bonusSummary.push('+' + firstStab + ' Stability (first visit)');
     }
 
-    // ── Autocracy approval dice roll (keep existing logic) ──
+    // ── Autocracy approval dice roll ──
+    const acDie = DIPLOMACY_CONFIG.STATE_VISIT_AUTOCRACY_DIE;
+    const acThreshold = DIPLOMACY_CONFIG.STATE_VISIT_AUTOCRACY_THRESHOLD;
+    const acChange = DIPLOMACY_CONFIG.STATE_VISIT_AUTOCRACY_CHANGE;
     let autocracyResult = null;
     if (isTargetAutocracy) {
-        const roll = Math.floor(Math.random() * 12) + 1; // 1D12
-        const approvalChange = roll <= 6 ? -3 : 3;
+        const roll = Math.floor(Math.random() * acDie) + 1;
+        const approvalChange = roll <= acThreshold ? -acChange : acChange;
         visitorUpdates.gov_approval = Math.max(0, Math.min(100, Math.round(Number(visitorNation.gov_approval ?? 50) + approvalChange)));
         autocracyResult = { roll, change: approvalChange };
         bonusSummary.push('Autocracy dice: rolled ' + roll + ' → ' + (approvalChange > 0 ? '+' : '') + approvalChange + ' Gov Approval (visitor)');
     }
     if (isVisitorAutocracy) {
-        const roll = Math.floor(Math.random() * 12) + 1;
-        const approvalChange = roll <= 6 ? -3 : 3;
+        const roll = Math.floor(Math.random() * acDie) + 1;
+        const approvalChange = roll <= acThreshold ? -acChange : acChange;
         hostUpdates.gov_approval = Math.max(0, Math.min(100, Math.round(Number(hostNation.gov_approval ?? 50) + approvalChange)));
         if (!autocracyResult) autocracyResult = {};
         autocracyResult.host_roll = roll;
@@ -7847,7 +7847,7 @@ async function acceptStateVisit(proposalId) {
         faction_id: proposal.proposed_by_faction_id,
         action_type: 'state_visit',
         action_data: {
-            visitor_pm: pd.visitor_pm,
+            visitor_leader: pd.visitor_leader,
             visitor_nation: pd.visitor_nation,
             host_nation: pd.host_nation,
             visit_type: visitType,
@@ -7882,13 +7882,13 @@ async function acceptStateVisit(proposalId) {
                 event_name: 'State Visit',
                 event_type: 'state_visit',
                 category: 'Diplomatic',
-                description_chosen: pd.visitor_pm + ' of ' + pd.visitor_nation + ' conducted a ' + vtLabel + ' to ' + pd.host_nation + '.' +
+                description_chosen: pd.visitor_leader + ' of ' + pd.visitor_nation + ' conducted a ' + vtLabel + ' to ' + pd.host_nation + '.' +
                     ' The ' + durLabel.toLowerCase() + ' visit included ' + agendaTitles.join(', ') + '.' +
                     (isFirstVisit ? ' This historic first visit marks a new chapter in bilateral relations.' : '') +
                     (triggeredRisks.length > 0 ? ' The visit was not without incident.' : ''),
                 fired_at_tick: currentTick,
                 effects: {
-                    visitor_pm: pd.visitor_pm,
+                    visitor_leader: pd.visitor_leader,
                     visitor_nation: pd.visitor_nation,
                     host_nation: pd.host_nation,
                     visit_type: visitType,
@@ -7906,7 +7906,7 @@ async function acceptStateVisit(proposalId) {
 
     // Build result message
     let resultMsg = 'State Visit Accepted!\n\n' +
-        pd.visitor_pm + ' visited ' + pd.host_nation + '\n' +
+        pd.visitor_leader + ' visited ' + pd.host_nation + '\n' +
         vtLabel + ' · ' + durLabel + ' · ' + agenda.length + ' agenda items\n\n' +
         'Effects Applied:\n';
 
