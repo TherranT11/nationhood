@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Government | Nationhood Alpha</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/government.css">
 </head>
@@ -512,7 +513,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
     const hosFirst = currentNation.head_of_state_first_name || 'Unknown';
     const hosLast = currentNation.head_of_state_last_name || 'Unknown';
     const hosAge = currentNation.head_of_state_age || '—';
-    const approvalColor = governmentApproval >= 60 ? '#4CAF50' : governmentApproval >= 40 ? 'var(--accent)' : '#ff4444';
+    const approvalColor = governmentApproval >= 60 ? 'var(--green)' : governmentApproval >= 40 ? 'var(--amber)' : 'var(--red)';
     // Compute tooltip breakdown from ministry data
     const filledMinisters = ministryData.filter(m => m.minister_first_name);
     const vacantCount = ministryData.length - filledMinisters.length;
@@ -528,18 +529,18 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
             <div class="gov-tip-title">Approval Breakdown</div>
             <div class="gov-tip-row">
                 <span class="gov-tip-label">Minister Avg</span>
-                <div class="gov-tip-bar"><div class="gov-tip-bar-fill" style="width:${ministerAvg}%;background:#4CAF50"></div></div>
+                <div class="gov-tip-bar"><div class="gov-tip-bar-fill" style="width:${ministerAvg}%;background:var(--green)"></div></div>
                 <span class="gov-tip-val">${ministerAvg}</span>
             </div>
             <div class="gov-tip-desc">Average approval of filled cabinet ministers</div>
             <div class="gov-tip-row">
                 <span class="gov-tip-label">Vacancies</span>
-                <span class="gov-tip-val" style="color:${vacancyPenalty < 0 ? '#ff4444' : '#4CAF50'}">${vacancyPenalty === 0 ? '0' : vacancyPenalty}</span>
+                <span class="gov-tip-val" style="color:${vacancyPenalty < 0 ? 'var(--red)' : 'var(--green)'}">${vacancyPenalty === 0 ? '0' : vacancyPenalty}</span>
             </div>
             <div class="gov-tip-desc">${vacantCount} vacant seat${vacantCount !== 1 ? 's' : ''} (-3 each)</div>
             <div class="gov-tip-row">
                 <span class="gov-tip-label">Events</span>
-                <span class="gov-tip-val" style="color:${evMod > 0 ? '#4CAF50' : evMod < 0 ? '#ff4444' : 'var(--text-secondary)'}">${evMod > 0 ? '+' : ''}${evMod}</span>
+                <span class="gov-tip-val" style="color:${evMod > 0 ? 'var(--green)' : evMod < 0 ? 'var(--red)' : 'var(--text-secondary)'}">${evMod > 0 ? '+' : ''}${evMod}</span>
             </div>
             <div class="gov-tip-desc">Crises & events (decays over time)</div>
             ${(() => {
@@ -556,7 +557,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                 const rows = events.map(e => {
                     const label = GOV_SOURCE_LABELS[e.source] || e.source.replace(/[_:]/g, ' ');
                     const sign = e.amount > 0 ? '+' : '';
-                    const color = e.amount > 0 ? '#4CAF50' : '#ff4444';
+                    const color = e.amount > 0 ? 'var(--green)' : 'var(--red)';
                     return '<div class="gov-tip-evt"><span>' + label + '</span><span style="color:' + color + '">' + sign + Math.round(e.amount * 10) / 10 + '</span></div>';
                 }).join('');
                 return '<div class="gov-tip-events-title">Recent Events</div>' + rows;
@@ -581,10 +582,10 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
     // === AUTOCRACY: No ruling faction yet — show Seize Power prompt ===
     if (isAutocracy && !rulingFactionId) {
         return `
-            <div class="administration-box" style="border-color: #ff4444;">
-                <div class="administration-header" style="border-bottom-color: #3a1a1a;">
+            <div class="administration-box" style="border-color: var(--red);">
+                <div class="administration-header" style="border-bottom-color: var(--border-hair);">
                     <div style="font-size: 2.5rem; margin-bottom: 8px;">&#9876;</div>
-                    <div class="administration-title" style="color: #ff4444;">Power Vacuum</div>
+                    <div class="administration-title" style="color: var(--red);">Power Vacuum</div>
                     <div class="administration-subtitle">No faction controls the government</div>
                 </div>
                 <div class="administration-content" style="display:block; text-align:center; padding: 24px;">
@@ -595,7 +596,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                         Claiming power will make your faction the ruling faction, granting control over all ministries and the Prime Minister's office.
                     </div>
                     <button id="claim-power-btn"
-                        style="padding: 14px 36px; background: linear-gradient(135deg, #ff4444, #cc0000); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; cursor: pointer; transition: all 0.2s;"
+                        style="padding: 14px 36px; background: var(--red); color: white; border: none; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; transition: all 0.2s;"
                         onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 20px rgba(255,68,68,0.4)';"
                         onmouseout="this.style.transform='none'; this.style.boxShadow='none';"
                         onclick="claimPower()">
@@ -629,8 +630,8 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
                                     <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(activeHOG.ideology)};color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
                                     <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
-                                    <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
-                                    <div style="font-size:0.75rem;color:#ff4444;">▼ ${activeHOG.leader_traits?.downside || ''}</div>
+                                    <div style="font-size:0.75rem;color:var(--green);margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
+                                    <div style="font-size:0.75rem;color:var(--red);">▼ ${activeHOG.leader_traits?.downside || ''}</div>
                                 </div>
                             ` : ''}
                         </div>
@@ -638,7 +639,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                             <div class="admin-section-title">Head of State</div>
                             <div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div>
                             <div class="admin-person-details">Age ${hosAge} · <span class="admin-person-party">${escapeHtml(rulingPartyName)}</span></div>
-                            <div style="color: #ff4444; font-size: 0.75rem; margin-top: 6px; font-weight: bold;">Rules until dead or deposed</div>
+                            <div style="color: var(--red); font-size: 0.75rem; margin-top: 6px; font-weight: bold;">Rules until dead or deposed</div>
                         </div>
                     </div>
                     ${renderAdminChat()}
@@ -667,7 +668,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         const majoritySeats = GAME_CONFIG.MAJORITY_SEATS || 61;
         const hasMajority = presPartySeats >= majoritySeats;
         const govStatus = hasMajority ? 'Unified Government' : 'Divided Government';
-        const govStatusColor = hasMajority ? '#4CAF50' : '#ff9800';
+        const govStatusColor = hasMajority ? 'var(--green)' : 'var(--amber)';
 
         // Fetch fresh tick to avoid stale-tick issues
         const { data: freshShard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -701,8 +702,8 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
                     ${presidentData.ideology ? `<div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(presidentData.ideology)};color:white;margin-bottom:6px;">${presidentData.ideology}</div>` : ''}
                     <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${t.trait_name || presidentData.trait}</div>
-                    <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${t.upside || ''}</div>
-                    <div style="font-size:0.75rem;color:#ff4444;">▼ ${t.downside || ''}</div>
+                    <div style="font-size:0.75rem;color:var(--green);margin-bottom:2px;">▲ ${t.upside || ''}</div>
+                    <div style="font-size:0.75rem;color:var(--red);">▼ ${t.downside || ''}</div>
                 </div>`;
         }
 
@@ -724,8 +725,8 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                             ${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}
                             <div style="margin-top:8px;">
                                 <div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:4px;">${termRemaining <= 0 ? termRemainingDisplay : `Term Remaining: ${termRemainingDisplay}`}</div>
-                                <div style="height:4px;background:#333;border-radius:2px;overflow:hidden;">
-                                    <div style="height:100%;width:${termPct}%;background:${termPct > 25 ? 'var(--accent)' : '#ff4444'};border-radius:2px;transition:width 0.3s;"></div>
+                                <div style="height:4px;background:var(--bg-card);border-radius:0;overflow:hidden;">
+                                    <div style="height:100%;width:${termPct}%;background:${termPct > 25 ? 'var(--teal)' : 'var(--red)'};border-radius:0;transition:width 0.3s;"></div>
                                 </div>
                             </div>
                             ${traitHTML}
@@ -806,8 +807,8 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
                                     <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(activeHOG.ideology)};color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
                                     <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
-                                    <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
-                                    <div style="font-size:0.75rem;color:#ff4444;">▼ ${activeHOG.leader_traits?.downside || ''}</div>
+                                    <div style="font-size:0.75rem;color:var(--green);margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
+                                    <div style="font-size:0.75rem;color:var(--red);">▼ ${activeHOG.leader_traits?.downside || ''}</div>
                                 </div>
                                 ${activeHOG.faction_id === currentFaction?.id && coalition.status !== 'caretaker' ? `
                                     <button class="ministry-btn purge" style="margin-top:10px;" onclick="resignPMAction()">📋 Resign as PM</button>
@@ -1157,7 +1158,7 @@ async function loadFormationsList() {
 
     container.innerHTML = `
         <div class="create-proposal-section" id="create-proposal-section">
-            <div style="font-size: 1rem; color: #ffcc00; font-weight: bold; margin-bottom: 4px;">Propose a Government</div>
+            <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">Propose a Government</div>
             <div style="font-size: 0.82rem; color: #888; margin-bottom: 16px;">
                 Select which parties will form the coalition government. You need ${GAME_CONFIG.MAJORITY_SEATS}+ seats to form a government.
             </div>
@@ -1269,7 +1270,7 @@ function updateSeatPreview() {
     previewSeats.className = 'preview-seats ' + (meets ? 'meets' : 'below');
     previewPct.textContent = pct;
     previewThreshold.textContent = meets ? `✓ Meets ${GAME_CONFIG.MAJORITY_SEATS}-seat threshold` : `— needs ${GAME_CONFIG.MAJORITY_SEATS} seats`;
-    previewThreshold.style.color = meets ? '#4CAF50' : '#888';
+    previewThreshold.style.color = meets ? 'var(--green)' : 'var(--text-secondary)';
 }
 
 async function createProposal() {
@@ -1415,7 +1416,7 @@ function renderFormationDetail(formation) {
                     <div class="ministry-item-desc">${m.description}</div>
                     ${nameStr ? `<div class="ministry-minister-name">${nameStr}</div>` : ''}
                 </div>
-                ${isInactive ? '<div style="font-size:0.75rem;color:#555;">Requires legislation</div>' : `
+                ${isInactive ? '<div style="font-size:0.75rem;color:var(--text-dim);">Requires legislation</div>' : `
                     <div class="ministry-select-wrap">
                         <select onchange="onMinistryChange('${m.key}', this.value)" id="ministry-select-${m.key}">
                             <option value="">Select Party...</option>
@@ -1497,8 +1498,8 @@ function renderFormationDetail(formation) {
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <div class="back-link" onclick="loadFormationsList()" style="margin-bottom: 0;">← Back to Proposals</div>
             <div style="display: flex; gap: 8px;">
-                ${isProposer ? `<button onclick="toggleEditCoalition()" id="edit-coalition-btn" style="padding: 8px 16px; background: #1a1a2a; border: 1px solid #ffcc00; color: #ffcc00; border-radius: 4px; font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: 0.2s;" onmouseover="this.style.background='#2a2a3a'" onmouseout="this.style.background='#1a1a2a'">Edit Coalition</button>` : ''}
-                ${isProposer ? `<button onclick="retractProposal('${formation.id}')" style="padding: 8px 16px; background: #2a1a1a; border: 1px solid #ff4444; color: #ff4444; border-radius: 4px; font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: 0.2s;" onmouseover="this.style.background='#3a1a1a'" onmouseout="this.style.background='#2a1a1a'">Retract Proposal</button>` : ''}
+                ${isProposer ? `<button onclick="toggleEditCoalition()" id="edit-coalition-btn" style="padding: 8px 16px; background: var(--bg-card); border: 1px solid var(--border-0); color: var(--text-secondary); border-radius: 3px; font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; cursor: pointer; transition: 0.2s;" onmouseover="this.style.borderColor='var(--text-dim)'" onmouseout="this.style.borderColor='var(--border-0)'">Edit Coalition</button>` : ''}
+                ${isProposer ? `<button onclick="retractProposal('${formation.id}')" style="padding: 8px 16px; background: var(--red-faint); border: 1px solid var(--red-border); color: var(--red); border-radius: 3px; font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; cursor: pointer; transition: 0.2s;">Retract Proposal</button>` : ''}
             </div>
         </div>
 
@@ -1518,7 +1519,7 @@ function renderFormationDetail(formation) {
                 <div class="proposal-seat-preview" id="edit-seat-preview">
                     Coalition seats: <span class="preview-seats" id="edit-preview-seats">${coalitionSeats}</span> / ${totalLegislatureSeats}
                     (<span id="edit-preview-pct">${coalitionPct}</span>%)
-                    <span id="edit-preview-threshold" style="margin-left: 8px; font-size: 0.8rem; color: ${meetsThreshold ? '#4CAF50' : '#888'};">${meetsThreshold ? `✓ Meets ${GAME_CONFIG.MAJORITY_SEATS}-seat threshold` : `— needs ${GAME_CONFIG.MAJORITY_SEATS} seats`}</span>
+                    <span id="edit-preview-threshold" style="margin-left: 8px; font-size: 0.8rem; color: ${meetsThreshold ? 'var(--green)' : 'var(--text-secondary)'};">${meetsThreshold ? `✓ Meets ${GAME_CONFIG.MAJORITY_SEATS}-seat threshold` : `— needs ${GAME_CONFIG.MAJORITY_SEATS} seats`}</span>
                 </div>
                 <button class="action-btn" style="max-width: 300px; margin: 8px auto 0; display: block;" onclick="saveCoalitionEdit('${formation.id}')">Save Changes</button>
             </div>
@@ -1834,7 +1835,7 @@ function updateEditSeatPreview() {
     previewSeats.className = 'preview-seats ' + (meets ? 'meets' : 'below');
     previewPct.textContent = pct;
     previewThreshold.textContent = meets ? `✓ Meets ${GAME_CONFIG.MAJORITY_SEATS}-seat threshold` : `— needs ${GAME_CONFIG.MAJORITY_SEATS} seats`;
-    previewThreshold.style.color = meets ? '#4CAF50' : '#888';
+    previewThreshold.style.color = meets ? 'var(--green)' : 'var(--text-secondary)';
 }
 
 async function saveCoalitionEdit(formationId) {
@@ -2356,11 +2357,11 @@ function renderPresidentialMinistryCard(key, ministry) {
     if (isPending) {
         const pm = ministry.pending_minister;
         const nomineeParty = allParties.find(p => p.id === pm.party_id);
-        return `<div class="ministry-card" style="border-top-color:#FF9800;padding:10px 12px;">
+        return `<div class="ministry-card" style="border-top-color:var(--amber);padding:10px 12px;">
             <div class="ministry-title">${MINISTRY_NAMES[key]}</div>
-            <div class="minister-name" style="color:#FF9800;">${pm.first_name} ${pm.last_name}</div>
+            <div class="minister-name" style="color:var(--amber);">${pm.first_name} ${pm.last_name}</div>
             <div class="minister-details">Age ${pm.age || '?'} • <span class="minister-party">${nomineeParty?.faction_name || 'Unknown'}</span></div>
-            <div style="margin-top:8px;padding:4px 10px;background:#332200;border:1px solid #FF9800;border-radius:6px;font-size:0.68rem;color:#FF9800;text-align:center;">Awaiting Senate Confirmation</div>
+            <div style="margin-top:8px;padding:4px 10px;background:var(--amber-faint);border:1px solid var(--amber-border);border-radius:3px;font-family:var(--font-mono);font-size:8.5px;font-weight:600;color:var(--amber);text-align:center;text-transform:uppercase;letter-spacing:0.06em;">Awaiting Senate Confirmation</div>
         </div>`;
     }
 
@@ -3327,7 +3328,7 @@ async function fileImpeachment() {
         const tooltip = c.reason ? ` title="${c.reason}"` : '';
         return `<label style="display:block;margin:8px 0;${opacity}"${tooltip}>
             <input type="checkbox" name="impeach-charge" value="${c.type}" ${disabled} style="margin-right:8px;">
-            <strong>${c.label}</strong>${c.reason ? ` <span style="font-size:0.7rem;color:#888;">(${c.reason})</span>` : ''}
+            <strong>${c.label}</strong>${c.reason ? ` <span style="font-size:0.7rem;color:var(--text-secondary);">(${c.reason})</span>` : ''}
         </label>`;
     }).join('');
 
@@ -3336,22 +3337,22 @@ async function fileImpeachment() {
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:center;justify-content:center;';
     overlay.innerHTML = `
-        <div style="background:#1e1e1e;border:1px solid #444;border-radius:12px;padding:24px;max-width:440px;width:90%;max-height:80vh;overflow-y:auto;">
-            <div style="font-size:1.1rem;font-weight:bold;color:#ff4444;margin-bottom:4px;">⚖ IMPEACH PRESIDENT</div>
-            <div style="font-size:0.85rem;color:#aaa;margin-bottom:16px;">
+        <div style="background:var(--bg-panel);border:1px solid var(--border-0);border-radius:3px;padding:24px;max-width:440px;width:90%;max-height:80vh;overflow-y:auto;">
+            <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--red);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.1em;">⚖ IMPEACH PRESIDENT</div>
+            <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:16px;">
                 President ${escapeHtml(presidentData.first_name)} ${escapeHtml(presidentData.last_name)}
             </div>
-            <div style="font-size:0.8rem;color:#ccc;margin-bottom:12px;">Select at least one charge:</div>
+            <div style="font-size:0.8rem;color:var(--text-primary);margin-bottom:12px;">Select at least one charge:</div>
             <div id="impeach-charges-list">${chargeCheckboxes}</div>
-            <div style="margin-top:16px;padding-top:12px;border-top:1px solid #333;font-size:0.75rem;color:#888;line-height:1.5;">
-                <div>Cost: <strong style="color:#ffcc00;">${GAME_CONFIG.IMPEACHMENT_AP_COST} AP</strong></div>
+            <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-hair);font-size:0.75rem;color:var(--text-secondary);line-height:1.5;">
+                <div>Cost: <strong style="color:var(--amber);">${GAME_CONFIG.IMPEACHMENT_AP_COST} AP</strong></div>
                 <div>Committee debate: ${GAME_CONFIG.IMPEACHMENT_COMMITTEE_TICKS} ticks → Floor vote: ${GAME_CONFIG.IMPEACHMENT_MOTION_VOTING_TICKS} ticks</div>
-                <div>Requires <strong style="color:#4CAF50;">simple majority</strong> (50%+1 of all seats) to impeach</div>
+                <div>Requires <strong style="color:var(--green);">simple majority</strong> (50%+1 of all seats) to impeach</div>
                 <div style="margin-top:6px;">If impeached → Trial: ${GAME_CONFIG.IMPEACHMENT_TRIAL_TICKS}-tick conviction vote (⅔ supermajority)</div>
             </div>
             <div style="display:flex;gap:12px;margin-top:20px;">
-                <button id="impeach-cancel-btn" style="flex:1;padding:10px;background:#333;color:#ccc;border:1px solid #555;border-radius:6px;cursor:pointer;font-size:0.85rem;">Cancel</button>
-                <button id="impeach-confirm-btn" style="flex:1;padding:10px;background:#B71C1C;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.85rem;font-weight:bold;">File Impeachment</button>
+                <button id="impeach-cancel-btn" style="flex:1;padding:10px;background:var(--bg-card);color:var(--text-secondary);border:1px solid var(--border-0);border-radius:3px;cursor:pointer;font-family:var(--font-mono);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">Cancel</button>
+                <button id="impeach-confirm-btn" style="flex:1;padding:10px;background:var(--red);color:#fff;border:none;border-radius:3px;cursor:pointer;font-family:var(--font-mono);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">File Impeachment</button>
             </div>
         </div>`;
     document.body.appendChild(overlay);
