@@ -834,6 +834,7 @@ body {
         /* Government approval breakdown tooltip */
         .gov-approval-hover { cursor: help; text-decoration: underline dotted var(--text-muted, #666); text-underline-offset: 3px; }
         .gov-approval-tooltip {
+            display: none;
             position: absolute;
             top: calc(100% + 8px);
             right: 0;
@@ -842,13 +843,10 @@ body {
             border-radius: 3px;
             padding: 14px 16px;
             width: 260px;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.15s;
             z-index: 30;
             text-align: left;
         }
-        .gov-approval-hover:hover .gov-approval-tooltip { opacity: 1; pointer-events: auto; }
+        .gov-approval-hover:hover .gov-approval-tooltip { display: block; }
         .gov-tip-title {
             font-size: 0.68rem;
             color: var(--text-muted, #666);
