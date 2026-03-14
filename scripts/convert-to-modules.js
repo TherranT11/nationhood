@@ -44,11 +44,6 @@ const imports = {
     `import { initPage, formatNumber } from './js/common.js';`,
     `import { isGovernmentAutocracy, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG } from './js/game-common.js';`,
   ],
-  'events.html': [
-    `import { _supabase } from './js/supabase-client.js';`,
-    `import { initPage } from './js/common.js';`,
-    `import { initGameConfigForNation } from './js/game-common.js';`,
-  ],
   'factions.html': [
     `import { _supabase } from './js/supabase-client.js';`,
     `import { initPage } from './js/common.js';`,
@@ -72,10 +67,6 @@ const imports = {
   ],
 
   // GROUP B: CDN + supabase-client + game-common (no common.js)
-  'eventadmin.html': [
-    `import { _supabase } from './js/supabase-client.js';`,
-    `import { GAME_CONFIG, MAJOR_SECTORS, NATION_STAT_COLUMNS, formatStatName, normalizeNationStatKey } from './js/game-common.js';`,
-  ],
   'crisisadmin.html': [
     `import { _supabase } from './js/supabase-client.js';`,
     `import { NATION_STAT_COLUMNS, formatStatName } from './js/game-common.js';`,
