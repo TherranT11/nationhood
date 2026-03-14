@@ -32,7 +32,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
-import { initWikiPage, renderWikiSearchBar, fetchPage, fetchPageList, fetchExistingSlugs, renderWikiLinks, renderInfobox, slugify, fetchFactionNames } from './js/wiki.js';
+import { initWikiPage, renderWikiSearchBar, fetchPage, fetchPageList, fetchExistingSlugs, renderWikiLinks, renderInfobox, slugify, fetchFactionNames, renderTagDisplay } from './js/wiki.js';
 
 (async () => {
     const state = await initWikiPage();
@@ -201,6 +201,7 @@ import { initWikiPage, renderWikiSearchBar, fetchPage, fetchPageList, fetchExist
 
     const bodyHtml = renderWikiLinks(page.body || '<p><em>This page is empty.</em></p>', existingSlugs);
     const infoboxHtml = renderInfobox(page);
+    const tagsHtml = renderTagDisplay(page.tags);
 
     // Fetch faction names for attribution
     const factionIds = [page.created_by, page.updated_by].filter(Boolean);
@@ -282,6 +283,7 @@ import { initWikiPage, renderWikiSearchBar, fetchPage, fetchPageList, fetchExist
         <div class="wiki-page-layout">
             <div class="wiki-body-col">
                 <div class="wiki-body-content">${bodyHtml}</div>
+                ${tagsHtml}
                 ${backlinksHtml}
             </div>
             ${infoboxHtml}

@@ -506,7 +506,7 @@ function renderBill() {
         if (evalForDeadline.status === 'will_pass' || evalForDeadline.status === 'will_fail') {
             const votingEndsEl = document.getElementById('bill-voting-ends');
             const willPass = evalForDeadline.status === 'will_pass';
-            votingEndsEl.innerHTML = `<span style="color:${willPass ? '#4CAF50' : '#ff4444'};">Resolves next tick — ${willPass ? 'will pass' : 'will fail'}</span>`;
+            votingEndsEl.innerHTML = `<span style="color:${willPass ? 'var(--green)' : 'var(--red)'};">Resolves next tick — ${willPass ? 'will pass' : 'will fail'}</span>`;
         } else {
             document.getElementById('voting-ends-date').textContent = tickToDate(bill.voting_ends_tick);
         }
@@ -515,11 +515,11 @@ function renderBill() {
     // Frozen bill banner — no actions available
     if (isFrozen) {
         const frozenBanner = document.createElement('div');
-        frozenBanner.style.cssText = 'background:linear-gradient(135deg,#2a1a00,#1a1200);border:2px solid #ff9800;border-radius:12px;padding:20px;margin:16px 0;text-align:center;';
+        frozenBanner.style.cssText = 'background:var(--orange-faint);border:2px solid var(--orange-border);border-radius:3px;padding:20px;margin:16px 0;text-align:center;';
         frozenBanner.innerHTML = `
-            <div style="font-size:1rem;color:#ff9800;font-weight:bold;text-transform:uppercase;letter-spacing:1.5px;">⚡ Bill Frozen</div>
+            <div style="font-size:1rem;color:var(--orange);font-weight:bold;text-transform:uppercase;letter-spacing:1.5px;">⚡ Bill Frozen</div>
             <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:8px;">The legislature has been dissolved. This bill is frozen pending elections.</div>
-            <div style="font-size:0.8rem;color:#ff9800;margin-top:6px;">It will be dismissed when the election resolves.</div>
+            <div style="font-size:0.8rem;color:var(--orange);margin-top:6px;">It will be dismissed when the election resolves.</div>
         `;
         const header = document.getElementById('bill-header');
         header.parentNode.insertBefore(frozenBanner, header.nextSibling);
@@ -562,16 +562,16 @@ function renderBill() {
     // President's desk — show sign/veto actions
     if (isPresidentDesk) {
         const deskBanner = document.createElement('div');
-        deskBanner.style.cssText = 'background:linear-gradient(135deg,#0d1b2a,#1b2838);border:2px solid #1565C0;border-radius:12px;padding:20px;margin:16px 0;text-align:center;';
+        deskBanner.style.cssText = 'background:var(--blue-faint);border:2px solid var(--blue-border);border-radius:3px;padding:20px;margin:16px 0;text-align:center;';
         const deadlineTick = bill.president_desk_deadline || '?';
         deskBanner.innerHTML = `
-            <div style="font-size:1rem;color:#64B5F6;font-weight:bold;text-transform:uppercase;letter-spacing:1.5px;">On The President's Desk</div>
+            <div style="font-size:1rem;color:var(--blue);font-weight:bold;text-transform:uppercase;letter-spacing:1.5px;">On The President's Desk</div>
             <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:8px;">This bill has passed parliament and awaits the President's signature.</div>
-            <div style="font-size:0.8rem;color:#64B5F6;margin-top:6px;">Auto-signs at Tick ${deadlineTick} (${tickToDate(deadlineTick)}) if no action is taken.</div>
+            <div style="font-size:0.8rem;color:var(--blue);margin-top:6px;">Auto-signs at Tick ${deadlineTick} (${tickToDate(deadlineTick)}) if no action is taken.</div>
             ${isPresidentParty ? `
                 <div style="display:flex;justify-content:center;gap:12px;margin-top:16px;">
-                    <button onclick="signBillAction()" style="padding:10px 28px;background:#4CAF50;color:#fff;border:none;border-radius:6px;font-weight:bold;font-size:0.9rem;cursor:pointer;">Sign Into Law</button>
-                    <button onclick="vetoBillAction()" style="padding:10px 28px;background:#B71C1C;color:#fff;border:none;border-radius:6px;font-weight:bold;font-size:0.9rem;cursor:pointer;">Veto</button>
+                    <button onclick="signBillAction()" style="padding:10px 28px;background:var(--green);color:#fff;border:none;border-radius:3px;font-weight:bold;font-size:0.9rem;cursor:pointer;">Sign Into Law</button>
+                    <button onclick="vetoBillAction()" style="padding:10px 28px;background:var(--red);color:#fff;border:none;border-radius:3px;font-weight:bold;font-size:0.9rem;cursor:pointer;">Veto</button>
                 </div>
             ` : ''}
         `;
@@ -620,10 +620,10 @@ function renderBill() {
 
     const disabledAttr = canSendToFloor ? '' : 'disabled';
     const reason = isNoGovernment
-        ? '<div style="color:#4fc3f7;font-size:0.78rem;margin-top:10px;text-align:center;">🏛️ Legislature is suspended until a new government is formed.</div>'
+        ? '<div style="color:var(--blue);font-size:0.78rem;margin-top:10px;text-align:center;">🏛️ Legislature is suspended until a new government is formed.</div>'
         : (canSendToFloor ? '' : isFoundational
-        ? '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ Foundational laws require at least one co-sponsor to advance.</div>'
-        : '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or a simple majority of seats to send this to the floor.</div>');
+        ? '<div style="color:var(--red);font-size:0.78rem;margin-top:10px;text-align:center;">⚠ Foundational laws require at least one co-sponsor to advance.</div>'
+        : '<div style="color:var(--red);font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or a simple majority of seats to send this to the floor.</div>');
 
     const retractBtn = '<button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>';
     el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">Send to Floor</button>${retractBtn}` + reason;
@@ -636,7 +636,7 @@ function renderBill() {
         const myVoteRecord = (bill.bill_support || []).find(s => s.faction_id === currentFaction.id);
         if (!myVoteRecord) {
             const warnDiv = document.createElement('div');
-            warnDiv.style.cssText = 'background:linear-gradient(135deg,#2a1f00,#1a1400);border:2px solid #ff9800;border-radius:8px;padding:12px 16px;margin:16px 0;text-align:center;color:#ff9800;font-size:0.85rem;font-weight:bold;';
+            warnDiv.style.cssText = 'background:var(--orange-faint);border:2px solid var(--orange-border);border-radius:3px;padding:12px 16px;margin:16px 0;text-align:center;color:var(--orange);font-size:0.85rem;font-weight:bold;';
             warnDiv.textContent = `Your party did not vote on "${bill.bill_name}" before it resolved.`;
             const header = document.getElementById('bill-header');
             header.parentNode.insertBefore(warnDiv, header.nextSibling);
@@ -703,16 +703,16 @@ function renderArticles() {
     // No-confidence motions show a special notice instead of articles
     if (bill.bill_type === 'no_confidence') {
         document.getElementById('bill-articles').innerHTML =
-            '<div class="article preamble" style="border-left-color:#ff4444;">' +
-                '<div class="article-number" style="color:#ff4444;">MOTION</div>' +
+            '<div class="article preamble" style="border-left-color:var(--red);">' +
+                '<div class="article-number" style="color:var(--red);">MOTION</div>' +
                 '<div class="article-title">Vote of No Confidence</div>' +
                 '<div class="article-description">' + (bill.preamble || 'This motion calls for a vote of no confidence in the current government.') + '</div>' +
             '</div>' +
-            '<div class="repeal-notice" style="border-color:#ff4444;">' +
+            '<div class="repeal-notice" style="border-color:var(--red);">' +
                 '<div class="repeal-notice-icon">⚡</div>' +
                 '<div class="repeal-notice-text">This is a motion of no confidence</div>' +
-                '<div class="repeal-notice-sub" style="color:#aaa;line-height:1.6;">' +
-                    'Requires <strong style="color:#4CAF50;">simple majority</strong> (YES votes > NO votes) to pass.<br>' +
+                '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                    'Requires <strong style="color:var(--green);">simple majority</strong> (YES votes > NO votes) to pass.<br>' +
                     'If passed: coalition dissolved, PM removed, all ministries vacated.<br>' +
                     'If failed: filer loses 5 approval, PM gains 3 approval, ' + GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS + '-tick cooldown.' +
                 '</div>' +
@@ -725,16 +725,16 @@ function renderArticles() {
     // Impeachment motion bills show a special notice
     if (bill.bill_type === 'impeachment_motion') {
         document.getElementById('bill-articles').innerHTML =
-            '<div class="article preamble" style="border-left-color:#D32F2F;">' +
-                '<div class="article-number" style="color:#D32F2F;">MOTION</div>' +
+            '<div class="article preamble" style="border-left-color:var(--red);">' +
+                '<div class="article-number" style="color:var(--red);">MOTION</div>' +
                 '<div class="article-title">Articles of Impeachment</div>' +
                 '<div class="article-description">' + (bill.preamble || 'This motion calls for the impeachment of the President.') + '</div>' +
             '</div>' +
-            '<div class="repeal-notice" style="border-color:#D32F2F;">' +
+            '<div class="repeal-notice" style="border-color:var(--red);">' +
                 '<div class="repeal-notice-icon">⚖</div>' +
                 '<div class="repeal-notice-text">This is an impeachment motion</div>' +
-                '<div class="repeal-notice-sub" style="color:#aaa;line-height:1.6;">' +
-                    'Requires <strong style="color:#4CAF50;">absolute majority</strong> (' + GAME_CONFIG.MAJORITY_SEATS + ' of ' + GAME_CONFIG.TOTAL_SEATS + ' seats) to impeach.<br>' +
+                '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                    'Requires <strong style="color:var(--green);">absolute majority</strong> (' + GAME_CONFIG.MAJORITY_SEATS + ' of ' + GAME_CONFIG.TOTAL_SEATS + ' seats) to impeach.<br>' +
                     'If passed: President impeached, proceeds to conviction trial (⅔ supermajority).<br>' +
                     'If failed: filer loses 5 approval, president gains 3 approval, ' + GAME_CONFIG.IMPEACHMENT_MOTION_COOLDOWN_TICKS + '-tick cooldown.' +
                 '</div>' +
@@ -747,16 +747,16 @@ function renderArticles() {
     // Impeachment conviction/trial bills show a special notice
     if (bill.bill_type === 'impeachment_conviction') {
         document.getElementById('bill-articles').innerHTML =
-            '<div class="article preamble" style="border-left-color:#B71C1C;">' +
-                '<div class="article-number" style="color:#B71C1C;">TRIAL</div>' +
+            '<div class="article preamble" style="border-left-color:var(--red);">' +
+                '<div class="article-number" style="color:var(--red);">TRIAL</div>' +
                 '<div class="article-title">Impeachment Conviction Vote</div>' +
                 '<div class="article-description">' + (bill.preamble || 'The legislature votes on whether to convict and remove the President from office.') + '</div>' +
             '</div>' +
-            '<div class="repeal-notice" style="border-color:#B71C1C;">' +
+            '<div class="repeal-notice" style="border-color:var(--red);">' +
                 '<div class="repeal-notice-icon">⚖</div>' +
                 '<div class="repeal-notice-text">This is an impeachment trial</div>' +
-                '<div class="repeal-notice-sub" style="color:#aaa;line-height:1.6;">' +
-                    'Requires <strong style="color:#ff4444;">⅔ supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' of ' + GAME_CONFIG.TOTAL_SEATS + ' seats) to convict.<br>' +
+                '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                    'Requires <strong style="color:var(--red);">⅔ supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' of ' + GAME_CONFIG.TOTAL_SEATS + ' seats) to convict.<br>' +
                     'If convicted: President removed from office, VP succeeds, emergency election scheduled.<br>' +
                     'If acquitted: President restored, acquittal voters lose 2 approval, ' + GAME_CONFIG.IMPEACHMENT_ACQUITTAL_COOLDOWN_TICKS + '-tick cooldown.' +
                 '</div>' +
@@ -781,16 +781,16 @@ function renderArticles() {
         const change = proposedSeats - currentSeatsDisplay;
         const changeText = change > 0 ? `+${change}` : `${change}`;
         document.getElementById('bill-articles').innerHTML =
-            '<div class="article preamble" style="border-left-color:#9C27B0;">' +
-                '<div class="article-number" style="color:#9C27B0;">FOUNDATIONAL LAW</div>' +
+            '<div class="article preamble" style="border-left-color:var(--purple);">' +
+                '<div class="article-number" style="color:var(--purple);">FOUNDATIONAL LAW</div>' +
                 '<div class="article-title">Electoral Makeup</div>' +
                 '<div class="article-description">' + (bill.preamble || 'This bill proposes to change the number of legislative seats.') + '</div>' +
             '</div>' +
-            '<div class="repeal-notice" style="border-color:#9C27B0;">' +
+            '<div class="repeal-notice" style="border-color:var(--purple);">' +
                 '<div class="repeal-notice-icon">🏛</div>' +
                 '<div class="repeal-notice-text">Proposed Seat Change: ' + currentSeatsDisplay + ' &rarr; ' + proposedSeats + ' (' + changeText + ')</div>' +
-                '<div class="repeal-notice-sub" style="color:#aaa;line-height:1.6;">' +
-                    'Requires <strong style="color:#9C27B0;">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                    'Requires <strong style="color:var(--purple);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
                     'If passed: legislature resized, seats redistributed proportionally.<br>' +
                     'No ideology penalties apply to this bill.' +
                 '</div>' +
@@ -828,19 +828,19 @@ function renderArticles() {
             : '$0/tick';
 
         const targetDetailsHTML = repealPolicy
-            ? '<div class="article" style="border-left:3px solid #ff9800;">' +
+            ? '<div class="article" style="border-left:3px solid var(--orange);">' +
                 '<div class="article-number">Targeted Active Law</div>' +
                 '<div class="article-title">' + escapeHtml(targetPolicyName) + '</div>' +
                 '<div class="article-description">' + escapeHtml(repealPolicy.description || 'No description available for this policy.') + '</div>' +
-                (reversedEffectsHTML ? '<div class="article-stat-effect">' + reversedEffectsHTML + '</div>' : '<div class="article-stat-effect" style="color:#888;">No stat effects listed for this policy.</div>') +
+                (reversedEffectsHTML ? '<div class="article-stat-effect">' + reversedEffectsHTML + '</div>' : '<div class="article-stat-effect" style="color:var(--text-secondary);">No stat effects listed for this policy.</div>') +
                 '<div class="article-costs">' +
                     '<div class="cost-item"><span class="cost-label">Recovered Ongoing Budget:</span> <span class="cost-value negative" style="font-weight:bold;">' + ongoingRecoveryText + '</span></div>' +
                 '</div>' +
             '</div>'
-            : '<div class="repeal-notice" style="border-color:#ff9800;">' +
+            : '<div class="repeal-notice" style="border-color:var(--orange);">' +
                 '<div class="repeal-notice-icon">⚠️</div>' +
-                '<div class="repeal-notice-text" style="color:#ff9800;">Repeal target unresolved</div>' +
-                '<div class="repeal-notice-sub" style="color:#ddd;">The active law referenced by this repeal bill could not be found. The bill can still be viewed, but policy effect and budget recovery details are unavailable.</div>' +
+                '<div class="repeal-notice-text" style="color:var(--orange);">Repeal target unresolved</div>' +
+                '<div class="repeal-notice-sub" style="color:var(--text-bright);">The active law referenced by this repeal bill could not be found. The bill can still be viewed, but policy effect and budget recovery details are unavailable.</div>' +
             '</div>';
 
         document.getElementById('bill-articles').innerHTML =
@@ -866,16 +866,16 @@ function renderArticles() {
     if (bill.bill_type === 'veto_override') {
         const overrideSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
         document.getElementById('bill-articles').innerHTML =
-            '<div class="article preamble" style="border-left-color:#B71C1C;">' +
-                '<div class="article-number" style="color:#B71C1C;">VETO OVERRIDE</div>' +
+            '<div class="article preamble" style="border-left-color:var(--red);">' +
+                '<div class="article-number" style="color:var(--red);">VETO OVERRIDE</div>' +
                 '<div class="article-title">Override Presidential Veto</div>' +
                 '<div class="article-description">' + (bill.preamble || 'The legislature seeks to override the presidential veto.') + '</div>' +
             '</div>' +
-            '<div class="repeal-notice" style="border-color:#B71C1C;">' +
+            '<div class="repeal-notice" style="border-color:var(--red);">' +
                 '<div class="repeal-notice-icon">⚖</div>' +
                 '<div class="repeal-notice-text">Presidential Veto Override</div>' +
-                '<div class="repeal-notice-sub" style="color:#aaa;line-height:1.6;">' +
-                    'Requires <strong style="color:#B71C1C;">two-thirds supermajority</strong> (' + overrideSeats + ' of ' + GAME_CONFIG.TOTAL_SEATS + ' seats) to override.<br>' +
+                '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                    'Requires <strong style="color:var(--red);">two-thirds supermajority</strong> (' + overrideSeats + ' of ' + GAME_CONFIG.TOTAL_SEATS + ' seats) to override.<br>' +
                     'If passed: the original bill becomes law despite the veto.<br>' +
                     'If failed: the veto stands and the bill is dead.' +
                 '</div>' +
@@ -888,16 +888,16 @@ function renderArticles() {
     // Minister confirmation bills show a confirmation notice
     if (bill.bill_type === 'minister_confirmation') {
         document.getElementById('bill-articles').innerHTML =
-            '<div class="article preamble" style="border-left-color:#E65100;">' +
-                '<div class="article-number" style="color:#E65100;">NOMINATION</div>' +
+            '<div class="article preamble" style="border-left-color:var(--orange);">' +
+                '<div class="article-number" style="color:var(--orange);">NOMINATION</div>' +
                 '<div class="article-title">Cabinet Confirmation Vote</div>' +
                 '<div class="article-description">' + (bill.preamble || 'The President has nominated a minister for this cabinet position.') + '</div>' +
             '</div>' +
-            '<div class="repeal-notice" style="border-color:#E65100;">' +
+            '<div class="repeal-notice" style="border-color:var(--orange);">' +
                 '<div class="repeal-notice-icon">🏛</div>' +
                 '<div class="repeal-notice-text">Presidential Cabinet Nomination</div>' +
-                '<div class="repeal-notice-sub" style="color:#aaa;line-height:1.6;">' +
-                    'Requires <strong style="color:#4CAF50;">simple majority</strong> (YES votes &gt; NO votes) to confirm.<br>' +
+                '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                    'Requires <strong style="color:var(--green);">simple majority</strong> (YES votes &gt; NO votes) to confirm.<br>' +
                     'If confirmed: nominee takes office as minister.<br>' +
                     'If rejected: President must nominate from a different party.' +
                 '</div>' +
@@ -936,7 +936,7 @@ function renderArticles() {
                 const changes = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
                 const hasIncrease = changes.some(i => i.proposed_pct > i.current_pct);
                 const hasDecrease = changes.some(i => i.proposed_pct < i.current_pct);
-                const borderColor = hasDecrease ? '#ef4444' : hasIncrease ? '#22c55e' : '#2196F3';
+                const borderColor = hasDecrease ? 'var(--red)' : hasIncrease ? 'var(--green)' : 'var(--blue)';
                 const tagLabel = hasDecrease && !hasIncrease ? 'DEFUND' : hasIncrease && !hasDecrease ? 'FUND' : 'FUNDING';
                 const fundingActions = canEditArticles ? '<div class="article-sponsor-actions">' +
                     '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
@@ -947,14 +947,14 @@ function renderArticles() {
                 totalUpfront += upfrontCost;
                 let instHTML = changes.map(function(i) {
                     const arrow = i.proposed_pct > i.current_pct ? '↑' : '↓';
-                    const c = i.proposed_pct > i.current_pct ? '#22c55e' : '#ef4444';
-                    return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #222;font-size:0.8rem;">' +
-                        '<span style="color:#ccc;">' + escapeHtml(i.name) + '</span>' +
+                    const c = i.proposed_pct > i.current_pct ? 'var(--green)' : 'var(--red)';
+                    return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border-main);font-size:0.8rem;">' +
+                        '<span style="color:var(--text-primary);">' + escapeHtml(i.name) + '</span>' +
                         '<span style="color:' + c + ';font-weight:600;">' + i.current_pct + '% → ' + i.proposed_pct + '% ' + arrow + '</span>' +
                     '</div>';
                 }).join('');
                 if (fd.discretionary) {
-                    instHTML += '<div style="padding:4px 0;font-size:0.8rem;color:#2196F3;">One-time: +' + formatCurrency(Number(fd.discretionary || 0)).replace(/^[+-]/, '') + '</div>';
+                    instHTML += '<div style="padding:4px 0;font-size:0.8rem;color:var(--blue);">One-time: +' + formatCurrency(Number(fd.discretionary || 0)).replace(/^[+-]/, '') + '</div>';
                 }
                 return '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
                     '<div class="article-number">Article ' + art.article_number + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + tagLabel + '</span></div>' +
@@ -976,8 +976,8 @@ function renderArticles() {
                     (hasEffectData ? '' : '<button class="article-action-btn edit" onclick="openEditArticleModal(\'' + art.id + '\')">Edit</button>') +
                     '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
                 '</div>' : '';
-                return '<div class="article" style="border-left:3px solid #2196F3;">' +
-                    '<div class="article-number">Article ' + art.article_number + ' <span style="color:#2196F3;font-size:0.7rem;">TEXT</span></div>' +
+                return '<div class="article" style="border-left:3px solid var(--blue);">' +
+                    '<div class="article-number">Article ' + art.article_number + ' <span style="color:var(--blue);font-size:0.7rem;">TEXT</span></div>' +
                     '<div class="article-title">' + (art.article_title || 'Untitled Provision') + '</div>' +
                     '<div class="article-description" style="white-space:pre-wrap;">' + (art.article_text || '') + '</div>' +
                     '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
@@ -1024,13 +1024,13 @@ function renderArticles() {
                     '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
                 '</div>' : '';
 
-                return '<div class="article" style="border-left:3px solid #ff9800;">' +
-                    '<div class="article-number">Article ' + art.article_number + ' <span style="background:#ff9800;color:#000;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;">REPEAL</span></div>' +
+                return '<div class="article" style="border-left:3px solid var(--orange);">' +
+                    '<div class="article-number">Article ' + art.article_number + ' <span style="background:var(--orange);color:#000;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;">REPEAL</span></div>' +
                     '<div class="article-title">Repeal: ' + (p.policy_name || '') + ' ' + ideoHTML + '</div>' +
                     '<div class="article-description">This article repeals the active policy "' + (p.policy_name || '') + '", reversing its effects.</div>' +
                     (effectsHTML ? '<div class="article-stat-effect">Reverses: ' + effectsHTML + '</div>' : '') +
                     '<div class="article-costs">' +
-                        '<div class="cost-item"><span class="cost-label">Ongoing Savings:</span> <span class="cost-value" style="color:#4CAF50;font-weight:bold;">' + savingsDisplay + '</span></div>' +
+                        '<div class="cost-item"><span class="cost-label">Ongoing Savings:</span> <span class="cost-value" style="color:var(--green);font-weight:bold;">' + savingsDisplay + '</span></div>' +
                     '</div>' +
                     '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
                     repealActions +
@@ -1166,8 +1166,8 @@ function renderRatificationBill() {
         const classification = pd.classification || typeInfo.classification || 'MAJOR';
 
         // Section 1: Preamble
-        html += '<div class="article preamble" style="border-left-color:#0288D1;">' +
-            '<div class="article-number" style="color:#0288D1;">DIPLOMATIC RATIFICATION</div>' +
+        html += '<div class="article preamble" style="border-left-color:var(--blue);">' +
+            '<div class="article-number" style="color:var(--blue);">DIPLOMATIC RATIFICATION</div>' +
             '<div class="article-title">' + escapeHtml(pd.name || bill.bill_name || 'Diplomatic Agreement') + '</div>' +
             '<div class="article-description">' +
                 '<strong>Type:</strong> ' + escapeHtml(typeInfo.label || pd.agreement_type || 'Diplomatic Initiative') +
@@ -1193,8 +1193,8 @@ function renderRatificationBill() {
                     : escapeHtml(art.text || '');
                 html += '<div class="article' + (isStruck ? ' struck-article' : '') + '">' +
                     '<div class="article-number">Article ' + numeral +
-                        (typeLabel ? ' <span style="color:#0288D1;font-size:0.7rem;">' + escapeHtml(typeLabel.toUpperCase()) + '</span>' : '') +
-                        (isStruck ? ' <span style="color:#ff4444;font-size:0.7rem;">STRUCK</span>' : '') +
+                        (typeLabel ? ' <span style="color:var(--blue);font-size:0.7rem;">' + escapeHtml(typeLabel.toUpperCase()) + '</span>' : '') +
+                        (isStruck ? ' <span style="color:var(--red);font-size:0.7rem;">STRUCK</span>' : '') +
                     '</div>' +
                     '<div class="article-description"' + (isStructuredTradeArticle ? '' : ' style="white-space:pre-wrap;"') + '>' + descriptionHtml + '</div>';
                 // Show per-article impact if available
@@ -1252,8 +1252,8 @@ function renderRatificationBill() {
         const durLabel = isPerm ? 'Permanent' : (durTicks >= 12 ? (durTicks / 12).toFixed(1).replace(/\.0$/, '') + ' year(s)' : durTicks + ' month(s)');
 
         // Section 1: Preamble
-        html += '<div class="article preamble" style="border-left-color:#0288D1;">' +
-            '<div class="article-number" style="color:#0288D1;">TRADE RATIFICATION</div>' +
+        html += '<div class="article preamble" style="border-left-color:var(--blue);">' +
+            '<div class="article-number" style="color:var(--blue);">TRADE RATIFICATION</div>' +
             '<div class="article-title">' + escapeHtml(neg.agreement_name || bill.bill_name || 'Trade Agreement') + '</div>' +
             '<div class="article-description">' +
                 '<strong>Type:</strong> ' + escapeHtml(typeInfo.label || neg.agreement_type || 'Trade Agreement') +
@@ -1271,8 +1271,8 @@ function renderRatificationBill() {
                 '<div class="ratification-section-header">Terms &amp; Provisions</div>';
             // Show duration first as its own article
             if (durationArt) {
-                html += '<div class="article" style="border-left:3px solid #0288D1;">' +
-                    '<div class="article-number">Article I <span style="color:#0288D1;font-size:0.7rem;">DURATION</span></div>' +
+                html += '<div class="article" style="border-left:3px solid var(--blue);">' +
+                    '<div class="article-number">Article I <span style="color:var(--blue);font-size:0.7rem;">DURATION</span></div>' +
                     '<div class="article-description">' + renderTradeArticleDescription(durationArt, rd) + '</div>' +
                 '</div>';
             }
@@ -1281,9 +1281,9 @@ function renderRatificationBill() {
                 const numeral = ROMAN[(durationArt ? 1 : 0) + i] || ((durationArt ? 2 : 1) + i);
                 const artTypeInfo = TRADE_ARTICLE_TYPES[art.type] || {};
                 const typeLabel = artTypeInfo.label || art.type || 'Provision';
-                const borderColor = art.type === 'text_article' ? '#2196F3' :
-                    art.type === 'breach_penalty' ? '#ff4444' :
-                    art.type === 'sector_exemption' ? '#ff9800' : '#0288D1';
+                const borderColor = art.type === 'text_article' ? 'var(--blue)' :
+                    art.type === 'breach_penalty' ? 'var(--red)' :
+                    art.type === 'sector_exemption' ? 'var(--orange)' : 'var(--blue)';
                 html += '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
                     '<div class="article-number">Article ' + numeral + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + escapeHtml(typeLabel.toUpperCase()) + '</span></div>' +
                     '<div class="article-description">' + renderTradeArticleDescription(art, rd) + '</div>' +
@@ -1469,13 +1469,13 @@ function renderSidebar() {
             <div class="support-box-content">
                 <div style="text-align:center; padding: 12px 0;">
                     ${isHeadFaction
-                        ? '<div style="color: #ff4444; font-weight: bold; font-size: 0.9rem;">⚡ You may enact this decree</div><div style="color: #888; font-size: 0.8rem; margin-top: 4px;">Use the Enact Decree button below</div>'
-                        : `<div style="color: #888; font-size: 0.85rem;">Awaiting <span style="color: #ff4444; font-weight: bold;">${allParties.find(p => p.id === headFactionId)?.faction_name || 'Head Faction'}</span> to enact</div>`
+                        ? '<div style="color: var(--red); font-weight: bold; font-size: 0.9rem;">⚡ You may enact this decree</div><div style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 4px;">Use the Enact Decree button below</div>'
+                        : `<div style="color: var(--text-secondary); font-size: 0.85rem;">Awaiting <span style="color: var(--red); font-weight: bold;">${allParties.find(p => p.id === headFactionId)?.faction_name || 'Head Faction'}</span> to enact</div>`
                     }
                 </div>
             </div>
             ${amendmentRequests.length > 0 ? `
-                <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div>
+                <div class="support-box-header" style="border-top:1px solid var(--border-main);"><div class="support-box-title">Conditional Support</div></div>
                 <div class="support-box-content">
                     ${amendmentRequests.map(req => {
                         if (req.request_type === 'strike') {
@@ -1483,20 +1483,20 @@ function renderSidebar() {
                             const artLabel = targetArt ? (targetArt.policies?.policy_name || targetArt.article_title || 'Article ' + targetArt.article_number) : 'Unknown Article';
                             return `<div class="amendment-request strike">
                                 <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
-                                <div style="color:#ff6600;font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you <strong>REMOVE</strong>:</div>
+                                <div style="color:var(--orange);font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you <strong>REMOVE</strong>:</div>
                                 <div class="amendment-policy strike-policy">✂ ${artLabel}</div>
                                 ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
                             </div>`;
                         }
                         return `<div class="amendment-request">
                             <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
-                            <div style="color:#2196F3;font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you agree to add the following:</div>
+                            <div style="color:var(--blue);font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you agree to add the following:</div>
                             ${req.policy_id ? `<div class="amendment-policy">📎 ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">📎 ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
                             ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
                         </div>`;
                     }).join('')}
                 </div>` : `
-                <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div>
+                <div class="support-box-header" style="border-top:1px solid var(--border-main);"><div class="support-box-title">Conditional Support</div></div>
                 <div class="no-amendments">No conditional support offers</div>
             `}
             ${(() => {
@@ -1535,13 +1535,13 @@ function renderSidebar() {
                             <div><div class="support-party">${party.faction_name}</div><div class="support-seats">${seats} seats</div></div>
                             <span class="support-status ${sc}">${st}</span>
                         </div>
-                        ${isLocked && isMe ? '<div style="color:#aaa;font-size:0.75rem;margin-top:4px;">Support locked — strike deal accepted</div>' : ''}
+                        ${isLocked && isMe ? '<div style="color:var(--text-primary);font-size:0.75rem;margin-top:4px;">Support locked — strike deal accepted</div>' : ''}
                         ${actionBtns}
                     </div>`;
                 }).join('')}
             </div>
             ${amendmentRequests.length > 0 ? `
-                <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div>
+                <div class="support-box-header" style="border-top:1px solid var(--border-main);"><div class="support-box-title">Conditional Support</div></div>
                 <div class="support-box-content">
                     ${amendmentRequests.map(req => {
                         if (req.request_type === 'strike') {
@@ -1549,19 +1549,19 @@ function renderSidebar() {
                             const artLabel = targetArt ? (targetArt.policies?.policy_name || targetArt.article_title || 'Article ' + targetArt.article_number) : 'Unknown Article';
                             return `<div class="amendment-request strike">
                                 <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
-                                <div style="color:#ff6600;font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you <strong>REMOVE</strong>:</div>
+                                <div style="color:var(--orange);font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you <strong>REMOVE</strong>:</div>
                                 <div class="amendment-policy strike-policy">✂ ${artLabel}</div>
                                 ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
                             </div>`;
                         }
                         return `<div class="amendment-request">
                             <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
-                            <div style="color:#2196F3;font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you agree to add the following:</div>
+                            <div style="color:var(--blue);font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you agree to add the following:</div>
                             ${req.policy_id ? `<div class="amendment-policy">📎 ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">📎 ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
                             ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
                         </div>`;
                     }).join('')}
-                </div>` : (!isSponsor ? `<div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div><div class="no-amendments">No conditional support offers</div>` : '')}
+                </div>` : (!isSponsor ? `<div class="support-box-header" style="border-top:1px solid var(--border-main);"><div class="support-box-title">Conditional Support</div></div><div class="no-amendments">No conditional support offers</div>` : '')}
             ${(() => {
                 const myLocked2 = currentFaction && billSupport.find(s => s.faction_id === currentFaction.id)?.locked;
                 const canAmend = !isSponsor && !myLocked2 && bill.bill_type !== 'foundational' && bill.bill_type !== 'confirmation' && bill.bill_type !== 'minister_confirmation' && bill.bill_type !== 'veto_override';
@@ -1599,29 +1599,29 @@ function renderSidebar() {
             statusColor = '';
         } else if (evalResult.status === 'will_pass') {
             statusLabel = 'WILL PASS';
-            statusColor = '#4CAF50';
+            statusColor = 'var(--green)';
         } else if (evalResult.status === 'will_fail') {
             statusLabel = evalResult.reason === 'quorum_impossible' ? 'WILL FAIL — QUORUM IMPOSSIBLE' : 'WILL FAIL';
-            statusColor = '#ff4444';
+            statusColor = 'var(--red)';
         } else if (evalResult.status === 'passing') {
             const quorumLabel = evalResult.quorumMet ? `${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} quorum met` : '';
             statusLabel = `PASSING${quorumLabel ? ' — ' + quorumLabel : ''}`;
-            statusColor = '#8BC34A';
+            statusColor = 'var(--green)';
         } else if (evalResult.status === 'failing') {
             statusLabel = 'FAILING';
-            statusColor = '#ff6644';
+            statusColor = 'var(--red)';
         } else if (evalResult.status === 'tied') {
             statusLabel = 'TIED — bill will fail unless more yes votes are cast';
-            statusColor = '#ff9800';
+            statusColor = 'var(--orange)';
         } else if (evalResult.status === 'quorum_not_met') {
             statusLabel = `QUORUM NOT MET — ${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} participating`;
-            statusColor = '#ffcc00';
+            statusColor = 'var(--amber)';
         } else if (evalResult.status === 'pending' && isAbsoluteThreshold) {
             statusLabel = `${evalResult.neededFor} more YES needed of ${evalResult.thresholdNeeded} required`;
-            statusColor = '#ffcc00';
+            statusColor = 'var(--amber)';
         } else {
             statusLabel = 'UNDECIDED';
-            statusColor = '#888';
+            statusColor = 'var(--text-secondary)';
         }
 
         // ── Build progress bars ──
@@ -1632,7 +1632,7 @@ function renderSidebar() {
             const participating = f + a + ab;
             const quorumPct = Math.min(100, Math.round((participating / totalSeats) * 100));
             const quorumLinePct = Math.round((quorumThreshold / totalSeats) * 100);
-            const quorumBarColor = participating >= quorumThreshold ? '#4CAF50' : '#ffcc00';
+            const quorumBarColor = participating >= quorumThreshold ? 'var(--green)' : 'var(--amber)';
 
             const yesPct = Math.round((f / totalSeats) * 100);
             const noPct = Math.round((a / totalSeats) * 100);
@@ -1645,7 +1645,7 @@ function renderSidebar() {
                         <div class="vote-progress-fill" style="width:${quorumPct}%;background:${quorumBarColor};"></div>
                         <div class="vote-progress-marker" style="left:${quorumLinePct}%;" title="Quorum line (50%)"></div>
                     </div>
-                    <div class="vote-progress-label" style="margin-top:8px;">Votes: <span style="color:#4CAF50;">${f} yes</span> / <span style="color:#ff4444;">${a} no</span></div>
+                    <div class="vote-progress-label" style="margin-top:8px;">Votes: <span style="color:var(--green);">${f} yes</span> / <span style="color:var(--red);">${a} no</span></div>
                     <div class="vote-progress-bar">
                         <div class="vote-progress-fill vote-yes-fill" style="width:${yesPct}%;"></div>
                         <div class="vote-progress-fill vote-no-fill" style="width:${noPct}%;left:${100 - noPct}%;"></div>
@@ -1660,7 +1660,7 @@ function renderSidebar() {
 
             progressBarHTML = `
                 <div class="vote-progress-section">
-                    <div class="vote-progress-label">Yes votes: <span style="color:#4CAF50;">${f}</span> / <span style="color:#ffcc00;">${threshold} needed</span> (${isSupermajority ? '2/3' : '50%+1'} of ${totalSeats})</div>
+                    <div class="vote-progress-label">Yes votes: <span style="color:var(--green);">${f}</span> / <span style="color:var(--amber);">${threshold} needed</span> (${isSupermajority ? '2/3' : '50%+1'} of ${totalSeats})</div>
                     <div class="vote-progress-bar">
                         <div class="vote-progress-fill vote-yes-fill" style="width:${yesPct}%;"></div>
                         <div class="vote-progress-marker" style="left:${thresholdPct}%;" title="${isSupermajority ? '2/3 supermajority' : 'Absolute majority'} threshold"></div>
@@ -1675,8 +1675,8 @@ function renderSidebar() {
             const participating = f + a + ab;
             const qMet = participating >= quorumThreshold;
             const qLabel = qMet ? 'MET' : 'NOT MET';
-            const qColor = qMet ? '#4CAF50' : '#ffcc00';
-            quorumRow = `<div class="vote-tally-row" style="border-top:1px solid #444;padding-top:8px;">
+            const qColor = qMet ? 'var(--green)' : 'var(--amber)';
+            quorumRow = `<div class="vote-tally-row" style="border-top:1px solid var(--border-mid);padding-top:8px;">
                 <span class="vote-tally-label">Quorum</span>
                 <span class="vote-tally-value" style="color:var(--text-secondary);">${participating} / ${quorumThreshold} needed <span class="vote-status-chip" style="background:${qColor};color:#000;">${qLabel}</span></span>
             </div>`;
@@ -1686,10 +1686,10 @@ function renderSidebar() {
                 : evalResult.status === 'failing' ? 'FAILING'
                 : evalResult.status === 'tied' ? 'TIED'
                 : 'UNDECIDED';
-            const pColor = evalResult.status === 'will_pass' || evalResult.status === 'passing' ? '#4CAF50'
-                : evalResult.status === 'will_fail' || evalResult.status === 'failing' ? '#ff4444'
-                : evalResult.status === 'tied' ? '#ff9800'
-                : '#888';
+            const pColor = evalResult.status === 'will_pass' || evalResult.status === 'passing' ? 'var(--green)'
+                : evalResult.status === 'will_fail' || evalResult.status === 'failing' ? 'var(--red)'
+                : evalResult.status === 'tied' ? 'var(--orange)'
+                : 'var(--text-secondary)';
             passageRow = `<div class="vote-tally-row">
                 <span class="vote-tally-label">Passage</span>
                 <span class="vote-tally-value" style="color:var(--text-secondary);">Simple Majority <span class="vote-status-chip" style="background:${pColor};color:#fff;">${pLabel}</span></span>
@@ -1699,11 +1699,11 @@ function renderSidebar() {
             const pLabel = evalResult.status === 'will_pass' ? 'WILL PASS'
                 : evalResult.status === 'will_fail' ? 'WILL FAIL'
                 : `${f} / ${threshold}`;
-            const pColor = evalResult.status === 'will_pass' ? '#4CAF50'
-                : evalResult.status === 'will_fail' ? '#ff4444' : '#ffcc00';
-            passageRow = `<div class="vote-tally-row" style="border-top:1px solid #444;padding-top:8px;">
+            const pColor = evalResult.status === 'will_pass' ? 'var(--green)'
+                : evalResult.status === 'will_fail' ? 'var(--red)' : 'var(--amber)';
+            passageRow = `<div class="vote-tally-row" style="border-top:1px solid var(--border-mid);padding-top:8px;">
                 <span class="vote-tally-label">${isSupermajority ? '2/3 Supermajority' : 'Absolute Majority'}</span>
-                <span class="vote-tally-value" style="color:var(--text-secondary);">${f} / ${threshold} needed <span class="vote-status-chip" style="background:${pColor};color:${pColor === '#ffcc00' ? '#000' : '#fff'};">${evalResult.status === 'will_pass' ? 'WILL PASS' : evalResult.status === 'will_fail' ? 'WILL FAIL' : 'IN PROGRESS'}</span></span>
+                <span class="vote-tally-value" style="color:var(--text-secondary);">${f} / ${threshold} needed <span class="vote-status-chip" style="background:${pColor};color:${pColor === 'var(--amber)' ? '#000' : '#fff'};">${evalResult.status === 'will_pass' ? 'WILL PASS' : evalResult.status === 'will_fail' ? 'WILL FAIL' : 'IN PROGRESS'}</span></span>
             </div>`;
         }
 
@@ -1738,7 +1738,7 @@ function renderSidebar() {
                 <div>
                     <span class="party-vote-name">${party.faction_name}</span>
                     <span class="party-vote-seats">(${seats})</span>
-                    ${isSp ? ` <span style="color:#ffcc00;font-size:0.7rem;">★ ${(currentBill.bill_type === 'no_confidence' || currentBill.bill_type === 'impeachment_motion' || currentBill.bill_type === 'impeachment_conviction') ? 'FILER' : 'SPONSOR'}</span>` : ''}
+                    ${isSp ? ` <span style="color:var(--amber);font-size:0.7rem;">★ ${(currentBill.bill_type === 'no_confidence' || currentBill.bill_type === 'impeachment_motion' || currentBill.bill_type === 'impeachment_conviction') ? 'FILER' : 'SPONSOR'}</span>` : ''}
                 </div>
                 ${vote ? `<span class="support-status ${stanceClass}">${stanceLabel}</span>` : `<span class="party-vote-no-vote">${stanceLabel}${quorumHint}</span>`}
             </div>`;
@@ -1758,7 +1758,7 @@ function renderSidebar() {
             ${statusHTML}
             ${progressBarHTML}
         </div>
-        <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Party Votes</div></div>
+        <div class="support-box-header" style="border-top:1px solid var(--border-main);"><div class="support-box-title">Party Votes</div></div>
         <div class="party-votes-list">${partyVotesHTML}</div>
         </div>`;
     }
@@ -1993,7 +1993,7 @@ function onAmendmentSectorChange() {
     const policies = _getCompatiblePolicies(sector);
    document.getElementById('amendment-policies').innerHTML = policies.map(p => {
         const opposedClass = p.isOpposed ? ' opposed' : '';
-        const opposedBadge = p.isOpposed ? ' <span style="display:inline-block;background:#ff4444;color:#fff;padding:2px 7px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚠ Opposed</span>' : '';
+        const opposedBadge = p.isOpposed ? ' <span style="display:inline-block;background:var(--red);color:#fff;padding:2px 7px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚠ Opposed</span>' : '';
         const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
         const ideoHTML = ideos.map(i => {
             const colorClass = getIdeologyChipClass(i, factionIdeology);
@@ -2125,7 +2125,7 @@ function openStrikeAmendmentModal() {
     listEl.innerHTML = articles.map(art => {
         const p = art.policies;
         const label = p ? (p.policy_name || 'Unknown Policy') : (art.article_title || 'Untitled Provision');
-        const typeTag = p ? '' : ' <span style="color:#2196F3;font-size:0.7rem;">TEXT</span>';
+        const typeTag = p ? '' : ' <span style="color:var(--blue);font-size:0.7rem;">TEXT</span>';
         return `<div class="policy-option" data-strike-id="${art.id}" onclick="selectStrikeArticle('${art.id}')">
             <div class="policy-option-name">Article ${art.article_number}${typeTag}</div>
             <div class="policy-option-desc">${label}</div>
@@ -2302,11 +2302,11 @@ function onSponsorAddSectorChange() {
     // Build active laws (repeal) section
     let activeLawsHTML = '';
     if (sectorActiveLaws.length > 0) {
-        activeLawsHTML = '<div style="margin-bottom:12px;"><div style="color:#ff9800;font-size:0.8rem;font-weight:bold;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Active Policies</div>' +
+        activeLawsHTML = '<div style="margin-bottom:12px;"><div style="color:var(--orange);font-size:0.8rem;font-weight:bold;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Active Policies</div>' +
             sectorActiveLaws.map(law => {
                 const p = law.policies;
                 const onCost = p.ongoing_cost_per_tick || p.ongoing_base_cost || 0;
-                const costLabel = onCost !== 0 ? ` <span style="color:${onCost > 0 ? '#4CAF50' : '#ff4444'};font-weight:bold;">+${formatCurrency(onCost).replace(/^[+-]/, '')}/mo saved</span>` : '';
+                const costLabel = onCost !== 0 ? ` <span style="color:${onCost > 0 ? 'var(--green)' : 'var(--red)'};font-weight:bold;">+${formatCurrency(onCost).replace(/^[+-]/, '')}/mo saved</span>` : '';
                 const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
                 const ideoHTML = ideos.map(i => {
                     const colorClass = getIdeologyChipClass(i, factionIdeology);
@@ -2318,14 +2318,14 @@ function onSponsorAddSectorChange() {
                     ? p.stat_effects
                     : (p.target_stat ? [{ stat_key: p.target_stat, direction: (p.stat_direction || 'UP').toLowerCase() }] : []);
                 if (effects.length > 0) {
-                    effectsHTML = '<div style="margin-top:4px;font-size:0.75rem;color:#aaa;">Reverses: ' +
+                    effectsHTML = '<div style="margin-top:4px;font-size:0.75rem;color:var(--text-primary);">Reverses: ' +
                         effects.map(e => {
                             const revDir = e.direction === 'up' ? '↓' : '↑';
                             const cls = e.direction === 'up' ? 'stat-down' : 'stat-up';
                             return `<span class="${cls}">${revDir} ${(e.stat_key || '').replace(/_/g, ' ')}</span>`;
                         }).join(', ') + '</div>';
                 }
-                return `<div class="policy-option" style="border-left:3px solid #ff9800;" data-repeal-law-id="${law.id}" onclick="selectRepealLaw('${law.id}')"><div class="policy-option-name"><span style="background:#ff9800;color:#000;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-right:6px;">ACTIVE</span>${p.policy_name} ${ideoHTML}${costLabel}</div><div class="policy-option-desc">${p.description || ''}${effectsHTML}</div><div style="margin-top:6px;font-size:0.7rem;color:#ff9800;font-weight:bold;">Click to Repeal</div></div>`;
+                return `<div class="policy-option" style="border-left:3px solid var(--orange);" data-repeal-law-id="${law.id}" onclick="selectRepealLaw('${law.id}')"><div class="policy-option-name"><span style="background:var(--orange);color:#000;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-right:6px;">ACTIVE</span>${p.policy_name} ${ideoHTML}${costLabel}</div><div class="policy-option-desc">${p.description || ''}${effectsHTML}</div><div style="margin-top:6px;font-size:0.7rem;color:var(--orange);font-weight:bold;">Click to Repeal</div></div>`;
             }).join('') + '</div>';
     }
 
@@ -2333,7 +2333,7 @@ function onSponsorAddSectorChange() {
     const policies = _getCompatiblePolicies(sector);
     let newPoliciesHTML = '';
     if (policies.length > 0) {
-        newPoliciesHTML = (sectorActiveLaws.length > 0 ? '<div style="color:#4CAF50;font-size:0.8rem;font-weight:bold;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">New Policies</div>' : '') +
+        newPoliciesHTML = (sectorActiveLaws.length > 0 ? '<div style="color:var(--green);font-size:0.8rem;font-weight:bold;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">New Policies</div>' : '') +
             policies.map(p => {
                 const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
                 const ideoHTML = ideos.map(i => {
@@ -2341,7 +2341,7 @@ function onSponsorAddSectorChange() {
                     return `<span class="article-ideology ${colorClass}">${i}</span>`;
                 }).join(' ');
                 const opposedClass = p.isOpposed ? ' opposed' : '';
-                const opposedBadge = p.isOpposed ? ' <span style="display:inline-block;background:#ff4444;color:#fff;padding:2px 7px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Opposed</span>' : '';
+                const opposedBadge = p.isOpposed ? ' <span style="display:inline-block;background:var(--red);color:#fff;padding:2px 7px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Opposed</span>' : '';
                 return `<div class="policy-option${opposedClass}" data-sponsor-policy-id="${p.id}" onclick="selectSponsorPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name} ${ideoHTML}${opposedBadge}</div><div class="policy-option-desc">${p.description || ''}</div></div>`;
             }).join('');
     }

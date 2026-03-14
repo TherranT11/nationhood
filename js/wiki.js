@@ -162,7 +162,7 @@ export async function fetchPage(supabase, slug) {
 export async function fetchPageList(supabase) {
     const { data, error } = await supabase
         .from('wiki_pages')
-        .select('id, slug, title, template_type, updated_at, updated_by, created_by, locked_by')
+        .select('id, slug, title, template_type, updated_at, updated_by, created_by, locked_by, tags')
         .order('title', { ascending: true });
     if (error) throw error;
     return data || [];
@@ -189,6 +189,337 @@ export async function fetchFactionNames(supabase, factionIds) {
     const map = {};
     (data || []).forEach(f => { map[f.id] = f.faction_name; });
     return map;
+}
+
+// ===== TAG SYSTEM =====
+
+const MAX_TAGS = 20;
+const MAX_TAG_LENGTH = 32;
+
+/** Normalize a tag: lowercase, strip # prefix, trim, remove invalid chars */
+function normalizeTag(raw) {
+    return raw.replace(/^#/, '').toLowerCase().trim().replace(/[^a-z0-9_-]/g, '').slice(0, MAX_TAG_LENGTH);
+}
+
+/**
+ * Create a reusable tag input component.
+ * Returns { container, getTags, setTags, onTagsChange }.
+ * @param {object} opts - { initialTags: string[], placeholder: string, onTagsChange: fn }
+ */
+export function createTagInput(opts = {}) {
+    const { initialTags = [], placeholder = 'add tag...', onTagsChange, showLabel = true } = opts;
+    const tags = [...initialTags];
+
+    const container = document.createElement('div');
+    container.className = 'wiki-tag-container';
+
+    // Autocomplete wrapper (needs position:relative)
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:relative;display:contents;';
+
+    if (showLabel) {
+        const label = document.createElement('span');
+        label.className = 'wiki-tag-label';
+        label.textContent = '#';
+        container.appendChild(label);
+    }
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'wiki-tag-input';
+    input.placeholder = placeholder;
+
+    const autocomplete = document.createElement('div');
+    autocomplete.className = 'wiki-tag-autocomplete';
+    autocomplete.style.display = 'none';
+
+    function renderChips() {
+        // Remove existing chips
+        container.querySelectorAll('.wiki-tag-chip').forEach(c => c.remove());
+        // Re-add chips before input
+        tags.forEach((tag, i) => {
+            const chip = document.createElement('span');
+            chip.className = 'wiki-tag-chip';
+            chip.innerHTML = `#${escapeHtml(tag)}<button class="wiki-tag-chip-remove" data-index="${i}" type="button">&times;</button>`;
+            container.insertBefore(chip, input);
+        });
+    }
+
+    function addTag(raw) {
+        const tag = normalizeTag(raw);
+        if (!tag) return;
+        if (tags.includes(tag)) return;
+        if (tags.length >= MAX_TAGS) return;
+        tags.push(tag);
+        renderChips();
+        input.value = '';
+        autocomplete.style.display = 'none';
+        if (onTagsChange) onTagsChange([...tags]);
+    }
+
+    function removeTag(index) {
+        tags.splice(index, 1);
+        renderChips();
+        if (onTagsChange) onTagsChange([...tags]);
+    }
+
+    // Event: clicking the container focuses input
+    container.addEventListener('click', (e) => {
+        if (e.target === container || e.target.className === 'wiki-tag-label') {
+            input.focus();
+        }
+    });
+
+    // Event: remove button
+    container.addEventListener('click', (e) => {
+        if (e.target.classList.contains('wiki-tag-chip-remove')) {
+            removeTag(parseInt(e.target.dataset.index, 10));
+        }
+    });
+
+    // Event: key handling
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
+            e.preventDefault();
+            addTag(input.value);
+        } else if (e.key === 'Backspace' && !input.value && tags.length > 0) {
+            removeTag(tags.length - 1);
+        } else if (e.key === 'Escape') {
+            autocomplete.style.display = 'none';
+        } else if (e.key === 'ArrowDown' && autocomplete.style.display !== 'none') {
+            e.preventDefault();
+            const first = autocomplete.querySelector('.wiki-tag-autocomplete-item');
+            if (first) first.focus();
+        }
+    });
+
+    // Event: blur commits current input
+    input.addEventListener('blur', () => {
+        setTimeout(() => {
+            if (input.value.trim()) addTag(input.value);
+            autocomplete.style.display = 'none';
+        }, 150);
+    });
+
+    // Autocomplete on input
+    let autocompleteTimeout;
+    input.addEventListener('input', () => {
+        clearTimeout(autocompleteTimeout);
+        const val = normalizeTag(input.value);
+        if (val.length < 2) {
+            autocomplete.style.display = 'none';
+            return;
+        }
+        autocompleteTimeout = setTimeout(() => fetchTagSuggestions(val), 200);
+    });
+
+    async function fetchTagSuggestions(prefix) {
+        try {
+            const { data } = await _supabase.rpc('get_tag_suggestions', { prefix_query: prefix, max_results: 8 });
+            if (!data || data.length === 0) {
+                autocomplete.style.display = 'none';
+                return;
+            }
+            autocomplete.innerHTML = data
+                .filter(d => !tags.includes(d.tag))
+                .map(d => `<div class="wiki-tag-autocomplete-item" data-tag="${escapeHtml(d.tag)}">
+                    <span>#${escapeHtml(d.tag)}</span>
+                    <span class="wiki-tag-autocomplete-count">${d.usage_count} article${d.usage_count !== 1 ? 's' : ''}</span>
+                </div>`).join('');
+            autocomplete.style.display = autocomplete.innerHTML ? 'block' : 'none';
+        } catch (_) {
+            // RPC may not exist yet — fall back to no suggestions
+            autocomplete.style.display = 'none';
+        }
+    }
+
+    autocomplete.addEventListener('click', (e) => {
+        const item = e.target.closest('.wiki-tag-autocomplete-item');
+        if (item) {
+            addTag(item.dataset.tag);
+            input.focus();
+        }
+    });
+
+    container.appendChild(input);
+    // Position autocomplete relative to the container
+    container.style.position = 'relative';
+    container.appendChild(autocomplete);
+
+    renderChips();
+
+    return {
+        container,
+        getTags: () => [...tags],
+        setTags: (newTags) => {
+            tags.length = 0;
+            newTags.forEach(t => {
+                const n = normalizeTag(t);
+                if (n && !tags.includes(n) && tags.length < MAX_TAGS) tags.push(n);
+            });
+            renderChips();
+        }
+    };
+}
+
+/**
+ * Create a tag search component for the wiki-list page.
+ * Returns { container, getSearchTags }.
+ * @param {object} opts - { onSearch: fn(tags[]), popularTags: [{tag, count}] }
+ */
+export function createTagSearch(opts = {}) {
+    const { onSearch, popularTags = [] } = opts;
+    const searchTags = [];
+
+    const section = document.createElement('div');
+    section.className = 'wiki-tag-search';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'wiki-tag-search-input-wrap';
+    wrap.style.position = 'relative';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'wiki-tag-search-input';
+    input.placeholder = 'Search by tag — #avelia #primeminister';
+
+    const autocomplete = document.createElement('div');
+    autocomplete.className = 'wiki-tag-autocomplete';
+    autocomplete.style.display = 'none';
+
+    function renderChips() {
+        wrap.querySelectorAll('.wiki-tag-chip').forEach(c => c.remove());
+        searchTags.forEach((tag, i) => {
+            const chip = document.createElement('span');
+            chip.className = 'wiki-tag-chip';
+            chip.innerHTML = `#${escapeHtml(tag)}<button class="wiki-tag-chip-remove" data-index="${i}" type="button">&times;</button>`;
+            wrap.insertBefore(chip, input);
+        });
+    }
+
+    function addTag(raw) {
+        const tag = normalizeTag(raw);
+        if (!tag || searchTags.includes(tag)) return;
+        searchTags.push(tag);
+        renderChips();
+        input.value = '';
+        autocomplete.style.display = 'none';
+        if (onSearch) onSearch([...searchTags]);
+    }
+
+    function removeTag(index) {
+        searchTags.splice(index, 1);
+        renderChips();
+        if (onSearch) onSearch([...searchTags]);
+    }
+
+    wrap.addEventListener('click', (e) => {
+        if (e.target === wrap) input.focus();
+        if (e.target.classList.contains('wiki-tag-chip-remove')) {
+            removeTag(parseInt(e.target.dataset.index, 10));
+        }
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
+            e.preventDefault();
+            addTag(input.value);
+        } else if (e.key === 'Backspace' && !input.value && searchTags.length > 0) {
+            removeTag(searchTags.length - 1);
+        } else if (e.key === 'Escape') {
+            autocomplete.style.display = 'none';
+        }
+    });
+
+    input.addEventListener('blur', () => {
+        setTimeout(() => {
+            if (input.value.trim()) addTag(input.value);
+            autocomplete.style.display = 'none';
+        }, 150);
+    });
+
+    let autocompleteTimeout;
+    input.addEventListener('input', () => {
+        clearTimeout(autocompleteTimeout);
+        const val = normalizeTag(input.value);
+        if (val.length < 2) { autocomplete.style.display = 'none'; return; }
+        autocompleteTimeout = setTimeout(async () => {
+            try {
+                const { data } = await _supabase.rpc('get_tag_suggestions', { prefix_query: val, max_results: 8 });
+                if (!data || data.length === 0) { autocomplete.style.display = 'none'; return; }
+                autocomplete.innerHTML = data
+                    .filter(d => !searchTags.includes(d.tag))
+                    .map(d => `<div class="wiki-tag-autocomplete-item" data-tag="${escapeHtml(d.tag)}">
+                        <span>#${escapeHtml(d.tag)}</span>
+                        <span class="wiki-tag-autocomplete-count">${d.usage_count}</span>
+                    </div>`).join('');
+                autocomplete.style.display = autocomplete.innerHTML ? 'block' : 'none';
+            } catch (_) { autocomplete.style.display = 'none'; }
+        }, 200);
+    });
+
+    autocomplete.addEventListener('click', (e) => {
+        const item = e.target.closest('.wiki-tag-autocomplete-item');
+        if (item) { addTag(item.dataset.tag); input.focus(); }
+    });
+
+    wrap.appendChild(input);
+    wrap.appendChild(autocomplete);
+    section.appendChild(wrap);
+
+    // Popular tags row
+    if (popularTags.length > 0) {
+        const popRow = document.createElement('div');
+        popRow.className = 'wiki-popular-tags';
+        popularTags.forEach(pt => {
+            const btn = document.createElement('button');
+            btn.className = 'wiki-popular-tag';
+            btn.type = 'button';
+            btn.innerHTML = `#${escapeHtml(pt.tag)}<span class="wiki-popular-tag-count">${pt.count}</span>`;
+            btn.addEventListener('click', () => { addTag(pt.tag); input.focus(); });
+            popRow.appendChild(btn);
+        });
+        section.appendChild(popRow);
+    }
+
+    return {
+        container: section,
+        getSearchTags: () => [...searchTags]
+    };
+}
+
+/** Fetch popular tags (top N most-used across all articles) */
+export async function fetchPopularTags(supabase, limit = 10) {
+    try {
+        const { data } = await supabase.rpc('get_popular_tags', { max_results: limit });
+        return data || [];
+    } catch (_) {
+        // RPC may not exist — fallback to manual query
+        try {
+            const { data } = await supabase
+                .from('wiki_pages')
+                .select('tags')
+                .not('tags', 'eq', '{}');
+            if (!data) return [];
+            const counts = {};
+            data.forEach(row => {
+                (row.tags || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; });
+            });
+            return Object.entries(counts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, limit)
+                .map(([tag, count]) => ({ tag, count }));
+        } catch (_2) { return []; }
+    }
+}
+
+/** Render read-only tag chips (for wiki.html reader view) */
+export function renderTagDisplay(tags) {
+    if (!tags || tags.length === 0) return '';
+    const chips = tags.map(t =>
+        `<a href="wiki-list.html?tags=${encodeURIComponent(t)}" class="wiki-tag-chip">#${escapeHtml(t)}</a>`
+    ).join('');
+    return `<div class="wiki-tag-display">${chips}</div>`;
 }
 
 /** Build infobox HTML for the reader view */

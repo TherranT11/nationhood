@@ -34,7 +34,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
-import { initWikiPage, renderWikiSearchBar, slugify, fetchPage, uploadWikiImage } from './js/wiki.js';
+import { initWikiPage, renderWikiSearchBar, slugify, fetchPage, uploadWikiImage, createTagInput } from './js/wiki.js';
 
 const TEMPLATE_TYPES = [
     { value: '', label: 'None' },
@@ -89,6 +89,7 @@ const TEMPLATE_TYPES = [
     const initTemplateType = existingPage ? (existingPage.template_type || '') : '';
     const initTemplateData = existingPage && Array.isArray(existingPage.template_data) ? existingPage.template_data : [];
     let infoboxImageUrl = existingPage ? (existingPage.infobox_image || '') : '';
+    const initTags = existingPage && Array.isArray(existingPage.tags) ? existingPage.tags : [];
     const isCreator = existingPage ? existingPage.created_by === faction.id : true;
     const isLocked = existingPage ? !!existingPage.locked_by : false;
 
@@ -185,9 +186,19 @@ const TEMPLATE_TYPES = [
                 ${existingPage ? '<button class="wiki-btn wiki-btn-danger" id="delete-btn" type="button">Delete Page</button>' : ''}
             </div>
 
+            <div id="wiki-tag-mount"></div>
+
             <div id="wiki-status" style="margin-top:10px;font-size:12px;color:var(--text-secondary);"></div>
         </div>
     `;
+
+    // --- Tag Input ---
+    const tagInput = createTagInput({
+        initialTags: initTags,
+        placeholder: 'add tag...',
+        showLabel: true
+    });
+    document.getElementById('wiki-tag-mount').appendChild(tagInput.container);
 
     // --- Quill Editor ---
     const quill = new Quill('#quill-editor', {
@@ -342,6 +353,8 @@ const TEMPLATE_TYPES = [
     quill.on('text-change', markDirty);
     const slugInput = document.getElementById('wiki-slug');
     if (slugInput) slugInput.addEventListener('input', markDirty);
+    // Tag changes mark dirty
+    tagInput.container.addEventListener('click', () => setTimeout(markDirty, 50));
     window.addEventListener('beforeunload', (e) => {
         if (_dirty) { e.preventDefault(); e.returnValue = ''; }
     });
@@ -391,6 +404,7 @@ const TEMPLATE_TYPES = [
             template_data: templateData,
             infobox_image: infoboxImageUrl || null,
             locked_by: lockedBy,
+            tags: tagInput.getTags(),
             updated_by: faction.id,
             updated_at: new Date().toISOString()
         };
