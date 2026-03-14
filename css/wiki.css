@@ -918,27 +918,27 @@ body.light-mode a.wiki-link-missing:hover {
 
 /* ---------- TAG SYSTEM ---------- */
 
-/* Tag container — sits at bottom of editor, recessed */
+/* Tag section box — matches infobox editor style */
+.wiki-tag-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border-main);
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+/* Tag container — input area inside section */
 .wiki-tag-container {
-    border-top: 1px solid var(--border-light);
     background: var(--bg-body);
+    border: 1px solid var(--border-light);
+    border-radius: 4px;
     padding: 8px 14px;
     display: flex;
     align-items: flex-start;
     gap: 8px;
-    min-height: 32px;
+    min-height: 36px;
     flex-wrap: wrap;
     cursor: text;
-}
-
-.wiki-tag-label {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-muted);
-    line-height: 24px;
-    flex-shrink: 0;
-    user-select: none;
 }
 
 /* Tag chips — inline pills */
@@ -972,6 +972,27 @@ body.light-mode a.wiki-link-missing:hover {
 
 .wiki-tag-chip-remove:hover {
     color: var(--red, #d9534f);
+}
+
+/* Tag badges — new vs existing */
+.wiki-tag-badge {
+    font-size: 8px;
+    font-weight: 600;
+    margin-left: 3px;
+    text-transform: uppercase;
+}
+
+.wiki-tag-badge-new {
+    color: var(--accent, #c8a64e);
+}
+
+.wiki-tag-badge-existing {
+    color: var(--text-dim, #666);
+}
+
+/* "new tag" label in autocomplete */
+.wiki-tag-autocomplete-new {
+    border-top: 1px solid var(--border-light);
 }
 
 .wiki-tag-input {
@@ -1123,9 +1144,22 @@ body.light-mode a.wiki-link-missing:hover {
 }
 
 /* Light mode overrides for tags */
+body.light-mode .wiki-tag-section {
+    background: #f5f5f5;
+    border-color: #d0d0d0;
+}
+
 body.light-mode .wiki-tag-container {
-    background: #f0f1f4;
-    border-top-color: #d0d0d0;
+    background: #ffffff;
+    border-color: #d0d0d0;
+}
+
+body.light-mode .wiki-tag-badge-new {
+    color: #b8860b;
+}
+
+body.light-mode .wiki-tag-badge-existing {
+    color: #888;
 }
 
 body.light-mode .wiki-tag-chip {
