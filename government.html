@@ -3615,7 +3615,7 @@ window.eoSelectDirection = eoSelectDirection;
 
 function eoSelectPCStat(stat) {
     eoSelectedParams.stat = stat;
-    document.querySelectorAll('.eo-option-group .eo-option-btn[data-stat]').forEach(b => {
+    document.querySelectorAll('#eo-confirm-panel .eo-option-btn[data-stat]').forEach(b => {
         b.classList.toggle('selected', b.getAttribute('data-stat') === stat);
     });
     const val = currentNation?.[stat] ?? 50;
@@ -3666,6 +3666,13 @@ window.confirmExecutiveOrder = confirmExecutiveOrder;
 function closeEOModal() {
     document.getElementById('eo-modal').classList.remove('active');
     document.getElementById('eo-order-list').style.display = 'block';
+    const confirmPanel = document.getElementById('eo-confirm-panel');
+    confirmPanel.className = 'eo-confirm-panel';
+    confirmPanel.innerHTML = '';
+    const confirmBtn = document.getElementById('eo-confirm-btn');
+    confirmBtn.style.display = 'none';
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Issue Order';
     eoSelectedType = null;
     eoSelectedParams = {};
 }

@@ -1236,3 +1236,6 @@ body {
         .emergency-advance-btn:hover {
             background: var(--red-faint); border-color: var(--red);
         }
+        .emergency-advance-btn:disabled {
+            opacity: 0.4; cursor: not-allowed; background: transparent;
+        }
