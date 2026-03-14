@@ -3306,7 +3306,8 @@ async function runStatAudit() {
             const active = ticksSince > delay && ticksSince <= delay + dur;
             const rate = Number(e.rate) || 1;
             const perTick = e.direction === 'down' ? -rate : +rate;
-            log(`  ${active ? '[ACTIVE]' : '[dormant]'} "${p.policy_name}" | ${e.direction} ${rate}/tick | delay=${delay} dur=${dur} | ticksSince=${ticksSince} | lastApplied=${l.effects_applied_through_tick}`,
+            const reversalTag = l.is_reversal ? ' (REVERSAL — unwinding repealed law)' : '';
+            log(`  ${active ? '[ACTIVE]' : '[dormant]'}${l.is_reversal ? '[REVERSAL]' : ''} "${p.policy_name}" | ${e.direction} ${rate}/tick | delay=${delay} dur=${dur} | ticksSince=${ticksSince} | lastApplied=${l.effects_applied_through_tick}${reversalTag}`,
                 active ? (perTick < 0 ? '#f44' : '#4f4') : '#666');
         }
         // Legacy single-stat format
