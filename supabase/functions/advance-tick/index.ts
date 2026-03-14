@@ -15039,6 +15039,21 @@ const EO_EMERGENCY_UNREST_THRESHOLD = 18;
 async function processExecutiveOrders(supabase, nation, currentTick) {
     const results = [];
 
+    // ─── 0. Guard: only process for presidential systems ───
+    if (!isGovernmentPresidential(nation)) {
+        // Clean up any lingering EO state if government type changed
+        const { data: lingering } = await supabase
+            .from('executive_orders').select('id')
+            .eq('nation_id', nation.id).eq('is_active', true).limit(1);
+        if (lingering && lingering.length > 0) {
+            await supabase.from('executive_orders').update({ is_active: false }).eq('nation_id', nation.id).eq('is_active', true);
+            await supabase.from('ministries').update({ is_acting: false, acting_order_id: null }).eq('nation_id', nation.id).eq('is_acting', true);
+            await supabase.from('nations').update({ overreach_count: 0 }).eq('id', nation.id);
+            results.push('Government type no longer presidential — deactivated all executive orders');
+        }
+        return results;
+    }
+
     // ─── 1. Recalculate overreach count ───
     const { count: overreachCount } = await supabase
         .from('executive_orders')
@@ -15172,12 +15187,30 @@ async function processExecutiveOrders(supabase, nation, currentTick) {
         if (!activePresident) {
             // President was removed/impeached — auto-end emergency
             await supabase.from('executive_orders').update({ is_active: false }).eq('id', emergency.id);
-            const currentUnrest = Number(nation.civil_unrest ?? 20);
+            // Re-read civil_unrest from DB (may have been modified earlier in this function)
+            const { data: freshNation } = await supabase.from('nations').select('civil_unrest').eq('id', nation.id).single();
+            const latestUnrest = Number(freshNation?.civil_unrest ?? nation.civil_unrest ?? 20);
             await supabase.from('nations').update({
-                civil_unrest: Math.min(100, currentUnrest + 8),
+                civil_unrest: Math.min(100, latestUnrest + 8),
                 emergency_cooldown_until: currentTick + 8
             }).eq('id', nation.id);
-            results.push(`Emergency auto-ended: president removed. +8 civil_unrest, 8-tick cooldown`);
+
+            // Also clean up acting ministers — they were appointed by the removed president
+            const { data: actingToRemove } = await supabase
+                .from('ministries').select('id, acting_order_id')
+                .eq('nation_id', nation.id).eq('is_acting', true);
+            for (const m of (actingToRemove || [])) {
+                await supabase.from('ministries').update({
+                    is_acting: false, acting_order_id: null,
+                    minister_first_name: null, minister_last_name: null,
+                    minister_age: null, party_id: null,
+                    confirmation_status: null, minister_approval: null
+                }).eq('id', m.id);
+                if (m.acting_order_id) {
+                    await supabase.from('executive_orders').update({ is_active: false }).eq('id', m.acting_order_id);
+                }
+            }
+            results.push(`Emergency auto-ended: president removed. +8 civil_unrest, 8-tick cooldown, ${(actingToRemove || []).length} acting ministers removed`);
         }
     }
 
