@@ -89,6 +89,10 @@ html { overflow-y: scroll !important; height: auto !important; }
         .stat-up { color: var(--green); }
         .stat-down { color: var(--red); }
         .article-author { font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; }
+        .article { position: relative; }
+        .policy-type-badge { position: absolute; top: 10px; right: 12px; font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 8px; border-radius: 3px; }
+        .policy-type-badge.structural { background: var(--purple-faint, rgba(155,89,182,0.12)); color: var(--purple, #a855f7); border: 1px solid var(--purple-border, rgba(155,89,182,0.3)); }
+        .policy-type-badge.lever { background: var(--teal-faint, rgba(26,188,156,0.12)); color: var(--teal, #1abc9c); border: 1px solid var(--teal-border, rgba(26,188,156,0.3)); }
         .bill-totals { background: var(--bg-card); border-radius: 3px; padding: 20px; margin: 0 24px 24px; display: flex; justify-content: space-around; border: 1px solid var(--border-strong); }
         .total-item { text-align: center; }
         .total-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; font-family: var(--font-mono); font-weight: 600; }
@@ -211,7 +215,7 @@ html { overflow-y: scroll !important; height: auto !important; }
         .form-label { display: block; font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; font-family: var(--font-mono); font-weight: 600; }
         .form-select { width: 100%; padding: 12px; background: var(--bg-card); border: 1px solid var(--border-mid); border-radius: 3px; color: var(--text-primary); font-size: 0.9rem; font-family: var(--font-ui); }
         .form-select:focus { outline: none; border-color: var(--blue); }
-        .policy-option { background: var(--bg-card); border: 1px solid var(--border-mid); border-radius: 3px; padding: 12px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.2s; }
+        .policy-option { position: relative; background: var(--bg-card); border: 1px solid var(--border-mid); border-radius: 3px; padding: 12px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.2s; }
         .policy-option:hover { border-color: var(--text-muted); }
         .policy-option.selected { border-color: var(--blue); }
         .policy-option.opposed { border-color: var(--red); border-style: dashed; }
