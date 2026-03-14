@@ -14993,6 +14993,38 @@ async function snapshotNationHistory(supabase, nation, currentTick) {
     });
     if (snapError) {
         console.error('[snapshotNationHistory] FAILED for nation', nation.id, 'tick', currentTick, ':', snapError.message);
+
+        // Likely a column mismatch — the snapshot has columns that don't exist in the table.
+        // Fall back: query the actual table columns and retry with only matching columns.
+        if (snapError.message && (snapError.message.includes('column') || snapError.code === '42703' || snapError.code === 'PGRST204')) {
+            console.warn('[snapshotNationHistory] Attempting fallback: querying table columns and retrying...');
+            try {
+                // Fetch one row to discover which columns actually exist
+                const { data: sampleRow } = await supabase.from('nations_history')
+                    .select('*').limit(1);
+                if (sampleRow && sampleRow.length > 0) {
+                    const validCols = new Set(Object.keys(sampleRow[0]));
+                    const safeSnapshot = { nation_id: nation.id, tick: currentTick };
+                    let safeCount = 0;
+                    for (const key of HISTORY_SNAPSHOT_COLUMNS) {
+                        if (validCols.has(key) && nation[key] !== undefined && nation[key] !== null) {
+                            safeSnapshot[key] = Number(nation[key]);
+                            safeCount++;
+                        }
+                    }
+                    const { error: retryError } = await supabase.from('nations_history').upsert(safeSnapshot, {
+                        onConflict: 'nation_id,tick'
+                    });
+                    if (retryError) {
+                        console.error('[snapshotNationHistory] Fallback also FAILED:', retryError.message);
+                    } else {
+                        console.log(`[snapshotNationHistory] Fallback succeeded: stored ${safeCount} stats for nation ${nation.id} at tick ${currentTick}`);
+                    }
+                }
+            } catch (fallbackErr) {
+                console.error('[snapshotNationHistory] Fallback exception:', fallbackErr);
+            }
+        }
     } else {
         console.log(`[snapshotNationHistory] Stored ${Object.keys(snapshot).length - 2} stats for nation ${nation.id} at tick ${currentTick}`);
     }
