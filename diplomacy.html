@@ -49,7 +49,7 @@
                 <div class="box-header">
                     <div class="box-dot box-dot--amber"></div>
                     <span class="box-label">Agreements</span>
-                    <div class="box-header-right"><span class="badge badge--amber" id="negotiations-count"></span></div>
+                    <div class="box-header-right"><span class="badge badge--amber neg-unseen-badge" id="negotiations-unseen"></span><span class="badge badge--dim" id="negotiations-count"></span></div>
                 </div>
                 <div class="box-body" id="negotiations-body"></div>
             </div>
@@ -182,6 +182,45 @@ const FLAG_URLS = {
 function nationInfoUrl(nationName) {
     const slug = nationName.toLowerCase().replace(/\s+/g, '');
     return 'nation-info.html?name=' + slug;
+}
+
+// ==================== UNSEEN PROPOSAL TRACKING ====================
+
+function getSeenProposals() {
+    if (!currentFaction) return [];
+    try { return JSON.parse(localStorage.getItem('nationhood_seen_proposals_' + currentFaction.id) || '[]'); }
+    catch { return []; }
+}
+
+function markProposalSeen(proposalId) {
+    if (!currentFaction || !proposalId) return;
+    const seen = getSeenProposals();
+    if (seen.includes(proposalId)) return;
+    seen.push(proposalId);
+    localStorage.setItem('nationhood_seen_proposals_' + currentFaction.id, JSON.stringify(seen));
+    // Update the unseen count badge in the Agreements header
+    updateUnseenBadge();
+}
+
+function isProposalUnseen(proposalId) {
+    return !getSeenProposals().includes(proposalId);
+}
+
+function cleanSeenProposals(activeIds) {
+    if (!currentFaction) return;
+    const seen = getSeenProposals();
+    const cleaned = seen.filter(id => activeIds.includes(id));
+    localStorage.setItem('nationhood_seen_proposals_' + currentFaction.id, JSON.stringify(cleaned));
+}
+
+let unseenProposalCount = 0;
+
+function updateUnseenBadge() {
+    const badge = document.getElementById('negotiations-unseen');
+    if (badge) {
+        badge.textContent = unseenProposalCount > 0 ? unseenProposalCount : '';
+        badge.style.display = unseenProposalCount > 0 ? '' : 'none';
+    }
 }
 
 // ==================== INIT ====================
@@ -8446,6 +8485,10 @@ async function renderNegotiationsBox() {
             html += '<div style="border-top:1px solid var(--border-hair);margin:4px 14px;"></div>';
         }
 
+        // Track all active proposal IDs for localStorage cleanup, and unseen count
+        const allActiveIds = [];
+        let _unseenCount = 0;
+
         // Diplomatic proposals (in-progress)
         for (const p of allProposals) {
             const pd = p.proposal_data || {};
@@ -8459,6 +8502,12 @@ async function renderNegotiationsBox() {
             const isFmReview = p.status === 'fm_review';
             const isRatification = p.status === 'ratification' || p.status === 'ratification_failed';
 
+            // Check if this item needs our action based on our role and is unseen
+            const requiresRoleAction = needsOurAction || (isFmReview && diplomaticRoles.isFM) || (isRatification && (diplomaticRoles.isFM || diplomaticRoles.isHoG));
+            const unseen = requiresRoleAction && isProposalUnseen(p.id);
+            if (requiresRoleAction) allActiveIds.push(p.id);
+            if (unseen) _unseenCount++;
+
             // Status badge
             let statusBadge = '';
             if (needsOurAction) {
@@ -8471,6 +8520,8 @@ async function renderNegotiationsBox() {
                 statusBadge = '<span class="badge badge--dim">Awaiting</span>';
             }
 
+            const unseenBadge = unseen ? '<span class="neg-unseen-dot"></span>' : '';
+
             const dirClass = isOutgoing ? 'neg-direction--out' : 'neg-direction--in';
             const dirLabel = isOutgoing ? 'OUT' : 'IN';
             const title = pd.name || 'Unnamed Proposal';
@@ -8481,7 +8532,8 @@ async function renderNegotiationsBox() {
             const classTag = classification ? ' · ' + classification : '';
 
             html += `
-                <div class="neg-row" data-neg-id="${p.id}" onclick="toggleNegRow('${p.id}')">
+                <div class="neg-row${unseen ? ' neg-row--unseen' : ''}" data-neg-id="${p.id}" onclick="toggleNegRow('${p.id}')">
+                    ${unseenBadge}
                     <span class="neg-direction ${dirClass}">${dirLabel}</span>
                     <div class="neg-info">
                         <div class="neg-title">${escapeHtml(title)}</div>
@@ -8504,6 +8556,13 @@ async function renderNegotiationsBox() {
             const needsAction = !isParticipant && neg.status === 'open';
             const isOutgoing = neg.initiated_by_nation === currentNation.id;
 
+            // Check if unseen
+            const tradeNegId = 'trade-' + neg.id;
+            const requiresRoleAction = needsAction || (neg.status === 'ratification' && (diplomaticRoles.isFM || diplomaticRoles.isHoG));
+            const unseen = requiresRoleAction && isProposalUnseen(tradeNegId);
+            if (requiresRoleAction) allActiveIds.push(tradeNegId);
+            if (unseen) _unseenCount++;
+
             let statusBadge;
             if (needsAction) {
                 statusBadge = '<span class="badge badge--amber">Join</span>';
@@ -8513,13 +8572,16 @@ async function renderNegotiationsBox() {
                 statusBadge = '<span class="badge badge--dim">' + (neg.status === 'open' ? 'Pending' : 'Active') + '</span>';
             }
 
+            const unseenBadge = unseen ? '<span class="neg-unseen-dot"></span>' : '';
+
             const dirClass = isOutgoing ? 'neg-direction--out' : 'neg-direction--in';
             const dirLabel = isOutgoing ? 'OUT' : 'IN';
             const typeInfo = neg.agreement_type && neg.agreement_type !== 'pending' ? TRADE_AGREEMENT_TYPES[neg.agreement_type] : null;
             const typeLabel = typeInfo ? typeInfo.shortLabel : 'Trade';
 
             html += `
-                <div class="neg-row" data-neg-id="trade-${neg.id}" onclick="toggleNegRow('trade-${neg.id}')">
+                <div class="neg-row${unseen ? ' neg-row--unseen' : ''}" data-neg-id="${tradeNegId}" onclick="toggleNegRow('${tradeNegId}')">
+                    ${unseenBadge}
                     <span class="neg-direction ${dirClass}">${dirLabel}</span>
                     <div class="neg-info">
                         <div class="neg-title">${escapeHtml(neg.agreement_name || 'Trade Negotiation')}</div>
@@ -8549,6 +8611,11 @@ async function renderNegotiationsBox() {
         }
 
         body.innerHTML = html;
+
+        // Update unseen tracking
+        cleanSeenProposals(allActiveIds);
+        unseenProposalCount = _unseenCount;
+        updateUnseenBadge();
     } catch (err) {
         console.error('Error rendering negotiations box:', err);
         body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Error loading negotiations.</div></div>';
@@ -8561,7 +8628,18 @@ function toggleNegRow(negId) {
     if (!row) return;
     const wasExpanded = row.classList.contains('is-expanded');
     document.querySelectorAll('.neg-row.is-expanded').forEach(r => r.classList.remove('is-expanded'));
-    if (!wasExpanded) row.classList.add('is-expanded');
+    if (!wasExpanded) {
+        row.classList.add('is-expanded');
+        // Mark as seen and remove unseen indicator
+        if (row.classList.contains('neg-row--unseen')) {
+            row.classList.remove('neg-row--unseen');
+            const dot = row.querySelector('.neg-unseen-dot');
+            if (dot) dot.remove();
+            unseenProposalCount = Math.max(0, unseenProposalCount - 1);
+            updateUnseenBadge();
+        }
+        markProposalSeen(negId);
+    }
 }
 window.toggleNegRow = toggleNegRow;
 
