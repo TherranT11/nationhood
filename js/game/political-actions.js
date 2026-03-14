@@ -5391,6 +5391,23 @@ export const PM_LAST_NAMES = [
     'Camacho', 'Gallardo', 'Barrera', 'Saavedra'
 ];
 
+// Avelian names (Spanish with Italian influence)
+export const AVELIA_FIRST_NAMES = [
+    'Marcelo', 'Luciana', 'Dante', 'Sofía', 'Lorenzo', 'Elena', 'Tomás', 'Rosario',
+    'Fabrizio', 'Carolina', 'Leandro', 'Paloma', 'Giancarlo', 'Inés', 'Renato', 'Marisol',
+    'Nico', 'Florencia', 'Aurelio', 'Celeste',
+    'Valentín', 'Matías', 'Silvio', 'Bernardo', 'Cristóbal', 'Lazzaro', 'Osvaldo', 'Enzo',
+    'Pascual', 'Damián'
+];
+
+export const AVELIA_LAST_NAMES = [
+    'Montalbán', 'Ferretti', 'Salcedo', 'Conti', 'Valverde', 'Lucero', 'Maretti', 'Orellana',
+    'Bellini', 'Calderón', 'Santoro', 'Vásquez', 'Lombardi', 'Peñaloza', 'Rinaldi', 'Escobar',
+    'Castellani', 'Madrigal', 'Giacomo', 'Solano',
+    'Traverso', 'Coronado', 'Benedetti', 'Villarreal', 'Rosetti', 'Mondragón', 'Falcone', 'Quirós',
+    'Molinari', 'Saldaña'
+];
+
 export const IDEOLOGY_OPTIONS = [
     { tag: 'LIBERTY',         axisKey: 'liberty_equality',             direction: -1 },
     { tag: 'EQUALITY',        axisKey: 'liberty_equality',             direction: 1 },
