@@ -20,6 +20,7 @@ export * from './game/elections.js';
 export * from './game/presidential.js';
 export * from './game/three-pillar.js';
 export * from './game/political-actions.js';
+export * from './game/executive-orders.js';
 export * from './game/election-simulation.js';
 export * from './game/sovereign-default.js';
 export * from './game/valdorian-templates.js';

@@ -6995,10 +6995,11 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
             }
 
             // 3. Generate replacement ambassador
+            const { firstNames: ambFirstPool, lastNames: ambLastPool } = getNationNames(nation.name);
             let newFirst, newLast;
-            do { newFirst = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)]; }
+            do { newFirst = ambFirstPool[Math.floor(Math.random() * ambFirstPool.length)]; }
             while (newFirst === amb.ambassador_first_name);
-            do { newLast = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)]; }
+            do { newLast = ambLastPool[Math.floor(Math.random() * ambLastPool.length)]; }
             while (newLast === amb.ambassador_last_name);
             const newAge = 35 + Math.floor(Math.random() * 20); // 35-54
 
@@ -8304,7 +8305,7 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
                     .eq('candidate_type', 'presidential');
                 if (!count || count === 0) {
                     console.log(`Generating presidential candidates for faction ${party.id} (manual election)`);
-                    await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
+                    await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential', nation.name);
                 }
             }
         }
@@ -8901,7 +8902,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
         } else {
             // Fallback 2: generate fresh candidate
             console.warn(`[PresElection] Faction fallback also null for ${winner.candidate_name} in ${nation.name} — generating emergency candidate`);
-            const emergencyCandidates = await generatePresidentCandidates(supabase, nation.id, winner.faction_id, currentTick, 'presidential');
+            const emergencyCandidates = await generatePresidentCandidates(supabase, nation.id, winner.faction_id, currentTick, 'presidential', nation.name);
             if (emergencyCandidates && emergencyCandidates.length > 0) {
                 await inauguratePresident(supabase, emergencyCandidates[0], nation.id, winner.faction_id, currentTick, outgoingPresident);
                 console.log(`Emergency president inaugurated: ${emergencyCandidates[0].first_name} ${emergencyCandidates[0].last_name}`);
@@ -9279,7 +9280,7 @@ function tallyFloorVotes(bill) {
  *
  * @param {string} candidateType - 'presidential' (default)
  */
-async function generatePresidentCandidates(supabase, nationId, factionId, currentTick, candidateType = 'presidential') {
+async function generatePresidentCandidates(supabase, nationId, factionId, currentTick, candidateType = 'presidential', nationName = '') {
     let factionIdeology = await loadFactionIdeology(supabase, factionId);
     if (factionIdeology?._error) factionIdeology = null;
 
@@ -9311,6 +9312,7 @@ async function generatePresidentCandidates(supabase, nationId, factionId, curren
     const shuffledTraits = [...PM_TRAIT_KEYS].sort(() => Math.random() - 0.5);
     const chosenTraits = shuffledTraits.slice(0, 3);
 
+    const { firstNames: candFirstPool, lastNames: candLastPool } = getNationNames(nationName);
     const usedFirstNames = new Set();
     const usedLastNames = new Set();
     const candidates = [];
@@ -9318,11 +9320,11 @@ async function generatePresidentCandidates(supabase, nationId, factionId, curren
     for (let i = 0; i < 3; i++) {
         let firstName, lastName;
 
-        do { firstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)]; }
+        do { firstName = candFirstPool[Math.floor(Math.random() * candFirstPool.length)]; }
         while (usedFirstNames.has(firstName));
         usedFirstNames.add(firstName);
 
-        do { lastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)]; }
+        do { lastName = candLastPool[Math.floor(Math.random() * candLastPool.length)]; }
         while (usedLastNames.has(lastName));
         usedLastNames.add(lastName);
 
@@ -9714,7 +9716,7 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
             if (isIncumbentParty && isTermLimited) {
                 // === TERM-LIMITED: incumbent has served max terms, party must pick a new candidate ===
                 console.log(`TERM LIMIT: President ${incumbentPresident.first_name} ${incumbentPresident.last_name} has served ${incumbentPresident.terms_served} term(s) (limit: ${termLimit}). ${party.faction_name} must choose a new candidate. (${nation.name})`);
-                await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
+                await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential', nation.name);
             } else if (isIncumbentParty) {
                 // === INCUMBENT LOCK-IN: auto-create incumbent as their party's candidate ===
                 // The incumbent president is automatically locked in as their faction's nominee.
@@ -9769,7 +9771,7 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
                 }
             } else {
                 // Normal candidate generation for non-incumbent parties
-                await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
+                await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential', nation.name);
             }
         } catch (partyErr) {
             console.error(`Error generating presidential candidate for party ${party.faction_name} (${party.id}) in ${nation.name}:`, partyErr);
@@ -15031,6 +15033,212 @@ async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
     return govApproval;
 }
 
+// ==================== EXECUTIVE ORDERS TICK PROCESSING ====================
+
+const EO_OVERREACH_WINDOW = 8;
+const EO_EMERGENCY_UNREST_THRESHOLD = 18;
+
+async function processExecutiveOrders(supabase, nation, currentTick) {
+    const results = [];
+
+    // ─── 0. Guard: only process for presidential systems ───
+    if (!isGovernmentPresidential(nation)) {
+        // Clean up any lingering EO state if government type changed
+        const { data: lingering } = await supabase
+            .from('executive_orders').select('id')
+            .eq('nation_id', nation.id).eq('is_active', true).limit(1);
+        if (lingering && lingering.length > 0) {
+            await supabase.from('executive_orders').update({ is_active: false }).eq('nation_id', nation.id).eq('is_active', true);
+            await supabase.from('ministries').update({ is_acting: false, acting_order_id: null }).eq('nation_id', nation.id).eq('is_acting', true);
+            await supabase.from('nations').update({ overreach_count: 0 }).eq('id', nation.id);
+            results.push('Government type no longer presidential — deactivated all executive orders');
+        }
+        return results;
+    }
+
+    // ─── 1. Recalculate overreach count ───
+    const { count: overreachCount } = await supabase
+        .from('executive_orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('nation_id', nation.id)
+        .gte('issued_tick', currentTick - EO_OVERREACH_WINDOW);
+
+    const oc = overreachCount || 0;
+    await supabase.from('nations').update({ overreach_count: oc }).eq('id', nation.id);
+
+    // Overreach penalties
+    if (oc >= 4) {
+        await adjustGovernmentApprovalEvent(supabase, nation.id, -4, 'executive_order:authoritarian_drift');
+        results.push(`Authoritarian drift: -4 gov approval (${oc} orders in ${EO_OVERREACH_WINDOW} ticks)`);
+    } else if (oc >= 2) {
+        await adjustGovernmentApprovalEvent(supabase, nation.id, -2, 'executive_order:governing_by_decree');
+        results.push(`Governing by decree: -2 gov approval (${oc} orders in ${EO_OVERREACH_WINDOW} ticks)`);
+    }
+
+    // ─── 2. Acting minister ongoing effects ───
+    const { data: actingMinisters } = await supabase
+        .from('ministries')
+        .select('id, ministry_key, party_id')
+        .eq('nation_id', nation.id)
+        .eq('is_acting', true)
+        .eq('is_active', true);
+
+    if (actingMinisters && actingMinisters.length > 0) {
+        // -2 approval per acting minister per tick
+        const actingPenalty = actingMinisters.length * -2;
+        await adjustGovernmentApprovalEvent(supabase, nation.id, actingPenalty, 'executive_order:acting_minister_ongoing');
+        results.push(`Acting ministers (${actingMinisters.length}): ${actingPenalty} gov approval`);
+
+        // Get president faction to determine opposition
+        const { data: president } = await supabase
+            .from('presidents').select('faction_id')
+            .eq('nation_id', nation.id).eq('is_active', true).maybeSingle();
+
+        if (president) {
+            // +1 momentum per acting minister to each opposition party
+            const { data: oppoFactions } = await supabase
+                .from('factions').select('id')
+                .eq('nation_id', nation.id).neq('id', president.faction_id);
+            for (const f of (oppoFactions || [])) {
+                await adjustMomentumAll(supabase, nation.id, f.id, actingMinisters.length, 'executive_order:acting_minister_opposition');
+            }
+        }
+    }
+
+    // ─── 3. Price controls: freeze stat + accumulate pressure ───
+    const { data: activeControls } = await supabase
+        .from('executive_orders')
+        .select('id, payload, expires_tick')
+        .eq('nation_id', nation.id)
+        .eq('order_type', 'price_controls')
+        .eq('is_active', true);
+
+    for (const control of (activeControls || [])) {
+        const stat = control.payload?.stat;
+        const frozenValue = control.payload?.frozen_value;
+        if (!stat || frozenValue == null) continue;
+
+        // Read what the stat naturally became after this tick's calculations
+        const { data: freshNation } = await supabase
+            .from('nations').select(stat).eq('id', nation.id).single();
+        const naturalValue = Number(freshNation?.[stat] ?? frozenValue);
+        const pressureDelta = naturalValue - frozenValue;
+
+        // Override stat back to frozen value
+        await supabase.from('nations').update({ [stat]: frozenValue }).eq('id', nation.id);
+
+        // Accumulate pressure
+        const newMagnitude = (control.payload?.pressure_magnitude || 0) + pressureDelta;
+        await supabase.from('executive_orders').update({
+            payload: { ...control.payload, pressure_magnitude: newMagnitude,
+                       pressure_direction: pressureDelta >= 0 ? 'up' : 'down' }
+        }).eq('id', control.id);
+
+        results.push(`Price controls on ${stat}: frozen at ${frozenValue.toFixed(1)}, pressure ${newMagnitude.toFixed(1)}`);
+
+        // Check expiry
+        if (control.expires_tick != null && currentTick >= control.expires_tick) {
+            // Release: snap with doubled accumulated pressure
+            const snapValue = frozenValue + (newMagnitude * 2);
+            const clampedSnap = Math.max(0, Math.min(100, snapValue));
+            await supabase.from('nations').update({ [stat]: clampedSnap }).eq('id', nation.id);
+            await adjustGovernmentApprovalEvent(supabase, nation.id, -4, 'executive_order:price_controls_snap');
+            await supabase.from('executive_orders').update({ is_active: false }).eq('id', control.id);
+            results.push(`Price controls expired on ${stat}: snapped to ${clampedSnap.toFixed(1)} (pressure release: ${(newMagnitude * 2).toFixed(1)})`);
+        }
+    }
+
+    // ─── 4. National emergency ongoing effects ───
+    const { data: emergency } = await supabase
+        .from('executive_orders')
+        .select('id, faction_id, issued_tick, payload')
+        .eq('nation_id', nation.id)
+        .eq('order_type', 'national_emergency')
+        .eq('is_active', true)
+        .maybeSingle();
+
+    if (emergency) {
+        const ticksActive = currentTick - emergency.issued_tick;
+
+        // +1 AP per tick to presidential faction
+        await accumulateAP(supabase, emergency.faction_id, 1);
+        results.push(`Emergency: +1 AP to faction ${emergency.faction_id} (tick ${ticksActive})`);
+
+        // -4 approval per tick after first tick
+        if (ticksActive > 0) {
+            await adjustGovernmentApprovalEvent(supabase, nation.id, -4, 'executive_order:emergency_ongoing');
+            results.push(`Emergency: -4 gov approval (tick ${ticksActive})`);
+        }
+
+        // After 18 ticks: +1 civil_unrest per tick
+        if (ticksActive >= EO_EMERGENCY_UNREST_THRESHOLD) {
+            const currentUnrest = Number(nation.civil_unrest ?? 20);
+            await supabase.from('nations').update({ civil_unrest: Math.min(100, currentUnrest + 1) }).eq('id', nation.id);
+            results.push(`Emergency: +1 civil_unrest (active ${ticksActive} ticks, threshold ${EO_EMERGENCY_UNREST_THRESHOLD})`);
+        }
+
+        // Auto-end if president removed (no active president for this faction)
+        const { data: activePresident } = await supabase
+            .from('presidents')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('faction_id', emergency.faction_id)
+            .eq('is_active', true)
+            .maybeSingle();
+
+        if (!activePresident) {
+            // President was removed/impeached — auto-end emergency
+            await supabase.from('executive_orders').update({ is_active: false }).eq('id', emergency.id);
+            // Re-read civil_unrest from DB (may have been modified earlier in this function)
+            const { data: freshNation } = await supabase.from('nations').select('civil_unrest').eq('id', nation.id).single();
+            const latestUnrest = Number(freshNation?.civil_unrest ?? nation.civil_unrest ?? 20);
+            await supabase.from('nations').update({
+                civil_unrest: Math.min(100, latestUnrest + 8),
+                emergency_cooldown_until: currentTick + 8
+            }).eq('id', nation.id);
+
+            // Also clean up acting ministers — they were appointed by the removed president
+            const { data: actingToRemove } = await supabase
+                .from('ministries').select('id, acting_order_id')
+                .eq('nation_id', nation.id).eq('is_acting', true);
+            for (const m of (actingToRemove || [])) {
+                await supabase.from('ministries').update({
+                    is_acting: false, acting_order_id: null,
+                    minister_first_name: null, minister_last_name: null,
+                    minister_age: null, party_id: null,
+                    confirmation_status: null, minister_approval: null
+                }).eq('id', m.id);
+                if (m.acting_order_id) {
+                    await supabase.from('executive_orders').update({ is_active: false }).eq('id', m.acting_order_id);
+                }
+            }
+            results.push(`Emergency auto-ended: president removed. +8 civil_unrest, 8-tick cooldown, ${(actingToRemove || []).length} acting ministers removed`);
+        }
+    }
+
+    // ─── 5. Acting minister cleanup: if any acting ministry now has confirmed status, clear acting flag ───
+    const { data: upgradedActing } = await supabase
+        .from('ministries')
+        .select('id, acting_order_id')
+        .eq('nation_id', nation.id)
+        .eq('is_acting', true)
+        .eq('confirmation_status', 'confirmed');
+
+    for (const m of (upgradedActing || [])) {
+        await supabase.from('ministries')
+            .update({ is_acting: false, acting_order_id: null })
+            .eq('id', m.id);
+        if (m.acting_order_id) {
+            await supabase.from('executive_orders')
+                .update({ is_active: false })
+                .eq('id', m.acting_order_id);
+        }
+        results.push(`Acting minister upgraded to confirmed: ministry ${m.id}`);
+    }
+
+    return results;
+}
+
 async function processOngoingCosts(supabase, nation, currentTick) {
     const { data: activeLaws } = await supabase
         .from('active_laws')
@@ -15979,17 +16187,50 @@ function formatMinorSector(key) {
 
 // ==================== PM CANDIDATE SYSTEM ====================
 
+// Crucera names (Sangreza, Melizea, Montequilla, Palvera, San Estrella)
 const PM_FIRST_NAMES = [
     'Alejandro', 'Camila', 'Diego', 'Valentina', 'Mateo', 'Isabela', 'Sebastián', 'Luca',
     'Andrés', 'Gabriel', 'Joaquín', 'Mariana', 'Carlos', 'Tomas', 'Rafael', 'Edwin',
-    'Emilio', 'Catalina', 'Fernando', 'Renata'
+    'Emilio', 'Catalina', 'Fernando', 'Renata',
+    'Ricardo', 'Héctor', 'Ignacio', 'Santiago', 'Esteban', 'Nicolás', 'Ramón', 'Arturo',
+    'Álvaro', 'Gonzalo', 'Javier', 'Mauricio', 'Enrique', 'Sergio', 'Adrián', 'Hugo',
+    'Cristián', 'Rubén', 'Germán', 'Felipe'
 ];
 
 const PM_LAST_NAMES = [
     'Velasco', 'Mendoza', 'Guerrero', 'Salazar', 'Castillo', 'Herrera', 'Morales', 'Ríos',
     'Delgado', 'Espinoza', 'Guzmán', 'Navarro', 'Córdoba', 'Echeverría', 'Pacheco', 'Montero',
-    'Aguilar', 'Valenzuela', 'Carrasco', 'Ibarra'
+    'Aguilar', 'Valenzuela', 'Carrasco', 'Ibarra',
+    'Fuentes', 'Quiroga', 'Sepúlveda', 'Villalobos', 'Paredes', 'Arellano', 'Sandoval', 'Medina',
+    'Estrada', 'Cervantes', 'Figueroa', 'Maldonado', 'Cisneros', 'Zúñiga', 'Bustamante', 'Roldán',
+    'Camacho', 'Gallardo', 'Barrera', 'Saavedra'
 ];
+
+// Avelian names (Spanish with Italian influence)
+const AVELIA_FIRST_NAMES = [
+    'Marcelo', 'Luciana', 'Dante', 'Sofía', 'Lorenzo', 'Elena', 'Tomás', 'Rosario',
+    'Fabrizio', 'Carolina', 'Leandro', 'Paloma', 'Giancarlo', 'Inés', 'Renato', 'Marisol',
+    'Nico', 'Florencia', 'Aurelio', 'Celeste',
+    'Valentín', 'Matías', 'Silvio', 'Bernardo', 'Cristóbal', 'Lazzaro', 'Osvaldo', 'Enzo',
+    'Pascual', 'Damián'
+];
+
+const AVELIA_LAST_NAMES = [
+    'Montalbán', 'Ferretti', 'Salcedo', 'Conti', 'Valverde', 'Lucero', 'Maretti', 'Orellana',
+    'Bellini', 'Calderón', 'Santoro', 'Vásquez', 'Lombardi', 'Peñaloza', 'Rinaldi', 'Escobar',
+    'Castellani', 'Madrigal', 'Giacomo', 'Solano',
+    'Traverso', 'Coronado', 'Benedetti', 'Villarreal', 'Rosetti', 'Mondragón', 'Falcone', 'Quirós',
+    'Molinari', 'Saldaña'
+];
+
+const AVELIA_NATIONS = ['Avelia'];
+
+function getNationNames(nationName) {
+    if (AVELIA_NATIONS.includes(nationName)) {
+        return { firstNames: AVELIA_FIRST_NAMES, lastNames: AVELIA_LAST_NAMES };
+    }
+    return { firstNames: PM_FIRST_NAMES, lastNames: PM_LAST_NAMES };
+}
 
 const IDEOLOGY_OPTIONS = [
     { tag: 'LIBERTY',         axisKey: 'liberty_equality',             direction: -1 },
@@ -16010,7 +16251,7 @@ const PM_TRAIT_KEYS = [
     'media_darling', 'hardliner', 'technocrat', 'survivor', 'firebrand'
 ];
 
-async function generatePMCandidates(supabase, nationId, factionId, currentTick) {
+async function generatePMCandidates(supabase, nationId, factionId, currentTick, nationName = '') {
     let factionIdeology = await loadFactionIdeology(supabase, factionId);
     if (factionIdeology?._error) factionIdeology = null;
 
@@ -16040,6 +16281,7 @@ async function generatePMCandidates(supabase, nationId, factionId, currentTick) 
     const shuffledTraits = [...PM_TRAIT_KEYS].sort(() => Math.random() - 0.5);
     const chosenTraits = shuffledTraits.slice(0, 3);
 
+    const { firstNames: candFirstPool, lastNames: candLastPool } = getNationNames(nationName);
     const usedFirstNames = new Set();
     const usedLastNames = new Set();
     const candidates = [];
@@ -16047,11 +16289,11 @@ async function generatePMCandidates(supabase, nationId, factionId, currentTick) 
     for (let i = 0; i < 3; i++) {
         let firstName, lastName;
 
-        do { firstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)]; }
+        do { firstName = candFirstPool[Math.floor(Math.random() * candFirstPool.length)]; }
         while (usedFirstNames.has(firstName));
         usedFirstNames.add(firstName);
 
-        do { lastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)]; }
+        do { lastName = candLastPool[Math.floor(Math.random() * candLastPool.length)]; }
         while (usedLastNames.has(lastName));
         usedLastNames.add(lastName);
 
@@ -17696,7 +17938,7 @@ async function respondToCoupInvitation(supabase, factionId, nationId, invitation
  * Execute a coup attempt (v2 overhaul).
  * New requirements: standing >= 15, seats >= 10%, funds >= $30M.
  */
-async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted, currentTick) {
+async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted, currentTick, nationName = '') {
     // Load faction data
     const { data: faction } = await supabase
         .from('factions')
@@ -17853,8 +18095,9 @@ async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted,
             await supabase.from('stewards').update({ is_alive: false }).eq('id', leaderSteward.id);
 
             // Generate new steward
-            const newFirstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)];
-            const newLastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)];
+            const { firstNames: coupFirstPool, lastNames: coupLastPool } = getNationNames(nationName);
+            const newFirstName = coupFirstPool[Math.floor(Math.random() * coupFirstPool.length)];
+            const newLastName = coupLastPool[Math.floor(Math.random() * coupLastPool.length)];
             await supabase.from('stewards').insert({
                 faction_id: factionId,
                 nation_id: nationId,
@@ -20111,6 +20354,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.statConnections.push({ nation: nation.name, effects: connResults });
         }
 
+        // Executive orders (overreach, acting ministers, price controls, emergency)
+        try {
+            const eoResults = await processExecutiveOrders(supabase, nation, newTick);
+            if (eoResults && eoResults.length > 0) {
+                summary.executiveOrders = summary.executiveOrders || [];
+                summary.executiveOrders.push({ nation: nation.name, effects: eoResults });
+            }
+        } catch (eoErr) {
+            console.error(`[advanceTick] Executive orders processing failed for ${nation.name} (non-fatal):`, eoErr);
+        }
+
         // Ongoing costs
         const costResult = await processOngoingCosts(supabase, nation, newTick);
         if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
@@ -20253,8 +20507,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     } catch (adminErr) { console.warn('Could not close administration on impeachment:', adminErr); }
 
                     // Generate new VP name as acting president
-                    const vpFirst = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)];
-                    const vpLast = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)];
+                    const { firstNames: vpFirstPool, lastNames: vpLastPool } = getNationNames(nation.name);
+                    const vpFirst = vpFirstPool[Math.floor(Math.random() * vpFirstPool.length)];
+                    const vpLast = vpLastPool[Math.floor(Math.random() * vpLastPool.length)];
 
                     // Create new president record (VP succession — same party, serves out remainder)
                     const remainingTicks = Math.max(1, (president.term_ends_tick || newTick) - newTick);

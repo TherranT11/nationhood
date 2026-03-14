@@ -5372,17 +5372,50 @@ export function formatMinorSector(key) {
 
 // ==================== PM CANDIDATE SYSTEM ====================
 
+// Crucera names (Sangreza, Melizea, Montequilla, Palvera, San Estrella)
 export const PM_FIRST_NAMES = [
     'Alejandro', 'Camila', 'Diego', 'Valentina', 'Mateo', 'Isabela', 'Sebastián', 'Luca',
     'Andrés', 'Gabriel', 'Joaquín', 'Mariana', 'Carlos', 'Tomas', 'Rafael', 'Edwin',
-    'Emilio', 'Catalina', 'Fernando', 'Renata'
+    'Emilio', 'Catalina', 'Fernando', 'Renata',
+    'Ricardo', 'Héctor', 'Ignacio', 'Santiago', 'Esteban', 'Nicolás', 'Ramón', 'Arturo',
+    'Álvaro', 'Gonzalo', 'Javier', 'Mauricio', 'Enrique', 'Sergio', 'Adrián', 'Hugo',
+    'Cristián', 'Rubén', 'Germán', 'Felipe'
 ];
 
 export const PM_LAST_NAMES = [
     'Velasco', 'Mendoza', 'Guerrero', 'Salazar', 'Castillo', 'Herrera', 'Morales', 'Ríos',
     'Delgado', 'Espinoza', 'Guzmán', 'Navarro', 'Córdoba', 'Echeverría', 'Pacheco', 'Montero',
-    'Aguilar', 'Valenzuela', 'Carrasco', 'Ibarra'
+    'Aguilar', 'Valenzuela', 'Carrasco', 'Ibarra',
+    'Fuentes', 'Quiroga', 'Sepúlveda', 'Villalobos', 'Paredes', 'Arellano', 'Sandoval', 'Medina',
+    'Estrada', 'Cervantes', 'Figueroa', 'Maldonado', 'Cisneros', 'Zúñiga', 'Bustamante', 'Roldán',
+    'Camacho', 'Gallardo', 'Barrera', 'Saavedra'
 ];
+
+// Avelian names (Spanish with Italian influence)
+export const AVELIA_FIRST_NAMES = [
+    'Marcelo', 'Luciana', 'Dante', 'Sofía', 'Lorenzo', 'Elena', 'Tomás', 'Rosario',
+    'Fabrizio', 'Carolina', 'Leandro', 'Paloma', 'Giancarlo', 'Inés', 'Renato', 'Marisol',
+    'Nico', 'Florencia', 'Aurelio', 'Celeste',
+    'Valentín', 'Matías', 'Silvio', 'Bernardo', 'Cristóbal', 'Lazzaro', 'Osvaldo', 'Enzo',
+    'Pascual', 'Damián'
+];
+
+export const AVELIA_LAST_NAMES = [
+    'Montalbán', 'Ferretti', 'Salcedo', 'Conti', 'Valverde', 'Lucero', 'Maretti', 'Orellana',
+    'Bellini', 'Calderón', 'Santoro', 'Vásquez', 'Lombardi', 'Peñaloza', 'Rinaldi', 'Escobar',
+    'Castellani', 'Madrigal', 'Giacomo', 'Solano',
+    'Traverso', 'Coronado', 'Benedetti', 'Villarreal', 'Rosetti', 'Mondragón', 'Falcone', 'Quirós',
+    'Molinari', 'Saldaña'
+];
+
+const AVELIA_NATIONS = ['Avelia'];
+
+export function getNationNames(nationName) {
+    if (AVELIA_NATIONS.includes(nationName)) {
+        return { firstNames: AVELIA_FIRST_NAMES, lastNames: AVELIA_LAST_NAMES };
+    }
+    return { firstNames: PM_FIRST_NAMES, lastNames: PM_LAST_NAMES };
+}
 
 export const IDEOLOGY_OPTIONS = [
     { tag: 'LIBERTY',         axisKey: 'liberty_equality',             direction: -1 },
@@ -5403,7 +5436,7 @@ export const PM_TRAIT_KEYS = [
     'media_darling', 'hardliner', 'technocrat', 'survivor', 'firebrand'
 ];
 
-export async function generatePMCandidates(supabase, nationId, factionId, currentTick) {
+export async function generatePMCandidates(supabase, nationId, factionId, currentTick, nationName = '') {
     let factionIdeology = await loadFactionIdeology(supabase, factionId);
     if (factionIdeology?._error) factionIdeology = null;
 
@@ -5433,6 +5466,7 @@ export async function generatePMCandidates(supabase, nationId, factionId, curren
     const shuffledTraits = [...PM_TRAIT_KEYS].sort(() => Math.random() - 0.5);
     const chosenTraits = shuffledTraits.slice(0, 3);
 
+    const { firstNames: candFirstPool, lastNames: candLastPool } = getNationNames(nationName);
     const usedFirstNames = new Set();
     const usedLastNames = new Set();
     const candidates = [];
@@ -5440,11 +5474,11 @@ export async function generatePMCandidates(supabase, nationId, factionId, curren
     for (let i = 0; i < 3; i++) {
         let firstName, lastName;
 
-        do { firstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)]; }
+        do { firstName = candFirstPool[Math.floor(Math.random() * candFirstPool.length)]; }
         while (usedFirstNames.has(firstName));
         usedFirstNames.add(firstName);
 
-        do { lastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)]; }
+        do { lastName = candLastPool[Math.floor(Math.random() * candLastPool.length)]; }
         while (usedLastNames.has(lastName));
         usedLastNames.add(lastName);
 
@@ -7049,7 +7083,7 @@ export async function respondToCoupInvitation(supabase, factionId, nationId, inv
  * Execute a coup attempt (v2 overhaul).
  * New requirements: standing >= 15, seats >= 10%, funds >= $30M.
  */
-export async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted, currentTick) {
+export async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted, currentTick, nationName = '') {
     // Load faction data
     const { data: faction } = await supabase
         .from('factions')
@@ -7204,8 +7238,9 @@ export async function executeCoupAttempt(supabase, factionId, nationId, fundsCom
             await supabase.from('stewards').update({ is_alive: false }).eq('id', leaderSteward.id);
 
             // Generate new steward
-            const newFirstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)];
-            const newLastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)];
+            const { firstNames: coupFirstPool, lastNames: coupLastPool } = getNationNames(nationName);
+            const newFirstName = coupFirstPool[Math.floor(Math.random() * coupFirstPool.length)];
+            const newLastName = coupLastPool[Math.floor(Math.random() * coupLastPool.length)];
             await supabase.from('stewards').insert({
                 faction_id: factionId,
                 nation_id: nationId,

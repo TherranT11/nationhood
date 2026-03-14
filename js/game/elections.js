@@ -1258,7 +1258,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
                     .eq('candidate_type', 'presidential');
                 if (!count || count === 0) {
                     console.log(`Generating presidential candidates for faction ${party.id} (manual election)`);
-                    await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
+                    await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential', nation.name);
                 }
             }
         }
@@ -1855,7 +1855,7 @@ export async function processPresidentialElectionResult(supabase, nation, comple
         } else {
             // Fallback 2: generate fresh candidate
             console.warn(`[PresElection] Faction fallback also null for ${winner.candidate_name} in ${nation.name} — generating emergency candidate`);
-            const emergencyCandidates = await generatePresidentCandidates(supabase, nation.id, winner.faction_id, currentTick, 'presidential');
+            const emergencyCandidates = await generatePresidentCandidates(supabase, nation.id, winner.faction_id, currentTick, 'presidential', nation.name);
             if (emergencyCandidates && emergencyCandidates.length > 0) {
                 await inauguratePresident(supabase, emergencyCandidates[0], nation.id, winner.faction_id, currentTick, outgoingPresident);
                 console.log(`Emergency president inaugurated: ${emergencyCandidates[0].first_name} ${emergencyCandidates[0].last_name}`);

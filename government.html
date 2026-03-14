@@ -35,12 +35,28 @@
     </div>
 </div>
 
+<!-- Executive Order Modal -->
+<div class="modal-overlay" id="eo-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title">Executive Order</div>
+            <button class="modal-close" onclick="closeEOModal()">&times;</button>
+        </div>
+        <div id="eo-order-list"></div>
+        <div id="eo-confirm-panel" class="eo-confirm-panel"></div>
+        <div class="modal-footer" id="eo-modal-footer">
+            <button class="btn-cancel" onclick="closeEOModal()">Cancel</button>
+            <button class="eo-btn-confirm" id="eo-confirm-btn" disabled onclick="confirmExecutiveOrder()" style="display:none;">Issue Order</button>
+        </div>
+    </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability } from './js/game-common.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 (function () {
     'use strict';
@@ -397,6 +413,11 @@ async function renderGovernmentPage() {
             }
         }
 
+        // Preload executive order data for overreach bar & emergency banner
+        if (isPresidential && currentNation) {
+            try { eoOrderData = await fetchActiveOrders(_supabase, currentNation.id); } catch (e) { console.error('[EO] preload failed:', e); }
+        }
+
         const revolutionBannerHtml = await renderRevolutionBannerGov();
         const administrationBoxHtml = await renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress, allPartySeats);
 
@@ -742,6 +763,8 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                 <div class="coalition-parties">
                     <div class="coalition-party-tag" style="border-left:3px solid ${getPartyColorById(presidentFactionId)};padding-left:8px;">${getPartyLogoById(presidentFactionId) || getPartyCustomLogoById(presidentFactionId) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: getPartyCustomLogoById(presidentFactionId), iconKey: getPartyLogoById(presidentFactionId), size: 16, color: getPartyColorById(presidentFactionId) })}</span>` : ''}${escapeHtml(presPartyName)}<span class="seats">${presPartySeats} Seats</span></div>
                 </div>
+                ${renderOverreachBar()}
+                ${renderExecutiveOrderButton()}
                 ${renderImpeachmentButton()}
             </div>`;
     }
@@ -3244,6 +3267,433 @@ function renderImpeachmentButton() {
             <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">File articles of impeachment against the President</div>
         </div>`;
 }
+
+// ==================== EXECUTIVE ORDERS ====================
+
+let eoOrderData = null; // cached from fetchActiveOrders
+let eoAvailability = null; // cached from checkOrderAvailability
+let eoSelectedType = null;
+let eoSelectedParams = {};
+
+function renderOverreachBar() {
+    if (!isPresidential || !presidentData) return '';
+    const count = currentNation?.overreach_count || 0;
+    const status = getOverreachStatus(count);
+    return `
+        <div class="overreach-container">
+            <div class="overreach-header">
+                <span class="overreach-label">Presidential Overreach</span>
+                <span class="overreach-count">${count} order${count !== 1 ? 's' : ''} / ${EO_CONFIG.OVERREACH_WINDOW} ticks</span>
+                <span class="overreach-status ${status.className}">${status.label}</span>
+            </div>
+            <div class="overreach-bar-track">
+                <div class="overreach-bar-fill" style="width:${status.fillPct}%;background:${status.color};"></div>
+                <div class="overreach-pip" style="left:40%;"></div>
+                <div class="overreach-pip" style="left:80%;"></div>
+            </div>
+        </div>`;
+}
+
+function renderExecutiveOrderButton() {
+    if (!isPresidential || !presidentData) return '';
+    const canIssue = canIssueExecutiveOrder(currentNation, currentFaction, presidentFactionId);
+    if (!canIssue) {
+        return `
+            <div class="executive-order-row">
+                <button class="executive-order-btn" disabled title="Only the president's party can issue executive orders">
+                    Executive Order
+                </button>
+            </div>`;
+    }
+
+    // Check for active emergency
+    const hasEmergency = eoOrderData?.hasActiveEmergency;
+    if (hasEmergency) {
+        const em = eoOrderData.activeEmergency;
+        const ticksActive = (eoOrderData?.currentTick || currentTick) - (em?.issued_tick || 0);
+        return `
+            <div class="executive-order-row">
+                <button class="executive-order-btn" onclick="openEOModal()">
+                    Executive Order
+                </button>
+                <button class="executive-order-btn end-emergency" onclick="handleEndEmergency()" style="margin-top:6px;">
+                    End Emergency
+                </button>
+            </div>
+            <div class="emergency-banner">
+                <span class="emergency-banner-label">Emergency In Effect</span>
+                <span class="emergency-banner-ticks">${ticksActive} tick${ticksActive !== 1 ? 's' : ''} active</span>
+            </div>`;
+    }
+
+    return `
+        <div class="executive-order-row">
+            <button class="executive-order-btn" onclick="openEOModal()">
+                Executive Order
+            </button>
+        </div>`;
+}
+
+async function openEOModal() {
+    if (!currentFaction || !currentNation) return;
+    const modal = document.getElementById('eo-modal');
+    const listEl = document.getElementById('eo-order-list');
+    const confirmPanel = document.getElementById('eo-confirm-panel');
+    const confirmBtn = document.getElementById('eo-confirm-btn');
+
+    eoSelectedType = null;
+    eoSelectedParams = {};
+    confirmPanel.className = 'eo-confirm-panel';
+    confirmPanel.innerHTML = '';
+    confirmBtn.style.display = 'none';
+    confirmBtn.disabled = true;
+
+    listEl.innerHTML = '<div style="color:var(--text-secondary);font-size:0.85rem;">Loading...</div>';
+    modal.classList.add('active');
+
+    try {
+        eoOrderData = await fetchActiveOrders(_supabase, currentNation.id);
+        eoAvailability = await checkOrderAvailability(_supabase, currentNation.id, currentFaction.id, currentFaction.action_points || 0);
+    } catch (e) {
+        listEl.innerHTML = `<div style="color:var(--red);font-size:0.85rem;">Error: ${e.message}</div>`;
+        return;
+    }
+
+    const orders = [
+        {
+            type: 'acting_minister', name: 'Acting Minister',
+            desc: `Appoint an acting minister, bypassing confirmation. Max ${EO_CONFIG.ACTING_MINISTER_MAX}.`,
+            info: eoAvailability.acting_minister
+        },
+        {
+            type: 'tax_adjustment', name: 'Tax Adjustment',
+            desc: 'Adjust income, corporate, or sales tax by \u00B13%.',
+            info: eoAvailability.tax_adjustment
+        },
+        {
+            type: 'price_controls', name: 'Price Controls',
+            desc: `Freeze fuel prices or food security for ${EO_CONFIG.PRICE_CONTROLS_DURATION} ticks.`,
+            info: eoAvailability.price_controls
+        },
+        {
+            type: 'national_emergency', name: 'National Emergency',
+            desc: 'Declare emergency powers. +1 AP/tick, advance bills. Lasts until ended.',
+            info: eoAvailability.national_emergency
+        },
+        {
+            type: 'censure', name: 'Censure',
+            desc: 'Censure a rival faction. -4 momentum to target (but they gain sympathy).',
+            info: eoAvailability.censure
+        }
+    ];
+
+    let html = '<div class="modal-subtitle">Select an executive order to issue.</div>';
+    for (const o of orders) {
+        const avail = o.info.available;
+        const statusLabel = avail ? 'AVAILABLE' : (o.info.reason || 'LOCKED');
+        const statusClass = avail ? 'available' : (o.info.reason?.includes('ooldown') ? 'cooldown' : 'locked');
+        html += `
+            <div class="eo-card ${avail ? '' : 'unavailable'}" onclick="${avail ? `selectEOType('${o.type}')` : ''}">
+                <div class="eo-card-left">
+                    <div class="eo-card-name">${escapeHtml(o.name)}</div>
+                    <div class="eo-card-desc">${escapeHtml(o.desc)}</div>
+                </div>
+                <div class="eo-card-right">
+                    <div class="eo-card-cost">${o.info.apCost} AP</div>
+                    <div class="eo-card-status ${statusClass}">${escapeHtml(statusLabel)}</div>
+                </div>
+            </div>`;
+    }
+    listEl.innerHTML = html;
+}
+
+function selectEOType(type) {
+    eoSelectedType = type;
+    eoSelectedParams = {};
+    const listEl = document.getElementById('eo-order-list');
+    const confirmPanel = document.getElementById('eo-confirm-panel');
+    const confirmBtn = document.getElementById('eo-confirm-btn');
+
+    listEl.style.display = 'none';
+    confirmPanel.className = 'eo-confirm-panel active';
+    confirmBtn.style.display = 'inline-block';
+    confirmBtn.disabled = true;
+
+    if (type === 'acting_minister') {
+        renderActingMinisterConfirm(confirmPanel);
+    } else if (type === 'tax_adjustment') {
+        renderTaxAdjustmentConfirm(confirmPanel);
+    } else if (type === 'price_controls') {
+        renderPriceControlsConfirm(confirmPanel);
+    } else if (type === 'national_emergency') {
+        renderEmergencyConfirm(confirmPanel);
+    } else if (type === 'censure') {
+        renderCensureConfirm(confirmPanel);
+    }
+}
+
+function renderActingMinisterConfirm(panel) {
+    // Find vacant ministries
+    const vacantMinistries = (ministryData || []).filter(m =>
+        !m.minister_first_name || m.confirmation_status === 'pending' || m.confirmation_status === 'rejected'
+    ).filter(m => m.ministry_key !== 'prime_minister');
+
+    if (vacantMinistries.length === 0) {
+        panel.innerHTML = `
+            <div class="eo-confirm-title">Acting Minister</div>
+            <div class="eo-confirm-desc">No vacant ministries available for acting appointment.</div>`;
+        return;
+    }
+
+    const MINISTRY_LABELS = {
+        interior: 'Interior', foreign: 'Foreign Affairs', defense: 'Defense',
+        finance: 'Finance', education: 'Education', health: 'Health'
+    };
+
+    let options = '';
+    for (const m of vacantMinistries) {
+        const label = MINISTRY_LABELS[m.ministry_key] || m.ministry_key;
+        options += `<option value="${m.ministry_key}">${escapeHtml(label)}</option>`;
+    }
+
+    panel.innerHTML = `
+        <div class="eo-confirm-title">Appoint Acting Minister</div>
+        <div class="eo-confirm-desc">
+            Select a ministry to fill with an acting appointment. This bypasses legislative confirmation
+            but costs ${EO_CONFIG.ACTING_MINISTER_AP} AP and -4 government approval.
+        </div>
+        <select class="eo-select" id="eo-acting-ministry" onchange="eoParamChanged()">
+            <option value="">-- Select Ministry --</option>
+            ${options}
+        </select>
+        <div class="eo-preview" id="eo-acting-preview" style="display:none;"></div>`;
+}
+
+function renderTaxAdjustmentConfirm(panel) {
+    const taxes = [
+        { key: 'income_tax', label: 'Income Tax' },
+        { key: 'corporate_tax', label: 'Corporate Tax' },
+        { key: 'sales_tax', label: 'Sales Tax' }
+    ];
+    const cooldowns = eoAvailability?.taxCooldowns || {};
+
+    let taxBtns = '';
+    for (const t of taxes) {
+        const onCD = cooldowns[t.key];
+        taxBtns += `<button class="eo-option-btn" data-tax="${t.key}" onclick="eoSelectTax('${t.key}')" ${onCD ? 'disabled title="On cooldown"' : ''}>${escapeHtml(t.label)}${onCD ? ' (CD)' : ''}</button>`;
+    }
+
+    panel.innerHTML = `
+        <div class="eo-confirm-title">Tax Adjustment</div>
+        <div class="eo-confirm-desc">
+            Adjust a tax rate by \u00B1${EO_CONFIG.TAX_ADJUSTMENT_DELTA}%. Costs ${EO_CONFIG.TAX_ADJUSTMENT_BASE_AP}+ AP.
+            Tax increases cost -3 approval; decreases cost -5 approval.
+        </div>
+        <div class="eo-option-group" id="eo-tax-types">${taxBtns}</div>
+        <div class="eo-option-group" id="eo-tax-direction" style="display:none;">
+            <button class="eo-option-btn" onclick="eoSelectDirection('increase')">Increase +${EO_CONFIG.TAX_ADJUSTMENT_DELTA}%</button>
+            <button class="eo-option-btn" onclick="eoSelectDirection('decrease')">Decrease -${EO_CONFIG.TAX_ADJUSTMENT_DELTA}%</button>
+        </div>
+        <div class="eo-preview" id="eo-tax-preview" style="display:none;"></div>`;
+}
+
+function renderPriceControlsConfirm(panel) {
+    const stats = [
+        { key: 'fuel_prices', label: 'Fuel Prices' },
+        { key: 'food_security', label: 'Food Security' }
+    ];
+    const cooldowns = eoAvailability?.pcCooldowns || {};
+
+    let statBtns = '';
+    for (const s of stats) {
+        const onCD = cooldowns[s.key];
+        statBtns += `<button class="eo-option-btn" data-stat="${s.key}" onclick="eoSelectPCStat('${s.key}')" ${onCD ? 'disabled title="On cooldown"' : ''}>${escapeHtml(s.label)}${onCD ? ' (CD)' : ''}</button>`;
+    }
+
+    panel.innerHTML = `
+        <div class="eo-confirm-title">Price Controls</div>
+        <div class="eo-confirm-desc">
+            Freeze a stat at its current value for ${EO_CONFIG.PRICE_CONTROLS_DURATION} ticks.
+            When controls expire, suppressed pressure releases at 2x magnitude.
+            Costs ${EO_CONFIG.PRICE_CONTROLS_AP} AP and -3 approval.
+        </div>
+        <div class="eo-option-group">${statBtns}</div>
+        <div class="eo-preview" id="eo-pc-preview" style="display:none;"></div>`;
+}
+
+function renderEmergencyConfirm(panel) {
+    panel.innerHTML = `
+        <div class="eo-confirm-title">Declare National Emergency</div>
+        <div class="eo-warning">
+            <strong>Warning:</strong> Emergency powers are significant.
+            <br>• +1 AP per tick to presidential faction
+            <br>• Can advance bills without votes
+            <br>• +8 initial approval boost (crisis rally)
+            <br>• -4 approval per tick after first tick
+            <br>• Opposition gains +6 momentum
+            <br>• After ${EO_CONFIG.EMERGENCY_UNREST_THRESHOLD} ticks: civil unrest rises +1/tick
+            <br>• Ending costs +8 civil unrest + ${EO_CONFIG.EMERGENCY_COOLDOWN}-tick cooldown
+            <br>• Lasts until manually ended, president removed, or impeached
+        </div>
+        <div class="eo-confirm-desc">
+            Cost: ${EO_CONFIG.NATIONAL_EMERGENCY_AP} AP. This cannot be undone without consequences.
+        </div>`;
+    document.getElementById('eo-confirm-btn').disabled = false;
+}
+
+function renderCensureConfirm(panel) {
+    const otherFactions = (allParties || []).filter(p => p.id !== currentFaction?.id && p.seats > 0);
+    if (otherFactions.length === 0) {
+        panel.innerHTML = `
+            <div class="eo-confirm-title">Censure</div>
+            <div class="eo-confirm-desc">No other factions to censure.</div>`;
+        return;
+    }
+
+    let options = '';
+    for (const f of otherFactions) {
+        options += `<option value="${f.id}">${escapeHtml(f.party_name)} (${f.seats} seats)</option>`;
+    }
+
+    panel.innerHTML = `
+        <div class="eo-confirm-title">Censure a Rival Faction</div>
+        <div class="eo-confirm-desc">
+            Censure costs ${EO_CONFIG.CENSURE_AP} AP and -3 approval.
+            Target loses -4 momentum but gains sympathy (+${EO_CONFIG.CENSURE_BASE_MOMENTUM} momentum).
+            Repeat censures within ${EO_CONFIG.CENSURE_REPEAT_WINDOW} ticks give +${EO_CONFIG.CENSURE_REPEAT_MOMENTUM} sympathy.
+        </div>
+        <select class="eo-select" id="eo-censure-target" onchange="eoParamChanged()">
+            <option value="">-- Select Faction --</option>
+            ${options}
+        </select>`;
+}
+
+// Parameter selection handlers
+function eoParamChanged() {
+    const confirmBtn = document.getElementById('eo-confirm-btn');
+    if (eoSelectedType === 'acting_minister') {
+        const sel = document.getElementById('eo-acting-ministry');
+        eoSelectedParams.ministryKey = sel?.value || '';
+        confirmBtn.disabled = !eoSelectedParams.ministryKey;
+        if (eoSelectedParams.ministryKey) {
+            document.getElementById('eo-acting-preview').style.display = 'block';
+            document.getElementById('eo-acting-preview').textContent = `Appoint acting minister to ${eoSelectedParams.ministryKey.replace('_', ' ')}`;
+        }
+    } else if (eoSelectedType === 'censure') {
+        const sel = document.getElementById('eo-censure-target');
+        eoSelectedParams.targetFactionId = sel?.value || '';
+        confirmBtn.disabled = !eoSelectedParams.targetFactionId;
+    }
+}
+window.eoParamChanged = eoParamChanged;
+
+function eoSelectTax(taxKey) {
+    eoSelectedParams.taxType = taxKey;
+    document.querySelectorAll('#eo-tax-types .eo-option-btn').forEach(b => b.classList.remove('selected'));
+    document.querySelector(`#eo-tax-types [data-tax="${taxKey}"]`)?.classList.add('selected');
+    document.getElementById('eo-tax-direction').style.display = 'flex';
+    eoSelectedParams.direction = null;
+    document.getElementById('eo-confirm-btn').disabled = true;
+    document.getElementById('eo-tax-preview').style.display = 'none';
+}
+window.eoSelectTax = eoSelectTax;
+
+function eoSelectDirection(dir) {
+    eoSelectedParams.direction = dir;
+    document.querySelectorAll('#eo-tax-direction .eo-option-btn').forEach(b => {
+        b.classList.toggle('selected', b.textContent.toLowerCase().includes(dir));
+    });
+    const rate = currentNation?.[eoSelectedParams.taxType] ?? 20;
+    const delta = dir === 'increase' ? EO_CONFIG.TAX_ADJUSTMENT_DELTA : -EO_CONFIG.TAX_ADJUSTMENT_DELTA;
+    const newRate = Math.max(0, Math.min(50, rate + delta));
+    const preview = document.getElementById('eo-tax-preview');
+    preview.style.display = 'block';
+    preview.textContent = `${eoSelectedParams.taxType.replace(/_/g, ' ')}: ${rate}% \u2192 ${newRate}%`;
+    document.getElementById('eo-confirm-btn').disabled = false;
+}
+window.eoSelectDirection = eoSelectDirection;
+
+function eoSelectPCStat(stat) {
+    eoSelectedParams.stat = stat;
+    document.querySelectorAll('#eo-confirm-panel .eo-option-btn[data-stat]').forEach(b => {
+        b.classList.toggle('selected', b.getAttribute('data-stat') === stat);
+    });
+    const val = currentNation?.[stat] ?? 50;
+    const preview = document.getElementById('eo-pc-preview');
+    preview.style.display = 'block';
+    preview.textContent = `Freeze ${stat.replace(/_/g, ' ')} at ${Number(val).toFixed(1)} for ${EO_CONFIG.PRICE_CONTROLS_DURATION} ticks`;
+    document.getElementById('eo-confirm-btn').disabled = false;
+}
+window.eoSelectPCStat = eoSelectPCStat;
+
+async function confirmExecutiveOrder() {
+    const confirmBtn = document.getElementById('eo-confirm-btn');
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Issuing...';
+
+    let result;
+    try {
+        if (eoSelectedType === 'acting_minister') {
+            result = await issueActingMinister(_supabase, currentNation.id, currentFaction.id, eoSelectedParams.ministryKey, currentNation.name);
+        } else if (eoSelectedType === 'tax_adjustment') {
+            result = await issueTaxAdjustment(_supabase, currentNation.id, currentFaction.id, eoSelectedParams.taxType, eoSelectedParams.direction);
+        } else if (eoSelectedType === 'price_controls') {
+            result = await issuePriceControls(_supabase, currentNation.id, currentFaction.id, eoSelectedParams.stat);
+        } else if (eoSelectedType === 'national_emergency') {
+            result = await issueNationalEmergency(_supabase, currentNation.id, currentFaction.id);
+        } else if (eoSelectedType === 'censure') {
+            result = await issueCensure(_supabase, currentNation.id, currentFaction.id, eoSelectedParams.targetFactionId);
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Issue Order';
+        return;
+    }
+
+    if (!result?.success) {
+        alert(result?.error || 'Failed to issue executive order.');
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Issue Order';
+        return;
+    }
+
+    closeEOModal();
+    window.location.reload();
+}
+window.confirmExecutiveOrder = confirmExecutiveOrder;
+
+function closeEOModal() {
+    document.getElementById('eo-modal').classList.remove('active');
+    document.getElementById('eo-order-list').style.display = 'block';
+    const confirmPanel = document.getElementById('eo-confirm-panel');
+    confirmPanel.className = 'eo-confirm-panel';
+    confirmPanel.innerHTML = '';
+    const confirmBtn = document.getElementById('eo-confirm-btn');
+    confirmBtn.style.display = 'none';
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Issue Order';
+    eoSelectedType = null;
+    eoSelectedParams = {};
+}
+window.closeEOModal = closeEOModal;
+window.openEOModal = openEOModal;
+window.selectEOType = selectEOType;
+
+async function handleEndEmergency() {
+    if (!confirm('End the national emergency? This will cause +8 civil unrest and start an 8-tick cooldown.')) return;
+    try {
+        const result = await endNationalEmergency(_supabase, currentNation.id, currentFaction.id);
+        if (!result.success) {
+            alert(result.error || 'Failed to end emergency.');
+            return;
+        }
+        window.location.reload();
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+window.handleEndEmergency = handleEndEmergency;
 
 async function fileImpeachment() {
     if (!currentFaction || !currentNation || !presidentData) return;

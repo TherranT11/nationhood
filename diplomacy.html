@@ -705,10 +705,21 @@ async function renderAgreementsTab() {
                         totalMoney += art.money || 0;
                     }
                     const artLabel = art.text || art.label || art.type || 'Unknown';
+                    let v1EffectHtml = '';
+                    if (!isStruck) {
+                        const artRel = art.relations || 0;
+                        const artMoney = art.money || 0;
+                        const v1Tags = [];
+                        if (artRel) v1Tags.push('<span class="effect-tag ' + (artRel > 0 ? 'effect-tag--positive' : 'effect-tag--warning') + '">' + (artRel > 0 ? '+' : '') + artRel + ' Relations</span>');
+                        if (artMoney > 0) v1Tags.push('<span class="effect-tag effect-tag--money-neg">-$' + (artMoney / 1e6).toFixed(1) + 'M Cost</span>');
+                        if (artMoney < 0) v1Tags.push('<span class="effect-tag effect-tag--money-pos">+$' + (Math.abs(artMoney) / 1e6).toFixed(0) + 'M Revenue</span>');
+                        if (v1Tags.length) v1EffectHtml = '<div class="article-effects" style="margin-top:3px;">' + v1Tags.join('') + '</div>';
+                    }
                     return '<div class="agreement-card-term' + (isStruck ? ' term-struck' : '') + '">' +
                         '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '</span> ' +
                         '<span class="proposal-article-label">' + escapeHtml(artLabel) + '</span>' +
                         (isStruck ? ' <span class="struck-label">STRUCK</span>' : '') +
+                        v1EffectHtml +
                     '</div>';
                 }
             }).join('');
@@ -848,6 +859,7 @@ async function renderAgreementsTab() {
                                 ${ta.auto_renew ? ' (auto-renew)' : ''}
                             </div>
                             ${articlesHtml ? '<div class="agreement-card-terms">' + articlesHtml + '</div>' : ''}
+                            ${renderTradeEffectSummary(ta.articles)}
                             <div class="agreement-card-dates">
                                 <span>Enacted: ${ta.enacted_at_tick != null ? tickToDate(ta.enacted_at_tick) : '—'}</span>
                                 <span>Expires: ${ta.expires_at_tick != null ? tickToDate(ta.expires_at_tick) : 'Never'}</span>
@@ -970,6 +982,7 @@ async function renderAgreementsTab() {
                                 ${ratifyStatusLine(theirBillStatus, partnerName, theirIsPresidential, false)}
                             </div>
                             ${articlesHtml ? '<div class="agreement-card-terms">' + articlesHtml + '</div>' : ''}
+                            ${renderTradeEffectSummary(neg.draft_articles)}
                         </div>
                     `;
                 }
@@ -2595,7 +2608,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
         actions += `
             <div class="action-card" style="margin-bottom:10px;">
                 <div class="action-header">
-                    <span class="action-title">Head of Government Actions</span>
+                    <span class="action-title" style="color:#ffb74d;">Head of Government Actions</span>
                 </div>
                 <p class="action-desc">As Head of Government, you may authorize major diplomatic decisions.</p>
                 <button class="action-btn" disabled>Declare War (Coming Soon)</button>
@@ -2633,7 +2646,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
         actions += `
             <div class="action-card" style="margin-bottom:10px;">
                 <div class="action-header">
-                    <span class="action-title">Foreign Minister Actions</span>
+                    <span class="action-title" style="color:#64b5f6;">Foreign Minister Actions</span>
                 </div>
                 <p class="action-desc">As Foreign Minister, you oversee diplomatic proposals and ambassador assignments.</p>
                 ${fmButtons}
@@ -2663,7 +2676,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
         actions += `
             <div class="action-card" style="margin-bottom:10px;">
                 <div class="action-header">
-                    <span class="action-title">Ambassador Actions</span>
+                    <span class="action-title" style="color:#ba68c8;">Ambassador Actions</span>
                 </div>
                 <p class="action-desc">As Ambassador to ${escapeHtml(targetNation.name)}, you can negotiate directly.</p>
                 ${ambWarningHTML}
@@ -5083,6 +5096,40 @@ async function selectNegotiationType(negotiationId, agreementType) {
 
     // Re-render the negotiation panel
     await openTradeNegotiation(negotiationId);
+}
+
+function renderTradeEffectSummary(articles) {
+    if (!articles || !articles.length) return '';
+    const tags = [];
+    for (const art of articles) {
+        const d = art.data || {};
+        switch (art.type) {
+            case 'tariff_reduction':
+                tags.push({ label: '-' + (d.reduction_pct || 0) + '% Tariff' + (d.direction === 'mutual' ? ' (mutual)' : ''), cls: 'effect-tag--positive' });
+                break;
+            case 'subsidized_sector': {
+                const sec = TRADEABLE_SECTOR_MAP[d.sector];
+                tags.push({ label: (sec?.label || d.sector || '?') + ' +' + (d.subsidy_pct || 0) + '% Subsidy', cls: 'effect-tag--info' });
+                break;
+            }
+            case 'aid_terms': {
+                const amt = Number(d.annual_amount || 0);
+                const amtStr = amt >= 1e9 ? '$' + (amt / 1e9).toFixed(1) + 'B' : '$' + (amt / 1e6).toFixed(0) + 'M';
+                const dir = d.aid_direction === 'request' ? 'Receive ' : 'Provide ';
+                tags.push({ label: dir + amtStr + '/yr', cls: d.aid_direction === 'request' ? 'effect-tag--money-pos' : 'effect-tag--money-neg' });
+                break;
+            }
+            case 'breach_penalty':
+                if (d.relations_penalty) tags.push({ label: '-' + d.relations_penalty + ' Rel penalty', cls: 'effect-tag--warning' });
+                if (d.financial_penalty) tags.push({ label: '$' + d.financial_penalty + 'M penalty', cls: 'effect-tag--warning' });
+                break;
+            case 'supply_commitment':
+                tags.push({ label: (d.commitment_pct || 0) + '% Commitment', cls: 'effect-tag--neutral' });
+                break;
+        }
+    }
+    if (!tags.length) return '';
+    return '<div class="article-effects">' + tags.map(t => '<span class="effect-tag ' + t.cls + '">' + escapeHtml(t.label) + '</span>').join('') + '</div>';
 }
 
 function renderTradeArticleSummary(article) {
@@ -7785,7 +7832,7 @@ function renderActionsBox() {
     }
 
     // Head of Government
-    html += '<div class="role-header' + (hasHoG ? '' : ' role-disabled') + '">Head of Government</div>';
+    html += '<div class="role-header role-header-hog' + (hasHoG ? '' : ' role-disabled') + '">Head of Government</div>';
     [
         { key: 'declare_war', label: 'Declare War', ap: 8, type: 'hog', comingSoon: true },
         { key: 'call_ceasefire', label: 'Call for Ceasefire', ap: 4, type: 'hog', comingSoon: true },
@@ -7794,7 +7841,7 @@ function renderActionsBox() {
     ].forEach(a => { html += actionHtml(a, hasHoG, 'hog'); });
 
     // Foreign Minister
-    html += '<div class="role-header' + (hasFM ? '' : ' role-disabled') + '">Foreign Minister</div>';
+    html += '<div class="role-header role-header-fm' + (hasFM ? '' : ' role-disabled') + '">Foreign Minister</div>';
     [
         { key: 'appoint_ambassador', label: 'Appoint Ambassador', ap: 1, type: 'fm' },
         { key: 'recall_ambassador', label: 'Recall Ambassador', ap: 1, type: 'fm' },
@@ -7805,7 +7852,7 @@ function renderActionsBox() {
     ].forEach(a => { html += actionHtml(a, hasFM, 'fm'); });
 
     // Minister of Trade
-    html += '<div class="role-header' + (hasMoT ? '' : ' role-disabled') + '">Minister of Trade</div>';
+    html += '<div class="role-header role-header-mot' + (hasMoT ? '' : ' role-disabled') + '">Minister of Trade</div>';
     [
         { key: 'trade_agreement', label: 'Trade Agreement', ap: 2, type: 'mot' }
     ].forEach(a => { html += actionHtml(a, hasMoT, 'mot'); });
@@ -7818,7 +7865,7 @@ function renderActionsBox() {
     ].forEach(a => { html += actionHtml(a, hasMoT, 'mot'); });
 
     // Ambassador
-    html += '<div class="role-header' + (hasAmb ? '' : ' role-disabled') + '">Ambassador</div>';
+    html += '<div class="role-header role-header-amb' + (hasAmb ? '' : ' role-disabled') + '">Ambassador</div>';
     [
         { key: 'minor_initiative', label: 'Minor Diplomatic Initiative', ap: 2, type: 'amb' },
         { key: 'send_message', label: 'Send Message', ap: 0, type: 'amb' }
