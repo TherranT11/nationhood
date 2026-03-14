@@ -1418,6 +1418,256 @@
   color: var(--green);
 }
 
+/* ── TRADE DRAFT: Config Controls ── */
+.config-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.config-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  min-width: 80px;
+  flex-shrink: 0;
+}
+.config-value {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  color: var(--text-primary);
+  background: var(--bg-4);
+  border: 1px solid var(--border-subtle);
+  padding: 3px 8px;
+  min-width: 50px;
+  display: inline-flex;
+  align-items: center;
+}
+.config-value--sm { max-width: 55px; text-align: center; }
+.config-unit {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+.config-note {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-left: 4px;
+}
+
+/* ── TRADE DRAFT: Toggle Groups ── */
+.toggle-group { display: flex; gap: 0; }
+.toggle-opt {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.1s;
+  letter-spacing: 0.03em;
+}
+.toggle-opt + .toggle-opt { border-left: none; }
+.toggle-opt.selected {
+  background: var(--teal-faint);
+  color: var(--teal);
+  border-color: var(--teal-border);
+}
+.toggle-opt.selected + .toggle-opt { border-left-color: var(--teal-border); }
+.toggle-opt:hover:not(.selected) { background: var(--bg-hover); color: var(--text-muted); }
+
+/* ── TRADE DRAFT: Check Groups ── */
+.check-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.check-opt {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.1s;
+  letter-spacing: 0.03em;
+}
+.check-opt.selected {
+  background: var(--teal-faint);
+  color: var(--teal);
+  border-color: var(--teal-border);
+}
+.check-opt:hover:not(.selected) { background: var(--bg-hover); color: var(--text-muted); }
+
+/* ── TRADE DRAFT: Range Display ── */
+.range-display {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.range-track {
+  flex: 1;
+  height: 4px;
+  background: var(--bg-1);
+  border-radius: 2px;
+  position: relative;
+  max-width: 140px;
+}
+.range-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 4px;
+  background: var(--teal);
+  border-radius: 2px;
+}
+.range-thumb {
+  position: absolute;
+  top: -3px;
+  width: 10px;
+  height: 10px;
+  background: var(--teal);
+  border-radius: 50%;
+  border: 2px solid var(--bg-3);
+}
+.range-value {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--teal);
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ── TRADE DRAFT: Sector Tags ── */
+.sector-tag {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-4);
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  letter-spacing: 0.03em;
+}
+.sector-tag .x {
+  color: var(--red);
+  cursor: pointer;
+  font-size: 9px;
+  opacity: 0.5;
+}
+.sector-tag .x:hover { opacity: 1; }
+
+/* ── TRADE DRAFT: Summary Panel ── */
+.summary-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+}
+.summary-section { padding: 8px 0; }
+.summary-section + .summary-section { border-top: 1px solid var(--border-hair); }
+.summary-section-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 0;
+}
+.stat-label {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.stat-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+.stat-value--positive { color: var(--green); }
+.stat-value--negative { color: var(--red); }
+.stat-value--neutral  { color: var(--text-dim); }
+.stat-value--cost     { color: var(--amber); }
+.stat-value--info     { color: var(--blue); }
+
+/* ── TRADE DRAFT: Info Items ── */
+.info-item {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 3px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  line-height: 1.4;
+}
+.info-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+.info-dot--teal  { background: var(--teal); }
+.info-dot--amber { background: var(--amber); }
+.info-dot--green { background: var(--green); }
+.info-dot--dim   { background: var(--text-dim); }
+.info-dot--red   { background: var(--red); }
+
+/* ── TRADE DRAFT: Sector Coverage Bars ── */
+.sector-bar {
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+  gap: 8px;
+}
+.sector-bar-name {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  min-width: 120px;
+}
+.sector-bar-track {
+  flex: 1;
+  height: 3px;
+  background: var(--bg-4);
+  border-radius: 2px;
+  position: relative;
+}
+.sector-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 3px;
+  border-radius: 2px;
+}
+.sector-bar-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  min-width: 30px;
+  text-align: right;
+}
+
 /* ── RESPONSIVE ── */
 @media (max-width: 1080px) {
   .row { flex-direction: column; }
