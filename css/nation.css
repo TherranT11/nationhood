@@ -699,6 +699,9 @@
 .featured-card__abp-type--diplomatic-action { background: var(--n-orange-dim); color: var(--n-orange); }
 .featured-card__abp-type--leader-trait { background: var(--n-yellow-dim); color: var(--n-yellow); }
 .featured-card__abp-type--decay { background: rgba(158,158,158,0.12); color: var(--n-tertiary); }
+.featured-card__abp-type--stat-link { background: rgba(192,132,252,0.12); color: #c084fc; }
+.featured-card__abp-type--trade { background: rgba(251,191,36,0.12); color: #fbbf24; }
+.featured-card__abp-type--institution { background: rgba(45,212,191,0.12); color: #2dd4bf; }
 
 /* ---------- Loading ---------- */
 .loading-container {

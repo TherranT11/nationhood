@@ -520,7 +520,16 @@ async function loadStatEffectSources(nationId, nation) {
             .select('action_type, stat_effects')
             .eq('nation_id', nationId)
             .eq('processed', false),
-        loadLeaderTraitEffects(nationId, nation)
+        loadLeaderTraitEffects(nationId, nation),
+        _supabase.from('stat_connections')
+            .select('source_stat, source_dir, threshold, target_stat, target_dir, magnitude, dampening')
+            .eq('enabled', true),
+        _supabase.from('budget_item_allocations')
+            .select('item_id, item_type, allocation_amount, needed_amount')
+            .eq('nation_id', nationId)
+            .eq('item_type', 'institution'),
+        _supabase.from('institutions')
+            .select('id, name, primary_stat, secondary_stat')
     ]);
 
     var currentTick = await getShardTick();
@@ -530,6 +539,9 @@ async function loadStatEffectSources(nationId, nation) {
     parseMinistryEffects(results[2].data || [], map);
     parseDiplomaticEffects(results[3].data || [], map);
     parseLeaderTraitEffects(results[4], map);
+    parseStatConnectionEffects(results[5].data || [], nation, map);
+    parseInstitutionEffects(results[6].data || [], results[7].data || [], nation, map);
+    parseTradeSystemEffects(nation, map);
     parseDecayEffects(nation, map);
 
     statEffectsByKey = map;
@@ -680,6 +692,80 @@ function parseLeaderTraitEffects(traitData, map) {
         var delta = perTick[rawStat];
         if (delta === 0) continue;
         addEffectToMap(map, rawStat, traitLabel, delta > 0 ? 'up' : 'down', 'Leader Trait');
+    }
+}
+
+function parseStatConnectionEffects(connections, nation, map) {
+    for (var i = 0; i < connections.length; i++) {
+        var conn = connections[i];
+        if (!conn.source_stat || !conn.target_stat) continue;
+        var sourceVal = nation[conn.source_stat] !== undefined && nation[conn.source_stat] !== null
+            ? Number(nation[conn.source_stat]) : 50;
+        var triggered = conn.source_dir === 'above'
+            ? sourceVal > conn.threshold
+            : sourceVal < conn.threshold;
+        if (!triggered) continue;
+        var label = prettyStatName(conn.source_stat);
+        addEffectToMap(map, conn.target_stat, label, conn.target_dir || 'up', 'Stat Link', Number(conn.magnitude) || null);
+    }
+}
+
+function parseInstitutionEffects(allocations, institutions, nation, map) {
+    // Build funding pct map
+    var fundingMap = {};
+    for (var i = 0; i < allocations.length; i++) {
+        var row = allocations[i];
+        var needed = Number(row.needed_amount || 0);
+        fundingMap[row.item_id] = needed > 0
+            ? Math.min(100, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
+            : 100;
+    }
+    // For each institution, if underfunded, show effect on its covered stats
+    for (var j = 0; j < institutions.length; j++) {
+        var inst = institutions[j];
+        var pct = fundingMap[inst.id] !== undefined ? fundingMap[inst.id] : 100;
+        if (pct >= 100) continue; // fully funded = no decay effect
+        var roles = ['primary_stat', 'secondary_stat'];
+        for (var r = 0; r < roles.length; r++) {
+            var statKey = inst[roles[r]];
+            if (!statKey) continue;
+            var config = STAT_DECAY_CONFIG[statKey];
+            if (!config) continue;
+            var currentVal = nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50;
+            if (currentVal === config.target) continue;
+            var dir = currentVal > config.target ? 'down' : 'up';
+            var label = inst.name + ' (' + pct + '% funded)';
+            addEffectToMap(map, statKey, label, dir, 'Institution');
+        }
+    }
+}
+
+// Stats known to be affected by the trade system engine each tick
+var TRADE_AFFECTED_STATS = {
+    gdp_growth: 'Trade Balance',
+    currency_strength: 'Trade Balance',
+    inflation: 'Import Prices',
+    unemployment: 'Trade Displacement'
+};
+
+function parseTradeSystemEffects(nation, map) {
+    for (var statKey in TRADE_AFFECTED_STATS) {
+        if (!TRADE_AFFECTED_STATS.hasOwnProperty(statKey)) continue;
+        var label = TRADE_AFFECTED_STATS[statKey];
+        // We can't compute the exact direction without replicating the trade engine,
+        // but we can detect the direction from the per-tick delta if available
+        var dir = 'up';
+        if (previousTickData && previousTickData[statKey] != null && nation[statKey] != null) {
+            var delta = Number(nation[statKey]) - Number(previousTickData[statKey]);
+            if (Math.abs(delta) >= 0.01) {
+                dir = delta > 0 ? 'up' : 'down';
+            } else {
+                continue; // no measurable trade effect this tick
+            }
+        } else {
+            continue; // no delta data, don't show speculative effect
+        }
+        addEffectToMap(map, statKey, label, dir, 'Trade');
     }
 }
 
