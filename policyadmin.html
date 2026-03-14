@@ -769,8 +769,10 @@ function renderStatEffects() {
     `).join('');
 
     // Fix selected values for stat dropdowns (the replace trick doesn't always work)
-    const selects = container.querySelectorAll('.stat-effect-card select');
-    selects.forEach((sel, idx) => { if (statEffects[idx]?.stat_key) sel.value = statEffects[idx].stat_key; });
+    container.querySelectorAll('.stat-effect-card').forEach((card, idx) => {
+        const statSelect = card.querySelector('.se-fields select');
+        if (statSelect && statEffects[idx]?.stat_key) statSelect.value = statEffects[idx].stat_key;
+    });
 
     updateEffectPreview();
 }
