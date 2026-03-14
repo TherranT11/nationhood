@@ -82,7 +82,7 @@ async function main() {
         current_tick: 100,
         current_date: 'March 15, 2026',
         next_tick_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // Far future — manual ticks only
-        tick_interval_minutes: 60
+        tick_interval_hours: 1
     }, { onConflict: 'name' });
     if (shardErr) {
         console.error('Shard setup failed:', shardErr.message);
@@ -228,7 +228,10 @@ async function main() {
             const f = factions[i];
             const { data: inserted, error } = await supabase.from('factions').insert({
                 nation_id: nation.id,
+                shard_id: shardId,
                 faction_name: f.faction_name,
+                faction_type: 'player',
+                nation: nationName,
                 seats: f.seats,
                 approval_rating: f.approval_rating,
                 action_points: f.action_points,
