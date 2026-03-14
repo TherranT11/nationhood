@@ -568,6 +568,21 @@
                 </button>
             </div>
             <div id="sa-results" style="font-family:monospace; font-size:0.85rem; white-space:pre-wrap; color:#ccc;"></div>
+
+            <div id="sa-revise-section" style="display:none; margin-top:20px; padding:16px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px;">
+                <h3 style="margin:0 0 8px 0; font-size:0.95rem; color:#fa0;">Revise Stat</h3>
+                <p style="color:#888; margin:0 0 12px 0; font-size:0.82rem;">Override the current value of this stat. Use this to fix bugged stat values.</p>
+                <div style="display:flex; gap:10px; align-items:flex-end;">
+                    <div class="input-group" style="margin-bottom:0; width:120px;">
+                        <label>New Value (1–100)</label>
+                        <input type="number" id="sa-revise-value" min="1" max="100" step="1" placeholder="50" style="width:100%;">
+                    </div>
+                    <button class="btn btn-primary" onclick="reviseStatValue()" style="margin-bottom:0; height:44px; background:#fa0; border-color:#fa0;">
+                        Revise
+                    </button>
+                </div>
+                <div id="sa-revise-result" style="margin-top:10px; font-size:0.85rem;"></div>
+            </div>
         </div>
 
         <!-- ==================== INTEGRITY TAB ==================== -->
@@ -3447,9 +3462,31 @@ async function runStatAudit() {
     log(`  (Does not include unprocessed ministry actions or leader trait effects)`, '#666');
 
     out.innerHTML = lines.join('\n');
+    document.getElementById('sa-revise-section').style.display = 'block';
+    document.getElementById('sa-revise-value').value = '';
+    document.getElementById('sa-revise-result').textContent = '';
+}
+
+async function reviseStatValue() {
+    const nationId = document.getElementById('sa-nation-select').value;
+    const sk = document.getElementById('sa-stat-select').value;
+    const input = document.getElementById('sa-revise-value');
+    const resultEl = document.getElementById('sa-revise-result');
+    const val = parseInt(input.value, 10);
+    if (!nationId || !sk) { resultEl.innerHTML = '<span style="color:#f44">Select a nation and stat first.</span>'; return; }
+    if (isNaN(val) || val < 1 || val > 100) { resultEl.innerHTML = '<span style="color:#f44">Enter an integer between 1 and 100.</span>'; return; }
+
+    resultEl.innerHTML = '<span style="color:#888">Updating...</span>';
+    const { error } = await _supabase.from('nations').update({ [sk]: val }).eq('id', nationId);
+    if (error) {
+        resultEl.innerHTML = `<span style="color:#f44">Error: ${esc(error.message)}</span>`;
+    } else {
+        resultEl.innerHTML = `<span style="color:#4f4">✓ ${formatStatName(sk)} set to ${val}. Re-run audit to verify.</span>`;
+    }
 }
 
 window.runStatAudit = runStatAudit;
+window.reviseStatValue = reviseStatValue;
 
 // ==================== VALDORIAN TAB ====================
 
