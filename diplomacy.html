@@ -2641,7 +2641,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
         } else {
             fmButtons = `<button class="action-btn" onclick="selectDraftAction('appoint_ambassador','Appoint Ambassador',${APPOINT_AMBASSADOR_AP},'fm','fm')">Appoint Ambassador</button>`;
         }
-        fmButtons += `<button class="action-btn" style="margin-top:8px;" disabled>Formal Protest (Coming Soon)</button>`;
+        // Formal Protest moved to Ambassador role
 
         actions += `
             <div class="action-card" style="margin-bottom:10px;">
@@ -2681,6 +2681,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
                 <p class="action-desc">As Ambassador to ${escapeHtml(targetNation.name)}, you can negotiate directly.</p>
                 ${ambWarningHTML}
                 <button class="action-btn" onclick="showDiploTab('initiative')">New Initiative</button>
+                <button class="action-btn" style="margin-top:8px;" disabled>Formal Protest (Coming Soon)</button>
                 <button class="action-btn" style="margin-top:8px;" disabled>Gather Intel (Coming Soon)</button>
                 <button class="action-btn" style="margin-top:8px;background:#5a1a1a;border-color:#8b3030;" onclick="resignAmbassador('${myAmb?.id}', '${escapeHtml(targetNation.name)}')">Resign as Ambassador</button>
             </div>
@@ -7846,7 +7847,6 @@ function renderActionsBox() {
         { key: 'appoint_ambassador', label: 'Appoint Ambassador', ap: 1, type: 'fm' },
         { key: 'recall_ambassador', label: 'Recall Ambassador', ap: 1, type: 'fm' },
         { key: 'major_initiative', label: 'Major Diplomatic Initiative', ap: 2, type: 'fm', comingSoon: true },
-        { key: 'formal_protest', label: 'Formal Protest', ap: 2, type: 'fm', comingSoon: true },
         { key: 'covert_ops', label: 'Covert Operations', ap: 4, type: 'fm', comingSoon: true },
         { key: 'foreign_aid', label: 'Foreign Aid Proposal', ap: 4, type: 'fm', comingSoon: true }
     ].forEach(a => { html += actionHtml(a, hasFM, 'fm'); });
@@ -7868,6 +7868,7 @@ function renderActionsBox() {
     html += '<div class="role-header role-header-amb' + (hasAmb ? '' : ' role-disabled') + '">Ambassador</div>';
     [
         { key: 'minor_initiative', label: 'Minor Diplomatic Initiative', ap: 2, type: 'amb' },
+        { key: 'formal_protest', label: 'Formal Protest', ap: 2, type: 'amb', comingSoon: true },
         { key: 'send_message', label: 'Send Message', ap: 0, type: 'amb' }
     ].forEach(a => { html += actionHtml(a, hasAmb, 'amb'); });
 
