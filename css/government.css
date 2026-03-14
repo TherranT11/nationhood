@@ -1054,3 +1054,185 @@ body {
         .no-gov-warning { background: var(--amber-faint); border: 1px solid var(--amber-border); border-radius: 3px; padding: 16px 20px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; }
         .no-gov-warning-icon { font-size: 1.5rem; }
         .no-gov-warning-text { font-size: 0.85rem; color: var(--orange); }
+
+        /* ===== EXECUTIVE ORDERS ===== */
+
+        /* Overreach Bar */
+        .overreach-container {
+            margin-top: 16px; padding-top: 16px;
+            border-top: 1px solid var(--border-main);
+        }
+        .overreach-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 8px;
+        }
+        .overreach-label {
+            font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted);
+        }
+        .overreach-count {
+            font-family: var(--font-mono); font-size: 9px; color: var(--text-secondary);
+        }
+        .overreach-status {
+            font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.05em;
+        }
+        .overreach-status.normal { color: var(--green); }
+        .overreach-status.decree { color: var(--amber); }
+        .overreach-status.drift { color: var(--red); animation: overreach-pulse 1.5s ease-in-out infinite; }
+        @keyframes overreach-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .overreach-bar-track {
+            width: 100%; height: 4px; background: var(--bg-card);
+            border-radius: 2px; position: relative; overflow: visible;
+        }
+        .overreach-bar-fill {
+            height: 100%; border-radius: 2px; transition: width 0.4s ease, background 0.4s ease;
+        }
+        .overreach-pip {
+            position: absolute; top: -3px; width: 1px; height: 10px;
+            background: var(--text-dim); opacity: 0.5;
+        }
+
+        /* Executive Order Button */
+        .executive-order-row {
+            margin-top: 12px; text-align: center;
+        }
+        .executive-order-btn {
+            width: 100%; padding: 10px 24px;
+            background: transparent; border: 1px solid var(--amber-border);
+            border-radius: 3px; color: var(--amber); cursor: pointer;
+            font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.1em;
+            transition: all 0.2s;
+        }
+        .executive-order-btn:hover {
+            background: var(--amber-faint); border-color: var(--amber);
+        }
+        .executive-order-btn:disabled {
+            color: var(--text-dim); border-color: var(--border-main);
+            cursor: not-allowed; background: transparent;
+        }
+        .executive-order-btn.end-emergency {
+            border-color: var(--red-border); color: var(--red);
+        }
+        .executive-order-btn.end-emergency:hover {
+            background: var(--red-faint); border-color: var(--red);
+        }
+
+        /* Executive Order Modal */
+        .eo-card {
+            background: var(--bg-card); border: 1px solid var(--border-0); border-radius: 3px;
+            padding: 14px 16px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .eo-card:hover { border-color: var(--amber-border); background: var(--bg-hover); }
+        .eo-card.unavailable {
+            opacity: 0.45; cursor: not-allowed;
+        }
+        .eo-card.unavailable:hover { border-color: var(--border-0); background: var(--bg-card); }
+        .eo-card-left { flex: 1; }
+        .eo-card-name {
+            font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        .eo-card-desc {
+            font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;
+        }
+        .eo-card-right {
+            display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 60px;
+        }
+        .eo-card-cost {
+            font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+            color: var(--amber);
+        }
+        .eo-card-status {
+            font-family: var(--font-mono); font-size: 8px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.05em;
+            padding: 2px 6px; border-radius: 2px;
+        }
+        .eo-card-status.available { color: var(--green); background: var(--green-faint); }
+        .eo-card-status.cooldown { color: var(--red); background: var(--red-faint); }
+        .eo-card-status.locked { color: var(--text-dim); background: var(--bg-card); }
+
+        /* EO Confirm Panel (sub-panel within modal) */
+        .eo-confirm-panel { display: none; }
+        .eo-confirm-panel.active { display: block; }
+        .eo-confirm-title {
+            font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.1em; color: var(--amber);
+            margin-bottom: 12px;
+        }
+        .eo-confirm-desc {
+            font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;
+        }
+        .eo-select {
+            width: 100%; padding: 10px 12px; background: var(--bg-input);
+            border: 1px solid var(--border-0); border-radius: 3px; color: var(--text-primary);
+            font-size: 0.85rem; margin-bottom: 12px;
+        }
+        .eo-option-group {
+            display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;
+        }
+        .eo-option-btn {
+            padding: 8px 16px; background: var(--bg-card); border: 1px solid var(--border-0);
+            border-radius: 3px; color: var(--text-secondary); cursor: pointer;
+            font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.2s;
+        }
+        .eo-option-btn:hover { border-color: var(--text-dim); color: var(--text-primary); }
+        .eo-option-btn.selected { border-color: var(--amber); color: var(--amber); background: var(--amber-faint); }
+        .eo-option-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .eo-preview {
+            background: var(--bg-card); padding: 10px 14px; border-radius: 3px;
+            font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-secondary);
+            margin-bottom: 12px; border-left: 3px solid var(--amber-border);
+        }
+        .eo-warning {
+            background: var(--red-faint); border-left: 3px solid var(--red);
+            padding: 10px 14px; border-radius: 3px;
+            font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5;
+        }
+        .eo-btn-confirm {
+            padding: 12px 24px; background: var(--amber);
+            border: none; border-radius: 3px; color: #141412; font-weight: 700; cursor: pointer;
+            font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
+            transition: background 0.2s;
+        }
+        .eo-btn-confirm:hover { background: var(--accent-hover); }
+        .eo-btn-confirm:disabled { background: var(--bg-card); color: var(--text-dim); cursor: not-allowed; }
+
+        /* Emergency Banner */
+        .emergency-banner {
+            background: linear-gradient(135deg, #2a1412 0%, #1a0800 100%);
+            border: 1px solid var(--red-border); border-radius: 3px;
+            padding: 10px 16px; margin-top: 12px;
+            display: flex; justify-content: space-between; align-items: center;
+            animation: emergency-pulse 2s ease-in-out infinite;
+        }
+        @keyframes emergency-pulse {
+            0%, 100% { border-color: var(--red-border); }
+            50% { border-color: var(--red); box-shadow: 0 0 12px rgba(217,83,79,0.2); }
+        }
+        .emergency-banner-label {
+            font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.1em; color: var(--red);
+        }
+        .emergency-banner-ticks {
+            font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary);
+        }
+
+        /* Emergency Advance Button (bill.html) */
+        .emergency-advance-btn {
+            padding: 6px 14px; background: transparent; border: 1px solid var(--red-border);
+            border-radius: 3px; color: var(--red); cursor: pointer;
+            font-family: var(--font-mono); font-size: 8px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.2s;
+            margin-left: 8px;
+        }
+        .emergency-advance-btn:hover {
+            background: var(--red-faint); border-color: var(--red);
+        }

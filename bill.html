@@ -209,7 +209,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination, advanceBillEmergency, EO_CONFIG } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 /** Scale a policy cost by its scaling stat (e.g., population). */
 function scalePolicyCost(baseCost, scalingStat, nation) {
@@ -628,6 +628,11 @@ function renderBill() {
     const retractBtn = '<button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>';
     el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">Send to Floor</button>${retractBtn}` + reason;
 }
+    }
+
+    // Emergency bill advance button (presidential only, during active emergency)
+    if (isPresidential && isPresidentParty && (isCommittee || isFloor) && !isAutocracy) {
+        renderEmergencyAdvanceButton(bill);
     }
 
     // Unvoted warning for resolved bills
@@ -1972,6 +1977,60 @@ async function retractBill() {
         window.location.href = 'laws.html';
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
+
+// ==================== EMERGENCY BILL ADVANCE ====================
+
+async function renderEmergencyAdvanceButton(bill) {
+    // Check for active national emergency
+    try {
+        const { data: emergency } = await _supabase
+            .from('executive_orders')
+            .select('id, payload, issued_tick')
+            .eq('nation_id', currentNation.id)
+            .eq('order_type', 'national_emergency')
+            .eq('faction_id', currentFaction.id)
+            .eq('is_active', true)
+            .maybeSingle();
+
+        if (!emergency) return;
+
+        const usedThisTick = emergency.payload?.last_advance_tick === currentShardTick;
+        const advanceTo = bill.status === 'committee' ? 'floor' : "president's desk";
+
+        const banner = document.createElement('div');
+        banner.style.cssText = 'background:var(--red-faint);border:1px solid var(--red-border);border-radius:3px;padding:12px 16px;margin:12px 0;display:flex;justify-content:space-between;align-items:center;';
+        banner.innerHTML = `
+            <div>
+                <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--red);margin-bottom:4px;">Emergency Powers</div>
+                <div style="font-size:0.8rem;color:var(--text-secondary);">Advance this bill to ${advanceTo} without standard procedure. -6 approval.</div>
+            </div>
+            <button class="emergency-advance-btn" onclick="handleEmergencyAdvance('${bill.id}')" ${usedThisTick ? 'disabled title="Already used this tick"' : ''}>
+                ${usedThisTick ? 'Used This Tick' : 'Advance (Emergency)'}
+            </button>
+        `;
+        const header = document.getElementById('bill-header');
+        header.parentNode.insertBefore(banner, header.nextSibling);
+    } catch (e) {
+        console.error('[EO] Emergency advance check failed:', e);
+    }
+}
+window.renderEmergencyAdvanceButton = renderEmergencyAdvanceButton;
+
+async function handleEmergencyAdvance(billId) {
+    if (!confirm('Use emergency powers to advance this bill?\n\nThis costs -6 government approval and bypasses normal procedure.')) return;
+    try {
+        const result = await advanceBillEmergency(_supabase, currentNation.id, currentFaction.id, billId);
+        if (!result.success) {
+            alert(result.error || 'Failed to advance bill.');
+            return;
+        }
+        alert(`Bill advanced to ${result.advancedTo.replace('_', ' ')} under emergency powers.`);
+        window.location.reload();
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+window.handleEmergencyAdvance = handleEmergencyAdvance;
 
 // ==================== AMENDMENTS ====================
 

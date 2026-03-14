@@ -15031,6 +15031,179 @@ async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
     return govApproval;
 }
 
+// ==================== EXECUTIVE ORDERS TICK PROCESSING ====================
+
+const EO_OVERREACH_WINDOW = 8;
+const EO_EMERGENCY_UNREST_THRESHOLD = 18;
+
+async function processExecutiveOrders(supabase, nation, currentTick) {
+    const results: string[] = [];
+
+    // ─── 1. Recalculate overreach count ───
+    const { count: overreachCount } = await supabase
+        .from('executive_orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('nation_id', nation.id)
+        .gte('issued_tick', currentTick - EO_OVERREACH_WINDOW);
+
+    const oc = overreachCount || 0;
+    await supabase.from('nations').update({ overreach_count: oc }).eq('id', nation.id);
+
+    // Overreach penalties
+    if (oc >= 4) {
+        await adjustGovernmentApprovalEvent(supabase, nation.id, -4, 'executive_order:authoritarian_drift');
+        results.push(`Authoritarian drift: -4 gov approval (${oc} orders in ${EO_OVERREACH_WINDOW} ticks)`);
+    } else if (oc >= 2) {
+        await adjustGovernmentApprovalEvent(supabase, nation.id, -2, 'executive_order:governing_by_decree');
+        results.push(`Governing by decree: -2 gov approval (${oc} orders in ${EO_OVERREACH_WINDOW} ticks)`);
+    }
+
+    // ─── 2. Acting minister ongoing effects ───
+    const { data: actingMinisters } = await supabase
+        .from('ministries')
+        .select('id, ministry_key, party_id')
+        .eq('nation_id', nation.id)
+        .eq('is_acting', true)
+        .eq('is_active', true);
+
+    if (actingMinisters && actingMinisters.length > 0) {
+        // -2 approval per acting minister per tick
+        const actingPenalty = actingMinisters.length * -2;
+        await adjustGovernmentApprovalEvent(supabase, nation.id, actingPenalty, 'executive_order:acting_minister_ongoing');
+        results.push(`Acting ministers (${actingMinisters.length}): ${actingPenalty} gov approval`);
+
+        // Get president faction to determine opposition
+        const { data: president } = await supabase
+            .from('presidents').select('faction_id')
+            .eq('nation_id', nation.id).eq('is_active', true).maybeSingle();
+
+        if (president) {
+            // +1 momentum per acting minister to each opposition party
+            const { data: oppoFactions } = await supabase
+                .from('factions').select('id')
+                .eq('nation_id', nation.id).neq('id', president.faction_id);
+            for (const f of (oppoFactions || [])) {
+                await adjustMomentumAll(supabase, nation.id, f.id, actingMinisters.length, 'executive_order:acting_minister_opposition');
+            }
+        }
+    }
+
+    // ─── 3. Price controls: freeze stat + accumulate pressure ───
+    const { data: activeControls } = await supabase
+        .from('executive_orders')
+        .select('id, payload, expires_tick')
+        .eq('nation_id', nation.id)
+        .eq('order_type', 'price_controls')
+        .eq('is_active', true);
+
+    for (const control of (activeControls || [])) {
+        const stat = control.payload?.stat;
+        const frozenValue = control.payload?.frozen_value;
+        if (!stat || frozenValue == null) continue;
+
+        // Read what the stat naturally became after this tick's calculations
+        const { data: freshNation } = await supabase
+            .from('nations').select(stat).eq('id', nation.id).single();
+        const naturalValue = Number(freshNation?.[stat] ?? frozenValue);
+        const pressureDelta = naturalValue - frozenValue;
+
+        // Override stat back to frozen value
+        await supabase.from('nations').update({ [stat]: frozenValue }).eq('id', nation.id);
+
+        // Accumulate pressure
+        const newMagnitude = (control.payload.pressure_magnitude || 0) + pressureDelta;
+        await supabase.from('executive_orders').update({
+            payload: { ...control.payload, pressure_magnitude: newMagnitude,
+                       pressure_direction: pressureDelta >= 0 ? 'up' : 'down' }
+        }).eq('id', control.id);
+
+        results.push(`Price controls on ${stat}: frozen at ${frozenValue.toFixed(1)}, pressure ${newMagnitude.toFixed(1)}`);
+
+        // Check expiry
+        if (control.expires_tick != null && currentTick >= control.expires_tick) {
+            // Release: snap with doubled accumulated pressure
+            const snapValue = frozenValue + (newMagnitude * 2);
+            const clampedSnap = Math.max(0, Math.min(100, snapValue));
+            await supabase.from('nations').update({ [stat]: clampedSnap }).eq('id', nation.id);
+            await adjustGovernmentApprovalEvent(supabase, nation.id, -4, 'executive_order:price_controls_snap');
+            await supabase.from('executive_orders').update({ is_active: false }).eq('id', control.id);
+            results.push(`Price controls expired on ${stat}: snapped to ${clampedSnap.toFixed(1)} (pressure release: ${(newMagnitude * 2).toFixed(1)})`);
+        }
+    }
+
+    // ─── 4. National emergency ongoing effects ───
+    const { data: emergency } = await supabase
+        .from('executive_orders')
+        .select('id, faction_id, issued_tick, payload')
+        .eq('nation_id', nation.id)
+        .eq('order_type', 'national_emergency')
+        .eq('is_active', true)
+        .maybeSingle();
+
+    if (emergency) {
+        const ticksActive = currentTick - emergency.issued_tick;
+
+        // +1 AP per tick to presidential faction
+        await accumulateAP(supabase, emergency.faction_id, 1);
+        results.push(`Emergency: +1 AP to faction ${emergency.faction_id} (tick ${ticksActive})`);
+
+        // -4 approval per tick after first tick
+        if (ticksActive > 0) {
+            await adjustGovernmentApprovalEvent(supabase, nation.id, -4, 'executive_order:emergency_ongoing');
+            results.push(`Emergency: -4 gov approval (tick ${ticksActive})`);
+        }
+
+        // After 18 ticks: +1 civil_unrest per tick
+        if (ticksActive >= EO_EMERGENCY_UNREST_THRESHOLD) {
+            const currentUnrest = Number(nation.civil_unrest ?? 20);
+            await supabase.from('nations').update({ civil_unrest: Math.min(100, currentUnrest + 1) }).eq('id', nation.id);
+            results.push(`Emergency: +1 civil_unrest (active ${ticksActive} ticks, threshold ${EO_EMERGENCY_UNREST_THRESHOLD})`);
+        }
+
+        // Auto-end if president removed (no active president for this faction)
+        const { data: activePresident } = await supabase
+            .from('presidents')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('faction_id', emergency.faction_id)
+            .eq('is_active', true)
+            .maybeSingle();
+
+        if (!activePresident) {
+            // President was removed/impeached — auto-end emergency
+            await supabase.from('executive_orders').update({ is_active: false }).eq('id', emergency.id);
+            const currentUnrest = Number(nation.civil_unrest ?? 20);
+            await supabase.from('nations').update({
+                civil_unrest: Math.min(100, currentUnrest + 8),
+                emergency_cooldown_until: currentTick + 8
+            }).eq('id', nation.id);
+            results.push(`Emergency auto-ended: president removed. +8 civil_unrest, 8-tick cooldown`);
+        }
+    }
+
+    // ─── 5. Acting minister cleanup: if any acting ministry now has confirmed status, clear acting flag ───
+    const { data: upgradedActing } = await supabase
+        .from('ministries')
+        .select('id, acting_order_id')
+        .eq('nation_id', nation.id)
+        .eq('is_acting', true)
+        .eq('confirmation_status', 'confirmed');
+
+    for (const m of (upgradedActing || [])) {
+        await supabase.from('ministries')
+            .update({ is_acting: false, acting_order_id: null })
+            .eq('id', m.id);
+        if (m.acting_order_id) {
+            await supabase.from('executive_orders')
+                .update({ is_active: false })
+                .eq('id', m.acting_order_id);
+        }
+        results.push(`Acting minister upgraded to confirmed: ministry ${m.id}`);
+    }
+
+    return results;
+}
+
 async function processOngoingCosts(supabase, nation, currentTick) {
     const { data: activeLaws } = await supabase
         .from('active_laws')
@@ -20109,6 +20282,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         if (connResults.length > 0) {
             summary.statConnections = summary.statConnections || [];
             summary.statConnections.push({ nation: nation.name, effects: connResults });
+        }
+
+        // Executive orders (overreach, acting ministers, price controls, emergency)
+        try {
+            const eoResults = await processExecutiveOrders(supabase, nation, newTick);
+            if (eoResults && eoResults.length > 0) {
+                summary.executiveOrders = summary.executiveOrders || [];
+                summary.executiveOrders.push({ nation: nation.name, effects: eoResults });
+            }
+        } catch (eoErr) {
+            console.error(`[advanceTick] Executive orders processing failed for ${nation.name} (non-fatal):`, eoErr);
         }
 
         // Ongoing costs
