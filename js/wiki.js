@@ -160,12 +160,20 @@ export async function fetchPage(supabase, slug) {
 
 /** Fetch all wiki pages (lightweight — no body) */
 export async function fetchPageList(supabase) {
-    const { data, error } = await supabase
+    // Try with tags column first; fall back without it if column doesn't exist yet
+    let result = await supabase
         .from('wiki_pages')
         .select('id, slug, title, template_type, updated_at, updated_by, created_by, locked_by, tags')
         .order('title', { ascending: true });
-    if (error) throw error;
-    return data || [];
+    if (result.error) {
+        // tags column may not exist yet — retry without it
+        result = await supabase
+            .from('wiki_pages')
+            .select('id, slug, title, template_type, updated_at, updated_by, created_by, locked_by')
+            .order('title', { ascending: true });
+        if (result.error) throw result.error;
+    }
+    return result.data || [];
 }
 
 /** Fetch the set of existing slugs for link colouring */
