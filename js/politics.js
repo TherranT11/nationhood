@@ -66,18 +66,29 @@ initPage('politics', async (state) => {
         const results = lastElection.results;
         const votesArr = results?.votes || (Array.isArray(results) ? results : []);
         const myResult = votesArr.find(r => r.party_id === f.id);
-        if (myResult && typeof myResult.vote_percentage === 'number') {
-            voteSharePct = myResult.vote_percentage.toFixed(1);
+        if (myResult) {
+            // vote_percentage may arrive as number or string from JSONB
+            const vp = Number(myResult.vote_percentage);
+            if (!isNaN(vp) && vp > 0) {
+                voteSharePct = vp.toFixed(1);
+            } else if (myResult.votes && results?.total_votes_cast) {
+                // Compute from raw vote counts if vote_percentage is missing (e.g. partial elections)
+                const totalVotes = Number(results.total_votes_cast);
+                if (totalVotes > 0) {
+                    voteSharePct = ((Number(myResult.votes) / totalVotes) * 100).toFixed(1);
+                }
+            }
         }
 
-        // Try to compute seat delta from election results
-        if (Array.isArray(results)) {
-            const mySeatResult = results.find(r => r.party_id === f.id);
-            if (mySeatResult && typeof mySeatResult.seats_won === 'number') {
-                const prevSeats = typeof mySeatResult.seats_before === 'number' ? mySeatResult.seats_before : null;
-                if (prevSeats !== null) {
-                    seatDelta = mySeats - prevSeats;
-                }
+        // Compute seat delta from election results
+        const seatsArr = results?.seats || votesArr;
+        const mySeatResult = seatsArr.find(r => r.party_id === f.id);
+        if (mySeatResult) {
+            // run_election RPC stores 'seats', partial elections store 'total_seats' / 'existing_seats'
+            const electionSeats = mySeatResult.seats ?? mySeatResult.total_seats;
+            const prevSeats = mySeatResult.seats_before ?? mySeatResult.existing_seats;
+            if (typeof electionSeats === 'number' && typeof prevSeats === 'number') {
+                seatDelta = electionSeats - prevSeats;
             }
         }
     }
