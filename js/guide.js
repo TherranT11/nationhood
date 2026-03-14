@@ -644,6 +644,9 @@ const guideContent = {
 </div></details>
 `
     }
+};
+
+// Placeholder for tabs without a guide yet
 const placeholderGuide = {
     title: 'Guide',
     html: `
