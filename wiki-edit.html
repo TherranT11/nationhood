@@ -410,18 +410,35 @@ const TEMPLATE_TYPES = [
         };
 
         try {
+            let saveError;
             if (existingPage) {
                 const { error } = await _supabase
                     .from('wiki_pages')
                     .update(record)
                     .eq('id', existingPage.id);
-                if (error) throw error;
+                saveError = error;
             } else {
                 record.created_by = faction.id;
                 const { error } = await _supabase
                     .from('wiki_pages')
                     .insert(record);
-                if (error) throw error;
+                saveError = error;
+            }
+            // If save failed and tags column may not exist, retry without tags
+            if (saveError) {
+                delete record.tags;
+                if (existingPage) {
+                    const { error } = await _supabase
+                        .from('wiki_pages')
+                        .update(record)
+                        .eq('id', existingPage.id);
+                    if (error) throw error;
+                } else {
+                    const { error } = await _supabase
+                        .from('wiki_pages')
+                        .insert(record);
+                    if (error) throw error;
+                }
             }
             _dirty = false;
             window.location.href = `wiki.html?slug=${encodeURIComponent(slug)}`;
