@@ -215,22 +215,22 @@ function normalizeTag(raw) {
  * @param {object} opts - { initialTags: string[], placeholder: string, onTagsChange: fn }
  */
 export function createTagInput(opts = {}) {
-    const { initialTags = [], placeholder = 'add tag...', onTagsChange, showLabel = true } = opts;
+    const { initialTags = [], placeholder = 'add tag...', onTagsChange } = opts;
     const tags = [...initialTags];
+    const tagCounts = {}; // tag -> usage_count (0 = new)
+
+    // Outer section box (matches infobox editor style)
+    const section = document.createElement('div');
+    section.className = 'wiki-tag-section';
+
+    const header = document.createElement('div');
+    header.className = 'wiki-infobox-editor-title';
+    header.textContent = 'Tags';
+    section.appendChild(header);
 
     const container = document.createElement('div');
     container.className = 'wiki-tag-container';
-
-    // Autocomplete wrapper (needs position:relative)
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'position:relative;display:contents;';
-
-    if (showLabel) {
-        const label = document.createElement('span');
-        label.className = 'wiki-tag-label';
-        label.textContent = '#';
-        container.appendChild(label);
-    }
+    section.appendChild(container);
 
     const input = document.createElement('input');
     input.type = 'text';
@@ -241,27 +241,50 @@ export function createTagInput(opts = {}) {
     autocomplete.className = 'wiki-tag-autocomplete';
     autocomplete.style.display = 'none';
 
+    // Look up usage count for a single tag
+    async function lookupTagCount(tag) {
+        if (tag in tagCounts) return tagCounts[tag];
+        try {
+            const { data } = await _supabase.rpc('get_tag_suggestions', { prefix_query: tag, max_results: 20 });
+            if (data) {
+                const match = data.find(d => d.tag === tag);
+                tagCounts[tag] = match ? match.usage_count : 0;
+            } else {
+                tagCounts[tag] = 0;
+            }
+        } catch (_) {
+            tagCounts[tag] = 0;
+        }
+        return tagCounts[tag];
+    }
+
     function renderChips() {
-        // Remove existing chips
         container.querySelectorAll('.wiki-tag-chip').forEach(c => c.remove());
-        // Re-add chips before input
         tags.forEach((tag, i) => {
             const chip = document.createElement('span');
             chip.className = 'wiki-tag-chip';
-            chip.innerHTML = `#${escapeHtml(tag)}<button class="wiki-tag-chip-remove" data-index="${i}" type="button">&times;</button>`;
+            const count = tagCounts[tag];
+            const badge = count !== undefined
+                ? (count > 0
+                    ? `<span class="wiki-tag-badge wiki-tag-badge-existing">(${count})</span>`
+                    : '<span class="wiki-tag-badge wiki-tag-badge-new">new</span>')
+                : '';
+            chip.innerHTML = `#${escapeHtml(tag)}${badge}<button class="wiki-tag-chip-remove" data-index="${i}" type="button">&times;</button>`;
             container.insertBefore(chip, input);
         });
     }
 
-    function addTag(raw) {
+    async function addTag(raw) {
         const tag = normalizeTag(raw);
         if (!tag) return;
         if (tags.includes(tag)) return;
         if (tags.length >= MAX_TAGS) return;
         tags.push(tag);
-        renderChips();
         input.value = '';
         autocomplete.style.display = 'none';
+        renderChips();
+        await lookupTagCount(tag);
+        renderChips();
         if (onTagsChange) onTagsChange([...tags]);
     }
 
@@ -271,21 +294,19 @@ export function createTagInput(opts = {}) {
         if (onTagsChange) onTagsChange([...tags]);
     }
 
-    // Event: clicking the container focuses input
+    // Clicking container focuses input
     container.addEventListener('click', (e) => {
-        if (e.target === container || e.target.className === 'wiki-tag-label') {
-            input.focus();
-        }
+        if (e.target === container) input.focus();
     });
 
-    // Event: remove button
+    // Remove button
     container.addEventListener('click', (e) => {
         if (e.target.classList.contains('wiki-tag-chip-remove')) {
             removeTag(parseInt(e.target.dataset.index, 10));
         }
     });
 
-    // Event: key handling
+    // Key handling
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
             e.preventDefault();
@@ -301,7 +322,7 @@ export function createTagInput(opts = {}) {
         }
     });
 
-    // Event: blur commits current input
+    // Blur commits current input
     input.addEventListener('blur', () => {
         setTimeout(() => {
             if (input.value.trim()) addTag(input.value);
@@ -324,20 +345,37 @@ export function createTagInput(opts = {}) {
     async function fetchTagSuggestions(prefix) {
         try {
             const { data } = await _supabase.rpc('get_tag_suggestions', { prefix_query: prefix, max_results: 8 });
-            if (!data || data.length === 0) {
-                autocomplete.style.display = 'none';
-                return;
-            }
-            autocomplete.innerHTML = data
-                .filter(d => !tags.includes(d.tag))
-                .map(d => `<div class="wiki-tag-autocomplete-item" data-tag="${escapeHtml(d.tag)}">
+            if (data) data.forEach(d => { tagCounts[d.tag] = d.usage_count; });
+
+            const filtered = (data || []).filter(d => !tags.includes(d.tag));
+            let html = filtered.map(d => `<div class="wiki-tag-autocomplete-item" data-tag="${escapeHtml(d.tag)}">
                     <span>#${escapeHtml(d.tag)}</span>
-                    <span class="wiki-tag-autocomplete-count">${d.usage_count} article${d.usage_count !== 1 ? 's' : ''}</span>
+                    <span class="wiki-tag-autocomplete-count">(${d.usage_count}) pages</span>
                 </div>`).join('');
-            autocomplete.style.display = autocomplete.innerHTML ? 'block' : 'none';
+
+            // If exact typed value doesn't match any result, offer as "new"
+            const exactMatch = (data || []).find(d => d.tag === prefix);
+            if (!exactMatch && !tags.includes(prefix)) {
+                html += `<div class="wiki-tag-autocomplete-item wiki-tag-autocomplete-new" data-tag="${escapeHtml(prefix)}">
+                    <span>#${escapeHtml(prefix)}</span>
+                    <span class="wiki-tag-autocomplete-count wiki-tag-badge-new">new tag</span>
+                </div>`;
+            }
+
+            autocomplete.innerHTML = html;
+            autocomplete.style.display = html ? 'block' : 'none';
         } catch (_) {
-            // RPC may not exist yet — fall back to no suggestions
-            autocomplete.style.display = 'none';
+            // RPC may not exist — show "new tag" for anything typed
+            const prefix2 = normalizeTag(input.value);
+            if (prefix2 && !tags.includes(prefix2)) {
+                autocomplete.innerHTML = `<div class="wiki-tag-autocomplete-item wiki-tag-autocomplete-new" data-tag="${escapeHtml(prefix2)}">
+                    <span>#${escapeHtml(prefix2)}</span>
+                    <span class="wiki-tag-autocomplete-count wiki-tag-badge-new">new tag</span>
+                </div>`;
+                autocomplete.style.display = 'block';
+            } else {
+                autocomplete.style.display = 'none';
+            }
         }
     }
 
@@ -350,14 +388,17 @@ export function createTagInput(opts = {}) {
     });
 
     container.appendChild(input);
-    // Position autocomplete relative to the container
     container.style.position = 'relative';
     container.appendChild(autocomplete);
 
+    // Load counts for initial tags then render badges
     renderChips();
+    if (tags.length > 0) {
+        Promise.all(tags.map(t => lookupTagCount(t))).then(() => renderChips());
+    }
 
     return {
-        container,
+        container: section,
         getTags: () => [...tags],
         setTags: (newTags) => {
             tags.length = 0;
@@ -366,6 +407,7 @@ export function createTagInput(opts = {}) {
                 if (n && !tags.includes(n) && tags.length < MAX_TAGS) tags.push(n);
             });
             renderChips();
+            Promise.all(tags.map(t => lookupTagCount(t))).then(() => renderChips());
         }
     };
 }

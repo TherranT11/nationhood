@@ -172,6 +172,8 @@ const TEMPLATE_TYPES = [
                 <button class="wiki-btn" id="add-kv-btn" type="button" style="margin-top:6px;">+ Add Row</button>
             </div>
 
+            <div id="wiki-tag-mount"></div>
+
             <div class="wiki-field">
                 <label>Content ${existingImages.length ? '<button class="wiki-btn" id="toggle-gallery" type="button" style="float:right;font-size:10px;">Browse Images</button>' : ''}</label>
                 <div id="quill-editor"></div>
@@ -186,8 +188,6 @@ const TEMPLATE_TYPES = [
                 ${existingPage ? '<button class="wiki-btn wiki-btn-danger" id="delete-btn" type="button">Delete Page</button>' : ''}
             </div>
 
-            <div id="wiki-tag-mount"></div>
-
             <div id="wiki-status" style="margin-top:10px;font-size:12px;color:var(--text-secondary);"></div>
         </div>
     `;
@@ -195,8 +195,7 @@ const TEMPLATE_TYPES = [
     // --- Tag Input ---
     const tagInput = createTagInput({
         initialTags: initTags,
-        placeholder: 'add tag...',
-        showLabel: true
+        placeholder: 'add tag...'
     });
     document.getElementById('wiki-tag-mount').appendChild(tagInput.container);
 
