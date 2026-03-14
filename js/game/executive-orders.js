@@ -244,7 +244,7 @@ export async function issueTaxAdjustment(supabase, nationId, factionId, taxType,
     const newRate = Math.max(0, Math.min(50, currentRate + delta));
 
     // Insert executive order
-    await supabase.from('executive_orders').insert({
+    const { error: insertErr } = await supabase.from('executive_orders').insert({
         nation_id: nationId,
         faction_id: factionId,
         order_type: 'tax_adjustment',
@@ -252,6 +252,7 @@ export async function issueTaxAdjustment(supabase, nationId, factionId, taxType,
         issued_tick: currentTick,
         is_active: false  // instant effect, no ongoing state
     });
+    if (insertErr) return { success: false, error: insertErr.message };
 
     // Apply tax change
     await supabase.from('nations').update({ [taxType]: newRate }).eq('id', nationId);
@@ -308,7 +309,7 @@ export async function issuePriceControls(supabase, nationId, factionId, stat) {
     const frozenValue = Number(nation?.[stat] ?? 50);
 
     // Insert executive order
-    await supabase.from('executive_orders').insert({
+    const { error: insertErr } = await supabase.from('executive_orders').insert({
         nation_id: nationId,
         faction_id: factionId,
         order_type: 'price_controls',
@@ -317,6 +318,7 @@ export async function issuePriceControls(supabase, nationId, factionId, stat) {
         expires_tick: currentTick + EO_CONFIG.PRICE_CONTROLS_DURATION,
         is_active: true
     });
+    if (insertErr) return { success: false, error: insertErr.message };
 
     // Bloc approval effects
     await adjustMomentumAll(supabase, nationId, factionId, 6, 'executive_order:price_controls');
@@ -371,7 +373,7 @@ export async function issueNationalEmergency(supabase, nationId, factionId) {
     if (!apResult.success) return apResult;
 
     // Insert executive order (no auto-expire)
-    await supabase.from('executive_orders').insert({
+    const { error: insertErr } = await supabase.from('executive_orders').insert({
         nation_id: nationId,
         faction_id: factionId,
         order_type: 'national_emergency',
@@ -380,6 +382,7 @@ export async function issueNationalEmergency(supabase, nationId, factionId) {
         expires_tick: null,
         is_active: true
     });
+    if (insertErr) return { success: false, error: insertErr.message };
 
     // +8 gov approval immediately (crisis rally effect)
     await adjustGovernmentApprovalEvent(supabase, nationId, 8, 'executive_order:national_emergency');
@@ -480,7 +483,7 @@ export async function issueCensure(supabase, nationId, factionId, targetFactionI
     const martyrMomentum = isRepeat ? EO_CONFIG.CENSURE_REPEAT_MOMENTUM : EO_CONFIG.CENSURE_BASE_MOMENTUM;
 
     // Insert executive order
-    await supabase.from('executive_orders').insert({
+    const { error: insertErr } = await supabase.from('executive_orders').insert({
         nation_id: nationId,
         faction_id: factionId,
         order_type: 'censure',
@@ -488,6 +491,7 @@ export async function issueCensure(supabase, nationId, factionId, targetFactionI
         issued_tick: currentTick,
         is_active: false  // instant effect
     });
+    if (insertErr) return { success: false, error: insertErr.message };
 
     // -4 momentum to target across all blocs
     await adjustMomentumAll(supabase, nationId, targetFactionId, -4, 'executive_order:censure');
@@ -542,7 +546,7 @@ export async function advanceBillEmergency(supabase, nationId, factionId, billId
         .select('id, status, bill_name, nation_id, proposed_by')
         .eq('id', billId)
         .eq('nation_id', nationId)
-        .single();
+        .maybeSingle();
 
     if (!bill) {
         return { success: false, error: 'Bill not found.' };
@@ -567,12 +571,14 @@ export async function advanceBillEmergency(supabase, nationId, factionId, billId
         // floor → president_desk (in presidential systems, bills go to president desk)
         updateFields = {
             status: 'president_desk',
-            president_action_tick: currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS
+            passed_tick: currentTick,
+            president_desk_deadline: currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS
         };
         advancedTo = 'president_desk';
     }
 
-    await supabase.from('bills').update(updateFields).eq('id', billId);
+    const { error: billErr } = await supabase.from('bills').update(updateFields).eq('id', billId);
+    if (billErr) return { success: false, error: billErr.message };
 
     // Update emergency payload
     const newPayload = {

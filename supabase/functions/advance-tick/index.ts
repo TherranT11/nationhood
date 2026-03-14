@@ -15037,7 +15037,7 @@ const EO_OVERREACH_WINDOW = 8;
 const EO_EMERGENCY_UNREST_THRESHOLD = 18;
 
 async function processExecutiveOrders(supabase, nation, currentTick) {
-    const results: string[] = [];
+    const results = [];
 
     // ─── 1. Recalculate overreach count ───
     const { count: overreachCount } = await supabase
@@ -15111,7 +15111,7 @@ async function processExecutiveOrders(supabase, nation, currentTick) {
         await supabase.from('nations').update({ [stat]: frozenValue }).eq('id', nation.id);
 
         // Accumulate pressure
-        const newMagnitude = (control.payload.pressure_magnitude || 0) + pressureDelta;
+        const newMagnitude = (control.payload?.pressure_magnitude || 0) + pressureDelta;
         await supabase.from('executive_orders').update({
             payload: { ...control.payload, pressure_magnitude: newMagnitude,
                        pressure_direction: pressureDelta >= 0 ? 'up' : 'down' }

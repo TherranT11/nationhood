@@ -2004,7 +2004,7 @@ async function renderEmergencyAdvanceButton(bill) {
                 <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--red);margin-bottom:4px;">Emergency Powers</div>
                 <div style="font-size:0.8rem;color:var(--text-secondary);">Advance this bill to ${advanceTo} without standard procedure. -6 approval.</div>
             </div>
-            <button class="emergency-advance-btn" onclick="handleEmergencyAdvance('${bill.id}')" ${usedThisTick ? 'disabled title="Already used this tick"' : ''}>
+            <button class="emergency-advance-btn" onclick="handleEmergencyAdvance('${escapeHtml(bill.id)}')" ${usedThisTick ? 'disabled title="Already used this tick"' : ''}>
                 ${usedThisTick ? 'Used This Tick' : 'Advance (Emergency)'}
             </button>
         `;

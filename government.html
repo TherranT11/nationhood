@@ -3600,8 +3600,9 @@ window.eoSelectTax = eoSelectTax;
 
 function eoSelectDirection(dir) {
     eoSelectedParams.direction = dir;
-    document.querySelectorAll('#eo-tax-direction .eo-option-btn').forEach(b => b.classList.remove('selected'));
-    event.target.classList.add('selected');
+    document.querySelectorAll('#eo-tax-direction .eo-option-btn').forEach(b => {
+        b.classList.toggle('selected', b.textContent.toLowerCase().includes(dir));
+    });
     const rate = currentNation?.[eoSelectedParams.taxType] ?? 20;
     const delta = dir === 'increase' ? EO_CONFIG.TAX_ADJUSTMENT_DELTA : -EO_CONFIG.TAX_ADJUSTMENT_DELTA;
     const newRate = Math.max(0, Math.min(50, rate + delta));
@@ -3614,8 +3615,9 @@ window.eoSelectDirection = eoSelectDirection;
 
 function eoSelectPCStat(stat) {
     eoSelectedParams.stat = stat;
-    document.querySelectorAll('.eo-option-group .eo-option-btn').forEach(b => b.classList.remove('selected'));
-    event.target.classList.add('selected');
+    document.querySelectorAll('.eo-option-group .eo-option-btn[data-stat]').forEach(b => {
+        b.classList.toggle('selected', b.getAttribute('data-stat') === stat);
+    });
     const val = currentNation?.[stat] ?? 50;
     const preview = document.getElementById('eo-pc-preview');
     preview.style.display = 'block';
