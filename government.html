@@ -721,10 +721,12 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
             const t = presidentData._traitData;
             traitHTML = `
                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
-                    ${presidentData.ideology ? `<div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(presidentData.ideology)};color:white;margin-bottom:6px;">${presidentData.ideology}</div>` : ''}
-                    <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${t.trait_name || presidentData.trait}</div>
-                    <div style="font-size:0.75rem;color:var(--green);margin-bottom:2px;">▲ ${t.upside || ''}</div>
-                    <div style="font-size:0.75rem;color:var(--red);">▼ ${t.downside || ''}</div>
+                    ${presidentData.ideology ? `<div class="pres-ideology-bar" style="background:${ideologyBg(presidentData.ideology)};">${escapeHtml(presidentData.ideology)}</div>` : ''}
+                    <div class="pres-trait-name">&#x1F3F7; ${escapeHtml(t.trait_name || presidentData.trait)}</div>
+                    <ul class="pres-trait-effects">
+                        ${t.upside ? `<li class="pres-trait-up">${escapeHtml(t.upside)}</li>` : ''}
+                        ${t.downside ? `<li class="pres-trait-down">${escapeHtml(t.downside)}</li>` : ''}
+                    </ul>
                 </div>`;
         }
 
@@ -751,6 +753,8 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                                 </div>
                             </div>
                             ${traitHTML}
+                            ${renderExecutiveOrderButton()}
+                            ${renderOverreachBar()}
                         </div>
                         <div class="admin-section">
                             <div class="admin-section-title">Vice President</div>
@@ -763,8 +767,6 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                 <div class="coalition-parties">
                     <div class="coalition-party-tag" style="border-left:3px solid ${getPartyColorById(presidentFactionId)};padding-left:8px;">${getPartyLogoById(presidentFactionId) || getPartyCustomLogoById(presidentFactionId) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: getPartyCustomLogoById(presidentFactionId), iconKey: getPartyLogoById(presidentFactionId), size: 16, color: getPartyColorById(presidentFactionId) })}</span>` : ''}${escapeHtml(presPartyName)}<span class="seats">${presPartySeats} Seats</span></div>
                 </div>
-                ${renderOverreachBar()}
-                ${renderExecutiveOrderButton()}
                 ${renderImpeachmentButton()}
             </div>`;
     }
@@ -3278,19 +3280,23 @@ let eoSelectedParams = {};
 function renderOverreachBar() {
     if (!isPresidential || !presidentData) return '';
     const count = currentNation?.overreach_count || 0;
+    const maxPips = EO_CONFIG.OVERREACH_WINDOW || 5;
     const status = getOverreachStatus(count);
+
+    let pips = '';
+    for (let i = 0; i < maxPips; i++) {
+        const filled = i < count;
+        const level = filled ? (count >= 4 ? 'danger' : count >= 2 ? 'warn' : '') : '';
+        pips += `<div class="overreach-pip${filled ? ' filled' : ''}${level ? ' ' + level : ''}"></div>`;
+    }
+
     return `
         <div class="overreach-container">
             <div class="overreach-header">
                 <span class="overreach-label">Presidential Overreach</span>
-                <span class="overreach-count">${count} order${count !== 1 ? 's' : ''} / ${EO_CONFIG.OVERREACH_WINDOW} ticks</span>
-                <span class="overreach-status ${status.className}">${status.label}</span>
+                <span class="overreach-count">${count} / ${maxPips}</span>
             </div>
-            <div class="overreach-bar-track">
-                <div class="overreach-bar-fill" style="width:${status.fillPct}%;background:${status.color};"></div>
-                <div class="overreach-pip" style="left:40%;"></div>
-                <div class="overreach-pip" style="left:80%;"></div>
-            </div>
+            <div class="overreach-pips">${pips}</div>
         </div>`;
 }
 
