@@ -3067,20 +3067,21 @@ function buildMinistryBaselines(ministryKey, nation) {
 }
 
 /**
- * Delta-based approval system configuration.
+ * Target-based approval system configuration.
  *
- * Minister approval starts at 50 and moves based on how their owned stats
- * change relative to their baseline (snapshot at appointment time).
- * Pure delta model: ministers are judged on improvement, not inherited state.
+ * Minister approval converges toward a target derived from cumulative stat
+ * performance since appointment. Baselines are snapshot at appointment time
+ * and never reset. Target = 50 + avgDelta * SENSITIVITY, then approval
+ * approaches the target at CONVERGENCE_RATE per tick.
  *
  * Government approval = avg(filled minister approvals) + vacancy penalty + event modifier.
  */
 const MINISTER_APPROVAL_CONFIG = {
-    // Per-tick sensitivity: how much each point of average delta moves approval
-    DELTA_SENSITIVITY: 0.6,
+    // Target-based sensitivity: how much each point of cumulative avgDelta shifts the target from 50
+    DELTA_SENSITIVITY: 2.0,
 
-    // Slow stagnation decay: if stats are flat, approval drifts down slightly per tick
-    STAGNATION_DECAY: -0.3,
+    // How fast approval converges toward the target each tick (0.15 = 15% of gap per tick)
+    CONVERGENCE_RATE: 0.15,
 
     // New minister starts at 50% approval
     NEW_MINISTER_APPROVAL: 50,
@@ -14860,27 +14861,20 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
         const avgDelta = deltaSum / deltaCount;
 
         const oldApproval = ministry.minister_approval ?? cfg.NEW_MINISTER_APPROVAL;
-        let newApproval = oldApproval;
 
-        if (Math.abs(avgDelta) < 0.5) {
-            // Stagnation: stats haven't moved meaningfully — slow decay
-            newApproval += cfg.STAGNATION_DECAY;
-        } else {
-            // Apply delta-based movement
-            newApproval += avgDelta * cfg.DELTA_SENSITIVITY;
-        }
+        // Target approval reflects cumulative performance since appointment
+        // avgDelta > 0 = improving → target above 50; avgDelta < 0 = worsening → target below 50
+        // Stagnation (avgDelta ≈ 0) naturally targets 50, so approval drifts back without a hardcoded decay
+        const targetApproval = Math.max(0, Math.min(100,
+            cfg.NEW_MINISTER_APPROVAL + avgDelta * cfg.DELTA_SENSITIVITY));
 
+        // Converge toward target each tick
+        let newApproval = oldApproval + (targetApproval - oldApproval) * cfg.CONVERGENCE_RATE;
         newApproval = Math.round(Math.max(0, Math.min(100, newApproval)) * 10) / 10;
 
-        // Update baselines to current values so next tick only sees incremental change
-        const updatedBaselines = {};
-        for (const statKey of ownedStats) {
-            if (statDirectionSign(statKey) === 0) continue;
-            updatedBaselines[statKey] = Number(nation[statKey] ?? 50);
-        }
-
+        // Keep appointment-time baselines — do NOT reset to current values
         await supabase.from('ministries')
-            .update({ minister_approval: newApproval, stat_baselines: updatedBaselines })
+            .update({ minister_approval: newApproval })
             .eq('id', ministry.id);
 
         results.push({
