@@ -2757,7 +2757,7 @@ function renderMinistryPoliciesHtml(category) {
         for (var j = 0; j < institutions.length; j++) {
             total += institutions[j].cost;
             var fpLabel = institutions[j].fundingPct !== undefined ? institutions[j].fundingPct + '% funded' : null;
-            h += budgetLineItem(institutions[j].name, institutions[j].cost, fpLabel, null);
+            h += budgetLineItem(institutions[j].name, institutions[j].cost, null, null, fpLabel);
         }
     }
 
@@ -2881,7 +2881,7 @@ function budgetLineItemClickable(label, value, prevValue, prevYear) {
     return h;
 }
 
-function budgetLineItem(label, value, prevValue, prevYear) {
+function budgetLineItem(label, value, prevValue, prevYear, annotation) {
     var h = '<div class="budget-line-item">';
     h += '<div class="budget-line-top">';
     h += '<span class="budget-line-label">' + escapeHtml(label) + '</span>';
@@ -2889,6 +2889,9 @@ function budgetLineItem(label, value, prevValue, prevYear) {
     h += '</div>';
     if (prevValue !== null && value > 0) {
         h += '<div class="budget-line-trend">' + budgetTrendHtml(value, prevValue, prevYear) + '</div>';
+    }
+    if (annotation) {
+        h += '<div class="budget-line-trend"><span class="budget-trend trend-neutral">' + escapeHtml(annotation) + '</span></div>';
     }
     h += '</div>';
     return h;
