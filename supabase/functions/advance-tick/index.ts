@@ -7195,6 +7195,66 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
                 status: ta.status
             }));
 
+            // Query bills that failed during this administration
+            const { data: failedBillRows } = await supabase
+                .from('bills')
+                .select('id, bill_name, bill_type, passed_tick, created_at')
+                .eq('nation_id', nationId)
+                .eq('status', 'failed')
+                .neq('bill_type', 'repeal')
+                .gte('created_at', currentAdmin.created_at || '1900-01-01')
+                .lte('created_at', new Date().toISOString());
+            const billsFailed = (failedBillRows || [])
+                .filter(b => {
+                    if (b.passed_tick != null) return b.passed_tick >= currentAdmin.started_at_tick && b.passed_tick <= currentTick;
+                    return true;
+                })
+                .map(b => ({ bill_id: b.id, bill_name: b.bill_name, bill_type: b.bill_type || 'standard' }));
+
+            // Query no-confidence votes during this administration
+            const { data: nocRows } = await supabase
+                .from('bills')
+                .select('id, bill_name, status, passed_tick')
+                .eq('nation_id', nationId)
+                .eq('bill_type', 'no_confidence')
+                .gte('passed_tick', currentAdmin.started_at_tick)
+                .lte('passed_tick', currentTick);
+            const noConfidenceVotes = (nocRows || []).map(b => ({
+                bill_id: b.id, bill_name: b.bill_name, result: b.status === 'passed' ? 'passed' : 'failed', tick: b.passed_tick
+            }));
+
+            // Query impeachment motions/convictions during this administration
+            const { data: impeachRows } = await supabase
+                .from('bills')
+                .select('id, bill_name, bill_type, status, passed_tick')
+                .eq('nation_id', nationId)
+                .in('bill_type', ['impeachment_motion', 'impeachment_conviction'])
+                .gte('passed_tick', currentAdmin.started_at_tick)
+                .lte('passed_tick', currentTick);
+            const impeachments = (impeachRows || []).map(b => ({
+                bill_id: b.id, bill_name: b.bill_name, type: b.bill_type, result: b.status === 'passed' ? 'passed' : 'failed', tick: b.passed_tick
+            }));
+
+            // Query executive orders issued during this administration
+            const { data: eoRows } = await supabase
+                .from('executive_orders')
+                .select('id, order_type, issued_at_tick')
+                .eq('nation_id', nationId)
+                .gte('issued_at_tick', currentAdmin.started_at_tick)
+                .lte('issued_at_tick', currentTick);
+            const executiveOrders = (eoRows || []).map(eo => ({
+                id: eo.id, order_type: eo.order_type, tick: eo.issued_at_tick
+            }));
+
+            // Detect snap elections and minority governments from event_log
+            const snapEvents = (eventsDuring || []).filter(e =>
+                e.event_name && (e.event_name.includes('snap_election') || e.event_name.includes('formation_snap_election') || e.event_name.includes('early_election'))
+            ).map(e => ({ title: e.event_name, tick: e.fired_at_tick }));
+
+            const minorityEvents = (eventsDuring || []).filter(e =>
+                e.event_name && e.event_name.includes('minority_government')
+            ).map(e => ({ title: e.event_name, tick: e.fired_at_tick }));
+
             // Update the administration record
             const { error: updateErr } = await supabase
                 .from('administrations')
@@ -7205,11 +7265,17 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
                     ended_at_date: currentDate,
                     end_reason: endReason,
                     bills_passed: billsPassed,
+                    bills_failed: billsFailed,
                     laws_repealed: lawsRepealed,
                     crises_started: crisesStarted,
                     crises_solved: crisesSolved,
                     elections_survived: (electionsDuring || []).length,
                     trade_agreements: tradeAgreements,
+                    no_confidence_votes: noConfidenceVotes,
+                    impeachments: impeachments,
+                    executive_orders: executiveOrders,
+                    snap_elections: snapEvents,
+                    minority_governments: minorityEvents,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', currentAdmin.id);
