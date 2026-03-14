@@ -831,7 +831,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     const failedFactionIds = new Set();
 
     // Accumulate AP for party factions each tick:
-    // base 3 AP, +2 if in government coalition or strongman. Capped at MAX_AP (10).
+    // base 5 AP, +2 if in government coalition or strongman. Capped at MAX_AP (20).
     // Uses atomic RPC to prevent race conditions with concurrent player deductions.
     // Skip AP accumulation in reprocess mode — AP was already granted on the original tick.
     let apDistributed = 0;
@@ -857,7 +857,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         for (const faction of factions) {
             const isInGovernment = governmentPartyIds.has(faction.id);
-            let apGain = 3;
+            let apGain = 5;
             if (isInGovernment) apGain += 2;
 
             // Family member successor penalty: ruling faction loses 1 AP/tick
