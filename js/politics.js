@@ -2866,21 +2866,35 @@ function escapeHtml(str) {
 const EVENT_ACTION_LABELS = {
     rally: 'RALLY', outreach: 'OUTREACH', attack: 'ATTACK', make_promise: 'PROMISE MADE',
     press_conference: 'PRESS CONFERENCE', steward_claim: 'STEWARD CLAIMED',
+    become_steward: 'STEWARD CLAIMED',
     demand_loyalty: 'DEMAND LOYALTY', loyalty_demand_complied: 'COMPLIED',
     loyalty_demand_refused: 'REFUSED', loyalty_demand_expired: 'DEMAND EXPIRED',
     steward_show_of_force: 'SHOW OF FORCE', steward_mobilize: 'MOBILIZE',
     steward_surveillance: 'SURVEILLANCE', steward_embezzle: 'EMBEZZLED',
-    steward_conspire: 'CONSPIRED', coup_success: 'COUP — SUCCESS',
-    coup_failed: 'COUP — FAILED', coalition_proposed: 'COALITION PROPOSED',
-    coalition_accepted: 'COALITION FORMED', coalition_betrayed: 'BETRAYAL',
-    coalition_detected: 'COALITION DETECTED', coalition_dissolved: 'COALITION DISSOLVED',
+    steward_conspire: 'CONSPIRED', steward_detected_mobilize: 'MOBILIZE — DETECTED',
+    coup_success: 'COUP — SUCCESS', coup_failed: 'COUP — FAILED',
+    coup_invitation: 'COUP INVITATION', coup_plot_reported: 'PLOT REPORTED',
+    coalition_proposed: 'COALITION PROPOSED', propose_coalition: 'COALITION PROPOSED',
+    coalition_accepted: 'COALITION FORMED', accept_coalition: 'COALITION FORMED',
+    coalition_betrayed: 'BETRAYAL', betray_coalition: 'BETRAYAL',
+    coalition_detected: 'COALITION DETECTED', dissolve_coalition: 'COALITION DISSOLVED',
+    coalition_dissolved: 'COALITION DISSOLVED',
     appoint_successor: 'SUCCESSOR APPOINTED', revoke_successor: 'SUCCESSOR REVOKED',
     faction_pledge_allegiance: 'PLEDGED ALLEGIANCE', faction_consolidate_power: 'CONSOLIDATED',
     faction_demonstrate_competence: 'DEMONSTRATED', faction_embezzle: 'FACTION EMBEZZLE',
-    faction_buy_influence: 'BOUGHT INFLUENCE', faction_intimidate: 'INTIMIDATED',
+    faction_embezzle_detected: 'EMBEZZLE — DETECTED',
+    faction_buy_influence: 'BOUGHT INFLUENCE', buy_influence: 'BOUGHT INFLUENCE',
+    faction_intimidate: 'INTIMIDATED', intimidate: 'INTIMIDATED',
+    intimidate_failed: 'INTIMIDATION FAILED',
+    intimidation_pending: 'INTIMIDATION RECEIVED', intimidation_reported: 'REPORTED INTIMIDATION',
+    intimidation_retaliated: 'RETALIATED',
     purge: 'PURGE', redistribute_seats: 'REDISTRIBUTED', party_disbanded: 'PARTY DISBANDED',
     official_dispatch: 'OFFICIAL DISPATCH', strongman_death: 'STRONGMAN DIED',
     regime_succession: 'SUCCESSION', power_vacuum: 'POWER VACUUM',
+    dynasty_shadow: 'DYNASTY — SHADOW', dynasty_cultivate: 'DYNASTY — CULTIVATE',
+    dynasty_prepare: 'DYNASTY — PREPARE', dynasty_detected_prepare: 'DYNASTY — DETECTED',
+    regime_health_threshold: 'REGIME ALERT', pillar_threshold: 'PILLAR ALERT',
+    loyalty_milestone: 'LOYALTY SHIFT', standing_milestone: 'STANDING SHIFT',
     take_a_stand: 'TOOK A STAND', champion_community: 'CHAMPIONED',
     build_a_bridge: 'BUILT A BRIDGE', double_down: 'DOUBLED DOWN',
     dig_up_dirt: 'DUG UP DIRT', campaign_mobilize: 'MOBILIZED VOTERS',
@@ -2891,12 +2905,27 @@ async function renderEventsTab(nationId, factionId, currentTick) {
     const container = document.getElementById('events-container');
     if (!container) return;
 
-    const { data: actions } = await _supabase
+    // Try with factions join first; fall back to plain query if join fails (no FK)
+    let actions = null;
+    const { data: joined, error: joinErr } = await _supabase
         .from('campaign_actions')
         .select('action_type, party_id, tick_performed, result, factions(faction_name, abbreviation, party_color)')
         .eq('nation_id', nationId)
         .order('tick_performed', { ascending: false })
         .limit(50);
+
+    if (joinErr || !joined) {
+        // FK join failed — fall back to plain query without join
+        const { data: plain } = await _supabase
+            .from('campaign_actions')
+            .select('action_type, party_id, tick_performed, result')
+            .eq('nation_id', nationId)
+            .order('tick_performed', { ascending: false })
+            .limit(50);
+        actions = plain;
+    } else {
+        actions = joined;
+    }
 
     if (!actions || actions.length === 0) {
         container.innerHTML = '<div style="color:var(--dtext-3);padding:16px;font-size:12px;">No political events yet.</div>';
@@ -2931,7 +2960,29 @@ async function renderEventsTab(nationId, factionId, currentTick) {
         else if (entry.action_type === 'party_disbanded') detail = r.faction_name || '';
         else if (entry.action_type === 'steward_claim') detail = r.pillar_name ? `Claimed ${r.pillar_name}` : '';
         else if (entry.action_type === 'steward_mobilize') detail = r.mode === 'rally_regime' ? 'Rallied for regime' : (r.detected ? 'Rallied for self — DETECTED' : '');
-        else if (entry.action_type === 'coalition_accepted') detail = r.partner_faction || '';
+        else if (entry.action_type === 'steward_detected_mobilize') detail = r.steward_name ? `${r.steward_name} detected` : '';
+        else if (entry.action_type === 'become_steward') detail = r.name ? `${r.name} claimed ${r.pillar || ''}` : '';
+        else if (entry.action_type === 'faction_embezzle_detected') detail = r.funds_seized ? `Seized $${r.funds_seized}M` : 'DETECTED';
+        else if (entry.action_type === 'buy_influence') detail = r.target ? `${r.seats_gained} seats from ${r.target}` : (r.faction_name || '');
+        else if (entry.action_type === 'intimidate') detail = r.targetName || '';
+        else if (entry.action_type === 'intimidate_failed') detail = r.targetName ? `Failed against ${r.targetName}` : '';
+        else if (entry.action_type === 'intimidation_pending') detail = r.aggressor_name || '';
+        else if (entry.action_type === 'intimidation_reported') detail = r.aggressor_name ? `Reported ${r.aggressor_name}` : '';
+        else if (entry.action_type === 'intimidation_retaliated') detail = r.aggressor_name ? `Retaliated against ${r.aggressor_name}` : '';
+        else if (entry.action_type === 'dynasty_shadow') detail = r.successor_name || '';
+        else if (entry.action_type === 'dynasty_cultivate') detail = r.successor_name || '';
+        else if (entry.action_type === 'dynasty_prepare') detail = r.successor_name || '';
+        else if (entry.action_type === 'dynasty_detected_prepare') detail = r.faction_name ? `${r.faction_name} grooming successor` : '';
+        else if (entry.action_type === 'coup_invitation') detail = r.target_name || '';
+        else if (entry.action_type === 'coup_plot_reported') detail = r.reporter_name || '';
+        else if (entry.action_type === 'regime_health_threshold') detail = r.message || '';
+        else if (entry.action_type === 'pillar_threshold') detail = r.message || '';
+        else if (entry.action_type === 'loyalty_milestone') detail = r.message || '';
+        else if (entry.action_type === 'standing_milestone') detail = r.message || '';
+        else if (entry.action_type === 'regime_succession') detail = r.new_leader || '';
+        else if (entry.action_type === 'power_vacuum') detail = r.message || 'Regime collapsed';
+        else if (entry.action_type === 'strongman_death') detail = r.deceased_name ? `${r.deceased_name} died — ${r.successor_name || 'no successor'}` : '';
+        else if (entry.action_type === 'coalition_accepted' || entry.action_type === 'accept_coalition') detail = r.partner_faction || r.partner || '';
         else if (entry.action_type === 'take_a_stand') detail = r.headline || (r.direction ? `Declared for ${r.direction}` : '');
         else if (entry.action_type === 'champion_community') detail = r.headline || (r.bloc_name ? `Championed ${r.bloc_name}` : '');
         else if (entry.action_type === 'build_a_bridge') detail = r.headline || (r.bloc_name ? `Bridge to ${r.bloc_name}` : '');
