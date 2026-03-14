@@ -2955,26 +2955,66 @@ export async function executeBuyInfluence(supabase, factionId, nationId, targetI
     if (!nation) return { success: false, error: 'Nation not found.' };
     const legislatureMax = nation.total_seats || 120;
 
-    // 2. Deduct AP
-    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.BUY_INFLUENCE_AP);
-    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
-
     let seatsGained = 0;
     let targetName = 'Unaligned Pool';
+    let costPerSeat;
+    let actualCost;
 
     if (isUnaligned) {
         // Buy from unaligned pool — $2M flat per seat
-        const costPerSeat = GAME_CONFIG.BUY_INFLUENCE_UNALIGNED_COST;
+        costPerSeat = GAME_CONFIG.BUY_INFLUENCE_UNALIGNED_COST;
         seatsGained = Math.min(
             Math.floor(fundsToSpend / costPerSeat),
             nation.unaligned_seats || 0
         );
         if (seatsGained <= 0) {
-            // Refund AP? No — the AP was spent on the attempt regardless.
-            return { success: true, newAp: apResult.newAp, seatsGained: 0, fundsSpent: 0, message: 'Unaligned pool is empty.' };
+            const reason = (nation.unaligned_seats || 0) <= 0 ? 'Unaligned pool is empty.' : `Need at least $${costPerSeat}M to buy 1 seat.`;
+            return { success: false, error: reason };
         }
-        const actualCost = seatsGained * costPerSeat;
+        actualCost = seatsGained * costPerSeat;
+    } else {
+        // 3. Buy from rival faction
+        const { data: target } = await supabase
+            .from('factions').select('id, standing, seats, faction_name, last_action_type')
+            .eq('id', targetId).single();
+        if (!target) return { success: false, error: 'Target faction not found.' };
+        if (target.id === factionId) return { success: false, error: 'Cannot target yourself.' };
+        targetName = target.faction_name;
 
+        // Cost per seat formula
+        const yourStanding = Math.max(1, faction.standing ?? 30);
+        const targetStanding = target.standing ?? 30;
+        const targetSeats = target.seats || 0;
+        const isTargetingStrongman = targetId === nation.ruling_faction_id;
+
+        if (isTargetingStrongman) {
+            const rh = Math.max(0, Math.min(100, Number(nation.regime_health ?? 80)));
+            costPerSeat = GAME_CONFIG.BUY_INFLUENCE_STRONGMAN_BASE_COST * (1 + rh * GAME_CONFIG.BUY_INFLUENCE_STRONGMAN_HEALTH_SCALE);
+        } else {
+            costPerSeat = GAME_CONFIG.BUY_INFLUENCE_BASE_COST * (targetStanding / yourStanding) * (1 + targetSeats / legislatureMax);
+        }
+
+        // Vulnerability discount: if target is demonstrating competence this tick
+        if (target.last_action_type === 'demonstrate_competence') {
+            costPerSeat *= (1 - GAME_CONFIG.BUY_INFLUENCE_VULNERABILITY_DISCOUNT);
+        }
+
+        seatsGained = Math.min(
+            Math.floor(fundsToSpend / costPerSeat),
+            targetSeats
+        );
+        if (seatsGained <= 0) {
+            const reason = targetSeats <= 0 ? `${targetName} has no seats.` : `Need at least $${Math.ceil(costPerSeat)}M to buy 1 seat from ${targetName}.`;
+            return { success: false, error: reason };
+        }
+        actualCost = Math.round(seatsGained * costPerSeat * 100) / 100;
+    }
+
+    // 2. Deduct AP only after confirming seats can be gained
+    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.BUY_INFLUENCE_AP);
+    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
+
+    if (isUnaligned) {
         await supabase.from('factions').update({
             seats: (faction.seats || 0) + seatsGained,
             embezzled_funds: funds - actualCost,
@@ -2997,44 +3037,12 @@ export async function executeBuyInfluence(supabase, factionId, nationId, targetI
         return { success: true, newAp: apResult.newAp, seatsGained, fundsSpent: actualCost, targetName };
     }
 
-    // 3. Buy from rival faction
+    // Rival faction — re-fetch target for seat transfer
     const { data: target } = await supabase
-        .from('factions').select('id, standing, seats, faction_name, last_action_type')
+        .from('factions').select('id, seats')
         .eq('id', targetId).single();
-    if (!target) return { success: false, error: 'Target faction not found.' };
-    if (target.id === factionId) return { success: false, error: 'Cannot target yourself.' };
-    targetName = target.faction_name;
+    const targetSeats = target?.seats || 0;
 
-    // Cost per seat formula
-    const yourStanding = Math.max(1, faction.standing ?? 30);
-    const targetStanding = target.standing ?? 30;
-    const targetSeats = target.seats || 0;
-    const isTargetingStrongman = targetId === nation.ruling_faction_id;
-    let costPerSeat;
-
-    if (isTargetingStrongman) {
-        // Strongman cost scales with regime health: expensive when healthy, cheap when collapsing
-        const rh = Math.max(0, Math.min(100, Number(nation.regime_health ?? 80)));
-        costPerSeat = GAME_CONFIG.BUY_INFLUENCE_STRONGMAN_BASE_COST * (1 + rh * GAME_CONFIG.BUY_INFLUENCE_STRONGMAN_HEALTH_SCALE);
-    } else {
-        costPerSeat = GAME_CONFIG.BUY_INFLUENCE_BASE_COST * (targetStanding / yourStanding) * (1 + targetSeats / legislatureMax);
-    }
-
-    // Vulnerability discount: if target is demonstrating competence this tick
-    if (target.last_action_type === 'demonstrate_competence') {
-        costPerSeat *= (1 - GAME_CONFIG.BUY_INFLUENCE_VULNERABILITY_DISCOUNT);
-    }
-
-    seatsGained = Math.min(
-        Math.floor(fundsToSpend / costPerSeat),
-        targetSeats  // can't take more seats than they have
-    );
-    if (seatsGained <= 0) {
-        return { success: true, newAp: apResult.newAp, seatsGained: 0, fundsSpent: 0, message: 'Cannot afford even 1 seat.' };
-    }
-    const actualCost = Math.round(seatsGained * costPerSeat * 100) / 100;
-
-    // Apply seat transfer
     await supabase.from('factions').update({
         seats: (faction.seats || 0) + seatsGained,
         embezzled_funds: funds - actualCost,
