@@ -3866,7 +3866,11 @@ const END_REASON_LABELS = {
     coalition_collapse: 'Collapsed',
     coup: 'Coup',
     dissolved: 'Dissolved',
-    pm_replaced: 'PM Replaced'
+    pm_replaced: 'PM Replaced',
+    regime_collapse: 'Regime Collapsed',
+    revolution: 'Revolution',
+    power_vacuum: 'Power Vacuum',
+    impeachment: 'Impeachment'
 };
 
 /**
@@ -4078,23 +4082,35 @@ function renderAdminCard(admin, isCurrent) {
     // Detail sections
     let detailHTML = '';
 
-    // Info grid — adapt labels for presidential vs parliamentary
+    // Info grid — adapt labels for presidential vs parliamentary vs autocracy
     const isPres = admin.government_type === 'Presidential';
-    const hogLabel = isPres ? 'President' : 'Head of State';
-    const hogName = isPres
-        ? (admin.president_name || admin.head_of_state || 'Unknown')
-        : (admin.head_of_state || 'Unknown');
-    const hogParty = isPres
-        ? (admin.president_party_name || admin.pm_party_name || '')
-        : '';
+    const isAutoc = admin.government_type === 'Autocracy';
 
-    const govLeaderLabel = isPres ? 'Governing Party' : 'Prime Minister';
-    const govLeaderName = isPres
-        ? (admin.president_party_name || admin.pm_party_name || '—')
-        : (admin.prime_minister || 'Not yet selected');
-    const govLeaderSub = isPres
-        ? ''
-        : escapeHtml(admin.pm_party_name || '');
+    let hogLabel, hogName, hogParty;
+    let govLeaderLabel, govLeaderName, govLeaderSub;
+
+    if (isAutoc) {
+        hogLabel = 'Ruler';
+        hogName = admin.head_of_state || admin.prime_minister || 'Unknown';
+        hogParty = admin.pm_party_name || '';
+        govLeaderLabel = 'Ruling Faction';
+        govLeaderName = admin.pm_party_name || '—';
+        govLeaderSub = '';
+    } else if (isPres) {
+        hogLabel = 'President';
+        hogName = admin.president_name || admin.head_of_state || 'Unknown';
+        hogParty = admin.president_party_name || admin.pm_party_name || '';
+        govLeaderLabel = 'Governing Party';
+        govLeaderName = admin.president_party_name || admin.pm_party_name || '—';
+        govLeaderSub = '';
+    } else {
+        hogLabel = 'Head of State';
+        hogName = admin.head_of_state || 'Unknown';
+        hogParty = '';
+        govLeaderLabel = 'Prime Minister';
+        govLeaderName = admin.prime_minister || 'Not yet selected';
+        govLeaderSub = escapeHtml(admin.pm_party_name || '');
+    }
 
     detailHTML += `<div class="past-admin-detail-grid">
         <div class="pad-info-box">
@@ -4108,7 +4124,7 @@ function renderAdminCard(admin, isCurrent) {
             ${govLeaderSub ? `<div class="pad-info-sub">${govLeaderSub}</div>` : ''}
         </div>
         <div class="pad-info-box">
-            <div class="pad-info-label">${isPres ? 'Party Seats' : 'Coalition'}</div>
+            <div class="pad-info-label">${isAutoc ? 'Faction Seats' : (isPres ? 'Party Seats' : 'Coalition')}</div>
             <div class="pad-info-value">${seatCount} / ${GAME_CONFIG.TOTAL_SEATS} seats</div>
             <div class="pad-info-sub">${durationText}${admin.end_reason ? ' &middot; Ended: ' + (END_REASON_LABELS[admin.end_reason] || admin.end_reason) : ''}</div>
         </div>
@@ -4221,9 +4237,11 @@ function renderAdminCard(admin, isCurrent) {
                         <span class="past-admin-date">${dateRange}</span>
                     </div>
                     <div class="past-admin-meta">
-                        ${isPres
-                            ? `<span class="pm-name">${escapeHtml(admin.president_name || admin.head_of_state || 'TBD')}</span> &middot; ${escapeHtml(admin.president_party_name || admin.pm_party_name || '')}`
-                            : `PM: <span class="pm-name">${admin.prime_minister || 'TBD'}</span> &middot; ${admin.pm_party_name || ''}`}
+                        ${isAutoc
+                            ? `<span class="pm-name">${escapeHtml(admin.head_of_state || admin.prime_minister || 'TBD')}</span> &middot; ${escapeHtml(admin.pm_party_name || '')}`
+                            : (isPres
+                                ? `<span class="pm-name">${escapeHtml(admin.president_name || admin.head_of_state || 'TBD')}</span> &middot; ${escapeHtml(admin.president_party_name || admin.pm_party_name || '')}`
+                                : `PM: <span class="pm-name">${admin.prime_minister || 'TBD'}</span> &middot; ${admin.pm_party_name || ''}`)}
                         ${partyList ? ` &middot; ${partyList}` : ''}
                         ${seatCount ? ` &middot; ${seatCount}/${GAME_CONFIG.TOTAL_SEATS} seats` : ''}
                     </div>

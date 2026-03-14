@@ -11,7 +11,14 @@ import { MINISTER_APPROVAL_CONFIG, ISSUE_CATEGORY_STATS, MINISTRY_TO_STATS, NATI
 import { adjustGovernmentApprovalEvent, adjustMomentum, adjustMomentumAll } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { recalcDerivedApproval } from './bills.js';
-import { closeAdministration, dissolveCoalition } from './elections.js';
+import { closeAdministration, createAdministration, dissolveCoalition } from './elections.js';
+import { snapshotNationStats } from './stats.js';
+
+const _MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+function _tickToDate(tick) {
+    return `${_MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
+}
 
 // ==================== STAT DECAY PROCESSING ====================
 
@@ -6686,6 +6693,15 @@ export async function processRegimeHealthTick(supabase, nation, currentTick) {
  * If successor exists, they take over. Otherwise, power vacuum.
  */
 async function handleRegimeCollapse(supabase, nation, currentTick) {
+    const currentDate = _tickToDate(currentTick);
+
+    // Close the outgoing administration before transferring power
+    try {
+        await closeAdministration(supabase, nation.id, nation, 'regime_collapse', currentTick, currentDate, null);
+    } catch (err) {
+        console.warn('handleRegimeCollapse: could not close administration:', err);
+    }
+
     // Check for chosen successor
     const { data: successor } = await supabase
         .from('stewards')
@@ -6728,11 +6744,24 @@ async function handleRegimeCollapse(supabase, nation, currentTick) {
                 reason: 'regime_collapse',
             },
         });
+
+        // Create new administration for the successor
+        try {
+            const { data: newFaction } = await supabase
+                .from('factions').select('id, faction_name, seats')
+                .eq('id', successor.faction_id).single();
+            if (newFaction) {
+                const syntheticCoalition = { party_ids: [newFaction.id], lead_party_id: newFaction.id };
+                await createAdministration(supabase, nation.id, nation, syntheticCoalition, [newFaction], currentTick, currentDate, null);
+            }
+        } catch (err) {
+            console.warn('handleRegimeCollapse: could not create successor administration:', err);
+        }
     } else {
         // Power vacuum — highest standing faction takes over with penalties
         const { data: factions } = await supabase
             .from('factions')
-            .select('id, standing, faction_name')
+            .select('id, standing, faction_name, seats')
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party')
             .neq('id', nation.ruling_faction_id)
@@ -6763,6 +6792,14 @@ async function handleRegimeCollapse(supabase, nation, currentTick) {
                     reason: 'regime_collapse',
                 },
             });
+
+            // Create new administration for the power vacuum winner
+            try {
+                const syntheticCoalition = { party_ids: [factions.id], lead_party_id: factions.id };
+                await createAdministration(supabase, nation.id, nation, syntheticCoalition, [factions], currentTick, currentDate, null);
+            } catch (err) {
+                console.warn('handleRegimeCollapse: could not create power vacuum administration:', err);
+            }
         }
     }
 }
@@ -7130,6 +7167,19 @@ export async function executeCoupAttempt(supabase, factionId, nationId, fundsCom
                 funds_committed: committed,
             },
         });
+
+        // Close the old administration and create a new one for the coup leader
+        try {
+            const currentDate = _tickToDate(currentTick);
+            const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
+            if (fullNation) {
+                await closeAdministration(supabase, nationId, fullNation, 'coup', currentTick, currentDate, null);
+                const syntheticCoalition = { party_ids: [factionId], lead_party_id: factionId };
+                await createAdministration(supabase, nationId, fullNation, syntheticCoalition, [faction], currentTick, currentDate, null);
+            }
+        } catch (err) {
+            console.warn('executeCoupAttempt: could not rollover administration:', err);
+        }
 
         return {
             success: true,
