@@ -1058,23 +1058,43 @@ body {
         /* ===== EXECUTIVE ORDERS ===== */
 
         /* Overreach Bar */
+        /* President ideology bar */
+        .pres-ideology-bar {
+            width: 100%; padding: 4px 10px; margin-bottom: 8px;
+            font-family: var(--font-mono); font-size: 0.65rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.12em;
+            color: white; border-radius: 2px;
+            box-sizing: border-box;
+        }
+        .pres-trait-name {
+            font-size: 0.8rem; font-weight: 700; color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        .pres-trait-effects {
+            margin: 0; padding: 0 0 0 14px;
+            font-size: 0.7rem; line-height: 1.5;
+            list-style: disc;
+        }
+        .pres-trait-up { color: var(--green); }
+        .pres-trait-down { color: var(--red); }
+
+        /* Overreach pips — compact row under EO button */
         .overreach-container {
-            margin-top: 16px; padding-top: 16px;
-            border-top: 1px solid var(--border-main);
+            margin-top: 8px; text-align: center;
         }
         .overreach-header {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 8px;
+            display: flex; justify-content: center; align-items: center;
+            gap: 8px; margin-bottom: 6px;
         }
         .overreach-label {
-            font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+            font-family: var(--font-mono); font-size: 8px; font-weight: 600;
             text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted);
         }
         .overreach-count {
-            font-family: var(--font-mono); font-size: 9px; color: var(--text-secondary);
+            font-family: var(--font-mono); font-size: 8px; color: var(--text-secondary);
         }
         .overreach-status {
-            font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+            font-family: var(--font-mono); font-size: 8px; font-weight: 700;
             text-transform: uppercase; letter-spacing: 0.05em;
         }
         .overreach-status.normal { color: var(--green); }
@@ -1084,39 +1104,41 @@ body {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
-        .overreach-bar-track {
-            width: 100%; height: 4px; background: var(--bg-card);
-            border-radius: 2px; position: relative; overflow: visible;
-        }
-        .overreach-bar-fill {
-            height: 100%; border-radius: 2px; transition: width 0.4s ease, background 0.4s ease;
+        .overreach-pips {
+            display: flex; justify-content: center; gap: 4px;
         }
         .overreach-pip {
-            position: absolute; top: -3px; width: 1px; height: 10px;
-            background: var(--text-dim); opacity: 0.5;
+            width: 3px; height: 12px; border-radius: 1px;
+            background: var(--border-main);
+            transition: background 0.3s;
         }
+        .overreach-pip.filled { background: var(--green); }
+        .overreach-pip.filled.warn { background: var(--amber); }
+        .overreach-pip.filled.danger { background: var(--red); }
 
         /* Executive Order Button */
         .executive-order-row {
-            margin-top: 12px; text-align: center;
+            margin-top: 14px; text-align: center;
         }
         .executive-order-btn {
-            width: 100%; padding: 10px 24px;
-            background: transparent; border: 1px solid var(--amber-border);
-            border-radius: 3px; color: var(--amber); cursor: pointer;
-            font-family: var(--font-mono); font-size: 9px; font-weight: 600;
-            text-transform: uppercase; letter-spacing: 0.1em;
+            display: inline-block; padding: 8px 28px;
+            background: var(--red); border: 1px solid var(--red);
+            border-radius: 3px; color: white; cursor: pointer;
+            font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.12em;
             transition: all 0.2s;
         }
         .executive-order-btn:hover {
-            background: var(--amber-faint); border-color: var(--amber);
+            background: #c0392b; border-color: #c0392b;
         }
         .executive-order-btn:disabled {
-            color: var(--text-dim); border-color: var(--border-main);
-            cursor: not-allowed; background: transparent;
+            background: transparent; color: var(--text-dim);
+            border-color: var(--border-main);
+            cursor: not-allowed;
         }
         .executive-order-btn.end-emergency {
-            border-color: var(--red-border); color: var(--red);
+            background: transparent; border-color: var(--red); color: var(--red);
+            margin-top: 6px;
         }
         .executive-order-btn.end-emergency:hover {
             background: var(--red-faint); border-color: var(--red);
