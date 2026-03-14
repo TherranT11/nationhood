@@ -5372,16 +5372,23 @@ export function formatMinorSector(key) {
 
 // ==================== PM CANDIDATE SYSTEM ====================
 
+// Crucera names (Sangreza, Melizea, Montequilla, Palvera, San Estrella)
 export const PM_FIRST_NAMES = [
     'Alejandro', 'Camila', 'Diego', 'Valentina', 'Mateo', 'Isabela', 'Sebastián', 'Luca',
     'Andrés', 'Gabriel', 'Joaquín', 'Mariana', 'Carlos', 'Tomas', 'Rafael', 'Edwin',
-    'Emilio', 'Catalina', 'Fernando', 'Renata'
+    'Emilio', 'Catalina', 'Fernando', 'Renata',
+    'Ricardo', 'Héctor', 'Ignacio', 'Santiago', 'Esteban', 'Nicolás', 'Ramón', 'Arturo',
+    'Álvaro', 'Gonzalo', 'Javier', 'Mauricio', 'Enrique', 'Sergio', 'Adrián', 'Hugo',
+    'Cristián', 'Rubén', 'Germán', 'Felipe'
 ];
 
 export const PM_LAST_NAMES = [
     'Velasco', 'Mendoza', 'Guerrero', 'Salazar', 'Castillo', 'Herrera', 'Morales', 'Ríos',
     'Delgado', 'Espinoza', 'Guzmán', 'Navarro', 'Córdoba', 'Echeverría', 'Pacheco', 'Montero',
-    'Aguilar', 'Valenzuela', 'Carrasco', 'Ibarra'
+    'Aguilar', 'Valenzuela', 'Carrasco', 'Ibarra',
+    'Fuentes', 'Quiroga', 'Sepúlveda', 'Villalobos', 'Paredes', 'Arellano', 'Sandoval', 'Medina',
+    'Estrada', 'Cervantes', 'Figueroa', 'Maldonado', 'Cisneros', 'Zúñiga', 'Bustamante', 'Roldán',
+    'Camacho', 'Gallardo', 'Barrera', 'Saavedra'
 ];
 
 export const IDEOLOGY_OPTIONS = [

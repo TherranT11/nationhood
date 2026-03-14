@@ -250,19 +250,6 @@ initPage('politics', async (state) => {
  * Uses the UUID bytes to seed a simple selection from name pools.
  */
 function generateOfficerNames(factionId) {
-    const FIRST_NAMES = [
-        'Katarina', 'Viktor', 'Elena', 'Andrei', 'Mira', 'Stefan', 'Nadia', 'Lukas',
-        'Irina', 'Gregor', 'Sonja', 'Dmitri', 'Anya', 'Marko', 'Petra', 'Nikolai',
-        'Lena', 'Branko', 'Olga', 'Jovan', 'Rada', 'Pavel', 'Vesna', 'Boris',
-        'Milena', 'Dragan', 'Zora', 'Aleksei', 'Daria', 'Milos'
-    ];
-    const LAST_NAMES = [
-        'Dreki', 'Reznik', 'Volkov', 'Kovar', 'Brandt', 'Jovic', 'Petrov', 'Lazar',
-        'Novak', 'Kadric', 'Zelenko', 'Varga', 'Ivic', 'Balasz', 'Horta', 'Demic',
-        'Maric', 'Gruber', 'Tesic', 'Orlov', 'Szabo', 'Pavic', 'Radic', 'Leko',
-        'Tomic', 'Kosta', 'Bauer', 'Haris', 'Petrovic', 'Lukic'
-    ];
-
     // Parse hex characters from UUID to get seed values
     const hex = factionId.replace(/-/g, '');
     const seedA = parseInt(hex.substring(0, 4), 16);
@@ -271,10 +258,10 @@ function generateOfficerNames(factionId) {
     const seedD = parseInt(hex.substring(12, 16), 16);
 
     return {
-        deputyFirst: FIRST_NAMES[seedA % FIRST_NAMES.length],
-        deputyLast: LAST_NAMES[seedB % LAST_NAMES.length],
-        whipFirst: FIRST_NAMES[seedC % FIRST_NAMES.length],
-        whipLast: LAST_NAMES[seedD % LAST_NAMES.length]
+        deputyFirst: PM_FIRST_NAMES[seedA % PM_FIRST_NAMES.length],
+        deputyLast: PM_LAST_NAMES[seedB % PM_LAST_NAMES.length],
+        whipFirst: PM_FIRST_NAMES[seedC % PM_FIRST_NAMES.length],
+        whipLast: PM_LAST_NAMES[seedD % PM_LAST_NAMES.length]
     };
 }
 
