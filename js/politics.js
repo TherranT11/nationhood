@@ -4409,14 +4409,20 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
                     <div class="pol-action-tagline">Spend war chest funds to acquire seats. Standing ${GAME_CONFIG.BUY_INFLUENCE_STANDING}</div>
                     <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center">
                         <select id="buy-influence-target" style="flex:1;min-width:120px;background:var(--dbg-3);color:var(--dtext-1);border:1px solid var(--dborder-1);padding:4px 8px;border-radius:4px;font-size:0.75rem">
-                            <option value="unaligned">Unaligned Pool (${unalignedSeats} seats · $${GAME_CONFIG.BUY_INFLUENCE_UNALIGNED_COST}M/seat)</option>
-                            ${(() => { const rh = Math.max(0, Math.min(100, Number(n.regime_health ?? 80))); const strongmanCost = Math.round(GAME_CONFIG.BUY_INFLUENCE_STRONGMAN_BASE_COST * (1 + rh * GAME_CONFIG.BUY_INFLUENCE_STRONGMAN_HEALTH_SCALE)); const rulingFac = (allFactions || []).find(p => p.id === rulingId); return rulingFac ? `<option value="${rulingFac.id}">${escapeHtml(rulingFac.faction_name)} [RULER] (${rulingFac.seats || 0} seats · ~$${strongmanCost}M/seat)</option>` : ''; })()}
-                            ${nonRuling.filter(p => p.id !== f.id).map(p => `<option value="${p.id}">${escapeHtml(p.faction_name)} (${p.seats || 0} seats)</option>`).join('')}
+                            <option value="unaligned" data-cost="${GAME_CONFIG.BUY_INFLUENCE_UNALIGNED_COST}" data-maxseats="${unalignedSeats}">Unaligned Pool (${unalignedSeats} seats · $${GAME_CONFIG.BUY_INFLUENCE_UNALIGNED_COST}M/seat)</option>
+                            ${(() => { const rh = Math.max(0, Math.min(100, Number(n.regime_health ?? 80))); const strongmanCost = Math.round(GAME_CONFIG.BUY_INFLUENCE_STRONGMAN_BASE_COST * (1 + rh * GAME_CONFIG.BUY_INFLUENCE_STRONGMAN_HEALTH_SCALE)); const rulingFac = (allFactions || []).find(p => p.id === rulingId); return rulingFac ? `<option value="${rulingFac.id}" data-cost="${strongmanCost}" data-maxseats="${rulingFac.seats || 0}">${escapeHtml(rulingFac.faction_name)} [RULER] (${rulingFac.seats || 0} seats · ~$${strongmanCost}M/seat)</option>` : ''; })()}
+                            ${nonRuling.filter(p => p.id !== f.id).map(p => {
+                                const yourSt = Math.max(1, f.standing ?? 30);
+                                const tSt = p.standing ?? 30;
+                                const tSeats = p.seats || 0;
+                                const cps = Math.round(GAME_CONFIG.BUY_INFLUENCE_BASE_COST * (tSt / yourSt) * (1 + tSeats / (n.total_seats || 120)));
+                                return `<option value="${p.id}" data-cost="${cps}" data-maxseats="${tSeats}">${escapeHtml(p.faction_name)} (${tSeats} seats · ~$${cps}M/seat)</option>`;
+                            }).join('')}
                         </select>
-                        <input type="number" id="buy-influence-funds" min="1" max="${Math.floor(factionFunds)}" value="${Math.min(Math.floor(factionFunds), GAME_CONFIG.BUY_INFLUENCE_UNALIGNED_COST)}" placeholder="$M" style="width:70px;background:var(--dbg-3);color:var(--dtext-1);border:1px solid var(--dborder-1);padding:4px 8px;border-radius:4px;font-size:0.75rem">
+                        <input type="number" id="buy-influence-seats" min="1" max="${unalignedSeats}" value="1" style="width:70px;background:var(--dbg-3);color:var(--dtext-1);border:1px solid var(--dborder-1);padding:4px 8px;border-radius:4px;font-size:0.75rem">
                         <button class="pol-action-execute" id="autocracy-buyinfluence-btn" ${ap < GAME_CONFIG.BUY_INFLUENCE_AP || factionFunds < 1 ? 'disabled' : ''}>BUY</button>
                     </div>
-                    <div style="font-size:0.65rem;color:var(--dtext-3);margin-top:4px">War Chest: $${Math.round(factionFunds)}M</div>
+                    <div id="buy-influence-cost-preview" style="font-size:0.65rem;color:var(--dtext-3);margin-top:4px">Cost: $${GAME_CONFIG.BUY_INFLUENCE_UNALIGNED_COST}M · War Chest: $${Math.round(factionFunds)}M</div>
                 </div>
                 ${isGeneral ? `<div class="pol-action-panel">
                     <div class="pol-action-header">
@@ -4515,13 +4521,37 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
         await reRender();
     });
 
-    // Buy Influence
+    // Buy Influence — dynamic cost preview
+    const buyTargetSelect = document.getElementById('buy-influence-target');
+    const buySeatsInput = document.getElementById('buy-influence-seats');
+    const buyCostPreview = document.getElementById('buy-influence-cost-preview');
+    function updateBuyCostPreview() {
+        if (!buyTargetSelect || !buySeatsInput || !buyCostPreview) return;
+        const opt = buyTargetSelect.selectedOptions[0];
+        const costPerSeat = Number(opt?.dataset.cost || 0);
+        const maxSeats = Number(opt?.dataset.maxseats || 0);
+        const seats = Math.max(0, Number(buySeatsInput.value || 0));
+        buySeatsInput.max = maxSeats;
+        const totalCost = seats * costPerSeat;
+        const warChest = Math.round(Number(f.embezzled_funds ?? 0));
+        const canAfford = totalCost <= warChest && seats > 0 && seats <= maxSeats;
+        buyCostPreview.textContent = `Cost: $${totalCost}M · War Chest: $${warChest}M` + (seats > 0 && !canAfford ? ' — NOT ENOUGH' : '');
+        buyCostPreview.style.color = canAfford ? 'var(--dtext-3)' : 'var(--dred, #d9534f)';
+    }
+    buyTargetSelect?.addEventListener('change', updateBuyCostPreview);
+    buySeatsInput?.addEventListener('input', updateBuyCostPreview);
+
+    // Buy Influence — submit handler
     document.getElementById('autocracy-buyinfluence-btn')?.addEventListener('click', async function() {
         const targetSelect = document.getElementById('buy-influence-target');
-        const fundsInput = document.getElementById('buy-influence-funds');
+        const seatsInput = document.getElementById('buy-influence-seats');
         const targetId = targetSelect?.value;
-        const fundsToSpend = Number(fundsInput?.value || 0);
-        if (!targetId || fundsToSpend <= 0) { alert('Select a target and enter funds to spend.'); return; }
+        const opt = targetSelect?.selectedOptions[0];
+        const costPerSeat = Number(opt?.dataset.cost || 0);
+        const seatCount = Number(seatsInput?.value || 0);
+        if (!targetId || seatCount <= 0) { alert('Select a target and enter seats to buy.'); return; }
+        const fundsToSpend = seatCount * costPerSeat;
+        if (fundsToSpend > Number(f.embezzled_funds ?? 0)) { alert(`Not enough war chest funds. Need $${fundsToSpend}M, have $${Math.round(Number(f.embezzled_funds ?? 0))}M.`); return; }
         this.disabled = true; this.textContent = 'BUYING...';
         const r = await executeBuyInfluence(_supabase, f.id, n.id, targetId, fundsToSpend, tick);
         if (!r.success) { alert(r.error); await reRender(); return; }
