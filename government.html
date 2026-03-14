@@ -3552,7 +3552,7 @@ function renderCensureConfirm(panel) {
 
     let options = '';
     for (const f of otherFactions) {
-        options += `<option value="${f.id}">${escapeHtml(f.party_name)} (${f.seats} seats)</option>`;
+        options += `<option value="${f.id}">${escapeHtml(f.faction_name)} (${f.seats} seats)</option>`;
     }
 
     panel.innerHTML = `
