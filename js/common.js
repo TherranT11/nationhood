@@ -355,7 +355,6 @@ export function renderNavTabs(activeTab) {
         { id: 'laws', label: 'Bills', href: 'laws.html' },
         { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
         { id: 'economy', label: 'Economy', href: 'economy.html' },
-        { id: 'events', label: 'Events', href: 'events.html' },
         { id: 'wiki', label: 'Wiki', href: 'wiki.html' }
     ];
 

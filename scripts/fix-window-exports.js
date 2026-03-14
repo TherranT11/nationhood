@@ -23,9 +23,6 @@ const windowExports = {
   'diplomacy.html': [
     'jumpToAmbNation', 'recallAmbassador', 'cancelPendingAmbassador', 'sendDiploMessage'
   ],
-  'events.html': [
-    'setScope', 'setNationFilter', 'setCategory', 'showMore', 'togglePost', 'submitComment'
-  ],
   'map.html': ['viewNation'],
   'select-candidate.html': ['selectCandidate', 'confirmSelection', 'regenerate'],
   'admin.html': [
@@ -49,19 +46,6 @@ const windowExports = {
     'createNewCrisis', 'applyFilters', 'editCrisis', 'cancelEditor',
     'deleteCrisis', 'addTrigger', 'addEffect', 'addEndTrigger', 'saveCrisis',
     'removeTrigger', 'removeEffect', 'removeEndTrigger'
-  ],
-  'eventadmin.html': [
-    'switchMode', 'viewRecentLog', 'createNewEvent', 'applyFilters',
-    'editEvent', 'cancelEditor', 'deleteEvent', 'switchEventType',
-    'addDescription', 'addTrigger', 'addEffect', 'copyPlaceholder',
-    'removeDescription', 'removeTrigger', 'removeEffect',
-    'addWeightCondition', 'removeWeightCondition',
-    'addMTitle', 'removeMTitle', 'addMBody', 'removeMBody', 'saveEvent',
-    'createNewMinistryEvent', 'applyMinistryFilters', 'editMinistryEvent',
-    'cancelMinistryEditor', 'deleteMinistryEvent',
-    'updateOutcomeEffect', 'removeOutcomeEffect', 'updateOutcome',
-    'removeOutcome', 'addOutcomeEffect', 'toggleCivicEvent', 'updateMOpt',
-    'addOutcome', 'addMOption', 'removeMOption', 'saveMinistryEvent'
   ],
   'avelia.html': ['goBack', 'continueToPartyCreation'],
   'melizea.html': ['goBack', 'continueToPartyCreation'],

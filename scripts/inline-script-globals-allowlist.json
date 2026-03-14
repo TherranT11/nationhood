@@ -7,8 +7,6 @@
   "elections.html:currentFaction",
   "elections.html:currentNation",
   "elections.html:isAutocracy",
-  "events.html:currentNation",
-  "events.html:currentFaction",
   "factions.html:currentNation",
   "factions.html:currentFaction",
   "government.html:currentNation",
