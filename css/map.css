@@ -1,6 +1,4 @@
-body { margin: 0; padding: 0; background-color: #121212; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        
-        /* Tick Status Bar */
+/* Tick Status Bar — scoped to #tick-status-bar to avoid overriding the shared top bar */
         #tick-status-bar {
             background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
             border-bottom: 3px solid #ffcc00;
@@ -13,33 +11,33 @@ body { margin: 0; padding: 0; background-color: #121212; color: #e0e0e0; font-fa
             top: 0;
             z-index: 100;
         }
-        
-        .tick-info {
+
+        #tick-status-bar .tick-info {
             display: flex;
             gap: 40px;
             align-items: center;
         }
-        
-        .tick-item {
+
+        #tick-status-bar .tick-item {
             display: flex;
             flex-direction: column;
         }
-        
-        .tick-label {
+
+        #tick-status-bar .tick-label {
             font-size: 0.7rem;
             color: #888;
             text-transform: uppercase;
             letter-spacing: 1px;
             margin-bottom: 3px;
         }
-        
-        .tick-value {
+
+        #tick-status-bar .tick-value {
             font-size: 1.1rem;
             color: #ffcc00;
             font-weight: bold;
         }
-        
-        .tick-countdown {
+
+        #tick-status-bar .tick-countdown {
             font-size: 1.3rem;
             color: #4CAF50;
             font-weight: bold;
@@ -48,7 +46,7 @@ body { margin: 0; padding: 0; background-color: #121212; color: #e0e0e0; font-fa
         
         /* Map Container and Ocean */
         #map-container { flex: 3; overflow: auto; background-color: #002b4d; position: relative; }
-        svg { width: 100%; height: auto; display: block; }
+        #map-container svg { width: 100%; height: auto; display: block; }
         
         /* Interactive Nations */
         .land { 
@@ -123,8 +121,8 @@ body { margin: 0; padding: 0; background-color: #121212; color: #e0e0e0; font-fa
         #sidebar .logout-btn:hover { background: #ff4444; color: white; }
         
         #details { background: #222; padding: 15px; border-radius: 4px; line-height: 1.6; border-left: 2px solid #444; }
-        hr { border: 0; border-top: 1px solid #333; margin: 20px 0; }
-        h3 { color: #ffcc00; margin-top: 0; font-size: 1rem; text-transform: uppercase; letter-spacing: 1px; }
+        #sidebar hr { border: 0; border-top: 1px solid #333; margin: 20px 0; }
+        #sidebar h3 { color: #ffcc00; margin-top: 0; font-size: 1rem; text-transform: uppercase; letter-spacing: 1px; }
         
         /* View Nation Button */
         .view-nation-btn {
