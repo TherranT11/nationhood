@@ -1552,9 +1552,9 @@ function renderStateVisitInboxCard(p, pd) {
         }
     }
 
-    // Debt impact
+    // Budget cost
     if (pd.total_debt && pd.total_debt > 0) {
-        benefitsHTML += '<br><br><span class="sv-effect-tag sv-effect-tag--cost">Debt: $' + (pd.total_debt / 1000000).toFixed(1) + 'M (visitor)</span>';
+        benefitsHTML += '<br><br><span class="sv-effect-tag sv-effect-tag--cost">Embassy Budget: $' + (pd.total_debt / 1000000).toFixed(1) + 'M (visitor)</span>';
     }
 
     // Risks
@@ -1562,7 +1562,7 @@ function renderStateVisitInboxCard(p, pd) {
         benefitsHTML += '<br>';
         for (const r of pd.risks) {
             if (r.chance) {
-                benefitsHTML += '<br><span class="sv-effect-tag sv-effect-tag--risk">' + escapeHtml(r.source) + ': ' + r.chance + '% ' + escapeHtml(r.key) + '</span>';
+                benefitsHTML += '<br><span class="sv-effect-tag sv-effect-tag--risk">' + escapeHtml(r.source) + ': ' + Math.round(r.chance * 100) + '% ' + escapeHtml(r.key) + '</span>';
             }
             if (r.flag) {
                 benefitsHTML += '<br><span class="sv-effect-tag sv-effect-tag--risk">' + escapeHtml(r.source) + ': ' + escapeHtml(r.key) + '</span>';
@@ -7266,8 +7266,10 @@ async function renderStateVisitDraftPanel(body, statusEl) {
     const ambName = hasAmbassador ? ((ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '')).trim() : null;
     const hasPendingTreaty = pendingTreatyRes.data && pendingTreatyRes.data.length > 0;
 
-    // Check embassy status
-    const embassyOpen = relation?.embassy_status_a === 'open' || relation?.embassy_status_b === 'open';
+    // Check embassy status — visitor's embassy in host (embassy_status_a = natA's embassy in natB)
+    const isNationA = currentNation.id < targetNationId;
+    const embassyField = isNationA ? 'embassy_status_a' : 'embassy_status_b';
+    const embassyOpen = relation?.[embassyField] === 'open';
     const noConflict = relation?.relation_type !== 'war';
 
     svContext = { targetNation, currentTick, relScore, hasTradeAgreement, isFirstVisit, hasAmbassador, ambName, embassyOpen, noConflict, cooldownActive, cooldownTicks, alreadyPending, hasPendingTreaty };
@@ -7413,7 +7415,7 @@ function renderStateVisitHTML(body) {
                     <div class="sv-toggle-group" id="sv-toggle-delegation">
                         ${toggleHTML('delegation', [['small_4', 'Small (4)'], ['standard_8', 'Standard (8)'], ['large_14', 'Large (14)']], st.delegation, 'delegation')}
                     </div>
-                    <span class="sv-config-note" id="sv-delegation-note">+${fmtDebt(del.debt)} to National Debt</span>
+                    <span class="sv-config-note" id="sv-delegation-note">+${fmtDebt(del.debt)} Embassy Budget</span>
                 </div>
             </div>
             <div class="sv-agenda-section-label" id="sv-agenda-label">Agenda &mdash; ${st.agenda.length} items selected</div>
@@ -7466,11 +7468,11 @@ function renderStateVisitHTML(body) {
                     <div class="sv-stat-row"><span class="sv-stat-label" style="font-weight:600;color:var(--text-primary);">Total AP</span><span class="sv-stat-value sv-stat-value--cost">${ap} AP</span></div>
                 </div>
                 <div class="sv-summary-section">
-                    <div class="sv-summary-section-label">Added to National Debt</div>
+                    <div class="sv-summary-section-label">Embassy Budget Cost</div>
                     <div class="sv-stat-row"><span class="sv-stat-label">Delegation (${del.label})</span><span class="sv-stat-value sv-stat-value--negative">+${fmtDebt(debtDelegation)}</span></div>
                     ${debtAgenda > 0 ? `<div class="sv-stat-row"><span class="sv-stat-label">Agenda Items</span><span class="sv-stat-value sv-stat-value--negative">+${fmtDebt(debtAgenda)}</span></div>` : ''}
                     <div class="sv-rule" style="margin:6px 0;"></div>
-                    <div class="sv-stat-row"><span class="sv-stat-label" style="font-weight:600;color:var(--text-primary);">Total Debt Added</span><span class="sv-stat-value sv-stat-value--negative">+${fmtDebt(computed.totalDebt)}</span></div>
+                    <div class="sv-stat-row"><span class="sv-stat-label" style="font-weight:600;color:var(--text-primary);">Total Cost</span><span class="sv-stat-value sv-stat-value--negative">+${fmtDebt(computed.totalDebt)}</span></div>
                 </div>
                 ${computed.risks.length > 0 ? `<div class="sv-summary-section">
                     <div class="sv-summary-section-label">Risks</div>
@@ -7543,7 +7545,7 @@ async function submitStateVisit() {
     if (ctx.cooldownActive) { alert(ctx.targetNation.name + ' was recently visited. Cooldown: ' + ctx.cooldownTicks + ' tick(s) remaining.'); return; }
     if (ctx.alreadyPending) { alert('A State Visit invitation to ' + ctx.targetNation.name + ' is already pending.'); return; }
 
-    const apResult = await deductAP(_supabase, currentFaction.id, computed.totalAp, currentFaction.action_points);
+    const apResult = await deductAP(_supabase, currentFaction.id, computed.totalAp);
     if (!apResult.success) {
         alert('Not enough AP. Need ' + computed.totalAp + ', have ' + (currentFaction.action_points || 0) + '.');
         return;
@@ -7662,7 +7664,13 @@ async function acceptStateVisit(proposalId) {
     const isVisitorAutocracy = isGovernmentAutocracy(visitorNation);
 
     // ── Read computed effects from proposal data (new data-driven approach) ──
-    const computedEffects = pd.computed_effects || {};
+    // Fall back to old hardcoded values if proposal was created before the rich draft panel
+    const hasNewData = pd.computed_effects && Object.keys(pd.computed_effects).length > 0;
+    const computedEffects = hasNewData ? pd.computed_effects : {
+        relations: DIPLOMACY_CONFIG.STATE_VISIT_RELATION_BOOST,
+        soft_power: DIPLOMACY_CONFIG.STATE_VISIT_REP_BOOST,
+        stability: DIPLOMACY_CONFIG.STATE_VISIT_STABILITY_BOOST
+    };
     const totalDebt = pd.total_debt || 0;
     const proposalRisks = pd.risks || [];
     const visitType = pd.visit_type || 'official_state_visit';
@@ -7682,7 +7690,7 @@ async function acceptStateVisit(proposalId) {
         }
     }
     if (totalDebt > 0) {
-        confirmMsg += '\nDebt impact: $' + (totalDebt / 1000000).toFixed(1) + 'M\n';
+        confirmMsg += '\nEmbassy budget cost: $' + (totalDebt / 1000000).toFixed(1) + 'M\n';
     }
     if (!confirm(confirmMsg)) return;
 
@@ -7742,17 +7750,17 @@ async function acceptStateVisit(proposalId) {
         bonusSummary.push('Autocracy dice (host): rolled ' + roll + ' → ' + (approvalChange > 0 ? '+' : '') + approvalChange + ' Gov Approval (host)');
     }
 
-    // ── Add debt to proposing nation ──
+    // ── Track debt for logging (actual budget cost applied via addEmbassyCost below) ──
     if (totalDebt > 0) {
-        visitorUpdates.national_debt = (visitorNation.national_debt || 0) + totalDebt;
-        bonusSummary.push('Debt: +$' + (totalDebt / 1000000).toFixed(1) + 'M (visitor)');
+        bonusSummary.push('Embassy budget cost: +$' + (totalDebt / 1000000).toFixed(1) + 'M (visitor)');
     }
 
     // ── Process risks: roll dice for each risk ──
+    // risk.chance is stored as a decimal (e.g. 0.08 = 8%), so compare against Math.random()
     const triggeredRisks = [];
     for (const risk of proposalRisks) {
         if (risk.chance && typeof risk.chance === 'number') {
-            const roll = Math.random() * 100;
+            const roll = Math.random();
             if (roll < risk.chance) {
                 triggeredRisks.push(risk);
                 // Gaffe: -2 gov_approval for visitor
@@ -7773,6 +7781,11 @@ async function acceptStateVisit(proposalId) {
         _supabase.from('nations').update(visitorUpdates).eq('id', visitorNationId),
         _supabase.from('nations').update(hostUpdates).eq('id', hostNationId)
     ]);
+
+    // ── Charge costs to FM embassy budget (visitor pays) ──
+    if (totalDebt > 0) {
+        await addEmbassyCost(visitorNationId, totalDebt);
+    }
 
     // Update relations
     const newRelScore = Math.min(100, relScore + relBoost);
@@ -7864,7 +7877,7 @@ async function acceptStateVisit(proposalId) {
     resultMsg += '  +' + relBoost + ' Relations (' + relScore + ' → ' + newRelScore + ')\n';
 
     if (totalDebt > 0) {
-        resultMsg += '\nDebt: +$' + (totalDebt / 1000000).toFixed(1) + 'M (visitor)\n';
+        resultMsg += '\nEmbassy budget cost: +$' + (totalDebt / 1000000).toFixed(1) + 'M (visitor)\n';
     }
 
     if (triggeredRisks.length > 0) {
