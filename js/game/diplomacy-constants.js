@@ -962,3 +962,90 @@ export const INITIATIVE_ARTICLE_TYPES = {
     }
 };
 
+// ── STATE VISIT CONFIGURATION ──
+
+export const STATE_VISIT_AGENDA_ITEMS = [
+    {
+        key: 'formal_reception', day: 1, slot: 'Arrival',
+        title: 'Formal Reception Ceremony',
+        desc: 'Honour guard, national anthems, and official welcome at the host capital. Sets the tone for the visit and generates press coverage in both nations.',
+        effects: { relations: 3, public_awareness: 5 },
+        tags: ['Press Event'], costs: {}, risks: {}
+    },
+    {
+        key: 'joint_press', day: 1, slot: 'Afternoon',
+        title: 'Joint Press Conference',
+        desc: 'Public statement by both ambassadors on shared goals and bilateral cooperation. Allows framing of the diplomatic narrative. Boosts Government Approval in both nations if relations are positive.',
+        effects: { gov_approval: 2, relations: 2 },
+        tags: [], costs: {}, risks: { gaffe: 0.08 }
+    },
+    {
+        key: 'economic_forum', day: 2, slot: 'Morning',
+        title: 'Economic Forum',
+        desc: 'Business delegations from both nations meet to discuss trade opportunities, investment climate, and commercial partnerships. May trigger trade deal prerequisite.',
+        effects: { trade_relations: 4 },
+        tags: ['Unlocks Trade Deal'], costs: { debt: 1200000 }, risks: {}
+    },
+    {
+        key: 'university_address', day: 2, slot: 'Afternoon',
+        title: 'University Address',
+        desc: "Ambassador delivers a public lecture at the host nation's national university. Builds cultural capital and soft power. Topic can be chosen for targeted effect.",
+        effects: { soft_power: 3, education_approval: 2 },
+        tags: [], costs: {}, risks: {}
+    },
+    {
+        key: 'bilateral_talks', day: 2, slot: 'Evening',
+        title: 'Private Bilateral Talks',
+        desc: 'Closed-door meeting between senior officials. No press, no public record. Can discuss sensitive topics and build trust for future negotiations. The content remains private.',
+        effects: { relations: 5 },
+        tags: ['Trust Threshold', 'Enables Initiatives'], costs: {}, risks: {}
+    },
+    {
+        key: 'military_review', day: 3, slot: 'Morning',
+        title: 'Military Review',
+        desc: "Joint inspection of host nation's armed forces. Signals strength and mutual trust but may alarm hostile neighbours.",
+        effects: { military_trust: 4 },
+        tags: [], costs: {}, risks: { hostiles_alarmed: true }
+    },
+    {
+        key: 'cultural_exchange', day: 3, slot: 'Afternoon',
+        title: 'Cultural Exchange Programme',
+        desc: 'Exchange of artistic delegations, museum exhibits, and performance troupes. Long-term soft power investment.',
+        effects: { soft_power: 4, relations: 2 },
+        tags: [], costs: { debt: 800000 }, risks: {}
+    },
+    {
+        key: 'monument_visit', day: 3, slot: 'Evening',
+        title: 'Monument Visit',
+        desc: 'Symbolic visit to a national memorial or heritage site. Strong public signal of respect. Low cost, moderate opinion boost.',
+        effects: { public_opinion: 3 },
+        tags: ['Symbolic'], costs: {}, risks: {}
+    },
+    {
+        key: 'treaty_signing', day: 3, slot: 'Closing',
+        title: 'Treaty Signing Ceremony',
+        desc: 'Formal ratification of a pending agreement during the visit. Requires an accepted proposal awaiting signature.',
+        effects: {},
+        tags: [], costs: {}, risks: {},
+        requires: 'pending_treaty'
+    }
+];
+
+export const STATE_VISIT_TYPES = {
+    official_state_visit: { label: 'Official State Visit', apMod: 0, multiplier: 1.0, relMult: 1.0, tradeMult: 1.0, softPowerMult: 1.0 },
+    working_visit:        { label: 'Working Visit',        apMod: -1, multiplier: 1.0, relMult: 0.8, tradeMult: 1.2, softPowerMult: 1.0 },
+    goodwill_visit:       { label: 'Goodwill Visit',       apMod: -2, multiplier: 1.0, relMult: 1.0, tradeMult: 0.6, softPowerMult: 1.3 }
+};
+
+export const STATE_VISIT_DURATIONS = {
+    short:    { label: 'Short',    apCost: 1, multiplier: 0.7, maxAgenda: 3 },
+    moderate: { label: 'Moderate', apCost: 2, multiplier: 1.0, maxAgenda: 5 },
+    lengthy:  { label: 'Lengthy',  apCost: 3, multiplier: 1.3, maxAgenda: 7 }
+};
+
+export const STATE_VISIT_DELEGATIONS = {
+    small_4:    { label: 'Small (4)',    debt: 1200000, effectBonus: 0 },
+    standard_8: { label: 'Standard (8)', debt: 2400000, effectBonus: 0 },
+    large_14:   { label: 'Large (14)',   debt: 4800000, effectBonus: 0.1 }
+};
+

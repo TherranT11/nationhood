@@ -77,7 +77,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects } from './js/game-common.js';
+import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -1524,25 +1524,57 @@ function renderStateVisitInboxCard(p, pd) {
     const ticksLeft = deadlineTick ? Math.max(0, deadlineTick - shardTick) : '?';
     const expired = deadlineTick && shardTick > deadlineTick;
 
-    // Preview of expected benefits
-    let benefitsHTML = '<div style="font-size:0.78rem;color:var(--text-muted);padding:8px 0;line-height:1.6;">';
-    benefitsHTML += '<strong>' + escapeHtml(pd.visitor_pm || 'Unknown') + '</strong> of <strong>' + escapeHtml(pd.visitor_nation || 'Unknown') + '</strong> requests a State Visit.';
-    benefitsHTML += '<br><br><strong>Expected Benefits (both nations):</strong>';
-    benefitsHTML += '<br>&nbsp;&nbsp;+' + DIPLOMACY_CONFIG.STATE_VISIT_REP_BOOST + ' International Reputation';
-    benefitsHTML += '<br>&nbsp;&nbsp;+' + DIPLOMACY_CONFIG.STATE_VISIT_STABILITY_BOOST + ' Stability';
-    benefitsHTML += '<br>&nbsp;&nbsp;+' + DIPLOMACY_CONFIG.STATE_VISIT_RELATION_BOOST + ' Relations';
+    // Visit configuration badges
+    const vtLabel = STATE_VISIT_TYPES[pd.visit_type]?.label || 'State Visit';
+    const durLabel = STATE_VISIT_DURATIONS[pd.duration]?.label || 'Moderate';
+    const delLabel = STATE_VISIT_DELEGATIONS[pd.delegation_size]?.label || 'Standard (8)';
+    const agendaCount = (pd.agenda || []).length;
+    const computedEffects = pd.computed_effects || {};
 
-    if (pd.has_trade_agreement) {
-        benefitsHTML += '<br>&nbsp;&nbsp;+' + DIPLOMACY_CONFIG.STATE_VISIT_TRADE_BONUS + ' Trade Balance <span style="color:#4caf50;">(trade agreement active)</span>';
+    let benefitsHTML = '<div style="font-size:0.78rem;color:var(--text-muted);padding:8px 0;line-height:1.6;">';
+    benefitsHTML += '<strong>' + escapeHtml(pd.visitor_pm || 'Unknown') + '</strong> of <strong>' + escapeHtml(pd.visitor_nation || 'Unknown') + '</strong> requests a ' + escapeHtml(vtLabel) + '.';
+
+    // Visit config summary
+    benefitsHTML += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;">';
+    benefitsHTML += '<span class="sv-effect-tag sv-effect-tag--info">' + escapeHtml(vtLabel) + '</span>';
+    benefitsHTML += '<span class="sv-effect-tag sv-effect-tag--info">' + escapeHtml(durLabel) + '</span>';
+    benefitsHTML += '<span class="sv-effect-tag sv-effect-tag--info">' + escapeHtml(delLabel) + '</span>';
+    benefitsHTML += '<span class="sv-effect-tag sv-effect-tag--info">' + agendaCount + ' agenda items</span>';
+    benefitsHTML += '</div>';
+
+    // Projected effects from computed_effects
+    if (Object.keys(computedEffects).length > 0) {
+        benefitsHTML += '<strong>Projected Effects (both nations):</strong>';
+        for (const [stat, val] of Object.entries(computedEffects)) {
+            const sign = val > 0 ? '+' : '';
+            const color = val > 0 ? '#4caf50' : '#f44';
+            benefitsHTML += '<br>&nbsp;&nbsp;<span style="color:' + color + ';">' + sign + val + '</span> ' + escapeHtml(stat.replace(/_/g, ' '));
+        }
     }
-    if (pd.high_relations) {
-        benefitsHTML += '<br>&nbsp;&nbsp;+' + DIPLOMACY_CONFIG.STATE_VISIT_HIGH_REL_GDP_BONUS + ' GDP Growth <span style="color:#4caf50;">(high relations)</span>';
+
+    // Budget cost
+    if (pd.total_debt && pd.total_debt > 0) {
+        benefitsHTML += '<br><br><span class="sv-effect-tag sv-effect-tag--cost">Embassy Budget: $' + (pd.total_debt / 1000000).toFixed(1) + 'M (visitor)</span>';
     }
+
+    // Risks
+    if (pd.risks && pd.risks.length > 0) {
+        benefitsHTML += '<br>';
+        for (const r of pd.risks) {
+            if (r.chance) {
+                benefitsHTML += '<br><span class="sv-effect-tag sv-effect-tag--risk">' + escapeHtml(r.source) + ': ' + Math.round(r.chance * 100) + '% ' + escapeHtml(r.key) + '</span>';
+            }
+            if (r.flag) {
+                benefitsHTML += '<br><span class="sv-effect-tag sv-effect-tag--risk">' + escapeHtml(r.source) + ': ' + escapeHtml(r.key) + '</span>';
+            }
+        }
+    }
+
     if (pd.is_first) {
-        benefitsHTML += '<br>&nbsp;&nbsp;+' + DIPLOMACY_CONFIG.STATE_VISIT_FIRST_STABILITY + ' Stability <span style="color:#FFD700;">(first-ever visit!)</span>';
+        benefitsHTML += '<br><br><span style="color:#FFD700;">★ First-ever visit — bonus stability!</span>';
     }
     if (pd.is_target_autocracy) {
-        benefitsHTML += '<br><br><span style="color:#f97316;">Autocracy domestic risk: 1D12 dice roll on visitor\'s gov approval</span>';
+        benefitsHTML += '<br><span style="color:#f97316;">Autocracy domestic risk: 1D12 dice roll on visitor\'s gov approval</span>';
     }
     benefitsHTML += '</div>';
 
@@ -2613,7 +2645,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
                 <p class="action-desc">As Head of Government, you may authorize major diplomatic decisions.</p>
                 <button class="action-btn" disabled>Declare War (Coming Soon)</button>
                 <button class="action-btn" style="margin-top:8px;" disabled>Propose Alliance (Coming Soon)</button>
-                <button class="action-btn state-visit-btn" style="margin-top:8px;" onclick="initiateStateVisit('${targetNation.id}')">State Visit (${DIPLOMACY_CONFIG.STATE_VISIT_AP} AP)</button>
+                <button class="action-btn state-visit-btn" style="margin-top:8px;" onclick="selectDraftAction('state_visit','State Visit',${DIPLOMACY_CONFIG.STATE_VISIT_AP},'hog','hog')">State Visit (${DIPLOMACY_CONFIG.STATE_VISIT_AP} AP)</button>
             </div>
         `;
     }
@@ -7148,143 +7180,385 @@ async function strikeTradeArticles(proposalId) {
 
 // ==================== STATE VISIT ====================
 
-async function initiateStateVisit(targetNationId) {
-    if (!currentNation || !currentFaction) { alert('No nation/faction loaded.'); return; }
-    if (!diplomaticRoles.isHoG) { alert('Only the Head of Government can initiate a State Visit.'); return; }
+// ── State Visit Draft Panel State ──
+let svState = null;
+let svContext = null;
 
-    // Fetch target nation
-    const { data: targetNation } = await _supabase.from('nations').select('*').eq('id', targetNationId).single();
-    if (!targetNation) { alert('Target nation not found.'); return; }
+function computeStateVisitEffects(state, ctx) {
+    const dur = STATE_VISIT_DURATIONS[state.duration];
+    const vt = STATE_VISIT_TYPES[state.visitType];
+    const del = STATE_VISIT_DELEGATIONS[state.delegation];
+    const durMult = dur.multiplier;
+    const delBonus = 1 + del.effectBonus;
 
-    // Get current tick
+    // Sum effects from agenda items
+    const raw = {};
+    let agendaDebt = 0;
+    const risks = [];
+    const unlocks = [];
+    for (const key of state.agenda) {
+        const item = STATE_VISIT_AGENDA_ITEMS.find(a => a.key === key);
+        if (!item) continue;
+        for (const [stat, val] of Object.entries(item.effects)) {
+            raw[stat] = (raw[stat] || 0) + val;
+        }
+        if (item.costs.debt) agendaDebt += item.costs.debt;
+        for (const [riskKey, riskVal] of Object.entries(item.risks)) {
+            risks.push({ key: riskKey, source: item.title, chance: typeof riskVal === 'number' ? riskVal : null, flag: typeof riskVal === 'boolean' ? riskVal : null });
+        }
+        for (const tag of item.tags) {
+            if (tag.includes('Unlock') || tag.includes('Enables') || tag.includes('Trust')) unlocks.push(tag);
+        }
+    }
+
+    // Apply multipliers
+    const effects = {};
+    for (const [stat, val] of Object.entries(raw)) {
+        let mult = durMult * delBonus;
+        if ((stat === 'relations' || stat === 'public_awareness' || stat === 'public_opinion') && vt.relMult) mult *= vt.relMult;
+        if ((stat === 'trade_relations') && vt.tradeMult) mult *= vt.tradeMult;
+        if ((stat === 'soft_power') && vt.softPowerMult) mult *= vt.softPowerMult;
+        effects[stat] = Math.round(val * mult);
+    }
+
+    const totalAp = Math.max(1, DIPLOMACY_CONFIG.STATE_VISIT_AP + dur.apCost + (vt.apMod || 0));
+    const totalDebt = del.debt + agendaDebt;
+
+    return { effects, totalAp, totalDebt, risks, unlocks };
+}
+
+async function renderStateVisitDraftPanel(body, statusEl) {
+    if (!selectedTargetNation) {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Select a nation first.</div></div>';
+        return;
+    }
+    if (statusEl) statusEl.textContent = 'Drafting';
+
+    const targetNation = selectedTargetNation;
+    const targetNationId = targetNation.id;
+
+    // Fetch context data in parallel
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
 
-    // Check cooldown — target nation cannot be visited if cooldown active
-    const { data: recentVisit } = await _supabase
-        .from('diplomatic_action_log')
-        .select('id, cooldown_until_tick')
-        .eq('target_nation_id', targetNationId)
-        .eq('action_type', 'state_visit')
-        .gt('cooldown_until_tick', currentTick)
-        .order('cooldown_until_tick', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-    if (recentVisit) {
-        const ticksLeft = recentVisit.cooldown_until_tick - currentTick;
-        alert(targetNation.name + ' was recently visited. Cooldown: ' + ticksLeft + ' tick(s) remaining.');
-        return;
-    }
-
-    // Check if there's already a pending state visit proposal from us to this nation
-    const { data: pendingVisit } = await _supabase
-        .from('diplomatic_proposals')
-        .select('id')
-        .eq('proposing_nation_id', currentNation.id)
-        .eq('target_nation_id', targetNationId)
-        .eq('proposal_type', 'state_visit')
-        .eq('status', 'proposed')
-        .maybeSingle();
-
-    if (pendingVisit) {
-        alert('A State Visit invitation to ' + targetNation.name + ' is already pending.');
-        return;
-    }
-
-    // Gather preview data
     const relation = await fetchDiplomaticRelation(currentNation.id, targetNationId);
-    const relScore = relation?.relation_score ?? 30;
+    const relScore = relation?.relation_score ?? 0;
 
-    // Check for active trade agreement between the two nations
     const natA = currentNation.id < targetNationId ? currentNation.id : targetNationId;
     const natB = currentNation.id < targetNationId ? targetNationId : currentNation.id;
-    const { data: tradeAgs } = await _supabase
-        .from('trade_agreements')
-        .select('id')
-        .eq('status', 'active')
-        .eq('nation_a_id', natA)
-        .eq('nation_b_id', natB)
-        .limit(1);
-    const hasTradeAgreement = tradeAgs && tradeAgs.length > 0;
 
-    // Check if first-ever visit
-    const { data: pastVisits } = await _supabase
-        .from('diplomatic_action_log')
-        .select('id')
-        .eq('nation_id', currentNation.id)
-        .eq('target_nation_id', targetNationId)
-        .eq('action_type', 'state_visit')
-        .limit(1);
-    const isFirstVisit = !pastVisits || pastVisits.length === 0;
+    const [cooldownRes, pendingRes, tradeRes, pastVisitRes, ambRes, pendingTreatyRes] = await Promise.all([
+        _supabase.from('diplomatic_action_log').select('id, cooldown_until_tick').eq('target_nation_id', targetNationId).eq('action_type', 'state_visit').gt('cooldown_until_tick', currentTick).order('cooldown_until_tick', { ascending: false }).limit(1).maybeSingle(),
+        _supabase.from('diplomatic_proposals').select('id').eq('proposing_nation_id', currentNation.id).eq('target_nation_id', targetNationId).eq('proposal_type', 'state_visit').eq('status', 'proposed').maybeSingle(),
+        _supabase.from('trade_agreements').select('id').eq('status', 'active').eq('nation_a_id', natA).eq('nation_b_id', natB).limit(1),
+        _supabase.from('diplomatic_action_log').select('id').eq('nation_id', currentNation.id).eq('target_nation_id', targetNationId).eq('action_type', 'state_visit').limit(1),
+        _supabase.from('ambassadors').select('id, ambassador_first_name, ambassador_last_name, status, factions(abbreviation)').eq('nation_id', currentNation.id).eq('target_nation_id', targetNationId).eq('is_active', true).maybeSingle(),
+        _supabase.from('diplomatic_proposals').select('id').eq('status', 'active').or(`proposing_nation_id.eq.${currentNation.id},target_nation_id.eq.${currentNation.id}`).in('proposal_type', ['non_aggression_pact', 'military_alliance', 'open_borders']).limit(1)
+    ]);
 
-    const highRelations = relScore > 70;
+    const cooldownActive = cooldownRes.data != null;
+    const cooldownTicks = cooldownActive ? cooldownRes.data.cooldown_until_tick - currentTick : 0;
+    const alreadyPending = pendingRes.data != null;
+    const hasTradeAgreement = tradeRes.data && tradeRes.data.length > 0;
+    const isFirstVisit = !pastVisitRes.data || pastVisitRes.data.length === 0;
+    const ambassador = ambRes.data;
+    const hasAmbassador = ambassador && ambassador.status === 'active';
+    const ambName = hasAmbassador ? ((ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '')).trim() : null;
+    const hasPendingTreaty = pendingTreatyRes.data && pendingTreatyRes.data.length > 0;
 
-    // Check autocracy
-    const isTargetAutocracy = isGovernmentAutocracy(targetNation);
+    // Check embassy status — visitor's embassy in host (embassy_status_a = natA's embassy in natB)
+    const isNationA = currentNation.id < targetNationId;
+    const embassyField = isNationA ? 'embassy_status_a' : 'embassy_status_b';
+    const embassyOpen = relation?.[embassyField] === 'open';
+    const noConflict = relation?.relation_type !== 'war';
 
-    // Build preview
-    const hosName = ((currentNation.head_of_state_first_name || '') + ' ' + (currentNation.head_of_state_last_name || '')).trim() || 'Head of State';
+    svContext = { targetNation, currentTick, relScore, hasTradeAgreement, isFirstVisit, hasAmbassador, ambName, embassyOpen, noConflict, cooldownActive, cooldownTicks, alreadyPending, hasPendingTreaty };
 
-    let previewLines = [
-        'STATE VISIT PREVIEW',
-        '═══════════════════════════════',
-        hosName + ' visits ' + targetNation.name,
-        '',
-        'Cost: ' + DIPLOMACY_CONFIG.STATE_VISIT_AP + ' AP (deducted now)',
-        'Accept Window: ' + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW + ' ticks for ' + targetNation.name + ' to accept',
-        '',
-        '── BASE BENEFITS (on acceptance) ──',
-        '+' + DIPLOMACY_CONFIG.STATE_VISIT_REP_BOOST + ' International Reputation (both nations)',
-        '+' + DIPLOMACY_CONFIG.STATE_VISIT_STABILITY_BOOST + ' Stability (both nations)',
-        '+' + DIPLOMACY_CONFIG.STATE_VISIT_RELATION_BOOST + ' Relations',
-        '',
-        '── CONDITIONAL BONUSES ──',
+    // Default state
+    svState = { visitType: 'official_state_visit', duration: 'moderate', delegation: 'standard_8', agenda: ['formal_reception', 'joint_press', 'economic_forum', 'university_address', 'bilateral_talks'] };
+
+    renderStateVisitHTML(body);
+}
+
+function renderStateVisitHTML(body) {
+    const ctx = svContext;
+    const st = svState;
+    const computed = computeStateVisitEffects(st, ctx);
+    const dur = STATE_VISIT_DURATIONS[st.duration];
+    const del = STATE_VISIT_DELEGATIONS[st.delegation];
+    const vt = STATE_VISIT_TYPES[st.visitType];
+
+    const ap = computed.totalAp;
+    const hasEnoughAp = (currentFaction?.action_points || 0) >= ap;
+    const allPrereqs = ctx.hasAmbassador && ctx.embassyOpen && ctx.noConflict && hasEnoughAp && !ctx.cooldownActive && !ctx.alreadyPending;
+
+    // Build agenda HTML
+    const selectedItems = STATE_VISIT_AGENDA_ITEMS.filter(a => st.agenda.includes(a.key));
+    const availableItems = STATE_VISIT_AGENDA_ITEMS.filter(a => !st.agenda.includes(a.key));
+    const maxAgenda = dur.maxAgenda;
+    const atMax = st.agenda.length >= maxAgenda;
+
+    function agendaItemHTML(item, isSelected) {
+        const disabled = item.requires === 'pending_treaty' && !ctx.hasPendingTreaty && !isSelected;
+        const cls = disabled ? ' sv-agenda-item--disabled' : '';
+        const opacity = !isSelected ? ' style="opacity:0.55;"' : '';
+        let effectTags = '';
+        for (const [stat, val] of Object.entries(item.effects)) {
+            const label = stat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            effectTags += `<span class="sv-effect-tag sv-effect-tag--positive">${label} +${val}</span>`;
+        }
+        for (const tag of item.tags) {
+            effectTags += `<span class="sv-effect-tag sv-effect-tag--info">${escapeHtml(tag)}</span>`;
+        }
+        if (item.costs.debt) {
+            effectTags += `<span class="sv-effect-tag sv-effect-tag--cost">+$${(item.costs.debt / 1000000).toFixed(1)}M Debt</span>`;
+        }
+        for (const [rk, rv] of Object.entries(item.risks)) {
+            const label = typeof rv === 'number' ? `${rk.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} ${Math.round(rv * 100)}%` : rk.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            effectTags += `<span class="sv-effect-tag sv-effect-tag--risk">${label}</span>`;
+        }
+        if (disabled) {
+            effectTags += `<span class="sv-effect-tag sv-effect-tag--info">Requires Pending Treaty</span>`;
+        }
+        return `<div class="sv-agenda-item${cls}"${opacity}>
+            <div class="sv-agenda-tick"><div class="sv-agenda-tick-box${isSelected ? ' is-checked' : ''}" data-agenda-key="${item.key}"></div></div>
+            <div class="sv-agenda-content">
+                ${isSelected ? `<div class="sv-agenda-day-label">Day ${item.day} &mdash; ${escapeHtml(item.slot)}</div>` : ''}
+                <div class="sv-agenda-title">${escapeHtml(item.title)}</div>
+                <div class="sv-agenda-desc">${escapeHtml(item.desc)}</div>
+                <div class="sv-agenda-effects">${effectTags}</div>
+            </div>
+            ${isSelected ? `<span class="sv-agenda-remove" data-agenda-key="${item.key}">Remove</span>` : ''}
+        </div>`;
+    }
+
+    let selectedHTML = selectedItems.map(i => agendaItemHTML(i, true)).join('');
+    let availableHTML = '';
+    if (availableItems.length > 0) {
+        availableHTML = `<div class="sv-rule" style="margin:6px 0;"></div>
+            <div style="padding:4px 0 2px;font-family:var(--font-mono);font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);">Available</div>`;
+        availableHTML += availableItems.map(i => agendaItemHTML(i, false)).join('');
+    }
+
+    // Toggle HTML helper
+    function toggleHTML(name, options, selectedKey, dataAttr) {
+        return options.map(([key, label]) =>
+            `<span class="sv-toggle-opt${key === selectedKey ? ' is-selected' : ''}" data-${dataAttr}="${key}">${escapeHtml(label)}</span>`
+        ).join('');
+    }
+
+    // Sidebar effects
+    const eff = computed.effects;
+    function effRow(label, val, cls) {
+        if (!val) return '';
+        return `<div class="sv-stat-row"><span class="sv-stat-label">${label}</span><span class="sv-stat-value ${cls}">+${val}</span></div>`;
+    }
+
+    const relProjected = Math.min(100, ctx.relScore + (eff.relations || 0));
+    const relPct = Math.max(0, Math.min(100, (ctx.relScore + 100) / 2));
+    const relProjPct = Math.max(0, Math.min(100, (relProjected + 100) / 2));
+
+    // Prereqs
+    const prereqs = [
+        { ok: ctx.embassyOpen, text: 'Embassy open in ' + escapeHtml(ctx.targetNation.name) },
+        { ok: ctx.hasAmbassador, text: ctx.hasAmbassador ? 'Ambassador posted (' + escapeHtml(ctx.ambName) + ')' : 'No ambassador posted' },
+        { ok: ctx.relScore >= -50, text: 'Relations: ' + (ctx.relScore >= 0 ? 'Friendly' : 'Strained') + ' (' + (ctx.relScore >= 0 ? '+' : '') + ctx.relScore + ')' },
+        { ok: ctx.noConflict, text: ctx.noConflict ? 'No active conflict' : 'Active conflict!' },
+        { ok: hasEnoughAp, text: ap + ' AP available (' + DIPLOMACY_CONFIG.STATE_VISIT_AP + ' base + ' + dur.apCost + ' duration' + (vt.apMod ? ' ' + vt.apMod + ' type' : '') + ')' },
+        { ok: !ctx.cooldownActive, text: ctx.cooldownActive ? 'Visit cooldown: ' + ctx.cooldownTicks + ' ticks remaining' : 'No visit cooldown' },
+        { ok: !ctx.alreadyPending, text: ctx.alreadyPending ? 'Visit already pending' : 'No pending visit' }
     ];
 
-    if (hasTradeAgreement) {
-        previewLines.push('[ACTIVE] Trade Agreement: +' + DIPLOMACY_CONFIG.STATE_VISIT_TRADE_BONUS + ' Trade Balance (both)');
-    } else {
-        previewLines.push('[  --  ] Trade Agreement: +' + DIPLOMACY_CONFIG.STATE_VISIT_TRADE_BONUS + ' Trade Balance (requires active agreement)');
-    }
+    const debtDelegation = del.debt;
+    let debtAgenda = 0;
+    for (const key of st.agenda) { const item = STATE_VISIT_AGENDA_ITEMS.find(a => a.key === key); if (item?.costs?.debt) debtAgenda += item.costs.debt; }
 
-    if (highRelations) {
-        previewLines.push('[ACTIVE] High Relations (>' + 70 + '): +' + DIPLOMACY_CONFIG.STATE_VISIT_HIGH_REL_GDP_BONUS + ' GDP Growth (both)');
-    } else {
-        previewLines.push('[  --  ] High Relations (>' + 70 + '): +' + DIPLOMACY_CONFIG.STATE_VISIT_HIGH_REL_GDP_BONUS + ' GDP Growth (current: ' + relScore + ')');
-    }
+    const fmtDebt = (v) => '$' + (v / 1000000).toFixed(1) + 'M';
 
-    if (isFirstVisit) {
-        previewLines.push('[ACTIVE] First Visit Ever: +' + DIPLOMACY_CONFIG.STATE_VISIT_FIRST_STABILITY + ' Stability (both) + Hero Story');
-    } else {
-        previewLines.push('[  --  ] First Visit Ever: already visited');
-    }
+    // Delegation info
+    const delSize = st.delegation === 'small_4' ? 4 : st.delegation === 'standard_8' ? 8 : 14;
+    const tradeDelCount = Math.max(0, delSize - 4);
 
-    if (isTargetAutocracy) {
-        previewLines.push('');
-        previewLines.push('WARNING: ' + targetNation.name + ' is an Autocracy.');
-        previewLines.push('Domestic approval dice roll (1D12): 1-6 = -3 gov approval, 7-12 = +3 gov approval');
-    }
+    body.innerHTML = `<div class="sv-page-wrap">
+        <div class="sv-box sv-box--main">
+            <div class="sv-box-header">
+                <div class="sv-box-dot sv-box-dot--teal"></div>
+                <span class="sv-box-label">Draft State Visit</span>
+                <div class="sv-box-header-right"><span class="sv-badge sv-badge--teal">Drafting</span></div>
+            </div>
+            <div class="sv-draft-fields">
+                <div class="sv-draft-row">
+                    <div class="sv-draft-label">Action</div>
+                    <div class="sv-draft-input">State Visit <span class="sv-ap-cost">(${DIPLOMACY_CONFIG.STATE_VISIT_AP} AP base)</span></div>
+                </div>
+                <div class="sv-draft-row">
+                    <div class="sv-draft-label">Host Nation</div>
+                    <div class="sv-draft-input">${escapeHtml(ctx.targetNation.name)}</div>
+                </div>
+            </div>
+            <div class="sv-visit-config">
+                <div class="sv-config-row">
+                    <span class="sv-config-label">Visit Type</span>
+                    <div class="sv-toggle-group" id="sv-toggle-type">
+                        ${toggleHTML('type', [['official_state_visit', 'Official State Visit'], ['working_visit', 'Working Visit'], ['goodwill_visit', 'Goodwill Visit']], st.visitType, 'visit-type')}
+                    </div>
+                </div>
+                <div class="sv-config-row">
+                    <span class="sv-config-label">Duration</span>
+                    <div class="sv-toggle-group" id="sv-toggle-duration">
+                        ${toggleHTML('duration', [['short', 'Short (-1 AP)'], ['moderate', 'Moderate (-2 AP)'], ['lengthy', 'Lengthy (-3 AP)']], st.duration, 'duration')}
+                    </div>
+                    <span class="sv-config-note">Longer visits increase effects but cost more AP</span>
+                </div>
+                <div class="sv-config-row">
+                    <span class="sv-config-label">Delegation</span>
+                    <div class="sv-toggle-group" id="sv-toggle-delegation">
+                        ${toggleHTML('delegation', [['small_4', 'Small (4)'], ['standard_8', 'Standard (8)'], ['large_14', 'Large (14)']], st.delegation, 'delegation')}
+                    </div>
+                    <span class="sv-config-note" id="sv-delegation-note">+${fmtDebt(del.debt)} Embassy Budget</span>
+                </div>
+            </div>
+            <div class="sv-agenda-section-label" id="sv-agenda-label">Agenda &mdash; ${st.agenda.length} items selected</div>
+            <div class="sv-agenda-area">${selectedHTML}${availableHTML}</div>
+            <div class="sv-action-bar">
+                <span class="sv-action-bar-info" id="sv-action-info">${st.agenda.length} of ${STATE_VISIT_AGENDA_ITEMS.length} agenda items / ${vt.label}</span>
+                <div class="sv-action-bar-spacer"></div>
+                <button class="sv-btn sv-btn--dim" id="sv-cancel-btn">Cancel</button>
+                <button class="sv-btn sv-btn--send" id="sv-submit-btn" ${!allPrereqs ? 'disabled' : ''}>Request Visit (${ap} AP)</button>
+            </div>
+        </div>
+        <div class="sv-box sv-box--side">
+            <div class="sv-box-header">
+                <div class="sv-box-dot sv-box-dot--blue"></div>
+                <span class="sv-box-label">Visit Summary</span>
+            </div>
+            <div class="sv-summary-body" id="sv-summary">
+                <div class="sv-summary-section">
+                    <div class="sv-summary-section-label">Prerequisites</div>
+                    ${prereqs.map(p => `<div class="sv-prereq-item"><span class="sv-prereq-dot sv-prereq-dot--${p.ok ? 'ok' : 'fail'}"></span>${p.text}</div>`).join('')}
+                </div>
+                <div class="sv-summary-section">
+                    <div class="sv-summary-section-label">Delegation</div>
+                    <div class="sv-delegation-row"><span class="sv-delegation-role">Lead</span><span class="sv-delegation-name">${ctx.hasAmbassador ? 'Amb. ' + escapeHtml(ctx.ambName) : 'No Ambassador'}</span></div>
+                    <div class="sv-delegation-row"><span class="sv-delegation-role">Advisor</span><span class="sv-delegation-name">+${Math.max(0, Math.floor(delSize * 0.4))} Senior Staff</span></div>
+                    ${tradeDelCount > 0 ? `<div class="sv-delegation-row"><span class="sv-delegation-role">Business</span><span class="sv-delegation-name">+${tradeDelCount} Trade Delegates</span></div>` : ''}
+                </div>
+                <div class="sv-summary-section">
+                    <div class="sv-summary-section-label">Projected Effects</div>
+                    ${eff.relations ? `<div class="sv-stat-row"><span class="sv-stat-label">Relation Score</span><span class="sv-stat-value sv-stat-value--positive">+${eff.relations}</span></div>
+                    <div class="sv-stat-bar-track"><div class="sv-stat-bar-fill" style="width:${relProjPct}%;background:var(--teal);"></div></div>
+                    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-faint);">${ctx.relScore >= 0 ? '+' : ''}${ctx.relScore} current</span>
+                        <span style="font-family:var(--font-mono);font-size:8px;color:var(--green);">${relProjected >= 0 ? '+' : ''}${relProjected} projected</span>
+                    </div>` : ''}
+                    ${effRow('Trade Relations', eff.trade_relations, 'sv-stat-value--positive')}
+                    ${effRow('Soft Power', eff.soft_power, 'sv-stat-value--positive')}
+                    ${effRow('Gov. Approval (Home)', eff.gov_approval, 'sv-stat-value--positive')}
+                    ${effRow('Public Awareness', eff.public_awareness, 'sv-stat-value--positive')}
+                    ${effRow('Public Opinion', eff.public_opinion, 'sv-stat-value--positive')}
+                    ${effRow('Education Approval', eff.education_approval, 'sv-stat-value--positive')}
+                    ${effRow('Military Trust', eff.military_trust, 'sv-stat-value--positive')}
+                </div>
+                <div class="sv-summary-section">
+                    <div class="sv-summary-section-label">Costs</div>
+                    <div class="sv-stat-row"><span class="sv-stat-label">Base AP</span><span class="sv-stat-value sv-stat-value--cost">${DIPLOMACY_CONFIG.STATE_VISIT_AP} AP</span></div>
+                    <div class="sv-stat-row"><span class="sv-stat-label">Duration (${dur.label})</span><span class="sv-stat-value sv-stat-value--cost">${dur.apCost} AP</span></div>
+                    ${vt.apMod ? `<div class="sv-stat-row"><span class="sv-stat-label">Visit Type (${vt.label})</span><span class="sv-stat-value sv-stat-value--cost">${vt.apMod} AP</span></div>` : ''}
+                    <div class="sv-rule" style="margin:6px 0;"></div>
+                    <div class="sv-stat-row"><span class="sv-stat-label" style="font-weight:600;color:var(--text-primary);">Total AP</span><span class="sv-stat-value sv-stat-value--cost">${ap} AP</span></div>
+                </div>
+                <div class="sv-summary-section">
+                    <div class="sv-summary-section-label">Embassy Budget Cost</div>
+                    <div class="sv-stat-row"><span class="sv-stat-label">Delegation (${del.label})</span><span class="sv-stat-value sv-stat-value--negative">+${fmtDebt(debtDelegation)}</span></div>
+                    ${debtAgenda > 0 ? `<div class="sv-stat-row"><span class="sv-stat-label">Agenda Items</span><span class="sv-stat-value sv-stat-value--negative">+${fmtDebt(debtAgenda)}</span></div>` : ''}
+                    <div class="sv-rule" style="margin:6px 0;"></div>
+                    <div class="sv-stat-row"><span class="sv-stat-label" style="font-weight:600;color:var(--text-primary);">Total Cost</span><span class="sv-stat-value sv-stat-value--negative">+${fmtDebt(computed.totalDebt)}</span></div>
+                </div>
+                ${computed.risks.length > 0 ? `<div class="sv-summary-section">
+                    <div class="sv-summary-section-label">Risks</div>
+                    ${computed.risks.map(r => `<div class="sv-stat-row"><span class="sv-stat-label">${escapeHtml(r.source)}</span><span class="sv-stat-value sv-stat-value--negative">${r.chance ? Math.round(r.chance * 100) + '% chance' : 'Possible'}</span></div>${r.chance ? `<div style="font-family:var(--font-sans);font-size:10px;color:var(--text-faint);padding-top:2px;">Diplomatic incident if triggered. Relations -5, Gov. Approval -3.</div>` : `<div style="font-family:var(--font-sans);font-size:10px;color:var(--text-faint);padding-top:2px;">May alarm hostile neighbours.</div>`}`).join('')}
+                </div>` : ''}
+                ${computed.unlocks.length > 0 ? `<div class="sv-summary-section">
+                    <div class="sv-summary-section-label">Unlocks</div>
+                    ${computed.unlocks.map(u => `<div class="sv-prereq-item"><span class="sv-prereq-dot sv-prereq-dot--ok"></span>${escapeHtml(u)}</div>`).join('')}
+                </div>` : ''}
+            </div>
+        </div>
+    </div>`;
 
-    previewLines.push('');
-    previewLines.push('If declined or expired: nothing happens, AP still spent.');
+    // ── Event Listeners ──
+    // Toggle groups
+    body.querySelectorAll('[data-visit-type]').forEach(el => el.addEventListener('click', () => {
+        svState.visitType = el.dataset.visitType;
+        renderStateVisitHTML(body);
+    }));
+    body.querySelectorAll('[data-duration]').forEach(el => el.addEventListener('click', () => {
+        svState.duration = el.dataset.duration;
+        const newMax = STATE_VISIT_DURATIONS[svState.duration].maxAgenda;
+        if (svState.agenda.length > newMax) svState.agenda = svState.agenda.slice(0, newMax);
+        renderStateVisitHTML(body);
+    }));
+    body.querySelectorAll('[data-delegation]').forEach(el => el.addEventListener('click', () => {
+        svState.delegation = el.dataset.delegation;
+        renderStateVisitHTML(body);
+    }));
+    // Agenda checkboxes
+    body.querySelectorAll('.sv-agenda-tick-box').forEach(el => el.addEventListener('click', () => {
+        const key = el.dataset.agendaKey;
+        const item = STATE_VISIT_AGENDA_ITEMS.find(a => a.key === key);
+        if (item?.requires === 'pending_treaty' && !svContext.hasPendingTreaty) return;
+        const idx = svState.agenda.indexOf(key);
+        if (idx >= 0) {
+            svState.agenda.splice(idx, 1);
+        } else {
+            const maxA = STATE_VISIT_DURATIONS[svState.duration].maxAgenda;
+            if (svState.agenda.length >= maxA) return;
+            svState.agenda.push(key);
+        }
+        renderStateVisitHTML(body);
+    }));
+    // Remove buttons
+    body.querySelectorAll('.sv-agenda-remove').forEach(el => el.addEventListener('click', () => {
+        const key = el.dataset.agendaKey;
+        const idx = svState.agenda.indexOf(key);
+        if (idx >= 0) svState.agenda.splice(idx, 1);
+        renderStateVisitHTML(body);
+    }));
+    // Cancel
+    document.getElementById('sv-cancel-btn')?.addEventListener('click', () => {
+        svState = null; svContext = null;
+        activeDraftAction = null;
+        renderDraftBox();
+    });
+    // Submit
+    document.getElementById('sv-submit-btn')?.addEventListener('click', () => submitStateVisit());
+}
 
-    if (!confirm(previewLines.join('\n'))) return;
+async function submitStateVisit() {
+    if (!svState || !svContext) return;
+    const ctx = svContext;
+    const computed = computeStateVisitEffects(svState, ctx);
 
-    // Deduct AP
-    const apResult = await deductAP(_supabase, currentFaction.id, DIPLOMACY_CONFIG.STATE_VISIT_AP, currentFaction.action_points);
+    // Validate
+    if (!ctx.hasAmbassador) { alert('No ambassador posted to ' + ctx.targetNation.name + '.'); return; }
+    if (!ctx.noConflict) { alert('Cannot visit during active conflict.'); return; }
+    if (ctx.cooldownActive) { alert(ctx.targetNation.name + ' was recently visited. Cooldown: ' + ctx.cooldownTicks + ' tick(s) remaining.'); return; }
+    if (ctx.alreadyPending) { alert('A State Visit invitation to ' + ctx.targetNation.name + ' is already pending.'); return; }
+
+    const apResult = await deductAP(_supabase, currentFaction.id, computed.totalAp);
     if (!apResult.success) {
-        alert('Not enough AP. Need ' + DIPLOMACY_CONFIG.STATE_VISIT_AP + ', have ' + (currentFaction.action_points || 0) + '.');
+        alert('Not enough AP. Need ' + computed.totalAp + ', have ' + (currentFaction.action_points || 0) + '.');
         return;
     }
     currentFaction.action_points = apResult.newAp;
 
-    // Create diplomatic_proposals entry for target nation's inbox
+    const hosName = ((currentNation.head_of_state_first_name || '') + ' ' + (currentNation.head_of_state_last_name || '')).trim() || 'Head of State';
+
     const { error: proposalErr } = await _supabase
         .from('diplomatic_proposals')
         .insert({
             proposing_nation_id: currentNation.id,
-            target_nation_id: targetNationId,
+            target_nation_id: ctx.targetNation.id,
             proposed_by_faction_id: currentFaction.id,
             proposal_type: 'state_visit',
             proposal_tier: 2,
@@ -7293,18 +7567,27 @@ async function initiateStateVisit(targetNationId) {
                 name: 'State Visit from ' + currentNation.name,
                 visitor_pm: hosName,
                 visitor_nation: currentNation.name,
-                host_nation: targetNation.name,
+                host_nation: ctx.targetNation.name,
                 proposer_nation_name: currentNation.name,
-                target_nation_name: targetNation.name,
-                is_first: isFirstVisit,
-                has_trade_agreement: hasTradeAgreement,
-                high_relations: highRelations,
-                is_target_autocracy: isTargetAutocracy,
-                accept_deadline_tick: currentTick + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW,
-                relation_score: relScore
+                target_nation_name: ctx.targetNation.name,
+                visit_type: svState.visitType,
+                duration: svState.duration,
+                delegation_size: svState.delegation,
+                agenda: svState.agenda,
+                computed_effects: computed.effects,
+                total_debt: computed.totalDebt,
+                risks: computed.risks,
+                unlocks: computed.unlocks,
+                ap_cost: computed.totalAp,
+                is_first: ctx.isFirstVisit,
+                has_trade_agreement: ctx.hasTradeAgreement,
+                high_relations: ctx.relScore > 70,
+                is_target_autocracy: isGovernmentAutocracy(ctx.targetNation),
+                accept_deadline_tick: ctx.currentTick + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW,
+                relation_score: ctx.relScore
             },
-            fm_review_expires_tick: currentTick + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW,
-            proposed_at_tick: currentTick
+            fm_review_expires_tick: ctx.currentTick + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW,
+            proposed_at_tick: ctx.currentTick
         });
 
     if (proposalErr) {
@@ -7312,11 +7595,14 @@ async function initiateStateVisit(targetNationId) {
         return;
     }
 
-    alert('State Visit invitation sent to ' + targetNation.name + '!\n\nThey have ' + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW + ' ticks to accept.');
+    alert('State Visit invitation sent to ' + ctx.targetNation.name + '!\n\nThey have ' + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW + ' ticks to accept.');
 
-    // Refresh the nation card and inbox
+    svState = null; svContext = null;
+    activeDraftAction = null;
+    await renderDraftBox();
     if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
-    { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
+    await renderNegotiationsBox();
+    { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; }
 }
 
 async function acceptStateVisit(proposalId) {
@@ -7349,8 +7635,6 @@ async function acceptStateVisit(proposalId) {
         return;
     }
 
-    if (!confirm('Accept State Visit from ' + (pd.visitor_nation || 'Unknown') + '?\n\nBoth nations will receive diplomatic benefits.')) return;
-
     // Fetch both nations for stat updates
     const visitorNationId = proposal.proposing_nation_id;
     const hostNationId = proposal.target_nation_id;
@@ -7376,53 +7660,78 @@ async function acceptStateVisit(proposalId) {
     const relScore = relRes.data?.relation_score ?? 30;
     const hasTradeAgreement = tradeRes.data && tradeRes.data.length > 0;
     const isFirstVisit = !pastRes.data || pastRes.data.length === 0;
-    const highRelations = relScore > 70;
     const isTargetAutocracy = isGovernmentAutocracy(hostNation);
     const isVisitorAutocracy = isGovernmentAutocracy(visitorNation);
 
-    // ── Apply base benefits ──
-    const repBoost = DIPLOMACY_CONFIG.STATE_VISIT_REP_BOOST;
-    const stabBoost = DIPLOMACY_CONFIG.STATE_VISIT_STABILITY_BOOST;
-    const relBoost = DIPLOMACY_CONFIG.STATE_VISIT_RELATION_BOOST;
-
-    // Build stat updates for both nations
-    const visitorUpdates = {
-        international_reputation: Math.min(100, (visitorNation.international_reputation || 0) + repBoost),
-        stability: Math.min(100, Math.round(Number(visitorNation.stability || 0) + stabBoost))
+    // ── Read computed effects from proposal data (new data-driven approach) ──
+    // Fall back to old hardcoded values if proposal was created before the rich draft panel
+    const hasNewData = pd.computed_effects && Object.keys(pd.computed_effects).length > 0;
+    const computedEffects = hasNewData ? pd.computed_effects : {
+        relations: DIPLOMACY_CONFIG.STATE_VISIT_RELATION_BOOST,
+        soft_power: DIPLOMACY_CONFIG.STATE_VISIT_REP_BOOST,
+        stability: DIPLOMACY_CONFIG.STATE_VISIT_STABILITY_BOOST
     };
-    const hostUpdates = {
-        international_reputation: Math.min(100, (hostNation.international_reputation || 0) + repBoost),
-        stability: Math.min(100, Math.round(Number(hostNation.stability || 0) + stabBoost))
-    };
+    const totalDebt = pd.total_debt || 0;
+    const proposalRisks = pd.risks || [];
+    const visitType = pd.visit_type || 'official_state_visit';
+    const duration = pd.duration || 'moderate';
+    const agenda = pd.agenda || [];
+    const apCost = pd.ap_cost || DIPLOMACY_CONFIG.STATE_VISIT_AP;
 
-    // ── Conditional bonuses ──
+    // ── Build confirmation with full visit details ──
+    const vtLabel = STATE_VISIT_TYPES[visitType]?.label || 'State Visit';
+    const durLabel = STATE_VISIT_DURATIONS[duration]?.label || 'Moderate';
+    let confirmMsg = 'Accept ' + vtLabel + ' from ' + (pd.visitor_nation || 'Unknown') + '?\n\n';
+    confirmMsg += 'Duration: ' + durLabel + ' (' + agenda.length + ' agenda items)\n';
+    if (Object.keys(computedEffects).length > 0) {
+        confirmMsg += '\nProjected Effects:\n';
+        for (const [stat, val] of Object.entries(computedEffects)) {
+            confirmMsg += '  ' + (val > 0 ? '+' : '') + val + ' ' + stat.replace(/_/g, ' ') + '\n';
+        }
+    }
+    if (totalDebt > 0) {
+        confirmMsg += '\nEmbassy budget cost: $' + (totalDebt / 1000000).toFixed(1) + 'M\n';
+    }
+    if (!confirm(confirmMsg)) return;
+
+    // ── Apply computed effects to both nations ──
+    const visitorUpdates = {};
+    const hostUpdates = {};
     let bonusSummary = [];
 
-    // Trade agreement bonus
-    if (hasTradeAgreement) {
-        const tradeBonus = DIPLOMACY_CONFIG.STATE_VISIT_TRADE_BONUS;
-        visitorUpdates.trade_balance = Math.min(100, (visitorNation.trade_balance || 0) + tradeBonus);
-        hostUpdates.trade_balance = Math.min(100, (hostNation.trade_balance || 0) + tradeBonus);
-        bonusSummary.push('+' + tradeBonus + ' Trade Balance (trade agreement)');
+    // Map effect keys to nation stat columns
+    const effectToColumn = {
+        relations: null, // handled separately via diplomatic_relations
+        public_awareness: 'public_awareness',
+        public_opinion: 'public_opinion',
+        gov_approval: 'gov_approval',
+        trade_relations: 'trade_balance',
+        soft_power: 'international_reputation',
+        education_approval: 'education_approval',
+        military_trust: 'military_strength',
+        stability: 'stability'
+    };
+
+    for (const [stat, val] of Object.entries(computedEffects)) {
+        const col = effectToColumn[stat];
+        if (!col) continue; // relations handled below, unknown stats skipped
+        visitorUpdates[col] = Math.max(0, Math.min(100, Math.round(Number(visitorNation[col] || 0) + val)));
+        hostUpdates[col] = Math.max(0, Math.min(100, Math.round(Number(hostNation[col] || 0) + val)));
+        bonusSummary.push((val > 0 ? '+' : '') + val + ' ' + stat.replace(/_/g, ' '));
     }
 
-    // High relations bonus
-    if (highRelations) {
-        const gdpBonus = DIPLOMACY_CONFIG.STATE_VISIT_HIGH_REL_GDP_BONUS;
-        visitorUpdates.gdp_growth = Math.min(100, (visitorNation.gdp_growth || 0) + gdpBonus);
-        hostUpdates.gdp_growth = Math.min(100, (hostNation.gdp_growth || 0) + gdpBonus);
-        bonusSummary.push('+' + gdpBonus + ' GDP Growth (high relations)');
-    }
+    // ── Relation boost from computed effects ──
+    const relBoost = computedEffects.relations || DIPLOMACY_CONFIG.STATE_VISIT_RELATION_BOOST;
 
-    // First visit bonus
+    // ── First visit bonus (keep existing logic) ──
     if (isFirstVisit) {
         const firstStab = DIPLOMACY_CONFIG.STATE_VISIT_FIRST_STABILITY;
-        visitorUpdates.stability = Math.min(100, visitorUpdates.stability + firstStab);
-        hostUpdates.stability = Math.min(100, hostUpdates.stability + firstStab);
+        visitorUpdates.stability = Math.min(100, (visitorUpdates.stability ?? Math.round(Number(visitorNation.stability || 0))) + firstStab);
+        hostUpdates.stability = Math.min(100, (hostUpdates.stability ?? Math.round(Number(hostNation.stability || 0))) + firstStab);
         bonusSummary.push('+' + firstStab + ' Stability (first visit)');
     }
 
-    // Autocracy approval dice roll — applies to the visiting PM's nation if target is autocracy
+    // ── Autocracy approval dice roll (keep existing logic) ──
     let autocracyResult = null;
     if (isTargetAutocracy) {
         const roll = Math.floor(Math.random() * 12) + 1; // 1D12
@@ -7441,11 +7750,42 @@ async function acceptStateVisit(proposalId) {
         bonusSummary.push('Autocracy dice (host): rolled ' + roll + ' → ' + (approvalChange > 0 ? '+' : '') + approvalChange + ' Gov Approval (host)');
     }
 
+    // ── Track debt for logging (actual budget cost applied via addEmbassyCost below) ──
+    if (totalDebt > 0) {
+        bonusSummary.push('Embassy budget cost: +$' + (totalDebt / 1000000).toFixed(1) + 'M (visitor)');
+    }
+
+    // ── Process risks: roll dice for each risk ──
+    // risk.chance is stored as a decimal (e.g. 0.08 = 8%), so compare against Math.random()
+    const triggeredRisks = [];
+    for (const risk of proposalRisks) {
+        if (risk.chance && typeof risk.chance === 'number') {
+            const roll = Math.random();
+            if (roll < risk.chance) {
+                triggeredRisks.push(risk);
+                // Gaffe: -2 gov_approval for visitor
+                if (risk.key === 'gaffe') {
+                    visitorUpdates.gov_approval = Math.max(0, (visitorUpdates.gov_approval ?? Math.round(Number(visitorNation.gov_approval ?? 50))) - 2);
+                    bonusSummary.push('Risk triggered: ' + risk.source + ' gaffe (-2 Gov Approval)');
+                }
+            }
+        }
+        if (risk.flag) {
+            triggeredRisks.push(risk);
+            bonusSummary.push('Risk flag: ' + risk.source + ' (' + risk.key + ')');
+        }
+    }
+
     // ── Apply all updates ──
     await Promise.all([
         _supabase.from('nations').update(visitorUpdates).eq('id', visitorNationId),
         _supabase.from('nations').update(hostUpdates).eq('id', hostNationId)
     ]);
+
+    // ── Charge costs to FM embassy budget (visitor pays) ──
+    if (totalDebt > 0) {
+        await addEmbassyCost(visitorNationId, totalDebt);
+    }
 
     // Update relations
     const newRelScore = Math.min(100, relScore + relBoost);
@@ -7471,16 +7811,20 @@ async function acceptStateVisit(proposalId) {
             visitor_pm: pd.visitor_pm,
             visitor_nation: pd.visitor_nation,
             host_nation: pd.host_nation,
+            visit_type: visitType,
+            duration: duration,
+            delegation_size: pd.delegation_size,
+            agenda: agenda,
+            computed_effects: computedEffects,
+            total_debt: totalDebt,
             is_first: isFirstVisit,
             has_trade_agreement: hasTradeAgreement,
-            high_relations: highRelations,
             relation_boost: relBoost,
-            rep_boost: repBoost,
-            stability_boost: stabBoost,
             autocracy_result: autocracyResult,
+            triggered_risks: triggeredRisks,
             bonuses: bonusSummary
         },
-        ap_cost: DIPLOMACY_CONFIG.STATE_VISIT_AP,
+        ap_cost: apCost,
         applied_at_tick: currentTick,
         cooldown_until_tick: currentTick + DIPLOMACY_CONFIG.STATE_VISIT_COOLDOWN,
         processed: true
@@ -7488,6 +7832,10 @@ async function acceptStateVisit(proposalId) {
 
     // Fire event for all nations
     try {
+        const agendaTitles = agenda.map(k => {
+            const item = STATE_VISIT_AGENDA_ITEMS.find(a => a.key === k);
+            return item ? item.title : k;
+        });
         const { data: allNations } = await _supabase.from('nations').select('id');
         if (allNations && allNations.length > 0) {
             const eventRows = allNations.map(n => ({
@@ -7495,16 +7843,20 @@ async function acceptStateVisit(proposalId) {
                 event_name: 'State Visit',
                 event_type: 'state_visit',
                 category: 'Diplomatic',
-                description_chosen: pd.visitor_pm + ' of ' + pd.visitor_nation + ' conducted a State Visit to ' + pd.host_nation + '.' +
+                description_chosen: pd.visitor_pm + ' of ' + pd.visitor_nation + ' conducted a ' + vtLabel + ' to ' + pd.host_nation + '.' +
+                    ' The ' + durLabel.toLowerCase() + ' visit included ' + agendaTitles.join(', ') + '.' +
                     (isFirstVisit ? ' This historic first visit marks a new chapter in bilateral relations.' : '') +
-                    (hasTradeAgreement ? ' Trade discussions featured prominently.' : '') +
-                    (highRelations ? ' The warm reception reflected strong bilateral ties.' : ''),
+                    (triggeredRisks.length > 0 ? ' The visit was not without incident.' : ''),
                 fired_at_tick: currentTick,
                 effects: {
                     visitor_pm: pd.visitor_pm,
                     visitor_nation: pd.visitor_nation,
                     host_nation: pd.host_nation,
-                    is_first: isFirstVisit
+                    visit_type: visitType,
+                    agenda: agenda,
+                    computed_effects: computedEffects,
+                    is_first: isFirstVisit,
+                    triggered_risks: triggeredRisks
                 }
             }));
             await _supabase.from('event_log').insert(eventRows);
@@ -7515,14 +7867,28 @@ async function acceptStateVisit(proposalId) {
 
     // Build result message
     let resultMsg = 'State Visit Accepted!\n\n' +
-        pd.visitor_pm + ' visited ' + pd.host_nation + '\n\n' +
-        'Base Effects:\n' +
-        '  +' + repBoost + ' International Reputation (both)\n' +
-        '  +' + stabBoost + ' Stability (both)\n' +
-        '  +' + relBoost + ' Relations (' + relScore + ' → ' + newRelScore + ')\n';
+        pd.visitor_pm + ' visited ' + pd.host_nation + '\n' +
+        vtLabel + ' · ' + durLabel + ' · ' + agenda.length + ' agenda items\n\n' +
+        'Effects Applied:\n';
+
+    for (const [stat, val] of Object.entries(computedEffects)) {
+        resultMsg += '  ' + (val > 0 ? '+' : '') + val + ' ' + stat.replace(/_/g, ' ') + '\n';
+    }
+    resultMsg += '  +' + relBoost + ' Relations (' + relScore + ' → ' + newRelScore + ')\n';
+
+    if (totalDebt > 0) {
+        resultMsg += '\nEmbassy budget cost: +$' + (totalDebt / 1000000).toFixed(1) + 'M (visitor)\n';
+    }
+
+    if (triggeredRisks.length > 0) {
+        resultMsg += '\nRisks Triggered:\n';
+        for (const r of triggeredRisks) {
+            resultMsg += '  ⚠ ' + r.source + ': ' + r.key + '\n';
+        }
+    }
 
     if (bonusSummary.length > 0) {
-        resultMsg += '\nBonuses:\n  ' + bonusSummary.join('\n  ') + '\n';
+        resultMsg += '\nAll Bonuses:\n  ' + bonusSummary.join('\n  ') + '\n';
     }
 
     resultMsg += '\n' + pd.host_nation + ' is now on a ' + DIPLOMACY_CONFIG.STATE_VISIT_COOLDOWN + '-tick visit cooldown.';
@@ -7838,7 +8204,7 @@ function renderActionsBox() {
         { key: 'declare_war', label: 'Declare War', ap: 8, type: 'hog', comingSoon: true },
         { key: 'call_ceasefire', label: 'Call for Ceasefire', ap: 4, type: 'hog', comingSoon: true },
         { key: 'sign_alliance', label: 'Sign Alliance', ap: 6, type: 'hog', comingSoon: true },
-        { key: 'state_visit', label: 'State Visit', ap: DIPLOMACY_CONFIG.STATE_VISIT_AP || 4, type: 'hog', comingSoon: true }
+        { key: 'state_visit', label: 'State Visit', ap: DIPLOMACY_CONFIG.STATE_VISIT_AP || 4, type: 'hog' }
     ].forEach(a => { html += actionHtml(a, hasHoG, 'hog'); });
 
     // Foreign Minister
@@ -8451,6 +8817,13 @@ async function renderDraftBox() {
     if (activeDraftAction.key === 'impose_embargo_draft') {
         body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
         await renderEmbargoDraftPanel(body, statusEl);
+        return;
+    }
+
+    // Special branch for State Visit — rich two-panel builder
+    if (activeDraftAction.key === 'state_visit') {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
+        await renderStateVisitDraftPanel(body, statusEl);
         return;
     }
 
@@ -11129,7 +11502,8 @@ window.fmApprove = fmApprove;
 window.fmEscalate = fmEscalate;
 window.fmReject = fmReject;
 // State Visit exports
-window.initiateStateVisit = initiateStateVisit;
+window.renderStateVisitDraftPanel = renderStateVisitDraftPanel;
+window.submitStateVisit = submitStateVisit;
 window.acceptStateVisit = acceptStateVisit;
 window.declineStateVisit = declineStateVisit;
 // Recall Ambassador exports
