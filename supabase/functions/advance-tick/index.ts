@@ -17212,6 +17212,17 @@ async function processRegimeHealthTick(supabase, nation, currentTick) {
  * If successor exists, they take over. Otherwise, power vacuum.
  */
 async function handleRegimeCollapse(supabase, nation, currentTick) {
+    const _MONTHS_RC = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+    const currentDate = `${_MONTHS_RC[currentTick % 12]}, ${2000 + Math.floor(currentTick / 12)}`;
+
+    // Close the outgoing administration before transferring power
+    try {
+        await closeAdministration(supabase, nation.id, nation, 'regime_collapse', currentTick, currentDate, null);
+    } catch (err) {
+        console.warn('handleRegimeCollapse: could not close administration:', err);
+    }
+
     // Check for chosen successor
     const { data: successor } = await supabase
         .from('stewards')
@@ -17254,11 +17265,24 @@ async function handleRegimeCollapse(supabase, nation, currentTick) {
                 reason: 'regime_collapse',
             },
         });
+
+        // Create new administration for the successor
+        try {
+            const { data: newFaction } = await supabase
+                .from('factions').select('id, faction_name, seats')
+                .eq('id', successor.faction_id).single();
+            if (newFaction) {
+                const syntheticCoalition = { party_ids: [newFaction.id], lead_party_id: newFaction.id };
+                await createAdministration(supabase, nation.id, nation, syntheticCoalition, [newFaction], currentTick, currentDate, null);
+            }
+        } catch (err) {
+            console.warn('handleRegimeCollapse: could not create successor administration:', err);
+        }
     } else {
         // Power vacuum — highest standing faction takes over with penalties
         const { data: factions } = await supabase
             .from('factions')
-            .select('id, standing, faction_name')
+            .select('id, standing, faction_name, seats')
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party')
             .neq('id', nation.ruling_faction_id)
@@ -17289,6 +17313,14 @@ async function handleRegimeCollapse(supabase, nation, currentTick) {
                     reason: 'regime_collapse',
                 },
             });
+
+            // Create new administration for the power vacuum winner
+            try {
+                const syntheticCoalition = { party_ids: [factions.id], lead_party_id: factions.id };
+                await createAdministration(supabase, nation.id, nation, syntheticCoalition, [factions], currentTick, currentDate, null);
+            } catch (err) {
+                console.warn('handleRegimeCollapse: could not create power vacuum administration:', err);
+            }
         }
     }
 }
@@ -17656,6 +17688,21 @@ async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted,
                 funds_committed: committed,
             },
         });
+
+        // Close the old administration and create a new one for the coup leader
+        try {
+            const _MONTHS_COUP = ['January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'];
+            const currentDate = `${_MONTHS_COUP[currentTick % 12]}, ${2000 + Math.floor(currentTick / 12)}`;
+            const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
+            if (fullNation) {
+                await closeAdministration(supabase, nationId, fullNation, 'coup', currentTick, currentDate, null);
+                const syntheticCoalition = { party_ids: [factionId], lead_party_id: factionId };
+                await createAdministration(supabase, nationId, fullNation, syntheticCoalition, [faction], currentTick, currentDate, null);
+            }
+        } catch (err) {
+            console.warn('executeCoupAttempt: could not rollover administration:', err);
+        }
 
         return {
             success: true,

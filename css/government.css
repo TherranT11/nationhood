@@ -598,6 +598,10 @@
         .past-admin-card.end-coalition_collapse { border-left: 3px solid var(--orange); }
         .past-admin-card.end-coup { border-left: 3px solid #8b0000; }
         .past-admin-card.end-dissolved { border-left: 3px solid var(--text-muted); }
+        .past-admin-card.end-regime_collapse { border-left: 3px solid #8b0000; }
+        .past-admin-card.end-revolution { border-left: 3px solid #ef5350; }
+        .past-admin-card.end-power_vacuum { border-left: 3px solid var(--orange); }
+        .past-admin-card.end-impeachment { border-left: 3px solid #ce93d8; }
         .past-admin-card.current-admin { border-left: 3px solid var(--accent); }
 
         .past-admin-summary {
@@ -699,6 +703,10 @@
         .pad-end-reason.dissolved { background: rgba(150,150,150,0.15); color: var(--text-muted); }
         .pad-end-reason.pm_replaced { background: rgba(156,39,176,0.15); color: #ce93d8; }
         .pad-end-reason.current { background: rgba(200,170,110,0.15); color: var(--accent); }
+        .pad-end-reason.regime_collapse { background: rgba(139,0,0,0.2); color: #ff4444; }
+        .pad-end-reason.revolution { background: rgba(244,67,54,0.2); color: #ef5350; }
+        .pad-end-reason.power_vacuum { background: rgba(255,152,0,0.2); color: var(--orange); }
+        .pad-end-reason.impeachment { background: rgba(156,39,176,0.2); color: #ce93d8; }
 
         .pad-stat-table-toggle {
             background: var(--bg-card);
