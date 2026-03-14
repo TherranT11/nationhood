@@ -5408,6 +5408,15 @@ export const AVELIA_LAST_NAMES = [
     'Molinari', 'Saldaña'
 ];
 
+const AVELIA_NATIONS = ['Avelia'];
+
+export function getNationNames(nationName) {
+    if (AVELIA_NATIONS.includes(nationName)) {
+        return { firstNames: AVELIA_FIRST_NAMES, lastNames: AVELIA_LAST_NAMES };
+    }
+    return { firstNames: PM_FIRST_NAMES, lastNames: PM_LAST_NAMES };
+}
+
 export const IDEOLOGY_OPTIONS = [
     { tag: 'LIBERTY',         axisKey: 'liberty_equality',             direction: -1 },
     { tag: 'EQUALITY',        axisKey: 'liberty_equality',             direction: 1 },
@@ -5427,7 +5436,7 @@ export const PM_TRAIT_KEYS = [
     'media_darling', 'hardliner', 'technocrat', 'survivor', 'firebrand'
 ];
 
-export async function generatePMCandidates(supabase, nationId, factionId, currentTick) {
+export async function generatePMCandidates(supabase, nationId, factionId, currentTick, nationName = '') {
     let factionIdeology = await loadFactionIdeology(supabase, factionId);
     if (factionIdeology?._error) factionIdeology = null;
 
@@ -5457,6 +5466,7 @@ export async function generatePMCandidates(supabase, nationId, factionId, curren
     const shuffledTraits = [...PM_TRAIT_KEYS].sort(() => Math.random() - 0.5);
     const chosenTraits = shuffledTraits.slice(0, 3);
 
+    const { firstNames: candFirstPool, lastNames: candLastPool } = getNationNames(nationName);
     const usedFirstNames = new Set();
     const usedLastNames = new Set();
     const candidates = [];
@@ -5464,11 +5474,11 @@ export async function generatePMCandidates(supabase, nationId, factionId, curren
     for (let i = 0; i < 3; i++) {
         let firstName, lastName;
 
-        do { firstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)]; }
+        do { firstName = candFirstPool[Math.floor(Math.random() * candFirstPool.length)]; }
         while (usedFirstNames.has(firstName));
         usedFirstNames.add(firstName);
 
-        do { lastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)]; }
+        do { lastName = candLastPool[Math.floor(Math.random() * candLastPool.length)]; }
         while (usedLastNames.has(lastName));
         usedLastNames.add(lastName);
 
@@ -7073,7 +7083,7 @@ export async function respondToCoupInvitation(supabase, factionId, nationId, inv
  * Execute a coup attempt (v2 overhaul).
  * New requirements: standing >= 15, seats >= 10%, funds >= $30M.
  */
-export async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted, currentTick) {
+export async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted, currentTick, nationName = '') {
     // Load faction data
     const { data: faction } = await supabase
         .from('factions')
@@ -7228,8 +7238,9 @@ export async function executeCoupAttempt(supabase, factionId, nationId, fundsCom
             await supabase.from('stewards').update({ is_alive: false }).eq('id', leaderSteward.id);
 
             // Generate new steward
-            const newFirstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)];
-            const newLastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)];
+            const { firstNames: coupFirstPool, lastNames: coupLastPool } = getNationNames(nationName);
+            const newFirstName = coupFirstPool[Math.floor(Math.random() * coupFirstPool.length)];
+            const newLastName = coupLastPool[Math.floor(Math.random() * coupLastPool.length)];
             await supabase.from('stewards').insert({
                 faction_id: factionId,
                 nation_id: nationId,

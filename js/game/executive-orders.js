@@ -15,7 +15,7 @@
 import { GAME_CONFIG, deductAP } from './config.js';
 import { isGovernmentPresidential } from './government-types.js';
 import { adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
-import { PM_FIRST_NAMES, PM_LAST_NAMES } from './political-actions.js';
+import { PM_FIRST_NAMES, PM_LAST_NAMES, getNationNames } from './political-actions.js';
 
 // ─── Executive Order Config Constants ───
 
@@ -73,9 +73,10 @@ export function canIssueExecutiveOrder(nation, currentFaction, presidentFactionI
     return currentFaction.id === presidentFactionId;
 }
 
-function randomMinisterName() {
-    const first = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)];
-    const last = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)];
+function randomMinisterName(nationName = '') {
+    const { firstNames, lastNames } = getNationNames(nationName);
+    const first = firstNames[Math.floor(Math.random() * firstNames.length)];
+    const last = lastNames[Math.floor(Math.random() * lastNames.length)];
     return { first, last };
 }
 
@@ -110,7 +111,7 @@ async function getOverreachCount(supabase, nationId, currentTick) {
 
 // ─── Executive Order: Acting Minister ───
 
-export async function issueActingMinister(supabase, nationId, factionId, ministryKey) {
+export async function issueActingMinister(supabase, nationId, factionId, ministryKey, nationName = '') {
     const currentTick = await getCurrentTick(supabase);
 
     // Check max acting ministers
@@ -146,7 +147,7 @@ export async function issueActingMinister(supabase, nationId, factionId, ministr
     if (!apResult.success) return apResult;
 
     // Generate name
-    const name = randomMinisterName();
+    const name = randomMinisterName(nationName);
 
     // Insert executive order
     const { data: order, error: orderErr } = await supabase

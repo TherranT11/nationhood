@@ -1161,8 +1161,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     } catch (adminErr) { console.warn('Could not close administration on impeachment:', adminErr); }
 
                     // Generate new VP name as acting president
-                    const vpFirst = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)];
-                    const vpLast = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)];
+                    const { firstNames: vpFirstPool, lastNames: vpLastPool } = getNationNames(nation.name);
+                    const vpFirst = vpFirstPool[Math.floor(Math.random() * vpFirstPool.length)];
+                    const vpLast = vpLastPool[Math.floor(Math.random() * vpLastPool.length)];
 
                     // Create new president record (VP succession — same party, serves out remainder)
                     const remainingTicks = Math.max(1, (president.term_ends_tick || newTick) - newTick);

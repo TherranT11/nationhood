@@ -6995,10 +6995,11 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
             }
 
             // 3. Generate replacement ambassador
+            const { firstNames: ambFirstPool, lastNames: ambLastPool } = getNationNames(nation.name);
             let newFirst, newLast;
-            do { newFirst = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)]; }
+            do { newFirst = ambFirstPool[Math.floor(Math.random() * ambFirstPool.length)]; }
             while (newFirst === amb.ambassador_first_name);
-            do { newLast = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)]; }
+            do { newLast = ambLastPool[Math.floor(Math.random() * ambLastPool.length)]; }
             while (newLast === amb.ambassador_last_name);
             const newAge = 35 + Math.floor(Math.random() * 20); // 35-54
 
@@ -8304,7 +8305,7 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
                     .eq('candidate_type', 'presidential');
                 if (!count || count === 0) {
                     console.log(`Generating presidential candidates for faction ${party.id} (manual election)`);
-                    await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
+                    await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential', nation.name);
                 }
             }
         }
@@ -8901,7 +8902,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
         } else {
             // Fallback 2: generate fresh candidate
             console.warn(`[PresElection] Faction fallback also null for ${winner.candidate_name} in ${nation.name} — generating emergency candidate`);
-            const emergencyCandidates = await generatePresidentCandidates(supabase, nation.id, winner.faction_id, currentTick, 'presidential');
+            const emergencyCandidates = await generatePresidentCandidates(supabase, nation.id, winner.faction_id, currentTick, 'presidential', nation.name);
             if (emergencyCandidates && emergencyCandidates.length > 0) {
                 await inauguratePresident(supabase, emergencyCandidates[0], nation.id, winner.faction_id, currentTick, outgoingPresident);
                 console.log(`Emergency president inaugurated: ${emergencyCandidates[0].first_name} ${emergencyCandidates[0].last_name}`);
@@ -9279,7 +9280,7 @@ function tallyFloorVotes(bill) {
  *
  * @param {string} candidateType - 'presidential' (default)
  */
-async function generatePresidentCandidates(supabase, nationId, factionId, currentTick, candidateType = 'presidential') {
+async function generatePresidentCandidates(supabase, nationId, factionId, currentTick, candidateType = 'presidential', nationName = '') {
     let factionIdeology = await loadFactionIdeology(supabase, factionId);
     if (factionIdeology?._error) factionIdeology = null;
 
@@ -9311,6 +9312,7 @@ async function generatePresidentCandidates(supabase, nationId, factionId, curren
     const shuffledTraits = [...PM_TRAIT_KEYS].sort(() => Math.random() - 0.5);
     const chosenTraits = shuffledTraits.slice(0, 3);
 
+    const { firstNames: candFirstPool, lastNames: candLastPool } = getNationNames(nationName);
     const usedFirstNames = new Set();
     const usedLastNames = new Set();
     const candidates = [];
@@ -9318,11 +9320,11 @@ async function generatePresidentCandidates(supabase, nationId, factionId, curren
     for (let i = 0; i < 3; i++) {
         let firstName, lastName;
 
-        do { firstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)]; }
+        do { firstName = candFirstPool[Math.floor(Math.random() * candFirstPool.length)]; }
         while (usedFirstNames.has(firstName));
         usedFirstNames.add(firstName);
 
-        do { lastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)]; }
+        do { lastName = candLastPool[Math.floor(Math.random() * candLastPool.length)]; }
         while (usedLastNames.has(lastName));
         usedLastNames.add(lastName);
 
@@ -9714,7 +9716,7 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
             if (isIncumbentParty && isTermLimited) {
                 // === TERM-LIMITED: incumbent has served max terms, party must pick a new candidate ===
                 console.log(`TERM LIMIT: President ${incumbentPresident.first_name} ${incumbentPresident.last_name} has served ${incumbentPresident.terms_served} term(s) (limit: ${termLimit}). ${party.faction_name} must choose a new candidate. (${nation.name})`);
-                await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
+                await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential', nation.name);
             } else if (isIncumbentParty) {
                 // === INCUMBENT LOCK-IN: auto-create incumbent as their party's candidate ===
                 // The incumbent president is automatically locked in as their faction's nominee.
@@ -9769,7 +9771,7 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
                 }
             } else {
                 // Normal candidate generation for non-incumbent parties
-                await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
+                await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential', nation.name);
             }
         } catch (partyErr) {
             console.error(`Error generating presidential candidate for party ${party.faction_name} (${party.id}) in ${nation.name}:`, partyErr);
@@ -16221,6 +16223,15 @@ const AVELIA_LAST_NAMES = [
     'Molinari', 'Saldaña'
 ];
 
+const AVELIA_NATIONS = ['Avelia'];
+
+function getNationNames(nationName) {
+    if (AVELIA_NATIONS.includes(nationName)) {
+        return { firstNames: AVELIA_FIRST_NAMES, lastNames: AVELIA_LAST_NAMES };
+    }
+    return { firstNames: PM_FIRST_NAMES, lastNames: PM_LAST_NAMES };
+}
+
 const IDEOLOGY_OPTIONS = [
     { tag: 'LIBERTY',         axisKey: 'liberty_equality',             direction: -1 },
     { tag: 'EQUALITY',        axisKey: 'liberty_equality',             direction: 1 },
@@ -16240,7 +16251,7 @@ const PM_TRAIT_KEYS = [
     'media_darling', 'hardliner', 'technocrat', 'survivor', 'firebrand'
 ];
 
-async function generatePMCandidates(supabase, nationId, factionId, currentTick) {
+async function generatePMCandidates(supabase, nationId, factionId, currentTick, nationName = '') {
     let factionIdeology = await loadFactionIdeology(supabase, factionId);
     if (factionIdeology?._error) factionIdeology = null;
 
@@ -16270,6 +16281,7 @@ async function generatePMCandidates(supabase, nationId, factionId, currentTick) 
     const shuffledTraits = [...PM_TRAIT_KEYS].sort(() => Math.random() - 0.5);
     const chosenTraits = shuffledTraits.slice(0, 3);
 
+    const { firstNames: candFirstPool, lastNames: candLastPool } = getNationNames(nationName);
     const usedFirstNames = new Set();
     const usedLastNames = new Set();
     const candidates = [];
@@ -16277,11 +16289,11 @@ async function generatePMCandidates(supabase, nationId, factionId, currentTick) 
     for (let i = 0; i < 3; i++) {
         let firstName, lastName;
 
-        do { firstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)]; }
+        do { firstName = candFirstPool[Math.floor(Math.random() * candFirstPool.length)]; }
         while (usedFirstNames.has(firstName));
         usedFirstNames.add(firstName);
 
-        do { lastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)]; }
+        do { lastName = candLastPool[Math.floor(Math.random() * candLastPool.length)]; }
         while (usedLastNames.has(lastName));
         usedLastNames.add(lastName);
 
@@ -17926,7 +17938,7 @@ async function respondToCoupInvitation(supabase, factionId, nationId, invitation
  * Execute a coup attempt (v2 overhaul).
  * New requirements: standing >= 15, seats >= 10%, funds >= $30M.
  */
-async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted, currentTick) {
+async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted, currentTick, nationName = '') {
     // Load faction data
     const { data: faction } = await supabase
         .from('factions')
@@ -18083,8 +18095,9 @@ async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted,
             await supabase.from('stewards').update({ is_alive: false }).eq('id', leaderSteward.id);
 
             // Generate new steward
-            const newFirstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)];
-            const newLastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)];
+            const { firstNames: coupFirstPool, lastNames: coupLastPool } = getNationNames(nationName);
+            const newFirstName = coupFirstPool[Math.floor(Math.random() * coupFirstPool.length)];
+            const newLastName = coupLastPool[Math.floor(Math.random() * coupLastPool.length)];
             await supabase.from('stewards').insert({
                 faction_id: factionId,
                 nation_id: nationId,
@@ -20494,8 +20507,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     } catch (adminErr) { console.warn('Could not close administration on impeachment:', adminErr); }
 
                     // Generate new VP name as acting president
-                    const vpFirst = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)];
-                    const vpLast = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)];
+                    const { firstNames: vpFirstPool, lastNames: vpLastPool } = getNationNames(nation.name);
+                    const vpFirst = vpFirstPool[Math.floor(Math.random() * vpFirstPool.length)];
+                    const vpLast = vpLastPool[Math.floor(Math.random() * vpLastPool.length)];
 
                     // Create new president record (VP succession — same party, serves out remainder)
                     const remainingTicks = Math.max(1, (president.term_ends_tick || newTick) - newTick);

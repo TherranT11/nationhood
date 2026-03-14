@@ -3634,7 +3634,7 @@ async function confirmExecutiveOrder() {
     let result;
     try {
         if (eoSelectedType === 'acting_minister') {
-            result = await issueActingMinister(_supabase, currentNation.id, currentFaction.id, eoSelectedParams.ministryKey);
+            result = await issueActingMinister(_supabase, currentNation.id, currentFaction.id, eoSelectedParams.ministryKey, currentNation.name);
         } else if (eoSelectedType === 'tax_adjustment') {
             result = await issueTaxAdjustment(_supabase, currentNation.id, currentFaction.id, eoSelectedParams.taxType, eoSelectedParams.direction);
         } else if (eoSelectedType === 'price_controls') {

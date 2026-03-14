@@ -220,7 +220,7 @@ async function initPresident() {
         const ticksUntil = upcomingElection ? upcomingElection.election_tick - currentTick : null;
         if (ticksUntil !== null && ticksUntil >= 1 && ticksUntil <= GAME_CONFIG.PRESIDENTIAL_CANDIDATE_LEAD_TICKS) {
             try {
-                await generatePresidentCandidates(_supabase, currentNation.id, currentFaction.id, currentTick, 'presidential');
+                await generatePresidentCandidates(_supabase, currentNation.id, currentFaction.id, currentTick, 'presidential', currentNation.name);
                 const { data: freshRows } = await _supabase
                     .from('pm_candidates')
                     .select('*')

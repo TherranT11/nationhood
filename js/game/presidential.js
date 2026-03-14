@@ -8,7 +8,7 @@ import { isParliamentaryDemocracy, isPresidentialRepublic } from './government-t
 import { loadFactionIdeology } from './ideology.js';
 import { enactBill, failBill } from './bills.js';
 import { adjustMomentumAll } from './momentum.js';
-import { PM_FIRST_NAMES, PM_LAST_NAMES, PM_TRAIT_KEYS, getWeightedIdeologies, selectPMCandidate, weightedRandomPick, autoAppointPartyLeaderAsPM } from './political-actions.js';
+import { PM_FIRST_NAMES, PM_LAST_NAMES, PM_TRAIT_KEYS, getWeightedIdeologies, selectPMCandidate, weightedRandomPick, autoAppointPartyLeaderAsPM, getNationNames } from './political-actions.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fireBillEvent } from './event-helpers.js';
@@ -32,7 +32,7 @@ function tallyFloorVotes(bill) {
  *
  * @param {string} candidateType - 'presidential' (default)
  */
-export async function generatePresidentCandidates(supabase, nationId, factionId, currentTick, candidateType = 'presidential') {
+export async function generatePresidentCandidates(supabase, nationId, factionId, currentTick, candidateType = 'presidential', nationName = '') {
     let factionIdeology = await loadFactionIdeology(supabase, factionId);
     if (factionIdeology?._error) factionIdeology = null;
 
@@ -64,6 +64,7 @@ export async function generatePresidentCandidates(supabase, nationId, factionId,
     const shuffledTraits = [...PM_TRAIT_KEYS].sort(() => Math.random() - 0.5);
     const chosenTraits = shuffledTraits.slice(0, 3);
 
+    const { firstNames: candFirstPool, lastNames: candLastPool } = getNationNames(nationName);
     const usedFirstNames = new Set();
     const usedLastNames = new Set();
     const candidates = [];
@@ -71,11 +72,11 @@ export async function generatePresidentCandidates(supabase, nationId, factionId,
     for (let i = 0; i < 3; i++) {
         let firstName, lastName;
 
-        do { firstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)]; }
+        do { firstName = candFirstPool[Math.floor(Math.random() * candFirstPool.length)]; }
         while (usedFirstNames.has(firstName));
         usedFirstNames.add(firstName);
 
-        do { lastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)]; }
+        do { lastName = candLastPool[Math.floor(Math.random() * candLastPool.length)]; }
         while (usedLastNames.has(lastName));
         usedLastNames.add(lastName);
 
@@ -467,7 +468,7 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
             if (isIncumbentParty && isTermLimited) {
                 // === TERM-LIMITED: incumbent has served max terms, party must pick a new candidate ===
                 console.log(`TERM LIMIT: President ${incumbentPresident.first_name} ${incumbentPresident.last_name} has served ${incumbentPresident.terms_served} term(s) (limit: ${termLimit}). ${party.faction_name} must choose a new candidate. (${nation.name})`);
-                await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
+                await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential', nation.name);
             } else if (isIncumbentParty) {
                 // === INCUMBENT LOCK-IN: auto-create incumbent as their party's candidate ===
                 // The incumbent president is automatically locked in as their faction's nominee.
@@ -522,7 +523,7 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
                 }
             } else {
                 // Normal candidate generation for non-incumbent parties
-                await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
+                await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential', nation.name);
             }
         } catch (partyErr) {
             console.error(`Error generating presidential candidate for party ${party.faction_name} (${party.id}) in ${nation.name}:`, partyErr);

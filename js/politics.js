@@ -3,7 +3,7 @@ import { initPage, formatCurrency } from './common.js';
 import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './party-icons.js';
 import { tickToDate, escapeHtml as utilEscapeHtml, getIdeologyClass } from './utils.js';
-import { fetchActiveCoalition, loadSeats, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, ensureBlocApprovals, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, PM_FIRST_NAMES, PM_LAST_NAMES, loadNationIdeologies, getFullIdeologyProfile, getIdeologyLabel, IDEOLOGY_AXES, selectPresidentCandidate, generatePresidentCandidates } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, ensureBlocApprovals, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, PM_FIRST_NAMES, PM_LAST_NAMES, getNationNames, loadNationIdeologies, getFullIdeologyProfile, getIdeologyLabel, IDEOLOGY_AXES, selectPresidentCandidate, generatePresidentCandidates } from './game-common.js';
 import { isAutocracy } from './game/government-types.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
 
@@ -136,7 +136,7 @@ initPage('politics', async (state) => {
         : { data: [] };
 
     // Generate deterministic deputy leader and party whip names from faction id
-    const officerNames = generateOfficerNames(f.id);
+    const officerNames = generateOfficerNames(f.id, nation.name);
 
     // Fetch previous tick's gov_approval for delta display
     const { data: prevSnap } = await _supabase
@@ -249,7 +249,8 @@ initPage('politics', async (state) => {
  * Generate deterministic officer names from faction UUID.
  * Uses the UUID bytes to seed a simple selection from name pools.
  */
-function generateOfficerNames(factionId) {
+function generateOfficerNames(factionId, nationName = '') {
+    const { firstNames, lastNames } = getNationNames(nationName);
     // Parse hex characters from UUID to get seed values
     const hex = factionId.replace(/-/g, '');
     const seedA = parseInt(hex.substring(0, 4), 16);
@@ -258,10 +259,10 @@ function generateOfficerNames(factionId) {
     const seedD = parseInt(hex.substring(12, 16), 16);
 
     return {
-        deputyFirst: PM_FIRST_NAMES[seedA % PM_FIRST_NAMES.length],
-        deputyLast: PM_LAST_NAMES[seedB % PM_LAST_NAMES.length],
-        whipFirst: PM_FIRST_NAMES[seedC % PM_FIRST_NAMES.length],
-        whipLast: PM_LAST_NAMES[seedD % PM_LAST_NAMES.length]
+        deputyFirst: firstNames[seedA % firstNames.length],
+        deputyLast: lastNames[seedB % lastNames.length],
+        whipFirst: firstNames[seedC % firstNames.length],
+        whipLast: lastNames[seedD % lastNames.length]
     };
 }
 
@@ -1006,14 +1007,15 @@ function initAutocracyStewardClaims(f, nation, stewardRows, regimePillars) {
                 }
 
                 // Generate steward identity
-                const firstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)];
+                const { firstNames: stewFirstPool, lastNames: stewLastPool } = getNationNames(nation.name);
+                const firstName = stewFirstPool[Math.floor(Math.random() * stewFirstPool.length)];
                 const existingLastNames = new Set(
                     (stewardRows || []).filter(s => s.is_alive !== false).map(s => s.last_name)
                 );
                 let lastName;
                 do {
-                    lastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)];
-                } while (existingLastNames.has(lastName) && existingLastNames.size < PM_LAST_NAMES.length);
+                    lastName = stewLastPool[Math.floor(Math.random() * stewLastPool.length)];
+                } while (existingLastNames.has(lastName) && existingLastNames.size < stewLastPool.length);
 
                 const age = 35 + Math.floor(Math.random() * 30);
 

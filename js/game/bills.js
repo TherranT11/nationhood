@@ -12,7 +12,7 @@ import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
 import { fetchActiveCoalition } from './government-structure.js';
 import { resolveNoConfidence } from './elections.js';
-import { PM_FIRST_NAMES, PM_LAST_NAMES } from './political-actions.js';
+import { PM_FIRST_NAMES, PM_LAST_NAMES, getNationNames } from './political-actions.js';
 import { allocateSeatsByVotes } from './election-simulation.js';
 import { repealActiveLaw } from './repeal-helper.js';
 import { fireBillEvent } from './event-helpers.js';
@@ -2760,10 +2760,11 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
             }
 
             // 3. Generate replacement ambassador
+            const { firstNames: ambFirstPool, lastNames: ambLastPool } = getNationNames(nation.name);
             let newFirst, newLast;
-            do { newFirst = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)]; }
+            do { newFirst = ambFirstPool[Math.floor(Math.random() * ambFirstPool.length)]; }
             while (newFirst === amb.ambassador_first_name);
-            do { newLast = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)]; }
+            do { newLast = ambLastPool[Math.floor(Math.random() * ambLastPool.length)]; }
             while (newLast === amb.ambassador_last_name);
             const newAge = 35 + Math.floor(Math.random() * 20); // 35-54
 
