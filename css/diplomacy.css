@@ -358,12 +358,14 @@
 /* ── DIPLOMATIC ACTIONS ── */
 .role-header {
   font-family: var(--font-mono);
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--text-dim);
-  padding: 10px 14px 4px;
+  padding: 12px 14px 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 2px;
 }
 .action-item {
   display: flex;
@@ -375,6 +377,10 @@
 }
 .action-item:hover { background: var(--bg-hover); }
 .action-item.is-active { background: var(--bg-4); }
+.role-header.role-header-hog { color: #ffb74d; }
+.role-header.role-header-fm { color: #64b5f6; }
+.role-header.role-header-mot { color: #81c784; }
+.role-header.role-header-amb { color: #ba68c8; }
 .role-header.role-disabled { opacity: 0.35; }
 .action-item.action-disabled {
   opacity: 0.35;
@@ -1467,7 +1473,7 @@
 
   /* ── Diplomatic Actions ── */
   .action-item { padding: 7px 10px; }
-  .role-header { padding: 10px 10px 4px; }
+  .role-header { padding: 10px 10px 5px; }
 
   /* ── Negotiations ── */
   .neg-row { padding: 10px 10px; }

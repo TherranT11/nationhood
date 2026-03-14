@@ -2608,7 +2608,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
         actions += `
             <div class="action-card" style="margin-bottom:10px;">
                 <div class="action-header">
-                    <span class="action-title">Head of Government Actions</span>
+                    <span class="action-title" style="color:#ffb74d;">Head of Government Actions</span>
                 </div>
                 <p class="action-desc">As Head of Government, you may authorize major diplomatic decisions.</p>
                 <button class="action-btn" disabled>Declare War (Coming Soon)</button>
@@ -2646,7 +2646,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
         actions += `
             <div class="action-card" style="margin-bottom:10px;">
                 <div class="action-header">
-                    <span class="action-title">Foreign Minister Actions</span>
+                    <span class="action-title" style="color:#64b5f6;">Foreign Minister Actions</span>
                 </div>
                 <p class="action-desc">As Foreign Minister, you oversee diplomatic proposals and ambassador assignments.</p>
                 ${fmButtons}
@@ -2676,7 +2676,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
         actions += `
             <div class="action-card" style="margin-bottom:10px;">
                 <div class="action-header">
-                    <span class="action-title">Ambassador Actions</span>
+                    <span class="action-title" style="color:#ba68c8;">Ambassador Actions</span>
                 </div>
                 <p class="action-desc">As Ambassador to ${escapeHtml(targetNation.name)}, you can negotiate directly.</p>
                 ${ambWarningHTML}
@@ -7832,7 +7832,7 @@ function renderActionsBox() {
     }
 
     // Head of Government
-    html += '<div class="role-header' + (hasHoG ? '' : ' role-disabled') + '">Head of Government</div>';
+    html += '<div class="role-header role-header-hog' + (hasHoG ? '' : ' role-disabled') + '">Head of Government</div>';
     [
         { key: 'declare_war', label: 'Declare War', ap: 8, type: 'hog', comingSoon: true },
         { key: 'call_ceasefire', label: 'Call for Ceasefire', ap: 4, type: 'hog', comingSoon: true },
@@ -7841,7 +7841,7 @@ function renderActionsBox() {
     ].forEach(a => { html += actionHtml(a, hasHoG, 'hog'); });
 
     // Foreign Minister
-    html += '<div class="role-header' + (hasFM ? '' : ' role-disabled') + '">Foreign Minister</div>';
+    html += '<div class="role-header role-header-fm' + (hasFM ? '' : ' role-disabled') + '">Foreign Minister</div>';
     [
         { key: 'appoint_ambassador', label: 'Appoint Ambassador', ap: 1, type: 'fm' },
         { key: 'recall_ambassador', label: 'Recall Ambassador', ap: 1, type: 'fm' },
@@ -7852,7 +7852,7 @@ function renderActionsBox() {
     ].forEach(a => { html += actionHtml(a, hasFM, 'fm'); });
 
     // Minister of Trade
-    html += '<div class="role-header' + (hasMoT ? '' : ' role-disabled') + '">Minister of Trade</div>';
+    html += '<div class="role-header role-header-mot' + (hasMoT ? '' : ' role-disabled') + '">Minister of Trade</div>';
     [
         { key: 'trade_agreement', label: 'Trade Agreement', ap: 2, type: 'mot' }
     ].forEach(a => { html += actionHtml(a, hasMoT, 'mot'); });
@@ -7865,7 +7865,7 @@ function renderActionsBox() {
     ].forEach(a => { html += actionHtml(a, hasMoT, 'mot'); });
 
     // Ambassador
-    html += '<div class="role-header' + (hasAmb ? '' : ' role-disabled') + '">Ambassador</div>';
+    html += '<div class="role-header role-header-amb' + (hasAmb ? '' : ' role-disabled') + '">Ambassador</div>';
     [
         { key: 'minor_initiative', label: 'Minor Diplomatic Initiative', ap: 2, type: 'amb' },
         { key: 'send_message', label: 'Send Message', ap: 0, type: 'amb' }

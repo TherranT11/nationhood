@@ -955,9 +955,9 @@ function renderFeaturedGDP(nation) {
 
     // GDP growth label
     var gdpLabel, tagColor, tagBorder;
-    if (monthlyPct < -1) { gdpLabel = 'Collapse'; tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; }
-    else if (monthlyPct < 0) { gdpLabel = 'Recession'; tagColor = 'var(--n-orange)'; tagBorder = 'rgba(249,115,22,0.3)'; }
-    else if (monthlyPct < 0.5) { gdpLabel = 'Stagnant'; tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; }
+    if (monthlyPct < -1) { gdpLabel = 'Recession'; tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; }
+    else if (monthlyPct < 0) { gdpLabel = 'Stagnant'; tagColor = 'var(--n-orange)'; tagBorder = 'rgba(249,115,22,0.3)'; }
+    else if (monthlyPct < 0.5) { gdpLabel = 'No Growth'; tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; }
     else if (monthlyPct < 3) { gdpLabel = 'Growing'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
     else { gdpLabel = 'Booming'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
 
@@ -966,11 +966,11 @@ function renderFeaturedGDP(nation) {
 
     // Scale items
     var scaleItems = [
-        { label: 'Collapse', range: '<0%', active: monthlyPct < -1 },
-        { label: 'Recession', range: '0-0.5%', active: monthlyPct >= -1 && monthlyPct < 0 },
-        { label: 'Stagnant', range: '0.5-70%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
-        { label: 'Growing', range: '1.0-3.00%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
-        { label: 'Booming', range: '>3.00%', active: monthlyPct >= 3 }
+        { label: 'Recession', range: '< -1%', active: monthlyPct < -1 },
+        { label: 'Stagnant', range: '-1% to 0%', active: monthlyPct >= -1 && monthlyPct < 0 },
+        { label: 'No Growth', range: '0% to 0.5%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
+        { label: 'Growing', range: '0.5% to 3%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
+        { label: 'Booming', range: '> 3%', active: monthlyPct >= 3 }
     ];
 
     // Sparkline
@@ -1129,9 +1129,9 @@ function renderFeaturedGDPGrowth(nation) {
 
     // Growth label
     var gdpLabel;
-    if (monthlyPct < -1) { gdpLabel = 'Collapse'; }
-    else if (monthlyPct < 0) { gdpLabel = 'Recession'; }
-    else if (monthlyPct < 0.5) { gdpLabel = 'Stagnant'; }
+    if (monthlyPct < -1) { gdpLabel = 'Recession'; }
+    else if (monthlyPct < 0) { gdpLabel = 'Stagnant'; }
+    else if (monthlyPct < 0.5) { gdpLabel = 'No Growth'; }
     else if (monthlyPct < 3) { gdpLabel = 'Growing'; }
     else { gdpLabel = 'Booming'; }
 
@@ -1149,11 +1149,11 @@ function renderFeaturedGDPGrowth(nation) {
 
     // Scale items
     var scaleItems = [
-        { label: 'Collapse', range: '<0%', active: monthlyPct < -1 },
-        { label: 'Recession', range: '0-0.5%', active: monthlyPct >= -1 && monthlyPct < 0 },
-        { label: 'Stagnant', range: '0.5-70%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
-        { label: 'Growing', range: '1.0-3.00%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
-        { label: 'Booming', range: '>3.00%', active: monthlyPct >= 3 }
+        { label: 'Recession', range: '< -1%', active: monthlyPct < -1 },
+        { label: 'Stagnant', range: '-1% to 0%', active: monthlyPct >= -1 && monthlyPct < 0 },
+        { label: 'No Growth', range: '0% to 0.5%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
+        { label: 'Growing', range: '0.5% to 3%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
+        { label: 'Booming', range: '> 3%', active: monthlyPct >= 3 }
     ];
 
     // Sparkline (large chart)
