@@ -12769,7 +12769,7 @@ function getAutocracyLoyaltyDecay(regimeHealth) {
     return -5; // COLLAPSED tier — matches getRegimeHealthTier
 }
 
-async function processLoyaltyTick(supabase, nation) {
+async function processLoyaltyTick(supabase, nation, currentTick) {
     const rulingId = nation.ruling_faction_id;
     if (!rulingId) return;
 
@@ -12777,7 +12777,7 @@ async function processLoyaltyTick(supabase, nation) {
 
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, loyalty, seats')
+        .select('id, faction_name, loyalty, seats')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -12829,6 +12829,27 @@ async function processLoyaltyTick(supabase, nation) {
             const decayRate = getAutocracyLoyaltyDecay(regimeHealth);
             loyalty += decayRate;
             loyalty = Math.max(0, Math.min(GAME_CONFIG.LOYALTY_CAP, Math.round(loyalty * 10) / 10));
+
+            // Generate events for loyalty threshold crossings
+            const oldLoyalty = faction.loyalty ?? 50;
+            const loyaltyThresholds = [
+                { level: 20, dir: 'below', msg: 'is near open rebellion' },
+                { level: 35, dir: 'below', msg: 'loyalty is dangerously low' },
+                { level: 50, dir: 'below', msg: 'is growing disloyal' },
+            ];
+            for (const t of loyaltyThresholds) {
+                const crossed = t.dir === 'below'
+                    ? (oldLoyalty >= t.level && loyalty < t.level)
+                    : (oldLoyalty < t.level && loyalty >= t.level);
+                if (crossed && currentTick != null) {
+                    await supabase.from('campaign_actions').insert({
+                        party_id: faction.id, nation_id: nation.id,
+                        action_type: 'loyalty_milestone', tick_performed: currentTick,
+                        result: { message: `${faction.faction_name || 'A faction'} ${t.msg}`,
+                            old_value: oldLoyalty, new_value: loyalty, threshold: t.level },
+                    });
+                }
+            }
 
             await supabase.from('factions')
                 .update({ loyalty })
@@ -12912,7 +12933,7 @@ async function processStandingTick(supabase, nation, currentTick) {
 
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, standing, last_standing_action_tick')
+        .select('id, faction_name, standing, last_standing_action_tick')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -12920,6 +12941,7 @@ async function processStandingTick(supabase, nation, currentTick) {
 
     for (const faction of factions) {
         let standing = faction.standing ?? 30;
+        const oldStanding = standing;
         const lastStandingTick = faction.last_standing_action_tick;
 
         // Relevance decay: if 3+ ticks since last standing-building action
@@ -12934,6 +12956,25 @@ async function processStandingTick(supabase, nation, currentTick) {
         standing = Math.max(0, Math.min(90, standing));
 
         if (standing !== (faction.standing ?? 30)) {
+            // Generate events for standing threshold crossings
+            const standingThresholds = [
+                { level: 15, dir: 'below', msg: 'is politically irrelevant' },
+                { level: 25, dir: 'below', msg: 'standing is critically low' },
+            ];
+            for (const t of standingThresholds) {
+                const crossed = t.dir === 'below'
+                    ? (oldStanding >= t.level && standing < t.level)
+                    : (oldStanding < t.level && standing >= t.level);
+                if (crossed) {
+                    await supabase.from('campaign_actions').insert({
+                        party_id: faction.id, nation_id: nation.id,
+                        action_type: 'standing_milestone', tick_performed: currentTick,
+                        result: { message: `${faction.faction_name || 'A faction'} ${t.msg}`,
+                            old_value: oldStanding, new_value: standing, threshold: t.level },
+                    });
+                }
+            }
+
             await supabase.from('factions')
                 .update({ standing })
                 .eq('id', faction.id);
@@ -12986,7 +13027,7 @@ const REGIME_PILLAR_DEFS = [
 
 function d2() { return 1 + Math.floor(Math.random() * 2); } // 1 or 2
 
-async function processRegimePillars(supabase, nation) {
+async function processRegimePillars(supabase, nation, currentTick) {
     if (!isAutocracy(nation)) return;
 
     // Fetch existing pillars
@@ -13051,6 +13092,27 @@ async function processRegimePillars(supabase, nation) {
         }
 
         support = Math.max(0, Math.min(100, support));
+
+        // Generate event when pillar crosses key thresholds
+        const oldSupport = row.support;
+        const pillarThresholds = [
+            { level: 30, dir: 'below', message: `${def.name} support is dangerously low` },
+            { level: 50, dir: 'below', message: `${def.name} confidence is wavering` },
+            { level: 30, dir: 'above', message: `${def.name} support has recovered` },
+        ];
+        for (const t of pillarThresholds) {
+            const crossed = t.dir === 'below'
+                ? (oldSupport >= t.level && support < t.level)
+                : (oldSupport < t.level && support >= t.level);
+            if (crossed && nation.ruling_faction_id && currentTick != null) {
+                await supabase.from('campaign_actions').insert({
+                    party_id: nation.ruling_faction_id, nation_id: nation.id,
+                    action_type: 'pillar_threshold', tick_performed: currentTick,
+                    result: { message: t.message, pillar: def.key, pillar_name: def.name,
+                        old_value: oldSupport, new_value: support, threshold: t.level, direction: t.dir },
+                });
+            }
+        }
 
         await supabase.from('regime_pillars')
             .update({ support, updated_at: new Date().toISOString() })
@@ -17243,6 +17305,27 @@ async function processRegimeHealthTick(supabase, nation, currentTick) {
     // Update nation
     await supabase.from('nations').update({ regime_health: rh }).eq('id', nation.id);
 
+    // Generate events for regime health threshold crossings
+    const oldRH = Number(nation.regime_health ?? 80);
+    const thresholds = [
+        { level: 60, dir: 'below', message: 'Regime stability is weakening' },
+        { level: 40, dir: 'below', message: 'The regime is in decline — loyalty eroding' },
+        { level: 20, dir: 'below', message: 'CRITICAL — regime on the brink of collapse' },
+        { level: 60, dir: 'above', message: 'Regime stability has recovered' },
+    ];
+    for (const t of thresholds) {
+        const crossed = t.dir === 'below'
+            ? (oldRH >= t.level && rh < t.level)
+            : (oldRH < t.level && rh >= t.level);
+        if (crossed && nation.ruling_faction_id) {
+            await supabase.from('campaign_actions').insert({
+                party_id: nation.ruling_faction_id, nation_id: nation.id,
+                action_type: 'regime_health_threshold', tick_performed: currentTick,
+                result: { message: t.message, old_value: oldRH, new_value: rh, threshold: t.level, direction: t.dir },
+            });
+        }
+    }
+
     // Check for collapse (rh === 0)
     if (rh <= 0) {
         await handleRegimeCollapse(supabase, nation, currentTick);
@@ -20382,11 +20465,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             catch (e) { console.error(`[advanceTick] Loyalty demand expiry failed for ${nation.name} (non-fatal):`, e); }
 
             // Faction loyalty
-            try { await processLoyaltyTick(supabase, nation); }
+            try { await processLoyaltyTick(supabase, nation, newTick); }
             catch (e) { console.error(`[advanceTick] Loyalty tick failed for ${nation.name} (non-fatal):`, e); }
 
             // Regime pillars decay & bonus
-            try { await processRegimePillars(supabase, nation); }
+            try { await processRegimePillars(supabase, nation, newTick); }
             catch (e) { console.error(`[advanceTick] Regime pillars failed for ${nation.name} (non-fatal):`, e); }
 
             // Steward stats tick
