@@ -1074,7 +1074,11 @@ function renderArticles() {
                 '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
             '</div>' : '';
 
+            const pTypeBadge = p.policy_type === 'structural' ? '<span class="policy-type-badge structural">Structural</span>'
+                : p.policy_type === 'lever' ? '<span class="policy-type-badge lever">Lever</span>' : '';
+
             return '<div class="article">' +
+                pTypeBadge +
                 '<div class="article-number">Article ' + art.article_number + '</div>' +
                 '<div class="article-title">' + (p.policy_name || '') + ' ' + ideoHTML + '</div>' +
                 '<div class="article-description">' + (p.description || '') + '</div>' +
@@ -2401,7 +2405,8 @@ function onSponsorAddSectorChange() {
                 }).join(' ');
                 const opposedClass = p.isOpposed ? ' opposed' : '';
                 const opposedBadge = p.isOpposed ? ' <span style="display:inline-block;background:var(--red);color:#fff;padding:2px 7px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Opposed</span>' : '';
-                return `<div class="policy-option${opposedClass}" data-sponsor-policy-id="${p.id}" onclick="selectSponsorPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name} ${ideoHTML}${opposedBadge}</div><div class="policy-option-desc">${p.description || ''}</div></div>`;
+                const pTypeBadge = p.policy_type === 'structural' ? '<span class="policy-type-badge structural">Structural</span>' : p.policy_type === 'lever' ? '<span class="policy-type-badge lever">Lever</span>' : '';
+                return `<div class="policy-option${opposedClass}" data-sponsor-policy-id="${p.id}" onclick="selectSponsorPolicy('${p.id}')">${pTypeBadge}<div class="policy-option-name">${p.policy_name} ${ideoHTML}${opposedBadge}</div><div class="policy-option-desc">${p.description || ''}</div></div>`;
             }).join('');
     }
 
