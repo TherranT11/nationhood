@@ -6109,6 +6109,16 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         }
     }
 
+    // 4b. Catch-all: vacate any remaining ministries held by this faction
+    //     (covers edge cases where party holds ministries but isn't in an active coalition)
+    const { error: catchAllMinErr } = await supabase
+        .from('ministries')
+        .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
+        .eq('nation_id', nationId)
+        .eq('party_id', factionId)
+        .eq('is_active', true);
+    if (catchAllMinErr) console.warn('disbandParty: catch-all ministry vacate failed:', catchAllMinErr);
+
     // 5. Zero seats and redistribute to remaining parties
     const { data: dyingFaction } = await supabase
         .from('factions').select('seats').eq('id', factionId).single();
