@@ -1,0 +1,566 @@
+/* Nationhood — Party Leadership Page
+   Design language v4: warm olive-dark, monospace system text, color as status only */
+
+:root {
+    /* Backgrounds — warm olive-dark */
+    --bg-body: #141412;
+    --bg-panel: #1a1a17;
+    --bg-card: #1e1e1a;
+    --bg-input: #1e1e1a;
+    --bg-hover: #242420;
+    --bg-track: #2a2a25;
+
+    /* Text — warm tones */
+    --text-bright: #e8e4d9;
+    --text-primary: #c8c4b8;
+    --text-secondary: #8a8778;
+    --text-muted: #6b6a5e;
+    --text-dim: #5c5a50;
+    --text-faint: #3d3b34;
+
+    /* Borders */
+    --border-main: rgba(255,255,255,0.06);
+    --border-0: rgba(255,255,255,0.06);
+    --border-hair: rgba(255,255,255,0.04);
+
+    /* Status colors */
+    --green: #5cb85c;
+    --green-faint: rgba(92,184,92,0.08);
+    --green-border: rgba(92,184,92,0.2);
+    --red: #d9534f;
+    --red-faint: rgba(217,83,79,0.08);
+    --red-border: rgba(217,83,79,0.2);
+    --blue: #5b9bd5;
+    --orange: #d48a3c;
+    --amber: #c8a64e;
+    --teal: #5aafa5;
+    --purple: #8b7ec8;
+
+    /* Electability tier colors */
+    --elect-vlow: var(--red);
+    --elect-low: var(--orange);
+    --elect-mod: var(--amber);
+    --elect-high: var(--teal);
+    --elect-vhigh: var(--green);
+
+    /* Trait category colors */
+    --cat-ap: var(--amber);
+    --cat-electoral: var(--blue);
+    --cat-legislative: var(--purple);
+    --cat-governance: var(--green);
+    --cat-diplomatic: var(--teal);
+    --cat-blocs: var(--orange);
+
+    /* Accent */
+    --accent: #c8a64e;
+    --accent-hover: #b8963e;
+
+    /* Shadows */
+    --shadow-card: rgba(0,0,0,0.4);
+
+    /* Fonts */
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+}
+
+body {
+    background-color: var(--bg-body);
+    font-family: var(--font-ui);
+}
+
+/* ═══════════════════════════════════════
+   Main Container
+   ═══════════════════════════════════════ */
+.pl-container {
+    max-width: 960px;
+    margin: 0 auto;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-0);
+    border-radius: 3px;
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 80px);
+}
+
+/* ═══════════════════════════════════════
+   Header Bar
+   ═══════════════════════════════════════ */
+.pl-header {
+    height: 48px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-hair);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    flex-shrink: 0;
+}
+
+.pl-header-left {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.pl-header-title {
+    font-family: var(--font-ui);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-bright);
+    line-height: 1.2;
+}
+
+.pl-header-sub {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--text-dim);
+    line-height: 1.2;
+}
+
+.pl-header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.pl-header-cost {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.pl-appoint-btn {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 6px 14px;
+    border-radius: 2px;
+    border: 1px solid var(--accent);
+    background: rgba(200,166,78,0.10);
+    color: var(--accent);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.pl-appoint-btn:hover {
+    background: rgba(200,166,78,0.20);
+    color: var(--text-bright);
+}
+.pl-appoint-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════
+   Two-Panel Layout
+   ═══════════════════════════════════════ */
+.pl-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+/* ═══════════════════════════════════════
+   Candidate List (Left Panel)
+   ═══════════════════════════════════════ */
+.pl-list {
+    width: 280px;
+    border-right: 1px solid var(--border-0);
+    padding: 10px 0;
+    overflow-y: auto;
+    flex-shrink: 0;
+}
+
+.pl-list-row {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-hair);
+    cursor: pointer;
+    transition: background 0.12s;
+    border-left: 3px solid transparent;
+}
+.pl-list-row:hover {
+    background: rgba(255,255,255,0.02);
+}
+.pl-list-row.active {
+    background: rgba(255,255,255,0.03);
+    border-left-color: var(--blue);
+}
+
+.pl-list-row-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.pl-list-name {
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-bright);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 180px;
+}
+
+.pl-list-cost {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.pl-list-age {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.pl-list-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 4px;
+}
+
+.pl-list-ideology {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 8.5px;
+}
+
+.pl-ideology-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.pl-list-electability {
+    font-family: var(--font-mono);
+    font-size: 8.5px;
+}
+
+.pl-list-electability-label {
+    color: var(--text-dim);
+}
+
+.pl-current-pill {
+    font-family: var(--font-mono);
+    font-size: 7.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--green);
+    border: 1px solid var(--green-border);
+    background: var(--green-faint);
+    padding: 1px 5px;
+    border-radius: 2px;
+    margin-left: 6px;
+}
+
+/* ═══════════════════════════════════════
+   Role Tabs (Leader / Deputy / Whip)
+   ═══════════════════════════════════════ */
+.pl-role-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border-0);
+    background: var(--bg-card);
+    flex-shrink: 0;
+}
+
+.pl-role-tab {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    text-align: center;
+}
+.pl-role-tab:hover { color: var(--text-primary); }
+.pl-role-tab.active {
+    color: var(--text-bright);
+    border-bottom-color: var(--accent);
+}
+
+/* ═══════════════════════════════════════
+   Candidate Detail (Right Panel)
+   ═══════════════════════════════════════ */
+.pl-detail {
+    flex: 1;
+    padding: 16px 20px;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.pl-detail-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+/* Identity Block */
+.pl-identity {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.pl-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border-0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-dim);
+    flex-shrink: 0;
+}
+
+.pl-identity-info {
+    flex: 1;
+}
+
+.pl-detail-name {
+    font-family: var(--font-ui);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-bright);
+    line-height: 1.2;
+}
+
+.pl-detail-age {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.pl-detail-ideology {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    margin-top: 4px;
+}
+
+.pl-cost-box {
+    padding: 8px 14px;
+    border-radius: 2px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.pl-cost-number {
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.pl-cost-label {
+    font-family: var(--font-mono);
+    font-size: 8px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 2px;
+}
+
+/* ═══════════════════════════════════════
+   Electability Bar
+   ═══════════════════════════════════════ */
+.pl-electability {
+    background: var(--bg-card);
+    border: 1px solid var(--border-0);
+    border-radius: 2px;
+    padding: 10px 12px;
+    margin-bottom: 16px;
+}
+
+.pl-electability-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.pl-electability-title {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+}
+
+.pl-electability-badge {
+    font-family: var(--font-mono);
+    font-size: 8.5px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 2px;
+}
+
+.pl-electability-track {
+    height: 4px;
+    background: var(--bg-track);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.pl-electability-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s;
+}
+
+.pl-electability-scale {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 7px;
+    color: var(--text-dim);
+}
+
+/* ═══════════════════════════════════════
+   Trait Sections
+   ═══════════════════════════════════════ */
+.pl-section-header {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    margin-top: 16px;
+}
+
+.pl-trait-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-0);
+    border-radius: 2px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    border-left: 3px solid transparent;
+}
+
+.pl-trait-card.strength {
+    border-left-color: var(--green);
+}
+
+.pl-trait-card.weakness {
+    border-left-color: var(--red);
+}
+
+.pl-trait-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.pl-trait-name-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pl-trait-name {
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-bright);
+}
+
+.pl-trait-category {
+    font-family: var(--font-mono);
+    font-size: 7.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 1px 5px;
+    border-radius: 2px;
+}
+
+.pl-trait-cost {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+}
+
+.pl-trait-cost.positive {
+    color: var(--green);
+}
+
+.pl-trait-cost.negative {
+    color: var(--red);
+}
+
+.pl-trait-effect {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+/* ═══════════════════════════════════════
+   Cost Breakdown
+   ═══════════════════════════════════════ */
+.pl-breakdown {
+    background: var(--bg-card);
+    border: 1px solid var(--border-0);
+    border-radius: 2px;
+    padding: 8px 10px;
+    margin-top: 16px;
+}
+
+.pl-breakdown-title {
+    font-family: var(--font-mono);
+    font-size: 8px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+}
+
+.pl-breakdown-math {
+    font-family: var(--font-mono);
+    font-size: 10px;
+}
+
+.pl-breakdown-math .pos { color: var(--green); font-weight: 700; }
+.pl-breakdown-math .neg { color: var(--red); font-weight: 700; }
+.pl-breakdown-math .op { color: var(--text-dim); }
+.pl-breakdown-math .raw { color: var(--text-secondary); }
+.pl-breakdown-math .final { font-weight: 800; }
