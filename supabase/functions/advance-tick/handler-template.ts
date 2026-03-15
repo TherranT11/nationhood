@@ -1341,7 +1341,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Presidential pre-election candidate generation, term end safety net, + selection timeout
         await triggerPresidentialCandidateSelection(supabase, nation, newTick);
         await processPresidentialTermEnd(supabase, nation, newTick);
-        await processPresidentCandidateTimeout(supabase, nation, newTick);
         await processParliamentaryPMTimeout(supabase, nation, newTick);
 
         // Incumbent campaign bonuses (+2 approval/tick during pre-election window)

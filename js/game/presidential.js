@@ -55,10 +55,11 @@ export async function registerPartyLeaderAsCandidate(supabase, nationId, faction
     const traitKey = PM_TRAIT_KEYS[Math.floor(Math.random() * PM_TRAIT_KEYS.length)];
 
     // Clear any existing presidential candidates for this faction
-    await supabase.from('pm_candidates').delete()
+    const { error: delErr } = await supabase.from('pm_candidates').delete()
         .eq('nation_id', nationId)
         .eq('faction_id', factionId)
         .eq('candidate_type', 'presidential');
+    if (delErr) console.warn(`Failed to clear old presidential candidates for faction ${factionId}:`, delErr.message);
 
     // Insert party leader as pre-selected candidate
     const { data, error } = await supabase.from('pm_candidates').insert({
@@ -554,22 +555,60 @@ export async function autoSelectPresidentialCandidates(supabase, nation, current
 
     if (!allParties) return;
 
+    // Check for active incumbent (respect incumbent lock-in)
+    const { data: incumbentPresident } = await supabase
+        .from('presidents')
+        .select('id, faction_id, first_name, last_name, age, ideology, trait, terms_served')
+        .eq('nation_id', nation.id)
+        .eq('is_active', true)
+        .order('elected_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    const termLimit = getPresidentialTermLimit(nation);
+
     for (const party of allParties) {
         if (registeredFactions.has(party.id)) continue;
         try {
-            console.log(`Auto-registering party leader as presidential candidate for ${party.faction_name} in ${nation.name}`);
-            await registerPartyLeaderAsCandidate(supabase, nation.id, party.id, currentTick);
+            const isIncumbentParty = incumbentPresident && party.id === incumbentPresident.faction_id;
+            const isTermLimited = termLimit !== null && isIncumbentParty && (incumbentPresident.terms_served || 1) >= termLimit;
+
+            if (isIncumbentParty && !isTermLimited) {
+                // Incumbent lock-in: use incumbent president's data, not party leader
+                console.log(`Auto-registering INCUMBENT ${incumbentPresident.first_name} ${incumbentPresident.last_name} as candidate for ${party.faction_name} in ${nation.name}`);
+                let factionIdeology = await loadFactionIdeology(supabase, incumbentPresident.faction_id);
+                if (factionIdeology?._error) factionIdeology = null;
+                let ideologyAxis = 'tradition_progress';
+                let ideologyDirection = 1;
+                if (factionIdeology) {
+                    const axes = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
+                    let maxAbs = 0;
+                    for (const axis of axes) {
+                        const val = Math.abs(factionIdeology[axis] || 0);
+                        if (val > maxAbs) { maxAbs = val; ideologyAxis = axis; ideologyDirection = (factionIdeology[axis] || 0) >= 0 ? 1 : -1; }
+                    }
+                }
+                const { error: delErr } = await supabase.from('pm_candidates').delete()
+                    .eq('nation_id', nation.id).eq('faction_id', party.id).eq('candidate_type', 'presidential');
+                if (delErr) console.warn(`[autoSelect] delete error for incumbent party ${party.faction_name}:`, delErr.message);
+
+                const { error: insErr } = await supabase.from('pm_candidates').insert({
+                    nation_id: nation.id, faction_id: party.id,
+                    first_name: incumbentPresident.first_name, last_name: incumbentPresident.last_name,
+                    age: incumbentPresident.age, ideology: incumbentPresident.ideology || 'PROGRESS',
+                    ideology_axis: ideologyAxis, ideology_direction: ideologyDirection,
+                    trait_key: incumbentPresident.trait || PM_TRAIT_KEYS[0],
+                    created_at_tick: currentTick, candidate_type: 'presidential', selected: true
+                });
+                if (insErr) console.error(`[autoSelect] Error creating incumbent candidate:`, insErr);
+            } else {
+                console.log(`Auto-registering party leader as presidential candidate for ${party.faction_name} in ${nation.name}`);
+                await registerPartyLeaderAsCandidate(supabase, nation.id, party.id, currentTick);
+            }
         } catch (e) {
             console.error(`Error auto-registering presidential candidate for ${party.faction_name} in ${nation.name}:`, e);
         }
     }
-}
-
-/**
- * No-op: presidential candidates are now auto-registered from party leaders.
- */
-export async function processPresidentCandidateTimeout(supabase, nation, currentTick) {
-    return;
 }
 
 /**

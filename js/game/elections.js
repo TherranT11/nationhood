@@ -1316,12 +1316,6 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
     let electionResults;
     if (isPresidential && normalizedElectionType === 'presidential') {
         // Ensure candidates exist — generate for parties that have none
-        const { data: allParties } = await supabase
-            .from('factions')
-            .select('id')
-            .eq('nation_id', nation.id)
-            .eq('faction_type', 'party');
-
         // Ensure all parties have their leader registered as a candidate
         await autoSelectPresidentialCandidates(supabase, nation, currentTick);
 
@@ -1914,7 +1908,12 @@ export async function processPresidentialElectionResult(supabase, nation, comple
         } else {
             // Fallback 2: register party leader and use that
             console.warn(`[PresElection] Faction fallback also null for ${winner.candidate_name} in ${nation.name} — using party leader`);
-            const leaderCandidate = await registerPartyLeaderAsCandidate(supabase, nation.id, winner.faction_id, currentTick);
+            let leaderCandidate = null;
+            try {
+                leaderCandidate = await registerPartyLeaderAsCandidate(supabase, nation.id, winner.faction_id, currentTick);
+            } catch (regErr) {
+                console.error(`[PresElection] registerPartyLeaderAsCandidate threw for ${winner.candidate_name}:`, regErr);
+            }
             if (leaderCandidate) {
                 await inauguratePresident(supabase, leaderCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
                 console.log(`President inaugurated from party leader: ${leaderCandidate.first_name} ${leaderCandidate.last_name}`);

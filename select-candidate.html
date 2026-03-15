@@ -24,7 +24,7 @@
 
 import { _supabase } from './js/supabase-client.js';
 import { initPage, getAdminNationOverride, getAdminFactionOverride } from './js/common.js';
-import { getIdeologyClass, escapeHtml } from './js/utils.js';
+import { escapeHtml } from './js/utils.js';
 import {
     initGameConfigForNation,
     isPresidentialRepublic, isGovernmentAutocracy,
@@ -93,8 +93,6 @@ const cfg = ROLE_CONFIG[ROLE] || ROLE_CONFIG.pm;
 let currentNation = null;
 let currentFaction = null;
 let candidates = [];
-let traits = {};
-let selectedCandidateId = null; // PM / President (UUID)
 let selectedCandidateIndex = null; // Ambassador (index)
 
 // Ambassador-specific state
@@ -252,100 +250,37 @@ function generateAmbassadorCandidates() {
     selectedCandidateIndex = null;
 }
 
-// ── Shared helpers ──
-async function loadTraits() {
-    const { data: traitRows } = await _supabase.from('leader_traits').select('*');
-    (traitRows || []).forEach(t => { traits[t.trait_key] = t; });
-}
-
 // ═══════════════════════════════════════
 //  Render
 // ═══════════════════════════════════════
 function renderCandidates() {
     const page = document.getElementById('sc-page');
 
-    let cardsHTML;
-    if (ROLE === 'ambassador') {
-        cardsHTML = candidates.map((c, i) => `
-            <div class="sc-card" id="sc-card-${i}" onclick="selectCandidate(${i})">
-                <div class="sc-card-header">
-                    <div class="sc-card-avatar">\u{1F464}</div>
-                    <div class="sc-card-name">${c.firstName} ${c.lastName}</div>
-                    <div class="sc-card-age">Age ${c.age}</div>
-                </div>
-                <div class="sc-card-party">
-                    <div class="sc-party-label">Party Affiliation</div>
-                    <div class="sc-party-tag">
-                        <span class="sc-party-tag-dot" style="background:${c.partyColor}"></span>
-                        ${escapeHtml(c.partyName)}
-                    </div>
-                </div>
-                <div class="sc-card-footer">
-                    <div class="sc-select-indicator">Select</div>
+    const cardsHTML = candidates.map((c, i) => `
+        <div class="sc-card" id="sc-card-${i}" onclick="selectCandidate(${i})">
+            <div class="sc-card-header">
+                <div class="sc-card-avatar">\u{1F464}</div>
+                <div class="sc-card-name">${c.firstName} ${c.lastName}</div>
+                <div class="sc-card-age">Age ${c.age}</div>
+            </div>
+            <div class="sc-card-party">
+                <div class="sc-party-label">Party Affiliation</div>
+                <div class="sc-party-tag">
+                    <span class="sc-party-tag-dot" style="background:${c.partyColor}"></span>
+                    ${escapeHtml(c.partyName)}
                 </div>
             </div>
-        `).join('');
-    } else {
-        cardsHTML = candidates.map(c => {
-            const trait = traits[c.trait_key] || {};
-            const ideoClass = getIdeologyClass(c.ideology);
-            const avatarIcon = ROLE === 'pm' ? '\u{1F464}' : '\u{1F3DB}';
-            const shiftSuffix = ROLE === 'president' ? ' if elected' : '';
+            <div class="sc-card-footer">
+                <div class="sc-select-indicator">Select</div>
+            </div>
+        </div>
+    `).join('');
 
-            return `
-                <div class="sc-card" id="sc-card-${c.id}" onclick="selectCandidate('${c.id}')">
-                    <div class="sc-card-header">
-                        <div class="sc-card-avatar">${avatarIcon}</div>
-                        <div class="sc-card-name">${c.first_name} ${c.last_name}</div>
-                        <div class="sc-card-age">Age ${c.age}</div>
-                    </div>
+    const description = 'Select a candidate to serve as your nation\'s Ambassador to <strong>' + escapeHtml(targetNation.name) + '</strong>.';
 
-                    <div class="sc-card-ideology">
-                        <div class="sc-ideology-label">Ideology</div>
-                        <div class="sc-ideology-tag ${ideoClass}">${c.ideology}</div>
-                        <div class="sc-ideology-shift">+15 shift toward ${c.ideology.charAt(0) + c.ideology.slice(1).toLowerCase()}${shiftSuffix}</div>
-                    </div>
-
-                    <div class="sc-card-trait">
-                        <div class="sc-trait-label">Leader Trait</div>
-                        <div class="sc-trait-name">${ROLE === 'pm' ? '\u{1F3F7}\uFE0F ' : ''}${trait.trait_name || c.trait_key}</div>
-                        <div class="sc-trait-desc">${trait.description || ''}</div>
-                        <div class="sc-trait-effect upside">${ROLE === 'pm' ? '\u25B2 ' : ''}${trait.upside || 'Unknown'}</div>
-                        <div class="sc-trait-effect downside">${ROLE === 'pm' ? '\u25BC ' : ''}${trait.downside || 'Unknown'}</div>
-                    </div>
-
-                    <div class="sc-card-footer">
-                        <div class="sc-select-indicator">Select</div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
-
-    // Election countdown for president
-    let extraHeaderHTML = '';
-    if (ROLE === 'president') {
-        const ticksRemaining = window._upcomingElectionTick && window._currentTick
-            ? window._upcomingElectionTick - window._currentTick
-            : null;
-        if (ticksRemaining && ticksRemaining > 0) {
-            extraHeaderHTML = `<div style="color:var(--text-secondary);font-size:0.8rem;margin-top:8px;">Election in ${ticksRemaining} month${ticksRemaining !== 1 ? 's' : ''}</div>`;
-        }
-    }
-
-    const description = ROLE === 'ambassador'
-        ? 'Select a candidate to serve as your nation\'s Ambassador to <strong>' + escapeHtml(targetNation.name) + '</strong>.'
-        : cfg.description;
-
-    const confirmWarning = ROLE === 'ambassador'
-        ? (isAutocracy ? 'The ambassador will be appointed immediately.' : 'A confirmation vote will be held in Parliament (51% required).')
-        : cfg.confirmWarning;
-
-    const confirmBtnLabel = ROLE === 'ambassador'
-        ? 'Nominate Ambassador <span class="ap-cost">1 AP</span>'
-        : cfg.confirmLabel;
-
-    const gridClass = ROLE === 'ambassador' ? 'sc-candidates auto-grid' : 'sc-candidates';
+    const confirmWarning = isAutocracy
+        ? 'The ambassador will be appointed immediately.'
+        : 'A confirmation vote will be held in Parliament (51% required).';
 
     page.innerHTML = `
         <div class="sc-header">
@@ -356,19 +291,18 @@ function renderCandidates() {
                 <div class="sc-party-dot"></div>
                 <span>${cfg.badgePrefix} <strong>${escapeHtml(currentFaction.faction_name)}</strong></span>
             </div>
-            ${extraHeaderHTML}
         </div>
 
-        ${ROLE === 'ambassador' ? '<div class="sc-regen"><a onclick="regenerate()">Re-generate candidates</a></div>' : ''}
+        <div class="sc-regen"><a onclick="regenerate()">Re-generate candidates</a></div>
 
-        <div class="${gridClass}" id="sc-candidates">
+        <div class="sc-candidates auto-grid" id="sc-candidates">
             ${cardsHTML}
         </div>
 
         <div class="sc-confirm-section" id="sc-confirm-section">
             <div class="sc-confirm-summary" id="sc-confirm-summary">Select a candidate above</div>
             <button class="sc-confirm-btn" id="sc-confirm-btn" disabled onclick="confirmSelection()">
-                ${confirmBtnLabel}
+                Nominate Ambassador <span class="ap-cost">1 AP</span>
             </button>
             <div class="sc-confirm-warning">${confirmWarning}</div>
         </div>
@@ -381,30 +315,13 @@ function renderCandidates() {
 function selectCandidate(idOrIndex) {
     document.querySelectorAll('.sc-card').forEach(el => el.classList.remove('selected'));
 
-    if (ROLE === 'ambassador') {
-        selectedCandidateIndex = idOrIndex;
-        document.getElementById('sc-card-' + idOrIndex).classList.add('selected');
+    selectedCandidateIndex = idOrIndex;
+    document.getElementById('sc-card-' + idOrIndex).classList.add('selected');
 
-        const c = candidates[idOrIndex];
-        document.getElementById('sc-confirm-summary').innerHTML =
-            'Nominate <strong>' + escapeHtml(c.firstName) + ' ' + escapeHtml(c.lastName) + '</strong> (' +
-            escapeHtml(c.partyName) + ') as Ambassador to <strong>' + escapeHtml(targetNation.name) + '</strong>';
-    } else {
-        selectedCandidateId = idOrIndex;
-        document.getElementById('sc-card-' + idOrIndex).classList.add('selected');
-
-        const candidate = candidates.find(c => c.id === idOrIndex);
-        const trait = traits[candidate.trait_key] || {};
-
-        const verb = ROLE === 'pm' ? 'Appoint' : 'Nominate';
-        const suffix = ROLE === 'pm'
-            ? ' \u00B7 ' + candidate.ideology + ' (+5 shift)'
-            : ' \u00B7 ' + candidate.ideology;
-
-        document.getElementById('sc-confirm-summary').innerHTML =
-            verb + ' <strong>' + escapeHtml(candidate.first_name) + ' ' + escapeHtml(candidate.last_name) + '</strong> \u2014 ' +
-            '<span style="color:var(--accent)">' + (trait.trait_name || candidate.trait_key) + '</span>' + suffix;
-    }
+    const c = candidates[idOrIndex];
+    document.getElementById('sc-confirm-summary').innerHTML =
+        'Nominate <strong>' + escapeHtml(c.firstName) + ' ' + escapeHtml(c.lastName) + '</strong> (' +
+        escapeHtml(c.partyName) + ') as Ambassador to <strong>' + escapeHtml(targetNation.name) + '</strong>';
 
     document.getElementById('sc-confirm-btn').disabled = false;
 }
@@ -413,8 +330,7 @@ function selectCandidate(idOrIndex) {
 //  Confirm selection
 // ═══════════════════════════════════════
 async function confirmSelection() {
-    if (ROLE === 'ambassador') { await confirmAmbassador(); return; }
-    // PM and President roles no longer use candidate selection — party leader is automatic
+    await confirmAmbassador();
 }
 
 
