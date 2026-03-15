@@ -98,8 +98,19 @@ export function distributeVotes(parties, tags, blocCount, tally, blocApprovals, 
             multiplier = Math.max(MULT_MIN, Math.min(MULT_MAX, 1.0 + alignAvg * IDEOLOGY_RATE));
         }
 
-        // Weight = softmax(approval) × ideology_multiplier
-        const w = Math.max(0, softmaxExp * multiplier);
+        // Electability modifier: 50 is neutral.
+        // Below 50: penalty grows as distance from 50, / 10 (e.g. 40 → -1.0%)
+        // Above 50: bonus grows as distance from 50, / 20 (e.g. 70 → +1.0%)
+        const electability = party.electability ?? 50;
+        let electMod = 1.0;
+        if (electability <= 50) {
+            electMod = 1.0 - (50 - electability) / 1000;
+        } else {
+            electMod = 1.0 + (electability - 50) / 2000;
+        }
+
+        // Weight = softmax(approval) × ideology_multiplier × electability_modifier
+        const w = Math.max(0, softmaxExp * multiplier * electMod);
         weights.push({ id: party.id, weight: w });
         totalWeight += w;
     }

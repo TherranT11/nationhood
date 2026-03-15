@@ -21561,7 +21561,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
                                 // Clear leader from faction
                                 const { error: retireErr } = await supabase.from('factions')
-                                    .update({ leader_first_name: null, leader_last_name: null, leader_age: null })
+                                    .update({ leader_first_name: null, leader_last_name: null, leader_age: null, electability: 50 })
                                     .eq('id', f.id);
                                 if (retireErr) {
                                     console.warn(`[LeaderAging] Failed to clear retired leader ${leaderName}:`, retireErr.message);
