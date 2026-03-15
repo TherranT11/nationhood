@@ -77,7 +77,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects } from './js/game-common.js';
+import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkSovereigntyConstraints } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -813,6 +813,47 @@ async function renderAgreementsTab() {
             const agreementType = pd.agreement_type || ag.proposal_type || 'diplomatic_initiative';
             const typeLabel = INITIATIVE_TYPES[agreementType]?.label || '';
 
+            // Environmental compliance status for tier-3 active initiatives
+            let complianceHTML = '';
+            if (ag.proposal_tier === 3 && ag.status === 'active' && pd.compliance_state) {
+                const cs = pd.compliance_state[currentNation.id];
+                if (cs) {
+                    const failures = cs.consecutive_failures || 0;
+                    const total = cs.failures || 0;
+                    const statusClass = failures === 0 ? 'compliance-ok' : failures >= 3 ? 'compliance-critical' : 'compliance-warn';
+                    const statusLabel = failures === 0 ? 'Compliant' : failures >= 3 ? 'Critical Non-Compliance' : 'Non-Compliant (' + failures + ' consecutive)';
+                    const lastViolations = cs.last_violations || [];
+                    complianceHTML = `
+                        <div class="compliance-status ${statusClass}">
+                            <span class="compliance-icon">${failures === 0 ? '✓' : '⚠'}</span>
+                            <span class="compliance-label">${statusLabel}</span>
+                            ${total > 0 ? '<span class="compliance-total">' + total + ' total violation' + (total !== 1 ? 's' : '') + '</span>' : ''}
+                            ${lastViolations.length > 0 ? '<div class="compliance-details">' + lastViolations.map(v => '<span class="compliance-violation">' + escapeHtml(v) + '</span>').join('') + '</div>' : ''}
+                        </div>
+                    `;
+                }
+            }
+
+            // Sovereignty constraints notice for tier-3 active initiatives
+            let sovereigntyHTML = '';
+            if (ag.proposal_tier === 3 && ag.status === 'active') {
+                const blockedSectors = [];
+                for (const art of articles) {
+                    if (art.status === 'struck' || art.suspended) continue;
+                    const constraints = SOVEREIGNTY_CONSTRAINTS?.[art.type];
+                    if (!constraints) continue;
+                    for (const c of constraints) {
+                        if (c.condition(art.config || {})) {
+                            blockedSectors.push(...c.blocked_sectors.map(s => s));
+                        }
+                    }
+                }
+                if (blockedSectors.length > 0) {
+                    const unique = [...new Set(blockedSectors)];
+                    sovereigntyHTML = '<div class="sovereignty-notice"><span class="sovereignty-icon">🔒</span> Sovereignty constraints active: ' + unique.map(s => '<span class="sovereignty-sector">' + escapeHtml(s) + '</span>').join(', ') + ' policy changes restricted</div>';
+                }
+            }
+
             html += `
                 <div class="agreement-card"${isExpiredOrWithdrawn ? ' style="opacity:0.7;border-left:3px solid var(--amber);"' : ''}>
                     <div class="agreement-card-header">
@@ -828,6 +869,8 @@ async function renderAgreementsTab() {
                         ${durationYears ? ' &middot; ' + durationYears + ' year' + (durationYears !== 1 ? 's' : '') : ''}
                     </div>
                     ${termsHTML ? '<div class="agreement-card-terms">' + termsHTML + '</div>' : ''}
+                    ${complianceHTML}
+                    ${sovereigntyHTML}
                     ${effectsHTML ? '<div class="agreement-card-effects">' + effectsHTML + '</div>' : ''}
                     <div class="agreement-card-dates">
                         <span>Signed: ${signedTick != null ? tickToDate(signedTick) : '—'}</span>
@@ -1269,7 +1312,7 @@ async function withdrawAgreement(agreementId) {
     // Calculate relations penalty (2x the bonus)
     let totalRel = 0;
     articles.forEach((art, i) => {
-        if (!struckIndices.has(i)) totalRel += art.relations || 0;
+        if (!struckIndices.has(i)) totalRel += (art.effects ? art.effects.relations : art.relations) || 0;
     });
     const penalty = totalRel * 2;
 
@@ -1286,7 +1329,7 @@ async function withdrawAgreement(agreementId) {
     // Set agreement to withdrawn
     const { error: updateErr } = await _supabase
         .from('diplomatic_proposals')
-        .update({ status: 'withdrawn', withdrawn_at_tick: currentTick })
+        .update({ status: 'withdrawn', withdrawn_at_tick: currentTick, terminated_at_tick: currentTick })
         .eq('id', agreementId);
 
     if (updateErr) { alert('Error withdrawing: ' + updateErr.message); return; }

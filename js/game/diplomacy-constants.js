@@ -1462,3 +1462,105 @@ export const MAJOR_INITIATIVE_ARTICLE_TYPES = {
     }
 };
 
+// ── SOVEREIGNTY CONSTRAINTS ──
+
+/**
+ * Maps active Major Initiative article types + configs to domestic policy sectors
+ * that become restricted while the treaty is active.
+ * Key = article_type, value = array of { condition, blocked_sectors, message }
+ */
+export const SOVEREIGNTY_CONSTRAINTS = {
+    open_borders: [
+        {
+            condition: (config) => config.scope === 'full',
+            blocked_sectors: ['IMMIGRATION'],
+            message: 'Full Open Borders agreement prohibits unilateral immigration policy changes'
+        },
+        {
+            condition: (config) => config.scope === 'work_residency' || config.scope === 'labor_mobility',
+            blocked_sectors: ['LABOR'],
+            message: 'Open Borders labor provisions restrict unilateral labor policy changes'
+        }
+    ],
+    mutual_extradition: [
+        {
+            condition: (config) => config.scope && config.scope.includes('political_offenses'),
+            blocked_sectors: ['GOVERNANCE'],
+            message: 'Mutual Extradition treaty covering political offenses restricts governance policy changes'
+        }
+    ],
+    environmental_accord: [
+        {
+            condition: (config) => config.pollution_standards === 'strict' || config.pollution_standards === 'binding',
+            blocked_sectors: ['ENERGY'],
+            message: 'Environmental Accord binding standards restrict unilateral energy policy changes'
+        }
+    ]
+};
+
+/**
+ * Check if a policy's major_sector conflicts with any active Major Initiative sovereignty constraints.
+ * @param {Array} activeProposals - Active tier-3 proposals involving this nation
+ * @param {string} policySector - The major_sector of the policy being proposed
+ * @returns {{ blocked: boolean, message: string|null, initiative_name: string|null }}
+ */
+export function checkSovereigntyConstraints(activeProposals, policySector) {
+    if (!activeProposals || !policySector) return { blocked: false, message: null, initiative_name: null };
+
+    for (const proposal of activeProposals) {
+        const pd = proposal.proposal_data || {};
+        const articles = pd.articles || [];
+
+        for (const art of articles) {
+            if (art.status === 'struck' || art.suspended) continue;
+
+            const constraints = SOVEREIGNTY_CONSTRAINTS[art.type];
+            if (!constraints) continue;
+
+            for (const constraint of constraints) {
+                if (constraint.blocked_sectors.includes(policySector) && constraint.condition(art.config || {})) {
+                    return {
+                        blocked: true,
+                        message: constraint.message,
+                        initiative_name: pd.name || 'Major Diplomatic Initiative'
+                    };
+                }
+            }
+        }
+    }
+
+    return { blocked: false, message: null, initiative_name: null };
+}
+
+// ── INCIDENT SUPPRESSION MODIFIERS ──
+
+/**
+ * Probability multipliers for events based on active Major Initiative article types.
+ * Values < 1.0 suppress events, values > 1.0 increase them.
+ * Key = article_type, value = { event_categories: { category: multiplier } }
+ */
+export const INCIDENT_SUPPRESSION = {
+    mutual_extradition: {
+        // Extradition treaties reduce crime and terrorism events
+        event_name_keywords: {
+            'crime': 0.7,
+            'criminal': 0.7,
+            'theft': 0.75,
+            'fraud': 0.75,
+            'terror': 0.6,
+            'smuggling': 0.7,
+            'corruption': 0.8
+        }
+    },
+    open_borders: {
+        // Open borders suppress refugee/border incidents but increase tension events
+        event_name_keywords: {
+            'refugee': 0.5,
+            'border_crisis': 0.4,
+            'immigration_crisis': 0.6,
+            'border_tension': 1.5,
+            'cultural_tension': 1.3
+        }
+    }
+};
+

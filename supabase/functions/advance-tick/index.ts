@@ -15056,6 +15056,170 @@ async function processDiplomaticInitiativeEffects(supabase: any, nation: any, cu
 }
 
 
+// ==================== ENVIRONMENTAL ACCORD COMPLIANCE MONITORING ====================
+
+/**
+ * Check compliance for Environmental Accord articles in active major initiatives.
+ * Runs at each compliance review interval and applies penalties for violations.
+ */
+async function checkEnvironmentalCompliance(supabase: any, nation: any, currentTick: number) {
+    const results: string[] = [];
+
+    const { data: proposals } = await supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('status', 'active')
+        .eq('proposal_tier', 3)
+        .or(`proposing_nation_id.eq.${nation.id},target_nation_id.eq.${nation.id}`);
+
+    if (!proposals || proposals.length === 0) return results;
+
+    for (const proposal of proposals) {
+        const pd = proposal.proposal_data || {};
+        const articles = pd.articles || [];
+        const activatedAt = proposal.activated_at_tick || 0;
+        const ticksSinceActivation = currentTick - activatedAt;
+
+        for (const art of articles) {
+            if (art.type !== 'environmental_accord' || art.status === 'struck') continue;
+            if (!art.compliance) continue;
+
+            const compliance = art.compliance;
+            const reviewInterval = compliance.review_interval_ticks || 6;
+
+            // Only check at review intervals
+            if (ticksSinceActivation === 0 || ticksSinceActivation % reviewInterval !== 0) continue;
+
+            // Get current nation stats
+            const { data: stats } = await supabase.from('nations')
+                .select('pollution, carbon_emissions, renewable_energy_percentage')
+                .eq('id', nation.id).single();
+            if (!stats) continue;
+
+            let violations: string[] = [];
+
+            // Check pollution cap
+            if (compliance.pollution_cap_offset && compliance.pollution_cap_offset !== 0) {
+                const baselinePollution = pd.baseline_stats?.[nation.id]?.pollution || 50;
+                const pollutionCap = baselinePollution + compliance.pollution_cap_offset;
+                if ((stats.pollution || 0) > pollutionCap) {
+                    violations.push(`Pollution ${(stats.pollution || 0).toFixed(1)} exceeds cap ${pollutionCap.toFixed(1)}`);
+                }
+            }
+
+            // Check carbon emission target trajectory
+            if (compliance.emission_reduction_pct > 0) {
+                const baselineCarbon = pd.baseline_stats?.[nation.id]?.carbon_emissions || 50;
+                const targetReduction = compliance.emission_reduction_pct / 100;
+                const windowTicks = compliance.compliance_window_ticks || 24;
+                const progress = Math.min(1.0, ticksSinceActivation / windowTicks);
+                const expectedCarbon = baselineCarbon * (1 - targetReduction * progress);
+                const margin = expectedCarbon * 0.05; // 5% margin
+                if ((stats.carbon_emissions || 0) > expectedCarbon + margin) {
+                    violations.push(`Carbon emissions ${(stats.carbon_emissions || 0).toFixed(1)} exceeds trajectory ${expectedCarbon.toFixed(1)}`);
+                }
+            }
+
+            // Check renewable energy target
+            if (compliance.renewable_target_pct > 0) {
+                const target = compliance.renewable_target_pct;
+                const margin = target * 0.05;
+                if ((stats.renewable_energy_percentage || 0) < target - margin) {
+                    violations.push(`Renewable energy ${(stats.renewable_energy_percentage || 0).toFixed(1)}% below target ${target}%`);
+                }
+            }
+
+            // Process violations
+            const complianceState = pd.compliance_state || {};
+            const nationState = complianceState[nation.id] || { failures: 0, consecutive_failures: 0 };
+
+            if (violations.length > 0) {
+                nationState.failures += 1;
+                nationState.consecutive_failures += 1;
+                nationState.last_violation_tick = currentTick;
+                nationState.last_violations = violations;
+
+                // Apply penalty based on config
+                const penaltyType = compliance.penalty_type || 'warning';
+                let penaltyApplied = '';
+
+                if (penaltyType === 'warning' && nationState.consecutive_failures >= 2) {
+                    // Second+ warning: relations -2
+                    const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                    const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                    const { data: rel } = await supabase.from('diplomatic_relations')
+                        .select('id, relation_score').eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
+                    if (rel) {
+                        await supabase.from('diplomatic_relations')
+                            .update({ relation_score: Math.max(-100, rel.relation_score - 2) }).eq('id', rel.id);
+                    }
+                    penaltyApplied = 'Relations -2';
+                } else if (penaltyType === 'financial') {
+                    // Add $20M fine to debt
+                    const { data: n } = await supabase.from('nations').select('debt').eq('id', nation.id).single();
+                    if (n) {
+                        await supabase.from('nations').update({ debt: (n.debt || 0) + 20000000 }).eq('id', nation.id);
+                    }
+                    penaltyApplied = '$20M fine';
+                } else if (penaltyType === 'suspension') {
+                    // Mark this article's effects as suspended
+                    art.suspended = true;
+                    penaltyApplied = 'Article effects suspended';
+                } else if (penaltyType === 'termination' && nationState.consecutive_failures >= 3) {
+                    // Auto-terminate the initiative
+                    await supabase.from('diplomatic_proposals')
+                        .update({ status: 'terminated', terminated_at_tick: currentTick })
+                        .eq('id', proposal.id);
+                    penaltyApplied = 'Treaty terminated (3 consecutive violations)';
+                }
+
+                // International reputation hit
+                const { data: repNation } = await supabase.from('nations')
+                    .select('international_reputation').eq('id', nation.id).single();
+                if (repNation) {
+                    const newRep = Math.max(0, (repNation.international_reputation || 50) - 1);
+                    await supabase.from('nations').update({ international_reputation: newRep }).eq('id', nation.id);
+                }
+
+                // Fire compliance failure news event
+                try {
+                    await supabase.rpc('insert_news_event', {
+                        p_nation_id: nation.id,
+                        p_trigger_key: 'environmental_compliance_failure',
+                        p_tick: currentTick,
+                        p_placeholders: {
+                            nation: nation.name,
+                            initiative_name: pd.name || 'Environmental Accord',
+                            violations: violations.join('; '),
+                            penalty: penaltyApplied || 'Warning issued'
+                        }
+                    });
+                } catch (newsErr) { console.error('Compliance news error:', newsErr); }
+
+                results.push(`Environmental compliance failure: ${violations.join(', ')}. Penalty: ${penaltyApplied || 'warning'}`);
+            } else {
+                // Compliant — reset consecutive failures
+                nationState.consecutive_failures = 0;
+                if (art.suspended) {
+                    art.suspended = false; // Restore suspended effects
+                    results.push('Environmental compliance restored — article effects resumed');
+                }
+            }
+
+            complianceState[nation.id] = nationState;
+            pd.compliance_state = complianceState;
+        }
+
+        // Save updated compliance state and article status
+        await supabase.from('diplomatic_proposals')
+            .update({ proposal_data: pd })
+            .eq('id', proposal.id);
+    }
+
+    return results;
+}
+
+
 // ==================== STAT EFFECTS PROCESSING ====================
 
 async function processStatEffects(supabase, nation, currentTick) {
@@ -15772,6 +15936,57 @@ async function recordStatHistory(supabase, nation, currentTick) {
 }
 
 
+// ==================== INCIDENT SUPPRESSION FROM ACTIVE TREATIES ====================
+
+/**
+ * Get event probability multiplier based on active Major Initiative treaties.
+ * Multipliers < 1.0 suppress events, > 1.0 increase them.
+ */
+async function getTreatyEventMultiplier(supabase: any, nationId: string, eventName: string): Promise<number> {
+    const { data: proposals } = await supabase
+        .from('diplomatic_proposals')
+        .select('proposal_data')
+        .eq('status', 'active')
+        .eq('proposal_tier', 3)
+        .or(`proposing_nation_id.eq.${nationId},target_nation_id.eq.${nationId}`);
+
+    if (!proposals || proposals.length === 0) return 1.0;
+
+    const SUPPRESSION: Record<string, Record<string, number>> = {
+        mutual_extradition: {
+            'crime': 0.7, 'criminal': 0.7, 'theft': 0.75, 'fraud': 0.75,
+            'terror': 0.6, 'smuggling': 0.7, 'corruption': 0.8
+        },
+        open_borders: {
+            'refugee': 0.5, 'border_crisis': 0.4, 'immigration_crisis': 0.6,
+            'border_tension': 1.5, 'cultural_tension': 1.3
+        }
+    };
+
+    let multiplier = 1.0;
+    const eventNameLower = (eventName || '').toLowerCase();
+
+    for (const proposal of proposals) {
+        const pd = proposal.proposal_data || {};
+        const articles = pd.articles || [];
+
+        for (const art of articles) {
+            if (art.status === 'struck' || art.suspended) continue;
+            const keywords = SUPPRESSION[art.type];
+            if (!keywords) continue;
+
+            for (const [keyword, mult] of Object.entries(keywords)) {
+                if (eventNameLower.includes(keyword)) {
+                    multiplier *= mult;
+                }
+            }
+        }
+    }
+
+    return multiplier;
+}
+
+
 // ==================== EVENT TICK PROCESSOR ====================
 
 async function processEvents(supabase, nation, currentTick) {
@@ -15827,8 +16042,11 @@ async function processEvents(supabase, nation, currentTick) {
         }
         if (!allTriggersPass) continue;
 
+        // Apply treaty-based incident suppression/amplification
+        const treatyMultiplier = await getTreatyEventMultiplier(supabase, nation.id, event.name);
+        const adjustedProbability = event.probability * treatyMultiplier;
         const roll = Math.random() * 100;
-        if (roll >= event.probability) continue;
+        if (roll >= adjustedProbability) continue;
 
         const descriptions = event.event_descriptions || [];
         let description = descriptions.length > 0
@@ -20540,6 +20758,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         if (diplomacyResults.length > 0) {
             summary.diplomacyEffects = summary.diplomacyEffects || [];
             summary.diplomacyEffects.push({ nation: nation.name, effects: diplomacyResults });
+        }
+
+        // Environmental compliance monitoring for active Major Initiatives
+        const complianceResults = await checkEnvironmentalCompliance(supabase, nation, newTick);
+        if (complianceResults.length > 0) {
+            summary.complianceChecks = summary.complianceChecks || [];
+            summary.complianceChecks.push({ nation: nation.name, results: complianceResults });
         }
 
         // Apply GDP growth rate
