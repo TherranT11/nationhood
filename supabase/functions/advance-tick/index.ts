@@ -6043,7 +6043,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                             for (const art of activeArticles) {
                                 const effects = art.proposer_effects || art.effects || {};
                                 const targetEffects = art.target_effects || art.effects || {};
-                                totalRel += (art.effects?.relations || effects.relations || 0);
+                                totalRel += (effects.relations || 0);
 
                                 // Store per-article effects for per-tick processing
                                 art.active_effects = { proposer: {}, target: {} };
@@ -6093,7 +6093,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                                 for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
                                     const { data: n } = await supabase.from('nations').select('civil_unrest').eq('id', nId).single();
                                     if (n) {
-                                        const newVal = Math.min(100, (n.civil_unrest || 0) + totalUnrestSpike);
+                                        const newVal = Math.max(0, Math.min(100, (n.civil_unrest || 0) + totalUnrestSpike));
                                         await supabase.from('nations').update({ civil_unrest: newVal }).eq('id', nId);
                                     }
                                 }
@@ -14979,18 +14979,23 @@ async function autoResolveStaleShakeups(supabase, nationId, currentTick) {
  * Process per-tick stat effects from active Major Diplomatic Initiatives.
  * Applies ongoing stat deltas and deducts FM budget costs each tick.
  */
-async function processDiplomaticInitiativeEffects(supabase: any, nation: any, currentTick: number) {
+async function processDiplomaticInitiativeEffects(supabase: any, nation: any, currentTick: number, prefetchedProposals?: any[]) {
     const results: string[] = [];
 
-    // Query active tier-3 proposals involving this nation
-    const { data: proposals, error } = await supabase
-        .from('diplomatic_proposals')
-        .select('*')
-        .eq('status', 'active')
-        .eq('proposal_tier', 3)
-        .or(`proposing_nation_id.eq.${nation.id},target_nation_id.eq.${nation.id}`);
+    // Use pre-fetched proposals if provided, otherwise query
+    let proposals = prefetchedProposals;
+    if (!proposals) {
+        const { data, error } = await supabase
+            .from('diplomatic_proposals')
+            .select('*')
+            .eq('status', 'active')
+            .eq('proposal_tier', 3)
+            .or(`proposing_nation_id.eq.${nation.id},target_nation_id.eq.${nation.id}`);
+        if (error) return results;
+        proposals = data;
+    }
 
-    if (error || !proposals || proposals.length === 0) return results;
+    if (!proposals || proposals.length === 0) return results;
 
     // Determine which stat updates to apply — per-article to handle transition ramps correctly
     const statUpdates: Record<string, number> = {};
@@ -15115,17 +15120,23 @@ async function processDiplomaticInitiativeEffects(supabase: any, nation: any, cu
  * Check compliance for Environmental Accord articles in active major initiatives.
  * Runs at each compliance review interval and applies penalties for violations.
  */
-async function checkEnvironmentalCompliance(supabase: any, nation: any, currentTick: number) {
+async function checkEnvironmentalCompliance(supabase: any, nation: any, currentTick: number, prefetchedProposals?: any[]) {
     const results: string[] = [];
 
-    const { data: proposals, error: proposalErr } = await supabase
-        .from('diplomatic_proposals')
-        .select('*')
-        .eq('status', 'active')
-        .eq('proposal_tier', 3)
-        .or(`proposing_nation_id.eq.${nation.id},target_nation_id.eq.${nation.id}`);
+    // Use pre-fetched proposals if provided, otherwise query
+    let proposals = prefetchedProposals;
+    if (!proposals) {
+        const { data, error: proposalErr } = await supabase
+            .from('diplomatic_proposals')
+            .select('*')
+            .eq('status', 'active')
+            .eq('proposal_tier', 3)
+            .or(`proposing_nation_id.eq.${nation.id},target_nation_id.eq.${nation.id}`);
+        if (proposalErr) return results;
+        proposals = data;
+    }
 
-    if (proposalErr || !proposals || proposals.length === 0) return results;
+    if (!proposals || proposals.length === 0) return results;
 
     // Fetch nation stats once (avoid repeated queries per article)
     const { data: nationStats, error: statsErr } = await supabase.from('nations')
@@ -16008,13 +16019,18 @@ const TREATY_SUPPRESSION: Record<string, Record<string, number>> = {
  * Pre-fetch active treaty article types for a nation. Call once per nation, then pass
  * the result to getEventMultiplierFromTreaties for each event (pure, no DB calls).
  */
-async function fetchActiveTreatyArticles(supabase: any, nationId: string): Promise<string[]> {
-    const { data: proposals } = await supabase
-        .from('diplomatic_proposals')
-        .select('proposal_data')
-        .eq('status', 'active')
-        .eq('proposal_tier', 3)
-        .or(`proposing_nation_id.eq.${nationId},target_nation_id.eq.${nationId}`);
+async function fetchActiveTreatyArticles(supabase: any, nationId: string, prefetchedProposals?: any[]): Promise<string[]> {
+    // Use pre-fetched proposals if provided, otherwise query
+    let proposals = prefetchedProposals;
+    if (!proposals) {
+        const { data } = await supabase
+            .from('diplomatic_proposals')
+            .select('proposal_data')
+            .eq('status', 'active')
+            .eq('proposal_tier', 3)
+            .or(`proposing_nation_id.eq.${nationId},target_nation_id.eq.${nationId}`);
+        proposals = data;
+    }
 
     if (!proposals || proposals.length === 0) return [];
 
@@ -16057,7 +16073,7 @@ function getEventMultiplierFromTreaties(activeArticleTypes: string[], eventName:
 
 // ==================== EVENT TICK PROCESSOR ====================
 
-async function processEvents(supabase, nation, currentTick) {
+async function processEvents(supabase, nation, currentTick, prefetchedTier3Proposals?: any[]) {
     const { data: events } = await supabase
         .from('event_templates')
         .select('*, event_descriptions(*), event_triggers(*), event_effects(*)')
@@ -16080,7 +16096,7 @@ async function processEvents(supabase, nation, currentTick) {
     }
 
     // Pre-fetch active treaty article types once per nation (avoids N+1 query per event)
-    const activeTreatyArticles = await fetchActiveTreatyArticles(supabase, nation.id);
+    const activeTreatyArticles = await fetchActiveTreatyArticles(supabase, nation.id, prefetchedTier3Proposals);
 
     const firedEvents = [];
 
@@ -20824,15 +20840,24 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
         }
 
+        // Pre-fetch active tier-3 proposals once per nation (avoids 3x duplicate query)
+        const { data: activeTier3Proposals } = await supabase
+            .from('diplomatic_proposals')
+            .select('*')
+            .eq('status', 'active')
+            .eq('proposal_tier', 3)
+            .or(`proposing_nation_id.eq.${nation.id},target_nation_id.eq.${nation.id}`);
+        const tier3Proposals = activeTier3Proposals || [];
+
         // Major Diplomatic Initiative per-tick effects
-        const diplomacyResults = await processDiplomaticInitiativeEffects(supabase, nation, newTick);
+        const diplomacyResults = await processDiplomaticInitiativeEffects(supabase, nation, newTick, tier3Proposals);
         if (diplomacyResults.length > 0) {
             summary.diplomacyEffects = summary.diplomacyEffects || [];
             summary.diplomacyEffects.push({ nation: nation.name, effects: diplomacyResults });
         }
 
         // Environmental compliance monitoring for active Major Initiatives
-        const complianceResults = await checkEnvironmentalCompliance(supabase, nation, newTick);
+        const complianceResults = await checkEnvironmentalCompliance(supabase, nation, newTick, tier3Proposals);
         if (complianceResults.length > 0) {
             summary.complianceChecks = summary.complianceChecks || [];
             summary.complianceChecks.push({ nation: nation.name, results: complianceResults });
@@ -21276,7 +21301,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Random events
         try {
-            const eventResults = await processEvents(supabase, nation, newTick);
+            const eventResults = await processEvents(supabase, nation, newTick, tier3Proposals);
             if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
         } catch (eventErr) {
             console.error(`[advanceTick] Random events failed for ${nation.name} (non-fatal):`, eventErr);
