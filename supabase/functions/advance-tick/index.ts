@@ -6065,9 +6065,10 @@ async function resolveExpiredVotes(supabase, nationId) {
                             }
                             pd.active_effects = activeEffects;
 
-                            await supabase.from('diplomatic_proposals')
+                            const { error: activateErr } = await supabase.from('diplomatic_proposals')
                                 .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
                                 .eq('id', bill.diplomatic_proposal_id);
+                            if (activateErr) console.error('[bilateral] Failed to activate proposal:', activateErr.message);
 
                             if (totalRel !== 0) {
                                 const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;

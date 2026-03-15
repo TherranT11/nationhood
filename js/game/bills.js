@@ -1398,9 +1398,10 @@ export async function resolveExpiredVotes(supabase, nationId) {
                             }
                             pd.active_effects = activeEffects;
 
-                            await supabase.from('diplomatic_proposals')
+                            const { error: activateErr } = await supabase.from('diplomatic_proposals')
                                 .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
                                 .eq('id', bill.diplomatic_proposal_id);
+                            if (activateErr) console.error('[bilateral] Failed to activate proposal:', activateErr.message);
 
                             // Apply one-time relation score bump
                             if (totalRel !== 0) {
@@ -1522,7 +1523,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 await failBill(supabase, bill);
                 // Load proposal to check if bilateral
                 const { data: failedProposal } = await supabase.from('diplomatic_proposals')
-                    .select('proposal_tier, proposing_bill_id, target_bill_id, proposal_data')
+                    .select('proposal_tier, proposing_bill_id, target_bill_id, proposal_data, proposing_nation_id, target_nation_id')
                     .eq('id', bill.diplomatic_proposal_id).single();
                 const isBilateral = failedProposal?.proposal_tier === 3 && failedProposal?.proposing_bill_id && failedProposal?.target_bill_id;
 
@@ -1543,20 +1544,19 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     const otherBillId = isProposerBill ? failedProposal.target_bill_id : failedProposal.proposing_bill_id;
                     if (otherBillId) {
                         const { data: otherBill } = await supabase.from('bills')
-                            .select('status').eq('id', otherBillId).single();
+                            .select('status, preamble').eq('id', otherBillId).single();
                         if (otherBill && !['passed', 'failed', 'enacted'].includes(otherBill.status)) {
+                            const cancelNote = '\n\nAutomatically cancelled — ratification failed in the other nation\'s parliament.';
                             await supabase.from('bills')
-                                .update({ status: 'failed', preamble_append: 'Automatically cancelled — ratification failed in the other nation\'s parliament.' })
+                                .update({ status: 'failed', preamble: (otherBill.preamble || '') + cancelNote })
                                 .eq('id', otherBillId);
                         }
                     }
 
-                    // Fire failure news event in both nations (use already-fetched proposal data)
+                    // Fire failure news event in both nations
                     try {
-                        const { data: propNations } = await supabase.from('diplomatic_proposals')
-                            .select('proposing_nation_id, target_nation_id').eq('id', bill.diplomatic_proposal_id).single();
-                        if (propNations) {
-                            for (const nId of [propNations.proposing_nation_id, propNations.target_nation_id]) {
+                        if (failedProposal.proposing_nation_id && failedProposal.target_nation_id) {
+                            for (const nId of [failedProposal.proposing_nation_id, failedProposal.target_nation_id]) {
                                 await supabase.rpc('insert_news_event', {
                                     p_nation_id: nId,
                                     p_trigger_key: 'major_initiative_ratification_failed',
