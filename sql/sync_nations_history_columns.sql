@@ -32,8 +32,6 @@ ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS income_inequality NUMERIC;
 -- Demographics
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS population NUMERIC;
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS population_growth NUMERIC;
-ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS birth_rate NUMERIC;
-ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS death_rate NUMERIC;
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS median_age NUMERIC;
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS eligible_voters NUMERIC;
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS ethnic_diversity NUMERIC;
@@ -76,7 +74,7 @@ ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS social_mobility NUMERIC;
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS benefits NUMERIC;
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS crime_rate NUMERIC;
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS incarceration_rate NUMERIC;
-ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS religious NUMERIC;
+ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS religiosity NUMERIC;
 
 -- Governance
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS stability NUMERIC;
@@ -100,8 +98,12 @@ ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS emigration NUMERIC;
 
 -- International
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS international_reputation NUMERIC;
-ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS trade_agreements NUMERIC;
-ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS sanctions NUMERIC;
+
+-- Economy (new stats)
+ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS cost_of_living NUMERIC;
+ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS manufacturing_output NUMERIC;
+ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS service_output NUMERIC;
+ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS housing_affordability NUMERIC;
 
 -- Government approval
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS gov_approval NUMERIC;

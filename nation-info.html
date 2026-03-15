@@ -148,9 +148,9 @@ function roundDelta(v) { return Math.abs(v) >= 1 ? Math.round(v).toString() : v.
 // Inverted stats (lower = better)
 const INVERTED = new Set([
     'debt','debt_growth','inflation','unemployment','poverty_rate','income_inequality',
-    'death_rate','drug_use','pollution','carbon_emissions','crime_rate','incarceration_rate',
+    'drug_use','pollution','carbon_emissions','crime_rate','incarceration_rate',
     'civil_unrest','terrorism','political_violence','illegal_immigration','emigration',
-    'corruption','polarization','sanctions','fuel_prices'
+    'corruption','polarization','fuel_prices','cost_of_living'
 ]);
 
 function colorClass(val, inverted, key) {
@@ -257,8 +257,6 @@ var STAT_SECTIONS = [
     ]},
     { id: 'demographics', icon: '&#128101;', title: 'Demographics', stats: [
         ['Population Growth', 'population_growth', 'Rate of change'],
-        ['Birth Rate', 'birth_rate', 'Births per 1,000'],
-        ['Death Rate', 'death_rate', 'Deaths per 1,000', null, true],
         ['Median Age', 'median_age', 'Average age', 'years'],
         ['Eligible Voters', 'eligible_voters', 'Citizens able to vote'],
         ['Ethnic Diversity', 'ethnic_diversity', 'Cultural heterogeneity']
@@ -297,7 +295,9 @@ var STAT_SECTIONS = [
     { id: 'society', icon: '&#127968;', title: 'Society', stats: [
         ['Standard of Living', 'standard_of_living', 'Quality of life'],
         ['Happiness', 'happiness', 'National wellbeing'],
-        ['Religiosity', 'religious', 'Religious belief strength'],
+        ['Religiosity', 'religiosity', 'Religious belief strength'],
+        ['Cost of Living', 'cost_of_living', 'Consumer cost burden', null, true],
+        ['Housing Affordability', 'housing_affordability', 'Housing accessibility'],
         ['Social Mobility', 'social_mobility', 'Ability to change class'],
         ['Benefits', 'benefits', 'Social welfare programs'],
         ['Crime Rate', 'crime_rate', 'Criminal incidents per capita', null, true],
@@ -325,8 +325,8 @@ var STAT_SECTIONS = [
     ]},
     { id: 'international', icon: '&#127760;', title: 'International', stats: [
         ['Intl. Reputation', 'international_reputation', 'Global standing'],
-        ['Trade Agreements', 'trade_agreements', 'Active trade deals', 'count'],
-        ['Sanctions', 'sanctions', 'International penalties', null, true]
+        ['Manufacturing Output', 'manufacturing_output', 'Industrial production'],
+        ['Service Output', 'service_output', 'Services & finance output']
     ]}
 ];
 

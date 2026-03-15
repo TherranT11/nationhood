@@ -35,6 +35,9 @@ export const DIPLOMACY_CONFIG = {
     STATE_VISIT_IO_REP_BONUS: 3,        // +3 int'l rep if shared IO membership (future)
     STATE_VISIT_HIGH_REL_GDP_BONUS: 5,  // +5 gdp_growth if relations > 70
     STATE_VISIT_FIRST_STABILITY: 1,     // +1 stability for first-ever visit
+    STATE_VISIT_AUTOCRACY_DIE: 12,      // 1D12 roll for autocracy risk
+    STATE_VISIT_AUTOCRACY_THRESHOLD: 6, // roll <= threshold = negative outcome
+    STATE_VISIT_AUTOCRACY_CHANGE: 3,    // ±gov_approval change
     TREATY_RATIFICATION_VOTING_TICKS: 6,
     AMBASSADOR_CONFIRMATION_VOTING_TICKS: 6,
     AMBASSADOR_TERM_LENGTH: 60,         // ticks (60 ticks = 5 years)
@@ -447,7 +450,7 @@ export const PROPOSAL_TYPES = {
         description: 'Economic warfare — tanks target trade stats, also hurts your own.',
         stat_effects: [
             { stat_key: 'trade_balance', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'sanctions', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 }
+            { stat_key: 'international_reputation', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
     ceasefire: {
@@ -575,11 +578,12 @@ export const POLICY_STANCES = {
 
 // Stats where LOWER is better (inverted approval logic)
 export const INVERTED_STATS = [
-    'unemployment', 'poverty_rate', 'income_inequality', 'death_rate',
+    'unemployment', 'poverty_rate', 'income_inequality',
     'pollution', 'carbon_emissions', 'crime_rate', 'incarceration_rate',
     'drug_use', 'corruption', 'polarization', 'civil_unrest', 'terrorism',
-    'political_violence', 'emigration', 'sanctions', 'debt', 'debt_growth',
-    'inflation', 'interest_rates', 'illegal_immigration', 'fuel_prices'
+    'political_violence', 'emigration', 'debt', 'debt_growth',
+    'inflation', 'interest_rates', 'illegal_immigration', 'fuel_prices',
+    'cost_of_living'
 ];
 
 // Stats stored as raw numbers (not 0-100 indices).

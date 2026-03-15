@@ -56,8 +56,6 @@ UPDATE nations SET
     -- Demographics
     population = 6650000,
     population_growth = 32,
-    birth_rate = 42,
-    death_rate = 25,
     median_age = 52,
     eligible_voters = 4322500,
     ethnic_diversity = 42,
@@ -102,7 +100,11 @@ UPDATE nations SET
     -- Security
     crime_rate = 28,
     incarceration_rate = 22,
-    religious = 42,
+    religiosity = 42,
+    cost_of_living = 50,
+    manufacturing_output = 50,
+    service_output = 50,
+    housing_affordability = 50,
 
     -- Governance
     stability = 68,
@@ -122,8 +124,6 @@ UPDATE nations SET
     illegal_immigration = 18,
     emigration = 58,
     international_reputation = 55,
-    trade_agreements = 38,
-    sanctions = 3,
 
     -- Approval defaults
     national_approval = 50,
@@ -164,8 +164,6 @@ SET seed_stats = jsonb_build_object(
     'income_inequality', 28,
     'population', 6650000,
     'population_growth', 32,
-    'birth_rate', 42,
-    'death_rate', 25,
     'median_age', 52,
     'eligible_voters', 4322500,
     'ethnic_diversity', 42,
@@ -197,7 +195,11 @@ SET seed_stats = jsonb_build_object(
     'benefits', 68,
     'crime_rate', 28,
     'incarceration_rate', 22,
-    'religious', 42,
+    'religiosity', 42,
+    'cost_of_living', 50,
+    'manufacturing_output', 50,
+    'service_output', 50,
+    'housing_affordability', 50,
     'stability', 68,
     'legitimacy', 72,
     'efficiency', 48,
@@ -212,9 +214,7 @@ SET seed_stats = jsonb_build_object(
     'immigration', 28,
     'illegal_immigration', 18,
     'emigration', 58,
-    'international_reputation', 55,
-    'trade_agreements', 38,
-    'sanctions', 3
+    'international_reputation', 55
 )
 WHERE LOWER(name) = 'palvera';
 

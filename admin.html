@@ -1550,8 +1550,8 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 raw: inv(s('urbanization')) * 0.7 + s('arable_land') * 0.3
             },
             { // Religious Conservatives: religiosity (1:1)
-                primary: 'religious', secondary: '—',
-                raw: s('religious')
+                primary: 'religiosity', secondary: '—',
+                raw: s('religiosity')
             },
             { // Nationalist Bloc: high polarization + low ethnic diversity
                 primary: 'polarization', secondary: 'ethnic_diversity (inv)',
@@ -2611,17 +2611,17 @@ const SC_STAT_CATEGORIES = {
     'Economic': ['gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates', 'trade_balance', 'currency_strength', 'foreign_investment', 'credit'],
     'Taxation': ['income_tax', 'corporate_tax', 'sales_tax', 'tariffs'],
     'Labor': ['unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength', 'poverty_rate', 'income_inequality'],
-    'Demographics': ['population', 'population_growth', 'birth_rate', 'death_rate', 'median_age', 'ethnic_diversity'],
+    'Demographics': ['population', 'population_growth', 'median_age', 'ethnic_diversity'],
     'Healthcare': ['healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use'],
     'Education': ['literacy', 'higher_education', 'education_accessibility', 'academic_immigration'],
     'Infrastructure': ['physical_infrastructure', 'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage'],
     'Resources': ['arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices'],
     'Environment': ['pollution', 'carbon_emissions'],
-    'Social': ['standard_of_living', 'happiness', 'religious', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate'],
+    'Social': ['standard_of_living', 'happiness', 'religiosity', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate', 'cost_of_living', 'housing_affordability'],
     'Governance': ['stability', 'legitimacy', 'efficiency', 'corruption', 'press_freedom', 'judicial_independence', 'freedom_index', 'polarization'],
     'Security': ['civil_unrest', 'terrorism', 'political_violence'],
     'Immigration': ['immigration', 'illegal_immigration', 'emigration'],
-    'International': ['international_reputation', 'trade_agreements', 'sanctions'],
+    'International': ['international_reputation', 'manufacturing_output', 'service_output'],
 };
 const SC_ALL_STATS = Object.values(SC_STAT_CATEGORIES).flat();
 const SC_DELAY_OPTIONS = [

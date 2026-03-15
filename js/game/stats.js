@@ -43,9 +43,7 @@
  *   income_inequality          Gap between rich and poor
  *   --- Demographics ---
  *   population                 Total population (raw number)
- *   population_growth          Rate of population change
- *   birth_rate                 Births per 1,000 people
- *   death_rate                 Deaths per 1,000 people
+ *   population_growth          Rate of population change (standalone stat)
  *   median_age                 Average age of population
  *   eligible_voters            Citizens able to vote
  *   ethnic_diversity           Cultural heterogeneity
@@ -83,7 +81,7 @@
  *   crime_rate                 Criminal activity level           (NOT "crime")
  *   incarceration_rate         Prison population per capita
  *   --- Religion ---
- *   religious                  Religiosity index
+ *   religiosity                Religiosity index
  *   --- Governance ---
  *   stability                  Political stability               (also used for "military_strength")
  *   legitimacy                 Government legitimacy
@@ -103,8 +101,11 @@
  *   emigration                 Citizens leaving
  *   --- International ---
  *   international_reputation   Global standing                   (NOT "diplomatic_standing")
- *   trade_agreements           Number of trade agreements        (NOT "trade")
- *   sanctions                  Active sanctions against nation
+ *   --- Economy (new) ---
+ *   cost_of_living             Consumer cost burden (0-100, lower is better)
+ *   manufacturing_output       Industrial production capacity (0-100)
+ *   service_output             Services & finance sector output (0-100)
+ *   housing_affordability      Housing accessibility (0-100, higher is better)
  */
 export const NATION_STAT_COLUMNS = [
     'gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates',
@@ -112,19 +113,20 @@ export const NATION_STAT_COLUMNS = [
     'income_tax', 'corporate_tax', 'sales_tax', 'tariffs',
     'unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength',
     'poverty_rate', 'income_inequality',
-    'population', 'population_growth', 'birth_rate', 'death_rate', 'median_age', 'eligible_voters', 'ethnic_diversity',
+    'population', 'population_growth', 'median_age', 'eligible_voters', 'ethnic_diversity',
     'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use',
     'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
     'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage',
     'arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices',
     'pollution', 'carbon_emissions',
     'standard_of_living', 'happiness', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate',
-    'religious',
+    'religiosity',
     'stability', 'legitimacy', 'efficiency', 'corruption', 'press_freedom', 'judicial_independence',
     'freedom_index', 'polarization',
     'civil_unrest', 'terrorism', 'political_violence',
     'immigration', 'illegal_immigration', 'emigration',
-    'international_reputation', 'trade_agreements', 'sanctions'
+    'international_reputation',
+    'cost_of_living', 'manufacturing_output', 'service_output', 'housing_affordability'
 ];
 
 export const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
@@ -143,7 +145,13 @@ export const STAT_KEY_ALIASES = {
     hospital_beds: 'beds_per_100k',
     technology: 'digital_infrastructure',
     infrastructure: 'physical_infrastructure',
-    tourism: 'international_reputation'
+    tourism: 'international_reputation',
+    // Legacy aliases for removed/renamed stats
+    religious: 'religiosity',
+    birth_rate: 'population_growth',
+    death_rate: 'population_growth',
+    trade_agreements: 'international_reputation',
+    sanctions: 'international_reputation'
 };
 
 export function normalizeNationStatKey(statKey) {
@@ -164,7 +172,8 @@ export const STATS_HIGHER_IS_BETTER = [
     'arable_land', 'rare_minerals',
     'standard_of_living', 'happiness', 'social_mobility', 'benefits',
     'stability', 'legitimacy', 'efficiency', 'press_freedom', 'judicial_independence', 'freedom_index',
-    'immigration', 'international_reputation', 'trade_agreements'
+    'immigration', 'international_reputation',
+    'manufacturing_output', 'service_output', 'housing_affordability'
 ];
 
 /**
@@ -172,11 +181,12 @@ export const STATS_HIGHER_IS_BETTER = [
  */
 export const STATS_LOWER_IS_BETTER = [
     'debt_growth', 'inflation', 'interest_rates',
-    'unemployment', 'poverty_rate', 'income_inequality', 'death_rate',
+    'unemployment', 'poverty_rate', 'income_inequality',
     'drug_use', 'fuel_prices', 'pollution', 'carbon_emissions',
     'crime_rate', 'incarceration_rate', 'corruption', 'polarization',
     'civil_unrest', 'terrorism', 'political_violence',
-    'illegal_immigration', 'emigration', 'sanctions'
+    'illegal_immigration', 'emigration',
+    'cost_of_living'
 ];
 
 // ==================== STAT DECAY CONFIGURATION ====================
@@ -219,6 +229,10 @@ export const STAT_DECAY_CONFIG = {
     healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
     beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.CRAWL },
     education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    manufacturing_output:     { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    service_output:           { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    cost_of_living:           { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
+    housing_affordability:    { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
     press_freedom:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
     judicial_independence:    { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
     freedom_index:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
@@ -345,7 +359,6 @@ export const STAT_TO_MINISTRY = {
     // Healthcare
     healthcare_quality: 'healthcare', healthcare_accessibility: 'healthcare',
     beds_per_100k: 'healthcare', lifespan: 'healthcare', drug_use: 'healthcare',
-    death_rate: 'healthcare',
     // Education
     literacy: 'education', higher_education: 'education',
     education_accessibility: 'education', academic_immigration: 'education',
@@ -371,16 +384,17 @@ export const STAT_TO_MINISTRY = {
     // Security
     civil_unrest: 'security', political_violence: 'security',
     // Trade
-    trade_balance: 'trade', trade_agreements: 'trade',
+    trade_balance: 'trade', manufacturing_output: 'trade', service_output: 'trade',
     tariffs: 'trade', foreign_investment: 'trade',
     // Foreign
-    international_reputation: 'foreign',
-    sanctions: 'foreign', emigration: 'foreign',
+    international_reputation: 'foreign', emigration: 'foreign',
     // Prime Minister (general governance & quality of life)
     legitimacy: 'prime_minister', efficiency: 'prime_minister', polarization: 'prime_minister',
     happiness: 'prime_minister', standard_of_living: 'prime_minister',
     social_mobility: 'prime_minister', benefits: 'prime_minister',
-    fuel_prices: 'prime_minister'
+    fuel_prices: 'prime_minister', housing_affordability: 'prime_minister',
+    // Finance
+    cost_of_living: 'finance'
 };
 
 /**
@@ -389,16 +403,16 @@ export const STAT_TO_MINISTRY = {
  */
 export const ISSUE_CATEGORY_STATS = {
     Agriculture:     ['arable_land', 'fuel_prices', 'trade_balance', 'poverty_rate'],
-    Economics:       ['gdp', 'gdp_growth', 'inflation', 'unemployment', 'currency_strength', 'trade_balance', 'debt'],
+    Economics:       ['gdp', 'gdp_growth', 'inflation', 'unemployment', 'currency_strength', 'trade_balance', 'debt', 'manufacturing_output', 'service_output'],
     Education:       ['literacy', 'higher_education', 'education_accessibility', 'academic_immigration'],
     Governance:      ['stability', 'legitimacy', 'efficiency', 'corruption', 'freedom_index'],
     Healthcare:      ['healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use'],
     Immigration:     ['immigration', 'illegal_immigration', 'emigration', 'ethnic_diversity'],
     Infrastructure:  ['physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage'],
-    International:   ['international_reputation', 'trade_agreements', 'sanctions', 'foreign_investment'],
-    Labor:           ['unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength', 'poverty_rate', 'income_inequality'],
+    International:   ['international_reputation', 'foreign_investment'],
+    Labor:           ['unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength', 'poverty_rate', 'income_inequality', 'cost_of_living'],
     Military:        ['terrorism', 'political_violence', 'civil_unrest', 'stability'],
-    Social:          ['standard_of_living', 'happiness', 'social_mobility', 'crime_rate', 'pollution', 'benefits']
+    Social:          ['standard_of_living', 'happiness', 'social_mobility', 'crime_rate', 'pollution', 'benefits', 'housing_affordability']
 };
 
 const _HIGHER_IS_BETTER_SET = new Set(STATS_HIGHER_IS_BETTER);
