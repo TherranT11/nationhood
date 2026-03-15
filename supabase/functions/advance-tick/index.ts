@@ -395,7 +395,7 @@ var TRADE_SECTORS = [
         key: 'manufactured_goods',
         label: 'Manufactured Goods',
         export_only: false,
-        export_stats: ['physical_infrastructure', 'higher_education'],
+        export_stat: 'manufacturing_output',
         export_threshold: 25
     },
     {
@@ -423,7 +423,7 @@ var TRADE_SECTORS = [
         key: 'services_finance',
         label: 'Services & Finance',
         export_only: true,
-        export_stats: ['higher_education', 'digital_infrastructure', 'credit'],
+        export_stat: 'service_output',
         export_threshold: 35
     }
 ];
