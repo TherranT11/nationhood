@@ -77,7 +77,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS } from './js/game-common.js';
+import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -715,13 +715,13 @@ async function renderAgreementsTab() {
 
             // Active articles and effects
             let totalRel = 0, totalMoney = 0;
-            const hasV2Articles = articles.some(a => a.type && INITIATIVE_ARTICLE_TYPES && INITIATIVE_ARTICLE_TYPES[a.type]);
+            const hasV2Articles = articles.some(a => a.type && (INITIATIVE_ARTICLE_TYPES?.[a.type] || MAJOR_INITIATIVE_ARTICLE_TYPES?.[a.type]));
             const termsHTML = articles.map((art, i) => {
                 const isStruck = struckIndices.has(i);
-                const isV2Art = art.type && INITIATIVE_ARTICLE_TYPES && INITIATIVE_ARTICLE_TYPES[art.type];
+                const isV2Art = art.type && (INITIATIVE_ARTICLE_TYPES?.[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES?.[art.type]);
 
                 if (isV2Art) {
-                    const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type];
+                    const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES[art.type];
                     const cardClass = isStruck ? 'initiative-article initiative-article--struck' : 'initiative-article';
                     let artHtml = '<div class="' + cardClass + '">';
                     artHtml += '<div class="initiative-article-head">';
@@ -4636,8 +4636,8 @@ async function viewActiveAgreement(agreementId) {
             const art = articles[i];
             const isStruck = isV2 ? (art.status === 'struck') : struckIndices.has(i);
 
-            if (isV2 && INITIATIVE_ARTICLE_TYPES) {
-                const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type];
+            if (isV2) {
+                const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES[art.type];
                 const typeName = typeInfo ? typeInfo.label : art.type;
                 const cardClass = isStruck ? 'initiative-article initiative-article--struck' : 'initiative-article';
                 html += '<div class="' + cardClass + '">';
@@ -8275,7 +8275,7 @@ function renderActionsBox() {
     [
         { key: 'appoint_ambassador', label: 'Appoint Ambassador', ap: 1, type: 'fm' },
         { key: 'recall_ambassador', label: 'Recall Ambassador', ap: 1, type: 'fm' },
-        { key: 'major_initiative', label: 'Major Diplomatic Initiative', ap: 2, type: 'fm', comingSoon: true },
+        { key: 'major_initiative', label: 'Major Diplomatic Initiative', ap: 2, type: 'fm' },
         { key: 'covert_ops', label: 'Covert Operations', ap: 4, type: 'fm', comingSoon: true },
         { key: 'foreign_aid', label: 'Foreign Aid Proposal', ap: 4, type: 'fm', comingSoon: true }
     ].forEach(a => { html += actionHtml(a, hasFM, 'fm'); });
@@ -8693,7 +8693,7 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
 
             if (isV2) {
                 // Rich v2 article rendering
-                const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type];
+                const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES[art.type];
                 const typeName = typeInfo ? typeInfo.label : art.type;
                 const cardClass = isStruck ? 'initiative-article initiative-article--struck' : 'initiative-article';
                 html += '<div class="' + cardClass + '">';
@@ -8939,6 +8939,12 @@ async function renderDraftBox() {
     // Special branch for Minor Diplomatic Initiative — rich article config UI
     if (activeDraftAction.key === 'minor_initiative') {
         renderMinorInitiativeDraftPanel(body, statusEl);
+        return;
+    }
+
+    // Special branch for Major Diplomatic Initiative — FM-only rich article config UI
+    if (activeDraftAction.key === 'major_initiative') {
+        renderMajorInitiativeDraftPanel(body, statusEl);
         return;
     }
 
@@ -10217,7 +10223,7 @@ window.toggleArticleConfigArray = toggleArticleConfigArray;
  * @param {boolean} editable - whether config controls are shown
  */
 function renderInitiativeArticleCard(art, index, editable) {
-    const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type];
+    const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES[art.type];
     if (!typeInfo) return '';
 
     const struckClass = art.status === 'struck' ? ' initiative-article--struck' : '';
@@ -10232,7 +10238,7 @@ function renderInitiativeArticleCard(art, index, editable) {
     }
     html += '</span></div>';
     if (editable) {
-        html += '<button class="initiative-article-remove" onclick="removeMinorInitiativeArticle(' + index + ')">REMOVE</button>';
+        html += '<button class="initiative-article-remove" onclick="removeInitiativeArticle(' + index + ')">REMOVE</button>';
     }
     html += '</div>';
 
@@ -10265,6 +10271,9 @@ function renderArticleConfigControls(art, index) {
         case 'cultural_exchange': return renderCulturalConfig(art, index);
         case 'student_exchange': return renderStudentConfig(art, index);
         case 'joint_statement': return renderStatementConfig(art, index);
+        case 'open_borders': return renderOpenBordersConfig(art, index);
+        case 'mutual_extradition': return renderExtraditionConfig(art, index);
+        case 'environmental_accord': return renderEnvironmentalConfig(art, index);
         default: return '';
     }
 }
@@ -10359,10 +10368,77 @@ function renderStatementConfig(art, index) {
 }
 
 /**
+ * Generic remove article from wizard (works for both minor and major).
+ */
+function removeInitiativeArticle(index) {
+    wizardArticles.splice(index, 1);
+    renderDraftBox();
+}
+window.removeInitiativeArticle = removeInitiativeArticle;
+
+// ── Open Borders Config ──
+function renderOpenBordersConfig(art, index) {
+    const c = art.config;
+    let html = '';
+    html += '<div class="config-row"><span class="config-label">Scope</span>' +
+        renderToggleGroup(OPEN_BORDERS_SCOPE_OPTIONS, c.scope, index, 'scope') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Direction</span>' +
+        renderToggleGroup(OPEN_BORDERS_DIRECTION_OPTIONS, c.direction, index, 'direction') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Worker Protections</span>' +
+        renderToggleGroup(OPEN_BORDERS_WORKER_PROTECTIONS, c.worker_protections, index, 'worker_protections') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Transition Period</span>' +
+        renderToggleGroup(OPEN_BORDERS_TRANSITION_OPTIONS, c.transition, index, 'transition') + '</div>';
+    return html;
+}
+
+// ── Mutual Extradition Config ──
+function renderExtraditionConfig(art, index) {
+    const c = art.config;
+    let html = '';
+    html += '<div class="config-row"><span class="config-label">Scope</span>' +
+        renderCheckGroup(EXTRADITION_SCOPE_OPTIONS, c.scope, index, 'scope') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Dual Criminality</span>' +
+        renderToggleGroup(EXTRADITION_DUAL_CRIMINALITY_OPTIONS, c.dual_criminality, index, 'dual_criminality') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Appeal Process</span>' +
+        renderToggleGroup(EXTRADITION_APPEAL_OPTIONS, c.appeal_process, index, 'appeal_process') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Exceptions</span>' +
+        renderCheckGroup(EXTRADITION_EXCEPTION_OPTIONS, c.exceptions, index, 'exceptions') + '</div>';
+    // Warnings
+    const effects = calculateExtraditionEffects(c);
+    if (effects.warnings && effects.warnings.length > 0) {
+        html += '<div style="margin-top:4px;">';
+        effects.warnings.forEach(w => {
+            html += '<div style="font-family:var(--font-sans);font-size:9px;color:#ef4444;line-height:1.4;padding:2px 0;">⚠ ' + escapeHtml(w) + '</div>';
+        });
+        html += '</div>';
+    }
+    return html;
+}
+
+// ── Environmental Accord Config ──
+function renderEnvironmentalConfig(art, index) {
+    const c = art.config;
+    let html = '';
+    html += '<div class="config-row"><span class="config-label">Emission Targets</span>' +
+        renderToggleGroup(ENVIRONMENT_EMISSION_TARGET_OPTIONS, c.emission_target, index, 'emission_target') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Renewable Energy</span>' +
+        renderToggleGroup(ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, c.renewable_target, index, 'renewable_target') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Pollution Standards</span>' +
+        renderToggleGroup(ENVIRONMENT_POLLUTION_STANDARDS, c.pollution_standards, index, 'pollution_standards') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Conservation</span>' +
+        renderCheckGroup(ENVIRONMENT_CONSERVATION_OPTIONS, c.conservation, index, 'conservation') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Compliance Review</span>' +
+        renderToggleGroup(ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, c.review_interval, index, 'review_interval') + '</div>';
+    html += '<div class="config-row"><span class="config-label">Non-Compliance Penalty</span>' +
+        renderToggleGroup(ENVIRONMENT_PENALTY_OPTIONS, c.penalty, index, 'penalty') + '</div>';
+    return html;
+}
+
+/**
  * Compute effects for a single article based on its type and config.
  */
 function computeArticleEffects(art) {
-    const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type];
+    const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES[art.type];
     if (!typeInfo || !typeInfo.calculateEffects) return {};
     try {
         return typeInfo.calculateEffects(art.config);
@@ -10394,7 +10470,10 @@ function renderEffectTags(effects, articleType) {
         const total = (e.cost_proposer || 0) + (e.cost_target || 0);
         tags.push({ label: '-$' + (total / 1e6).toFixed(1) + 'M Cost', cls: 'effect-tag--money-neg' });
     }
-    if (e.intl_reputation) tags.push({ label: '+' + e.intl_reputation + ' Int\'l Rep', cls: 'effect-tag--positive' });
+    if (e.intl_reputation || e.international_reputation) {
+        const val = e.intl_reputation || e.international_reputation;
+        tags.push({ label: (val > 0 ? '+' : '') + val + ' Int\'l Rep', cls: val > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
+    }
     if (e.immigration) tags.push({ label: '+' + e.immigration + ' Immigration', cls: 'effect-tag--positive' });
     if (e.higher_education) tags.push({ label: '+' + e.higher_education + ' Higher Ed', cls: 'effect-tag--positive' });
     if (e.soft_power) tags.push({ label: '+' + e.soft_power + ' Soft Power', cls: 'effect-tag--info' });
@@ -10403,7 +10482,21 @@ function renderEffectTags(effects, articleType) {
     if (e.technology_bonus) tags.push({ label: '+' + e.technology_bonus + ' Technology', cls: 'effect-tag--info' });
     if (e.polarization) tags.push({ label: '+' + e.polarization + ' Polarization', cls: 'effect-tag--warning' });
     if (e.terrorism_risk) tags.push({ label: '+' + e.terrorism_risk + ' Terrorism Risk', cls: 'effect-tag--warning' });
+    if (e.terrorism && !e.terrorism_risk) tags.push({ label: (e.terrorism > 0 ? '+' : '') + e.terrorism + ' Terrorism', cls: e.terrorism > 0 ? 'effect-tag--warning' : 'effect-tag--positive' });
     if (e.ongoing_per_tick) tags.push({ label: '-$' + (e.ongoing_per_tick / 1e6).toFixed(0) + 'M/tick Ongoing', cls: 'effect-tag--money-neg' });
+    // Major initiative stat tags
+    if (e.gdp_growth) tags.push({ label: (e.gdp_growth > 0 ? '+' : '') + e.gdp_growth + ' GDP Growth', cls: e.gdp_growth > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
+    if (e.labor_force_participation) tags.push({ label: '+' + e.labor_force_participation + ' Labor Force', cls: 'effect-tag--positive' });
+    if (e.civil_unrest) tags.push({ label: '+' + e.civil_unrest + ' Civil Unrest', cls: 'effect-tag--warning' });
+    if (e.housing_affordability) tags.push({ label: e.housing_affordability + ' Housing', cls: e.housing_affordability > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
+    if (e.cost_of_living) tags.push({ label: '+' + e.cost_of_living + ' Cost of Living', cls: 'effect-tag--warning' });
+    if (e.crime_rate) tags.push({ label: e.crime_rate + ' Crime Rate', cls: e.crime_rate < 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
+    if (e.corruption) tags.push({ label: e.corruption + ' Corruption', cls: e.corruption < 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
+    if (e.judicial_independence) tags.push({ label: (e.judicial_independence > 0 ? '+' : '') + e.judicial_independence + ' Judicial Ind.', cls: e.judicial_independence > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
+    if (e.freedom_index) tags.push({ label: e.freedom_index + ' Freedom Index', cls: e.freedom_index > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
+    if (e.press_freedom) tags.push({ label: e.press_freedom + ' Press Freedom', cls: e.press_freedom > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
+    if (e.pollution) tags.push({ label: e.pollution + ' Pollution', cls: e.pollution < 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
+    if (e.manufacturing_output) tags.push({ label: e.manufacturing_output + ' Manufacturing', cls: e.manufacturing_output > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
 
     if (tags.length === 0) {
         tags.push({ label: 'No stat effects', cls: 'effect-tag--neutral' });
@@ -10469,6 +10562,52 @@ function renderArticleConfigSummary(art) {
             const vis = STATEMENT_VISIBILITY_OPTIONS.find(v => v.key === c.visibility);
             if (vis) lines.push(vis.label);
             if (c.text) lines.push('"' + (c.text.length > 120 ? c.text.substring(0, 120) + '…' : c.text) + '"');
+            break;
+        }
+        case 'open_borders': {
+            const scope = OPEN_BORDERS_SCOPE_OPTIONS.find(s => s.key === c.scope);
+            const dir = OPEN_BORDERS_DIRECTION_OPTIONS.find(d => d.key === c.direction);
+            const prot = OPEN_BORDERS_WORKER_PROTECTIONS.find(p => p.key === c.worker_protections);
+            const trans = OPEN_BORDERS_TRANSITION_OPTIONS.find(t => t.key === c.transition);
+            if (scope) lines.push(scope.label);
+            if (dir) lines.push(dir.label);
+            if (prot) lines.push(prot.label);
+            if (trans) lines.push(trans.label);
+            break;
+        }
+        case 'mutual_extradition': {
+            const scopes = (c.scope || []).map(k => {
+                const opt = EXTRADITION_SCOPE_OPTIONS.find(o => o.key === k);
+                return opt ? opt.label : k;
+            });
+            if (scopes.length) lines.push('Scope: ' + scopes.join(', '));
+            const dc = EXTRADITION_DUAL_CRIMINALITY_OPTIONS.find(d => d.key === c.dual_criminality);
+            if (dc) lines.push(dc.label);
+            const ap = EXTRADITION_APPEAL_OPTIONS.find(a => a.key === c.appeal_process);
+            if (ap) lines.push(ap.label);
+            const excs = (c.exceptions || []).map(k => {
+                const opt = EXTRADITION_EXCEPTION_OPTIONS.find(o => o.key === k);
+                return opt ? opt.label : k;
+            });
+            if (excs.length) lines.push('Exceptions: ' + excs.join(', '));
+            break;
+        }
+        case 'environmental_accord': {
+            const em = ENVIRONMENT_EMISSION_TARGET_OPTIONS.find(e => e.key === c.emission_target);
+            const ren = ENVIRONMENT_RENEWABLE_TARGET_OPTIONS.find(r => r.key === c.renewable_target);
+            const pol = ENVIRONMENT_POLLUTION_STANDARDS.find(p => p.key === c.pollution_standards);
+            if (em) lines.push(em.label);
+            if (ren && ren.key > 0) lines.push(ren.label + ' Renewable');
+            if (pol) lines.push(pol.label);
+            const cons = (c.conservation || []).map(k => {
+                const opt = ENVIRONMENT_CONSERVATION_OPTIONS.find(o => o.key === k);
+                return opt ? opt.label : k;
+            });
+            if (cons.length) lines.push('Conservation: ' + cons.join(', '));
+            const rev = ENVIRONMENT_REVIEW_INTERVAL_OPTIONS.find(r => r.key === c.review_interval);
+            if (rev) lines.push(rev.label);
+            const pen = ENVIRONMENT_PENALTY_OPTIONS.find(p => p.key === c.penalty);
+            if (pen) lines.push('Penalty: ' + pen.label);
             break;
         }
     }
@@ -11408,6 +11547,279 @@ async function submitMinorInitiative() {
     }
 }
 window.submitMinorInitiative = submitMinorInitiative;
+
+// ══════════════════════════════════════════════════════
+// MAJOR DIPLOMATIC INITIATIVE — DRAFT PANEL
+// ══════════════════════════════════════════════════════
+
+/**
+ * Render the FM's draft panel for composing a Major Diplomatic Initiative.
+ */
+function renderMajorInitiativeDraftPanel(body, statusEl) {
+    if (statusEl) statusEl.textContent = 'Major Diplomatic Initiative';
+
+    // Check role: FM or HoG fallback
+    const isFM = diplomaticRoles.isFM;
+    const isHoG = diplomaticRoles.isHoG;
+    if (!isFM && !isHoG) {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Only the Foreign Minister or Head of Government can propose Major Diplomatic Initiatives.</div></div>';
+        return;
+    }
+
+    const apCost = isFM ? MAJOR_INITIATIVE_CONFIG.AP_COST : MAJOR_INITIATIVE_CONFIG.AP_COST + MAJOR_INITIATIVE_CONFIG.HOG_FALLBACK_AP_PENALTY;
+
+    let html = '<div class="draft-panel">';
+
+    // ── Header fields ──
+    html += '<div class="draft-header">';
+    html += '<div class="draft-field"><div class="draft-field-label">Action</div><div class="draft-field-input">' +
+        escapeHtml(activeDraftAction.label) + ' <span style="font-family:var(--font-mono);font-size:10px;font-weight:600;color:var(--teal);">' + apCost + ' AP</span>';
+    if (!isFM && isHoG) {
+        html += ' <span style="font-family:var(--font-mono);font-size:9px;color:#ef4444;">(+' + MAJOR_INITIATIVE_CONFIG.HOG_FALLBACK_AP_PENALTY + ' AP: no FM)</span>';
+    }
+    html += '</div></div>';
+
+    // Target nation — dropdown of all other nations (FM isn't restricted to ambassador postings)
+    html += '<div class="draft-field"><div class="draft-field-label">Target</div>' +
+        '<select class="selector-dropdown" onchange="selectMajorInitiativeTarget(this.value)">' +
+        '<option value="">Select nation...</option>';
+    cachedOtherNations.forEach(n => {
+        const sel = activeDraftTarget && activeDraftTarget.id === n.id ? ' selected' : '';
+        html += '<option value="' + n.id + '"' + sel + '>' + escapeHtml(n.name) + '</option>';
+    });
+    html += '</select></div>';
+
+    // Initiative name
+    html += '<div class="draft-field"><div class="draft-field-label">Name</div>' +
+        '<input type="text" id="major-initiative-name-input" class="draft-field-input" ' +
+        'placeholder="e.g. ' + escapeHtml((currentNation?.name || '') + '-' + (activeDraftTarget?.name || '') + ' Comprehensive Partnership') + '" ' +
+        'value="' + escapeHtml(wizardName) + '" oninput="wizardName=this.value" ' +
+        'style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:6px 10px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
+    html += '</div>';
+
+    // ── Articles section ──
+    html += '<div class="draft-articles" style="flex:1;overflow-y:auto;padding:10px 14px;">';
+    if (wizardArticles.length === 0) {
+        html += '<div class="empty-state" style="padding:20px 0;"><div class="empty-state-text">No articles added yet.<br>Use the selector below to add articles.</div></div>';
+    } else {
+        wizardArticles.forEach((art, i) => {
+            html += renderInitiativeArticleCard(art, i, true);
+        });
+    }
+    html += '</div>';
+
+    // ── Article selector ──
+    html += '<div class="article-selector">';
+    html += '<select class="selector-dropdown" id="major-initiative-article-selector">';
+    html += '<option value="">Add article...</option>';
+    for (const [key, typeInfo] of Object.entries(MAJOR_INITIATIVE_ARTICLE_TYPES)) {
+        if (typeInfo.max_per_initiative) {
+            const count = wizardArticles.filter(a => a.type === key).length;
+            if (count >= typeInfo.max_per_initiative) continue;
+        }
+        html += '<option value="' + key + '">' + escapeHtml(typeInfo.label) + '</option>';
+    }
+    html += '</select>';
+    html += '<button class="btn btn--primary btn--sm" onclick="addMajorInitiativeArticle()">Add</button>';
+    html += '</div>';
+
+    // ── Cost summary for major initiatives ──
+    if (wizardArticles.length > 0) {
+        const costSummary = computeMajorInitiativeCosts(wizardArticles);
+        html += '<div style="padding:4px 14px;font-family:var(--font-mono);font-size:9px;color:var(--text-2);border-top:1px solid var(--border-hair);">';
+        html += 'Ratification cost: <span style="color:#ef4444;">$' + (costSummary.ratification / 1e6).toFixed(0) + 'M</span> each · ';
+        html += 'Ongoing: <span style="color:#ef4444;">$' + (costSummary.ongoing / 1e6).toFixed(0) + 'M/yr</span> each · ';
+        html += 'Requires bilateral parliamentary ratification (6 ticks)';
+        html += '</div>';
+    }
+
+    // ── Action bar ──
+    const articleCount = wizardArticles.length;
+    const hasEnoughAP = (currentFaction?.action_points ?? 0) >= apCost;
+    const canSend = articleCount > 0 && activeDraftTarget && wizardName.trim() && hasEnoughAP;
+
+    html += '<div class="action-bar">';
+    html += '<span class="action-bar-info">' + articleCount + ' article' + (articleCount !== 1 ? 's' : '') + ' / Major / Tier 3</span>';
+    html += '<div class="action-bar-spacer"></div>';
+    html += '<button class="btn btn--dim" onclick="cancelDraft()">Cancel</button>';
+    html += '<button class="btn btn--send' + (canSend ? '' : '" disabled') + '" onclick="submitMajorInitiative()"' +
+        (!canSend ? ' title="' + (!activeDraftTarget ? 'Select a target nation' : articleCount === 0 ? 'Add at least one article' : !wizardName.trim() ? 'Enter an initiative name' : 'Not enough AP (' + apCost + ' required)') + '"' : '') +
+        '>Send Initiative (' + apCost + ' AP)</button>';
+    html += '</div>';
+
+    html += '</div>';
+    body.innerHTML = html;
+}
+
+/**
+ * Compute combined costs across major initiative articles.
+ */
+function computeMajorInitiativeCosts(articles) {
+    let ratification = 0, ongoing = 0;
+    for (const art of articles) {
+        if (art.status === 'struck') continue;
+        const effects = computeArticleEffects(art);
+        if (effects.costs) {
+            ratification += effects.costs.ratification_proposer || 0;
+            ongoing += effects.costs.ongoing_per_year || 0;
+        }
+    }
+    return { ratification, ongoing };
+}
+
+/**
+ * Select target nation for major initiative.
+ */
+function selectMajorInitiativeTarget(nationId) {
+    if (!nationId) { activeDraftTarget = null; renderDraftBox(); return; }
+    const nation = cachedOtherNations.find(n => n.id === nationId);
+    if (nation) {
+        activeDraftTarget = { id: nation.id, name: nation.name };
+    }
+    renderDraftBox();
+}
+window.selectMajorInitiativeTarget = selectMajorInitiativeTarget;
+
+/**
+ * Add a new article to the major initiative draft.
+ */
+function addMajorInitiativeArticle() {
+    const sel = document.getElementById('major-initiative-article-selector');
+    if (!sel || !sel.value) return;
+    const typeKey = sel.value;
+    const typeInfo = MAJOR_INITIATIVE_ARTICLE_TYPES[typeKey];
+    if (!typeInfo) return;
+
+    if (typeInfo.max_per_initiative) {
+        const count = wizardArticles.filter(a => a.type === typeKey).length;
+        if (count >= typeInfo.max_per_initiative) {
+            alert('Only one ' + typeInfo.label + ' per initiative.');
+            return;
+        }
+    }
+
+    const article = {
+        id: crypto.randomUUID ? crypto.randomUUID() : 'art-' + Date.now() + '-' + Math.random().toString(36).slice(2,8),
+        type: typeKey,
+        label: typeInfo.label,
+        config: JSON.parse(JSON.stringify(typeInfo.default_config)),
+        status: 'active'
+    };
+
+    wizardArticles.push(article);
+    renderDraftBox();
+}
+window.addMajorInitiativeArticle = addMajorInitiativeArticle;
+
+/**
+ * Submit a Major Diplomatic Initiative.
+ */
+async function submitMajorInitiative() {
+    if (!activeDraftTarget) { alert('Please select a target nation.'); return; }
+    if (!wizardName.trim()) { alert('Please enter a name for the initiative.'); return; }
+    if (wizardArticles.length === 0) { alert('Please add at least one article.'); return; }
+
+    const isFM = diplomaticRoles.isFM;
+    const apCost = isFM ? MAJOR_INITIATIVE_CONFIG.AP_COST : MAJOR_INITIATIVE_CONFIG.AP_COST + MAJOR_INITIATIVE_CONFIG.HOG_FALLBACK_AP_PENALTY;
+    if ((currentFaction?.action_points ?? 0) < apCost) {
+        alert('Not enough AP. You need ' + apCost + ' AP.');
+        return;
+    }
+
+    // Validate: hostile nations blocked
+    const targetId = activeDraftTarget.id;
+    const natA = currentNation.id < targetId ? currentNation.id : targetId;
+    const natB = currentNation.id < targetId ? targetId : currentNation.id;
+    const { data: rel } = await _supabase
+        .from('diplomatic_relations')
+        .select('relation_score')
+        .eq('nation_a_id', natA)
+        .eq('nation_b_id', natB)
+        .maybeSingle();
+    if (rel && rel.relation_score <= MAJOR_INITIATIVE_CONFIG.HOSTILE_RELATION_THRESHOLD) {
+        alert('Cannot propose diplomatic initiative to hostile nation (relations: ' + rel.relation_score + ').');
+        return;
+    }
+
+    // Validate: extradition must have at least 1 scope
+    for (const art of wizardArticles) {
+        if (art.type === 'mutual_extradition' && (!art.config.scope || art.config.scope.length === 0)) {
+            alert('Mutual Extradition Treaty requires at least one scope selected.');
+            return;
+        }
+    }
+
+    // Build proposal_data with computed effects
+    const articles = wizardArticles.map((art, i) => {
+        const effects = computeArticleEffects(art);
+        return {
+            id: art.id,
+            type: art.type,
+            title: art.label || MAJOR_INITIATIVE_ARTICLE_TYPES[art.type]?.label || art.type,
+            config: art.config,
+            effects: effects.summary || effects,
+            proposer_effects: effects.proposer || null,
+            target_effects: effects.target || null,
+            costs: effects.costs || null,
+            compliance: effects.compliance || null,
+            warnings: effects.warnings || null,
+            status: 'active'
+        };
+    });
+
+    const totals = computeInitiativeTotals(wizardArticles);
+    const costSummary = computeMajorInitiativeCosts(wizardArticles);
+
+    const proposalData = {
+        name: wizardName.trim(),
+        classification: 'MAJOR',
+        version: 2,
+        articles: articles,
+        proposer_nation_name: currentNation.name,
+        target_nation_name: activeDraftTarget.name,
+        proposer_faction_id: currentFaction.id,
+        totals: totals,
+        costs: costSummary
+    };
+
+    try {
+        const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+        if (!apResult.success) { alert('Failed to deduct AP: ' + (apResult.error || 'Insufficient AP')); return; }
+
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shard?.current_tick || shardTick;
+
+        const { error } = await _supabase.from('diplomatic_proposals').insert({
+            proposing_nation_id: currentNation.id,
+            target_nation_id: activeDraftTarget.id,
+            proposed_by_faction_id: currentFaction.id,
+            proposal_type: MAJOR_INITIATIVE_CONFIG.TYPE,
+            proposal_tier: MAJOR_INITIATIVE_CONFIG.TIER,
+            status: 'proposed',
+            proposed_at_tick: currentTick,
+            proposal_data: proposalData
+        });
+
+        if (error) {
+            console.error('Submit error:', error);
+            alert('Error submitting initiative: ' + error.message);
+            return;
+        }
+
+        currentFaction.action_points = apResult.newAp;
+        const apEl = document.getElementById('diplo-ap');
+        if (apEl) apEl.textContent = currentFaction.action_points + ' AP';
+
+        alert('Major Initiative "' + proposalData.name + '" submitted to ' + activeDraftTarget.name + '!\nThis will require bilateral parliamentary ratification.');
+        cancelDraft();
+        await renderNegotiationsBox();
+        await renderDiploHeader();
+    } catch (err) {
+        console.error('Submit major initiative error:', err);
+        alert('Error: ' + err.message);
+    }
+}
+window.submitMajorInitiative = submitMajorInitiative;
 
 function cancelDraft() {
     activeDraftAction = null;
