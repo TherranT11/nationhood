@@ -20,6 +20,7 @@
     grid-template-columns: repeat(4, 1fr);
     gap: 20px;
     max-width: 1580px;
+    margin: 0 auto;
   }
 
   /* ── Nation Card ── */
@@ -380,6 +381,11 @@
     }
     #world-map-card {
       grid-column: span 2 !important;
+      grid-row: auto !important;
+    }
+    #nation-info-card {
+      grid-column: auto !important;
+      grid-row: auto !important;
     }
   }
 
@@ -399,8 +405,10 @@
     #events-card.dash-card-tall {
       max-height: 400px;
     }
-    #world-map-card {
+    #world-map-card,
+    #nation-info-card {
       grid-column: span 1 !important;
+      grid-row: auto !important;
     }
     .dash-card-header {
       padding: 8px 14px;
@@ -496,12 +504,17 @@
       <div class="dash-events-scroll" id="dash-events-list"></div>
     </div>
 
-    <!-- ── Row 2: World Map (spans 3 columns) ── -->
+    <!-- ── Row 2: World Map (spans 3 columns) + Nation Info ── -->
     <div class="dash-card" id="world-map-card">
       <div class="dash-card-header">WORLD MAP</div>
       <div class="dash-card-body" id="world-map-body" style="padding:0; overflow:hidden;">
         <img src="./assets/World Map Crucera3.svg" alt="World Map" style="width:100%; height:auto; object-fit:contain; display:block;">
       </div>
+    </div>
+
+    <div class="dash-card" id="nation-info-card" style="grid-column: 4; grid-row: 2;">
+      <div class="dash-card-header">NATION INFO</div>
+      <div class="dash-card-body" id="nation-info-body"></div>
     </div>
 
   </div>
