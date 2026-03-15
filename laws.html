@@ -192,7 +192,7 @@ import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills 
 import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS, RAW_SCALING_DIVISORS, buildFundingPctMap, getInstFundingPct, checkSovereigntyConstraints } from './js/game-common.js';
-import { formatInflationRate, getInflationLabel, NATION_STAT_COLUMNS } from './js/game/stats.js';
+import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 (function () {
     'use strict';
 /** Scale a policy cost by its scaling stat (e.g., population). */
@@ -1200,6 +1200,9 @@ function showAddArticleForm() {
     document.getElementById('sector-select').value = '';
     document.getElementById('ideology-hint').style.display = 'none';
     document.getElementById('policy-group').style.display = 'none';
+    document.getElementById('stat-filter-group').style.display = 'none';
+    document.getElementById('stat-filter-select').value = '';
+    _currentSectorPolicies = [];
     selectedPolicy = null;
     selectedFoundationalType = null;
     document.getElementById('add-article-btn').disabled = true;
@@ -1532,6 +1535,8 @@ function onSectorChange() {
 function onStatFilterChange() {
     const statKey = document.getElementById('stat-filter-select').value;
     const filtered = _filterPoliciesByStat(_currentSectorPolicies, statKey);
+    selectedPolicy = null;
+    document.getElementById('add-article-btn').disabled = true;
     renderPolicyOptions(filtered, 'policy-options', 'add-article-btn');
     document.getElementById('policy-group').style.display = 'block';
 }
@@ -2526,6 +2531,9 @@ function openCommitteeAddModal(billId) {
     document.getElementById('committee-sector-select').value = '';
     document.getElementById('committee-ideology-hint').style.display = 'none';
     document.getElementById('committee-policy-group').style.display = 'none';
+    document.getElementById('committee-stat-filter-group').style.display = 'none';
+    document.getElementById('committee-stat-filter-select').value = '';
+    _committeeSectorPolicies = [];
     document.getElementById('committee-add-btn').disabled = true;
     document.getElementById('committee-add-modal').classList.add('active');
 }
@@ -2552,6 +2560,8 @@ function onCommitteeSectorChange() {
 function onCommitteeStatFilterChange() {
     const statKey = document.getElementById('committee-stat-filter-select').value;
     const filtered = _filterPoliciesByStat(_committeeSectorPolicies, statKey);
+    committeeSelectedPolicy = null;
+    document.getElementById('committee-add-btn').disabled = true;
     renderPolicyOptions(filtered, 'committee-policy-options', 'committee-add-btn');
     document.getElementById('committee-policy-group').style.display = 'block';
 }
