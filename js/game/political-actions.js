@@ -12,7 +12,6 @@ import { adjustGovernmentApprovalEvent, adjustMomentum, adjustMomentumAll } from
 import { fetchActiveCoalition } from './government-structure.js';
 import { recalcDerivedApproval } from './bills.js';
 import { closeAdministration, createAdministration, dissolveCoalition } from './elections.js';
-import { snapshotNationStats } from './stats.js';
 
 const _MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];

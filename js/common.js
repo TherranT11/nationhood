@@ -8,7 +8,6 @@
  */
 
 import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
-import { tickToDate } from './utils.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
 
 // ===== QUERY CACHE =====
@@ -746,23 +745,6 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (activeTab !== 'laws') {
         updateBillsBadge(state.faction, state.nation, state.shard);
     }
-    // Record browser fingerprint (non-blocking, fire-and-forget)
-    recordFingerprint(_supabase);
-    // Check ban status (non-blocking, redirects if banned)
-    checkBanStatus(_supabase).then(result => {
-        if (result.banned) {
-            document.body.innerHTML = `
-                <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0d1117;color:#e0e0e0;font-family:sans-serif;">
-                    <div style="text-align:center;max-width:480px;padding:40px;">
-                        <div style="font-size:48px;margin-bottom:16px;">&#x1F6AB;</div>
-                        <h1 style="color:#ff4444;margin-bottom:12px;">Account ${result.ban_type === 'banned' ? 'Banned' : 'Suspended'}</h1>
-                        <p style="color:#aaa;margin-bottom:8px;">${result.reason}</p>
-                        ${result.banned_until ? `<p style="color:#888;font-size:0.85rem;">Until: ${new Date(result.banned_until).toLocaleString()}</p>` : '<p style="color:#888;font-size:0.85rem;">This action is permanent.</p>'}
-                        <button onclick="handleLogout()" style="margin-top:24px;padding:10px 24px;background:#333;color:#fff;border:none;cursor:pointer;">Log Out</button>
-                    </div>
-                </div>`;
-        }
-    });
     if (onReady) {
         await onReady(state);
     }

@@ -4,7 +4,7 @@
  * Provides 5 executive orders the president's party can issue:
  *   1. Acting Minister — bypass senate confirmation (max 3)
  *   2. Tax Adjustment — adjust income/corporate/sales tax ±3%
- *   3. Price Controls — freeze fuel_prices or food_security for 3 ticks
+ *   3. Price Controls — freeze fuel_prices for 3 ticks
  *   4. National Emergency — emergency powers (indefinite until manually ended)
  *   5. Censure — censure a rival faction
  *
@@ -16,7 +16,7 @@ import { GAME_CONFIG, deductAP } from './config.js';
 import { MINISTER_APPROVAL_CONFIG } from './stats.js';
 import { isGovernmentPresidential } from './government-types.js';
 import { adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
-import { PM_FIRST_NAMES, PM_LAST_NAMES, getNationNames } from './political-actions.js';
+import { getNationNames } from './political-actions.js';
 
 // ─── Executive Order Config Constants ───
 
@@ -282,7 +282,7 @@ export async function issueTaxAdjustment(supabase, nationId, factionId, taxType,
 // ─── Executive Order: Price Controls ───
 
 export async function issuePriceControls(supabase, nationId, factionId, stat) {
-    const validStats = ['fuel_prices', 'food_security'];
+    const validStats = ['fuel_prices'];
     if (!validStats.includes(stat)) {
         return { success: false, error: 'Invalid stat for price controls.' };
     }
@@ -675,7 +675,7 @@ export async function checkOrderAvailability(supabase, nationId, factionId, curr
     // Price Controls
     const activePC = activeOrders.filter(o => o.order_type === 'price_controls');
     const pcCooldowns = {};
-    for (const s of ['fuel_prices', 'food_security']) {
+    for (const s of ['fuel_prices']) {
         const recent = (orders || []).filter(o =>
             o.order_type === 'price_controls' &&
             o.payload?.stat === s &&
