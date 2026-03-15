@@ -211,10 +211,10 @@ function renderCandidateList(candidates, selectedIdx) {
                         <span class="pl-ideology-dot" style="background:${ideologyColor}"></span>
                         <span style="color:${ideologyColor}">${ideologyLabel}</span>
                     </span>
-                    <span class="pl-list-electability">
+                    ${activeRole === 'leader' ? `<span class="pl-list-electability">
                         <span class="pl-list-electability-label">Electability: </span>
                         <span style="color:${electTier.color}">${electTier.label}</span>
-                    </span>
+                    </span>` : ''}
                 </div>
             </div>
         `;
@@ -268,7 +268,7 @@ function renderCandidateDetail(c) {
             </div>
         </div>
 
-        <!-- Electability Bar -->
+        ${activeRole === 'leader' ? `<!-- Electability Bar -->
         <div class="pl-electability" style="border-left:3px solid ${electTier.color}">
             <div class="pl-electability-header">
                 <span class="pl-electability-title">ELECTABILITY</span>
@@ -280,7 +280,7 @@ function renderCandidateDetail(c) {
             <div class="pl-electability-scale">
                 <span>V.Low</span><span>Low</span><span>Moderate</span><span>High</span><span>V.High</span>
             </div>
-        </div>
+        </div>` : ''}
 
         <!-- Strengths -->
         <div class="pl-section-header">STRENGTHS <span style="color:var(--green)">+${posTotal.toFixed(1)}</span></div>
@@ -368,13 +368,16 @@ window._appointLeader = async function() {
 
     const roleLabel = getRoleLabel(activeRole);
 
-    if (!confirm(
-        `Appoint ${candidate.firstName} ${candidate.lastName} as ${roleLabel}?\n\n` +
-        `Cost: ${getAPCostLabel(candidate.apCost)}\n` +
-        `Ideology: ${candidate.ideology}\n` +
-        `Electability: ${getElectabilityTier(candidate.electability).label}\n\n` +
-        `This will replace the current ${roleLabel.toLowerCase()}.`
-    )) return;
+    const confirmLines = [
+        `Appoint ${candidate.firstName} ${candidate.lastName} as ${roleLabel}?\n`,
+        `Cost: ${getAPCostLabel(candidate.apCost)}`,
+        `Ideology: ${candidate.ideology}`,
+    ];
+    if (activeRole === 'leader') {
+        confirmLines.push(`Electability: ${getElectabilityTier(candidate.electability).label}`);
+    }
+    confirmLines.push('', `This will replace the current ${roleLabel.toLowerCase()}.`);
+    if (!confirm(confirmLines.join('\n'))) return;
 
     isAppointing = true;
     const btn = document.querySelector('.pl-appoint-btn');
