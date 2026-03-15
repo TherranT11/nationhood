@@ -4592,6 +4592,7 @@ function renderAdminCard(admin, isCurrent) {
     const executiveOrders = admin.executive_orders || [];
     const snapElections = admin.snap_elections || [];
     const minorityGovernments = admin.minority_governments || [];
+    const leaderChanges = admin.leader_changes || [];
 
     // Detail sections
     let detailHTML = '';
@@ -4745,6 +4746,10 @@ function renderAdminCard(admin, isCurrent) {
         }
         if (minorityGovernments.length > 0) {
             detailHTML += minorityGovernments.map(e => `<div class="pad-legislation-item"><span class="bill-name" style="color:var(--orange);">Minority Government Formed</span><span class="bill-date">${tickToDate(e.tick)}</span></div>`).join('');
+        }
+        if (leaderChanges.length > 0) {
+            detailHTML += `<div style="font-size:0.72rem;color:var(--teal, #5aafa5);font-weight:bold;margin:6px 0 4px;">Leadership Changes (${leaderChanges.length})</div>`;
+            detailHTML += leaderChanges.map(lc => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(lc.role)}</span><span class="bill-date" style="color:var(--text-dim);">${escapeHtml(lc.description)} &middot; ${tickToDate(lc.tick)}</span></div>`).join('');
         }
         if (executiveOrders.length > 0) {
             const eoLabels = { acting_minister: 'Acting Minister', emergency_session: 'Emergency Session', executive_decree: 'Executive Decree', emergency_powers: 'Emergency Powers', media_address: 'Media Address' };

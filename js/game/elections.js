@@ -95,7 +95,7 @@ export async function closeAdministration(supabase, nationId, nation, endReason,
             // Query crises (events with category 'crisis' or matching crisis event names)
             const { data: eventsDuring, error: eventsErr } = await supabase
                 .from('event_log')
-                .select('event_id, event_name, category, fired_at_tick')
+                .select('event_id, event_name, category, fired_at_tick, description_chosen')
                 .eq('nation_id', nationId)
                 .gte('fired_at_tick', currentAdmin.started_at_tick)
                 .lte('fired_at_tick', currentTick);
@@ -209,6 +209,11 @@ export async function closeAdministration(supabase, nationId, nation, endReason,
                 e.event_name && e.event_name.includes('minority_government')
             ).map(e => ({ title: e.event_name, tick: e.fired_at_tick }));
 
+            // Detect leader changes from event_log (Party Leadership appointments)
+            const leaderChangeEvents = (eventsDuring || []).filter(e =>
+                e.event_name && (e.event_name === 'New Party Leader' || e.event_name === 'New Deputy Leader' || e.event_name === 'New Party Whip')
+            ).map(e => ({ role: e.event_name, description: e.description_chosen || '', tick: e.fired_at_tick }));
+
             // Update the administration record
             const { error: updateErr } = await supabase
                 .from('administrations')
@@ -230,6 +235,7 @@ export async function closeAdministration(supabase, nationId, nation, endReason,
                     executive_orders: executiveOrders,
                     snap_elections: snapEvents,
                     minority_governments: minorityEvents,
+                    leader_changes: leaderChangeEvents,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', currentAdmin.id);

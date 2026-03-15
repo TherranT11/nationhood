@@ -90,13 +90,19 @@ export async function renderWikiSearchBar(container) {
     searchInput.addEventListener('input', () => {
         const q = searchInput.value.trim().toLowerCase();
         if (!q) { searchResults.innerHTML = ''; searchResults.style.display = 'none'; return; }
-        const matches = allPages.filter(p => p.title.toLowerCase().includes(q)).slice(0, 8);
+        const matches = allPages.filter(p =>
+            p.title.toLowerCase().includes(q) ||
+            (p.tags && p.tags.some(t => t.toLowerCase().includes(q)))
+        ).slice(0, 8);
         if (!matches.length) {
             searchResults.innerHTML = `<div class="wiki-search-item wiki-search-empty">No pages match "${escapeHtml(q)}"</div>`;
         } else {
-            searchResults.innerHTML = matches.map(p =>
-                `<a href="wiki.html?slug=${encodeURIComponent(p.slug)}" class="wiki-search-item">${escapeHtml(p.title)}${p.template_type ? ` <span class="wiki-page-row-type">${escapeHtml(p.template_type)}</span>` : ''}</a>`
-            ).join('');
+            searchResults.innerHTML = matches.map(p => {
+                const titleMatch = p.title.toLowerCase().includes(q);
+                const matchedTags = !titleMatch && p.tags ? p.tags.filter(t => t.toLowerCase().includes(q)) : [];
+                const tagHint = matchedTags.length ? ` <span class="wiki-search-tag-hint">#${escapeHtml(matchedTags[0])}</span>` : '';
+                return `<a href="wiki.html?slug=${encodeURIComponent(p.slug)}" class="wiki-search-item">${escapeHtml(p.title)}${tagHint}${p.template_type ? ` <span class="wiki-page-row-type">${escapeHtml(p.template_type)}</span>` : ''}</a>`;
+            }).join('');
         }
         searchResults.style.display = 'block';
     });

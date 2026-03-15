@@ -8,31 +8,31 @@
 // ═══════════════════════════════════════
 export const POSITIVE_TRAITS = [
     // AP & Action Economy
-    { key: 'tireless_campaigner', name: 'Tireless Campaigner', cost: 2.0, category: 'AP', effect: '+1 AP generated per tick.' },
-    { key: 'efficient_operator', name: 'Efficient Operator', cost: 1.5, category: 'AP', effect: 'All campaign actions cost -1 AP (minimum 1).' },
-    { key: 'quick_study', name: 'Quick Study', cost: 1.0, category: 'AP', effect: 'First action each tick costs -1 AP (minimum 1).' },
-    { key: 'delegation', name: 'Delegation', cost: 0.5, category: 'AP', effect: 'Maintenance costs for planks and champions reduced by 1 total.' },
+    { key: 'tireless_campaigner', name: 'Tireless Campaigner', cost: 4.0, category: 'AP', effect: '+1 AP generated per tick.' },
+    { key: 'efficient_operator', name: 'Efficient Operator', cost: 3.5, category: 'AP', effect: 'All campaign actions cost -1 AP (minimum 1).' },
+    { key: 'quick_study', name: 'Quick Study', cost: 1.5, category: 'AP', effect: 'First action each tick costs -1 AP (minimum 1).' },
+    { key: 'delegation', name: 'Delegation', cost: 1.0, category: 'AP', effect: 'Maintenance costs for planks and champions reduced by 1 total.' },
     // Electoral & Electability
-    { key: 'born_leader', name: 'Born Leader', cost: 1.5, category: 'Electoral', effect: 'Electability gains are doubled.' },
-    { key: 'comeback_kid', name: 'Comeback Kid', cost: 1.5, category: 'Electoral', effect: 'Electability losses are halved.' },
-    { key: 'crowd_pleaser', name: 'Crowd Pleaser', cost: 1.0, category: 'Electoral', effect: 'Rally turnout +8%. Mobilize campaign reaches +1 additional bloc.' },
-    { key: 'telegenic', name: 'Telegenic', cost: 1.0, category: 'Electoral', effect: 'Campaign: Message effectiveness +30%. Media coverage events favor your party.' },
+    { key: 'born_leader', name: 'Born Leader', cost: 3.5, category: 'Electoral', effect: 'Electability gains are doubled.' },
+    { key: 'comeback_kid', name: 'Comeback Kid', cost: 3.5, category: 'Electoral', effect: 'Electability losses are halved.' },
+    { key: 'crowd_pleaser', name: 'Crowd Pleaser', cost: 1.5, category: 'Electoral', effect: 'Rally turnout +8%. Mobilize campaign reaches +1 additional bloc.' },
+    { key: 'telegenic', name: 'Telegenic', cost: 1.5, category: 'Electoral', effect: 'Campaign: Message effectiveness +30%. Media coverage events favor your party.' },
     // Legislative & Parliamentary
-    { key: 'arm_twister', name: 'Arm Twister', cost: 1.0, category: 'Legislative', effect: 'Bills your party sponsors have +15% passage rate.' },
-    { key: 'deal_maker', name: 'Deal Maker', cost: 1.0, category: 'Legislative', effect: 'Coalition negotiations complete 50% faster. Coalition partners demand 1 fewer ministry.' },
-    { key: 'policy_wonk', name: 'Policy Wonk', cost: 0.5, category: 'Legislative', effect: 'Bills you sponsor cost -1 AP to draft. Voters credit your party +5 approval for each enacted bill.' },
-    { key: 'constitutional_scholar', name: 'Constitutional Scholar', cost: 0.5, category: 'Legislative', effect: 'Impeachment and no-confidence attempts against your leader cost opponents +3 AP.' },
+    { key: 'arm_twister', name: 'Arm Twister', cost: 1.5, category: 'Legislative', effect: 'Bills your party sponsors have +15% passage rate.' },
+    { key: 'deal_maker', name: 'Deal Maker', cost: 1.5, category: 'Legislative', effect: 'Coalition negotiations complete 50% faster. Coalition partners demand 1 fewer ministry.' },
+    { key: 'policy_wonk', name: 'Policy Wonk', cost: 1.0, category: 'Legislative', effect: 'Bills you sponsor cost -1 AP to draft. Voters credit your party +5 approval for each enacted bill.' },
+    { key: 'constitutional_scholar', name: 'Constitutional Scholar', cost: 1.0, category: 'Legislative', effect: 'Impeachment and no-confidence attempts against your leader cost opponents +3 AP.' },
     // Governance
-    { key: 'cabinet_builder', name: 'Cabinet Builder', cost: 1.5, category: 'Governance', effect: 'Your party gets +2 ministry slots in any coalition. Ministers you appoint start with +10 approval.' },
-    { key: 'executive_authority', name: 'Executive Authority', cost: 2.0, category: 'Governance', effect: 'Pres: Executive Orders cost -2 AP. PM: Governor-General actions cost -1 AP.' },
-    { key: 'crisis_manager', name: 'Crisis Manager', cost: 1.0, category: 'Governance', effect: 'Stability loss during crises halved. Crisis duration -2 ticks.' },
-    { key: 'economic_steward', name: 'Economic Steward', cost: 1.0, category: 'Governance', effect: 'GDP growth +0.5% while governing. Budget surplus generates +3 approval per tick.' },
+    { key: 'cabinet_builder', name: 'Cabinet Builder', cost: 3.5, category: 'Governance', effect: 'Your party gets +2 ministry slots in any coalition. Ministers you appoint start with +10 approval.' },
+    { key: 'executive_authority', name: 'Executive Authority', cost: 4.0, category: 'Governance', effect: 'Pres: Executive Orders cost -2 AP. PM: Governor-General actions cost -1 AP.' },
+    { key: 'crisis_manager', name: 'Crisis Manager', cost: 1.5, category: 'Governance', effect: 'Stability loss during crises halved. Crisis duration -2 ticks.' },
+    { key: 'economic_steward', name: 'Economic Steward', cost: 1.5, category: 'Governance', effect: 'GDP growth +0.5% while governing. Budget surplus generates +3 approval per tick.' },
     // Diplomatic
-    { key: 'statesman', name: 'Statesman', cost: 1.5, category: 'Diplomatic', effect: 'State visits cost -2 AP and grant double relations boost.' },
-    { key: 'international_presence', name: 'International Presence', cost: 0.5, category: 'Diplomatic', effect: 'International reputation +5 while leader. Foreign leaders accept diplomatic proposals 1 tick faster.' },
+    { key: 'statesman', name: 'Statesman', cost: 3.5, category: 'Diplomatic', effect: 'State visits cost -2 AP and grant double relations boost.' },
+    { key: 'international_presence', name: 'International Presence', cost: 1.0, category: 'Diplomatic', effect: 'International reputation +5 while leader. Foreign leaders accept diplomatic proposals 1 tick faster.' },
     // Voter Blocs
-    { key: 'populist_touch', name: 'Populist Touch', cost: 1.5, category: 'Voter Blocs', effect: 'SKEPTICAL blocs are treated as SWING for all action targeting.' },
-    { key: 'base_energizer', name: 'Base Energizer', cost: 1.0, category: 'Voter Blocs', effect: 'BASE bloc turnout permanently +5%. Champion demands arrive 1 tick later.' },
+    { key: 'populist_touch', name: 'Populist Touch', cost: 3.5, category: 'Voter Blocs', effect: 'SKEPTICAL blocs are treated as SWING for all action targeting.' },
+    { key: 'base_energizer', name: 'Base Energizer', cost: 1.5, category: 'Voter Blocs', effect: 'BASE bloc turnout permanently +5%. Champion demands arrive 1 tick later.' },
 ];
 
 // ═══════════════════════════════════════
@@ -221,14 +221,14 @@ export function calculateAPCost(positiveTraitKeys, negativeTraitKeys) {
         positiveTotal: posTotal,
         negativeTotal: negTotal,
         rawCost: raw,
-        apCost: Math.max(0, Math.min(6, Math.round(raw)))
+        apCost: Math.max(0, Math.min(8, Math.round(raw)))
     };
 }
 
 export function getAPCostColor(ap) {
     if (ap === 0) return '#5cb85c';
-    if (ap <= 2) return '#c8a64e';
-    if (ap <= 4) return '#d48a3c';
+    if (ap <= 3) return '#c8a64e';
+    if (ap <= 5) return '#d48a3c';
     return '#d9534f';
 }
 

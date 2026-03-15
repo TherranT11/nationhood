@@ -655,6 +655,13 @@ a.wiki-link-missing:hover {
     background: transparent;
 }
 
+.wiki-search-tag-hint {
+    font-size: 0.7rem;
+    color: var(--accent, #d4a843);
+    opacity: 0.8;
+    margin-left: auto;
+}
+
 .wiki-search-create {
     color: var(--accent);
     font-weight: 600;

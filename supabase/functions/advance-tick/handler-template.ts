@@ -1615,7 +1615,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 // 1. Age all party faction leaders +1
                 const { data: partyFactions } = await supabase
                     .from('factions')
-                    .select('id, leader_age, leader_first_name, leader_last_name')
+                    .select('id, faction_name, leader_age, leader_first_name, leader_last_name')
                     .eq('nation_id', nation.id)
                     .eq('faction_type', 'party')
                     .not('leader_age', 'is', null);
@@ -1634,6 +1634,41 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             factionId: f.id,
                             newAge
                         });
+
+                        // Retirement check: leaders over 65 roll 1d100 each year.
+                        // If the roll is lower than their age, they retire.
+                        if (newAge > 65) {
+                            const roll = Math.floor(Math.random() * 100) + 1; // 1-100
+                            const leaderName = `${f.leader_first_name || '?'} ${f.leader_last_name || '?'}`;
+                            console.log(`[LeaderAging] Retirement check for ${leaderName} (${f.faction_name}): age=${newAge}, roll=${roll}`);
+
+                            if (roll < newAge) {
+                                console.log(`[LeaderAging] ${leaderName} of ${f.faction_name} retires at age ${newAge} (rolled ${roll} < ${newAge})`);
+
+                                // Clear leader from faction
+                                await supabase.from('factions')
+                                    .update({ leader_first_name: null, leader_last_name: null, leader_age: null })
+                                    .eq('id', f.id);
+
+                                // Log retirement event
+                                await supabase.from('event_log').insert({
+                                    nation_id: nation.id,
+                                    event_name: 'Party Leader Retires',
+                                    description_chosen: `${leaderName}, leader of ${f.faction_name || 'the party'}, has retired from politics at age ${newAge}.`,
+                                    category: 'POLITICAL',
+                                    fired_at_tick: newTick,
+                                });
+
+                                agingResults.push({
+                                    type: 'party_leader_retirement',
+                                    name: leaderName,
+                                    factionId: f.id,
+                                    factionName: f.faction_name,
+                                    age: newAge,
+                                    roll
+                                });
+                            }
+                        }
                     }
 
                     // 1b. Sync PM age in head_of_government (democracy)

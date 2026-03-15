@@ -6,6 +6,7 @@ import { tickToDate, escapeHtml as utilEscapeHtml, getIdeologyClass } from './ut
 import { fetchActiveCoalition, loadSeats, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, ensureBlocApprovals, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, PM_FIRST_NAMES, PM_LAST_NAMES, getNationNames, loadNationIdeologies, getFullIdeologyProfile, getIdeologyLabel, IDEOLOGY_AXES, selectPresidentCandidate, generatePresidentCandidates } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
+import { getElectabilityTier } from './game/party-leadership.js';
 
 initPage('politics', async (state) => {
     const { nation, faction, shard } = state;
@@ -252,6 +253,17 @@ initPage('politics', async (state) => {
 });
 
 /**
+ * Generate a deterministic electability score (20-70) from a faction UUID.
+ * Subtracts 10 from the base to reflect initial political uncertainty.
+ */
+function seedElectability(factionId) {
+    const hex = factionId.replace(/-/g, '');
+    const seed = parseInt(hex.substring(16, 24), 16);
+    const base = 20 + (seed % 51); // 20-70
+    return Math.max(0, base - 10); // subtract 10, clamp to 0
+}
+
+/**
  * Generate deterministic officer names from faction UUID.
  * Uses the UUID bytes to seed a simple selection from name pools.
  */
@@ -322,6 +334,10 @@ async function renderPartyTab(f, nation, data) {
         ? `<span class="pol-leader-ideo pol-ideo-${ideo1.toLowerCase()}">${ideo1.charAt(0).toUpperCase() + ideo1.slice(1).toLowerCase()}</span>`
         : '';
 
+    // Electability — deterministic from faction UUID
+    const electScore = seedElectability(f.id);
+    const electTier = getElectabilityTier(electScore);
+
     // Seat delta display
     let deltaHtml = '';
     if (seatDelta !== null && seatDelta !== 0) {
@@ -377,7 +393,7 @@ async function renderPartyTab(f, nation, data) {
                 <span class="pol-sub-label">Leader</span>
                 <button class="pol-leadership-btn" onclick="window.location.href='party-leadership.html'">Party Leadership &rarr;</button>
             </div>
-            <div class="pol-leader-name">${escapeHtml(leaderName)} <span class="pol-leader-age">${leaderAge}</span></div>
+            <div class="pol-leader-name">${escapeHtml(leaderName)} <span class="pol-leader-age">${leaderAge}</span> <span class="pol-leader-electability"><span class="pol-leader-electability-label">Electability: </span><span style="color:${electTier.color}">${electTier.label}</span></span></div>
             ${leaderIdeo}
         </div>
         <div class="pol-officers-row">
