@@ -1376,7 +1376,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                             for (const art of activeArticles) {
                                 const effects = art.proposer_effects || art.effects || {};
                                 const targetEffects = art.target_effects || art.effects || {};
-                                totalRel += (art.effects?.relations || effects.relations || 0);
+                                totalRel += (effects.relations || 0);
 
                                 // Store per-article effects for per-tick processing (enables per-article transition ramp)
                                 art.active_effects = { proposer: {}, target: {} };
@@ -1427,7 +1427,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                                 for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
                                     const { data: n } = await supabase.from('nations').select('civil_unrest').eq('id', nId).single();
                                     if (n) {
-                                        const newVal = Math.min(100, (n.civil_unrest || 0) + totalUnrestSpike);
+                                        const newVal = Math.max(0, Math.min(100, (n.civil_unrest || 0) + totalUnrestSpike));
                                         await supabase.from('nations').update({ civil_unrest: newVal }).eq('id', nId);
                                     }
                                 }

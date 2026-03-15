@@ -1288,7 +1288,9 @@ async function withdrawTradeAgreement(agreementId) {
     await renderAgreementsTab();
 }
 
+let _withdrawAgreementLock = false;
 async function withdrawAgreement(agreementId) {
+    if (_withdrawAgreementLock) return;
     // Authorization: must be FM or HoG
     await refreshRoles();
     if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
@@ -1322,6 +1324,9 @@ async function withdrawAgreement(agreementId) {
         (penalty > 0 ? 'This will cost -' + penalty + ' Relations (2x the bonus).\n' : '') +
         'This action cannot be undone.'
     )) return;
+
+    _withdrawAgreementLock = true;
+    try {
 
     // Get current tick
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -1363,6 +1368,10 @@ async function withdrawAgreement(agreementId) {
     // Refresh
     await renderAgreementsTab();
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
+
+    } finally {
+        _withdrawAgreementLock = false;
+    }
 }
 
 // ==================== INBOX TAB ====================
@@ -1563,7 +1572,7 @@ function renderInboxCard(p) {
     // Effects — use v2 rendering for major initiatives
     let effectsHTML = '';
     if (isV2Proposal) {
-        const totals = { relations: 0, revenue: 0, cost_proposer: 0, cost_target: 0, intl_reputation: 0, immigration: 0 };
+        const totals = { relations: 0, revenue: 0, cost_proposer: 0, cost_target: 0, intl_reputation: 0, immigration: 0, higher_education: 0, soft_power: 0, soft_power_per_year: 0, permanent_soft_power: 0, technology_bonus: 0, polarization: 0, terrorism_risk: 0, ongoing_per_tick: 0 };
         articles.forEach((art, i) => {
             if (struckIndices.has(i) || art.status === 'struck') return;
             const e = art.effects || {};
@@ -2435,7 +2444,7 @@ async function counterMajorInitiative(proposalId) {
         return;
     }
 
-    const apCost = 2;
+    const apCost = MAJOR_INITIATIVE_CONFIG.AP_COST;
     if ((currentFaction?.action_points ?? 0) < apCost) {
         alert('Counter-proposal costs ' + apCost + ' AP. You have ' + (currentFaction?.action_points ?? 0) + ' AP.');
         return;
@@ -8621,9 +8630,19 @@ async function renderRelationDetail(nationId) {
         const theirAmbName = theirAmbassador ? ((theirAmbassador.ambassador_first_name || '') + ' ' + (theirAmbassador.ambassador_last_name || '')).trim() : null;
         const theirAmbParty = theirAmbassador?.factions?.abbreviation ? ' (' + theirAmbassador.factions.abbreviation + ')' : '';
 
+        // Term expiry helper
+        function ambTermStr(amb) {
+            if (!amb || amb.appointed_at_tick == null) return '';
+            const termLength = amb.term_length || 60;
+            const ticksRemaining = Math.max(0, termLength - (shardTick - amb.appointed_at_tick));
+            if (ticksRemaining === 0) return ' (Term Expired)';
+            const months = ticksRemaining; // 1 tick = 1 month
+            return ' (Term Expires in ' + months + ' Month' + (months !== 1 ? 's' : '') + ')';
+        }
+
         let html = '<div class="detail-grid">';
-        html += '<div><div class="detail-label">Our Ambassador</div><div class="detail-value">' + (ambName ? escapeHtml(ambName) + escapeHtml(ambParty) : 'None') + '</div></div>';
-        html += '<div><div class="detail-label">Their Ambassador</div><div class="detail-value">' + (theirAmbName ? escapeHtml(theirAmbName) + escapeHtml(theirAmbParty) : 'None') + '</div></div>';
+        html += '<div><div class="detail-label">Our Ambassador' + ambTermStr(ambassador) + '</div><div class="detail-value">' + (ambName ? escapeHtml(ambName) + escapeHtml(ambParty) : 'None') + '</div></div>';
+        html += '<div><div class="detail-label">Their Ambassador' + ambTermStr(theirAmbassador) + '</div><div class="detail-value">' + (theirAmbName ? escapeHtml(theirAmbName) + escapeHtml(theirAmbParty) : 'None') + '</div></div>';
         html += '<div><div class="detail-label">Population</div><div class="detail-value">' + formatNumber(targetNation.population) + '</div></div>';
         html += '<div><div class="detail-label">Stability</div><div class="detail-value">' + (targetNation.stability ?? '—') + '%</div></div>';
         html += '</div>';
@@ -8720,7 +8739,6 @@ function renderActionsBox() {
         { key: 'appoint_ambassador', label: 'Appoint Ambassador', ap: 1, type: 'fm' },
         { key: 'recall_ambassador', label: 'Recall Ambassador', ap: 1, type: 'fm' },
         { key: 'major_initiative', label: 'Major Diplomatic Initiative', ap: 2, type: 'fm' },
-        { key: 'covert_ops', label: 'Covert Operations', ap: 4, type: 'fm', comingSoon: true },
         { key: 'foreign_aid', label: 'Foreign Aid Proposal', ap: 4, type: 'fm', comingSoon: true }
     ].forEach(a => { html += actionHtml(a, hasFM, 'fm'); });
 
@@ -10682,7 +10700,7 @@ function renderInitiativeArticleCard(art, index, editable) {
     }
     html += '</span></div>';
     if (editable) {
-        html += '<button class="initiative-article-remove" onclick="removeInitiativeArticle(' + index + ')">REMOVE</button>';
+        html += '<button class="initiative-article-remove" onclick="removeMajorInitiativeArticle(' + index + ')">REMOVE</button>';
     }
     html += '</div>';
 
@@ -10814,11 +10832,11 @@ function renderStatementConfig(art, index) {
 /**
  * Generic remove article from wizard (works for both minor and major).
  */
-function removeInitiativeArticle(index) {
+function removeMajorInitiativeArticle(index) {
     wizardArticles.splice(index, 1);
     renderDraftBox();
 }
-window.removeInitiativeArticle = removeInitiativeArticle;
+window.removeMajorInitiativeArticle = removeMajorInitiativeArticle;
 
 // ── Open Borders Config ──
 function renderOpenBordersConfig(art, index) {
@@ -12073,7 +12091,7 @@ function renderMajorInitiativeDraftPanel(body, statusEl) {
         html += '<div style="padding:4px 14px;font-family:var(--font-mono);font-size:9px;color:var(--text-2);border-top:1px solid var(--border-hair);">';
         html += 'Ratification cost: <span style="color:#ef4444;">$' + (costSummary.ratification / 1e6).toFixed(0) + 'M</span> each · ';
         html += 'Ongoing: <span style="color:#ef4444;">$' + (costSummary.ongoing / 1e6).toFixed(0) + 'M/yr</span> each · ';
-        html += 'Requires bilateral parliamentary ratification (6 ticks)';
+        html += 'Requires bilateral parliamentary ratification (' + MAJOR_INITIATIVE_CONFIG.RATIFICATION_VOTING_TICKS + ' ticks)';
         html += '</div>';
     }
 

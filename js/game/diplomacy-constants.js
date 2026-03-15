@@ -1131,7 +1131,7 @@ export function calculateOpenBordersEffects(config) {
     const immigration = Math.round(base.immigration * sMod);
     const gdp_growth = +(base.gdp_growth * sMod).toFixed(2);
     const labor_force = Math.round(base.labor_force_participation * sMod);
-    const civil_unrest = transOpt.unrest_spike;
+    const civil_unrest = Math.round(transOpt.unrest_spike * sMod);
     const polarization = Math.round(base.polarization * sMod);
     const terrorism = +(base.terrorism * sMod).toFixed(2);
     const housing = Math.round(base.housing_affordability * sMod);
@@ -1473,8 +1473,8 @@ export const SOVEREIGNTY_CONSTRAINTS = {
     open_borders: [
         {
             condition: (config) => config.scope === 'full',
-            blocked_sectors: ['IMMIGRATION'],
-            message: 'Full Open Borders agreement prohibits unilateral immigration policy changes'
+            blocked_sectors: ['IMMIGRATION', 'LABOR'],
+            message: 'Full Open Borders agreement prohibits unilateral immigration and labor policy changes'
         },
         {
             condition: (config) => config.scope === 'work_residency' || config.scope === 'labor_mobility',
