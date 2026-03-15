@@ -1509,7 +1509,25 @@ function renderInboxCard(p) {
 
     // Action buttons based on status and role
     let actionsHTML = '';
-    if (needsOurAction) {
+    const isMajorDiploInitiative = p.proposal_type === 'major_diplomatic_initiative';
+    if (isMajorDiploInitiative && needsOurAction && (diplomaticRoles.isFM || diplomaticRoles.isHoG)) {
+        // Major Diplomatic Initiative: FM gets Forward/Counter/Reject
+        // If this is a counter-proposal received back by the proposer, they can accept (forward) or reject
+        const isCounterReceived = revisedByThem;
+        actionsHTML = '<div class="inbox-card-actions">' +
+            '<button class="fm-escalate-btn" onclick="forwardMajorToParliament(\'' + p.id + '\')">' +
+            (isCounterReceived ? 'Accept & Forward to Parliament' : 'Forward to Parliament') + '</button>' +
+            '<button class="proposal-strike-btn" onclick="inboxStrikeArticles(\'' + p.id + '\')">Counter-Proposal (Strike)</button>' +
+            '<button class="fm-reject-btn" onclick="fmReject(\'' + p.id + '\')">Reject</button>' +
+        '</div>';
+    } else if (isMajorDiploInitiative && p.status === 'ratification') {
+        // Bilateral ratification in progress — show status
+        const pipeline = pd.pipeline || {};
+        actionsHTML = '<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-2);padding:6px 0;">' +
+            escapeHtml(pd.proposer_nation_name || 'Proposer') + ' Parliament: ' + (pipeline.proposer_result || 'Voting') + ' · ' +
+            escapeHtml(pd.target_nation_name || 'Target') + ' Parliament: ' + (pipeline.target_result || 'Voting') +
+        '</div>';
+    } else if (needsOurAction) {
         // Ambassador can accept/reject/strike
         actionsHTML = '<div class="inbox-card-actions">' +
             '<button class="proposal-accept-btn" onclick="acceptProposal(\'' + p.id + '\')">Accept</button>' +
@@ -1524,8 +1542,11 @@ function renderInboxCard(p) {
             '<button class="fm-reject-btn" onclick="fmReject(\'' + p.id + '\')">Reject</button>' +
         '</div>';
     } else if (p.status === 'ratification_failed' && (diplomaticRoles.isFM || diplomaticRoles.isHoG)) {
+        const resubmitFn = isMajorDiploInitiative
+            ? 'forwardMajorToParliament(\'' + p.id + '\')'
+            : 'fmEscalate(\'' + p.id + '\')';
         actionsHTML = '<div class="inbox-card-actions">' +
-            '<button class="fm-escalate-btn" onclick="fmEscalate(\'' + p.id + '\')">Resubmit to Parliament</button>' +
+            '<button class="fm-escalate-btn" onclick="' + resubmitFn + '">Resubmit to Parliament</button>' +
             '<button class="fm-reject-btn" onclick="fmReject(\'' + p.id + '\')">Abandon</button>' +
         '</div>';
     }
@@ -1544,8 +1565,12 @@ function renderInboxCard(p) {
                 '</div>' +
             '</div>';
         });
+        const strikeAction = isMajorDiploInitiative
+            ? 'counterMajorInitiative(\'' + p.id + '\')'
+            : 'strikeArticles(\'' + p.id + '\'); renderInboxTab();';
+        const strikeLabel = isMajorDiploInitiative ? 'Send Counter-Proposal (2 AP)' : 'Confirm Strike';
         strikeArticlesHTML += '<div class="proposal-btn-row" style="margin-top:6px;">' +
-            '<button class="proposal-strike-btn" onclick="strikeArticles(\'' + p.id + '\'); renderInboxTab();">Confirm Strike</button>' +
+            '<button class="proposal-strike-btn" onclick="' + strikeAction + '">' + strikeLabel + '</button>' +
         '</div></div>';
     }
 
@@ -1842,19 +1867,45 @@ function renderPipelineTracker(proposal) {
     const pd = proposal.proposal_data || {};
     const pipeline = pd.pipeline || {};
     const status = proposal.status;
+    const isMajorDiploInitiative = proposal.proposal_type === 'major_diplomatic_initiative';
 
-    // Pipeline stages for MAJOR: Ambassador Accepted → FM Review → Parliament Ratification → Active
-    const stages = [
-        { key: 'ambassador', label: 'Ambassador' },
-        { key: 'fm_review', label: 'FM Review' },
-        { key: 'parliament', label: 'Parliament' },
-        { key: 'active', label: 'Active' }
-    ];
+    // Pipeline stages differ for Major Diplomatic Initiatives (FM → FM → Both Parliaments → Active)
+    const stages = isMajorDiploInitiative
+        ? [
+            { key: 'fm_proposer', label: 'FM Drafts' },
+            { key: 'fm_target', label: 'Target FM' },
+            { key: 'parliament', label: 'Both Parliaments' },
+            { key: 'active', label: 'Active' }
+        ]
+        : [
+            { key: 'ambassador', label: 'Ambassador' },
+            { key: 'fm_review', label: 'FM Review' },
+            { key: 'parliament', label: 'Parliament' },
+            { key: 'active', label: 'Active' }
+        ];
 
     // Determine which stages are completed/active
     const stageStates = {};
 
-    if (status === 'proposed' || status === 'revised') {
+    if (isMajorDiploInitiative) {
+        // Major Diplomatic Initiative pipeline
+        stageStates.fm_proposer = 'completed'; // Always completed (it was sent)
+        if (status === 'proposed' || status === 'revised') {
+            stageStates.fm_target = 'active';
+        } else if (status === 'ratification') {
+            stageStates.fm_target = 'completed';
+            stageStates.parliament = 'active';
+        } else if (status === 'ratification_failed') {
+            stageStates.fm_target = 'completed';
+            stageStates.parliament = 'rejected';
+        } else if (status === 'active') {
+            stageStates.fm_target = 'completed';
+            stageStates.parliament = 'completed';
+            stageStates.active = 'completed';
+        } else if (status === 'rejected') {
+            stageStates.fm_target = 'rejected';
+        }
+    } else if (status === 'proposed' || status === 'revised') {
         stageStates.ambassador = 'active';
     } else if (status === 'fm_review') {
         stageStates.ambassador = 'completed';
@@ -2068,8 +2119,12 @@ async function fmReject(proposalId) {
 
     if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
 
-    // Status check: must be in fm_review or ratification_failed
-    if (!['fm_review', 'ratification_failed'].includes(proposal.status)) {
+    // Status check: must be in fm_review, ratification_failed, or proposed/revised (for major_diplomatic_initiative)
+    const rejectableStatuses = ['fm_review', 'ratification_failed'];
+    if (proposal.proposal_type === 'major_diplomatic_initiative') {
+        rejectableStatuses.push('proposed', 'revised');
+    }
+    if (!rejectableStatuses.includes(proposal.status)) {
         alert('This proposal cannot be rejected at this stage.');
         return;
     }
@@ -2102,6 +2157,235 @@ async function fmReject(proposalId) {
     await renderNegotiationsBox();
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
 }
+
+// ==================== MAJOR DIPLOMATIC INITIATIVE — FM ACTIONS ====================
+
+/**
+ * Forward a Major Diplomatic Initiative to both parliaments for bilateral ratification.
+ * Creates two ratification bills — one in each nation.
+ */
+async function forwardMajorToParliament(proposalId) {
+    await refreshRoles();
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can forward proposals to parliament.');
+        return;
+    }
+
+    const { data: proposal, error: fetchErr } = await _supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('id', proposalId)
+        .single();
+
+    if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
+
+    if (!['proposed', 'revised'].includes(proposal.status)) {
+        alert('This proposal is not in a state that can be forwarded to parliament.');
+        return;
+    }
+
+    const pd = proposal.proposal_data || {};
+    const articles = (pd.articles || []).filter(a => a.status !== 'struck');
+
+    if (!confirm(
+        'Forward "' + (pd.name || 'Initiative') + '" to both parliaments for ratification?\n\n' +
+        articles.length + ' active article(s).\n\n' +
+        'Both ' + (pd.proposer_nation_name || 'Proposer') + ' and ' + (pd.target_nation_name || 'Target') +
+        ' parliaments must pass the ratification bill for this initiative to activate.'
+    )) return;
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    const billTitle = 'Ratify: ' + (pd.name || 'Diplomatic Initiative');
+    const billDesc = 'Diplomatic Ratification Vote\nRequires quorum (50%) + simple majority to ratify.\n\n' +
+        'Bilateral ratification of the Major Diplomatic Initiative "' +
+        (pd.name || 'Initiative') + '" between ' + (pd.proposer_nation_name || 'Unknown') +
+        ' and ' + (pd.target_nation_name || 'Unknown') + '.\n\n' +
+        articles.length + ' article(s) for ratification.';
+
+    // Create ratification bill in PROPOSER nation's parliament
+    const { data: proposerBill, error: pBillErr } = await _supabase
+        .from('bills')
+        .insert({
+            nation_id: proposal.proposing_nation_id,
+            bill_type: 'ratification',
+            bill_name: billTitle,
+            preamble: billDesc,
+            proposed_by: proposal.proposed_by_faction_id,
+            diplomatic_proposal_id: proposalId,
+            status: 'floor',
+            proposed_tick: currentTick,
+            voting_ends_tick: currentTick + MAJOR_INITIATIVE_CONFIG.RATIFICATION_VOTING_TICKS
+        })
+        .select('id')
+        .single();
+
+    if (pBillErr) {
+        console.error('Error creating proposer ratification bill:', pBillErr);
+        alert('Error creating proposer ratification bill: ' + pBillErr.message);
+        return;
+    }
+
+    // Create ratification bill in TARGET nation's parliament
+    const { data: targetBill, error: tBillErr } = await _supabase
+        .from('bills')
+        .insert({
+            nation_id: proposal.target_nation_id,
+            bill_type: 'ratification',
+            bill_name: billTitle,
+            preamble: billDesc,
+            proposed_by: currentFaction.id,
+            diplomatic_proposal_id: proposalId,
+            status: 'floor',
+            proposed_tick: currentTick,
+            voting_ends_tick: currentTick + MAJOR_INITIATIVE_CONFIG.RATIFICATION_VOTING_TICKS
+        })
+        .select('id')
+        .single();
+
+    if (tBillErr) {
+        console.error('Error creating target ratification bill:', tBillErr);
+        alert('Error creating target ratification bill: ' + tBillErr.message);
+        return;
+    }
+
+    // Update proposal with both bill IDs and status
+    const updatedPipeline = {
+        ...(pd.pipeline || {}),
+        forwarded_at: currentTick,
+        forwarded_by: currentFaction.id,
+        proposer_result: 'pending',
+        target_result: 'pending'
+    };
+    pd.pipeline = updatedPipeline;
+
+    await _supabase
+        .from('diplomatic_proposals')
+        .update({
+            status: 'ratification',
+            proposing_bill_id: proposerBill?.id || null,
+            target_bill_id: targetBill?.id || null,
+            proposal_data: pd
+        })
+        .eq('id', proposalId);
+
+    // Fire news events in both nations
+    await fireProposalEvent(pd, currentTick, 'ratification_started',
+        'The Major Diplomatic Initiative "' + (pd.name || 'Initiative') + '" between ' +
+        pd.proposer_nation_name + ' and ' + pd.target_nation_name +
+        ' has been forwarded to both parliaments for ratification.');
+
+    alert('"' + (pd.name || 'Initiative') + '" forwarded to both parliaments.\nBilateral ratification vote begins (' + MAJOR_INITIATIVE_CONFIG.RATIFICATION_VOTING_TICKS + ' ticks).');
+    await renderNegotiationsBox();
+    { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
+}
+window.forwardMajorToParliament = forwardMajorToParliament;
+
+/**
+ * Send a counter-proposal for a Major Diplomatic Initiative.
+ * Allows the target FM to strike articles and send back to proposer.
+ */
+async function counterMajorInitiative(proposalId) {
+    await refreshRoles();
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can counter-propose.');
+        return;
+    }
+
+    const apCost = 2;
+    if ((currentFaction?.action_points ?? 0) < apCost) {
+        alert('Counter-proposal costs ' + apCost + ' AP. You have ' + (currentFaction?.action_points ?? 0) + ' AP.');
+        return;
+    }
+
+    const { data: proposal, error: fetchErr } = await _supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('id', proposalId)
+        .single();
+
+    if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
+
+    if (!['proposed', 'revised'].includes(proposal.status)) {
+        alert('This proposal is not in a state that can be countered.');
+        return;
+    }
+
+    const pd = proposal.proposal_data || {};
+    const articles = pd.articles || [];
+
+    // Collect strike selections from the inbox card's strike checkboxes
+    const strikeChecks = document.querySelectorAll('.strike-checkbox[data-proposal-id="' + proposalId + '"]');
+    const struckArticleIds = [];
+    strikeChecks.forEach(cb => {
+        if (cb.checked) {
+            const artIdx = parseInt(cb.dataset.articleIndex);
+            if (!isNaN(artIdx) && articles[artIdx]) {
+                struckArticleIds.push(articles[artIdx].id);
+            }
+        }
+    });
+
+    // Mark struck articles
+    articles.forEach(art => {
+        if (struckArticleIds.includes(art.id)) {
+            art.status = 'struck';
+        }
+    });
+
+    const activeCount = articles.filter(a => a.status !== 'struck').length;
+    if (activeCount === 0) {
+        alert('Counter-proposal must have at least one active article. Use Reject instead.');
+        return;
+    }
+
+    if (!confirm(
+        'Send counter-proposal for "' + (pd.name || 'Initiative') + '"?\n\n' +
+        struckArticleIds.length + ' article(s) struck.\n' +
+        activeCount + ' article(s) remaining.\n' +
+        'Cost: ' + apCost + ' AP'
+    )) return;
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Deduct AP
+    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+    if (!apResult.success) { alert('Failed to deduct AP.'); return; }
+
+    // Add counter to history
+    const counterHistory = pd.counter_history || [];
+    counterHistory.push({
+        tick: currentTick,
+        by_nation_id: currentNation.id,
+        by_faction_id: currentFaction.id,
+        struck_articles: struckArticleIds,
+        active_count: activeCount
+    });
+
+    pd.articles = articles;
+    pd.counter_history = counterHistory;
+
+    await _supabase
+        .from('diplomatic_proposals')
+        .update({
+            status: 'revised',
+            proposal_data: { ...pd, revised_by_nation_id: currentNation.id }
+        })
+        .eq('id', proposalId);
+
+    currentFaction.action_points = apResult.newAp;
+
+    await fireProposalEvent(pd, currentTick, 'counter_proposal',
+        'The Foreign Minister of ' + currentNation.name + ' has sent a counter-proposal for "' +
+        (pd.name || 'Initiative') + '", striking ' + struckArticleIds.length + ' article(s).');
+
+    alert('Counter-proposal sent. ' + struckArticleIds.length + ' article(s) struck.');
+    await renderNegotiationsBox();
+    { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
+}
+window.counterMajorInitiative = counterMajorInitiative;
 
 // ==================== PROPOSAL EFFECT HELPERS ====================
 
