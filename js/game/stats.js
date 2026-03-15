@@ -289,7 +289,7 @@ export function buildFundingPctMap(itemAllocations) {
         if (row.item_type === 'institution') {
             const needed = Number(row.needed_amount || 0);
             map[row.item_id] = needed > 0
-                ? Math.min(100, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
+                ? Math.min(200, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
                 : 100;
         }
     }

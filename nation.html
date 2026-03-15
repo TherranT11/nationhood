@@ -527,7 +527,8 @@ async function loadStatEffectSources(nationId, nation) {
         _supabase.from('budget_item_allocations')
             .select('item_id, item_type, allocation_amount, needed_amount')
             .eq('nation_id', nationId)
-            .eq('item_type', 'institution'),
+            .eq('item_type', 'institution')
+            .order('created_at', { ascending: true }),
         _supabase.from('institutions')
             .select('id, name, primary_stat, secondary_stat')
     ]);
@@ -717,7 +718,7 @@ function parseInstitutionEffects(allocations, institutions, nation, map) {
         var row = allocations[i];
         var needed = Number(row.needed_amount || 0);
         fundingMap[row.item_id] = needed > 0
-            ? Math.min(100, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
+            ? Math.min(200, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
             : 100;
     }
     // For each institution, if underfunded, show effect on its covered stats
