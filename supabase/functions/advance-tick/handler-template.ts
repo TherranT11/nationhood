@@ -64,11 +64,7 @@ async function ensureApRpcAvailability(supabase) {
 
 // ==================== POPULATION GROWTH ====================
 //
-// Population growth is derived from birth_rate and death_rate each tick:
-//   base = 50 + (birth_rate - death_rate) / 2
-//
-// Any policy/crisis effects that modified population_growth are preserved
-// as additive deltas on top of the base.
+// population_growth is a standalone 0-100 stat driven by policy effects and decay.
 //
 // The final population_growth (0-100) drives actual population change:
 //   0   → -1% per tick (max decline)
@@ -76,18 +72,9 @@ async function ensureApRpcAvailability(supabase) {
 //   100 → +1% per tick (max growth)
 
 async function processPopulationGrowth(supabase: any, nation: any, popGrowthBeforeEffects: number) {
-    const birthRate = Number(nation.birth_rate ?? 50);
-    const deathRate = Number(nation.death_rate ?? 50);
-
-    // Base population growth from birth rate minus death rate
-    const base = 50 + (birthRate - deathRate) / 2;
-
-    // Policy/crisis delta: how much effects shifted population_growth this tick
+    // population_growth is now standalone — just use the current value directly
     const currentPG = Number(nation.population_growth ?? 50);
-    const policyDelta = currentPG - popGrowthBeforeEffects;
-
-    // Final population_growth = base + policy adjustments, clamped 0-100
-    const finalPG = Math.round(Math.max(0, Math.min(100, base + policyDelta)) * 10) / 10;
+    const finalPG = Math.round(Math.max(0, Math.min(100, currentPG)) * 10) / 10;
 
     // Population change: linear mapping from 0-100 to -1%..+1% per tick
     const population = Number(nation.population ?? 0);
@@ -113,10 +100,10 @@ async function processPopulationGrowth(supabase: any, nation: any, popGrowthBefo
             return null;
         }
         Object.assign(nation, updates);
-        console.log(`[processPopulationGrowth] ${nation.name}: birth=${birthRate} death=${deathRate} base=${base.toFixed(1)} delta=${policyDelta.toFixed(1)} final=${finalPG} pop_change=${popChange > 0 ? '+' : ''}${popChange}`);
+        console.log(`[processPopulationGrowth] ${nation.name}: pg=${finalPG} pop_change=${popChange > 0 ? '+' : ''}${popChange}`);
     }
 
-    return { base, policyDelta, finalPG, popChange, newPopulation, newEligibleVoters };
+    return { finalPG, popChange, newPopulation, newEligibleVoters };
 }
 
 
@@ -977,8 +964,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Set correct seat count for this nation (affects supermajority thresholds, etc.)
         initGameConfigForNation(nation);
 
-        // Snapshot population_growth BEFORE any effects, so we can isolate
-        // policy deltas and rebase on birth_rate - death_rate afterwards.
+        // Snapshot population_growth BEFORE any effects for delta tracking.
         const popGrowthBeforeEffects = Number(nation.population_growth ?? 50);
 
         // Stat effects (from passed bills/active laws)
@@ -1309,8 +1295,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Crisis processing failed for ${nation.name} (non-fatal):`, crisisErr);
         }
 
-        // Population growth: recompute from birth_rate - death_rate base,
-        // preserving any policy/crisis deltas, then apply population change.
+        // Population growth: apply population change based on current population_growth stat.
         try {
             const popGrowthResult = await processPopulationGrowth(supabase, nation, popGrowthBeforeEffects);
             if (popGrowthResult) {

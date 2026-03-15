@@ -130,10 +130,8 @@ insert_payload AS (
                 'poverty_rate', n.poverty_rate,
                 'income_inequality', n.income_inequality,
                 'population', n.population,
-                'population_growth', n.population_growth,
-                'birth_rate', n.birth_rate
+                'population_growth', n.population_growth
             ) || jsonb_build_object(
-                'death_rate', n.death_rate,
                 'median_age', n.median_age,
                 'eligible_voters', n.eligible_voters,
                 'ethnic_diversity', n.ethnic_diversity,
@@ -164,7 +162,11 @@ insert_payload AS (
                 'benefits', n.benefits,
                 'crime_rate', n.crime_rate,
                 'incarceration_rate', n.incarceration_rate,
-                'religious', n.religious,
+                'religiosity', n.religiosity,
+                'cost_of_living', n.cost_of_living,
+                'manufacturing_output', n.manufacturing_output,
+                'service_output', n.service_output,
+                'housing_affordability', n.housing_affordability,
                 'stability', n.stability,
                 'legitimacy', n.legitimacy,
                 'efficiency', n.efficiency,
@@ -179,9 +181,7 @@ insert_payload AS (
                 'immigration', n.immigration,
                 'illegal_immigration', n.illegal_immigration,
                 'emigration', n.emigration,
-                'international_reputation', n.international_reputation,
-                'trade_agreements', n.trade_agreements,
-                'sanctions', n.sanctions
+                'international_reputation', n.international_reputation
             )
         ) AS stats_at_start
     FROM missing_open_admin m

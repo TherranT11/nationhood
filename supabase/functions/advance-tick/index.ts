@@ -188,11 +188,6 @@ const GAME_CONFIG = {
     NEW_FACTION_MIN_SEATS: 8,
 };
 
-// ── Inactivity Penalties ──
-const INACTIVITY_TIER1_TICKS = 6;   // ≥6: crush momentum + approval each tick
-const INACTIVITY_TIER2_TICKS = 12;  // ≥12: 0 seats in next election (handled in run_election.sql)
-const INACTIVITY_TIER3_TICKS = 18;  // ≥18: auto-disband
-
 const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;
 const ENDORSEMENT_SWITCH_WINDOW_ERROR = `Endorsements can only be changed in the last ${ENDORSEMENT_SWITCH_WINDOW_TICKS} ticks before a presidential election.`;
 
@@ -992,6 +987,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     // Set type-specific affinity flags from trade_agreements
     // Build tariff modifier map: tariffModMap[importerId|exporterId][sector] = reduction fraction (0-1)
     // Build tariff surcharge map: tariffSurchargeMap[importerId|exporterId][sector] = surcharge fraction (e.g. 0.25 = +25%)
+    // Build export subsidy map: exportSubsidyMap[nationId][sector] = subsidy fraction (e.g. 0.15 = +15% export boost)
     // Build embargo map: embargoMap[nationA|nationB][sector] = true (blocks trade in that sector)
     var tariffModMap = {};
     var tariffSurchargeMap = {};
@@ -1095,6 +1091,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                     var d = arts[ai].data;
                     var imposerId = d.imposer_nation_id || ta.nation_a_id;
                     var embTargetId = ta.nation_b_id;
+                    // Block both directions
                     var ek1 = imposerId + '|' + embTargetId;
                     var ek2 = embTargetId + '|' + imposerId;
                     if (!embargoMap[ek1]) embargoMap[ek1] = {};
@@ -1245,6 +1242,11 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             var remainingExpCap = expCap - (actualExports[exporter.id][sector.key] || 0);
             if (remainingExpCap <= 0) continue;
             var adjustedCap = Math.round(remainingExpCap * priceMod);
+            // Apply export subsidy: subsidized sectors get a competitiveness boost
+            var subsidyBoost = exportSubsidyMap[exporter.id] && exportSubsidyMap[exporter.id][sector.key];
+            if (subsidyBoost) {
+                adjustedCap = Math.round(adjustedCap * (1 + subsidyBoost));
+            }
             if (adjustedCap <= 0) continue;
 
             for (var ii = 0; ii < nationCount; ii++) {
@@ -1582,6 +1584,9 @@ const DIPLOMACY_CONFIG = {
     STATE_VISIT_IO_REP_BONUS: 3,        // +3 int'l rep if shared IO membership (future)
     STATE_VISIT_HIGH_REL_GDP_BONUS: 5,  // +5 gdp_growth if relations > 70
     STATE_VISIT_FIRST_STABILITY: 1,     // +1 stability for first-ever visit
+    STATE_VISIT_AUTOCRACY_DIE: 12,      // 1D12 roll for autocracy risk
+    STATE_VISIT_AUTOCRACY_THRESHOLD: 6, // roll <= threshold = negative outcome
+    STATE_VISIT_AUTOCRACY_CHANGE: 3,    // ±gov_approval change
     TREATY_RATIFICATION_VOTING_TICKS: 6,
     AMBASSADOR_CONFIRMATION_VOTING_TICKS: 6,
     AMBASSADOR_TERM_LENGTH: 60,         // ticks (60 ticks = 5 years)
@@ -1735,18 +1740,6 @@ const TRADE_AGREEMENT_TYPES = {
         bilateral: false,
         unilateral_action: true,
         required_articles: ['tariff_surcharge', 'duration'],
-        optional_articles: ['text_article'],
-        icon: 'shield',
-        category: 'unilateral'
-    },
-    impose_embargo: {
-        key: 'impose_embargo',
-        label: 'Impose Embargo',
-        shortLabel: 'EMB',
-        description: 'Unilateral embargo blocking trade with target nation in selected sectors. Major diplomatic escalation.',
-        bilateral: false,
-        unilateral_action: true,
-        required_articles: ['embargo_sector', 'duration'],
         optional_articles: ['text_article'],
         icon: 'shield',
         category: 'unilateral'
@@ -1927,26 +1920,13 @@ const TRADE_ARTICLE_TYPES = {
         }
     },
 
-    // ── Embargo Sector (Impose Embargo, required, repeatable per sector) ──
-    embargo_sector: {
-        key: 'embargo_sector',
-        label: 'Embargo Sector',
-        description: 'Block trade in a specific sector with the target nation.',
-        repeatable: true,
-        applies_to: ['impose_embargo'],
-        schema: {
-            sector: 'string',
-            imposer_nation_id: 'uuid'
-        }
-    },
-
     // ── Text Article (optional for all types) ──
     text_article: {
         key: 'text_article',
         label: 'Text Article',
         description: 'Free-text article for flavor/RP. No mechanical effect.',
         repeatable: true,
-        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy', 'economic_aid', 'retaliatory_tariff', 'impose_embargo'],
+        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy', 'economic_aid', 'retaliatory_tariff'],
         schema: {
             title: 'string',
             body: 'string'
@@ -2019,7 +1999,7 @@ const PROPOSAL_TYPES = {
         description: 'Economic warfare — tanks target trade stats, also hurts your own.',
         stat_effects: [
             { stat_key: 'trade_balance', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'sanctions', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 }
+            { stat_key: 'international_reputation', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
     ceasefire: {
@@ -2147,11 +2127,12 @@ const POLICY_STANCES = {
 
 // Stats where LOWER is better (inverted approval logic)
 const INVERTED_STATS = [
-    'unemployment', 'poverty_rate', 'income_inequality', 'death_rate',
+    'unemployment', 'poverty_rate', 'income_inequality',
     'pollution', 'carbon_emissions', 'crime_rate', 'incarceration_rate',
     'drug_use', 'corruption', 'polarization', 'civil_unrest', 'terrorism',
-    'political_violence', 'emigration', 'sanctions', 'debt', 'debt_growth',
-    'inflation', 'interest_rates', 'illegal_immigration', 'fuel_prices'
+    'political_violence', 'emigration', 'debt', 'debt_growth',
+    'inflation', 'interest_rates', 'illegal_immigration', 'fuel_prices',
+    'cost_of_living'
 ];
 
 // Stats stored as raw numbers (not 0-100 indices).
@@ -2170,6 +2151,456 @@ const RAW_SCALING_DIVISORS = {
 // Debt is driven exclusively by the budget system (surplus/deficit).
 // Any policy/event/crisis/connection targeting these keys will be silently skipped.
 const STAT_PROCESSOR_SKIP = new Set(['gdp', 'debt']);
+
+// ==================== MINOR DIPLOMATIC INITIATIVE ====================
+
+/**
+ * Minor Diplomatic Initiative — Tier 1 negotiated diplomatic action.
+ * Bundled articles proposed by an Ambassador to a target nation.
+ * Accepted directly by target's Ambassador, FM, or HoG (no parliamentary ratification).
+ */
+const MINOR_INITIATIVE_CONFIG = {
+    AP_COST: 2,
+    TIER: 1,
+    TYPE: 'minor_diplomatic_initiative',
+    BUDGET_SOURCE: 'embassies',              // institution id in budget_item_allocations
+    HOSTILE_RELATION_THRESHOLD: -50,         // cannot propose below this
+    MAX_VISA_AGREEMENTS_PER_INITIATIVE: 1,   // only one visa agreement per initiative
+};
+
+/**
+ * Duration scaling multipliers for visa agreements.
+ */
+const VISA_DURATION_OPTIONS = [
+    { key: 30,  label: '30 Days',  modifier: 0.6 },
+    { key: 90,  label: '90 Days',  modifier: 1.0 },
+    { key: 180, label: '180 Days', modifier: 1.3 }
+];
+
+/**
+ * Scope scaling multipliers for visa agreements.
+ */
+const VISA_SCOPE_OPTIONS = [
+    { key: 'tourism',          label: 'Tourism Only',       modifier: 1.0, penalties: false },
+    { key: 'tourism_business', label: 'Tourism + Business', modifier: 1.2, penalties: false },
+    { key: 'all',              label: 'All Purposes',       modifier: 1.5, penalties: true }
+];
+
+/**
+ * Direction options for visa agreements.
+ */
+const VISA_DIRECTION_OPTIONS = [
+    { key: 'reciprocal',        label: 'Reciprocal' },
+    { key: 'proposer_to_target', label: 'One-way (Our Citizens)' },
+    { key: 'target_to_proposer', label: 'One-way (Their Citizens)' }
+];
+
+/**
+ * Excludes (carve-outs) for visa agreements. Checked = excluded from waiver.
+ */
+const VISA_EXCLUDES = [
+    { key: 'work_permits',     label: 'Work Permits',     defaultChecked: true },
+    { key: 'residency',        label: 'Residency',        defaultChecked: false },
+    { key: 'diplomatic_staff', label: 'Diplomatic Staff',  defaultChecked: true }
+];
+
+/**
+ * Base effects for visa agreement (at 90 Days / Tourism Only / Reciprocal / Default Excludes).
+ */
+const VISA_BASE_EFFECTS = {
+    relations: 6,
+    revenue: 12_000_000,
+    intl_reputation: 1,
+    immigration: 1,
+    polarization: 0,
+    terrorism_risk: 0
+};
+
+/**
+ * Cultural Exchange programme options (cosmetic — no mechanical difference).
+ */
+const CULTURAL_PROGRAMMES = [
+    { key: 'artist_exchange',      label: 'Artist Exchange' },
+    { key: 'museum_exhibits',      label: 'Museum Exhibits' },
+    { key: 'film_festival',        label: 'Film Festival' },
+    { key: 'performance_tours',    label: 'Performance Tours' },
+    { key: 'heritage_cooperation', label: 'Heritage Cooperation' }
+];
+
+/**
+ * Cultural Exchange duration options with cost scaling.
+ */
+const CULTURAL_DURATION_OPTIONS = [
+    { key: 12, label: '12 Ticks (1 Year)', cost: 20_000_000, permanent: false },
+    { key: 24, label: '24 Ticks (2 Years)', cost: 35_000_000, permanent: false },
+    { key: 0,  label: 'Permanent',          cost: 50_000_000, permanent: true, ongoing_per_tick: 5_000_000 }
+];
+
+/**
+ * Cultural Exchange funding split options.
+ */
+const CULTURAL_FUNDING_OPTIONS = [
+    { key: '50_50',        label: '50/50',           proposer_share: 0.5, target_share: 0.5 },
+    { key: 'we_pay_more',  label: '60/40 (We Pay More)', proposer_share: 0.6, target_share: 0.4 },
+    { key: 'they_pay_more', label: '60/40 (They Pay More)', proposer_share: 0.4, target_share: 0.6 }
+];
+
+/**
+ * Cultural Exchange base effects (at 24 Ticks / 50/50).
+ */
+const CULTURAL_BASE_EFFECTS = {
+    relations: 4,
+    intl_reputation: 1,
+    soft_power: 3
+};
+
+/**
+ * Student Exchange level options.
+ */
+const STUDENT_LEVEL_OPTIONS = [
+    { key: 'undergraduate', label: 'Undergraduate', higher_ed_bonus: 0 },
+    { key: 'graduate',      label: 'Graduate',      higher_ed_bonus: 0.5 },
+    { key: 'both',          label: 'Both',          higher_ed_bonus: 1.0 }
+];
+
+/**
+ * Student Exchange duration options.
+ */
+const STUDENT_DURATION_OPTIONS = [
+    { key: 'semester',    label: '1 Semester (6 Ticks)', ticks: 6, permanent_bonus: false },
+    { key: 'full_year',   label: 'Full Year (12 Ticks)', ticks: 12, permanent_bonus: false },
+    { key: 'full_degree', label: 'Full Degree (36+ Ticks)', ticks: 36, permanent_bonus: true }
+];
+
+/**
+ * Student Exchange funding options.
+ */
+const STUDENT_FUNDING_OPTIONS = [
+    { key: 'host_pays',   label: 'Host Pays',    proposer_share: 0, target_share: 1.0 },
+    { key: 'split',        label: 'Split',        proposer_share: 0.5, target_share: 0.5 },
+    { key: 'sender_pays',  label: 'Sender Pays',  proposer_share: 1.0, target_share: 0 }
+];
+
+/**
+ * Student Exchange field options (cosmetic except Sciences/Engineering + Graduate = +0.5 Technology).
+ */
+const STUDENT_FIELDS = [
+    { key: 'sciences',    label: 'Sciences',    tech_eligible: true },
+    { key: 'engineering', label: 'Engineering', tech_eligible: true },
+    { key: 'medicine',    label: 'Medicine',    tech_eligible: false },
+    { key: 'humanities',  label: 'Humanities',  tech_eligible: false },
+    { key: 'law',         label: 'Law',         tech_eligible: false },
+    { key: 'economics',   label: 'Economics',   tech_eligible: false }
+];
+
+/**
+ * Student Exchange base effects (at 200 seats / Undergraduate / Full Year / Split).
+ */
+const STUDENT_BASE_EFFECTS = {
+    relations: 3,
+    cost_total: 6_000_000,
+    higher_education: 1,
+    soft_power_per_year: 1
+};
+
+/**
+ * Seats scaling for student exchange (diminishing returns above 200).
+ */
+function getStudentSeatsModifier(seats) {
+    seats = Math.max(50, Math.min(500, seats));
+    if (seats <= 200) return seats / 200;
+    // Diminishing returns: 200→1.0, 500→1.8
+    return 1.0 + ((seats - 200) / 300) * 0.8;
+}
+
+/**
+ * Joint Statement visibility options.
+ */
+const STATEMENT_VISIBILITY_OPTIONS = [
+    { key: 'public',  label: 'Public' },
+    { key: 'private', label: 'Private' }
+];
+
+/**
+ * Calculate all effects for a visa agreement article given its config.
+ * Returns an effects object with computed values.
+ */
+function calculateVisaEffects(config) {
+    const durationOpt = VISA_DURATION_OPTIONS.find(d => d.key === config.duration) || VISA_DURATION_OPTIONS[1];
+    const scopeOpt = VISA_SCOPE_OPTIONS.find(s => s.key === config.scope) || VISA_SCOPE_OPTIONS[0];
+    const dMod = durationOpt.modifier;
+    const sMod = scopeOpt.modifier;
+    const isReciprocal = config.direction === 'reciprocal';
+    const isOneWayProposer = config.direction === 'proposer_to_target';
+    // const isOneWayTarget = config.direction === 'target_to_proposer';
+
+    const excludes = config.excludes || ['work_permits', 'diplomatic_staff'];
+    const workIncluded = !excludes.includes('work_permits');
+
+    let relations = Math.round(VISA_BASE_EFFECTS.relations * dMod * sMod);
+    let revenue = Math.round(VISA_BASE_EFFECTS.revenue * dMod * sMod);
+    let intl_reputation = VISA_BASE_EFFECTS.intl_reputation;
+    let immigration = workIncluded ? 2 : 1;
+
+    // One-way: halve relations for the non-receiving nation, revenue only to receiver
+    let proposer_relations = relations;
+    let target_relations = relations;
+    let proposer_revenue = revenue;
+    let target_revenue = revenue;
+
+    if (!isReciprocal) {
+        if (isOneWayProposer) {
+            // Proposer's citizens go to target → target receives tourists/revenue
+            proposer_relations = Math.round(relations / 2);
+            proposer_revenue = 0;
+        } else {
+            // Target's citizens go to proposer → proposer receives tourists/revenue
+            target_relations = Math.round(relations / 2);
+            target_revenue = 0;
+        }
+    }
+
+    // Polarization + Terrorism from "All Purposes" scope
+    let proposer_polarization = 0, target_polarization = 0;
+    let proposer_terrorism = 0, target_terrorism = 0;
+    if (scopeOpt.penalties) {
+        if (isReciprocal) {
+            proposer_polarization = 1; target_polarization = 1;
+            proposer_terrorism = 0.5; target_terrorism = 0.5;
+        } else if (isOneWayProposer) {
+            // Target receives visitors → penalties on target only
+            target_polarization = 1; target_terrorism = 0.5;
+        } else {
+            // Proposer receives visitors → penalties on proposer only
+            proposer_polarization = 1; proposer_terrorism = 0.5;
+        }
+    }
+
+    return {
+        proposer: {
+            relations: proposer_relations,
+            revenue: proposer_revenue,
+            intl_reputation,
+            immigration: isReciprocal || !isOneWayProposer ? immigration : 0,
+            polarization: proposer_polarization,
+            terrorism_risk: proposer_terrorism
+        },
+        target: {
+            relations: target_relations,
+            revenue: target_revenue,
+            intl_reputation,
+            immigration: isReciprocal || isOneWayProposer ? immigration : 0,
+            polarization: target_polarization,
+            terrorism_risk: target_terrorism
+        },
+        // Summary (for display in proposer's UI — shows total combined)
+        summary: {
+            relations,
+            revenue,
+            intl_reputation,
+            immigration,
+            polarization: proposer_polarization || target_polarization ? 1 : 0,
+            terrorism_risk: proposer_terrorism || target_terrorism ? 0.5 : 0
+        }
+    };
+}
+
+/**
+ * Calculate effects for a cultural exchange article.
+ */
+function calculateCulturalEffects(config) {
+    const durationOpt = CULTURAL_DURATION_OPTIONS.find(d => d.key === config.duration) || CULTURAL_DURATION_OPTIONS[1];
+    const fundingOpt = CULTURAL_FUNDING_OPTIONS.find(f => f.key === config.funding) || CULTURAL_FUNDING_OPTIONS[0];
+    const totalCost = durationOpt.cost;
+
+    return {
+        relations: CULTURAL_BASE_EFFECTS.relations,
+        intl_reputation: CULTURAL_BASE_EFFECTS.intl_reputation,
+        soft_power: CULTURAL_BASE_EFFECTS.soft_power,
+        soft_power_duration: durationOpt.permanent ? null : durationOpt.key,
+        cost_proposer: Math.round(totalCost * fundingOpt.proposer_share),
+        cost_target: Math.round(totalCost * fundingOpt.target_share),
+        ongoing_per_tick: durationOpt.permanent ? durationOpt.ongoing_per_tick : 0
+    };
+}
+
+/**
+ * Calculate effects for a student exchange article.
+ */
+function calculateStudentEffects(config) {
+    const seats = config.seats || 200;
+    const seatsMod = getStudentSeatsModifier(seats);
+    const levelOpt = STUDENT_LEVEL_OPTIONS.find(l => l.key === config.level) || STUDENT_LEVEL_OPTIONS[0];
+    const fundingOpt = STUDENT_FUNDING_OPTIONS.find(f => f.key === config.funding) || STUDENT_FUNDING_OPTIONS[1];
+
+    const totalCost = Math.round(STUDENT_BASE_EFFECTS.cost_total * seatsMod);
+    const fields = config.fields || [];
+    const hasTechFields = fields.some(f => {
+        const fi = STUDENT_FIELDS.find(sf => sf.key === f);
+        return fi && fi.tech_eligible;
+    });
+    const techBonus = (hasTechFields && (config.level === 'graduate' || config.level === 'both')) ? 0.5 : 0;
+
+    const durationOpt = STUDENT_DURATION_OPTIONS.find(d => d.key === config.duration) || STUDENT_DURATION_OPTIONS[1];
+
+    return {
+        relations: STUDENT_BASE_EFFECTS.relations,
+        higher_education: STUDENT_BASE_EFFECTS.higher_education + levelOpt.higher_ed_bonus,
+        soft_power_per_year: STUDENT_BASE_EFFECTS.soft_power_per_year,
+        permanent_soft_power: durationOpt.permanent_bonus ? 1 : 0,
+        technology_bonus: techBonus,
+        cost_proposer: Math.round(totalCost * fundingOpt.proposer_share),
+        cost_target: Math.round(totalCost * fundingOpt.target_share),
+        duration_ticks: durationOpt.ticks
+    };
+}
+
+/**
+ * Article type definitions for Minor Diplomatic Initiative.
+ */
+const INITIATIVE_ARTICLE_TYPES = {
+    visa_agreement: {
+        key: 'visa_agreement',
+        label: 'Visa Agreement',
+        description: 'Establishes visa-free travel between nations.',
+        max_per_initiative: 1,
+        has_config: true,
+        calculateEffects: calculateVisaEffects,
+        default_config: {
+            duration: 90,
+            scope: 'tourism',
+            direction: 'reciprocal',
+            excludes: ['work_permits', 'diplomatic_staff']
+        }
+    },
+    cultural_exchange: {
+        key: 'cultural_exchange',
+        label: 'Cultural Exchange',
+        description: 'Establishes cultural programmes between nations. Builds soft power over time.',
+        max_per_initiative: null,
+        has_config: true,
+        calculateEffects: calculateCulturalEffects,
+        default_config: {
+            programmes: ['artist_exchange'],
+            duration: 24,
+            funding: '50_50'
+        }
+    },
+    student_exchange: {
+        key: 'student_exchange',
+        label: 'Student Exchange Program',
+        description: 'University exchange programme. Cheap, builds long-term soft power and education.',
+        max_per_initiative: null,
+        has_config: true,
+        calculateEffects: calculateStudentEffects,
+        default_config: {
+            seats: 200,
+            level: 'undergraduate',
+            duration: 'full_year',
+            funding: 'split',
+            fields: ['sciences']
+        }
+    },
+    joint_statement: {
+        key: 'joint_statement',
+        label: 'Joint Statement',
+        description: 'Public or private declaration. No mechanical effect.',
+        max_per_initiative: null,
+        has_config: true,
+        calculateEffects: () => ({}),
+        default_config: {
+            text: '',
+            visibility: 'public'
+        }
+    }
+};
+
+// ── STATE VISIT CONFIGURATION ──
+
+const STATE_VISIT_AGENDA_ITEMS = [
+    {
+        key: 'formal_reception', day: 1, slot: 'Arrival',
+        title: 'Formal Reception Ceremony',
+        desc: 'Honour guard, national anthems, and official welcome at the host capital. Sets the tone for the visit and generates press coverage in both nations.',
+        effects: { relations: 3, public_awareness: 5 },
+        tags: ['Press Event'], costs: {}, risks: {}
+    },
+    {
+        key: 'joint_press', day: 1, slot: 'Afternoon',
+        title: 'Joint Press Conference',
+        desc: 'Public statement by both ambassadors on shared goals and bilateral cooperation. Allows framing of the diplomatic narrative. Boosts Government Approval in both nations if relations are positive.',
+        effects: { gov_approval: 2, relations: 2 },
+        tags: [], costs: {}, risks: { gaffe: 0.08 }
+    },
+    {
+        key: 'economic_forum', day: 2, slot: 'Morning',
+        title: 'Economic Forum',
+        desc: 'Business delegations from both nations meet to discuss trade opportunities, investment climate, and commercial partnerships. May trigger trade deal prerequisite.',
+        effects: { trade_relations: 4 },
+        tags: ['Unlocks Trade Deal'], costs: { debt: 1200000 }, risks: {}
+    },
+    {
+        key: 'university_address', day: 2, slot: 'Afternoon',
+        title: 'University Address',
+        desc: "Ambassador delivers a public lecture at the host nation's national university. Builds cultural capital and soft power. Topic can be chosen for targeted effect.",
+        effects: { soft_power: 3, education_approval: 2 },
+        tags: [], costs: {}, risks: {}
+    },
+    {
+        key: 'bilateral_talks', day: 2, slot: 'Evening',
+        title: 'Private Bilateral Talks',
+        desc: 'Closed-door meeting between senior officials. No press, no public record. Can discuss sensitive topics and build trust for future negotiations. The content remains private.',
+        effects: { relations: 5 },
+        tags: ['Trust Threshold', 'Enables Initiatives'], costs: {}, risks: {}
+    },
+    {
+        key: 'military_review', day: 3, slot: 'Morning',
+        title: 'Military Review',
+        desc: "Joint inspection of host nation's armed forces. Signals strength and mutual trust but may alarm hostile neighbours.",
+        effects: { military_trust: 4 },
+        tags: [], costs: {}, risks: { hostiles_alarmed: true }
+    },
+    {
+        key: 'cultural_exchange', day: 3, slot: 'Afternoon',
+        title: 'Cultural Exchange Programme',
+        desc: 'Exchange of artistic delegations, museum exhibits, and performance troupes. Long-term soft power investment.',
+        effects: { soft_power: 4, relations: 2 },
+        tags: [], costs: { debt: 800000 }, risks: {}
+    },
+    {
+        key: 'monument_visit', day: 3, slot: 'Evening',
+        title: 'Monument Visit',
+        desc: 'Symbolic visit to a national memorial or heritage site. Strong public signal of respect. Low cost, moderate opinion boost.',
+        effects: { public_opinion: 3 },
+        tags: ['Symbolic'], costs: {}, risks: {}
+    },
+    {
+        key: 'treaty_signing', day: 3, slot: 'Closing',
+        title: 'Treaty Signing Ceremony',
+        desc: 'Formal ratification of a pending agreement during the visit. Requires an accepted proposal awaiting signature.',
+        effects: {},
+        tags: [], costs: {}, risks: {},
+        requires: 'pending_treaty'
+    }
+];
+
+const STATE_VISIT_TYPES = {
+    official_state_visit: { label: 'Official State Visit', apMod: 0, multiplier: 1.0, relMult: 1.0, tradeMult: 1.0, softPowerMult: 1.0 },
+    working_visit:        { label: 'Working Visit',        apMod: -1, multiplier: 1.0, relMult: 0.8, tradeMult: 1.2, softPowerMult: 1.0 },
+    goodwill_visit:       { label: 'Goodwill Visit',       apMod: -2, multiplier: 1.0, relMult: 1.0, tradeMult: 0.6, softPowerMult: 1.3 }
+};
+
+const STATE_VISIT_DURATIONS = {
+    short:    { label: 'Short',    apCost: 1, multiplier: 0.7, maxAgenda: 3 },
+    moderate: { label: 'Moderate', apCost: 2, multiplier: 1.0, maxAgenda: 5 },
+    lengthy:  { label: 'Lengthy',  apCost: 3, multiplier: 1.3, maxAgenda: 7 }
+};
+
+const STATE_VISIT_DELEGATIONS = {
+    small_4:    { label: 'Small (4)',    debt: 1200000, effectBonus: 0 },
+    standard_8: { label: 'Standard (8)', debt: 2400000, effectBonus: 0 },
+    large_14:   { label: 'Large (14)',   debt: 4800000, effectBonus: 0.1 }
+};
 
 
 // ────────── ideology ──────────
@@ -2559,9 +2990,7 @@ function extractAxisScores(ideologyRow) {
  *   income_inequality          Gap between rich and poor
  *   --- Demographics ---
  *   population                 Total population (raw number)
- *   population_growth          Rate of population change
- *   birth_rate                 Births per 1,000 people
- *   death_rate                 Deaths per 1,000 people
+ *   population_growth          Rate of population change (standalone stat)
  *   median_age                 Average age of population
  *   eligible_voters            Citizens able to vote
  *   ethnic_diversity           Cultural heterogeneity
@@ -2599,7 +3028,7 @@ function extractAxisScores(ideologyRow) {
  *   crime_rate                 Criminal activity level           (NOT "crime")
  *   incarceration_rate         Prison population per capita
  *   --- Religion ---
- *   religious                  Religiosity index
+ *   religiosity                Religiosity index
  *   --- Governance ---
  *   stability                  Political stability               (also used for "military_strength")
  *   legitimacy                 Government legitimacy
@@ -2619,8 +3048,11 @@ function extractAxisScores(ideologyRow) {
  *   emigration                 Citizens leaving
  *   --- International ---
  *   international_reputation   Global standing                   (NOT "diplomatic_standing")
- *   trade_agreements           Number of trade agreements        (NOT "trade")
- *   sanctions                  Active sanctions against nation
+ *   --- Economy (new) ---
+ *   cost_of_living             Consumer cost burden (0-100, lower is better)
+ *   manufacturing_output       Industrial production capacity (0-100)
+ *   service_output             Services & finance sector output (0-100)
+ *   housing_affordability      Housing accessibility (0-100, higher is better)
  */
 const NATION_STAT_COLUMNS = [
     'gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates',
@@ -2628,19 +3060,20 @@ const NATION_STAT_COLUMNS = [
     'income_tax', 'corporate_tax', 'sales_tax', 'tariffs',
     'unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength',
     'poverty_rate', 'income_inequality',
-    'population', 'population_growth', 'birth_rate', 'death_rate', 'median_age', 'eligible_voters', 'ethnic_diversity',
+    'population', 'population_growth', 'median_age', 'eligible_voters', 'ethnic_diversity',
     'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use',
     'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
     'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage',
     'arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices',
     'pollution', 'carbon_emissions',
     'standard_of_living', 'happiness', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate',
-    'religious',
+    'religiosity',
     'stability', 'legitimacy', 'efficiency', 'corruption', 'press_freedom', 'judicial_independence',
     'freedom_index', 'polarization',
     'civil_unrest', 'terrorism', 'political_violence',
     'immigration', 'illegal_immigration', 'emigration',
-    'international_reputation', 'trade_agreements', 'sanctions'
+    'international_reputation',
+    'cost_of_living', 'manufacturing_output', 'service_output', 'housing_affordability'
 ];
 
 const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
@@ -2659,7 +3092,13 @@ const STAT_KEY_ALIASES = {
     hospital_beds: 'beds_per_100k',
     technology: 'digital_infrastructure',
     infrastructure: 'physical_infrastructure',
-    tourism: 'international_reputation'
+    tourism: 'international_reputation',
+    // Legacy aliases for removed/renamed stats
+    religious: 'religiosity',
+    birth_rate: 'population_growth',
+    death_rate: 'population_growth',
+    trade_agreements: 'international_reputation',
+    sanctions: 'international_reputation'
 };
 
 function normalizeNationStatKey(statKey) {
@@ -2680,7 +3119,8 @@ const STATS_HIGHER_IS_BETTER = [
     'arable_land', 'rare_minerals',
     'standard_of_living', 'happiness', 'social_mobility', 'benefits',
     'stability', 'legitimacy', 'efficiency', 'press_freedom', 'judicial_independence', 'freedom_index',
-    'immigration', 'international_reputation', 'trade_agreements'
+    'immigration', 'international_reputation',
+    'manufacturing_output', 'service_output', 'housing_affordability'
 ];
 
 /**
@@ -2688,11 +3128,12 @@ const STATS_HIGHER_IS_BETTER = [
  */
 const STATS_LOWER_IS_BETTER = [
     'debt_growth', 'inflation', 'interest_rates',
-    'unemployment', 'poverty_rate', 'income_inequality', 'death_rate',
+    'unemployment', 'poverty_rate', 'income_inequality',
     'drug_use', 'fuel_prices', 'pollution', 'carbon_emissions',
     'crime_rate', 'incarceration_rate', 'corruption', 'polarization',
     'civil_unrest', 'terrorism', 'political_violence',
-    'illegal_immigration', 'emigration', 'sanctions'
+    'illegal_immigration', 'emigration',
+    'cost_of_living'
 ];
 
 // ==================== STAT DECAY CONFIGURATION ====================
@@ -2735,6 +3176,10 @@ const STAT_DECAY_CONFIG = {
     healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
     beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.CRAWL },
     education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    manufacturing_output:     { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    service_output:           { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    cost_of_living:           { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
+    housing_affordability:    { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
     press_freedom:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
     judicial_independence:    { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
     freedom_index:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
@@ -2779,6 +3224,34 @@ function getInstitutionDecayRate(fundingPct, role) {
 }
 
 /**
+ * Build a map of institutionId → fundingPct from budget_item_allocations rows.
+ * This is the single source of truth for computing funding percentages.
+ *
+ * @param {Array} itemAllocations - rows from budget_item_allocations (must have item_id, item_type, allocation_amount, needed_amount)
+ * @returns {Object} e.g. { tax_admin: 85, police_force: 100 }  — default 100 for missing institutions
+ */
+function buildFundingPctMap(itemAllocations) {
+    const map = {};
+    for (const row of (itemAllocations || [])) {
+        if (row.item_type === 'institution') {
+            const needed = Number(row.needed_amount || 0);
+            map[row.item_id] = needed > 0
+                ? Math.min(100, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
+                : 100;
+        }
+    }
+    return map;
+}
+
+/**
+ * Get the funding percentage for a single institution from a pre-built map.
+ * Returns 100 (fully funded) if no allocation exists.
+ */
+function getInstFundingPct(fundingPctMap, instId) {
+    return (fundingPctMap && fundingPctMap[instId] !== undefined) ? fundingPctMap[instId] : 100;
+}
+
+/**
  * Build a map of statKey → array of { institutionId, role, fundingPct } from
  * institution config rows and budget_item_allocations for the active budget.
  *
@@ -2787,22 +3260,11 @@ function getInstitutionDecayRate(fundingPct, role) {
  * @returns {Object} e.g. { healthcare_quality: [{ id: 'workforce', role: 'primary', fundingPct: 85 }, ...] }
  */
 function buildStatInstitutionMap(instConfig, itemAllocations) {
-    const allocMap = {};
-    for (const row of (itemAllocations || [])) {
-        if (row.item_type === 'institution') {
-            allocMap[row.item_id] = {
-                allocated: Number(row.allocation_amount || 0),
-                needed: Number(row.needed_amount || 0)
-            };
-        }
-    }
+    const fundingPctMap = buildFundingPctMap(itemAllocations);
 
     const statMap = {};
     for (const inst of (instConfig || [])) {
-        const alloc = allocMap[inst.id];
-        const fundingPct = alloc && alloc.needed > 0
-            ? Math.min(100, Math.round((alloc.allocated / alloc.needed) * 100))
-            : 100;  // no allocation row = fully funded by default
+        const fundingPct = getInstFundingPct(fundingPctMap, inst.id);
 
         for (const role of ['primary', 'secondary']) {
             const statKey = inst[`${role}_stat`];
@@ -2844,7 +3306,6 @@ const STAT_TO_MINISTRY = {
     // Healthcare
     healthcare_quality: 'healthcare', healthcare_accessibility: 'healthcare',
     beds_per_100k: 'healthcare', lifespan: 'healthcare', drug_use: 'healthcare',
-    death_rate: 'healthcare',
     // Education
     literacy: 'education', higher_education: 'education',
     education_accessibility: 'education', academic_immigration: 'education',
@@ -2870,16 +3331,17 @@ const STAT_TO_MINISTRY = {
     // Security
     civil_unrest: 'security', political_violence: 'security',
     // Trade
-    trade_balance: 'trade', trade_agreements: 'trade',
+    trade_balance: 'trade', manufacturing_output: 'trade', service_output: 'trade',
     tariffs: 'trade', foreign_investment: 'trade',
     // Foreign
-    international_reputation: 'foreign',
-    sanctions: 'foreign', emigration: 'foreign',
+    international_reputation: 'foreign', emigration: 'foreign',
     // Prime Minister (general governance & quality of life)
     legitimacy: 'prime_minister', efficiency: 'prime_minister', polarization: 'prime_minister',
     happiness: 'prime_minister', standard_of_living: 'prime_minister',
     social_mobility: 'prime_minister', benefits: 'prime_minister',
-    fuel_prices: 'prime_minister'
+    fuel_prices: 'prime_minister', housing_affordability: 'prime_minister',
+    // Finance
+    cost_of_living: 'finance'
 };
 
 /**
@@ -2888,16 +3350,16 @@ const STAT_TO_MINISTRY = {
  */
 const ISSUE_CATEGORY_STATS = {
     Agriculture:     ['arable_land', 'fuel_prices', 'trade_balance', 'poverty_rate'],
-    Economics:       ['gdp', 'gdp_growth', 'inflation', 'unemployment', 'currency_strength', 'trade_balance', 'debt'],
+    Economics:       ['gdp', 'gdp_growth', 'inflation', 'unemployment', 'currency_strength', 'trade_balance', 'debt', 'manufacturing_output', 'service_output'],
     Education:       ['literacy', 'higher_education', 'education_accessibility', 'academic_immigration'],
     Governance:      ['stability', 'legitimacy', 'efficiency', 'corruption', 'freedom_index'],
     Healthcare:      ['healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use'],
     Immigration:     ['immigration', 'illegal_immigration', 'emigration', 'ethnic_diversity'],
     Infrastructure:  ['physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage'],
-    International:   ['international_reputation', 'trade_agreements', 'sanctions', 'foreign_investment'],
-    Labor:           ['unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength', 'poverty_rate', 'income_inequality'],
+    International:   ['international_reputation', 'foreign_investment'],
+    Labor:           ['unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength', 'poverty_rate', 'income_inequality', 'cost_of_living'],
     Military:        ['terrorism', 'political_violence', 'civil_unrest', 'stability'],
-    Social:          ['standard_of_living', 'happiness', 'social_mobility', 'crime_rate', 'pollution', 'benefits']
+    Social:          ['standard_of_living', 'happiness', 'social_mobility', 'crime_rate', 'pollution', 'benefits', 'housing_affordability']
 };
 
 const _HIGHER_IS_BETTER_SET = new Set(STATS_HIGHER_IS_BETTER);
@@ -3067,21 +3529,20 @@ function buildMinistryBaselines(ministryKey, nation) {
 }
 
 /**
- * Target-based approval system configuration.
+ * Delta-based approval system configuration.
  *
- * Minister approval converges toward a target derived from cumulative stat
- * performance since appointment. Baselines are snapshot at appointment time
- * and never reset. Target = 50 + avgDelta * SENSITIVITY, then approval
- * approaches the target at CONVERGENCE_RATE per tick.
+ * Minister approval starts at 50 and moves based on how their owned stats
+ * change relative to their baseline (snapshot at appointment time).
+ * Pure delta model: ministers are judged on improvement, not inherited state.
  *
  * Government approval = avg(filled minister approvals) + vacancy penalty + event modifier.
  */
 const MINISTER_APPROVAL_CONFIG = {
-    // Target-based sensitivity: how much each point of cumulative avgDelta shifts the target from 50
-    DELTA_SENSITIVITY: 2.0,
+    // Per-tick sensitivity: how much each point of average delta moves approval
+    DELTA_SENSITIVITY: 0.6,
 
-    // How fast approval converges toward the target each tick (0.15 = 15% of gap per tick)
-    CONVERGENCE_RATE: 0.15,
+    // Slow stagnation decay: if stats are flat, approval drifts down slightly per tick
+    STAGNATION_DECAY: -0.3,
 
     // New minister starts at 50% approval
     NEW_MINISTER_APPROVAL: 50,
@@ -3765,20 +4226,8 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
             }).eq('agreement_id', agreement.id);
         }
 
-        // Notify nations (unilateral agreements only notify nation_a)
-        if (agreement.nation_b_id) {
-            await fireBilateralEvent(supabase, 'trade_agreement_expired', agreement.nation_a_id, agreement.nation_b_id, currentTick, { agreement_name: agreement.agreement_name || 'Agreement' });
-        } else {
-            try {
-                await supabase.from('event_log').insert({
-                    nation_id: agreement.nation_a_id,
-                    event_name: (agreement.agreement_name || 'Agreement') + ' Expired',
-                    category: 'Trade',
-                    description_chosen: 'Your ' + (agreement.agreement_name || 'trade agreement') + ' has expired.',
-                    fired_at_tick: currentTick
-                });
-            } catch (e) { /* non-blocking */ }
-        }
+        // Notify both nations
+        await fireBilateralEvent(supabase, 'trade_agreement_expired', agreement.nation_a_id, agreement.nation_b_id, currentTick, { agreement_name: agreement.agreement_name || 'Agreement' });
 
         results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type });
         console.log(`[processExpiredTradeAgreements] Expired: ${agreement.agreement_name} (${agreement.agreement_type})`);
@@ -5586,6 +6035,36 @@ async function resolveExpiredVotes(supabase, nationId) {
                                 .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
                         }
                     }
+
+                    // For trade agreements: create the trade_agreements row so economic effects apply
+                    if (proposal.proposal_type === 'trade_agreement' && pd.agreement_type) {
+                        const activeArticles = articles.filter((_, i) => !struckIndices.has(i));
+                        const addedArticles = pd.added_articles || [];
+                        if (addedArticles.length > 0) activeArticles.push(...addedArticles);
+
+                        const durationArt = activeArticles.find(a => a.type === 'duration');
+                        const dt = durationArt?.data || {};
+                        const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
+                        const expiresAt = durationTicks ? currentTick + durationTicks : null;
+
+                        const taNationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                        const taNationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+
+                        await supabase.from('trade_agreements').insert({
+                            nation_a_id: taNationA,
+                            nation_b_id: taNationB,
+                            agreement_type: pd.agreement_type,
+                            agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
+                            articles: activeArticles,
+                            status: 'active',
+                            enacted_at_tick: currentTick,
+                            expires_at_tick: expiresAt,
+                            auto_renew: dt.auto_renew || false,
+                            withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
+                            diplomatic_proposal_id: proposal.id
+                        });
+                    }
+
                     await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
                 }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
@@ -5786,51 +6265,6 @@ async function resolveExpiredVotes(supabase, nationId) {
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'retaliatory_tariff', earlyResolution: bill.early_resolution_status || null });
             }
-        } else if (bill.bill_type === 'ratification' && bill.trade_agreement_data && bill.trade_agreement_data.type === 'export_subsidy') {
-            // Unilateral export subsidy ratification
-            if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-
-                var esData = bill.trade_agreement_data;
-                var esNationId = esData.imposer_nation_id;
-                var esIsPermanent = esData.duration_type === 'permanent';
-                var esDurationTicks = esData.duration_ticks || null;
-
-                // Insert trade_agreement (export_subsidy is unilateral — nation_a is the subsidizer, nation_b is null)
-                await supabase.from('trade_agreements').insert({
-                    nation_a_id: esNationId,
-                    nation_b_id: null,
-                    bill_a_id: bill.id,
-                    agreement_type: 'export_subsidy',
-                    agreement_name: esData.agreement_name || 'Export Subsidy',
-                    articles: esData.articles || [],
-                    duration_type: esIsPermanent ? 'permanent' : 'fixed',
-                    duration_ticks: esIsPermanent ? null : esDurationTicks,
-                    auto_renew: false,
-                    withdrawal_notice_ticks: 1,
-                    status: 'active',
-                    enacted_at_tick: currentTick,
-                    expires_at_tick: esIsPermanent ? null : (esDurationTicks ? currentTick + esDurationTicks : null)
-                });
-
-                // Fire enactment event
-                try {
-                    await supabase.from('event_log').insert({
-                        nation_id: esNationId,
-                        event_name: 'Export Subsidy Enacted',
-                        category: 'Trade',
-                        description_chosen: (nation?.name || 'Unknown') + ' has enacted an export subsidy. Subsidized exports are now cheaper on the international market.',
-                        fired_at_tick: currentTick
-                    });
-                } catch (e) { /* non-blocking */ }
-
-                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'export_subsidy', earlyResolution: bill.early_resolution_status || null });
-            } else {
-                await failBill(supabase, bill);
-                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'export_subsidy', earlyResolution: bill.early_resolution_status || null });
-            }
         } else if (bill.bill_type === 'ratification' && bill.trade_agreement_data && bill.trade_agreement_data.type === 'impose_embargo') {
             // Unilateral embargo ratification
             if (passed) {
@@ -5841,6 +6275,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 var targetId = embData.target_nation_id;
                 var durationTicks = embData.duration_ticks || 12;
 
+                // Insert trade_agreement (impose_embargo: imposer = nation_a, target = nation_b)
                 await supabase.from('trade_agreements').insert({
                     nation_a_id: imposerId,
                     nation_b_id: targetId,
@@ -5874,6 +6309,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                     }
                 }
 
+                // Fire enactment event for target nation
                 try {
                     var { data: imposerNation } = await supabase.from('nations').select('name').eq('id', imposerId).single();
                     var imposerName = imposerNation?.name || 'Unknown';
@@ -7206,8 +7642,9 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
                 .lte('created_at', new Date().toISOString());
             const billsFailed = (failedBillRows || [])
                 .filter(b => {
+                    // Use passed_tick if available (some failed bills may not have it)
                     if (b.passed_tick != null) return b.passed_tick >= currentAdmin.started_at_tick && b.passed_tick <= currentTick;
-                    return true;
+                    return true; // created_at filter already scoped it
                 })
                 .map(b => ({ bill_id: b.id, bill_name: b.bill_name, bill_type: b.bill_type || 'standard' }));
 
@@ -10076,61 +10513,6 @@ async function rejectOwnNomination(supabase, billId, nomineePartyId) {
  * @param {object} nation   - Full nation row
  * @param {number} currentTick - The tick just committed
  */
-
-// ── Inactivity Penalty Processing ──
-// Tier 1 (≥6 ticks): crush momentum to 0 and approval to ~0 each tick
-// Tier 2 (≥12 ticks): 0 seats in next election (handled in run_election.sql)
-// Tier 3 (≥18 ticks): auto-disband via existing disbandParty()
-async function processInactivityPenalties(supabase, nation, currentTick) {
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id, last_seen_tick, approval_rating')
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'party')
-        .is('abandoned_at', null);
-
-    for (const faction of (factions || [])) {
-        // Skip factions that haven't loaded a page yet (null = brand new, no penalty)
-        if (faction.last_seen_tick == null) continue;
-
-        const ticksInactive = currentTick - faction.last_seen_tick;
-        if (ticksInactive < INACTIVITY_TIER1_TICKS) continue;
-
-        // TIER 3 (≥18 ticks): Disband the party entirely
-        if (ticksInactive >= INACTIVITY_TIER3_TICKS) {
-            console.log(`[INACTIVITY] Disbanding faction ${faction.id} — inactive ${ticksInactive} ticks`);
-            try {
-                // Clear cooldown and survivor trait blocks for system-initiated disbands
-                await supabase.from('factions')
-                    .update({ disband_cooldown_until_tick: null })
-                    .eq('id', faction.id);
-                await supabase.from('head_of_government')
-                    .update({ trait_key: null })
-                    .eq('nation_id', nation.id)
-                    .eq('faction_id', faction.id)
-                    .eq('active', true)
-                    .eq('trait_key', 'survivor');
-                await disbandParty(supabase, nation.id, faction.id, currentTick);
-            } catch (err) {
-                console.error(`[INACTIVITY] Failed to disband faction ${faction.id}:`, err.message);
-            }
-            continue;
-        }
-
-        // TIER 1 (≥6 ticks): Crush momentum to 0 and approval by 99%
-        console.log(`[INACTIVITY] Draining faction ${faction.id} — inactive ${ticksInactive} ticks`);
-
-        await supabase.from('faction_bloc_approval')
-            .update({ momentum: 0 })
-            .eq('faction_id', faction.id);
-
-        const newApproval = Math.max(0, Math.floor((faction.approval_rating || 0) * 0.01));
-        await supabase.from('factions')
-            .update({ approval_rating: newApproval })
-            .eq('id', faction.id);
-    }
-}
-
 async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     if (isAutocracy(nation)) return;
 
@@ -10601,6 +10983,12 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
 
 // ────────── political-actions ──────────
 
+
+const _MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+function _tickToDate(tick) {
+    return `${_MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
+}
 
 // ==================== STAT DECAY PROCESSING ====================
 
@@ -12837,7 +13225,7 @@ function getAutocracyLoyaltyDecay(regimeHealth) {
     return -5; // COLLAPSED tier — matches getRegimeHealthTier
 }
 
-async function processLoyaltyTick(supabase, nation, currentTick) {
+async function processLoyaltyTick(supabase, nation) {
     const rulingId = nation.ruling_faction_id;
     if (!rulingId) return;
 
@@ -12845,7 +13233,7 @@ async function processLoyaltyTick(supabase, nation, currentTick) {
 
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, faction_name, loyalty, seats')
+        .select('id, loyalty, seats')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -12897,27 +13285,6 @@ async function processLoyaltyTick(supabase, nation, currentTick) {
             const decayRate = getAutocracyLoyaltyDecay(regimeHealth);
             loyalty += decayRate;
             loyalty = Math.max(0, Math.min(GAME_CONFIG.LOYALTY_CAP, Math.round(loyalty * 10) / 10));
-
-            // Generate events for loyalty threshold crossings
-            const oldLoyalty = faction.loyalty ?? 50;
-            const loyaltyThresholds = [
-                { level: 20, dir: 'below', msg: 'is near open rebellion' },
-                { level: 35, dir: 'below', msg: 'loyalty is dangerously low' },
-                { level: 50, dir: 'below', msg: 'is growing disloyal' },
-            ];
-            for (const t of loyaltyThresholds) {
-                const crossed = t.dir === 'below'
-                    ? (oldLoyalty >= t.level && loyalty < t.level)
-                    : (oldLoyalty < t.level && loyalty >= t.level);
-                if (crossed && currentTick != null) {
-                    await supabase.from('campaign_actions').insert({
-                        party_id: faction.id, nation_id: nation.id,
-                        action_type: 'loyalty_milestone', tick_performed: currentTick,
-                        result: { message: `${faction.faction_name || 'A faction'} ${t.msg}`,
-                            old_value: oldLoyalty, new_value: loyalty, threshold: t.level },
-                    });
-                }
-            }
 
             await supabase.from('factions')
                 .update({ loyalty })
@@ -13001,7 +13368,7 @@ async function processStandingTick(supabase, nation, currentTick) {
 
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, faction_name, standing, last_standing_action_tick')
+        .select('id, standing, last_standing_action_tick')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -13009,7 +13376,6 @@ async function processStandingTick(supabase, nation, currentTick) {
 
     for (const faction of factions) {
         let standing = faction.standing ?? 30;
-        const oldStanding = standing;
         const lastStandingTick = faction.last_standing_action_tick;
 
         // Relevance decay: if 3+ ticks since last standing-building action
@@ -13024,25 +13390,6 @@ async function processStandingTick(supabase, nation, currentTick) {
         standing = Math.max(0, Math.min(90, standing));
 
         if (standing !== (faction.standing ?? 30)) {
-            // Generate events for standing threshold crossings
-            const standingThresholds = [
-                { level: 15, dir: 'below', msg: 'is politically irrelevant' },
-                { level: 25, dir: 'below', msg: 'standing is critically low' },
-            ];
-            for (const t of standingThresholds) {
-                const crossed = t.dir === 'below'
-                    ? (oldStanding >= t.level && standing < t.level)
-                    : (oldStanding < t.level && standing >= t.level);
-                if (crossed) {
-                    await supabase.from('campaign_actions').insert({
-                        party_id: faction.id, nation_id: nation.id,
-                        action_type: 'standing_milestone', tick_performed: currentTick,
-                        result: { message: `${faction.faction_name || 'A faction'} ${t.msg}`,
-                            old_value: oldStanding, new_value: standing, threshold: t.level },
-                    });
-                }
-            }
-
             await supabase.from('factions')
                 .update({ standing })
                 .eq('id', faction.id);
@@ -13088,14 +13435,14 @@ const REGIME_PILLAR_DEFS = [
         { stat: 'foreign_investment', threshold: 50, direction: 'above' },
     ]},
     { key: 'religious',  name: 'Religious Establishment', wants: [
-        { stat: 'religious', threshold: 50, direction: 'above' },
+        { stat: 'religiosity', threshold: 50, direction: 'above' },
         { stat: 'freedom_index', threshold: 40, direction: 'below' },
     ]},
 ];
 
 function d2() { return 1 + Math.floor(Math.random() * 2); } // 1 or 2
 
-async function processRegimePillars(supabase, nation, currentTick) {
+async function processRegimePillars(supabase, nation) {
     if (!isAutocracy(nation)) return;
 
     // Fetch existing pillars
@@ -13160,27 +13507,6 @@ async function processRegimePillars(supabase, nation, currentTick) {
         }
 
         support = Math.max(0, Math.min(100, support));
-
-        // Generate event when pillar crosses key thresholds
-        const oldSupport = row.support;
-        const pillarThresholds = [
-            { level: 30, dir: 'below', message: `${def.name} support is dangerously low` },
-            { level: 50, dir: 'below', message: `${def.name} confidence is wavering` },
-            { level: 30, dir: 'above', message: `${def.name} support has recovered` },
-        ];
-        for (const t of pillarThresholds) {
-            const crossed = t.dir === 'below'
-                ? (oldSupport >= t.level && support < t.level)
-                : (oldSupport < t.level && support >= t.level);
-            if (crossed && nation.ruling_faction_id && currentTick != null) {
-                await supabase.from('campaign_actions').insert({
-                    party_id: nation.ruling_faction_id, nation_id: nation.id,
-                    action_type: 'pillar_threshold', tick_performed: currentTick,
-                    result: { message: t.message, pillar: def.key, pillar_name: def.name,
-                        old_value: oldSupport, new_value: support, threshold: t.level, direction: t.dir },
-                });
-            }
-        }
 
         await supabase.from('regime_pillars')
             .update({ support, updated_at: new Date().toISOString() })
@@ -14999,20 +15325,27 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
         const avgDelta = deltaSum / deltaCount;
 
         const oldApproval = ministry.minister_approval ?? cfg.NEW_MINISTER_APPROVAL;
+        let newApproval = oldApproval;
 
-        // Target approval reflects cumulative performance since appointment
-        // avgDelta > 0 = improving → target above 50; avgDelta < 0 = worsening → target below 50
-        // Stagnation (avgDelta ≈ 0) naturally targets 50, so approval drifts back without a hardcoded decay
-        const targetApproval = Math.max(0, Math.min(100,
-            cfg.NEW_MINISTER_APPROVAL + avgDelta * cfg.DELTA_SENSITIVITY));
+        if (Math.abs(avgDelta) < 0.5) {
+            // Stagnation: stats haven't moved meaningfully — slow decay
+            newApproval += cfg.STAGNATION_DECAY;
+        } else {
+            // Apply delta-based movement
+            newApproval += avgDelta * cfg.DELTA_SENSITIVITY;
+        }
 
-        // Converge toward target each tick
-        let newApproval = oldApproval + (targetApproval - oldApproval) * cfg.CONVERGENCE_RATE;
         newApproval = Math.round(Math.max(0, Math.min(100, newApproval)) * 10) / 10;
 
-        // Keep appointment-time baselines — do NOT reset to current values
+        // Update baselines to current values so next tick only sees incremental change
+        const updatedBaselines = {};
+        for (const statKey of ownedStats) {
+            if (statDirectionSign(statKey) === 0) continue;
+            updatedBaselines[statKey] = Number(nation[statKey] ?? 50);
+        }
+
         await supabase.from('ministries')
-            .update({ minister_approval: newApproval })
+            .update({ minister_approval: newApproval, stat_baselines: updatedBaselines })
             .eq('id', ministry.id);
 
         results.push({
@@ -15099,212 +15432,6 @@ async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
     return govApproval;
 }
 
-// ==================== EXECUTIVE ORDERS TICK PROCESSING ====================
-
-const EO_OVERREACH_WINDOW = 8;
-const EO_EMERGENCY_UNREST_THRESHOLD = 18;
-
-async function processExecutiveOrders(supabase, nation, currentTick) {
-    const results = [];
-
-    // ─── 0. Guard: only process for presidential systems ───
-    if (!isGovernmentPresidential(nation)) {
-        // Clean up any lingering EO state if government type changed
-        const { data: lingering } = await supabase
-            .from('executive_orders').select('id')
-            .eq('nation_id', nation.id).eq('is_active', true).limit(1);
-        if (lingering && lingering.length > 0) {
-            await supabase.from('executive_orders').update({ is_active: false }).eq('nation_id', nation.id).eq('is_active', true);
-            await supabase.from('ministries').update({ is_acting: false, acting_order_id: null }).eq('nation_id', nation.id).eq('is_acting', true);
-            await supabase.from('nations').update({ overreach_count: 0 }).eq('id', nation.id);
-            results.push('Government type no longer presidential — deactivated all executive orders');
-        }
-        return results;
-    }
-
-    // ─── 1. Recalculate overreach count ───
-    const { count: overreachCount } = await supabase
-        .from('executive_orders')
-        .select('id', { count: 'exact', head: true })
-        .eq('nation_id', nation.id)
-        .gte('issued_tick', currentTick - EO_OVERREACH_WINDOW);
-
-    const oc = overreachCount || 0;
-    await supabase.from('nations').update({ overreach_count: oc }).eq('id', nation.id);
-
-    // Overreach penalties
-    if (oc >= 4) {
-        await adjustGovernmentApprovalEvent(supabase, nation.id, -4, 'executive_order:authoritarian_drift');
-        results.push(`Authoritarian drift: -4 gov approval (${oc} orders in ${EO_OVERREACH_WINDOW} ticks)`);
-    } else if (oc >= 2) {
-        await adjustGovernmentApprovalEvent(supabase, nation.id, -2, 'executive_order:governing_by_decree');
-        results.push(`Governing by decree: -2 gov approval (${oc} orders in ${EO_OVERREACH_WINDOW} ticks)`);
-    }
-
-    // ─── 2. Acting minister ongoing effects ───
-    const { data: actingMinisters } = await supabase
-        .from('ministries')
-        .select('id, ministry_key, party_id')
-        .eq('nation_id', nation.id)
-        .eq('is_acting', true)
-        .eq('is_active', true);
-
-    if (actingMinisters && actingMinisters.length > 0) {
-        // -2 approval per acting minister per tick
-        const actingPenalty = actingMinisters.length * -2;
-        await adjustGovernmentApprovalEvent(supabase, nation.id, actingPenalty, 'executive_order:acting_minister_ongoing');
-        results.push(`Acting ministers (${actingMinisters.length}): ${actingPenalty} gov approval`);
-
-        // Get president faction to determine opposition
-        const { data: president } = await supabase
-            .from('presidents').select('faction_id')
-            .eq('nation_id', nation.id).eq('is_active', true).maybeSingle();
-
-        if (president) {
-            // +1 momentum per acting minister to each opposition party
-            const { data: oppoFactions } = await supabase
-                .from('factions').select('id')
-                .eq('nation_id', nation.id).neq('id', president.faction_id);
-            for (const f of (oppoFactions || [])) {
-                await adjustMomentumAll(supabase, nation.id, f.id, actingMinisters.length, 'executive_order:acting_minister_opposition');
-            }
-        }
-    }
-
-    // ─── 3. Price controls: freeze stat + accumulate pressure ───
-    const { data: activeControls } = await supabase
-        .from('executive_orders')
-        .select('id, payload, expires_tick')
-        .eq('nation_id', nation.id)
-        .eq('order_type', 'price_controls')
-        .eq('is_active', true);
-
-    for (const control of (activeControls || [])) {
-        const stat = control.payload?.stat;
-        const frozenValue = control.payload?.frozen_value;
-        if (!stat || frozenValue == null) continue;
-
-        // Read what the stat naturally became after this tick's calculations
-        const { data: freshNation } = await supabase
-            .from('nations').select(stat).eq('id', nation.id).single();
-        const naturalValue = Number(freshNation?.[stat] ?? frozenValue);
-        const pressureDelta = naturalValue - frozenValue;
-
-        // Override stat back to frozen value
-        await supabase.from('nations').update({ [stat]: frozenValue }).eq('id', nation.id);
-
-        // Accumulate pressure
-        const newMagnitude = (control.payload?.pressure_magnitude || 0) + pressureDelta;
-        await supabase.from('executive_orders').update({
-            payload: { ...control.payload, pressure_magnitude: newMagnitude,
-                       pressure_direction: pressureDelta >= 0 ? 'up' : 'down' }
-        }).eq('id', control.id);
-
-        results.push(`Price controls on ${stat}: frozen at ${frozenValue.toFixed(1)}, pressure ${newMagnitude.toFixed(1)}`);
-
-        // Check expiry
-        if (control.expires_tick != null && currentTick >= control.expires_tick) {
-            // Release: snap with doubled accumulated pressure
-            const snapValue = frozenValue + (newMagnitude * 2);
-            const clampedSnap = Math.max(0, Math.min(100, snapValue));
-            await supabase.from('nations').update({ [stat]: clampedSnap }).eq('id', nation.id);
-            await adjustGovernmentApprovalEvent(supabase, nation.id, -4, 'executive_order:price_controls_snap');
-            await supabase.from('executive_orders').update({ is_active: false }).eq('id', control.id);
-            results.push(`Price controls expired on ${stat}: snapped to ${clampedSnap.toFixed(1)} (pressure release: ${(newMagnitude * 2).toFixed(1)})`);
-        }
-    }
-
-    // ─── 4. National emergency ongoing effects ───
-    const { data: emergency } = await supabase
-        .from('executive_orders')
-        .select('id, faction_id, issued_tick, payload')
-        .eq('nation_id', nation.id)
-        .eq('order_type', 'national_emergency')
-        .eq('is_active', true)
-        .maybeSingle();
-
-    if (emergency) {
-        const ticksActive = currentTick - emergency.issued_tick;
-
-        // +1 AP per tick to presidential faction
-        await accumulateAP(supabase, emergency.faction_id, 1);
-        results.push(`Emergency: +1 AP to faction ${emergency.faction_id} (tick ${ticksActive})`);
-
-        // -4 approval per tick after first tick
-        if (ticksActive > 0) {
-            await adjustGovernmentApprovalEvent(supabase, nation.id, -4, 'executive_order:emergency_ongoing');
-            results.push(`Emergency: -4 gov approval (tick ${ticksActive})`);
-        }
-
-        // After 18 ticks: +1 civil_unrest per tick
-        if (ticksActive >= EO_EMERGENCY_UNREST_THRESHOLD) {
-            const currentUnrest = Number(nation.civil_unrest ?? 20);
-            await supabase.from('nations').update({ civil_unrest: Math.min(100, currentUnrest + 1) }).eq('id', nation.id);
-            results.push(`Emergency: +1 civil_unrest (active ${ticksActive} ticks, threshold ${EO_EMERGENCY_UNREST_THRESHOLD})`);
-        }
-
-        // Auto-end if president removed (no active president for this faction)
-        const { data: activePresident } = await supabase
-            .from('presidents')
-            .select('id')
-            .eq('nation_id', nation.id)
-            .eq('faction_id', emergency.faction_id)
-            .eq('is_active', true)
-            .maybeSingle();
-
-        if (!activePresident) {
-            // President was removed/impeached — auto-end emergency
-            await supabase.from('executive_orders').update({ is_active: false }).eq('id', emergency.id);
-            // Re-read civil_unrest from DB (may have been modified earlier in this function)
-            const { data: freshNation } = await supabase.from('nations').select('civil_unrest').eq('id', nation.id).single();
-            const latestUnrest = Number(freshNation?.civil_unrest ?? nation.civil_unrest ?? 20);
-            await supabase.from('nations').update({
-                civil_unrest: Math.min(100, latestUnrest + 8),
-                emergency_cooldown_until: currentTick + 8
-            }).eq('id', nation.id);
-
-            // Also clean up acting ministers — they were appointed by the removed president
-            const { data: actingToRemove } = await supabase
-                .from('ministries').select('id, acting_order_id')
-                .eq('nation_id', nation.id).eq('is_acting', true);
-            for (const m of (actingToRemove || [])) {
-                await supabase.from('ministries').update({
-                    is_acting: false, acting_order_id: null,
-                    minister_first_name: null, minister_last_name: null,
-                    minister_age: null, party_id: null,
-                    confirmation_status: null, minister_approval: null
-                }).eq('id', m.id);
-                if (m.acting_order_id) {
-                    await supabase.from('executive_orders').update({ is_active: false }).eq('id', m.acting_order_id);
-                }
-            }
-            results.push(`Emergency auto-ended: president removed. +8 civil_unrest, 8-tick cooldown, ${(actingToRemove || []).length} acting ministers removed`);
-        }
-    }
-
-    // ─── 5. Acting minister cleanup: if any acting ministry now has confirmed status, clear acting flag ───
-    const { data: upgradedActing } = await supabase
-        .from('ministries')
-        .select('id, acting_order_id')
-        .eq('nation_id', nation.id)
-        .eq('is_acting', true)
-        .eq('confirmation_status', 'confirmed');
-
-    for (const m of (upgradedActing || [])) {
-        await supabase.from('ministries')
-            .update({ is_acting: false, acting_order_id: null })
-            .eq('id', m.id);
-        if (m.acting_order_id) {
-            await supabase.from('executive_orders')
-                .update({ is_active: false })
-                .eq('id', m.acting_order_id);
-        }
-        results.push(`Acting minister upgraded to confirmed: ministry ${m.id}`);
-    }
-
-    return results;
-}
-
 async function processOngoingCosts(supabase, nation, currentTick) {
     const { data: activeLaws } = await supabase
         .from('active_laws')
@@ -15368,38 +15495,6 @@ async function snapshotNationHistory(supabase, nation, currentTick) {
     });
     if (snapError) {
         console.error('[snapshotNationHistory] FAILED for nation', nation.id, 'tick', currentTick, ':', snapError.message);
-
-        // Likely a column mismatch — the snapshot has columns that don't exist in the table.
-        // Fall back: query the actual table columns and retry with only matching columns.
-        if (snapError.message && (snapError.message.includes('column') || snapError.code === '42703' || snapError.code === 'PGRST204')) {
-            console.warn('[snapshotNationHistory] Attempting fallback: querying table columns and retrying...');
-            try {
-                // Fetch one row to discover which columns actually exist
-                const { data: sampleRow } = await supabase.from('nations_history')
-                    .select('*').limit(1);
-                if (sampleRow && sampleRow.length > 0) {
-                    const validCols = new Set(Object.keys(sampleRow[0]));
-                    const safeSnapshot = { nation_id: nation.id, tick: currentTick };
-                    let safeCount = 0;
-                    for (const key of HISTORY_SNAPSHOT_COLUMNS) {
-                        if (validCols.has(key) && nation[key] !== undefined && nation[key] !== null) {
-                            safeSnapshot[key] = Number(nation[key]);
-                            safeCount++;
-                        }
-                    }
-                    const { error: retryError } = await supabase.from('nations_history').upsert(safeSnapshot, {
-                        onConflict: 'nation_id,tick'
-                    });
-                    if (retryError) {
-                        console.error('[snapshotNationHistory] Fallback also FAILED:', retryError.message);
-                    } else {
-                        console.log(`[snapshotNationHistory] Fallback succeeded: stored ${safeCount} stats for nation ${nation.id} at tick ${currentTick}`);
-                    }
-                }
-            } catch (fallbackErr) {
-                console.error('[snapshotNationHistory] Fallback exception:', fallbackErr);
-            }
-        }
     } else {
         console.log(`[snapshotNationHistory] Stored ${Object.keys(snapshot).length - 2} stats for nation ${nation.id} at tick ${currentTick}`);
     }
@@ -15638,19 +15733,13 @@ async function processCrises(supabase, nation, currentTick) {
 
     // Load per-institution funding allocations (written by enactBill funding articles)
     const { data: _fundingAllocRows } = await supabase.from('budget_item_allocations')
-        .select('item_id, allocation_amount, needed_amount')
+        .select('item_id, item_type, allocation_amount, needed_amount')
         .eq('nation_id', nation.id)
         .eq('item_type', 'institution')
         .order('created_at', { ascending: true });
-    const _fundingMap = {};
-    for (const row of (_fundingAllocRows || [])) {
-        const needed = Number(row.needed_amount || 0);
-        _fundingMap[row.item_id] = needed > 0
-            ? Math.min(100, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
-            : 100;
-    }
+    const _fundingMap = buildFundingPctMap(_fundingAllocRows);
     function getInstitutionFundingPct(instId) {
-        return _fundingMap[instId] ?? 100;
+        return getInstFundingPct(_fundingMap, instId);
     }
 
     // 3. Check inactive crises for activation
@@ -16853,11 +16942,13 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
         throw new Error('A Survivor cannot resign. They cling to power.');
     }
 
+    // 1. Deactivate PM
     await supabase
         .from('head_of_government')
         .update({ active: false })
         .eq('id', hog.id);
 
+    // 2. Approval & stability penalties
     await adjustMomentumAll(supabase, nationId, factionId, -5, 'pm:resignation');
 
     const { data: nation } = await supabase
@@ -16874,66 +16965,47 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
             .eq('id', nationId);
     }
 
+    // 3. 12-tick PM cooldown on resigning faction
     await supabase
         .from('factions')
         .update({ pm_cooldown_until: currentTick + 12 })
         .eq('id', factionId);
 
-    if (hog.trait_key === 'iron_will') {
-        console.log('Iron Will resignation — coalition collapses');
-        try {
-            const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
-            const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-            if (fullNation) {
-                await closeAdministration(supabase, nationId, fullNation, 'coalition_collapse', currentTick, shard?.current_date || '', null);
-            }
-        } catch (adminErr) { console.warn('Could not close administration on iron_will collapse:', adminErr); }
-        await dissolveCoalition(supabase, nationId);
-        return { result: 'coalition_collapsed', reason: 'iron_will' };
-    }
-
-    const { data: govFormation } = await supabase
-        .from('government_formations')
-        .select('party_ids')
-        .eq('nation_id', nationId)
-        .eq('status', 'formed')
-        .single();
-
-    if (govFormation) {
-        const partnerIds = (govFormation.party_ids || [])
-            .filter(pid => pid !== factionId);
-
-        const { data: partners } = await supabase
-            .from('factions')
-            .select('id, faction_name, seats, pm_cooldown_until')
-            .in('id', partnerIds)
-            .order('seats', { ascending: false });
-
-        const eligible = (partners || []).find(p =>
-            !p.pm_cooldown_until || p.pm_cooldown_until <= currentTick
-        );
-
-        if (eligible) {
-            await autoAppointPartyLeaderAsPM(supabase, nationId, eligible.id, currentTick);
-            console.log(`PM auto-appointed to ${eligible.faction_name} leader`);
-            return {
-                result: 'pm_appointed',
-                newPmPartyId: eligible.id,
-                newPmPartyName: eligible.faction_name
-            };
-        }
-    }
-
-    console.log('No eligible partner — coalition collapsed');
+    // 4. Always dissolve the coalition — PM resignation triggers immediate elections
+    console.log('PM resignation — dissolving coalition and scheduling immediate election');
     try {
         const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
         const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
         if (fullNation) {
-            await closeAdministration(supabase, nationId, fullNation, 'coalition_collapse', currentTick, shard?.current_date || '', null);
+            await closeAdministration(supabase, nationId, fullNation, 'pm_resignation', currentTick, shard?.current_date || '', null);
         }
-    } catch (adminErr) { console.warn('Could not close administration on coalition collapse:', adminErr); }
+    } catch (adminErr) { console.warn('Could not close administration on PM resignation:', adminErr); }
     await dissolveCoalition(supabase, nationId);
-    return { result: 'coalition_collapsed', reason: 'no_eligible_partner' };
+
+    // 5. Freeze all active bills
+    await supabase
+        .from('bills')
+        .update({ status: 'frozen' })
+        .eq('nation_id', nationId)
+        .in('status', ['committee', 'floor']);
+
+    // 6. Cancel any existing scheduled elections and schedule immediate one
+    await supabase
+        .from('elections')
+        .delete()
+        .eq('nation_id', nationId)
+        .eq('status', 'scheduled');
+
+    await supabase.from('elections').insert({
+        nation_id: nationId,
+        election_tick: currentTick,
+        status: 'scheduled',
+        election_type: 'parliamentary'
+    });
+
+    console.log(`  Scheduled immediate election for tick ${currentTick}`);
+
+    return { result: 'election_called', reason: hog.trait_key === 'iron_will' ? 'iron_will' : 'pm_resignation' };
 }
 
 
@@ -17613,27 +17685,6 @@ async function processRegimeHealthTick(supabase, nation, currentTick) {
     // Update nation
     await supabase.from('nations').update({ regime_health: rh }).eq('id', nation.id);
 
-    // Generate events for regime health threshold crossings
-    const oldRH = Number(nation.regime_health ?? 80);
-    const thresholds = [
-        { level: 60, dir: 'below', message: 'Regime stability is weakening' },
-        { level: 40, dir: 'below', message: 'The regime is in decline — loyalty eroding' },
-        { level: 20, dir: 'below', message: 'CRITICAL — regime on the brink of collapse' },
-        { level: 60, dir: 'above', message: 'Regime stability has recovered' },
-    ];
-    for (const t of thresholds) {
-        const crossed = t.dir === 'below'
-            ? (oldRH >= t.level && rh < t.level)
-            : (oldRH < t.level && rh >= t.level);
-        if (crossed && nation.ruling_faction_id) {
-            await supabase.from('campaign_actions').insert({
-                party_id: nation.ruling_faction_id, nation_id: nation.id,
-                action_type: 'regime_health_threshold', tick_performed: currentTick,
-                result: { message: t.message, old_value: oldRH, new_value: rh, threshold: t.level, direction: t.dir },
-            });
-        }
-    }
-
     // Check for collapse (rh === 0)
     if (rh <= 0) {
         await handleRegimeCollapse(supabase, nation, currentTick);
@@ -17647,9 +17698,7 @@ async function processRegimeHealthTick(supabase, nation, currentTick) {
  * If successor exists, they take over. Otherwise, power vacuum.
  */
 async function handleRegimeCollapse(supabase, nation, currentTick) {
-    const _MONTHS_RC = ['January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'];
-    const currentDate = `${_MONTHS_RC[currentTick % 12]}, ${2000 + Math.floor(currentTick / 12)}`;
+    const currentDate = _tickToDate(currentTick);
 
     // Close the outgoing administration before transferring power
     try {
@@ -18126,9 +18175,7 @@ async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted,
 
         // Close the old administration and create a new one for the coup leader
         try {
-            const _MONTHS_COUP = ['January', 'February', 'March', 'April', 'May', 'June',
-                'July', 'August', 'September', 'October', 'November', 'December'];
-            const currentDate = `${_MONTHS_COUP[currentTick % 12]}, ${2000 + Math.floor(currentTick / 12)}`;
+            const currentDate = _tickToDate(currentTick);
             const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
             if (fullNation) {
                 await closeAdministration(supabase, nationId, fullNation, 'coup', currentTick, currentDate, null);
@@ -18562,13 +18609,20 @@ async function runElectionPreview(supabase, nationId) {
         }
     }
 
-    // 3. Load parties + their ideology axes
-    const { data: factions } = await supabase
+    // 3. Load parties + their ideology axes (exclude inactive ≥12 ticks)
+    const { data: shard } = await supabase
+        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+    const { data: allFactions } = await supabase
         .from('factions')
-        .select('id, faction_name, seats')
+        .select('id, faction_name, seats, last_seen_tick, abandoned_at')
         .eq('nation_id', nationId)
-        .eq('faction_type', 'party');
-    if (!factions || factions.length === 0) throw new Error('No parties found for this nation');
+        .eq('faction_type', 'party')
+        .is('abandoned_at', null);
+    const factions = (allFactions || []).filter(f =>
+        f.last_seen_tick == null || (currentTick - f.last_seen_tick) < 12
+    );
+    if (!factions || factions.length === 0) throw new Error('No eligible parties found for this nation');
 
     const factionIds = factions.map(f => f.id);
     const { data: ideologies } = await supabase
@@ -18700,13 +18754,24 @@ async function runPresidentialElectionPreview(supabase, nationId) {
     if (!candidates || candidates.length === 0) throw new Error('No selected presidential candidates found. Generate and select candidates first.');
 
     // 4. Load faction data + ideology axes for each candidate's party
-    const factionIds = [...new Set(candidates.map(c => c.faction_id))];
+    //    Filter out candidates whose factions are inactive ≥12 ticks
+    const { data: shardData } = await supabase
+        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const presTick = shardData?.current_tick || 0;
+    const allFactionIds = [...new Set(candidates.map(c => c.faction_id))];
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, faction_name')
-        .in('id', factionIds);
+        .select('id, faction_name, last_seen_tick, abandoned_at')
+        .in('id', allFactionIds)
+        .is('abandoned_at', null);
+    const activeFactionIds = new Set((factions || [])
+        .filter(f => f.last_seen_tick == null || (presTick - f.last_seen_tick) < 12)
+        .map(f => f.id));
+    const eligibleCandidates = candidates.filter(c => activeFactionIds.has(c.faction_id));
+    if (eligibleCandidates.length === 0) throw new Error('No eligible presidential candidates (all factions inactive)');
+    const factionIds = [...activeFactionIds];
     const factionMap = {};
-    for (const f of (factions || [])) factionMap[f.id] = f;
+    for (const f of (factions || []).filter(f => activeFactionIds.has(f.id))) factionMap[f.id] = f;
 
     const { data: ideologies } = await supabase
         .from('faction_ideology')
@@ -18741,7 +18806,7 @@ async function runPresidentialElectionPreview(supabase, nationId) {
             axes
         };
     }
-    const allCandidateParties = candidates.map(buildCandidateParty);
+    const allCandidateParties = eligibleCandidates.map(buildCandidateParty);
 
     // 6. Load per-bloc approval data (keyed by faction, same as parliamentary)
     const { data: fbaRows } = await supabase
@@ -18752,7 +18817,7 @@ async function runPresidentialElectionPreview(supabase, nationId) {
     for (const row of (fbaRows || [])) {
         if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
         // Map faction approval to candidate id (candidate inherits faction approval)
-        for (const cand of candidates) {
+        for (const cand of eligibleCandidates) {
             if (cand.faction_id === row.faction_id) {
                 allBlocApprovals[row.bloc_id][cand.id] = row.preference_score ?? 40;
             }
@@ -19305,11 +19370,7 @@ function formatDebtToGDP(ratio) {
 
 // ==================== POPULATION GROWTH ====================
 //
-// Population growth is derived from birth_rate and death_rate each tick:
-//   base = 50 + (birth_rate - death_rate) / 2
-//
-// Any policy/crisis effects that modified population_growth are preserved
-// as additive deltas on top of the base.
+// population_growth is a standalone 0-100 stat driven by policy effects and decay.
 //
 // The final population_growth (0-100) drives actual population change:
 //   0   → -1% per tick (max decline)
@@ -19317,18 +19378,9 @@ function formatDebtToGDP(ratio) {
 //   100 → +1% per tick (max growth)
 
 async function processPopulationGrowth(supabase: any, nation: any, popGrowthBeforeEffects: number) {
-    const birthRate = Number(nation.birth_rate ?? 50);
-    const deathRate = Number(nation.death_rate ?? 50);
-
-    // Base population growth from birth rate minus death rate
-    const base = 50 + (birthRate - deathRate) / 2;
-
-    // Policy/crisis delta: how much effects shifted population_growth this tick
+    // population_growth is now standalone — just use the current value directly
     const currentPG = Number(nation.population_growth ?? 50);
-    const policyDelta = currentPG - popGrowthBeforeEffects;
-
-    // Final population_growth = base + policy adjustments, clamped 0-100
-    const finalPG = Math.round(Math.max(0, Math.min(100, base + policyDelta)) * 10) / 10;
+    const finalPG = Math.round(Math.max(0, Math.min(100, currentPG)) * 10) / 10;
 
     // Population change: linear mapping from 0-100 to -1%..+1% per tick
     const population = Number(nation.population ?? 0);
@@ -19354,10 +19406,10 @@ async function processPopulationGrowth(supabase: any, nation: any, popGrowthBefo
             return null;
         }
         Object.assign(nation, updates);
-        console.log(`[processPopulationGrowth] ${nation.name}: birth=${birthRate} death=${deathRate} base=${base.toFixed(1)} delta=${policyDelta.toFixed(1)} final=${finalPG} pop_change=${popChange > 0 ? '+' : ''}${popChange}`);
+        console.log(`[processPopulationGrowth] ${nation.name}: pg=${finalPG} pop_change=${popChange > 0 ? '+' : ''}${popChange}`);
     }
 
-    return { base, policyDelta, finalPG, popChange, newPopulation, newEligibleVoters };
+    return { finalPG, popChange, newPopulation, newEligibleVoters };
 }
 
 
@@ -20195,72 +20247,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Agreement expiration check failed (non-fatal):', expErr);
     }
 
-    // 3.6b Finalize trade agreement withdrawals past their notice period
-    try {
-        const { data: pendingWithdrawals, error: wErr } = await supabase
-            .from('trade_agreements')
-            .update({ status: 'withdrawn' })
-            .eq('status', 'active')
-            .not('withdrawn_at_tick', 'is', null)
-            .lte('withdrawn_at_tick', newTick)
-            .select('id, agreement_name, agreement_type, nation_a_id, nation_b_id');
-        if (!wErr && pendingWithdrawals && pendingWithdrawals.length > 0) {
-            summary.finalizedWithdrawals = pendingWithdrawals.length;
-            console.log(`[advanceTick] Finalized ${pendingWithdrawals.length} trade agreement withdrawal(s)`);
-            for (const w of pendingWithdrawals) {
-                if (w.nation_b_id) {
-                    await fireBilateralEvent(supabase, 'trade_agreement_withdrawn', w.nation_a_id, w.nation_b_id, newTick, { agreement_name: w.agreement_name || 'Agreement' });
-                }
-            }
-        }
-    } catch (wErr) {
-        console.error('[advanceTick] Withdrawal finalization failed (non-fatal):', wErr);
-    }
-
-    // 3.6c Delete expired/withdrawn trade agreements older than 6 ticks
-    try {
-        const staleThreshold = newTick - 6;
-        const { data: staleTradeAgs, error: staleErr } = await supabase
-            .from('trade_agreements')
-            .delete()
-            .in('status', ['expired', 'withdrawn'])
-            .lte('expires_at_tick', staleThreshold)
-            .select('id');
-        // Also delete withdrawn agreements by withdrawn_at_tick (for those without expires_at_tick)
-        const { data: staleWithdrawn } = await supabase
-            .from('trade_agreements')
-            .delete()
-            .eq('status', 'withdrawn')
-            .not('withdrawn_at_tick', 'is', null)
-            .lte('withdrawn_at_tick', staleThreshold)
-            .select('id');
-        const staleCount = (staleTradeAgs?.length || 0) + (staleWithdrawn?.length || 0);
-        if (staleCount > 0) {
-            summary.deletedStaleAgreements = staleCount;
-            console.log(`[advanceTick] Deleted ${staleCount} stale expired/withdrawn trade agreement(s)`);
-        }
-    } catch (staleErr) {
-        console.error('[advanceTick] Stale agreement cleanup failed (non-fatal):', staleErr);
-    }
-
-    // 3.6d Delete expired/withdrawn diplomatic proposals older than 6 ticks
-    try {
-        const staleThreshold = newTick - 6;
-        const { data: staleProposals } = await supabase
-            .from('diplomatic_proposals')
-            .delete()
-            .in('status', ['expired', 'withdrawn'])
-            .not('terminated_at_tick', 'is', null)
-            .lte('terminated_at_tick', staleThreshold)
-            .select('id');
-        if (staleProposals && staleProposals.length > 0) {
-            summary.deletedStaleProposals = staleProposals.length;
-            console.log(`[advanceTick] Deleted ${staleProposals.length} stale expired/withdrawn diplomatic proposal(s)`);
-        }
-    } catch (staleErr) {
-        console.error('[advanceTick] Stale proposal cleanup failed (non-fatal):', staleErr);
-    }
-
     // 3.7 Expire pending state visit proposals past their accept window
     try {
         const { data: expiredVisits, error: svErr } = await supabase
@@ -20278,201 +20264,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] State visit expiration check failed (non-fatal):', svExpErr);
     }
 
-    // 3.7b Expire active diplomatic proposals past their duration_years
-    try {
-        const { data: activeProposals } = await supabase
-            .from('diplomatic_proposals')
-            .select('id, activated_at_tick, proposal_data')
-            .eq('status', 'active')
-            .neq('proposal_type', 'minor_diplomatic_initiative')  // handled in 3.8
-            .neq('proposal_type', 'state_visit')
-            .not('activated_at_tick', 'is', null);
-
-        if (activeProposals && activeProposals.length > 0) {
-            let expiredCount = 0;
-            for (const p of activeProposals) {
-                const pd = p.proposal_data || {};
-                const durationYears = Number(pd.duration_years) || 0;
-                if (durationYears <= 0) continue;
-                const expiresTick = p.activated_at_tick + (durationYears * 12);
-                if (newTick >= expiresTick) {
-                    await supabase.from('diplomatic_proposals')
-                        .update({ status: 'expired', terminated_at_tick: newTick })
-                        .eq('id', p.id);
-                    expiredCount++;
-                }
-            }
-            if (expiredCount > 0) {
-                summary.expiredDiplomaticProposals = expiredCount;
-                console.log(`[advanceTick] Expired ${expiredCount} diplomatic proposal(s) past duration`);
-            }
-        }
-    } catch (dpErr) {
-        console.error('[advanceTick] Diplomatic proposal expiration failed (non-fatal):', dpErr);
-    }
-
-    // 3.8 Process active minor diplomatic initiatives (soft power decay, ongoing costs, expiry)
-    try {
-        const { data: activeInitiatives } = await supabase
-            .from('diplomatic_proposals')
-            .select('id, proposing_nation_id, target_nation_id, proposal_data, activated_at_tick')
-            .eq('status', 'active')
-            .eq('proposal_type', 'minor_diplomatic_initiative');
-
-        if (activeInitiatives && activeInitiatives.length > 0) {
-            let expiredCount = 0;
-            let softPowerApplied = 0;
-            let ongoingCostsApplied = 0;
-
-            for (const init of activeInitiatives) {
-                const pd = init.proposal_data || {};
-                const articles = pd.articles || [];
-                const activatedAt = init.activated_at_tick || 0;
-                const ticksActive = newTick - activatedAt;
-                let initiativeExpired = true; // assume expired unless an article keeps it alive
-
-                for (const art of articles) {
-                    if (art.status === 'struck') continue;
-
-                    // Cultural exchange: soft power decay + ongoing costs + expiry
-                    if (art.type === 'cultural_exchange') {
-                        const durOpt = art.config?.duration;
-                        const isPermanent = durOpt === 0;
-                        const totalTicks = isPermanent ? Infinity : (durOpt || 24);
-
-                        // Check expiry for non-permanent
-                        if (!isPermanent && ticksActive >= totalTicks) {
-                            // This article has expired — don't apply effects
-                            continue;
-                        }
-                        initiativeExpired = false;
-
-                        // Soft power decay: first third +3, second third +2, final third +1
-                        let softPowerGain = 1;
-                        if (isPermanent) {
-                            // Permanent: use 36-tick cycle (3 years), repeating
-                            const cyclePos = ticksActive % 36;
-                            if (cyclePos < 12) softPowerGain = 3;
-                            else if (cyclePos < 24) softPowerGain = 2;
-                            else softPowerGain = 1;
-                        } else {
-                            const third = Math.floor(totalTicks / 3);
-                            if (ticksActive < third) softPowerGain = 3;
-                            else if (ticksActive < third * 2) softPowerGain = 2;
-                            else softPowerGain = 1;
-                        }
-
-                        // Apply soft power to both nations
-                        for (const nid of [init.proposing_nation_id, init.target_nation_id]) {
-                            const { data: nat } = await supabase.from('nations').select('soft_power').eq('id', nid).single();
-                            if (nat) {
-                                const newVal = Math.min(100, (Number(nat.soft_power) || 0) + softPowerGain);
-                                await supabase.from('nations').update({ soft_power: newVal }).eq('id', nid);
-                            }
-                        }
-                        softPowerApplied++;
-
-                        // Ongoing costs for permanent cultural exchanges ($5M/tick from each nation's share)
-                        if (isPermanent) {
-                            const fundingOpt = art.config?.funding || '50_50';
-                            let proposerShare = 0.5, targetShare = 0.5;
-                            if (fundingOpt === 'we_pay_more') { proposerShare = 0.6; targetShare = 0.4; }
-                            else if (fundingOpt === 'they_pay_more') { proposerShare = 0.4; targetShare = 0.6; }
-                            const ongoingPerTick = 5_000_000; // $5M per tick
-                            const proposerCost = ongoingPerTick * proposerShare;
-                            const targetCost = ongoingPerTick * targetShare;
-
-                            // Add ongoing cost to embassies institution needed_amount
-                            for (const [nid, cost] of [[init.proposing_nation_id, proposerCost], [init.target_nation_id, targetCost]] as [string, number][]) {
-                                const { data: alloc } = await supabase
-                                    .from('budget_item_allocations')
-                                    .select('id, needed_amount')
-                                    .eq('nation_id', nid)
-                                    .eq('item_type', 'institution')
-                                    .eq('item_id', 'embassies')
-                                    .order('created_at', { ascending: false })
-                                    .limit(1)
-                                    .maybeSingle();
-                                if (alloc) {
-                                    const newNeeded = Math.max(0, Number(alloc.needed_amount || 0) + cost);
-                                    await supabase.from('budget_item_allocations')
-                                        .update({ needed_amount: newNeeded })
-                                        .eq('id', alloc.id);
-                                }
-                            }
-                            ongoingCostsApplied++;
-                        }
-                    }
-
-                    // Student exchange: expiry check (duration-based)
-                    else if (art.type === 'student_exchange') {
-                        const durKey = art.config?.duration || 'full_year';
-                        const durMap: Record<string, number> = { semester: 6, full_year: 12, full_degree: 36 };
-                        const totalTicks = durMap[durKey] || 12;
-                        if (ticksActive >= totalTicks) {
-                            continue; // expired
-                        }
-                        initiativeExpired = false;
-                    }
-
-                    // Visa agreements and joint statements: no expiry (permanent)
-                    else {
-                        initiativeExpired = false;
-                    }
-                }
-
-                // If all articles have expired, mark the initiative as expired
-                if (initiativeExpired && articles.some(a => a.status !== 'struck')) {
-                    await supabase.from('diplomatic_proposals')
-                        .update({ status: 'expired', terminated_at_tick: newTick })
-                        .eq('id', init.id);
-
-                    // Remove persistent stat modifiers by reversing them
-                    for (const art of articles) {
-                        if (art.status === 'struck') continue;
-                        const pe = art.proposer_effects || art.effects || {};
-                        const te = art.target_effects || art.effects || {};
-
-                        // Reverse persistent stats (immigration, polarization, terrorism)
-                        for (const [nid, eff] of [[init.proposing_nation_id, pe], [init.target_nation_id, te]] as [string, any][]) {
-                            const reversals: Record<string, number> = {};
-                            if (eff.immigration) reversals.immigration = -eff.immigration;
-                            if (eff.polarization) reversals.polarization = -eff.polarization;
-                            if (eff.terrorism_risk) reversals.terrorism = -eff.terrorism_risk;
-                            if (Object.keys(reversals).length > 0) {
-                                const { data: nat } = await supabase.from('nations').select('*').eq('id', nid).single();
-                                if (nat) {
-                                    const updates: Record<string, number> = {};
-                                    for (const [key, delta] of Object.entries(reversals)) {
-                                        updates[key] = Math.max(0, Math.min(100, (Number(nat[key]) || 0) + delta));
-                                    }
-                                    await supabase.from('nations').update(updates).eq('id', nid);
-                                }
-                            }
-                        }
-                    }
-
-                    expiredCount++;
-                }
-            }
-
-            if (expiredCount > 0 || softPowerApplied > 0 || ongoingCostsApplied > 0) {
-                summary.diplomaticInitiatives = { expired: expiredCount, softPowerTicks: softPowerApplied, ongoingCosts: ongoingCostsApplied };
-                console.log(`[advanceTick] Diplomatic initiatives: ${expiredCount} expired, ${softPowerApplied} soft power applied, ${ongoingCostsApplied} ongoing costs applied`);
-            }
-        }
-    } catch (initErr) {
-        console.error('[advanceTick] Diplomatic initiative tick processing failed (non-fatal):', initErr);
-    }
-
     // 4. Process each nation
     for (const nation of nationList) {
       try {
         // Set correct seat count for this nation (affects supermajority thresholds, etc.)
         initGameConfigForNation(nation);
 
-        // Snapshot population_growth BEFORE any effects, so we can isolate
-        // policy deltas and rebase on birth_rate - death_rate afterwards.
+        // Snapshot population_growth BEFORE any effects for delta tracking.
         const popGrowthBeforeEffects = Number(nation.population_growth ?? 50);
 
         // Stat effects (from passed bills/active laws)
@@ -20494,13 +20292,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
             _institutionConfig = icRows || [];
         }
-        // Load per-institution funding allocations (written by enactBill funding articles)
-        const { data: allocRows } = await supabase.from('budget_item_allocations')
-            .select('*')
-            .eq('nation_id', nation.id)
-            .eq('item_type', 'institution')
-            .order('created_at', { ascending: true });
-        const statInstMap = buildStatInstitutionMap(_institutionConfig, allocRows || []);
+        let statInstMap = null;
         const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
         const decayResults = await processStatDecay(supabase, nation, statInstMap, policyDecayAdj);
         if (decayResults.length > 0) {
@@ -20517,17 +20309,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         if (connResults.length > 0) {
             summary.statConnections = summary.statConnections || [];
             summary.statConnections.push({ nation: nation.name, effects: connResults });
-        }
-
-        // Executive orders (overreach, acting ministers, price controls, emergency)
-        try {
-            const eoResults = await processExecutiveOrders(supabase, nation, newTick);
-            if (eoResults && eoResults.length > 0) {
-                summary.executiveOrders = summary.executiveOrders || [];
-                summary.executiveOrders.push({ nation: nation.name, effects: eoResults });
-            }
-        } catch (eoErr) {
-            console.error(`[advanceTick] Executive orders processing failed for ${nation.name} (non-fatal):`, eoErr);
         }
 
         // Ongoing costs
@@ -20820,8 +20601,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Crisis processing failed for ${nation.name} (non-fatal):`, crisisErr);
         }
 
-        // Population growth: recompute from birth_rate - death_rate base,
-        // preserving any policy/crisis deltas, then apply population change.
+        // Population growth: apply population change based on current population_growth stat.
         try {
             const popGrowthResult = await processPopulationGrowth(supabase, nation, popGrowthBeforeEffects);
             if (popGrowthResult) {
@@ -20868,9 +20648,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Gov approval calc failed for ${nation.name} (non-fatal):`, govAppErr);
         }
 
-        // Inactivity penalties (before three-pillar recalc so crushed values take effect)
-        await processInactivityPenalties(supabase, nation, newTick);
-
         // Three-pillar voter preference recalculation
         try {
             await calculateThreePillarPreferences(supabase, nation, newTick);
@@ -20885,11 +20662,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             catch (e) { console.error(`[advanceTick] Loyalty demand expiry failed for ${nation.name} (non-fatal):`, e); }
 
             // Faction loyalty
-            try { await processLoyaltyTick(supabase, nation, newTick); }
+            try { await processLoyaltyTick(supabase, nation); }
             catch (e) { console.error(`[advanceTick] Loyalty tick failed for ${nation.name} (non-fatal):`, e); }
 
             // Regime pillars decay & bonus
-            try { await processRegimePillars(supabase, nation, newTick); }
+            try { await processRegimePillars(supabase, nation); }
             catch (e) { console.error(`[advanceTick] Regime pillars failed for ${nation.name} (non-fatal):`, e); }
 
             // Steward stats tick

@@ -2465,7 +2465,7 @@ const REGIME_PILLAR_DEFS = [
         { stat: 'foreign_investment', threshold: 50, direction: 'above' },
     ]},
     { key: 'religious',  name: 'Religious Establishment', wants: [
-        { stat: 'religious', threshold: 50, direction: 'above' },
+        { stat: 'religiosity', threshold: 50, direction: 'above' },
         { stat: 'freedom_index', threshold: 40, direction: 'below' },
     ]},
 ];

@@ -220,8 +220,6 @@ var STAT_CATEGORIES = [
       stats: [
         { name: 'Population', key: 'population', desc: 'Total national population', noHealth: true, format: 'count' },
         { name: 'Population Growth', key: 'population_growth', desc: 'Rate of population change' },
-        { name: 'Birth Rate', key: 'birth_rate', desc: 'Births per 1,000 people' },
-        { name: 'Death Rate', key: 'death_rate', desc: 'Deaths per 1,000 people', inverted: true },
         { name: 'Median Age', key: 'median_age', desc: 'Average age of population', format: 'years' },
         { name: 'Eligible Voters', key: 'eligible_voters', desc: 'Citizens able to vote', noHealth: true, format: 'count' },
         { name: 'Ethnic Diversity', key: 'ethnic_diversity', desc: 'Cultural heterogeneity' }
@@ -266,7 +264,9 @@ var STAT_CATEGORIES = [
       stats: [
         { name: 'Standard of Living', key: 'standard_of_living', desc: 'Quality of life index' },
         { name: 'Happiness', key: 'happiness', desc: 'National wellbeing index' },
-        { name: 'Religiosity', key: 'religious', desc: 'Strength of religious institutions' },
+        { name: 'Religiosity', key: 'religiosity', desc: 'Strength of religious institutions' },
+        { name: 'Cost of Living', key: 'cost_of_living', desc: 'Consumer cost burden', inverted: true },
+        { name: 'Housing Affordability', key: 'housing_affordability', desc: 'Housing accessibility' },
         { name: 'Social Mobility', key: 'social_mobility', desc: 'Ability to change class' },
         { name: 'Benefits', key: 'benefits', desc: 'Social welfare programs' },
         { name: 'Crime Rate', key: 'crime_rate', desc: 'Criminal incidents per capita', inverted: true },
@@ -298,8 +298,8 @@ var STAT_CATEGORIES = [
     { id: 'international', label: 'International', icon: '\u{1F310}', blocs: [],
       stats: [
         { name: 'Intl. Reputation', key: 'international_reputation', desc: 'Global standing and respect' },
-        { name: 'Trade Agreements', key: 'trade_agreements', desc: 'Active trade deals' },
-        { name: 'Sanctions', key: 'sanctions', desc: 'International penalties', inverted: true }
+        { name: 'Manufacturing Output', key: 'manufacturing_output', desc: 'Industrial production capacity' },
+        { name: 'Service Output', key: 'service_output', desc: 'Services & finance sector output' }
     ]}
 ];
 

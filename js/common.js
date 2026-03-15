@@ -643,22 +643,16 @@ export function showLoading(containerId = 'content-area') {
 
 // ===== POPULATION GROWTH CALCULATION =====
 //
-// Population growth base is derived from birth_rate - death_rate.
-// Policies and crises can shift population_growth up or down from this base.
-//
-// population_growth is a 0-100 stat where:
+// population_growth is a standalone 0-100 stat where:
 //   0   = max population decline (-1% per tick)
 //   50  = equilibrium (no change)
 //   100 = max population growth  (+1% per tick)
+//
+// Driven by policy effects and stat decay directly.
+// No longer derived from birth_rate / death_rate.
 
 export function calculatePopulationGrowth(nation) {
-    const birthRate = Number(nation.birth_rate ?? 50);
-    const deathRate = Number(nation.death_rate ?? 50);
-
-    // Base: maps (birth_rate - death_rate) from -100..+100 onto 0..100
-    const base = 50 + (birthRate - deathRate) / 2;
-
-    return Math.round(Math.max(0, Math.min(100, base)) * 10) / 10;
+    return Math.round(Math.max(0, Math.min(100, Number(nation.population_growth ?? 50))) * 10) / 10;
 }
 
 export function calculatePopulationChange(population, growthScore, maxRate = 0.01) {

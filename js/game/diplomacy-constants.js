@@ -450,7 +450,7 @@ export const PROPOSAL_TYPES = {
         description: 'Economic warfare — tanks target trade stats, also hurts your own.',
         stat_effects: [
             { stat_key: 'trade_balance', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'sanctions', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 }
+            { stat_key: 'international_reputation', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
     ceasefire: {
@@ -578,11 +578,12 @@ export const POLICY_STANCES = {
 
 // Stats where LOWER is better (inverted approval logic)
 export const INVERTED_STATS = [
-    'unemployment', 'poverty_rate', 'income_inequality', 'death_rate',
+    'unemployment', 'poverty_rate', 'income_inequality',
     'pollution', 'carbon_emissions', 'crime_rate', 'incarceration_rate',
     'drug_use', 'corruption', 'polarization', 'civil_unrest', 'terrorism',
-    'political_violence', 'emigration', 'sanctions', 'debt', 'debt_growth',
-    'inflation', 'interest_rates', 'illegal_immigration', 'fuel_prices'
+    'political_violence', 'emigration', 'debt', 'debt_growth',
+    'inflation', 'interest_rates', 'illegal_immigration', 'fuel_prices',
+    'cost_of_living'
 ];
 
 // Stats stored as raw numbers (not 0-100 indices).
