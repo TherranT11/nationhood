@@ -266,11 +266,16 @@ body {
         .ministry-stat-row .stat-name {
             flex: 1; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
+        .ministry-stat-row .stat-appointed { color: var(--text-muted); min-width: 32px; text-align: right; }
         .ministry-stat-row .stat-val { color: var(--text-primary); font-weight: bold; min-width: 32px; text-align: right; }
         .ministry-stat-row .stat-delta { min-width: 32px; text-align: right; font-weight: bold; }
         .ministry-stat-row .stat-delta.good { color: var(--green); }
         .ministry-stat-row .stat-delta.bad { color: var(--red); }
         .ministry-stat-row .stat-delta.flat { color: var(--text-muted); }
+        .ministry-stat-row .stat-effect { min-width: 36px; text-align: right; font-weight: bold; font-size: 0.58rem; }
+        .ministry-stat-row .stat-effect.good { color: var(--green); }
+        .ministry-stat-row .stat-effect.bad { color: var(--red); }
+        .ministry-stat-row .stat-effect.flat { color: var(--text-muted); }
         .ministry-stat-row .stat-dot { min-width: 12px; text-align: center; font-size: 0.5rem; }
         .ministry-stat-row .stat-dot.good { color: var(--green); }
         .ministry-stat-row .stat-dot.bad { color: var(--red); }

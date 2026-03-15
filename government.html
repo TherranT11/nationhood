@@ -2107,11 +2107,19 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
     const stats = MINISTRY_TO_STATS[ministryKey];
     if (!stats || stats.length === 0 || !currentNation) return '';
 
+    const DELTA_SENSITIVITY = 0.6; // must match MINISTER_APPROVAL_CONFIG.DELTA_SENSITIVITY
+
     const panelId = 'mstat-' + ministryKey;
     const baselines = ministry?.stat_baselines || {};
     let rows = '';
     let deltaSum = 0;
     let deltaCount = 0;
+
+    // First pass: count stats so we can compute per-stat effect share
+    let statCount = 0;
+    for (const statKey of stats) {
+        if (statDirectionSign(statKey) !== 0) statCount++;
+    }
 
     for (const statKey of stats) {
         const value = Number(currentNation[statKey] ?? 50);
@@ -2122,6 +2130,7 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
 
         const baseline = baselines[statKey] != null ? Number(baselines[statKey]) : null;
         const hasDelta = baseline !== null;
+        const baselineRounded = hasDelta ? Math.round(baseline * 10) / 10 : '—';
 
         // Delta in the "good" direction: positive = improvement, negative = worsening
         const rawDelta = hasDelta ? value - baseline : 0;
@@ -2132,6 +2141,16 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
         if (hasDelta) {
             deltaSum += goodDelta;
             deltaCount++;
+        }
+
+        // Per-stat effect on approval: (goodDelta / statCount) * DELTA_SENSITIVITY
+        const effectVal = hasDelta && statCount > 0 ? (goodDelta / statCount) * DELTA_SENSITIVITY : 0;
+        const absEffect = Math.abs(effectVal);
+        let effectStr = '—';
+        let effectCls = 'flat';
+        if (hasDelta && absEffect >= 0.01) {
+            effectStr = (effectVal > 0 ? '+' : '-') + (Math.round(absEffect * 100) / 100).toFixed(2);
+            effectCls = effectVal > 0 ? 'good' : 'bad';
         }
 
         // Delta display: ↑3.2 or ↓1.5 or —
@@ -2150,33 +2169,39 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
         const dotCls = !hasDelta || absDelta < 0.1 ? 'flat' : goodDelta > 0 ? 'good' : 'bad';
 
         const label = formatStatName(statKey);
-        const baselineRounded = hasDelta ? Math.round(baseline * 10) / 10 : '?';
         const directionWord = sign === 1 ? 'Higher is better' : 'Lower is better';
         const tooltip = hasDelta
-            ? 'Was ' + baselineRounded + '% when appointed. Now ' + rounded + '%. ' + directionWord + '.'
+            ? 'Appointed: ' + baselineRounded + '%. Now: ' + rounded + '%. ' + directionWord + '.'
             : 'No baseline recorded. ' + directionWord + '.';
 
         rows += '<div class="ministry-stat-row" title="' + escapeHtml(tooltip) + '">'
             + '<span class="stat-name">' + escapeHtml(label) + '</span>'
+            + '<span class="stat-appointed">' + (hasDelta ? baselineRounded + '%' : '—') + '</span>'
             + '<span class="stat-val">' + rounded + '%</span>'
             + '<span class="stat-delta ' + deltaCls + '">' + deltaStr + '</span>'
+            + '<span class="stat-effect ' + effectCls + '">' + effectStr + '</span>'
             + '<span class="stat-dot ' + dotCls + '">●</span>'
             + '</div>';
     }
 
-    // Overall trend line
+    // Overall trend line with total per-tick effect
     let trendText = 'No data';
     let trendCls = 'flat';
     if (deltaCount > 0) {
         const avgDelta = deltaSum / deltaCount;
+        const totalEffect = avgDelta * DELTA_SENSITIVITY;
+        const absTotal = Math.abs(totalEffect);
+        const effectLabel = absTotal >= 0.01
+            ? ' (' + (totalEffect > 0 ? '+' : '-') + (Math.round(absTotal * 100) / 100).toFixed(2) + '/tick)'
+            : '';
         if (Math.abs(avgDelta) < 0.5) {
-            trendText = 'Approval holding steady';
+            trendText = 'Approval holding steady' + effectLabel;
             trendCls = 'flat';
         } else if (avgDelta > 0) {
-            trendText = 'Approval trending upward';
+            trendText = 'Approval trending upward' + effectLabel;
             trendCls = 'good';
         } else {
-            trendText = 'Approval trending downward';
+            trendText = 'Approval trending downward' + effectLabel;
             trendCls = 'bad';
         }
     }
@@ -2186,7 +2211,7 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
         + '</button>'
         + '<div class="ministry-stats-panel" id="' + panelId + '">'
         + '<div class="ministry-stat-row ministry-stat-header">'
-        + '<span class="stat-name">Stat</span><span class="stat-val">Now</span><span class="stat-delta">Change</span><span class="stat-dot"></span></div>'
+        + '<span class="stat-name">Stat</span><span class="stat-appointed">Appointed</span><span class="stat-val">Now</span><span class="stat-delta">Change</span><span class="stat-effect">Effect</span><span class="stat-dot"></span></div>'
         + rows
         + '<div class="ministry-stats-footer ' + trendCls + '">Overall: ' + trendText + '</div>'
         + '</div>';
