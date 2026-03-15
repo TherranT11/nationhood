@@ -25,3 +25,4 @@ export * from './game/election-simulation.js';
 export * from './game/sovereign-default.js';
 export * from './game/valdorian-templates.js';
 export * from './game/valdorian-generator.js';
+export * from './game/party-leadership.js';

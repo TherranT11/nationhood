@@ -42,6 +42,21 @@
     --teal: #5aafa5;
     --purple: #8b7ec8;
 
+    /* Electability */
+    --elect-vlow: var(--red);
+    --elect-low: var(--orange);
+    --elect-mod: var(--amber);
+    --elect-high: var(--teal);
+    --elect-vhigh: var(--green);
+
+    /* Trait categories */
+    --cat-ap: var(--amber);
+    --cat-electoral: var(--blue);
+    --cat-legislative: var(--purple);
+    --cat-governance: var(--green);
+    --cat-diplomatic: var(--teal);
+    --cat-blocs: var(--orange);
+
     /* Accent — amber (muted, not gold) */
     --accent: #c8a64e;
     --accent-hover: #b8963e;
