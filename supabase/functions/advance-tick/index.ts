@@ -14950,6 +14950,112 @@ async function autoResolveStaleShakeups(supabase, nationId, currentTick) {
 }
 
 
+// ==================== MAJOR DIPLOMATIC INITIATIVE — PER-TICK EFFECTS ====================
+
+/**
+ * Process per-tick stat effects from active Major Diplomatic Initiatives.
+ * Applies ongoing stat deltas and deducts FM budget costs each tick.
+ */
+async function processDiplomaticInitiativeEffects(supabase: any, nation: any, currentTick: number) {
+    const results: string[] = [];
+
+    // Query active tier-3 proposals involving this nation
+    const { data: proposals, error } = await supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('status', 'active')
+        .eq('proposal_tier', 3)
+        .or(`proposing_nation_id.eq.${nation.id},target_nation_id.eq.${nation.id}`);
+
+    if (error || !proposals || proposals.length === 0) return results;
+
+    // Determine which stat updates to apply
+    const statUpdates: Record<string, number> = {};
+    let totalOngoingCost = 0;
+
+    for (const proposal of proposals) {
+        const pd = proposal.proposal_data || {};
+        const activeEffects = pd.active_effects;
+        if (!activeEffects) continue;
+
+        const isProposer = proposal.proposing_nation_id === nation.id;
+        const effects = isProposer ? activeEffects.proposer : activeEffects.target;
+        if (!effects) continue;
+
+        // Check for transition period (Open Borders ramp)
+        const activatedAt = proposal.activated_at_tick || 0;
+        const ticksSinceActivation = currentTick - activatedAt;
+        let transitionMult = 1.0;
+
+        // Look for open_borders articles with transition period
+        const articles = pd.articles || [];
+        for (const art of articles) {
+            if (art.type === 'open_borders' && art.status !== 'struck' && art.config?.transition) {
+                const trans = art.config.transition;
+                if (trans === '6_tick' && ticksSinceActivation < 6) {
+                    transitionMult = Math.min(1.0, (ticksSinceActivation + 1) / 6);
+                } else if (trans === '12_tick' && ticksSinceActivation < 12) {
+                    transitionMult = Math.min(1.0, (ticksSinceActivation + 1) / 12);
+                }
+            }
+        }
+
+        // Apply stat effects (scaled per-tick: divide annual effects by ticks-per-year)
+        // Effects are already in per-tick magnitude from the effect calculations
+        for (const [statKey, value] of Object.entries(effects)) {
+            if (typeof value !== 'number' || value === 0) continue;
+            // Skip non-stat keys
+            if (['relations', 'civil_unrest'].includes(statKey)) continue;
+
+            const scaledValue = (value as number) * transitionMult;
+            // Per-tick effect: divide by a reasonable factor (effects are "while active" magnitudes)
+            // Apply as a slow drift: 1/12 of the total per tick (monthly-equivalent)
+            const perTickValue = scaledValue / 12;
+            statUpdates[statKey] = (statUpdates[statKey] || 0) + perTickValue;
+        }
+
+        // Accumulate ongoing FM budget cost
+        if (pd.costs?.ongoing) {
+            // ongoing is annual, convert to per-tick (assume 12 ticks per year)
+            totalOngoingCost += (pd.costs.ongoing || 0) / 12;
+        }
+    }
+
+    // Apply stat updates to nation
+    if (Object.keys(statUpdates).length > 0) {
+        const nationUpdate: Record<string, number> = {};
+        const { data: currentStats } = await supabase.from('nations')
+            .select(Object.keys(statUpdates).join(',')).eq('id', nation.id).single();
+
+        if (currentStats) {
+            for (const [key, delta] of Object.entries(statUpdates)) {
+                const current = Number(currentStats[key] ?? 50);
+                const newVal = Math.max(0, Math.min(100, current + delta));
+                if (Math.abs(newVal - current) > 0.001) {
+                    nationUpdate[key] = newVal;
+                }
+            }
+            if (Object.keys(nationUpdate).length > 0) {
+                await supabase.from('nations').update(nationUpdate).eq('id', nation.id);
+                results.push(`Major initiative effects applied: ${Object.entries(nationUpdate).map(([k,v]) => `${k}=${(v as number).toFixed(2)}`).join(', ')}`);
+            }
+        }
+    }
+
+    // Deduct FM budget ongoing cost (add to nation debt as per-tick expenditure)
+    if (totalOngoingCost > 0) {
+        const { data: budgetNation } = await supabase.from('nations').select('debt').eq('id', nation.id).single();
+        if (budgetNation) {
+            const newDebt = (budgetNation.debt || 0) + totalOngoingCost;
+            await supabase.from('nations').update({ debt: newDebt }).eq('id', nation.id);
+            results.push(`Major initiative ongoing cost: $${(totalOngoingCost / 1e6).toFixed(2)}M`);
+        }
+    }
+
+    return results;
+}
+
+
 // ==================== STAT EFFECTS PROCESSING ====================
 
 async function processStatEffects(supabase, nation, currentTick) {
@@ -20427,6 +20533,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         if (ministryResults.length > 0) {
             summary.ministryActions = summary.ministryActions || [];
             summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
+        }
+
+        // Major Diplomatic Initiative per-tick effects
+        const diplomacyResults = await processDiplomaticInitiativeEffects(supabase, nation, newTick);
+        if (diplomacyResults.length > 0) {
+            summary.diplomacyEffects = summary.diplomacyEffects || [];
+            summary.diplomacyEffects.push({ nation: nation.name, effects: diplomacyResults });
         }
 
         // Apply GDP growth rate
