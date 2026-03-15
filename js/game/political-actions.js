@@ -4370,11 +4370,10 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
         const oldApproval = ministry.minister_approval ?? cfg.NEW_MINISTER_APPROVAL;
         let newApproval = oldApproval;
 
-        if (Math.abs(avgDelta) < 0.5) {
-            // Stagnation: stats haven't moved meaningfully — slow decay
-            newApproval += cfg.STAGNATION_DECAY;
-        } else {
-            // Apply delta-based movement
+        // Baseline decay always applies — approval erodes unless stats improve
+        newApproval += cfg.BASELINE_DECAY;
+        // Apply delta-based movement on top of baseline decay
+        if (Math.abs(avgDelta) >= 0.5) {
             newApproval += avgDelta * cfg.DELTA_SENSITIVITY;
         }
 
@@ -4455,8 +4454,8 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
     let rawApproval = ministerAvg + vacancyPenalty + eventModifier;
     rawApproval = Math.max(0, Math.min(100, rawApproval));
 
-    // Cap per-tick change to ±1 so approval moves gradually
-    const MAX_TICK_CHANGE = 1;
+    // Cap per-tick change to ±3 so approval moves gradually
+    const MAX_TICK_CHANGE = 3;
     const previousApproval = Number(nation.gov_approval ?? 40);
     const delta = rawApproval - previousApproval;
     const clampedDelta = Math.max(-MAX_TICK_CHANGE, Math.min(MAX_TICK_CHANGE, delta));

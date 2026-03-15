@@ -594,8 +594,8 @@ export const MINISTER_APPROVAL_CONFIG = {
     // Per-tick sensitivity: how much each point of average delta moves approval
     DELTA_SENSITIVITY: 0.6,
 
-    // Slow stagnation decay: if stats are flat, approval drifts down slightly per tick
-    STAGNATION_DECAY: -0.3,
+    // Baseline decay: approval always erodes by this amount per tick unless stats improve
+    BASELINE_DECAY: -0.25,
 
     // New minister starts at 40% approval
     NEW_MINISTER_APPROVAL: 40,
