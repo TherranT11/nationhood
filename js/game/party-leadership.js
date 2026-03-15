@@ -217,20 +217,18 @@ export function calculateAPCost(positiveTraitKeys, negativeTraitKeys) {
     });
 
     const raw = posTotal - negTotal;
-    // NOTE: AP cap is 6. With trait costs up to 4.0, strong candidates frequently
-    // hit this ceiling. Raise the cap here if the design calls for costlier leaders.
     return {
         positiveTotal: posTotal,
         negativeTotal: negTotal,
         rawCost: raw,
-        apCost: Math.max(0, Math.min(6, Math.round(raw)))
+        apCost: Math.max(0, Math.min(8, Math.round(raw)))
     };
 }
 
 export function getAPCostColor(ap) {
     if (ap === 0) return '#5cb85c';
-    if (ap <= 2) return '#c8a64e';
-    if (ap <= 4) return '#d48a3c';
+    if (ap <= 3) return '#c8a64e';
+    if (ap <= 5) return '#d48a3c';
     return '#d9534f';
 }
 
