@@ -8621,9 +8621,19 @@ async function renderRelationDetail(nationId) {
         const theirAmbName = theirAmbassador ? ((theirAmbassador.ambassador_first_name || '') + ' ' + (theirAmbassador.ambassador_last_name || '')).trim() : null;
         const theirAmbParty = theirAmbassador?.factions?.abbreviation ? ' (' + theirAmbassador.factions.abbreviation + ')' : '';
 
+        // Term expiry helper
+        function ambTermStr(amb) {
+            if (!amb || amb.appointed_at_tick == null) return '';
+            const termLength = amb.term_length || 60;
+            const ticksRemaining = Math.max(0, termLength - (shardTick - amb.appointed_at_tick));
+            if (ticksRemaining === 0) return ' (Term Expired)';
+            const months = ticksRemaining; // 1 tick = 1 month
+            return ' (Term Expires in ' + months + ' Month' + (months !== 1 ? 's' : '') + ')';
+        }
+
         let html = '<div class="detail-grid">';
-        html += '<div><div class="detail-label">Our Ambassador</div><div class="detail-value">' + (ambName ? escapeHtml(ambName) + escapeHtml(ambParty) : 'None') + '</div></div>';
-        html += '<div><div class="detail-label">Their Ambassador</div><div class="detail-value">' + (theirAmbName ? escapeHtml(theirAmbName) + escapeHtml(theirAmbParty) : 'None') + '</div></div>';
+        html += '<div><div class="detail-label">Our Ambassador' + ambTermStr(ambassador) + '</div><div class="detail-value">' + (ambName ? escapeHtml(ambName) + escapeHtml(ambParty) : 'None') + '</div></div>';
+        html += '<div><div class="detail-label">Their Ambassador' + ambTermStr(theirAmbassador) + '</div><div class="detail-value">' + (theirAmbName ? escapeHtml(theirAmbName) + escapeHtml(theirAmbParty) : 'None') + '</div></div>';
         html += '<div><div class="detail-label">Population</div><div class="detail-value">' + formatNumber(targetNation.population) + '</div></div>';
         html += '<div><div class="detail-label">Stability</div><div class="detail-value">' + (targetNation.stability ?? '—') + '%</div></div>';
         html += '</div>';
@@ -8720,7 +8730,6 @@ function renderActionsBox() {
         { key: 'appoint_ambassador', label: 'Appoint Ambassador', ap: 1, type: 'fm' },
         { key: 'recall_ambassador', label: 'Recall Ambassador', ap: 1, type: 'fm' },
         { key: 'major_initiative', label: 'Major Diplomatic Initiative', ap: 2, type: 'fm' },
-        { key: 'covert_ops', label: 'Covert Operations', ap: 4, type: 'fm', comingSoon: true },
         { key: 'foreign_aid', label: 'Foreign Aid Proposal', ap: 4, type: 'fm', comingSoon: true }
     ].forEach(a => { html += actionHtml(a, hasFM, 'fm'); });
 
