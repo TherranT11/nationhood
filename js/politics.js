@@ -1,9 +1,9 @@
 import { _supabase } from './supabase-client.js';
-import { initPage, formatCurrency } from './common.js';
+import { initPage } from './common.js';
 import './guide.js';
-import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './party-icons.js';
-import { tickToDate, escapeHtml as utilEscapeHtml, getIdeologyClass } from './utils.js';
-import { fetchActiveCoalition, loadSeats, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, ensureBlocApprovals, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, PM_FIRST_NAMES, PM_LAST_NAMES, getNationNames, loadNationIdeologies, getFullIdeologyProfile, getIdeologyLabel, IDEOLOGY_AXES, selectPresidentCandidate, generatePresidentCandidates } from './game-common.js';
+import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
+import { tickToDate, escapeHtml as utilEscapeHtml } from './utils.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, ensureBlocApprovals, getNationNames, IDEOLOGY_AXES } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
 import { getElectabilityTier } from './game/party-leadership.js';
@@ -3577,6 +3577,7 @@ function wireCampaignConfig(container, f, n, ap, blocs, otherParties, factionIde
     if (confirmBtn) {
         confirmBtn.addEventListener('click', () => {
             if (confirmBtn.classList.contains('disabled')) return;
+            confirmBtn.classList.add('disabled');
             handleCampaignConfirm(container, f, n, ap, blocs, otherParties, factionIdeo, approvalByBloc, tick);
         });
     }
@@ -3608,6 +3609,7 @@ async function handleCampaignConfirm(container, f, n, ap, blocs, otherParties, f
     } catch (err) {
         console.error('Campaign action error:', err);
         alert('Action failed: ' + err.message);
+        if (btn) { btn.classList.remove('disabled'); btn.textContent = `Confirm — ${cost} AP`; }
         return;
     }
 

@@ -167,7 +167,10 @@ export function isEndorsementSwitchWindowOpen(currentTick, nextPresidentialTick)
  * Uses nation-specific override if set, otherwise falls back to GAME_CONFIG default.
  */
 export function getPresidentialTermTicks(nation) {
-    return (nation && nation.presidential_term_ticks) || GAME_CONFIG.PRESIDENTIAL_TERM_TICKS;
+    if (nation && nation.presidential_term_ticks != null && nation.presidential_term_ticks > 0) {
+        return nation.presidential_term_ticks;
+    }
+    return GAME_CONFIG.PRESIDENTIAL_TERM_TICKS;
 }
 
 /**

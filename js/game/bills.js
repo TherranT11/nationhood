@@ -12,7 +12,7 @@ import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
 import { fetchActiveCoalition } from './government-structure.js';
 import { resolveNoConfidence } from './elections.js';
-import { PM_FIRST_NAMES, PM_LAST_NAMES, getNationNames } from './political-actions.js';
+import { getNationNames } from './political-actions.js';
 import { allocateSeatsByVotes } from './election-simulation.js';
 import { repealActiveLaw } from './repeal-helper.js';
 import { fireBillEvent } from './event-helpers.js';
@@ -2653,20 +2653,22 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             // Shortening terms — more elections, more polarization & engagement
             const newPol = Math.min(100, (nation?.polarization || 0) + 2);
             const newEng = Math.min(100, (nation?.political_engagement || 0) + 3);
-            await supabase.from('nations').update({
+            const { error: shortErr } = await supabase.from('nations').update({
                 polarization: newPol,
                 political_engagement: newEng
             }).eq('id', bill.nation_id);
-            console.log(`[enactFoundationalBill] Term shortened: polarization +2, political_engagement +3`);
+            if (shortErr) console.error(`[enactFoundationalBill] Term shortened stat update failed:`, shortErr.message);
+            else console.log(`[enactFoundationalBill] Term shortened: polarization +2, political_engagement +3`);
         } else if (newTermTicks > oldTermTicks) {
             // Extending terms — less accountability, more stability
             const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 3);
             const newStability = Math.min(100, (nation?.stability || 50) + 2);
-            await supabase.from('nations').update({
+            const { error: extErr } = await supabase.from('nations').update({
                 legitimacy: newLegitimacy,
                 stability: newStability
             }).eq('id', bill.nation_id);
-            console.log(`[enactFoundationalBill] Term extended: legitimacy -3, stability +2`);
+            if (extErr) console.error(`[enactFoundationalBill] Term extended stat update failed:`, extErr.message);
+            else console.log(`[enactFoundationalBill] Term extended: legitimacy -3, stability +2`);
         }
 
         // If no imminent election, reschedule the next presidential election with the new term length
@@ -2681,7 +2683,8 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
                 .maybeSingle();
 
             if (activePresident) {
-                const newTermEnd = activePresident.elected_tick + newTermTicks;
+                // Ensure the new term end is in the future (if shortening makes it past, schedule next tick)
+                const newTermEnd = Math.max(currentTick + 1, activePresident.elected_tick + newTermTicks);
                 // Update the scheduled presidential election to reflect new term length
                 const { data: futureElection } = await supabase
                     .from('elections')
@@ -2695,10 +2698,11 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
                     .maybeSingle();
 
                 if (futureElection) {
-                    await supabase.from('elections').update({
+                    const { error: reschedErr } = await supabase.from('elections').update({
                         election_tick: newTermEnd
                     }).eq('id', futureElection.id);
-                    console.log(`[enactFoundationalBill] Rescheduled presidential election to tick ${newTermEnd}`);
+                    if (reschedErr) console.error(`[enactFoundationalBill] Failed to reschedule election:`, reschedErr.message);
+                    else console.log(`[enactFoundationalBill] Rescheduled presidential election to tick ${newTermEnd}`);
                 }
             }
         } else {
@@ -2765,7 +2769,8 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             if (isAutocratic) {
                 updates.regime_health = Math.max(0, (nation?.regime_health || 50) - 5);
             }
-            await supabase.from('nations').update(updates).eq('id', bill.nation_id);
+            const { error: removeErr } = await supabase.from('nations').update(updates).eq('id', bill.nation_id);
+            if (removeErr) console.error(`[enactFoundationalBill] Failed to update stats for term limit removal:`, removeErr.message);
 
             // Opposition parties gain momentum
             const { data: allFactions } = await supabase
@@ -2784,8 +2789,9 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             // Extra polarization if sitting president has served 2+ terms
             if (activePresident && (activePresident.terms_served || 1) >= 2) {
                 const newPol = Math.min(100, (nation?.polarization || 0) + 10);
-                await supabase.from('nations').update({ polarization: newPol }).eq('id', bill.nation_id);
-                console.log(`[enactFoundationalBill] Sitting president has ${activePresident.terms_served} terms — polarization +10`);
+                const { error: polErr } = await supabase.from('nations').update({ polarization: newPol }).eq('id', bill.nation_id);
+                if (polErr) console.error(`[enactFoundationalBill] Polarization update failed:`, polErr.message);
+                else console.log(`[enactFoundationalBill] Sitting president has ${activePresident.terms_served} terms — polarization +10`);
             }
 
             console.log(`[enactFoundationalBill] Term limits removed: legitimacy -${legitimacyPenalty}, civil_unrest +4, opposition momentum +8`);
@@ -2794,12 +2800,13 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             const newLegitimacy = Math.min(100, (nation?.legitimacy || 50) + 5);
             const newPressFreedom = Math.min(100, (nation?.press_freedom || 50) + 2);
             const newJudicialInd = Math.min(100, (nation?.judicial_independence || 50) + 2);
-            await supabase.from('nations').update({
+            const { error: tightenErr } = await supabase.from('nations').update({
                 legitimacy: newLegitimacy,
                 press_freedom: newPressFreedom,
                 judicial_independence: newJudicialInd
             }).eq('id', bill.nation_id);
-            console.log(`[enactFoundationalBill] Term limits tightened to ${newTermLimit}: legitimacy +5, press_freedom +2, judicial_independence +2`);
+            if (tightenErr) console.error(`[enactFoundationalBill] Term limits tighten stat update failed:`, tightenErr.message);
+            else console.log(`[enactFoundationalBill] Term limits tightened to ${newTermLimit}: legitimacy +5, press_freedom +2, judicial_independence +2`);
         }
 
         const limitText = newTermLimit === 0 ? 'No Term Limits' : `${newTermLimit} Term${newTermLimit !== 1 ? 's' : ''}`;
