@@ -31,7 +31,7 @@
 <!-- Page-Specific Script -->
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage, qCache, qCacheSet, formatNumber, scaleRawToDollars, assertRawEconomicValue } from './js/common.js';
+import { initPage, refreshGameState, qCache, qCacheSet, qCacheBust, formatNumber, scaleRawToDollars, assertRawEconomicValue } from './js/common.js';
 import './js/guide.js';
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
 import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
@@ -397,6 +397,40 @@ initPage('nation', async (state) => {
         loadActiveCrises(nation.id)
     ]);
     await renderNationPage(nation);
+
+    // Auto-refresh when a tick advances
+    window.addEventListener('tick-advanced', async () => {
+        try {
+            // Bust stale caches for this nation
+            qCacheBust('prev_tick_');
+            qCacheBust('sparkline_');
+            qCacheBust('stat_effects_');
+            qCacheBust('all_nations');
+            qCacheBust('crises_');
+            previousTickData = null;
+            sparklineHistory = {};
+            statEffectsByKey = {};
+            activeCrises = [];
+
+            // Re-fetch fresh nation data
+            const freshState = await refreshGameState();
+            const freshNation = freshState?.nation;
+            if (!freshNation) return;
+
+            _nationId = freshNation.id;
+            await Promise.all([
+                loadAllNations(),
+                loadPreviousTickData(freshNation.id),
+                loadStatEffectSources(freshNation.id, freshNation),
+                loadSparklineHistory(freshNation.id),
+                loadActiveCrises(freshNation.id)
+            ]);
+            await renderNationPage(freshNation);
+            console.log('[nation.html] Refreshed after tick advance');
+        } catch (e) {
+            console.error('[nation.html] Error refreshing after tick:', e);
+        }
+    });
 });
 
 async function loadAllNations() {

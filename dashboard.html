@@ -33,6 +33,10 @@
   .dash-card-tall {
     height: 520px;
   }
+  #world-map-card {
+    grid-column: 1 / span 3;
+    grid-row: 2;
+  }
   .dash-card-header {
     background: var(--bg-card);
     padding: 10px 20px;
@@ -493,7 +497,7 @@
     </div>
 
     <!-- ── Row 2: World Map (spans 3 columns) ── -->
-    <div class="dash-card" id="world-map-card" style="grid-column: span 3;">
+    <div class="dash-card" id="world-map-card">
       <div class="dash-card-header">WORLD MAP</div>
       <div class="dash-card-body" id="world-map-body" style="padding:0; overflow:hidden;">
         <img src="./assets/World Map Crucera3.svg" alt="World Map" style="width:100%; height:auto; object-fit:contain; display:block;">
