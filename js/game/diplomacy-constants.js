@@ -1053,3 +1053,412 @@ export const STATE_VISIT_DELEGATIONS = {
     large_14:   { label: 'Large (14)',   debt: 4800000, effectBonus: 0.1 }
 };
 
+// ==================== MAJOR DIPLOMATIC INITIATIVE ====================
+
+/**
+ * Major Diplomatic Initiative — Tier 3 negotiated diplomatic action.
+ * Bundled articles proposed by the Foreign Minister to a target nation.
+ * Requires bilateral parliamentary ratification (both nations must pass).
+ */
+export const MAJOR_INITIATIVE_CONFIG = {
+    AP_COST: 2,
+    TIER: 3,
+    TYPE: 'major_diplomatic_initiative',
+    BUDGET_SOURCE: 'foreign',               // institution id in budget_item_allocations
+    HOSTILE_RELATION_THRESHOLD: -50,         // cannot propose below this
+    HOG_FALLBACK_AP_PENALTY: 3,             // extra AP if HoG proposes without FM
+    RATIFICATION_VOTING_TICKS: 6,           // both parliaments vote for 6 ticks
+    REPROPOSE_COOLDOWN_TICKS: 8,            // cannot re-propose same initiative for 8 ticks after failure
+};
+
+// ── OPEN BORDERS AGREEMENT ──
+
+export const OPEN_BORDERS_SCOPE_OPTIONS = [
+    { key: 'full',            label: 'Full Freedom of Movement', modifier: 1.5, desc: 'Entry, work, residency, and settlement.' },
+    { key: 'work_residency',  label: 'Work & Residency Only',   modifier: 1.0, desc: 'Can work and live, but citizenship stays with home nation.' },
+    { key: 'labor_mobility',  label: 'Labor Mobility Only',     modifier: 0.6, desc: 'Can work across the border but must maintain home residence.' }
+];
+
+export const OPEN_BORDERS_DIRECTION_OPTIONS = [
+    { key: 'reciprocal',    label: 'Reciprocal',                    desc: 'Both nations open to each other.' },
+    { key: 'our_to_them',   label: 'One-Way (Our Citizens to Them)', desc: 'Only proposer\'s citizens gain access.' },
+    { key: 'their_to_us',   label: 'One-Way (Their Citizens to Us)', desc: 'Only target\'s citizens gain access.' }
+];
+
+export const OPEN_BORDERS_WORKER_PROTECTIONS = [
+    { key: 'enhanced', label: 'Enhanced Protections',  cost_per_year: 8000000, exploitation_mult: 0.2, desc: 'Minimum wage, anti-exploitation enforcement, pension portability.' },
+    { key: 'standard', label: 'Standard Labor Law',    cost_per_year: 0,       exploitation_mult: 1.0, desc: 'Migrant workers subject to host nation\'s existing labor law.' },
+    { key: 'none',     label: 'No Special Provisions', cost_per_year: 0,       exploitation_mult: 1.5, desc: 'General law applies with no additional protections.' }
+];
+
+export const OPEN_BORDERS_TRANSITION_OPTIONS = [
+    { key: 'immediate', label: 'Immediate',          ramp_ticks: 0,  unrest_spike: 3,  desc: 'Borders open on ratification.' },
+    { key: '6_tick',    label: '6-Tick Transition',   ramp_ticks: 6,  unrest_spike: 1,  desc: 'Phased opening over 6 ticks.' },
+    { key: '12_tick',   label: '12-Tick Transition',  ramp_ticks: 12, unrest_spike: 0,  desc: 'Gradual opening, least disruptive.' }
+];
+
+const OPEN_BORDERS_BASE_EFFECTS = {
+    relations: 8,
+    immigration: 4,
+    gdp_growth: 1,
+    labor_force_participation: 2,
+    civil_unrest: 3,
+    polarization: 2,
+    terrorism: 0.5,
+    housing_affordability: -1,
+    cost_of_living: 0.5,
+    cost_proposer: 15000000,
+    cost_target: 15000000,
+    ongoing_cost: 5000000
+};
+
+/**
+ * Calculate effects for an Open Borders Agreement article.
+ * @param {Object} config - { scope, direction, worker_protections, transition }
+ * @returns {{ proposer: Object, target: Object, summary: Object }}
+ */
+export function calculateOpenBordersEffects(config) {
+    const scopeOpt = OPEN_BORDERS_SCOPE_OPTIONS.find(s => s.key === config.scope) || OPEN_BORDERS_SCOPE_OPTIONS[1];
+    const transOpt = OPEN_BORDERS_TRANSITION_OPTIONS.find(t => t.key === config.transition) || OPEN_BORDERS_TRANSITION_OPTIONS[0];
+    const protOpt = OPEN_BORDERS_WORKER_PROTECTIONS.find(p => p.key === config.worker_protections) || OPEN_BORDERS_WORKER_PROTECTIONS[1];
+    const isReciprocal = config.direction === 'reciprocal';
+    const isOurToThem = config.direction === 'our_to_them';
+
+    const sMod = scopeOpt.modifier;
+    const base = OPEN_BORDERS_BASE_EFFECTS;
+
+    const relations = Math.round(base.relations * sMod);
+    const immigration = Math.round(base.immigration * sMod);
+    const gdp_growth = +(base.gdp_growth * sMod).toFixed(2);
+    const labor_force = Math.round(base.labor_force_participation * sMod);
+    const civil_unrest = transOpt.unrest_spike;
+    const polarization = Math.round(base.polarization * sMod);
+    const terrorism = +(base.terrorism * sMod).toFixed(2);
+    const housing = Math.round(base.housing_affordability * sMod);
+    const col = +(base.cost_of_living * sMod).toFixed(2);
+
+    const ratification_cost = Math.round(base.cost_proposer * sMod);
+    const ongoing_cost = base.ongoing_cost + protOpt.cost_per_year;
+
+    // Direction-based asymmetry: the nation receiving migrants gets the full economic + social effects
+    // The sending nation gets relations and labor effects but less immigration pressure
+    let proposer = {}, target = {};
+
+    if (isReciprocal) {
+        proposer = {
+            relations, immigration, gdp_growth, labor_force_participation: labor_force,
+            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+        };
+        target = { ...proposer };
+    } else if (isOurToThem) {
+        // Our citizens go to them — target receives migrants
+        proposer = {
+            relations: Math.round(relations * 0.6), immigration: 0, gdp_growth: 0,
+            labor_force_participation: 0, civil_unrest: 0, polarization: Math.round(polarization * 0.5),
+            terrorism: 0, housing_affordability: 0, cost_of_living: 0
+        };
+        target = {
+            relations, immigration, gdp_growth, labor_force_participation: labor_force,
+            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+        };
+    } else {
+        // Their citizens come to us — proposer receives migrants
+        proposer = {
+            relations, immigration, gdp_growth, labor_force_participation: labor_force,
+            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+        };
+        target = {
+            relations: Math.round(relations * 0.6), immigration: 0, gdp_growth: 0,
+            labor_force_participation: 0, civil_unrest: 0, polarization: Math.round(polarization * 0.5),
+            terrorism: 0, housing_affordability: 0, cost_of_living: 0
+        };
+    }
+
+    return {
+        proposer,
+        target,
+        summary: {
+            relations, immigration, gdp_growth, labor_force_participation: labor_force,
+            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+        },
+        costs: {
+            ratification_proposer: ratification_cost,
+            ratification_target: ratification_cost,
+            ongoing_per_year: ongoing_cost
+        },
+        transition_ticks: transOpt.ramp_ticks,
+        worker_protection_mult: protOpt.exploitation_mult
+    };
+}
+
+// ── MUTUAL EXTRADITION TREATY ──
+
+export const EXTRADITION_SCOPE_OPTIONS = [
+    { key: 'organized_crime',  label: 'Organized Crime',  controversial: false, crime_weight: 1.0,  desc: 'Drug traffickers, smugglers, gang leaders.' },
+    { key: 'financial_crime',  label: 'Financial Crime',  controversial: false, crime_weight: 0.8,  desc: 'Money laundering, tax evasion, fraud.' },
+    { key: 'terrorism',        label: 'Terrorism Suspects', controversial: false, crime_weight: 0.7, desc: 'Individuals linked to terrorist organizations.' },
+    { key: 'war_crimes',       label: 'War Crimes',       controversial: false, crime_weight: 0.5,  desc: 'War crimes and crimes against humanity.' },
+    { key: 'political_offenses', label: 'Political Offenses', controversial: true, crime_weight: 0.3, desc: 'Political dissidents, opposition figures, journalists. Highly controversial.' }
+];
+
+export const EXTRADITION_DUAL_CRIMINALITY_OPTIONS = [
+    { key: 'required', label: 'Dual Criminality Required', desc: 'Can only extradite if the offense is a crime in both nations.' },
+    { key: 'waived',   label: 'Dual Criminality Waived',   desc: 'Can extradite even if the offense isn\'t a crime in the receiving nation. Dangerous.' }
+];
+
+export const EXTRADITION_APPEAL_OPTIONS = [
+    { key: 'full_judicial', label: 'Full Judicial Review',  process_ticks: 4, freedom_penalty: 0,  judicial_penalty: 0,  crime_mult: 1.0, desc: 'Courts review, subject can appeal. Slow but fair.' },
+    { key: 'expedited',     label: 'Expedited Review',      process_ticks: 2, freedom_penalty: 0,  judicial_penalty: 0,  crime_mult: 1.3, desc: 'Faster, limited appeal. More effective.' },
+    { key: 'executive',     label: 'Executive Authority',   process_ticks: 1, freedom_penalty: -2, judicial_penalty: -1, crime_mult: 2.0, desc: 'HoG can approve directly. Fastest but authoritarian.' }
+];
+
+export const EXTRADITION_EXCEPTION_OPTIONS = [
+    { key: 'own_citizens',   label: 'Own Citizens Exempt',     effectiveness_mult: 0.7, desc: 'Nation does not extradite its own citizens.' },
+    { key: 'death_penalty',  label: 'Death Penalty Exempt',    effectiveness_mult: 1.0, desc: 'Will not extradite if death penalty may be imposed.' },
+    { key: 'military',       label: 'Military Personnel Exempt', effectiveness_mult: 0.9, desc: 'Active military not subject to extradition.' }
+];
+
+const EXTRADITION_BASE_EFFECTS = {
+    relations: 5,
+    crime_rate: -3,
+    terrorism: -1,
+    corruption: -1,
+    international_reputation: 1,
+    judicial_independence: 0.5,
+    cost_proposer: 8000000,
+    cost_target: 8000000,
+    ongoing_cost: 3000000
+};
+
+/**
+ * Calculate effects for a Mutual Extradition Treaty article.
+ * @param {Object} config - { scope: string[], dual_criminality, appeal_process, exceptions: string[] }
+ * @returns {{ proposer: Object, target: Object, summary: Object }}
+ */
+export function calculateExtraditionEffects(config) {
+    const scopes = config.scope || ['organized_crime', 'financial_crime', 'terrorism'];
+    const appealOpt = EXTRADITION_APPEAL_OPTIONS.find(a => a.key === config.appeal_process) || EXTRADITION_APPEAL_OPTIONS[0];
+    const exceptions = config.exceptions || [];
+    const base = EXTRADITION_BASE_EFFECTS;
+
+    // Effectiveness scales with number and weight of scopes
+    const totalWeight = scopes.reduce((sum, s) => {
+        const opt = EXTRADITION_SCOPE_OPTIONS.find(o => o.key === s);
+        return sum + (opt ? opt.crime_weight : 0);
+    }, 0);
+    const scopeMod = Math.min(1.5, totalWeight / 2.5); // normalize around standard 3-scope config
+
+    // Exception effectiveness reduction
+    const exceptionMult = exceptions.reduce((mult, e) => {
+        const opt = EXTRADITION_EXCEPTION_OPTIONS.find(o => o.key === e);
+        return mult * (opt ? opt.effectiveness_mult : 1.0);
+    }, 1.0);
+
+    const crimeMult = appealOpt.crime_mult * exceptionMult;
+
+    const crime_rate = +(base.crime_rate * scopeMod * crimeMult).toFixed(1);
+    const terrorism = scopes.includes('terrorism') ? +(base.terrorism * crimeMult).toFixed(1) : 0;
+    const corruption = +(base.corruption * scopeMod).toFixed(1);
+    const relations = base.relations;
+    const intl_reputation = base.international_reputation;
+    const judicial_independence = +(base.judicial_independence + appealOpt.judicial_penalty).toFixed(1);
+
+    // Political offenses penalties
+    const hasPoliticalOffenses = scopes.includes('political_offenses');
+    const freedom_index = hasPoliticalOffenses ? -2 + appealOpt.freedom_penalty : appealOpt.freedom_penalty;
+    const press_freedom = hasPoliticalOffenses ? -1 : 0;
+    const reputation_penalty = hasPoliticalOffenses ? -2 : 0;
+    const polarization = hasPoliticalOffenses ? 1 : 0;
+
+    // Dual criminality waived penalty
+    const dualWaived = config.dual_criminality === 'waived';
+    const freedom_extra = dualWaived ? -1 : 0;
+
+    const effects = {
+        relations,
+        crime_rate,
+        terrorism,
+        corruption,
+        international_reputation: intl_reputation + reputation_penalty,
+        judicial_independence,
+        freedom_index: freedom_index + freedom_extra,
+        press_freedom,
+        polarization
+    };
+
+    return {
+        proposer: { ...effects },
+        target: { ...effects },
+        summary: { ...effects },
+        costs: {
+            ratification_proposer: base.cost_proposer,
+            ratification_target: base.cost_target,
+            ongoing_per_year: base.ongoing_cost
+        },
+        warnings: [
+            ...(hasPoliticalOffenses ? ['Including Political Offenses significantly reduces Freedom Index and Press Freedom.'] : []),
+            ...(dualWaived ? ['Waiving Dual Criminality allows extradition for acts that aren\'t crimes in your nation.'] : []),
+            ...(appealOpt.key === 'executive' ? ['Executive Authority doubles crime reduction but costs Freedom Index and Judicial Independence.'] : [])
+        ]
+    };
+}
+
+// ── ENVIRONMENTAL ACCORD ──
+
+export const ENVIRONMENT_EMISSION_TARGET_OPTIONS = [
+    { key: 'modest',      label: 'Modest Reduction (5%)',      reduction_pct: 5,  reputation_bonus: 1, gdp_penalty: 0,    desc: 'Achievable for most nations.' },
+    { key: 'significant', label: 'Significant Reduction (15%)', reduction_pct: 15, reputation_bonus: 2, gdp_penalty: 0,    desc: 'Requires active policy changes.' },
+    { key: 'aggressive',  label: 'Aggressive Reduction (25%)',  reduction_pct: 25, reputation_bonus: 3, gdp_penalty: -0.5, desc: 'Requires major economic restructuring.' }
+];
+
+export const ENVIRONMENT_RENEWABLE_TARGET_OPTIONS = [
+    { key: 0,  label: 'No Commitment',  target_pct: 0  },
+    { key: 30, label: '30% Target',     target_pct: 30 },
+    { key: 50, label: '50% Target',     target_pct: 50 },
+    { key: 70, label: '70% Target',     target_pct: 70 }
+];
+
+export const ENVIRONMENT_POLLUTION_STANDARDS = [
+    { key: 'non_binding', label: 'Non-Binding Guidelines',  pollution_bonus: -0.5, manufacturing_penalty: 0,    cap_offset: 0,   desc: 'Recommend limits, no enforcement.' },
+    { key: 'binding',     label: 'Binding Standards',       pollution_bonus: -1,   manufacturing_penalty: 0,    cap_offset: -5,  desc: 'Both nations must maintain pollution below agreed threshold.' },
+    { key: 'strict',      label: 'Strict Standards',        pollution_bonus: -2,   manufacturing_penalty: -0.5, cap_offset: -10, desc: 'Lower threshold, harsher penalties for breach.' }
+];
+
+export const ENVIRONMENT_CONSERVATION_OPTIONS = [
+    { key: 'forest',       label: 'Forest Protection',      bonus_reputation: 0.5, bonus_pollution: -0.5, desc: 'Commit to maintaining arable land.' },
+    { key: 'marine',       label: 'Marine Protection',      bonus_reputation: 0.5, bonus_pollution: -0.5, desc: 'Reduce fishing quotas, marine reserves.' },
+    { key: 'biodiversity', label: 'Biodiversity Commitment', bonus_reputation: 0.5, bonus_pollution: -0.5, desc: 'Protect endangered species, restrict land development.' }
+];
+
+export const ENVIRONMENT_REVIEW_INTERVAL_OPTIONS = [
+    { key: 12, label: 'Annual Review (12 ticks)',        desc: 'Check compliance every 12 ticks. Gentle.' },
+    { key: 6,  label: 'Biannual Review (6 ticks)',       desc: 'More frequent checks. Standard.' },
+    { key: 1,  label: 'Continuous Monitoring (every tick)', desc: 'Real-time compliance every tick. Strict.' }
+];
+
+export const ENVIRONMENT_PENALTY_OPTIONS = [
+    { key: 'warning',     label: 'Warning Only',       desc: 'First violation is a warning, second triggers Relations -2.' },
+    { key: 'financial',   label: 'Financial Penalty',   desc: 'Violation triggers $20M fine added to violator\'s debt.' },
+    { key: 'suspension',  label: 'Suspension',          desc: 'Violated articles suspended, benefits lost until compliance restored.' },
+    { key: 'termination', label: 'Treaty Termination',  desc: 'Persistent violation (3+ consecutive reviews) auto-terminates the treaty.' }
+];
+
+const ENVIRONMENT_BASE_EFFECTS = {
+    relations: 6,
+    international_reputation: 2,
+    pollution: -2,
+    cost_proposer: 12000000,
+    cost_target: 12000000,
+    ongoing_cost: 4000000
+};
+
+/**
+ * Calculate effects for an Environmental Accord article.
+ * @param {Object} config - { emission_target, renewable_target, pollution_standards, conservation: string[], review_interval, penalty }
+ * @returns {{ proposer: Object, target: Object, summary: Object }}
+ */
+export function calculateEnvironmentalEffects(config) {
+    const emissionOpt = ENVIRONMENT_EMISSION_TARGET_OPTIONS.find(e => e.key === config.emission_target) || ENVIRONMENT_EMISSION_TARGET_OPTIONS[1];
+    const renewableOpt = ENVIRONMENT_RENEWABLE_TARGET_OPTIONS.find(r => r.key === config.renewable_target) || ENVIRONMENT_RENEWABLE_TARGET_OPTIONS[0];
+    const pollutionOpt = ENVIRONMENT_POLLUTION_STANDARDS.find(p => p.key === config.pollution_standards) || ENVIRONMENT_POLLUTION_STANDARDS[0];
+    const conservation = config.conservation || [];
+    const base = ENVIRONMENT_BASE_EFFECTS;
+
+    const relations = base.relations;
+    const intl_reputation = base.international_reputation + emissionOpt.reputation_bonus
+        + conservation.reduce((sum, c) => {
+            const opt = ENVIRONMENT_CONSERVATION_OPTIONS.find(o => o.key === c);
+            return sum + (opt ? opt.bonus_reputation : 0);
+        }, 0);
+
+    const pollution = base.pollution + pollutionOpt.pollution_bonus
+        + conservation.reduce((sum, c) => {
+            const opt = ENVIRONMENT_CONSERVATION_OPTIONS.find(o => o.key === c);
+            return sum + (opt ? opt.bonus_pollution : 0);
+        }, 0);
+
+    const manufacturing_output = pollutionOpt.manufacturing_penalty;
+    const gdp_growth = emissionOpt.gdp_penalty;
+
+    const effects = {
+        relations,
+        international_reputation: intl_reputation,
+        pollution,
+        manufacturing_output,
+        gdp_growth
+    };
+
+    return {
+        proposer: { ...effects },
+        target: { ...effects },
+        summary: { ...effects },
+        costs: {
+            ratification_proposer: base.cost_proposer,
+            ratification_target: base.cost_target,
+            ongoing_per_year: base.ongoing_cost
+        },
+        compliance: {
+            emission_reduction_pct: emissionOpt.reduction_pct,
+            renewable_target_pct: renewableOpt.target_pct,
+            pollution_cap_offset: pollutionOpt.cap_offset,
+            conservation_clauses: conservation,
+            review_interval_ticks: config.review_interval || 6,
+            penalty_type: config.penalty || 'warning',
+            compliance_window_ticks: 24
+        }
+    };
+}
+
+// ── MAJOR INITIATIVE ARTICLE TYPES ──
+
+/**
+ * Article type definitions for Major Diplomatic Initiative.
+ * Same shape as INITIATIVE_ARTICLE_TYPES for Minor Initiatives.
+ */
+export const MAJOR_INITIATIVE_ARTICLE_TYPES = {
+    open_borders: {
+        key: 'open_borders',
+        label: 'Open Borders Agreement',
+        description: 'Full freedom of movement between two nations. Carries sovereignty costs and integration pressure.',
+        max_per_initiative: 1,
+        has_config: true,
+        calculateEffects: calculateOpenBordersEffects,
+        default_config: {
+            scope: 'work_residency',
+            direction: 'reciprocal',
+            worker_protections: 'standard',
+            transition: 'immediate'
+        }
+    },
+    mutual_extradition: {
+        key: 'mutual_extradition',
+        label: 'Mutual Extradition Treaty',
+        description: 'Both nations agree to extradite criminals and suspects. Reduces crime and terrorism but raises human rights concerns.',
+        max_per_initiative: 1,
+        has_config: true,
+        calculateEffects: calculateExtraditionEffects,
+        default_config: {
+            scope: ['organized_crime', 'financial_crime', 'terrorism'],
+            dual_criminality: 'required',
+            appeal_process: 'full_judicial',
+            exceptions: ['own_citizens']
+        }
+    },
+    environmental_accord: {
+        key: 'environmental_accord',
+        label: 'Bilateral Environmental Accord',
+        description: 'Binding bilateral commitments on environmental targets. Non-compliance triggers penalties.',
+        max_per_initiative: 1,
+        has_config: true,
+        calculateEffects: calculateEnvironmentalEffects,
+        default_config: {
+            emission_target: 'significant',
+            renewable_target: 30,
+            pollution_standards: 'binding',
+            conservation: ['forest'],
+            review_interval: 6,
+            penalty: 'financial'
+        }
+    }
+};
+
