@@ -10,7 +10,7 @@ import { snapshotNationStats } from './stats.js';
 import { adjustMomentumAll } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { syncAmbassadorsForFailedConfirmationBills, syncMinistriesForFailedConfirmationBills } from './bills.js';
-import { autoSelectPresidentialCandidates, generatePresidentCandidates } from './presidential.js';
+import { autoSelectPresidentialCandidates, registerPartyLeaderAsCandidate } from './presidential.js';
 import { runElectionSimulation } from './election-simulation.js';
 
 /**
@@ -1316,28 +1316,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
     let electionResults;
     if (isPresidential && normalizedElectionType === 'presidential') {
         // Ensure candidates exist — generate for parties that have none
-        const { data: allParties } = await supabase
-            .from('factions')
-            .select('id')
-            .eq('nation_id', nation.id)
-            .eq('faction_type', 'party');
-
-        if (allParties) {
-            for (const party of allParties) {
-                const { count } = await supabase
-                    .from('pm_candidates')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('nation_id', nation.id)
-                    .eq('faction_id', party.id)
-                    .eq('candidate_type', 'presidential');
-                if (!count || count === 0) {
-                    console.log(`Generating presidential candidates for faction ${party.id} (manual election)`);
-                    await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential', nation.name);
-                }
-            }
-        }
-
-        // Auto-select candidates for any party that hasn't chosen
+        // Ensure all parties have their leader registered as a candidate
         await autoSelectPresidentialCandidates(supabase, nation, currentTick);
 
         const { error: snapshotErr } = await supabase.rpc('snapshot_presidential_endorsements', {
@@ -1927,15 +1906,19 @@ export async function processPresidentialElectionResult(supabase, nation, comple
             await inauguratePresident(supabase, fallbackCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
             console.log(`President inaugurated (fallback): ${fallbackCandidate.first_name} ${fallbackCandidate.last_name} (${winner.party_name})`);
         } else {
-            // Fallback 2: generate fresh candidate
-            console.warn(`[PresElection] Faction fallback also null for ${winner.candidate_name} in ${nation.name} — generating emergency candidate`);
-            const emergencyCandidates = await generatePresidentCandidates(supabase, nation.id, winner.faction_id, currentTick, 'presidential', nation.name);
-            if (emergencyCandidates && emergencyCandidates.length > 0) {
-                await inauguratePresident(supabase, emergencyCandidates[0], nation.id, winner.faction_id, currentTick, outgoingPresident);
-                console.log(`Emergency president inaugurated: ${emergencyCandidates[0].first_name} ${emergencyCandidates[0].last_name}`);
+            // Fallback 2: register party leader and use that
+            console.warn(`[PresElection] Faction fallback also null for ${winner.candidate_name} in ${nation.name} — using party leader`);
+            let leaderCandidate = null;
+            try {
+                leaderCandidate = await registerPartyLeaderAsCandidate(supabase, nation.id, winner.faction_id, currentTick);
+            } catch (regErr) {
+                console.error(`[PresElection] registerPartyLeaderAsCandidate threw for ${winner.candidate_name}:`, regErr);
+            }
+            if (leaderCandidate) {
+                await inauguratePresident(supabase, leaderCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
+                console.log(`President inaugurated from party leader: ${leaderCandidate.first_name} ${leaderCandidate.last_name}`);
             } else {
                 // Fallback 3 (last resort): create president directly from election result data
-                // This ensures a president is ALWAYS created after a presidential election
                 console.error(`[PresElection] ALL candidate lookups failed for ${winner.candidate_name} in ${nation.name} — direct inauguration from election data`);
                 const directCandidate = {
                     first_name: winner.candidate_name?.split(' ')[0] || 'Unknown',
@@ -2139,8 +2122,7 @@ function resolvePresidentialRunoffEndorsements({ wasRunoff, round1Results = [], 
 /**
  * Inaugurate a president from a candidate record. Creates the president row,
  * applies ideology shift, applies trait effects, and creates an administration.
- * Used by both processPresidentialElectionResult (auto-inauguration) and
- * selectPresidentCandidate (manual/legacy selection).
+ * Used by processPresidentialElectionResult (auto-inauguration).
  */
 export async function inauguratePresident(supabase, candidate, nationId, factionId, currentTick, outgoingPresident = null) {
     // Deactivate any previous president

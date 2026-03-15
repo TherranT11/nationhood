@@ -5466,83 +5466,6 @@ export const PM_TRAIT_KEYS = [
     'media_darling', 'hardliner', 'technocrat', 'survivor', 'firebrand'
 ];
 
-export async function generatePMCandidates(supabase, nationId, factionId, currentTick, nationName = '') {
-    let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) factionIdeology = null;
-
-    await supabase
-        .from('pm_candidates')
-        .delete()
-        .eq('nation_id', nationId)
-        .eq('faction_id', factionId)
-        .eq('selected', false);
-
-    const weightedIdeologies = getWeightedIdeologies(factionIdeology);
-
-    const chosenIdeologies = [];
-    const availableIdeologies = [...weightedIdeologies];
-    for (let i = 0; i < 3; i++) {
-        const pick = weightedRandomPick(availableIdeologies);
-        chosenIdeologies.push(pick.item);
-        const sameAxis = availableIdeologies.filter(
-            wi => wi.item.axisKey === pick.item.axisKey
-        );
-        sameAxis.forEach(sa => {
-            const idx = availableIdeologies.indexOf(sa);
-            if (idx >= 0) availableIdeologies.splice(idx, 1);
-        });
-    }
-
-    const shuffledTraits = [...PM_TRAIT_KEYS].sort(() => Math.random() - 0.5);
-    const chosenTraits = shuffledTraits.slice(0, 3);
-
-    const { firstNames: candFirstPool, lastNames: candLastPool } = getNationNames(nationName);
-    const usedFirstNames = new Set();
-    const usedLastNames = new Set();
-    const candidates = [];
-
-    for (let i = 0; i < 3; i++) {
-        let firstName, lastName;
-
-        do { firstName = candFirstPool[Math.floor(Math.random() * candFirstPool.length)]; }
-        while (usedFirstNames.has(firstName));
-        usedFirstNames.add(firstName);
-
-        do { lastName = candLastPool[Math.floor(Math.random() * candLastPool.length)]; }
-        while (usedLastNames.has(lastName));
-        usedLastNames.add(lastName);
-
-        const age = 35 + Math.floor(Math.random() * 16);
-        const ideology = chosenIdeologies[i];
-
-        candidates.push({
-            nation_id: nationId,
-            faction_id: factionId,
-            first_name: firstName,
-            last_name: lastName,
-            age: age,
-            ideology: ideology.tag,
-            ideology_axis: ideology.axisKey,
-            ideology_direction: ideology.direction,
-            trait_key: chosenTraits[i],
-            created_at_tick: currentTick,
-            selected: false
-        });
-    }
-
-    const { data, error } = await supabase
-        .from('pm_candidates')
-        .insert(candidates)
-        .select();
-
-    if (error) {
-        console.error('Error generating PM candidates:', error);
-        throw error;
-    }
-
-    console.log(`Generated 3 PM candidates for faction ${factionId}`);
-    return data;
-}
 
 export function getWeightedIdeologies(factionIdeology) {
     if (!factionIdeology) {
@@ -5581,154 +5504,6 @@ export function weightedRandomPick(weightedItems) {
     return weightedItems[weightedItems.length - 1];
 }
 
-export async function selectPMCandidate(supabase, candidateId, nationId, factionId, currentTick) {
-    // Guard: coalition must be finalized ('formed') before a PM can be appointed
-    const coalition = await fetchActiveCoalition(supabase, nationId);
-    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'caretaker' && coalition._source !== 'presidential')) {
-        throw new Error('Cannot appoint a Prime Minister until a coalition has been formed.');
-    }
-
-    const { data: candidate, error: fetchErr } = await supabase
-        .from('pm_candidates')
-        .select('*')
-        .eq('id', candidateId)
-        .single();
-
-    if (fetchErr || !candidate) throw new Error('Candidate not found');
-    if (candidate.faction_id !== factionId) throw new Error('Not your candidate');
-
-    await supabase
-        .from('pm_candidates')
-        .update({ selected: true })
-        .eq('id', candidateId);
-
-    await supabase
-        .from('pm_candidates')
-        .delete()
-        .eq('nation_id', nationId)
-        .eq('faction_id', factionId)
-        .eq('selected', false);
-
-    await supabase
-        .from('head_of_government')
-        .update({ active: false })
-        .eq('nation_id', nationId)
-        .eq('active', true);
-
-    const { error: hogErr } = await supabase
-        .from('head_of_government')
-        .upsert({
-            nation_id: nationId,
-            faction_id: factionId,
-            candidate_id: candidateId,
-            first_name: candidate.first_name,
-            last_name: candidate.last_name,
-            age: candidate.age,
-            ideology: candidate.ideology,
-            trait_key: candidate.trait_key,
-            appointed_tick: currentTick,
-            active: true
-        }, { onConflict: 'nation_id' });
-
-    if (hogErr) throw hogErr;
-
-    // Update the open administration record with the newly appointed PM
-    const pmFullName = `${candidate.first_name} ${candidate.last_name}`;
-    const { error: adminUpdErr } = await supabase
-        .from('administrations')
-        .update({
-            prime_minister: pmFullName,
-            admin_name: `${candidate.last_name} Administration`,
-            updated_at: new Date().toISOString()
-        })
-        .eq('nation_id', nationId)
-        .is('ended_at_tick', null);
-    if (adminUpdErr) console.warn('selectPMCandidate: could not update administration record:', adminUpdErr);
-
-    // Update the prime_minister ministry row so ministry-actions picks it up
-    const { data: pmMinistry } = await supabase.from('ministries')
-        .select('id').eq('nation_id', nationId)
-        .eq('ministry_key', 'prime_minister').eq('is_active', true)
-        .maybeSingle();
-
-    // Fetch full nation for stat baselines
-    const { data: nationForBaseline } = await supabase.from('nations').select('*').eq('id', nationId).single();
-    const pmBaselines = nationForBaseline ? buildMinistryBaselines('prime_minister', nationForBaseline) : {};
-
-    if (pmMinistry) {
-        await supabase.from('ministries').update({
-            party_id: factionId,
-            minister_first_name: candidate.first_name,
-            minister_last_name: candidate.last_name,
-            minister_age: candidate.age,
-            minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
-            stat_baselines: pmBaselines
-        }).eq('id', pmMinistry.id);
-    } else {
-        await supabase.from('ministries').insert({
-            nation_id: nationId,
-            ministry_key: 'prime_minister',
-            ministry_name: 'Prime Minister',
-            is_active: true,
-            party_id: factionId,
-            minister_first_name: candidate.first_name,
-            minister_last_name: candidate.last_name,
-            minister_age: candidate.age,
-            minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
-            stat_baselines: pmBaselines
-        });
-    }
-
-    const axisKey = candidate.ideology_axis;
-    const shift = 15 * candidate.ideology_direction;
-
-    let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) factionIdeology = null;
-    if (factionIdeology) {
-        const currentVal = factionIdeology[axisKey] || 0;
-        const newVal = Math.max(-100, Math.min(100, currentVal + shift));
-
-        await supabase
-            .from('faction_ideology')
-            .update({ [axisKey]: newVal })
-            .eq('faction_id', factionId);
-
-        console.log(`Ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
-    }
-
-
-    const { data: trait } = await supabase
-        .from('leader_traits')
-        .select('*')
-        .eq('trait_key', candidate.trait_key)
-        .single();
-
-    if (trait?.effects) {
-        const effects = trait.effects;
-
-        if (effects.on_appoint_stability) {
-            const { data: nation } = await supabase
-                .from('nations')
-                .select('stability')
-                .eq('id', nationId)
-                .single();
-
-            if (nation) {
-                const newStability = Math.max(0, Math.min(100, (nation.stability || 50) + effects.on_appoint_stability));
-                await supabase
-                    .from('nations')
-                    .update({ stability: newStability })
-                    .eq('id', nationId);
-
-                console.log(`On-appoint stability: +${effects.on_appoint_stability} → ${newStability}`);
-            }
-        }
-
-    }
-
-    console.log(`PM selected: ${candidate.first_name} ${candidate.last_name} (${candidate.trait_key})`);
-    return candidate;
-}
 
 /**
  * Auto-appoint the party leader as Prime Minister without candidate selection.
@@ -5766,10 +5541,6 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
     const traitKey = PM_TRAIT_KEYS[Math.floor(Math.random() * PM_TRAIT_KEYS.length)];
 
     const leaderAge = faction.leader_age || (35 + Math.floor(Math.random() * 16));
-
-    // Clean up any existing PM candidates for this faction
-    await supabase.from('pm_candidates').delete()
-        .eq('nation_id', nationId).eq('faction_id', factionId).eq('selected', false);
 
     // Deactivate any current HOG
     await supabase.from('head_of_government')
@@ -5834,7 +5605,7 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
         });
     }
 
-    // Apply ideology shift (+5 for PM, same as original selectPMCandidate uses +15 via candidate)
+    // Apply ideology shift (+5 for PM)
     const axisKey = ideology.axisKey;
     const shift = 5 * ideology.direction;
 
