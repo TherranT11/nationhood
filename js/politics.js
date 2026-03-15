@@ -135,8 +135,14 @@ initPage('politics', async (state) => {
             .in('faction_id', partyIds)
         : { data: [] };
 
-    // Generate deterministic deputy leader and party whip names from faction id
-    const officerNames = generateOfficerNames(f.id, nation.name);
+    // Use DB columns for deputy/whip if available, otherwise generate deterministically
+    const generatedNames = generateOfficerNames(f.id, nation.name);
+    const officerNames = {
+        deputyFirst: f.deputy_first_name || generatedNames.deputyFirst,
+        deputyLast: f.deputy_last_name || generatedNames.deputyLast,
+        whipFirst: f.whip_first_name || generatedNames.whipFirst,
+        whipLast: f.whip_last_name || generatedNames.whipLast,
+    };
 
     // Fetch previous tick's gov_approval for delta display
     const { data: prevSnap } = await _supabase
@@ -369,7 +375,7 @@ async function renderPartyTab(f, nation, data) {
         <div class="pol-leader-section">
             <div class="pol-leader-header">
                 <span class="pol-sub-label">Leader</span>
-                <button class="pol-leadership-btn" disabled>Party Leadership &rarr;</button>
+                <button class="pol-leadership-btn" onclick="window.location.href='party-leadership.html'">Party Leadership &rarr;</button>
             </div>
             <div class="pol-leader-name">${escapeHtml(leaderName)} <span class="pol-leader-age">${leaderAge}</span></div>
             ${leaderIdeo}
