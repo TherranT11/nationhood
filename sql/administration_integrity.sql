@@ -72,7 +72,8 @@ BEGIN
         started_at_tick,
         started_at_date,
         stats_at_start,
-        approval_at_start
+        approval_at_start,
+        head_of_state_title
     ) VALUES (
         (p_new_administration->>'nation_id')::UUID,
         p_new_administration->>'admin_name',
@@ -90,7 +91,8 @@ BEGIN
             WHEN p_new_administration ? 'approval_at_start' AND p_new_administration->>'approval_at_start' IS NOT NULL
             THEN (p_new_administration->>'approval_at_start')::INT
             ELSE NULL
-        END
+        END,
+        p_new_administration->>'head_of_state_title'
     )
     RETURNING id INTO v_inserted_id;
 

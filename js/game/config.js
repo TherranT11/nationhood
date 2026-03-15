@@ -131,6 +131,10 @@ export const GAME_CONFIG = {
     UNALIGNED_POOL_REGEN_TICKS: 4,            // +1 seat per 4 ticks
     UNALIGNED_POOL_MAX_RATIO: 0.10,           // max 10% of legislature
     NEW_FACTION_MIN_SEATS: 8,
+
+    // ── Head of State Title (Foundational) ──
+    HOS_TITLE_OPTIONS: ['President', 'Chancellor', 'Premier', 'Consul', 'First Consul', 'Director', 'General Secretary', 'Chairman', 'Protector', 'Tribune'],
+    HOS_TITLE_COOLDOWN_TICKS: 240,
 };
 
 export const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;

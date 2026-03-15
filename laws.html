@@ -1189,6 +1189,7 @@ function showAddArticleForm() {
     document.getElementById('ideology-hint').style.display = 'none';
     document.getElementById('policy-group').style.display = 'none';
     selectedPolicy = null;
+    selectedFoundationalType = null;
     document.getElementById('add-article-btn').disabled = true;
 }
 
@@ -1457,6 +1458,7 @@ function addTextArticle() {
 
 function onSectorChange() {
     const sector = document.getElementById('sector-select').value;
+    selectedFoundationalType = null; // reset on every sector change
     if (!sector) { document.getElementById('ideology-hint').style.display = 'none'; document.getElementById('policy-group').style.display = 'none'; return; }
 
     if (sector === 'FOUNDATIONAL') {
@@ -1474,22 +1476,54 @@ function onSectorChange() {
 // Keep handlers explicitly on window for inline onchange attributes.
 window.onSectorChange = onSectorChange;
 
+let selectedFoundationalType = null;
+
 function renderFoundationalOptions() {
     const container = document.getElementById('policy-options');
     const currentSeatsTotal = GAME_CONFIG.TOTAL_SEATS;
     const required = Math.ceil(currentSeatsTotal * GAME_CONFIG.SUPERMAJORITY_THRESHOLD);
+    const isPresidential = isGovernmentPresidential(currentNation);
+
     container.innerHTML = `
-        <div class="policy-option selected" style="border-color:var(--purple);cursor:default;">
+        <div class="policy-option${selectedFoundationalType === 'electoral_makeup' ? ' selected' : ''}" style="${selectedFoundationalType === 'electoral_makeup' ? 'border-color:var(--purple);' : ''}" onclick="selectFoundationalType('electoral_makeup')" data-foundational-type="electoral_makeup">
             <div class="policy-option-name">🏛 Electoral Makeup <span class="article-ideology" style="background:var(--purple);color:#fff;">FOUNDATIONAL</span></div>
             <div class="policy-option-desc">Change the number of legislative seats. Requires 2/3 supermajority (${required} seats) to pass. Non-ideological — no approval penalties. If passed, seats are redistributed proportionally.</div>
-            <div style="margin-top:12px;">
+            <div id="foundational-seats-config" style="margin-top:12px;${selectedFoundationalType === 'electoral_makeup' ? '' : 'display:none;'}">
                 <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-bottom:6px;">Current seats: <strong>${currentSeatsTotal}</strong> — Proposed new total:</label>
                 <input type="number" id="foundational-seats-input" min="50" max="500" step="10" value="${currentSeatsTotal}" onchange="this.value=Math.max(50,Math.min(500,parseInt(this.value)||50))" style="background:var(--bg-card);border:1px solid var(--purple);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:120px;">
             </div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'hos_title' ? ' selected' : ''}" style="${selectedFoundationalType === 'hos_title' ? 'border-color:var(--purple);' : ''}${isPresidential ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('hos_title')" data-foundational-type="hos_title">
+            <div class="policy-option-name">👑 Head of State Title <span class="article-ideology" style="background:var(--purple);color:#fff;">FOUNDATIONAL</span></div>
+            <div class="policy-option-desc">${isPresidential
+                ? 'Not available in Presidential systems — the Head of State is always titled "Vice President".'
+                : `Change the title of the Head of State. Requires 2/3 supermajority (${required} seats) to pass. 240 tick cooldown between changes.`}</div>
+            <div id="foundational-hos-config" style="margin-top:12px;${selectedFoundationalType === 'hos_title' ? '' : 'display:none;'}">
+                <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-bottom:6px;">Select new Head of State title:</label>
+                <select id="foundational-hos-select" style="background:var(--bg-card);border:1px solid var(--purple);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:220px;">
+                    ${GAME_CONFIG.HOS_TITLE_OPTIONS.map(t => `<option value="${t}"${t === currentNation.head_of_state_title ? ' selected disabled' : ''}>${t}${t === currentNation.head_of_state_title ? ' (Current)' : ''}</option>`).join('')}
+                </select>
+            </div>
         </div>`;
+    selectedFoundationalType = null;
     selectedPolicy = null;
+    document.getElementById('add-article-btn').disabled = true;
+}
+
+function selectFoundationalType(type) {
+    selectedFoundationalType = type;
+    document.querySelectorAll('[data-foundational-type]').forEach(el => {
+        const isSelected = el.dataset.foundationalType === type;
+        el.classList.toggle('selected', isSelected);
+        el.style.borderColor = isSelected ? 'var(--purple)' : '';
+    });
+    const seatsConfig = document.getElementById('foundational-seats-config');
+    const hosConfig = document.getElementById('foundational-hos-config');
+    if (seatsConfig) seatsConfig.style.display = type === 'electoral_makeup' ? '' : 'none';
+    if (hosConfig) hosConfig.style.display = type === 'hos_title' ? '' : 'none';
     document.getElementById('add-article-btn').disabled = false;
 }
+window.selectFoundationalType = selectFoundationalType;
 
 function renderPolicyOptions(policies, containerId, buttonId) {
     const container = document.getElementById(containerId);
@@ -1586,33 +1620,60 @@ function selectRepealPolicy(policyId) {
 function addArticle() {
     const sector = document.getElementById('sector-select').value;
 
-    // Foundational article (Electoral Makeup)
+    // Foundational article (Electoral Makeup or HoS Title)
     if (sector === 'FOUNDATIONAL') {
-        const seatsInput = document.getElementById('foundational-seats-input');
-        const newSeats = parseInt(seatsInput?.value, 10);
-        if (isNaN(newSeats) || newSeats < 50 || newSeats > 500) {
-            alert('Please enter a number between 50 and 500.');
+        if (selectedFoundationalType === 'electoral_makeup') {
+            const seatsInput = document.getElementById('foundational-seats-input');
+            const newSeats = parseInt(seatsInput?.value, 10);
+            if (isNaN(newSeats) || newSeats < 50 || newSeats > 500) {
+                alert('Please enter a number between 50 and 500.');
+                return;
+            }
+            if (newSeats === GAME_CONFIG.TOTAL_SEATS) {
+                alert('The proposed seat count is the same as the current count.');
+                return;
+            }
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'electoral_makeup',
+                proposedSeats: newSeats,
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = `Electoral Makeup Act (${newSeats} Seats)`;
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'hos_title') {
+            const hosSelect = document.getElementById('foundational-hos-select');
+            const newTitle = hosSelect?.value;
+            if (!newTitle) { alert('Please select a title.'); return; }
+            const currentTitle = currentNation.head_of_state_title || null;
+            if (currentTitle === newTitle) {
+                alert('The selected title is already the current Head of State title.');
+                return;
+            }
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'hos_title',
+                proposedHosTitle: newTitle,
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = `Head of State Title Act (${newTitle})`;
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else {
+            alert('Please select a foundational option first.');
             return;
         }
-        if (newSeats === GAME_CONFIG.TOTAL_SEATS) {
-            alert('The proposed seat count is the same as the current count.');
-            return;
-        }
-        // Clear any existing articles — foundational bill is standalone
-        draftArticles = [];
-        draftArticles.push({
-            articleNumber: 2,
-            isFoundational: true,
-            proposedSeats: newSeats,
-            policy: null
-        });
-        renderDraftArticles(); hideAddArticleForm();
-        // Auto-set bill name and disable adding more articles
-        document.getElementById('bill-name-input').value = `Electoral Makeup Act (${newSeats} Seats)`;
-        document.getElementById('bill-name-section').style.display = 'block';
-        document.getElementById('submit-bill-btn').disabled = false;
-        _hideAllArticleButtons();
-        return;
     }
 
     if (!selectedPolicy) return;
@@ -1650,6 +1711,16 @@ function renderDraftArticles() {
 
     container.innerHTML = draftArticles.map((art, index) => {
         if (art.isFoundational) {
+            if (art.foundationalSubtype === 'hos_title') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--purple);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--purple);">Foundational</span></div>
+                        <div class="draft-article-name">👑 Head of State Title</div>
+                        <div class="draft-article-meta">Change Head of State title to: <strong>${escapeHtml(art.proposedHosTitle)}</strong> · Requires 2/3 supermajority · 240 tick cooldown</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
             const change = art.proposedSeats - GAME_CONFIG.TOTAL_SEATS;
             const changeText = change > 0 ? `+${change}` : `${change}`;
             return `<div class="draft-article-card" style="border-left:3px solid var(--purple);">
@@ -1770,7 +1841,10 @@ async function submitToCommittee() {
     let billName = document.getElementById('bill-name-input').value.trim();
     if (!billName) {
         if (isFoundationalBill) {
-            billName = 'Electoral Reform Act';
+            const fArt = draftArticles.find(a => a.isFoundational);
+            billName = fArt.foundationalSubtype === 'hos_title'
+                ? `Head of State Title Act (${fArt.proposedHosTitle})`
+                : 'Electoral Reform Act';
         } else {
             const policyNames = draftArticles.filter(a => a.policy).map(a => a.policy.policy_name);
             if (policyNames.length === 1) {
@@ -1795,7 +1869,6 @@ async function submitToCommittee() {
 
     if (isFoundationalBill) {
         const foundationalArt = draftArticles.find(a => a.isFoundational);
-        const proposedSeats = foundationalArt.proposedSeats;
 
         // Check: no existing pending/committee/floor foundational bill
         const { data: existingBill } = await _supabase
@@ -1808,10 +1881,41 @@ async function submitToCommittee() {
             .maybeSingle();
 
         if (existingBill) {
-            alert('An Electoral Makeup bill is already pending.');
+            alert('A foundational bill is already pending.');
             isSubmitting = false;
             document.getElementById('submit-bill-btn').disabled = false;
             return;
+        }
+
+        // HoS title cooldown check
+        if (foundationalArt.foundationalSubtype === 'hos_title') {
+            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            const nowTick = shard?.current_tick || 0;
+            const { data: lastHosBill } = await _supabase
+                .from('bills')
+                .select('passed_tick')
+                .eq('nation_id', currentNation.id)
+                .eq('bill_type', 'foundational')
+                .eq('status', 'passed')
+                .not('proposed_hos_title', 'is', null)
+                .order('passed_tick', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (lastHosBill && lastHosBill.passed_tick != null) {
+                const ticksSince = nowTick - lastHosBill.passed_tick;
+                const cooldown = GAME_CONFIG.HOS_TITLE_COOLDOWN_TICKS;
+                if (ticksSince < cooldown) {
+                    const remaining = cooldown - ticksSince;
+                    const years = Math.floor(remaining / GAME_CONFIG.TICKS_PER_YEAR);
+                    const mo = remaining % GAME_CONFIG.TICKS_PER_YEAR;
+                    const timeStr = years > 0 ? `${years} year${years !== 1 ? 's' : ''}${mo > 0 ? ', ' + mo + ' month' + (mo !== 1 ? 's' : '') : ''}` : `${mo} month${mo !== 1 ? 's' : ''}`;
+                    alert(`Head of State title was changed recently. Cooldown: ${timeStr} remaining.`);
+                    isSubmitting = false;
+                    document.getElementById('submit-bill-btn').disabled = false;
+                    return;
+                }
+            }
         }
     }
 
@@ -1914,13 +2018,20 @@ async function submitToCommittee() {
         const billInsert = {
             nation_id: currentNation.id, proposed_by: currentFaction.id, proposed_tick: currentTick, bill_name: billName, status: 'committee',
             preamble: isFoundationalBill
-                ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the number of legislative seats in ${currentNation.name} from ${GAME_CONFIG.TOTAL_SEATS} to ${draftArticles.find(a => a.isFoundational).proposedSeats}. Requires a two-thirds supermajority to pass.`
+                ? (draftArticles.find(a => a.isFoundational).foundationalSubtype === 'hos_title'
+                    ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the Head of State title in ${currentNation.name} to "${draftArticles.find(a => a.isFoundational).proposedHosTitle}". Requires a two-thirds supermajority to pass.`
+                    : `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the number of legislative seats in ${currentNation.name} from ${GAME_CONFIG.TOTAL_SEATS} to ${draftArticles.find(a => a.isFoundational).proposedSeats}. Requires a two-thirds supermajority to pass.`)
                 : `This ${lawsIsAutocracy ? 'decree' : 'bill'}, put forth in the ${lawsIsAutocracy ? 'regime' : 'legislature'} of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`
         };
 
         if (isFoundationalBill) {
             billInsert.bill_type = 'foundational';
-            billInsert.proposed_seats = draftArticles.find(a => a.isFoundational).proposedSeats;
+            const fArt = draftArticles.find(a => a.isFoundational);
+            if (fArt.foundationalSubtype === 'hos_title') {
+                billInsert.proposed_hos_title = fArt.proposedHosTitle;
+            } else {
+                billInsert.proposed_seats = fArt.proposedSeats;
+            }
         }
 
         const { data: bill, error: billError } = await _supabase.from('bills').insert(billInsert).select().single();

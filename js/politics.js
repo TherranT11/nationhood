@@ -4,7 +4,7 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './party-icons.js';
 import { tickToDate, escapeHtml as utilEscapeHtml, getIdeologyClass } from './utils.js';
 import { fetchActiveCoalition, loadSeats, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, ensureBlocApprovals, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, PM_FIRST_NAMES, PM_LAST_NAMES, getNationNames, loadNationIdeologies, getFullIdeologyProfile, getIdeologyLabel, IDEOLOGY_AXES, selectPresidentCandidate, generatePresidentCandidates } from './game-common.js';
-import { isAutocracy } from './game/government-types.js';
+import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
 
 initPage('politics', async (state) => {
@@ -1079,7 +1079,11 @@ function miniLogo(color, acronym, name) {
     return `<div class="pol-mini-logo" style="background:${c}">${escapeHtml(abbr)}</div>`;
 }
 
-function hogTitle(govType) {
+function hogTitle(govType, nation) {
+    // Custom HoS title from foundational law (not applicable to Presidential systems)
+    if (nation?.head_of_state_title && !isGovernmentPresidential(nation)) {
+        return nation.head_of_state_title;
+    }
     if (!govType) return 'Head of Gov.';
     const g = govType.toLowerCase();
     if (g === 'democracy' || g.includes('parliament')) return 'PM';
@@ -1126,7 +1130,7 @@ function renderParliamentBox(allParties, coalition, nation, playerFactionId) {
     const majorityLineHtml = `<div class="pol-majority-line" style="left:${majPct.toFixed(2)}%"></div>`;
 
     // Government title
-    const title = hogTitle(nation?.government_type);
+    const title = hogTitle(nation?.government_type, nation);
 
     // Party row renderer
     function partyRow(p) {
