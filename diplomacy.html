@@ -546,8 +546,8 @@ async function renderRelationsTab() {
     }
 
     try {
-        // Parallel fetch: all nations, relations, ambassadors (ours + theirs), active agreements
-        const [nationsRes, relationsRes, ambassadorsRes, theirAmbassadorsRes, agreementsRes] = await Promise.all([
+        // Parallel fetch: all nations, relations, ambassadors (ours + theirs), active agreements, unread messages
+        const [nationsRes, relationsRes, ambassadorsRes, theirAmbassadorsRes, agreementsRes, unreadMsgsRes] = await Promise.all([
             _supabase.from('nations').select('*').order('name'),
             _supabase.from('diplomatic_relations').select('*')
                 .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id),
@@ -557,7 +557,10 @@ async function renderRelationsTab() {
                 .eq('target_nation_id', currentNation.id).eq('is_active', true).eq('status', 'active'),
             _supabase.from('diplomatic_proposals').select('proposing_nation_id, target_nation_id')
                 .eq('status', 'active')
-                .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id)
+                .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id),
+            _supabase.from('diplomatic_messages').select('id, from_nation_id, read_by_factions')
+                .eq('to_nation_id', currentNation.id)
+                .neq('from_nation_id', currentNation.id)
         ]);
 
         if (nationsRes.error) {
@@ -571,6 +574,15 @@ async function renderRelationsTab() {
         const ourAmbassadors = ambassadorsRes.data || [];
         const theirAmbassadors = theirAmbassadorsRes.data || [];
         const activeAgreements = agreementsRes.data || [];
+
+        // Build unread message count per source nation
+        const unreadByNation = {};
+        for (const msg of (unreadMsgsRes.data || [])) {
+            const readBy = msg.read_by_factions || [];
+            if (!readBy.includes(currentFaction?.id)) {
+                unreadByNation[msg.from_nation_id] = (unreadByNation[msg.from_nation_id] || 0) + 1;
+            }
+        }
 
         // Filter out own nation
         const otherNations = allNations.filter(n => n.id !== currentNation.id);
@@ -634,6 +646,7 @@ async function renderRelationsTab() {
                                 <span class="relation-badge ${tier.cssClass}">${tier.label}</span>
                                 <span class="nation-card-embassy" style="color:${embassyColor};">${embassyStatus === 'open' ? 'Embassy Open' : embassyStatus === 'closed' ? 'Embassy Closed' : 'No Embassy'}</span>
                                 ${agreementCount > 0 ? '<span class="nation-card-agreements">' + agreementCount + ' agreement' + (agreementCount > 1 ? 's' : '') + '</span>' : ''}
+                                ${unreadByNation[nation.id] ? '<span class="diplo-incoming-msg">[Incoming Message]</span>' : ''}
                             </div>
                             <div class="nation-card-ambassadors">
                                 <span class="nation-card-amb">${ambName ? 'Our Amb: ' + escapeHtml(ambName) + '<span class="amb-party-tag">' + escapeHtml(ambParty) + '</span>' + (isMyAmbassadorship ? ' <em>(you)</em>' : '') : '<span style="color:#666;">No Ambassador</span>'}</span>
@@ -3151,6 +3164,36 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
 
     let actions = '';
 
+    // Ambassador actions first (only if ambassador to this specific nation)
+    const isAmbToTarget = roles.ambassadorTo.some(a => a.target_nation_id === targetNation.id);
+    if (isAmbToTarget) {
+        // Retirement warning for the player's own ambassador
+        let ambWarningHTML = '';
+        const myAmb = roles.ambassadorTo.find(a => a.target_nation_id === targetNation.id);
+        if (myAmb && myAmb.appointed_at_tick != null) {
+            const tl = myAmb.term_length || 60;
+            const remaining = Math.max(0, tl - (shardTick - myAmb.appointed_at_tick));
+            if (remaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && remaining > 0) {
+                const ambFullName = ((myAmb.ambassador_first_name || '') + ' ' + (myAmb.ambassador_last_name || '')).trim() + (myAmb.factions?.abbreviation ? ' (' + myAmb.factions.abbreviation + ')' : '');
+                ambWarningHTML = `<div style="background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.2);border-radius:6px;padding:8px 10px;margin-top:8px;font-size:0.78rem;color:#f97316;">&#9888; Ambassador ${ambFullName} will retire in ${remaining} tick${remaining !== 1 ? 's' : ''}. Conclude any active negotiations.</div>`;
+            }
+        }
+
+        actions += `
+            <div class="action-card" style="margin-bottom:10px;">
+                <div class="action-header">
+                    <span class="action-title" style="color:#ba68c8;">Ambassador Actions</span>
+                </div>
+                <p class="action-desc">As Ambassador to ${escapeHtml(targetNation.name)}, you can negotiate directly.</p>
+                ${ambWarningHTML}
+                <button class="action-btn" onclick="showDiploTab('initiative')">New Initiative</button>
+                <button class="action-btn" style="margin-top:8px;" disabled>Formal Protest (Coming Soon)</button>
+                <button class="action-btn" style="margin-top:8px;" disabled>Gather Intel (Coming Soon)</button>
+                <button class="action-btn" style="margin-top:8px;background:#5a1a1a;border-color:#8b3030;" onclick="resignAmbassador('${myAmb?.id}', '${escapeHtml(targetNation.name)}')">Resign as Ambassador</button>
+            </div>
+        `;
+    }
+
     // HoG actions
     if (roles.isHoG) {
         actions += `
@@ -3189,7 +3232,6 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
         } else {
             fmButtons = `<button class="action-btn" onclick="selectDraftAction('appoint_ambassador','Appoint Ambassador',${APPOINT_AMBASSADOR_AP},'fm','fm')">Appoint Ambassador</button>`;
         }
-        // Formal Protest moved to Ambassador role
 
         actions += `
             <div class="action-card" style="margin-bottom:10px;">
@@ -3198,40 +3240,6 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
                 </div>
                 <p class="action-desc">As Foreign Minister, you oversee diplomatic proposals and ambassador assignments.</p>
                 ${fmButtons}
-            </div>
-        `;
-    }
-
-    // Ambassador actions (only if ambassador to this specific nation)
-    const isAmbToTarget = roles.ambassadorTo.some(a => a.target_nation_id === targetNation.id);
-    if (isAmbToTarget) {
-        const hasTargetAmb = theirAmbassador && theirAmbassador.status === 'active';
-        const initiativeDisabled = !hasTargetAmb ? 'disabled style="opacity:0.6;"' : '';
-        const initiativeHint = !hasTargetAmb ? '<p class="action-hint">Target nation has no ambassador to negotiate with.</p>' : '';
-
-        // Retirement warning for the player's own ambassador
-        let ambWarningHTML = '';
-        const myAmb = roles.ambassadorTo.find(a => a.target_nation_id === targetNation.id);
-        if (myAmb && myAmb.appointed_at_tick != null) {
-            const tl = myAmb.term_length || 60;
-            const remaining = Math.max(0, tl - (shardTick - myAmb.appointed_at_tick));
-            if (remaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && remaining > 0) {
-                const ambFullName = ((myAmb.ambassador_first_name || '') + ' ' + (myAmb.ambassador_last_name || '')).trim() + (myAmb.factions?.abbreviation ? ' (' + myAmb.factions.abbreviation + ')' : '');
-                ambWarningHTML = `<div style="background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.2);border-radius:6px;padding:8px 10px;margin-top:8px;font-size:0.78rem;color:#f97316;">&#9888; Ambassador ${ambFullName} will retire in ${remaining} tick${remaining !== 1 ? 's' : ''}. Conclude any active negotiations.</div>`;
-            }
-        }
-
-        actions += `
-            <div class="action-card" style="margin-bottom:10px;">
-                <div class="action-header">
-                    <span class="action-title" style="color:#ba68c8;">Ambassador Actions</span>
-                </div>
-                <p class="action-desc">As Ambassador to ${escapeHtml(targetNation.name)}, you can negotiate directly.</p>
-                ${ambWarningHTML}
-                <button class="action-btn" onclick="showDiploTab('initiative')">New Initiative</button>
-                <button class="action-btn" style="margin-top:8px;" disabled>Formal Protest (Coming Soon)</button>
-                <button class="action-btn" style="margin-top:8px;" disabled>Gather Intel (Coming Soon)</button>
-                <button class="action-btn" style="margin-top:8px;background:#5a1a1a;border-color:#8b3030;" onclick="resignAmbassador('${myAmb?.id}', '${escapeHtml(targetNation.name)}')">Resign as Ambassador</button>
             </div>
         `;
     }
@@ -3481,6 +3489,53 @@ async function cancelPendingAmbassador(ambassadorId, nationName) {
     }
 }
 
+// ==================== MARK MESSAGES READ ====================
+
+/**
+ * Mark incoming diplomatic messages as read by the current faction.
+ * Updates the DB, clears the [Incoming Message] badge on the nation card,
+ * and decrements the nav badge count.
+ * @param {Array} messages - Full message array for this conversation
+ * @param {string} fromNationId - The nation that sent the messages
+ */
+function markDiploMessagesRead(messages, fromNationId) {
+    if (!currentFaction || !currentNation) return;
+
+    const unreadIds = messages
+        .filter(m => m.to_nation_id === currentNation.id && m.from_nation_id === fromNationId)
+        .filter(m => !(m.read_by_factions || []).includes(currentFaction.id))
+        .map(m => m.id);
+
+    if (unreadIds.length === 0) return;
+
+    Promise.all(unreadIds.map(msgId => {
+        // Use RPC-style atomic append to avoid lost-update race if two
+        // factions mark the same message read concurrently.
+        return _supabase.rpc('append_read_faction', {
+            p_message_id: msgId,
+            p_faction_id: currentFaction.id
+        });
+    })).then(() => {
+        // Clear [Incoming Message] badge on this nation card
+        const card = document.getElementById('nation-card-' + fromNationId);
+        if (card) {
+            const badge = card.querySelector('.diplo-incoming-msg');
+            if (badge) badge.remove();
+        }
+        // Update the nav badge count
+        const navBadge = document.getElementById('diplomacy-badge');
+        if (navBadge && navBadge.style.display !== 'none') {
+            const current = parseInt(navBadge.textContent) || 0;
+            const newCount = Math.max(0, current - unreadIds.length);
+            if (newCount > 0) {
+                navBadge.textContent = newCount;
+            } else {
+                navBadge.style.display = 'none';
+            }
+        }
+    }).catch(e => console.warn('Error marking messages as read:', e));
+}
+
 // ==================== DIPLOMATIC CHAT ====================
 
 async function renderChatSection(targetNation, roles, ourAmbassador, theirAmbassador) {
@@ -3524,6 +3579,9 @@ async function renderChatSection(targetNation, roles, ourAmbassador, theirAmbass
     } catch (e) {
         console.warn('Error fetching diplomatic messages:', e);
     }
+
+    // Mark unread incoming messages as read by this faction
+    markDiploMessagesRead(messages, targetNation.id);
 
     const msgsHTML = messages.length > 0
         ? messages.map(m => {
@@ -10427,6 +10485,11 @@ async function renderSendMessagePanel(body, statusEl) {
             messages = data || [];
         } catch (e) { /* */ }
 
+        // Mark unread incoming messages as read by this faction
+        if (activeDraftTarget) {
+            markDiploMessagesRead(messages, activeDraftTarget.id);
+        }
+
         const msgsHTML = messages.length > 0
             ? messages.map(m => {
                 const isMine = m.from_nation_id === currentNation.id;
@@ -12475,6 +12538,7 @@ window.addTradeNegArticle = addTradeNegArticle;
 window.removeTradeNegArticle = removeTradeNegArticle;
 window.approveTradeNegotiation = approveTradeNegotiation;
 window.saveTradeArticle = saveTradeArticle;
+window.selectDurationType = selectDurationType;
 window.toggleDurationFixedFields = toggleDurationFixedFields;
 window.togglePriceModifier = togglePriceModifier;
 window.updateSupplyWarning = updateSupplyWarning;

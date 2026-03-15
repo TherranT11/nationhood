@@ -2616,3 +2616,19 @@
   .sv-page-wrap { flex-direction: column; }
   .sv-box--main, .sv-box--side { width: 100%; max-width: none; }
 }
+
+/* ── Incoming Message Badge ── */
+.diplo-incoming-msg {
+  display: inline-block;
+  color: #ef4444;
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: 0.3px;
+  animation: diplo-msg-pulse 2s ease-in-out infinite;
+}
+
+@keyframes diplo-msg-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
