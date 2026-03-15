@@ -436,7 +436,7 @@ async function loadAllNationsData() {
     if (cached) { allNations = cached; return; }
 
     var res = await _supabase.from('nations')
-        .select('id, name, gdp, population, gdp_growth, unemployment, inflation, standard_of_living, debt, tariffs, oil_and_gas, rare_minerals, arable_land, physical_infrastructure, digital_infrastructure, higher_education, credit, happiness, stability');
+        .select('id, name, gdp, population, gdp_growth, unemployment, inflation, standard_of_living, debt, tariffs, oil_and_gas, rare_minerals, arable_land, physical_infrastructure, digital_infrastructure, higher_education, credit, happiness, stability, manufacturing_output, service_output, currency_strength, energy_generation');
 
     if (res.data) {
         allNations = res.data;
