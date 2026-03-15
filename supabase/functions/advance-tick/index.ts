@@ -7339,7 +7339,11 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
         }
 
         const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-        const oldTermLimit = nation?.presidential_term_limit;
+        const rawOldLimit = nation?.presidential_term_limit;
+        // Compute effective old limit: null/undefined = use default, 0 = no limits (null), N = N
+        const oldEffectiveLimit = (rawOldLimit !== null && rawOldLimit !== undefined)
+            ? (rawOldLimit === 0 ? null : rawOldLimit)
+            : (GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT || 2);
         const isAutocratic = (nation?.government_type || '').toLowerCase().includes('autocra');
 
         await supabase.from('nations').update({ presidential_term_limit: newTermLimit }).eq('id', bill.nation_id);
@@ -7377,7 +7381,7 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
                 console.log(`[enactFoundationalBill] Sitting president has ${activePresident.terms_served} terms — polarization +10`);
             }
             console.log(`[enactFoundationalBill] Term limits removed: legitimacy -${legitimacyPenalty}, civil_unrest +4, opposition momentum +8`);
-        } else if (oldTermLimit === null || oldTermLimit === 0 || newTermLimit < (oldTermLimit || Infinity)) {
+        } else if (oldEffectiveLimit === null || newTermLimit < oldEffectiveLimit) {
             // Adding or tightening term limits
             await supabase.from('nations').update({
                 legitimacy: Math.min(100, (nation?.legitimacy || 50) + 5),
@@ -9774,10 +9778,12 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
 
             // Log retirement event
             try {
+                const { data: factionData } = await supabase.from('factions').select('faction_name').eq('id', outgoingPresident.faction_id).single();
+                const factionName = factionData?.faction_name || 'the party';
                 await supabase.from('event_log').insert({
                     nation_id: nation.id,
                     event_name: 'President Retires (Term Limited)',
-                    description_chosen: `${outgoingName}, having served the maximum ${effectiveTermLimit} term${effectiveTermLimit !== 1 ? 's' : ''} as president, has retired from party leadership. ${nation.name}'s ${(await supabase.from('factions').select('faction_name').eq('id', outgoingPresident.faction_id).single())?.data?.faction_name || 'party'} must appoint a new leader.`,
+                    description_chosen: `${outgoingName}, having served the maximum ${effectiveTermLimit} term${effectiveTermLimit !== 1 ? 's' : ''} as president, has retired from party leadership. ${nation.name}'s ${factionName} must appoint a new leader.`,
                     category: 'POLITICAL',
                     fired_at_tick: currentTick,
                 });

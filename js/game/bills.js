@@ -2625,6 +2625,11 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             .limit(1)
             .maybeSingle();
 
+        // Get current nation data BEFORE update (for stat effect comparison)
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+        const oldTermTicks = getPresidentialTermTicks(nation);
+        const ticksPerYear = GAME_CONFIG.TICKS_PER_YEAR || 12;
+
         // Mark bill as passed
         const { error: billErr } = await supabase.from('bills').update({
             status: 'passed',
@@ -2642,11 +2647,6 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         if (nationErr) {
             console.error(`[enactFoundationalBill] Failed to update presidential_term_ticks for nation ${bill.nation_id}:`, nationErr.message);
         }
-
-        // Get current nation data for stat effects
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-        const oldTermTicks = getPresidentialTermTicks(nation) || GAME_CONFIG.PRESIDENTIAL_TERM_TICKS;
-        const ticksPerYear = GAME_CONFIG.TICKS_PER_YEAR || 12;
 
         // Apply mechanical effects based on whether terms got shorter or longer
         if (newTermTicks < oldTermTicks) {
@@ -2730,9 +2730,9 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             return false;
         }
 
-        // Get current nation data for comparison
+        // Get current nation data for comparison (BEFORE update)
         const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-        const oldTermLimit = getPresidentialTermLimit(nation);
+        const oldEffectiveLimit = getPresidentialTermLimit(nation); // null = no limits, number = limit
         const isAutocratic = nation?.government_type?.toLowerCase().includes('autocra');
 
         // Update nation's presidential_term_limit
@@ -2777,7 +2777,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
             if (allFactions) {
                 for (const faction of allFactions) {
-                    await adjustMomentum(supabase, faction.id, 8, 'term_limits_removed');
+                    await adjustMomentumAll(supabase, bill.nation_id, faction.id, 8, 'term_limits_removed');
                 }
             }
 
@@ -2789,7 +2789,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             }
 
             console.log(`[enactFoundationalBill] Term limits removed: legitimacy -${legitimacyPenalty}, civil_unrest +4, opposition momentum +8`);
-        } else if (oldTermLimit === null || newTermLimit < (oldTermLimit || Infinity)) {
+        } else if (oldEffectiveLimit === null || newTermLimit < oldEffectiveLimit) {
             // Adding or tightening term limits
             const newLegitimacy = Math.min(100, (nation?.legitimacy || 50) + 5);
             const newPressFreedom = Math.min(100, (nation?.press_freedom || 50) + 2);
