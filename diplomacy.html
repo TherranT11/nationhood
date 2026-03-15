@@ -3167,6 +3167,10 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
     // Ambassador actions first (only if ambassador to this specific nation)
     const isAmbToTarget = roles.ambassadorTo.some(a => a.target_nation_id === targetNation.id);
     if (isAmbToTarget) {
+        const hasTargetAmb = theirAmbassador && theirAmbassador.status === 'active';
+        const initiativeDisabled = !hasTargetAmb ? 'disabled style="opacity:0.6;"' : '';
+        const initiativeHint = !hasTargetAmb ? '<p class="action-hint">Target nation has no ambassador to negotiate with.</p>' : '';
+
         // Retirement warning for the player's own ambassador
         let ambWarningHTML = '';
         const myAmb = roles.ambassadorTo.find(a => a.target_nation_id === targetNation.id);
@@ -3186,7 +3190,8 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
                 </div>
                 <p class="action-desc">As Ambassador to ${escapeHtml(targetNation.name)}, you can negotiate directly.</p>
                 ${ambWarningHTML}
-                <button class="action-btn" onclick="showDiploTab('initiative')">New Initiative</button>
+                ${initiativeHint}
+                <button class="action-btn" ${initiativeDisabled} onclick="showDiploTab('initiative')">New Initiative</button>
                 <button class="action-btn" style="margin-top:8px;" disabled>Formal Protest (Coming Soon)</button>
                 <button class="action-btn" style="margin-top:8px;" disabled>Gather Intel (Coming Soon)</button>
                 <button class="action-btn" style="margin-top:8px;background:#5a1a1a;border-color:#8b3030;" onclick="resignAmbassador('${myAmb?.id}', '${escapeHtml(targetNation.name)}')">Resign as Ambassador</button>
@@ -5165,8 +5170,8 @@ async function viewActiveAgreement(agreementId) {
                     </div>
                 `;
             } else if (isV2) {
-                const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES[art.type];
-                const typeName = typeInfo ? typeInfo.label : art.type;
+                const artTypeInfo = INITIATIVE_ARTICLE_TYPES[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES[art.type];
+                const typeName = artTypeInfo ? artTypeInfo.label : art.type;
                 const cardClass = isStruck ? 'initiative-article initiative-article--struck' : 'initiative-article';
                 html += '<div class="' + cardClass + '">';
                 html += '<div class="initiative-article-head">';
@@ -5174,8 +5179,8 @@ async function viewActiveAgreement(agreementId) {
                 html += '<span class="initiative-article-type">' + escapeHtml(typeName).toUpperCase();
                 if (isStruck) html += ' — STRUCK';
                 html += '</span></div></div>';
-                if (typeInfo && typeInfo.description && !isStruck) {
-                    html += '<div class="initiative-article-title">' + escapeHtml(typeInfo.description) + '</div>';
+                if (artTypeInfo && artTypeInfo.description && !isStruck) {
+                    html += '<div class="initiative-article-title">' + escapeHtml(artTypeInfo.description) + '</div>';
                 }
                 if (art.config && !isStruck) {
                     html += '<div style="margin:4px 0 2px;">' + renderArticleConfigSummary(art) + '</div>';
