@@ -12,7 +12,7 @@
 <style>
   #content-area {
     margin: 16px 20px;
-    padding: 20px 20px 20px 0;
+    padding: 20px;
     overflow-x: auto !important;
   }
   .dash-grid {
@@ -36,6 +36,10 @@
   }
   #world-map-card {
     grid-column: 1 / span 3;
+    grid-row: 2;
+  }
+  #nation-info-card {
+    grid-column: 4;
     grid-row: 2;
   }
   .dash-card-header {
@@ -512,7 +516,7 @@
       </div>
     </div>
 
-    <div class="dash-card" id="nation-info-card" style="grid-column: 4; grid-row: 2;">
+    <div class="dash-card" id="nation-info-card">
       <div class="dash-card-header">NATION INFO</div>
       <div class="dash-card-body" id="nation-info-body"></div>
     </div>
