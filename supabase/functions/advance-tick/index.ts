@@ -6008,75 +6008,221 @@ async function resolveExpiredVotes(supabase, nationId) {
             // Diplomatic ratification bill
             if (passed) {
                 await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-                // Activate the linked diplomatic proposal
                 const { data: proposal } = await supabase.from('diplomatic_proposals')
                     .select('*').eq('id', bill.diplomatic_proposal_id).single();
                 if (proposal) {
                     const pd = proposal.proposal_data || {};
-                    const updatedPipeline = { ...(pd.pipeline || {}), ratified_at: currentTick };
-                    pd.pipeline = updatedPipeline;
-                    await supabase.from('diplomatic_proposals')
-                        .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
-                        .eq('id', bill.diplomatic_proposal_id);
-                    // Apply relation effects from active articles
-                    const articles = pd.articles || [];
-                    const struckIndices = new Set(pd.struck_articles || []);
-                    let totalRel = 0;
-                    articles.forEach((art, i) => {
-                        if (!struckIndices.has(i)) totalRel += art.relations || 0;
-                    });
-                    if (totalRel !== 0) {
-                        const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-                        const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
-                        const { data: rel } = await supabase.from('diplomatic_relations')
-                            .select('id, relation_score, active_treaties')
-                            .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
-                        if (rel) {
-                            const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
-                            const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposal.id] : [proposal.id];
-                            await supabase.from('diplomatic_relations')
-                                .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
+                    const isBilateral = proposal.proposal_tier === 3 && proposal.proposing_bill_id && proposal.target_bill_id;
+
+                    if (isBilateral) {
+                        // ── BILATERAL RATIFICATION (Major Diplomatic Initiative) ──
+                        const isProposerBill = bill.id === proposal.proposing_bill_id;
+                        const otherBillId = isProposerBill ? proposal.target_bill_id : proposal.proposing_bill_id;
+                        let otherPassed = false;
+                        if (otherBillId) {
+                            const { data: otherBill } = await supabase.from('bills')
+                                .select('status').eq('id', otherBillId).single();
+                            otherPassed = otherBill?.status === 'passed';
                         }
-                    }
 
-                    // For trade agreements: create the trade_agreements row so economic effects apply
-                    if (proposal.proposal_type === 'trade_agreement' && pd.agreement_type) {
-                        const activeArticles = articles.filter((_, i) => !struckIndices.has(i));
-                        const addedArticles = pd.added_articles || [];
-                        if (addedArticles.length > 0) activeArticles.push(...addedArticles);
+                        const pipeline = pd.pipeline || {};
+                        if (isProposerBill) pipeline.proposer_result = 'passed';
+                        else pipeline.target_result = 'passed';
+                        pd.pipeline = pipeline;
 
-                        const durationArt = activeArticles.find(a => a.type === 'duration');
-                        const dt = durationArt?.data || {};
-                        const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
-                        const expiresAt = durationTicks ? currentTick + durationTicks : null;
+                        if (otherPassed) {
+                            // BOTH passed — activate
+                            pipeline.proposer_result = 'passed';
+                            pipeline.target_result = 'passed';
+                            pipeline.ratified_at = currentTick;
+                            const articles = pd.articles || [];
+                            const activeArticles = articles.filter(a => a.status !== 'struck');
+                            const activeEffects = { proposer: {}, target: {} };
+                            let totalRel = 0;
 
-                        const taNationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-                        const taNationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                            for (const art of activeArticles) {
+                                const effects = art.proposer_effects || art.effects || {};
+                                const targetEffects = art.target_effects || art.effects || {};
+                                totalRel += (art.effects?.relations || effects.relations || 0);
 
-                        await supabase.from('trade_agreements').insert({
-                            nation_a_id: taNationA,
-                            nation_b_id: taNationB,
-                            agreement_type: pd.agreement_type,
-                            agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
-                            articles: activeArticles,
-                            status: 'active',
-                            enacted_at_tick: currentTick,
-                            expires_at_tick: expiresAt,
-                            auto_renew: dt.auto_renew || false,
-                            withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
-                            diplomatic_proposal_id: proposal.id
+                                // Store per-article effects for per-tick processing
+                                art.active_effects = { proposer: {}, target: {} };
+
+                                for (const [key, val] of Object.entries(effects)) {
+                                    if (key === 'relations' || key === 'civil_unrest') continue;
+                                    if (typeof val === 'number' && val !== 0) {
+                                        activeEffects.proposer[key] = (activeEffects.proposer[key] || 0) + val;
+                                        art.active_effects.proposer[key] = (art.active_effects.proposer[key] || 0) + val;
+                                    }
+                                }
+                                for (const [key, val] of Object.entries(targetEffects)) {
+                                    if (key === 'relations' || key === 'civil_unrest') continue;
+                                    if (typeof val === 'number' && val !== 0) {
+                                        activeEffects.target[key] = (activeEffects.target[key] || 0) + val;
+                                        art.active_effects.target[key] = (art.active_effects.target[key] || 0) + val;
+                                    }
+                                }
+                            }
+                            pd.active_effects = activeEffects;
+
+                            const { error: activateErr } = await supabase.from('diplomatic_proposals')
+                                .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
+                                .eq('id', bill.diplomatic_proposal_id);
+                            if (activateErr) console.error('[bilateral] Failed to activate proposal:', activateErr.message);
+
+                            if (totalRel !== 0) {
+                                const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                                const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                                const { data: rel } = await supabase.from('diplomatic_relations')
+                                    .select('id, relation_score, active_treaties')
+                                    .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
+                                if (rel) {
+                                    const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
+                                    const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposal.id] : [proposal.id];
+                                    await supabase.from('diplomatic_relations')
+                                        .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
+                                }
+                            }
+
+                            // One-time civil unrest spike (batched to avoid race condition)
+                            let totalUnrestSpike = 0;
+                            for (const art of activeArticles) {
+                                totalUnrestSpike += (art.effects?.civil_unrest || 0);
+                            }
+                            if (totalUnrestSpike > 0) {
+                                for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
+                                    const { data: n } = await supabase.from('nations').select('civil_unrest').eq('id', nId).single();
+                                    if (n) {
+                                        const newVal = Math.min(100, (n.civil_unrest || 0) + totalUnrestSpike);
+                                        await supabase.from('nations').update({ civil_unrest: newVal }).eq('id', nId);
+                                    }
+                                }
+                            }
+
+                            await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: activeArticles.length });
+
+                            try {
+                                for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
+                                    await supabase.rpc('insert_news_event', {
+                                        p_nation_id: nId,
+                                        p_trigger_key: 'major_initiative_ratified',
+                                        p_tick: currentTick,
+                                        p_placeholders: {
+                                            nation_a: pd.proposer_nation_name || 'Unknown',
+                                            nation_b: pd.target_nation_name || 'Unknown',
+                                            initiative_name: pd.name || 'Diplomatic Initiative',
+                                            article_count: String(activeArticles.length)
+                                        }
+                                    });
+                                }
+                            } catch (newsErr) { console.error('News event error:', newsErr); }
+                        } else {
+                            // Only one side ratified — wait for other
+                            await supabase.from('diplomatic_proposals')
+                                .update({ proposal_data: pd })
+                                .eq('id', bill.diplomatic_proposal_id);
+                            await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+                        }
+                    } else {
+                        // ── UNILATERAL RATIFICATION (existing behavior) ──
+                        const updatedPipeline = { ...(pd.pipeline || {}), ratified_at: currentTick };
+                        pd.pipeline = updatedPipeline;
+                        await supabase.from('diplomatic_proposals')
+                            .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
+                            .eq('id', bill.diplomatic_proposal_id);
+                        const articles = pd.articles || [];
+                        const struckIndices = new Set(pd.struck_articles || []);
+                        let totalRel = 0;
+                        articles.forEach((art, i) => {
+                            if (!struckIndices.has(i)) totalRel += art.relations || 0;
                         });
-                    }
+                        if (totalRel !== 0) {
+                            const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                            const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                            const { data: rel } = await supabase.from('diplomatic_relations')
+                                .select('id, relation_score, active_treaties')
+                                .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
+                            if (rel) {
+                                const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
+                                const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposal.id] : [proposal.id];
+                                await supabase.from('diplomatic_relations')
+                                    .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
+                            }
+                        }
 
-                    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+                        if (proposal.proposal_type === 'trade_agreement' && pd.agreement_type) {
+                            const activeArticles = articles.filter((_, i) => !struckIndices.has(i));
+                            const addedArticles = pd.added_articles || [];
+                            if (addedArticles.length > 0) activeArticles.push(...addedArticles);
+                            const durationArt = activeArticles.find(a => a.type === 'duration');
+                            const dt = durationArt?.data || {};
+                            const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
+                            const expiresAt = durationTicks ? currentTick + durationTicks : null;
+                            const taNationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                            const taNationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                            await supabase.from('trade_agreements').insert({
+                                nation_a_id: taNationA, nation_b_id: taNationB,
+                                agreement_type: pd.agreement_type,
+                                agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
+                                articles: activeArticles, status: 'active',
+                                enacted_at_tick: currentTick, expires_at_tick: expiresAt,
+                                auto_renew: dt.auto_renew || false,
+                                withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
+                                diplomatic_proposal_id: proposal.id
+                            });
+                        }
+                        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+                    }
                 }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
             } else {
                 await failBill(supabase, bill);
-                // Mark proposal as ratification_failed so FM can abandon or retry
-                await supabase.from('diplomatic_proposals')
-                    .update({ status: 'ratification_failed' })
-                    .eq('id', bill.diplomatic_proposal_id);
+                const { data: failedProposal } = await supabase.from('diplomatic_proposals')
+                    .select('proposal_tier, proposing_bill_id, target_bill_id, proposal_data, proposing_nation_id, target_nation_id')
+                    .eq('id', bill.diplomatic_proposal_id).single();
+                const isBilateral = failedProposal?.proposal_tier === 3 && failedProposal?.proposing_bill_id && failedProposal?.target_bill_id;
+
+                if (isBilateral) {
+                    const fpd = failedProposal.proposal_data || {};
+                    const pipeline = fpd.pipeline || {};
+                    const isProposerBill = bill.id === failedProposal.proposing_bill_id;
+                    if (isProposerBill) pipeline.proposer_result = 'failed';
+                    else pipeline.target_result = 'failed';
+                    fpd.pipeline = pipeline;
+                    await supabase.from('diplomatic_proposals')
+                        .update({ status: 'ratification_failed', proposal_data: fpd })
+                        .eq('id', bill.diplomatic_proposal_id);
+
+                    // Cancel the other nation's ratification bill
+                    const otherBillId = isProposerBill ? failedProposal.target_bill_id : failedProposal.proposing_bill_id;
+                    if (otherBillId) {
+                        const { data: otherBill } = await supabase.from('bills')
+                            .select('status').eq('id', otherBillId).single();
+                        if (otherBill && !['passed', 'failed', 'enacted'].includes(otherBill.status)) {
+                            await supabase.from('bills')
+                                .update({ status: 'failed' })
+                                .eq('id', otherBillId);
+                        }
+                    }
+
+                    try {
+                        for (const nId of [failedProposal.proposing_nation_id, failedProposal.target_nation_id]) {
+                            await supabase.rpc('insert_news_event', {
+                                p_nation_id: nId,
+                                p_trigger_key: 'major_initiative_ratification_failed',
+                                p_tick: currentTick,
+                                p_placeholders: {
+                                    initiative_name: fpd.name || 'Diplomatic Initiative',
+                                    failed_in: isProposerBill ? (fpd.proposer_nation_name || 'Proposer') : (fpd.target_nation_name || 'Target')
+                                }
+                            });
+                        }
+                    } catch (newsErr) { console.error('News event error:', newsErr); }
+                } else {
+                    await supabase.from('diplomatic_proposals')
+                        .update({ status: 'ratification_failed' })
+                        .eq('id', bill.diplomatic_proposal_id);
+                }
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
             }
@@ -11883,11 +12029,11 @@ const ATTACK_VECTORS = [
 ];
 
 const ATTACK_OUTCOMES = [
-    { id: 'devastating', name: 'Devastating Hit', icon: '\u2726', targetMin: -7, targetMax: -5, selfMin: 3, selfMax: 3, polarization: 0.4 },
-    { id: 'effective', name: 'Effective Attack', icon: '\u25CF', targetMin: -4, targetMax: -3, selfMin: 1, selfMax: 2, polarization: 0.4 },
-    { id: 'glancing', name: 'Glancing Blow', icon: '\u25E6', targetMin: -1, targetMax: -1, selfMin: 0, selfMax: 0, polarization: 0.4 },
-    { id: 'backfire', name: 'Backfire', icon: '\u26A0', targetMin: 1, targetMax: 2, selfMin: -4, selfMax: -2, polarization: 0.4 },
-    { id: 'mutual', name: 'Mutual Destruction', icon: '\u2715', targetMin: -3, targetMax: -3, selfMin: -2, selfMax: -2, polarization: 0.4 },
+    { id: 'devastating', name: 'Devastating Hit', icon: '\u2726', targetMin: -7, targetMax: -5, selfMin: 3, selfMax: 3, polarization: 0.25 },
+    { id: 'effective', name: 'Effective Attack', icon: '\u25CF', targetMin: -4, targetMax: -3, selfMin: 1, selfMax: 2, polarization: 0.25 },
+    { id: 'glancing', name: 'Glancing Blow', icon: '\u25E6', targetMin: -1, targetMax: -1, selfMin: 0, selfMax: 0, polarization: 0.25 },
+    { id: 'backfire', name: 'Backfire', icon: '\u26A0', targetMin: 1, targetMax: 2, selfMin: -4, selfMax: -2, polarization: 0.25 },
+    { id: 'mutual', name: 'Mutual Destruction', icon: '\u2715', targetMin: -3, targetMax: -3, selfMin: -2, selfMax: -2, polarization: 0.25 },
 ];
 
 const ATTACK_OUTCOME_COLORS = {
@@ -14827,6 +14973,308 @@ async function autoResolveStaleShakeups(supabase, nationId, currentTick) {
 }
 
 
+// ==================== MAJOR DIPLOMATIC INITIATIVE — PER-TICK EFFECTS ====================
+
+/**
+ * Process per-tick stat effects from active Major Diplomatic Initiatives.
+ * Applies ongoing stat deltas and deducts FM budget costs each tick.
+ */
+async function processDiplomaticInitiativeEffects(supabase: any, nation: any, currentTick: number) {
+    const results: string[] = [];
+
+    // Query active tier-3 proposals involving this nation
+    const { data: proposals, error } = await supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('status', 'active')
+        .eq('proposal_tier', 3)
+        .or(`proposing_nation_id.eq.${nation.id},target_nation_id.eq.${nation.id}`);
+
+    if (error || !proposals || proposals.length === 0) return results;
+
+    // Determine which stat updates to apply — per-article to handle transition ramps correctly
+    const statUpdates: Record<string, number> = {};
+    let totalOngoingCost = 0;
+
+    for (const proposal of proposals) {
+        const pd = proposal.proposal_data || {};
+        const activeEffects = pd.active_effects;
+        if (!activeEffects) continue;
+
+        const isProposer = proposal.proposing_nation_id === nation.id;
+        const activatedAt = proposal.activated_at_tick || 0;
+        const ticksSinceActivation = currentTick - activatedAt;
+
+        // Process per-article effects so transition ramp only applies to open_borders
+        const articles = pd.articles || [];
+        for (const art of articles) {
+            if (art.status === 'struck' || art.suspended) continue;
+
+            // Get article-level effects (stored per-article during activation)
+            const artEffects = isProposer
+                ? (art.active_effects?.proposer || {})
+                : (art.active_effects?.target || {});
+
+            // Compute transition multiplier only for open_borders articles
+            let transitionMult = 1.0;
+            if (art.type === 'open_borders' && art.config?.transition) {
+                const trans = art.config.transition;
+                if (trans === '6_tick' && ticksSinceActivation < 6) {
+                    transitionMult = Math.min(1.0, (ticksSinceActivation + 1) / 6);
+                } else if (trans === '12_tick' && ticksSinceActivation < 12) {
+                    transitionMult = Math.min(1.0, (ticksSinceActivation + 1) / 12);
+                }
+            }
+
+            for (const [statKey, value] of Object.entries(artEffects)) {
+                if (typeof value !== 'number' || value === 0) continue;
+                if (['relations', 'civil_unrest'].includes(statKey)) continue;
+
+                const scaledValue = (value as number) * transitionMult;
+                const perTickValue = scaledValue / 12;
+                statUpdates[statKey] = (statUpdates[statKey] || 0) + perTickValue;
+            }
+        }
+
+        // Fallback: if no per-article effects, use aggregated active_effects (backward compat)
+        if (articles.every(a => !a.active_effects)) {
+            const effects = isProposer ? activeEffects.proposer : activeEffects.target;
+            if (effects) {
+                for (const [statKey, value] of Object.entries(effects)) {
+                    if (typeof value !== 'number' || value === 0) continue;
+                    if (['relations', 'civil_unrest'].includes(statKey)) continue;
+                    const perTickValue = (value as number) / 12;
+                    statUpdates[statKey] = (statUpdates[statKey] || 0) + perTickValue;
+                }
+            }
+        }
+
+        // Accumulate ongoing FM budget cost
+        if (pd.costs?.ongoing) {
+            totalOngoingCost += (pd.costs.ongoing || 0) / 12;
+        }
+    }
+
+    // Apply stat updates to nation
+    if (Object.keys(statUpdates).length > 0) {
+        const selectCols = [...Object.keys(statUpdates), 'debt'].join(',');
+        const { data: currentStats, error: statsErr } = await supabase.from('nations')
+            .select(selectCols).eq('id', nation.id).single();
+
+        if (statsErr) {
+            console.error(`[processDiplomaticInitiativeEffects] Failed to read nation stats for ${nation.name}:`, statsErr.message);
+        } else if (currentStats) {
+            const nationUpdate: Record<string, number> = {};
+            for (const [key, delta] of Object.entries(statUpdates)) {
+                const current = Number(currentStats[key] ?? 50);
+                const newVal = Math.max(0, Math.min(100, current + delta));
+                if (Math.abs(newVal - current) > 0.001) {
+                    nationUpdate[key] = newVal;
+                }
+            }
+
+            // Include debt update in same write to avoid separate query
+            if (totalOngoingCost > 0) {
+                const currentDebt = Number(currentStats.debt || 0);
+                nationUpdate.debt = currentDebt + totalOngoingCost;
+            }
+
+            if (Object.keys(nationUpdate).length > 0) {
+                const { error: updateErr } = await supabase.from('nations').update(nationUpdate).eq('id', nation.id);
+                if (updateErr) {
+                    console.error(`[processDiplomaticInitiativeEffects] Failed to update nation ${nation.name}:`, updateErr.message);
+                } else {
+                    const statStr = Object.entries(nationUpdate)
+                        .filter(([k]) => k !== 'debt')
+                        .map(([k,v]) => `${k}=${(v as number).toFixed(2)}`).join(', ');
+                    if (statStr) results.push(`Major initiative effects applied: ${statStr}`);
+                    if (totalOngoingCost > 0) results.push(`Major initiative ongoing cost: $${(totalOngoingCost / 1e6).toFixed(2)}M`);
+                }
+            }
+        }
+    } else if (totalOngoingCost > 0) {
+        // Only ongoing cost, no stat effects
+        const { data: budgetNation, error: budgetErr } = await supabase.from('nations').select('debt').eq('id', nation.id).single();
+        if (budgetErr) {
+            console.error(`[processDiplomaticInitiativeEffects] Failed to read debt for ${nation.name}:`, budgetErr.message);
+        } else if (budgetNation) {
+            const newDebt = (budgetNation.debt || 0) + totalOngoingCost;
+            const { error: debtErr } = await supabase.from('nations').update({ debt: newDebt }).eq('id', nation.id);
+            if (debtErr) console.error(`[processDiplomaticInitiativeEffects] Failed to update debt for ${nation.name}:`, debtErr.message);
+            else results.push(`Major initiative ongoing cost: $${(totalOngoingCost / 1e6).toFixed(2)}M`);
+        }
+    }
+
+    return results;
+}
+
+
+// ==================== ENVIRONMENTAL ACCORD COMPLIANCE MONITORING ====================
+
+/**
+ * Check compliance for Environmental Accord articles in active major initiatives.
+ * Runs at each compliance review interval and applies penalties for violations.
+ */
+async function checkEnvironmentalCompliance(supabase: any, nation: any, currentTick: number) {
+    const results: string[] = [];
+
+    const { data: proposals, error: proposalErr } = await supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('status', 'active')
+        .eq('proposal_tier', 3)
+        .or(`proposing_nation_id.eq.${nation.id},target_nation_id.eq.${nation.id}`);
+
+    if (proposalErr || !proposals || proposals.length === 0) return results;
+
+    // Fetch nation stats once (avoid repeated queries per article)
+    const { data: nationStats, error: statsErr } = await supabase.from('nations')
+        .select('pollution, carbon_emissions, renewable_energy_percentage, international_reputation, debt')
+        .eq('id', nation.id).single();
+    if (statsErr || !nationStats) return results;
+
+    for (const proposal of proposals) {
+        const pd = proposal.proposal_data || {};
+        const articles = pd.articles || [];
+        const activatedAt = proposal.activated_at_tick || 0;
+        const ticksSinceActivation = currentTick - activatedAt;
+        let terminated = false;
+        let pdModified = false;
+
+        for (const art of articles) {
+            if (terminated) break;
+            if (art.type !== 'environmental_accord' || art.status === 'struck') continue;
+            if (!art.compliance) continue;
+
+            const compliance = art.compliance;
+            const reviewInterval = compliance.review_interval_ticks || 6;
+
+            // Only check at review intervals
+            if (ticksSinceActivation === 0 || ticksSinceActivation % reviewInterval !== 0) continue;
+
+            const violations: string[] = [];
+
+            // Check pollution cap (use ?? to preserve legitimate 0 baselines)
+            if (compliance.pollution_cap_offset && compliance.pollution_cap_offset !== 0) {
+                const baselinePollution = pd.baseline_stats?.[nation.id]?.pollution ?? 50;
+                const pollutionCap = baselinePollution + compliance.pollution_cap_offset;
+                if ((nationStats.pollution ?? 0) > pollutionCap) {
+                    violations.push(`Pollution ${(nationStats.pollution ?? 0).toFixed(1)} exceeds cap ${pollutionCap.toFixed(1)}`);
+                }
+            }
+
+            // Check carbon emission target trajectory
+            if (compliance.emission_reduction_pct > 0) {
+                const baselineCarbon = pd.baseline_stats?.[nation.id]?.carbon_emissions ?? 50;
+                const targetReduction = compliance.emission_reduction_pct / 100;
+                const windowTicks = compliance.compliance_window_ticks || 24;
+                const progress = Math.min(1.0, ticksSinceActivation / windowTicks);
+                const expectedCarbon = baselineCarbon * (1 - targetReduction * progress);
+                const margin = expectedCarbon * 0.05;
+                if ((nationStats.carbon_emissions ?? 0) > expectedCarbon + margin) {
+                    violations.push(`Carbon emissions ${(nationStats.carbon_emissions ?? 0).toFixed(1)} exceeds trajectory ${expectedCarbon.toFixed(1)}`);
+                }
+            }
+
+            // Check renewable energy target
+            if (compliance.renewable_target_pct > 0) {
+                const target = compliance.renewable_target_pct;
+                const margin = target * 0.05;
+                if ((nationStats.renewable_energy_percentage ?? 0) < target - margin) {
+                    violations.push(`Renewable energy ${(nationStats.renewable_energy_percentage ?? 0).toFixed(1)}% below target ${target}%`);
+                }
+            }
+
+            // Process violations
+            const complianceState = pd.compliance_state || {};
+            const nationState = complianceState[nation.id] || { failures: 0, consecutive_failures: 0 };
+
+            if (violations.length > 0) {
+                nationState.failures += 1;
+                nationState.consecutive_failures += 1;
+                nationState.last_violation_tick = currentTick;
+                nationState.last_violations = violations;
+
+                const penaltyType = compliance.penalty_type || 'warning';
+                let penaltyApplied = '';
+
+                if (penaltyType === 'warning' && nationState.consecutive_failures >= 2) {
+                    const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                    const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                    const { data: rel } = await supabase.from('diplomatic_relations')
+                        .select('id, relation_score').eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
+                    if (rel) {
+                        const { error: relErr } = await supabase.from('diplomatic_relations')
+                            .update({ relation_score: Math.max(-100, rel.relation_score - 2) }).eq('id', rel.id);
+                        if (relErr) console.error(`[checkEnvironmentalCompliance] Relations update failed:`, relErr.message);
+                    }
+                    penaltyApplied = 'Relations -2';
+                } else if (penaltyType === 'financial') {
+                    const newDebt = (nationStats.debt || 0) + 20000000;
+                    const { error: debtErr } = await supabase.from('nations').update({ debt: newDebt }).eq('id', nation.id);
+                    if (debtErr) console.error(`[checkEnvironmentalCompliance] Debt update failed:`, debtErr.message);
+                    else nationStats.debt = newDebt; // Keep local copy in sync
+                    penaltyApplied = '$20M fine';
+                } else if (penaltyType === 'suspension') {
+                    art.suspended = true;
+                    penaltyApplied = 'Article effects suspended';
+                } else if (penaltyType === 'termination' && nationState.consecutive_failures >= 3) {
+                    const { error: termErr } = await supabase.from('diplomatic_proposals')
+                        .update({ status: 'terminated', terminated_at_tick: currentTick })
+                        .eq('id', proposal.id);
+                    if (termErr) console.error(`[checkEnvironmentalCompliance] Termination failed:`, termErr.message);
+                    penaltyApplied = 'Treaty terminated (3 consecutive violations)';
+                    terminated = true;
+                }
+
+                // International reputation hit (use local copy)
+                const newRep = Math.max(0, (nationStats.international_reputation ?? 50) - 1);
+                const { error: repErr } = await supabase.from('nations').update({ international_reputation: newRep }).eq('id', nation.id);
+                if (repErr) console.error(`[checkEnvironmentalCompliance] Reputation update failed:`, repErr.message);
+                else nationStats.international_reputation = newRep;
+
+                // Fire compliance failure news event
+                try {
+                    await supabase.rpc('insert_news_event', {
+                        p_nation_id: nation.id,
+                        p_trigger_key: 'environmental_compliance_failure',
+                        p_tick: currentTick,
+                        p_placeholders: {
+                            nation: nation.name,
+                            initiative_name: pd.name || 'Environmental Accord',
+                            violations: violations.join('; '),
+                            penalty: penaltyApplied || 'Warning issued'
+                        }
+                    });
+                } catch (newsErr) { console.error('[checkEnvironmentalCompliance] News event error:', newsErr); }
+
+                results.push(`Environmental compliance failure: ${violations.join(', ')}. Penalty: ${penaltyApplied || 'warning'}`);
+            } else {
+                nationState.consecutive_failures = 0;
+                if (art.suspended) {
+                    art.suspended = false;
+                    results.push('Environmental compliance restored — article effects resumed');
+                }
+            }
+
+            complianceState[nation.id] = nationState;
+            pd.compliance_state = complianceState;
+            pdModified = true;
+        }
+
+        // Save updated compliance state and article status
+        if (pdModified) {
+            const { error: saveErr } = await supabase.from('diplomatic_proposals')
+                .update({ proposal_data: pd })
+                .eq('id', proposal.id);
+            if (saveErr) console.error(`[checkEnvironmentalCompliance] Failed to save compliance state:`, saveErr.message);
+        }
+    }
+
+    return results;
+}
+
+
 // ==================== STAT EFFECTS PROCESSING ====================
 
 async function processStatEffects(supabase, nation, currentTick) {
@@ -15543,6 +15991,70 @@ async function recordStatHistory(supabase, nation, currentTick) {
 }
 
 
+// ==================== INCIDENT SUPPRESSION FROM ACTIVE TREATIES ====================
+
+const TREATY_SUPPRESSION: Record<string, Record<string, number>> = {
+    mutual_extradition: {
+        'crime': 0.7, 'criminal': 0.7, 'theft': 0.75, 'fraud': 0.75,
+        'terror': 0.6, 'smuggling': 0.7, 'corruption': 0.8
+    },
+    open_borders: {
+        'refugee': 0.5, 'border_crisis': 0.4, 'immigration_crisis': 0.6,
+        'border_tension': 1.5, 'cultural_tension': 1.3
+    }
+};
+
+/**
+ * Pre-fetch active treaty article types for a nation. Call once per nation, then pass
+ * the result to getEventMultiplierFromTreaties for each event (pure, no DB calls).
+ */
+async function fetchActiveTreatyArticles(supabase: any, nationId: string): Promise<string[]> {
+    const { data: proposals } = await supabase
+        .from('diplomatic_proposals')
+        .select('proposal_data')
+        .eq('status', 'active')
+        .eq('proposal_tier', 3)
+        .or(`proposing_nation_id.eq.${nationId},target_nation_id.eq.${nationId}`);
+
+    if (!proposals || proposals.length === 0) return [];
+
+    const articleTypes: string[] = [];
+    for (const proposal of proposals) {
+        const articles = (proposal.proposal_data || {}).articles || [];
+        for (const art of articles) {
+            if (art.status === 'struck' || art.suspended) continue;
+            if (TREATY_SUPPRESSION[art.type]) {
+                articleTypes.push(art.type);
+            }
+        }
+    }
+    return articleTypes;
+}
+
+/**
+ * Pure function: compute event probability multiplier from pre-fetched treaty article types.
+ * Applies a floor of 0.1 and cap of 3.0 to prevent extreme stacking.
+ */
+function getEventMultiplierFromTreaties(activeArticleTypes: string[], eventName: string): number {
+    if (activeArticleTypes.length === 0) return 1.0;
+
+    let multiplier = 1.0;
+    const eventNameLower = (eventName || '').toLowerCase();
+
+    for (const artType of activeArticleTypes) {
+        const keywords = TREATY_SUPPRESSION[artType];
+        if (!keywords) continue;
+        for (const [keyword, mult] of Object.entries(keywords)) {
+            if (eventNameLower.includes(keyword)) {
+                multiplier *= mult;
+            }
+        }
+    }
+
+    return Math.max(0.1, Math.min(3.0, multiplier));
+}
+
+
 // ==================== EVENT TICK PROCESSOR ====================
 
 async function processEvents(supabase, nation, currentTick) {
@@ -15566,6 +16078,9 @@ async function processEvents(supabase, nation, currentTick) {
             lastFiredMap[entry.event_id] = entry.fired_at_tick;
         }
     }
+
+    // Pre-fetch active treaty article types once per nation (avoids N+1 query per event)
+    const activeTreatyArticles = await fetchActiveTreatyArticles(supabase, nation.id);
 
     const firedEvents = [];
 
@@ -15598,8 +16113,11 @@ async function processEvents(supabase, nation, currentTick) {
         }
         if (!allTriggersPass) continue;
 
+        // Apply treaty-based incident suppression/amplification (pure function, no DB call)
+        const treatyMultiplier = getEventMultiplierFromTreaties(activeTreatyArticles, event.name);
+        const adjustedProbability = event.probability * treatyMultiplier;
         const roll = Math.random() * 100;
-        if (roll >= event.probability) continue;
+        if (roll >= adjustedProbability) continue;
 
         const descriptions = event.event_descriptions || [];
         let description = descriptions.length > 0
@@ -20304,6 +20822,20 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         if (ministryResults.length > 0) {
             summary.ministryActions = summary.ministryActions || [];
             summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
+        }
+
+        // Major Diplomatic Initiative per-tick effects
+        const diplomacyResults = await processDiplomaticInitiativeEffects(supabase, nation, newTick);
+        if (diplomacyResults.length > 0) {
+            summary.diplomacyEffects = summary.diplomacyEffects || [];
+            summary.diplomacyEffects.push({ nation: nation.name, effects: diplomacyResults });
+        }
+
+        // Environmental compliance monitoring for active Major Initiatives
+        const complianceResults = await checkEnvironmentalCompliance(supabase, nation, newTick);
+        if (complianceResults.length > 0) {
+            summary.complianceChecks = summary.complianceChecks || [];
+            summary.complianceChecks.push({ nation: nation.name, results: complianceResults });
         }
 
         // Apply GDP growth rate

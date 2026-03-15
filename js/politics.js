@@ -3272,7 +3272,7 @@ function renderOutreachConfig(blocs, factionIdeo) {
 // ── ATTACK CONFIG ──
 
 function renderAttackConfig(otherParties) {
-    let html = `<div class="ca-subtitle">Select target party</div>`;
+    let html = `<div style="color:#ef4444;font-size:0.85em;margin-bottom:4px">Using this will increase Polarization by 0.25.</div><div class="ca-subtitle">Select target party</div>`;
     for (const r of otherParties) {
         const isSel = _caRival === r.id;
         html += `<div class="ca-rival-card${isSel ? ' selected' : ''}" data-rival-id="${r.id}" style="border-left-color:${isSel ? '#ef4444' : r.party_color || '#888'};${isSel ? 'border-color:rgba(239,68,68,0.2);background:rgba(239,68,68,0.03)' : ''}">

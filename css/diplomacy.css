@@ -1376,6 +1376,82 @@
   background: var(--teal-faint);
   border: 1px solid var(--teal-border);
 }
+
+/* Compliance status for Environmental Accords */
+.compliance-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 14px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  border-top: 1px solid var(--border-hair);
+}
+.compliance-ok {
+  color: var(--green, #4a7);
+  background: rgba(68,170,119,0.06);
+}
+.compliance-warn {
+  color: var(--amber);
+  background: var(--amber-faint);
+}
+.compliance-critical {
+  color: var(--red);
+  background: var(--red-faint);
+}
+.compliance-icon {
+  font-size: 11px;
+}
+.compliance-label {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.compliance-total {
+  color: var(--text-dim);
+  font-size: 8px;
+}
+.compliance-details {
+  width: 100%;
+  margin-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.compliance-violation {
+  font-size: 8px;
+  color: var(--text-dim);
+  background: rgba(92,90,80,0.08);
+  padding: 1px 6px;
+  border-radius: 2px;
+}
+
+/* Sovereignty constraints notice */
+.sovereignty-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 14px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--amber);
+  background: var(--amber-faint);
+  border-top: 1px solid var(--border-hair);
+}
+.sovereignty-icon {
+  font-size: 10px;
+}
+.sovereignty-sector {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  background: rgba(92,90,80,0.1);
+  border-radius: 2px;
+}
+
 .trade-type-short {
   font-family: var(--font-mono);
   font-size: 8px;

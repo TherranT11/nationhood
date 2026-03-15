@@ -1334,75 +1334,247 @@ export async function resolveExpiredVotes(supabase, nationId) {
             // Diplomatic ratification bill
             if (passed) {
                 await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-                // Activate the linked diplomatic proposal
+                // Load the linked diplomatic proposal
                 const { data: proposal } = await supabase.from('diplomatic_proposals')
                     .select('*').eq('id', bill.diplomatic_proposal_id).single();
                 if (proposal) {
                     const pd = proposal.proposal_data || {};
-                    const updatedPipeline = { ...(pd.pipeline || {}), ratified_at: currentTick };
-                    pd.pipeline = updatedPipeline;
-                    await supabase.from('diplomatic_proposals')
-                        .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
-                        .eq('id', bill.diplomatic_proposal_id);
-                    // Apply relation effects from active articles
-                    const articles = pd.articles || [];
-                    const struckIndices = new Set(pd.struck_articles || []);
-                    let totalRel = 0;
-                    articles.forEach((art, i) => {
-                        if (!struckIndices.has(i)) totalRel += art.relations || 0;
-                    });
-                    if (totalRel !== 0) {
-                        const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-                        const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
-                        const { data: rel } = await supabase.from('diplomatic_relations')
-                            .select('id, relation_score, active_treaties')
-                            .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
-                        if (rel) {
-                            const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
-                            const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposal.id] : [proposal.id];
-                            await supabase.from('diplomatic_relations')
-                                .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
+                    const isBilateral = proposal.proposal_tier === 3 && proposal.proposing_bill_id && proposal.target_bill_id;
+
+                    if (isBilateral) {
+                        // ── BILATERAL RATIFICATION (Major Diplomatic Initiative) ──
+                        // Check if the OTHER nation's bill has also passed
+                        const isProposerBill = bill.id === proposal.proposing_bill_id;
+                        const otherBillId = isProposerBill ? proposal.target_bill_id : proposal.proposing_bill_id;
+
+                        let otherPassed = false;
+                        if (otherBillId) {
+                            const { data: otherBill } = await supabase.from('bills')
+                                .select('status').eq('id', otherBillId).single();
+                            otherPassed = otherBill?.status === 'passed';
                         }
-                    }
 
-                    // For trade agreements: create the trade_agreements row so economic effects apply
-                    if (proposal.proposal_type === 'trade_agreement' && pd.agreement_type) {
-                        const activeArticles = articles.filter((_, i) => !struckIndices.has(i));
-                        const addedArticles = pd.added_articles || [];
-                        if (addedArticles.length > 0) activeArticles.push(...addedArticles);
+                        // Update pipeline with this side's result
+                        const pipeline = pd.pipeline || {};
+                        if (isProposerBill) pipeline.proposer_result = 'passed';
+                        else pipeline.target_result = 'passed';
+                        pd.pipeline = pipeline;
 
-                        const durationArt = activeArticles.find(a => a.type === 'duration');
-                        const dt = durationArt?.data || {};
-                        const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
-                        const expiresAt = durationTicks ? currentTick + durationTicks : null;
+                        if (otherPassed) {
+                            // BOTH parliaments have ratified — activate the initiative
+                            pipeline.proposer_result = 'passed';
+                            pipeline.target_result = 'passed';
+                            pipeline.ratified_at = currentTick;
+                            pd.pipeline = pipeline;
 
-                        const taNationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-                        const taNationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                            // Compute per-tick effects from active articles and store them
+                            const articles = pd.articles || [];
+                            const activeArticles = articles.filter(a => a.status !== 'struck');
+                            const activeEffects = { proposer: {}, target: {} };
+                            let totalRel = 0;
 
-                        await supabase.from('trade_agreements').insert({
-                            nation_a_id: taNationA,
-                            nation_b_id: taNationB,
-                            agreement_type: pd.agreement_type,
-                            agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
-                            articles: activeArticles,
-                            status: 'active',
-                            enacted_at_tick: currentTick,
-                            expires_at_tick: expiresAt,
-                            auto_renew: dt.auto_renew || false,
-                            withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
-                            diplomatic_proposal_id: proposal.id
+                            for (const art of activeArticles) {
+                                const effects = art.proposer_effects || art.effects || {};
+                                const targetEffects = art.target_effects || art.effects || {};
+                                totalRel += (art.effects?.relations || effects.relations || 0);
+
+                                // Store per-article effects for per-tick processing (enables per-article transition ramp)
+                                art.active_effects = { proposer: {}, target: {} };
+
+                                for (const [key, val] of Object.entries(effects)) {
+                                    if (key === 'relations' || key === 'civil_unrest') continue;
+                                    if (typeof val === 'number' && val !== 0) {
+                                        activeEffects.proposer[key] = (activeEffects.proposer[key] || 0) + val;
+                                        art.active_effects.proposer[key] = (art.active_effects.proposer[key] || 0) + val;
+                                    }
+                                }
+                                for (const [key, val] of Object.entries(targetEffects)) {
+                                    if (key === 'relations' || key === 'civil_unrest') continue;
+                                    if (typeof val === 'number' && val !== 0) {
+                                        activeEffects.target[key] = (activeEffects.target[key] || 0) + val;
+                                        art.active_effects.target[key] = (art.active_effects.target[key] || 0) + val;
+                                    }
+                                }
+                            }
+                            pd.active_effects = activeEffects;
+
+                            const { error: activateErr } = await supabase.from('diplomatic_proposals')
+                                .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
+                                .eq('id', bill.diplomatic_proposal_id);
+                            if (activateErr) console.error('[bilateral] Failed to activate proposal:', activateErr.message);
+
+                            // Apply one-time relation score bump
+                            if (totalRel !== 0) {
+                                const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                                const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                                const { data: rel } = await supabase.from('diplomatic_relations')
+                                    .select('id, relation_score, active_treaties')
+                                    .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
+                                if (rel) {
+                                    const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
+                                    const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposal.id] : [proposal.id];
+                                    await supabase.from('diplomatic_relations')
+                                        .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
+                                }
+                            }
+
+                            // Apply one-time civil unrest spike to both nations (batched to avoid race)
+                            let totalUnrestSpike = 0;
+                            for (const art of activeArticles) {
+                                totalUnrestSpike += (art.effects?.civil_unrest || 0);
+                            }
+                            if (totalUnrestSpike > 0) {
+                                for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
+                                    const { data: n } = await supabase.from('nations').select('civil_unrest').eq('id', nId).single();
+                                    if (n) {
+                                        const newVal = Math.min(100, (n.civil_unrest || 0) + totalUnrestSpike);
+                                        await supabase.from('nations').update({ civil_unrest: newVal }).eq('id', nId);
+                                    }
+                                }
+                            }
+
+                            await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: activeArticles.length });
+
+                            // Fire activation news event
+                            try {
+                                for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
+                                    await supabase.rpc('insert_news_event', {
+                                        p_nation_id: nId,
+                                        p_trigger_key: 'major_initiative_ratified',
+                                        p_tick: currentTick,
+                                        p_placeholders: {
+                                            nation_a: pd.proposer_nation_name || 'Unknown',
+                                            nation_b: pd.target_nation_name || 'Unknown',
+                                            initiative_name: pd.name || 'Diplomatic Initiative',
+                                            article_count: String(activeArticles.length)
+                                        }
+                                    });
+                                }
+                            } catch (newsErr) { console.error('News event error:', newsErr); }
+                        } else {
+                            // Only one side ratified so far — wait for the other
+                            await supabase.from('diplomatic_proposals')
+                                .update({ proposal_data: pd })
+                                .eq('id', bill.diplomatic_proposal_id);
+                            await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+                        }
+                    } else {
+                        // ── UNILATERAL RATIFICATION (existing behavior) ──
+                        const updatedPipeline = { ...(pd.pipeline || {}), ratified_at: currentTick };
+                        pd.pipeline = updatedPipeline;
+                        await supabase.from('diplomatic_proposals')
+                            .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
+                            .eq('id', bill.diplomatic_proposal_id);
+                        // Apply relation effects from active articles
+                        const articles = pd.articles || [];
+                        const struckIndices = new Set(pd.struck_articles || []);
+                        let totalRel = 0;
+                        articles.forEach((art, i) => {
+                            if (!struckIndices.has(i)) totalRel += art.relations || 0;
                         });
-                    }
+                        if (totalRel !== 0) {
+                            const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                            const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                            const { data: rel } = await supabase.from('diplomatic_relations')
+                                .select('id, relation_score, active_treaties')
+                                .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
+                            if (rel) {
+                                const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
+                                const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposal.id] : [proposal.id];
+                                await supabase.from('diplomatic_relations')
+                                    .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
+                            }
+                        }
 
-                    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+                        // For trade agreements: create the trade_agreements row so economic effects apply
+                        if (proposal.proposal_type === 'trade_agreement' && pd.agreement_type) {
+                            const activeArticles = articles.filter((_, i) => !struckIndices.has(i));
+                            const addedArticles = pd.added_articles || [];
+                            if (addedArticles.length > 0) activeArticles.push(...addedArticles);
+
+                            const durationArt = activeArticles.find(a => a.type === 'duration');
+                            const dt = durationArt?.data || {};
+                            const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
+                            const expiresAt = durationTicks ? currentTick + durationTicks : null;
+
+                            const taNationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                            const taNationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+
+                            await supabase.from('trade_agreements').insert({
+                                nation_a_id: taNationA,
+                                nation_b_id: taNationB,
+                                agreement_type: pd.agreement_type,
+                                agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
+                                articles: activeArticles,
+                                status: 'active',
+                                enacted_at_tick: currentTick,
+                                expires_at_tick: expiresAt,
+                                auto_renew: dt.auto_renew || false,
+                                withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
+                                diplomatic_proposal_id: proposal.id
+                            });
+                        }
+
+                        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+                    }
                 }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
             } else {
                 await failBill(supabase, bill);
-                // Mark proposal as ratification_failed so FM can abandon or retry
-                await supabase.from('diplomatic_proposals')
-                    .update({ status: 'ratification_failed' })
-                    .eq('id', bill.diplomatic_proposal_id);
+                // Load proposal to check if bilateral
+                const { data: failedProposal } = await supabase.from('diplomatic_proposals')
+                    .select('proposal_tier, proposing_bill_id, target_bill_id, proposal_data, proposing_nation_id, target_nation_id')
+                    .eq('id', bill.diplomatic_proposal_id).single();
+                const isBilateral = failedProposal?.proposal_tier === 3 && failedProposal?.proposing_bill_id && failedProposal?.target_bill_id;
+
+                if (isBilateral) {
+                    // Update pipeline with failure
+                    const fpd = failedProposal.proposal_data || {};
+                    const pipeline = fpd.pipeline || {};
+                    const isProposerBill = bill.id === failedProposal.proposing_bill_id;
+                    if (isProposerBill) pipeline.proposer_result = 'failed';
+                    else pipeline.target_result = 'failed';
+                    fpd.pipeline = pipeline;
+
+                    await supabase.from('diplomatic_proposals')
+                        .update({ status: 'ratification_failed', proposal_data: fpd })
+                        .eq('id', bill.diplomatic_proposal_id);
+
+                    // Cancel the other nation's ratification bill (no point voting if one side failed)
+                    const otherBillId = isProposerBill ? failedProposal.target_bill_id : failedProposal.proposing_bill_id;
+                    if (otherBillId) {
+                        const { data: otherBill } = await supabase.from('bills')
+                            .select('status, preamble').eq('id', otherBillId).single();
+                        if (otherBill && !['passed', 'failed', 'enacted'].includes(otherBill.status)) {
+                            const cancelNote = '\n\nAutomatically cancelled — ratification failed in the other nation\'s parliament.';
+                            await supabase.from('bills')
+                                .update({ status: 'failed', preamble: (otherBill.preamble || '') + cancelNote })
+                                .eq('id', otherBillId);
+                        }
+                    }
+
+                    // Fire failure news event in both nations
+                    try {
+                        if (failedProposal.proposing_nation_id && failedProposal.target_nation_id) {
+                            for (const nId of [failedProposal.proposing_nation_id, failedProposal.target_nation_id]) {
+                                await supabase.rpc('insert_news_event', {
+                                    p_nation_id: nId,
+                                    p_trigger_key: 'major_initiative_ratification_failed',
+                                    p_tick: currentTick,
+                                    p_placeholders: {
+                                        initiative_name: fpd.name || 'Diplomatic Initiative',
+                                        failed_in: isProposerBill ? (fpd.proposer_nation_name || 'Proposer') : (fpd.target_nation_name || 'Target')
+                                    }
+                                });
+                            }
+                        }
+                    } catch (newsErr) { console.error('News event error:', newsErr); }
+                } else {
+                    // Mark proposal as ratification_failed so FM can abandon or retry
+                    await supabase.from('diplomatic_proposals')
+                        .update({ status: 'ratification_failed' })
+                        .eq('id', bill.diplomatic_proposal_id);
+                }
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
             }
