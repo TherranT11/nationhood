@@ -3167,6 +3167,10 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
     // Ambassador actions first (only if ambassador to this specific nation)
     const isAmbToTarget = roles.ambassadorTo.some(a => a.target_nation_id === targetNation.id);
     if (isAmbToTarget) {
+        const hasTargetAmb = theirAmbassador && theirAmbassador.status === 'active';
+        const initiativeDisabled = !hasTargetAmb ? 'disabled style="opacity:0.6;"' : '';
+        const initiativeHint = !hasTargetAmb ? '<p class="action-hint">Target nation has no ambassador to negotiate with.</p>' : '';
+
         // Retirement warning for the player's own ambassador
         let ambWarningHTML = '';
         const myAmb = roles.ambassadorTo.find(a => a.target_nation_id === targetNation.id);
@@ -3186,7 +3190,8 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
                 </div>
                 <p class="action-desc">As Ambassador to ${escapeHtml(targetNation.name)}, you can negotiate directly.</p>
                 ${ambWarningHTML}
-                <button class="action-btn" onclick="showDiploTab('initiative')">New Initiative</button>
+                ${initiativeHint}
+                <button class="action-btn" ${initiativeDisabled} onclick="showDiploTab('initiative')">New Initiative</button>
                 <button class="action-btn" style="margin-top:8px;" disabled>Formal Protest (Coming Soon)</button>
                 <button class="action-btn" style="margin-top:8px;" disabled>Gather Intel (Coming Soon)</button>
                 <button class="action-btn" style="margin-top:8px;background:#5a1a1a;border-color:#8b3030;" onclick="resignAmbassador('${myAmb?.id}', '${escapeHtml(targetNation.name)}')">Resign as Ambassador</button>
@@ -5104,6 +5109,7 @@ async function viewActiveAgreement(agreementId) {
     const articles = pd.articles || [];
     const struckIndices = new Set(pd.struck_articles || []);
     const isV2 = pd.version === 2;
+    const isTradeAgreement = ag.proposal_type === 'trade_agreement' || !!pd.agreement_type;
     const classification = pd.classification || '';
     const proposerName = pd.proposer_nation_name || 'Unknown';
     const targetName = pd.target_nation_name || 'Unknown';
@@ -5112,44 +5118,60 @@ async function viewActiveAgreement(agreementId) {
     const expiresTick = signedTick != null && durationYears > 0
         ? signedTick + (durationYears * GAME_CONFIG.TICKS_PER_YEAR) : null;
 
+    const typeInfo = isTradeAgreement ? TRADE_AGREEMENT_TYPES[pd.agreement_type] : null;
+    const iconHtml = typeInfo ? (TRADE_TYPE_ICONS[typeInfo.icon] || '') : '';
+    const durationLabel = durationYears === 'Permanent' ? 'Permanent' : durationYears ? durationYears + ' year' + (durationYears !== 1 ? 's' : '') : '—';
+
     let html = `
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
-            <button class="wizard-back-btn" onclick="renderDraftBox()" style="padding:5px 10px;font-size:0.72rem;">Back</button>
-            <div>
-                <div style="font-size:0.95rem;font-weight:bold;color:var(--text-primary);">${escapeHtml(pd.name || 'Unnamed Agreement')}</div>
-                <div style="font-size:0.7rem;color:var(--text-muted);">
-                    ${escapeHtml(proposerName)} &amp; ${escapeHtml(targetName)}
-                    ${classification ? ' · ' + escapeHtml(classification) : ''}
+        <div class="sv-box-header" style="margin:-1px -1px 0;border-radius:0;">
+            <div class="sv-box-dot sv-box-dot--teal"></div>
+            <span class="sv-box-label">Active Agreement</span>
+            <div class="sv-box-header-right"><span class="sv-badge sv-badge--green">Active</span></div>
+        </div>
+        <div style="padding:14px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+                <button class="wizard-back-btn" onclick="renderDraftBox()" style="padding:5px 10px;font-size:0.72rem;">Back</button>
+                ${typeInfo ? '<div class="trade-type-icon ' + typeInfo.icon + '" style="width:28px;height:28px;font-size:0.9rem;">' + iconHtml + '</div>' : ''}
+                <div style="min-width:0;">
+                    <div style="font-size:0.95rem;font-weight:bold;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(pd.name || 'Unnamed Agreement')}</div>
+                    <div style="font-size:0.7rem;color:var(--text-muted);">
+                        ${escapeHtml(proposerName)} &amp; ${escapeHtml(targetName)}
+                        ${classification ? ' · ' + escapeHtml(classification) : ''}
+                    </div>
                 </div>
             </div>
-            <span class="badge badge--green" style="margin-left:auto;">Active</span>
-        </div>
-    `;
-
-    // Agreement info bar
-    html += `
-        <div class="trade-neg-status">
-            <div>
-                <div class="trade-neg-status-label">Agreement</div>
-                <div style="font-size:0.7rem;color:var(--text-muted);">Signed ${signedTick != null ? tickToDate(signedTick) : '—'}</div>
+            <div class="sv-summary-section" style="padding-top:0;">
+                <div class="sv-summary-section-label">Agreement Details</div>
+                <div class="sv-stat-row"><span class="sv-stat-label">Status</span><span class="sv-stat-value sv-stat-value--positive">Active</span></div>
+                <div class="sv-stat-row"><span class="sv-stat-label">Signed</span><span class="sv-stat-value">${signedTick != null ? tickToDate(signedTick) : '—'}</span></div>
+                <div class="sv-stat-row"><span class="sv-stat-label">Expires</span><span class="sv-stat-value">${expiresTick != null ? tickToDate(expiresTick) : '—'}</span></div>
+                <div class="sv-stat-row"><span class="sv-stat-label">Duration</span><span class="sv-stat-value">${durationLabel}</span></div>
+                ${typeInfo ? '<div class="sv-stat-row"><span class="sv-stat-label">Type</span><span class="sv-stat-value">' + escapeHtml(typeInfo.label) + '</span></div>' : ''}
             </div>
-            <div style="text-align:right;">
-                <div class="trade-neg-status-value active">ACTIVE</div>
-                <div style="font-size:0.62rem;color:var(--text-dim);">Expires ${expiresTick != null ? tickToDate(expiresTick) : '—'}${durationYears ? ' (' + durationYears + ' year' + (durationYears !== 1 ? 's' : '') + ')' : ''}</div>
-            </div>
-        </div>
     `;
 
     // Articles
     if (articles.length > 0) {
-        html += '<div class="diplo-section-title" style="margin-top:16px;">Articles</div>';
+        html += '<div class="sv-summary-section"><div class="sv-summary-section-label">Articles</div>';
         for (let i = 0; i < articles.length; i++) {
             const art = articles[i];
             const isStruck = isV2 ? (art.status === 'struck') : struckIndices.has(i);
 
-            if (isV2) {
-                const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES[art.type];
-                const typeName = typeInfo ? typeInfo.label : art.type;
+            if (isTradeAgreement && art.type && TRADE_ARTICLE_TYPES[art.type]) {
+                // Trade agreement articles — render with full sector/percentage details
+                const artType = TRADE_ARTICLE_TYPES[art.type];
+                const cardClass = isStruck ? 'trade-article-card trade-article-card--struck' : 'trade-article-card';
+                html += `
+                    <div class="${cardClass}">
+                        <div class="trade-article-card-header">
+                            <span class="trade-article-card-type">Art. ${toRoman(i + 1)} &mdash; ${escapeHtml(artType.label)}${isStruck ? ' — STRUCK' : ''}</span>
+                        </div>
+                        ${!isStruck ? '<div class="trade-article-card-summary">' + renderTradeArticleSummary(art) + '</div>' : ''}
+                    </div>
+                `;
+            } else if (isV2) {
+                const artTypeInfo = INITIATIVE_ARTICLE_TYPES[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES[art.type];
+                const typeName = artTypeInfo ? artTypeInfo.label : art.type;
                 const cardClass = isStruck ? 'initiative-article initiative-article--struck' : 'initiative-article';
                 html += '<div class="' + cardClass + '">';
                 html += '<div class="initiative-article-head">';
@@ -5157,8 +5179,8 @@ async function viewActiveAgreement(agreementId) {
                 html += '<span class="initiative-article-type">' + escapeHtml(typeName).toUpperCase();
                 if (isStruck) html += ' — STRUCK';
                 html += '</span></div></div>';
-                if (typeInfo && typeInfo.description && !isStruck) {
-                    html += '<div class="initiative-article-title">' + escapeHtml(typeInfo.description) + '</div>';
+                if (artTypeInfo && artTypeInfo.description && !isStruck) {
+                    html += '<div class="initiative-article-title">' + escapeHtml(artTypeInfo.description) + '</div>';
                 }
                 if (art.config && !isStruck) {
                     html += '<div style="margin:4px 0 2px;">' + renderArticleConfigSummary(art) + '</div>';
@@ -5184,37 +5206,47 @@ async function viewActiveAgreement(agreementId) {
                 html += '</div>';
             }
         }
+        html += '</div>'; // close sv-summary-section for Articles
     }
 
-    // Effects summary
-    if (isV2) {
-        const totals = { relations: 0, revenue: 0, cost_proposer: 0, cost_target: 0, intl_reputation: 0, immigration: 0, higher_education: 0, soft_power: 0, soft_power_per_year: 0, permanent_soft_power: 0, technology_bonus: 0, polarization: 0, terrorism_risk: 0, ongoing_per_tick: 0 };
-        articles.forEach(art => {
-            if (art.status !== 'struck' && art.effects) {
-                for (const k in totals) totals[k] += art.effects[k] || 0;
+    // Trade effect summary tags
+    if (isTradeAgreement && articles.length > 0) {
+        html += renderTradeEffectSummary(articles);
+    }
+
+    // Effects summary (for non-trade diplomatic initiatives)
+    if (!isTradeAgreement) {
+        if (isV2) {
+            const totals = { relations: 0, revenue: 0, cost_proposer: 0, cost_target: 0, intl_reputation: 0, immigration: 0, higher_education: 0, soft_power: 0, soft_power_per_year: 0, permanent_soft_power: 0, technology_bonus: 0, polarization: 0, terrorism_risk: 0, ongoing_per_tick: 0 };
+            articles.forEach(art => {
+                if (art.status !== 'struck' && art.effects) {
+                    for (const k in totals) totals[k] += art.effects[k] || 0;
+                }
+            });
+            html += '<div style="margin:10px 0;">' + renderEffectTags(totals, null) + '</div>';
+        } else {
+            let totalRel = 0, totalMoney = 0;
+            articles.forEach((art, i) => {
+                if (!struckIndices.has(i)) { totalRel += art.relations || 0; totalMoney += art.money || 0; }
+            });
+            if (totalRel || totalMoney) {
+                const legacyEffects = {};
+                if (totalRel) legacyEffects.relations = totalRel;
+                if (totalMoney > 0) legacyEffects.revenue = totalMoney;
+                if (totalMoney < 0) legacyEffects.cost_proposer = Math.abs(totalMoney);
+                html += '<div style="margin:10px 0;">' + renderEffectTags(legacyEffects, null) + '</div>';
             }
-        });
-        html += '<div style="margin:10px 0;">' + renderEffectTags(totals, null) + '</div>';
-    } else {
-        let totalRel = 0, totalMoney = 0;
-        articles.forEach((art, i) => {
-            if (!struckIndices.has(i)) { totalRel += art.relations || 0; totalMoney += art.money || 0; }
-        });
-        if (totalRel || totalMoney) {
-            const legacyEffects = {};
-            if (totalRel) legacyEffects.relations = totalRel;
-            if (totalMoney > 0) legacyEffects.revenue = totalMoney;
-            if (totalMoney < 0) legacyEffects.cost_proposer = Math.abs(totalMoney);
-            html += '<div style="margin:10px 0;">' + renderEffectTags(legacyEffects, null) + '</div>';
         }
     }
 
     // Withdraw button
     if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
-        html += '<div class="detail-actions" style="margin-top:12px;">';
+        html += '<div class="sv-summary-section">';
         html += '<button class="detail-btn" style="color:var(--red);border-color:var(--red);" onclick="withdrawAgreement(\'' + ag.id + '\')">Withdraw Agreement</button>';
         html += '</div>';
     }
+
+    html += '</div>'; // close padding wrapper
 
     panel.innerHTML = html;
 }
