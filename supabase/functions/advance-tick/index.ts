@@ -20292,7 +20292,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
             _institutionConfig = icRows || [];
         }
-        let statInstMap = null;
+        // Build institution funding map for stat decay modification
+        const { data: _fundingRows } = await supabase.from('budget_item_allocations')
+            .select('item_id, item_type, allocation_amount, needed_amount')
+            .eq('nation_id', nation.id)
+            .eq('item_type', 'institution')
+            .order('created_at', { ascending: true });
+        const statInstMap = buildStatInstitutionMap(_institutionConfig, _fundingRows);
         const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
         const decayResults = await processStatDecay(supabase, nation, statInstMap, policyDecayAdj);
         if (decayResults.length > 0) {
