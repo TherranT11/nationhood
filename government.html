@@ -126,6 +126,7 @@ let presidentData = null;
 let isRulingFaction = false;
 let rulingFactionId = null;
 let ministryRequests = [];
+let missingAmbassadorCount = 0; // pre-fetched for Foreign Minister performance panel
 let currentTick = 0;
 let lastElectionTick = null;
 
@@ -394,6 +395,14 @@ async function renderGovernmentPage() {
             .order('tick', { ascending: false })
             .limit(8);
         currentNation._govApprovalEvents = govApprovalEvents || [];
+
+        // Pre-fetch missing ambassador count for Foreign Minister performance panel
+        const [{ count: totalOtherNations }, { count: activeAmbs }] = await Promise.all([
+            _supabase.from('nations').select('id', { count: 'exact', head: true }).neq('id', currentNation.id),
+            _supabase.from('ambassadors').select('id', { count: 'exact', head: true })
+                .eq('nation_id', currentNation.id).eq('is_active', true).eq('status', 'active')
+        ]);
+        missingAmbassadorCount = (totalOtherNations || 0) - (activeAmbs || 0);
 
         // Check for pending PM or President candidates (player needs to select)
         const primeMinister = ministries?.find(m => m.ministry_key === 'prime_minister');
@@ -2184,12 +2193,27 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
             + '</div>';
     }
 
+    // Foreign Minister: show missing ambassador penalty
+    let ambassadorPenalty = 0;
+    if (ministryKey === 'foreign' && missingAmbassadorCount > 0) {
+        ambassadorPenalty = missingAmbassadorCount * -0.25;
+        const penaltyStr = ambassadorPenalty.toFixed(2);
+        rows += '<div class="ministry-stat-row" title="' + missingAmbassadorCount + ' nation(s) without an ambassador appointed from your side">'
+            + '<span class="stat-name">Missing ambassadors</span>'
+            + '<span class="stat-appointed">—</span>'
+            + '<span class="stat-val">' + missingAmbassadorCount + '</span>'
+            + '<span class="stat-delta bad">↓' + missingAmbassadorCount + '</span>'
+            + '<span class="stat-effect bad">' + penaltyStr + '</span>'
+            + '<span class="stat-dot bad">●</span>'
+            + '</div>';
+    }
+
     // Overall trend line with total per-tick effect
     let trendText = 'No data';
     let trendCls = 'flat';
     if (deltaCount > 0) {
         const avgDelta = deltaSum / deltaCount;
-        const totalEffect = avgDelta * DELTA_SENSITIVITY;
+        const totalEffect = avgDelta * DELTA_SENSITIVITY + ambassadorPenalty;
         const absTotal = Math.abs(totalEffect);
         const effectLabel = absTotal >= 0.01
             ? ' (' + (totalEffect > 0 ? '+' : '-') + (Math.round(absTotal * 100) / 100).toFixed(2) + '/tick)'

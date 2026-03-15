@@ -3551,6 +3551,9 @@ const MINISTER_APPROVAL_CONFIG = {
     FIRE_MINISTER_AP_COST: 1,
     FIRE_GOV_APPROVAL_BONUS: 3,
 
+    // Foreign Minister: -0.25 approval/tick per nation without an outgoing ambassador
+    MISSING_AMBASSADOR_PENALTY: -0.25,
+
     // Government approval: -3 per vacant ministry seat
     VACANCY_PENALTY: -3,
 
@@ -15332,6 +15335,26 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
         // Apply delta-based movement on top of baseline decay
         if (Math.abs(avgDelta) >= 0.5) {
             newApproval += avgDelta * cfg.DELTA_SENSITIVITY;
+        }
+
+        // Foreign Minister penalty: -0.25/tick per nation without an outgoing ambassador
+        let missingAmbassadorCount = 0;
+        if (ministry.ministry_key === 'foreign') {
+            const { count: totalNations } = await supabase
+                .from('nations')
+                .select('id', { count: 'exact', head: true })
+                .neq('id', nation.id);
+            const { count: activeAmbassadors } = await supabase
+                .from('ambassadors')
+                .select('id', { count: 'exact', head: true })
+                .eq('nation_id', nation.id)
+                .eq('is_active', true)
+                .eq('status', 'active');
+            missingAmbassadorCount = (totalNations || 0) - (activeAmbassadors || 0);
+            if (missingAmbassadorCount > 0) {
+                newApproval += missingAmbassadorCount * cfg.MISSING_AMBASSADOR_PENALTY;
+                console.log(`[MinisterApproval] Foreign minister ${nation.name}: ${missingAmbassadorCount} nations without ambassador (${missingAmbassadorCount * cfg.MISSING_AMBASSADOR_PENALTY}/tick)`);
+            }
         }
 
         newApproval = Math.round(Math.max(0, Math.min(100, newApproval)) * 10) / 10;

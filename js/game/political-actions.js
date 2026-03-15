@@ -4377,6 +4377,25 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
             newApproval += avgDelta * cfg.DELTA_SENSITIVITY;
         }
 
+        // Foreign Minister penalty: -0.25/tick per nation without an outgoing ambassador
+        let missingAmbassadorCount = 0;
+        if (ministry.ministry_key === 'foreign') {
+            const { count: totalNations } = await supabase
+                .from('nations')
+                .select('id', { count: 'exact', head: true })
+                .neq('id', nation.id);
+            const { count: activeAmbassadors } = await supabase
+                .from('ambassadors')
+                .select('id', { count: 'exact', head: true })
+                .eq('nation_id', nation.id)
+                .eq('is_active', true)
+                .eq('status', 'active');
+            missingAmbassadorCount = (totalNations || 0) - (activeAmbassadors || 0);
+            if (missingAmbassadorCount > 0) {
+                newApproval += missingAmbassadorCount * cfg.MISSING_AMBASSADOR_PENALTY;
+            }
+        }
+
         newApproval = Math.round(Math.max(0, Math.min(100, newApproval)) * 10) / 10;
 
         // Update baselines to current values so next tick only sees incremental change
