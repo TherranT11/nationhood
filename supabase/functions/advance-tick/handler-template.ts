@@ -1646,18 +1646,24 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                                 console.log(`[LeaderAging] ${leaderName} of ${f.faction_name} retires at age ${newAge} (rolled ${roll} < ${newAge})`);
 
                                 // Clear leader from faction
-                                await supabase.from('factions')
-                                    .update({ leader_first_name: null, leader_last_name: null, leader_age: null })
+                                const { error: retireErr } = await supabase.from('factions')
+                                    .update({ leader_first_name: null, leader_last_name: null, leader_age: null, electability: 50 })
                                     .eq('id', f.id);
+                                if (retireErr) {
+                                    console.warn(`[LeaderAging] Failed to clear retired leader ${leaderName}:`, retireErr.message);
+                                }
 
                                 // Log retirement event
-                                await supabase.from('event_log').insert({
+                                const { error: retireEventErr } = await supabase.from('event_log').insert({
                                     nation_id: nation.id,
                                     event_name: 'Party Leader Retires',
                                     description_chosen: `${leaderName}, leader of ${f.faction_name || 'the party'}, has retired from politics at age ${newAge}.`,
                                     category: 'POLITICAL',
                                     fired_at_tick: newTick,
                                 });
+                                if (retireEventErr) {
+                                    console.warn(`[LeaderAging] Failed to log retirement event:`, retireEventErr.message);
+                                }
 
                                 agingResults.push({
                                     type: 'party_leader_retirement',

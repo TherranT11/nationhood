@@ -1160,7 +1160,7 @@ export async function processPartialElection(supabase, nation, election, current
 
     // 3. Load parties with ideology axes
     const { data: factions } = await supabase
-        .from('factions').select('id, faction_name, seats')
+        .from('factions').select('id, faction_name, seats, electability')
         .eq('nation_id', nation.id).eq('faction_type', 'party');
 
     if (!factions || factions.length === 0) {
@@ -1177,6 +1177,7 @@ export async function processPartialElection(supabase, nation, election, current
 
     const parties = factions.map(f => ({
         id: f.id, faction_name: f.faction_name,
+        electability: f.electability ?? 50,
         axes: ideoMap[f.id] || {
             liberty_equality: 0, tradition_progress: 0, security_freedom: 0,
             globalism_nationalism: 0, individualism_collectivism: 0

@@ -334,8 +334,8 @@ async function renderPartyTab(f, nation, data) {
         ? `<span class="pol-leader-ideo pol-ideo-${ideo1.toLowerCase()}">${ideo1.charAt(0).toUpperCase() + ideo1.slice(1).toLowerCase()}</span>`
         : '';
 
-    // Electability — deterministic from faction UUID
-    const electScore = seedElectability(f.id);
+    // Electability — stored on faction, fallback to deterministic seed
+    const electScore = f.electability ?? seedElectability(f.id);
     const electTier = getElectabilityTier(electScore);
 
     // Seat delta display

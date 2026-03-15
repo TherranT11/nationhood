@@ -98,7 +98,8 @@ BEGIN
                 COALESCE(fi.individualism_collectivism, 0) +
                 CASE WHEN pc.ideology_axis = 'individualism_collectivism'
                      THEN 15 * pc.ideology_direction ELSE 0 END
-            )) AS individualism_collectivism
+            )) AS individualism_collectivism,
+            COALESCE(f.electability, _seed_electability(f.id)) AS electability
         FROM pm_candidates pc
         JOIN factions f ON f.id = pc.faction_id
         LEFT JOIN faction_ideology fi ON fi.faction_id = pc.faction_id

@@ -394,6 +394,7 @@ window._appointLeader = async function() {
             updateFields.leader_first_name = candidate.firstName;
             updateFields.leader_last_name = candidate.lastName;
             updateFields.leader_age = candidate.age;
+            updateFields.electability = candidate.electability;
         } else if (activeRole === 'deputy') {
             updateFields.deputy_first_name = candidate.firstName;
             updateFields.deputy_last_name = candidate.lastName;
