@@ -1391,6 +1391,12 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
             ? Math.min(100, Math.round(currentVal + cfg.STAT_DELTA))
             : Math.max(0, Math.round(currentVal - cfg.STAT_DELTA));
 
+        // Reject promises that are already fulfilled (e.g. inflation at 0, promising to reduce to 0)
+        if (dir === 'above' && currentVal >= targetValue)
+            return { success: false, error: `${statLabel} is already at ${currentVal} — nothing to promise.` };
+        if (dir === 'below' && currentVal <= targetValue)
+            return { success: false, error: `${statLabel} is already at ${currentVal} — nothing to promise.` };
+
         const statLabel = statKey.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
         demandText = dir === 'above'
             ? `Increase ${statLabel} to ${targetValue}`
@@ -1570,6 +1576,13 @@ export function getPromiseableStats(nation) {
         const ministry = STAT_TO_MINISTRY[statKey] || null;
         // Good stats (sign=1) → promise to increase; bad stats (sign=-1) → promise to decrease
         const promiseDirection = sign === 1 ? 'increase' : 'decrease';
+        // Skip stats already at their limit — no meaningful promise possible
+        const val = Number(currentVal);
+        const target = sign === 1
+            ? Math.min(100, Math.round(val + MAKE_PROMISE_CONFIG.STAT_DELTA))
+            : Math.max(0, Math.round(val - MAKE_PROMISE_CONFIG.STAT_DELTA));
+        if (sign === 1 && val >= target) continue;
+        if (sign === -1 && val <= target) continue;
         results.push({
             statKey,
             label: statKey.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
