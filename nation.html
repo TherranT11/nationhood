@@ -198,7 +198,9 @@ var STAT_CATEGORIES = [
         { name: 'Trade Balance', key: 'trade_balance', desc: 'Exports minus imports', format: 'trade' },
         { name: 'Currency Strength', key: 'currency_strength', desc: 'Value of national currency' },
         { name: 'Foreign Investment', key: 'foreign_investment', desc: 'International capital inflow' },
-        { name: 'Credit Rating', key: 'credit', desc: 'National creditworthiness' }
+        { name: 'Credit Rating', key: 'credit', desc: 'National creditworthiness' },
+        { name: 'Manufacturing Output', key: 'manufacturing_output', desc: 'Industrial production capacity' },
+        { name: 'Service Output', key: 'service_output', desc: 'Services & finance sector output' }
     ]},
     { id: 'taxation', label: 'Taxation', icon: '\u{1F3DB}', blocs: ['Business Owners', 'Urban Workers', 'Urban Progressives'],
       stats: [
@@ -297,9 +299,7 @@ var STAT_CATEGORIES = [
     ]},
     { id: 'international', label: 'International', icon: '\u{1F310}', blocs: [],
       stats: [
-        { name: 'Intl. Reputation', key: 'international_reputation', desc: 'Global standing and respect' },
-        { name: 'Manufacturing Output', key: 'manufacturing_output', desc: 'Industrial production capacity' },
-        { name: 'Service Output', key: 'service_output', desc: 'Services & finance sector output' }
+        { name: 'Intl. Reputation', key: 'international_reputation', desc: 'Global standing and respect' }
     ]}
 ];
 
