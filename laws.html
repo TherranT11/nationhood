@@ -44,6 +44,12 @@
                     <option value="">-- Choose a sector --</option>
                 </select>
             </div>
+            <div class="form-group" id="stat-filter-group" style="display:none;">
+                <label class="form-label">Filter by Stat <span style="font-weight:normal;color:var(--text-secondary);">(optional)</span></label>
+                <select class="form-select" id="stat-filter-select" onchange="onStatFilterChange()">
+                    <option value="">-- All policies --</option>
+                </select>
+            </div>
             <div class="ideology-hint" id="ideology-hint" style="display:none;">
                 Your party's ideology: <strong id="party-ideologies"></strong>
             </div>
@@ -115,6 +121,12 @@
             <label class="form-label">Select Sector</label>
             <select class="form-select" id="committee-sector-select" onchange="onCommitteeSectorChange()">
                 <option value="">-- Choose a sector --</option>
+            </select>
+        </div>
+        <div class="form-group" id="committee-stat-filter-group" style="display:none;">
+            <label class="form-label">Filter by Stat <span style="font-weight:normal;color:var(--text-secondary);">(optional)</span></label>
+            <select class="form-select" id="committee-stat-filter-select" onchange="onCommitteeStatFilterChange()">
+                <option value="">-- All policies --</option>
             </select>
         </div>
         <div class="ideology-hint" id="committee-ideology-hint" style="display:none;">
@@ -1188,6 +1200,9 @@ function showAddArticleForm() {
     document.getElementById('sector-select').value = '';
     document.getElementById('ideology-hint').style.display = 'none';
     document.getElementById('policy-group').style.display = 'none';
+    document.getElementById('stat-filter-group').style.display = 'none';
+    document.getElementById('stat-filter-select').value = '';
+    _currentSectorPolicies = [];
     selectedPolicy = null;
     selectedFoundationalType = null;
     document.getElementById('add-article-btn').disabled = true;
@@ -1456,22 +1471,76 @@ function addTextArticle() {
     if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
 }
 
+let _currentSectorPolicies = [];
+let _committeeSectorPolicies = [];
+
+function _getStatEffectsFromPolicy(policy) {
+    if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
+        return policy.stat_effects;
+    }
+    if (policy.target_stat) {
+        return [{ stat_key: policy.target_stat, direction: (policy.stat_direction || 'UP').toLowerCase() }];
+    }
+    return [];
+}
+
+function _populateStatFilter(policies, selectId, groupId) {
+    const statSet = new Set();
+    for (const p of policies) {
+        for (const e of _getStatEffectsFromPolicy(p)) {
+            if (e.stat_key) statSet.add(e.stat_key);
+        }
+    }
+    const select = document.getElementById(selectId);
+    const group = document.getElementById(groupId);
+    if (statSet.size === 0) { group.style.display = 'none'; return; }
+    const sorted = [...statSet].sort((a, b) => formatStatName(a).localeCompare(formatStatName(b)));
+    select.innerHTML = '<option value="">-- All policies --</option>' + sorted.map(s => `<option value="${s}">${formatStatName(s)}</option>`).join('');
+    group.style.display = 'block';
+}
+
+function _filterPoliciesByStat(policies, statKey) {
+    if (!statKey) return policies;
+    return policies.filter(p => _getStatEffectsFromPolicy(p).some(e => e.stat_key === statKey));
+}
+
 function onSectorChange() {
     const sector = document.getElementById('sector-select').value;
     selectedFoundationalType = null; // reset on every sector change
-    if (!sector) { document.getElementById('ideology-hint').style.display = 'none'; document.getElementById('policy-group').style.display = 'none'; return; }
+    document.getElementById('stat-filter-select').value = '';
+    if (!sector) {
+        document.getElementById('ideology-hint').style.display = 'none';
+        document.getElementById('policy-group').style.display = 'none';
+        document.getElementById('stat-filter-group').style.display = 'none';
+        _currentSectorPolicies = [];
+        return;
+    }
 
     if (sector === 'FOUNDATIONAL') {
         document.getElementById('ideology-hint').style.display = 'none';
+        document.getElementById('stat-filter-group').style.display = 'none';
+        _currentSectorPolicies = [];
         renderFoundationalOptions();
         document.getElementById('policy-group').style.display = 'block';
         return;
     }
 
+    _currentSectorPolicies = _getCompatiblePolicies(sector);
+    _populateStatFilter(_currentSectorPolicies, 'stat-filter-select', 'stat-filter-group');
     document.getElementById('ideology-hint').style.display = 'block';
-    renderPolicyOptions(_getCompatiblePolicies(sector), 'policy-options', 'add-article-btn');
+    renderPolicyOptions(_currentSectorPolicies, 'policy-options', 'add-article-btn');
     document.getElementById('policy-group').style.display = 'block';
 }
+
+function onStatFilterChange() {
+    const statKey = document.getElementById('stat-filter-select').value;
+    const filtered = _filterPoliciesByStat(_currentSectorPolicies, statKey);
+    selectedPolicy = null;
+    document.getElementById('add-article-btn').disabled = true;
+    renderPolicyOptions(filtered, 'policy-options', 'add-article-btn');
+    document.getElementById('policy-group').style.display = 'block';
+}
+window.onStatFilterChange = onStatFilterChange;
 
 // Keep handlers explicitly on window for inline onchange attributes.
 window.onSectorChange = onSectorChange;
@@ -2462,6 +2531,9 @@ function openCommitteeAddModal(billId) {
     document.getElementById('committee-sector-select').value = '';
     document.getElementById('committee-ideology-hint').style.display = 'none';
     document.getElementById('committee-policy-group').style.display = 'none';
+    document.getElementById('committee-stat-filter-group').style.display = 'none';
+    document.getElementById('committee-stat-filter-select').value = '';
+    _committeeSectorPolicies = [];
     document.getElementById('committee-add-btn').disabled = true;
     document.getElementById('committee-add-modal').classList.add('active');
 }
@@ -2470,11 +2542,30 @@ function closeCommitteeAddModal() { document.getElementById('committee-add-modal
 
 function onCommitteeSectorChange() {
     const sector = document.getElementById('committee-sector-select').value;
-    if (!sector) { document.getElementById('committee-ideology-hint').style.display = 'none'; document.getElementById('committee-policy-group').style.display = 'none'; return; }
+    document.getElementById('committee-stat-filter-select').value = '';
+    if (!sector) {
+        document.getElementById('committee-ideology-hint').style.display = 'none';
+        document.getElementById('committee-policy-group').style.display = 'none';
+        document.getElementById('committee-stat-filter-group').style.display = 'none';
+        _committeeSectorPolicies = [];
+        return;
+    }
+    _committeeSectorPolicies = _getCompatiblePolicies(sector);
+    _populateStatFilter(_committeeSectorPolicies, 'committee-stat-filter-select', 'committee-stat-filter-group');
     document.getElementById('committee-ideology-hint').style.display = 'block';
-    renderPolicyOptions(_getCompatiblePolicies(sector), 'committee-policy-options', 'committee-add-btn');
+    renderPolicyOptions(_committeeSectorPolicies, 'committee-policy-options', 'committee-add-btn');
     document.getElementById('committee-policy-group').style.display = 'block';
 }
+
+function onCommitteeStatFilterChange() {
+    const statKey = document.getElementById('committee-stat-filter-select').value;
+    const filtered = _filterPoliciesByStat(_committeeSectorPolicies, statKey);
+    committeeSelectedPolicy = null;
+    document.getElementById('committee-add-btn').disabled = true;
+    renderPolicyOptions(filtered, 'committee-policy-options', 'committee-add-btn');
+    document.getElementById('committee-policy-group').style.display = 'block';
+}
+window.onCommitteeStatFilterChange = onCommitteeStatFilterChange;
 
 // Keep handlers explicitly on window for inline onchange attributes.
 window.onCommitteeSectorChange = onCommitteeSectorChange;
