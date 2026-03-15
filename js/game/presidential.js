@@ -3,7 +3,7 @@
  * Extracted from game-common.js
  */
 
-import { GAME_CONFIG } from './config.js';
+import { GAME_CONFIG, getPresidentialTermLimit } from './config.js';
 import { isParliamentaryDemocracy, isPresidentialRepublic } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { enactBill, failBill } from './bills.js';
@@ -458,12 +458,12 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
 
     if (!allParties || allParties.length === 0) return;
 
-    const termLimit = GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT || 2;
+    const termLimit = getPresidentialTermLimit(nation);
 
     for (const party of allParties) {
         try {
             const isIncumbentParty = incumbentPresident && party.id === incumbentPresident.faction_id;
-            const isTermLimited = isIncumbentParty && (incumbentPresident.terms_served || 1) >= termLimit;
+            const isTermLimited = termLimit !== null && isIncumbentParty && (incumbentPresident.terms_served || 1) >= termLimit;
 
             if (isIncumbentParty && isTermLimited) {
                 // === TERM-LIMITED: incumbent has served max terms, party must pick a new candidate ===

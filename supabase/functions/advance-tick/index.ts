@@ -7246,6 +7246,156 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
 // ==================== FOUNDATIONAL BILL ENACTMENT ====================
 
 async function enactFoundationalBill(supabase, bill, currentTick) {
+    // ── Presidential Term Length subtype ──
+    if (bill.proposed_term_length != null) {
+        const newTermTicks = bill.proposed_term_length;
+        const validOptions = [24, 36, 48, 60, 72, 84];
+        if (!validOptions.includes(newTermTicks)) {
+            console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_term_length: ${newTermTicks}. Marking as failed.`);
+            await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+            return false;
+        }
+
+        const deferWindow = 10;
+        const { data: imminentElection } = await supabase
+            .from('elections')
+            .select('id, election_tick')
+            .eq('nation_id', bill.nation_id)
+            .eq('election_type', 'presidential')
+            .eq('status', 'scheduled')
+            .gt('election_tick', currentTick)
+            .lte('election_tick', currentTick + deferWindow)
+            .limit(1)
+            .maybeSingle();
+
+        const { error: billErr } = await supabase.from('bills').update({
+            status: 'passed', passed_tick: currentTick
+        }).eq('id', bill.id);
+        if (billErr) {
+            console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
+            return false;
+        }
+
+        // Get old term ticks before updating
+        const { data: nationBefore } = await supabase.from('nations').select('presidential_term_ticks, polarization, political_engagement, legitimacy, stability').eq('id', bill.nation_id).single();
+        const oldTermTicks = nationBefore?.presidential_term_ticks || GAME_CONFIG.PRESIDENTIAL_TERM_TICKS;
+
+        await supabase.from('nations').update({ presidential_term_ticks: newTermTicks }).eq('id', bill.nation_id);
+
+        // Stat effects
+        if (newTermTicks < oldTermTicks) {
+            const newPol = Math.min(100, (nationBefore?.polarization || 0) + 2);
+            const newEng = Math.min(100, (nationBefore?.political_engagement || 0) + 3);
+            await supabase.from('nations').update({ polarization: newPol, political_engagement: newEng }).eq('id', bill.nation_id);
+            console.log(`[enactFoundationalBill] Term shortened: polarization +2, political_engagement +3`);
+        } else if (newTermTicks > oldTermTicks) {
+            const newLeg = Math.max(0, (nationBefore?.legitimacy || 50) - 3);
+            const newStab = Math.min(100, (nationBefore?.stability || 50) + 2);
+            await supabase.from('nations').update({ legitimacy: newLeg, stability: newStab }).eq('id', bill.nation_id);
+            console.log(`[enactFoundationalBill] Term extended: legitimacy -3, stability +2`);
+        }
+
+        // Reschedule next election if not imminent
+        if (!imminentElection) {
+            const { data: activePresident } = await supabase
+                .from('presidents').select('elected_tick')
+                .eq('nation_id', bill.nation_id).eq('is_active', true).limit(1).maybeSingle();
+            if (activePresident) {
+                const newTermEnd = activePresident.elected_tick + newTermTicks;
+                const { data: futureElection } = await supabase
+                    .from('elections').select('id')
+                    .eq('nation_id', bill.nation_id).eq('election_type', 'presidential')
+                    .eq('status', 'scheduled').gt('election_tick', currentTick)
+                    .order('election_tick', { ascending: true }).limit(1).maybeSingle();
+                if (futureElection) {
+                    await supabase.from('elections').update({ election_tick: newTermEnd }).eq('id', futureElection.id);
+                    console.log(`[enactFoundationalBill] Rescheduled presidential election to tick ${newTermEnd}`);
+                }
+            }
+        } else {
+            console.log(`[enactFoundationalBill] Presidential election imminent (tick ${imminentElection.election_tick}), term length change deferred to next cycle.`);
+        }
+
+        console.log(`[enactFoundationalBill] Nation ${bill.nation_id} presidential term set to ${newTermTicks / 12} years (${newTermTicks} ticks).`);
+        return true;
+    }
+
+    // ── Presidential Term Limits subtype ──
+    if (bill.proposed_term_limit != null) {
+        const newTermLimit = bill.proposed_term_limit;
+        const validOptions = [0, 1, 2, 3, 4];
+        if (!validOptions.includes(newTermLimit)) {
+            console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_term_limit: ${newTermLimit}. Marking as failed.`);
+            await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+            return false;
+        }
+
+        const { error: billErr } = await supabase.from('bills').update({
+            status: 'passed', passed_tick: currentTick
+        }).eq('id', bill.id);
+        if (billErr) {
+            console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
+            return false;
+        }
+
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+        const rawOldLimit = nation?.presidential_term_limit;
+        // Compute effective old limit: null/undefined = use default, 0 = no limits (null), N = N
+        const oldEffectiveLimit = (rawOldLimit !== null && rawOldLimit !== undefined)
+            ? (rawOldLimit === 0 ? null : rawOldLimit)
+            : (GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT || 2);
+        const isAutocratic = (nation?.government_type || '').toLowerCase().includes('autocra');
+
+        await supabase.from('nations').update({ presidential_term_limit: newTermLimit }).eq('id', bill.nation_id);
+
+        const { data: activePresident } = await supabase
+            .from('presidents').select('terms_served, faction_id')
+            .eq('nation_id', bill.nation_id).eq('is_active', true).limit(1).maybeSingle();
+
+        if (newTermLimit === 0) {
+            // Removing term limits
+            const legitimacyPenalty = isAutocratic ? 10 : 6;
+            const updates: Record<string, number> = {
+                legitimacy: Math.max(0, (nation?.legitimacy || 50) - legitimacyPenalty),
+                civil_unrest: Math.min(100, (nation?.civil_unrest || 0) + 4)
+            };
+            if (isAutocratic) {
+                updates.regime_health = Math.max(0, (nation?.regime_health || 50) - 5);
+            }
+            await supabase.from('nations').update(updates).eq('id', bill.nation_id);
+
+            // Opposition momentum +8
+            const { data: allFactions } = await supabase
+                .from('factions').select('id')
+                .eq('nation_id', bill.nation_id).eq('faction_type', 'party').neq('id', bill.proposed_by);
+            if (allFactions) {
+                for (const faction of allFactions) {
+                    await adjustMomentumAll(supabase, bill.nation_id, faction.id, 8, 'term_limits_removed');
+                }
+            }
+
+            // Extra polarization if sitting president has served 2+ terms
+            if (activePresident && (activePresident.terms_served || 1) >= 2) {
+                const newPol = Math.min(100, (nation?.polarization || 0) + 10);
+                await supabase.from('nations').update({ polarization: newPol }).eq('id', bill.nation_id);
+                console.log(`[enactFoundationalBill] Sitting president has ${activePresident.terms_served} terms — polarization +10`);
+            }
+            console.log(`[enactFoundationalBill] Term limits removed: legitimacy -${legitimacyPenalty}, civil_unrest +4, opposition momentum +8`);
+        } else if (oldEffectiveLimit === null || newTermLimit < oldEffectiveLimit) {
+            // Adding or tightening term limits
+            await supabase.from('nations').update({
+                legitimacy: Math.min(100, (nation?.legitimacy || 50) + 5),
+                press_freedom: Math.min(100, (nation?.press_freedom || 50) + 2),
+                judicial_independence: Math.min(100, (nation?.judicial_independence || 50) + 2)
+            }).eq('id', bill.nation_id);
+            console.log(`[enactFoundationalBill] Term limits tightened to ${newTermLimit}: legitimacy +5, press_freedom +2, judicial_independence +2`);
+        }
+
+        const limitText = newTermLimit === 0 ? 'No Term Limits' : `${newTermLimit} Term${newTermLimit !== 1 ? 's' : ''}`;
+        console.log(`[enactFoundationalBill] Nation ${bill.nation_id} presidential term limit set to: ${limitText}.`);
+        return true;
+    }
+
     // ── Head of State Title subtype ──
     if (bill.proposed_hos_title) {
         const newTitle = bill.proposed_hos_title.trim();
@@ -9605,6 +9755,42 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
         }
     }
 
+    // === TERM-LIMITED PRESIDENT RETIRES AS PARTY LEADER ===
+    // If the outgoing president has served the maximum number of terms, they automatically retire
+    // as party leader and a new party leader must be appointed.
+    if (outgoingPresident) {
+        const nationTermLimit = nation?.presidential_term_limit;
+        const effectiveTermLimit = (nationTermLimit !== null && nationTermLimit !== undefined)
+            ? (nationTermLimit === 0 ? null : nationTermLimit)
+            : (GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT || 2);
+
+        if (effectiveTermLimit !== null && (outgoingPresident.terms_served || 1) >= effectiveTermLimit) {
+            const outgoingName = `${outgoingPresident.first_name} ${outgoingPresident.last_name}`;
+            console.log(`[PresElection] Term-limited president ${outgoingName} retires as party leader (served ${outgoingPresident.terms_served}/${effectiveTermLimit} terms)`);
+
+            // Clear leader from the outgoing president's faction
+            const { error: retireErr } = await supabase.from('factions')
+                .update({ leader_first_name: null, leader_last_name: null, leader_age: null, electability: 50 })
+                .eq('id', outgoingPresident.faction_id);
+            if (retireErr) {
+                console.warn(`[PresElection] Failed to clear retired term-limited leader:`, retireErr.message);
+            }
+
+            // Log retirement event
+            try {
+                const { data: factionData } = await supabase.from('factions').select('faction_name').eq('id', outgoingPresident.faction_id).single();
+                const factionName = factionData?.faction_name || 'the party';
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: 'President Retires (Term Limited)',
+                    description_chosen: `${outgoingName}, having served the maximum ${effectiveTermLimit} term${effectiveTermLimit !== 1 ? 's' : ''} as president, has retired from party leadership. ${nation.name}'s ${factionName} must appoint a new leader.`,
+                    category: 'POLITICAL',
+                    fired_at_tick: currentTick,
+                });
+            } catch (e) { console.warn('[PresElection] Failed to log term-limited retirement event:', e); }
+        }
+    }
+
     // === VACATE NON-PRESIDENT-PARTY MINISTERS (new administration) ===
     if (isChallengerWin) {
         try {
@@ -9780,6 +9966,10 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         console.error(`[inauguratePresident] Failed to deactivate previous presidents for ${nationId}:`, deactErr.message);
     }
 
+    // Fetch nation data for per-nation term length
+    const { data: nationForTerm } = await supabase.from('nations').select('presidential_term_ticks').eq('id', nationId).single();
+    const effectiveTermTicks = nationForTerm?.presidential_term_ticks || GAME_CONFIG.PRESIDENTIAL_TERM_TICKS;
+
     // Look up trait data for trait_upside / trait_downside
     const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', candidate.trait_key).maybeSingle();
 
@@ -9805,7 +9995,7 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         trait_upside: trait?.upside || null,
         trait_downside: trait?.downside || null,
         elected_tick: currentTick,
-        term_ends_tick: currentTick + GAME_CONFIG.PRESIDENTIAL_TERM_TICKS,
+        term_ends_tick: currentTick + effectiveTermTicks,
         is_active: true,
         terms_served: termsServed
     });
@@ -9928,7 +10118,7 @@ async function scheduleNextPresidentialElections(supabase, nation, currentTick) 
         .maybeSingle();
 
     if (!futurePres) {
-        const nextPres = currentTick + GAME_CONFIG.PRESIDENTIAL_TERM_TICKS;
+        const nextPres = currentTick + (nation?.presidential_term_ticks || GAME_CONFIG.PRESIDENTIAL_TERM_TICKS);
         await supabase.from('elections').insert({
             nation_id: nation.id,
             election_tick: nextPres,
@@ -10387,12 +10577,15 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
 
     if (!allParties || allParties.length === 0) return;
 
-    const termLimit = GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT || 2;
+    const nationTermLimit = nation?.presidential_term_limit;
+    const termLimit = (nationTermLimit !== null && nationTermLimit !== undefined)
+        ? (nationTermLimit === 0 ? null : nationTermLimit)
+        : (GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT || 2);
 
     for (const party of allParties) {
         try {
             const isIncumbentParty = incumbentPresident && party.id === incumbentPresident.faction_id;
-            const isTermLimited = isIncumbentParty && (incumbentPresident.terms_served || 1) >= termLimit;
+            const isTermLimited = termLimit !== null && isIncumbentParty && (incumbentPresident.terms_served || 1) >= termLimit;
 
             if (isIncumbentParty && isTermLimited) {
                 // === TERM-LIMITED: incumbent has served max terms, party must pick a new candidate ===
@@ -10460,7 +10653,7 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
     }
 
     // Fire system event for incumbent lock-in (only if not term-limited)
-    const incumbentIsTermLimited = incumbentPresident && (incumbentPresident.terms_served || 1) >= termLimit;
+    const incumbentIsTermLimited = termLimit !== null && incumbentPresident && (incumbentPresident.terms_served || 1) >= termLimit;
     if (incumbentPresident && !incumbentIsTermLimited) {
         try {
             await supabase.rpc('fire_system_event', {
