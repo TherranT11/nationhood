@@ -771,6 +771,84 @@ async function processAusterityCommitments(supabase, nation, currentTick) {
     return results;
 }
 
+/**
+ * Per-tick budget deficit → debt accumulation.
+ * Computes the full national budget (revenue vs expenditure), then:
+ *   - Deficit: adds |deficit| / 12 to debt
+ *   - Surplus: subtracts surplus / 12 from debt (floor at 0)
+ */
+async function processBudgetDeficit(supabase, nation, currentTick, institutionConfig) {
+    // 1. Fetch active laws with policy data
+    const { data: activeLaws } = await supabase
+        .from('active_laws')
+        .select('*, policies(*)')
+        .eq('nation_id', nation.id);
+
+    // 2. Fetch trade tariff revenue from the trade engine (written earlier this tick)
+    const { data: tradeSummary } = await supabase.from('trade_summary')
+        .select('tariff_revenue')
+        .eq('nation_id', nation.id)
+        .eq('tick', currentTick)
+        .maybeSingle();
+    const tradeTariffRevenue = tradeSummary?.tariff_revenue ?? null;
+
+    // 3. Fetch aid data
+    const aidData = await getActiveAidForNation(supabase, nation.id);
+
+    // 4. Build full budget (all values are ANNUAL raw dollars)
+    const budgetData = buildBudgetData(nation, activeLaws || [], tradeTariffRevenue, institutionConfig, aidData);
+
+    // 5. Compute annual balance
+    //    grossRevenue already includes aidReceived.
+    //    Mandatory costs (debtService + aidGiven) are already subtracted in 'available'.
+    //    Discretionary costs: totalExpenditure (ministry policies + institutions).
+    const annualBalance = budgetData.available - budgetData.totalExpenditure;
+
+    // 6. Per-tick balance
+    const perTickBalance = annualBalance / GAME_CONFIG.TICKS_PER_YEAR;
+
+    // 7. Update debt
+    const currentDebt = Number(nation.debt ?? 0);
+    let newDebt;
+    if (perTickBalance < 0) {
+        // Deficit: accumulate debt
+        newDebt = currentDebt + Math.abs(perTickBalance);
+    } else {
+        // Surplus: pay down debt (cannot go below 0)
+        newDebt = Math.max(0, currentDebt - perTickBalance);
+    }
+    newDebt = Math.round(newDebt);
+
+    const debtDelta = newDebt - currentDebt;
+
+    // 8. Write to DB only if changed
+    if (debtDelta !== 0) {
+        const { error } = await supabase.from('nations').update({ debt: newDebt }).eq('id', nation.id);
+        if (error) {
+            console.error(`[BudgetDeficit] DB update failed for ${nation.name}:`, error.message);
+            return { nationId: nation.id, debtDelta: 0 };
+        }
+        nation.debt = newDebt;
+    }
+
+    // 9. Log
+    const fmtM = (v) => `$${(v / 1_000_000).toFixed(1)}M`;
+    if (debtDelta !== 0) {
+        console.log(`[BudgetDeficit] ${nation.name}: revenue=${fmtM(budgetData.grossRevenue)}/yr expenditure=${fmtM(budgetData.totalExpenditure + budgetData.debtService + budgetData.aidGiven)}/yr balance=${fmtM(annualBalance)}/yr (${fmtM(perTickBalance)}/tick) debt: ${fmtM(currentDebt)} → ${fmtM(newDebt)}`);
+    }
+
+    return {
+        nationId: nation.id,
+        annualRevenue: budgetData.grossRevenue,
+        annualExpenditure: budgetData.totalExpenditure + budgetData.debtService + budgetData.aidGiven,
+        annualBalance,
+        perTickBalance,
+        debtBefore: currentDebt,
+        debtAfter: newDebt,
+        debtDelta
+    };
+}
+
 // ==================== ADVANCE TICK ====================
 
 async function advanceTick(supabase, { force = false, reprocess = false } = {}) {
@@ -1011,9 +1089,20 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.statConnections.push({ nation: nation.name, effects: connResults });
         }
 
-        // Ongoing costs
+        // Ongoing costs (tracking only — accumulated per-policy, does not modify debt)
         const costResult = await processOngoingCosts(supabase, nation, newTick);
         if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
+
+        // Budget deficit → debt accumulation (surplus pays down debt, deficit adds to it)
+        try {
+            const deficitResult = await processBudgetDeficit(supabase, nation, newTick, _institutionConfig);
+            if (deficitResult && deficitResult.debtDelta !== 0) {
+                summary.budgetDeficit = summary.budgetDeficit || [];
+                summary.budgetDeficit.push({ nation: nation.name, ...deficitResult });
+            }
+        } catch (deficitErr) {
+            console.error(`[advanceTick] Budget deficit processing failed for ${nation.name} (non-fatal):`, deficitErr);
+        }
 
         // Sovereign debt mechanics (burden, credit deterioration, lockout, debt crisis trigger)
         try {
