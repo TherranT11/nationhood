@@ -7250,6 +7250,24 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
 // ==================== FOUNDATIONAL BILL ENACTMENT ====================
 
 async function enactFoundationalBill(supabase, bill, currentTick) {
+    // ── Head of State Title subtype ──
+    if (bill.proposed_hos_title) {
+        const newTitle = bill.proposed_hos_title;
+        console.log(`[enactFoundationalBill] Bill ${bill.id}: HoS title change to "${newTitle}". Marking as passed.`);
+        await supabase.from('bills').update({
+            status: 'passed',
+            passed_tick: currentTick
+        }).eq('id', bill.id);
+
+        await supabase.from('nations').update({
+            head_of_state_title: newTitle
+        }).eq('id', bill.nation_id);
+
+        console.log(`[enactFoundationalBill] Nation ${bill.nation_id} HoS title set to "${newTitle}".`);
+        return true;
+    }
+
+    // ── Electoral Makeup subtype ──
     // Validate proposed_seats BEFORE marking the bill as passed
     let newTotalSeats = bill.proposed_seats;
 
@@ -7960,7 +7978,8 @@ async function createAdministration(supabase, nationId, nation, coalition, allPa
                 started_at_tick: currentTick,
                 started_at_date: currentDate,
                 stats_at_start: statsAtStart,
-                approval_at_start: governmentApproval
+                approval_at_start: governmentApproval,
+                head_of_state_title: nation.head_of_state_title || null
             });
         if (insertErr) throw insertErr;
 
@@ -8024,7 +8043,8 @@ async function rolloverAdministration(supabase, nationId, nation, endReason, coa
         started_at_tick: currentTick,
         started_at_date: currentDate,
         stats_at_start: statsAtStart,
-        approval_at_start: governmentApproval
+        approval_at_start: governmentApproval,
+        head_of_state_title: nation.head_of_state_title || null
     };
 
     const { error: rpcErr } = await supabase.rpc('rollover_administration', {
@@ -9854,7 +9874,8 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         started_at_tick: currentTick,
         started_at_date: dateStr,
         stats_at_start: fullNation ? snapshotNationStats(fullNation) : {},
-        approval_at_start: faction?.approval_rating ?? 50
+        approval_at_start: faction?.approval_rating ?? 50,
+        head_of_state_title: fullNation?.head_of_state_title || null
     });
 
     return candidate;

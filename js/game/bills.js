@@ -2602,6 +2602,24 @@ export async function reversePolicy(supabase, nation, policy, passedTick, curren
 // ==================== FOUNDATIONAL BILL ENACTMENT ====================
 
 export async function enactFoundationalBill(supabase, bill, currentTick) {
+    // ── Head of State Title subtype ──
+    if (bill.proposed_hos_title) {
+        const newTitle = bill.proposed_hos_title;
+        console.log(`[enactFoundationalBill] Bill ${bill.id}: HoS title change to "${newTitle}". Marking as passed.`);
+        await supabase.from('bills').update({
+            status: 'passed',
+            passed_tick: currentTick
+        }).eq('id', bill.id);
+
+        await supabase.from('nations').update({
+            head_of_state_title: newTitle
+        }).eq('id', bill.nation_id);
+
+        console.log(`[enactFoundationalBill] Nation ${bill.nation_id} HoS title set to "${newTitle}".`);
+        return true;
+    }
+
+    // ── Electoral Makeup subtype ──
     // Validate proposed_seats BEFORE marking the bill as passed
     let newTotalSeats = bill.proposed_seats;
 

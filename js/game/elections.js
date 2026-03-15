@@ -2222,7 +2222,8 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         started_at_tick: currentTick,
         started_at_date: dateStr,
         stats_at_start: fullNation ? snapshotNationStats(fullNation) : {},
-        approval_at_start: faction?.approval_rating ?? 50
+        approval_at_start: faction?.approval_rating ?? 50,
+        head_of_state_title: fullNation?.head_of_state_title || null
     });
 
     return candidate;

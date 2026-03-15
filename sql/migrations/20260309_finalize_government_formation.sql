@@ -301,7 +301,7 @@ BEGIN
     nation_id, admin_name, head_of_state, prime_minister,
     pm_party_name, pm_party_id, coalition_parties, total_seats,
     government_type, started_at_tick, started_at_date,
-    stats_at_start, approval_at_start
+    stats_at_start, approval_at_start, head_of_state_title
   ) VALUES (
     v_nation.id,
     v_pm_faction.faction_name || ' Administration',
@@ -315,7 +315,8 @@ BEGIN
     v_shard.current_tick,
     v_shard.current_date,
     v_stats_snapshot,
-    v_gov_approval
+    v_gov_approval,
+    v_nation.head_of_state_title
   );
 
   -- 9. Auto-appoint PM (party leader)
