@@ -71,7 +71,7 @@ async function ensureApRpcAvailability(supabase) {
 //   50  → 0% per tick (equilibrium)
 //   100 → +1% per tick (max growth)
 
-async function processPopulationGrowth(supabase: any, nation: any, popGrowthBeforeEffects: number) {
+async function processPopulationGrowth(supabase: any, nation: any) {
     // population_growth is now standalone — just use the current value directly
     const currentPG = Number(nation.population_growth ?? 50);
     const finalPG = Math.round(Math.max(0, Math.min(100, currentPG)) * 10) / 10;
@@ -1042,9 +1042,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Set correct seat count for this nation (affects supermajority thresholds, etc.)
         initGameConfigForNation(nation);
 
-        // Snapshot population_growth BEFORE any effects for delta tracking.
-        const popGrowthBeforeEffects = Number(nation.population_growth ?? 50);
-
         // Stat effects (from passed bills/active laws)
         const effectResults = await processStatEffects(supabase, nation, newTick);
         if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
@@ -1392,7 +1389,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Population growth: apply population change based on current population_growth stat.
         try {
-            const popGrowthResult = await processPopulationGrowth(supabase, nation, popGrowthBeforeEffects);
+            const popGrowthResult = await processPopulationGrowth(supabase, nation);
             if (popGrowthResult) {
                 summary.populationGrowth = summary.populationGrowth || [];
                 summary.populationGrowth.push({ nation: nation.name, ...popGrowthResult });

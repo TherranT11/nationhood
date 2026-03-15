@@ -3577,6 +3577,7 @@ function wireCampaignConfig(container, f, n, ap, blocs, otherParties, factionIde
     if (confirmBtn) {
         confirmBtn.addEventListener('click', () => {
             if (confirmBtn.classList.contains('disabled')) return;
+            confirmBtn.classList.add('disabled');
             handleCampaignConfirm(container, f, n, ap, blocs, otherParties, factionIdeo, approvalByBloc, tick);
         });
     }
@@ -3608,6 +3609,7 @@ async function handleCampaignConfirm(container, f, n, ap, blocs, otherParties, f
     } catch (err) {
         console.error('Campaign action error:', err);
         alert('Action failed: ' + err.message);
+        if (btn) { btn.classList.remove('disabled'); btn.textContent = `Confirm — ${cost} AP`; }
         return;
     }
 

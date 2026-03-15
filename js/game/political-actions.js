@@ -1391,13 +1391,13 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
             ? Math.min(100, Math.round(currentVal + cfg.STAT_DELTA))
             : Math.max(0, Math.round(currentVal - cfg.STAT_DELTA));
 
+        const statLabel = statKey.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
         // Reject promises that are already fulfilled (e.g. inflation at 0, promising to reduce to 0)
         if (dir === 'above' && currentVal >= targetValue)
             return { success: false, error: `${statLabel} is already at ${currentVal} — nothing to promise.` };
         if (dir === 'below' && currentVal <= targetValue)
             return { success: false, error: `${statLabel} is already at ${currentVal} — nothing to promise.` };
-
-        const statLabel = statKey.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
         demandText = dir === 'above'
             ? `Increase ${statLabel} to ${targetValue}`
             : `Reduce ${statLabel} to ${targetValue}`;

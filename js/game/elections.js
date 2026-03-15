@@ -1959,9 +1959,10 @@ export async function processPresidentialElectionResult(supabase, nation, comple
             const outgoingName = `${outgoingPresident.first_name} ${outgoingPresident.last_name}`;
             console.log(`[PresElection] Term-limited president ${outgoingName} retires as party leader (served ${outgoingPresident.terms_served}/${effectiveTermLimit} terms)`);
 
-            await supabase.from('factions')
+            const { error: retireErr } = await supabase.from('factions')
                 .update({ leader_first_name: null, leader_last_name: null, leader_age: null, electability: 50 })
                 .eq('id', outgoingPresident.faction_id);
+            if (retireErr) console.error(`[PresElection] Failed to clear retired leader:`, retireErr.message);
 
             try {
                 const { data: factionData } = await supabase.from('factions').select('faction_name').eq('id', outgoingPresident.faction_id).single();
@@ -2152,7 +2153,8 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
     }
 
     // Fetch nation data early for per-nation term length
-    const { data: nationForTerm } = await supabase.from('nations').select('presidential_term_ticks, presidential_term_limit').eq('id', nationId).single();
+    const { data: nationForTerm, error: nationTermErr } = await supabase.from('nations').select('presidential_term_ticks, presidential_term_limit').eq('id', nationId).single();
+    if (nationTermErr) console.error(`[inauguratePresident] Failed to fetch nation term data:`, nationTermErr.message);
 
     // Look up trait data for trait_upside / trait_downside
     const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', candidate.trait_key).maybeSingle();

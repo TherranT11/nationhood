@@ -319,7 +319,7 @@ export async function runElectionPreview(supabase, nationId) {
     const currentTick = shard?.current_tick || 0;
     const { data: allFactions } = await supabase
         .from('factions')
-        .select('id, faction_name, seats, last_seen_tick, abandoned_at')
+        .select('id, faction_name, seats, electability, last_seen_tick, abandoned_at')
         .eq('nation_id', nationId)
         .eq('faction_type', 'party')
         .is('abandoned_at', null);
@@ -337,10 +337,11 @@ export async function runElectionPreview(supabase, nationId) {
     const ideoMap = {};
     for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
 
-    // Build party objects with axes (no approval_rating or ideology_modifiers needed)
+    // Build party objects with axes and electability
     const parties = factions.map(f => ({
         id: f.id,
         faction_name: f.faction_name,
+        electability: f.electability ?? 50,
         axes: ideoMap[f.id] || {
             liberty_equality: 0, tradition_progress: 0, security_freedom: 0,
             globalism_nationalism: 0, individualism_collectivism: 0
