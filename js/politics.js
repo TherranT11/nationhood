@@ -393,11 +393,8 @@ async function renderPartyTab(f, nation, data) {
                 <span class="pol-sub-label">Leader</span>
                 <button class="pol-leadership-btn" onclick="window.location.href='party-leadership.html'">Party Leadership &rarr;</button>
             </div>
-            <div class="pol-leader-name">${escapeHtml(leaderName)} <span class="pol-leader-age">${leaderAge}</span></div>
+            <div class="pol-leader-name">${escapeHtml(leaderName)} <span class="pol-leader-age">${leaderAge}</span> <span class="pol-leader-electability"><span class="pol-leader-electability-label">Electability: </span><span style="color:${electTier.color}">${electTier.label}</span></span></div>
             ${leaderIdeo}
-            <div class="pol-leader-electability">
-                <span class="pol-leader-electability-label">Electability: </span><span style="color:${electTier.color}">${electTier.label}</span>
-            </div>
         </div>
         <div class="pol-officers-row">
             <div class="pol-officer">
