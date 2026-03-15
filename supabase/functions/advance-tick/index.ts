@@ -20195,6 +20195,72 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Agreement expiration check failed (non-fatal):', expErr);
     }
 
+    // 3.6b Finalize trade agreement withdrawals past their notice period
+    try {
+        const { data: pendingWithdrawals, error: wErr } = await supabase
+            .from('trade_agreements')
+            .update({ status: 'withdrawn' })
+            .eq('status', 'active')
+            .not('withdrawn_at_tick', 'is', null)
+            .lte('withdrawn_at_tick', newTick)
+            .select('id, agreement_name, agreement_type, nation_a_id, nation_b_id');
+        if (!wErr && pendingWithdrawals && pendingWithdrawals.length > 0) {
+            summary.finalizedWithdrawals = pendingWithdrawals.length;
+            console.log(`[advanceTick] Finalized ${pendingWithdrawals.length} trade agreement withdrawal(s)`);
+            for (const w of pendingWithdrawals) {
+                if (w.nation_b_id) {
+                    await fireBilateralEvent(supabase, 'trade_agreement_withdrawn', w.nation_a_id, w.nation_b_id, newTick, { agreement_name: w.agreement_name || 'Agreement' });
+                }
+            }
+        }
+    } catch (wErr) {
+        console.error('[advanceTick] Withdrawal finalization failed (non-fatal):', wErr);
+    }
+
+    // 3.6c Delete expired/withdrawn trade agreements older than 6 ticks
+    try {
+        const staleThreshold = newTick - 6;
+        const { data: staleTradeAgs, error: staleErr } = await supabase
+            .from('trade_agreements')
+            .delete()
+            .in('status', ['expired', 'withdrawn'])
+            .lte('expires_at_tick', staleThreshold)
+            .select('id');
+        // Also delete withdrawn agreements by withdrawn_at_tick (for those without expires_at_tick)
+        const { data: staleWithdrawn } = await supabase
+            .from('trade_agreements')
+            .delete()
+            .eq('status', 'withdrawn')
+            .not('withdrawn_at_tick', 'is', null)
+            .lte('withdrawn_at_tick', staleThreshold)
+            .select('id');
+        const staleCount = (staleTradeAgs?.length || 0) + (staleWithdrawn?.length || 0);
+        if (staleCount > 0) {
+            summary.deletedStaleAgreements = staleCount;
+            console.log(`[advanceTick] Deleted ${staleCount} stale expired/withdrawn trade agreement(s)`);
+        }
+    } catch (staleErr) {
+        console.error('[advanceTick] Stale agreement cleanup failed (non-fatal):', staleErr);
+    }
+
+    // 3.6d Delete expired/withdrawn diplomatic proposals older than 6 ticks
+    try {
+        const staleThreshold = newTick - 6;
+        const { data: staleProposals } = await supabase
+            .from('diplomatic_proposals')
+            .delete()
+            .in('status', ['expired', 'withdrawn'])
+            .not('terminated_at_tick', 'is', null)
+            .lte('terminated_at_tick', staleThreshold)
+            .select('id');
+        if (staleProposals && staleProposals.length > 0) {
+            summary.deletedStaleProposals = staleProposals.length;
+            console.log(`[advanceTick] Deleted ${staleProposals.length} stale expired/withdrawn diplomatic proposal(s)`);
+        }
+    } catch (staleErr) {
+        console.error('[advanceTick] Stale proposal cleanup failed (non-fatal):', staleErr);
+    }
+
     // 3.7 Expire pending state visit proposals past their accept window
     try {
         const { data: expiredVisits, error: svErr } = await supabase
@@ -20210,6 +20276,39 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (svExpErr) {
         console.error('[advanceTick] State visit expiration check failed (non-fatal):', svExpErr);
+    }
+
+    // 3.7b Expire active diplomatic proposals past their duration_years
+    try {
+        const { data: activeProposals } = await supabase
+            .from('diplomatic_proposals')
+            .select('id, activated_at_tick, proposal_data')
+            .eq('status', 'active')
+            .neq('proposal_type', 'minor_diplomatic_initiative')  // handled in 3.8
+            .neq('proposal_type', 'state_visit')
+            .not('activated_at_tick', 'is', null);
+
+        if (activeProposals && activeProposals.length > 0) {
+            let expiredCount = 0;
+            for (const p of activeProposals) {
+                const pd = p.proposal_data || {};
+                const durationYears = Number(pd.duration_years) || 0;
+                if (durationYears <= 0) continue;
+                const expiresTick = p.activated_at_tick + (durationYears * 12);
+                if (newTick >= expiresTick) {
+                    await supabase.from('diplomatic_proposals')
+                        .update({ status: 'expired', terminated_at_tick: newTick })
+                        .eq('id', p.id);
+                    expiredCount++;
+                }
+            }
+            if (expiredCount > 0) {
+                summary.expiredDiplomaticProposals = expiredCount;
+                console.log(`[advanceTick] Expired ${expiredCount} diplomatic proposal(s) past duration`);
+            }
+        }
+    } catch (dpErr) {
+        console.error('[advanceTick] Diplomatic proposal expiration failed (non-fatal):', dpErr);
     }
 
     // 3.8 Process active minor diplomatic initiatives (soft power decay, ongoing costs, expiry)

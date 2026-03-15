@@ -672,13 +672,21 @@ async function renderAgreementsTab() {
         const { data: agreements } = await _supabase
             .from('diplomatic_proposals')
             .select('*')
-            .eq('status', 'active')
+            .in('status', ['active', 'expired', 'withdrawn'])
             .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id)
             .order('activated_at_tick', { ascending: false });
 
         let html = '';
         for (const ag of (agreements || [])) {
             const pd = ag.proposal_data || {};
+            const isExpiredOrWithdrawn = ag.status === 'expired' || ag.status === 'withdrawn';
+
+            // Hide expired/withdrawn agreements after 6 ticks
+            if (isExpiredOrWithdrawn) {
+                const endTick = ag.terminated_at_tick || 0;
+                if (shardTick - endTick > 6) continue;
+            }
+
             const articles = pd.articles || [];
             const struckIndices = new Set(pd.struck_articles || []);
 
@@ -780,14 +788,17 @@ async function renderAgreementsTab() {
                 if (moneyStr) effectsHTML += '<span class="effect-tag effect-money">' + moneyStr + '</span>';
             }
 
-            // Withdraw button — only FM or HoG can withdraw
-            let totalRelForPenalty = 0;
-            articles.forEach((art, i) => {
-                if (struckIndices.has(i)) return;
-                totalRelForPenalty += (art.effects ? art.effects.relations : art.relations) || 0;
-            });
+            // Withdraw button — only FM or HoG can withdraw (hide for expired/withdrawn)
             let withdrawHTML = '';
-            if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
+            if (isExpiredOrWithdrawn) {
+                const statusLabel = ag.status === 'withdrawn' ? 'WITHDRAWN' : 'EXPIRED';
+                withdrawHTML = '<span class="badge badge--amber" style="font-size:0.62rem;">' + statusLabel + '</span>';
+            } else if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
+                let totalRelForPenalty = 0;
+                articles.forEach((art, i) => {
+                    if (struckIndices.has(i)) return;
+                    totalRelForPenalty += (art.effects ? art.effects.relations : art.relations) || 0;
+                });
                 const penalty = totalRelForPenalty * 2;
                 const penaltyStr = penalty > 0 ? '-' + penalty + ' Relations penalty' : '';
                 withdrawHTML = '<button class="agreement-withdraw-btn" onclick="withdrawAgreement(\'' + ag.id + '\')" title="' + escapeHtml(penaltyStr) + '">Withdraw</button>';
@@ -803,7 +814,7 @@ async function renderAgreementsTab() {
             const typeLabel = INITIATIVE_TYPES[agreementType]?.label || '';
 
             html += `
-                <div class="agreement-card">
+                <div class="agreement-card"${isExpiredOrWithdrawn ? ' style="opacity:0.7;border-left:3px solid var(--amber);"' : ''}>
                     <div class="agreement-card-header">
                         <div class="agreement-card-name">${escapeHtml(pd.name || 'Unnamed Agreement')}</div>
                         <div class="agreement-card-badges">
@@ -832,7 +843,7 @@ async function renderAgreementsTab() {
             const { data: tradeAgs } = await _supabase
                 .from('trade_agreements')
                 .select('*')
-                .eq('status', 'active')
+                .in('status', ['active', 'expired', 'withdrawn'])
                 .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id)
                 .order('enacted_at_tick', { ascending: false });
 
@@ -847,6 +858,14 @@ async function renderAgreementsTab() {
                 (tradeNations || []).forEach(n => tradeNameMap[n.id] = n.name);
 
                 for (const ta of tradeAgs) {
+                    const taIsExpired = ta.status === 'expired' || ta.status === 'withdrawn';
+
+                    // Hide expired/withdrawn trade agreements after 6 ticks
+                    if (taIsExpired) {
+                        const endTick = ta.expires_at_tick || ta.withdrawn_at_tick || 0;
+                        if (shardTick - endTick > 6) continue;
+                    }
+
                     const typeInfo = TRADE_AGREEMENT_TYPES[ta.agreement_type];
                     const partnerId = ta.nation_a_id === currentNation.id ? ta.nation_b_id : ta.nation_a_id;
                     const partnerName = tradeNameMap[partnerId] || 'Unknown';
@@ -861,22 +880,27 @@ async function renderAgreementsTab() {
                         '</div>'
                     ).join('');
 
-                    // Withdraw button (hide if withdrawal already pending)
-                    const withdrawalPending = ta.withdrawn_at_tick != null && ta.withdrawn_at_tick > shardTick;
-                    const withdrawalTicksLeft = withdrawalPending ? ta.withdrawn_at_tick - shardTick : 0;
+                    // Withdraw button (hide if expired/withdrawn or withdrawal already pending)
                     let withdrawBtn = '';
-                    const canWithdraw = diplomaticRoles.isFM || diplomaticRoles.isHoG ||
-                        (diplomaticRoles.isMoT && (ta.agreement_type === 'impose_embargo' || ta.agreement_type === 'retaliatory_tariff' || ta.agreement_type === 'export_subsidy'));
-                    if (withdrawalPending) {
-                        withdrawBtn = '<span class="trade-neg-status-value expiring" title="Withdrawal notice filed">Withdrawing in ' + withdrawalTicksLeft + ' tick' + (withdrawalTicksLeft !== 1 ? 's' : '') + '</span>';
-                    } else if (canWithdraw) {
-                        const noticeLabel = ta.withdrawal_notice_ticks ? ta.withdrawal_notice_ticks + ' tick notice' : 'immediate';
-                        const btnLabel = ta.agreement_type === 'impose_embargo' ? 'Lift Embargo' : 'Withdraw';
-                        withdrawBtn = '<button class="agreement-withdraw-btn" onclick="withdrawTradeAgreement(\'' + ta.id + '\')" title="' + noticeLabel + '">' + btnLabel + '</button>';
+                    if (taIsExpired) {
+                        const statusLabel = ta.status === 'withdrawn' ? 'WITHDRAWN' : 'EXPIRED';
+                        withdrawBtn = '<span class="badge badge--amber" style="font-size:0.62rem;">' + statusLabel + '</span>';
+                    } else {
+                        const withdrawalPending = ta.withdrawn_at_tick != null && ta.withdrawn_at_tick > shardTick;
+                        const withdrawalTicksLeft = withdrawalPending ? ta.withdrawn_at_tick - shardTick : 0;
+                        const canWithdraw = diplomaticRoles.isFM || diplomaticRoles.isHoG ||
+                            (diplomaticRoles.isMoT && (ta.agreement_type === 'impose_embargo' || ta.agreement_type === 'retaliatory_tariff' || ta.agreement_type === 'export_subsidy'));
+                        if (withdrawalPending) {
+                            withdrawBtn = '<span class="trade-neg-status-value expiring" title="Withdrawal notice filed">Withdrawing in ' + withdrawalTicksLeft + ' tick' + (withdrawalTicksLeft !== 1 ? 's' : '') + '</span>';
+                        } else if (canWithdraw) {
+                            const noticeLabel = ta.withdrawal_notice_ticks ? ta.withdrawal_notice_ticks + ' tick notice' : 'immediate';
+                            const btnLabel = ta.agreement_type === 'impose_embargo' ? 'Lift Embargo' : 'Withdraw';
+                            withdrawBtn = '<button class="agreement-withdraw-btn" onclick="withdrawTradeAgreement(\'' + ta.id + '\')" title="' + noticeLabel + '">' + btnLabel + '</button>';
+                        }
                     }
 
                     tradeHtml += `
-                        <div class="agreement-card">
+                        <div class="agreement-card"${taIsExpired ? ' style="opacity:0.7;border-left:3px solid var(--amber);"' : ''}>
                             <div class="agreement-card-header">
                                 <div class="agreement-card-name" style="display:flex;align-items:center;gap:8px;">
                                     ${typeInfo ? '<div class="trade-type-icon ' + typeInfo.icon + '" style="width:24px;height:24px;font-size:0.8rem;">' + iconHtml + '</div>' : ''}
