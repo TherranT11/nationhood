@@ -106,6 +106,7 @@ insert_payload AS (
                 THEN 'Backfilled (tick unknown, fallback to current tick)'
             ELSE NULL
         END AS started_at_date,
+        n.head_of_state_title,
         jsonb_strip_nulls(
             jsonb_build_object(
                 'gdp', n.gdp,
@@ -226,7 +227,8 @@ INSERT INTO administrations (
     government_type,
     started_at_tick,
     started_at_date,
-    stats_at_start
+    stats_at_start,
+    head_of_state_title
 )
 SELECT
     nation_id,
@@ -240,7 +242,8 @@ SELECT
     government_type,
     started_at_tick,
     started_at_date,
-    stats_at_start
+    stats_at_start,
+    head_of_state_title
 FROM insert_payload
 RETURNING nation_id, admin_name, started_at_tick;
 

@@ -1189,6 +1189,7 @@ function showAddArticleForm() {
     document.getElementById('ideology-hint').style.display = 'none';
     document.getElementById('policy-group').style.display = 'none';
     selectedPolicy = null;
+    selectedFoundationalType = null;
     document.getElementById('add-article-btn').disabled = true;
 }
 
@@ -1457,6 +1458,7 @@ function addTextArticle() {
 
 function onSectorChange() {
     const sector = document.getElementById('sector-select').value;
+    selectedFoundationalType = null; // reset on every sector change
     if (!sector) { document.getElementById('ideology-hint').style.display = 'none'; document.getElementById('policy-group').style.display = 'none'; return; }
 
     if (sector === 'FOUNDATIONAL') {
@@ -1499,7 +1501,7 @@ function renderFoundationalOptions() {
             <div id="foundational-hos-config" style="margin-top:12px;${selectedFoundationalType === 'hos_title' ? '' : 'display:none;'}">
                 <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-bottom:6px;">Select new Head of State title:</label>
                 <select id="foundational-hos-select" style="background:var(--bg-card);border:1px solid var(--purple);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:220px;">
-                    ${GAME_CONFIG.HOS_TITLE_OPTIONS.map(t => `<option value="${t}">${t}</option>`).join('')}
+                    ${GAME_CONFIG.HOS_TITLE_OPTIONS.map(t => `<option value="${t}"${t === currentNation.head_of_state_title ? ' selected disabled' : ''}>${t}${t === currentNation.head_of_state_title ? ' (Current)' : ''}</option>`).join('')}
                 </select>
             </div>
         </div>`;
@@ -1905,8 +1907,10 @@ async function submitToCommittee() {
                 const cooldown = GAME_CONFIG.HOS_TITLE_COOLDOWN_TICKS;
                 if (ticksSince < cooldown) {
                     const remaining = cooldown - ticksSince;
-                    const months = remaining;
-                    alert(`Head of State title was changed recently. Cooldown: ${remaining} tick${remaining !== 1 ? 's' : ''} (${Math.ceil(months / GAME_CONFIG.TICKS_PER_YEAR * 12)} months) remaining.`);
+                    const years = Math.floor(remaining / GAME_CONFIG.TICKS_PER_YEAR);
+                    const mo = remaining % GAME_CONFIG.TICKS_PER_YEAR;
+                    const timeStr = years > 0 ? `${years} year${years !== 1 ? 's' : ''}${mo > 0 ? ', ' + mo + ' month' + (mo !== 1 ? 's' : '') : ''}` : `${mo} month${mo !== 1 ? 's' : ''}`;
+                    alert(`Head of State title was changed recently. Cooldown: ${timeStr} remaining.`);
                     isSubmitting = false;
                     document.getElementById('submit-bill-btn').disabled = false;
                     return;

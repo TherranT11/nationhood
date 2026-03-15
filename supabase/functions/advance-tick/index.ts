@@ -7252,16 +7252,28 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
 async function enactFoundationalBill(supabase, bill, currentTick) {
     // ── Head of State Title subtype ──
     if (bill.proposed_hos_title) {
-        const newTitle = bill.proposed_hos_title;
-        console.log(`[enactFoundationalBill] Bill ${bill.id}: HoS title change to "${newTitle}". Marking as passed.`);
-        await supabase.from('bills').update({
+        const newTitle = bill.proposed_hos_title.trim();
+        if (!newTitle) {
+            console.warn(`[enactFoundationalBill] Bill ${bill.id} has empty proposed_hos_title. Marking as failed.`);
+            await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+            return false;
+        }
+
+        const { error: billErr } = await supabase.from('bills').update({
             status: 'passed',
             passed_tick: currentTick
         }).eq('id', bill.id);
+        if (billErr) {
+            console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
+            return false;
+        }
 
-        await supabase.from('nations').update({
+        const { error: nationErr } = await supabase.from('nations').update({
             head_of_state_title: newTitle
         }).eq('id', bill.nation_id);
+        if (nationErr) {
+            console.error(`[enactFoundationalBill] Failed to update HoS title for nation ${bill.nation_id}:`, nationErr.message);
+        }
 
         console.log(`[enactFoundationalBill] Nation ${bill.nation_id} HoS title set to "${newTitle}".`);
         return true;

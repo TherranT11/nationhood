@@ -668,7 +668,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                             ` : ''}
                         </div>
                         <div class="admin-section">
-                            <div class="admin-section-title">${currentNation.head_of_state_title || 'Head of State'}</div>
+                            <div class="admin-section-title">${escapeHtml(currentNation.head_of_state_title || 'Head of State')}</div>
                             <div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div>
                             <div class="admin-person-details">Age ${hosAge} · <span class="admin-person-party">${escapeHtml(rulingPartyName)}</span></div>
                             <div style="color: var(--red); font-size: 0.75rem; margin-top: 6px; font-weight: bold;">Rules until dead or deposed</div>
@@ -792,7 +792,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                     <div class="administration-content">
                         <div class="admin-leaders-column">
                             <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${escapeHtml(safePmName(primeMinister))}</div><div class="admin-person-details">${primeMinister?.minister_age ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${escapeHtml(majorityParty.party_name)}</span></div>${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}</div>
-                            <div class="admin-section"><div class="admin-section-title">${currentNation.head_of_state_title || 'Head of State'}</div><div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${escapeHtml(majorityParty.party_name)}</span></div></div>
+                            <div class="admin-section"><div class="admin-section-title">${escapeHtml(currentNation.head_of_state_title || 'Head of State')}</div><div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${escapeHtml(majorityParty.party_name)}</span></div></div>
                         </div>
                         ${renderAdminChat()}
                     </div>
@@ -851,7 +851,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                                 ` : ''}
                             ` : ''}
                         </div>
-                        <div class="admin-section"><div class="admin-section-title">${currentNation.head_of_state_title || 'Head of State'}</div><div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${escapeHtml(leadPartyName)}</span></div></div>
+                        <div class="admin-section"><div class="admin-section-title">${escapeHtml(currentNation.head_of_state_title || 'Head of State')}</div><div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${escapeHtml(leadPartyName)}</span></div></div>
                     </div>
                     ${renderAdminChat()}
                 </div>
@@ -4604,7 +4604,7 @@ function renderAdminCard(admin, isCurrent) {
     let govLeaderLabel, govLeaderName, govLeaderSub;
 
     if (isAutoc) {
-        hogLabel = admin.head_of_state_title || 'Ruler';
+        hogLabel = escapeHtml(admin.head_of_state_title || 'Ruler');
         hogName = admin.head_of_state || admin.prime_minister || 'Unknown';
         hogParty = admin.pm_party_name || '';
         govLeaderLabel = 'Ruling Faction';
@@ -4618,7 +4618,7 @@ function renderAdminCard(admin, isCurrent) {
         govLeaderName = admin.president_party_name || admin.pm_party_name || '—';
         govLeaderSub = '';
     } else {
-        hogLabel = admin.head_of_state_title || 'Head of State';
+        hogLabel = escapeHtml(admin.head_of_state_title || 'Head of State');
         hogName = admin.head_of_state || 'Unknown';
         hogParty = '';
         govLeaderLabel = 'Prime Minister';
