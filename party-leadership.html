@@ -104,7 +104,7 @@ function loadCurrentLeaders() {
 function generateAllCandidates() {
     const nationName = currentNation.name || '';
     ['leader', 'deputy', 'whip'].forEach(role => {
-        candidatesByRole[role] = generateLeadershipCandidates(nationName, getNationNames, 3);
+        candidatesByRole[role] = generateLeadershipCandidates(nationName, getNationNames, 3, role);
 
         // If there's a current leader, mark the first candidate slot as them (0 AP reappoint)
         if (currentLeaders[role]) {
@@ -114,7 +114,6 @@ function generateAllCandidates() {
                 firstName: cl.firstName,
                 lastName: cl.lastName,
                 age: cl.age || fallback.age || 45,
-                electability: cl.electability || 50,
                 ideology: cl.ideology || fallback.ideology || 'PROGRESS',
                 positiveTraits: cl.positiveTraits || fallback.positiveTraits || [],
                 negativeTraits: cl.negativeTraits || fallback.negativeTraits || [],
@@ -122,6 +121,7 @@ function generateAllCandidates() {
                 costBreakdown: { positiveTotal: 0, negativeTotal: 0, rawCost: 0, apCost: 0 },
                 isCurrent: true,
             };
+            if (role === 'leader') currentCandidate.electability = cl.electability || 50;
             candidatesByRole[role].unshift(currentCandidate);
         }
 
@@ -196,7 +196,7 @@ function renderCandidateList(candidates, selectedIdx) {
         const ideology = c.ideology || '';
         const ideologyColor = IDEOLOGY_COLORS[ideology] || '#888';
         const ideologyLabel = ideology ? ideology.charAt(0) + ideology.slice(1).toLowerCase() : 'Unknown';
-        const electTier = getElectabilityTier(c.electability || 0);
+        const electTier = c.electability != null ? getElectabilityTier(c.electability) : null;
         const currentPill = c.isCurrent ? `<span class="pl-current-pill">CURRENT</span>` : '';
 
         return `
@@ -211,10 +211,10 @@ function renderCandidateList(candidates, selectedIdx) {
                         <span class="pl-ideology-dot" style="background:${ideologyColor}"></span>
                         <span style="color:${ideologyColor}">${ideologyLabel}</span>
                     </span>
-                    <span class="pl-list-electability">
+                    ${electTier ? `<span class="pl-list-electability">
                         <span class="pl-list-electability-label">Electability: </span>
                         <span style="color:${electTier.color}">${electTier.label}</span>
-                    </span>
+                    </span>` : ''}
                 </div>
             </div>
         `;
@@ -226,16 +226,12 @@ function renderCandidateDetail(c) {
     const ideology = c.ideology || '';
     const ideologyColor = IDEOLOGY_COLORS[ideology] || '#888';
     const ideologyLabel = ideology ? ideology.charAt(0) + ideology.slice(1).toLowerCase() : 'Unknown';
-    const electTier = getElectabilityTier(c.electability || 0);
+    const electTier = c.electability != null ? getElectabilityTier(c.electability) : null;
     const costColor = getAPCostColor(c.apCost);
 
     // Cost box colors
     const costFaintBg = costColor + '14'; // ~8% opacity
     const costBorder = costColor + '33'; // ~20% opacity
-
-    // Electability badge
-    const electFaintBg = electTier.color + '14';
-    const electBorder = electTier.color + '33';
 
     // Strengths
     const positiveTraits = (c.positiveTraits || []).map(key => POSITIVE_MAP[key]).filter(Boolean);
@@ -268,11 +264,11 @@ function renderCandidateDetail(c) {
             </div>
         </div>
 
-        <!-- Electability Bar -->
+        ${electTier ? `<!-- Electability Bar -->
         <div class="pl-electability" style="border-left:3px solid ${electTier.color}">
             <div class="pl-electability-header">
                 <span class="pl-electability-title">ELECTABILITY</span>
-                <span class="pl-electability-badge" style="color:${electTier.color};background:${electFaintBg};border:1px solid ${electBorder}">${electTier.label.toUpperCase()}</span>
+                <span class="pl-electability-badge" style="color:${electTier.color};background:${electTier.color + '14'};border:1px solid ${electTier.color + '33'}">${electTier.label.toUpperCase()}</span>
             </div>
             <div class="pl-electability-track">
                 <div class="pl-electability-fill" style="width:${c.electability}%;background:${electTier.color}"></div>
@@ -280,7 +276,7 @@ function renderCandidateDetail(c) {
             <div class="pl-electability-scale">
                 <span>V.Low</span><span>Low</span><span>Moderate</span><span>High</span><span>V.High</span>
             </div>
-        </div>
+        </div>` : ''}
 
         <!-- Strengths -->
         <div class="pl-section-header">STRENGTHS <span style="color:var(--green)">+${posTotal.toFixed(1)}</span></div>
@@ -368,13 +364,16 @@ window._appointLeader = async function() {
 
     const roleLabel = getRoleLabel(activeRole);
 
-    if (!confirm(
-        `Appoint ${candidate.firstName} ${candidate.lastName} as ${roleLabel}?\n\n` +
-        `Cost: ${getAPCostLabel(candidate.apCost)}\n` +
-        `Ideology: ${candidate.ideology}\n` +
-        `Electability: ${getElectabilityTier(candidate.electability).label}\n\n` +
-        `This will replace the current ${roleLabel.toLowerCase()}.`
-    )) return;
+    const confirmLines = [
+        `Appoint ${candidate.firstName} ${candidate.lastName} as ${roleLabel}?\n`,
+        `Cost: ${getAPCostLabel(candidate.apCost)}`,
+        `Ideology: ${candidate.ideology}`,
+    ];
+    if (candidate.electability != null) {
+        confirmLines.push(`Electability: ${getElectabilityTier(candidate.electability).label}`);
+    }
+    confirmLines.push('', `This will replace the current ${roleLabel.toLowerCase()}.`);
+    if (!confirm(confirmLines.join('\n'))) return;
 
     isAppointing = true;
     const btn = document.querySelector('.pl-appoint-btn');
@@ -443,15 +442,16 @@ window._appointLeader = async function() {
         });
 
         // Update local state
-        currentLeaders[activeRole] = {
+        const leaderState = {
             firstName: candidate.firstName,
             lastName: candidate.lastName,
             age: candidate.age,
-            electability: candidate.electability,
             ideology: candidate.ideology,
             positiveTraits: candidate.positiveTraits,
             negativeTraits: candidate.negativeTraits,
         };
+        if (candidate.electability != null) leaderState.electability = candidate.electability;
+        currentLeaders[activeRole] = leaderState;
 
         // Regenerate candidates for this role
         generateAllCandidates();

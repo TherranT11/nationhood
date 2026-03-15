@@ -247,9 +247,10 @@ export function getAPCostLabel(ap) {
  * @param {Function} getNationNamesFn - The getNationNames function
  * @param {Set} usedFirstNames - Already used first names
  * @param {Set} usedLastNames - Already used last names
+ * @param {'leader'|'deputy'|'whip'} role - Role this candidate is for
  * @returns {object} Candidate data
  */
-export function generateCandidate(nationName, getNationNamesFn, usedFirstNames = new Set(), usedLastNames = new Set()) {
+export function generateCandidate(nationName, getNationNamesFn, usedFirstNames = new Set(), usedLastNames = new Set(), role = 'leader') {
     const { firstNames, lastNames } = getNationNamesFn(nationName);
 
     // Pick unique name
@@ -271,8 +272,8 @@ export function generateCandidate(nationName, getNationNamesFn, usedFirstNames =
     // Age: 28-65
     const age = 28 + Math.floor(Math.random() * 38);
 
-    // Electability: 20-70 at generation
-    const electability = 20 + Math.floor(Math.random() * 51);
+    // Electability: 20-70 at generation (leader only — deputy/whip don't have electability)
+    const electability = role === 'leader' ? 20 + Math.floor(Math.random() * 51) : undefined;
 
     // Ideology: pick one of the 10
     const ideologies = ['INDIVIDUALISM', 'COLLECTIVISM', 'GLOBALISM', 'NATIONALISM', 'PROGRESS', 'TRADITION', 'SECURITY', 'FREEDOM', 'LIBERTY', 'EQUALITY'];
@@ -292,17 +293,18 @@ export function generateCandidate(nationName, getNationNamesFn, usedFirstNames =
     const negativeTraitKeys = negativeTraits.map(t => t.key);
     const costInfo = calculateAPCost(positiveTraitKeys, negativeTraitKeys);
 
-    return {
+    const candidate = {
         firstName,
         lastName,
         age,
-        electability,
         ideology,
         positiveTraits: positiveTraitKeys,
         negativeTraits: negativeTraitKeys,
         apCost: costInfo.apCost,
         costBreakdown: costInfo,
     };
+    if (electability !== undefined) candidate.electability = electability;
+    return candidate;
 }
 
 /**
@@ -355,14 +357,15 @@ function pickTraits(pool, count, existingKeys, requireCategoryDiversity) {
 
 /**
  * Generate a set of leadership candidates (3 candidates for a role).
+ * @param {'leader'|'deputy'|'whip'} role - Role these candidates are for
  */
-export function generateLeadershipCandidates(nationName, getNationNamesFn, count = 3) {
+export function generateLeadershipCandidates(nationName, getNationNamesFn, count = 3, role = 'leader') {
     const usedFirst = new Set();
     const usedLast = new Set();
     const candidates = [];
 
     for (let i = 0; i < count; i++) {
-        candidates.push(generateCandidate(nationName, getNationNamesFn, usedFirst, usedLast));
+        candidates.push(generateCandidate(nationName, getNationNamesFn, usedFirst, usedLast, role));
     }
 
     return candidates;
