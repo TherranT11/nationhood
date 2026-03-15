@@ -387,8 +387,7 @@ window._appointLeader = async function() {
             await deductAP(_supabase, currentFaction.id, candidate.apCost);
         }
 
-        // Update faction with new leader data — only update leader fields (deputy/whip columns
-        // may not exist yet; those roles store locally until schema migration is applied)
+        // Update faction with new leader data
         const updateFields = {};
         if (activeRole === 'leader') {
             updateFields.leader_first_name = candidate.firstName;
@@ -404,7 +403,25 @@ window._appointLeader = async function() {
             updateFields.whip_age = candidate.age;
         }
 
-        const { error: updateErr } = await _supabase.from('factions').update(updateFields).eq('id', currentFaction.id);
+        let { error: updateErr } = await _supabase.from('factions').update(updateFields).eq('id', currentFaction.id);
+
+        // If deputy/whip columns don't exist yet (migration not applied), retry without age
+        // which is the least critical field, then retry with just name fields
+        if (updateErr && activeRole !== 'leader' && updateErr.message.includes('schema cache')) {
+            const nameOnly = {};
+            const prefix = activeRole === 'deputy' ? 'deputy' : 'whip';
+            nameOnly[`${prefix}_first_name`] = candidate.firstName;
+            nameOnly[`${prefix}_last_name`] = candidate.lastName;
+            const retry1 = await _supabase.from('factions').update(nameOnly).eq('id', currentFaction.id);
+            if (retry1.error && retry1.error.message.includes('schema cache')) {
+                // Columns don't exist at all — store locally only, skip DB write for this role
+                console.warn(`Deputy/whip columns not yet migrated. Appointment stored locally only.`);
+                updateErr = null;
+            } else {
+                updateErr = retry1.error;
+            }
+        }
+
         if (updateErr) throw new Error('Failed to update faction: ' + updateErr.message);
 
         // Log event
