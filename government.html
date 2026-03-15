@@ -2117,6 +2117,7 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
     if (!stats || stats.length === 0 || !currentNation) return '';
 
     const DELTA_SENSITIVITY = 0.6; // must match MINISTER_APPROVAL_CONFIG.DELTA_SENSITIVITY
+    const BASELINE_DECAY = -0.25;  // must match MINISTER_APPROVAL_CONFIG.BASELINE_DECAY
 
     const panelId = 'mstat-' + ministryKey;
     const baselines = ministry?.stat_baselines || {};
@@ -2213,7 +2214,9 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
     let trendCls = 'flat';
     if (deltaCount > 0) {
         const avgDelta = deltaSum / deltaCount;
-        const totalEffect = avgDelta * DELTA_SENSITIVITY + ambassadorPenalty;
+        // Match server logic: baseline decay always applies, delta only when |avgDelta| >= 0.5
+        const deltaEffect = Math.abs(avgDelta) >= 0.5 ? avgDelta * DELTA_SENSITIVITY : 0;
+        const totalEffect = BASELINE_DECAY + deltaEffect + ambassadorPenalty;
         const absTotal = Math.abs(totalEffect);
         const effectLabel = absTotal >= 0.01
             ? ' (' + (totalEffect > 0 ? '+' : '-') + (Math.round(absTotal * 100) / 100).toFixed(2) + '/tick)'

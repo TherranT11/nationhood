@@ -4310,8 +4310,8 @@ export async function processMinistryActions(supabase, nation, currentTick) {
  * For each stat: delta = (current - baseline) × directionSign
  *   (positive delta = good direction, negative = bad direction)
  * avgDelta = average of all deltas
- * approval += avgDelta × DELTA_SENSITIVITY
- * If avgDelta ≈ 0 (stagnation), apply a small decay.
+ * approval += BASELINE_DECAY + (avgDelta × DELTA_SENSITIVITY if |avgDelta| >= 0.5)
+ * BASELINE_DECAY always applies; delta-based movement is added on top.
  *
  * Ministers without baselines get them auto-set to current values (migration path).
  *
@@ -4461,7 +4461,7 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
     for (const m of filledMinistries) {
         ministerSum += (m.minister_approval ?? cfg.NEW_MINISTER_APPROVAL);
     }
-    const ministerAvg = filledMinistries.length > 0 ? ministerSum / filledMinistries.length : 50;
+    const ministerAvg = filledMinistries.length > 0 ? ministerSum / filledMinistries.length : cfg.NEW_MINISTER_APPROVAL;
 
     // Vacancy penalty: -3 per unfilled ministry seat
     const vacancyPenalty = vacantCount * cfg.VACANCY_PENALTY;
