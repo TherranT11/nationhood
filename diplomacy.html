@@ -3167,10 +3167,6 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
     // Ambassador actions first (only if ambassador to this specific nation)
     const isAmbToTarget = roles.ambassadorTo.some(a => a.target_nation_id === targetNation.id);
     if (isAmbToTarget) {
-        const hasTargetAmb = theirAmbassador && theirAmbassador.status === 'active';
-        const initiativeDisabled = !hasTargetAmb ? 'disabled style="opacity:0.6;"' : '';
-        const initiativeHint = !hasTargetAmb ? '<p class="action-hint">Target nation has no ambassador to negotiate with.</p>' : '';
-
         // Retirement warning for the player's own ambassador
         let ambWarningHTML = '';
         const myAmb = roles.ambassadorTo.find(a => a.target_nation_id === targetNation.id);
@@ -3493,6 +3489,53 @@ async function cancelPendingAmbassador(ambassadorId, nationName) {
     }
 }
 
+// ==================== MARK MESSAGES READ ====================
+
+/**
+ * Mark incoming diplomatic messages as read by the current faction.
+ * Updates the DB, clears the [Incoming Message] badge on the nation card,
+ * and decrements the nav badge count.
+ * @param {Array} messages - Full message array for this conversation
+ * @param {string} fromNationId - The nation that sent the messages
+ */
+function markDiploMessagesRead(messages, fromNationId) {
+    if (!currentFaction || !currentNation) return;
+
+    const unreadIds = messages
+        .filter(m => m.to_nation_id === currentNation.id && m.from_nation_id === fromNationId)
+        .filter(m => !(m.read_by_factions || []).includes(currentFaction.id))
+        .map(m => m.id);
+
+    if (unreadIds.length === 0) return;
+
+    Promise.all(unreadIds.map(msgId => {
+        // Use RPC-style atomic append to avoid lost-update race if two
+        // factions mark the same message read concurrently.
+        return _supabase.rpc('append_read_faction', {
+            p_message_id: msgId,
+            p_faction_id: currentFaction.id
+        });
+    })).then(() => {
+        // Clear [Incoming Message] badge on this nation card
+        const card = document.getElementById('nation-card-' + fromNationId);
+        if (card) {
+            const badge = card.querySelector('.diplo-incoming-msg');
+            if (badge) badge.remove();
+        }
+        // Update the nav badge count
+        const navBadge = document.getElementById('diplomacy-badge');
+        if (navBadge && navBadge.style.display !== 'none') {
+            const current = parseInt(navBadge.textContent) || 0;
+            const newCount = Math.max(0, current - unreadIds.length);
+            if (newCount > 0) {
+                navBadge.textContent = newCount;
+            } else {
+                navBadge.style.display = 'none';
+            }
+        }
+    }).catch(e => console.warn('Error marking messages as read:', e));
+}
+
 // ==================== DIPLOMATIC CHAT ====================
 
 async function renderChatSection(targetNation, roles, ourAmbassador, theirAmbassador) {
@@ -3538,42 +3581,7 @@ async function renderChatSection(targetNation, roles, ourAmbassador, theirAmbass
     }
 
     // Mark unread incoming messages as read by this faction
-    if (currentFaction) {
-        const unreadIds = messages
-            .filter(m => m.to_nation_id === currentNation.id && m.from_nation_id === targetNation.id)
-            .filter(m => !(m.read_by_factions || []).includes(currentFaction.id))
-            .map(m => m.id);
-
-        if (unreadIds.length > 0) {
-            // Update each unread message to include our faction in read_by_factions
-            // Use Promise.all for parallel updates (non-blocking)
-            Promise.all(unreadIds.map(msgId => {
-                const msg = messages.find(m => m.id === msgId);
-                const updated = [...(msg.read_by_factions || []), currentFaction.id];
-                return _supabase.from('diplomatic_messages')
-                    .update({ read_by_factions: updated })
-                    .eq('id', msgId);
-            })).then(() => {
-                // Clear [Incoming Message] badge on this nation card
-                const card = document.getElementById('nation-card-' + targetNation.id);
-                if (card) {
-                    const badge = card.querySelector('.diplo-incoming-msg');
-                    if (badge) badge.remove();
-                }
-                // Update the nav badge count
-                const navBadge = document.getElementById('diplomacy-badge');
-                if (navBadge && navBadge.style.display !== 'none') {
-                    const current = parseInt(navBadge.textContent) || 0;
-                    const newCount = Math.max(0, current - unreadIds.length);
-                    if (newCount > 0) {
-                        navBadge.textContent = newCount;
-                    } else {
-                        navBadge.style.display = 'none';
-                    }
-                }
-            }).catch(e => console.warn('Error marking messages as read:', e));
-        }
-    }
+    markDiploMessagesRead(messages, targetNation.id);
 
     const msgsHTML = messages.length > 0
         ? messages.map(m => {
@@ -10478,20 +10486,8 @@ async function renderSendMessagePanel(body, statusEl) {
         } catch (e) { /* */ }
 
         // Mark unread incoming messages as read by this faction
-        if (currentFaction && activeDraftTarget) {
-            const unreadIds = messages
-                .filter(m => m.to_nation_id === currentNation.id && m.from_nation_id === activeDraftTarget.id)
-                .filter(m => !(m.read_by_factions || []).includes(currentFaction.id))
-                .map(m => m.id);
-            if (unreadIds.length > 0) {
-                Promise.all(unreadIds.map(msgId => {
-                    const msg = messages.find(m => m.id === msgId);
-                    const updated = [...(msg.read_by_factions || []), currentFaction.id];
-                    return _supabase.from('diplomatic_messages')
-                        .update({ read_by_factions: updated })
-                        .eq('id', msgId);
-                })).catch(e => console.warn('Error marking messages as read:', e));
-            }
+        if (activeDraftTarget) {
+            markDiploMessagesRead(messages, activeDraftTarget.id);
         }
 
         const msgsHTML = messages.length > 0
