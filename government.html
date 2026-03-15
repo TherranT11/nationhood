@@ -706,7 +706,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         const { data: freshShard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const freshTick = freshShard?.current_tick || currentTick;
         const termRemaining = presidentData.term_ends_tick - freshTick;
-        const termTotal = GAME_CONFIG.PRESIDENTIAL_TERM_TICKS || 48;
+        const termTotal = currentNation?.presidential_term_ticks || GAME_CONFIG.PRESIDENTIAL_TERM_TICKS || 48;
         const termPct = Math.max(0, Math.min(100, Math.round((termRemaining / termTotal) * 100)));
 
         // Convert remaining ticks to human-readable format (TICKS_PER_YEAR = 12, so 1 tick = 1 month)
@@ -753,7 +753,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                 <div class="administration-content">
                     <div class="admin-leaders-column">
                         <div class="admin-section">
-                            <div class="admin-section-title">President${presidentData.terms_served ? ` — ${presidentData.terms_served === 1 ? '1st' : '2nd'} Term` : ''}</div>
+                            <div class="admin-section-title">President${presidentData.terms_served ? ` — ${['1st','2nd','3rd','4th'][presidentData.terms_served - 1] || presidentData.terms_served + 'th'} Term` : ''}</div>
                             <div class="admin-person-name">${escapeHtml(presidentData.first_name)} ${escapeHtml(presidentData.last_name)}</div>
                             <div class="admin-person-details">Age ${presidentData.age} · <span class="admin-person-party">${escapeHtml(presPartyName)}</span></div>
                             ${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}

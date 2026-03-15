@@ -3,7 +3,7 @@
  * Extracted from game-common.js
  */
 
-import { FORMATION_DEADLINE_TICKS, GAME_CONFIG, SNAP_COOLDOWN_GAP } from './config.js';
+import { FORMATION_DEADLINE_TICKS, GAME_CONFIG, SNAP_COOLDOWN_GAP, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
 import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isAutocracy, isPresidentialRepublic } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { snapshotNationStats } from './stats.js';
@@ -1952,6 +1952,30 @@ export async function processPresidentialElectionResult(supabase, nation, comple
         }
     }
 
+    // === TERM-LIMITED PRESIDENT RETIRES AS PARTY LEADER ===
+    if (outgoingPresident) {
+        const effectiveTermLimit = getPresidentialTermLimit(nation);
+        if (effectiveTermLimit !== null && (outgoingPresident.terms_served || 1) >= effectiveTermLimit) {
+            const outgoingName = `${outgoingPresident.first_name} ${outgoingPresident.last_name}`;
+            console.log(`[PresElection] Term-limited president ${outgoingName} retires as party leader (served ${outgoingPresident.terms_served}/${effectiveTermLimit} terms)`);
+
+            await supabase.from('factions')
+                .update({ leader_first_name: null, leader_last_name: null, leader_age: null, electability: 50 })
+                .eq('id', outgoingPresident.faction_id);
+
+            try {
+                const { data: factionData } = await supabase.from('factions').select('faction_name').eq('id', outgoingPresident.faction_id).single();
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: 'President Retires (Term Limited)',
+                    description_chosen: `${outgoingName}, having served the maximum ${effectiveTermLimit} term${effectiveTermLimit !== 1 ? 's' : ''} as president, has retired from party leadership. ${factionData?.faction_name || 'The party'} must appoint a new leader.`,
+                    category: 'POLITICAL',
+                    fired_at_tick: currentTick,
+                });
+            } catch (e) { console.warn('[PresElection] Failed to log term-limited retirement event:', e); }
+        }
+    }
+
     // === VACATE NON-PRESIDENT-PARTY MINISTERS (new administration) ===
     if (isChallengerWin) {
         try {
@@ -2127,6 +2151,9 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         console.error(`[inauguratePresident] Failed to deactivate previous presidents for ${nationId}:`, deactErr.message);
     }
 
+    // Fetch nation data early for per-nation term length
+    const { data: nationForTerm } = await supabase.from('nations').select('presidential_term_ticks, presidential_term_limit').eq('id', nationId).single();
+
     // Look up trait data for trait_upside / trait_downside
     const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', candidate.trait_key).maybeSingle();
 
@@ -2152,7 +2179,7 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         trait_upside: trait?.upside || null,
         trait_downside: trait?.downside || null,
         elected_tick: currentTick,
-        term_ends_tick: currentTick + GAME_CONFIG.PRESIDENTIAL_TERM_TICKS,
+        term_ends_tick: currentTick + getPresidentialTermTicks(nationForTerm),
         is_active: true,
         terms_served: termsServed
     });
@@ -2275,7 +2302,7 @@ export async function scheduleNextPresidentialElections(supabase, nation, curren
         .maybeSingle();
 
     if (!futurePres) {
-        const nextPres = currentTick + GAME_CONFIG.PRESIDENTIAL_TERM_TICKS;
+        const nextPres = currentTick + getPresidentialTermTicks(nation);
         await supabase.from('elections').insert({
             nation_id: nation.id,
             election_tick: nextPres,

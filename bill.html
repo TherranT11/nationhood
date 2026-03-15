@@ -773,33 +773,95 @@ function renderArticles() {
 
     // Foundational bills show a special notice instead of articles
     if (bill.bill_type === 'foundational') {
-        const currentSeatsDisplay = GAME_CONFIG.TOTAL_SEATS;
-        let proposedSeats = bill.proposed_seats;
-        if (!proposedSeats && bill.preamble) {
-            const match = bill.preamble.match(/from\s+\d+\s+to\s+(\d+)/i);
-            if (match) proposedSeats = parseInt(match[1], 10);
-        }
-        if (!proposedSeats) {
-            console.warn('[bill.html] proposed_seats is null for foundational bill', bill.id);
-            proposedSeats = currentSeatsDisplay;
-        }
-        const change = proposedSeats - currentSeatsDisplay;
-        const changeText = change > 0 ? `+${change}` : `${change}`;
-        document.getElementById('bill-articles').innerHTML =
-            '<div class="article preamble" style="border-left-color:var(--purple);">' +
-                '<div class="article-number" style="color:var(--purple);">FOUNDATIONAL LAW</div>' +
-                '<div class="article-title">Electoral Makeup</div>' +
-                '<div class="article-description">' + (bill.preamble || 'This bill proposes to change the number of legislative seats.') + '</div>' +
-            '</div>' +
-            '<div class="repeal-notice" style="border-color:var(--purple);">' +
-                '<div class="repeal-notice-icon">🏛</div>' +
-                '<div class="repeal-notice-text">Proposed Seat Change: ' + currentSeatsDisplay + ' &rarr; ' + proposedSeats + ' (' + changeText + ')</div>' +
-                '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
-                    'Requires <strong style="color:var(--purple);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
-                    'If passed: legislature resized, seats redistributed proportionally.<br>' +
-                    'No ideology penalties apply to this bill.' +
+        let foundationalHTML = '';
+
+        if (bill.proposed_term_length != null) {
+            // Term Length subtype
+            const ticksPerYear = GAME_CONFIG.TICKS_PER_YEAR || 12;
+            const proposedYears = bill.proposed_term_length / ticksPerYear;
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--purple);">' +
+                    '<div class="article-number" style="color:var(--purple);">FOUNDATIONAL LAW</div>' +
+                    '<div class="article-title">Head of Government Term Length</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill proposes to change the presidential term length.') + '</div>' +
                 '</div>' +
-            '</div>';
+                '<div class="repeal-notice" style="border-color:var(--purple);">' +
+                    '<div class="repeal-notice-icon">📅</div>' +
+                    '<div class="repeal-notice-text">Proposed Term Length: ' + proposedYears + ' Years (' + bill.proposed_term_length + ' ticks)</div>' +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--purple);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                        'The new term length applies to the next election cycle only.<br>' +
+                        'Shorter terms: polarization +2, political engagement +3.<br>' +
+                        'Longer terms: legitimacy -3, stability +2.' +
+                    '</div>' +
+                '</div>';
+        } else if (bill.proposed_term_limit != null) {
+            // Term Limits subtype
+            const limitText = bill.proposed_term_limit === 0 ? 'No Term Limits' : bill.proposed_term_limit + ' Term' + (bill.proposed_term_limit !== 1 ? 's' : '');
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--purple);">' +
+                    '<div class="article-number" style="color:var(--purple);">FOUNDATIONAL LAW</div>' +
+                    '<div class="article-title">Head of Government Term Limits</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill proposes to change presidential term limits.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--purple);">' +
+                    '<div class="repeal-notice-icon">🔒</div>' +
+                    '<div class="repeal-notice-text">Proposed Term Limit: ' + limitText + '</div>' +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--purple);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                        (bill.proposed_term_limit === 0
+                            ? 'Removing limits: legitimacy -6, civil unrest +4, opposition momentum +8.<br>If sitting president has served 2+ terms: polarization +10.'
+                            : 'Adding/tightening limits: legitimacy +5, press freedom +2, judicial independence +2.') +
+                    '</div>' +
+                '</div>';
+        } else if (bill.proposed_hos_title) {
+            // HoS Title subtype
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--purple);">' +
+                    '<div class="article-number" style="color:var(--purple);">FOUNDATIONAL LAW</div>' +
+                    '<div class="article-title">Head of State Title</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill proposes to change the Head of State title.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--purple);">' +
+                    '<div class="repeal-notice-icon">👑</div>' +
+                    '<div class="repeal-notice-text">Proposed Title: ' + escapeHtml(bill.proposed_hos_title) + '</div>' +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--purple);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                        '240 tick cooldown between changes.' +
+                    '</div>' +
+                '</div>';
+        } else {
+            // Electoral Makeup subtype (default)
+            const currentSeatsDisplay = GAME_CONFIG.TOTAL_SEATS;
+            let proposedSeats = bill.proposed_seats;
+            if (!proposedSeats && bill.preamble) {
+                const match = bill.preamble.match(/from\s+\d+\s+to\s+(\d+)/i);
+                if (match) proposedSeats = parseInt(match[1], 10);
+            }
+            if (!proposedSeats) {
+                console.warn('[bill.html] proposed_seats is null for foundational bill', bill.id);
+                proposedSeats = currentSeatsDisplay;
+            }
+            const change = proposedSeats - currentSeatsDisplay;
+            const changeText = change > 0 ? `+${change}` : `${change}`;
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--purple);">' +
+                    '<div class="article-number" style="color:var(--purple);">FOUNDATIONAL LAW</div>' +
+                    '<div class="article-title">Electoral Makeup</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill proposes to change the number of legislative seats.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--purple);">' +
+                    '<div class="repeal-notice-icon">🏛</div>' +
+                    '<div class="repeal-notice-text">Proposed Seat Change: ' + currentSeatsDisplay + ' &rarr; ' + proposedSeats + ' (' + changeText + ')</div>' +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--purple);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                        'If passed: legislature resized, seats redistributed proportionally.<br>' +
+                        'No ideology penalties apply to this bill.' +
+                    '</div>' +
+                '</div>';
+        }
+
+        document.getElementById('bill-articles').innerHTML = foundationalHTML;
         document.getElementById('total-upfront').textContent = '$0M';
         document.getElementById('total-ongoing').textContent = '$0M/mo';
         return;
