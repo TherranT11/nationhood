@@ -372,6 +372,9 @@ export function renderNavTabs(activeTab) {
         if (tab.id === 'laws') {
             badgeHtml = '<span class="nav-badge" id="bills-badge" style="display:none;"></span>';
         }
+        if (tab.id === 'diplomacy') {
+            badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>';
+        }
         return `
             <a href="${href}"
                class="nav-tab ${tab.id === activeTab ? 'active' : ''}"
@@ -430,6 +433,38 @@ async function updateBillsBadge(faction, nation, shard) {
         }
     } catch (e) {
         console.error('Error updating bills badge:', e);
+    }
+}
+
+
+// ===== DIPLOMACY BADGE (unread diplomatic messages) =====
+
+async function updateDiplomacyBadge(faction, nation) {
+    const badge = document.getElementById('diplomacy-badge');
+    if (!badge || !faction || !nation) return;
+    try {
+        // Fetch messages sent TO our nation that our faction hasn't read yet.
+        // We only care about messages FROM other nations (not our own).
+        const { data: msgs } = await _supabase
+            .from('diplomatic_messages')
+            .select('id, read_by_factions')
+            .eq('to_nation_id', nation.id)
+            .neq('from_nation_id', nation.id);
+
+        let count = 0;
+        for (const msg of (msgs || [])) {
+            const readBy = msg.read_by_factions || [];
+            if (!readBy.includes(faction.id)) count++;
+        }
+
+        if (count > 0) {
+            badge.textContent = count;
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Error updating diplomacy badge:', e);
     }
 }
 
@@ -744,6 +779,10 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     // Update bills badge (non-blocking, skip on laws page since it marks seen)
     if (activeTab !== 'laws') {
         updateBillsBadge(state.faction, state.nation, state.shard);
+    }
+    // Update diplomacy badge (non-blocking, skip on diplomacy page since it marks read)
+    if (activeTab !== 'diplomacy') {
+        updateDiplomacyBadge(state.faction, state.nation);
     }
     if (onReady) {
         await onReady(state);
