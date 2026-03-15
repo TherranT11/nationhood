@@ -1391,6 +1391,12 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
             ? Math.min(100, Math.round(currentVal + cfg.STAT_DELTA))
             : Math.max(0, Math.round(currentVal - cfg.STAT_DELTA));
 
+        // Reject promises that are already fulfilled (e.g. inflation at 0, promising to reduce to 0)
+        if (dir === 'above' && currentVal >= targetValue)
+            return { success: false, error: `${statLabel} is already at ${currentVal} — nothing to promise.` };
+        if (dir === 'below' && currentVal <= targetValue)
+            return { success: false, error: `${statLabel} is already at ${currentVal} — nothing to promise.` };
+
         const statLabel = statKey.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
         demandText = dir === 'above'
             ? `Increase ${statLabel} to ${targetValue}`
@@ -1570,6 +1576,13 @@ export function getPromiseableStats(nation) {
         const ministry = STAT_TO_MINISTRY[statKey] || null;
         // Good stats (sign=1) → promise to increase; bad stats (sign=-1) → promise to decrease
         const promiseDirection = sign === 1 ? 'increase' : 'decrease';
+        // Skip stats already at their limit — no meaningful promise possible
+        const val = Number(currentVal);
+        const target = sign === 1
+            ? Math.min(100, Math.round(val + MAKE_PROMISE_CONFIG.STAT_DELTA))
+            : Math.max(0, Math.round(val - MAKE_PROMISE_CONFIG.STAT_DELTA));
+        if (sign === 1 && val >= target) continue;
+        if (sign === -1 && val <= target) continue;
         results.push({
             statKey,
             label: statKey.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
@@ -4162,7 +4175,7 @@ export async function processMinistryActions(supabase, nation, currentTick) {
                                 .eq('ministry_key', action.ministry_key)
                                 .eq('party_id', action.faction_id)
                                 .single();
-                            ministerUpdates[mKey] = (ministry?.minister_approval ?? 50);
+                            ministerUpdates[mKey] = (ministry?.minister_approval ?? MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL);
                             ministerBaseline[mKey] = ministerUpdates[mKey];
                         }
                         currentVal = ministerUpdates[mKey];
@@ -4297,8 +4310,8 @@ export async function processMinistryActions(supabase, nation, currentTick) {
  * For each stat: delta = (current - baseline) × directionSign
  *   (positive delta = good direction, negative = bad direction)
  * avgDelta = average of all deltas
- * approval += avgDelta × DELTA_SENSITIVITY
- * If avgDelta ≈ 0 (stagnation), apply a small decay.
+ * approval += BASELINE_DECAY + (avgDelta × DELTA_SENSITIVITY if |avgDelta| >= 0.5)
+ * BASELINE_DECAY always applies; delta-based movement is added on top.
  *
  * Ministers without baselines get them auto-set to current values (migration path).
  *
@@ -4357,12 +4370,30 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
         const oldApproval = ministry.minister_approval ?? cfg.NEW_MINISTER_APPROVAL;
         let newApproval = oldApproval;
 
-        if (Math.abs(avgDelta) < 0.5) {
-            // Stagnation: stats haven't moved meaningfully — slow decay
-            newApproval += cfg.STAGNATION_DECAY;
-        } else {
-            // Apply delta-based movement
+        // Baseline decay always applies — approval erodes unless stats improve
+        newApproval += cfg.BASELINE_DECAY;
+        // Apply delta-based movement on top of baseline decay
+        if (Math.abs(avgDelta) >= 0.5) {
             newApproval += avgDelta * cfg.DELTA_SENSITIVITY;
+        }
+
+        // Foreign Minister penalty: -0.25/tick per nation without an outgoing ambassador
+        let missingAmbassadorCount = 0;
+        if (ministry.ministry_key === 'foreign') {
+            const { count: totalNations } = await supabase
+                .from('nations')
+                .select('id', { count: 'exact', head: true })
+                .neq('id', nation.id);
+            const { count: activeAmbassadors } = await supabase
+                .from('ambassadors')
+                .select('id', { count: 'exact', head: true })
+                .eq('nation_id', nation.id)
+                .eq('is_active', true)
+                .eq('status', 'active');
+            missingAmbassadorCount = (totalNations || 0) - (activeAmbassadors || 0);
+            if (missingAmbassadorCount > 0) {
+                newApproval += missingAmbassadorCount * cfg.MISSING_AMBASSADOR_PENALTY;
+            }
         }
 
         newApproval = Math.round(Math.max(0, Math.min(100, newApproval)) * 10) / 10;
@@ -4430,7 +4461,7 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
     for (const m of filledMinistries) {
         ministerSum += (m.minister_approval ?? cfg.NEW_MINISTER_APPROVAL);
     }
-    const ministerAvg = filledMinistries.length > 0 ? ministerSum / filledMinistries.length : 50;
+    const ministerAvg = filledMinistries.length > 0 ? ministerSum / filledMinistries.length : cfg.NEW_MINISTER_APPROVAL;
 
     // Vacancy penalty: -3 per unfilled ministry seat
     const vacancyPenalty = vacantCount * cfg.VACANCY_PENALTY;
@@ -4444,7 +4475,7 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
 
     // Cap per-tick change to ±3 so approval moves gradually
     const MAX_TICK_CHANGE = 3;
-    const previousApproval = Number(nation.gov_approval ?? 50);
+    const previousApproval = Number(nation.gov_approval ?? 40);
     const delta = rawApproval - previousApproval;
     const clampedDelta = Math.max(-MAX_TICK_CHANGE, Math.min(MAX_TICK_CHANGE, delta));
     const govApproval = Math.round(Math.max(0, Math.min(100, previousApproval + clampedDelta)));
@@ -4964,7 +4995,7 @@ export async function processCrises(supabase, nation, currentTick) {
                     .maybeSingle();
 
                 if (pmMinistry) {
-                    const currentVal = pmMinistry.minister_approval ?? 50;
+                    const currentVal = pmMinistry.minister_approval ?? MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL;
                     const newVal = clampWithFloor(currentVal, currentVal + changePT);
                     const { error: pmUpdErr } = await supabase.from('ministries')
                         .update({ minister_approval: newVal })
@@ -5002,7 +5033,7 @@ export async function processCrises(supabase, nation, currentTick) {
                     .maybeSingle();
 
                 if (ministry) {
-                    const currentVal = ministry.minister_approval ?? 50;
+                    const currentVal = ministry.minister_approval ?? MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL;
                     const newVal = clampWithFloor(currentVal, currentVal + changePT);
                     const { error: minUpdErr } = await supabase.from('ministries')
                         .update({ minister_approval: newVal })
@@ -5631,7 +5662,7 @@ export async function selectPMCandidate(supabase, candidateId, nationId, faction
             minister_first_name: candidate.first_name,
             minister_last_name: candidate.last_name,
             minister_age: candidate.age,
-            minister_approval: 50,
+            minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
             stat_baselines: pmBaselines
         }).eq('id', pmMinistry.id);
     } else {
@@ -5644,7 +5675,7 @@ export async function selectPMCandidate(supabase, candidateId, nationId, faction
             minister_first_name: candidate.first_name,
             minister_last_name: candidate.last_name,
             minister_age: candidate.age,
-            minister_approval: 50,
+            minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
             stat_baselines: pmBaselines
         });
     }
@@ -5786,7 +5817,7 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
             minister_first_name: faction.leader_first_name,
             minister_last_name: faction.leader_last_name,
             minister_age: leaderAge,
-            minister_approval: 50,
+            minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
             stat_baselines: pmBaselines
         }).eq('id', pmMinistry.id);
     } else {
@@ -5799,7 +5830,7 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
             minister_first_name: faction.leader_first_name,
             minister_last_name: faction.leader_last_name,
             minister_age: leaderAge,
-            minister_approval: 50,
+            minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
             stat_baselines: pmBaselines
         });
     }

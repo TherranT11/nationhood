@@ -13,6 +13,7 @@
  */
 
 import { GAME_CONFIG, deductAP } from './config.js';
+import { MINISTER_APPROVAL_CONFIG } from './stats.js';
 import { isGovernmentPresidential } from './government-types.js';
 import { adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
 import { PM_FIRST_NAMES, PM_LAST_NAMES, getNationNames } from './political-actions.js';
@@ -176,7 +177,7 @@ export async function issueActingMinister(supabase, nationId, factionId, ministr
             confirmation_status: 'acting',
             is_acting: true,
             acting_order_id: order.id,
-            minister_approval: 50
+            minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL
         })
         .eq('id', ministry.id);
 

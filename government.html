@@ -74,6 +74,8 @@ function ideologyBg(name) { return IDEOLOGY_COLORS[(name || '').toLowerCase()] |
  * Autocracy: ruling faction can ASSIGN/PURGE ministers; others can REQUEST.
  */
 
+const NEW_MINISTER_APPROVAL = 40;
+
 const MINISTRY_NAMES = {
     prime_minister: 'Prime Minister',
     interior: 'Ministry of the Interior',
@@ -124,6 +126,7 @@ let presidentData = null;
 let isRulingFaction = false;
 let rulingFactionId = null;
 let ministryRequests = [];
+let missingAmbassadorCount = 0; // pre-fetched for Foreign Minister performance panel
 let currentTick = 0;
 let lastElectionTick = null;
 
@@ -393,6 +396,14 @@ async function renderGovernmentPage() {
             .limit(8);
         currentNation._govApprovalEvents = govApprovalEvents || [];
 
+        // Pre-fetch missing ambassador count for Foreign Minister performance panel
+        const [{ count: totalOtherNations }, { count: activeAmbs }] = await Promise.all([
+            _supabase.from('nations').select('id', { count: 'exact', head: true }).neq('id', currentNation.id),
+            _supabase.from('ambassadors').select('id', { count: 'exact', head: true })
+                .eq('nation_id', currentNation.id).eq('is_active', true).eq('status', 'active')
+        ]);
+        missingAmbassadorCount = (totalOtherNations || 0) - (activeAmbs || 0);
+
         // Check for pending PM or President candidates (player needs to select)
         const primeMinister = ministries?.find(m => m.ministry_key === 'prime_minister');
 
@@ -503,7 +514,7 @@ async function calculateGovernmentApproval() {
         .select('gov_approval')
         .eq('id', currentNation.id)
         .single();
-    return nation?.gov_approval ?? 50;
+    return nation?.gov_approval ?? 40;
 }
 
 function getPartyNameById(partyId) {
@@ -539,7 +550,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
     const filledMinisters = ministryData.filter(m => m.minister_first_name);
     const vacantCount = ministryData.length - filledMinisters.length;
     const ministerAvg = filledMinisters.length > 0
-        ? Math.round(filledMinisters.reduce((sum, m) => sum + (m.minister_approval ?? 50), 0) / filledMinisters.length)
+        ? Math.round(filledMinisters.reduce((sum, m) => sum + (m.minister_approval ?? NEW_MINISTER_APPROVAL), 0) / filledMinisters.length)
         : 50;
     const vacancyPenalty = vacantCount * -3;
     const evMod = Math.round((currentNation.gov_approval_events ?? 0) * 10) / 10;
@@ -2015,7 +2026,7 @@ async function formGovernmentFallback(ministryBaselines) {
             minister_first_name: minister.first_name,
             minister_last_name: minister.last_name,
             minister_age: minister.age,
-            minister_approval: 50,
+            minister_approval: NEW_MINISTER_APPROVAL,
             stat_baselines: ministryBaselines[ministryKey] || {}
         };
 
@@ -2105,11 +2116,20 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
     const stats = MINISTRY_TO_STATS[ministryKey];
     if (!stats || stats.length === 0 || !currentNation) return '';
 
+    const DELTA_SENSITIVITY = 0.6; // must match MINISTER_APPROVAL_CONFIG.DELTA_SENSITIVITY
+    const BASELINE_DECAY = -0.25;  // must match MINISTER_APPROVAL_CONFIG.BASELINE_DECAY
+
     const panelId = 'mstat-' + ministryKey;
     const baselines = ministry?.stat_baselines || {};
     let rows = '';
     let deltaSum = 0;
     let deltaCount = 0;
+
+    // First pass: count stats so we can compute per-stat effect share
+    let statCount = 0;
+    for (const statKey of stats) {
+        if (statDirectionSign(statKey) !== 0) statCount++;
+    }
 
     for (const statKey of stats) {
         const value = Number(currentNation[statKey] ?? 50);
@@ -2120,6 +2140,7 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
 
         const baseline = baselines[statKey] != null ? Number(baselines[statKey]) : null;
         const hasDelta = baseline !== null;
+        const baselineRounded = hasDelta ? Math.round(baseline * 10) / 10 : '—';
 
         // Delta in the "good" direction: positive = improvement, negative = worsening
         const rawDelta = hasDelta ? value - baseline : 0;
@@ -2130,6 +2151,16 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
         if (hasDelta) {
             deltaSum += goodDelta;
             deltaCount++;
+        }
+
+        // Per-stat effect on approval: (goodDelta / statCount) * DELTA_SENSITIVITY
+        const effectVal = hasDelta && statCount > 0 ? (goodDelta / statCount) * DELTA_SENSITIVITY : 0;
+        const absEffect = Math.abs(effectVal);
+        let effectStr = '—';
+        let effectCls = 'flat';
+        if (hasDelta && absEffect >= 0.01) {
+            effectStr = (effectVal > 0 ? '+' : '-') + (Math.round(absEffect * 100) / 100).toFixed(2);
+            effectCls = effectVal > 0 ? 'good' : 'bad';
         }
 
         // Delta display: ↑3.2 or ↓1.5 or —
@@ -2148,33 +2179,56 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
         const dotCls = !hasDelta || absDelta < 0.1 ? 'flat' : goodDelta > 0 ? 'good' : 'bad';
 
         const label = formatStatName(statKey);
-        const baselineRounded = hasDelta ? Math.round(baseline * 10) / 10 : '?';
         const directionWord = sign === 1 ? 'Higher is better' : 'Lower is better';
         const tooltip = hasDelta
-            ? 'Was ' + baselineRounded + '% when appointed. Now ' + rounded + '%. ' + directionWord + '.'
+            ? 'Appointed: ' + baselineRounded + '%. Now: ' + rounded + '%. ' + directionWord + '.'
             : 'No baseline recorded. ' + directionWord + '.';
 
         rows += '<div class="ministry-stat-row" title="' + escapeHtml(tooltip) + '">'
             + '<span class="stat-name">' + escapeHtml(label) + '</span>'
+            + '<span class="stat-appointed">' + (hasDelta ? baselineRounded + '%' : '—') + '</span>'
             + '<span class="stat-val">' + rounded + '%</span>'
             + '<span class="stat-delta ' + deltaCls + '">' + deltaStr + '</span>'
+            + '<span class="stat-effect ' + effectCls + '">' + effectStr + '</span>'
             + '<span class="stat-dot ' + dotCls + '">●</span>'
             + '</div>';
     }
 
-    // Overall trend line
+    // Foreign Minister: show missing ambassador penalty
+    let ambassadorPenalty = 0;
+    if (ministryKey === 'foreign' && missingAmbassadorCount > 0) {
+        ambassadorPenalty = missingAmbassadorCount * -0.25;
+        const penaltyStr = ambassadorPenalty.toFixed(2);
+        rows += '<div class="ministry-stat-row" title="' + missingAmbassadorCount + ' nation(s) without an ambassador appointed from your side">'
+            + '<span class="stat-name">Missing ambassadors</span>'
+            + '<span class="stat-appointed">—</span>'
+            + '<span class="stat-val">' + missingAmbassadorCount + '</span>'
+            + '<span class="stat-delta bad">↓' + missingAmbassadorCount + '</span>'
+            + '<span class="stat-effect bad">' + penaltyStr + '</span>'
+            + '<span class="stat-dot bad">●</span>'
+            + '</div>';
+    }
+
+    // Overall trend line with total per-tick effect
     let trendText = 'No data';
     let trendCls = 'flat';
     if (deltaCount > 0) {
         const avgDelta = deltaSum / deltaCount;
+        // Match server logic: baseline decay always applies, delta only when |avgDelta| >= 0.5
+        const deltaEffect = Math.abs(avgDelta) >= 0.5 ? avgDelta * DELTA_SENSITIVITY : 0;
+        const totalEffect = BASELINE_DECAY + deltaEffect + ambassadorPenalty;
+        const absTotal = Math.abs(totalEffect);
+        const effectLabel = absTotal >= 0.01
+            ? ' (' + (totalEffect > 0 ? '+' : '-') + (Math.round(absTotal * 100) / 100).toFixed(2) + '/tick)'
+            : '';
         if (Math.abs(avgDelta) < 0.5) {
-            trendText = 'Approval holding steady';
+            trendText = 'Approval holding steady' + effectLabel;
             trendCls = 'flat';
         } else if (avgDelta > 0) {
-            trendText = 'Approval trending upward';
+            trendText = 'Approval trending upward' + effectLabel;
             trendCls = 'good';
         } else {
-            trendText = 'Approval trending downward';
+            trendText = 'Approval trending downward' + effectLabel;
             trendCls = 'bad';
         }
     }
@@ -2184,7 +2238,7 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
         + '</button>'
         + '<div class="ministry-stats-panel" id="' + panelId + '">'
         + '<div class="ministry-stat-row ministry-stat-header">'
-        + '<span class="stat-name">Stat</span><span class="stat-val">Now</span><span class="stat-delta">Change</span><span class="stat-dot"></span></div>'
+        + '<span class="stat-name">Stat</span><span class="stat-appointed">Appointed</span><span class="stat-val">Now</span><span class="stat-delta">Change</span><span class="stat-effect">Effect</span><span class="stat-dot"></span></div>'
         + rows
         + '<div class="ministry-stats-footer ' + trendCls + '">Overall: ' + trendText + '</div>'
         + '</div>';
@@ -2234,7 +2288,7 @@ function renderCabinet(ministries, coalition) {
                 const mLogo = getPartyLogoById(m.party_id);
                 const mCustomLogo = getPartyCustomLogoById(m.party_id);
                 const mLogoHtml = mLogo || mCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: mCustomLogo, iconKey: mLogo, size: 16, color: mColor })}</span>` : '';
-                const appr = m.minister_approval ?? 50;
+                const appr = m.minister_approval ?? NEW_MINISTER_APPROVAL;
                 const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
                 return `<div class="ministry-card" style="border-top:3px solid ${mColor};padding:10px 12px;"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${escapeHtml(m.minister_first_name)} ${escapeHtml(m.minister_last_name)}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party" style="color:${mColor};">${mLogoHtml}${escapeHtml(partyName)}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>${renderMinistryStatBreakdown(key, m)}${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests, m)}</div>`;
             } else {
@@ -2278,7 +2332,7 @@ function renderCabinet(ministries, coalition) {
         var name = m.minister_first_name + ' ' + m.minister_last_name;
         var isMyMinistry = currentFaction && m.party_id === currentFaction.id;
         var resignBtn = (isMyMinistry && !isCaretaker) ? '<div class="ministry-actions"><button class="ministry-btn purge" onclick="event.stopPropagation();resignMinistry(\'' + m.ministry_key + '\')">Resign Ministry</button></div>' : '';
-        var appr = m.minister_approval ?? 50;
+        var appr = m.minister_approval ?? NEW_MINISTER_APPROVAL;
         var apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
 
         // Fire button: visible to PM party (parliamentary) — not for own party resignations
@@ -2352,7 +2406,7 @@ function renderPresidentialMinistryCard(key, ministry) {
         const pmLogo = getPartyLogoById(ministry.party_id);
         const pmCustomLogo = getPartyCustomLogoById(ministry.party_id);
         const pmLogoHtml = pmLogo || pmCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: pmCustomLogo, iconKey: pmLogo, size: 16, color: pmColor })}</span>` : '';
-        const appr = ministry.minister_approval ?? 50;
+        const appr = ministry.minister_approval ?? NEW_MINISTER_APPROVAL;
         const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
 
         // Fire button for President's party
@@ -2562,7 +2616,7 @@ async function confirmAssign() {
                 minister_first_name: selectedCandidate.firstName,
                 minister_last_name: selectedCandidate.lastName,
                 minister_age: selectedCandidate.age,
-                minister_approval: 50,
+                minister_approval: NEW_MINISTER_APPROVAL,
                 stat_baselines: buildMinistryBaselines(assignMinistryKey, currentNation),
                 is_active: true
             }).eq('id', existing.id);
@@ -2576,7 +2630,7 @@ async function confirmAssign() {
                 minister_first_name: selectedCandidate.firstName,
                 minister_last_name: selectedCandidate.lastName,
                 minister_age: selectedCandidate.age,
-                minister_approval: 50,
+                minister_approval: NEW_MINISTER_APPROVAL,
                 stat_baselines: buildMinistryBaselines(assignMinistryKey, currentNation),
                 is_active: true
             });
@@ -2691,7 +2745,7 @@ async function confirmAppointment() {
             minister_first_name: selectedCandidate.firstName,
             minister_last_name: selectedCandidate.lastName,
             minister_age: selectedCandidate.age,
-            minister_approval: 50,
+            minister_approval: NEW_MINISTER_APPROVAL,
             stat_baselines: buildMinistryBaselines('prime_minister', currentNation)
         }).eq('id', fresh.id);
         if (error) throw error;
@@ -2920,7 +2974,7 @@ async function purgeMinister(ministryKey) {
         const decayTicks = approvalBoost > 0 ? approvalBoost + 1 : 0;
 
         const { error: clearErr } = await _supabase.from('ministries').update({
-            minister_first_name: null, minister_last_name: null, minister_age: null, party_id: null, minister_approval: 50, stat_baselines: null
+            minister_first_name: null, minister_last_name: null, minister_age: null, party_id: null, minister_approval: NEW_MINISTER_APPROVAL, stat_baselines: null
         }).eq('id', ministry.id);
         if (clearErr) throw clearErr;
 
@@ -3762,7 +3816,7 @@ async function fileImpeachment() {
 
     // 3. Incompetence — requires gov_approval <= threshold for consecutive ticks
     // Simplified: check current approval as proxy
-    const govApproval = currentNation.gov_approval ?? 50;
+    const govApproval = currentNation.gov_approval ?? 40;
     const incompAvail = govApproval <= GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD;
     charges.push({
         type: 'incompetence',
@@ -4245,7 +4299,7 @@ async function resignPMAction() {
             minister_last_name: null,
             minister_age: null,
             party_id: null,
-            minister_approval: 50,
+            minister_approval: NEW_MINISTER_APPROVAL,
             stat_baselines: null
         }).eq('id', ministry.id);
 
@@ -4291,7 +4345,7 @@ async function resignPMAction() {
             minister_last_name: null,
             minister_age: null,
             party_id: null,
-            minister_approval: 50,
+            minister_approval: NEW_MINISTER_APPROVAL,
             stat_baselines: null
         };
         // In presidential systems, reset confirmation_status so President can re-nominate

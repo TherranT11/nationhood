@@ -289,7 +289,7 @@ export function buildFundingPctMap(itemAllocations) {
         if (row.item_type === 'institution') {
             const needed = Number(row.needed_amount || 0);
             map[row.item_id] = needed > 0
-                ? Math.min(100, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
+                ? Math.min(200, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
                 : 100;
         }
     }
@@ -594,15 +594,18 @@ export const MINISTER_APPROVAL_CONFIG = {
     // Per-tick sensitivity: how much each point of average delta moves approval
     DELTA_SENSITIVITY: 0.6,
 
-    // Slow stagnation decay: if stats are flat, approval drifts down slightly per tick
-    STAGNATION_DECAY: -0.3,
+    // Baseline decay: approval always erodes by this amount per tick unless stats improve
+    BASELINE_DECAY: -0.25,
 
-    // New minister starts at 50% approval
-    NEW_MINISTER_APPROVAL: 50,
+    // New minister starts at 40% approval
+    NEW_MINISTER_APPROVAL: 40,
 
     // Firing a minister costs 1 AP and gives +3 to the event modifier
     FIRE_MINISTER_AP_COST: 1,
     FIRE_GOV_APPROVAL_BONUS: 3,
+
+    // Foreign Minister: -0.25 approval/tick per nation without an outgoing ambassador
+    MISSING_AMBASSADOR_PENALTY: -0.25,
 
     // Government approval: -3 per vacant ministry seat
     VACANCY_PENALTY: -3,

@@ -582,7 +582,7 @@ initPage('home', async (state) => {
     const prevApproval = prevApprovalResult?.data?.gov_approval ?? null;
 
     // ── Compute values ──
-    const approval = Math.round(Number(nation.gov_approval ?? 50));
+    const approval = Math.round(Number(nation.gov_approval ?? 40));
     const approvalColor = approval >= 50 ? 'var(--green)' : approval >= 35 ? 'var(--orange)' : 'var(--red)';
     // Strip any trailing ", YYYY" from stored admin_name to avoid duplication
     const rawAdminName = administration?.admin_name || 'Government';

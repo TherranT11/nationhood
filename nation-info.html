@@ -593,7 +593,7 @@ function renderSidebar() {
         ['Population', fmt(nation.population)],
         ['GDP', fmtCur(scaleGDP(nation.gdp))],
         ['Nat. Debt', fmtCur(scaleGDP(nation.debt))],
-        ['Approval', (nation.gov_approval ?? 50) + '%'],
+        ['Approval', (nation.gov_approval ?? 40) + '%'],
         ['Stability', nation.stability || 'N/A'],
         ['Freedom', nation.freedom_index || 'N/A']
     ];

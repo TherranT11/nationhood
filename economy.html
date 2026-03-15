@@ -1746,10 +1746,9 @@ function renderBudgetTab(nation) {
     if (isDeficit) {
         h += '<div class="bv2-info-bar">';
         h += '<span class="bv2-info-icon">i</span> ';
-        h += 'All ministries are currently funded at <strong>100%</strong>. ';
         h += 'The shortfall of <strong style="color:#ff4444;">' + formatBudgetCurrency(Math.abs(balance)) + '</strong> exceeds available revenue ';
         h += 'and is being added to the national debt each tick. ';
-        h += 'Raise taxes, grow the economy, or reduce ministry costs to close the gap.';
+        h += 'Raise taxes, grow the economy, or reduce ministry funding to close the gap.';
         h += '</div>';
     }
 
