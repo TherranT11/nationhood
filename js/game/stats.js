@@ -597,8 +597,8 @@ export const MINISTER_APPROVAL_CONFIG = {
     // Slow stagnation decay: if stats are flat, approval drifts down slightly per tick
     STAGNATION_DECAY: -0.3,
 
-    // New minister starts at 50% approval
-    NEW_MINISTER_APPROVAL: 50,
+    // New minister starts at 40% approval
+    NEW_MINISTER_APPROVAL: 40,
 
     // Firing a minister costs 1 AP and gives +3 to the event modifier
     FIRE_MINISTER_AP_COST: 1,

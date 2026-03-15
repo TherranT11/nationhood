@@ -1828,7 +1828,7 @@ function renderGovCard(nation, coalition, allParties, currentTick, prevApproval,
     const isPres = isPresidentialRepublic(nation);
     const isAuto = isAutocracy(nation);
     const parties = allParties || [];
-    const approval = Math.round(Number(nation.gov_approval ?? 50));
+    const approval = Math.round(Number(nation.gov_approval ?? 40));
     const ac = approval >= 50 ? 'var(--dgreen)' : approval >= 35 ? 'var(--damber)' : 'var(--dred)';
     const adminName = administration?.admin_name || 'Government';
     const govTypeLabel = isAuto ? 'Autocracy' : isPres ? 'Presidential' : 'Parliamentary';

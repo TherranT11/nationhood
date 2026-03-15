@@ -154,7 +154,7 @@ BEGIN
         minister_first_name = v_minister->>'first_name',
         minister_last_name = v_minister->>'last_name',
         minister_age = (v_minister->>'age')::INT,
-        minister_approval = 50,
+        minister_approval = 40,
         stat_baselines = COALESCE(p_ministry_baselines->v_ministry_key, '{}'::JSONB)
       WHERE id = v_existing_ministry_id;
     ELSE
@@ -371,7 +371,7 @@ BEGIN
         minister_first_name = v_pm_faction.leader_first_name,
         minister_last_name = v_pm_faction.leader_last_name,
         minister_age = v_pm_faction.leader_age,
-        minister_approval = 50,
+        minister_approval = 40,
         stat_baselines = COALESCE(p_ministry_baselines->'prime_minister', '{}'::JSONB)
       WHERE id = v_existing_ministry_id;
     ELSE

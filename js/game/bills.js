@@ -1264,7 +1264,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         minister_first_name: pm.first_name,
                         minister_last_name: pm.last_name,
                         minister_age: pm.age,
-                        minister_approval: 50,
+                        minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
                         ministry_name: ministryNames[mKey] || mKey,
                         confirmation_status: 'confirmed',
                         pending_minister: null,

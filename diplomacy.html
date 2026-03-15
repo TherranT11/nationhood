@@ -7799,14 +7799,14 @@ async function acceptStateVisit(proposalId) {
     if (isTargetAutocracy) {
         const roll = Math.floor(Math.random() * acDie) + 1;
         const approvalChange = roll <= acThreshold ? -acChange : acChange;
-        visitorUpdates.gov_approval = Math.max(0, Math.min(100, Math.round(Number(visitorNation.gov_approval ?? 50) + approvalChange)));
+        visitorUpdates.gov_approval = Math.max(0, Math.min(100, Math.round(Number(visitorNation.gov_approval ?? 40) + approvalChange)));
         autocracyResult = { roll, change: approvalChange };
         bonusSummary.push('Autocracy dice: rolled ' + roll + ' → ' + (approvalChange > 0 ? '+' : '') + approvalChange + ' Gov Approval (visitor)');
     }
     if (isVisitorAutocracy) {
         const roll = Math.floor(Math.random() * acDie) + 1;
         const approvalChange = roll <= acThreshold ? -acChange : acChange;
-        hostUpdates.gov_approval = Math.max(0, Math.min(100, Math.round(Number(hostNation.gov_approval ?? 50) + approvalChange)));
+        hostUpdates.gov_approval = Math.max(0, Math.min(100, Math.round(Number(hostNation.gov_approval ?? 40) + approvalChange)));
         if (!autocracyResult) autocracyResult = {};
         autocracyResult.host_roll = roll;
         autocracyResult.host_change = approvalChange;
@@ -7828,7 +7828,7 @@ async function acceptStateVisit(proposalId) {
                 triggeredRisks.push(risk);
                 // Gaffe: -2 gov_approval for visitor
                 if (risk.key === 'gaffe') {
-                    visitorUpdates.gov_approval = Math.max(0, (visitorUpdates.gov_approval ?? Math.round(Number(visitorNation.gov_approval ?? 50))) - 2);
+                    visitorUpdates.gov_approval = Math.max(0, (visitorUpdates.gov_approval ?? Math.round(Number(visitorNation.gov_approval ?? 40))) - 2);
                     bonusSummary.push('Risk triggered: ' + risk.source + ' gaffe (-2 Gov Approval)');
                 }
             }
@@ -10799,7 +10799,7 @@ async function executeRecallAmbassador() {
                 .eq('id', targetNationId)
                 .single();
             if (targetNation) {
-                const newApproval = Math.max(0, Math.min(100, Math.round(Number(targetNation.gov_approval ?? 50) - reason.hostApprovalPenalty)));
+                const newApproval = Math.max(0, Math.min(100, Math.round(Number(targetNation.gov_approval ?? 40) - reason.hostApprovalPenalty)));
                 await _supabase.from('nations')
                     .update({ gov_approval: newApproval })
                     .eq('id', targetNationId);

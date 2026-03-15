@@ -234,7 +234,7 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
     // Coalition parties get a per-tick momentum nudge based on gov_approval.
     // Formula: (gov_approval - 50) / 10, capped at ±5.
     // gov_approval 95 → +4.5/tick, 75 → +2.5, 50 → 0, 25 → -2.5, 5 → -4.5
-    const govApproval = Number(nation.gov_approval ?? 50);
+    const govApproval = Number(nation.gov_approval ?? 40);
     const govMomentumNudge = Math.max(-5, Math.min(5,
         Math.round(((govApproval - 50) / 10) * 100) / 100
     ));
