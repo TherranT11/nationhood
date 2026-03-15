@@ -1166,7 +1166,7 @@ function renderArticles() {
 const ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 
 function renderTradeArticleDescription(art, rd) {
-    const d = art.data || {};
+    const d = (art.data && Object.keys(art.data).length > 0) ? art.data : art;
     const sectorLabel = (key) => (TRADEABLE_SECTOR_MAP[key] || {}).label || key || 'Unknown Sector';
     const nationAName = rd.nationA?.name || 'Nation A';
     const nationBName = rd.nationB?.name || 'Nation B';

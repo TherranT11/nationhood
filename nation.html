@@ -954,7 +954,7 @@ function buildFeaturedAbpHTML(statKey) {
         h += '<span class="featured-card__abp-arrow ' + arrowClass + '">' + arrow + '</span>';
         if (eff.rate !== null && eff.rate !== undefined) {
             var sign = eff.direction === 'up' ? '+' : '-';
-            h += '<span class="featured-card__abp-rate">' + sign + (Math.round(Number(eff.rate) * 100) / 100) + '/tick</span>';
+            h += '<span class="featured-card__abp-rate">' + sign + (Math.round(Math.abs(Number(eff.rate)) * 100) / 100) + '/tick</span>';
         }
         h += '<span class="featured-card__abp-type ' + typeClass + '">' + escapeHtml(eff.type) + '</span>';
         h += '</div>';

@@ -5709,11 +5709,13 @@ function renderTradeEffectSummary(articles) {
     if (!articles || !articles.length) return '';
     const tags = [];
     for (const art of articles) {
-        const d = art.data || {};
+        const d = (art.data && Object.keys(art.data).length > 0) ? art.data : art;
         switch (art.type) {
-            case 'tariff_reduction':
-                tags.push({ label: '-' + (d.reduction_pct || 0) + '% Tariff' + (d.direction === 'mutual' ? ' (mutual)' : ''), cls: 'effect-tag--positive' });
+            case 'tariff_reduction': {
+                const sec = TRADEABLE_SECTOR_MAP[d.sector];
+                tags.push({ label: (sec?.label || d.sector || '?') + ' -' + (d.reduction_pct || 0) + '%' + (d.direction === 'mutual' ? ' (mutual)' : ''), cls: 'effect-tag--positive' });
                 break;
+            }
             case 'subsidized_sector': {
                 const sec = TRADEABLE_SECTOR_MAP[d.sector];
                 tags.push({ label: (sec?.label || d.sector || '?') + ' +' + (d.subsidy_pct || 0) + '% Subsidy', cls: 'effect-tag--info' });
@@ -5742,36 +5744,33 @@ function renderTradeEffectSummary(articles) {
 function renderTradeArticleSummary(article) {
     if (!article || !article.type) return 'Unknown article';
 
+    // Defensive: support both { type, data: {...} } and flat { type, sector, ... } formats
+    const d = (article.data && Object.keys(article.data).length > 0) ? article.data : article;
+
     switch (article.type) {
         case 'duration': {
-            const dt = article.data || {};
-            if (dt.duration_type === 'permanent') return 'Permanent (until one party withdraws). Withdrawal notice: ' + (dt.withdrawal_notice_ticks || 3) + ' ticks.';
-            return 'Fixed term: ' + (dt.duration_ticks || '?') + ' ticks' + (dt.auto_renew ? ' (auto-renew)' : '') + '. Withdrawal notice: ' + (dt.withdrawal_notice_ticks || 3) + ' ticks.';
+            if (d.duration_type === 'permanent') return 'Permanent (until one party withdraws). Withdrawal notice: ' + (d.withdrawal_notice_ticks || 3) + ' ticks.';
+            return 'Fixed term: ' + (d.duration_ticks || '?') + ' ticks' + (d.auto_renew ? ' (auto-renew)' : '') + '. Withdrawal notice: ' + (d.withdrawal_notice_ticks || 3) + ' ticks.';
         }
         case 'sector_exemption': {
-            const d = article.data || {};
             const sector = TRADEABLE_SECTOR_MAP[d.sector];
             return 'Exempt: ' + (sector?.label || d.sector || 'Unknown') + (d.reason ? ' — ' + escapeHtml(d.reason) : '');
         }
         case 'tariff_reduction': {
-            const d = article.data || {};
             const sector = TRADEABLE_SECTOR_MAP[d.sector];
             const dirLabel = d.direction === 'mutual' ? 'Mutual' : d.direction === 'your_exports' ? 'Your exports' : 'Their exports';
             return (sector?.label || d.sector || 'Unknown') + ': ' + dirLabel + ' tariff reduction of ' + (d.reduction_pct || 0) + '%';
         }
         case 'supply_commitment': {
-            const d = article.data || {};
             const sector = TRADEABLE_SECTOR_MAP[d.sector];
             const dirLabel = d.direction === 'we_buy' ? 'We buy from them' : 'We sell to them';
             return (sector?.label || d.sector || 'Unknown') + ': ' + dirLabel + ', min ' + (d.commitment_pct || 0) + '% commitment';
         }
         case 'price_terms': {
-            const d = article.data || {};
             const labels = { market: 'Market rate', fixed: 'Fixed rate', discounted: 'Discounted (' + (d.modifier_pct || 0) + '% below market)', premium: 'Premium (' + (d.modifier_pct || 0) + '% above market)' };
             return labels[d.price_type] || 'Unknown pricing';
         }
         case 'breach_penalty': {
-            const d = article.data || {};
             const parts = [];
             if (d.relations_penalty) parts.push('-' + d.relations_penalty + ' Relations');
             if (d.reputation_penalty) parts.push('-' + d.reputation_penalty + ' Reputation');
@@ -5779,27 +5778,22 @@ function renderTradeArticleSummary(article) {
             return parts.join(', ') || 'No penalties defined';
         }
         case 'subsidized_sector': {
-            const d = article.data || {};
             const sector = TRADEABLE_SECTOR_MAP[d.sector];
             return (sector?.label || d.sector || 'Unknown') + ' exports subsidized at ' + (d.subsidy_pct || 0) + '%';
         }
         case 'funding_source': {
-            const d = article.data || {};
             return d.source === 'ministry_budget' ? 'Funded from Ministry of Trade budget' : 'Funded from general treasury';
         }
         case 'text_article': {
-            const d = article.data || {};
             return (d.title ? escapeHtml(d.title) + ': ' : '') + escapeHtml(d.body || '');
         }
         case 'aid_terms': {
-            const d = article.data || {};
             const amt = Number(d.annual_amount || 0);
             const amtLabel = amt >= 1e9 ? '$' + (amt / 1e9).toFixed(1) + 'B' : amt >= 1e6 ? '$' + (amt / 1e6).toFixed(0) + 'M' : '$' + amt.toLocaleString();
             const dirLabel = d.aid_direction === 'request' ? 'We receive' : 'We provide';
             return dirLabel + ': ' + amtLabel + '/yr (GDP cap: ' + (d.gdp_cap_pct || 10) + '%)';
         }
         case 'aid_condition': {
-            const d = article.data || {};
             const stat = AID_CONDITION_STATS.find(s => s.key === d.stat_key);
             const label = stat ? stat.label : (d.stat_key || 'Unknown');
             const op = d.operator === 'lte' ? '\u2264' : '\u2265';
@@ -5807,7 +5801,6 @@ function renderTradeArticleSummary(article) {
             return escapeHtml(label) + ' ' + op + ' ' + (d.threshold || 0) + ' (on failure: ' + (failLabels[d.on_failure] || d.on_failure) + ', grace: ' + (d.grace_periods || 0) + ')';
         }
         case 'tariff_surcharge': {
-            const d = article.data || {};
             const sector = TRADEABLE_SECTOR_MAP[d.sector];
             return (sector?.label || d.sector || 'Unknown') + ': +' + (d.surcharge_pct || 0) + '% tariff surcharge';
         }
