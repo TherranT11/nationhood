@@ -15,20 +15,11 @@
     padding: 20px 20px 20px 0;
     overflow-x: auto !important;
   }
-  .dash-layout {
-    display: flex;
+  .dash-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
     gap: 20px;
-    align-items: flex-start;
-  }
-  .dash-left-col {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-  .dash-row {
-    display: flex;
-    gap: 20px;
-    align-items: flex-start;
+    max-width: 1580px;
   }
 
   /* ── Nation Card ── */
@@ -37,7 +28,9 @@
     border: 1px solid var(--border-main);
     border-radius: 8px;
     overflow: hidden;
-    width: 380px;
+    min-width: 0;
+  }
+  .dash-card-tall {
     height: 520px;
   }
   .dash-card-header {
@@ -375,6 +368,87 @@
     font-size: 0.9rem;
     padding: 20px 0;
   }
+
+  /* ── Mobile responsive ── */
+  @media (max-width: 1200px) {
+    .dash-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    #world-map-card {
+      grid-column: span 2 !important;
+    }
+  }
+
+  @media (max-width: 768px) {
+    #content-area {
+      margin: 8px 10px;
+      padding: 10px 0;
+    }
+    .dash-grid {
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+    .dash-card-tall {
+      height: auto;
+      max-height: 480px;
+    }
+    #events-card.dash-card-tall {
+      max-height: 400px;
+    }
+    #world-map-card {
+      grid-column: span 1 !important;
+    }
+    .dash-card-header {
+      padding: 8px 14px;
+      font-size: 0.8rem;
+    }
+    .dash-card-body {
+      padding: 6px 14px 14px;
+    }
+    .nation-identity h2 {
+      font-size: 1.15rem;
+    }
+    .nation-identity .motto {
+      font-size: 0.8rem;
+    }
+    .nation-stat-row {
+      font-size: 0.82rem;
+      padding: 8px 4px;
+    }
+    .gov-admin-name {
+      font-size: 0.95rem;
+    }
+    .gov-badges {
+      flex-wrap: wrap;
+    }
+    .election-item {
+      padding: 6px 10px;
+      margin-bottom: 8px;
+    }
+    .dash-event-row {
+      font-size: 0.62rem;
+    }
+    .dash-event-date {
+      min-width: 55px;
+    }
+    .dash-event-category {
+      display: none;
+    }
+  }
+
+  @media (max-width: 480px) {
+    #content-area {
+      margin: 4px 6px;
+      padding: 6px 0;
+    }
+    .dash-grid {
+      gap: 10px;
+    }
+    .nation-flag-box {
+      width: 64px;
+      height: 44px;
+    }
+  }
 </style>
 </head>
 
@@ -384,57 +458,45 @@
 <div id="top-bar"></div>
 
 <div id="content-area">
-  <div class="dash-layout">
+  <div class="dash-grid">
 
-    <!-- ── Left Column ── -->
-    <div class="dash-left-col">
-      <div class="dash-row">
-
-        <!-- ── Nation Card ── -->
-        <div class="dash-card" id="nation-card">
-          <div class="dash-card-header">NATION</div>
-          <div class="dash-card-body">
-          <div class="nation-identity">
-            <div class="nation-flag-box" id="nation-flag-box">
-              <span class="abbr-fallback" id="nation-abbr"></span>
-            </div>
-            <h2 id="nation-name"></h2>
-            <div class="motto" id="nation-motto"></div>
+    <!-- ── Row 1: Nation, Government, Elections, Events ── -->
+    <div class="dash-card dash-card-tall" id="nation-card">
+      <div class="dash-card-header">NATION</div>
+      <div class="dash-card-body">
+        <div class="nation-identity">
+          <div class="nation-flag-box" id="nation-flag-box">
+            <span class="abbr-fallback" id="nation-abbr"></span>
           </div>
-          <div class="nation-stats-list" id="nation-stats-list"></div>
-          </div>
+          <h2 id="nation-name"></h2>
+          <div class="motto" id="nation-motto"></div>
         </div>
-
-        <!-- ── Government Card ── -->
-        <div class="dash-card" id="gov-card">
-          <div class="dash-card-header">GOVERNMENT</div>
-          <div class="dash-card-body" id="gov-card-body">
-            <div style="display:flex;align-items:center;justify-content:center;height:340px;color:var(--text-secondary);font-size:0.85rem;">Loading government&hellip;</div>
-          </div>
-        </div>
-
+        <div class="nation-stats-list" id="nation-stats-list"></div>
       </div>
-
-      <!-- ── Elections + Events Row ── -->
-      <div class="dash-row">
-        <div class="dash-card" id="elections-card">
-          <div class="dash-card-header">ELECTIONS</div>
-          <div class="dash-card-body" id="elections-card-body"></div>
-        </div>
-
-        <div class="dash-card" id="events-card" style="display:flex;flex-direction:column;">
-          <div class="dash-card-header">EVENTS</div>
-          <div class="dash-events-scroll" id="dash-events-list"></div>
-        </div>
-      </div>
-
     </div>
 
-    <!-- ── Right Column: World Map ── -->
-    <div class="dash-card" id="world-map-card" style="flex:1; min-width:760px; height:900px;">
+    <div class="dash-card dash-card-tall" id="gov-card">
+      <div class="dash-card-header">GOVERNMENT</div>
+      <div class="dash-card-body" id="gov-card-body">
+        <div style="display:flex;align-items:center;justify-content:center;height:340px;color:var(--text-secondary);font-size:0.85rem;">Loading government&hellip;</div>
+      </div>
+    </div>
+
+    <div class="dash-card dash-card-tall" id="elections-card">
+      <div class="dash-card-header">ELECTIONS</div>
+      <div class="dash-card-body" id="elections-card-body"></div>
+    </div>
+
+    <div class="dash-card dash-card-tall" id="events-card" style="display:flex;flex-direction:column;">
+      <div class="dash-card-header">EVENTS</div>
+      <div class="dash-events-scroll" id="dash-events-list"></div>
+    </div>
+
+    <!-- ── Row 2: World Map (spans 3 columns) ── -->
+    <div class="dash-card" id="world-map-card" style="grid-column: span 3;">
       <div class="dash-card-header">WORLD MAP</div>
-      <div class="dash-card-body" id="world-map-body" style="padding:0; flex:1; overflow:hidden;">
-        <img src="./assets/World Map Crucera3.svg" alt="World Map" style="width:100%; height:100%; object-fit:fill; display:block;">
+      <div class="dash-card-body" id="world-map-body" style="padding:0; overflow:hidden;">
+        <img src="./assets/World Map Crucera3.svg" alt="World Map" style="width:100%; height:auto; object-fit:contain; display:block;">
       </div>
     </div>
 
