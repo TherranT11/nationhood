@@ -77,7 +77,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkSovereigntyConstraints } from './js/game-common.js';
+import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -1516,38 +1516,76 @@ function renderInboxCard(p) {
         pipelineHTML = renderPipelineTracker(p);
     }
 
-    // Articles display
+    // Articles display — use v2 rendering for major initiatives
     let articlesHTML = '';
+    const isV2Proposal = articles.some(a => a.type && (INITIATIVE_ARTICLE_TYPES?.[a.type] || MAJOR_INITIATIVE_ARTICLE_TYPES?.[a.type]));
     if (articles.length > 0) {
         articlesHTML = '<div class="agreement-card-terms">';
         articles.forEach((art, i) => {
             const isStruck = struckIndices.has(i);
-            const artLabel = art.text || art.label || art.type || 'Unknown';
-            articlesHTML += '<div class="agreement-card-term' + (isStruck ? ' term-struck' : '') + '">' +
-                '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '</span> ' +
-                '<span class="proposal-article-label">' + escapeHtml(artLabel) + '</span>' +
-                (isStruck ? ' <span class="struck-label">STRUCK</span>' : '') +
-            '</div>';
+            const isV2Art = art.type && (INITIATIVE_ARTICLE_TYPES?.[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES?.[art.type]);
+
+            if (isV2Art) {
+                const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES[art.type];
+                const cardClass = isStruck ? 'initiative-article initiative-article--struck' : 'initiative-article';
+                let artHtml = '<div class="' + cardClass + '">';
+                artHtml += '<div class="initiative-article-head">';
+                artHtml += '<div><span class="initiative-article-num">Art. ' + toRoman(i + 1) + '</span> ';
+                artHtml += '<span class="initiative-article-type">' + escapeHtml(typeInfo.label).toUpperCase();
+                if (isStruck) artHtml += ' — STRUCK';
+                artHtml += '</span></div></div>';
+                if (!isStruck && art.config) {
+                    artHtml += '<div style="margin:4px 0 2px;">' + renderArticleConfigSummary(art) + '</div>';
+                }
+                if (!isStruck) {
+                    if (art.effects) {
+                        artHtml += renderEffectTagsFromEffects(art.effects, art.type);
+                    } else {
+                        const effects = computeArticleEffects(art);
+                        artHtml += renderEffectTags(effects, art.type);
+                    }
+                }
+                artHtml += '</div>';
+                articlesHTML += artHtml;
+            } else {
+                const artLabel = art.text || art.label || art.type || 'Unknown';
+                articlesHTML += '<div class="agreement-card-term' + (isStruck ? ' term-struck' : '') + '">' +
+                    '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '</span> ' +
+                    '<span class="proposal-article-label">' + escapeHtml(artLabel) + '</span>' +
+                    (isStruck ? ' <span class="struck-label">STRUCK</span>' : '') +
+                '</div>';
+            }
         });
         articlesHTML += '</div>';
     }
 
-    // Effects
-    let totalRel = 0, totalMoney = 0;
-    articles.forEach((art, i) => {
-        if (!struckIndices.has(i)) {
-            totalRel += art.relations || 0;
-            totalMoney += art.money || 0;
-        }
-    });
-    const relStr = totalRel > 0 ? '+' + totalRel + ' Relations' : totalRel < 0 ? totalRel + ' Relations' : '';
-    const moneyStr = totalMoney > 0 ? '+$' + (totalMoney / 1e6).toFixed(0) + 'M' : totalMoney < 0 ? '-$' + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M' : '';
+    // Effects — use v2 rendering for major initiatives
     let effectsHTML = '';
-    if (relStr || moneyStr) {
-        effectsHTML = '<div class="agreement-card-effects">';
-        if (relStr) effectsHTML += '<span class="effect-tag effect-rel">' + relStr + '</span>';
-        if (moneyStr) effectsHTML += '<span class="effect-tag effect-money">' + moneyStr + '</span>';
-        effectsHTML += '</div>';
+    if (isV2Proposal) {
+        const totals = { relations: 0, revenue: 0, cost_proposer: 0, cost_target: 0, intl_reputation: 0, immigration: 0 };
+        articles.forEach((art, i) => {
+            if (struckIndices.has(i)) return;
+            const e = art.effects || {};
+            for (const k in totals) totals[k] += e[k] || 0;
+        });
+        effectsHTML = renderEffectTags(totals, null);
+        if (effectsHTML) effectsHTML = '<div class="agreement-card-effects">' + effectsHTML + '</div>';
+    } else {
+        let totalRel = 0, totalMoney = 0;
+        articles.forEach((art, i) => {
+            if (!struckIndices.has(i)) {
+                totalRel += art.relations || 0;
+                totalMoney += art.money || 0;
+            }
+        });
+        const relStr = totalRel > 0 ? '+' + totalRel + ' Relations' : totalRel < 0 ? totalRel + ' Relations' : '';
+        const moneyStr = totalMoney > 0 ? '+$' + (totalMoney / 1e6).toFixed(0) + 'M' : totalMoney < 0 ? '-$' + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M' : '';
+        if (relStr || moneyStr) {
+            effectsHTML = '<div class="agreement-card-effects">';
+            if (relStr) effectsHTML += '<span class="effect-tag effect-rel">' + relStr + '</span>';
+            if (moneyStr) effectsHTML += '<span class="effect-tag effect-money">' + moneyStr + '</span>';
+            effectsHTML += '</div>';
+        }
     }
 
     // Action buttons based on status and role
@@ -2207,7 +2245,9 @@ async function fmReject(proposalId) {
  * Forward a Major Diplomatic Initiative to both parliaments for bilateral ratification.
  * Creates two ratification bills — one in each nation.
  */
+let _forwardMajorLock = false;
 async function forwardMajorToParliament(proposalId) {
+    if (_forwardMajorLock) return;
     await refreshRoles();
     if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
         alert('Only the Foreign Minister or Head of Government can forward proposals to parliament.');
@@ -2222,7 +2262,7 @@ async function forwardMajorToParliament(proposalId) {
 
     if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
 
-    if (!['proposed', 'revised'].includes(proposal.status)) {
+    if (!['proposed', 'revised', 'ratification_failed'].includes(proposal.status)) {
         alert('This proposal is not in a state that can be forwarded to parliament.');
         return;
     }
@@ -2237,15 +2277,35 @@ async function forwardMajorToParliament(proposalId) {
         ' parliaments must pass the ratification bill for this initiative to activate.'
     )) return;
 
+    _forwardMajorLock = true;
+    try {
+
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
+
+    // Build preamble with article details so parliamentarians know what they're voting on
+    const articleSummaries = articles.map((art, i) => {
+        const typeInfo = MAJOR_INITIATIVE_ARTICLE_TYPES[art.type] || INITIATIVE_ARTICLE_TYPES[art.type];
+        const label = typeInfo?.label || art.title || art.type;
+        let summary = 'Art. ' + (i + 1) + ': ' + label;
+        if (art.config) {
+            const configParts = [];
+            if (art.config.scope) configParts.push('Scope: ' + (Array.isArray(art.config.scope) ? art.config.scope.join(', ') : art.config.scope));
+            if (art.config.direction) configParts.push('Direction: ' + art.config.direction);
+            if (art.config.emission_target) configParts.push('Emission target: ' + art.config.emission_target);
+            if (art.config.renewable_target) configParts.push('Renewable: ' + art.config.renewable_target + '%');
+            if (art.config.penalty) configParts.push('Non-compliance: ' + art.config.penalty);
+            if (configParts.length > 0) summary += ' (' + configParts.join(', ') + ')';
+        }
+        return summary;
+    }).join('\n');
 
     const billTitle = 'Ratify: ' + (pd.name || 'Diplomatic Initiative');
     const billDesc = 'Diplomatic Ratification Vote\nRequires quorum (50%) + simple majority to ratify.\n\n' +
         'Bilateral ratification of the Major Diplomatic Initiative "' +
         (pd.name || 'Initiative') + '" between ' + (pd.proposer_nation_name || 'Unknown') +
         ' and ' + (pd.target_nation_name || 'Unknown') + '.\n\n' +
-        articles.length + ' article(s) for ratification.';
+        articleSummaries;
 
     // Create ratification bill in PROPOSER nation's parliament
     const { data: proposerBill, error: pBillErr } = await _supabase
@@ -2259,6 +2319,7 @@ async function forwardMajorToParliament(proposalId) {
             diplomatic_proposal_id: proposalId,
             status: 'floor',
             proposed_tick: currentTick,
+            floor_tick: currentTick,
             voting_ends_tick: currentTick + MAJOR_INITIATIVE_CONFIG.RATIFICATION_VOTING_TICKS
         })
         .select('id')
@@ -2270,6 +2331,18 @@ async function forwardMajorToParliament(proposalId) {
         return;
     }
 
+    // Get a faction from the target nation for proposed_by (use the largest faction)
+    let targetFactionId = null;
+    const { data: targetFactions } = await _supabase
+        .from('factions')
+        .select('id, seats')
+        .eq('nation_id', proposal.target_nation_id)
+        .order('seats', { ascending: false })
+        .limit(1);
+    if (targetFactions && targetFactions.length > 0) {
+        targetFactionId = targetFactions[0].id;
+    }
+
     // Create ratification bill in TARGET nation's parliament
     const { data: targetBill, error: tBillErr } = await _supabase
         .from('bills')
@@ -2278,10 +2351,11 @@ async function forwardMajorToParliament(proposalId) {
             bill_type: 'ratification',
             bill_name: billTitle,
             preamble: billDesc,
-            proposed_by: currentFaction.id,
+            proposed_by: targetFactionId || proposal.proposed_by_faction_id,
             diplomatic_proposal_id: proposalId,
             status: 'floor',
             proposed_tick: currentTick,
+            floor_tick: currentTick,
             voting_ends_tick: currentTick + MAJOR_INITIATIVE_CONFIG.RATIFICATION_VOTING_TICKS
         })
         .select('id')
@@ -2289,9 +2363,21 @@ async function forwardMajorToParliament(proposalId) {
 
     if (tBillErr) {
         console.error('Error creating target ratification bill:', tBillErr);
+        // Clean up orphaned proposer bill
+        await _supabase.from('bills').delete().eq('id', proposerBill.id);
         alert('Error creating target ratification bill: ' + tBillErr.message);
         return;
     }
+
+    // Store baseline stats for compliance monitoring
+    const baselineStats = {};
+    for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
+        const { data: nStats } = await _supabase.from('nations')
+            .select('pollution, carbon_emissions, renewable_energy_percentage')
+            .eq('id', nId).single();
+        if (nStats) baselineStats[nId] = nStats;
+    }
+    pd.baseline_stats = baselineStats;
 
     // Update proposal with both bill IDs and status
     const updatedPipeline = {
@@ -2303,7 +2389,7 @@ async function forwardMajorToParliament(proposalId) {
     };
     pd.pipeline = updatedPipeline;
 
-    await _supabase
+    const { error: updateErr } = await _supabase
         .from('diplomatic_proposals')
         .update({
             status: 'ratification',
@@ -2312,6 +2398,12 @@ async function forwardMajorToParliament(proposalId) {
             proposal_data: pd
         })
         .eq('id', proposalId);
+
+    if (updateErr) {
+        console.error('Error updating proposal status:', updateErr);
+        alert('Error updating proposal: ' + updateErr.message);
+        return;
+    }
 
     // Fire news events in both nations
     await fireProposalEvent(pd, currentTick, 'ratification_started',
@@ -2322,6 +2414,10 @@ async function forwardMajorToParliament(proposalId) {
     alert('"' + (pd.name || 'Initiative') + '" forwarded to both parliaments.\nBilateral ratification vote begins (' + MAJOR_INITIATIVE_CONFIG.RATIFICATION_VOTING_TICKS + ' ticks).');
     await renderNegotiationsBox();
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
+
+    } finally {
+        _forwardMajorLock = false;
+    }
 }
 window.forwardMajorToParliament = forwardMajorToParliament;
 
@@ -2329,7 +2425,9 @@ window.forwardMajorToParliament = forwardMajorToParliament;
  * Send a counter-proposal for a Major Diplomatic Initiative.
  * Allows the target FM to strike articles and send back to proposer.
  */
+let _counterMajorLock = false;
 async function counterMajorInitiative(proposalId) {
+    if (_counterMajorLock) return;
     await refreshRoles();
     if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
         alert('Only the Foreign Minister or Head of Government can counter-propose.');
@@ -2383,12 +2481,20 @@ async function counterMajorInitiative(proposalId) {
         return;
     }
 
+    if (struckArticleIds.length === 0) {
+        alert('Select at least one article to strike for a counter-proposal.');
+        return;
+    }
+
     if (!confirm(
         'Send counter-proposal for "' + (pd.name || 'Initiative') + '"?\n\n' +
         struckArticleIds.length + ' article(s) struck.\n' +
         activeCount + ' article(s) remaining.\n' +
         'Cost: ' + apCost + ' AP'
     )) return;
+
+    _counterMajorLock = true;
+    try {
 
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
@@ -2410,13 +2516,19 @@ async function counterMajorInitiative(proposalId) {
     pd.articles = articles;
     pd.counter_history = counterHistory;
 
-    await _supabase
+    const { error: counterErr } = await _supabase
         .from('diplomatic_proposals')
         .update({
             status: 'revised',
             proposal_data: { ...pd, revised_by_nation_id: currentNation.id }
         })
         .eq('id', proposalId);
+
+    if (counterErr) {
+        console.error('Counter-proposal update error:', counterErr);
+        alert('Error sending counter-proposal: ' + counterErr.message);
+        return;
+    }
 
     currentFaction.action_points = apResult.newAp;
 
@@ -2427,6 +2539,10 @@ async function counterMajorInitiative(proposalId) {
     alert('Counter-proposal sent. ' + struckArticleIds.length + ' article(s) struck.');
     await renderNegotiationsBox();
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
+
+    } finally {
+        _counterMajorLock = false;
+    }
 }
 window.counterMajorInitiative = counterMajorInitiative;
 
@@ -12041,10 +12157,18 @@ window.addMajorInitiativeArticle = addMajorInitiativeArticle;
 /**
  * Submit a Major Diplomatic Initiative.
  */
+let _submitMajorLock = false;
 async function submitMajorInitiative() {
+    if (_submitMajorLock) return;
     if (!activeDraftTarget) { alert('Please select a target nation.'); return; }
     if (!wizardName.trim()) { alert('Please enter a name for the initiative.'); return; }
     if (wizardArticles.length === 0) { alert('Please add at least one article.'); return; }
+
+    _submitMajorLock = true;
+    const submitBtn = document.querySelector('[onclick*="submitMajorInitiative"]');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
 
     const isFM = diplomaticRoles.isFM;
     const apCost = isFM ? MAJOR_INITIATIVE_CONFIG.AP_COST : MAJOR_INITIATIVE_CONFIG.AP_COST + MAJOR_INITIATIVE_CONFIG.HOG_FALLBACK_AP_PENALTY;
@@ -12106,7 +12230,8 @@ async function submitMajorInitiative() {
         target_nation_name: activeDraftTarget.name,
         proposer_faction_id: currentFaction.id,
         totals: totals,
-        costs: costSummary
+        costs: costSummary,
+        duration_years: 5
     };
 
     try {
@@ -12144,6 +12269,12 @@ async function submitMajorInitiative() {
     } catch (err) {
         console.error('Submit major initiative error:', err);
         alert('Error: ' + err.message);
+    }
+
+    } finally {
+        _submitMajorLock = false;
+        const btn = document.querySelector('[onclick*="submitMajorInitiative"]');
+        if (btn) btn.disabled = false;
     }
 }
 window.submitMajorInitiative = submitMajorInitiative;

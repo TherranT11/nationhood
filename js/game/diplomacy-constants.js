@@ -1532,35 +1532,4 @@ export function checkSovereigntyConstraints(activeProposals, policySector) {
     return { blocked: false, message: null, initiative_name: null };
 }
 
-// ── INCIDENT SUPPRESSION MODIFIERS ──
-
-/**
- * Probability multipliers for events based on active Major Initiative article types.
- * Values < 1.0 suppress events, values > 1.0 increase them.
- * Key = article_type, value = { event_categories: { category: multiplier } }
- */
-export const INCIDENT_SUPPRESSION = {
-    mutual_extradition: {
-        // Extradition treaties reduce crime and terrorism events
-        event_name_keywords: {
-            'crime': 0.7,
-            'criminal': 0.7,
-            'theft': 0.75,
-            'fraud': 0.75,
-            'terror': 0.6,
-            'smuggling': 0.7,
-            'corruption': 0.8
-        }
-    },
-    open_borders: {
-        // Open borders suppress refugee/border incidents but increase tension events
-        event_name_keywords: {
-            'refugee': 0.5,
-            'border_crisis': 0.4,
-            'immigration_crisis': 0.6,
-            'border_tension': 1.5,
-            'cultural_tension': 1.3
-        }
-    }
-};
 

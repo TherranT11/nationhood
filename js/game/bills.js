@@ -1362,6 +1362,8 @@ export async function resolveExpiredVotes(supabase, nationId) {
 
                         if (otherPassed) {
                             // BOTH parliaments have ratified — activate the initiative
+                            pipeline.proposer_result = 'passed';
+                            pipeline.target_result = 'passed';
                             pipeline.ratified_at = currentTick;
                             pd.pipeline = pipeline;
 
@@ -1375,17 +1377,22 @@ export async function resolveExpiredVotes(supabase, nationId) {
                                 const effects = art.proposer_effects || art.effects || {};
                                 const targetEffects = art.target_effects || art.effects || {};
                                 totalRel += (art.effects?.relations || effects.relations || 0);
-                                // Accumulate per-tick stat effects (excluding relations which is one-time)
+
+                                // Store per-article effects for per-tick processing (enables per-article transition ramp)
+                                art.active_effects = { proposer: {}, target: {} };
+
                                 for (const [key, val] of Object.entries(effects)) {
-                                    if (key === 'relations' || key === 'civil_unrest') continue; // one-time effects
+                                    if (key === 'relations' || key === 'civil_unrest') continue;
                                     if (typeof val === 'number' && val !== 0) {
                                         activeEffects.proposer[key] = (activeEffects.proposer[key] || 0) + val;
+                                        art.active_effects.proposer[key] = (art.active_effects.proposer[key] || 0) + val;
                                     }
                                 }
                                 for (const [key, val] of Object.entries(targetEffects)) {
                                     if (key === 'relations' || key === 'civil_unrest') continue;
                                     if (typeof val === 'number' && val !== 0) {
                                         activeEffects.target[key] = (activeEffects.target[key] || 0) + val;
+                                        art.active_effects.target[key] = (art.active_effects.target[key] || 0) + val;
                                     }
                                 }
                             }
@@ -1410,16 +1417,17 @@ export async function resolveExpiredVotes(supabase, nationId) {
                                 }
                             }
 
-                            // Apply one-time civil unrest spike to both nations
+                            // Apply one-time civil unrest spike to both nations (batched to avoid race)
+                            let totalUnrestSpike = 0;
                             for (const art of activeArticles) {
-                                const spike = art.effects?.civil_unrest || 0;
-                                if (spike > 0) {
-                                    for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
-                                        const { data: n } = await supabase.from('nations').select('civil_unrest').eq('id', nId).single();
-                                        if (n) {
-                                            const newVal = Math.min(100, (n.civil_unrest || 0) + spike);
-                                            await supabase.from('nations').update({ civil_unrest: newVal }).eq('id', nId);
-                                        }
+                                totalUnrestSpike += (art.effects?.civil_unrest || 0);
+                            }
+                            if (totalUnrestSpike > 0) {
+                                for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
+                                    const { data: n } = await supabase.from('nations').select('civil_unrest').eq('id', nId).single();
+                                    if (n) {
+                                        const newVal = Math.min(100, (n.civil_unrest || 0) + totalUnrestSpike);
+                                        await supabase.from('nations').update({ civil_unrest: newVal }).eq('id', nId);
                                     }
                                 }
                             }
@@ -1531,12 +1539,24 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         .update({ status: 'ratification_failed', proposal_data: fpd })
                         .eq('id', bill.diplomatic_proposal_id);
 
-                    // Fire failure news event in both nations
+                    // Cancel the other nation's ratification bill (no point voting if one side failed)
+                    const otherBillId = isProposerBill ? failedProposal.target_bill_id : failedProposal.proposing_bill_id;
+                    if (otherBillId) {
+                        const { data: otherBill } = await supabase.from('bills')
+                            .select('status').eq('id', otherBillId).single();
+                        if (otherBill && !['passed', 'failed', 'enacted'].includes(otherBill.status)) {
+                            await supabase.from('bills')
+                                .update({ status: 'failed', preamble_append: 'Automatically cancelled — ratification failed in the other nation\'s parliament.' })
+                                .eq('id', otherBillId);
+                        }
+                    }
+
+                    // Fire failure news event in both nations (use already-fetched proposal data)
                     try {
-                        const prop = await supabase.from('diplomatic_proposals')
+                        const { data: propNations } = await supabase.from('diplomatic_proposals')
                             .select('proposing_nation_id, target_nation_id').eq('id', bill.diplomatic_proposal_id).single();
-                        if (prop?.data) {
-                            for (const nId of [prop.data.proposing_nation_id, prop.data.target_nation_id]) {
+                        if (propNations) {
+                            for (const nId of [propNations.proposing_nation_id, propNations.target_nation_id]) {
                                 await supabase.rpc('insert_news_event', {
                                     p_nation_id: nId,
                                     p_trigger_key: 'major_initiative_ratification_failed',
