@@ -3164,6 +3164,40 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
 
     let actions = '';
 
+    // Ambassador actions first (only if ambassador to this specific nation)
+    const isAmbToTarget = roles.ambassadorTo.some(a => a.target_nation_id === targetNation.id);
+    if (isAmbToTarget) {
+        const hasTargetAmb = theirAmbassador && theirAmbassador.status === 'active';
+        const initiativeDisabled = !hasTargetAmb ? 'disabled style="opacity:0.6;"' : '';
+        const initiativeHint = !hasTargetAmb ? '<p class="action-hint">Target nation has no ambassador to negotiate with.</p>' : '';
+
+        // Retirement warning for the player's own ambassador
+        let ambWarningHTML = '';
+        const myAmb = roles.ambassadorTo.find(a => a.target_nation_id === targetNation.id);
+        if (myAmb && myAmb.appointed_at_tick != null) {
+            const tl = myAmb.term_length || 60;
+            const remaining = Math.max(0, tl - (shardTick - myAmb.appointed_at_tick));
+            if (remaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && remaining > 0) {
+                const ambFullName = ((myAmb.ambassador_first_name || '') + ' ' + (myAmb.ambassador_last_name || '')).trim() + (myAmb.factions?.abbreviation ? ' (' + myAmb.factions.abbreviation + ')' : '');
+                ambWarningHTML = `<div style="background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.2);border-radius:6px;padding:8px 10px;margin-top:8px;font-size:0.78rem;color:#f97316;">&#9888; Ambassador ${ambFullName} will retire in ${remaining} tick${remaining !== 1 ? 's' : ''}. Conclude any active negotiations.</div>`;
+            }
+        }
+
+        actions += `
+            <div class="action-card" style="margin-bottom:10px;">
+                <div class="action-header">
+                    <span class="action-title" style="color:#ba68c8;">Ambassador Actions</span>
+                </div>
+                <p class="action-desc">As Ambassador to ${escapeHtml(targetNation.name)}, you can negotiate directly.</p>
+                ${ambWarningHTML}
+                <button class="action-btn" onclick="showDiploTab('initiative')">New Initiative</button>
+                <button class="action-btn" style="margin-top:8px;" disabled>Formal Protest (Coming Soon)</button>
+                <button class="action-btn" style="margin-top:8px;" disabled>Gather Intel (Coming Soon)</button>
+                <button class="action-btn" style="margin-top:8px;background:#5a1a1a;border-color:#8b3030;" onclick="resignAmbassador('${myAmb?.id}', '${escapeHtml(targetNation.name)}')">Resign as Ambassador</button>
+            </div>
+        `;
+    }
+
     // HoG actions
     if (roles.isHoG) {
         actions += `
@@ -3202,7 +3236,6 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
         } else {
             fmButtons = `<button class="action-btn" onclick="selectDraftAction('appoint_ambassador','Appoint Ambassador',${APPOINT_AMBASSADOR_AP},'fm','fm')">Appoint Ambassador</button>`;
         }
-        // Formal Protest moved to Ambassador role
 
         actions += `
             <div class="action-card" style="margin-bottom:10px;">
@@ -3211,40 +3244,6 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
                 </div>
                 <p class="action-desc">As Foreign Minister, you oversee diplomatic proposals and ambassador assignments.</p>
                 ${fmButtons}
-            </div>
-        `;
-    }
-
-    // Ambassador actions (only if ambassador to this specific nation)
-    const isAmbToTarget = roles.ambassadorTo.some(a => a.target_nation_id === targetNation.id);
-    if (isAmbToTarget) {
-        const hasTargetAmb = theirAmbassador && theirAmbassador.status === 'active';
-        const initiativeDisabled = !hasTargetAmb ? 'disabled style="opacity:0.6;"' : '';
-        const initiativeHint = !hasTargetAmb ? '<p class="action-hint">Target nation has no ambassador to negotiate with.</p>' : '';
-
-        // Retirement warning for the player's own ambassador
-        let ambWarningHTML = '';
-        const myAmb = roles.ambassadorTo.find(a => a.target_nation_id === targetNation.id);
-        if (myAmb && myAmb.appointed_at_tick != null) {
-            const tl = myAmb.term_length || 60;
-            const remaining = Math.max(0, tl - (shardTick - myAmb.appointed_at_tick));
-            if (remaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && remaining > 0) {
-                const ambFullName = ((myAmb.ambassador_first_name || '') + ' ' + (myAmb.ambassador_last_name || '')).trim() + (myAmb.factions?.abbreviation ? ' (' + myAmb.factions.abbreviation + ')' : '');
-                ambWarningHTML = `<div style="background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.2);border-radius:6px;padding:8px 10px;margin-top:8px;font-size:0.78rem;color:#f97316;">&#9888; Ambassador ${ambFullName} will retire in ${remaining} tick${remaining !== 1 ? 's' : ''}. Conclude any active negotiations.</div>`;
-            }
-        }
-
-        actions += `
-            <div class="action-card" style="margin-bottom:10px;">
-                <div class="action-header">
-                    <span class="action-title" style="color:#ba68c8;">Ambassador Actions</span>
-                </div>
-                <p class="action-desc">As Ambassador to ${escapeHtml(targetNation.name)}, you can negotiate directly.</p>
-                ${ambWarningHTML}
-                <button class="action-btn" onclick="showDiploTab('initiative')">New Initiative</button>
-                <button class="action-btn" style="margin-top:8px;" disabled>Formal Protest (Coming Soon)</button>
-                <button class="action-btn" style="margin-top:8px;" disabled>Gather Intel (Coming Soon)</button>
-                <button class="action-btn" style="margin-top:8px;background:#5a1a1a;border-color:#8b3030;" onclick="resignAmbassador('${myAmb?.id}', '${escapeHtml(targetNation.name)}')">Resign as Ambassador</button>
             </div>
         `;
     }
