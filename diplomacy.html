@@ -695,7 +695,7 @@ async function renderAgreementsTab() {
             if (!classification && articles.length > 0) {
                 // Check if any article is MAJOR
                 const hasMajor = articles.some((art, i) => {
-                    if (struckIndices.has(i)) return false;
+                    if (struckIndices.has(i) || art.status === 'struck') return false;
                     const typeInfo = INITIATIVE_TYPES[art.type];
                     return typeInfo && typeInfo.classification === 'MAJOR';
                 });
@@ -717,7 +717,7 @@ async function renderAgreementsTab() {
             let totalRel = 0, totalMoney = 0;
             const hasV2Articles = articles.some(a => a.type && (INITIATIVE_ARTICLE_TYPES?.[a.type] || MAJOR_INITIATIVE_ARTICLE_TYPES?.[a.type]));
             const termsHTML = articles.map((art, i) => {
-                const isStruck = struckIndices.has(i);
+                const isStruck = struckIndices.has(i) || art.status === 'struck';
                 const isV2Art = art.type && (INITIATIVE_ARTICLE_TYPES?.[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES?.[art.type]);
 
                 if (isV2Art) {
@@ -776,7 +776,7 @@ async function renderAgreementsTab() {
             if (hasV2Articles) {
                 const totals = { relations: 0, revenue: 0, cost_proposer: 0, cost_target: 0, intl_reputation: 0, immigration: 0, higher_education: 0, soft_power: 0, soft_power_per_year: 0, permanent_soft_power: 0, technology_bonus: 0, polarization: 0, terrorism_risk: 0, ongoing_per_tick: 0 };
                 articles.forEach((art, i) => {
-                    if (struckIndices.has(i)) return;
+                    if (struckIndices.has(i) || art.status === 'struck') return;
                     const e = art.effects || {};
                     for (const k in totals) totals[k] += e[k] || 0;
                 });
@@ -796,7 +796,7 @@ async function renderAgreementsTab() {
             } else if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
                 let totalRelForPenalty = 0;
                 articles.forEach((art, i) => {
-                    if (struckIndices.has(i)) return;
+                    if (struckIndices.has(i) || art.status === 'struck') return;
                     totalRelForPenalty += (art.effects ? art.effects.relations : art.relations) || 0;
                 });
                 const penalty = totalRelForPenalty * 2;
@@ -1312,7 +1312,8 @@ async function withdrawAgreement(agreementId) {
     // Calculate relations penalty (2x the bonus)
     let totalRel = 0;
     articles.forEach((art, i) => {
-        if (!struckIndices.has(i)) totalRel += (art.effects ? art.effects.relations : art.relations) || 0;
+        if (struckIndices.has(i) || art.status === 'struck') return;
+        totalRel += (art.effects ? art.effects.relations : art.relations) || 0;
     });
     const penalty = totalRel * 2;
 
@@ -1522,7 +1523,7 @@ function renderInboxCard(p) {
     if (articles.length > 0) {
         articlesHTML = '<div class="agreement-card-terms">';
         articles.forEach((art, i) => {
-            const isStruck = struckIndices.has(i);
+            const isStruck = struckIndices.has(i) || art.status === 'struck';
             const isV2Art = art.type && (INITIATIVE_ARTICLE_TYPES?.[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES?.[art.type]);
 
             if (isV2Art) {
@@ -1564,7 +1565,7 @@ function renderInboxCard(p) {
     if (isV2Proposal) {
         const totals = { relations: 0, revenue: 0, cost_proposer: 0, cost_target: 0, intl_reputation: 0, immigration: 0 };
         articles.forEach((art, i) => {
-            if (struckIndices.has(i)) return;
+            if (struckIndices.has(i) || art.status === 'struck') return;
             const e = art.effects || {};
             for (const k in totals) totals[k] += e[k] || 0;
         });
@@ -8839,7 +8840,7 @@ async function renderNegotiationsBox() {
             const articles = pd.articles || [];
             const struckIndices = new Set(pd.struck_articles || []);
             let totalRel = 0;
-            articles.forEach((art, i) => { if (!struckIndices.has(i)) totalRel += art.relations || 0; });
+            articles.forEach((art, i) => { if (!struckIndices.has(i) && art.status !== 'struck') totalRel += (art.effects?.relations || art.relations || 0); });
 
             // Withdraw button
             let withdrawBtn = '';
