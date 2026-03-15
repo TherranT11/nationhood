@@ -200,6 +200,10 @@ body {
     font-size: 12px;
     font-weight: 700;
     color: var(--text-bright);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 180px;
 }
 
 .pl-list-cost {

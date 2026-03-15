@@ -70,7 +70,7 @@ export const NEGATIVE_TRAITS = [
 // ═══════════════════════════════════════
 //  Contradiction Pairs
 // ═══════════════════════════════════════
-export const CONTRADICTION_PAIRS = [
+const CONTRADICTION_PAIRS = [
     ['tireless_campaigner', 'indecisive'],
     ['efficient_operator', 'micromanager'],
     ['quick_study', 'slow_to_act'],
@@ -283,9 +283,10 @@ export function generateCandidate(nationName, getNationNamesFn, usedFirstNames =
     const positiveTraits = pickTraits(POSITIVE_TRAITS, numPositive, [], true);
 
     // Generate negative traits: 1-3, no contradictions with positives
+    // Category diversity also enforced for negatives when 2+ traits
     const numNegative = 1 + Math.floor(Math.random() * 3); // 1, 2, or 3
     const positiveKeys = positiveTraits.map(t => t.key);
-    const negativeTraits = pickTraits(NEGATIVE_TRAITS, numNegative, positiveKeys, false);
+    const negativeTraits = pickTraits(NEGATIVE_TRAITS, numNegative, positiveKeys, numNegative >= 2);
 
     const positiveTraitKeys = positiveTraits.map(t => t.key);
     const negativeTraitKeys = negativeTraits.map(t => t.key);
@@ -385,19 +386,18 @@ export function generateLeadershipCandidates(nationName, getNationNamesFn, count
  * @returns {object|null} Step-down event data if leader must step down, null otherwise
  */
 export async function checkLeaderStepDown(supabase, nationId, factionId, currentTick, checkType) {
-    const { data: faction } = await supabase
+    const { data: faction, error: factionErr } = await supabase
         .from('factions')
         .select('id, faction_name, leader_first_name, leader_last_name, leader_age')
         .eq('id', factionId)
         .single();
 
-    if (!faction || !faction.leader_first_name) return null;
+    if (factionErr || !faction || !faction.leader_first_name) return null;
 
     const leaderName = `${faction.leader_first_name} ${faction.leader_last_name}`;
 
     if (checkType === 'pm') {
-        // Count times this faction won largest seats but didn't get PM
-        const { data: denials } = await supabase
+        const { data: denials, error: dErr } = await supabase
             .from('event_log')
             .select('id')
             .eq('nation_id', nationId)
@@ -405,6 +405,8 @@ export async function checkLeaderStepDown(supabase, nationId, factionId, current
             .ilike('description_chosen', `%${faction.faction_name}%denied%Prime Minister%`)
             .order('fired_at_tick', { ascending: false })
             .limit(10);
+
+        if (dErr) return null;
 
         if (denials && denials.length >= 2) {
             return {
@@ -415,8 +417,7 @@ export async function checkLeaderStepDown(supabase, nationId, factionId, current
             };
         }
     } else if (checkType === 'president') {
-        // Count presidential election losses for this faction
-        const { data: losses } = await supabase
+        const { data: losses, error: lErr } = await supabase
             .from('event_log')
             .select('id')
             .eq('nation_id', nationId)
@@ -424,6 +425,8 @@ export async function checkLeaderStepDown(supabase, nationId, factionId, current
             .ilike('description_chosen', `%${faction.faction_name}%lost%presidential%`)
             .order('fired_at_tick', { ascending: false })
             .limit(10);
+
+        if (lErr) return null;
 
         if (losses && losses.length >= 2) {
             return {
@@ -443,18 +446,22 @@ export async function checkLeaderStepDown(supabase, nationId, factionId, current
  */
 export async function executeLeaderStepDown(supabase, nationId, factionId, currentTick, reason) {
     // Clear leader from faction
-    await supabase.from('factions').update({
+    const { error: updateErr } = await supabase.from('factions').update({
         leader_first_name: null,
         leader_last_name: null,
         leader_age: null,
     }).eq('id', factionId);
 
+    if (updateErr) throw new Error('Failed to clear leader: ' + updateErr.message);
+
     // Log event
-    await supabase.from('event_log').insert({
+    const { error: eventErr } = await supabase.from('event_log').insert({
         nation_id: nationId,
         event_name: 'Party Leader Steps Down',
         description_chosen: reason,
         category: 'POLITICAL',
         fired_at_tick: currentTick,
     });
+
+    if (eventErr) throw new Error('Failed to log step-down event: ' + eventErr.message);
 }

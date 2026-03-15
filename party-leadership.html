@@ -21,14 +21,14 @@
 <script type="module">
 
 import { _supabase } from './js/supabase-client.js';
-import { initPage, getAdminNationOverride, getAdminFactionOverride } from './js/common.js';
+import { initPage } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { getNationNames, IDEOLOGY_OPTIONS, getWeightedIdeologies, weightedRandomPick, deductAP } from './js/game-common.js';
+import { getNationNames, deductAP } from './js/game-common.js';
 import {
-    POSITIVE_TRAITS, NEGATIVE_TRAITS, POSITIVE_MAP, NEGATIVE_MAP,
-    IDEOLOGY_COLORS, CATEGORY_COLORS, ELECTABILITY_TIERS,
-    getElectabilityTier, calculateAPCost, getAPCostColor, getAPCostLabel,
-    generateLeadershipCandidates, adjustElectability
+    POSITIVE_MAP, NEGATIVE_MAP,
+    IDEOLOGY_COLORS, CATEGORY_COLORS,
+    getElectabilityTier, getAPCostColor, getAPCostLabel,
+    generateLeadershipCandidates
 } from './js/game/party-leadership.js';
 
 let currentNation = null;
@@ -47,6 +47,9 @@ let currentLeaders = { leader: null, deputy: null, whip: null };
 // Selected candidate index per role
 let selectedIndex = { leader: null, deputy: null, whip: null };
 
+// Double-fire guard for appoint action
+let isAppointing = false;
+
 // ── Init ──
 initPage('politics', async (state) => {
     const { nation, faction, shard } = state;
@@ -61,7 +64,7 @@ initPage('politics', async (state) => {
     }
 
     // Load current leaders from faction data
-    await loadCurrentLeaders();
+    loadCurrentLeaders();
 
     // Generate candidates for all roles
     generateAllCandidates();
@@ -70,7 +73,7 @@ initPage('politics', async (state) => {
     render();
 });
 
-async function loadCurrentLeaders() {
+function loadCurrentLeaders() {
     // Current party leader is stored on the faction
     if (currentFaction.leader_first_name && currentFaction.leader_last_name) {
         currentLeaders.leader = {
@@ -106,15 +109,15 @@ function generateAllCandidates() {
         // If there's a current leader, mark the first candidate slot as them (0 AP reappoint)
         if (currentLeaders[role]) {
             const cl = currentLeaders[role];
-            // Add current leader as a candidate option with 0 cost
+            const fallback = candidatesByRole[role][0] || {};
             const currentCandidate = {
                 firstName: cl.firstName,
                 lastName: cl.lastName,
-                age: cl.age || candidatesByRole[role][0].age,
+                age: cl.age || fallback.age || 45,
                 electability: cl.electability || 50,
-                ideology: cl.ideology || candidatesByRole[role][0].ideology,
-                positiveTraits: cl.positiveTraits || candidatesByRole[role][0].positiveTraits,
-                negativeTraits: cl.negativeTraits || candidatesByRole[role][0].negativeTraits,
+                ideology: cl.ideology || fallback.ideology || 'PROGRESS',
+                positiveTraits: cl.positiveTraits || fallback.positiveTraits || [],
+                negativeTraits: cl.negativeTraits || fallback.negativeTraits || [],
                 apCost: 0, // Current leader always costs 0
                 costBreakdown: { positiveTotal: 0, negativeTotal: 0, rawCost: 0, apCost: 0 },
                 isCurrent: true,
@@ -142,12 +145,8 @@ function render() {
         const costColor = getAPCostColor(selectedCandidate.apCost);
         const costLabel = getAPCostLabel(selectedCandidate.apCost);
         headerCostHTML = `<span class="pl-header-cost" style="color:${costColor}">${costLabel}</span>`;
-        const roleLabel = activeRole === 'leader' ? 'Leader' : activeRole === 'deputy' ? 'Deputy Leader' : 'Party Whip';
-        appointBtnHTML = `<button class="pl-appoint-btn" onclick="window._appointLeader()">Appoint ${roleLabel}</button>`;
+        appointBtnHTML = `<button class="pl-appoint-btn" onclick="window._appointLeader()">Appoint ${getRoleLabel(activeRole)}</button>`;
     }
-
-    // Role tab labels
-    const roleLabels = { leader: 'Party Leader', deputy: 'Deputy Leader', whip: 'Party Whip' };
 
     container.innerHTML = `
         <div class="pl-header">
@@ -163,7 +162,7 @@ function render() {
 
         <div class="pl-role-tabs">
             ${['leader', 'deputy', 'whip'].map(r => `
-                <button class="pl-role-tab ${r === activeRole ? 'active' : ''}" onclick="window._switchRole('${r}')">${roleLabels[r]}</button>
+                <button class="pl-role-tab ${r === activeRole ? 'active' : ''}" onclick="window._switchRole('${r}')">${getRoleLabel(r)}</button>
             `).join('')}
         </div>
 
@@ -178,14 +177,25 @@ function render() {
     `;
 }
 
+function getRoleLabel(role) {
+    if (role === 'leader') return 'Party Leader';
+    if (role === 'deputy') return 'Deputy Leader';
+    return 'Party Whip';
+}
+
 function renderCandidateList(candidates, selectedIdx) {
+    if (!candidates || candidates.length === 0) {
+        return '<div style="padding:20px;text-align:center;color:var(--text-dim);font-family:var(--font-mono);font-size:9px;">No candidates available.</div>';
+    }
+
     return candidates.map((c, i) => {
         const isActive = i === selectedIdx;
         const costColor = getAPCostColor(c.apCost);
         const costLabel = getAPCostLabel(c.apCost);
-        const ideologyColor = IDEOLOGY_COLORS[c.ideology] || '#888';
-        const ideologyLabel = c.ideology.charAt(0) + c.ideology.slice(1).toLowerCase();
-        const electTier = getElectabilityTier(c.electability);
+        const ideology = c.ideology || '';
+        const ideologyColor = IDEOLOGY_COLORS[ideology] || '#888';
+        const ideologyLabel = ideology ? ideology.charAt(0) + ideology.slice(1).toLowerCase() : 'Unknown';
+        const electTier = getElectabilityTier(c.electability || 0);
         const currentPill = c.isCurrent ? `<span class="pl-current-pill">CURRENT</span>` : '';
 
         return `
@@ -194,7 +204,7 @@ function renderCandidateList(candidates, selectedIdx) {
                     <span class="pl-list-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}${currentPill}</span>
                     <span class="pl-list-cost" style="color:${costColor}">${costLabel}</span>
                 </div>
-                <div class="pl-list-age">Age ${c.age}</div>
+                <div class="pl-list-age">Age ${c.age || '—'}</div>
                 <div class="pl-list-meta">
                     <span class="pl-list-ideology">
                         <span class="pl-ideology-dot" style="background:${ideologyColor}"></span>
@@ -211,12 +221,12 @@ function renderCandidateList(candidates, selectedIdx) {
 }
 
 function renderCandidateDetail(c) {
-    const initials = (c.firstName[0] || '') + (c.lastName[0] || '');
-    const ideologyColor = IDEOLOGY_COLORS[c.ideology] || '#888';
-    const ideologyLabel = c.ideology.charAt(0) + c.ideology.slice(1).toLowerCase();
-    const electTier = getElectabilityTier(c.electability);
+    const initials = ((c.firstName || '')[0] || '') + ((c.lastName || '')[0] || '');
+    const ideology = c.ideology || '';
+    const ideologyColor = IDEOLOGY_COLORS[ideology] || '#888';
+    const ideologyLabel = ideology ? ideology.charAt(0) + ideology.slice(1).toLowerCase() : 'Unknown';
+    const electTier = getElectabilityTier(c.electability || 0);
     const costColor = getAPCostColor(c.apCost);
-    const costLabel = getAPCostLabel(c.apCost);
 
     // Cost box colors
     const costFaintBg = costColor + '14'; // ~8% opacity
@@ -234,8 +244,9 @@ function renderCandidateDetail(c) {
     const negativeTraits = (c.negativeTraits || []).map(key => NEGATIVE_MAP[key]).filter(Boolean);
     const negTotal = negativeTraits.reduce((sum, t) => sum + t.relief, 0);
 
-    const rawCost = posTotal - negTotal;
-    const finalAP = Math.max(0, Math.min(6, Math.round(rawCost)));
+    // Use costBreakdown from candidate, fall back to computed values
+    const rawCost = c.costBreakdown ? c.costBreakdown.rawCost : (posTotal - negTotal);
+    const finalAP = c.costBreakdown ? c.costBreakdown.apCost : Math.max(0, Math.min(6, Math.round(posTotal - negTotal)));
     const finalColor = getAPCostColor(c.isCurrent ? 0 : finalAP);
 
     return `
@@ -244,7 +255,7 @@ function renderCandidateDetail(c) {
             <div class="pl-avatar">${escapeHtml(initials)}</div>
             <div class="pl-identity-info">
                 <div class="pl-detail-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div>
-                <div class="pl-detail-age">Age ${c.age}</div>
+                <div class="pl-detail-age">Age ${c.age || '—'}</div>
                 <div class="pl-detail-ideology">
                     <span class="pl-ideology-dot" style="background:${ideologyColor}"></span>
                     <span style="color:${ideologyColor}">${ideologyLabel}</span>
@@ -346,13 +357,15 @@ window._switchRole = function(role) {
 };
 
 window._appointLeader = async function() {
+    if (isAppointing) return;
+
     const sel = selectedIndex[activeRole];
     if (sel === null) return;
 
     const candidate = candidatesByRole[activeRole][sel];
     if (!candidate || candidate.isCurrent) return;
 
-    const roleLabel = activeRole === 'leader' ? 'Party Leader' : activeRole === 'deputy' ? 'Deputy Leader' : 'Party Whip';
+    const roleLabel = getRoleLabel(activeRole);
 
     if (!confirm(
         `Appoint ${candidate.firstName} ${candidate.lastName} as ${roleLabel}?\n\n` +
@@ -362,6 +375,7 @@ window._appointLeader = async function() {
         `This will replace the current ${roleLabel.toLowerCase()}.`
     )) return;
 
+    isAppointing = true;
     const btn = document.querySelector('.pl-appoint-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Appointing...'; }
 
@@ -373,7 +387,8 @@ window._appointLeader = async function() {
             await deductAP(_supabase, currentFaction.id, candidate.apCost);
         }
 
-        // Update faction with new leader data
+        // Update faction with new leader data — only update leader fields (deputy/whip columns
+        // may not exist yet; those roles store locally until schema migration is applied)
         const updateFields = {};
         if (activeRole === 'leader') {
             updateFields.leader_first_name = candidate.firstName;
@@ -389,7 +404,8 @@ window._appointLeader = async function() {
             updateFields.whip_age = candidate.age;
         }
 
-        await _supabase.from('factions').update(updateFields).eq('id', currentFaction.id);
+        const { error: updateErr } = await _supabase.from('factions').update(updateFields).eq('id', currentFaction.id);
+        if (updateErr) throw new Error('Failed to update faction: ' + updateErr.message);
 
         // Log event
         const oldLeader = currentLeaders[activeRole];
@@ -397,15 +413,15 @@ window._appointLeader = async function() {
             ? `${candidate.firstName} ${candidate.lastName} replaces ${oldLeader.firstName} ${oldLeader.lastName} as ${roleLabel} of ${currentFaction.faction_name}.`
             : `${candidate.firstName} ${candidate.lastName} appointed as ${roleLabel} of ${currentFaction.faction_name}.`;
 
-        try {
-            await _supabase.from('event_log').insert({
-                nation_id: currentNation.id,
-                event_name: `New ${roleLabel}`,
-                description_chosen: eventDescription,
-                category: 'POLITICAL',
-                fired_at_tick: currentTick,
-            });
-        } catch (e) { console.warn('Event log failed (non-blocking):', e); }
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation.id,
+            event_name: `New ${roleLabel}`,
+            description_chosen: eventDescription,
+            category: 'POLITICAL',
+            fired_at_tick: currentTick,
+        }).then(({ error }) => {
+            if (error) console.warn('Event log insert failed (non-blocking):', error.message);
+        });
 
         // Update local state
         currentLeaders[activeRole] = {
@@ -426,9 +442,10 @@ window._appointLeader = async function() {
         alert(`${candidate.firstName} ${candidate.lastName} has been appointed as ${roleLabel}!`);
 
     } catch (e) {
-        console.error('Error appointing leader:', e);
         alert('Error: ' + e.message);
-        if (btn) { btn.disabled = false; btn.textContent = `Appoint ${roleLabel}`; }
+        if (btn) { btn.disabled = false; btn.textContent = `Appoint ${getRoleLabel(activeRole)}`; }
+    } finally {
+        isAppointing = false;
     }
 };
 
