@@ -479,47 +479,6 @@ window._appointLeader = async function() {
             if (error) console.warn('Event log insert failed (non-blocking):', error.message);
         });
 
-        // If this faction holds the PM, sync the new leader into head_of_government,
-        // administrations, and the PM ministry row.
-        if (activeRole === 'leader') {
-            const { data: activeHog } = await _supabase
-                .from('head_of_government')
-                .select('id')
-                .eq('nation_id', currentNation.id)
-                .eq('faction_id', currentFaction.id)
-                .eq('active', true)
-                .maybeSingle();
-
-            if (activeHog) {
-                const pmFullName = `${candidate.firstName} ${candidate.lastName}`;
-
-                // 1. Update head_of_government record
-                await _supabase.from('head_of_government').update({
-                    first_name: candidate.firstName,
-                    last_name: candidate.lastName,
-                    age: candidate.age,
-                }).eq('id', activeHog.id);
-
-                // 2. Update administration record
-                await _supabase.from('administrations').update({
-                    prime_minister: pmFullName,
-                    admin_name: `${candidate.lastName} Administration`,
-                    updated_at: new Date().toISOString()
-                }).eq('nation_id', currentNation.id).is('ended_at_tick', null);
-
-                // 3. Update PM ministry row
-                await _supabase.from('ministries').update({
-                    minister_first_name: candidate.firstName,
-                    minister_last_name: candidate.lastName,
-                    minister_age: candidate.age,
-                }).eq('nation_id', currentNation.id)
-                  .eq('ministry_key', 'prime_minister')
-                  .eq('is_active', true);
-
-                console.log(`PM synced to new party leader: ${pmFullName}`);
-            }
-        }
-
         // Update local state
         const leaderState = {
             firstName: candidate.firstName,

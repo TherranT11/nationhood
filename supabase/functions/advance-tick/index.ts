@@ -201,6 +201,31 @@ const GAME_CONFIG = {
     TERM_LIMIT_COOLDOWN_TICKS: 240,
 };
 
+/**
+ * Apply an electability delta to a faction, respecting leader traits.
+ * Reads the faction's current electability + traits, applies the delta, clamps 0-100, and writes back.
+ * @returns {number|null} New electability value, or null if faction not found.
+ */
+async function applyElectabilityDelta(supabase, factionId, baseDelta) {
+    const { data: faction, error: fetchErr } = await supabase
+        .from('factions')
+        .select('electability, leader_positive_traits, leader_negative_traits')
+        .eq('id', factionId)
+        .single();
+    if (fetchErr || !faction) {
+        console.warn(`[applyElectabilityDelta] Could not load faction ${factionId}:`, fetchErr?.message);
+        return null;
+    }
+    const current = faction.electability ?? 50;
+    let delta = baseDelta;
+    if ((faction.leader_positive_traits || []).includes('comeback_kid') && delta < 0) delta = Math.ceil(delta / 2);
+    if ((faction.leader_negative_traits || []).includes('sore_loser') && delta < 0) delta *= 2;
+    const newVal = Math.max(0, Math.min(100, current + delta));
+    const { error: updateErr } = await supabase.from('factions').update({ electability: newVal }).eq('id', factionId);
+    if (updateErr) console.warn(`[applyElectabilityDelta] Update failed for ${factionId}:`, updateErr.message);
+    return newVal;
+}
+
 const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;
 const ENDORSEMENT_SWITCH_WINDOW_ERROR = `Endorsements can only be changed in the last ${ENDORSEMENT_SWITCH_WINDOW_TICKS} ticks before a presidential election.`;
 
@@ -9008,22 +9033,8 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
 
             // PM's party leader loses -25 electability for losing the VoNC
             if (pmFactionId) {
-                const { data: pmFaction } = await supabase
-                    .from('factions')
-                    .select('electability, leader_positive_traits, leader_negative_traits')
-                    .eq('id', pmFactionId)
-                    .single();
-                if (pmFaction) {
-                    const currentElect = pmFaction.electability ?? 50;
-                    const posTr = pmFaction.leader_positive_traits || [];
-                    const negTr = pmFaction.leader_negative_traits || [];
-                    let delta = -25;
-                    if (posTr.includes('comeback_kid')) delta = Math.ceil(delta / 2);
-                    if (negTr.includes('sore_loser')) delta *= 2;
-                    const newElect = Math.max(0, Math.min(100, currentElect + delta));
-                    await supabase.from('factions').update({ electability: newElect }).eq('id', pmFactionId);
-                    console.log(`[VoNC] PM party ${pmFactionId} electability ${currentElect} → ${newElect} (delta ${delta})`);
-                }
+                const newElect = await applyElectabilityDelta(supabase, pmFactionId, -25);
+                if (newElect != null) console.log(`[VoNC] PM party ${pmFactionId} electability → ${newElect}`);
             }
 
             // Schedule snap election (same pattern as early elections)
@@ -9835,10 +9846,11 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
     const oldSeatsByParty = {};
     if (seatResults.length > 0) {
         const partyIds = seatResults.map(r => r.party_id);
-        const { data: oldFactions } = await supabase
+        const { data: oldFactions, error: oldSeatsErr } = await supabase
             .from('factions')
             .select('id, seats')
             .in('id', partyIds);
+        if (oldSeatsErr) console.warn('[Election] Could not snapshot old seats:', oldSeatsErr.message);
         for (const f of (oldFactions || [])) {
             oldSeatsByParty[f.id] = f.seats || 0;
         }
@@ -9854,7 +9866,7 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
 
     // Check if this was a snap/early election and apply -15 electability if the calling PM party lost seats
     if (seatResults.length > 0 && !isPresidential) {
-        // Look for the most recent early election or VoNC event for this nation
+        // Look for a recent early-election event whose scheduled tick matches this election
         const { data: snapEvent } = await supabase
             .from('event_log')
             .select('effects_applied')
@@ -9863,29 +9875,17 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
             .order('fired_at_tick', { ascending: false })
             .limit(1)
             .maybeSingle();
+        // Only apply penalty if the snap event's scheduled election_tick matches this election
         const snapCallerFactionId = snapEvent?.effects_applied?.snap_called_by_faction;
-        if (snapCallerFactionId) {
+        const snapElectionTick = snapEvent?.effects_applied?.election_tick;
+        if (snapCallerFactionId && snapElectionTick === currentTick) {
             const oldSeats = oldSeatsByParty[snapCallerFactionId] || 0;
             const newSeatsEntry = seatResults.find(r => r.party_id === snapCallerFactionId);
             const newSeats = newSeatsEntry?.seats || 0;
             if (newSeats < oldSeats) {
                 // PM's party lost seats after calling snap elections — penalize electability
-                const { data: callerFaction } = await supabase
-                    .from('factions')
-                    .select('electability, leader_positive_traits, leader_negative_traits')
-                    .eq('id', snapCallerFactionId)
-                    .single();
-                if (callerFaction) {
-                    const currentElect = callerFaction.electability ?? 50;
-                    const posTr = callerFaction.leader_positive_traits || [];
-                    const negTr = callerFaction.leader_negative_traits || [];
-                    let delta = -15;
-                    if (posTr.includes('comeback_kid')) delta = Math.ceil(delta / 2);
-                    if (negTr.includes('sore_loser')) delta *= 2;
-                    const newElect = Math.max(0, Math.min(100, currentElect + delta));
-                    await supabase.from('factions').update({ electability: newElect }).eq('id', snapCallerFactionId);
-                    console.log(`[SnapElection] PM party ${snapCallerFactionId} lost seats (${oldSeats} → ${newSeats}), electability ${currentElect} → ${newElect}`);
-                }
+                const newElect = await applyElectabilityDelta(supabase, snapCallerFactionId, -15);
+                if (newElect != null) console.log(`[SnapElection] PM party ${snapCallerFactionId} lost seats (${oldSeats} → ${newSeats}), electability → ${newElect}`);
             }
         }
     }
@@ -21896,18 +21896,51 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         }
                     }
 
-                    // 1b. Sync PM age in head_of_government (democracy)
-                    // The PM record copies faction leader age at appointment but never updates.
+                    // 1b. Sync PM with party leader in head_of_government (democracy)
+                    // Keeps age, name, and downstream records in sync when a new leader is appointed.
                     const { data: activeHog } = await supabase
                         .from('head_of_government')
-                        .select('id, faction_id')
+                        .select('id, faction_id, first_name, last_name')
                         .eq('nation_id', nation.id)
                         .eq('active', true)
                         .maybeSingle();
-                    if (activeHog && factionIdToAge[activeHog.faction_id]) {
-                        await supabase.from('head_of_government')
-                            .update({ age: factionIdToAge[activeHog.faction_id] })
-                            .eq('id', activeHog.id);
+                    if (activeHog) {
+                        const pmFaction = partyFactions.find(f => f.id === activeHog.faction_id);
+                        if (pmFaction) {
+                            const hogUpdate = {};
+                            // Sync age
+                            if (factionIdToAge[activeHog.faction_id]) {
+                                hogUpdate.age = factionIdToAge[activeHog.faction_id];
+                            }
+                            // Sync name if party leader changed
+                            if (pmFaction.leader_first_name && pmFaction.leader_last_name &&
+                                (pmFaction.leader_first_name !== activeHog.first_name || pmFaction.leader_last_name !== activeHog.last_name)) {
+                                hogUpdate.first_name = pmFaction.leader_first_name;
+                                hogUpdate.last_name = pmFaction.leader_last_name;
+                                console.log(`[PMSync] Updating PM name: ${activeHog.first_name} ${activeHog.last_name} → ${pmFaction.leader_first_name} ${pmFaction.leader_last_name}`);
+
+                                // Also update administration and ministry records
+                                const pmFullName = `${pmFaction.leader_first_name} ${pmFaction.leader_last_name}`;
+                                await supabase.from('administrations').update({
+                                    prime_minister: pmFullName,
+                                    admin_name: `${pmFaction.leader_last_name} Administration`,
+                                    updated_at: new Date().toISOString()
+                                }).eq('nation_id', nation.id).is('ended_at_tick', null);
+
+                                await supabase.from('ministries').update({
+                                    minister_first_name: pmFaction.leader_first_name,
+                                    minister_last_name: pmFaction.leader_last_name,
+                                    minister_age: hogUpdate.age || pmFaction.leader_age
+                                }).eq('nation_id', nation.id)
+                                  .eq('ministry_key', 'prime_minister')
+                                  .eq('is_active', true);
+                            }
+                            if (Object.keys(hogUpdate).length > 0) {
+                                await supabase.from('head_of_government')
+                                    .update(hogUpdate)
+                                    .eq('id', activeHog.id);
+                            }
+                        }
                     }
 
                     // 1c. Age all active ministers +1

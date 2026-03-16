@@ -1762,18 +1762,48 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         }
                     }
 
-                    // 1b. Sync PM age in head_of_government (democracy)
-                    // The PM record copies faction leader age at appointment but never updates.
+                    // 1b. Sync PM with party leader in head_of_government (democracy)
+                    // Keeps age, name, and downstream records in sync when a new leader is appointed.
                     const { data: activeHog } = await supabase
                         .from('head_of_government')
-                        .select('id, faction_id')
+                        .select('id, faction_id, first_name, last_name')
                         .eq('nation_id', nation.id)
                         .eq('active', true)
                         .maybeSingle();
-                    if (activeHog && factionIdToAge[activeHog.faction_id]) {
-                        await supabase.from('head_of_government')
-                            .update({ age: factionIdToAge[activeHog.faction_id] })
-                            .eq('id', activeHog.id);
+                    if (activeHog) {
+                        const pmFaction = partyFactions.find(f => f.id === activeHog.faction_id);
+                        if (pmFaction) {
+                            const hogUpdate = {};
+                            if (factionIdToAge[activeHog.faction_id]) {
+                                hogUpdate.age = factionIdToAge[activeHog.faction_id];
+                            }
+                            if (pmFaction.leader_first_name && pmFaction.leader_last_name &&
+                                (pmFaction.leader_first_name !== activeHog.first_name || pmFaction.leader_last_name !== activeHog.last_name)) {
+                                hogUpdate.first_name = pmFaction.leader_first_name;
+                                hogUpdate.last_name = pmFaction.leader_last_name;
+                                console.log(`[PMSync] Updating PM name: ${activeHog.first_name} ${activeHog.last_name} → ${pmFaction.leader_first_name} ${pmFaction.leader_last_name}`);
+
+                                const pmFullName = `${pmFaction.leader_first_name} ${pmFaction.leader_last_name}`;
+                                await supabase.from('administrations').update({
+                                    prime_minister: pmFullName,
+                                    admin_name: `${pmFaction.leader_last_name} Administration`,
+                                    updated_at: new Date().toISOString()
+                                }).eq('nation_id', nation.id).is('ended_at_tick', null);
+
+                                await supabase.from('ministries').update({
+                                    minister_first_name: pmFaction.leader_first_name,
+                                    minister_last_name: pmFaction.leader_last_name,
+                                    minister_age: hogUpdate.age || pmFaction.leader_age
+                                }).eq('nation_id', nation.id)
+                                  .eq('ministry_key', 'prime_minister')
+                                  .eq('is_active', true);
+                            }
+                            if (Object.keys(hogUpdate).length > 0) {
+                                await supabase.from('head_of_government')
+                                    .update(hogUpdate)
+                                    .eq('id', activeHog.id);
+                            }
+                        }
                     }
 
                     // 1c. Age all active ministers +1
