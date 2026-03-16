@@ -1991,7 +1991,7 @@ async function sendToFloor() {
 
     // Require at least one article for non-repeal/non-ratification bills
     if (currentBill.bill_type !== 'repeal' && currentBill.bill_type !== 'ratification'
-        && (!currentBill.bill_articles || currentBill.bill_articles.filter(a => a.policy_id || a.effect_data || a.repeal_active_law_id).length === 0)) {
+        && (!currentBill.bill_articles || currentBill.bill_articles.filter(a => a.policy_id || a.effect_data || a.repeal_active_law_id || a.funding_data).length === 0)) {
         alert('This bill has no policy articles. Add at least one article before sending to the floor.');
         return;
     }
