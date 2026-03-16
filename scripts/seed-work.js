@@ -217,9 +217,9 @@ async function main() {
             { faction_name: 'Frente Obrero', seats: 20, approval_rating: 42, action_points: 5, color: '#7B1FA2' }
         ],
         'Avelia': [
-            { faction_name: 'New Dawn Party', seats: 50, approval_rating: 65, action_points: 5, color: '#00BCD4' },
-            { faction_name: 'Heritage Alliance', seats: 38, approval_rating: 55, action_points: 5, color: '#795548' },
-            { faction_name: 'Social Democrats', seats: 32, approval_rating: 58, action_points: 5, color: '#E91E63' }
+            { faction_name: 'New Dawn Party', seats: 65, approval_rating: 65, action_points: 5, color: '#00BCD4' },  // 54% — triggers caucus system (2 factions)
+            { faction_name: 'Heritage Alliance', seats: 30, approval_rating: 55, action_points: 5, color: '#795548' },
+            { faction_name: 'Social Democrats', seats: 25, approval_rating: 58, action_points: 5, color: '#E91E63' }
         ],
         'Montequilla': [
             { faction_name: 'Solidarity Front', seats: 35, approval_rating: 28, action_points: 5, color: '#FF5722' },
