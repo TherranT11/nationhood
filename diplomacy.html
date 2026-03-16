@@ -3171,7 +3171,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
     if (isAmbToTarget) {
         const hasTargetAmb = theirAmbassador && theirAmbassador.status === 'active';
         const initiativeDisabled = !hasTargetAmb ? 'disabled style="opacity:0.6;"' : '';
-        const initiativeHint = !hasTargetAmb ? '<p class="action-hint">Target nation has no ambassador to negotiate with.</p>' : '';
+        const initiativeHint = !hasTargetAmb ? '<p style="font-size:0.78rem;color:#f97316;margin:6px 0 2px;">Target nation has no ambassador to negotiate with.</p>' : '';
 
         // Retirement warning for the player's own ambassador
         let ambWarningHTML = '';
@@ -11985,7 +11985,9 @@ async function executeAppointAmbassador() {
 // ══════════════════════════════════════════════════════
 // MINOR DIPLOMATIC INITIATIVE — Submit
 // ══════════════════════════════════════════════════════
+let _submitMinorLock = false;
 async function submitMinorInitiative() {
+    if (_submitMinorLock) return;
     if (!activeDraftTarget) { alert('Please select a target nation.'); return; }
     if (!wizardName.trim()) { alert('Please enter a name for the initiative.'); return; }
     if (wizardArticles.length === 0) { alert('Please add at least one article.'); return; }
@@ -11995,6 +11997,12 @@ async function submitMinorInitiative() {
         alert('Not enough AP. You need ' + apCost + ' AP.');
         return;
     }
+
+    _submitMinorLock = true;
+    const submitBtn = document.querySelector('[onclick*="submitMinorInitiative"]');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
 
     // Validate: hostile nations blocked
     const targetId = activeDraftTarget.id;
@@ -12059,7 +12067,6 @@ async function submitMinorInitiative() {
         totals: totals
     };
 
-    try {
         // Deduct AP
         const apResult = await deductAP(_supabase, currentFaction.id, apCost);
         if (!apResult.success) { alert('Failed to deduct AP: ' + (apResult.error || 'Insufficient AP')); return; }
@@ -12096,6 +12103,9 @@ async function submitMinorInitiative() {
     } catch (err) {
         console.error('Submit minor initiative error:', err);
         alert('Error: ' + err.message);
+    } finally {
+        _submitMinorLock = false;
+        if (submitBtn) submitBtn.disabled = false;
     }
 }
 window.submitMinorInitiative = submitMinorInitiative;
