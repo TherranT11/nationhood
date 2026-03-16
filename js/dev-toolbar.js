@@ -5,7 +5,6 @@
  */
 
 import { _supabase } from './supabase-client.js';
-import { runManualElectionByGovernmentType } from './game/elections.js';
 
 const SUPABASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || '';
 const SERVICE_ROLE_KEY = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WORK_SERVICE_ROLE_KEY) || '';
@@ -28,7 +27,6 @@ export async function renderDevToolbar() {
     document.getElementById('dev-toolbar-toggle').addEventListener('click', toggleToolbar);
     document.getElementById('dev-advance-tick').addEventListener('click', () => advanceTicks(1));
     document.getElementById('dev-advance-n').addEventListener('click', advanceNTicks);
-    document.getElementById('dev-run-election').addEventListener('click', runElection);
     document.getElementById('dev-reset-seed').addEventListener('click', resetToSeed);
     document.getElementById('dev-nation-select').addEventListener('change', switchNation);
 }
@@ -49,9 +47,6 @@ function buildToolbarHTML() {
                     <input id="dev-tick-count" type="number" min="1" max="100" value="5" class="dev-input">
                     <button id="dev-advance-n" class="dev-btn">Advance N</button>
                 </div>
-            </div>
-            <div class="dev-toolbar-section">
-                <button id="dev-run-election" class="dev-btn dev-btn-election">Run Election</button>
             </div>
             <div class="dev-toolbar-section">
                 <button id="dev-reset-seed" class="dev-btn dev-btn-danger">Reset to Seed</button>
@@ -138,8 +133,6 @@ function applyToolbarStyles(toolbar) {
         }
         .dev-btn:hover { background: #3db83d; }
         .dev-btn:disabled { background: #555; cursor: not-allowed; }
-        .dev-btn-election { background: #b8860b; }
-        .dev-btn-election:hover { background: #daa520; }
         .dev-btn-danger { background: #8B0000; }
         .dev-btn-danger:hover { background: #cc3300; }
         .dev-input {
@@ -257,46 +250,6 @@ async function advanceNTicks() {
     const input = document.getElementById('dev-tick-count');
     const n = parseInt(input?.value, 10) || 1;
     await advanceTicks(Math.min(n, 100));
-}
-
-async function runElection() {
-    // Get nation ID from dropdown or URL param
-    const select = document.getElementById('dev-nation-select');
-    const nationId = select?.value || new URLSearchParams(window.location.search).get('nation_id');
-    if (!nationId) {
-        setStatus('Select a nation first');
-        return;
-    }
-
-    if (!confirm('Run a full election for this nation? This will update seats, dissolve government, etc.')) return;
-
-    setButtonsDisabled(true);
-    setStatus('Running election...');
-
-    try {
-        const { data: nation, error: nationErr } = await _supabase
-            .from('nations')
-            .select('*')
-            .eq('id', nationId)
-            .single();
-        if (nationErr || !nation) {
-            setStatus('Failed to load nation: ' + (nationErr?.message || 'not found'));
-            setButtonsDisabled(false);
-            return;
-        }
-
-        const result = await runManualElectionByGovernmentType(_supabase, nation);
-        const seatSummary = (result.seatResults || [])
-            .sort((a, b) => b.seats - a.seats)
-            .slice(0, 3)
-            .map(r => `${r.party_name}: ${r.seats}`)
-            .join(', ');
-        setStatus(`Election done! ${seatSummary || result.electionType}`);
-        setTimeout(() => location.reload(), 1500);
-    } catch (err) {
-        setStatus('Election error: ' + err.message);
-        setButtonsDisabled(false);
-    }
 }
 
 async function resetToSeed() {
