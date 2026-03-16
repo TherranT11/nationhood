@@ -209,7 +209,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination, advanceBillEmergency, EO_CONFIG } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination, advanceBillEmergency, EO_CONFIG, executeWhipCaucus } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 /** Scale a policy cost by its scaling stat (e.g., population). */
 function scalePolicyCost(baseCost, scalingStat, nation) {
@@ -1834,6 +1834,115 @@ function renderSidebar() {
         </div>`;
     }
     document.getElementById('sidebar-top').innerHTML = html;
+
+    // Render caucus dispositions for floor bills
+    if (currentBill && currentBill.status === 'floor') {
+        await renderCaucusDispositions();
+    }
+}
+
+// ==================== CAUCUS DISPOSITION PANEL ====================
+
+async function renderCaucusDispositions() {
+    if (!currentBill || !nationId) return;
+
+    const { data: dispositions, error } = await _supabase
+        .from('caucus_dispositions')
+        .select('id, disposition, votes_affected, whipped, caucus_factions(id, name, dominant_axis, wing_end, party_id, seat_share, relationship_score)')
+        .eq('bill_id', billId);
+
+    if (error || !dispositions || dispositions.length === 0) return;
+
+    // Only show if there are any triggered or relevant dispositions
+    const relevant = dispositions.filter(d => d.disposition !== 'not_triggered');
+    if (relevant.length === 0 && dispositions.every(d => d.disposition === 'not_triggered')) return;
+
+    const AXIS_LABELS = {
+        liberty_equality: 'Liberty / Equality',
+        tradition_progress: 'Tradition / Progress',
+        security_freedom: 'Security / Freedom',
+        globalism_nationalism: 'Globalism / Nationalism',
+        individualism_collectivism: 'Individualism / Collectivism',
+    };
+
+    const DISP_ICONS = {
+        aligned: { icon: '✓', color: 'var(--green)', label: 'ALIGNED' },
+        nervous: { icon: '⚠', color: 'var(--amber)', label: 'NERVOUS' },
+        opposed: { icon: '✗', color: 'var(--red)', label: 'OPPOSED' },
+        not_triggered: { icon: '—', color: 'var(--text-muted)', label: 'NOT TRIGGERED' },
+    };
+
+    let rows = '';
+    for (const d of dispositions) {
+        const cf = d.caucus_factions;
+        if (!cf) continue;
+        const disp = DISP_ICONS[d.disposition] || DISP_ICONS.not_triggered;
+        const dimStyle = d.disposition === 'not_triggered' ? 'opacity:0.4;' : '';
+
+        let voteText = '';
+        if (d.disposition === 'aligned' || d.disposition === 'not_triggered') {
+            voteText = 'votes with party';
+        } else if (d.disposition === 'nervous' && d.whipped) {
+            voteText = `<span style="color:var(--green);">whipped ✓</span>`;
+        } else if (d.disposition === 'nervous') {
+            voteText = `${d.votes_affected} votes soft`;
+        } else if (d.disposition === 'opposed') {
+            voteText = `<span style="color:var(--red);">${d.votes_affected} votes withheld</span>`;
+        }
+
+        // Whip button for NERVOUS + not yet whipped + belongs to current faction
+        let whipBtn = '';
+        if (d.disposition === 'nervous' && !d.whipped && currentFaction && cf.party_id === currentFaction.id) {
+            const apCost = cf.seat_share > 0.20 ? 2 : 1;
+            whipBtn = `<button class="btn-whip-caucus" data-caucus-id="${cf.id}" data-bill-id="${billId}" style="margin-left:8px;padding:2px 8px;font-size:0.75rem;background:var(--amber);color:#000;border:none;border-radius:4px;cursor:pointer;" title="Spend ${apCost} AP to whip this caucus">Whip (${apCost} AP)</button>`;
+        }
+
+        rows += `<div class="caucus-disp-row" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;${dimStyle}">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="color:${disp.color};font-weight:600;">${disp.icon}</span>
+                <span style="font-size:0.85rem;">${escapeHtml(cf.name)}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;font-size:0.8rem;color:var(--text-secondary);">
+                <span class="vote-status-chip" style="background:${disp.color};color:${d.disposition === 'nervous' ? '#000' : '#fff'};font-size:0.7rem;padding:1px 6px;">${disp.label}</span>
+                <span>${voteText}</span>
+                ${whipBtn}
+            </div>
+        </div>`;
+    }
+
+    const panel = document.createElement('div');
+    panel.className = 'caucus-dispositions-panel';
+    panel.style.cssText = 'margin-top:12px;padding:10px 12px;background:var(--surface-dark);border:1px solid var(--border-main);border-radius:8px;';
+    panel.innerHTML = `
+        <div style="font-weight:600;font-size:0.85rem;margin-bottom:8px;color:var(--text-primary);">Caucus Dispositions</div>
+        ${rows}
+    `;
+
+    // Add whip button handlers
+    const sidebarTop = document.getElementById('sidebar-top');
+    sidebarTop.appendChild(panel);
+
+    panel.querySelectorAll('.btn-whip-caucus').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            if (this.disabled) return;
+            this.disabled = true;
+            this.textContent = 'Whipping...';
+            try {
+                const result = await executeWhipCaucus(_supabase, currentFaction.id, this.dataset.caucusId, this.dataset.billId);
+                if (result.success) {
+                    await loadBillData();
+                } else {
+                    alert(result.error || 'Failed to whip caucus');
+                    this.disabled = false;
+                    const apCost = this.textContent;
+                    this.textContent = `Whip (${apCost})`;
+                }
+            } catch (e) {
+                alert('Error: ' + e.message);
+                this.disabled = false;
+            }
+        });
+    });
 }
 
 // ==================== COMMITTEE STANCE (NEW) ====================

@@ -15,6 +15,7 @@ export * from './game/stats.js';
 export * from './game/momentum.js';
 export * from './game/budget.js';
 export * from './game/government-structure.js';
+export * from './game/caucus.js';
 export * from './game/bills.js';
 export * from './game/elections.js';
 export * from './game/presidential.js';
