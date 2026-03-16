@@ -11,7 +11,7 @@ export const POSITIVE_TRAITS = [
     { key: 'tireless_campaigner', name: 'Tireless Campaigner', cost: 4.0, category: 'AP', effect: '+1 AP generated per tick.' },
     { key: 'efficient_operator', name: 'Efficient Operator', cost: 3.5, category: 'AP', effect: 'All campaign actions cost -1 AP (minimum 1).' },
     { key: 'quick_study', name: 'Quick Study', cost: 1.5, category: 'AP', effect: 'First action each tick costs -1 AP (minimum 1).' },
-    { key: 'delegation', name: 'Delegation', cost: 1.0, category: 'AP', effect: 'Maintenance costs for planks and champions reduced by 1 total.' },
+    { key: 'delegation', name: 'Delegation', cost: 1.0, category: 'AP', effect: 'Outreach and Rally actions cost -1 AP each.' },
     // Electoral & Electability
     { key: 'born_leader', name: 'Born Leader', cost: 3.5, category: 'Electoral', effect: 'Electability gains are doubled.' },
     { key: 'comeback_kid', name: 'Comeback Kid', cost: 3.5, category: 'Electoral', effect: 'Electability losses are halved.' },
@@ -43,7 +43,7 @@ export const NEGATIVE_TRAITS = [
     { key: 'indecisive', name: 'Indecisive', relief: 2.0, category: 'AP', effect: '-1 AP generated per tick.' },
     { key: 'micromanager', name: 'Micromanager', relief: 1.5, category: 'AP', effect: 'All actions cost +1 AP.' },
     { key: 'slow_to_act', name: 'Slow to Act', relief: 1.0, category: 'AP', effect: 'First action each tick costs +1 AP.' },
-    { key: 'high_maintenance', name: 'High Maintenance', relief: 0.5, category: 'AP', effect: 'Maintenance costs for planks and champions increased by 1 total.' },
+    { key: 'high_maintenance', name: 'High Maintenance', relief: 0.5, category: 'AP', effect: 'Outreach and Rally actions cost +1 AP each.' },
     // Electoral
     { key: 'unelectable', name: 'Unelectable', relief: 1.5, category: 'Electoral', effect: 'Electability gains are halved.' },
     { key: 'sore_loser', name: 'Sore Loser', relief: 1.5, category: 'Electoral', effect: 'Electability losses are doubled. Losing an election triggers -5 approval across all blocs.' },
@@ -64,7 +64,7 @@ export const NEGATIVE_TRAITS = [
     { key: 'international_pariah', name: 'International Pariah', relief: 0.5, category: 'Diplomatic', effect: 'International reputation -5 while leader. Foreign proposals take +1 tick to process.' },
     // Voter Blocs
     { key: 'elitist', name: 'Elitist', relief: 1.5, category: 'Voter Blocs', effect: 'SKEPTICAL blocs are treated as HOSTILE for all action targeting.' },
-    { key: 'divisive_figure', name: 'Divisive Figure', relief: 1.0, category: 'Voter Blocs', effect: 'Bridge actions cost +1 AP. Bridge residual reduced to +0 (no permanent gain).' },
+    { key: 'divisive_figure', name: 'Divisive Figure', relief: 1.0, category: 'Voter Blocs', effect: 'Outreach actions cost +1 AP. Outreach approval gains with non-BASE blocs halved.' },
 ];
 
 // ═══════════════════════════════════════
