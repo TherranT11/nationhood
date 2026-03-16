@@ -10,7 +10,7 @@ ALTER TABLE factions
 CREATE TABLE IF NOT EXISTS leadership_candidates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     faction_id UUID NOT NULL REFERENCES factions(id) ON DELETE CASCADE,
-    role TEXT NOT NULL CHECK (role IN ('leader', 'deputy', 'whip')),
+    role TEXT NOT NULL CHECK (role IN ('leader')),
     candidates JSONB NOT NULL DEFAULT '[]'::JSONB,
     generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (faction_id, role)

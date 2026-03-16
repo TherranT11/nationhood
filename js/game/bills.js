@@ -551,11 +551,6 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
     );
     if (legislativeBills.length === 0) return;
 
-    // Include 'president_desk' as passed — these bills passed the floor vote
-    // and are awaiting presidential action; the passage bonus should apply now
-    // since processIdeologyShifts won't run again when the president signs.
-    const passedBillIds = new Set(terminalResolutions.filter(r => r.result === 'passed' || r.result === 'president_desk').map(r => r.billId));
-
     // Accumulate shifts: { factionId: { axisKey: totalShift } }
     const factionShifts = {};
 
@@ -577,8 +572,6 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
         }
         if (tags.length === 0) continue;
 
-        const isPassed = passedBillIds.has(bill.id);
-
         // Build YES voter set (normalize committee stances)
         const yesVoters = new Set();
         for (const s of (bill.bill_support || [])) {
@@ -588,25 +581,28 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
         // Sponsor always counts as YES
         if (bill.proposed_by) yesVoters.add(bill.proposed_by);
 
+        // Track how many times each (axis, direction) pair appears in this bill
+        // for diminishing returns: 1st = full, 2nd = 50%, 3rd = 25%, 4th+ = 12.5%
+        const axisTagCounts = {};
+
         for (const tag of tags) {
             const mapping = IDEOLOGY_TO_AXIS[tag];
             if (!mapping) continue;
 
+            const key = `${mapping.axisKey}:${mapping.direction}`;
+            const count = (axisTagCounts[key] || 0) + 1;
+            axisTagCounts[key] = count;
+
+            const diminish = count <= 3 ? (1 / Math.pow(2, count - 1)) : 0.125;
+
             // +2 for proposing (sponsor only)
             if (bill.proposed_by) {
-                addShift(bill.proposed_by, mapping.axisKey, 2 * mapping.direction);
+                addShift(bill.proposed_by, mapping.axisKey, 2 * mapping.direction * diminish);
             }
 
             // +4 for voting YES (all YES voters including sponsor)
             for (const factionId of yesVoters) {
-                addShift(factionId, mapping.axisKey, 4 * mapping.direction);
-            }
-
-            // +4 if bill passed (YES voters only)
-            if (isPassed) {
-                for (const factionId of yesVoters) {
-                    addShift(factionId, mapping.axisKey, 4 * mapping.direction);
-                }
+                addShift(factionId, mapping.axisKey, 4 * mapping.direction * diminish);
             }
         }
     }

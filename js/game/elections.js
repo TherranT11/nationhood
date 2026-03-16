@@ -211,7 +211,7 @@ export async function closeAdministration(supabase, nationId, nation, endReason,
 
             // Detect leader changes from event_log (Party Leadership appointments)
             const leaderChangeEvents = (eventsDuring || []).filter(e =>
-                e.event_name && (e.event_name === 'New Party Leader' || e.event_name === 'New Deputy Leader' || e.event_name === 'New Party Whip')
+                e.event_name && e.event_name === 'New Party Leader'
             ).map(e => ({ role: e.event_name, description: e.description_chosen || '', tick: e.fired_at_tick }));
 
             // Update the administration record
