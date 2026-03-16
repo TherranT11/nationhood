@@ -37,6 +37,10 @@
     grid-column: 1 / span 3;
     grid-row: 2;
   }
+  #crises-card {
+    grid-column: 4;
+    grid-row: 2;
+  }
   .dash-card-header {
     background: var(--bg-card);
     padding: 10px 20px;
@@ -373,6 +377,71 @@
     padding: 20px 0;
   }
 
+  /* ── Active Crises Card ── */
+  .crises-scroll {
+    overflow-y: auto;
+    padding: 0 14px 14px;
+    flex: 1;
+  }
+  .crisis-item {
+    border-left: 3px solid #e74c3c;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    background: rgba(231,76,60,0.06);
+    border-radius: 0 4px 4px 0;
+  }
+  .crisis-item-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #e74c3c;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .crisis-item-since {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+  .crisis-item-desc {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.78rem;
+    color: var(--text-primary);
+    margin-top: 6px;
+    line-height: 1.45;
+  }
+  .crisis-item-effects {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-top: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+  }
+  .crisis-effect-up { color: #2ecc71; }
+  .crisis-effect-down { color: #e74c3c; }
+  .crisis-item-solution {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-main);
+  }
+  .crisis-item-solution strong {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .crises-empty {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    text-align: center;
+    padding: 30px 10px;
+    font-style: italic;
+  }
+
   /* ── Mobile responsive ── */
   @media (max-width: 1200px) {
     .dash-grid {
@@ -380,6 +449,10 @@
     }
     #world-map-card {
       grid-column: span 2 !important;
+    }
+    #crises-card {
+      grid-column: span 2 !important;
+      grid-row: auto !important;
     }
   }
 
@@ -400,6 +473,9 @@
       max-height: 400px;
     }
     #world-map-card {
+      grid-column: span 1 !important;
+    }
+    #crises-card {
       grid-column: span 1 !important;
     }
     .dash-card-header {
@@ -496,11 +572,18 @@
       <div class="dash-events-scroll" id="dash-events-list"></div>
     </div>
 
-    <!-- ── Row 2: World Map (spans 3 columns) ── -->
+    <!-- ── Row 2: World Map (spans 3 columns) + Active Crises ── -->
     <div class="dash-card" id="world-map-card">
       <div class="dash-card-header">WORLD MAP</div>
       <div class="dash-card-body" id="world-map-body" style="padding:0; overflow:hidden;">
         <img src="./assets/World Map Crucera3.svg" alt="World Map" style="width:100%; height:auto; object-fit:contain; display:block;">
+      </div>
+    </div>
+
+    <div class="dash-card dash-card-tall" id="crises-card" style="display:flex;flex-direction:column;">
+      <div class="dash-card-header">ACTIVE CRISES</div>
+      <div class="crises-scroll" id="crises-card-body">
+        <div class="crises-empty">Loading&hellip;</div>
       </div>
     </div>
 
@@ -977,6 +1060,11 @@ initPage('home', async (state) => {
   } catch (e) {
     console.error('Elections card error:', e);
   }
+
+  // ══════════════════════════════════════
+  // ── Active Crises Card ──
+  // ══════════════════════════════════════
+  loadActiveCrises(nation.id, currentTick);
 });
 
 // ══════════════════════════════════════
@@ -1061,6 +1149,74 @@ async function loadDashEvents(nationId, currentTick, parties) {
   } catch (e) {
     console.error('Events feed error:', e);
     container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.75rem;">Failed to load events.</div>';
+  }
+}
+
+// ══════════════════════════════════════
+// ── Active Crises Loader ──
+// ══════════════════════════════════════
+async function loadActiveCrises(nationId, currentTick) {
+  const container = document.getElementById('crises-card-body');
+  if (!container) return;
+
+  try {
+    const { data: crises, error } = await _supabase
+      .from('active_crises')
+      .select('started_at_tick, crisis_templates(name, description, crisis_effects(target, stat_key, change_per_tick), crisis_end_triggers(stat_key, operator, threshold))')
+      .eq('nation_id', nationId);
+
+    if (error) throw error;
+
+    if (!crises || crises.length === 0) {
+      container.innerHTML = '<div class="crises-empty">No active crises.</div>';
+      return;
+    }
+
+    container.innerHTML = crises.map(c => {
+      const t = c.crisis_templates;
+      if (!t) return '';
+
+      // Since [Month], [Year] (X Years, Y Months)
+      const startTick = c.started_at_tick ?? 0;
+      const startMonth = MONTHS[startTick % 12];
+      const startYear = 2000 + Math.floor(startTick / 12);
+      const elapsed = Math.max(0, currentTick - startTick);
+      const elapsedYears = Math.floor(elapsed / 12);
+      const elapsedMonths = elapsed % 12;
+      let durationStr = '';
+      if (elapsedYears > 0) durationStr += elapsedYears + (elapsedYears === 1 ? ' Year' : ' Years');
+      if (elapsedYears > 0 && elapsedMonths > 0) durationStr += ', ';
+      if (elapsedMonths > 0 || elapsedYears === 0) durationStr += elapsedMonths + (elapsedMonths === 1 ? ' Month' : ' Months');
+
+      // Effects: stat going up/down
+      const effects = (t.crisis_effects || [])
+        .filter(e => e.target === 'nation' && e.stat_key)
+        .map(e => {
+          const label = e.stat_key.replace(/_/g, ' ');
+          const isUp = e.change_per_tick > 0;
+          return `<span class="${isUp ? 'crisis-effect-up' : 'crisis-effect-down'}">${esc(label)} ${isUp ? '\u25B2' : '\u25BC'}</span>`;
+        }).join('');
+
+      // Solution: what end triggers require
+      const solutions = (t.crisis_end_triggers || []).map(et => {
+        const label = et.stat_key.replace(/_/g, ' ');
+        // If operator is 'lte' (<=), the stat needs to come DOWN to resolve
+        // If operator is 'gte' (>=), the stat needs to go UP to resolve
+        const needsUp = et.operator === 'gte';
+        return `<span class="${needsUp ? 'crisis-effect-up' : 'crisis-effect-down'}">${esc(label)} ${needsUp ? '\u25B2' : '\u25BC'} ${et.threshold}</span>`;
+      }).join(' ');
+
+      return `<div class="crisis-item">
+        <div class="crisis-item-name">${esc(t.name)}</div>
+        <div class="crisis-item-since">Since ${esc(startMonth)}, ${startYear} (${durationStr})</div>
+        ${t.description ? `<div class="crisis-item-desc">${esc(t.description)}</div>` : ''}
+        ${effects ? `<div class="crisis-item-effects">${effects}</div>` : ''}
+        ${solutions ? `<div class="crisis-item-solution"><strong>Solution:</strong> ${solutions}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    console.error('Active crises card error:', e);
+    container.innerHTML = '<div class="crises-empty">Failed to load crises.</div>';
   }
 }
 
