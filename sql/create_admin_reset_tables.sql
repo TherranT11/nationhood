@@ -12,6 +12,9 @@ DECLARE
     tbl TEXT;
     cnt BIGINT;
     tables TEXT[] := ARRAY[
+        -- Caucus system (references factions + bills)
+        'caucus_dispositions',
+        'caucus_factions',
         -- Tables that reference factions (must clear before factions)
         'bill_comments',
         'bill_amendment_requests',
