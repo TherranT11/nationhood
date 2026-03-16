@@ -4,6 +4,7 @@
  */
 
 import { calculateNationalBudget } from './budget.js';
+import { isAutocracy } from './government-types.js';
 
 // ==================== TRADE SYSTEM CONSTANTS ====================
 
@@ -355,10 +356,8 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
 
     // Autocracy penalty: other nations are less willing to trade with autocratic regimes
     var autocracyPenalty = 0;
-    var govA = nationA && nationA.government_type;
-    var govB = nationB && nationB.government_type;
-    if (govA && typeof govA === 'string' && govA.toLowerCase().includes('autocra')) autocracyPenalty -= 10;
-    if (govB && typeof govB === 'string' && govB.toLowerCase().includes('autocra')) autocracyPenalty -= 10;
+    if (isAutocracy(nationA)) autocracyPenalty -= 10;
+    if (isAutocracy(nationB)) autocracyPenalty -= 10;
 
     var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + autocracyPenalty;
     return Math.round(Math.max(0, Math.min(100, affinity)));
