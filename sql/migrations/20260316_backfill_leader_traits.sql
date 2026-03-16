@@ -26,7 +26,6 @@ DECLARE
     num_neg INT;
     candidate TEXT;
     contradicted BOOLEAN;
-    pos_idx INT;
     i INT;
     j INT;
     shuffled_pos TEXT[];

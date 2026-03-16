@@ -278,7 +278,7 @@ function renderCandidateDetail(c) {
 
     // Use costBreakdown from candidate, fall back to computed values
     const rawCost = c.costBreakdown ? c.costBreakdown.rawCost : (posTotal - negTotal);
-    const finalAP = c.costBreakdown ? c.costBreakdown.apCost : Math.max(0, Math.min(6, Math.round(posTotal - negTotal)));
+    const finalAP = c.costBreakdown ? c.costBreakdown.apCost : Math.max(0, Math.min(8, Math.round(posTotal - negTotal)));
     const finalColor = getAPCostColor(c.isCurrent ? 0 : finalAP);
 
     return `
