@@ -320,6 +320,7 @@ export function calculatePriceModifier(totalSupply, totalDemand) {
  *   trade_agreement       +15 to +25 depending on agreement type
  *   embargo_penalty       -40 if active embargo/sanctions between nations
  *   proximity_bonus       +10 if same region (future)
+ *   autocracy_penalty     -10 per autocratic nation in the pair
  *
  * @param {Object} nationA   – nation row
  * @param {Object} nationB   – nation row
@@ -352,7 +353,14 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var proximity = (opts && opts.proximity != null) ? Number(opts.proximity) : 50;
     var proximityBonus = (proximity / 100) * 20;
 
-    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus;
+    // Autocracy penalty: other nations are less willing to trade with autocratic regimes
+    var autocracyPenalty = 0;
+    var govA = nationA && nationA.government_type;
+    var govB = nationB && nationB.government_type;
+    if (govA && typeof govA === 'string' && govA.toLowerCase().includes('autocra')) autocracyPenalty -= 10;
+    if (govB && typeof govB === 'string' && govB.toLowerCase().includes('autocra')) autocracyPenalty -= 10;
+
+    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + autocracyPenalty;
     return Math.round(Math.max(0, Math.min(100, affinity)));
 }
 
