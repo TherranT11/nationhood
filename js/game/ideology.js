@@ -271,8 +271,9 @@ export function countIdeologyRelationship(factionIdeology, bloc) {
 export function ideologyOppositionMultiplier(factionIdeology, bloc) {
     const { opposed, aligned } = countIdeologyRelationship(factionIdeology, bloc);
 
-    if (opposed >= 2) return 0.70;
-    if (opposed === 1) return 0.80;
+    if (opposed >= 3) return 0.50;
+    if (opposed >= 2) return 0.65;
+    if (opposed === 1) return 0.85;
     // Only penalize if the party actually has positions but none align.
     // A fully centrist party (no strong positions) should not be penalized —
     // they just don't benefit from alignment bonuses.

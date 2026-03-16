@@ -344,16 +344,17 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         ) / 100;
 
         // ─── IDEOLOGY OPPOSITION PENALTY (structural) ───
-        // 2+ opposing → -30%, 1 opposing → -20%, 0 aligned → -10%
+        // 3+ opposing → -50%, 2 opposing → -35%, 1 opposing → -15%, 0 aligned → -10%
         const oppositionMult = ideo ? ideologyOppositionMultiplier(ideo, bloc) : 1.0;
         prefScore = Math.round(prefScore * oppositionMult * 100) / 100;
 
         // ─── IDEOLOGY DRIFT: per-tick erosion based on opposition count ───
-        // 2+ opposing → -2/tick, 1 opposing → -1/tick, 0 aligned (with positions) → -0.5/tick
+        // 3+ opposing → -3/tick, 2 opposing → -2/tick, 1 opposing → -1/tick, 0 aligned (with positions) → -0.5/tick
         let ideoDrift = 0;
         if (ideo) {
             const { opposed, aligned } = countIdeologyRelationship(ideo, bloc);
-            if (opposed >= 2)       ideoDrift = -2;
+            if (opposed >= 3)       ideoDrift = -3;
+            else if (opposed >= 2)  ideoDrift = -2;
             else if (opposed === 1) ideoDrift = -1;
             else if (aligned === 0) {
                 // Only drift if the party actually has strong positions but none align.
