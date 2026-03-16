@@ -3395,7 +3395,14 @@ function renderPromiseConfig(nation) {
                             <span class="ca-stat-val" style="color:${dirColor}">${target}</span>
                         </div>
                     </div>
-                    ${isSel ? `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:4px">Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks · Immediate +${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE_STAT} approval with affected blocs</div>` : ''}
+                    ${isSel ? `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:4px">Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE_STAT}</span> momentum with affected blocs</div>
+                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:3px;display:flex;gap:12px;flex-wrap:wrap">
+                        <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.APPROVAL_IF_KEPT} all blocs, +${MAKE_PROMISE_CONFIG.KEPT_PREF_BONUS} affected bloc, +${MAKE_PROMISE_CONFIG.KEPT_MOMENTUM} momentum</span>
+                    </div>
+                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;display:flex;gap:12px;flex-wrap:wrap">
+                        <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_MOMENTUM} momentum, ${MAKE_PROMISE_CONFIG.BROKEN_DONOR_PREF} affected bloc, ${MAKE_PROMISE_CONFIG.BROKEN_ALL_PREF} all blocs</span>
+                    </div>
+                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;color:var(--dtext-3)">While unfulfilled & governing: <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} momentum/tick</span> with promised bloc</div>` : ''}
                 </div>`;
             }
             html += `</div>`;
@@ -3404,6 +3411,16 @@ function renderPromiseConfig(nation) {
 
     if (_caPromiseType === 'crisis') {
         html += `<div id="ca-crisis-list"><div class="ca-info-box">Loading crises...</div></div>`;
+        html += `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:8px;padding:0 2px">
+            Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE_CRISIS}</span> momentum with all blocs
+        </div>
+        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:3px;padding:0 2px">
+            <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.APPROVAL_IF_KEPT} all blocs, +${MAKE_PROMISE_CONFIG.KEPT_MOMENTUM} momentum</span>
+        </div>
+        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px">
+            <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_MOMENTUM} momentum, ${MAKE_PROMISE_CONFIG.BROKEN_ALL_PREF} all blocs</span>
+        </div>
+        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">While unfulfilled & governing: <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} momentum/tick</span> with all blocs</div>`;
     }
 
     return html;
@@ -3458,6 +3475,14 @@ function renderActionResult(result) {
         html += `<div class="ca-result-row">
             <span class="ca-result-label">Deadline</span>
             <span class="ca-result-val" style="color:var(--dtext-2)">${result.deadlineTicks} ticks</span>
+        </div>`;
+    }
+    if (result.promiseType) {
+        html += `<div style="border-top:1px solid var(--dborder-1);margin-top:8px;padding-top:8px">
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-bottom:4px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">Consequences</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#4ade80">Kept: +${MAKE_PROMISE_CONFIG.APPROVAL_IF_KEPT} all blocs, +${MAKE_PROMISE_CONFIG.KEPT_MOMENTUM} momentum</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#ef4444;margin-top:2px">Broken: ${MAKE_PROMISE_CONFIG.BROKEN_MOMENTUM} momentum, ${MAKE_PROMISE_CONFIG.BROKEN_ALL_PREF} all blocs</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#f97316;margin-top:2px">While unfulfilled: −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX}/tick</div>
         </div>`;
     }
 
