@@ -1328,10 +1328,9 @@ function renderIdeologyBox(allParties, allPartyIdeologies, playerFactionId) {
         for (const ax of IDEOLOGY_AXES) {
             const score = Number(playerParty.ideo[ax.key] ?? 0);
             if (Math.abs(score) <= 10) continue; // dead zone
-            const decay = -(Math.abs(score) / 50) * Math.sign(score);
-            const decayRounded = Math.round(decay * 100) / 100;
+            const decayMagnitude = Math.round((Math.abs(score) / 50) * 100) / 100;
             const side = score > 0 ? ax.rightLabel : ax.leftLabel;
-            decayItems.push(`<span style="color:var(--dtxt-muted)">${escapeHtml(side)}</span> <span style="color:var(--dred)">${decayRounded > 0 ? '+' : ''}${decayRounded.toFixed(1)}/tick</span>`);
+            decayItems.push(`<span style="color:var(--dtxt-muted)">${escapeHtml(side)}</span> <span style="color:var(--dred)">-${decayMagnitude.toFixed(1)}/tick</span>`);
         }
         if (decayItems.length > 0) {
             decayHtml = `<div class="pol-ideo-decay" style="padding:6px 10px;font-size:11px;color:var(--dtxt-muted);border-top:1px solid var(--dborder)">

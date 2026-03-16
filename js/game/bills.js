@@ -734,16 +734,6 @@ export async function processIdeologyDecay(supabase, nationId, currentTick) {
     }
 }
 
-/**
- * Compute the per-tick decay for a given ideology score (for UI display).
- * Returns the signed decay value (negative for positive scores, positive for negative scores).
- */
-export function getIdeologyDecayRate(score) {
-    if (Math.abs(score) <= IDEOLOGY_DECAY_DEAD_ZONE) return 0;
-    return -(Math.abs(score) / 50) * Math.sign(score);
-}
-
-
 // ==================== BILL RESOLUTION ENGINE ====================
 
 /**
