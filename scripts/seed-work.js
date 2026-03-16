@@ -245,6 +245,7 @@ async function main() {
             const { data: inserted, error } = await supabase.from('factions').insert({
                 id: factionId,
                 nation_id: nation.id,
+                nation: nationName,
                 faction_name: f.faction_name,
                 faction_type: 'party',
                 seats: f.seats,
