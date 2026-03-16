@@ -429,78 +429,26 @@ export async function calculateCaucusVoteAdjustment(supabase, billId) {
 
 /**
  * Execute the Party Whip action on a NERVOUS caucus faction for a specific bill.
+ * Delegates to server-side whip_caucus RPC for atomic execution with proper authorization.
  *
  * @returns {{ success: boolean, error?: string, apCost?: number }}
  */
 export async function executeWhipCaucus(supabase, factionId, caucusFactionId, billId) {
-    // 1. Load caucus faction and verify ownership
-    const { data: caucus, error: cErr } = await supabase
-        .from('caucus_factions')
-        .select('id, party_id, name, seat_share, relationship_score')
-        .eq('id', caucusFactionId)
-        .eq('is_active', true)
-        .single();
-
-    if (cErr || !caucus) {
-        return { success: false, error: 'Caucus faction not found or inactive' };
-    }
-    if (caucus.party_id !== factionId) {
-        return { success: false, error: 'Caucus faction does not belong to your party' };
-    }
-
-    // 2. Load disposition and verify it's NERVOUS
-    const { data: disp, error: dErr } = await supabase
-        .from('caucus_dispositions')
-        .select('id, disposition, whipped')
-        .eq('caucus_faction_id', caucusFactionId)
-        .eq('bill_id', billId)
-        .single();
-
-    if (dErr || !disp) {
-        return { success: false, error: 'No disposition found for this caucus on this bill' };
-    }
-    if (disp.disposition !== 'nervous') {
-        return { success: false, error: `Cannot whip a caucus that is ${disp.disposition}` };
-    }
-    if (disp.whipped) {
-        return { success: false, error: 'This caucus has already been whipped on this bill' };
-    }
-
-    // 3. Determine AP cost
-    const apCost = caucus.seat_share > CAUCUS_CONFIG.WHIP_LARGE_THRESHOLD
-        ? CAUCUS_CONFIG.WHIP_AP_COST_LARGE
-        : CAUCUS_CONFIG.WHIP_AP_COST_BASE;
-
-    // 4. Deduct AP
-    const { data: apResult, error: apErr } = await supabase.rpc('deduct_ap', {
+    const { data, error } = await supabase.rpc('whip_caucus', {
         p_faction_id: factionId,
-        p_cost: apCost,
+        p_caucus_faction_id: caucusFactionId,
+        p_bill_id: billId,
     });
 
-    if (apErr) {
-        return { success: false, error: 'AP deduction failed: ' + apErr.message };
-    }
-    if (apResult === -1) {
-        return { success: false, error: 'Insufficient AP' };
+    if (error) {
+        return { success: false, error: 'Whip failed: ' + error.message };
     }
 
-    // 5. Update disposition to aligned + whipped
-    await supabase
-        .from('caucus_dispositions')
-        .update({ disposition: 'aligned', whipped: true, votes_affected: 0 })
-        .eq('id', disp.id);
+    if (!data || !data.success) {
+        return { success: false, error: data?.error || 'Unknown error' };
+    }
 
-    // 6. Update relationship score
-    const newRel = Math.min(100, caucus.relationship_score + CAUCUS_CONFIG.REL_WHIP);
-    await supabase
-        .from('caucus_factions')
-        .update({ relationship_score: newRel })
-        .eq('id', caucusFactionId);
-
-    // 7. Recalculate bill's caucus_votes_withheld
-    await calculateCaucusVoteAdjustment(supabase, billId);
-
-    return { success: true, apCost, newAp: apResult };
+    return { success: true, apCost: data.ap_cost, newAp: data.new_ap };
 }
 
 
