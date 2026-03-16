@@ -330,8 +330,10 @@ async function renderPartyTab(f, nation, data) {
             : 'Vacant';
         leaderAge = f.leader_age ? `(${f.leader_age})` : '';
     }
-    const leaderIdeo = ideo1
-        ? `<span class="pol-leader-ideo pol-ideo-${ideo1.toLowerCase()}">${ideo1.charAt(0).toUpperCase() + ideo1.slice(1).toLowerCase()}</span>`
+    // Leader's personal ideology (stored when appointed via Party Leadership), fall back to faction ideology
+    const leaderIdeoValue = f.leader_ideology || ideo1;
+    const leaderIdeo = leaderIdeoValue
+        ? `<span class="pol-leader-ideo pol-ideo-${leaderIdeoValue.toLowerCase()}">${leaderIdeoValue.charAt(0).toUpperCase() + leaderIdeoValue.slice(1).toLowerCase()}</span>`
         : '';
 
     // Electability — stored on faction, fallback to deterministic seed
