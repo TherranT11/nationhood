@@ -33,11 +33,10 @@ export const CAUCUS_CONFIG = {
     NON_GOVERNING_MODIFIER: 0.85,
     // Relationship score deltas
     REL_BILL_ALIGNED: 7,
-    REL_BILL_NERVOUS_WHIPPED: 5,
+    REL_BILL_NERVOUS_UNWHIPPED: 5,
     REL_BILL_OPPOSED_PASS: -20,
     REL_WHIP: 3,
-    REL_PLEDGE_HONOURED: 8,
-    REL_PLEDGE_BETRAYED: -25,
+    // REL_PLEDGE_HONOURED / REL_PLEDGE_BETRAYED: reserved for future pledge system
     REL_DECAY: -2,
     REL_DECAY_TICK_WINDOW: 10,    // no positive bills in last N ticks
     // Relationship = 0 means permanently opposed on any touching bill
@@ -416,13 +415,11 @@ export async function calculateCaucusVoteAdjustment(supabase, billId) {
         }
     }
 
-    // Update the bill's caucus_votes_withheld
-    if (withheld > 0) {
-        await supabase
-            .from('bills')
-            .update({ caucus_votes_withheld: withheld })
-            .eq('id', billId);
-    }
+    // Update the bill's caucus_votes_withheld (always write, so stale values are cleared)
+    await supabase
+        .from('bills')
+        .update({ caucus_votes_withheld: withheld })
+        .eq('id', billId);
 
     return { withheld, nervousAtRisk, details };
 }
@@ -531,7 +528,7 @@ export async function updateCaucusRelationships(supabase, billId, outcome) {
             if (d.disposition === 'aligned' || d.whipped) {
                 delta = CAUCUS_CONFIG.REL_BILL_ALIGNED;
             } else if (d.disposition === 'nervous' && !d.whipped) {
-                delta = CAUCUS_CONFIG.REL_BILL_NERVOUS_WHIPPED;
+                delta = CAUCUS_CONFIG.REL_BILL_NERVOUS_UNWHIPPED;
             } else if (d.disposition === 'opposed') {
                 delta = CAUCUS_CONFIG.REL_BILL_OPPOSED_PASS;
             }
@@ -570,20 +567,29 @@ export async function decayCaucusRelationships(supabase, nationId, currentTick) 
 
     if (error || !caucuses || caucuses.length === 0) return;
 
+    // Load bills resolved within the decay window to check for recent aligned dispositions
     const windowStart = currentTick - CAUCUS_CONFIG.REL_DECAY_TICK_WINDOW;
+    const { data: recentBills } = await supabase
+        .from('bills')
+        .select('id')
+        .eq('nation_id', nationId)
+        .gte('voting_ends_tick', windowStart);
+    const recentBillIds = (recentBills || []).map(b => b.id);
 
     for (const caucus of caucuses) {
-        // Check if any positive disposition in the window
-        const { data: recentPositive } = await supabase
-            .from('caucus_dispositions')
-            .select('id')
-            .eq('caucus_faction_id', caucus.id)
-            .in('disposition', ['aligned'])
-            .limit(1);
-
-        // Only check bills from the recent window via join
-        // Simplified: if no aligned dispositions at all, decay
-        if (recentPositive && recentPositive.length > 0) continue;
+        // Check if any aligned disposition exists on recent bills
+        let hasRecentPositive = false;
+        if (recentBillIds.length > 0) {
+            const { data: recentPositive } = await supabase
+                .from('caucus_dispositions')
+                .select('id')
+                .eq('caucus_faction_id', caucus.id)
+                .in('bill_id', recentBillIds)
+                .in('disposition', ['aligned'])
+                .limit(1);
+            hasRecentPositive = recentPositive && recentPositive.length > 0;
+        }
+        if (hasRecentPositive) continue;
 
         const newScore = Math.max(0, caucus.relationship_score + CAUCUS_CONFIG.REL_DECAY);
         if (newScore !== caucus.relationship_score) {
