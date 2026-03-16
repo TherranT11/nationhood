@@ -16,6 +16,7 @@ import { getNationNames } from './political-actions.js';
 import { allocateSeatsByVotes } from './election-simulation.js';
 import { repealActiveLaw } from './repeal-helper.js';
 import { fireBillEvent } from './event-helpers.js';
+import { calculateCaucusDispositions, calculateCaucusVoteAdjustment, updateCaucusRelationships } from './caucus.js';
 
 // ==================== BILL SUPPORT ====================
 
@@ -883,7 +884,7 @@ export async function checkEarlyMajority(supabase, nationId) {
     // Bills still voting, not yet locked, not yet expired
     const { data: activeBills, error } = await supabase
         .from('bills')
-        .select('id, bill_name, bill_type, voting_ends_tick, proposed_tick, floor_tick, bill_support(faction_id, stance, seat_count)')
+        .select('id, bill_name, bill_type, voting_ends_tick, proposed_tick, floor_tick, caucus_votes_withheld, bill_support(faction_id, stance, seat_count)')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .is('early_resolution_status', null)
@@ -926,6 +927,12 @@ export async function checkEarlyMajority(supabase, nationId) {
         let effectiveYes = yesSeats;
         if (minorityPenalty) {
             effectiveYes = Math.floor(yesSeats * 0.8);
+        }
+
+        // Apply caucus withheld votes (from opposed internal factions)
+        const caucusWithheld = bill.caucus_votes_withheld || 0;
+        if (caucusWithheld > 0) {
+            effectiveYes = Math.max(0, effectiveYes - caucusWithheld);
         }
 
         let earlyStatus = null;
@@ -1065,6 +1072,18 @@ export async function resolveExpiredVotes(supabase, nationId) {
         if (activeCoalition?.formation_type === 'emergency_minority') {
             effectiveVotesFor = Math.floor(votesFor * 0.8);
             console.log(`[MinorityPenalty] ${bill.bill_name}: votesFor ${votesFor} → ${effectiveVotesFor} (emergency minority -20%)`);
+        }
+
+        // Caucus system: calculate dispositions and subtract withheld votes
+        try {
+            await calculateCaucusDispositions(supabase, bill.id, bill.nation_id, bill.bill_articles || []);
+            const caucusAdj = await calculateCaucusVoteAdjustment(supabase, bill.id);
+            if (caucusAdj.withheld > 0) {
+                effectiveVotesFor = Math.max(0, effectiveVotesFor - caucusAdj.withheld);
+                console.log(`[CaucusVote] ${bill.bill_name}: ${caucusAdj.withheld} votes withheld by opposed caucuses (effective YES: ${effectiveVotesFor})`);
+            }
+        } catch (caucusErr) {
+            console.error(`[CaucusVote] Failed for bill ${bill.id} (non-fatal):`, caucusErr);
         }
 
         // Determine pass/fail using new quorum + majority system
@@ -2074,6 +2093,14 @@ export async function resolveExpiredVotes(supabase, nationId) {
             }
         } catch (penaltyErr) {
             console.error(`[resolveExpiredVotes] No-vote penalty failed for bill ${bill.id}:`, penaltyErr.message);
+        }
+
+        // Caucus relationship updates after bill resolution
+        try {
+            const outcome = passed ? 'passed' : 'failed';
+            await updateCaucusRelationships(supabase, bill.id, outcome);
+        } catch (caucusRelErr) {
+            console.error(`[resolveExpiredVotes] Caucus relationship update failed for bill ${bill.id}:`, caucusRelErr.message);
         }
       } catch (billErr) {
         // Per-bill error handler: prevents one bill's failure from blocking all others
