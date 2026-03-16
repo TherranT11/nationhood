@@ -1320,6 +1320,26 @@ function renderIdeologyBox(allParties, allPartyIdeologies, playerFactionId) {
         </div>`;
     }).filter(Boolean).join('');
 
+    // Decay rates for player's party
+    const playerParty = partyData.find(p => p.isPlayer);
+    let decayHtml = '';
+    if (playerParty) {
+        const decayItems = [];
+        for (const ax of IDEOLOGY_AXES) {
+            const score = Number(playerParty.ideo[ax.key] ?? 0);
+            if (Math.abs(score) <= 10) continue; // dead zone
+            const decay = -(Math.abs(score) / 50) * Math.sign(score);
+            const decayRounded = Math.round(decay * 100) / 100;
+            const side = score > 0 ? ax.rightLabel : ax.leftLabel;
+            decayItems.push(`<span style="color:var(--dtxt-muted)">${escapeHtml(side)}</span> <span style="color:var(--dred)">${decayRounded > 0 ? '+' : ''}${decayRounded.toFixed(1)}/tick</span>`);
+        }
+        if (decayItems.length > 0) {
+            decayHtml = `<div class="pol-ideo-decay" style="padding:6px 10px;font-size:11px;color:var(--dtxt-muted);border-top:1px solid var(--dborder)">
+                <span style="opacity:0.7">Drift toward center:</span> ${decayItems.join(' &middot; ')}
+            </div>`;
+        }
+    }
+
     return `
         <div class="pol-ideology-box">
             <div class="pol-ideo-header">
@@ -1329,6 +1349,7 @@ function renderIdeologyBox(allParties, allPartyIdeologies, playerFactionId) {
             ${zoneLegendHtml}
             <div class="pol-ideo-axes">${axesHtml}</div>
             ${summariesHtml ? `<div class="pol-ideo-summaries">${summariesHtml}</div>` : ''}
+            ${decayHtml}
         </div>`;
 }
 

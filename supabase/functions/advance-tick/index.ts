@@ -5801,11 +5801,6 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
     );
     if (legislativeBills.length === 0) return;
 
-    // Include 'president_desk' as passed — these bills passed the floor vote
-    // and are awaiting presidential action; the passage bonus should apply now
-    // since processIdeologyShifts won't run again when the president signs.
-    const passedBillIds = new Set(terminalResolutions.filter(r => r.result === 'passed' || r.result === 'president_desk').map(r => r.billId));
-
     // Accumulate shifts: { factionId: { axisKey: totalShift } }
     const factionShifts = {};
 
@@ -5827,8 +5822,6 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
         }
         if (tags.length === 0) continue;
 
-        const isPassed = passedBillIds.has(bill.id);
-
         // Build YES voter set (normalize committee stances)
         const yesVoters = new Set();
         for (const s of (bill.bill_support || [])) {
@@ -5838,25 +5831,28 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
         // Sponsor always counts as YES
         if (bill.proposed_by) yesVoters.add(bill.proposed_by);
 
+        // Track how many times each (axis, direction) pair appears in this bill
+        // for diminishing returns: 1st = full, 2nd = 50%, 3rd = 25%, 4th+ = 12.5%
+        const axisTagCounts = {};
+
         for (const tag of tags) {
             const mapping = IDEOLOGY_TO_AXIS[tag];
             if (!mapping) continue;
 
+            const key = `${mapping.axisKey}:${mapping.direction}`;
+            const count = (axisTagCounts[key] || 0) + 1;
+            axisTagCounts[key] = count;
+
+            const diminish = count <= 3 ? (1 / Math.pow(2, count - 1)) : 0.125;
+
             // +2 for proposing (sponsor only)
             if (bill.proposed_by) {
-                addShift(bill.proposed_by, mapping.axisKey, 2 * mapping.direction);
+                addShift(bill.proposed_by, mapping.axisKey, 2 * mapping.direction * diminish);
             }
 
             // +4 for voting YES (all YES voters including sponsor)
             for (const factionId of yesVoters) {
-                addShift(factionId, mapping.axisKey, 4 * mapping.direction);
-            }
-
-            // +4 if bill passed (YES voters only)
-            if (isPassed) {
-                for (const factionId of yesVoters) {
-                    addShift(factionId, mapping.axisKey, 4 * mapping.direction);
-                }
+                addShift(factionId, mapping.axisKey, 4 * mapping.direction * diminish);
             }
         }
     }
@@ -5911,6 +5907,79 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
             .insert(historyRows);
         if (histErr) {
             console.warn('[processIdeologyShifts] ideology_history insert failed (table may not exist yet):', histErr.message);
+        }
+    }
+}
+
+
+// ==================== IDEOLOGY DECAY ====================
+
+const IDEOLOGY_DECAY_DEAD_ZONE = 10; // no decay within ±10 of center
+/**
+ * Per-tick ideology decay toward center (0).
+ * Decay scales with extremism: decay = abs(score) / 50, so:
+ *   ±20 → -0.4/tick, ±50 → -1.0/tick, ±100 → -2.0/tick
+ * Dead zone: scores within ±10 don't decay.
+ */
+async function processIdeologyDecay(supabase, nationId, currentTick) {
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+
+    if (!factions || factions.length === 0) return;
+
+    const historyRows = [];
+
+    for (const faction of factions) {
+        let ideologyRow = await loadFactionIdeology(supabase, faction.id);
+        if (ideologyRow?._error || !ideologyRow) continue;
+
+        const currentScores = extractAxisScores(ideologyRow);
+        const updateObj = {};
+        let hasChanges = false;
+
+        for (const axis of IDEOLOGY_AXES) {
+            const score = currentScores[axis.key] || 0;
+            if (Math.abs(score) <= IDEOLOGY_DECAY_DEAD_ZONE) continue;
+
+            const decay = -(Math.abs(score) / 50) * Math.sign(score);
+            const newScore = Math.max(-100, Math.min(100,
+                Math.round((score + decay) * 100) / 100
+            ));
+
+            if (newScore !== score) {
+                updateObj[axis.key] = newScore;
+                hasChanges = true;
+            }
+        }
+
+        if (hasChanges) {
+            await supabase.from('faction_ideology').update(updateObj).eq('faction_id', faction.id);
+
+            if (typeof currentTick === 'number') {
+                const finalScores = { ...currentScores, ...updateObj };
+                historyRows.push({
+                    faction_id: faction.id,
+                    nation_id: nationId,
+                    tick: currentTick,
+                    liberty_equality: finalScores.liberty_equality || 0,
+                    tradition_progress: finalScores.tradition_progress || 0,
+                    security_freedom: finalScores.security_freedom || 0,
+                    globalism_nationalism: finalScores.globalism_nationalism || 0,
+                    individualism_collectivism: finalScores.individualism_collectivism || 0
+                });
+            }
+        }
+    }
+
+    if (historyRows.length > 0) {
+        const { error: histErr } = await supabase
+            .from('ideology_history')
+            .insert(historyRows);
+        if (histErr) {
+            console.warn('[processIdeologyDecay] ideology_history insert failed:', histErr.message);
         }
     }
 }
@@ -21485,6 +21554,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             await processIdeologyShifts(supabase, nation.id, resolutions, newTick);
         } catch (ideoErr) {
             console.error(`[advanceTick] Ideology shifts failed for ${nation.name} (non-fatal):`, ideoErr);
+        }
+
+        // Ideology decay toward center (scaled by extremism)
+        try {
+            await processIdeologyDecay(supabase, nation.id, newTick);
+        } catch (ideoDecayErr) {
+            console.error(`[advanceTick] Ideology decay failed for ${nation.name} (non-fatal):`, ideoDecayErr);
         }
 
         // Purge approval decay (autocracy scapegoat mechanic)

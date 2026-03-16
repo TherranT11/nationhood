@@ -662,6 +662,88 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
 }
 
 
+// ==================== IDEOLOGY DECAY ====================
+
+const IDEOLOGY_DECAY_DEAD_ZONE = 10; // no decay within ±10 of center
+/**
+ * Per-tick ideology decay toward center (0).
+ * Decay scales with extremism: decay = abs(score) / 50, so:
+ *   ±20 → -0.4/tick, ±50 → -1.0/tick, ±100 → -2.0/tick
+ * Dead zone: scores within ±10 don't decay.
+ */
+export async function processIdeologyDecay(supabase, nationId, currentTick) {
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+
+    if (!factions || factions.length === 0) return;
+
+    const historyRows = [];
+
+    for (const faction of factions) {
+        let ideologyRow = await loadFactionIdeology(supabase, faction.id);
+        if (ideologyRow?._error || !ideologyRow) continue;
+
+        const currentScores = extractAxisScores(ideologyRow);
+        const updateObj = {};
+        let hasChanges = false;
+
+        for (const axis of IDEOLOGY_AXES) {
+            const score = currentScores[axis.key] || 0;
+            if (Math.abs(score) <= IDEOLOGY_DECAY_DEAD_ZONE) continue;
+
+            const decay = -(Math.abs(score) / 50) * Math.sign(score);
+            const newScore = Math.max(-100, Math.min(100,
+                Math.round((score + decay) * 100) / 100
+            ));
+
+            if (newScore !== score) {
+                updateObj[axis.key] = newScore;
+                hasChanges = true;
+            }
+        }
+
+        if (hasChanges) {
+            await supabase.from('faction_ideology').update(updateObj).eq('faction_id', faction.id);
+
+            if (typeof currentTick === 'number') {
+                const finalScores = { ...currentScores, ...updateObj };
+                historyRows.push({
+                    faction_id: faction.id,
+                    nation_id: nationId,
+                    tick: currentTick,
+                    liberty_equality: finalScores.liberty_equality || 0,
+                    tradition_progress: finalScores.tradition_progress || 0,
+                    security_freedom: finalScores.security_freedom || 0,
+                    globalism_nationalism: finalScores.globalism_nationalism || 0,
+                    individualism_collectivism: finalScores.individualism_collectivism || 0
+                });
+            }
+        }
+    }
+
+    if (historyRows.length > 0) {
+        const { error: histErr } = await supabase
+            .from('ideology_history')
+            .insert(historyRows);
+        if (histErr) {
+            console.warn('[processIdeologyDecay] ideology_history insert failed:', histErr.message);
+        }
+    }
+}
+
+/**
+ * Compute the per-tick decay for a given ideology score (for UI display).
+ * Returns the signed decay value (negative for positive scores, positive for negative scores).
+ */
+export function getIdeologyDecayRate(score) {
+    if (Math.abs(score) <= IDEOLOGY_DECAY_DEAD_ZONE) return 0;
+    return -(Math.abs(score) / 50) * Math.sign(score);
+}
+
+
 // ==================== BILL RESOLUTION ENGINE ====================
 
 /**
