@@ -216,6 +216,12 @@ initPage('politics', async (state) => {
         .select('bloc_id, preference_score')
         .eq('faction_id', f.id);
 
+    // Fetch active caucus factions for player's party
+    const { data: caucusFactions } = await _supabase
+        .from('caucus_factions')
+        .select('id, name, dominant_axis, wing_end, seat_share, relationship_score')
+        .eq('party_id', f.id)
+        .eq('is_active', true);
 
     renderPartyTab(f, nation, {
         shard,
@@ -247,7 +253,8 @@ initPage('politics', async (state) => {
         autoMinistries,
         regimeLog,
         loyaltyDemands,
-        autoCoalitions
+        autoCoalitions,
+        caucusFactions,
     });
 });
 
@@ -286,7 +293,8 @@ async function renderPartyTab(f, nation, data) {
         lastParliamentary, lastPresidential, scheduledElections,
         president, administration,
         voterBlocs, playerBlocApprovals,
-        regimePillars, stewardRows, autoMinistries, regimeLog, loyaltyDemands, autoCoalitions
+        regimePillars, stewardRows, autoMinistries, regimeLog, loyaltyDemands, autoCoalitions,
+        caucusFactions
     } = data;
     const faction = f; // alias for compatibility with sub-renderers
 
@@ -410,6 +418,7 @@ async function renderPartyTab(f, nation, data) {
                 ${lastElectionDate ? `<div class="pol-stat-note">${lastElectionDate}</div>` : ''}
             </div>
         </div>
+        ${renderCaucusSection(caucusFactions, mySeats)}
         </div>
         ${renderParliamentBox(allParties, coalition, nation, f.id)}
         ${renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, f.id)}
@@ -1104,6 +1113,46 @@ function hogTitle(govType, nation) {
     if (g.includes('president')) return 'President';
     if (g === 'autocracy' || g.includes('dictator') || g.includes('authorit')) return 'Strongman';
     return 'Head of Gov.';
+}
+
+function renderCaucusSection(caucusFactions, partySeats) {
+    if (!caucusFactions || caucusFactions.length === 0) return '';
+
+    const AXIS_LABELS = {
+        liberty_equality: 'Liberty / Equality',
+        tradition_progress: 'Tradition / Progress',
+        security_freedom: 'Security / Freedom',
+        globalism_nationalism: 'Globalism / Nationalism',
+        individualism_collectivism: 'Individualism / Collectivism',
+    };
+
+    let rows = '';
+    for (const cf of caucusFactions) {
+        const approxSeats = Math.round(partySeats * cf.seat_share);
+        const seatRange = `~${Math.max(1, approxSeats - 2)}–${approxSeats + 2}`;
+        const relPct = cf.relationship_score;
+        const relColor = relPct >= 60 ? 'var(--green)' : relPct >= 30 ? 'var(--amber)' : 'var(--red)';
+        const volatile = relPct < 30 ? ' <span style="color:var(--red);font-size:0.7rem;">VOLATILE</span>' : '';
+
+        rows += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-dim);">
+            <div>
+                <div style="font-size:0.85rem;font-weight:500;">${escapeHtml(cf.name)}</div>
+                <div style="font-size:0.75rem;color:var(--text-dim);">${AXIS_LABELS[cf.dominant_axis] || cf.dominant_axis} · ${seatRange} seats</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <div style="width:60px;height:6px;background:var(--border-dim);border-radius:3px;overflow:hidden;">
+                    <div style="width:${relPct}%;height:100%;background:${relColor};border-radius:3px;"></div>
+                </div>
+                ${volatile}
+            </div>
+        </div>`;
+    }
+
+    return `<hr class="pol-divider">
+        <div style="padding:0 0 4px;">
+            <div class="pol-sub-label" style="margin-bottom:6px;">Internal Caucuses</div>
+            ${rows}
+        </div>`;
 }
 
 function renderParliamentBox(allParties, coalition, nation, playerFactionId) {
