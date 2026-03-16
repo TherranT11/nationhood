@@ -132,6 +132,10 @@ export const GAME_CONFIG = {
     UNALIGNED_POOL_MAX_RATIO: 0.10,           // max 10% of legislature
     NEW_FACTION_MIN_SEATS: 8,
 
+    // ── Caucus System ──
+    CAUCUS_THRESHOLD: 0.50,               // seat share to activate caucuses
+    CAUCUS_WHIP_AP_COST: 1,               // base AP cost to whip a nervous faction
+
     // ── Head of State Title (Foundational) ──
     HOS_TITLE_OPTIONS: ['President', 'Chancellor', 'Premier', 'Consul', 'First Consul', 'Director', 'General Secretary', 'Chairman', 'Protector', 'Tribune'],
     HOS_TITLE_COOLDOWN_TICKS: 240,

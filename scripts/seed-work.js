@@ -118,7 +118,7 @@ async function main() {
             cost_of_living: 42, manufacturing_output: 55, service_output: 58, housing_affordability: 52
         },
         {
-            name: 'Sangreza', government_type: 'Presidential', total_seats: 120, max_parties: 8,
+            name: 'Sangreza', government_type: 'Autocracy', total_seats: 120, max_parties: 8,
             capital: 'San Marcos', shard_id: shardId, population: 12500000, eligible_voters: 8125000,
             gdp: 528000000000, debt: 40000000000, stability: 65, legitimacy: 70, corruption: 25,
             gdp_growth: 48, inflation: 38, unemployment: 32, happiness: 55, civil_unrest: 22,
@@ -129,7 +129,7 @@ async function main() {
             cost_of_living: 48, manufacturing_output: 48, service_output: 45, housing_affordability: 40
         },
         {
-            name: 'Melizea', government_type: 'Autocracy', total_seats: 120, max_parties: 8,
+            name: 'Melizea', government_type: 'Parliamentary', total_seats: 120, max_parties: 8,
             capital: 'Melisar', shard_id: shardId, population: 5800000, eligible_voters: 3770000,
             gdp: 95000000000, debt: 95000000000, stability: 58, legitimacy: 42, corruption: 55,
             gdp_growth: 28, inflation: 52, unemployment: 48, happiness: 35, civil_unrest: 38,
@@ -217,9 +217,9 @@ async function main() {
             { faction_name: 'Frente Obrero', seats: 20, approval_rating: 42, action_points: 5, color: '#7B1FA2' }
         ],
         'Avelia': [
-            { faction_name: 'New Dawn Party', seats: 50, approval_rating: 65, action_points: 5, color: '#00BCD4' },
-            { faction_name: 'Heritage Alliance', seats: 38, approval_rating: 55, action_points: 5, color: '#795548' },
-            { faction_name: 'Social Democrats', seats: 32, approval_rating: 58, action_points: 5, color: '#E91E63' }
+            { faction_name: 'New Dawn Party', seats: 65, approval_rating: 65, action_points: 5, color: '#00BCD4' },  // 54% — triggers caucus system (2 factions)
+            { faction_name: 'Heritage Alliance', seats: 30, approval_rating: 55, action_points: 5, color: '#795548' },
+            { faction_name: 'Social Democrats', seats: 25, approval_rating: 58, action_points: 5, color: '#E91E63' }
         ],
         'Montequilla': [
             { faction_name: 'Solidarity Front', seats: 35, approval_rating: 28, action_points: 5, color: '#FF5722' },
