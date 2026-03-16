@@ -454,6 +454,9 @@ export async function executeLeaderStepDown(supabase, nationId, factionId, curre
         leader_last_name: null,
         leader_age: null,
         electability: 50,
+        leader_ideology: null,
+        leader_positive_traits: [],
+        leader_negative_traits: [],
     }).eq('id', factionId);
 
     if (updateErr) throw new Error('Failed to clear leader: ' + updateErr.message);
