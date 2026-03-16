@@ -632,7 +632,7 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
 
     // Vital helpers
     function vitalColor(val, inv) { const v = inv ? (100 - val) : val; return v >= 70 ? 'var(--dgreen)' : v >= 45 ? 'var(--dorange)' : 'var(--dred)'; }
-    function vitalLabel(val, inv) { const v = inv ? (100 - val) : val; return v >= 70 ? 'HIGH' : v >= 45 ? 'MODERATE' : 'LOW'; }
+    function vitalLabel(val) { return val >= 70 ? 'HIGH' : val >= 45 ? 'MODERATE' : 'LOW'; }
 
     const pressF = Math.round(Number(n.press_freedom ?? 50));
     const corruption = Math.round(Number(n.corruption ?? 50));
@@ -913,27 +913,27 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
                         <div class="reg-vitals-grid">
                             <div class="reg-vital">
                                 <span class="reg-vital-label">STABILITY</span>
-                                <span class="reg-vital-val" style="color:${vitalColor(stability, false)}">${isStrongman ? stability : vitalLabel(stability, false)}</span>
+                                <span class="reg-vital-val" style="color:${vitalColor(stability, false)}">${isStrongman ? stability : vitalLabel(stability)}</span>
                             </div>
                             <div class="reg-vital">
                                 <span class="reg-vital-label">LEGITIMACY</span>
-                                <span class="reg-vital-val" style="color:${vitalColor(legitimacy, false)}">${isStrongman ? legitimacy : vitalLabel(legitimacy, false)}</span>
+                                <span class="reg-vital-val" style="color:${vitalColor(legitimacy, false)}">${isStrongman ? legitimacy : vitalLabel(legitimacy)}</span>
                             </div>
                             <div class="reg-vital">
                                 <span class="reg-vital-label">CIVIL UNREST</span>
-                                <span class="reg-vital-val" style="color:${vitalColor(civilUnrest, true)}">${isStrongman ? civilUnrest : vitalLabel(civilUnrest, true)}</span>
+                                <span class="reg-vital-val" style="color:${vitalColor(civilUnrest, true)}">${isStrongman ? civilUnrest : vitalLabel(civilUnrest)}</span>
                             </div>
                             <div class="reg-vital">
                                 <span class="reg-vital-label">CORRUPTION</span>
-                                <span class="reg-vital-val" style="color:${vitalColor(corruption, true)}">${isStrongman ? corruption : vitalLabel(corruption, true)}</span>
+                                <span class="reg-vital-val" style="color:${vitalColor(corruption, true)}">${isStrongman ? corruption : vitalLabel(corruption)}</span>
                             </div>
                             <div class="reg-vital">
                                 <span class="reg-vital-label">PRESS FREEDOM</span>
-                                <span class="reg-vital-val" style="color:${vitalColor(pressF, true)}">${isStrongman ? pressF : vitalLabel(pressF, true)}</span>
+                                <span class="reg-vital-val" style="color:${vitalColor(pressF, true)}">${isStrongman ? pressF : vitalLabel(pressF)}</span>
                             </div>
                             <div class="reg-vital">
                                 <span class="reg-vital-label">FREEDOM INDEX</span>
-                                <span class="reg-vital-val" style="color:${vitalColor(freedomIdx, true)}">${isStrongman ? freedomIdx : vitalLabel(freedomIdx, true)}</span>
+                                <span class="reg-vital-val" style="color:${vitalColor(freedomIdx, true)}">${isStrongman ? freedomIdx : vitalLabel(freedomIdx)}</span>
                             </div>
                         </div>
                     </div>
