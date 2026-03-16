@@ -1894,7 +1894,7 @@ async function renderCaucusDispositions() {
         let whipBtn = '';
         if (d.disposition === 'nervous' && !d.whipped && currentFaction && cf.party_id === currentFaction.id) {
             const apCost = cf.seat_share > 0.20 ? 2 : 1;
-            whipBtn = `<button class="btn-whip-caucus" data-caucus-id="${cf.id}" data-bill-id="${billId}" style="margin-left:8px;padding:2px 8px;font-size:0.75rem;background:var(--amber);color:#000;border:none;border-radius:4px;cursor:pointer;" title="Spend ${apCost} AP to whip this caucus">Whip (${apCost} AP)</button>`;
+            whipBtn = `<button class="btn-whip-caucus" data-caucus-id="${cf.id}" data-bill-id="${billId}" data-ap-cost="${apCost}" style="margin-left:8px;padding:2px 8px;font-size:0.75rem;background:var(--amber);color:#000;border:none;border-radius:4px;cursor:pointer;" title="Spend ${apCost} AP to whip this caucus">Whip (${apCost} AP)</button>`;
         }
 
         rows += `<div class="caucus-disp-row" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;${dimStyle}">
@@ -1934,12 +1934,14 @@ async function renderCaucusDispositions() {
                 } else {
                     alert(result.error || 'Failed to whip caucus');
                     this.disabled = false;
-                    const apCost = this.textContent;
-                    this.textContent = `Whip (${apCost})`;
+                    const apCost = this.dataset.apCost || '1';
+                    this.textContent = `Whip (${apCost} AP)`;
                 }
             } catch (e) {
                 alert('Error: ' + e.message);
                 this.disabled = false;
+                const apCost = this.dataset.apCost || '1';
+                this.textContent = `Whip (${apCost} AP)`;
             }
         });
     });

@@ -63,8 +63,7 @@ CREATE POLICY caucus_dispositions_select ON caucus_dispositions
     FOR SELECT TO authenticated
     USING (true);
 
--- Write access: service role only (game tick + server actions)
--- No insert/update/delete policies for authenticated — all writes go through service role
+-- Write access: service role for tick processing
 CREATE POLICY caucus_factions_service_all ON caucus_factions
     FOR ALL TO service_role
     USING (true)
@@ -72,5 +71,16 @@ CREATE POLICY caucus_factions_service_all ON caucus_factions
 
 CREATE POLICY caucus_dispositions_service_all ON caucus_dispositions
     FOR ALL TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+-- Authenticated write access for whip action (update only)
+CREATE POLICY caucus_factions_update ON caucus_factions
+    FOR UPDATE TO authenticated
+    USING (true)
+    WITH CHECK (true);
+
+CREATE POLICY caucus_dispositions_update ON caucus_dispositions
+    FOR UPDATE TO authenticated
     USING (true)
     WITH CHECK (true);
