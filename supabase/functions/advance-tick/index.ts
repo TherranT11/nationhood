@@ -6656,6 +6656,22 @@ async function resolveExpiredVotes(supabase, nationId) {
                                     });
                                 }
                             } catch (newsErr) { console.error('News event error:', newsErr); }
+
+                            // Fire diplomatic event_log for dashboard visibility
+                            try {
+                                const { data: allNations } = await supabase.from('nations').select('id');
+                                if (allNations && allNations.length > 0) {
+                                    const agreementName = pd.name || 'Diplomatic Initiative';
+                                    const eventRows = allNations.map(n => ({
+                                        nation_id: n.id,
+                                        event_name: agreementName + ' — Ratified',
+                                        category: 'Diplomatic',
+                                        description_chosen: (pd.proposer_nation_name || 'Unknown') + ' and ' + (pd.target_nation_name || 'Unknown') + ' have ratified "' + agreementName + '". The ' + activeArticles.length + '-article agreement is now active.',
+                                        fired_at_tick: currentTick
+                                    }));
+                                    await supabase.from('event_log').insert(eventRows);
+                                }
+                            } catch (evErr) { /* non-blocking */ }
                         } else {
                             // Only one side ratified so far — wait for the other
                             await supabase.from('diplomatic_proposals')
@@ -6721,6 +6737,23 @@ async function resolveExpiredVotes(supabase, nationId) {
                         }
 
                         await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+
+                        // Fire diplomatic event_log for dashboard visibility
+                        try {
+                            const { data: allNations } = await supabase.from('nations').select('id');
+                            if (allNations && allNations.length > 0) {
+                                const agreementName = pd.name || 'Diplomatic Initiative';
+                                const uniArticleCount = articles.filter((_, i) => !struckIndices.has(i)).length;
+                                const eventRows = allNations.map(n => ({
+                                    nation_id: n.id,
+                                    event_name: agreementName + ' — Ratified',
+                                    category: 'Diplomatic',
+                                    description_chosen: (pd.proposer_nation_name || 'Unknown') + ' and ' + (pd.target_nation_name || 'Unknown') + ' have ratified "' + agreementName + '". The ' + uniArticleCount + '-article agreement is now active.',
+                                    fired_at_tick: currentTick
+                                }));
+                                await supabase.from('event_log').insert(eventRows);
+                            }
+                        } catch (evErr) { /* non-blocking */ }
                     }
                 }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
