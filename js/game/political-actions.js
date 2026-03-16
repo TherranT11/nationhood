@@ -1287,7 +1287,6 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
 
 export const MAKE_PROMISE_CONFIG = {
     AP_COST: 2,
-    MONEY_COST: 0,
     STAT_DELTA: 10,                    // Promise to change stat by ±10
     DEADLINE_DICE: 12,                 // 1D12 + base
     DEADLINE_BASE: 12,                 // base ticks added to roll (range: 13-24)
@@ -1995,6 +1994,7 @@ export function evaluatePromiseStatus(promise, nationStats, currentTick, ministr
  * Checks fulfillment, applies rewards/penalties for expired promises.
  */
 export async function processPromiseTick(supabase, nation, currentTick) {
+    const cfg = MAKE_PROMISE_CONFIG;
     const { data: activePromises } = await supabase
         .from('fundraiser_promises')
         .select('*')
@@ -2083,22 +2083,11 @@ export async function processPromiseTick(supabase, nation, currentTick) {
             continue;
         }
 
-        // Per-tick penalty: governing party with unfulfilled promise loses approval with the promised bloc
-        // -1D3 approval per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
+        // Per-tick penalty: governing party with unfulfilled promise loses momentum with the promised bloc
+        // -1D3 momentum per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
         if (isGoverning && promise.bloc_id) {
             const penaltyAmount = -(Math.floor(Math.random() * (cfg.PENALTY_PER_TICK_MAX - cfg.PENALTY_PER_TICK_MIN + 1)) + cfg.PENALTY_PER_TICK_MIN);
-            const { data: penaltyBlocRow } = await supabase
-                .from('faction_bloc_approval')
-                .select('id, approval')
-                .eq('faction_id', promise.party_id)
-                .eq('bloc_id', promise.bloc_id)
-                .single();
-            if (penaltyBlocRow) {
-                const newApproval = Math.max(0, Math.round(penaltyBlocRow.approval + penaltyAmount));
-                await supabase.from('faction_bloc_approval')
-                    .update({ approval: newApproval })
-                    .eq('id', penaltyBlocRow.id);
-            }
+            await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, penaltyAmount, 'promise:unfulfilled_tick');
             results.push({ promise, resolution: 'tick_penalty', penaltyAmount });
         }
     }
