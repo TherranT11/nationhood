@@ -88,6 +88,7 @@ let currentNation  = null;
 let currentCoalition = null;
 let diplomaticRoles = { isHoG: false, isFM: false, isMoT: false, ambassadorTo: [] };
 let shardTick = 0;
+let totalUnreadMessages = 0;
 
 // Cached list of other nations for dropdowns
 let cachedOtherNations = [];
@@ -256,7 +257,7 @@ initPage('diplomacy', async (state) => {
             renderRelationsBox(),
             renderNegotiationsBox()
         ]);
-        renderActionsBox();
+        await renderActionsBox();
         renderDraftBox();
     } catch (e) {
         console.error('Diplomacy init error:', e);
@@ -579,12 +580,15 @@ async function renderRelationsTab() {
 
         // Build unread message count per source nation
         const unreadByNation = {};
+        let unreadTotal = 0;
         for (const msg of (unreadMsgsRes.data || [])) {
             const readBy = msg.read_by_factions || [];
             if (!readBy.includes(currentFaction?.id)) {
                 unreadByNation[msg.from_nation_id] = (unreadByNation[msg.from_nation_id] || 0) + 1;
+                unreadTotal++;
             }
         }
+        totalUnreadMessages = unreadTotal;
 
         // Filter out own nation
         const otherNations = allNations.filter(n => n.id !== currentNation.id);
@@ -3528,6 +3532,16 @@ function markDiploMessagesRead(messages, fromNationId) {
         if (card) {
             const badge = card.querySelector('.diplo-incoming-msg');
             if (badge) badge.remove();
+        }
+        // Update Send Message action badge
+        totalUnreadMessages = Math.max(0, totalUnreadMessages - unreadIds.length);
+        const sendMsgBadge = document.querySelector('.action-item[data-action="send_message"] .action-badge');
+        if (sendMsgBadge) {
+            if (totalUnreadMessages > 0) {
+                sendMsgBadge.textContent = totalUnreadMessages;
+            } else {
+                sendMsgBadge.remove();
+            }
         }
         // Update the nav badge count
         const navBadge = document.getElementById('diplomacy-badge');
@@ -8824,9 +8838,25 @@ window.selectDraftTarget = selectDraftTarget;
 // ══════════════════════════════════════════════════════
 // DIPLOMATIC ACTIONS BOX
 // ══════════════════════════════════════════════════════
-function renderActionsBox() {
+async function renderActionsBox() {
     const body = document.getElementById('actions-body');
     if (!body) return;
+
+    // Fetch unread message count for the Send Message badge
+    if (currentNation && currentFaction) {
+        try {
+            const { data: msgs } = await _supabase
+                .from('diplomatic_messages')
+                .select('id, read_by_factions')
+                .eq('to_nation_id', currentNation.id)
+                .neq('from_nation_id', currentNation.id);
+            let count = 0;
+            for (const msg of (msgs || [])) {
+                if (!(msg.read_by_factions || []).includes(currentFaction.id)) count++;
+            }
+            totalUnreadMessages = count;
+        } catch (e) { /* non-blocking */ }
+    }
 
     const hasHoG = diplomaticRoles && diplomaticRoles.isHoG;
     const hasFM = diplomaticRoles && diplomaticRoles.isFM;
@@ -8841,11 +8871,20 @@ function renderActionsBox() {
         const disabledClass = isDisabled ? ' action-disabled' : '';
         const onclick = !isDisabled ? `onclick="selectDraftAction('${a.key}','${escapeHtml(a.label)}',${a.ap},'${a.type}','${role}')"` : '';
         const costLabel = a.ap > 0 ? a.ap + ' AP' : 'Free';
+        const badgeHtml = a.badge ? '<span class="action-badge">' + a.badge + '</span>' : '';
         return `<div class="action-item${disabledClass}" data-action="${a.key}" ${onclick}>
-                <span class="action-name">${a.label}</span>
+                <span class="action-name">${a.label}${badgeHtml}</span>
                 <span class="action-cost">${costLabel}</span>
             </div>`;
     }
+
+    // Ambassador
+    html += '<div class="role-header role-header-amb' + (hasAmb ? '' : ' role-disabled') + '">Ambassador</div>';
+    [
+        { key: 'minor_initiative', label: 'Minor Diplomatic Initiative', ap: 2, type: 'amb' },
+        { key: 'formal_protest', label: 'Formal Protest', ap: 2, type: 'amb', comingSoon: true },
+        { key: 'send_message', label: 'Send Message', ap: 0, type: 'amb', badge: totalUnreadMessages > 0 ? totalUnreadMessages : 0 }
+    ].forEach(a => { html += actionHtml(a, hasAmb, 'amb'); });
 
     // Head of Government
     html += '<div class="role-header role-header-hog' + (hasHoG ? '' : ' role-disabled') + '">Head of Government</div>';
@@ -8877,14 +8916,6 @@ function renderActionsBox() {
         { key: 'export_subsidy_draft', label: 'Export Subsidy', ap: 2, type: 'mot' },
         { key: 'impose_embargo_draft', label: 'Impose Embargo', ap: 5, type: 'mot' }
     ].forEach(a => { html += actionHtml(a, hasMoT, 'mot'); });
-
-    // Ambassador
-    html += '<div class="role-header role-header-amb' + (hasAmb ? '' : ' role-disabled') + '">Ambassador</div>';
-    [
-        { key: 'minor_initiative', label: 'Minor Diplomatic Initiative', ap: 2, type: 'amb' },
-        { key: 'formal_protest', label: 'Formal Protest', ap: 2, type: 'amb', comingSoon: true },
-        { key: 'send_message', label: 'Send Message', ap: 0, type: 'amb' }
-    ].forEach(a => { html += actionHtml(a, hasAmb, 'amb'); });
 
     body.innerHTML = html;
 }
@@ -12670,7 +12701,7 @@ async function refreshDiplomacyUI() {
         renderRelationsBox(),
         renderNegotiationsBox()
     ]);
-    renderActionsBox();
+    await renderActionsBox();
     renderDraftBox();
 }
 window.refreshDiplomacyUI = refreshDiplomacyUI;
