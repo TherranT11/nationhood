@@ -9006,6 +9006,26 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
                 await adjustMomentumAll(supabase, nationId, partyId, -5, 'no_confidence:coalition_falls');
             }
 
+            // PM's party leader loses -25 electability for losing the VoNC
+            if (pmFactionId) {
+                const { data: pmFaction } = await supabase
+                    .from('factions')
+                    .select('electability, leader_positive_traits, leader_negative_traits')
+                    .eq('id', pmFactionId)
+                    .single();
+                if (pmFaction) {
+                    const currentElect = pmFaction.electability ?? 50;
+                    const posTr = pmFaction.leader_positive_traits || [];
+                    const negTr = pmFaction.leader_negative_traits || [];
+                    let delta = -25;
+                    if (posTr.includes('comeback_kid')) delta = Math.ceil(delta / 2);
+                    if (negTr.includes('sore_loser')) delta *= 2;
+                    const newElect = Math.max(0, Math.min(100, currentElect + delta));
+                    await supabase.from('factions').update({ electability: newElect }).eq('id', pmFactionId);
+                    console.log(`[VoNC] PM party ${pmFactionId} electability ${currentElect} → ${newElect} (delta ${delta})`);
+                }
+            }
+
             // Schedule snap election (same pattern as early elections)
             await supabase.from('elections').delete()
                 .eq('nation_id', nationId).eq('status', 'scheduled');
@@ -9189,7 +9209,8 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
             election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
             pm_approval: -GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST,
             coalition_approval: -GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST,
-            bills_frozen: true
+            bills_frozen: true,
+            snap_called_by_faction: pmFactionId
         }
     });
 
@@ -9809,13 +9830,64 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
         .single();
     if (electionError) throw electionError;
 
-    // Sync seats for parliamentary elections only (presidential results have no seats)
+    // Snapshot old seats before sync (for snap election loss detection)
     const seatResults = completedElection?.results?.seats || [];
+    const oldSeatsByParty = {};
+    if (seatResults.length > 0) {
+        const partyIds = seatResults.map(r => r.party_id);
+        const { data: oldFactions } = await supabase
+            .from('factions')
+            .select('id, seats')
+            .in('id', partyIds);
+        for (const f of (oldFactions || [])) {
+            oldSeatsByParty[f.id] = f.seats || 0;
+        }
+    }
+
+    // Sync seats for parliamentary elections only (presidential results have no seats)
     for (const r of seatResults) {
         await supabase
             .from('factions')
             .update({ seats: r.seats })
             .eq('id', r.party_id);
+    }
+
+    // Check if this was a snap/early election and apply -15 electability if the calling PM party lost seats
+    if (seatResults.length > 0 && !isPresidential) {
+        // Look for the most recent early election or VoNC event for this nation
+        const { data: snapEvent } = await supabase
+            .from('event_log')
+            .select('effects_applied')
+            .eq('nation_id', nation.id)
+            .eq('event_name', 'Legislature Dissolved — Early Elections Called')
+            .order('fired_at_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        const snapCallerFactionId = snapEvent?.effects_applied?.snap_called_by_faction;
+        if (snapCallerFactionId) {
+            const oldSeats = oldSeatsByParty[snapCallerFactionId] || 0;
+            const newSeatsEntry = seatResults.find(r => r.party_id === snapCallerFactionId);
+            const newSeats = newSeatsEntry?.seats || 0;
+            if (newSeats < oldSeats) {
+                // PM's party lost seats after calling snap elections — penalize electability
+                const { data: callerFaction } = await supabase
+                    .from('factions')
+                    .select('electability, leader_positive_traits, leader_negative_traits')
+                    .eq('id', snapCallerFactionId)
+                    .single();
+                if (callerFaction) {
+                    const currentElect = callerFaction.electability ?? 50;
+                    const posTr = callerFaction.leader_positive_traits || [];
+                    const negTr = callerFaction.leader_negative_traits || [];
+                    let delta = -15;
+                    if (posTr.includes('comeback_kid')) delta = Math.ceil(delta / 2);
+                    if (negTr.includes('sore_loser')) delta *= 2;
+                    const newElect = Math.max(0, Math.min(100, currentElect + delta));
+                    await supabase.from('factions').update({ electability: newElect }).eq('id', snapCallerFactionId);
+                    console.log(`[SnapElection] PM party ${snapCallerFactionId} lost seats (${oldSeats} → ${newSeats}), electability ${currentElect} → ${newElect}`);
+                }
+            }
+        }
     }
 
     // Dissolve legislature — fail all pending bills (new parliament must re-propose)
