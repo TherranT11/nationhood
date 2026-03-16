@@ -21921,24 +21921,27 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
                                 // Also update administration and ministry records
                                 const pmFullName = `${pmFaction.leader_first_name} ${pmFaction.leader_last_name}`;
-                                await supabase.from('administrations').update({
+                                const { error: adminErr } = await supabase.from('administrations').update({
                                     prime_minister: pmFullName,
                                     admin_name: `${pmFaction.leader_last_name} Administration`,
                                     updated_at: new Date().toISOString()
                                 }).eq('nation_id', nation.id).is('ended_at_tick', null);
+                                if (adminErr) console.warn('[PMSync] administrations update failed:', adminErr.message);
 
-                                await supabase.from('ministries').update({
+                                const { error: minErr } = await supabase.from('ministries').update({
                                     minister_first_name: pmFaction.leader_first_name,
                                     minister_last_name: pmFaction.leader_last_name,
                                     minister_age: hogUpdate.age || pmFaction.leader_age
                                 }).eq('nation_id', nation.id)
                                   .eq('ministry_key', 'prime_minister')
                                   .eq('is_active', true);
+                                if (minErr) console.warn('[PMSync] ministries update failed:', minErr.message);
                             }
                             if (Object.keys(hogUpdate).length > 0) {
-                                await supabase.from('head_of_government')
+                                const { error: hogErr } = await supabase.from('head_of_government')
                                     .update(hogUpdate)
                                     .eq('id', activeHog.id);
+                                if (hogErr) console.warn('[PMSync] head_of_government update failed:', hogErr.message);
                             }
                         }
                     }
