@@ -77,13 +77,19 @@ async function main() {
 
     // Step 2: Upsert shard at tick 100
     console.log('\n[2/5] Setting up shard...');
-    const { error: shardErr } = await supabase.from('shard').upsert({
+    const shardData = {
         name: 'Alpha Shard',
         current_tick: 100,
         current_date: 'March 15, 2026',
-        next_tick_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // Far future — manual ticks only
-        tick_interval_minutes: 60
-    }, { onConflict: 'name' });
+        next_tick_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() // Far future — manual ticks only
+    };
+    // Try with tick_interval_minutes first, fall back without it
+    let { error: shardErr } = await supabase.from('shard').upsert(
+        { ...shardData, tick_interval_minutes: 60 }, { onConflict: 'name' }
+    );
+    if (shardErr && shardErr.message.includes('tick_interval_minutes')) {
+        ({ error: shardErr } = await supabase.from('shard').upsert(shardData, { onConflict: 'name' }));
+    }
     if (shardErr) {
         console.error('Shard setup failed:', shardErr.message);
         process.exit(1);
