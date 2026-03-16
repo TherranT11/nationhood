@@ -1140,6 +1140,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.vacancies.push(vacancyResult);
         }
 
+        // Caucus system: activate/deactivate internal factions based on seat share
+        try {
+            await evaluateCaucusActivation(supabase, nation.id, GAME_CONFIG.TOTAL_SEATS);
+            await decayCaucusRelationships(supabase, nation.id, newTick);
+        } catch (caucusErr) {
+            console.error(`[advanceTick] Caucus processing failed for ${nation.name} (non-fatal):`, caucusErr);
+        }
+
         // Check for early majority on active floor bills (lock outcome + set grace tick)
         const earlyResults = await checkEarlyMajority(supabase, nation.id);
         if (earlyResults.length > 0) {
