@@ -13177,8 +13177,8 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
 
 const MAKE_PROMISE_CONFIG = {
     AP_COST: 2,
-    MONEY_COST: 0,
     STAT_DELTA: 10,                    // Promise to change stat by ±10
+    STAT_DELTA_GOVERNING: 20,          // Governing factions must promise ±20 (harder target)
     DEADLINE_DICE: 12,                 // 1D12 + base
     DEADLINE_BASE: 12,                 // base ticks added to roll (range: 13-24)
     APPROVAL_ON_PROMISE_STAT: 4,       // immediate bump with affected blocs (stat type)
@@ -13186,7 +13186,6 @@ const MAKE_PROMISE_CONFIG = {
     APPROVAL_IF_KEPT: 12,              // permanent legacy reward
     PENALTY_PER_TICK_MIN: 1,           // -1D3 per tick while governing & unfulfilled
     PENALTY_PER_TICK_MAX: 3,
-    PENALTY_IF_BROKEN: 8,              // permanent legacy penalty on deadline expiry
     MAX_ACTIVE_PROMISES: 5,            // limit active promises per faction
     // Promise resolution rewards/penalties (used by resolvePromise)
     KEPT_PREF_BONUS: 5,               // +preference with donor/affected bloc
@@ -13257,6 +13256,11 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
     const deadlineTicks = deadlineRoll + cfg.DEADLINE_BASE;
     const tickDeadline = currentTick + deadlineTicks;
 
+    // ── 5a. Check if faction is in government (ruling faction or coalition member) ──
+    const coalition = await fetchActiveCoalition(supabase, nationId);
+    const coalitionPartyIds = new Set(coalition?.party_ids || []);
+    const isGoverning = factionId === nation.ruling_faction_id || coalitionPartyIds.has(factionId);
+
     // ── 5. Build promise based on type ──
     let demandText, demandType, conditions, affectedBlocIds, affectedBlocNames;
 
@@ -13274,11 +13278,13 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
             return { success: false, error: 'You already have an active promise for this stat.' };
 
         const currentVal = Number(nation[statKey] ?? 50);
+        // Governing factions must promise a bigger change (they have legislative power)
+        const delta = isGoverning ? cfg.STAT_DELTA_GOVERNING : cfg.STAT_DELTA;
         // Auto-determine direction: good stats → increase, bad stats → decrease
         const dir = sign === 1 ? 'above' : 'below';
         const targetValue = dir === 'above'
-            ? Math.min(100, Math.round(currentVal + cfg.STAT_DELTA))
-            : Math.max(0, Math.round(currentVal - cfg.STAT_DELTA));
+            ? Math.min(100, Math.round(currentVal + delta))
+            : Math.max(0, Math.round(currentVal - delta));
 
         const statLabel = statKey.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
@@ -13296,7 +13302,8 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
             direction: dir,
             baseline_value: currentVal,
             target_value: targetValue,
-            delta: cfg.STAT_DELTA,
+            delta: delta,
+            is_governing: isGoverning,
         };
 
         // Find affected blocs: those whose priority_issues map to this stat
@@ -13454,7 +13461,8 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
  */
 const EXCLUDED_PROMISE_STATS = new Set(['population', 'gdp', 'debt']);
 
-function getPromiseableStats(nation) {
+function getPromiseableStats(nation, isGoverning = false) {
+    const delta = isGoverning ? MAKE_PROMISE_CONFIG.STAT_DELTA_GOVERNING : MAKE_PROMISE_CONFIG.STAT_DELTA;
     const results = [];
     for (const statKey of NATION_STAT_COLUMNS) {
         if (EXCLUDED_PROMISE_STATS.has(statKey)) continue;
@@ -13468,8 +13476,8 @@ function getPromiseableStats(nation) {
         // Skip stats already at their limit — no meaningful promise possible
         const val = Number(currentVal);
         const target = sign === 1
-            ? Math.min(100, Math.round(val + MAKE_PROMISE_CONFIG.STAT_DELTA))
-            : Math.max(0, Math.round(val - MAKE_PROMISE_CONFIG.STAT_DELTA));
+            ? Math.min(100, Math.round(val + delta))
+            : Math.max(0, Math.round(val - delta));
         if (sign === 1 && val >= target) continue;
         if (sign === -1 && val <= target) continue;
         results.push({
@@ -13885,6 +13893,7 @@ function evaluatePromiseStatus(promise, nationStats, currentTick, ministries, co
  * Checks fulfillment, applies rewards/penalties for expired promises.
  */
 async function processPromiseTick(supabase, nation, currentTick) {
+    const cfg = MAKE_PROMISE_CONFIG;
     const { data: activePromises } = await supabase
         .from('fundraiser_promises')
         .select('*')
@@ -13973,22 +13982,11 @@ async function processPromiseTick(supabase, nation, currentTick) {
             continue;
         }
 
-        // Per-tick penalty: governing party with unfulfilled promise loses approval with the promised bloc
-        // -1D3 approval per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
+        // Per-tick penalty: governing party with unfulfilled promise loses momentum with the promised bloc
+        // -1D3 momentum per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
         if (isGoverning && promise.bloc_id) {
             const penaltyAmount = -(Math.floor(Math.random() * (cfg.PENALTY_PER_TICK_MAX - cfg.PENALTY_PER_TICK_MIN + 1)) + cfg.PENALTY_PER_TICK_MIN);
-            const { data: penaltyBlocRow } = await supabase
-                .from('faction_bloc_approval')
-                .select('id, approval')
-                .eq('faction_id', promise.party_id)
-                .eq('bloc_id', promise.bloc_id)
-                .single();
-            if (penaltyBlocRow) {
-                const newApproval = Math.max(0, Math.round(penaltyBlocRow.approval + penaltyAmount));
-                await supabase.from('faction_bloc_approval')
-                    .update({ approval: newApproval })
-                    .eq('id', penaltyBlocRow.id);
-            }
+            await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, penaltyAmount, 'promise:unfulfilled_tick');
             results.push({ promise, resolution: 'tick_penalty', penaltyAmount });
         }
     }
