@@ -3417,8 +3417,9 @@ function countIdeologyRelationship(factionIdeology, bloc) {
 function ideologyOppositionMultiplier(factionIdeology, bloc) {
     const { opposed, aligned } = countIdeologyRelationship(factionIdeology, bloc);
 
-    if (opposed >= 2) return 0.70;
-    if (opposed === 1) return 0.80;
+    if (opposed >= 3) return 0.50;
+    if (opposed >= 2) return 0.65;
+    if (opposed === 1) return 0.85;
     // Only penalize if the party actually has positions but none align.
     // A fully centrist party (no strong positions) should not be penalized —
     // they just don't benefit from alignment bonuses.
@@ -11921,11 +11922,12 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
         prefScore = Math.round(prefScore * oppositionMult * 100) / 100;
 
         // ─── IDEOLOGY DRIFT: per-tick erosion based on opposition count ───
-        // 2+ opposing → -2/tick, 1 opposing → -1/tick, 0 aligned (with positions) → -0.5/tick
+        // 3+ opposing → -3/tick, 2 opposing → -2/tick, 1 opposing → -1/tick, 0 aligned (with positions) → -0.5/tick
         let ideoDrift = 0;
         if (ideo) {
             const { opposed, aligned } = countIdeologyRelationship(ideo, bloc);
-            if (opposed >= 2)       ideoDrift = -2;
+            if (opposed >= 3)       ideoDrift = -3;
+            else if (opposed >= 2)  ideoDrift = -2;
             else if (opposed === 1) ideoDrift = -1;
             else if (aligned === 0) {
                 // Only drift if the party actually has strong positions but none align.

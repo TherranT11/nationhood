@@ -1528,7 +1528,7 @@ function renderIdeologyWarning() {
 }
 
 
-function renderSidebar() {
+async function renderSidebar() {
     const bill = currentBill, isCommittee = bill.status === 'committee', isFloor = bill.status === 'floor';
     const isSponsor = bill.proposed_by === currentFaction?.id;
     const billSupport = bill.bill_support || [];
