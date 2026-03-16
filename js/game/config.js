@@ -30,7 +30,7 @@ export const GAME_CONFIG = {
     MINISTER_CONFIRMATION_VOTING_TICKS: 6,
     PRESIDENTIAL_TERM_LIMIT: 2,           // max terms before incumbent must step aside
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
-    MAX_AP: 10,  // maximum action points a party can accumulate
+    MAX_AP: 20,  // maximum action points a party can accumulate
     TICKS_PER_YEAR: 12,
     // (Budget bill system removed)
     // Impeachment (Presidential systems only)
@@ -131,6 +131,19 @@ export const GAME_CONFIG = {
     UNALIGNED_POOL_REGEN_TICKS: 4,            // +1 seat per 4 ticks
     UNALIGNED_POOL_MAX_RATIO: 0.10,           // max 10% of legislature
     NEW_FACTION_MIN_SEATS: 8,
+
+    // ── Head of State Title (Foundational) ──
+    HOS_TITLE_OPTIONS: ['President', 'Chancellor', 'Premier', 'Consul', 'First Consul', 'Director', 'General Secretary', 'Chairman', 'Protector', 'Tribune'],
+    HOS_TITLE_COOLDOWN_TICKS: 240,
+
+    // ── Presidential Term Length (Foundational) ──
+    TERM_LENGTH_OPTIONS: [24, 36, 48, 60, 72, 84],  // ticks: 2yr, 3yr, 4yr, 5yr, 6yr, 7yr
+    TERM_LENGTH_COOLDOWN_TICKS: 120,
+    TERM_LENGTH_DEFER_WINDOW: 10,  // if election is within this many ticks, defer to next cycle
+
+    // ── Presidential Term Limits (Foundational) ──
+    TERM_LIMIT_OPTIONS: [0, 1, 2, 3, 4],  // 0 = no limits
+    TERM_LIMIT_COOLDOWN_TICKS: 240,
 };
 
 export const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;
@@ -149,6 +162,30 @@ export function isEndorsementSwitchWindowOpen(currentTick, nextPresidentialTick)
  * sequential multi-nation tick processing never leaks one nation's seat
  * count into the next nation's calculations.
  */
+/**
+ * Get the effective presidential term length (in ticks) for a nation.
+ * Uses nation-specific override if set, otherwise falls back to GAME_CONFIG default.
+ */
+export function getPresidentialTermTicks(nation) {
+    if (nation && nation.presidential_term_ticks != null && nation.presidential_term_ticks > 0) {
+        return nation.presidential_term_ticks;
+    }
+    return GAME_CONFIG.PRESIDENTIAL_TERM_TICKS;
+}
+
+/**
+ * Get the effective presidential term limit for a nation.
+ * Uses nation-specific override if set (including 0 for no limits),
+ * otherwise falls back to GAME_CONFIG default.
+ * Returns null if no limits (0 stored or explicitly set to unlimited).
+ */
+export function getPresidentialTermLimit(nation) {
+    if (nation && nation.presidential_term_limit !== null && nation.presidential_term_limit !== undefined) {
+        return nation.presidential_term_limit === 0 ? null : nation.presidential_term_limit;
+    }
+    return GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT;
+}
+
 export function initGameConfigForNation(nation) {
     const seats = (nation && nation.total_seats) ? nation.total_seats : 120;
     GAME_CONFIG.TOTAL_SEATS = seats;

@@ -7,6 +7,58 @@ body:has(.wiki-container) {
     overflow: auto;
 }
 
+/* Hide the game top bar rows on wiki pages — wiki has its own bar */
+body:has(.wiki-container) #top-bar .top-bar-row1,
+body:has(.wiki-container) #top-bar .nav-tabs,
+body:has(.wiki-container) #top-bar .hamburger-btn {
+    display: none;
+}
+
+/* ---------- WIKI TOP BAR ---------- */
+.wiki-top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-main);
+}
+
+.wiki-top-bar-brand {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    text-decoration: none;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.wiki-top-bar-brand:hover {
+    color: var(--accent-hover);
+}
+
+.wiki-top-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.wiki-btn-return {
+    background: var(--bg-hover);
+}
+
+/* ---------- GLOBAL SEARCH BAR ---------- */
+.wiki-global-search {
+    position: relative;
+    margin-bottom: 16px;
+}
+
+.wiki-global-search-input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
 /* ---------- LAYOUT ---------- */
 .wiki-container {
     max-width: 1100px;
@@ -603,6 +655,13 @@ a.wiki-link-missing:hover {
     background: transparent;
 }
 
+.wiki-search-tag-hint {
+    font-size: 0.7rem;
+    color: var(--accent, #d4a843);
+    opacity: 0.8;
+    margin-left: auto;
+}
+
 .wiki-search-create {
     color: var(--accent);
     font-weight: 600;
@@ -862,4 +921,289 @@ body.light-mode a.wiki-link-missing:hover {
     .wiki-home-columns {
         grid-template-columns: 1fr;
     }
+}
+
+/* ---------- TAG SYSTEM ---------- */
+
+/* Tag section box — matches infobox editor style */
+.wiki-tag-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border-main);
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+/* Tag container — input area inside section */
+.wiki-tag-container {
+    background: var(--bg-body);
+    border: 1px solid var(--border-light);
+    border-radius: 4px;
+    padding: 8px 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-height: 36px;
+    flex-wrap: wrap;
+    cursor: text;
+}
+
+/* Tag chips — inline pills */
+.wiki-tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--bg-hover);
+    border: 1px solid var(--border-main);
+    padding: 2px 6px;
+    border-radius: 0;
+    line-height: 18px;
+    white-space: nowrap;
+    text-transform: lowercase;
+}
+
+.wiki-tag-chip-remove {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0 1px;
+    line-height: 1;
+    font-family: inherit;
+}
+
+.wiki-tag-chip-remove:hover {
+    color: var(--red, #d9534f);
+}
+
+/* Tag badges — new vs existing */
+.wiki-tag-badge {
+    font-size: 8px;
+    font-weight: 600;
+    margin-left: 3px;
+    text-transform: uppercase;
+}
+
+.wiki-tag-badge-new {
+    color: var(--accent, #c8a64e);
+}
+
+.wiki-tag-badge-existing {
+    color: var(--text-dim, #666);
+}
+
+/* "new tag" label in autocomplete */
+.wiki-tag-autocomplete-new {
+    border-top: 1px solid var(--border-light);
+}
+
+.wiki-tag-input {
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    outline: none;
+    min-width: 80px;
+    flex: 1;
+    line-height: 24px;
+    padding: 0;
+}
+
+.wiki-tag-input::placeholder {
+    color: var(--text-dim, #555);
+}
+
+/* Tag display (reader view) — read-only chips */
+.wiki-tag-display {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 0;
+    border-top: 1px solid var(--border-light);
+    margin-top: 20px;
+}
+
+.wiki-tag-display .wiki-tag-chip {
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.wiki-tag-display .wiki-tag-chip:hover {
+    color: var(--text-primary);
+    border-color: var(--text-muted);
+}
+
+/* Tag search bar on wiki-list */
+.wiki-tag-search {
+    margin-bottom: 16px;
+}
+
+.wiki-tag-search-input-wrap {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    flex-wrap: wrap;
+    background: var(--bg-card);
+    border: 1px solid var(--border-main);
+    border-radius: 0;
+    padding: 6px 12px;
+    min-height: 36px;
+    cursor: text;
+}
+
+.wiki-tag-search-input-wrap:focus-within {
+    border-color: var(--accent, #c8a64e);
+}
+
+.wiki-tag-search-input {
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    outline: none;
+    min-width: 200px;
+    flex: 1;
+    line-height: 24px;
+    padding: 0;
+}
+
+.wiki-tag-search-input::placeholder {
+    color: var(--text-dim, #555);
+}
+
+/* Popular tags row */
+.wiki-popular-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.wiki-popular-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    background: var(--bg-hover);
+    border: 1px solid var(--border-main);
+    border-radius: 0;
+    padding: 2px 8px;
+    cursor: pointer;
+    line-height: 18px;
+    text-transform: lowercase;
+}
+
+.wiki-popular-tag:hover {
+    color: var(--text-primary);
+    border-color: var(--text-muted);
+}
+
+.wiki-popular-tag-count {
+    color: var(--text-dim);
+    font-size: 8px;
+    margin-left: 3px;
+}
+
+/* Tag autocomplete dropdown */
+.wiki-tag-autocomplete {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border-main);
+    border-top: none;
+    z-index: 100;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.wiki-tag-autocomplete-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-primary);
+}
+
+.wiki-tag-autocomplete-item:hover {
+    background: var(--bg-hover);
+}
+
+.wiki-tag-autocomplete-count {
+    color: var(--text-dim);
+    font-size: 9px;
+}
+
+/* Tag search results — highlight matching tags */
+.wiki-tag-match {
+    color: var(--accent, #c8a64e);
+    font-weight: 700;
+}
+
+/* Light mode overrides for tags */
+body.light-mode .wiki-tag-section {
+    background: #f5f5f5;
+    border-color: #d0d0d0;
+}
+
+body.light-mode .wiki-tag-container {
+    background: #ffffff;
+    border-color: #d0d0d0;
+}
+
+body.light-mode .wiki-tag-badge-new {
+    color: #b8860b;
+}
+
+body.light-mode .wiki-tag-badge-existing {
+    color: #888;
+}
+
+body.light-mode .wiki-tag-chip {
+    background: #e8e8e8;
+    border-color: #d0d0d0;
+    color: #555;
+}
+
+body.light-mode .wiki-tag-chip-remove:hover {
+    color: #c62828;
+}
+
+body.light-mode .wiki-tag-search-input-wrap {
+    background: #ffffff;
+    border-color: #d0d0d0;
+}
+
+body.light-mode .wiki-tag-search-input-wrap:focus-within {
+    border-color: #c8a000;
+}
+
+body.light-mode .wiki-popular-tag {
+    background: #e8e8e8;
+    border-color: #d0d0d0;
+    color: #777;
+}
+
+body.light-mode .wiki-popular-tag:hover {
+    color: #1a1a1a;
+    border-color: #999;
+}
+
+body.light-mode .wiki-tag-autocomplete {
+    background: #ffffff;
+    border-color: #d0d0d0;
+}
+
+body.light-mode .wiki-tag-autocomplete-item:hover {
+    background: #f0f0f0;
 }

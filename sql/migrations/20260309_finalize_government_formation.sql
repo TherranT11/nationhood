@@ -154,7 +154,7 @@ BEGIN
         minister_first_name = v_minister->>'first_name',
         minister_last_name = v_minister->>'last_name',
         minister_age = (v_minister->>'age')::INT,
-        minister_approval = 50,
+        minister_approval = 40,
         stat_baselines = COALESCE(p_ministry_baselines->v_ministry_key, '{}'::JSONB)
       WHERE id = v_existing_ministry_id;
     ELSE
@@ -301,7 +301,7 @@ BEGIN
     nation_id, admin_name, head_of_state, prime_minister,
     pm_party_name, pm_party_id, coalition_parties, total_seats,
     government_type, started_at_tick, started_at_date,
-    stats_at_start, approval_at_start
+    stats_at_start, approval_at_start, head_of_state_title
   ) VALUES (
     v_nation.id,
     v_pm_faction.faction_name || ' Administration',
@@ -315,7 +315,8 @@ BEGIN
     v_shard.current_tick,
     v_shard.current_date,
     v_stats_snapshot,
-    v_gov_approval
+    v_gov_approval,
+    v_nation.head_of_state_title
   );
 
   -- 9. Auto-appoint PM (party leader)
@@ -371,7 +372,7 @@ BEGIN
         minister_first_name = v_pm_faction.leader_first_name,
         minister_last_name = v_pm_faction.leader_last_name,
         minister_age = v_pm_faction.leader_age,
-        minister_approval = 50,
+        minister_approval = 40,
         stat_baselines = COALESCE(p_ministry_baselines->'prime_minister', '{}'::JSONB)
       WHERE id = v_existing_ministry_id;
     ELSE

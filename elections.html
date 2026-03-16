@@ -879,8 +879,9 @@ async function loadElectionInfo() {
                 .eq('status', 'completed').eq('election_type', 'presidential')
                 .order('election_tick', { ascending: false }).limit(1).maybeSingle();
             const presBase = lastPres ? lastPres.election_tick : shard.current_tick;
-            let nextPres = presBase + (GAME_CONFIG?.PRESIDENTIAL_TERM_TICKS || 48);
-            if (nextPres <= shard.current_tick) nextPres = shard.current_tick + (GAME_CONFIG?.PRESIDENTIAL_TERM_TICKS || 48);
+            const effectivePresTermTicks = currentNation?.presidential_term_ticks || GAME_CONFIG?.PRESIDENTIAL_TERM_TICKS || 48;
+            let nextPres = presBase + effectivePresTermTicks;
+            if (nextPres <= shard.current_tick) nextPres = shard.current_tick + effectivePresTermTicks;
             const { data: newPres, error: insErr } = await _supabase.from('elections')
                 .insert({ nation_id: currentNation.id, election_tick: nextPres, election_type: 'presidential', status: 'scheduled' })
                 .select().single();

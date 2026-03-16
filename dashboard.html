@@ -15,20 +15,11 @@
     padding: 20px 20px 20px 0;
     overflow-x: auto !important;
   }
-  .dash-layout {
-    display: flex;
+  .dash-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
     gap: 20px;
-    align-items: flex-start;
-  }
-  .dash-left-col {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-  .dash-row {
-    display: flex;
-    gap: 20px;
-    align-items: flex-start;
+    max-width: 1580px;
   }
 
   /* ── Nation Card ── */
@@ -37,8 +28,14 @@
     border: 1px solid var(--border-main);
     border-radius: 8px;
     overflow: hidden;
-    width: 380px;
+    min-width: 0;
+  }
+  .dash-card-tall {
     height: 520px;
+  }
+  #world-map-card {
+    grid-column: 1 / span 3;
+    grid-row: 2;
   }
   .dash-card-header {
     background: var(--bg-card);
@@ -371,9 +368,90 @@
   }
   .elections-suspended {
     font-style: italic;
-    color: var(--text-secondary);
+    color: var(--red, #e74c3c);
     font-size: 0.9rem;
     padding: 20px 0;
+  }
+
+  /* ── Mobile responsive ── */
+  @media (max-width: 1200px) {
+    .dash-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    #world-map-card {
+      grid-column: span 2 !important;
+    }
+  }
+
+  @media (max-width: 768px) {
+    #content-area {
+      margin: 8px 10px;
+      padding: 10px 0;
+    }
+    .dash-grid {
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+    .dash-card-tall {
+      height: auto;
+      max-height: 480px;
+    }
+    #events-card.dash-card-tall {
+      max-height: 400px;
+    }
+    #world-map-card {
+      grid-column: span 1 !important;
+    }
+    .dash-card-header {
+      padding: 8px 14px;
+      font-size: 0.8rem;
+    }
+    .dash-card-body {
+      padding: 6px 14px 14px;
+    }
+    .nation-identity h2 {
+      font-size: 1.15rem;
+    }
+    .nation-identity .motto {
+      font-size: 0.8rem;
+    }
+    .nation-stat-row {
+      font-size: 0.82rem;
+      padding: 8px 4px;
+    }
+    .gov-admin-name {
+      font-size: 0.95rem;
+    }
+    .gov-badges {
+      flex-wrap: wrap;
+    }
+    .election-item {
+      padding: 6px 10px;
+      margin-bottom: 8px;
+    }
+    .dash-event-row {
+      font-size: 0.62rem;
+    }
+    .dash-event-date {
+      min-width: 55px;
+    }
+    .dash-event-category {
+      display: none;
+    }
+  }
+
+  @media (max-width: 480px) {
+    #content-area {
+      margin: 4px 6px;
+      padding: 6px 0;
+    }
+    .dash-grid {
+      gap: 10px;
+    }
+    .nation-flag-box {
+      width: 64px;
+      height: 44px;
+    }
   }
 </style>
 </head>
@@ -384,57 +462,45 @@
 <div id="top-bar"></div>
 
 <div id="content-area">
-  <div class="dash-layout">
+  <div class="dash-grid">
 
-    <!-- ── Left Column ── -->
-    <div class="dash-left-col">
-      <div class="dash-row">
-
-        <!-- ── Nation Card ── -->
-        <div class="dash-card" id="nation-card">
-          <div class="dash-card-header">NATION</div>
-          <div class="dash-card-body">
-          <div class="nation-identity">
-            <div class="nation-flag-box" id="nation-flag-box">
-              <span class="abbr-fallback" id="nation-abbr"></span>
-            </div>
-            <h2 id="nation-name"></h2>
-            <div class="motto" id="nation-motto"></div>
+    <!-- ── Row 1: Nation, Government, Elections, Events ── -->
+    <div class="dash-card dash-card-tall" id="nation-card">
+      <div class="dash-card-header">NATION</div>
+      <div class="dash-card-body">
+        <div class="nation-identity">
+          <div class="nation-flag-box" id="nation-flag-box">
+            <span class="abbr-fallback" id="nation-abbr"></span>
           </div>
-          <div class="nation-stats-list" id="nation-stats-list"></div>
-          </div>
+          <h2 id="nation-name"></h2>
+          <div class="motto" id="nation-motto"></div>
         </div>
-
-        <!-- ── Government Card ── -->
-        <div class="dash-card" id="gov-card">
-          <div class="dash-card-header">GOVERNMENT</div>
-          <div class="dash-card-body" id="gov-card-body">
-            <div style="display:flex;align-items:center;justify-content:center;height:340px;color:var(--text-secondary);font-size:0.85rem;">Loading government&hellip;</div>
-          </div>
-        </div>
-
+        <div class="nation-stats-list" id="nation-stats-list"></div>
       </div>
-
-      <!-- ── Elections + Events Row ── -->
-      <div class="dash-row">
-        <div class="dash-card" id="elections-card">
-          <div class="dash-card-header">ELECTIONS</div>
-          <div class="dash-card-body" id="elections-card-body"></div>
-        </div>
-
-        <div class="dash-card" id="events-card" style="display:flex;flex-direction:column;">
-          <div class="dash-card-header">EVENTS</div>
-          <div class="dash-events-scroll" id="dash-events-list"></div>
-        </div>
-      </div>
-
     </div>
 
-    <!-- ── Right Column: World Map ── -->
-    <div class="dash-card" id="world-map-card" style="flex:1; min-width:760px; height:900px;">
+    <div class="dash-card dash-card-tall" id="gov-card">
+      <div class="dash-card-header">GOVERNMENT</div>
+      <div class="dash-card-body" id="gov-card-body">
+        <div style="display:flex;align-items:center;justify-content:center;height:340px;color:var(--text-secondary);font-size:0.85rem;">Loading government&hellip;</div>
+      </div>
+    </div>
+
+    <div class="dash-card dash-card-tall" id="elections-card">
+      <div class="dash-card-header">ELECTIONS</div>
+      <div class="dash-card-body" id="elections-card-body"></div>
+    </div>
+
+    <div class="dash-card dash-card-tall" id="events-card" style="display:flex;flex-direction:column;">
+      <div class="dash-card-header">EVENTS</div>
+      <div class="dash-events-scroll" id="dash-events-list"></div>
+    </div>
+
+    <!-- ── Row 2: World Map (spans 3 columns) ── -->
+    <div class="dash-card" id="world-map-card">
       <div class="dash-card-header">WORLD MAP</div>
-      <div class="dash-card-body" id="world-map-body" style="padding:0; flex:1; overflow:hidden;">
-        <img src="./assets/World Map Crucera3.svg" alt="World Map" style="width:100%; height:100%; object-fit:fill; display:block;">
+      <div class="dash-card-body" id="world-map-body" style="padding:0; overflow:hidden;">
+        <img src="./assets/World Map Crucera3.svg" alt="World Map" style="width:100%; height:auto; object-fit:contain; display:block;">
       </div>
     </div>
 
@@ -502,20 +568,17 @@ initPage('home', async (state) => {
   ).join('');
 
   // ══════════════════════════════════════
-  // ── Government Card ──
+  // ── Shared data for Government, Elections & Events ──
   // ══════════════════════════════════════
-  try {
-    const isPres = isPresidentialRepublic(nation);
-    const isAuto = isAutocracy(nation);
+  const isPres = isPresidentialRepublic(nation);
+  const isAuto = isAutocracy(nation);
 
-    // Parallel data fetches (including previous-tick approval to avoid sequential round-trip)
+  let currentTick = 0;
+  let parties = [];
+  try {
     const [
       { data: allParties },
-      { data: shardRow },
-      { data: administration },
-      coalitionResult,
-      presidentResult,
-      prevApprovalResult
+      { data: shardRow }
     ] = await Promise.all([
       _supabase.from('factions')
         .select('id, seats, faction_name, abbreviation, party_color')
@@ -524,7 +587,25 @@ initPage('home', async (state) => {
       _supabase.from('shard')
         .select('current_tick')
         .eq('name', 'Alpha Shard')
-        .single(),
+        .single()
+    ]);
+    currentTick = shardRow?.current_tick ?? 0;
+    parties = allParties || [];
+  } catch (e) {
+    console.error('Shared data fetch error:', e);
+  }
+
+  // ══════════════════════════════════════
+  // ── Government Card ──
+  // ══════════════════════════════════════
+  try {
+    // Parallel data fetches for government card
+    const [
+      { data: administration },
+      coalitionResult,
+      presidentResult,
+      prevApprovalResult
+    ] = await Promise.all([
       _supabase.from('administrations')
         .select('admin_name, government_type, coalition_parties, total_seats, started_at_tick')
         .eq('nation_id', nation.id)
@@ -552,25 +633,22 @@ initPage('home', async (state) => {
 
     const coalition = coalitionResult;
     const president = presidentResult?.data ?? presidentResult;
-    const currentTick = shardRow?.data?.current_tick ?? shardRow?.current_tick ?? 0;
-    const parties = allParties || [];
     const govCard = document.getElementById('gov-card');
 
-    // Empty state: no active coalition
-    if (!coalition) {
+    // Empty state: no active coalition (democracies only — autocracies handle separately)
+    if (!coalition && !isAuto) {
       document.getElementById('gov-card-body').innerHTML = `
         <div style="display:flex;align-items:center;justify-content:center;height:340px;color:var(--text-secondary);font-style:italic;font-size:0.9rem;">
           Government is currently being formed
         </div>
       `;
-      return;
-    }
+    } else {
 
     // Previous approval for delta (already fetched in parallel)
     const prevApproval = prevApprovalResult?.data?.gov_approval ?? null;
 
     // ── Compute values ──
-    const approval = Math.round(Number(nation.gov_approval ?? 50));
+    const approval = Math.round(Number(nation.gov_approval ?? 40));
     const approvalColor = approval >= 50 ? 'var(--green)' : approval >= 35 ? 'var(--orange)' : 'var(--red)';
     // Strip any trailing ", YYYY" from stored admin_name to avoid duplication
     const rawAdminName = administration?.admin_name || 'Government';
@@ -706,32 +784,64 @@ initPage('home', async (state) => {
     ).join('');
 
     // ── Footer ──
-    const govLabel = isMajority ? 'Majority Government' : 'Minority Government';
-    const footerDetail = `${govSeats}/${totalSeats} seats (${majority} needed)`;
+    const govLabel = isAuto ? 'Authoritarian Regime' : isMajority ? 'Majority Government' : 'Minority Government';
+    const footerDetail = isAuto
+      ? (nation.ruling_faction_id ? (parties.find(p => p.id === nation.ruling_faction_id)?.faction_name || 'Ruling Party') : 'Single-Party State')
+      : `${govSeats}/${totalSeats} seats (${majority} needed)`;
 
     // ── Build card ──
-    document.getElementById('gov-card-body').innerHTML = `
-      <div class="gov-admin-name">${esc(adminName)}${yearSuffix}</div>
-      <div class="gov-badges">
-        <span class="gov-badge">${esc(govTypeLabel)}</span>
-        ${coalitionBadge ? `<span class="gov-badge">${esc(coalitionBadge)}</span>` : ''}
-      </div>
+    if (isAuto) {
+      // Autocracy: show leader, ruling party, approval — no coalition section
+      const rulingParty = nation.ruling_faction_id ? parties.find(p => p.id === nation.ruling_faction_id) : null;
+      const rpColor = rulingParty?.party_color || '#c8a64e';
+      const rpName = rulingParty?.faction_name || 'Ruling Party';
 
-      ${leader1Html}
-      ${leader2Html}
+      document.getElementById('gov-card-body').innerHTML = `
+        <div class="gov-admin-name">${esc(adminName)}${yearSuffix}</div>
+        <div class="gov-badges">
+          <span class="gov-badge">${esc(govTypeLabel)}</span>
+          <span class="gov-badge">Single-Party State</span>
+        </div>
 
-      <div class="gov-divider"></div>
+        ${leader1Html}
 
-      <div class="gov-section-title">Governing Coalition</div>
-      <div class="gov-seat-bar">${barHtml}</div>
-      ${partyRowsHtml}
-      <div class="gov-seats-combined">${govSeats} seats combined</div>
+        <div class="gov-divider"></div>
 
-      <div class="gov-divider"></div>
+        <div class="gov-section-title">Ruling Party</div>
+        <div class="gov-coalition-row">
+          <div class="gov-party-dot" style="background:${rpColor}"></div>
+          <span class="gov-coalition-name">${esc(rpName)}</span>
+        </div>
 
-      <div class="gov-section-title">Approval</div>
-      <div class="gov-approval-big" style="color:${approvalColor}">${approval}%</div>
-    `;
+        <div class="gov-divider"></div>
+
+        <div class="gov-section-title">Approval</div>
+        <div class="gov-approval-big" style="color:${approvalColor}">${approval}%</div>
+      `;
+    } else {
+      document.getElementById('gov-card-body').innerHTML = `
+        <div class="gov-admin-name">${esc(adminName)}${yearSuffix}</div>
+        <div class="gov-badges">
+          <span class="gov-badge">${esc(govTypeLabel)}</span>
+          ${coalitionBadge ? `<span class="gov-badge">${esc(coalitionBadge)}</span>` : ''}
+        </div>
+
+        ${leader1Html}
+        ${leader2Html}
+
+        <div class="gov-divider"></div>
+
+        <div class="gov-section-title">Governing Coalition</div>
+        <div class="gov-seat-bar">${barHtml}</div>
+        ${partyRowsHtml}
+        <div class="gov-seats-combined">${govSeats} seats combined</div>
+
+        <div class="gov-divider"></div>
+
+        <div class="gov-section-title">Approval</div>
+        <div class="gov-approval-big" style="color:${approvalColor}">${approval}%</div>
+      `;
+    }
 
     // Footer (inside gov card, outside body padding)
     let footer = govCard.querySelector('.gov-footer');
@@ -745,32 +855,49 @@ initPage('home', async (state) => {
       <span class="gov-footer-detail">${esc(footerDetail)}</span>
     `;
 
-    // ── Load Events card ──
-    loadDashEvents(nation.id, currentTick, parties);
+    } // end else (coalition exists)
 
   } catch (e) {
     console.error('Government card error:', e);
   }
 
   // ══════════════════════════════════════
+  // ── Events Card ──
+  // ══════════════════════════════════════
+  loadDashEvents(nation.id, currentTick, parties);
+
+  // ══════════════════════════════════════
   // ── Elections Card ──
   // ══════════════════════════════════════
   try {
-    const isPres = isPresidentialRepublic(nation);
-    const isAuto = isAutocracy(nation);
     const elBody = document.getElementById('elections-card-body');
 
     if (isAuto) {
-      elBody.innerHTML = `<div class="elections-suspended">Elections are suspended.</div>`;
+      // Compute revolution chance from stability and civil_unrest
+      const stability = Number(nation.stability ?? 50);
+      const unrest = Number(nation.civil_unrest ?? 10);
+      // Low stability + high unrest = higher revolution chance
+      const revolutionScore = Math.max(0, Math.min(100, (100 - stability) * 0.6 + unrest * 0.4));
+      let revolutionLevel, revolutionColor;
+      if (revolutionScore >= 60) {
+        revolutionLevel = 'High';
+        revolutionColor = 'var(--red, #e74c3c)';
+      } else if (revolutionScore >= 35) {
+        revolutionLevel = 'Moderate';
+        revolutionColor = 'var(--orange, #f39c12)';
+      } else {
+        revolutionLevel = 'Low';
+        revolutionColor = 'var(--green, #2ecc71)';
+      }
+      elBody.innerHTML = `
+        <div style="padding:12px 0;">
+          <div style="color:var(--red, #e74c3c);font-weight:700;font-size:0.85rem;margin-bottom:12px;">Elections are suspended.</div>
+          <div style="font-size:0.78rem;color:var(--text-secondary);">
+            Chance of Democratic Revolution: <span style="color:${revolutionColor};font-weight:700;">${revolutionLevel}</span>
+          </div>
+        </div>
+      `;
     } else {
-      // Fetch current tick
-      const { data: shardData } = await _supabase
-        .from('shard')
-        .select('current_tick')
-        .eq('name', 'Alpha Shard')
-        .single();
-      const currentTick = shardData?.current_tick ?? 0;
-
       // Fetch scheduled elections ordered by tick
       const { data: scheduled } = await _supabase
         .from('elections')
@@ -856,11 +983,12 @@ initPage('home', async (state) => {
 // ── Dashboard Events Feed ──
 // ══════════════════════════════════════
 const EVENT_CATEGORY_STYLES = {
-  crisis:      { icon: '\u26A0', color: '#e74c3c', bg: 'rgba(231,76,60,0.12)', label: 'CRISIS' },
-  government:  { icon: '\u2696', color: '#f1c40f', bg: 'rgba(241,196,15,0.10)', label: 'GOV' },
-  POLITICAL:   { icon: '\u2605', color: '#3498db', bg: 'rgba(52,152,219,0.12)', label: 'POLITICAL' },
-  Trade:       { icon: '\u2693', color: '#2ecc71', bg: 'rgba(46,204,113,0.12)', label: 'TRADE' },
-  Diplomatic:  { icon: '\uD83C\uDF10', color: '#9b59b6', bg: 'rgba(155,89,182,0.12)', label: 'DIPLOMATIC' },
+  crisis:           { icon: '\u26A0', color: '#e74c3c', bg: 'rgba(231,76,60,0.12)', label: 'CRISIS' },
+  government:       { icon: '\u2696', color: '#f1c40f', bg: 'rgba(241,196,15,0.10)', label: 'GOV' },
+  executive_order:  { icon: '\u270D', color: '#e67e22', bg: 'rgba(230,126,34,0.12)', label: 'EXEC ORDER' },
+  POLITICAL:        { icon: '\u2605', color: '#3498db', bg: 'rgba(52,152,219,0.12)', label: 'POLITICAL' },
+  Trade:            { icon: '\u2693', color: '#2ecc71', bg: 'rgba(46,204,113,0.12)', label: 'TRADE' },
+  Diplomatic:       { icon: '\uD83C\uDF10', color: '#9b59b6', bg: 'rgba(155,89,182,0.12)', label: 'DIPLOMATIC' },
 };
 const EVENT_CATEGORY_DEFAULT = { icon: '\u2022', color: '#888', bg: 'rgba(136,136,136,0.08)', label: '' };
 

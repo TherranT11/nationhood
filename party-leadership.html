@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Party Leadership | Nationhood Alpha</title>
+<link rel="stylesheet" href="css/dashboard.css">
+<link rel="stylesheet" href="css/party-leadership.css">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div id="top-bar"></div>
+
+<div id="content-area" style="margin:16px auto;max-width:960px;padding:0 16px;">
+    <div class="pl-container" id="pl-container">
+        <div style="display:flex;align-items:center;justify-content:center;height:200px;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">Loading...</div>
+    </div>
+</div>
+
+<script type="module">
+
+import { _supabase } from './js/supabase-client.js';
+import { initPage } from './js/common.js';
+import { escapeHtml } from './js/utils.js';
+import { getNationNames, deductAP } from './js/game-common.js';
+import {
+    POSITIVE_MAP, NEGATIVE_MAP,
+    IDEOLOGY_COLORS, CATEGORY_COLORS,
+    getElectabilityTier, getAPCostColor, getAPCostLabel,
+    generateLeadershipCandidates
+} from './js/game/party-leadership.js';
+
+let currentNation = null;
+let currentFaction = null;
+let currentShard = null;
+
+// Role: 'leader' | 'deputy' | 'whip'
+let activeRole = 'leader';
+
+// Candidates per role: { leader: [...], deputy: [...], whip: [...] }
+let candidatesByRole = { leader: [], deputy: [], whip: [] };
+
+// Current leaders per role (from DB)
+let currentLeaders = { leader: null, deputy: null, whip: null };
+
+// Selected candidate index per role
+let selectedIndex = { leader: null, deputy: null, whip: null };
+
+// Double-fire guard for appoint action
+let isAppointing = false;
+
+// ── Init ──
+initPage('politics', async (state) => {
+    const { nation, faction, shard } = state;
+    currentNation = nation;
+    currentFaction = faction;
+    currentShard = shard;
+
+    if (!nation || !faction) {
+        document.getElementById('pl-container').innerHTML =
+            '<div style="padding:40px;text-align:center;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">No nation or party found.</div>';
+        return;
+    }
+
+    // Load current leaders from faction data
+    loadCurrentLeaders();
+
+    // Generate candidates for all roles
+    generateAllCandidates();
+
+    // Render
+    render();
+});
+
+function loadCurrentLeaders() {
+    // Current party leader is stored on the faction
+    if (currentFaction.leader_first_name && currentFaction.leader_last_name) {
+        currentLeaders.leader = {
+            firstName: currentFaction.leader_first_name,
+            lastName: currentFaction.leader_last_name,
+            age: currentFaction.leader_age || null,
+        };
+    }
+
+    // Check for deputy and whip in faction metadata
+    // These may be stored as JSON fields — check if they exist
+    if (currentFaction.deputy_first_name && currentFaction.deputy_last_name) {
+        currentLeaders.deputy = {
+            firstName: currentFaction.deputy_first_name,
+            lastName: currentFaction.deputy_last_name,
+            age: currentFaction.deputy_age || null,
+        };
+    }
+    if (currentFaction.whip_first_name && currentFaction.whip_last_name) {
+        currentLeaders.whip = {
+            firstName: currentFaction.whip_first_name,
+            lastName: currentFaction.whip_last_name,
+            age: currentFaction.whip_age || null,
+        };
+    }
+}
+
+function generateAllCandidates() {
+    const nationName = currentNation.name || '';
+    ['leader', 'deputy', 'whip'].forEach(role => {
+        candidatesByRole[role] = generateLeadershipCandidates(nationName, getNationNames, 3, role);
+
+        // If there's a current leader, mark the first candidate slot as them (0 AP reappoint)
+        if (currentLeaders[role]) {
+            const cl = currentLeaders[role];
+            const fallback = candidatesByRole[role][0] || {};
+            const currentCandidate = {
+                firstName: cl.firstName,
+                lastName: cl.lastName,
+                age: cl.age || fallback.age || 45,
+                ideology: cl.ideology || fallback.ideology || 'PROGRESS',
+                positiveTraits: cl.positiveTraits || fallback.positiveTraits || [],
+                negativeTraits: cl.negativeTraits || fallback.negativeTraits || [],
+                apCost: 0, // Current leader always costs 0
+                costBreakdown: { positiveTotal: 0, negativeTotal: 0, rawCost: 0, apCost: 0 },
+                isCurrent: true,
+            };
+            if (role === 'leader') currentCandidate.electability = cl.electability || 50;
+            candidatesByRole[role].unshift(currentCandidate);
+        }
+
+        selectedIndex[role] = null;
+    });
+}
+
+// ═══════════════════════════════════════
+//  Render
+// ═══════════════════════════════════════
+function render() {
+    const container = document.getElementById('pl-container');
+    const candidates = candidatesByRole[activeRole];
+    const sel = selectedIndex[activeRole];
+    const selectedCandidate = sel !== null ? candidates[sel] : null;
+
+    // Header cost display
+    let headerCostHTML = '';
+    let appointBtnHTML = '';
+    if (selectedCandidate && !selectedCandidate.isCurrent) {
+        const costColor = getAPCostColor(selectedCandidate.apCost);
+        const costLabel = getAPCostLabel(selectedCandidate.apCost);
+        headerCostHTML = `<span class="pl-header-cost" style="color:${costColor}">${costLabel}</span>`;
+        appointBtnHTML = `<button class="pl-appoint-btn" onclick="window._appointLeader()">Appoint ${getRoleLabel(activeRole)}</button>`;
+    }
+
+    container.innerHTML = `
+        <div class="pl-header">
+            <button class="pl-back-btn" onclick="window.location.href='politics.html'">&larr; Back</button>
+            <div class="pl-header-left">
+                <div class="pl-header-title">Party Leadership</div>
+                <div class="pl-header-sub">${escapeHtml(currentFaction.faction_name)}</div>
+            </div>
+            <div class="pl-header-right">
+                ${headerCostHTML}
+                ${appointBtnHTML}
+            </div>
+        </div>
+
+        <div class="pl-role-tabs">
+            ${['leader', 'deputy', 'whip'].map(r => `
+                <button class="pl-role-tab ${r === activeRole ? 'active' : ''}" onclick="window._switchRole('${r}')">${getRoleLabel(r)}</button>
+            `).join('')}
+        </div>
+
+        <div class="pl-body">
+            <div class="pl-list" id="pl-list">
+                ${renderCandidateList(candidates, sel)}
+            </div>
+            <div class="pl-detail" id="pl-detail">
+                ${selectedCandidate ? renderCandidateDetail(selectedCandidate) : '<div class="pl-detail-empty">Select a candidate</div>'}
+            </div>
+        </div>
+    `;
+}
+
+function getRoleLabel(role) {
+    if (role === 'leader') return 'Party Leader';
+    if (role === 'deputy') return 'Deputy Leader';
+    return 'Party Whip';
+}
+
+function renderCandidateList(candidates, selectedIdx) {
+    if (!candidates || candidates.length === 0) {
+        return '<div style="padding:20px;text-align:center;color:var(--text-dim);font-family:var(--font-mono);font-size:9px;">No candidates available.</div>';
+    }
+
+    return candidates.map((c, i) => {
+        const isActive = i === selectedIdx;
+        const costColor = getAPCostColor(c.apCost);
+        const costLabel = getAPCostLabel(c.apCost);
+        const ideology = c.ideology || '';
+        const ideologyColor = IDEOLOGY_COLORS[ideology] || '#888';
+        const ideologyLabel = ideology ? ideology.charAt(0) + ideology.slice(1).toLowerCase() : 'Unknown';
+        const electTier = c.electability != null ? getElectabilityTier(c.electability) : null;
+        const currentPill = c.isCurrent ? `<span class="pl-current-pill">CURRENT</span>` : '';
+
+        return `
+            <div class="pl-list-row ${isActive ? 'active' : ''}" onclick="window._selectCandidate(${i})">
+                <div class="pl-list-row-top">
+                    <span class="pl-list-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}${currentPill}</span>
+                    <span class="pl-list-cost" style="color:${costColor}">${costLabel}</span>
+                </div>
+                <div class="pl-list-age">Age ${c.age || '—'}</div>
+                <div class="pl-list-meta">
+                    <span class="pl-list-ideology">
+                        <span class="pl-ideology-dot" style="background:${ideologyColor}"></span>
+                        <span style="color:${ideologyColor}">${ideologyLabel}</span>
+                    </span>
+                    ${electTier ? `<span class="pl-list-electability">
+                        <span class="pl-list-electability-label">Electability: </span>
+                        <span style="color:${electTier.color}">${electTier.label}</span>
+                    </span>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderCandidateDetail(c) {
+    const initials = ((c.firstName || '')[0] || '') + ((c.lastName || '')[0] || '');
+    const ideology = c.ideology || '';
+    const ideologyColor = IDEOLOGY_COLORS[ideology] || '#888';
+    const ideologyLabel = ideology ? ideology.charAt(0) + ideology.slice(1).toLowerCase() : 'Unknown';
+    const electTier = c.electability != null ? getElectabilityTier(c.electability) : null;
+    const costColor = getAPCostColor(c.apCost);
+
+    // Cost box colors
+    const costFaintBg = costColor + '14'; // ~8% opacity
+    const costBorder = costColor + '33'; // ~20% opacity
+
+    // Strengths
+    const positiveTraits = (c.positiveTraits || []).map(key => POSITIVE_MAP[key]).filter(Boolean);
+    const posTotal = positiveTraits.reduce((sum, t) => sum + t.cost, 0);
+
+    // Weaknesses
+    const negativeTraits = (c.negativeTraits || []).map(key => NEGATIVE_MAP[key]).filter(Boolean);
+    const negTotal = negativeTraits.reduce((sum, t) => sum + t.relief, 0);
+
+    // Use costBreakdown from candidate, fall back to computed values
+    const rawCost = c.costBreakdown ? c.costBreakdown.rawCost : (posTotal - negTotal);
+    const finalAP = c.costBreakdown ? c.costBreakdown.apCost : Math.max(0, Math.min(6, Math.round(posTotal - negTotal)));
+    const finalColor = getAPCostColor(c.isCurrent ? 0 : finalAP);
+
+    return `
+        <!-- Identity Block -->
+        <div class="pl-identity">
+            <div class="pl-avatar">${escapeHtml(initials)}</div>
+            <div class="pl-identity-info">
+                <div class="pl-detail-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div>
+                <div class="pl-detail-age">Age ${c.age || '—'}</div>
+                <div class="pl-detail-ideology">
+                    <span class="pl-ideology-dot" style="background:${ideologyColor}"></span>
+                    <span style="color:${ideologyColor}">${ideologyLabel}</span>
+                </div>
+            </div>
+            <div class="pl-cost-box" style="background:${costFaintBg};border:1px solid ${costBorder}">
+                <div class="pl-cost-number" style="color:${costColor}">${c.isCurrent ? 'FREE' : (c.apCost === 0 ? 'FREE' : c.apCost)}</div>
+                <div class="pl-cost-label">Appointment cost</div>
+            </div>
+        </div>
+
+        ${electTier ? `<!-- Electability Bar -->
+        <div class="pl-electability" style="border-left:3px solid ${electTier.color}">
+            <div class="pl-electability-header">
+                <span class="pl-electability-title">ELECTABILITY</span>
+                <span class="pl-electability-badge" style="color:${electTier.color};background:${electTier.color + '14'};border:1px solid ${electTier.color + '33'}">${electTier.label.toUpperCase()}</span>
+            </div>
+            <div class="pl-electability-track">
+                <div class="pl-electability-fill" style="width:${c.electability}%;background:${electTier.color}"></div>
+            </div>
+            <div class="pl-electability-scale">
+                <span>V.Low</span><span>Low</span><span>Moderate</span><span>High</span><span>V.High</span>
+            </div>
+        </div>` : ''}
+
+        <!-- Strengths -->
+        <div class="pl-section-header">STRENGTHS <span style="color:var(--green)">+${posTotal.toFixed(1)}</span></div>
+        ${positiveTraits.map(t => {
+            const cat = CATEGORY_COLORS[t.category] || CATEGORY_COLORS['AP'];
+            return `
+                <div class="pl-trait-card strength">
+                    <div class="pl-trait-top">
+                        <div class="pl-trait-name-wrap">
+                            <span class="pl-trait-name">${escapeHtml(t.name)}</span>
+                            <span class="pl-trait-category" style="color:${cat.color};background:${cat.bg};border:1px solid ${cat.border}">${t.category.toUpperCase()}</span>
+                        </div>
+                        <span class="pl-trait-cost positive">+${t.cost.toFixed(1)}</span>
+                    </div>
+                    <div class="pl-trait-effect">${escapeHtml(t.effect)}</div>
+                </div>
+            `;
+        }).join('')}
+
+        <!-- Weaknesses -->
+        <div class="pl-section-header">WEAKNESSES <span style="color:var(--red)">&minus;${negTotal.toFixed(1)}</span></div>
+        ${negativeTraits.map(t => {
+            const cat = CATEGORY_COLORS[t.category] || CATEGORY_COLORS['AP'];
+            return `
+                <div class="pl-trait-card weakness">
+                    <div class="pl-trait-top">
+                        <div class="pl-trait-name-wrap">
+                            <span class="pl-trait-name">${escapeHtml(t.name)}</span>
+                            <span class="pl-trait-category" style="color:${cat.color};background:${cat.bg};border:1px solid ${cat.border}">${t.category.toUpperCase()}</span>
+                        </div>
+                        <span class="pl-trait-cost negative">&minus;${t.relief.toFixed(1)}</span>
+                    </div>
+                    <div class="pl-trait-effect">${escapeHtml(t.effect)}</div>
+                </div>
+            `;
+        }).join('')}
+
+        <!-- Cost Breakdown -->
+        ${!c.isCurrent ? `
+        <div class="pl-breakdown">
+            <div class="pl-breakdown-title">COST BREAKDOWN</div>
+            <div class="pl-breakdown-math">
+                <span class="pos">+${posTotal.toFixed(1)}</span>
+                <span class="op"> strengths </span>
+                <span class="neg">&minus; ${negTotal.toFixed(1)}</span>
+                <span class="op"> weaknesses </span>
+                <span class="op">= </span>
+                <span class="raw">${rawCost.toFixed(1)} raw</span>
+                <span class="op"> &rarr; </span>
+                <span class="final" style="color:${finalColor}">${finalAP} AP</span>
+            </div>
+        </div>
+        ` : `
+        <div class="pl-breakdown">
+            <div class="pl-breakdown-title">COST BREAKDOWN</div>
+            <div class="pl-breakdown-math">
+                <span style="color:var(--green);font-weight:700">Current leader &mdash; reappointment is free</span>
+            </div>
+        </div>
+        `}
+    `;
+}
+
+// ═══════════════════════════════════════
+//  Global handlers
+// ═══════════════════════════════════════
+window._selectCandidate = function(index) {
+    selectedIndex[activeRole] = index;
+    render();
+};
+
+window._switchRole = function(role) {
+    activeRole = role;
+    render();
+};
+
+window._appointLeader = async function() {
+    if (isAppointing) return;
+
+    const sel = selectedIndex[activeRole];
+    if (sel === null) return;
+
+    const candidate = candidatesByRole[activeRole][sel];
+    if (!candidate || candidate.isCurrent) return;
+
+    const roleLabel = getRoleLabel(activeRole);
+
+    const confirmLines = [
+        `Appoint ${candidate.firstName} ${candidate.lastName} as ${roleLabel}?\n`,
+        `Cost: ${getAPCostLabel(candidate.apCost)}`,
+        `Ideology: ${candidate.ideology}`,
+    ];
+    if (candidate.electability != null) {
+        confirmLines.push(`Electability: ${getElectabilityTier(candidate.electability).label}`);
+    }
+    confirmLines.push('', `This will replace the current ${roleLabel.toLowerCase()}.`);
+    if (!confirm(confirmLines.join('\n'))) return;
+
+    isAppointing = true;
+    const btn = document.querySelector('.pl-appoint-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Appointing...'; }
+
+    try {
+        const currentTick = currentShard?.current_tick || 0;
+
+        // Deduct AP if cost > 0
+        if (candidate.apCost > 0) {
+            await deductAP(_supabase, currentFaction.id, candidate.apCost);
+        }
+
+        // Update faction with new leader data
+        const updateFields = {};
+        if (activeRole === 'leader') {
+            updateFields.leader_first_name = candidate.firstName;
+            updateFields.leader_last_name = candidate.lastName;
+            updateFields.leader_age = candidate.age;
+            updateFields.electability = candidate.electability;
+        } else if (activeRole === 'deputy') {
+            updateFields.deputy_first_name = candidate.firstName;
+            updateFields.deputy_last_name = candidate.lastName;
+            updateFields.deputy_age = candidate.age;
+        } else if (activeRole === 'whip') {
+            updateFields.whip_first_name = candidate.firstName;
+            updateFields.whip_last_name = candidate.lastName;
+            updateFields.whip_age = candidate.age;
+        }
+
+        let { error: updateErr } = await _supabase.from('factions').update(updateFields).eq('id', currentFaction.id);
+
+        // If deputy/whip columns don't exist yet (migration not applied), retry without age
+        // which is the least critical field, then retry with just name fields
+        if (updateErr && activeRole !== 'leader' && updateErr.message.includes('schema cache')) {
+            const nameOnly = {};
+            const prefix = activeRole === 'deputy' ? 'deputy' : 'whip';
+            nameOnly[`${prefix}_first_name`] = candidate.firstName;
+            nameOnly[`${prefix}_last_name`] = candidate.lastName;
+            const retry1 = await _supabase.from('factions').update(nameOnly).eq('id', currentFaction.id);
+            if (retry1.error && retry1.error.message.includes('schema cache')) {
+                // Columns don't exist at all — store locally only, skip DB write for this role
+                console.warn(`Deputy/whip columns not yet migrated. Appointment stored locally only.`);
+                updateErr = null;
+            } else {
+                updateErr = retry1.error;
+            }
+        }
+
+        if (updateErr) throw new Error('Failed to update faction: ' + updateErr.message);
+
+        // Log event
+        const oldLeader = currentLeaders[activeRole];
+        const eventDescription = oldLeader
+            ? `${candidate.firstName} ${candidate.lastName} replaces ${oldLeader.firstName} ${oldLeader.lastName} as ${roleLabel} of ${currentFaction.faction_name}.`
+            : `${candidate.firstName} ${candidate.lastName} appointed as ${roleLabel} of ${currentFaction.faction_name}.`;
+
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation.id,
+            event_name: `New ${roleLabel}`,
+            description_chosen: eventDescription,
+            category: 'POLITICAL',
+            fired_at_tick: currentTick,
+        }).then(({ error }) => {
+            if (error) console.warn('Event log insert failed (non-blocking):', error.message);
+        });
+
+        // Update local state
+        const leaderState = {
+            firstName: candidate.firstName,
+            lastName: candidate.lastName,
+            age: candidate.age,
+            ideology: candidate.ideology,
+            positiveTraits: candidate.positiveTraits,
+            negativeTraits: candidate.negativeTraits,
+        };
+        if (candidate.electability != null) leaderState.electability = candidate.electability;
+        currentLeaders[activeRole] = leaderState;
+
+        // Regenerate candidates for this role
+        generateAllCandidates();
+        selectedIndex[activeRole] = 0; // Select the current leader
+        render();
+
+        alert(`${candidate.firstName} ${candidate.lastName} has been appointed as ${roleLabel}!`);
+
+    } catch (e) {
+        alert('Error: ' + e.message);
+        if (btn) { btn.disabled = false; btn.textContent = `Appoint ${getRoleLabel(activeRole)}`; }
+    } finally {
+        isAppointing = false;
+    }
+};
+
+</script>
+
+</body>
+</html>

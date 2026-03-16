@@ -436,7 +436,7 @@ async function loadAllNationsData() {
     if (cached) { allNations = cached; return; }
 
     var res = await _supabase.from('nations')
-        .select('id, name, gdp, population, gdp_growth, unemployment, inflation, standard_of_living, debt, tariffs, oil_and_gas, rare_minerals, arable_land, physical_infrastructure, digital_infrastructure, higher_education, credit, happiness, stability');
+        .select('id, name, gdp, population, gdp_growth, unemployment, inflation, standard_of_living, debt, tariffs, oil_and_gas, rare_minerals, arable_land, physical_infrastructure, digital_infrastructure, higher_education, credit, happiness, stability, manufacturing_output, service_output, currency_strength, energy_generation');
 
     if (res.data) {
         allNations = res.data;
@@ -1746,10 +1746,9 @@ function renderBudgetTab(nation) {
     if (isDeficit) {
         h += '<div class="bv2-info-bar">';
         h += '<span class="bv2-info-icon">i</span> ';
-        h += 'All ministries are currently funded at <strong>100%</strong>. ';
         h += 'The shortfall of <strong style="color:#ff4444;">' + formatBudgetCurrency(Math.abs(balance)) + '</strong> exceeds available revenue ';
         h += 'and is being added to the national debt each tick. ';
-        h += 'Raise taxes, grow the economy, or reduce ministry costs to close the gap.';
+        h += 'Raise taxes, grow the economy, or reduce ministry funding to close the gap.';
         h += '</div>';
     }
 
@@ -1921,10 +1920,9 @@ function renderTradeScoresSection(nation) {
     var scores = [
         {
             name: 'Manufacturing',
-            value: ((Number(n.physical_infrastructure) || 0) + (Number(n.higher_education) || 0)) / 2,
+            value: Number(n.manufacturing_output) || 0,
             stats: [
-                { label: 'Phys. Infra', value: Number(n.physical_infrastructure) || 0 },
-                { label: 'Higher Ed', value: Number(n.higher_education) || 0 }
+                { label: 'Mfg. Output', value: Number(n.manufacturing_output) || 0 }
             ]
         },
         {
@@ -1946,11 +1944,9 @@ function renderTradeScoresSection(nation) {
         },
         {
             name: 'Services & Finance',
-            value: ((Number(n.higher_education) || 0) + (Number(n.digital_infrastructure) || 0) + (Number(n.credit) || 0)) / 3,
+            value: Number(n.service_output) || 0,
             stats: [
-                { label: 'Higher Ed', value: Number(n.higher_education) || 0 },
-                { label: 'Digital Infra', value: Number(n.digital_infrastructure) || 0 },
-                { label: 'Credit', value: Number(n.credit) || 0 }
+                { label: 'Service Output', value: Number(n.service_output) || 0 }
             ]
         }
     ];
@@ -2757,7 +2753,7 @@ function renderMinistryPoliciesHtml(category) {
         for (var j = 0; j < institutions.length; j++) {
             total += institutions[j].cost;
             var fpLabel = institutions[j].fundingPct !== undefined ? institutions[j].fundingPct + '% funded' : null;
-            h += budgetLineItem(institutions[j].name, institutions[j].cost, fpLabel, null);
+            h += budgetLineItem(institutions[j].name, institutions[j].cost, null, null, fpLabel);
         }
     }
 
@@ -2779,11 +2775,11 @@ var TRADE_EXPORT_HINTS = {
     fuel_energy:        'Driven by: Oil & Gas',
     minerals:           'Driven by: Rare Minerals',
     food_agriculture:   'Driven by: Arable Land',
-    manufactured_goods: 'Driven by: Physical Infrastructure + Higher Education',
+    manufactured_goods: 'Driven by: Manufacturing Output',
     technology:         'Driven by: Digital Infrastructure + Higher Education',
     arms:               'Driven by: Manufacturing + Defense Spending %',
     tourism:            'Driven by: Happiness + Stability + Physical Infrastructure',
-    services_finance:   'Driven by: Higher Education + Digital Infrastructure + Credit'
+    services_finance:   'Driven by: Service Output'
 };
 var TRADE_IMPORT_HINTS = {
     fuel_energy:        'Driven by: Low Oil & Gas + Low Energy Generation',
@@ -2881,7 +2877,7 @@ function budgetLineItemClickable(label, value, prevValue, prevYear) {
     return h;
 }
 
-function budgetLineItem(label, value, prevValue, prevYear) {
+function budgetLineItem(label, value, prevValue, prevYear, annotation) {
     var h = '<div class="budget-line-item">';
     h += '<div class="budget-line-top">';
     h += '<span class="budget-line-label">' + escapeHtml(label) + '</span>';
@@ -2889,6 +2885,9 @@ function budgetLineItem(label, value, prevValue, prevYear) {
     h += '</div>';
     if (prevValue !== null && value > 0) {
         h += '<div class="budget-line-trend">' + budgetTrendHtml(value, prevValue, prevYear) + '</div>';
+    }
+    if (annotation) {
+        h += '<div class="budget-line-trend"><span class="budget-trend trend-neutral">' + escapeHtml(annotation) + '</span></div>';
     }
     h += '</div>';
     return h;

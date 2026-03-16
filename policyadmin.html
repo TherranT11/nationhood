@@ -266,18 +266,19 @@ const STAT_GROUPS = [
     { label: '💰 Economic', stats: ['gdp','gdp_growth','debt','debt_growth','inflation','interest_rates','trade_balance','currency_strength','foreign_investment','credit'] },
     { label: '📋 Taxation', stats: ['income_tax','corporate_tax','sales_tax','tariffs'] },
     { label: '👷 Labor & Employment', stats: ['unemployment','labor_force_participation','minimum_wage','union_strength','poverty_rate','income_inequality'] },
-    { label: '👥 Demographics', stats: ['population','eligible_voters','population_growth','birth_rate','death_rate','median_age','ethnic_diversity'] },
+    { label: '👥 Demographics', stats: ['population','eligible_voters','population_growth','median_age','ethnic_diversity'] },
     { label: '🏥 Healthcare', stats: ['healthcare_quality','healthcare_accessibility','beds_per_100k','lifespan','drug_use'] },
     { label: '📚 Education', stats: ['literacy','higher_education','education_accessibility','academic_immigration'] },
     { label: '🏗️ Infrastructure', stats: ['physical_infrastructure','digital_infrastructure','rail_network','urbanization','energy_generation','renewable_energy_percentage'] },
     { label: '⛏️ Resources', stats: ['arable_land','rare_minerals','oil_and_gas','fuel_prices'] },
     { label: '🌿 Environment', stats: ['pollution','carbon_emissions'] },
     { label: '🏠 Social', stats: ['standard_of_living','happiness','social_mobility','benefits','crime_rate','incarceration_rate'] },
-    { label: '⛪ Religion', stats: ['religious'] },
+    { label: '⛪ Religion', stats: ['religiosity'] },
     { label: '🏛️ Governance', stats: ['stability','legitimacy','efficiency','corruption','press_freedom','judicial_independence','freedom_index','polarization'] },
     { label: '🔒 Security', stats: ['civil_unrest','terrorism','political_violence'] },
     { label: '🌍 Immigration', stats: ['immigration','illegal_immigration','emigration'] },
-    { label: '🌐 International', stats: ['international_reputation','trade_agreements','sanctions'] }
+    { label: '🏭 Industry', stats: ['manufacturing_output','service_output','cost_of_living','housing_affordability'] },
+    { label: '🌐 International', stats: ['international_reputation'] }
 ];
 
 // Flatten for dropdown building
@@ -769,8 +770,10 @@ function renderStatEffects() {
     `).join('');
 
     // Fix selected values for stat dropdowns (the replace trick doesn't always work)
-    const selects = container.querySelectorAll('.stat-effect-card select');
-    selects.forEach((sel, idx) => { if (statEffects[idx]?.stat_key) sel.value = statEffects[idx].stat_key; });
+    container.querySelectorAll('.stat-effect-card').forEach((card, idx) => {
+        const statSelect = card.querySelector('.se-fields select');
+        if (statSelect && statEffects[idx]?.stat_key) statSelect.value = statEffects[idx].stat_key;
+    });
 
     updateEffectPreview();
 }

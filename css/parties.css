@@ -79,7 +79,7 @@
 
 .reg-strongman-faction {
     font-size: 0.65rem;
-    color: #ff4444;
+    color: var(--dred, #d9534f);
     font-weight: 700;
     text-align: right;
     margin-top: 2px;
@@ -225,7 +225,7 @@
 
 .reg-regime-health-note {
     font-size: 0.65rem;
-    color: #888;
+    color: var(--dtext-3, #6b6a5e);
     margin-top: 4px;
     font-style: italic;
 }

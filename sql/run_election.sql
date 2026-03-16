@@ -1,4 +1,26 @@
 -- ============================================================
+-- _seed_electability(faction_id UUID)
+--
+-- Deterministic electability score (10-60) from a faction UUID.
+-- Mirrors the JS seedElectability() function in politics.js.
+-- ============================================================
+CREATE OR REPLACE FUNCTION _seed_electability(p_faction_id UUID)
+RETURNS INT
+LANGUAGE plpgsql IMMUTABLE
+AS $$
+DECLARE
+    v_hex  TEXT;
+    v_seed BIGINT;
+    v_base INT;
+BEGIN
+    v_hex := REPLACE(p_faction_id::TEXT, '-', '');
+    v_seed := ('x' || SUBSTRING(v_hex FROM 17 FOR 8))::BIT(32)::BIGINT;
+    v_base := 20 + (v_seed % 51)::INT;  -- 20-70
+    RETURN GREATEST(0, v_base - 10);      -- 10-60
+END;
+$$;
+
+-- ============================================================
 -- run_election(p_nation_id UUID, p_election_type TEXT DEFAULT 'parliamentary')
 --
 -- Voter-bloc-based election simulation (Weighted Competition Model).
@@ -8,9 +30,12 @@
 -- 3. ALL parties compete simultaneously for each bloc's voters:
 --      softmax_weight = exp((preference_score - max) / K) × ideology_multiplier
 --      ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
--- 4. Votes distributed proportionally by softmax weight (Largest Remainder)
--- 5. Allocates seats via Largest Remainder (Hare Quota)
--- 6. Writes results to elections table + syncs factions.seats
+-- 4. Electability modifier applied per-party:
+--      <= 50: penalty = (50 - electability) / 10 percent
+--      >= 51: bonus  = (electability - 50) / 20 percent
+-- 5. Votes distributed proportionally by softmax weight (Largest Remainder)
+-- 6. Allocates seats via Largest Remainder (Hare Quota)
+-- 7. Writes results to elections table + syncs factions.seats
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION run_election(
@@ -71,7 +96,8 @@ BEGIN
             COALESCE(fi.tradition_progress, 0)         AS tradition_progress,
             COALESCE(fi.security_freedom, 0)           AS security_freedom,
             COALESCE(fi.globalism_nationalism, 0)      AS globalism_nationalism,
-            COALESCE(fi.individualism_collectivism, 0)  AS individualism_collectivism
+            COALESCE(fi.individualism_collectivism, 0)  AS individualism_collectivism,
+            COALESCE(f.electability, _seed_electability(f.id)) AS electability
         FROM factions f
         LEFT JOIN faction_ideology fi ON fi.faction_id = f.id
         WHERE f.nation_id = p_nation_id
@@ -377,6 +403,9 @@ DECLARE
     v_multiplier   NUMERIC;
     v_weight       NUMERIC;
     v_total_weight NUMERIC := 0;
+    -- Electability modifier
+    v_electability INT;
+    v_elect_mod    NUMERIC;
     v_weights      JSONB := '{}'::JSONB;
     v_allocated    INT := 0;
     v_exact        NUMERIC;
@@ -444,8 +473,18 @@ BEGIN
         -- ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
         v_multiplier := GREATEST(c_MULT_MIN, LEAST(c_MULT_MAX, 1.0 + v_align_avg * c_IDEOLOGY_RATE));
 
-        -- Weight = softmax(approval) × ideology_multiplier
-        v_weight := v_softmax_exp * v_multiplier;
+        -- Electability modifier: 50 is neutral.
+        -- Below 50: penalty grows as distance from 50, divided by 10 (e.g. 40 → -1.0%)
+        -- Above 50: bonus grows as distance from 50, divided by 20 (e.g. 70 → +1.0%)
+        v_electability := COALESCE((v_party.value->>'electability')::INT, 50);
+        IF v_electability <= 50 THEN
+            v_elect_mod := 1.0 - ((50 - v_electability)::NUMERIC / 1000.0);
+        ELSE
+            v_elect_mod := 1.0 + ((v_electability - 50)::NUMERIC / 2000.0);
+        END IF;
+
+        -- Weight = softmax(approval) × ideology_multiplier × electability_modifier
+        v_weight := v_softmax_exp * v_multiplier * v_elect_mod;
         IF v_weight < 0 THEN v_weight := 0; END IF;
 
         v_weights := v_weights || jsonb_build_object(v_pid, v_weight);

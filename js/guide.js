@@ -390,6 +390,259 @@ const guideContent = {
 <p class="guide-tip">National Debt is the silent killer. Many popular laws increase debt. If it spirals, it drags GDP and triggers crises that are hard to escape.</p>
 </div></details>
 `
+    },
+    government: {
+        title: 'Government Guide',
+        html: `
+<details open><summary>Parliamentary System</summary><div>
+<h3>How It Works</h3>
+<p>In a parliamentary system, executive power flows from the legislature. Your party wins seats, builds a coalition, and earns the right to form a government. The Prime Minister serves at the pleasure of parliament. Lose your majority and you lose power.</p>
+
+<h3>The Parliament</h3>
+<p>Parliament is the central institution. Every party holds seats proportional to their vote share at the last election. Seats determine which bills pass, who forms government, and whether the PM survives.</p>
+<p>Seat counts update immediately when:</p>
+<ul>
+<li>An election is held and results are certified</li>
+<li>A party is kicked from the nation &mdash; their seats redistribute proportionally to all remaining parties right away</li>
+<li>A snap election is triggered</li>
+</ul>
+
+<h3>The Coalition</h3>
+<p>No single party typically holds a majority. To govern, parties form a coalition &mdash; a formal agreement to vote together and share cabinet positions. A coalition is stable when it controls more than 50% of seats.</p>
+<p class="guide-tip">Coalition status is visible to all players. A coalition below 50% is a minority government &mdash; every bill becomes a negotiation.</p>
+
+<h3>Forming a Government</h3>
+<p>After an election, the leader of the largest party gets the first opportunity to form government. They have a defined number of ticks to secure a coalition. If they fail, the opportunity passes to the next largest party.</p>
+<p>The PM is formally confirmed when they demonstrate majority support in a <strong>confidence vote</strong>. Until that vote passes, they are a caretaker PM with a limited action set.</p>
+
+<h3>Confidence Votes</h3>
+<p>Any party holding at least <strong>15% of total seats</strong> can call a confidence vote at any time. It passes when more than 50% of <em>all seated MPs</em> vote in favor &mdash; not just a majority of votes cast.</p>
+<table>
+<tr><th>Result</th><th>Effect</th></tr>
+<tr><td><strong>Win</strong></td><td>Government stability +5, opposition loses 2 momentum</td></tr>
+<tr><td><strong>Lose</strong></td><td>PM resigns, caretaker government formed, coalition negotiation restarts</td></tr>
+</table>
+
+<h3>Cabinet</h3>
+<p>The PM appoints cabinet ministers. In a coalition government, seats are distributed between partners roughly proportional to seat share. Refusing to give a partner cabinet seats risks breaking the coalition.</p>
+<p>Each ministry produces ongoing stat effects based on minister performance and funding level. Ministers can be dismissed by the PM at any time for 1 AP. Dismissing a coalition partner's minister without warning may trigger a coalition collapse.</p>
+
+<h3>Acting Ministers</h3>
+<p>If a ministry is vacant, the PM can appoint an <strong>Acting Minister</strong> by directive. Acting ministers provide 50% of a confirmed minister's stat bonus and cost &minus;3 Government Approval per tick they remain unconfirmed. Maximum 3 acting ministers at any time.</p>
+
+<h3>Passing Legislation</h3>
+<ol>
+<li>Bill sponsor submits to Committee (2 AP). All parties can add or remove articles.</li>
+<li>Sponsor sends the bill to the floor for a vote.</li>
+<li>Each party votes Yes, No, or Abstain. Votes weighted by seat count.</li>
+<li>Bill passes if more than 50% of seated votes are Yes. If not reached within 3 ticks, the bill fails.</li>
+<li>Passed bills take effect at the start of the next tick.</li>
+</ol>
+<p class="guide-tip">There is no presidential veto in a parliamentary system. A bill that passes the floor becomes law.</p>
+
+<h3>Whipping</h3>
+<p>Party whips can spend <strong>2 AP</strong> to whip their members on a specific bill, locking the party's vote. Unwhipped parties may vote independently based on ideological alignment with the bill's content.</p>
+
+<h3>Elections</h3>
+<p>Elections are scheduled at fixed intervals but can be triggered early by:</p>
+<ul>
+<li>A failed confidence vote</li>
+<li>The PM calling a snap election (3 AP &mdash; a gamble on strong polling)</li>
+<li>A constitutional crisis event</li>
+</ul>
+<p><strong>Vote share</strong> is determined by: ideological proximity (party position on 5 axes vs. population center) and performance voting (governance quality since last election).</p>
+<p>After an election, the largest party gets first right to form a coalition. They have 3 ticks. If they can't reach 50%, the next largest party gets a turn.</p>
+
+<h3>Losing Power</h3>
+<table>
+<tr><th>Method</th><th>What Happens</th></tr>
+<tr><td><strong>Failed confidence vote</strong></td><td>PM resigns immediately. Caretaker government until new coalition forms.</td></tr>
+<tr><td><strong>Coalition collapses</strong></td><td>If government falls below 50% seats, confidence vote triggers automatically.</td></tr>
+<tr><td><strong>Lost election</strong></td><td>Largest party gets first right to form government. You enter opposition.</td></tr>
+<tr><td><strong>Party dissolved</strong></td><td>Seats redistribute, you lose all government positions.</td></tr>
+</table>
+</div></details>
+
+<details><summary>Presidential System</summary><div>
+<h3>How It Works</h3>
+<p>Executive and legislative power are separated. The President is elected independently and serves a fixed term. They cannot be removed by parliamentary vote &mdash; only by impeachment or term end. This creates the possibility of <strong>divided government</strong>: a President from one party, a parliament controlled by another.</p>
+
+<h3>Winning the Presidency</h3>
+<p>Won through a direct election on a separate cycle from legislative elections. Presidential elections are winner-takes-all &mdash; a small party can hold the presidency while being a minority in the legislature.</p>
+
+<h3>What the President Controls</h3>
+<ul>
+<li><strong>Cabinet appointments</strong> &mdash; Nominates all ministers (requires senate confirmation)</li>
+<li><strong>Bill signing and veto</strong> &mdash; All bills must go to the President's desk</li>
+<li><strong>Executive orders</strong> &mdash; Act by decree without parliamentary approval (with AP cost and approval penalties)</li>
+<li><strong>Non-cabinet appointments</strong> &mdash; Central Bank Governor, Director of Intelligence</li>
+<li><strong>Diplomatic actions</strong> &mdash; Treaty ratification, international org entry/exit, foreign recognition</li>
+</ul>
+
+<h3>Cabinet Nominations</h3>
+<p>The President nominates a candidate for each ministry. Nominations go to a senate confirmation vote, weighted by seat share. Passes with more than 50% support.</p>
+<p><strong>Failed nominations:</strong> The ministry re-opens. The party whose nominee was rejected is barred from that same seat for the remainder of the game. The President may have to appoint ministers from opposition parties.</p>
+
+<h3>Acting Ministers (Presidential)</h3>
+<p>The President can appoint an Acting Minister by Executive Order if confirmation fails. Acting ministers work at <strong>50% effectiveness</strong> and cost &minus;5 Government Approval on appointment plus &minus;3 per tick. Maximum 3 at any time.</p>
+
+<h3>Signing and Vetoing Bills</h3>
+<p>All bills passed by the legislature go to the President's desk. The President has <strong>2 ticks</strong> to act:</p>
+<table>
+<tr><th>Action</th><th>Effect</th></tr>
+<tr><td><strong>Sign</strong></td><td>Bill takes effect next tick</td></tr>
+<tr><td><strong>Veto</strong></td><td>Returned to parliament. Requires 2/3 supermajority to override.</td></tr>
+<tr><td><strong>Pocket (do nothing)</strong></td><td>Bill auto-signs after 2 ticks</td></tr>
+</table>
+<p class="guide-tip">A veto override requires 2/3 of all seated votes. If override fails, the bill is dead and cannot be resubmitted for 3 ticks.</p>
+
+<h3>Executive Orders</h3>
+<table>
+<tr><th>Order</th><th>AP Cost</th></tr>
+<tr><td>Acting Minister Appointment</td><td>8 AP</td></tr>
+<tr><td>Presidential Tax Adjustment (&plusmn;3% on one tax type)</td><td>6 AP</td></tr>
+<tr><td>Emergency Price Controls (freeze fuel/food for 3 ticks)</td><td>10 AP</td></tr>
+<tr><td>Declaration of National Emergency (extra AP, bypass one vote/tick, 4 ticks)</td><td>12 AP</td></tr>
+<tr><td>Executive Pardon (clear corruption crisis or scandal)</td><td>5 AP</td></tr>
+<tr><td>Infrastructure Directive (fast-track infrastructure outcome)</td><td>9 AP</td></tr>
+<tr><td>Presidential Censure (condemn rival party, &minus;5 their approval)</td><td>4 AP</td></tr>
+</table>
+
+<h3>The Overreach Bar</h3>
+<p>Every executive order contributes to the Overreach Bar &mdash; a public counter tracking orders issued in the last 10 ticks.</p>
+<table>
+<tr><th>Orders (10 ticks)</th><th>Effect</th></tr>
+<tr><td>0&ndash;2</td><td>Normal. No penalty.</td></tr>
+<tr><td>3&ndash;4</td><td>&ldquo;Governing by Decree&rdquo; label. &minus;2 approval/tick.</td></tr>
+<tr><td>5+</td><td>&ldquo;Authoritarian Drift&rdquo; label. &minus;5 approval/tick. Opposition can call joint motion to strip executive powers.</td></tr>
+</table>
+<p class="guide-tip">Use executive orders sparingly. The Overreach Bar is visible to all players and can trigger impeachment proceedings.</p>
+
+<h3>Divided Government</h3>
+<p>When the President's party doesn't control a majority in the legislature, every bill is a negotiation. Strategies:</p>
+<ul>
+<li>Negotiate amendments with opposition to get bills across the line</li>
+<li>Use executive orders sparingly for the most urgent priorities</li>
+<li>Court swing parties with AP actions and coalition offers</li>
+<li>Campaign hard for seats in the next legislative election</li>
+</ul>
+
+<h3>Impeachment</h3>
+<p>Two-stage process: first a majority vote to begin proceedings, then a 2/3 supermajority to convict. Triggered by:</p>
+<ul>
+<li>A corruption crisis reaching a critical threshold</li>
+<li>Overreach Bar maxed out</li>
+<li>Any party with sufficient seats calling for proceedings</li>
+</ul>
+<table>
+<tr><th>Result</th><th>Effect</th></tr>
+<tr><td><strong>Survives</strong></td><td>Legitimacy +6 (persecution narrative)</td></tr>
+<tr><td><strong>Convicted</strong></td><td>Immediate removal. Party loses &minus;12 approval globally.</td></tr>
+</table>
+
+<h3>Non-Cabinet Positions</h3>
+<table>
+<tr><th>Position</th><th>Powers</th></tr>
+<tr><td><strong>Governor, Central Bank</strong></td><td>Monetary policy: interest rates, quantitative easing/tightening, currency intervention</td></tr>
+<tr><td><strong>Director, Intelligence Bureau</strong></td><td>Covert surveillance, disinformation campaigns, counterintelligence defense</td></tr>
+</table>
+<p class="guide-tip">A vacant Intelligence Bureau means rival nations can surveil you freely with no defense.</p>
+
+<h3>Losing Power (Presidential)</h3>
+<ul>
+<li><strong>Lost presidential election</strong> &mdash; Lose presidency at term end. Party retains legislative seats.</li>
+<li><strong>Impeachment conviction</strong> &mdash; Immediate removal. 2/3 supermajority required. Party loses &minus;12 approval.</li>
+<li><strong>Overreach consequences</strong> &mdash; Sustained abuse can trigger a parliamentary motion to strip presidential powers.</li>
+</ul>
+</div></details>
+
+<details><summary>Autocratic System</summary><div>
+<h3>How It Works</h3>
+<p>Autocracy is a fundamentally different game. You are not courting voters or negotiating coalitions. You are managing power &mdash; the loyalty of the factions that keep you in place, and the slow erosion of the Regime Health bar that is always ticking downward. The question is never &ldquo;will I win the election.&rdquo; The question is &ldquo;how long can I hold this together.&rdquo;</p>
+
+<h3>Regime Health</h3>
+<p>The core resource. Starts at <strong>80</strong> and decays at <strong>0.5 per tick</strong> regardless of what you do. If it hits zero, the regime collapses.</p>
+<table>
+<tr><th>Range</th><th>Label</th><th>Effect</th></tr>
+<tr><td>80&ndash;100</td><td>Consolidated</td><td>Full action set. No penalties.</td></tr>
+<tr><td>60&ndash;79</td><td>Stable</td><td>Normal operation.</td></tr>
+<tr><td>40&ndash;59</td><td>Strained</td><td>Opposition events more frequent. Coup risk begins.</td></tr>
+<tr><td>20&ndash;39</td><td>Fragile</td><td>International scrutiny. AP costs increase. Loyalty harder to maintain.</td></tr>
+<tr><td>0&ndash;19</td><td>Collapse</td><td>Coup mechanic activates. Regime collapse imminent.</td></tr>
+</table>
+<p><strong>How to raise Regime Health:</strong> Successful Strongman actions, high faction loyalty, low civil unrest and political violence, strong economic performance, successful propaganda.</p>
+
+<h3>The Faction System</h3>
+<p>Instead of voter blocs, you manage internal factions &mdash; military, oligarchs, party apparatus, security services, regional governors. Each faction has three public stats and one private resource:</p>
+<table>
+<tr><th>Stat</th><th>Description</th></tr>
+<tr><td><strong>Loyalty (0&ndash;100)</strong></td><td>How committed to the regime. Falls if ignored or actions they oppose are taken.</td></tr>
+<tr><td><strong>Standing (0&ndash;100)</strong></td><td>How much power they hold. Higher = more influence and more danger if they turn.</td></tr>
+<tr><td><strong>Seats</strong></td><td>Representation in the rubber-stamp parliament. Matters for legitimacy optics.</td></tr>
+<tr><td><strong>Embezzled Funds (hidden)</strong></td><td>Independent power base. High embezzlement = faction is planning something.</td></tr>
+</table>
+
+<h3>Faction Actions</h3>
+<table>
+<tr><th>Action</th><th>Effect</th></tr>
+<tr><td><strong>Reward Faction</strong></td><td>Loyalty +8, Standing +4. Costs treasury. Other factions &minus;2 loyalty.</td></tr>
+<tr><td><strong>Purge Leadership</strong></td><td>Standing &minus;10, Embezzled Funds reset. Loyalty &minus;15. Regime Health +3.</td></tr>
+<tr><td><strong>Promote Faction</strong></td><td>Standing +8 (4 AP). Rival factions &minus;3 Standing.</td></tr>
+<tr><td><strong>Investigate Faction</strong></td><td>Reveals Embezzled Funds. Loyalty &minus;5 (they know you're watching).</td></tr>
+<tr><td><strong>Co-opt Faction</strong></td><td>Loyalty +12 but Standing +8 &mdash; they grow more powerful.</td></tr>
+<tr><td><strong>Isolate Faction</strong></td><td>Standing &minus;6, Loyalty &minus;8 &mdash; weakened but radicalized.</td></tr>
+</table>
+
+<h3>Strongman Actions</h3>
+<p>High-impact, high-cost actions that bypass faction mechanics and directly affect the nation and Regime Health. Visible to all players.</p>
+<table>
+<tr><th>Action</th><th>AP</th><th>Effect</th></tr>
+<tr><td><strong>State of Emergency</strong></td><td>10</td><td>Suspends politics for 3 ticks. Regime Health +8, civil_unrest +6 on expiry.</td></tr>
+<tr><td><strong>Press Suppression</strong></td><td>5</td><td>press_freedom &minus;8, polarization +4, Regime Health +3 for 2 ticks.</td></tr>
+<tr><td><strong>Political Imprisonment</strong></td><td>6</td><td>Removes a rival faction leader. Their faction: loyalty &minus;15, standing &minus;10.</td></tr>
+<tr><td><strong>Nationalization Decree</strong></td><td>8</td><td>Seizes a sector. gdp_growth &minus;2, Regime Health +5, business faction loyalty &minus;12.</td></tr>
+</table>
+<p class="guide-tip">Each Strongman action raises a hidden Repression Score. High repression triggers sanctions, legitimacy penalties, and accelerates civil unrest. Constant repression burns Regime Health faster than it restores it.</p>
+
+<h3>The Rubber-Stamp Parliament</h3>
+<p>Most autocratic nations retain a nominal legislature. It doesn't function as a real check on power. It serves three purposes:</p>
+<ul>
+<li>Provides political cover for regime decisions</li>
+<li>Gives lower-tier faction members seats and patronage, maintaining loyalty</li>
+<li>Provides international legitimacy if maintained credibly</li>
+</ul>
+<p>If the regime controls more than 60% of seats, bills pass automatically. The interest is in what bills <em>signal</em>, not in passing them.</p>
+
+<h3>The Coup Mechanic</h3>
+<p>When Regime Health drops below 40 and at least one faction has Loyalty below 25, the coup probability mechanic activates. Each tick a hidden roll determines whether a coup fires.</p>
+<table>
+<tr><th>Condition</th><th>Probability</th></tr>
+<tr><td>Health 30&ndash;40, one disloyal faction</td><td>~5% per tick</td></tr>
+<tr><td>Health 20&ndash;30, two disloyal factions</td><td>~15% per tick</td></tr>
+<tr><td>Health &lt;20, military faction disloyal</td><td>~30% per tick</td></tr>
+</table>
+<table>
+<tr><th>Result</th><th>Effect</th></tr>
+<tr><td><strong>Coup succeeds</strong></td><td>Regime collapses. Coup faction takes control. Previous leader enters opposition.</td></tr>
+<tr><td><strong>Coup fails</strong></td><td>Coup faction: Standing &minus;20, Loyalty &minus;10. Regime Health +5.</td></tr>
+</table>
+<p class="guide-tip">The Military faction is the most dangerous to let become disloyal. They have the direct capability to execute a coup. Keep Military Loyalty above 50 at all times. Everything else can be negotiated around.</p>
+
+<h3>International Standing</h3>
+<p>Autocratic nations face ongoing pressure from the international community. The legitimacy stat is harder to maintain, and certain events trigger automatic international scrutiny.</p>
+<p>Strategies for managing international standing:</p>
+<ul>
+<li>Maintain at least nominal democratic institutions (rubber-stamp elections, token press freedom)</li>
+<li>Prioritize economic performance &mdash; prosperous autocracies face less scrutiny</li>
+<li>Use international organizations strategically for cover</li>
+<li>Build bilateral relationships with players incentivized to ignore your domestic politics</li>
+</ul>
+
+<h3>Transitioning Away from Autocracy</h3>
+<p>An autocratic government can liberalize, but it is deliberate and costly. Requires passing constitutional reform bills through the rubber-stamp parliament while managing faction resistance. Also requires Regime Health above 60 &mdash; you cannot liberalize from weakness.</p>
+<p class="guide-tip">A successful democratic transition is one of the highest-legitimacy actions in the game. It resets negative modifier stacks and opens the full democratic toolkit. But the factions that lose power become potential opposition with existing Standing and accumulated resources.</p>
+</div></details>
+`
     }
 };
 

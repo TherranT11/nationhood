@@ -35,6 +35,9 @@ export const DIPLOMACY_CONFIG = {
     STATE_VISIT_IO_REP_BONUS: 3,        // +3 int'l rep if shared IO membership (future)
     STATE_VISIT_HIGH_REL_GDP_BONUS: 5,  // +5 gdp_growth if relations > 70
     STATE_VISIT_FIRST_STABILITY: 1,     // +1 stability for first-ever visit
+    STATE_VISIT_AUTOCRACY_DIE: 12,      // 1D12 roll for autocracy risk
+    STATE_VISIT_AUTOCRACY_THRESHOLD: 6, // roll <= threshold = negative outcome
+    STATE_VISIT_AUTOCRACY_CHANGE: 3,    // ±gov_approval change
     TREATY_RATIFICATION_VOTING_TICKS: 6,
     AMBASSADOR_CONFIRMATION_VOTING_TICKS: 6,
     AMBASSADOR_TERM_LENGTH: 60,         // ticks (60 ticks = 5 years)
@@ -447,7 +450,7 @@ export const PROPOSAL_TYPES = {
         description: 'Economic warfare — tanks target trade stats, also hurts your own.',
         stat_effects: [
             { stat_key: 'trade_balance', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'sanctions', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 }
+            { stat_key: 'international_reputation', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
     ceasefire: {
@@ -575,11 +578,12 @@ export const POLICY_STANCES = {
 
 // Stats where LOWER is better (inverted approval logic)
 export const INVERTED_STATS = [
-    'unemployment', 'poverty_rate', 'income_inequality', 'death_rate',
+    'unemployment', 'poverty_rate', 'income_inequality',
     'pollution', 'carbon_emissions', 'crime_rate', 'incarceration_rate',
     'drug_use', 'corruption', 'polarization', 'civil_unrest', 'terrorism',
-    'political_violence', 'emigration', 'sanctions', 'debt', 'debt_growth',
-    'inflation', 'interest_rates', 'illegal_immigration', 'fuel_prices'
+    'political_violence', 'emigration', 'debt', 'debt_growth',
+    'inflation', 'interest_rates', 'illegal_immigration', 'fuel_prices',
+    'cost_of_living'
 ];
 
 // Stats stored as raw numbers (not 0-100 indices).
@@ -598,4 +602,934 @@ export const RAW_SCALING_DIVISORS = {
 // Debt is driven exclusively by the budget system (surplus/deficit).
 // Any policy/event/crisis/connection targeting these keys will be silently skipped.
 export const STAT_PROCESSOR_SKIP = new Set(['gdp', 'debt']);
+
+// ==================== MINOR DIPLOMATIC INITIATIVE ====================
+
+/**
+ * Minor Diplomatic Initiative — Tier 1 negotiated diplomatic action.
+ * Bundled articles proposed by an Ambassador to a target nation.
+ * Accepted directly by target's Ambassador, FM, or HoG (no parliamentary ratification).
+ */
+export const MINOR_INITIATIVE_CONFIG = {
+    AP_COST: 2,
+    TIER: 1,
+    TYPE: 'minor_diplomatic_initiative',
+    BUDGET_SOURCE: 'embassies',              // institution id in budget_item_allocations
+    HOSTILE_RELATION_THRESHOLD: -50,         // cannot propose below this
+    MAX_VISA_AGREEMENTS_PER_INITIATIVE: 1,   // only one visa agreement per initiative
+};
+
+/**
+ * Duration scaling multipliers for visa agreements.
+ */
+export const VISA_DURATION_OPTIONS = [
+    { key: 30,  label: '30 Days',  modifier: 0.6 },
+    { key: 90,  label: '90 Days',  modifier: 1.0 },
+    { key: 180, label: '180 Days', modifier: 1.3 }
+];
+
+/**
+ * Scope scaling multipliers for visa agreements.
+ */
+export const VISA_SCOPE_OPTIONS = [
+    { key: 'tourism',          label: 'Tourism Only',       modifier: 1.0, penalties: false },
+    { key: 'tourism_business', label: 'Tourism + Business', modifier: 1.2, penalties: false },
+    { key: 'all',              label: 'All Purposes',       modifier: 1.5, penalties: true }
+];
+
+/**
+ * Direction options for visa agreements.
+ */
+export const VISA_DIRECTION_OPTIONS = [
+    { key: 'reciprocal',        label: 'Reciprocal' },
+    { key: 'proposer_to_target', label: 'One-way (Our Citizens)' },
+    { key: 'target_to_proposer', label: 'One-way (Their Citizens)' }
+];
+
+/**
+ * Excludes (carve-outs) for visa agreements. Checked = excluded from waiver.
+ */
+export const VISA_EXCLUDES = [
+    { key: 'work_permits',     label: 'Work Permits',     defaultChecked: true },
+    { key: 'residency',        label: 'Residency',        defaultChecked: false },
+    { key: 'diplomatic_staff', label: 'Diplomatic Staff',  defaultChecked: true }
+];
+
+/**
+ * Base effects for visa agreement (at 90 Days / Tourism Only / Reciprocal / Default Excludes).
+ */
+export const VISA_BASE_EFFECTS = {
+    relations: 6,
+    revenue: 12_000_000,
+    intl_reputation: 1,
+    immigration: 1,
+    polarization: 0,
+    terrorism_risk: 0
+};
+
+/**
+ * Cultural Exchange programme options (cosmetic — no mechanical difference).
+ */
+export const CULTURAL_PROGRAMMES = [
+    { key: 'artist_exchange',      label: 'Artist Exchange' },
+    { key: 'museum_exhibits',      label: 'Museum Exhibits' },
+    { key: 'film_festival',        label: 'Film Festival' },
+    { key: 'performance_tours',    label: 'Performance Tours' },
+    { key: 'heritage_cooperation', label: 'Heritage Cooperation' }
+];
+
+/**
+ * Cultural Exchange duration options with cost scaling.
+ */
+export const CULTURAL_DURATION_OPTIONS = [
+    { key: 12, label: '12 Ticks (1 Year)', cost: 20_000_000, permanent: false },
+    { key: 24, label: '24 Ticks (2 Years)', cost: 35_000_000, permanent: false },
+    { key: 0,  label: 'Permanent',          cost: 50_000_000, permanent: true, ongoing_per_tick: 5_000_000 }
+];
+
+/**
+ * Cultural Exchange funding split options.
+ */
+export const CULTURAL_FUNDING_OPTIONS = [
+    { key: '50_50',        label: '50/50',           proposer_share: 0.5, target_share: 0.5 },
+    { key: 'we_pay_more',  label: '60/40 (We Pay More)', proposer_share: 0.6, target_share: 0.4 },
+    { key: 'they_pay_more', label: '60/40 (They Pay More)', proposer_share: 0.4, target_share: 0.6 }
+];
+
+/**
+ * Cultural Exchange base effects (at 24 Ticks / 50/50).
+ */
+export const CULTURAL_BASE_EFFECTS = {
+    relations: 4,
+    intl_reputation: 1,
+    soft_power: 3
+};
+
+/**
+ * Student Exchange level options.
+ */
+export const STUDENT_LEVEL_OPTIONS = [
+    { key: 'undergraduate', label: 'Undergraduate', higher_ed_bonus: 0 },
+    { key: 'graduate',      label: 'Graduate',      higher_ed_bonus: 0.5 },
+    { key: 'both',          label: 'Both',          higher_ed_bonus: 1.0 }
+];
+
+/**
+ * Student Exchange duration options.
+ */
+export const STUDENT_DURATION_OPTIONS = [
+    { key: 'semester',    label: '1 Semester (6 Ticks)', ticks: 6, permanent_bonus: false },
+    { key: 'full_year',   label: 'Full Year (12 Ticks)', ticks: 12, permanent_bonus: false },
+    { key: 'full_degree', label: 'Full Degree (36+ Ticks)', ticks: 36, permanent_bonus: true }
+];
+
+/**
+ * Student Exchange funding options.
+ */
+export const STUDENT_FUNDING_OPTIONS = [
+    { key: 'host_pays',   label: 'Host Pays',    proposer_share: 0, target_share: 1.0 },
+    { key: 'split',        label: 'Split',        proposer_share: 0.5, target_share: 0.5 },
+    { key: 'sender_pays',  label: 'Sender Pays',  proposer_share: 1.0, target_share: 0 }
+];
+
+/**
+ * Student Exchange field options (cosmetic except Sciences/Engineering + Graduate = +0.5 Technology).
+ */
+export const STUDENT_FIELDS = [
+    { key: 'sciences',    label: 'Sciences',    tech_eligible: true },
+    { key: 'engineering', label: 'Engineering', tech_eligible: true },
+    { key: 'medicine',    label: 'Medicine',    tech_eligible: false },
+    { key: 'humanities',  label: 'Humanities',  tech_eligible: false },
+    { key: 'law',         label: 'Law',         tech_eligible: false },
+    { key: 'economics',   label: 'Economics',   tech_eligible: false }
+];
+
+/**
+ * Student Exchange base effects (at 200 seats / Undergraduate / Full Year / Split).
+ */
+export const STUDENT_BASE_EFFECTS = {
+    relations: 3,
+    cost_total: 6_000_000,
+    higher_education: 1,
+    soft_power_per_year: 1
+};
+
+/**
+ * Seats scaling for student exchange (diminishing returns above 200).
+ */
+export function getStudentSeatsModifier(seats) {
+    seats = Math.max(50, Math.min(500, seats));
+    if (seats <= 200) return seats / 200;
+    // Diminishing returns: 200→1.0, 500→1.8
+    return 1.0 + ((seats - 200) / 300) * 0.8;
+}
+
+/**
+ * Joint Statement visibility options.
+ */
+export const STATEMENT_VISIBILITY_OPTIONS = [
+    { key: 'public',  label: 'Public' },
+    { key: 'private', label: 'Private' }
+];
+
+/**
+ * Calculate all effects for a visa agreement article given its config.
+ * Returns an effects object with computed values.
+ */
+export function calculateVisaEffects(config) {
+    const durationOpt = VISA_DURATION_OPTIONS.find(d => d.key === config.duration) || VISA_DURATION_OPTIONS[1];
+    const scopeOpt = VISA_SCOPE_OPTIONS.find(s => s.key === config.scope) || VISA_SCOPE_OPTIONS[0];
+    const dMod = durationOpt.modifier;
+    const sMod = scopeOpt.modifier;
+    const isReciprocal = config.direction === 'reciprocal';
+    const isOneWayProposer = config.direction === 'proposer_to_target';
+    // const isOneWayTarget = config.direction === 'target_to_proposer';
+
+    const excludes = config.excludes || ['work_permits', 'diplomatic_staff'];
+    const workIncluded = !excludes.includes('work_permits');
+
+    let relations = Math.round(VISA_BASE_EFFECTS.relations * dMod * sMod);
+    let revenue = Math.round(VISA_BASE_EFFECTS.revenue * dMod * sMod);
+    let intl_reputation = VISA_BASE_EFFECTS.intl_reputation;
+    let immigration = workIncluded ? 2 : 1;
+
+    // One-way: halve relations for the non-receiving nation, revenue only to receiver
+    let proposer_relations = relations;
+    let target_relations = relations;
+    let proposer_revenue = revenue;
+    let target_revenue = revenue;
+
+    if (!isReciprocal) {
+        if (isOneWayProposer) {
+            // Proposer's citizens go to target → target receives tourists/revenue
+            proposer_relations = Math.round(relations / 2);
+            proposer_revenue = 0;
+        } else {
+            // Target's citizens go to proposer → proposer receives tourists/revenue
+            target_relations = Math.round(relations / 2);
+            target_revenue = 0;
+        }
+    }
+
+    // Polarization + Terrorism from "All Purposes" scope
+    let proposer_polarization = 0, target_polarization = 0;
+    let proposer_terrorism = 0, target_terrorism = 0;
+    if (scopeOpt.penalties) {
+        if (isReciprocal) {
+            proposer_polarization = 1; target_polarization = 1;
+            proposer_terrorism = 0.5; target_terrorism = 0.5;
+        } else if (isOneWayProposer) {
+            // Target receives visitors → penalties on target only
+            target_polarization = 1; target_terrorism = 0.5;
+        } else {
+            // Proposer receives visitors → penalties on proposer only
+            proposer_polarization = 1; proposer_terrorism = 0.5;
+        }
+    }
+
+    return {
+        proposer: {
+            relations: proposer_relations,
+            revenue: proposer_revenue,
+            intl_reputation,
+            immigration: isReciprocal || !isOneWayProposer ? immigration : 0,
+            polarization: proposer_polarization,
+            terrorism_risk: proposer_terrorism
+        },
+        target: {
+            relations: target_relations,
+            revenue: target_revenue,
+            intl_reputation,
+            immigration: isReciprocal || isOneWayProposer ? immigration : 0,
+            polarization: target_polarization,
+            terrorism_risk: target_terrorism
+        },
+        // Summary (for display in proposer's UI — shows total combined)
+        summary: {
+            relations,
+            revenue,
+            intl_reputation,
+            immigration,
+            polarization: proposer_polarization || target_polarization ? 1 : 0,
+            terrorism_risk: proposer_terrorism || target_terrorism ? 0.5 : 0
+        }
+    };
+}
+
+/**
+ * Calculate effects for a cultural exchange article.
+ */
+export function calculateCulturalEffects(config) {
+    const durationOpt = CULTURAL_DURATION_OPTIONS.find(d => d.key === config.duration) || CULTURAL_DURATION_OPTIONS[1];
+    const fundingOpt = CULTURAL_FUNDING_OPTIONS.find(f => f.key === config.funding) || CULTURAL_FUNDING_OPTIONS[0];
+    const totalCost = durationOpt.cost;
+
+    return {
+        relations: CULTURAL_BASE_EFFECTS.relations,
+        intl_reputation: CULTURAL_BASE_EFFECTS.intl_reputation,
+        soft_power: CULTURAL_BASE_EFFECTS.soft_power,
+        soft_power_duration: durationOpt.permanent ? null : durationOpt.key,
+        cost_proposer: Math.round(totalCost * fundingOpt.proposer_share),
+        cost_target: Math.round(totalCost * fundingOpt.target_share),
+        ongoing_per_tick: durationOpt.permanent ? durationOpt.ongoing_per_tick : 0
+    };
+}
+
+/**
+ * Calculate effects for a student exchange article.
+ */
+export function calculateStudentEffects(config) {
+    const seats = config.seats || 200;
+    const seatsMod = getStudentSeatsModifier(seats);
+    const levelOpt = STUDENT_LEVEL_OPTIONS.find(l => l.key === config.level) || STUDENT_LEVEL_OPTIONS[0];
+    const fundingOpt = STUDENT_FUNDING_OPTIONS.find(f => f.key === config.funding) || STUDENT_FUNDING_OPTIONS[1];
+
+    const totalCost = Math.round(STUDENT_BASE_EFFECTS.cost_total * seatsMod);
+    const fields = config.fields || [];
+    const hasTechFields = fields.some(f => {
+        const fi = STUDENT_FIELDS.find(sf => sf.key === f);
+        return fi && fi.tech_eligible;
+    });
+    const techBonus = (hasTechFields && (config.level === 'graduate' || config.level === 'both')) ? 0.5 : 0;
+
+    const durationOpt = STUDENT_DURATION_OPTIONS.find(d => d.key === config.duration) || STUDENT_DURATION_OPTIONS[1];
+
+    return {
+        relations: STUDENT_BASE_EFFECTS.relations,
+        higher_education: STUDENT_BASE_EFFECTS.higher_education + levelOpt.higher_ed_bonus,
+        soft_power_per_year: STUDENT_BASE_EFFECTS.soft_power_per_year,
+        permanent_soft_power: durationOpt.permanent_bonus ? 1 : 0,
+        technology_bonus: techBonus,
+        cost_proposer: Math.round(totalCost * fundingOpt.proposer_share),
+        cost_target: Math.round(totalCost * fundingOpt.target_share),
+        duration_ticks: durationOpt.ticks
+    };
+}
+
+/**
+ * Article type definitions for Minor Diplomatic Initiative.
+ */
+export const INITIATIVE_ARTICLE_TYPES = {
+    visa_agreement: {
+        key: 'visa_agreement',
+        label: 'Visa Agreement',
+        description: 'Establishes visa-free travel between nations.',
+        max_per_initiative: 1,
+        has_config: true,
+        calculateEffects: calculateVisaEffects,
+        default_config: {
+            duration: 90,
+            scope: 'tourism',
+            direction: 'reciprocal',
+            excludes: ['work_permits', 'diplomatic_staff']
+        }
+    },
+    cultural_exchange: {
+        key: 'cultural_exchange',
+        label: 'Cultural Exchange',
+        description: 'Establishes cultural programmes between nations. Builds soft power over time.',
+        max_per_initiative: null,
+        has_config: true,
+        calculateEffects: calculateCulturalEffects,
+        default_config: {
+            programmes: ['artist_exchange'],
+            duration: 24,
+            funding: '50_50'
+        }
+    },
+    student_exchange: {
+        key: 'student_exchange',
+        label: 'Student Exchange Program',
+        description: 'University exchange programme. Cheap, builds long-term soft power and education.',
+        max_per_initiative: null,
+        has_config: true,
+        calculateEffects: calculateStudentEffects,
+        default_config: {
+            seats: 200,
+            level: 'undergraduate',
+            duration: 'full_year',
+            funding: 'split',
+            fields: ['sciences']
+        }
+    },
+    joint_statement: {
+        key: 'joint_statement',
+        label: 'Joint Statement',
+        description: 'Public or private declaration. No mechanical effect.',
+        max_per_initiative: null,
+        has_config: true,
+        calculateEffects: () => ({}),
+        default_config: {
+            text: '',
+            visibility: 'public'
+        }
+    }
+};
+
+// ── STATE VISIT CONFIGURATION ──
+
+export const STATE_VISIT_AGENDA_ITEMS = [
+    {
+        key: 'formal_reception', day: 1, slot: 'Arrival',
+        title: 'Formal Reception Ceremony',
+        desc: 'Honour guard, national anthems, and official welcome at the host capital. Sets the tone for the visit and generates press coverage in both nations.',
+        effects: { relations: 3, public_awareness: 5 },
+        tags: ['Press Event'], costs: {}, risks: {}
+    },
+    {
+        key: 'joint_press', day: 1, slot: 'Afternoon',
+        title: 'Joint Press Conference',
+        desc: 'Public statement by both ambassadors on shared goals and bilateral cooperation. Allows framing of the diplomatic narrative. Boosts Government Approval in both nations if relations are positive.',
+        effects: { gov_approval: 2, relations: 2 },
+        tags: [], costs: {}, risks: { gaffe: 0.08 }
+    },
+    {
+        key: 'economic_forum', day: 2, slot: 'Morning',
+        title: 'Economic Forum',
+        desc: 'Business delegations from both nations meet to discuss trade opportunities, investment climate, and commercial partnerships. May trigger trade deal prerequisite.',
+        effects: { trade_relations: 4 },
+        tags: ['Unlocks Trade Deal'], costs: { debt: 1200000 }, risks: {}
+    },
+    {
+        key: 'university_address', day: 2, slot: 'Afternoon',
+        title: 'University Address',
+        desc: "Ambassador delivers a public lecture at the host nation's national university. Builds cultural capital and soft power. Topic can be chosen for targeted effect.",
+        effects: { soft_power: 3, education_approval: 2 },
+        tags: [], costs: {}, risks: {}
+    },
+    {
+        key: 'bilateral_talks', day: 2, slot: 'Evening',
+        title: 'Private Bilateral Talks',
+        desc: 'Closed-door meeting between senior officials. No press, no public record. Can discuss sensitive topics and build trust for future negotiations. The content remains private.',
+        effects: { relations: 5 },
+        tags: ['Trust Threshold', 'Enables Initiatives'], costs: {}, risks: {}
+    },
+    {
+        key: 'military_review', day: 3, slot: 'Morning',
+        title: 'Military Review',
+        desc: "Joint inspection of host nation's armed forces. Signals strength and mutual trust but may alarm hostile neighbours.",
+        effects: { military_trust: 4 },
+        tags: [], costs: {}, risks: { hostiles_alarmed: true }
+    },
+    {
+        key: 'cultural_exchange', day: 3, slot: 'Afternoon',
+        title: 'Cultural Exchange Programme',
+        desc: 'Exchange of artistic delegations, museum exhibits, and performance troupes. Long-term soft power investment.',
+        effects: { soft_power: 4, relations: 2 },
+        tags: [], costs: { debt: 800000 }, risks: {}
+    },
+    {
+        key: 'monument_visit', day: 3, slot: 'Evening',
+        title: 'Monument Visit',
+        desc: 'Symbolic visit to a national memorial or heritage site. Strong public signal of respect. Low cost, moderate opinion boost.',
+        effects: { public_opinion: 3 },
+        tags: ['Symbolic'], costs: {}, risks: {}
+    },
+    {
+        key: 'treaty_signing', day: 3, slot: 'Closing',
+        title: 'Treaty Signing Ceremony',
+        desc: 'Formal ratification of a pending agreement during the visit. Requires an accepted proposal awaiting signature.',
+        effects: {},
+        tags: [], costs: {}, risks: {},
+        requires: 'pending_treaty'
+    }
+];
+
+export const STATE_VISIT_TYPES = {
+    official_state_visit: { label: 'Official State Visit', apMod: 0, multiplier: 1.0, relMult: 1.0, tradeMult: 1.0, softPowerMult: 1.0 },
+    working_visit:        { label: 'Working Visit',        apMod: -1, multiplier: 1.0, relMult: 0.8, tradeMult: 1.2, softPowerMult: 1.0 },
+    goodwill_visit:       { label: 'Goodwill Visit',       apMod: -2, multiplier: 1.0, relMult: 1.0, tradeMult: 0.6, softPowerMult: 1.3 }
+};
+
+export const STATE_VISIT_DURATIONS = {
+    short:    { label: 'Short',    apCost: 1, multiplier: 0.7, maxAgenda: 3 },
+    moderate: { label: 'Moderate', apCost: 2, multiplier: 1.0, maxAgenda: 5 },
+    lengthy:  { label: 'Lengthy',  apCost: 3, multiplier: 1.3, maxAgenda: 7 }
+};
+
+export const STATE_VISIT_DELEGATIONS = {
+    small_4:    { label: 'Small (4)',    debt: 1200000, effectBonus: 0 },
+    standard_8: { label: 'Standard (8)', debt: 2400000, effectBonus: 0 },
+    large_14:   { label: 'Large (14)',   debt: 4800000, effectBonus: 0.1 }
+};
+
+// ==================== MAJOR DIPLOMATIC INITIATIVE ====================
+
+/**
+ * Major Diplomatic Initiative — Tier 3 negotiated diplomatic action.
+ * Bundled articles proposed by the Foreign Minister to a target nation.
+ * Requires bilateral parliamentary ratification (both nations must pass).
+ */
+export const MAJOR_INITIATIVE_CONFIG = {
+    AP_COST: 2,
+    TIER: 3,
+    TYPE: 'major_diplomatic_initiative',
+    BUDGET_SOURCE: 'foreign',               // institution id in budget_item_allocations
+    HOSTILE_RELATION_THRESHOLD: -50,         // cannot propose below this
+    HOG_FALLBACK_AP_PENALTY: 3,             // extra AP if HoG proposes without FM
+    RATIFICATION_VOTING_TICKS: 6,           // both parliaments vote for 6 ticks
+    REPROPOSE_COOLDOWN_TICKS: 8,            // cannot re-propose same initiative for 8 ticks after failure
+};
+
+// ── OPEN BORDERS AGREEMENT ──
+
+export const OPEN_BORDERS_SCOPE_OPTIONS = [
+    { key: 'full',            label: 'Full Freedom of Movement', modifier: 1.5, desc: 'Entry, work, residency, and settlement.' },
+    { key: 'work_residency',  label: 'Work & Residency Only',   modifier: 1.0, desc: 'Can work and live, but citizenship stays with home nation.' },
+    { key: 'labor_mobility',  label: 'Labor Mobility Only',     modifier: 0.6, desc: 'Can work across the border but must maintain home residence.' }
+];
+
+export const OPEN_BORDERS_DIRECTION_OPTIONS = [
+    { key: 'reciprocal',    label: 'Reciprocal',                    desc: 'Both nations open to each other.' },
+    { key: 'our_to_them',   label: 'One-Way (Our Citizens to Them)', desc: 'Only proposer\'s citizens gain access.' },
+    { key: 'their_to_us',   label: 'One-Way (Their Citizens to Us)', desc: 'Only target\'s citizens gain access.' }
+];
+
+export const OPEN_BORDERS_WORKER_PROTECTIONS = [
+    { key: 'enhanced', label: 'Enhanced Protections',  cost_per_year: 8000000, exploitation_mult: 0.2, desc: 'Minimum wage, anti-exploitation enforcement, pension portability.' },
+    { key: 'standard', label: 'Standard Labor Law',    cost_per_year: 0,       exploitation_mult: 1.0, desc: 'Migrant workers subject to host nation\'s existing labor law.' },
+    { key: 'none',     label: 'No Special Provisions', cost_per_year: 0,       exploitation_mult: 1.5, desc: 'General law applies with no additional protections.' }
+];
+
+export const OPEN_BORDERS_TRANSITION_OPTIONS = [
+    { key: 'immediate', label: 'Immediate',          ramp_ticks: 0,  unrest_spike: 3,  desc: 'Borders open on ratification.' },
+    { key: '6_tick',    label: '6-Tick Transition',   ramp_ticks: 6,  unrest_spike: 1,  desc: 'Phased opening over 6 ticks.' },
+    { key: '12_tick',   label: '12-Tick Transition',  ramp_ticks: 12, unrest_spike: 0,  desc: 'Gradual opening, least disruptive.' }
+];
+
+const OPEN_BORDERS_BASE_EFFECTS = {
+    relations: 8,
+    immigration: 4,
+    gdp_growth: 1,
+    labor_force_participation: 2,
+    civil_unrest: 3,
+    polarization: 2,
+    terrorism: 0.5,
+    housing_affordability: -1,
+    cost_of_living: 0.5,
+    cost_proposer: 15000000,
+    cost_target: 15000000,
+    ongoing_cost: 5000000
+};
+
+/**
+ * Calculate effects for an Open Borders Agreement article.
+ * @param {Object} config - { scope, direction, worker_protections, transition }
+ * @returns {{ proposer: Object, target: Object, summary: Object }}
+ */
+export function calculateOpenBordersEffects(config) {
+    const scopeOpt = OPEN_BORDERS_SCOPE_OPTIONS.find(s => s.key === config.scope) || OPEN_BORDERS_SCOPE_OPTIONS[1];
+    const transOpt = OPEN_BORDERS_TRANSITION_OPTIONS.find(t => t.key === config.transition) || OPEN_BORDERS_TRANSITION_OPTIONS[0];
+    const protOpt = OPEN_BORDERS_WORKER_PROTECTIONS.find(p => p.key === config.worker_protections) || OPEN_BORDERS_WORKER_PROTECTIONS[1];
+    const isReciprocal = config.direction === 'reciprocal';
+    const isOurToThem = config.direction === 'our_to_them';
+
+    const sMod = scopeOpt.modifier;
+    const base = OPEN_BORDERS_BASE_EFFECTS;
+
+    const relations = Math.round(base.relations * sMod);
+    const immigration = Math.round(base.immigration * sMod);
+    const gdp_growth = +(base.gdp_growth * sMod).toFixed(2);
+    const labor_force = Math.round(base.labor_force_participation * sMod);
+    const civil_unrest = Math.round(transOpt.unrest_spike * sMod);
+    const polarization = Math.round(base.polarization * sMod);
+    const terrorism = +(base.terrorism * sMod).toFixed(2);
+    const housing = Math.round(base.housing_affordability * sMod);
+    const col = +(base.cost_of_living * sMod).toFixed(2);
+
+    const ratification_cost = Math.round(base.cost_proposer * sMod);
+    const ongoing_cost = base.ongoing_cost + protOpt.cost_per_year;
+
+    // Direction-based asymmetry: the nation receiving migrants gets the full economic + social effects
+    // The sending nation gets relations and labor effects but less immigration pressure
+    let proposer = {}, target = {};
+
+    if (isReciprocal) {
+        proposer = {
+            relations, immigration, gdp_growth, labor_force_participation: labor_force,
+            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+        };
+        target = { ...proposer };
+    } else if (isOurToThem) {
+        // Our citizens go to them — target receives migrants
+        proposer = {
+            relations: Math.round(relations * 0.6), immigration: 0, gdp_growth: 0,
+            labor_force_participation: 0, civil_unrest: 0, polarization: Math.round(polarization * 0.5),
+            terrorism: 0, housing_affordability: 0, cost_of_living: 0
+        };
+        target = {
+            relations, immigration, gdp_growth, labor_force_participation: labor_force,
+            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+        };
+    } else {
+        // Their citizens come to us — proposer receives migrants
+        proposer = {
+            relations, immigration, gdp_growth, labor_force_participation: labor_force,
+            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+        };
+        target = {
+            relations: Math.round(relations * 0.6), immigration: 0, gdp_growth: 0,
+            labor_force_participation: 0, civil_unrest: 0, polarization: Math.round(polarization * 0.5),
+            terrorism: 0, housing_affordability: 0, cost_of_living: 0
+        };
+    }
+
+    return {
+        proposer,
+        target,
+        summary: {
+            relations, immigration, gdp_growth, labor_force_participation: labor_force,
+            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+        },
+        costs: {
+            ratification_proposer: ratification_cost,
+            ratification_target: ratification_cost,
+            ongoing_per_year: ongoing_cost
+        },
+        transition_ticks: transOpt.ramp_ticks,
+        worker_protection_mult: protOpt.exploitation_mult
+    };
+}
+
+// ── MUTUAL EXTRADITION TREATY ──
+
+export const EXTRADITION_SCOPE_OPTIONS = [
+    { key: 'organized_crime',  label: 'Organized Crime',  controversial: false, crime_weight: 1.0,  desc: 'Drug traffickers, smugglers, gang leaders.' },
+    { key: 'financial_crime',  label: 'Financial Crime',  controversial: false, crime_weight: 0.8,  desc: 'Money laundering, tax evasion, fraud.' },
+    { key: 'terrorism',        label: 'Terrorism Suspects', controversial: false, crime_weight: 0.7, desc: 'Individuals linked to terrorist organizations.' },
+    { key: 'war_crimes',       label: 'War Crimes',       controversial: false, crime_weight: 0.5,  desc: 'War crimes and crimes against humanity.' },
+    { key: 'political_offenses', label: 'Political Offenses', controversial: true, crime_weight: 0.3, desc: 'Political dissidents, opposition figures, journalists. Highly controversial.' }
+];
+
+export const EXTRADITION_DUAL_CRIMINALITY_OPTIONS = [
+    { key: 'required', label: 'Dual Criminality Required', desc: 'Can only extradite if the offense is a crime in both nations.' },
+    { key: 'waived',   label: 'Dual Criminality Waived',   desc: 'Can extradite even if the offense isn\'t a crime in the receiving nation. Dangerous.' }
+];
+
+export const EXTRADITION_APPEAL_OPTIONS = [
+    { key: 'full_judicial', label: 'Full Judicial Review',  process_ticks: 4, freedom_penalty: 0,  judicial_penalty: 0,  crime_mult: 1.0, desc: 'Courts review, subject can appeal. Slow but fair.' },
+    { key: 'expedited',     label: 'Expedited Review',      process_ticks: 2, freedom_penalty: 0,  judicial_penalty: 0,  crime_mult: 1.3, desc: 'Faster, limited appeal. More effective.' },
+    { key: 'executive',     label: 'Executive Authority',   process_ticks: 1, freedom_penalty: -2, judicial_penalty: -1, crime_mult: 2.0, desc: 'HoG can approve directly. Fastest but authoritarian.' }
+];
+
+export const EXTRADITION_EXCEPTION_OPTIONS = [
+    { key: 'own_citizens',   label: 'Own Citizens Exempt',     effectiveness_mult: 0.7, desc: 'Nation does not extradite its own citizens.' },
+    { key: 'death_penalty',  label: 'Death Penalty Exempt',    effectiveness_mult: 1.0, desc: 'Will not extradite if death penalty may be imposed.' },
+    { key: 'military',       label: 'Military Personnel Exempt', effectiveness_mult: 0.9, desc: 'Active military not subject to extradition.' }
+];
+
+const EXTRADITION_BASE_EFFECTS = {
+    relations: 5,
+    crime_rate: -3,
+    terrorism: -1,
+    corruption: -1,
+    international_reputation: 1,
+    judicial_independence: 0.5,
+    cost_proposer: 8000000,
+    cost_target: 8000000,
+    ongoing_cost: 3000000
+};
+
+/**
+ * Calculate effects for a Mutual Extradition Treaty article.
+ * @param {Object} config - { scope: string[], dual_criminality, appeal_process, exceptions: string[] }
+ * @returns {{ proposer: Object, target: Object, summary: Object }}
+ */
+export function calculateExtraditionEffects(config) {
+    const scopes = config.scope || ['organized_crime', 'financial_crime', 'terrorism'];
+    const appealOpt = EXTRADITION_APPEAL_OPTIONS.find(a => a.key === config.appeal_process) || EXTRADITION_APPEAL_OPTIONS[0];
+    const exceptions = config.exceptions || [];
+    const base = EXTRADITION_BASE_EFFECTS;
+
+    // Effectiveness scales with number and weight of scopes
+    const totalWeight = scopes.reduce((sum, s) => {
+        const opt = EXTRADITION_SCOPE_OPTIONS.find(o => o.key === s);
+        return sum + (opt ? opt.crime_weight : 0);
+    }, 0);
+    const scopeMod = Math.min(1.5, totalWeight / 2.5); // normalize around standard 3-scope config
+
+    // Exception effectiveness reduction
+    const exceptionMult = exceptions.reduce((mult, e) => {
+        const opt = EXTRADITION_EXCEPTION_OPTIONS.find(o => o.key === e);
+        return mult * (opt ? opt.effectiveness_mult : 1.0);
+    }, 1.0);
+
+    const crimeMult = appealOpt.crime_mult * exceptionMult;
+
+    const crime_rate = +(base.crime_rate * scopeMod * crimeMult).toFixed(1);
+    const terrorism = scopes.includes('terrorism') ? +(base.terrorism * crimeMult).toFixed(1) : 0;
+    const corruption = +(base.corruption * scopeMod).toFixed(1);
+    const relations = base.relations;
+    const intl_reputation = base.international_reputation;
+    const judicial_independence = +(base.judicial_independence + appealOpt.judicial_penalty).toFixed(1);
+
+    // Political offenses penalties
+    const hasPoliticalOffenses = scopes.includes('political_offenses');
+    const freedom_index = hasPoliticalOffenses ? -2 + appealOpt.freedom_penalty : appealOpt.freedom_penalty;
+    const press_freedom = hasPoliticalOffenses ? -1 : 0;
+    const reputation_penalty = hasPoliticalOffenses ? -2 : 0;
+    const polarization = hasPoliticalOffenses ? 1 : 0;
+
+    // Dual criminality waived penalty
+    const dualWaived = config.dual_criminality === 'waived';
+    const freedom_extra = dualWaived ? -1 : 0;
+
+    const effects = {
+        relations,
+        crime_rate,
+        terrorism,
+        corruption,
+        international_reputation: intl_reputation + reputation_penalty,
+        judicial_independence,
+        freedom_index: freedom_index + freedom_extra,
+        press_freedom,
+        polarization
+    };
+
+    return {
+        proposer: { ...effects },
+        target: { ...effects },
+        summary: { ...effects },
+        costs: {
+            ratification_proposer: base.cost_proposer,
+            ratification_target: base.cost_target,
+            ongoing_per_year: base.ongoing_cost
+        },
+        warnings: [
+            ...(hasPoliticalOffenses ? ['Including Political Offenses significantly reduces Freedom Index and Press Freedom.'] : []),
+            ...(dualWaived ? ['Waiving Dual Criminality allows extradition for acts that aren\'t crimes in your nation.'] : []),
+            ...(appealOpt.key === 'executive' ? ['Executive Authority doubles crime reduction but costs Freedom Index and Judicial Independence.'] : [])
+        ]
+    };
+}
+
+// ── ENVIRONMENTAL ACCORD ──
+
+export const ENVIRONMENT_EMISSION_TARGET_OPTIONS = [
+    { key: 'modest',      label: 'Modest Reduction (5%)',      reduction_pct: 5,  reputation_bonus: 1, gdp_penalty: 0,    desc: 'Achievable for most nations.' },
+    { key: 'significant', label: 'Significant Reduction (15%)', reduction_pct: 15, reputation_bonus: 2, gdp_penalty: 0,    desc: 'Requires active policy changes.' },
+    { key: 'aggressive',  label: 'Aggressive Reduction (25%)',  reduction_pct: 25, reputation_bonus: 3, gdp_penalty: -0.5, desc: 'Requires major economic restructuring.' }
+];
+
+export const ENVIRONMENT_RENEWABLE_TARGET_OPTIONS = [
+    { key: 0,  label: 'No Commitment',  target_pct: 0  },
+    { key: 30, label: '30% Target',     target_pct: 30 },
+    { key: 50, label: '50% Target',     target_pct: 50 },
+    { key: 70, label: '70% Target',     target_pct: 70 }
+];
+
+export const ENVIRONMENT_POLLUTION_STANDARDS = [
+    { key: 'non_binding', label: 'Non-Binding Guidelines',  pollution_bonus: -0.5, manufacturing_penalty: 0,    cap_offset: 0,   desc: 'Recommend limits, no enforcement.' },
+    { key: 'binding',     label: 'Binding Standards',       pollution_bonus: -1,   manufacturing_penalty: 0,    cap_offset: -5,  desc: 'Both nations must maintain pollution below agreed threshold.' },
+    { key: 'strict',      label: 'Strict Standards',        pollution_bonus: -2,   manufacturing_penalty: -0.5, cap_offset: -10, desc: 'Lower threshold, harsher penalties for breach.' }
+];
+
+export const ENVIRONMENT_CONSERVATION_OPTIONS = [
+    { key: 'forest',       label: 'Forest Protection',      bonus_reputation: 0.5, bonus_pollution: -0.5, desc: 'Commit to maintaining arable land.' },
+    { key: 'marine',       label: 'Marine Protection',      bonus_reputation: 0.5, bonus_pollution: -0.5, desc: 'Reduce fishing quotas, marine reserves.' },
+    { key: 'biodiversity', label: 'Biodiversity Commitment', bonus_reputation: 0.5, bonus_pollution: -0.5, desc: 'Protect endangered species, restrict land development.' }
+];
+
+export const ENVIRONMENT_REVIEW_INTERVAL_OPTIONS = [
+    { key: 12, label: 'Annual Review (12 ticks)',        desc: 'Check compliance every 12 ticks. Gentle.' },
+    { key: 6,  label: 'Biannual Review (6 ticks)',       desc: 'More frequent checks. Standard.' },
+    { key: 1,  label: 'Continuous Monitoring (every tick)', desc: 'Real-time compliance every tick. Strict.' }
+];
+
+export const ENVIRONMENT_PENALTY_OPTIONS = [
+    { key: 'warning',     label: 'Warning Only',       desc: 'First violation is a warning, second triggers Relations -2.' },
+    { key: 'financial',   label: 'Financial Penalty',   desc: 'Violation triggers $20M fine added to violator\'s debt.' },
+    { key: 'suspension',  label: 'Suspension',          desc: 'Violated articles suspended, benefits lost until compliance restored.' },
+    { key: 'termination', label: 'Treaty Termination',  desc: 'Persistent violation (3+ consecutive reviews) auto-terminates the treaty.' }
+];
+
+const ENVIRONMENT_BASE_EFFECTS = {
+    relations: 6,
+    international_reputation: 2,
+    pollution: -2,
+    cost_proposer: 12000000,
+    cost_target: 12000000,
+    ongoing_cost: 4000000
+};
+
+/**
+ * Calculate effects for an Environmental Accord article.
+ * @param {Object} config - { emission_target, renewable_target, pollution_standards, conservation: string[], review_interval, penalty }
+ * @returns {{ proposer: Object, target: Object, summary: Object }}
+ */
+export function calculateEnvironmentalEffects(config) {
+    const emissionOpt = ENVIRONMENT_EMISSION_TARGET_OPTIONS.find(e => e.key === config.emission_target) || ENVIRONMENT_EMISSION_TARGET_OPTIONS[1];
+    const renewableOpt = ENVIRONMENT_RENEWABLE_TARGET_OPTIONS.find(r => r.key === config.renewable_target) || ENVIRONMENT_RENEWABLE_TARGET_OPTIONS[0];
+    const pollutionOpt = ENVIRONMENT_POLLUTION_STANDARDS.find(p => p.key === config.pollution_standards) || ENVIRONMENT_POLLUTION_STANDARDS[0];
+    const conservation = config.conservation || [];
+    const base = ENVIRONMENT_BASE_EFFECTS;
+
+    const relations = base.relations;
+    const intl_reputation = base.international_reputation + emissionOpt.reputation_bonus
+        + conservation.reduce((sum, c) => {
+            const opt = ENVIRONMENT_CONSERVATION_OPTIONS.find(o => o.key === c);
+            return sum + (opt ? opt.bonus_reputation : 0);
+        }, 0);
+
+    const pollution = base.pollution + pollutionOpt.pollution_bonus
+        + conservation.reduce((sum, c) => {
+            const opt = ENVIRONMENT_CONSERVATION_OPTIONS.find(o => o.key === c);
+            return sum + (opt ? opt.bonus_pollution : 0);
+        }, 0);
+
+    const manufacturing_output = pollutionOpt.manufacturing_penalty;
+    const gdp_growth = emissionOpt.gdp_penalty;
+
+    const effects = {
+        relations,
+        international_reputation: intl_reputation,
+        pollution,
+        manufacturing_output,
+        gdp_growth
+    };
+
+    return {
+        proposer: { ...effects },
+        target: { ...effects },
+        summary: { ...effects },
+        costs: {
+            ratification_proposer: base.cost_proposer,
+            ratification_target: base.cost_target,
+            ongoing_per_year: base.ongoing_cost
+        },
+        compliance: {
+            emission_reduction_pct: emissionOpt.reduction_pct,
+            renewable_target_pct: renewableOpt.target_pct,
+            pollution_cap_offset: pollutionOpt.cap_offset,
+            conservation_clauses: conservation,
+            review_interval_ticks: config.review_interval || 6,
+            penalty_type: config.penalty || 'warning',
+            compliance_window_ticks: 24
+        }
+    };
+}
+
+// ── MAJOR INITIATIVE ARTICLE TYPES ──
+
+/**
+ * Article type definitions for Major Diplomatic Initiative.
+ * Same shape as INITIATIVE_ARTICLE_TYPES for Minor Initiatives.
+ */
+export const MAJOR_INITIATIVE_ARTICLE_TYPES = {
+    open_borders: {
+        key: 'open_borders',
+        label: 'Open Borders Agreement',
+        description: 'Full freedom of movement between two nations. Carries sovereignty costs and integration pressure.',
+        max_per_initiative: 1,
+        has_config: true,
+        calculateEffects: calculateOpenBordersEffects,
+        default_config: {
+            scope: 'work_residency',
+            direction: 'reciprocal',
+            worker_protections: 'standard',
+            transition: 'immediate'
+        }
+    },
+    mutual_extradition: {
+        key: 'mutual_extradition',
+        label: 'Mutual Extradition Treaty',
+        description: 'Both nations agree to extradite criminals and suspects. Reduces crime and terrorism but raises human rights concerns.',
+        max_per_initiative: 1,
+        has_config: true,
+        calculateEffects: calculateExtraditionEffects,
+        default_config: {
+            scope: ['organized_crime', 'financial_crime', 'terrorism'],
+            dual_criminality: 'required',
+            appeal_process: 'full_judicial',
+            exceptions: ['own_citizens']
+        }
+    },
+    environmental_accord: {
+        key: 'environmental_accord',
+        label: 'Bilateral Environmental Accord',
+        description: 'Binding bilateral commitments on environmental targets. Non-compliance triggers penalties.',
+        max_per_initiative: 1,
+        has_config: true,
+        calculateEffects: calculateEnvironmentalEffects,
+        default_config: {
+            emission_target: 'significant',
+            renewable_target: 30,
+            pollution_standards: 'binding',
+            conservation: ['forest'],
+            review_interval: 6,
+            penalty: 'financial'
+        }
+    }
+};
+
+// ── SOVEREIGNTY CONSTRAINTS ──
+
+/**
+ * Maps active Major Initiative article types + configs to domestic policy sectors
+ * that become restricted while the treaty is active.
+ * Key = article_type, value = array of { condition, blocked_sectors, message }
+ */
+export const SOVEREIGNTY_CONSTRAINTS = {
+    open_borders: [
+        {
+            condition: (config) => config.scope === 'full',
+            blocked_sectors: ['IMMIGRATION', 'LABOR'],
+            message: 'Full Open Borders agreement prohibits unilateral immigration and labor policy changes'
+        },
+        {
+            condition: (config) => config.scope === 'work_residency' || config.scope === 'labor_mobility',
+            blocked_sectors: ['LABOR'],
+            message: 'Open Borders labor provisions restrict unilateral labor policy changes'
+        }
+    ],
+    mutual_extradition: [
+        {
+            condition: (config) => config.scope && config.scope.includes('political_offenses'),
+            blocked_sectors: ['GOVERNANCE'],
+            message: 'Mutual Extradition treaty covering political offenses restricts governance policy changes'
+        }
+    ],
+    environmental_accord: [
+        {
+            condition: (config) => config.pollution_standards === 'strict' || config.pollution_standards === 'binding',
+            blocked_sectors: ['ENERGY'],
+            message: 'Environmental Accord binding standards restrict unilateral energy policy changes'
+        }
+    ]
+};
+
+/**
+ * Check if a policy's major_sector conflicts with any active Major Initiative sovereignty constraints.
+ * @param {Array} activeProposals - Active tier-3 proposals involving this nation
+ * @param {string} policySector - The major_sector of the policy being proposed
+ * @returns {{ blocked: boolean, message: string|null, initiative_name: string|null }}
+ */
+export function checkSovereigntyConstraints(activeProposals, policySector) {
+    if (!activeProposals || !policySector) return { blocked: false, message: null, initiative_name: null };
+
+    for (const proposal of activeProposals) {
+        const pd = proposal.proposal_data || {};
+        const articles = pd.articles || [];
+
+        for (const art of articles) {
+            if (art.status === 'struck' || art.suspended) continue;
+
+            const constraints = SOVEREIGNTY_CONSTRAINTS[art.type];
+            if (!constraints) continue;
+
+            for (const constraint of constraints) {
+                if (constraint.blocked_sectors.includes(policySector) && constraint.condition(art.config || {})) {
+                    return {
+                        blocked: true,
+                        message: constraint.message,
+                        initiative_name: pd.name || 'Major Diplomatic Initiative'
+                    };
+                }
+            }
+        }
+    }
+
+    return { blocked: false, message: null, initiative_name: null };
+}
+
 

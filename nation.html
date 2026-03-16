@@ -31,7 +31,7 @@
 <!-- Page-Specific Script -->
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage, qCache, qCacheSet, formatNumber, scaleRawToDollars, assertRawEconomicValue } from './js/common.js';
+import { initPage, refreshGameState, qCache, qCacheSet, qCacheBust, formatNumber, scaleRawToDollars, assertRawEconomicValue } from './js/common.js';
 import './js/guide.js';
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
 import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
@@ -198,7 +198,9 @@ var STAT_CATEGORIES = [
         { name: 'Trade Balance', key: 'trade_balance', desc: 'Exports minus imports', format: 'trade' },
         { name: 'Currency Strength', key: 'currency_strength', desc: 'Value of national currency' },
         { name: 'Foreign Investment', key: 'foreign_investment', desc: 'International capital inflow' },
-        { name: 'Credit Rating', key: 'credit', desc: 'National creditworthiness' }
+        { name: 'Credit Rating', key: 'credit', desc: 'National creditworthiness' },
+        { name: 'Manufacturing Output', key: 'manufacturing_output', desc: 'Industrial production capacity' },
+        { name: 'Service Output', key: 'service_output', desc: 'Services & finance sector output' }
     ]},
     { id: 'taxation', label: 'Taxation', icon: '\u{1F3DB}', blocs: ['Business Owners', 'Urban Workers', 'Urban Progressives'],
       stats: [
@@ -220,8 +222,6 @@ var STAT_CATEGORIES = [
       stats: [
         { name: 'Population', key: 'population', desc: 'Total national population', noHealth: true, format: 'count' },
         { name: 'Population Growth', key: 'population_growth', desc: 'Rate of population change' },
-        { name: 'Birth Rate', key: 'birth_rate', desc: 'Births per 1,000 people' },
-        { name: 'Death Rate', key: 'death_rate', desc: 'Deaths per 1,000 people', inverted: true },
         { name: 'Median Age', key: 'median_age', desc: 'Average age of population', format: 'years' },
         { name: 'Eligible Voters', key: 'eligible_voters', desc: 'Citizens able to vote', noHealth: true, format: 'count' },
         { name: 'Ethnic Diversity', key: 'ethnic_diversity', desc: 'Cultural heterogeneity' }
@@ -266,7 +266,9 @@ var STAT_CATEGORIES = [
       stats: [
         { name: 'Standard of Living', key: 'standard_of_living', desc: 'Quality of life index' },
         { name: 'Happiness', key: 'happiness', desc: 'National wellbeing index' },
-        { name: 'Religiosity', key: 'religious', desc: 'Strength of religious institutions' },
+        { name: 'Religiosity', key: 'religiosity', desc: 'Strength of religious institutions' },
+        { name: 'Cost of Living', key: 'cost_of_living', desc: 'Consumer cost burden', inverted: true },
+        { name: 'Housing Affordability', key: 'housing_affordability', desc: 'Housing accessibility' },
         { name: 'Social Mobility', key: 'social_mobility', desc: 'Ability to change class' },
         { name: 'Benefits', key: 'benefits', desc: 'Social welfare programs' },
         { name: 'Crime Rate', key: 'crime_rate', desc: 'Criminal incidents per capita', inverted: true },
@@ -297,9 +299,7 @@ var STAT_CATEGORIES = [
     ]},
     { id: 'international', label: 'International', icon: '\u{1F310}', blocs: [],
       stats: [
-        { name: 'Intl. Reputation', key: 'international_reputation', desc: 'Global standing and respect' },
-        { name: 'Trade Agreements', key: 'trade_agreements', desc: 'Active trade deals' },
-        { name: 'Sanctions', key: 'sanctions', desc: 'International penalties', inverted: true }
+        { name: 'Intl. Reputation', key: 'international_reputation', desc: 'Global standing and respect' }
     ]}
 ];
 
@@ -397,6 +397,40 @@ initPage('nation', async (state) => {
         loadActiveCrises(nation.id)
     ]);
     await renderNationPage(nation);
+
+    // Auto-refresh when a tick advances
+    window.addEventListener('tick-advanced', async () => {
+        try {
+            // Bust stale caches for this nation
+            qCacheBust('prev_tick_');
+            qCacheBust('sparkline_');
+            qCacheBust('stat_effects_');
+            qCacheBust('all_nations');
+            qCacheBust('crises_');
+            previousTickData = null;
+            sparklineHistory = {};
+            statEffectsByKey = {};
+            activeCrises = [];
+
+            // Re-fetch fresh nation data
+            const freshState = await refreshGameState();
+            const freshNation = freshState?.nation;
+            if (!freshNation) return;
+
+            _nationId = freshNation.id;
+            await Promise.all([
+                loadAllNations(),
+                loadPreviousTickData(freshNation.id),
+                loadStatEffectSources(freshNation.id, freshNation),
+                loadSparklineHistory(freshNation.id),
+                loadActiveCrises(freshNation.id)
+            ]);
+            await renderNationPage(freshNation);
+            console.log('[nation.html] Refreshed after tick advance');
+        } catch (e) {
+            console.error('[nation.html] Error refreshing after tick:', e);
+        }
+    });
 });
 
 async function loadAllNations() {
@@ -527,7 +561,8 @@ async function loadStatEffectSources(nationId, nation) {
         _supabase.from('budget_item_allocations')
             .select('item_id, item_type, allocation_amount, needed_amount')
             .eq('nation_id', nationId)
-            .eq('item_type', 'institution'),
+            .eq('item_type', 'institution')
+            .order('created_at', { ascending: true }),
         _supabase.from('institutions')
             .select('id, name, primary_stat, secondary_stat')
     ]);
@@ -717,7 +752,7 @@ function parseInstitutionEffects(allocations, institutions, nation, map) {
         var row = allocations[i];
         var needed = Number(row.needed_amount || 0);
         fundingMap[row.item_id] = needed > 0
-            ? Math.min(100, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
+            ? Math.min(200, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
             : 100;
     }
     // For each institution, if underfunded, show effect on its covered stats
@@ -919,7 +954,7 @@ function buildFeaturedAbpHTML(statKey) {
         h += '<span class="featured-card__abp-arrow ' + arrowClass + '">' + arrow + '</span>';
         if (eff.rate !== null && eff.rate !== undefined) {
             var sign = eff.direction === 'up' ? '+' : '-';
-            h += '<span class="featured-card__abp-rate">' + sign + (Math.round(Number(eff.rate) * 100) / 100) + '/tick</span>';
+            h += '<span class="featured-card__abp-rate">' + sign + (Math.round(Math.abs(Number(eff.rate)) * 100) / 100) + '/tick</span>';
         }
         h += '<span class="featured-card__abp-type ' + typeClass + '">' + escapeHtml(eff.type) + '</span>';
         h += '</div>';
@@ -955,9 +990,9 @@ function renderFeaturedGDP(nation) {
 
     // GDP growth label
     var gdpLabel, tagColor, tagBorder;
-    if (monthlyPct < -1) { gdpLabel = 'Collapse'; tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; }
-    else if (monthlyPct < 0) { gdpLabel = 'Recession'; tagColor = 'var(--n-orange)'; tagBorder = 'rgba(249,115,22,0.3)'; }
-    else if (monthlyPct < 0.5) { gdpLabel = 'Stagnant'; tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; }
+    if (monthlyPct < -1) { gdpLabel = 'Recession'; tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; }
+    else if (monthlyPct < 0) { gdpLabel = 'Stagnant'; tagColor = 'var(--n-orange)'; tagBorder = 'rgba(249,115,22,0.3)'; }
+    else if (monthlyPct < 0.5) { gdpLabel = 'No Growth'; tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; }
     else if (monthlyPct < 3) { gdpLabel = 'Growing'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
     else { gdpLabel = 'Booming'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
 
@@ -966,11 +1001,11 @@ function renderFeaturedGDP(nation) {
 
     // Scale items
     var scaleItems = [
-        { label: 'Collapse', range: '<0%', active: monthlyPct < -1 },
-        { label: 'Recession', range: '0-0.5%', active: monthlyPct >= -1 && monthlyPct < 0 },
-        { label: 'Stagnant', range: '0.5-70%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
-        { label: 'Growing', range: '1.0-3.00%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
-        { label: 'Booming', range: '>3.00%', active: monthlyPct >= 3 }
+        { label: 'Recession', range: '< -1%', active: monthlyPct < -1 },
+        { label: 'Stagnant', range: '-1% to 0%', active: monthlyPct >= -1 && monthlyPct < 0 },
+        { label: 'No Growth', range: '0% to 0.5%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
+        { label: 'Growing', range: '0.5% to 3%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
+        { label: 'Booming', range: '> 3%', active: monthlyPct >= 3 }
     ];
 
     // Sparkline
@@ -1129,9 +1164,9 @@ function renderFeaturedGDPGrowth(nation) {
 
     // Growth label
     var gdpLabel;
-    if (monthlyPct < -1) { gdpLabel = 'Collapse'; }
-    else if (monthlyPct < 0) { gdpLabel = 'Recession'; }
-    else if (monthlyPct < 0.5) { gdpLabel = 'Stagnant'; }
+    if (monthlyPct < -1) { gdpLabel = 'Recession'; }
+    else if (monthlyPct < 0) { gdpLabel = 'Stagnant'; }
+    else if (monthlyPct < 0.5) { gdpLabel = 'No Growth'; }
     else if (monthlyPct < 3) { gdpLabel = 'Growing'; }
     else { gdpLabel = 'Booming'; }
 
@@ -1149,11 +1184,11 @@ function renderFeaturedGDPGrowth(nation) {
 
     // Scale items
     var scaleItems = [
-        { label: 'Collapse', range: '<0%', active: monthlyPct < -1 },
-        { label: 'Recession', range: '0-0.5%', active: monthlyPct >= -1 && monthlyPct < 0 },
-        { label: 'Stagnant', range: '0.5-70%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
-        { label: 'Growing', range: '1.0-3.00%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
-        { label: 'Booming', range: '>3.00%', active: monthlyPct >= 3 }
+        { label: 'Recession', range: '< -1%', active: monthlyPct < -1 },
+        { label: 'Stagnant', range: '-1% to 0%', active: monthlyPct >= -1 && monthlyPct < 0 },
+        { label: 'No Growth', range: '0% to 0.5%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
+        { label: 'Growing', range: '0.5% to 3%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
+        { label: 'Booming', range: '> 3%', active: monthlyPct >= 3 }
     ];
 
     // Sparkline (large chart)

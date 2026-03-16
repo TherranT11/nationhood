@@ -8,7 +8,6 @@
  */
 
 import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
-import { tickToDate } from './utils.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
 
 // ===== QUERY CACHE =====
@@ -355,7 +354,6 @@ export function renderNavTabs(activeTab) {
         { id: 'laws', label: 'Bills', href: 'laws.html' },
         { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
         { id: 'economy', label: 'Economy', href: 'economy.html' },
-        { id: 'events', label: 'Events', href: 'events.html' },
         { id: 'wiki', label: 'Wiki', href: 'wiki.html' }
     ];
 
@@ -373,6 +371,9 @@ export function renderNavTabs(activeTab) {
         let badgeHtml = '';
         if (tab.id === 'laws') {
             badgeHtml = '<span class="nav-badge" id="bills-badge" style="display:none;"></span>';
+        }
+        if (tab.id === 'diplomacy') {
+            badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>';
         }
         return `
             <a href="${href}"
@@ -432,6 +433,38 @@ async function updateBillsBadge(faction, nation, shard) {
         }
     } catch (e) {
         console.error('Error updating bills badge:', e);
+    }
+}
+
+
+// ===== DIPLOMACY BADGE (unread diplomatic messages) =====
+
+async function updateDiplomacyBadge(faction, nation) {
+    const badge = document.getElementById('diplomacy-badge');
+    if (!badge || !faction || !nation) return;
+    try {
+        // Fetch messages sent TO our nation that our faction hasn't read yet.
+        // We only care about messages FROM other nations (not our own).
+        const { data: msgs } = await _supabase
+            .from('diplomatic_messages')
+            .select('id, read_by_factions')
+            .eq('to_nation_id', nation.id)
+            .neq('from_nation_id', nation.id);
+
+        let count = 0;
+        for (const msg of (msgs || [])) {
+            const readBy = msg.read_by_factions || [];
+            if (!readBy.includes(faction.id)) count++;
+        }
+
+        if (count > 0) {
+            badge.textContent = count;
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Error updating diplomacy badge:', e);
     }
 }
 
@@ -644,22 +677,16 @@ export function showLoading(containerId = 'content-area') {
 
 // ===== POPULATION GROWTH CALCULATION =====
 //
-// Population growth base is derived from birth_rate - death_rate.
-// Policies and crises can shift population_growth up or down from this base.
-//
-// population_growth is a 0-100 stat where:
+// population_growth is a standalone 0-100 stat where:
 //   0   = max population decline (-1% per tick)
 //   50  = equilibrium (no change)
 //   100 = max population growth  (+1% per tick)
+//
+// Driven by policy effects and stat decay directly.
+// No longer derived from birth_rate / death_rate.
 
 export function calculatePopulationGrowth(nation) {
-    const birthRate = Number(nation.birth_rate ?? 50);
-    const deathRate = Number(nation.death_rate ?? 50);
-
-    // Base: maps (birth_rate - death_rate) from -100..+100 onto 0..100
-    const base = 50 + (birthRate - deathRate) / 2;
-
-    return Math.round(Math.max(0, Math.min(100, base)) * 10) / 10;
+    return Math.round(Math.max(0, Math.min(100, Number(nation.population_growth ?? 50))) * 10) / 10;
 }
 
 export function calculatePopulationChange(population, growthScore, maxRate = 0.01) {
@@ -753,23 +780,10 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (activeTab !== 'laws') {
         updateBillsBadge(state.faction, state.nation, state.shard);
     }
-    // Record browser fingerprint (non-blocking, fire-and-forget)
-    recordFingerprint(_supabase);
-    // Check ban status (non-blocking, redirects if banned)
-    checkBanStatus(_supabase).then(result => {
-        if (result.banned) {
-            document.body.innerHTML = `
-                <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0d1117;color:#e0e0e0;font-family:sans-serif;">
-                    <div style="text-align:center;max-width:480px;padding:40px;">
-                        <div style="font-size:48px;margin-bottom:16px;">&#x1F6AB;</div>
-                        <h1 style="color:#ff4444;margin-bottom:12px;">Account ${result.ban_type === 'banned' ? 'Banned' : 'Suspended'}</h1>
-                        <p style="color:#aaa;margin-bottom:8px;">${result.reason}</p>
-                        ${result.banned_until ? `<p style="color:#888;font-size:0.85rem;">Until: ${new Date(result.banned_until).toLocaleString()}</p>` : '<p style="color:#888;font-size:0.85rem;">This action is permanent.</p>'}
-                        <button onclick="handleLogout()" style="margin-top:24px;padding:10px 24px;background:#333;color:#fff;border:none;cursor:pointer;">Log Out</button>
-                    </div>
-                </div>`;
-        }
-    });
+    // Update diplomacy badge (non-blocking, skip on diplomacy page since it marks read)
+    if (activeTab !== 'diplomacy') {
+        updateDiplomacyBadge(state.faction, state.nation);
+    }
     if (onReady) {
         await onReady(state);
     }

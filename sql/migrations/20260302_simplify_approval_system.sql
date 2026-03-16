@@ -23,5 +23,5 @@ ALTER TABLE nations DROP COLUMN IF EXISTS gov_approval_outcomes;
 ALTER TABLE nations_history DROP COLUMN IF EXISTS gov_approval_institutional;
 ALTER TABLE nations_history DROP COLUMN IF EXISTS gov_approval_outcomes;
 
--- Reset all minister approvals to 50 (new default under drift model)
-UPDATE ministries SET minister_approval = 50 WHERE minister_approval IS NOT NULL;
+-- Reset all minister approvals to 40 (new default under drift model)
+UPDATE ministries SET minister_approval = 40 WHERE minister_approval IS NOT NULL;

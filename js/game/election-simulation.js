@@ -98,8 +98,19 @@ export function distributeVotes(parties, tags, blocCount, tally, blocApprovals, 
             multiplier = Math.max(MULT_MIN, Math.min(MULT_MAX, 1.0 + alignAvg * IDEOLOGY_RATE));
         }
 
-        // Weight = softmax(approval) × ideology_multiplier
-        const w = Math.max(0, softmaxExp * multiplier);
+        // Electability modifier: 50 is neutral.
+        // Below 50: penalty grows as distance from 50, / 10 (e.g. 40 → -1.0%)
+        // Above 50: bonus grows as distance from 50, / 20 (e.g. 70 → +1.0%)
+        const electability = party.electability ?? 50;
+        let electMod = 1.0;
+        if (electability <= 50) {
+            electMod = 1.0 - (50 - electability) / 1000;
+        } else {
+            electMod = 1.0 + (electability - 50) / 2000;
+        }
+
+        // Weight = softmax(approval) × ideology_multiplier × electability_modifier
+        const w = Math.max(0, softmaxExp * multiplier * electMod);
         weights.push({ id: party.id, weight: w });
         totalWeight += w;
     }
@@ -308,7 +319,7 @@ export async function runElectionPreview(supabase, nationId) {
     const currentTick = shard?.current_tick || 0;
     const { data: allFactions } = await supabase
         .from('factions')
-        .select('id, faction_name, seats, last_seen_tick, abandoned_at')
+        .select('id, faction_name, seats, electability, last_seen_tick, abandoned_at')
         .eq('nation_id', nationId)
         .eq('faction_type', 'party')
         .is('abandoned_at', null);
@@ -326,10 +337,11 @@ export async function runElectionPreview(supabase, nationId) {
     const ideoMap = {};
     for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
 
-    // Build party objects with axes (no approval_rating or ideology_modifiers needed)
+    // Build party objects with axes and electability
     const parties = factions.map(f => ({
         id: f.id,
         faction_name: f.faction_name,
+        electability: f.electability ?? 50,
         axes: ideoMap[f.id] || {
             liberty_equality: 0, tradition_progress: 0, security_freedom: 0,
             globalism_nationalism: 0, individualism_collectivism: 0

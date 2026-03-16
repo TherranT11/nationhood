@@ -25,8 +25,6 @@ UPDATE nations SET
     income_inequality = ROUND(income_inequality::numeric, 1),
     population = ROUND(population::numeric, 1),
     population_growth = ROUND(population_growth::numeric, 1),
-    birth_rate = ROUND(birth_rate::numeric, 1),
-    death_rate = ROUND(death_rate::numeric, 1),
     median_age = ROUND(median_age::numeric, 1),
     eligible_voters = ROUND(eligible_voters::numeric, 1),
     ethnic_diversity = ROUND(ethnic_diversity::numeric, 1),
@@ -56,7 +54,11 @@ UPDATE nations SET
     benefits = ROUND(benefits::numeric, 1),
     crime_rate = ROUND(crime_rate::numeric, 1),
     incarceration_rate = ROUND(incarceration_rate::numeric, 1),
-    religious = ROUND(religious::numeric, 1),
+    religiosity = ROUND(religiosity::numeric, 1),
+    cost_of_living = ROUND(cost_of_living::numeric, 1),
+    manufacturing_output = ROUND(manufacturing_output::numeric, 1),
+    service_output = ROUND(service_output::numeric, 1),
+    housing_affordability = ROUND(housing_affordability::numeric, 1),
     stability = ROUND(stability::numeric, 1),
     legitimacy = ROUND(legitimacy::numeric, 1),
     efficiency = ROUND(efficiency::numeric, 1),
@@ -71,9 +73,7 @@ UPDATE nations SET
     immigration = ROUND(immigration::numeric, 1),
     illegal_immigration = ROUND(illegal_immigration::numeric, 1),
     emigration = ROUND(emigration::numeric, 1),
-    international_reputation = ROUND(international_reputation::numeric, 1),
-    trade_agreements = ROUND(trade_agreements::numeric, 1),
-    sanctions = ROUND(sanctions::numeric, 1);
+    international_reputation = ROUND(international_reputation::numeric, 1);
 
 -- Also round the history table
 UPDATE nations_history SET
@@ -100,8 +100,6 @@ UPDATE nations_history SET
     income_inequality = ROUND(income_inequality::numeric, 1),
     population = ROUND(population::numeric, 1),
     population_growth = ROUND(population_growth::numeric, 1),
-    birth_rate = ROUND(birth_rate::numeric, 1),
-    death_rate = ROUND(death_rate::numeric, 1),
     median_age = ROUND(median_age::numeric, 1),
     eligible_voters = ROUND(eligible_voters::numeric, 1),
     ethnic_diversity = ROUND(ethnic_diversity::numeric, 1),
@@ -131,7 +129,11 @@ UPDATE nations_history SET
     benefits = ROUND(benefits::numeric, 1),
     crime_rate = ROUND(crime_rate::numeric, 1),
     incarceration_rate = ROUND(incarceration_rate::numeric, 1),
-    religious = ROUND(religious::numeric, 1),
+    religiosity = ROUND(religiosity::numeric, 1),
+    cost_of_living = ROUND(cost_of_living::numeric, 1),
+    manufacturing_output = ROUND(manufacturing_output::numeric, 1),
+    service_output = ROUND(service_output::numeric, 1),
+    housing_affordability = ROUND(housing_affordability::numeric, 1),
     stability = ROUND(stability::numeric, 1),
     legitimacy = ROUND(legitimacy::numeric, 1),
     efficiency = ROUND(efficiency::numeric, 1),
@@ -146,6 +148,4 @@ UPDATE nations_history SET
     immigration = ROUND(immigration::numeric, 1),
     illegal_immigration = ROUND(illegal_immigration::numeric, 1),
     emigration = ROUND(emigration::numeric, 1),
-    international_reputation = ROUND(international_reputation::numeric, 1),
-    trade_agreements = ROUND(trade_agreements::numeric, 1),
-    sanctions = ROUND(sanctions::numeric, 1);
+    international_reputation = ROUND(international_reputation::numeric, 1);

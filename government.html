@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Government | Nationhood Alpha</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/government.css">
 </head>
@@ -34,12 +35,28 @@
     </div>
 </div>
 
+<!-- Executive Order Modal -->
+<div class="modal-overlay" id="eo-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title">Executive Order</div>
+            <button class="modal-close" onclick="closeEOModal()">&times;</button>
+        </div>
+        <div id="eo-order-list"></div>
+        <div id="eo-confirm-panel" class="eo-confirm-panel"></div>
+        <div class="modal-footer" id="eo-modal-footer">
+            <button class="btn-cancel" onclick="closeEOModal()">Cancel</button>
+            <button class="eo-btn-confirm" id="eo-confirm-btn" disabled onclick="confirmExecutiveOrder()" style="display:none;">Issue Order</button>
+        </div>
+    </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability } from './js/game-common.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 (function () {
     'use strict';
@@ -56,6 +73,8 @@ function ideologyBg(name) { return IDEOLOGY_COLORS[(name || '').toLowerCase()] |
  * Displays government structure, administration, cabinet, and parliament.
  * Autocracy: ruling faction can ASSIGN/PURGE ministers; others can REQUEST.
  */
+
+const NEW_MINISTER_APPROVAL = 40;
 
 const MINISTRY_NAMES = {
     prime_minister: 'Prime Minister',
@@ -107,6 +126,7 @@ let presidentData = null;
 let isRulingFaction = false;
 let rulingFactionId = null;
 let ministryRequests = [];
+let missingAmbassadorCount = 0; // pre-fetched for Foreign Minister performance panel
 let currentTick = 0;
 let lastElectionTick = null;
 
@@ -376,6 +396,14 @@ async function renderGovernmentPage() {
             .limit(8);
         currentNation._govApprovalEvents = govApprovalEvents || [];
 
+        // Pre-fetch missing ambassador count for Foreign Minister performance panel
+        const [{ count: totalOtherNations }, { count: activeAmbs }] = await Promise.all([
+            _supabase.from('nations').select('id', { count: 'exact', head: true }).neq('id', currentNation.id),
+            _supabase.from('ambassadors').select('id', { count: 'exact', head: true })
+                .eq('nation_id', currentNation.id).eq('is_active', true).eq('status', 'active')
+        ]);
+        missingAmbassadorCount = (totalOtherNations || 0) - (activeAmbs || 0);
+
         // Check for pending PM or President candidates (player needs to select)
         const primeMinister = ministries?.find(m => m.ministry_key === 'prime_minister');
 
@@ -394,6 +422,11 @@ async function renderGovernmentPage() {
                     console.error('PM auto-recovery failed:', recoverErr);
                 }
             }
+        }
+
+        // Preload executive order data for overreach bar & emergency banner
+        if (isPresidential && currentNation) {
+            try { eoOrderData = await fetchActiveOrders(_supabase, currentNation.id); } catch (e) { console.error('[EO] preload failed:', e); }
         }
 
         const revolutionBannerHtml = await renderRevolutionBannerGov();
@@ -481,7 +514,7 @@ async function calculateGovernmentApproval() {
         .select('gov_approval')
         .eq('id', currentNation.id)
         .single();
-    return nation?.gov_approval ?? 50;
+    return nation?.gov_approval ?? 40;
 }
 
 function getPartyNameById(partyId) {
@@ -512,12 +545,12 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
     const hosFirst = currentNation.head_of_state_first_name || 'Unknown';
     const hosLast = currentNation.head_of_state_last_name || 'Unknown';
     const hosAge = currentNation.head_of_state_age || '—';
-    const approvalColor = governmentApproval >= 60 ? '#4CAF50' : governmentApproval >= 40 ? 'var(--accent)' : '#ff4444';
+    const approvalColor = governmentApproval >= 60 ? 'var(--green)' : governmentApproval >= 40 ? 'var(--amber)' : 'var(--red)';
     // Compute tooltip breakdown from ministry data
     const filledMinisters = ministryData.filter(m => m.minister_first_name);
     const vacantCount = ministryData.length - filledMinisters.length;
     const ministerAvg = filledMinisters.length > 0
-        ? Math.round(filledMinisters.reduce((sum, m) => sum + (m.minister_approval ?? 50), 0) / filledMinisters.length)
+        ? Math.round(filledMinisters.reduce((sum, m) => sum + (m.minister_approval ?? NEW_MINISTER_APPROVAL), 0) / filledMinisters.length)
         : 50;
     const vacancyPenalty = vacantCount * -3;
     const evMod = Math.round((currentNation.gov_approval_events ?? 0) * 10) / 10;
@@ -528,18 +561,18 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
             <div class="gov-tip-title">Approval Breakdown</div>
             <div class="gov-tip-row">
                 <span class="gov-tip-label">Minister Avg</span>
-                <div class="gov-tip-bar"><div class="gov-tip-bar-fill" style="width:${ministerAvg}%;background:#4CAF50"></div></div>
+                <div class="gov-tip-bar"><div class="gov-tip-bar-fill" style="width:${ministerAvg}%;background:var(--green)"></div></div>
                 <span class="gov-tip-val">${ministerAvg}</span>
             </div>
             <div class="gov-tip-desc">Average approval of filled cabinet ministers</div>
             <div class="gov-tip-row">
                 <span class="gov-tip-label">Vacancies</span>
-                <span class="gov-tip-val" style="color:${vacancyPenalty < 0 ? '#ff4444' : '#4CAF50'}">${vacancyPenalty === 0 ? '0' : vacancyPenalty}</span>
+                <span class="gov-tip-val" style="color:${vacancyPenalty < 0 ? 'var(--red)' : 'var(--green)'}">${vacancyPenalty === 0 ? '0' : vacancyPenalty}</span>
             </div>
             <div class="gov-tip-desc">${vacantCount} vacant seat${vacantCount !== 1 ? 's' : ''} (-3 each)</div>
             <div class="gov-tip-row">
                 <span class="gov-tip-label">Events</span>
-                <span class="gov-tip-val" style="color:${evMod > 0 ? '#4CAF50' : evMod < 0 ? '#ff4444' : 'var(--text-secondary)'}">${evMod > 0 ? '+' : ''}${evMod}</span>
+                <span class="gov-tip-val" style="color:${evMod > 0 ? 'var(--green)' : evMod < 0 ? 'var(--red)' : 'var(--text-secondary)'}">${evMod > 0 ? '+' : ''}${evMod}</span>
             </div>
             <div class="gov-tip-desc">Crises & events (decays over time)</div>
             ${(() => {
@@ -556,7 +589,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                 const rows = events.map(e => {
                     const label = GOV_SOURCE_LABELS[e.source] || e.source.replace(/[_:]/g, ' ');
                     const sign = e.amount > 0 ? '+' : '';
-                    const color = e.amount > 0 ? '#4CAF50' : '#ff4444';
+                    const color = e.amount > 0 ? 'var(--green)' : 'var(--red)';
                     return '<div class="gov-tip-evt"><span>' + label + '</span><span style="color:' + color + '">' + sign + Math.round(e.amount * 10) / 10 + '</span></div>';
                 }).join('');
                 return '<div class="gov-tip-events-title">Recent Events</div>' + rows;
@@ -581,10 +614,10 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
     // === AUTOCRACY: No ruling faction yet — show Seize Power prompt ===
     if (isAutocracy && !rulingFactionId) {
         return `
-            <div class="administration-box" style="border-color: #ff4444;">
-                <div class="administration-header" style="border-bottom-color: #3a1a1a;">
+            <div class="administration-box" style="border-color: var(--red);">
+                <div class="administration-header" style="border-bottom-color: var(--border-hair);">
                     <div style="font-size: 2.5rem; margin-bottom: 8px;">&#9876;</div>
-                    <div class="administration-title" style="color: #ff4444;">Power Vacuum</div>
+                    <div class="administration-title" style="color: var(--red);">Power Vacuum</div>
                     <div class="administration-subtitle">No faction controls the government</div>
                 </div>
                 <div class="administration-content" style="display:block; text-align:center; padding: 24px;">
@@ -595,7 +628,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                         Claiming power will make your faction the ruling faction, granting control over all ministries and the Prime Minister's office.
                     </div>
                     <button id="claim-power-btn"
-                        style="padding: 14px 36px; background: linear-gradient(135deg, #ff4444, #cc0000); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; cursor: pointer; transition: all 0.2s;"
+                        style="padding: 14px 36px; background: var(--red); color: white; border: none; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; transition: all 0.2s;"
                         onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 20px rgba(255,68,68,0.4)';"
                         onmouseout="this.style.transform='none'; this.style.boxShadow='none';"
                         onclick="claimPower()">
@@ -629,16 +662,16 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
                                     <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(activeHOG.ideology)};color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
                                     <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
-                                    <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
-                                    <div style="font-size:0.75rem;color:#ff4444;">▼ ${activeHOG.leader_traits?.downside || ''}</div>
+                                    <div style="font-size:0.75rem;color:var(--green);margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
+                                    <div style="font-size:0.75rem;color:var(--red);">▼ ${activeHOG.leader_traits?.downside || ''}</div>
                                 </div>
                             ` : ''}
                         </div>
                         <div class="admin-section">
-                            <div class="admin-section-title">Head of State</div>
+                            <div class="admin-section-title">${escapeHtml(currentNation.head_of_state_title || 'Head of State')}</div>
                             <div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div>
                             <div class="admin-person-details">Age ${hosAge} · <span class="admin-person-party">${escapeHtml(rulingPartyName)}</span></div>
-                            <div style="color: #ff4444; font-size: 0.75rem; margin-top: 6px; font-weight: bold;">Rules until dead or deposed</div>
+                            <div style="color: var(--red); font-size: 0.75rem; margin-top: 6px; font-weight: bold;">Rules until dead or deposed</div>
                         </div>
                     </div>
                     ${renderAdminChat()}
@@ -667,13 +700,13 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         const majoritySeats = GAME_CONFIG.MAJORITY_SEATS || 61;
         const hasMajority = presPartySeats >= majoritySeats;
         const govStatus = hasMajority ? 'Unified Government' : 'Divided Government';
-        const govStatusColor = hasMajority ? '#4CAF50' : '#ff9800';
+        const govStatusColor = hasMajority ? 'var(--green)' : 'var(--amber)';
 
         // Fetch fresh tick to avoid stale-tick issues
         const { data: freshShard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const freshTick = freshShard?.current_tick || currentTick;
         const termRemaining = presidentData.term_ends_tick - freshTick;
-        const termTotal = GAME_CONFIG.PRESIDENTIAL_TERM_TICKS || 48;
+        const termTotal = currentNation?.presidential_term_ticks || GAME_CONFIG.PRESIDENTIAL_TERM_TICKS || 48;
         const termPct = Math.max(0, Math.min(100, Math.round((termRemaining / termTotal) * 100)));
 
         // Convert remaining ticks to human-readable format (TICKS_PER_YEAR = 12, so 1 tick = 1 month)
@@ -699,10 +732,12 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
             const t = presidentData._traitData;
             traitHTML = `
                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
-                    ${presidentData.ideology ? `<div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(presidentData.ideology)};color:white;margin-bottom:6px;">${presidentData.ideology}</div>` : ''}
-                    <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${t.trait_name || presidentData.trait}</div>
-                    <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${t.upside || ''}</div>
-                    <div style="font-size:0.75rem;color:#ff4444;">▼ ${t.downside || ''}</div>
+                    ${presidentData.ideology ? `<div class="pres-ideology-bar" style="background:${ideologyBg(presidentData.ideology)};">${escapeHtml(presidentData.ideology)}</div>` : ''}
+                    <div class="pres-trait-name">&#x1F3F7; ${escapeHtml(t.trait_name || presidentData.trait)}</div>
+                    <ul class="pres-trait-effects">
+                        ${t.upside ? `<li class="pres-trait-up">${escapeHtml(t.upside)}</li>` : ''}
+                        ${t.downside ? `<li class="pres-trait-down">${escapeHtml(t.downside)}</li>` : ''}
+                    </ul>
                 </div>`;
         }
 
@@ -718,17 +753,19 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                 <div class="administration-content">
                     <div class="admin-leaders-column">
                         <div class="admin-section">
-                            <div class="admin-section-title">President${presidentData.terms_served ? ` — ${presidentData.terms_served === 1 ? '1st' : '2nd'} Term` : ''}</div>
+                            <div class="admin-section-title">President${presidentData.terms_served ? ` — ${['1st','2nd','3rd','4th'][presidentData.terms_served - 1] || presidentData.terms_served + 'th'} Term` : ''}</div>
                             <div class="admin-person-name">${escapeHtml(presidentData.first_name)} ${escapeHtml(presidentData.last_name)}</div>
                             <div class="admin-person-details">Age ${presidentData.age} · <span class="admin-person-party">${escapeHtml(presPartyName)}</span></div>
                             ${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}
                             <div style="margin-top:8px;">
                                 <div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:4px;">${termRemaining <= 0 ? termRemainingDisplay : `Term Remaining: ${termRemainingDisplay}`}</div>
-                                <div style="height:4px;background:#333;border-radius:2px;overflow:hidden;">
-                                    <div style="height:100%;width:${termPct}%;background:${termPct > 25 ? 'var(--accent)' : '#ff4444'};border-radius:2px;transition:width 0.3s;"></div>
+                                <div style="height:4px;background:var(--bg-card);border-radius:0;overflow:hidden;">
+                                    <div style="height:100%;width:${termPct}%;background:${termPct > 25 ? 'var(--teal)' : 'var(--red)'};border-radius:0;transition:width 0.3s;"></div>
                                 </div>
                             </div>
                             ${traitHTML}
+                            ${renderExecutiveOrderButton()}
+                            ${renderOverreachBar()}
                         </div>
                         <div class="admin-section">
                             <div class="admin-section-title">Vice President</div>
@@ -755,7 +792,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                     <div class="administration-content">
                         <div class="admin-leaders-column">
                             <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${escapeHtml(safePmName(primeMinister))}</div><div class="admin-person-details">${primeMinister?.minister_age ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${escapeHtml(majorityParty.party_name)}</span></div>${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}</div>
-                            <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${escapeHtml(majorityParty.party_name)}</span></div></div>
+                            <div class="admin-section"><div class="admin-section-title">${escapeHtml(currentNation.head_of_state_title || 'Head of State')}</div><div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${escapeHtml(majorityParty.party_name)}</span></div></div>
                         </div>
                         ${renderAdminChat()}
                     </div>
@@ -794,7 +831,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         const coalitionParties = coalition.party_ids.map(id => { const p = parties.find(x => x.party_id === id); const fallback = allParties.find(f => f.id === id); const fallbackName = fallback?.faction_name || 'Unknown'; return p ? { ...p, seats: allPartySeats[id] || p.seats || 0 } : { party_name: fallbackName, seats: allPartySeats[id] || 0, party_id: id }; }).sort((a,b) => b.seats - a.seats);
         return `
             <div class="administration-box">
-                <div class="administration-header"><div><div class="administration-title">${escapeHtml(adminLast)} Administration</div><div class="administration-subtitle">${coalition.status === 'caretaker' ? 'Caretaker Government' : 'Coalition Government'}</div></div>${approvalHTML}</div>
+                <div class="administration-header"><div><div class="administration-title">${escapeHtml(adminLast)} Administration</div><div class="administration-subtitle">${(() => { if (coalition.status === 'caretaker') return 'Caretaker Government'; if (coalition.formation_type === 'emergency_minority') return 'Emergency Minority Government'; const govSeats = coalition.party_ids.reduce((s, id) => s + (allPartySeats[id] || 0), 0); const totalSeats = Object.values(allPartySeats).reduce((s, v) => s + v, 0); const isMajority = totalSeats > 0 && govSeats >= Math.ceil(totalSeats / 2); const isCoalition = coalition.party_ids.length > 1; if (isCoalition) return isMajority ? 'Majority Coalition Government' : 'Minority Coalition Government'; return isMajority ? 'Majority Government' : 'Minority Government'; })()}</div></div>${approvalHTML}</div>
                 <div class="administration-content">
                     <div class="admin-leaders-column">
                         <div class="admin-section">
@@ -806,15 +843,15 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
                                     <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(activeHOG.ideology)};color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
                                     <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
-                                    <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
-                                    <div style="font-size:0.75rem;color:#ff4444;">▼ ${activeHOG.leader_traits?.downside || ''}</div>
+                                    <div style="font-size:0.75rem;color:var(--green);margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
+                                    <div style="font-size:0.75rem;color:var(--red);">▼ ${activeHOG.leader_traits?.downside || ''}</div>
                                 </div>
                                 ${activeHOG.faction_id === currentFaction?.id && coalition.status !== 'caretaker' ? `
                                     <button class="ministry-btn purge" style="margin-top:10px;" onclick="resignPMAction()">📋 Resign as PM</button>
                                 ` : ''}
                             ` : ''}
                         </div>
-                        <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${escapeHtml(leadPartyName)}</span></div></div>
+                        <div class="admin-section"><div class="admin-section-title">${escapeHtml(currentNation.head_of_state_title || 'Head of State')}</div><div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${escapeHtml(leadPartyName)}</span></div></div>
                     </div>
                     ${renderAdminChat()}
                 </div>
@@ -1157,7 +1194,7 @@ async function loadFormationsList() {
 
     container.innerHTML = `
         <div class="create-proposal-section" id="create-proposal-section">
-            <div style="font-size: 1rem; color: #ffcc00; font-weight: bold; margin-bottom: 4px;">Propose a Government</div>
+            <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">Propose a Government</div>
             <div style="font-size: 0.82rem; color: #888; margin-bottom: 16px;">
                 Select which parties will form the coalition government. You need ${GAME_CONFIG.MAJORITY_SEATS}+ seats to form a government.
             </div>
@@ -1269,7 +1306,7 @@ function updateSeatPreview() {
     previewSeats.className = 'preview-seats ' + (meets ? 'meets' : 'below');
     previewPct.textContent = pct;
     previewThreshold.textContent = meets ? `✓ Meets ${GAME_CONFIG.MAJORITY_SEATS}-seat threshold` : `— needs ${GAME_CONFIG.MAJORITY_SEATS} seats`;
-    previewThreshold.style.color = meets ? '#4CAF50' : '#888';
+    previewThreshold.style.color = meets ? 'var(--green)' : 'var(--text-secondary)';
 }
 
 async function createProposal() {
@@ -1415,7 +1452,7 @@ function renderFormationDetail(formation) {
                     <div class="ministry-item-desc">${m.description}</div>
                     ${nameStr ? `<div class="ministry-minister-name">${nameStr}</div>` : ''}
                 </div>
-                ${isInactive ? '<div style="font-size:0.75rem;color:#555;">Requires legislation</div>' : `
+                ${isInactive ? '<div style="font-size:0.75rem;color:var(--text-dim);">Requires legislation</div>' : `
                     <div class="ministry-select-wrap">
                         <select onchange="onMinistryChange('${m.key}', this.value)" id="ministry-select-${m.key}">
                             <option value="">Select Party...</option>
@@ -1497,8 +1534,8 @@ function renderFormationDetail(formation) {
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <div class="back-link" onclick="loadFormationsList()" style="margin-bottom: 0;">← Back to Proposals</div>
             <div style="display: flex; gap: 8px;">
-                ${isProposer ? `<button onclick="toggleEditCoalition()" id="edit-coalition-btn" style="padding: 8px 16px; background: #1a1a2a; border: 1px solid #ffcc00; color: #ffcc00; border-radius: 4px; font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: 0.2s;" onmouseover="this.style.background='#2a2a3a'" onmouseout="this.style.background='#1a1a2a'">Edit Coalition</button>` : ''}
-                ${isProposer ? `<button onclick="retractProposal('${formation.id}')" style="padding: 8px 16px; background: #2a1a1a; border: 1px solid #ff4444; color: #ff4444; border-radius: 4px; font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: 0.2s;" onmouseover="this.style.background='#3a1a1a'" onmouseout="this.style.background='#2a1a1a'">Retract Proposal</button>` : ''}
+                ${isProposer ? `<button onclick="toggleEditCoalition()" id="edit-coalition-btn" style="padding: 8px 16px; background: var(--bg-card); border: 1px solid var(--border-0); color: var(--text-secondary); border-radius: 3px; font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; cursor: pointer; transition: 0.2s;" onmouseover="this.style.borderColor='var(--text-dim)'" onmouseout="this.style.borderColor='var(--border-0)'">Edit Coalition</button>` : ''}
+                ${isProposer ? `<button onclick="retractProposal('${formation.id}')" style="padding: 8px 16px; background: var(--red-faint); border: 1px solid var(--red-border); color: var(--red); border-radius: 3px; font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; cursor: pointer; transition: 0.2s;">Retract Proposal</button>` : ''}
             </div>
         </div>
 
@@ -1518,7 +1555,7 @@ function renderFormationDetail(formation) {
                 <div class="proposal-seat-preview" id="edit-seat-preview">
                     Coalition seats: <span class="preview-seats" id="edit-preview-seats">${coalitionSeats}</span> / ${totalLegislatureSeats}
                     (<span id="edit-preview-pct">${coalitionPct}</span>%)
-                    <span id="edit-preview-threshold" style="margin-left: 8px; font-size: 0.8rem; color: ${meetsThreshold ? '#4CAF50' : '#888'};">${meetsThreshold ? `✓ Meets ${GAME_CONFIG.MAJORITY_SEATS}-seat threshold` : `— needs ${GAME_CONFIG.MAJORITY_SEATS} seats`}</span>
+                    <span id="edit-preview-threshold" style="margin-left: 8px; font-size: 0.8rem; color: ${meetsThreshold ? 'var(--green)' : 'var(--text-secondary)'};">${meetsThreshold ? `✓ Meets ${GAME_CONFIG.MAJORITY_SEATS}-seat threshold` : `— needs ${GAME_CONFIG.MAJORITY_SEATS} seats`}</span>
                 </div>
                 <button class="action-btn" style="max-width: 300px; margin: 8px auto 0; display: block;" onclick="saveCoalitionEdit('${formation.id}')">Save Changes</button>
             </div>
@@ -1834,7 +1871,7 @@ function updateEditSeatPreview() {
     previewSeats.className = 'preview-seats ' + (meets ? 'meets' : 'below');
     previewPct.textContent = pct;
     previewThreshold.textContent = meets ? `✓ Meets ${GAME_CONFIG.MAJORITY_SEATS}-seat threshold` : `— needs ${GAME_CONFIG.MAJORITY_SEATS} seats`;
-    previewThreshold.style.color = meets ? '#4CAF50' : '#888';
+    previewThreshold.style.color = meets ? 'var(--green)' : 'var(--text-secondary)';
 }
 
 async function saveCoalitionEdit(formationId) {
@@ -1989,7 +2026,7 @@ async function formGovernmentFallback(ministryBaselines) {
             minister_first_name: minister.first_name,
             minister_last_name: minister.last_name,
             minister_age: minister.age,
-            minister_approval: 50,
+            minister_approval: NEW_MINISTER_APPROVAL,
             stat_baselines: ministryBaselines[ministryKey] || {}
         };
 
@@ -2079,11 +2116,20 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
     const stats = MINISTRY_TO_STATS[ministryKey];
     if (!stats || stats.length === 0 || !currentNation) return '';
 
+    const DELTA_SENSITIVITY = 0.6; // must match MINISTER_APPROVAL_CONFIG.DELTA_SENSITIVITY
+    const BASELINE_DECAY = -0.25;  // must match MINISTER_APPROVAL_CONFIG.BASELINE_DECAY
+
     const panelId = 'mstat-' + ministryKey;
     const baselines = ministry?.stat_baselines || {};
     let rows = '';
     let deltaSum = 0;
     let deltaCount = 0;
+
+    // First pass: count stats so we can compute per-stat effect share
+    let statCount = 0;
+    for (const statKey of stats) {
+        if (statDirectionSign(statKey) !== 0) statCount++;
+    }
 
     for (const statKey of stats) {
         const value = Number(currentNation[statKey] ?? 50);
@@ -2094,6 +2140,7 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
 
         const baseline = baselines[statKey] != null ? Number(baselines[statKey]) : null;
         const hasDelta = baseline !== null;
+        const baselineRounded = hasDelta ? Math.round(baseline * 10) / 10 : '—';
 
         // Delta in the "good" direction: positive = improvement, negative = worsening
         const rawDelta = hasDelta ? value - baseline : 0;
@@ -2104,6 +2151,16 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
         if (hasDelta) {
             deltaSum += goodDelta;
             deltaCount++;
+        }
+
+        // Per-stat effect on approval: (goodDelta / statCount) * DELTA_SENSITIVITY
+        const effectVal = hasDelta && statCount > 0 ? (goodDelta / statCount) * DELTA_SENSITIVITY : 0;
+        const absEffect = Math.abs(effectVal);
+        let effectStr = '—';
+        let effectCls = 'flat';
+        if (hasDelta && absEffect >= 0.01) {
+            effectStr = (effectVal > 0 ? '+' : '-') + (Math.round(absEffect * 100) / 100).toFixed(2);
+            effectCls = effectVal > 0 ? 'good' : 'bad';
         }
 
         // Delta display: ↑3.2 or ↓1.5 or —
@@ -2122,33 +2179,56 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
         const dotCls = !hasDelta || absDelta < 0.1 ? 'flat' : goodDelta > 0 ? 'good' : 'bad';
 
         const label = formatStatName(statKey);
-        const baselineRounded = hasDelta ? Math.round(baseline * 10) / 10 : '?';
         const directionWord = sign === 1 ? 'Higher is better' : 'Lower is better';
         const tooltip = hasDelta
-            ? 'Was ' + baselineRounded + '% when appointed. Now ' + rounded + '%. ' + directionWord + '.'
+            ? 'Appointed: ' + baselineRounded + '%. Now: ' + rounded + '%. ' + directionWord + '.'
             : 'No baseline recorded. ' + directionWord + '.';
 
         rows += '<div class="ministry-stat-row" title="' + escapeHtml(tooltip) + '">'
             + '<span class="stat-name">' + escapeHtml(label) + '</span>'
+            + '<span class="stat-appointed">' + (hasDelta ? baselineRounded + '%' : '—') + '</span>'
             + '<span class="stat-val">' + rounded + '%</span>'
             + '<span class="stat-delta ' + deltaCls + '">' + deltaStr + '</span>'
+            + '<span class="stat-effect ' + effectCls + '">' + effectStr + '</span>'
             + '<span class="stat-dot ' + dotCls + '">●</span>'
             + '</div>';
     }
 
-    // Overall trend line
+    // Foreign Minister: show missing ambassador penalty
+    let ambassadorPenalty = 0;
+    if (ministryKey === 'foreign' && missingAmbassadorCount > 0) {
+        ambassadorPenalty = missingAmbassadorCount * -0.25;
+        const penaltyStr = ambassadorPenalty.toFixed(2);
+        rows += '<div class="ministry-stat-row" title="' + missingAmbassadorCount + ' nation(s) without an ambassador appointed from your side">'
+            + '<span class="stat-name">Missing ambassadors</span>'
+            + '<span class="stat-appointed">—</span>'
+            + '<span class="stat-val">' + missingAmbassadorCount + '</span>'
+            + '<span class="stat-delta bad">↓' + missingAmbassadorCount + '</span>'
+            + '<span class="stat-effect bad">' + penaltyStr + '</span>'
+            + '<span class="stat-dot bad">●</span>'
+            + '</div>';
+    }
+
+    // Overall trend line with total per-tick effect
     let trendText = 'No data';
     let trendCls = 'flat';
     if (deltaCount > 0) {
         const avgDelta = deltaSum / deltaCount;
+        // Match server logic: baseline decay always applies, delta only when |avgDelta| >= 0.5
+        const deltaEffect = Math.abs(avgDelta) >= 0.5 ? avgDelta * DELTA_SENSITIVITY : 0;
+        const totalEffect = BASELINE_DECAY + deltaEffect + ambassadorPenalty;
+        const absTotal = Math.abs(totalEffect);
+        const effectLabel = absTotal >= 0.01
+            ? ' (' + (totalEffect > 0 ? '+' : '-') + (Math.round(absTotal * 100) / 100).toFixed(2) + '/tick)'
+            : '';
         if (Math.abs(avgDelta) < 0.5) {
-            trendText = 'Approval holding steady';
+            trendText = 'Approval holding steady' + effectLabel;
             trendCls = 'flat';
         } else if (avgDelta > 0) {
-            trendText = 'Approval trending upward';
+            trendText = 'Approval trending upward' + effectLabel;
             trendCls = 'good';
         } else {
-            trendText = 'Approval trending downward';
+            trendText = 'Approval trending downward' + effectLabel;
             trendCls = 'bad';
         }
     }
@@ -2158,7 +2238,7 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
         + '</button>'
         + '<div class="ministry-stats-panel" id="' + panelId + '">'
         + '<div class="ministry-stat-row ministry-stat-header">'
-        + '<span class="stat-name">Stat</span><span class="stat-val">Now</span><span class="stat-delta">Change</span><span class="stat-dot"></span></div>'
+        + '<span class="stat-name">Stat</span><span class="stat-appointed">Appointed</span><span class="stat-val">Now</span><span class="stat-delta">Change</span><span class="stat-effect">Effect</span><span class="stat-dot"></span></div>'
         + rows
         + '<div class="ministry-stats-footer ' + trendCls + '">Overall: ' + trendText + '</div>'
         + '</div>';
@@ -2208,7 +2288,7 @@ function renderCabinet(ministries, coalition) {
                 const mLogo = getPartyLogoById(m.party_id);
                 const mCustomLogo = getPartyCustomLogoById(m.party_id);
                 const mLogoHtml = mLogo || mCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: mCustomLogo, iconKey: mLogo, size: 16, color: mColor })}</span>` : '';
-                const appr = m.minister_approval ?? 50;
+                const appr = m.minister_approval ?? NEW_MINISTER_APPROVAL;
                 const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
                 return `<div class="ministry-card" style="border-top:3px solid ${mColor};padding:10px 12px;"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${escapeHtml(m.minister_first_name)} ${escapeHtml(m.minister_last_name)}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party" style="color:${mColor};">${mLogoHtml}${escapeHtml(partyName)}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>${renderMinistryStatBreakdown(key, m)}${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests, m)}</div>`;
             } else {
@@ -2238,7 +2318,7 @@ function renderCabinet(ministries, coalition) {
         var title = MINISTRY_NAMES[key] || key;
 
         if (vacant) {
-            var appointBtn = canAppoint ? '<div class="ministry-actions"><button class="ministry-btn assign" onclick="openAssignModal(\'' + key + '\')">✦ Appoint <span class="ap-cost">1 AP</span></button></div>' : '';
+            var appointBtn = canAppoint ? '<div class="ministry-actions"><button class="ministry-btn assign" onclick="openAssignModal(\'' + key + '\')">✦ Appoint</button></div>' : '';
             return '<div class="ministry-card vacant">'
                 + '<div class="ministry-header"><div class="ministry-title">' + title + '</div></div>'
                 + '<div class="ministry-body"><div class="minister-name" style="color:var(--text-muted);">Vacant</div>' + appointBtn + '</div></div>';
@@ -2252,7 +2332,7 @@ function renderCabinet(ministries, coalition) {
         var name = m.minister_first_name + ' ' + m.minister_last_name;
         var isMyMinistry = currentFaction && m.party_id === currentFaction.id;
         var resignBtn = (isMyMinistry && !isCaretaker) ? '<div class="ministry-actions"><button class="ministry-btn purge" onclick="event.stopPropagation();resignMinistry(\'' + m.ministry_key + '\')">Resign Ministry</button></div>' : '';
-        var appr = m.minister_approval ?? 50;
+        var appr = m.minister_approval ?? NEW_MINISTER_APPROVAL;
         var apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
 
         // Fire button: visible to PM party (parliamentary) — not for own party resignations
@@ -2285,7 +2365,7 @@ function renderMinistryActions(key, isFilled, requests, ministry) {
         if (isFilled) {
             html += `<button class="ministry-btn purge" onclick="purgeMinister('${key}')" ${ap < 1 ? 'disabled title="Need 1 AP"' : ''}>⛔ Purge <span class="ap-cost">1 AP</span></button>`;
         } else {
-            html += `<button class="ministry-btn assign" onclick="openAssignModal('${key}')" ${ap < 1 ? 'disabled title="Need 1 AP"' : ''}>✦ Assign <span class="ap-cost">1 AP</span></button>`;
+            html += `<button class="ministry-btn assign" onclick="openAssignModal('${key}')">✦ Assign</button>`;
         }
         html += '</div>';
         if (requests.length > 0) {
@@ -2326,7 +2406,7 @@ function renderPresidentialMinistryCard(key, ministry) {
         const pmLogo = getPartyLogoById(ministry.party_id);
         const pmCustomLogo = getPartyCustomLogoById(ministry.party_id);
         const pmLogoHtml = pmLogo || pmCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: pmCustomLogo, iconKey: pmLogo, size: 16, color: pmColor })}</span>` : '';
-        const appr = ministry.minister_approval ?? 50;
+        const appr = ministry.minister_approval ?? NEW_MINISTER_APPROVAL;
         const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
 
         // Fire button for President's party
@@ -2356,11 +2436,11 @@ function renderPresidentialMinistryCard(key, ministry) {
     if (isPending) {
         const pm = ministry.pending_minister;
         const nomineeParty = allParties.find(p => p.id === pm.party_id);
-        return `<div class="ministry-card" style="border-top-color:#FF9800;padding:10px 12px;">
+        return `<div class="ministry-card" style="border-top-color:var(--amber);padding:10px 12px;">
             <div class="ministry-title">${MINISTRY_NAMES[key]}</div>
-            <div class="minister-name" style="color:#FF9800;">${pm.first_name} ${pm.last_name}</div>
+            <div class="minister-name" style="color:var(--amber);">${pm.first_name} ${pm.last_name}</div>
             <div class="minister-details">Age ${pm.age || '?'} • <span class="minister-party">${nomineeParty?.faction_name || 'Unknown'}</span></div>
-            <div style="margin-top:8px;padding:4px 10px;background:#332200;border:1px solid #FF9800;border-radius:6px;font-size:0.68rem;color:#FF9800;text-align:center;">Awaiting Senate Confirmation</div>
+            <div style="margin-top:8px;padding:4px 10px;background:var(--amber-faint);border:1px solid var(--amber-border);border-radius:3px;font-family:var(--font-mono);font-size:8.5px;font-weight:600;color:var(--amber);text-align:center;text-transform:uppercase;letter-spacing:0.06em;">Awaiting Senate Confirmation</div>
         </div>`;
     }
 
@@ -2516,12 +2596,6 @@ function selectCandidate(index) {
 async function confirmAssign() {
     if (!selectedCandidate || !assignMinistryKey) return;
     try {
-        // Deduct 1 AP for filling a vacant ministry
-        if ((currentFaction?.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
-        const apResult = await deductAP(_supabase, currentFaction.id, 1);
-        if (!apResult.success) { alert('Not enough AP (need 1).'); return; }
-        currentFaction.action_points = apResult.newAp;
-
         // Validate vacancy before executing (prevents double-click / race condition)
         const { data: freshMinistry } = await _supabase.from('ministries')
             .select('minister_first_name')
@@ -2542,7 +2616,7 @@ async function confirmAssign() {
                 minister_first_name: selectedCandidate.firstName,
                 minister_last_name: selectedCandidate.lastName,
                 minister_age: selectedCandidate.age,
-                minister_approval: 50,
+                minister_approval: NEW_MINISTER_APPROVAL,
                 stat_baselines: buildMinistryBaselines(assignMinistryKey, currentNation),
                 is_active: true
             }).eq('id', existing.id);
@@ -2556,7 +2630,7 @@ async function confirmAssign() {
                 minister_first_name: selectedCandidate.firstName,
                 minister_last_name: selectedCandidate.lastName,
                 minister_age: selectedCandidate.age,
-                minister_approval: 50,
+                minister_approval: NEW_MINISTER_APPROVAL,
                 stat_baselines: buildMinistryBaselines(assignMinistryKey, currentNation),
                 is_active: true
             });
@@ -2671,7 +2745,7 @@ async function confirmAppointment() {
             minister_first_name: selectedCandidate.firstName,
             minister_last_name: selectedCandidate.lastName,
             minister_age: selectedCandidate.age,
-            minister_approval: 50,
+            minister_approval: NEW_MINISTER_APPROVAL,
             stat_baselines: buildMinistryBaselines('prime_minister', currentNation)
         }).eq('id', fresh.id);
         if (error) throw error;
@@ -2814,7 +2888,8 @@ async function claimPower() {
                 total_seats: currentFaction.seats || 0,
                 government_type: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
                 started_at_tick: tick,
-                started_at_date: tickToDate(tick)
+                started_at_date: tickToDate(tick),
+                head_of_state_title: currentNation.head_of_state_title || null
             });
         } catch (adminErr) {
             console.warn('Administration record creation failed (non-blocking):', adminErr);
@@ -2900,7 +2975,7 @@ async function purgeMinister(ministryKey) {
         const decayTicks = approvalBoost > 0 ? approvalBoost + 1 : 0;
 
         const { error: clearErr } = await _supabase.from('ministries').update({
-            minister_first_name: null, minister_last_name: null, minister_age: null, party_id: null, minister_approval: 50, stat_baselines: null
+            minister_first_name: null, minister_last_name: null, minister_age: null, party_id: null, minister_approval: NEW_MINISTER_APPROVAL, stat_baselines: null
         }).eq('id', ministry.id);
         if (clearErr) throw clearErr;
 
@@ -3250,6 +3325,437 @@ function renderImpeachmentButton() {
         </div>`;
 }
 
+// ==================== EXECUTIVE ORDERS ====================
+
+let eoOrderData = null; // cached from fetchActiveOrders
+let eoAvailability = null; // cached from checkOrderAvailability
+let eoSelectedType = null;
+let eoSelectedParams = {};
+
+function renderOverreachBar() {
+    if (!isPresidential || !presidentData) return '';
+    const count = currentNation?.overreach_count || 0;
+    const maxPips = EO_CONFIG.OVERREACH_WINDOW || 5;
+    const status = getOverreachStatus(count);
+
+    let pips = '';
+    for (let i = 0; i < maxPips; i++) {
+        const filled = i < count;
+        const level = filled ? (count >= 4 ? 'danger' : count >= 2 ? 'warn' : '') : '';
+        pips += `<div class="overreach-pip${filled ? ' filled' : ''}${level ? ' ' + level : ''}"></div>`;
+    }
+
+    return `
+        <div class="overreach-container">
+            <div class="overreach-header">
+                <span class="overreach-label">Presidential Overreach</span>
+                <span class="overreach-count">${count} / ${maxPips}</span>
+            </div>
+            <div class="overreach-pips">${pips}</div>
+        </div>`;
+}
+
+function renderExecutiveOrderButton() {
+    if (!isPresidential || !presidentData) return '';
+    const canIssue = canIssueExecutiveOrder(currentNation, currentFaction, presidentFactionId);
+    if (!canIssue) {
+        return `
+            <div class="executive-order-row">
+                <button class="executive-order-btn" disabled title="Only the president's party can issue executive orders">
+                    Executive Order
+                </button>
+            </div>`;
+    }
+
+    // Check for active emergency
+    const hasEmergency = eoOrderData?.hasActiveEmergency;
+    if (hasEmergency) {
+        const em = eoOrderData.activeEmergency;
+        const ticksActive = (eoOrderData?.currentTick || currentTick) - (em?.issued_tick || 0);
+        return `
+            <div class="executive-order-row">
+                <button class="executive-order-btn" onclick="openEOModal()">
+                    Executive Order
+                </button>
+                <button class="executive-order-btn end-emergency" onclick="handleEndEmergency()" style="margin-top:6px;">
+                    End Emergency
+                </button>
+            </div>
+            <div class="emergency-banner">
+                <span class="emergency-banner-label">Emergency In Effect</span>
+                <span class="emergency-banner-ticks">${ticksActive} tick${ticksActive !== 1 ? 's' : ''} active</span>
+            </div>`;
+    }
+
+    return `
+        <div class="executive-order-row">
+            <button class="executive-order-btn" onclick="openEOModal()">
+                Executive Order
+            </button>
+        </div>`;
+}
+
+async function openEOModal() {
+    if (!currentFaction || !currentNation) return;
+    const modal = document.getElementById('eo-modal');
+    const listEl = document.getElementById('eo-order-list');
+    const confirmPanel = document.getElementById('eo-confirm-panel');
+    const confirmBtn = document.getElementById('eo-confirm-btn');
+
+    eoSelectedType = null;
+    eoSelectedParams = {};
+    confirmPanel.className = 'eo-confirm-panel';
+    confirmPanel.innerHTML = '';
+    confirmBtn.style.display = 'none';
+    confirmBtn.disabled = true;
+
+    listEl.innerHTML = '<div style="color:var(--text-secondary);font-size:0.85rem;">Loading...</div>';
+    modal.classList.add('active');
+
+    try {
+        eoOrderData = await fetchActiveOrders(_supabase, currentNation.id);
+        eoAvailability = await checkOrderAvailability(_supabase, currentNation.id, currentFaction.id, currentFaction.action_points || 0);
+    } catch (e) {
+        listEl.innerHTML = `<div style="color:var(--red);font-size:0.85rem;">Error: ${e.message}</div>`;
+        return;
+    }
+
+    const orders = [
+        {
+            type: 'acting_minister', name: 'Acting Minister',
+            desc: `Appoint an acting minister, bypassing confirmation. Max ${EO_CONFIG.ACTING_MINISTER_MAX}.`,
+            info: eoAvailability.acting_minister
+        },
+        {
+            type: 'tax_adjustment', name: 'Tax Adjustment',
+            desc: 'Adjust income, corporate, or sales tax by \u00B13%.',
+            info: eoAvailability.tax_adjustment
+        },
+        {
+            type: 'price_controls', name: 'Price Controls',
+            desc: `Freeze fuel prices or food security for ${EO_CONFIG.PRICE_CONTROLS_DURATION} ticks.`,
+            info: eoAvailability.price_controls
+        },
+        {
+            type: 'national_emergency', name: 'National Emergency',
+            desc: 'Declare emergency powers. +1 AP/tick, advance bills. Lasts until ended.',
+            info: eoAvailability.national_emergency
+        },
+        {
+            type: 'censure', name: 'Censure',
+            desc: 'Censure a rival faction. -4 momentum to target (but they gain sympathy).',
+            info: eoAvailability.censure
+        }
+    ];
+
+    let html = '<div class="modal-subtitle">Select an executive order to issue.</div>';
+    for (const o of orders) {
+        const avail = o.info.available;
+        const statusLabel = avail ? 'AVAILABLE' : (o.info.reason || 'LOCKED');
+        const statusClass = avail ? 'available' : (o.info.reason?.includes('ooldown') ? 'cooldown' : 'locked');
+        html += `
+            <div class="eo-card ${avail ? '' : 'unavailable'}" onclick="${avail ? `selectEOType('${o.type}')` : ''}">
+                <div class="eo-card-left">
+                    <div class="eo-card-name">${escapeHtml(o.name)}</div>
+                    <div class="eo-card-desc">${escapeHtml(o.desc)}</div>
+                </div>
+                <div class="eo-card-right">
+                    <div class="eo-card-cost">${o.info.apCost} AP</div>
+                    <div class="eo-card-status ${statusClass}">${escapeHtml(statusLabel)}</div>
+                </div>
+            </div>`;
+    }
+    listEl.innerHTML = html;
+}
+
+function selectEOType(type) {
+    eoSelectedType = type;
+    eoSelectedParams = {};
+    const listEl = document.getElementById('eo-order-list');
+    const confirmPanel = document.getElementById('eo-confirm-panel');
+    const confirmBtn = document.getElementById('eo-confirm-btn');
+
+    listEl.style.display = 'none';
+    confirmPanel.className = 'eo-confirm-panel active';
+    confirmBtn.style.display = 'inline-block';
+    confirmBtn.disabled = true;
+
+    if (type === 'acting_minister') {
+        renderActingMinisterConfirm(confirmPanel);
+    } else if (type === 'tax_adjustment') {
+        renderTaxAdjustmentConfirm(confirmPanel);
+    } else if (type === 'price_controls') {
+        renderPriceControlsConfirm(confirmPanel);
+    } else if (type === 'national_emergency') {
+        renderEmergencyConfirm(confirmPanel);
+    } else if (type === 'censure') {
+        renderCensureConfirm(confirmPanel);
+    }
+}
+
+function renderActingMinisterConfirm(panel) {
+    // Find vacant ministries
+    const vacantMinistries = (ministryData || []).filter(m =>
+        !m.minister_first_name || m.confirmation_status === 'pending' || m.confirmation_status === 'rejected'
+    ).filter(m => m.ministry_key !== 'prime_minister');
+
+    if (vacantMinistries.length === 0) {
+        panel.innerHTML = `
+            <div class="eo-confirm-title">Acting Minister</div>
+            <div class="eo-confirm-desc">No vacant ministries available for acting appointment.</div>`;
+        return;
+    }
+
+    const MINISTRY_LABELS = {
+        interior: 'Interior', foreign: 'Foreign Affairs', defense: 'Defense',
+        finance: 'Finance', education: 'Education', health: 'Health'
+    };
+
+    let options = '';
+    for (const m of vacantMinistries) {
+        const label = MINISTRY_LABELS[m.ministry_key] || m.ministry_key;
+        options += `<option value="${m.ministry_key}">${escapeHtml(label)}</option>`;
+    }
+
+    panel.innerHTML = `
+        <div class="eo-confirm-title">Appoint Acting Minister</div>
+        <div class="eo-confirm-desc">
+            Select a ministry to fill with an acting appointment. This bypasses legislative confirmation
+            but costs ${EO_CONFIG.ACTING_MINISTER_AP} AP and -4 government approval.
+        </div>
+        <select class="eo-select" id="eo-acting-ministry" onchange="eoParamChanged()">
+            <option value="">-- Select Ministry --</option>
+            ${options}
+        </select>
+        <div class="eo-preview" id="eo-acting-preview" style="display:none;"></div>`;
+}
+
+function renderTaxAdjustmentConfirm(panel) {
+    const taxes = [
+        { key: 'income_tax', label: 'Income Tax' },
+        { key: 'corporate_tax', label: 'Corporate Tax' },
+        { key: 'sales_tax', label: 'Sales Tax' }
+    ];
+    const cooldowns = eoAvailability?.taxCooldowns || {};
+
+    let taxBtns = '';
+    for (const t of taxes) {
+        const onCD = cooldowns[t.key];
+        taxBtns += `<button class="eo-option-btn" data-tax="${t.key}" onclick="eoSelectTax('${t.key}')" ${onCD ? 'disabled title="On cooldown"' : ''}>${escapeHtml(t.label)}${onCD ? ' (CD)' : ''}</button>`;
+    }
+
+    panel.innerHTML = `
+        <div class="eo-confirm-title">Tax Adjustment</div>
+        <div class="eo-confirm-desc">
+            Adjust a tax rate by \u00B1${EO_CONFIG.TAX_ADJUSTMENT_DELTA}%. Costs ${EO_CONFIG.TAX_ADJUSTMENT_BASE_AP}+ AP.
+            Tax increases cost -3 approval; decreases cost -5 approval.
+        </div>
+        <div class="eo-option-group" id="eo-tax-types">${taxBtns}</div>
+        <div class="eo-option-group" id="eo-tax-direction" style="display:none;">
+            <button class="eo-option-btn" onclick="eoSelectDirection('increase')">Increase +${EO_CONFIG.TAX_ADJUSTMENT_DELTA}%</button>
+            <button class="eo-option-btn" onclick="eoSelectDirection('decrease')">Decrease -${EO_CONFIG.TAX_ADJUSTMENT_DELTA}%</button>
+        </div>
+        <div class="eo-preview" id="eo-tax-preview" style="display:none;"></div>`;
+}
+
+function renderPriceControlsConfirm(panel) {
+    const stats = [
+        { key: 'fuel_prices', label: 'Fuel Prices' },
+        { key: 'food_security', label: 'Food Security' }
+    ];
+    const cooldowns = eoAvailability?.pcCooldowns || {};
+
+    let statBtns = '';
+    for (const s of stats) {
+        const onCD = cooldowns[s.key];
+        statBtns += `<button class="eo-option-btn" data-stat="${s.key}" onclick="eoSelectPCStat('${s.key}')" ${onCD ? 'disabled title="On cooldown"' : ''}>${escapeHtml(s.label)}${onCD ? ' (CD)' : ''}</button>`;
+    }
+
+    panel.innerHTML = `
+        <div class="eo-confirm-title">Price Controls</div>
+        <div class="eo-confirm-desc">
+            Freeze a stat at its current value for ${EO_CONFIG.PRICE_CONTROLS_DURATION} ticks.
+            When controls expire, suppressed pressure releases at 2x magnitude.
+            Costs ${EO_CONFIG.PRICE_CONTROLS_AP} AP and -3 approval.
+        </div>
+        <div class="eo-option-group">${statBtns}</div>
+        <div class="eo-preview" id="eo-pc-preview" style="display:none;"></div>`;
+}
+
+function renderEmergencyConfirm(panel) {
+    panel.innerHTML = `
+        <div class="eo-confirm-title">Declare National Emergency</div>
+        <div class="eo-warning">
+            <strong>Warning:</strong> Emergency powers are significant.
+            <br>• +1 AP per tick to presidential faction
+            <br>• Can advance bills without votes
+            <br>• +8 initial approval boost (crisis rally)
+            <br>• -4 approval per tick after first tick
+            <br>• Opposition gains +6 momentum
+            <br>• After ${EO_CONFIG.EMERGENCY_UNREST_THRESHOLD} ticks: civil unrest rises +1/tick
+            <br>• Ending costs +8 civil unrest + ${EO_CONFIG.EMERGENCY_COOLDOWN}-tick cooldown
+            <br>• Lasts until manually ended, president removed, or impeached
+        </div>
+        <div class="eo-confirm-desc">
+            Cost: ${EO_CONFIG.NATIONAL_EMERGENCY_AP} AP. This cannot be undone without consequences.
+        </div>`;
+    document.getElementById('eo-confirm-btn').disabled = false;
+}
+
+function renderCensureConfirm(panel) {
+    const otherFactions = (allParties || []).filter(p => p.id !== currentFaction?.id && p.seats > 0);
+    if (otherFactions.length === 0) {
+        panel.innerHTML = `
+            <div class="eo-confirm-title">Censure</div>
+            <div class="eo-confirm-desc">No other factions to censure.</div>`;
+        return;
+    }
+
+    let options = '';
+    for (const f of otherFactions) {
+        options += `<option value="${f.id}">${escapeHtml(f.faction_name)} (${f.seats} seats)</option>`;
+    }
+
+    panel.innerHTML = `
+        <div class="eo-confirm-title">Censure a Rival Faction</div>
+        <div class="eo-confirm-desc">
+            Censure costs ${EO_CONFIG.CENSURE_AP} AP and -3 approval.
+            Target loses -4 momentum but gains sympathy (+${EO_CONFIG.CENSURE_BASE_MOMENTUM} momentum).
+            Repeat censures within ${EO_CONFIG.CENSURE_REPEAT_WINDOW} ticks give +${EO_CONFIG.CENSURE_REPEAT_MOMENTUM} sympathy.
+        </div>
+        <select class="eo-select" id="eo-censure-target" onchange="eoParamChanged()">
+            <option value="">-- Select Faction --</option>
+            ${options}
+        </select>`;
+}
+
+// Parameter selection handlers
+function eoParamChanged() {
+    const confirmBtn = document.getElementById('eo-confirm-btn');
+    if (eoSelectedType === 'acting_minister') {
+        const sel = document.getElementById('eo-acting-ministry');
+        eoSelectedParams.ministryKey = sel?.value || '';
+        confirmBtn.disabled = !eoSelectedParams.ministryKey;
+        if (eoSelectedParams.ministryKey) {
+            document.getElementById('eo-acting-preview').style.display = 'block';
+            document.getElementById('eo-acting-preview').textContent = `Appoint acting minister to ${eoSelectedParams.ministryKey.replace('_', ' ')}`;
+        }
+    } else if (eoSelectedType === 'censure') {
+        const sel = document.getElementById('eo-censure-target');
+        eoSelectedParams.targetFactionId = sel?.value || '';
+        confirmBtn.disabled = !eoSelectedParams.targetFactionId;
+    }
+}
+window.eoParamChanged = eoParamChanged;
+
+function eoSelectTax(taxKey) {
+    eoSelectedParams.taxType = taxKey;
+    document.querySelectorAll('#eo-tax-types .eo-option-btn').forEach(b => b.classList.remove('selected'));
+    document.querySelector(`#eo-tax-types [data-tax="${taxKey}"]`)?.classList.add('selected');
+    document.getElementById('eo-tax-direction').style.display = 'flex';
+    eoSelectedParams.direction = null;
+    document.getElementById('eo-confirm-btn').disabled = true;
+    document.getElementById('eo-tax-preview').style.display = 'none';
+}
+window.eoSelectTax = eoSelectTax;
+
+function eoSelectDirection(dir) {
+    eoSelectedParams.direction = dir;
+    document.querySelectorAll('#eo-tax-direction .eo-option-btn').forEach(b => {
+        b.classList.toggle('selected', b.textContent.toLowerCase().includes(dir));
+    });
+    const rate = currentNation?.[eoSelectedParams.taxType] ?? 20;
+    const delta = dir === 'increase' ? EO_CONFIG.TAX_ADJUSTMENT_DELTA : -EO_CONFIG.TAX_ADJUSTMENT_DELTA;
+    const newRate = Math.max(0, Math.min(50, rate + delta));
+    const preview = document.getElementById('eo-tax-preview');
+    preview.style.display = 'block';
+    preview.textContent = `${eoSelectedParams.taxType.replace(/_/g, ' ')}: ${rate}% \u2192 ${newRate}%`;
+    document.getElementById('eo-confirm-btn').disabled = false;
+}
+window.eoSelectDirection = eoSelectDirection;
+
+function eoSelectPCStat(stat) {
+    eoSelectedParams.stat = stat;
+    document.querySelectorAll('#eo-confirm-panel .eo-option-btn[data-stat]').forEach(b => {
+        b.classList.toggle('selected', b.getAttribute('data-stat') === stat);
+    });
+    const val = currentNation?.[stat] ?? 50;
+    const preview = document.getElementById('eo-pc-preview');
+    preview.style.display = 'block';
+    preview.textContent = `Freeze ${stat.replace(/_/g, ' ')} at ${Number(val).toFixed(1)} for ${EO_CONFIG.PRICE_CONTROLS_DURATION} ticks`;
+    document.getElementById('eo-confirm-btn').disabled = false;
+}
+window.eoSelectPCStat = eoSelectPCStat;
+
+async function confirmExecutiveOrder() {
+    const confirmBtn = document.getElementById('eo-confirm-btn');
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Issuing...';
+
+    let result;
+    try {
+        if (eoSelectedType === 'acting_minister') {
+            result = await issueActingMinister(_supabase, currentNation.id, currentFaction.id, eoSelectedParams.ministryKey, currentNation.name);
+        } else if (eoSelectedType === 'tax_adjustment') {
+            result = await issueTaxAdjustment(_supabase, currentNation.id, currentFaction.id, eoSelectedParams.taxType, eoSelectedParams.direction);
+        } else if (eoSelectedType === 'price_controls') {
+            result = await issuePriceControls(_supabase, currentNation.id, currentFaction.id, eoSelectedParams.stat);
+        } else if (eoSelectedType === 'national_emergency') {
+            result = await issueNationalEmergency(_supabase, currentNation.id, currentFaction.id);
+        } else if (eoSelectedType === 'censure') {
+            result = await issueCensure(_supabase, currentNation.id, currentFaction.id, eoSelectedParams.targetFactionId);
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Issue Order';
+        return;
+    }
+
+    if (!result?.success) {
+        alert(result?.error || 'Failed to issue executive order.');
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Issue Order';
+        return;
+    }
+
+    closeEOModal();
+    window.location.reload();
+}
+window.confirmExecutiveOrder = confirmExecutiveOrder;
+
+function closeEOModal() {
+    document.getElementById('eo-modal').classList.remove('active');
+    document.getElementById('eo-order-list').style.display = 'block';
+    const confirmPanel = document.getElementById('eo-confirm-panel');
+    confirmPanel.className = 'eo-confirm-panel';
+    confirmPanel.innerHTML = '';
+    const confirmBtn = document.getElementById('eo-confirm-btn');
+    confirmBtn.style.display = 'none';
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Issue Order';
+    eoSelectedType = null;
+    eoSelectedParams = {};
+}
+window.closeEOModal = closeEOModal;
+window.openEOModal = openEOModal;
+window.selectEOType = selectEOType;
+
+async function handleEndEmergency() {
+    if (!confirm('End the national emergency? This will cause +8 civil unrest and start an 8-tick cooldown.')) return;
+    try {
+        const result = await endNationalEmergency(_supabase, currentNation.id, currentFaction.id);
+        if (!result.success) {
+            alert(result.error || 'Failed to end emergency.');
+            return;
+        }
+        window.location.reload();
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+window.handleEndEmergency = handleEndEmergency;
+
 async function fileImpeachment() {
     if (!currentFaction || !currentNation || !presidentData) return;
 
@@ -3311,7 +3817,7 @@ async function fileImpeachment() {
 
     // 3. Incompetence — requires gov_approval <= threshold for consecutive ticks
     // Simplified: check current approval as proxy
-    const govApproval = currentNation.gov_approval ?? 50;
+    const govApproval = currentNation.gov_approval ?? 40;
     const incompAvail = govApproval <= GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD;
     charges.push({
         type: 'incompetence',
@@ -3333,7 +3839,7 @@ async function fileImpeachment() {
         const tooltip = c.reason ? ` title="${c.reason}"` : '';
         return `<label style="display:block;margin:8px 0;${opacity}"${tooltip}>
             <input type="checkbox" name="impeach-charge" value="${c.type}" ${disabled} style="margin-right:8px;">
-            <strong>${c.label}</strong>${c.reason ? ` <span style="font-size:0.7rem;color:#888;">(${c.reason})</span>` : ''}
+            <strong>${c.label}</strong>${c.reason ? ` <span style="font-size:0.7rem;color:var(--text-secondary);">(${c.reason})</span>` : ''}
         </label>`;
     }).join('');
 
@@ -3342,22 +3848,22 @@ async function fileImpeachment() {
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:center;justify-content:center;';
     overlay.innerHTML = `
-        <div style="background:#1e1e1e;border:1px solid #444;border-radius:12px;padding:24px;max-width:440px;width:90%;max-height:80vh;overflow-y:auto;">
-            <div style="font-size:1.1rem;font-weight:bold;color:#ff4444;margin-bottom:4px;">⚖ IMPEACH PRESIDENT</div>
-            <div style="font-size:0.85rem;color:#aaa;margin-bottom:16px;">
+        <div style="background:var(--bg-panel);border:1px solid var(--border-0);border-radius:3px;padding:24px;max-width:440px;width:90%;max-height:80vh;overflow-y:auto;">
+            <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--red);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.1em;">⚖ IMPEACH PRESIDENT</div>
+            <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:16px;">
                 President ${escapeHtml(presidentData.first_name)} ${escapeHtml(presidentData.last_name)}
             </div>
-            <div style="font-size:0.8rem;color:#ccc;margin-bottom:12px;">Select at least one charge:</div>
+            <div style="font-size:0.8rem;color:var(--text-primary);margin-bottom:12px;">Select at least one charge:</div>
             <div id="impeach-charges-list">${chargeCheckboxes}</div>
-            <div style="margin-top:16px;padding-top:12px;border-top:1px solid #333;font-size:0.75rem;color:#888;line-height:1.5;">
-                <div>Cost: <strong style="color:#ffcc00;">${GAME_CONFIG.IMPEACHMENT_AP_COST} AP</strong></div>
+            <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-hair);font-size:0.75rem;color:var(--text-secondary);line-height:1.5;">
+                <div>Cost: <strong style="color:var(--amber);">${GAME_CONFIG.IMPEACHMENT_AP_COST} AP</strong></div>
                 <div>Committee debate: ${GAME_CONFIG.IMPEACHMENT_COMMITTEE_TICKS} ticks → Floor vote: ${GAME_CONFIG.IMPEACHMENT_MOTION_VOTING_TICKS} ticks</div>
-                <div>Requires <strong style="color:#4CAF50;">simple majority</strong> (50%+1 of all seats) to impeach</div>
+                <div>Requires <strong style="color:var(--green);">simple majority</strong> (50%+1 of all seats) to impeach</div>
                 <div style="margin-top:6px;">If impeached → Trial: ${GAME_CONFIG.IMPEACHMENT_TRIAL_TICKS}-tick conviction vote (⅔ supermajority)</div>
             </div>
             <div style="display:flex;gap:12px;margin-top:20px;">
-                <button id="impeach-cancel-btn" style="flex:1;padding:10px;background:#333;color:#ccc;border:1px solid #555;border-radius:6px;cursor:pointer;font-size:0.85rem;">Cancel</button>
-                <button id="impeach-confirm-btn" style="flex:1;padding:10px;background:#B71C1C;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.85rem;font-weight:bold;">File Impeachment</button>
+                <button id="impeach-cancel-btn" style="flex:1;padding:10px;background:var(--bg-card);color:var(--text-secondary);border:1px solid var(--border-0);border-radius:3px;cursor:pointer;font-family:var(--font-mono);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">Cancel</button>
+                <button id="impeach-confirm-btn" style="flex:1;padding:10px;background:var(--red);color:#fff;border:none;border-radius:3px;cursor:pointer;font-family:var(--font-mono);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">File Impeachment</button>
             </div>
         </div>`;
     document.body.appendChild(overlay);
@@ -3730,7 +4236,8 @@ async function resignPMAction() {
         '• Your party: -5 Approval\n' +
         '• Nation: -3 Stability\n' +
         '• Your party cannot hold PM for 12 ticks (1 year)\n' +
-        '• Coalition partner may take over, or coalition collapses\n\n' +
+        '• Coalition dissolves — emergency elections held immediately\n' +
+        '• All active bills are frozen\n\n' +
         'This cannot be undone. Proceed?'
     )) return;
 
@@ -3751,11 +4258,12 @@ async function resignPMAction() {
         // Bust coalition cache so re-render picks up changed state
         qCacheBust('coalition_');
 
-        if (result.result === 'pm_appointed') {
-            alert(`📋 You have resigned as Prime Minister.\n\n${result.newPmPartyName}'s party leader has been appointed as the new PM.`);
-        } else if (result.result === 'coalition_collapsed') {
-            alert(`📋 You have resigned as Prime Minister.\n\nNo eligible partner — the coalition has collapsed. The nation has no government.`);
-        }
+        alert(
+            '📋 You have resigned as Prime Minister.\n\n' +
+            'The coalition has been dissolved and emergency elections have been called.\n' +
+            'Elections will be held on the next tick. All active bills have been frozen.\n' +
+            'Your party cannot hold the PM seat for 12 ticks.'
+        );
 
         await renderGovernmentPage();
     } catch (e) {
@@ -3792,7 +4300,7 @@ async function resignPMAction() {
             minister_last_name: null,
             minister_age: null,
             party_id: null,
-            minister_approval: 50,
+            minister_approval: NEW_MINISTER_APPROVAL,
             stat_baselines: null
         }).eq('id', ministry.id);
 
@@ -3838,7 +4346,7 @@ async function resignPMAction() {
             minister_last_name: null,
             minister_age: null,
             party_id: null,
-            minister_approval: 50,
+            minister_approval: NEW_MINISTER_APPROVAL,
             stat_baselines: null
         };
         // In presidential systems, reset confirmation_status so President can re-nominate
@@ -3866,7 +4374,11 @@ const END_REASON_LABELS = {
     coalition_collapse: 'Collapsed',
     coup: 'Coup',
     dissolved: 'Dissolved',
-    pm_replaced: 'PM Replaced'
+    pm_replaced: 'PM Replaced',
+    regime_collapse: 'Regime Collapsed',
+    revolution: 'Revolution',
+    power_vacuum: 'Power Vacuum',
+    impeachment: 'Impeachment'
 };
 
 /**
@@ -4071,30 +4583,49 @@ function renderAdminCard(admin, isCurrent) {
 
     // Legislation
     const billsPassed = admin.bills_passed || [];
+    const billsFailed = admin.bills_failed || [];
     const lawsRepealed = admin.laws_repealed || [];
     const crisesStarted = admin.crises_started || [];
     const crisesSolved = admin.crises_solved || [];
+    const noConfidenceVotes = admin.no_confidence_votes || [];
+    const impeachments = admin.impeachments || [];
+    const executiveOrders = admin.executive_orders || [];
+    const snapElections = admin.snap_elections || [];
+    const minorityGovernments = admin.minority_governments || [];
+    const leaderChanges = admin.leader_changes || [];
 
     // Detail sections
     let detailHTML = '';
 
-    // Info grid — adapt labels for presidential vs parliamentary
+    // Info grid — adapt labels for presidential vs parliamentary vs autocracy
     const isPres = admin.government_type === 'Presidential';
-    const hogLabel = isPres ? 'President' : 'Head of State';
-    const hogName = isPres
-        ? (admin.president_name || admin.head_of_state || 'Unknown')
-        : (admin.head_of_state || 'Unknown');
-    const hogParty = isPres
-        ? (admin.president_party_name || admin.pm_party_name || '')
-        : '';
+    const isAutoc = admin.government_type === 'Autocracy';
 
-    const govLeaderLabel = isPres ? 'Governing Party' : 'Prime Minister';
-    const govLeaderName = isPres
-        ? (admin.president_party_name || admin.pm_party_name || '—')
-        : (admin.prime_minister || 'Not yet selected');
-    const govLeaderSub = isPres
-        ? ''
-        : escapeHtml(admin.pm_party_name || '');
+    let hogLabel, hogName, hogParty;
+    let govLeaderLabel, govLeaderName, govLeaderSub;
+
+    if (isAutoc) {
+        hogLabel = escapeHtml(admin.head_of_state_title || 'Ruler');
+        hogName = admin.head_of_state || admin.prime_minister || 'Unknown';
+        hogParty = admin.pm_party_name || '';
+        govLeaderLabel = 'Ruling Faction';
+        govLeaderName = admin.pm_party_name || '—';
+        govLeaderSub = '';
+    } else if (isPres) {
+        hogLabel = 'President';
+        hogName = admin.president_name || admin.head_of_state || 'Unknown';
+        hogParty = admin.president_party_name || admin.pm_party_name || '';
+        govLeaderLabel = 'Governing Party';
+        govLeaderName = admin.president_party_name || admin.pm_party_name || '—';
+        govLeaderSub = '';
+    } else {
+        hogLabel = escapeHtml(admin.head_of_state_title || 'Head of State');
+        hogName = admin.head_of_state || 'Unknown';
+        hogParty = '';
+        govLeaderLabel = 'Prime Minister';
+        govLeaderName = admin.prime_minister || 'Not yet selected';
+        govLeaderSub = escapeHtml(admin.pm_party_name || '');
+    }
 
     detailHTML += `<div class="past-admin-detail-grid">
         <div class="pad-info-box">
@@ -4108,7 +4639,7 @@ function renderAdminCard(admin, isCurrent) {
             ${govLeaderSub ? `<div class="pad-info-sub">${govLeaderSub}</div>` : ''}
         </div>
         <div class="pad-info-box">
-            <div class="pad-info-label">${isPres ? 'Party Seats' : 'Coalition'}</div>
+            <div class="pad-info-label">${isAutoc ? 'Faction Seats' : (isPres ? 'Party Seats' : 'Coalition')}</div>
             <div class="pad-info-value">${seatCount} / ${GAME_CONFIG.TOTAL_SEATS} seats</div>
             <div class="pad-info-sub">${durationText}${admin.end_reason ? ' &middot; Ended: ' + (END_REASON_LABELS[admin.end_reason] || admin.end_reason) : ''}</div>
         </div>
@@ -4169,20 +4700,70 @@ function renderAdminCard(admin, isCurrent) {
     }
 
     // Legislation
-    if (billsPassed.length > 0 || lawsRepealed.length > 0) {
-        detailHTML += `<div class="pad-section-title">Flagship Legislation</div>`;
+    if (billsPassed.length > 0 || billsFailed.length > 0 || lawsRepealed.length > 0) {
+        detailHTML += `<div class="pad-section-title">Legislation</div>`;
         if (billsPassed.length > 0) {
-            detailHTML += `<div style="font-size:0.72rem;color:var(--text-secondary);font-weight:bold;margin-bottom:4px;">Bills Passed (${billsPassed.length})</div>`;
+            detailHTML += `<div style="font-size:0.72rem;color:var(--green);font-weight:bold;margin-bottom:4px;">Bills Passed (${billsPassed.length})</div>`;
             detailHTML += billsPassed.map(b => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(b.bill_name || 'Unnamed')}</span><span class="bill-date">${tickToDate(b.passed_tick)}</span></div>`).join('');
         }
+        if (billsFailed.length > 0) {
+            detailHTML += `<div style="font-size:0.72rem;color:var(--red);font-weight:bold;margin:6px 0 4px;">Bills Failed (${billsFailed.length})</div>`;
+            detailHTML += billsFailed.map(b => `<div class="pad-legislation-item"><span class="bill-name" style="color:var(--text-muted);">${escapeHtml(b.bill_name || 'Unnamed')}</span></div>`).join('');
+        }
         if (lawsRepealed.length > 0) {
-            detailHTML += `<div style="font-size:0.72rem;color:var(--red);font-weight:bold;margin:6px 0 4px;">Laws Repealed (${lawsRepealed.length})</div>`;
+            detailHTML += `<div style="font-size:0.72rem;color:var(--orange);font-weight:bold;margin:6px 0 4px;">Laws Repealed (${lawsRepealed.length})</div>`;
             detailHTML += lawsRepealed.map(b => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(b.bill_name || 'Unnamed')}</span><span class="bill-date">${b.repealed_tick != null ? tickToDate(b.repealed_tick) : (b.repealed_date || '')}</span></div>`).join('');
         }
     }
 
-    if (!isCurrent && billsPassed.length === 0 && lawsRepealed.length === 0) {
-        detailHTML += `<div class="pad-section-title">Legislation</div><div class="pad-no-data">No bills passed during this administration.</div>`;
+    if (!isCurrent && billsPassed.length === 0 && billsFailed.length === 0 && lawsRepealed.length === 0) {
+        detailHTML += `<div class="pad-section-title">Legislation</div><div class="pad-no-data">No legislative activity during this administration.</div>`;
+    }
+
+    // Political Events
+    const hasPolEvents = noConfidenceVotes.length > 0 || impeachments.length > 0 || executiveOrders.length > 0 || snapElections.length > 0 || minorityGovernments.length > 0;
+    if (hasPolEvents) {
+        detailHTML += `<div class="pad-section-title">Political Events</div>`;
+        if (noConfidenceVotes.length > 0) {
+            detailHTML += noConfidenceVotes.map(v => {
+                const passed = v.result === 'passed';
+                const color = passed ? 'var(--red)' : 'var(--green)';
+                const label = passed ? 'PASSED' : 'FAILED';
+                return `<div class="pad-legislation-item"><span class="bill-name">Vote of No Confidence</span><span class="bill-date" style="color:${color};">${label} &middot; ${tickToDate(v.tick)}</span></div>`;
+            }).join('');
+        }
+        if (impeachments.length > 0) {
+            detailHTML += impeachments.map(v => {
+                const passed = v.result === 'passed';
+                const color = passed ? 'var(--red)' : 'var(--green)';
+                const label = passed ? 'PASSED' : 'FAILED';
+                const typeLabel = v.type === 'impeachment_conviction' ? 'Impeachment Conviction' : 'Impeachment Motion';
+                return `<div class="pad-legislation-item"><span class="bill-name">${typeLabel}</span><span class="bill-date" style="color:${color};">${label} &middot; ${tickToDate(v.tick)}</span></div>`;
+            }).join('');
+        }
+        if (snapElections.length > 0) {
+            detailHTML += snapElections.map(e => `<div class="pad-legislation-item"><span class="bill-name">Snap Election</span><span class="bill-date">${tickToDate(e.tick)}</span></div>`).join('');
+        }
+        if (minorityGovernments.length > 0) {
+            detailHTML += minorityGovernments.map(e => `<div class="pad-legislation-item"><span class="bill-name" style="color:var(--orange);">Minority Government Formed</span><span class="bill-date">${tickToDate(e.tick)}</span></div>`).join('');
+        }
+        if (leaderChanges.length > 0) {
+            detailHTML += `<div style="font-size:0.72rem;color:var(--teal, #5aafa5);font-weight:bold;margin:6px 0 4px;">Leadership Changes (${leaderChanges.length})</div>`;
+            detailHTML += leaderChanges.map(lc => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(lc.role)}</span><span class="bill-date" style="color:var(--text-dim);">${escapeHtml(lc.description)} &middot; ${tickToDate(lc.tick)}</span></div>`).join('');
+        }
+        if (executiveOrders.length > 0) {
+            const eoLabels = { acting_minister: 'Acting Minister', emergency_session: 'Emergency Session', executive_decree: 'Executive Decree', emergency_powers: 'Emergency Powers', media_address: 'Media Address' };
+            detailHTML += `<div style="font-size:0.72rem;color:var(--amber);font-weight:bold;margin:6px 0 4px;">Executive Orders (${executiveOrders.length})</div>`;
+            detailHTML += executiveOrders.map(eo => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(eoLabels[eo.order_type] || eo.order_type)}</span><span class="bill-date">${tickToDate(eo.tick)}</span></div>`).join('');
+        }
+    }
+
+    // Trade Agreements
+    const tradeAgreements = admin.trade_agreements || [];
+    if (tradeAgreements.length > 0) {
+        const taTypeLabels = { fta: 'Free Trade Agreement', pta: 'Preferential Trade Agreement', resource_supply: 'Resource Supply', export_subsidy: 'Export Subsidy', impose_embargo: 'Embargo', retaliatory_tariff: 'Retaliatory Tariff' };
+        detailHTML += `<div class="pad-section-title">Trade Agreements (${tradeAgreements.length})</div>`;
+        detailHTML += tradeAgreements.map(ta => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(ta.agreement_name || 'Unnamed')}</span><span class="bill-date" style="color:var(--text-dim);">${taTypeLabels[ta.agreement_type] || ta.agreement_type} &middot; ${tickToDate(ta.enacted_at_tick)}</span></div>`).join('');
     }
 
     // All stat changes table (expandable)
@@ -4221,9 +4802,11 @@ function renderAdminCard(admin, isCurrent) {
                         <span class="past-admin-date">${dateRange}</span>
                     </div>
                     <div class="past-admin-meta">
-                        ${isPres
-                            ? `<span class="pm-name">${escapeHtml(admin.president_name || admin.head_of_state || 'TBD')}</span> &middot; ${escapeHtml(admin.president_party_name || admin.pm_party_name || '')}`
-                            : `PM: <span class="pm-name">${admin.prime_minister || 'TBD'}</span> &middot; ${admin.pm_party_name || ''}`}
+                        ${isAutoc
+                            ? `<span class="pm-name">${escapeHtml(admin.head_of_state || admin.prime_minister || 'TBD')}</span> &middot; ${escapeHtml(admin.pm_party_name || '')}`
+                            : (isPres
+                                ? `<span class="pm-name">${escapeHtml(admin.president_name || admin.head_of_state || 'TBD')}</span> &middot; ${escapeHtml(admin.president_party_name || admin.pm_party_name || '')}`
+                                : `PM: <span class="pm-name">${admin.prime_minister || 'TBD'}</span> &middot; ${admin.pm_party_name || ''}`)}
                         ${partyList ? ` &middot; ${partyList}` : ''}
                         ${seatCount ? ` &middot; ${seatCount}/${GAME_CONFIG.TOTAL_SEATS} seats` : ''}
                     </div>

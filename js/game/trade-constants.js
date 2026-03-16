@@ -49,7 +49,7 @@ export var TRADE_SECTORS = [
         key: 'manufactured_goods',
         label: 'Manufactured Goods',
         export_only: false,
-        export_stats: ['physical_infrastructure', 'higher_education'],
+        export_stat: 'manufacturing_output',
         export_threshold: 25
     },
     {
@@ -77,7 +77,7 @@ export var TRADE_SECTORS = [
         key: 'services_finance',
         label: 'Services & Finance',
         export_only: true,
-        export_stats: ['higher_education', 'digital_infrastructure', 'credit'],
+        export_stat: 'service_output',
         export_threshold: 35
     }
 ];
@@ -214,9 +214,7 @@ export function calculateImportDemand(nation, sector, opts) {
     // Manufacturing creates demand for raw material imports.
     else if (sector.key === 'minerals') {
         var minerals = (Number(nation.rare_minerals) || 0) / SN;
-        var infra = Number(nation.physical_infrastructure) || 0;
-        var edu = Number(nation.higher_education) || 0;
-        var manufScore = ((infra + edu) / 2) / SN;
+        var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
         var deficiency = Math.max(0, 12 - minerals);
         rawDemand = deficiency * (manufScore / 10) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
     }
@@ -238,9 +236,7 @@ export function calculateImportDemand(nation, sector, opts) {
     else if (sector.key === 'manufactured_goods') {
         var popNorm = (Number(nation.population) || 1) / PN;
         var sol = (Number(nation.standard_of_living) || 50) / SN;
-        var infra = Number(nation.physical_infrastructure) || 0;
-        var edu = Number(nation.higher_education) || 0;
-        var manufScore = ((infra + edu) / 2) / SN;
+        var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
         var consumerDemand = popNorm * (sol / 10);
         var domesticManuf = manufScore / 10;
         var deficit = Math.max(0, consumerDemand - domesticManuf);

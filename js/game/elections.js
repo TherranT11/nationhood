@@ -3,14 +3,14 @@
  * Extracted from game-common.js
  */
 
-import { FORMATION_DEADLINE_TICKS, GAME_CONFIG, SNAP_COOLDOWN_GAP } from './config.js';
+import { FORMATION_DEADLINE_TICKS, GAME_CONFIG, SNAP_COOLDOWN_GAP, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
 import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isAutocracy, isPresidentialRepublic } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { snapshotNationStats } from './stats.js';
 import { adjustMomentumAll } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { syncAmbassadorsForFailedConfirmationBills, syncMinistriesForFailedConfirmationBills } from './bills.js';
-import { autoSelectPresidentialCandidates, generatePresidentCandidates } from './presidential.js';
+import { autoSelectPresidentialCandidates, registerPartyLeaderAsCandidate } from './presidential.js';
 import { runElectionSimulation } from './election-simulation.js';
 
 /**
@@ -58,12 +58,13 @@ export async function closeAdministration(supabase, nationId, nation, endReason,
         const statsAtEnd = snapshotNationStats(nation);
 
         for (const currentAdmin of openAdmins) {
-            // Query bills passed during this administration
+            // Query bills passed during this administration (exclude repeals — tracked separately)
             const { data: passedBills, error: passedBillsErr } = await supabase
                 .from('bills')
                 .select('id, bill_name, passed_tick')
                 .eq('nation_id', nationId)
                 .eq('status', 'passed')
+                .neq('bill_type', 'repeal')
                 .gte('passed_tick', currentAdmin.started_at_tick)
                 .lte('passed_tick', currentTick);
             if (passedBillsErr) throw passedBillsErr;
@@ -74,10 +75,27 @@ export async function closeAdministration(supabase, nationId, nation, endReason,
                 passed_tick: b.passed_tick
             }));
 
+            // Query repeal bills that passed during this administration
+            const { data: repealBills, error: repealBillsErr } = await supabase
+                .from('bills')
+                .select('id, bill_name, passed_tick')
+                .eq('nation_id', nationId)
+                .eq('bill_type', 'repeal')
+                .eq('status', 'passed')
+                .gte('passed_tick', currentAdmin.started_at_tick)
+                .lte('passed_tick', currentTick);
+            if (repealBillsErr) throw repealBillsErr;
+
+            const lawsRepealed = (repealBills || []).map(b => ({
+                bill_id: b.id,
+                bill_name: b.bill_name,
+                repealed_tick: b.passed_tick
+            }));
+
             // Query crises (events with category 'crisis' or matching crisis event names)
             const { data: eventsDuring, error: eventsErr } = await supabase
                 .from('event_log')
-                .select('event_id, event_name, category, fired_at_tick')
+                .select('event_id, event_name, category, fired_at_tick, description_chosen')
                 .eq('nation_id', nationId)
                 .gte('fired_at_tick', currentAdmin.started_at_tick)
                 .lte('fired_at_tick', currentTick);
@@ -112,6 +130,90 @@ export async function closeAdministration(supabase, nationId, nation, endReason,
                 .lt('election_tick', currentTick);
             if (electionsErr) throw electionsErr;
 
+            // Query trade agreements enacted during this administration
+            const { data: tradeAgreementsDuring, error: taErr } = await supabase
+                .from('trade_agreements')
+                .select('id, agreement_type, agreement_name, nation_a_id, nation_b_id, enacted_at_tick, status')
+                .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+                .gte('enacted_at_tick', currentAdmin.started_at_tick)
+                .lte('enacted_at_tick', currentTick);
+            if (taErr) throw taErr;
+
+            const tradeAgreements = (tradeAgreementsDuring || []).map(ta => ({
+                agreement_id: ta.id,
+                agreement_type: ta.agreement_type,
+                agreement_name: ta.agreement_name,
+                partner_nation_id: ta.nation_a_id === nationId ? ta.nation_b_id : ta.nation_a_id,
+                enacted_at_tick: ta.enacted_at_tick,
+                status: ta.status
+            }));
+
+            // Query bills that failed during this administration
+            const { data: failedBillRows } = await supabase
+                .from('bills')
+                .select('id, bill_name, bill_type, passed_tick, created_at')
+                .eq('nation_id', nationId)
+                .eq('status', 'failed')
+                .neq('bill_type', 'repeal')
+                .gte('created_at', currentAdmin.created_at || '1900-01-01')
+                .lte('created_at', new Date().toISOString());
+            const billsFailed = (failedBillRows || [])
+                .filter(b => {
+                    // Use passed_tick if available (some failed bills may not have it)
+                    if (b.passed_tick != null) return b.passed_tick >= currentAdmin.started_at_tick && b.passed_tick <= currentTick;
+                    return true; // created_at filter already scoped it
+                })
+                .map(b => ({ bill_id: b.id, bill_name: b.bill_name, bill_type: b.bill_type || 'standard' }));
+
+            // Query no-confidence votes during this administration
+            const { data: nocRows } = await supabase
+                .from('bills')
+                .select('id, bill_name, status, passed_tick')
+                .eq('nation_id', nationId)
+                .eq('bill_type', 'no_confidence')
+                .gte('passed_tick', currentAdmin.started_at_tick)
+                .lte('passed_tick', currentTick);
+            const noConfidenceVotes = (nocRows || []).map(b => ({
+                bill_id: b.id, bill_name: b.bill_name, result: b.status === 'passed' ? 'passed' : 'failed', tick: b.passed_tick
+            }));
+
+            // Query impeachment motions/convictions during this administration
+            const { data: impeachRows } = await supabase
+                .from('bills')
+                .select('id, bill_name, bill_type, status, passed_tick')
+                .eq('nation_id', nationId)
+                .in('bill_type', ['impeachment_motion', 'impeachment_conviction'])
+                .gte('passed_tick', currentAdmin.started_at_tick)
+                .lte('passed_tick', currentTick);
+            const impeachments = (impeachRows || []).map(b => ({
+                bill_id: b.id, bill_name: b.bill_name, type: b.bill_type, result: b.status === 'passed' ? 'passed' : 'failed', tick: b.passed_tick
+            }));
+
+            // Query executive orders issued during this administration
+            const { data: eoRows } = await supabase
+                .from('executive_orders')
+                .select('id, order_type, issued_at_tick')
+                .eq('nation_id', nationId)
+                .gte('issued_at_tick', currentAdmin.started_at_tick)
+                .lte('issued_at_tick', currentTick);
+            const executiveOrders = (eoRows || []).map(eo => ({
+                id: eo.id, order_type: eo.order_type, tick: eo.issued_at_tick
+            }));
+
+            // Detect snap elections and minority governments from event_log
+            const snapEvents = (eventsDuring || []).filter(e =>
+                e.event_name && (e.event_name.includes('snap_election') || e.event_name.includes('formation_snap_election') || e.event_name.includes('early_election'))
+            ).map(e => ({ title: e.event_name, tick: e.fired_at_tick }));
+
+            const minorityEvents = (eventsDuring || []).filter(e =>
+                e.event_name && e.event_name.includes('minority_government')
+            ).map(e => ({ title: e.event_name, tick: e.fired_at_tick }));
+
+            // Detect leader changes from event_log (Party Leadership appointments)
+            const leaderChangeEvents = (eventsDuring || []).filter(e =>
+                e.event_name && (e.event_name === 'New Party Leader' || e.event_name === 'New Deputy Leader' || e.event_name === 'New Party Whip')
+            ).map(e => ({ role: e.event_name, description: e.description_chosen || '', tick: e.fired_at_tick }));
+
             // Update the administration record
             const { error: updateErr } = await supabase
                 .from('administrations')
@@ -122,10 +224,18 @@ export async function closeAdministration(supabase, nationId, nation, endReason,
                     ended_at_date: currentDate,
                     end_reason: endReason,
                     bills_passed: billsPassed,
-                    laws_repealed: [],
+                    bills_failed: billsFailed,
+                    laws_repealed: lawsRepealed,
                     crises_started: crisesStarted,
                     crises_solved: crisesSolved,
                     elections_survived: (electionsDuring || []).length,
+                    trade_agreements: tradeAgreements,
+                    no_confidence_votes: noConfidenceVotes,
+                    impeachments: impeachments,
+                    executive_orders: executiveOrders,
+                    snap_elections: snapEvents,
+                    minority_governments: minorityEvents,
+                    leader_changes: leaderChangeEvents,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', currentAdmin.id);
@@ -1050,7 +1160,7 @@ export async function processPartialElection(supabase, nation, election, current
 
     // 3. Load parties with ideology axes
     const { data: factions } = await supabase
-        .from('factions').select('id, faction_name, seats')
+        .from('factions').select('id, faction_name, seats, electability')
         .eq('nation_id', nation.id).eq('faction_type', 'party');
 
     if (!factions || factions.length === 0) {
@@ -1067,6 +1177,7 @@ export async function processPartialElection(supabase, nation, election, current
 
     const parties = factions.map(f => ({
         id: f.id, faction_name: f.faction_name,
+        electability: f.electability ?? 50,
         axes: ideoMap[f.id] || {
             liberty_equality: 0, tradition_progress: 0, security_freedom: 0,
             globalism_nationalism: 0, individualism_collectivism: 0
@@ -1205,28 +1316,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
     let electionResults;
     if (isPresidential && normalizedElectionType === 'presidential') {
         // Ensure candidates exist — generate for parties that have none
-        const { data: allParties } = await supabase
-            .from('factions')
-            .select('id')
-            .eq('nation_id', nation.id)
-            .eq('faction_type', 'party');
-
-        if (allParties) {
-            for (const party of allParties) {
-                const { count } = await supabase
-                    .from('pm_candidates')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('nation_id', nation.id)
-                    .eq('faction_id', party.id)
-                    .eq('candidate_type', 'presidential');
-                if (!count || count === 0) {
-                    console.log(`Generating presidential candidates for faction ${party.id} (manual election)`);
-                    await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
-                }
-            }
-        }
-
-        // Auto-select candidates for any party that hasn't chosen
+        // Ensure all parties have their leader registered as a candidate
         await autoSelectPresidentialCandidates(supabase, nation, currentTick);
 
         const { error: snapshotErr } = await supabase.rpc('snapshot_presidential_endorsements', {
@@ -1816,15 +1906,19 @@ export async function processPresidentialElectionResult(supabase, nation, comple
             await inauguratePresident(supabase, fallbackCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
             console.log(`President inaugurated (fallback): ${fallbackCandidate.first_name} ${fallbackCandidate.last_name} (${winner.party_name})`);
         } else {
-            // Fallback 2: generate fresh candidate
-            console.warn(`[PresElection] Faction fallback also null for ${winner.candidate_name} in ${nation.name} — generating emergency candidate`);
-            const emergencyCandidates = await generatePresidentCandidates(supabase, nation.id, winner.faction_id, currentTick, 'presidential');
-            if (emergencyCandidates && emergencyCandidates.length > 0) {
-                await inauguratePresident(supabase, emergencyCandidates[0], nation.id, winner.faction_id, currentTick, outgoingPresident);
-                console.log(`Emergency president inaugurated: ${emergencyCandidates[0].first_name} ${emergencyCandidates[0].last_name}`);
+            // Fallback 2: register party leader and use that
+            console.warn(`[PresElection] Faction fallback also null for ${winner.candidate_name} in ${nation.name} — using party leader`);
+            let leaderCandidate = null;
+            try {
+                leaderCandidate = await registerPartyLeaderAsCandidate(supabase, nation.id, winner.faction_id, currentTick);
+            } catch (regErr) {
+                console.error(`[PresElection] registerPartyLeaderAsCandidate threw for ${winner.candidate_name}:`, regErr);
+            }
+            if (leaderCandidate) {
+                await inauguratePresident(supabase, leaderCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
+                console.log(`President inaugurated from party leader: ${leaderCandidate.first_name} ${leaderCandidate.last_name}`);
             } else {
                 // Fallback 3 (last resort): create president directly from election result data
-                // This ensures a president is ALWAYS created after a presidential election
                 console.error(`[PresElection] ALL candidate lookups failed for ${winner.candidate_name} in ${nation.name} — direct inauguration from election data`);
                 const directCandidate = {
                     first_name: winner.candidate_name?.split(' ')[0] || 'Unknown',
@@ -1838,6 +1932,31 @@ export async function processPresidentialElectionResult(supabase, nation, comple
                 await inauguratePresident(supabase, directCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
                 console.log(`Direct president inaugurated from election data: ${directCandidate.first_name} ${directCandidate.last_name}`);
             }
+        }
+    }
+
+    // === TERM-LIMITED PRESIDENT RETIRES AS PARTY LEADER ===
+    if (outgoingPresident) {
+        const effectiveTermLimit = getPresidentialTermLimit(nation);
+        if (effectiveTermLimit !== null && (outgoingPresident.terms_served || 1) >= effectiveTermLimit) {
+            const outgoingName = `${outgoingPresident.first_name} ${outgoingPresident.last_name}`;
+            console.log(`[PresElection] Term-limited president ${outgoingName} retires as party leader (served ${outgoingPresident.terms_served}/${effectiveTermLimit} terms)`);
+
+            const { error: retireErr } = await supabase.from('factions')
+                .update({ leader_first_name: null, leader_last_name: null, leader_age: null, electability: 50 })
+                .eq('id', outgoingPresident.faction_id);
+            if (retireErr) console.error(`[PresElection] Failed to clear retired leader:`, retireErr.message);
+
+            try {
+                const { data: factionData } = await supabase.from('factions').select('faction_name').eq('id', outgoingPresident.faction_id).single();
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: 'President Retires (Term Limited)',
+                    description_chosen: `${outgoingName}, having served the maximum ${effectiveTermLimit} term${effectiveTermLimit !== 1 ? 's' : ''} as president, has retired from party leadership. ${factionData?.faction_name || 'The party'} must appoint a new leader.`,
+                    category: 'POLITICAL',
+                    fired_at_tick: currentTick,
+                });
+            } catch (e) { console.warn('[PresElection] Failed to log term-limited retirement event:', e); }
         }
     }
 
@@ -2003,8 +2122,7 @@ function resolvePresidentialRunoffEndorsements({ wasRunoff, round1Results = [], 
 /**
  * Inaugurate a president from a candidate record. Creates the president row,
  * applies ideology shift, applies trait effects, and creates an administration.
- * Used by both processPresidentialElectionResult (auto-inauguration) and
- * selectPresidentCandidate (manual/legacy selection).
+ * Used by processPresidentialElectionResult (auto-inauguration).
  */
 export async function inauguratePresident(supabase, candidate, nationId, factionId, currentTick, outgoingPresident = null) {
     // Deactivate any previous president
@@ -2015,6 +2133,10 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
     if (deactErr) {
         console.error(`[inauguratePresident] Failed to deactivate previous presidents for ${nationId}:`, deactErr.message);
     }
+
+    // Fetch nation data early for per-nation term length
+    const { data: nationForTerm, error: nationTermErr } = await supabase.from('nations').select('presidential_term_ticks, presidential_term_limit').eq('id', nationId).single();
+    if (nationTermErr) console.error(`[inauguratePresident] Failed to fetch nation term data:`, nationTermErr.message);
 
     // Look up trait data for trait_upside / trait_downside
     const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', candidate.trait_key).maybeSingle();
@@ -2041,7 +2163,7 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         trait_upside: trait?.upside || null,
         trait_downside: trait?.downside || null,
         elected_tick: currentTick,
-        term_ends_tick: currentTick + GAME_CONFIG.PRESIDENTIAL_TERM_TICKS,
+        term_ends_tick: currentTick + getPresidentialTermTicks(nationForTerm),
         is_active: true,
         terms_served: termsServed
     });
@@ -2118,7 +2240,8 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         started_at_tick: currentTick,
         started_at_date: dateStr,
         stats_at_start: fullNation ? snapshotNationStats(fullNation) : {},
-        approval_at_start: faction?.approval_rating ?? 50
+        approval_at_start: faction?.approval_rating ?? 50,
+        head_of_state_title: fullNation?.head_of_state_title || null
     });
 
     return candidate;
@@ -2163,7 +2286,7 @@ export async function scheduleNextPresidentialElections(supabase, nation, curren
         .maybeSingle();
 
     if (!futurePres) {
-        const nextPres = currentTick + GAME_CONFIG.PRESIDENTIAL_TERM_TICKS;
+        const nextPres = currentTick + getPresidentialTermTicks(nation);
         await supabase.from('elections').insert({
             nation_id: nation.id,
             election_tick: nextPres,
