@@ -1295,7 +1295,6 @@ export const MAKE_PROMISE_CONFIG = {
     APPROVAL_IF_KEPT: 12,              // permanent legacy reward
     PENALTY_PER_TICK_MIN: 1,           // -1D3 per tick while governing & unfulfilled
     PENALTY_PER_TICK_MAX: 3,
-    PENALTY_IF_BROKEN: 8,              // permanent legacy penalty on deadline expiry
     MAX_ACTIVE_PROMISES: 5,            // limit active promises per faction
     // Promise resolution rewards/penalties (used by resolvePromise)
     KEPT_PREF_BONUS: 5,               // +preference with donor/affected bloc

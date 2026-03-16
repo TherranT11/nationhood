@@ -3420,7 +3420,7 @@ function renderPromiseConfig(nation) {
         <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px">
             <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_MOMENTUM} momentum, ${MAKE_PROMISE_CONFIG.BROKEN_ALL_PREF} all blocs</span>
         </div>
-        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">While unfulfilled & governing: <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} momentum/tick</span> with all blocs</div>`;
+        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">While unfulfilled & governing: <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} momentum/tick</span></div>`;
     }
 
     return html;
