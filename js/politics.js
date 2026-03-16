@@ -422,7 +422,7 @@ async function renderPartyTab(f, nation, data) {
         </div>
 
         <div class="pol-row-3">
-        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties)}
+        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, { scheduledElections, currentTick, nation, mySeats })}
         ${renderBlocVotingBox(lastParliamentary, lastPresidential, allParties)}
         </div>
         <div class="pol-row-4" style="margin-top:24px;text-align:center">
@@ -2478,7 +2478,7 @@ function initEditIdentityBox(f) {
     }
 }
 
-function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties) {
+function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, { scheduledElections, currentTick, nation, mySeats } = {}) {
     // Build a color map from allParties
     const colorMap = {};
     (allParties || []).forEach(p => { colorMap[p.id] = p.party_color || '#888'; });
@@ -2579,10 +2579,34 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         presContents = `<div class="pol-el-content" data-content="pres">${renderPresidentialContent(lastPresidential)}</div>`;
     }
 
+    // Endorsement button hint
+    const ENDORSEMENT_WINDOW = 6;
+    const isPres = isGovernmentPresidential(nation);
+    const nextPresElection = isPres ? (scheduledElections || [])
+        .filter(e => e && e.election_type === 'presidential' && Number(e.election_tick) > currentTick)
+        .sort((a, b) => Number(a.election_tick) - Number(b.election_tick))[0] : null;
+    const ticksUntil = nextPresElection ? Number(nextPresElection.election_tick) - currentTick : null;
+    const windowOpen = ticksUntil !== null && ticksUntil >= 1 && ticksUntil <= ENDORSEMENT_WINDOW && mySeats > 0;
+
+    let endorseHint = '';
+    if (!isPres) {
+        endorseHint = '';
+    } else if (!nextPresElection) {
+        endorseHint = '';
+    } else if (ticksUntil > ENDORSEMENT_WINDOW) {
+        const ticksToWindow = ticksUntil - ENDORSEMENT_WINDOW;
+        endorseHint = `<div style="font-size:10px;color:var(--dtxt-muted);text-align:right;margin-top:2px">Available in ${ticksToWindow} tick${ticksToWindow !== 1 ? 's' : ''}</div>`;
+    } else if (windowOpen) {
+        endorseHint = `<div style="font-size:10px;color:var(--dgreen);text-align:right;margin-top:2px">${ticksUntil} tick${ticksUntil !== 1 ? 's' : ''} until election</div>`;
+    }
+
     return `<div class="pol-election-box">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <div class="pol-section-label" style="margin-bottom:0">ELECTION RESULTS</div>
-            <button class="pol-endorse-btn" disabled>Endorse Candidate</button>
+            <div>
+                <button class="pol-endorse-btn" ${windowOpen ? '' : 'disabled'}>Endorse Candidate</button>
+                ${endorseHint}
+            </div>
         </div>
         <div class="pol-el-tabs">
             <button class="pol-el-tab active" data-tab="parl">Parliamentary</button>
