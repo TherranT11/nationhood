@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const crypto = require('crypto');
 
 /**
  * seed-work.js
@@ -75,15 +76,23 @@ async function main() {
     }
     console.log('Tables reset:', JSON.stringify(resetResult, null, 2));
 
-    // Step 2: Upsert shard at tick 100
+    // Step 2: Set up shard at tick 100
     console.log('\n[2/5] Setting up shard...');
-    const { error: shardErr } = await supabase.from('shard').upsert({
+    // Delete existing shards and insert fresh
+    await supabase.from('shard').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    const shardData = {
         name: 'Alpha Shard',
         current_tick: 100,
         current_date: 'March 15, 2026',
-        next_tick_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // Far future — manual ticks only
-        tick_interval_minutes: 60
-    }, { onConflict: 'name' });
+        next_tick_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() // Far future — manual ticks only
+    };
+    // Try with tick_interval_minutes first, fall back without it
+    let { error: shardErr } = await supabase.from('shard').insert(
+        { ...shardData, tick_interval_minutes: 60 }
+    );
+    if (shardErr && shardErr.message.includes('tick_interval_minutes')) {
+        ({ error: shardErr } = await supabase.from('shard').insert(shardData));
+    }
     if (shardErr) {
         console.error('Shard setup failed:', shardErr.message);
         process.exit(1);
@@ -105,7 +114,8 @@ async function main() {
             press_freedom: 88, freedom_index: 85, efficiency: 62, polarization: 35,
             healthcare_quality: 72, literacy: 90, crime_rate: 18, income_tax: 45,
             corporate_tax: 35, sales_tax: 38, national_approval: 55, gov_approval: 58,
-            gov_approval_institutional: 55, gov_approval_outcomes: 52, gov_approval_events: 0
+            gov_approval_events: 0,
+            cost_of_living: 42, manufacturing_output: 55, service_output: 58, housing_affordability: 52
         },
         {
             name: 'Sangreza', government_type: 'Presidential', total_seats: 120, max_parties: 8,
@@ -115,7 +125,8 @@ async function main() {
             press_freedom: 72, freedom_index: 70, efficiency: 55, polarization: 48,
             healthcare_quality: 58, literacy: 82, crime_rate: 32, income_tax: 52,
             corporate_tax: 42, sales_tax: 40, national_approval: 48, gov_approval: 45,
-            gov_approval_institutional: 48, gov_approval_outcomes: 42, gov_approval_events: 0
+            gov_approval_events: 0,
+            cost_of_living: 48, manufacturing_output: 48, service_output: 45, housing_affordability: 40
         },
         {
             name: 'Melizea', government_type: 'Autocracy', total_seats: 120, max_parties: 8,
@@ -125,7 +136,8 @@ async function main() {
             press_freedom: 22, freedom_index: 28, efficiency: 40, polarization: 62,
             healthcare_quality: 42, literacy: 68, crime_rate: 42, income_tax: 62,
             corporate_tax: 55, sales_tax: 48, national_approval: 38, gov_approval: 35,
-            gov_approval_institutional: 38, gov_approval_outcomes: 32, gov_approval_events: 0
+            gov_approval_events: 0,
+            cost_of_living: 58, manufacturing_output: 35, service_output: 32, housing_affordability: 25
         },
         {
             name: 'Palvera', government_type: 'Presidential', total_seats: 120, max_parties: 8,
@@ -135,7 +147,8 @@ async function main() {
             press_freedom: 85, freedom_index: 82, efficiency: 48, polarization: 42,
             healthcare_quality: 62, literacy: 82, crime_rate: 28, income_tax: 58,
             corporate_tax: 48, sales_tax: 42, national_approval: 50, gov_approval: 50,
-            gov_approval_institutional: 50, gov_approval_outcomes: 50, gov_approval_events: 0
+            gov_approval_events: 0,
+            cost_of_living: 55, manufacturing_output: 38, service_output: 42, housing_affordability: 45
         },
         {
             name: 'Avelia', government_type: 'Parliamentary', total_seats: 120, max_parties: 8,
@@ -145,7 +158,8 @@ async function main() {
             press_freedom: 92, freedom_index: 90, efficiency: 70, polarization: 25,
             healthcare_quality: 78, literacy: 95, crime_rate: 12, income_tax: 40,
             corporate_tax: 30, sales_tax: 35, national_approval: 65, gov_approval: 62,
-            gov_approval_institutional: 60, gov_approval_outcomes: 58, gov_approval_events: 0
+            gov_approval_events: 0,
+            cost_of_living: 40, manufacturing_output: 60, service_output: 62, housing_affordability: 58
         },
         {
             name: 'Montequilla', government_type: 'Parliamentary', total_seats: 120, max_parties: 8,
@@ -155,7 +169,8 @@ async function main() {
             press_freedom: 55, freedom_index: 52, efficiency: 28, polarization: 72,
             healthcare_quality: 38, literacy: 72, crime_rate: 52, income_tax: 65,
             corporate_tax: 58, sales_tax: 52, national_approval: 25, gov_approval: 22,
-            gov_approval_institutional: 25, gov_approval_outcomes: 20, gov_approval_events: 0
+            gov_approval_events: 0,
+            cost_of_living: 68, manufacturing_output: 18, service_output: 20, housing_affordability: 20
         }
     ];
 
@@ -226,7 +241,9 @@ async function main() {
 
         for (let i = 0; i < factions.length; i++) {
             const f = factions[i];
+            const factionId = crypto.randomUUID();
             const { data: inserted, error } = await supabase.from('factions').insert({
+                id: factionId,
                 nation_id: nation.id,
                 faction_name: f.faction_name,
                 seats: f.seats,
