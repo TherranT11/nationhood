@@ -1288,6 +1288,7 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
 export const MAKE_PROMISE_CONFIG = {
     AP_COST: 2,
     STAT_DELTA: 10,                    // Promise to change stat by ±10
+    STAT_DELTA_GOVERNING: 20,          // Governing factions must promise ±20 (harder target)
     DEADLINE_DICE: 12,                 // 1D12 + base
     DEADLINE_BASE: 12,                 // base ticks added to roll (range: 13-24)
     APPROVAL_ON_PROMISE_STAT: 4,       // immediate bump with affected blocs (stat type)
@@ -1368,6 +1369,11 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
     // ── 5. Build promise based on type ──
     let demandText, demandType, conditions, affectedBlocIds, affectedBlocNames;
 
+    // ── 5a. Check if faction is in government (ruling faction or coalition member) ──
+    const coalition = await fetchActiveCoalition(supabase, nationId);
+    const coalitionPartyIds = new Set(coalition?.party_ids || []);
+    const isGoverning = factionId === nation.ruling_faction_id || coalitionPartyIds.has(factionId);
+
     if (promiseType === 'stat') {
         const { statKey } = params;
         if (!statKey) return { success: false, error: 'No stat selected.' };
@@ -1382,11 +1388,13 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
             return { success: false, error: 'You already have an active promise for this stat.' };
 
         const currentVal = Number(nation[statKey] ?? 50);
+        // Governing factions must promise a bigger change (they have legislative power)
+        const delta = isGoverning ? cfg.STAT_DELTA_GOVERNING : cfg.STAT_DELTA;
         // Auto-determine direction: good stats → increase, bad stats → decrease
         const dir = sign === 1 ? 'above' : 'below';
         const targetValue = dir === 'above'
-            ? Math.min(100, Math.round(currentVal + cfg.STAT_DELTA))
-            : Math.max(0, Math.round(currentVal - cfg.STAT_DELTA));
+            ? Math.min(100, Math.round(currentVal + delta))
+            : Math.max(0, Math.round(currentVal - delta));
 
         const statLabel = statKey.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
@@ -1404,7 +1412,8 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
             direction: dir,
             baseline_value: currentVal,
             target_value: targetValue,
-            delta: cfg.STAT_DELTA,
+            delta: delta,
+            is_governing: isGoverning,
         };
 
         // Find affected blocs: those whose priority_issues map to this stat
@@ -1562,7 +1571,8 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
  */
 const EXCLUDED_PROMISE_STATS = new Set(['population', 'gdp', 'debt']);
 
-export function getPromiseableStats(nation) {
+export function getPromiseableStats(nation, isGoverning = false) {
+    const delta = isGoverning ? MAKE_PROMISE_CONFIG.STAT_DELTA_GOVERNING : MAKE_PROMISE_CONFIG.STAT_DELTA;
     const results = [];
     for (const statKey of NATION_STAT_COLUMNS) {
         if (EXCLUDED_PROMISE_STATS.has(statKey)) continue;
@@ -1576,8 +1586,8 @@ export function getPromiseableStats(nation) {
         // Skip stats already at their limit — no meaningful promise possible
         const val = Number(currentVal);
         const target = sign === 1
-            ? Math.min(100, Math.round(val + MAKE_PROMISE_CONFIG.STAT_DELTA))
-            : Math.max(0, Math.round(val - MAKE_PROMISE_CONFIG.STAT_DELTA));
+            ? Math.min(100, Math.round(val + delta))
+            : Math.max(0, Math.round(val - delta));
         if (sign === 1 && val >= target) continue;
         if (sign === -1 && val <= target) continue;
         results.push({
