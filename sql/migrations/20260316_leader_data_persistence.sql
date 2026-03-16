@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS leadership_candidates (
     UNIQUE (faction_id, role)
 );
 
--- RLS: players can read/write their own faction's candidates
+-- RLS: permissive policies (matches existing factions table pattern)
+-- TODO: tighten to faction_id = auth.uid() when RLS hardening is done
 ALTER TABLE leadership_candidates ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY leadership_candidates_select ON leadership_candidates

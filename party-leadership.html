@@ -104,6 +104,34 @@ function loadCurrentLeaders() {
     }
 }
 
+function buildCurrentCandidateEntry(role) {
+    const cl = currentLeaders[role];
+    if (!cl) return null;
+    const entry = {
+        firstName: cl.firstName,
+        lastName: cl.lastName,
+        age: cl.age || 45,
+        ideology: cl.ideology || currentFaction.ideology_value_1 || 'PROGRESS',
+        positiveTraits: cl.positiveTraits || [],
+        negativeTraits: cl.negativeTraits || [],
+        apCost: 0,
+        costBreakdown: { positiveTotal: 0, negativeTotal: 0, rawCost: 0, apCost: 0 },
+        isCurrent: true,
+    };
+    if (role === 'leader') entry.electability = cl.electability ?? 50;
+    return entry;
+}
+
+async function persistCandidates(factionId, role, candidates) {
+    const { error } = await _supabase.from('leadership_candidates').upsert({
+        faction_id: factionId,
+        role,
+        candidates,
+        generated_at: new Date().toISOString(),
+    }, { onConflict: 'faction_id,role' });
+    if (error) console.warn(`Failed to persist ${role} candidates (non-blocking):`, error.message);
+}
+
 async function generateAllCandidates() {
     const nationName = currentNation.name || '';
     const factionId = currentFaction.id;
@@ -111,45 +139,26 @@ async function generateAllCandidates() {
     for (const role of ['leader', 'deputy', 'whip']) {
         // Try to load persisted candidates from DB first
         let candidates = null;
-        const { data: stored } = await _supabase
+        const { data: stored, error: loadErr } = await _supabase
             .from('leadership_candidates')
             .select('candidates')
             .eq('faction_id', factionId)
             .eq('role', role)
             .maybeSingle();
 
-        if (stored && Array.isArray(stored.candidates) && stored.candidates.length > 0) {
+        if (!loadErr && stored && Array.isArray(stored.candidates) && stored.candidates.length > 0) {
             candidates = stored.candidates;
         } else {
             // Generate fresh candidates and persist them
             candidates = generateLeadershipCandidates(nationName, getNationNames, 3, role);
-            await _supabase.from('leadership_candidates').upsert({
-                faction_id: factionId,
-                role,
-                candidates,
-                generated_at: new Date().toISOString(),
-            }, { onConflict: 'faction_id,role' });
+            await persistCandidates(factionId, role, candidates);
         }
 
         candidatesByRole[role] = candidates;
 
         // Prepend current leader as a 0-cost option
-        if (currentLeaders[role]) {
-            const cl = currentLeaders[role];
-            const currentCandidate = {
-                firstName: cl.firstName,
-                lastName: cl.lastName,
-                age: cl.age || 45,
-                ideology: cl.ideology || currentFaction.ideology_value_1 || 'PROGRESS',
-                positiveTraits: cl.positiveTraits || [],
-                negativeTraits: cl.negativeTraits || [],
-                apCost: 0,
-                costBreakdown: { positiveTotal: 0, negativeTotal: 0, rawCost: 0, apCost: 0 },
-                isCurrent: true,
-            };
-            if (role === 'leader') currentCandidate.electability = cl.electability ?? 50;
-            candidatesByRole[role].unshift(currentCandidate);
-        }
+        const currentEntry = buildCurrentCandidateEntry(role);
+        if (currentEntry) candidatesByRole[role].unshift(currentEntry);
 
         selectedIndex[role] = null;
     }
@@ -485,30 +494,13 @@ window._appointLeader = async function() {
         // Generate fresh candidates for this role and persist to DB
         const nationName = currentNation.name || '';
         const newCandidates = generateLeadershipCandidates(nationName, getNationNames, 3, activeRole);
-        await _supabase.from('leadership_candidates').upsert({
-            faction_id: currentFaction.id,
-            role: activeRole,
-            candidates: newCandidates,
-            generated_at: new Date().toISOString(),
-        }, { onConflict: 'faction_id,role' });
+        await persistCandidates(currentFaction.id, activeRole, newCandidates);
 
         candidatesByRole[activeRole] = newCandidates;
 
         // Prepend the newly appointed leader as current (0 cost)
-        const cl = currentLeaders[activeRole];
-        const currentCandidate = {
-            firstName: cl.firstName,
-            lastName: cl.lastName,
-            age: cl.age || 45,
-            ideology: cl.ideology || currentFaction.ideology_value_1 || 'PROGRESS',
-            positiveTraits: cl.positiveTraits || [],
-            negativeTraits: cl.negativeTraits || [],
-            apCost: 0,
-            costBreakdown: { positiveTotal: 0, negativeTotal: 0, rawCost: 0, apCost: 0 },
-            isCurrent: true,
-        };
-        if (activeRole === 'leader') currentCandidate.electability = cl.electability ?? 50;
-        candidatesByRole[activeRole].unshift(currentCandidate);
+        const currentEntry = buildCurrentCandidateEntry(activeRole);
+        if (currentEntry) candidatesByRole[activeRole].unshift(currentEntry);
 
         selectedIndex[activeRole] = 0; // Select the current leader
         render();
