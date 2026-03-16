@@ -27,26 +27,54 @@ DECLARE
         'loyalty_demands',
         -- Autocracy
         'stewards',
+        'executive_orders',
         -- Government tables (children before parents)
         'head_of_government',
         'pm_candidates',
         'shakeups',
         'presidents',
+        'impeachment_proceedings',
         'ministries',
         'administrations',
         'active_coalitions',
         'government_formations',
         -- Legislative (coalition_proposals references elections)
         'coalition_proposals',
+        'presidential_endorsements',
+        'party_endorsement_preferences',
         'bills',
         'active_laws',
         'elections',
+        -- Budget & funding
+        'budget_allocations',
+        'budget_item_allocations',
+        'fundraiser_promises',
+        'donor_trust',
+        -- Trade & economy
+        'trade_agreements',
+        'trade_negotiations',
+        'trade_flows',
+        'trade_partners',
+        'trade_summary',
+        'default_resolutions',
+        'default_history',
+        'aid_agreement_state',
+        'aid_condition_reviews',
         -- Events & crises
         'active_crises',
         'event_log',
-        -- History
+        -- History & logs
         'nations_history',
         'ideology_history',
+        'momentum_log',
+        'gov_approval_log',
+        'stat_history',
+        -- Content
+        'op_eds',
+        'valdorian_articles',
+        'player_articles',
+        'nation_profiles',
+        'wiki_pages',
         -- Diplomacy
         'diplomatic_messages',
         'diplomatic_proposals',

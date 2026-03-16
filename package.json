@@ -6,6 +6,7 @@
     "dev:work": "vite --mode work --port 3001",
     "build": "vite build --mode main",
     "build:work": "vite build --mode work",
+    "migrate:work": "node scripts/migrate-work.js",
     "seed:work": "node scripts/seed-work.js",
     "snapshot:save": "node scripts/snapshot.js save",
     "snapshot:restore": "node scripts/snapshot.js restore",
