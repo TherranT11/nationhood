@@ -5,6 +5,7 @@ import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } f
 import { tickToDate, escapeHtml as utilEscapeHtml } from './utils.js';
 import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, ensureBlocApprovals, getNationNames, IDEOLOGY_AXES } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
+import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
 import { getElectabilityTier } from './game/party-leadership.js';
 
@@ -2579,32 +2580,26 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         presContents = `<div class="pol-el-content" data-content="pres">${renderPresidentialContent(lastPresidential)}</div>`;
     }
 
-    // Endorsement button hint
-    const ENDORSEMENT_WINDOW = 6;
-    const isPres = isGovernmentPresidential(nation);
-    const nextPresElection = isPres ? (scheduledElections || [])
-        .filter(e => e && e.election_type === 'presidential' && Number(e.election_tick) > currentTick)
-        .sort((a, b) => Number(a.election_tick) - Number(b.election_tick))[0] : null;
-    const ticksUntil = nextPresElection ? Number(nextPresElection.election_tick) - currentTick : null;
-    const windowOpen = ticksUntil !== null && ticksUntil >= 1 && ticksUntil <= ENDORSEMENT_WINDOW && mySeats > 0;
+    // Endorsement button state (shared logic with endorsement-ui.js)
+    const endorseState = computeEndorsementButtonState({
+        isPresidentialSystem: isGovernmentPresidential(nation),
+        scheduledElections,
+        currentTick,
+        playerSeats: mySeats
+    });
 
     let endorseHint = '';
-    if (!isPres) {
-        endorseHint = '';
-    } else if (!nextPresElection) {
-        endorseHint = '';
-    } else if (ticksUntil > ENDORSEMENT_WINDOW) {
-        const ticksToWindow = ticksUntil - ENDORSEMENT_WINDOW;
-        endorseHint = `<div style="font-size:10px;color:var(--dtxt-muted);text-align:right;margin-top:2px">Available in ${ticksToWindow} tick${ticksToWindow !== 1 ? 's' : ''}</div>`;
-    } else if (windowOpen) {
-        endorseHint = `<div style="font-size:10px;color:var(--dgreen);text-align:right;margin-top:2px">${ticksUntil} tick${ticksUntil !== 1 ? 's' : ''} until election</div>`;
+    if (endorseState.ticksUntilWindow) {
+        endorseHint = `<div style="font-size:10px;color:var(--dtxt-muted);text-align:right;margin-top:2px">Available in ${endorseState.ticksUntilWindow} tick${endorseState.ticksUntilWindow !== 1 ? 's' : ''}</div>`;
+    } else if (!endorseState.disabled && endorseState.ticksUntilElection) {
+        endorseHint = `<div style="font-size:10px;color:var(--dgreen);text-align:right;margin-top:2px">${endorseState.ticksUntilElection} tick${endorseState.ticksUntilElection !== 1 ? 's' : ''} until election</div>`;
     }
 
     return `<div class="pol-election-box">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <div class="pol-section-label" style="margin-bottom:0">ELECTION RESULTS</div>
             <div>
-                <button class="pol-endorse-btn" ${windowOpen ? '' : 'disabled'}>Endorse Candidate</button>
+                <button class="pol-endorse-btn" ${endorseState.disabled ? 'disabled' : ''}>Endorse Candidate</button>
                 ${endorseHint}
             </div>
         </div>
