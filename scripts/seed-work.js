@@ -246,6 +246,7 @@ async function main() {
                 id: factionId,
                 nation_id: nation.id,
                 faction_name: f.faction_name,
+                faction_type: 'party',
                 seats: f.seats,
                 approval_rating: f.approval_rating,
                 action_points: f.action_points,
