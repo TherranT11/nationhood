@@ -38,6 +38,7 @@ export const DIPLOMACY_CONFIG = {
     STATE_VISIT_AUTOCRACY_DIE: 12,      // 1D12 roll for autocracy risk
     STATE_VISIT_AUTOCRACY_THRESHOLD: 6, // roll <= threshold = negative outcome
     STATE_VISIT_AUTOCRACY_CHANGE: 3,    // ±gov_approval change
+    STATE_VISIT_AUTOCRACY_REGIME_DIE: 10, // 1D10 regime_health loss when autocracy visits
     TREATY_RATIFICATION_VOTING_TICKS: 6,
     AMBASSADOR_CONFIRMATION_VOTING_TICKS: 6,
     AMBASSADOR_TERM_LENGTH: 60,         // ticks (60 ticks = 5 years)

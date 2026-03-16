@@ -278,7 +278,7 @@ function renderCandidateDetail(c) {
 
     // Use costBreakdown from candidate, fall back to computed values
     const rawCost = c.costBreakdown ? c.costBreakdown.rawCost : (posTotal - negTotal);
-    const finalAP = c.costBreakdown ? c.costBreakdown.apCost : Math.max(0, Math.min(6, Math.round(posTotal - negTotal)));
+    const finalAP = c.costBreakdown ? c.costBreakdown.apCost : Math.max(0, Math.min(8, Math.round(posTotal - negTotal)));
     const finalColor = getAPCostColor(c.isCurrent ? 0 : finalAP);
 
     return `
@@ -314,8 +314,8 @@ function renderCandidateDetail(c) {
         </div>` : ''}
 
         <!-- Strengths -->
-        <div class="pl-section-header">STRENGTHS <span style="color:var(--green)">+${posTotal.toFixed(1)}</span></div>
-        ${positiveTraits.map(t => {
+        <div class="pl-section-header">STRENGTHS ${positiveTraits.length > 0 ? `<span style="color:var(--green)">+${posTotal.toFixed(1)}</span>` : ''}</div>
+        ${positiveTraits.length > 0 ? positiveTraits.map(t => {
             const cat = CATEGORY_COLORS[t.category] || CATEGORY_COLORS['AP'];
             return `
                 <div class="pl-trait-card strength">
@@ -329,11 +329,11 @@ function renderCandidateDetail(c) {
                     <div class="pl-trait-effect">${escapeHtml(t.effect)}</div>
                 </div>
             `;
-        }).join('')}
+        }).join('') : '<div style="padding:8px 0;color:var(--text-dim);font-family:var(--font-mono);font-size:9px;">None</div>'}
 
         <!-- Weaknesses -->
-        <div class="pl-section-header">WEAKNESSES <span style="color:var(--red)">&minus;${negTotal.toFixed(1)}</span></div>
-        ${negativeTraits.map(t => {
+        <div class="pl-section-header">WEAKNESSES ${negativeTraits.length > 0 ? `<span style="color:var(--red)">&minus;${negTotal.toFixed(1)}</span>` : ''}</div>
+        ${negativeTraits.length > 0 ? negativeTraits.map(t => {
             const cat = CATEGORY_COLORS[t.category] || CATEGORY_COLORS['AP'];
             return `
                 <div class="pl-trait-card weakness">
@@ -347,7 +347,7 @@ function renderCandidateDetail(c) {
                     <div class="pl-trait-effect">${escapeHtml(t.effect)}</div>
                 </div>
             `;
-        }).join('')}
+        }).join('') : '<div style="padding:8px 0;color:var(--text-dim);font-family:var(--font-mono);font-size:9px;">None</div>'}
 
         <!-- Cost Breakdown -->
         ${!c.isCurrent ? `

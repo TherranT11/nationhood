@@ -404,7 +404,8 @@ cost_multiplier    = 1 + (inflation_rate / 100)
 import_dampening   = 1 - (tariff_rate / 200)
 currency_modifier  = currency_strength / 50
 export_modifier    = min(1.0, stability / 40)
-trade_affinity     = max(0, min(100, 50 + diplomatic + treaty + proximity + embargo))
+trade_affinity     = max(0, min(100, 50 + diplomatic + treaty + proximity + embargo + autocracy))
+                     autocracy = -10 per autocratic nation in the pair
 ```
 
 ### Tax Burden
