@@ -916,14 +916,6 @@ export const ATTACK_OUTCOMES = [
     { id: 'mutual', name: 'Mutual Destruction', icon: '\u2715', targetMin: -3, targetMax: -3, selfMin: -2, selfMax: -2, polarization: 0.25 },
 ];
 
-const ATTACK_OUTCOME_COLORS = {
-    devastating: '#4ade80',
-    effective: '#22d3ee',
-    glancing: '#facc15',
-    backfire: '#f97316',
-    mutual: '#ef4444',
-};
-
 /**
  * Get outcome probability weights based on evidence strength.
  */
@@ -1154,14 +1146,6 @@ export function buildAttackVectors(evidence) {
     });
 
     return vectors;
-}
-
-/**
- * Compute attack credibility from recent attack history.
- * Starts at 100, -20 per attack in the last COOLDOWN_WINDOW ticks, min 20.
- */
-export function computeAttackCredibility(recentAttackCount) {
-    return Math.max(20, 100 - recentAttackCount * ATTACK_CONFIG.CREDIBILITY_COST);
 }
 
 /**
