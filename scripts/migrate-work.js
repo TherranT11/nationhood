@@ -60,15 +60,25 @@ async function main() {
 
     console.log('Connecting to Work Supabase:', SUPABASE_URL);
 
-    // ── Step 0: Install helper RPCs ────────────────────────────────
-    // First install exec_migration, admin_reset_tables, and seed_work_data RPCs
+    // ── Step 0: Verify exec_migration RPC exists, then install helper RPCs ──
+    console.log('\n[0] Verifying exec_migration RPC...');
+    const { error: testErr } = await supabase.rpc('exec_migration', { sql_text: 'SELECT 1' });
+    if (testErr) {
+        console.error('  exec_migration() RPC not found or not accessible.');
+        console.error('  Please run sql/create_exec_migration.sql in the Work SQL Editor first.');
+        console.error('  Then go to Supabase Dashboard → Settings → API and wait ~30s for schema cache reload.');
+        console.error(`  Error: ${testErr.message}`);
+        process.exit(1);
+    }
+    console.log('  exec_migration RPC verified.');
+
+    // Install admin_reset_tables and seed_work_data RPCs
     const rpcFiles = [
-        'sql/create_exec_migration.sql',
         'sql/create_admin_reset_tables.sql',
         'sql/seed_work_data.sql'
     ];
 
-    console.log('\n[0] Installing helper RPCs...');
+    console.log('  Installing helper RPCs...');
     for (const rpcFile of rpcFiles) {
         const filePath = path.resolve(__dirname, '..', rpcFile);
         if (!fs.existsSync(filePath)) {
@@ -76,39 +86,9 @@ async function main() {
             continue;
         }
         const sql = fs.readFileSync(filePath, 'utf8');
-        // For the very first RPC (exec_migration itself), we need to use
-        // the REST API directly since the function doesn't exist yet.
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/exec_migration`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'apikey': SERVICE_ROLE_KEY,
-                'Authorization': `Bearer ${SERVICE_ROLE_KEY}`
-            },
-            body: JSON.stringify({ sql_text: sql })
-        });
-        if (!res.ok) {
-            const text = await res.text();
-            if (rpcFile === 'sql/create_exec_migration.sql') {
-                // exec_migration doesn't exist yet — install it via raw SQL endpoint
-                console.log(`  Installing exec_migration via raw SQL...`);
-                const rawRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/exec_migration`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'apikey': SERVICE_ROLE_KEY,
-                        'Authorization': `Bearer ${SERVICE_ROLE_KEY}`
-                    },
-                    body: JSON.stringify({ sql_text: sql })
-                });
-                if (!rawRes.ok) {
-                    console.error(`  MANUAL STEP REQUIRED: exec_migration() RPC not found.`);
-                    console.error(`  Please run sql/create_exec_migration.sql in the Work SQL Editor first.`);
-                    process.exit(1);
-                }
-            } else {
-                console.error(`  Failed to install ${rpcFile}: ${text}`);
-            }
+        const { error } = await supabase.rpc('exec_migration', { sql_text: sql });
+        if (error) {
+            console.error(`  Failed to install ${rpcFile}: ${error.message}`);
         } else {
             console.log(`  Installed: ${rpcFile}`);
         }
