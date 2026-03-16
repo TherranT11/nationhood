@@ -35,17 +35,14 @@ let currentNation = null;
 let currentFaction = null;
 let currentShard = null;
 
-// Role: 'leader' | 'deputy' | 'whip'
-let activeRole = 'leader';
+// Candidates for the leader role
+let candidatesByRole = { leader: [] };
 
-// Candidates per role: { leader: [...], deputy: [...], whip: [...] }
-let candidatesByRole = { leader: [], deputy: [], whip: [] };
+// Current leader (from DB)
+let currentLeaders = { leader: null };
 
-// Current leaders per role (from DB)
-let currentLeaders = { leader: null, deputy: null, whip: null };
-
-// Selected candidate index per role
-let selectedIndex = { leader: null, deputy: null, whip: null };
+// Selected candidate index
+let selectedIndex = { leader: null };
 
 // Double-fire guard for appoint action
 let isAppointing = false;
@@ -87,27 +84,12 @@ function loadCurrentLeaders() {
         };
     }
 
-    // Check for deputy and whip in faction metadata
-    if (currentFaction.deputy_first_name && currentFaction.deputy_last_name) {
-        currentLeaders.deputy = {
-            firstName: currentFaction.deputy_first_name,
-            lastName: currentFaction.deputy_last_name,
-            age: currentFaction.deputy_age || null,
-        };
-    }
-    if (currentFaction.whip_first_name && currentFaction.whip_last_name) {
-        currentLeaders.whip = {
-            firstName: currentFaction.whip_first_name,
-            lastName: currentFaction.whip_last_name,
-            age: currentFaction.whip_age || null,
-        };
-    }
 }
 
-function buildCurrentCandidateEntry(role) {
-    const cl = currentLeaders[role];
+function buildCurrentCandidateEntry() {
+    const cl = currentLeaders.leader;
     if (!cl) return null;
-    const entry = {
+    return {
         firstName: cl.firstName,
         lastName: cl.lastName,
         age: cl.age || 45,
@@ -117,9 +99,8 @@ function buildCurrentCandidateEntry(role) {
         apCost: 0,
         costBreakdown: { positiveTotal: 0, negativeTotal: 0, rawCost: 0, apCost: 0 },
         isCurrent: true,
+        electability: cl.electability ?? 50,
     };
-    if (role === 'leader') entry.electability = cl.electability ?? 50;
-    return entry;
 }
 
 async function persistCandidates(factionId, role, candidates) {
@@ -136,32 +117,30 @@ async function generateAllCandidates() {
     const nationName = currentNation.name || '';
     const factionId = currentFaction.id;
 
-    for (const role of ['leader', 'deputy', 'whip']) {
-        // Try to load persisted candidates from DB first
-        let candidates = null;
-        const { data: stored, error: loadErr } = await _supabase
-            .from('leadership_candidates')
-            .select('candidates')
-            .eq('faction_id', factionId)
-            .eq('role', role)
-            .maybeSingle();
+    // Try to load persisted candidates from DB first
+    let candidates = null;
+    const { data: stored, error: loadErr } = await _supabase
+        .from('leadership_candidates')
+        .select('candidates')
+        .eq('faction_id', factionId)
+        .eq('role', 'leader')
+        .maybeSingle();
 
-        if (!loadErr && stored && Array.isArray(stored.candidates) && stored.candidates.length > 0) {
-            candidates = stored.candidates;
-        } else {
-            // Generate fresh candidates and persist them
-            candidates = generateLeadershipCandidates(nationName, getNationNames, 3, role);
-            await persistCandidates(factionId, role, candidates);
-        }
-
-        candidatesByRole[role] = candidates;
-
-        // Prepend current leader as a 0-cost option
-        const currentEntry = buildCurrentCandidateEntry(role);
-        if (currentEntry) candidatesByRole[role].unshift(currentEntry);
-
-        selectedIndex[role] = null;
+    if (!loadErr && stored && Array.isArray(stored.candidates) && stored.candidates.length > 0) {
+        candidates = stored.candidates;
+    } else {
+        // Generate fresh candidates and persist them
+        candidates = generateLeadershipCandidates(nationName, getNationNames, 3, 'leader');
+        await persistCandidates(factionId, 'leader', candidates);
     }
+
+    candidatesByRole.leader = candidates;
+
+    // Prepend current leader as a 0-cost option
+    const currentEntry = buildCurrentCandidateEntry();
+    if (currentEntry) candidatesByRole.leader.unshift(currentEntry);
+
+    selectedIndex.leader = null;
 }
 
 // ═══════════════════════════════════════
@@ -169,8 +148,8 @@ async function generateAllCandidates() {
 // ═══════════════════════════════════════
 function render() {
     const container = document.getElementById('pl-container');
-    const candidates = candidatesByRole[activeRole];
-    const sel = selectedIndex[activeRole];
+    const candidates = candidatesByRole.leader;
+    const sel = selectedIndex.leader;
     const selectedCandidate = sel !== null ? candidates[sel] : null;
 
     // Header cost display
@@ -180,7 +159,7 @@ function render() {
         const costColor = getAPCostColor(selectedCandidate.apCost);
         const costLabel = getAPCostLabel(selectedCandidate.apCost);
         headerCostHTML = `<span class="pl-header-cost" style="color:${costColor}">${costLabel}</span>`;
-        appointBtnHTML = `<button class="pl-appoint-btn" onclick="window._appointLeader()">Appoint ${getRoleLabel(activeRole)}</button>`;
+        appointBtnHTML = `<button class="pl-appoint-btn" onclick="window._appointLeader()">Appoint Party Leader</button>`;
     }
 
     container.innerHTML = `
@@ -196,12 +175,6 @@ function render() {
             </div>
         </div>
 
-        <div class="pl-role-tabs">
-            ${['leader', 'deputy', 'whip'].map(r => `
-                <button class="pl-role-tab ${r === activeRole ? 'active' : ''}" onclick="window._switchRole('${r}')">${getRoleLabel(r)}</button>
-            `).join('')}
-        </div>
-
         <div class="pl-body">
             <div class="pl-list" id="pl-list">
                 ${renderCandidateList(candidates, sel)}
@@ -211,12 +184,6 @@ function render() {
             </div>
         </div>
     `;
-}
-
-function getRoleLabel(role) {
-    if (role === 'leader') return 'Party Leader';
-    if (role === 'deputy') return 'Deputy Leader';
-    return 'Party Whip';
 }
 
 function renderCandidateList(candidates, selectedIdx) {
@@ -379,35 +346,29 @@ function renderCandidateDetail(c) {
 //  Global handlers
 // ═══════════════════════════════════════
 window._selectCandidate = function(index) {
-    selectedIndex[activeRole] = index;
+    selectedIndex.leader = index;
     render();
 };
 
-window._switchRole = function(role) {
-    activeRole = role;
-    render();
-};
 
 window._appointLeader = async function() {
     if (isAppointing) return;
 
-    const sel = selectedIndex[activeRole];
+    const sel = selectedIndex.leader;
     if (sel === null) return;
 
-    const candidate = candidatesByRole[activeRole][sel];
+    const candidate = candidatesByRole.leader[sel];
     if (!candidate || candidate.isCurrent) return;
 
-    const roleLabel = getRoleLabel(activeRole);
-
     const confirmLines = [
-        `Appoint ${candidate.firstName} ${candidate.lastName} as ${roleLabel}?\n`,
+        `Appoint ${candidate.firstName} ${candidate.lastName} as Party Leader?\n`,
         `Cost: ${getAPCostLabel(candidate.apCost)}`,
         `Ideology: ${candidate.ideology}`,
     ];
     if (candidate.electability != null) {
         confirmLines.push(`Electability: ${getElectabilityTier(candidate.electability).label}`);
     }
-    confirmLines.push('', `This will replace the current ${roleLabel.toLowerCase()}.`);
+    confirmLines.push('', 'This will replace the current party leader.');
     if (!confirm(confirmLines.join('\n'))) return;
 
     isAppointing = true;
@@ -423,55 +384,28 @@ window._appointLeader = async function() {
         }
 
         // Update faction with new leader data
-        const updateFields = {};
-        if (activeRole === 'leader') {
-            updateFields.leader_first_name = candidate.firstName;
-            updateFields.leader_last_name = candidate.lastName;
-            updateFields.leader_age = candidate.age;
-            updateFields.electability = candidate.electability;
-            updateFields.leader_ideology = candidate.ideology || null;
-            updateFields.leader_positive_traits = candidate.positiveTraits || [];
-            updateFields.leader_negative_traits = candidate.negativeTraits || [];
-        } else if (activeRole === 'deputy') {
-            updateFields.deputy_first_name = candidate.firstName;
-            updateFields.deputy_last_name = candidate.lastName;
-            updateFields.deputy_age = candidate.age;
-        } else if (activeRole === 'whip') {
-            updateFields.whip_first_name = candidate.firstName;
-            updateFields.whip_last_name = candidate.lastName;
-            updateFields.whip_age = candidate.age;
-        }
+        const updateFields = {
+            leader_first_name: candidate.firstName,
+            leader_last_name: candidate.lastName,
+            leader_age: candidate.age,
+            electability: candidate.electability,
+            leader_ideology: candidate.ideology || null,
+            leader_positive_traits: candidate.positiveTraits || [],
+            leader_negative_traits: candidate.negativeTraits || [],
+        };
 
-        let { error: updateErr } = await _supabase.from('factions').update(updateFields).eq('id', currentFaction.id);
-
-        // If deputy/whip columns don't exist yet (migration not applied), retry without age
-        // which is the least critical field, then retry with just name fields
-        if (updateErr && activeRole !== 'leader' && updateErr.message.includes('schema cache')) {
-            const nameOnly = {};
-            const prefix = activeRole === 'deputy' ? 'deputy' : 'whip';
-            nameOnly[`${prefix}_first_name`] = candidate.firstName;
-            nameOnly[`${prefix}_last_name`] = candidate.lastName;
-            const retry1 = await _supabase.from('factions').update(nameOnly).eq('id', currentFaction.id);
-            if (retry1.error && retry1.error.message.includes('schema cache')) {
-                // Columns don't exist at all — store locally only, skip DB write for this role
-                console.warn(`Deputy/whip columns not yet migrated. Appointment stored locally only.`);
-                updateErr = null;
-            } else {
-                updateErr = retry1.error;
-            }
-        }
-
+        const { error: updateErr } = await _supabase.from('factions').update(updateFields).eq('id', currentFaction.id);
         if (updateErr) throw new Error('Failed to update faction: ' + updateErr.message);
 
         // Log event
-        const oldLeader = currentLeaders[activeRole];
+        const oldLeader = currentLeaders.leader;
         const eventDescription = oldLeader
-            ? `${candidate.firstName} ${candidate.lastName} replaces ${oldLeader.firstName} ${oldLeader.lastName} as ${roleLabel} of ${currentFaction.faction_name}.`
-            : `${candidate.firstName} ${candidate.lastName} appointed as ${roleLabel} of ${currentFaction.faction_name}.`;
+            ? `${candidate.firstName} ${candidate.lastName} replaces ${oldLeader.firstName} ${oldLeader.lastName} as Party Leader of ${currentFaction.faction_name}.`
+            : `${candidate.firstName} ${candidate.lastName} appointed as Party Leader of ${currentFaction.faction_name}.`;
 
         await _supabase.from('event_log').insert({
             nation_id: currentNation.id,
-            event_name: `New ${roleLabel}`,
+            event_name: 'New Party Leader',
             description_chosen: eventDescription,
             category: 'POLITICAL',
             fired_at_tick: currentTick,
@@ -489,27 +423,27 @@ window._appointLeader = async function() {
             negativeTraits: candidate.negativeTraits,
         };
         if (candidate.electability != null) leaderState.electability = candidate.electability;
-        currentLeaders[activeRole] = leaderState;
+        currentLeaders.leader = leaderState;
 
         // Generate fresh candidates for this role and persist to DB
         const nationName = currentNation.name || '';
-        const newCandidates = generateLeadershipCandidates(nationName, getNationNames, 3, activeRole);
-        await persistCandidates(currentFaction.id, activeRole, newCandidates);
+        const newCandidates = generateLeadershipCandidates(nationName, getNationNames, 3, 'leader');
+        await persistCandidates(currentFaction.id, 'leader', newCandidates);
 
-        candidatesByRole[activeRole] = newCandidates;
+        candidatesByRole.leader = newCandidates;
 
         // Prepend the newly appointed leader as current (0 cost)
-        const currentEntry = buildCurrentCandidateEntry(activeRole);
-        if (currentEntry) candidatesByRole[activeRole].unshift(currentEntry);
+        const currentEntry = buildCurrentCandidateEntry();
+        if (currentEntry) candidatesByRole.leader.unshift(currentEntry);
 
-        selectedIndex[activeRole] = 0; // Select the current leader
+        selectedIndex.leader = 0; // Select the current leader
         render();
 
-        alert(`${candidate.firstName} ${candidate.lastName} has been appointed as ${roleLabel}!`);
+        alert(`${candidate.firstName} ${candidate.lastName} has been appointed as Party Leader!`);
 
     } catch (e) {
         alert('Error: ' + e.message);
-        if (btn) { btn.disabled = false; btn.textContent = `Appoint ${getRoleLabel(activeRole)}`; }
+        if (btn) { btn.disabled = false; btn.textContent = `Appoint Party Leader`; }
     } finally {
         isAppointing = false;
     }

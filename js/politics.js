@@ -136,11 +136,9 @@ initPage('politics', async (state) => {
             .in('faction_id', partyIds)
         : { data: [] };
 
-    // Use DB columns for deputy/whip if available, otherwise generate deterministically
+    // Use DB columns for whip if available, otherwise generate deterministically
     const generatedNames = generateOfficerNames(f.id, nation.name);
     const officerNames = {
-        deputyFirst: f.deputy_first_name || generatedNames.deputyFirst,
-        deputyLast: f.deputy_last_name || generatedNames.deputyLast,
         whipFirst: f.whip_first_name || generatedNames.whipFirst,
         whipLast: f.whip_last_name || generatedNames.whipLast,
     };
@@ -264,21 +262,16 @@ function seedElectability(factionId) {
 }
 
 /**
- * Generate deterministic officer names from faction UUID.
+ * Generate deterministic Party Whip name from faction UUID.
  * Uses the UUID bytes to seed a simple selection from name pools.
  */
 function generateOfficerNames(factionId, nationName = '') {
     const { firstNames, lastNames } = getNationNames(nationName);
-    // Parse hex characters from UUID to get seed values
     const hex = factionId.replace(/-/g, '');
-    const seedA = parseInt(hex.substring(0, 4), 16);
-    const seedB = parseInt(hex.substring(4, 8), 16);
     const seedC = parseInt(hex.substring(8, 12), 16);
     const seedD = parseInt(hex.substring(12, 16), 16);
 
     return {
-        deputyFirst: firstNames[seedA % firstNames.length],
-        deputyLast: lastNames[seedB % lastNames.length],
         whipFirst: firstNames[seedC % firstNames.length],
         whipLast: lastNames[seedD % lastNames.length]
     };
@@ -399,10 +392,6 @@ async function renderPartyTab(f, nation, data) {
             ${leaderIdeo}
         </div>
         <div class="pol-officers-row">
-            <div class="pol-officer">
-                <div class="pol-officer-label">Deputy Leader</div>
-                <div class="pol-officer-name">${escapeHtml(officerNames.deputyFirst + ' ' + officerNames.deputyLast)}</div>
-            </div>
             <div class="pol-officer">
                 <div class="pol-officer-label">Party Whip</div>
                 <div class="pol-officer-name">${escapeHtml(officerNames.whipFirst + ' ' + officerNames.whipLast)}</div>

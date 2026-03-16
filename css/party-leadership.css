@@ -283,38 +283,6 @@ body {
 }
 
 /* ═══════════════════════════════════════
-   Role Tabs (Leader / Deputy / Whip)
-   ═══════════════════════════════════════ */
-.pl-role-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--border-0);
-    background: var(--bg-card);
-    flex-shrink: 0;
-}
-
-.pl-role-tab {
-    flex: 1;
-    font-family: var(--font-mono);
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-secondary);
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    padding: 10px 14px;
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
-    text-align: center;
-}
-.pl-role-tab:hover { color: var(--text-primary); }
-.pl-role-tab.active {
-    color: var(--text-bright);
-    border-bottom-color: var(--accent);
-}
-
-/* ═══════════════════════════════════════
    Candidate Detail (Right Panel)
    ═══════════════════════════════════════ */
 .pl-detail {
