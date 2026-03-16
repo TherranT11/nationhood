@@ -88,6 +88,7 @@ let currentNation  = null;
 let currentCoalition = null;
 let diplomaticRoles = { isHoG: false, isFM: false, isMoT: false, ambassadorTo: [] };
 let shardTick = 0;
+let totalUnreadMessages = 0;
 
 // Cached list of other nations for dropdowns
 let cachedOtherNations = [];
@@ -256,7 +257,7 @@ initPage('diplomacy', async (state) => {
             renderRelationsBox(),
             renderNegotiationsBox()
         ]);
-        renderActionsBox();
+        await renderActionsBox();
         renderDraftBox();
     } catch (e) {
         console.error('Diplomacy init error:', e);
@@ -579,12 +580,15 @@ async function renderRelationsTab() {
 
         // Build unread message count per source nation
         const unreadByNation = {};
+        let unreadTotal = 0;
         for (const msg of (unreadMsgsRes.data || [])) {
             const readBy = msg.read_by_factions || [];
             if (!readBy.includes(currentFaction?.id)) {
                 unreadByNation[msg.from_nation_id] = (unreadByNation[msg.from_nation_id] || 0) + 1;
+                unreadTotal++;
             }
         }
+        totalUnreadMessages = unreadTotal;
 
         // Filter out own nation
         const otherNations = allNations.filter(n => n.id !== currentNation.id);
@@ -3528,6 +3532,16 @@ function markDiploMessagesRead(messages, fromNationId) {
         if (card) {
             const badge = card.querySelector('.diplo-incoming-msg');
             if (badge) badge.remove();
+        }
+        // Update Send Message action badge
+        totalUnreadMessages = Math.max(0, totalUnreadMessages - unreadIds.length);
+        const sendMsgBadge = document.querySelector('.action-item[data-action="send_message"] .action-badge');
+        if (sendMsgBadge) {
+            if (totalUnreadMessages > 0) {
+                sendMsgBadge.textContent = totalUnreadMessages;
+            } else {
+                sendMsgBadge.remove();
+            }
         }
         // Update the nav badge count
         const navBadge = document.getElementById('diplomacy-badge');
@@ -7303,20 +7317,51 @@ async function acceptProposal(proposalId) {
     const classification = pd.classification || 'MINOR';
 
     // Calculate totals from active (non-struck) articles
-    let totalRel = 0, totalMoney = 0;
     const activeArticles = [];
     articles.forEach((art, i) => {
-        if (!struckIndices.has(i)) {
-            totalRel += art.relations || 0;
-            totalMoney += art.money || 0;
+        if (!struckIndices.has(i) && art.status !== 'struck') {
             activeArticles.push(art);
         }
     });
 
     const articleCount = activeArticles.length;
-    const effectSummary = (totalRel ? (totalRel > 0 ? '+' : '') + totalRel + ' Relations' : '') +
-        (totalRel && totalMoney ? ', ' : '') +
-        (totalMoney ? (totalMoney > 0 ? '+' : '-') + '$' + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M FM Fund' : '');
+    const isV2 = pd.version === 2;
+    let effectSummary = '';
+    if (isV2) {
+        const totals = {};
+        activeArticles.forEach(art => {
+            const e = (art.effects && art.effects.summary) ? art.effects.summary : (art.effects || {});
+            for (const [k, v] of Object.entries(e)) {
+                if (typeof v === 'number' && v !== 0) totals[k] = (totals[k] || 0) + v;
+            }
+        });
+        const parts = [];
+        if (totals.relations) parts.push((totals.relations > 0 ? '+' : '') + totals.relations + ' Relations');
+        if (totals.revenue > 0) parts.push('+$' + (totals.revenue / 1e6).toFixed(0) + 'M Revenue');
+        if (totals.cost_proposer > 0 || totals.cost_target > 0) parts.push('-$' + (((totals.cost_proposer || 0) + (totals.cost_target || 0)) / 1e6).toFixed(1) + 'M Cost');
+        if (totals.intl_reputation) parts.push((totals.intl_reputation > 0 ? '+' : '') + totals.intl_reputation + ' Int\'l Rep');
+        if (totals.immigration) parts.push('+' + totals.immigration + ' Immigration');
+        if (totals.higher_education) parts.push('+' + totals.higher_education + ' Higher Ed');
+        if (totals.soft_power) parts.push('+' + totals.soft_power + ' Soft Power');
+        if (totals.soft_power_per_year) parts.push('+' + totals.soft_power_per_year + ' Soft Power/yr');
+        if (totals.permanent_soft_power) parts.push('+' + totals.permanent_soft_power + ' Permanent Soft Power');
+        if (totals.technology_bonus) parts.push('+' + totals.technology_bonus + ' Technology');
+        if (totals.polarization) parts.push('+' + totals.polarization + ' Polarization');
+        if (totals.terrorism_risk) parts.push('+' + totals.terrorism_risk + ' Terrorism Risk');
+        if (totals.ongoing_per_tick) parts.push('-$' + (totals.ongoing_per_tick / 1e6).toFixed(0) + 'M/tick Ongoing');
+        if (totals.gdp_growth) parts.push((totals.gdp_growth > 0 ? '+' : '') + totals.gdp_growth + ' GDP Growth');
+        if (totals.civil_unrest) parts.push('+' + totals.civil_unrest + ' Civil Unrest');
+        effectSummary = parts.join(', ');
+    } else {
+        let totalRel = 0, totalMoney = 0;
+        activeArticles.forEach(art => {
+            totalRel += art.relations || 0;
+            totalMoney += art.money || 0;
+        });
+        effectSummary = (totalRel ? (totalRel > 0 ? '+' : '') + totalRel + ' Relations' : '') +
+            (totalRel && totalMoney ? ', ' : '') +
+            (totalMoney ? (totalMoney > 0 ? '+' : '-') + '$' + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M FM Fund' : '');
+    }
 
     // MAJOR agreements go to FM review after ambassador acceptance
     const isMajor = classification === 'MAJOR';
@@ -8349,6 +8394,13 @@ async function acceptStateVisit(proposalId) {
         autocracyResult.host_roll = roll;
         autocracyResult.host_change = approvalChange;
         bonusSummary.push('Autocracy dice (host): rolled ' + roll + ' → ' + (approvalChange > 0 ? '+' : '') + approvalChange + ' Gov Approval (host)');
+
+        // Regime health cost: the strongman leaving home weakens the regime
+        const regimeDie = DIPLOMACY_CONFIG.STATE_VISIT_AUTOCRACY_REGIME_DIE;
+        const regimeRoll = Math.floor(Math.random() * regimeDie) + 1;
+        visitorUpdates.regime_health = Math.max(0, Math.round(Number(visitorNation.regime_health ?? 80) - regimeRoll));
+        autocracyResult.regime_roll = regimeRoll;
+        bonusSummary.push('Regime health: -' + regimeRoll + ' (1D10, strongman abroad)');
     }
 
     // ── Track debt for logging (actual budget cost applied via addEmbassyCost below) ──
@@ -8786,9 +8838,25 @@ window.selectDraftTarget = selectDraftTarget;
 // ══════════════════════════════════════════════════════
 // DIPLOMATIC ACTIONS BOX
 // ══════════════════════════════════════════════════════
-function renderActionsBox() {
+async function renderActionsBox() {
     const body = document.getElementById('actions-body');
     if (!body) return;
+
+    // Fetch unread message count for the Send Message badge
+    if (currentNation && currentFaction) {
+        try {
+            const { data: msgs } = await _supabase
+                .from('diplomatic_messages')
+                .select('id, read_by_factions')
+                .eq('to_nation_id', currentNation.id)
+                .neq('from_nation_id', currentNation.id);
+            let count = 0;
+            for (const msg of (msgs || [])) {
+                if (!(msg.read_by_factions || []).includes(currentFaction.id)) count++;
+            }
+            totalUnreadMessages = count;
+        } catch (e) { /* non-blocking */ }
+    }
 
     const hasHoG = diplomaticRoles && diplomaticRoles.isHoG;
     const hasFM = diplomaticRoles && diplomaticRoles.isFM;
@@ -8803,11 +8871,20 @@ function renderActionsBox() {
         const disabledClass = isDisabled ? ' action-disabled' : '';
         const onclick = !isDisabled ? `onclick="selectDraftAction('${a.key}','${escapeHtml(a.label)}',${a.ap},'${a.type}','${role}')"` : '';
         const costLabel = a.ap > 0 ? a.ap + ' AP' : 'Free';
+        const badgeHtml = a.badge ? '<span class="action-badge">' + a.badge + '</span>' : '';
         return `<div class="action-item${disabledClass}" data-action="${a.key}" ${onclick}>
-                <span class="action-name">${a.label}</span>
+                <span class="action-name">${a.label}${badgeHtml}</span>
                 <span class="action-cost">${costLabel}</span>
             </div>`;
     }
+
+    // Ambassador
+    html += '<div class="role-header role-header-amb' + (hasAmb ? '' : ' role-disabled') + '">Ambassador</div>';
+    [
+        { key: 'minor_initiative', label: 'Minor Diplomatic Initiative', ap: 2, type: 'amb' },
+        { key: 'formal_protest', label: 'Formal Protest', ap: 2, type: 'amb', comingSoon: true },
+        { key: 'send_message', label: 'Send Message', ap: 0, type: 'amb', badge: totalUnreadMessages > 0 ? totalUnreadMessages : 0 }
+    ].forEach(a => { html += actionHtml(a, hasAmb, 'amb'); });
 
     // Head of Government
     html += '<div class="role-header role-header-hog' + (hasHoG ? '' : ' role-disabled') + '">Head of Government</div>';
@@ -8839,14 +8916,6 @@ function renderActionsBox() {
         { key: 'export_subsidy_draft', label: 'Export Subsidy', ap: 2, type: 'mot' },
         { key: 'impose_embargo_draft', label: 'Impose Embargo', ap: 5, type: 'mot' }
     ].forEach(a => { html += actionHtml(a, hasMoT, 'mot'); });
-
-    // Ambassador
-    html += '<div class="role-header role-header-amb' + (hasAmb ? '' : ' role-disabled') + '">Ambassador</div>';
-    [
-        { key: 'minor_initiative', label: 'Minor Diplomatic Initiative', ap: 2, type: 'amb' },
-        { key: 'formal_protest', label: 'Formal Protest', ap: 2, type: 'amb', comingSoon: true },
-        { key: 'send_message', label: 'Send Message', ap: 0, type: 'amb' }
-    ].forEach(a => { html += actionHtml(a, hasAmb, 'amb'); });
 
     body.innerHTML = html;
 }
@@ -9214,8 +9283,127 @@ function toggleNegRow(negId) {
 }
 window.toggleNegRow = toggleNegRow;
 
+// ── Render state visit detail inside the negotiations panel ──
+function renderStateVisitNegDetail(p, pd, needsOurAction) {
+    const isIncoming = p.target_nation_id === currentNation.id;
+    const vtLabel = STATE_VISIT_TYPES[pd.visit_type]?.label || 'State Visit';
+    const durLabel = STATE_VISIT_DURATIONS[pd.duration]?.label || 'Moderate';
+    const delLabel = STATE_VISIT_DELEGATIONS[pd.delegation_size]?.label || 'Standard (8)';
+    const agenda = pd.agenda || [];
+    const computedEffects = pd.computed_effects || {};
+
+    const deadlineTick = p.fm_review_expires_tick;
+    const ticksLeft = deadlineTick != null ? Math.max(0, deadlineTick - shardTick) : '?';
+    const expired = deadlineTick != null && shardTick > deadlineTick;
+
+    let html = '<div class="neg-detail-header">';
+    html += '<div class="neg-detail-title">' + escapeHtml(pd.name || 'State Visit') + '</div>';
+    html += '<span class="badge badge--dim" style="background:#5c3a1a;color:#FFD700;">STATE VISIT</span>';
+    html += '</div>';
+
+    // Leader & direction
+    html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;line-height:1.5;">';
+    html += '<strong>' + escapeHtml(pd.visitor_leader || 'Unknown') + '</strong> of <strong>' + escapeHtml(pd.visitor_nation || 'Unknown') + '</strong>';
+    html += ' &rarr; ' + escapeHtml(pd.host_nation || 'Unknown');
+    html += '<br>Proposed ' + (p.proposed_at_tick != null ? tickToDate(p.proposed_at_tick) : '—');
+    if (expired) {
+        html += ' · <span style="color:var(--red);">Expired</span>';
+    } else if (deadlineTick != null) {
+        html += ' · Expires in ' + ticksLeft + ' tick(s)';
+    }
+    html += '</div>';
+
+    // Visit configuration tags
+    html += '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;">';
+    html += '<span class="sv-effect-tag sv-effect-tag--info">' + escapeHtml(vtLabel) + '</span>';
+    html += '<span class="sv-effect-tag sv-effect-tag--info">' + escapeHtml(durLabel) + '</span>';
+    html += '<span class="sv-effect-tag sv-effect-tag--info">' + escapeHtml(delLabel) + '</span>';
+    html += '</div>';
+
+    // Agenda items
+    if (agenda.length > 0) {
+        html += '<div style="font-size:10px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Agenda (' + agenda.length + ' items)</div>';
+        for (const key of agenda) {
+            const item = STATE_VISIT_AGENDA_ITEMS.find(a => a.key === key);
+            if (!item) continue;
+            html += '<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--border-subtle);display:flex;justify-content:space-between;align-items:flex-start;">';
+            html += '<div><span style="color:var(--text-dim);">Day ' + item.day + ' · ' + escapeHtml(item.slot) + '</span><br><span style="color:var(--text-primary);">' + escapeHtml(item.title) + '</span></div>';
+            // Effect tags
+            const effTags = [];
+            if (item.effects) {
+                for (const [stat, val] of Object.entries(item.effects)) {
+                    if (val) effTags.push('<span style="color:#4caf50;font-size:10px;">+' + val + ' ' + stat.replace(/_/g, ' ') + '</span>');
+                }
+            }
+            if (item.costs?.debt) effTags.push('<span style="color:#f97316;font-size:10px;">$' + (item.costs.debt / 1e6).toFixed(1) + 'M</span>');
+            if (item.risks?.gaffe) effTags.push('<span style="color:var(--red);font-size:10px;">' + Math.round(item.risks.gaffe * 100) + '% gaffe</span>');
+            if (item.risks?.hostiles_alarmed) effTags.push('<span style="color:var(--red);font-size:10px;">hostiles alarmed</span>');
+            if (effTags.length) html += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' + effTags.join('') + '</div>';
+            html += '</div>';
+        }
+    }
+
+    // Projected total effects
+    const effectEntries = Object.entries(computedEffects).filter(([, v]) => v !== 0);
+    if (effectEntries.length > 0) {
+        html += '<div style="font-size:10px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;margin:10px 0 4px;">Projected Effects (both nations)</div>';
+        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+        for (const [stat, val] of effectEntries) {
+            const sign = val > 0 ? '+' : '';
+            const color = val > 0 ? '#4caf50' : '#f44';
+            html += '<span class="sv-effect-tag" style="border-color:' + color + '44;color:' + color + ';">' + sign + val + ' ' + escapeHtml(stat.replace(/_/g, ' ')) + '</span>';
+        }
+        html += '</div>';
+    }
+
+    // Budget cost
+    if (pd.total_debt && pd.total_debt > 0) {
+        html += '<div style="margin-top:8px;"><span class="sv-effect-tag sv-effect-tag--cost">Embassy Budget: $' + (pd.total_debt / 1e6).toFixed(1) + 'M (visitor pays)</span></div>';
+    }
+
+    // Risks
+    if (pd.risks && pd.risks.length > 0) {
+        html += '<div style="font-size:10px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;margin:10px 0 4px;">Risks</div>';
+        for (const r of pd.risks) {
+            if (r.chance) {
+                html += '<span class="sv-effect-tag sv-effect-tag--risk">' + escapeHtml(r.source) + ': ' + Math.round(r.chance * 100) + '% ' + escapeHtml(r.key) + '</span> ';
+            }
+            if (r.flag) {
+                html += '<span class="sv-effect-tag sv-effect-tag--risk">' + escapeHtml(r.source) + ': ' + escapeHtml(r.key) + '</span> ';
+            }
+        }
+    }
+
+    // Special flags
+    if (pd.is_first) {
+        html += '<div style="margin-top:8px;color:#FFD700;font-size:11px;">★ First-ever visit between these nations — bonus stability!</div>';
+    }
+    if (pd.is_target_autocracy) {
+        html += '<div style="margin-top:4px;color:#f97316;font-size:11px;">⚠ Autocracy domestic risk: 1D12 dice roll on visitor\'s gov approval</div>';
+    }
+
+    // Action buttons
+    html += '<div class="detail-actions" style="margin-top:10px;">';
+    if (needsOurAction && !expired) {
+        html += '<button class="detail-btn" onclick="acceptStateVisit(\'' + p.id + '\')">Accept Visit</button>';
+        html += '<button class="detail-btn" onclick="declineStateVisit(\'' + p.id + '\')">Decline</button>';
+    } else if (expired) {
+        html += '<div style="color:var(--red);font-size:11px;">Invitation has expired.</div>';
+    } else if (!isIncoming) {
+        html += '<div style="font-size:11px;color:var(--text-muted);">Awaiting response from ' + escapeHtml(pd.host_nation || 'target') + '.</div>';
+    }
+    html += '</div>';
+
+    return html;
+}
+
 // ── Render negotiation detail content (diplomatic proposals) ──
 function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatification) {
+    // ── State visit proposals get their own detail renderer ──
+    if (p.proposal_type === 'state_visit') {
+        return renderStateVisitNegDetail(p, pd, needsOurAction);
+    }
+
     const articles = pd.articles || [];
     const struckIndices = new Set(pd.struck_articles || []);
     const addedArticles = pd.added_articles || [];
@@ -12513,7 +12701,7 @@ async function refreshDiplomacyUI() {
         renderRelationsBox(),
         renderNegotiationsBox()
     ]);
-    renderActionsBox();
+    await renderActionsBox();
     renderDraftBox();
 }
 window.refreshDiplomacyUI = refreshDiplomacyUI;

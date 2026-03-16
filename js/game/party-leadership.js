@@ -160,7 +160,7 @@ export function getElectabilityTier(score) {
 /**
  * Adjust electability based on election results.
  * @param {number} current - Current electability (0-100)
- * @param {'seat_gain'|'seat_loss'|'presidential_loss'|'denied_pm'} type
+ * @param {'seat_gain'|'seat_loss'|'presidential_loss'|'denied_pm'|'vonc_loss'|'snap_election_loss'} type
  * @param {number} magnitude - Number of seats gained/lost (for seat events)
  * @param {object} positiveTraits - Array of positive trait keys on the leader
  * @param {object} negativeTraits - Array of negative trait keys on the leader
@@ -191,6 +191,16 @@ export function adjustElectability(current, type, magnitude = 0, positiveTraits 
             break;
         case 'denied_pm':
             delta = -10;
+            if (positiveTraits.includes('comeback_kid')) delta = Math.ceil(delta / 2);
+            if (negativeTraits.includes('sore_loser')) delta *= 2;
+            break;
+        case 'vonc_loss':
+            delta = -25;
+            if (positiveTraits.includes('comeback_kid')) delta = Math.ceil(delta / 2);
+            if (negativeTraits.includes('sore_loser')) delta *= 2;
+            break;
+        case 'snap_election_loss':
+            delta = -15;
             if (positiveTraits.includes('comeback_kid')) delta = Math.ceil(delta / 2);
             if (negativeTraits.includes('sore_loser')) delta *= 2;
             break;
@@ -454,6 +464,9 @@ export async function executeLeaderStepDown(supabase, nationId, factionId, curre
         leader_last_name: null,
         leader_age: null,
         electability: 50,
+        leader_ideology: null,
+        leader_positive_traits: [],
+        leader_negative_traits: [],
     }).eq('id', factionId);
 
     if (updateErr) throw new Error('Failed to clear leader: ' + updateErr.message);

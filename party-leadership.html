@@ -66,8 +66,8 @@ initPage('politics', async (state) => {
     // Load current leaders from faction data
     loadCurrentLeaders();
 
-    // Generate candidates for all roles
-    generateAllCandidates();
+    // Load persisted candidates (or generate if first visit)
+    await generateAllCandidates();
 
     // Render
     render();
@@ -80,11 +80,14 @@ function loadCurrentLeaders() {
             firstName: currentFaction.leader_first_name,
             lastName: currentFaction.leader_last_name,
             age: currentFaction.leader_age || null,
+            electability: currentFaction.electability ?? 50,
+            ideology: currentFaction.leader_ideology || null,
+            positiveTraits: currentFaction.leader_positive_traits || [],
+            negativeTraits: currentFaction.leader_negative_traits || [],
         };
     }
 
     // Check for deputy and whip in faction metadata
-    // These may be stored as JSON fields — check if they exist
     if (currentFaction.deputy_first_name && currentFaction.deputy_last_name) {
         currentLeaders.deputy = {
             firstName: currentFaction.deputy_first_name,
@@ -101,32 +104,64 @@ function loadCurrentLeaders() {
     }
 }
 
-function generateAllCandidates() {
-    const nationName = currentNation.name || '';
-    ['leader', 'deputy', 'whip'].forEach(role => {
-        candidatesByRole[role] = generateLeadershipCandidates(nationName, getNationNames, 3, role);
+function buildCurrentCandidateEntry(role) {
+    const cl = currentLeaders[role];
+    if (!cl) return null;
+    const entry = {
+        firstName: cl.firstName,
+        lastName: cl.lastName,
+        age: cl.age || 45,
+        ideology: cl.ideology || currentFaction.ideology_value_1 || 'PROGRESS',
+        positiveTraits: cl.positiveTraits || [],
+        negativeTraits: cl.negativeTraits || [],
+        apCost: 0,
+        costBreakdown: { positiveTotal: 0, negativeTotal: 0, rawCost: 0, apCost: 0 },
+        isCurrent: true,
+    };
+    if (role === 'leader') entry.electability = cl.electability ?? 50;
+    return entry;
+}
 
-        // If there's a current leader, mark the first candidate slot as them (0 AP reappoint)
-        if (currentLeaders[role]) {
-            const cl = currentLeaders[role];
-            const fallback = candidatesByRole[role][0] || {};
-            const currentCandidate = {
-                firstName: cl.firstName,
-                lastName: cl.lastName,
-                age: cl.age || fallback.age || 45,
-                ideology: cl.ideology || fallback.ideology || 'PROGRESS',
-                positiveTraits: cl.positiveTraits || fallback.positiveTraits || [],
-                negativeTraits: cl.negativeTraits || fallback.negativeTraits || [],
-                apCost: 0, // Current leader always costs 0
-                costBreakdown: { positiveTotal: 0, negativeTotal: 0, rawCost: 0, apCost: 0 },
-                isCurrent: true,
-            };
-            if (role === 'leader') currentCandidate.electability = cl.electability || 50;
-            candidatesByRole[role].unshift(currentCandidate);
+async function persistCandidates(factionId, role, candidates) {
+    const { error } = await _supabase.from('leadership_candidates').upsert({
+        faction_id: factionId,
+        role,
+        candidates,
+        generated_at: new Date().toISOString(),
+    }, { onConflict: 'faction_id,role' });
+    if (error) console.warn(`Failed to persist ${role} candidates (non-blocking):`, error.message);
+}
+
+async function generateAllCandidates() {
+    const nationName = currentNation.name || '';
+    const factionId = currentFaction.id;
+
+    for (const role of ['leader', 'deputy', 'whip']) {
+        // Try to load persisted candidates from DB first
+        let candidates = null;
+        const { data: stored, error: loadErr } = await _supabase
+            .from('leadership_candidates')
+            .select('candidates')
+            .eq('faction_id', factionId)
+            .eq('role', role)
+            .maybeSingle();
+
+        if (!loadErr && stored && Array.isArray(stored.candidates) && stored.candidates.length > 0) {
+            candidates = stored.candidates;
+        } else {
+            // Generate fresh candidates and persist them
+            candidates = generateLeadershipCandidates(nationName, getNationNames, 3, role);
+            await persistCandidates(factionId, role, candidates);
         }
 
+        candidatesByRole[role] = candidates;
+
+        // Prepend current leader as a 0-cost option
+        const currentEntry = buildCurrentCandidateEntry(role);
+        if (currentEntry) candidatesByRole[role].unshift(currentEntry);
+
         selectedIndex[role] = null;
-    });
+    }
 }
 
 // ═══════════════════════════════════════
@@ -243,7 +278,7 @@ function renderCandidateDetail(c) {
 
     // Use costBreakdown from candidate, fall back to computed values
     const rawCost = c.costBreakdown ? c.costBreakdown.rawCost : (posTotal - negTotal);
-    const finalAP = c.costBreakdown ? c.costBreakdown.apCost : Math.max(0, Math.min(6, Math.round(posTotal - negTotal)));
+    const finalAP = c.costBreakdown ? c.costBreakdown.apCost : Math.max(0, Math.min(8, Math.round(posTotal - negTotal)));
     const finalColor = getAPCostColor(c.isCurrent ? 0 : finalAP);
 
     return `
@@ -279,8 +314,8 @@ function renderCandidateDetail(c) {
         </div>` : ''}
 
         <!-- Strengths -->
-        <div class="pl-section-header">STRENGTHS <span style="color:var(--green)">+${posTotal.toFixed(1)}</span></div>
-        ${positiveTraits.map(t => {
+        <div class="pl-section-header">STRENGTHS ${positiveTraits.length > 0 ? `<span style="color:var(--green)">+${posTotal.toFixed(1)}</span>` : ''}</div>
+        ${positiveTraits.length > 0 ? positiveTraits.map(t => {
             const cat = CATEGORY_COLORS[t.category] || CATEGORY_COLORS['AP'];
             return `
                 <div class="pl-trait-card strength">
@@ -294,11 +329,11 @@ function renderCandidateDetail(c) {
                     <div class="pl-trait-effect">${escapeHtml(t.effect)}</div>
                 </div>
             `;
-        }).join('')}
+        }).join('') : '<div style="padding:8px 0;color:var(--text-dim);font-family:var(--font-mono);font-size:9px;">None</div>'}
 
         <!-- Weaknesses -->
-        <div class="pl-section-header">WEAKNESSES <span style="color:var(--red)">&minus;${negTotal.toFixed(1)}</span></div>
-        ${negativeTraits.map(t => {
+        <div class="pl-section-header">WEAKNESSES ${negativeTraits.length > 0 ? `<span style="color:var(--red)">&minus;${negTotal.toFixed(1)}</span>` : ''}</div>
+        ${negativeTraits.length > 0 ? negativeTraits.map(t => {
             const cat = CATEGORY_COLORS[t.category] || CATEGORY_COLORS['AP'];
             return `
                 <div class="pl-trait-card weakness">
@@ -312,7 +347,7 @@ function renderCandidateDetail(c) {
                     <div class="pl-trait-effect">${escapeHtml(t.effect)}</div>
                 </div>
             `;
-        }).join('')}
+        }).join('') : '<div style="padding:8px 0;color:var(--text-dim);font-family:var(--font-mono);font-size:9px;">None</div>'}
 
         <!-- Cost Breakdown -->
         ${!c.isCurrent ? `
@@ -394,6 +429,9 @@ window._appointLeader = async function() {
             updateFields.leader_last_name = candidate.lastName;
             updateFields.leader_age = candidate.age;
             updateFields.electability = candidate.electability;
+            updateFields.leader_ideology = candidate.ideology || null;
+            updateFields.leader_positive_traits = candidate.positiveTraits || [];
+            updateFields.leader_negative_traits = candidate.negativeTraits || [];
         } else if (activeRole === 'deputy') {
             updateFields.deputy_first_name = candidate.firstName;
             updateFields.deputy_last_name = candidate.lastName;
@@ -453,8 +491,17 @@ window._appointLeader = async function() {
         if (candidate.electability != null) leaderState.electability = candidate.electability;
         currentLeaders[activeRole] = leaderState;
 
-        // Regenerate candidates for this role
-        generateAllCandidates();
+        // Generate fresh candidates for this role and persist to DB
+        const nationName = currentNation.name || '';
+        const newCandidates = generateLeadershipCandidates(nationName, getNationNames, 3, activeRole);
+        await persistCandidates(currentFaction.id, activeRole, newCandidates);
+
+        candidatesByRole[activeRole] = newCandidates;
+
+        // Prepend the newly appointed leader as current (0 cost)
+        const currentEntry = buildCurrentCandidateEntry(activeRole);
+        if (currentEntry) candidatesByRole[activeRole].unshift(currentEntry);
+
         selectedIndex[activeRole] = 0; // Select the current leader
         render();
 

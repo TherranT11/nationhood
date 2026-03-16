@@ -201,6 +201,31 @@ const GAME_CONFIG = {
     TERM_LIMIT_COOLDOWN_TICKS: 240,
 };
 
+/**
+ * Apply an electability delta to a faction, respecting leader traits.
+ * Reads the faction's current electability + traits, applies the delta, clamps 0-100, and writes back.
+ * @returns {number|null} New electability value, or null if faction not found.
+ */
+async function applyElectabilityDelta(supabase, factionId, baseDelta) {
+    const { data: faction, error: fetchErr } = await supabase
+        .from('factions')
+        .select('electability, leader_positive_traits, leader_negative_traits')
+        .eq('id', factionId)
+        .single();
+    if (fetchErr || !faction) {
+        console.warn(`[applyElectabilityDelta] Could not load faction ${factionId}:`, fetchErr?.message);
+        return null;
+    }
+    const current = faction.electability ?? 50;
+    let delta = baseDelta;
+    if ((faction.leader_positive_traits || []).includes('comeback_kid') && delta < 0) delta = Math.ceil(delta / 2);
+    if ((faction.leader_negative_traits || []).includes('sore_loser') && delta < 0) delta *= 2;
+    const newVal = Math.max(0, Math.min(100, current + delta));
+    const { error: updateErr } = await supabase.from('factions').update({ electability: newVal }).eq('id', factionId);
+    if (updateErr) console.warn(`[applyElectabilityDelta] Update failed for ${factionId}:`, updateErr.message);
+    return newVal;
+}
+
 const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;
 const ENDORSEMENT_SWITCH_WINDOW_ERROR = `Endorsements can only be changed in the last ${ENDORSEMENT_SWITCH_WINDOW_TICKS} ticks before a presidential election.`;
 
@@ -703,6 +728,7 @@ function calculatePriceModifier(totalSupply, totalDemand) {
  *   trade_agreement       +15 to +25 depending on agreement type
  *   embargo_penalty       -40 if active embargo/sanctions between nations
  *   proximity_bonus       +10 if same region (future)
+ *   autocracy_penalty     -10 per autocratic nation in the pair
  *
  * @param {Object} nationA   – nation row
  * @param {Object} nationB   – nation row
@@ -735,7 +761,12 @@ function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var proximity = (opts && opts.proximity != null) ? Number(opts.proximity) : 50;
     var proximityBonus = (proximity / 100) * 20;
 
-    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus;
+    // Autocracy penalty: other nations are less willing to trade with autocratic regimes
+    var autocracyPenalty = 0;
+    if (isAutocracy(nationA)) autocracyPenalty -= 10;
+    if (isAutocracy(nationB)) autocracyPenalty -= 10;
+
+    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + autocracyPenalty;
     return Math.round(Math.max(0, Math.min(100, affinity)));
 }
 
@@ -1620,6 +1651,7 @@ const DIPLOMACY_CONFIG = {
     STATE_VISIT_AUTOCRACY_DIE: 12,      // 1D12 roll for autocracy risk
     STATE_VISIT_AUTOCRACY_THRESHOLD: 6, // roll <= threshold = negative outcome
     STATE_VISIT_AUTOCRACY_CHANGE: 3,    // ±gov_approval change
+    STATE_VISIT_AUTOCRACY_REGIME_DIE: 10, // 1D10 regime_health loss when autocracy visits
     TREATY_RATIFICATION_VOTING_TICKS: 6,
     AMBASSADOR_CONFIRMATION_VOTING_TICKS: 6,
     AMBASSADOR_TERM_LENGTH: 60,         // ticks (60 ticks = 5 years)
@@ -5212,6 +5244,26 @@ async function fireBilateralEvent(supabase, triggerKey, nationIdA, nationIdB, cu
     } catch (e) { /* non-blocking */ }
 }
 
+/**
+ * Fire a diplomatic event_log entry for all nations when an agreement is ratified.
+ */
+async function fireDiplomaticRatificationEvent(supabase, pd, articleCount, currentTick) {
+    try {
+        const { data: allNations } = await supabase.from('nations').select('id');
+        if (allNations && allNations.length > 0) {
+            const agreementName = pd.name || 'Diplomatic Initiative';
+            const eventRows = allNations.map(n => ({
+                nation_id: n.id,
+                event_name: agreementName + ' — Ratified',
+                category: 'Diplomatic',
+                description_chosen: (pd.proposer_nation_name || 'Unknown') + ' and ' + (pd.target_nation_name || 'Unknown') + ' have ratified "' + agreementName + '". The ' + articleCount + '-article agreement is now active.',
+                fired_at_tick: currentTick
+            }));
+            await supabase.from('event_log').insert(eventRows);
+        }
+    } catch (evErr) { /* non-blocking */ }
+}
+
 // ────────── bills ──────────
 
 
@@ -6649,6 +6701,9 @@ async function resolveExpiredVotes(supabase, nationId) {
                                     });
                                 }
                             } catch (newsErr) { console.error('News event error:', newsErr); }
+
+                            // Fire diplomatic event_log for dashboard visibility
+                            await fireDiplomaticRatificationEvent(supabase, pd, activeArticles.length, currentTick);
                         } else {
                             // Only one side ratified so far — wait for the other
                             await supabase.from('diplomatic_proposals')
@@ -6714,6 +6769,9 @@ async function resolveExpiredVotes(supabase, nationId) {
                         }
 
                         await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+
+                        // Fire diplomatic event_log for dashboard visibility
+                        await fireDiplomaticRatificationEvent(supabase, pd, articles.filter((_, i) => !struckIndices.has(i)).length, currentTick);
                     }
                 }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
@@ -8973,6 +9031,12 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
                 await adjustMomentumAll(supabase, nationId, partyId, -5, 'no_confidence:coalition_falls');
             }
 
+            // PM's party leader loses -25 electability for losing the VoNC
+            if (pmFactionId) {
+                const newElect = await applyElectabilityDelta(supabase, pmFactionId, -25);
+                if (newElect != null) console.log(`[VoNC] PM party ${pmFactionId} electability → ${newElect}`);
+            }
+
             // Schedule snap election (same pattern as early elections)
             await supabase.from('elections').delete()
                 .eq('nation_id', nationId).eq('status', 'scheduled');
@@ -9156,7 +9220,8 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
             election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
             pm_approval: -GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST,
             coalition_approval: -GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST,
-            bills_frozen: true
+            bills_frozen: true,
+            snap_called_by_faction: pmFactionId
         }
     });
 
@@ -9776,13 +9841,53 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
         .single();
     if (electionError) throw electionError;
 
-    // Sync seats for parliamentary elections only (presidential results have no seats)
+    // Snapshot old seats before sync (for snap election loss detection)
     const seatResults = completedElection?.results?.seats || [];
+    const oldSeatsByParty = {};
+    if (seatResults.length > 0) {
+        const partyIds = seatResults.map(r => r.party_id);
+        const { data: oldFactions, error: oldSeatsErr } = await supabase
+            .from('factions')
+            .select('id, seats')
+            .in('id', partyIds);
+        if (oldSeatsErr) console.warn('[Election] Could not snapshot old seats:', oldSeatsErr.message);
+        for (const f of (oldFactions || [])) {
+            oldSeatsByParty[f.id] = f.seats || 0;
+        }
+    }
+
+    // Sync seats for parliamentary elections only (presidential results have no seats)
     for (const r of seatResults) {
         await supabase
             .from('factions')
             .update({ seats: r.seats })
             .eq('id', r.party_id);
+    }
+
+    // Check if this was a snap/early election and apply -15 electability if the calling PM party lost seats
+    if (seatResults.length > 0 && !isPresidential) {
+        // Look for a recent early-election event whose scheduled tick matches this election
+        const { data: snapEvent } = await supabase
+            .from('event_log')
+            .select('effects_applied')
+            .eq('nation_id', nation.id)
+            .eq('event_name', 'Legislature Dissolved — Early Elections Called')
+            .order('fired_at_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        // Only apply penalty if the snap event's scheduled election_tick matches this election
+        const snapCallerFactionId = snapEvent?.effects_applied?.snap_called_by_faction;
+        const snapElectionTick = snapEvent?.effects_applied?.election_tick;
+        if (snapCallerFactionId && snapElectionTick === currentTick) {
+            const oldSeats = oldSeatsByParty[snapCallerFactionId] || 0;
+            const newSeatsEntry = seatResults.find(r => r.party_id === snapCallerFactionId);
+            const newSeats = newSeatsEntry?.seats || 0;
+            if (newSeats < oldSeats) {
+                // PM's party lost seats after calling snap elections — penalize electability
+                const newElect = await applyElectabilityDelta(supabase, snapCallerFactionId, -15);
+                if (newElect != null) console.log(`[SnapElection] PM party ${snapCallerFactionId} lost seats (${oldSeats} → ${newSeats}), electability → ${newElect}`);
+            }
+        }
     }
 
     // Dissolve legislature — fail all pending bills (new parliament must re-propose)
@@ -13170,8 +13275,8 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
 
 const MAKE_PROMISE_CONFIG = {
     AP_COST: 2,
-    MONEY_COST: 0,
     STAT_DELTA: 10,                    // Promise to change stat by ±10
+    STAT_DELTA_GOVERNING: 20,          // Governing factions must promise ±20 (harder target)
     DEADLINE_DICE: 12,                 // 1D12 + base
     DEADLINE_BASE: 12,                 // base ticks added to roll (range: 13-24)
     APPROVAL_ON_PROMISE_STAT: 4,       // immediate bump with affected blocs (stat type)
@@ -13179,7 +13284,6 @@ const MAKE_PROMISE_CONFIG = {
     APPROVAL_IF_KEPT: 12,              // permanent legacy reward
     PENALTY_PER_TICK_MIN: 1,           // -1D3 per tick while governing & unfulfilled
     PENALTY_PER_TICK_MAX: 3,
-    PENALTY_IF_BROKEN: 8,              // permanent legacy penalty on deadline expiry
     MAX_ACTIVE_PROMISES: 5,            // limit active promises per faction
     // Promise resolution rewards/penalties (used by resolvePromise)
     KEPT_PREF_BONUS: 5,               // +preference with donor/affected bloc
@@ -13250,6 +13354,11 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
     const deadlineTicks = deadlineRoll + cfg.DEADLINE_BASE;
     const tickDeadline = currentTick + deadlineTicks;
 
+    // ── 5a. Check if faction is in government (ruling faction or coalition member) ──
+    const coalition = await fetchActiveCoalition(supabase, nationId);
+    const coalitionPartyIds = new Set(coalition?.party_ids || []);
+    const isGoverning = factionId === nation.ruling_faction_id || coalitionPartyIds.has(factionId);
+
     // ── 5. Build promise based on type ──
     let demandText, demandType, conditions, affectedBlocIds, affectedBlocNames;
 
@@ -13267,11 +13376,13 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
             return { success: false, error: 'You already have an active promise for this stat.' };
 
         const currentVal = Number(nation[statKey] ?? 50);
+        // Governing factions must promise a bigger change (they have legislative power)
+        const delta = isGoverning ? cfg.STAT_DELTA_GOVERNING : cfg.STAT_DELTA;
         // Auto-determine direction: good stats → increase, bad stats → decrease
         const dir = sign === 1 ? 'above' : 'below';
         const targetValue = dir === 'above'
-            ? Math.min(100, Math.round(currentVal + cfg.STAT_DELTA))
-            : Math.max(0, Math.round(currentVal - cfg.STAT_DELTA));
+            ? Math.min(100, Math.round(currentVal + delta))
+            : Math.max(0, Math.round(currentVal - delta));
 
         const statLabel = statKey.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
@@ -13289,7 +13400,8 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
             direction: dir,
             baseline_value: currentVal,
             target_value: targetValue,
-            delta: cfg.STAT_DELTA,
+            delta: delta,
+            is_governing: isGoverning,
         };
 
         // Find affected blocs: those whose priority_issues map to this stat
@@ -13447,7 +13559,8 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
  */
 const EXCLUDED_PROMISE_STATS = new Set(['population', 'gdp', 'debt']);
 
-function getPromiseableStats(nation) {
+function getPromiseableStats(nation, isGoverning = false) {
+    const delta = isGoverning ? MAKE_PROMISE_CONFIG.STAT_DELTA_GOVERNING : MAKE_PROMISE_CONFIG.STAT_DELTA;
     const results = [];
     for (const statKey of NATION_STAT_COLUMNS) {
         if (EXCLUDED_PROMISE_STATS.has(statKey)) continue;
@@ -13461,8 +13574,8 @@ function getPromiseableStats(nation) {
         // Skip stats already at their limit — no meaningful promise possible
         const val = Number(currentVal);
         const target = sign === 1
-            ? Math.min(100, Math.round(val + MAKE_PROMISE_CONFIG.STAT_DELTA))
-            : Math.max(0, Math.round(val - MAKE_PROMISE_CONFIG.STAT_DELTA));
+            ? Math.min(100, Math.round(val + delta))
+            : Math.max(0, Math.round(val - delta));
         if (sign === 1 && val >= target) continue;
         if (sign === -1 && val <= target) continue;
         results.push({
@@ -13878,6 +13991,7 @@ function evaluatePromiseStatus(promise, nationStats, currentTick, ministries, co
  * Checks fulfillment, applies rewards/penalties for expired promises.
  */
 async function processPromiseTick(supabase, nation, currentTick) {
+    const cfg = MAKE_PROMISE_CONFIG;
     const { data: activePromises } = await supabase
         .from('fundraiser_promises')
         .select('*')
@@ -13966,22 +14080,11 @@ async function processPromiseTick(supabase, nation, currentTick) {
             continue;
         }
 
-        // Per-tick penalty: governing party with unfulfilled promise loses approval with the promised bloc
-        // -1D3 approval per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
+        // Per-tick penalty: governing party with unfulfilled promise loses momentum with the promised bloc
+        // -1D3 momentum per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
         if (isGoverning && promise.bloc_id) {
             const penaltyAmount = -(Math.floor(Math.random() * (cfg.PENALTY_PER_TICK_MAX - cfg.PENALTY_PER_TICK_MIN + 1)) + cfg.PENALTY_PER_TICK_MIN);
-            const { data: penaltyBlocRow } = await supabase
-                .from('faction_bloc_approval')
-                .select('id, approval')
-                .eq('faction_id', promise.party_id)
-                .eq('bloc_id', promise.bloc_id)
-                .single();
-            if (penaltyBlocRow) {
-                const newApproval = Math.max(0, Math.round(penaltyBlocRow.approval + penaltyAmount));
-                await supabase.from('faction_bloc_approval')
-                    .update({ approval: newApproval })
-                    .eq('id', penaltyBlocRow.id);
-            }
+            await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, penaltyAmount, 'promise:unfulfilled_tick');
             results.push({ promise, resolution: 'tick_penalty', penaltyAmount });
         }
     }
@@ -21793,18 +21896,54 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         }
                     }
 
-                    // 1b. Sync PM age in head_of_government (democracy)
-                    // The PM record copies faction leader age at appointment but never updates.
+                    // 1b. Sync PM with party leader in head_of_government (democracy)
+                    // Keeps age, name, and downstream records in sync when a new leader is appointed.
                     const { data: activeHog } = await supabase
                         .from('head_of_government')
-                        .select('id, faction_id')
+                        .select('id, faction_id, first_name, last_name')
                         .eq('nation_id', nation.id)
                         .eq('active', true)
                         .maybeSingle();
-                    if (activeHog && factionIdToAge[activeHog.faction_id]) {
-                        await supabase.from('head_of_government')
-                            .update({ age: factionIdToAge[activeHog.faction_id] })
-                            .eq('id', activeHog.id);
+                    if (activeHog) {
+                        const pmFaction = partyFactions.find(f => f.id === activeHog.faction_id);
+                        if (pmFaction) {
+                            const hogUpdate = {};
+                            // Sync age
+                            if (factionIdToAge[activeHog.faction_id]) {
+                                hogUpdate.age = factionIdToAge[activeHog.faction_id];
+                            }
+                            // Sync name if party leader changed
+                            if (pmFaction.leader_first_name && pmFaction.leader_last_name &&
+                                (pmFaction.leader_first_name !== activeHog.first_name || pmFaction.leader_last_name !== activeHog.last_name)) {
+                                hogUpdate.first_name = pmFaction.leader_first_name;
+                                hogUpdate.last_name = pmFaction.leader_last_name;
+                                console.log(`[PMSync] Updating PM name: ${activeHog.first_name} ${activeHog.last_name} → ${pmFaction.leader_first_name} ${pmFaction.leader_last_name}`);
+
+                                // Also update administration and ministry records
+                                const pmFullName = `${pmFaction.leader_first_name} ${pmFaction.leader_last_name}`;
+                                const { error: adminErr } = await supabase.from('administrations').update({
+                                    prime_minister: pmFullName,
+                                    admin_name: `${pmFaction.leader_last_name} Administration`,
+                                    updated_at: new Date().toISOString()
+                                }).eq('nation_id', nation.id).is('ended_at_tick', null);
+                                if (adminErr) console.warn('[PMSync] administrations update failed:', adminErr.message);
+
+                                const { error: minErr } = await supabase.from('ministries').update({
+                                    minister_first_name: pmFaction.leader_first_name,
+                                    minister_last_name: pmFaction.leader_last_name,
+                                    minister_age: hogUpdate.age || pmFaction.leader_age
+                                }).eq('nation_id', nation.id)
+                                  .eq('ministry_key', 'prime_minister')
+                                  .eq('is_active', true);
+                                if (minErr) console.warn('[PMSync] ministries update failed:', minErr.message);
+                            }
+                            if (Object.keys(hogUpdate).length > 0) {
+                                const { error: hogErr } = await supabase.from('head_of_government')
+                                    .update(hogUpdate)
+                                    .eq('id', activeHog.id);
+                                if (hogErr) console.warn('[PMSync] head_of_government update failed:', hogErr.message);
+                            }
+                        }
                     }
 
                     // 1c. Age all active ministers +1
