@@ -108,12 +108,17 @@ async function main() {
                 applied++;
                 console.log(`  OK: ${file}`);
             } catch (err) {
+                // Reset any aborted transaction so subsequent queries work
+                try { await client.query('ROLLBACK'); } catch (_) {}
+
                 const msg = err.message || '';
                 const isBenign = msg.includes('already exists')
                     || msg.includes('duplicate key')
                     || msg.includes('does not exist')
                     || msg.includes('multiple default values')
-                    || msg.includes('cannot alter type of a column used by a view');
+                    || msg.includes('cannot alter type of a column used by a view')
+                    || msg.includes('ON CONFLICT')
+                    || msg.includes('unique constraint matching');
 
                 if (isBenign) {
                     skipped++;

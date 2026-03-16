@@ -22,14 +22,14 @@ BEGIN
     -- Reset shard to tick 100
     UPDATE shard SET
         current_tick = 100,
-        current_date = 'March 15, 2026',
+        "current_date" = 'March 15, 2026',
         next_tick_at = NOW() + INTERVAL '365 days',
         tick_interval_minutes = 60
     WHERE name = 'Alpha Shard'
     RETURNING id INTO v_shard_id;
 
     IF v_shard_id IS NULL THEN
-        INSERT INTO shard (name, current_tick, current_date, next_tick_at, tick_interval_minutes)
+        INSERT INTO shard (name, current_tick, "current_date", next_tick_at, tick_interval_minutes)
         VALUES ('Alpha Shard', 100, 'March 15, 2026', NOW() + INTERVAL '365 days', 60)
         RETURNING id INTO v_shard_id;
     END IF;
