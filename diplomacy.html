@@ -107,6 +107,8 @@ let wizardAgreementType = null;
 let wizardArticles = [];  // [{text: "..."}]
 let wizardName = '';
 let wizardDuration = 1;
+// Expose setter for inline event handlers (module-scoped let is not accessible from inline HTML handlers)
+window.setWizardName = function(val) { wizardName = val; };
 // Trade negotiation article builder state
 let tradeArticles = [];   // structured articles for trade agreements
 let editingTradeArticle = null; // index being edited, or null
@@ -4325,7 +4327,7 @@ async function renderWizardStep3TradeProposal() {
 
             <div class="trade-field">
                 <label>Agreement Name</label>
-                <input type="text" id="trade-neg-name" placeholder="e.g. ${escapeHtml(currentNation.name)}-${escapeHtml(targetName)} ${escapeHtml(typeInfo?.shortLabel || 'Trade')} Agreement" maxlength="120" value="${escapeHtml(wizardName || '')}" onchange="wizardName=this.value" />
+                <input type="text" id="trade-neg-name" placeholder="e.g. ${escapeHtml(currentNation.name)}-${escapeHtml(targetName)} ${escapeHtml(typeInfo?.shortLabel || 'Trade')} Agreement" maxlength="120" value="${escapeHtml(wizardName || '')}" onchange="setWizardName(this.value)" />
             </div>`;
 
     // Type explainer
@@ -9574,7 +9576,7 @@ function renderTradeAgreementDraftPanel(body, statusEl) {
     const activeType = draftAgreements.length === 1 ? TRADE_AGREEMENT_TYPES[draftAgreements[0].type] : null;
     const placeholderSuffix = draftAgreements.length > 1 ? 'Trade Package' : (activeType?.shortLabel || 'Trade') + ' Agreement';
     const placeholderName = (currentNation?.name || '') + '-' + (activeDraftTarget?.name || '') + ' ' + placeholderSuffix;
-    html += '<div class="draft-field"><div class="draft-field-label">Name</div><input type="text" id="trade-neg-name" class="draft-field-input" placeholder="e.g. ' + escapeHtml(placeholderName) + '" value="' + escapeHtml(wizardName || '') + '" oninput="wizardName=this.value" style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:4px 8px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
+    html += '<div class="draft-field"><div class="draft-field-label">Name</div><input type="text" id="trade-neg-name" class="draft-field-input" placeholder="e.g. ' + escapeHtml(placeholderName) + '" value="' + escapeHtml(wizardName || '') + '" oninput="setWizardName(this.value)" style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:4px 8px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
 
     // ── Agreement Tabs ──
     html += renderAgreementTabs(false);
@@ -10636,7 +10638,7 @@ function renderMinorInitiativeDraftPanel(body, statusEl) {
     html += '<div class="draft-field"><div class="draft-field-label">Name</div>' +
         '<input type="text" id="initiative-name-input" class="draft-field-input" ' +
         'placeholder="e.g. ' + escapeHtml((currentNation?.name || '') + '-' + (activeDraftTarget?.name || '') + ' Friendship Accord') + '" ' +
-        'value="' + escapeHtml(wizardName) + '" oninput="wizardName=this.value" ' +
+        'value="' + escapeHtml(wizardName) + '" oninput="setWizardName(this.value)" ' +
         'style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:6px 10px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
     html += '</div>';
 
@@ -12143,7 +12145,7 @@ function renderMajorInitiativeDraftPanel(body, statusEl) {
     html += '<div class="draft-field"><div class="draft-field-label">Name</div>' +
         '<input type="text" id="major-initiative-name-input" class="draft-field-input" ' +
         'placeholder="e.g. ' + escapeHtml((currentNation?.name || '') + '-' + (activeDraftTarget?.name || '') + ' Comprehensive Partnership') + '" ' +
-        'value="' + escapeHtml(wizardName) + '" oninput="wizardName=this.value" ' +
+        'value="' + escapeHtml(wizardName) + '" oninput="setWizardName(this.value)" ' +
         'style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:6px 10px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
     html += '</div>';
 
