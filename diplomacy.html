@@ -9221,8 +9221,127 @@ function toggleNegRow(negId) {
 }
 window.toggleNegRow = toggleNegRow;
 
+// ── Render state visit detail inside the negotiations panel ──
+function renderStateVisitNegDetail(p, pd, needsOurAction) {
+    const isIncoming = p.target_nation_id === currentNation.id;
+    const vtLabel = STATE_VISIT_TYPES[pd.visit_type]?.label || 'State Visit';
+    const durLabel = STATE_VISIT_DURATIONS[pd.duration]?.label || 'Moderate';
+    const delLabel = STATE_VISIT_DELEGATIONS[pd.delegation_size]?.label || 'Standard (8)';
+    const agenda = pd.agenda || [];
+    const computedEffects = pd.computed_effects || {};
+
+    const deadlineTick = p.fm_review_expires_tick;
+    const ticksLeft = deadlineTick != null ? Math.max(0, deadlineTick - shardTick) : '?';
+    const expired = deadlineTick != null && shardTick > deadlineTick;
+
+    let html = '<div class="neg-detail-header">';
+    html += '<div class="neg-detail-title">' + escapeHtml(pd.name || 'State Visit') + '</div>';
+    html += '<span class="badge badge--dim" style="background:#5c3a1a;color:#FFD700;">STATE VISIT</span>';
+    html += '</div>';
+
+    // Leader & direction
+    html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;line-height:1.5;">';
+    html += '<strong>' + escapeHtml(pd.visitor_leader || 'Unknown') + '</strong> of <strong>' + escapeHtml(pd.visitor_nation || 'Unknown') + '</strong>';
+    html += ' &rarr; ' + escapeHtml(pd.host_nation || 'Unknown');
+    html += '<br>Proposed ' + (p.proposed_at_tick != null ? tickToDate(p.proposed_at_tick) : '—');
+    if (expired) {
+        html += ' · <span style="color:var(--red);">Expired</span>';
+    } else if (deadlineTick != null) {
+        html += ' · Expires in ' + ticksLeft + ' tick(s)';
+    }
+    html += '</div>';
+
+    // Visit configuration tags
+    html += '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;">';
+    html += '<span class="sv-effect-tag sv-effect-tag--info">' + escapeHtml(vtLabel) + '</span>';
+    html += '<span class="sv-effect-tag sv-effect-tag--info">' + escapeHtml(durLabel) + '</span>';
+    html += '<span class="sv-effect-tag sv-effect-tag--info">' + escapeHtml(delLabel) + '</span>';
+    html += '</div>';
+
+    // Agenda items
+    if (agenda.length > 0) {
+        html += '<div style="font-size:10px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Agenda (' + agenda.length + ' items)</div>';
+        for (const key of agenda) {
+            const item = STATE_VISIT_AGENDA_ITEMS.find(a => a.key === key);
+            if (!item) continue;
+            html += '<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--border-subtle);display:flex;justify-content:space-between;align-items:flex-start;">';
+            html += '<div><span style="color:var(--text-dim);">Day ' + item.day + ' · ' + escapeHtml(item.slot) + '</span><br><span style="color:var(--text-primary);">' + escapeHtml(item.title) + '</span></div>';
+            // Effect tags
+            const effTags = [];
+            if (item.effects) {
+                for (const [stat, val] of Object.entries(item.effects)) {
+                    if (val) effTags.push('<span style="color:#4caf50;font-size:10px;">+' + val + ' ' + stat.replace(/_/g, ' ') + '</span>');
+                }
+            }
+            if (item.costs?.debt) effTags.push('<span style="color:#f97316;font-size:10px;">$' + (item.costs.debt / 1e6).toFixed(1) + 'M</span>');
+            if (item.risks?.gaffe) effTags.push('<span style="color:var(--red);font-size:10px;">' + Math.round(item.risks.gaffe * 100) + '% gaffe</span>');
+            if (item.risks?.hostiles_alarmed) effTags.push('<span style="color:var(--red);font-size:10px;">hostiles alarmed</span>');
+            if (effTags.length) html += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' + effTags.join('') + '</div>';
+            html += '</div>';
+        }
+    }
+
+    // Projected total effects
+    const effectEntries = Object.entries(computedEffects).filter(([, v]) => v !== 0);
+    if (effectEntries.length > 0) {
+        html += '<div style="font-size:10px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;margin:10px 0 4px;">Projected Effects (both nations)</div>';
+        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+        for (const [stat, val] of effectEntries) {
+            const sign = val > 0 ? '+' : '';
+            const color = val > 0 ? '#4caf50' : '#f44';
+            html += '<span class="sv-effect-tag" style="border-color:' + color + '44;color:' + color + ';">' + sign + val + ' ' + escapeHtml(stat.replace(/_/g, ' ')) + '</span>';
+        }
+        html += '</div>';
+    }
+
+    // Budget cost
+    if (pd.total_debt && pd.total_debt > 0) {
+        html += '<div style="margin-top:8px;"><span class="sv-effect-tag sv-effect-tag--cost">Embassy Budget: $' + (pd.total_debt / 1e6).toFixed(1) + 'M (visitor pays)</span></div>';
+    }
+
+    // Risks
+    if (pd.risks && pd.risks.length > 0) {
+        html += '<div style="font-size:10px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;margin:10px 0 4px;">Risks</div>';
+        for (const r of pd.risks) {
+            if (r.chance) {
+                html += '<span class="sv-effect-tag sv-effect-tag--risk">' + escapeHtml(r.source) + ': ' + Math.round(r.chance * 100) + '% ' + escapeHtml(r.key) + '</span> ';
+            }
+            if (r.flag) {
+                html += '<span class="sv-effect-tag sv-effect-tag--risk">' + escapeHtml(r.source) + ': ' + escapeHtml(r.key) + '</span> ';
+            }
+        }
+    }
+
+    // Special flags
+    if (pd.is_first) {
+        html += '<div style="margin-top:8px;color:#FFD700;font-size:11px;">★ First-ever visit between these nations — bonus stability!</div>';
+    }
+    if (pd.is_target_autocracy) {
+        html += '<div style="margin-top:4px;color:#f97316;font-size:11px;">⚠ Autocracy domestic risk: 1D12 dice roll on visitor\'s gov approval</div>';
+    }
+
+    // Action buttons
+    html += '<div class="detail-actions" style="margin-top:10px;">';
+    if (needsOurAction && !expired) {
+        html += '<button class="detail-btn" onclick="acceptStateVisit(\'' + p.id + '\')">Accept Visit</button>';
+        html += '<button class="detail-btn" onclick="declineStateVisit(\'' + p.id + '\')">Decline</button>';
+    } else if (expired) {
+        html += '<div style="color:var(--red);font-size:11px;">Invitation has expired.</div>';
+    } else if (!isIncoming) {
+        html += '<div style="font-size:11px;color:var(--text-muted);">Awaiting response from ' + escapeHtml(pd.host_nation || 'target') + '.</div>';
+    }
+    html += '</div>';
+
+    return html;
+}
+
 // ── Render negotiation detail content (diplomatic proposals) ──
 function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatification) {
+    // ── State visit proposals get their own detail renderer ──
+    if (p.proposal_type === 'state_visit') {
+        return renderStateVisitNegDetail(p, pd, needsOurAction);
+    }
+
     const articles = pd.articles || [];
     const struckIndices = new Set(pd.struck_articles || []);
     const addedArticles = pd.added_articles || [];
