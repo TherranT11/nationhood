@@ -209,7 +209,7 @@ const GAME_CONFIG = {
 async function applyElectabilityDelta(supabase, factionId, baseDelta) {
     const { data: faction, error: fetchErr } = await supabase
         .from('factions')
-        .select('electability, leader_positive_traits, leader_negative_traits')
+        .select('electability, leader_positive_traits, leader_negative_traits, nation_id')
         .eq('id', factionId)
         .single();
     if (fetchErr || !faction) {
@@ -218,8 +218,20 @@ async function applyElectabilityDelta(supabase, factionId, baseDelta) {
     }
     const current = faction.electability ?? 50;
     let delta = baseDelta;
+    // Leader trait: born_leader → electability gains doubled
+    if ((faction.leader_positive_traits || []).includes('born_leader') && delta > 0) delta *= 2;
+    // Leader trait: unelectable → electability gains halved
+    if ((faction.leader_negative_traits || []).includes('unelectable') && delta > 0) delta = Math.floor(delta / 2);
+    // Leader trait: comeback_kid → electability losses halved
     if ((faction.leader_positive_traits || []).includes('comeback_kid') && delta < 0) delta = Math.ceil(delta / 2);
-    if ((faction.leader_negative_traits || []).includes('sore_loser') && delta < 0) delta *= 2;
+    // Leader trait: sore_loser → electability losses doubled + -5 approval across all blocs on loss
+    if ((faction.leader_negative_traits || []).includes('sore_loser') && delta < 0) {
+        delta *= 2;
+        // Apply -5 approval across all blocs (election loss penalty)
+        if (faction.nation_id) {
+            await adjustMomentumAll(supabase, faction.nation_id, factionId, -5, 'leader_trait:sore_loser');
+        }
+    }
     const newVal = Math.max(0, Math.min(100, current + delta));
     const { error: updateErr } = await supabase.from('factions').update({ electability: newVal }).eq('id', factionId);
     if (updateErr) console.warn(`[applyElectabilityDelta] Update failed for ${factionId}:`, updateErr.message);
@@ -5297,6 +5309,28 @@ async function syncVoteTallies(supabase, billId) {
         else if (st === 'abstain')   votesAbstain += (v.seat_count || 0);
     });
 
+    // Leader trait: arm_twister → +15% passage rate (add virtual yes seats)
+    //               poor_whip   → -15% passage rate (subtract virtual yes seats)
+    const { data: bill } = await supabase.from('bills').select('proposed_by').eq('id', billId).single();
+    if (bill?.proposed_by) {
+        const { data: sponsorFaction } = await supabase
+            .from('factions')
+            .select('leader_positive_traits, leader_negative_traits')
+            .eq('id', bill.proposed_by)
+            .single();
+        if (sponsorFaction) {
+            const totalSeats = GAME_CONFIG.TOTAL_SEATS || 120;
+            // arm_twister: +15% of total seats as bonus yes votes
+            if ((sponsorFaction.leader_positive_traits || []).includes('arm_twister')) {
+                votesFor += Math.round(totalSeats * 0.15);
+            }
+            // poor_whip: -15% of total seats (reduce yes votes)
+            if ((sponsorFaction.leader_negative_traits || []).includes('poor_whip')) {
+                votesFor = Math.max(0, votesFor - Math.round(totalSeats * 0.15));
+            }
+        }
+    }
+
     const { error } = await supabase.from('bills').update({
         votes_for: votesFor,
         votes_against: votesAgainst,
@@ -5540,6 +5574,17 @@ async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
     const alignedNames = voterBlocs.filter(b => alignedBlocIds.has(b.id)).map(b => b.bloc_name);
     const opposedNames = voterBlocs.filter(b => opposedBlocIds.has(b.id)).map(b => b.bloc_name);
     console.log(`[BillPassage] Sponsor ${sponsorId}: +${ALIGNED_PREF_BONUS} pref/mom with aligned blocs [${alignedNames.join(', ')}], ${OPPOSED_PREF_PENALTY} pref with opposed blocs [${opposedNames.join(', ')}]`);
+
+    // Leader trait: policy_wonk → +5 approval across all blocs for each enacted bill
+    const { data: sponsorFaction } = await supabase
+        .from('factions')
+        .select('leader_positive_traits')
+        .eq('id', sponsorId)
+        .single();
+    if (sponsorFaction && (sponsorFaction.leader_positive_traits || []).includes('policy_wonk')) {
+        await adjustMomentumAll(supabase, nationId, sponsorId, 5, 'leader_trait:policy_wonk:bill_passed');
+        console.log(`[BillPassage] policy_wonk: +5 momentum across all blocs for sponsor ${sponsorId}`);
+    }
 }
 
 
@@ -16995,6 +17040,26 @@ async function processCrises(supabase, nation, currentTick) {
             if (effect.target === 'nation') {
                 // GDP and debt are driven by dedicated systems — skip
                 if (STAT_PROCESSOR_SKIP.has(statKey)) continue;
+
+                // Leader trait: crisis_manager / panic_under_pressure modify stability loss during crises
+                let effectiveChangePT = changePT;
+                if (statKey === 'stability' && changePT < 0) {
+                    // Check all party factions for crisis_manager / panic_under_pressure traits
+                    const { data: crisisFactions } = await supabase
+                        .from('factions')
+                        .select('leader_positive_traits, leader_negative_traits')
+                        .eq('nation_id', nation.id)
+                        .eq('faction_type', 'party');
+                    for (const cf of (crisisFactions || [])) {
+                        if ((cf.leader_positive_traits || []).includes('crisis_manager')) {
+                            effectiveChangePT = Math.ceil(effectiveChangePT / 2); // halve stability loss (less negative)
+                        }
+                        if ((cf.leader_negative_traits || []).includes('panic_under_pressure')) {
+                            effectiveChangePT *= 2; // double stability loss
+                        }
+                    }
+                }
+
                 const currentVal = nationUpdates[statKey] !== undefined
                     ? nationUpdates[statKey]
                     : (nation[statKey] !== undefined && nation[statKey] !== null
@@ -17003,10 +17068,10 @@ async function processCrises(supabase, nation, currentTick) {
                 // Raw-value stats (population) must not be clamped to 0-100
                 let newVal;
                 if (RAW_SCALING_DIVISORS[statKey]) {
-                    const scaledCrisisChange = changePT * RAW_SCALING_DIVISORS[statKey];
+                    const scaledCrisisChange = effectiveChangePT * RAW_SCALING_DIVISORS[statKey];
                     newVal = Math.max(0, currentVal + scaledCrisisChange);
                 } else {
-                    newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
+                    newVal = Math.round(Math.max(0, Math.min(100, currentVal + effectiveChangePT)) * 10) / 10;
                 }
                 nationUpdates[statKey] = newVal;
                 nation[statKey] = newVal;
@@ -17808,6 +17873,147 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
         if (!count || count === 0) {
             await adjustMomentumAll(supabase, nation.id, factionId, effects.no_bill_penalty_per_tick, 'pm_trait:no_bill_penalty');
         }
+    }
+}
+
+
+// ==================== PARTY LEADER TRAIT PER-TICK EFFECTS ====================
+
+/**
+ * Process per-tick effects for all party leaders' positive/negative traits.
+ * Handles: economic_steward, economically_illiterate, international_presence,
+ * international_pariah, gaffe_prone, base_energizer, crisis_manager, panic_under_pressure.
+ */
+async function processPartyLeaderTraitEffects(supabase, nation, currentTick) {
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, leader_positive_traits, leader_negative_traits, leader_first_name, leader_last_name')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+
+    if (!factions || factions.length === 0) return;
+
+    // Check if nation has active crises (for crisis_manager / panic_under_pressure)
+    const { count: crisisCount } = await supabase
+        .from('active_crises')
+        .select('id', { count: 'exact', head: true })
+        .eq('nation_id', nation.id);
+
+    const coalition = await fetchActiveCoalition(supabase, nation.id);
+    const governmentPartyIds = new Set([
+        ...(coalition?.party_ids || []),
+        nation.ruling_faction_id
+    ].filter(Boolean));
+
+    const nationUpdates = {};
+
+    for (const faction of factions) {
+        if (!faction.leader_first_name) continue; // no leader
+        const pos = faction.leader_positive_traits || [];
+        const neg = faction.leader_negative_traits || [];
+        const isGoverning = governmentPartyIds.has(faction.id);
+
+        // ── economic_steward: GDP growth +0.5/tick while governing ──
+        if (pos.includes('economic_steward') && isGoverning) {
+            const curGdp = nationUpdates.gdp_growth !== undefined ? nationUpdates.gdp_growth : Number(nation.gdp_growth ?? 50);
+            nationUpdates.gdp_growth = Math.round(Math.min(100, curGdp + 0.5) * 10) / 10;
+        }
+
+        // ── economically_illiterate: GDP growth -0.3/tick while governing ──
+        if (neg.includes('economically_illiterate') && isGoverning) {
+            const curGdp = nationUpdates.gdp_growth !== undefined ? nationUpdates.gdp_growth : Number(nation.gdp_growth ?? 50);
+            nationUpdates.gdp_growth = Math.round(Math.max(0, curGdp - 0.3) * 10) / 10;
+        }
+
+        // ── international_presence: +5 international_reputation while leader ──
+        if (pos.includes('international_presence')) {
+            const curRep = nationUpdates.international_reputation !== undefined ? nationUpdates.international_reputation : Number(nation.international_reputation ?? 50);
+            nationUpdates.international_reputation = Math.round(Math.min(100, curRep + 5) * 10) / 10;
+        }
+
+        // ── international_pariah: -5 international_reputation while leader ──
+        if (neg.includes('international_pariah')) {
+            const curRep = nationUpdates.international_reputation !== undefined ? nationUpdates.international_reputation : Number(nation.international_reputation ?? 50);
+            nationUpdates.international_reputation = Math.round(Math.max(0, curRep - 5) * 10) / 10;
+        }
+
+        // ── gaffe_prone: 20% chance per tick of gaffe → -3 approval with random bloc ──
+        if (neg.includes('gaffe_prone') && Math.random() < 0.20) {
+            const { data: blocs } = await supabase
+                .from('voter_blocs')
+                .select('id, bloc_name')
+                .eq('nation_id', nation.id)
+                .eq('is_active', true);
+
+            if (blocs && blocs.length > 0) {
+                const randomBloc = blocs[Math.floor(Math.random() * blocs.length)];
+                const { data: approvalRow } = await supabase
+                    .from('faction_bloc_approval')
+                    .select('id, momentum')
+                    .eq('faction_id', faction.id)
+                    .eq('bloc_id', randomBloc.id)
+                    .maybeSingle();
+
+                if (approvalRow) {
+                    const oldMom = Number(approvalRow.momentum || 0);
+                    const newMom = Math.max(-50, Math.round((oldMom - 3) * 10) / 10);
+                    await supabase.from('faction_bloc_approval')
+                        .update({ momentum: newMom })
+                        .eq('id', approvalRow.id);
+                    console.log(`[PartyLeaderTraits] gaffe_prone: ${faction.leader_first_name} ${faction.leader_last_name} gaffe → -3 momentum with ${randomBloc.bloc_name}`);
+                }
+            }
+        }
+
+        // ── base_energizer: BASE bloc turnout → +0.5 momentum/tick for BASE blocs ──
+        if (pos.includes('base_energizer')) {
+            const { data: approvalRows } = await supabase
+                .from('faction_bloc_approval')
+                .select('id, preference_score, momentum')
+                .eq('faction_id', faction.id);
+
+            for (const row of (approvalRows || [])) {
+                // BASE = preference_score >= 55
+                if ((row.preference_score || 0) >= 55) {
+                    const oldMom = Number(row.momentum || 0);
+                    const newMom = Math.min(50, Math.round((oldMom + 0.5) * 10) / 10);
+                    await supabase.from('faction_bloc_approval')
+                        .update({ momentum: newMom })
+                        .eq('id', row.id);
+                }
+            }
+        }
+    }
+
+    // ── isolationist: Relations decay +50% faster with all nations ──
+    // Check if ANY governing party leader has isolationist trait
+    let hasIsolationist = false;
+    for (const faction of factions) {
+        if (!faction.leader_first_name) continue;
+        if (governmentPartyIds.has(faction.id) && (faction.leader_negative_traits || []).includes('isolationist')) {
+            hasIsolationist = true;
+            break;
+        }
+    }
+    if (hasIsolationist) {
+        // Apply extra -1 relation_score per tick to all diplomatic relations (50% faster decay)
+        const { data: relations } = await supabase
+            .from('diplomatic_relations')
+            .select('id, nation_a_id, nation_b_id, relation_score')
+            .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`);
+        for (const rel of (relations || [])) {
+            if ((rel.relation_score || 0) > 0) {
+                const newScore = Math.max(-100, (rel.relation_score || 0) - 1);
+                await supabase.from('diplomatic_relations').update({ relation_score: newScore }).eq('id', rel.id);
+            }
+        }
+    }
+
+    // Apply nation stat updates
+    if (Object.keys(nationUpdates).length > 0) {
+        await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+        // Update local copy
+        Object.assign(nation, nationUpdates);
     }
 }
 
@@ -21113,7 +21319,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
       try {
         const { data: factions } = await supabase
             .from('factions')
-            .select('id, approval_rating, faction_type')
+            .select('id, approval_rating, faction_type, leader_positive_traits, leader_negative_traits')
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party');
 
@@ -21129,6 +21335,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             const isInGovernment = governmentPartyIds.has(faction.id);
             let apGain = 5;
             if (isInGovernment) apGain += 2;
+
+            // Leader trait: tireless_campaigner → +1 AP/tick
+            if ((faction.leader_positive_traits || []).includes('tireless_campaigner')) apGain += 1;
+            // Leader trait: indecisive → -1 AP/tick
+            if ((faction.leader_negative_traits || []).includes('indecisive')) apGain = Math.max(1, apGain - 1);
 
             // Family member successor penalty: ruling faction loses 1 AP/tick
             if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) {
@@ -21330,6 +21541,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // PM trait effects
         await processPMTraitEffects(supabase, nation, newTick);
+
+        // Party leader trait per-tick effects (economic_steward, gaffe_prone, etc.)
+        await processPartyLeaderTraitEffects(supabase, nation, newTick);
 
         // Elections (democracy only)
         const electionResults = await processElections(supabase, nation, newTick);

@@ -12,6 +12,7 @@ import { adjustGovernmentApprovalEvent, adjustMomentum, adjustMomentumAll } from
 import { fetchActiveCoalition } from './government-structure.js';
 import { recalcDerivedApproval } from './bills.js';
 import { closeAdministration, createAdministration, dissolveCoalition } from './elections.js';
+import { getTraitAPModifier, applyRallyTraitModifiers, getTraitApprovalMultiplier, getEffectiveBlocDisposition } from './party-leadership.js';
 
 const _MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
@@ -398,12 +399,14 @@ function rollRallyOutcome(weights) {
  * Returns { success, outcomeId, outcomeName, headline, effects, newAp }
  */
 export async function executeRally(supabase, factionId, nationId, blocId, currentTick) {
-    // ── 1. Validate AP ──
+    // ── 1. Validate AP (with leader trait modifiers) ──
     const { data: faction } = await supabase
-        .from('factions').select('action_points').eq('id', factionId).single();
+        .from('factions').select('action_points, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
-    if ((faction.action_points || 0) < RALLY_CONFIG.AP_COST)
-        return { success: false, error: `Not enough AP. Need ${RALLY_CONFIG.AP_COST}.` };
+    const rallyApMod = getTraitAPModifier('rally', faction, currentTick);
+    const effectiveRallyCost = Math.max(1, RALLY_CONFIG.AP_COST + rallyApMod);
+    if ((faction.action_points || 0) < effectiveRallyCost)
+        return { success: false, error: `Not enough AP. Need ${effectiveRallyCost}.` };
 
     // ── 2. Check cooldown (one rally per tick) ──
     const { data: recentRallies } = await supabase
@@ -455,11 +458,22 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
         crisisCount: crisisCount || 0,
     };
     const weights = getRallyOutcomeWeights(targetApproval, ralliedRecently, nationState);
+    // Apply leader trait modifiers to rally weights (crowd_pleaser, wooden_speaker)
+    applyRallyTraitModifiers(weights, faction);
+    // Re-clamp after trait modifiers
+    for (const k of Object.keys(weights)) weights[k] = Math.max(1, weights[k]);
+    const total = Object.values(weights).reduce((s, v) => s + v, 0);
+    for (const k of Object.keys(weights)) weights[k] = Math.round((weights[k] / total) * 100);
+
     const outcomeId = rollRallyOutcome(weights);
     const outcome = RALLY_OUTCOMES.find(o => o.id === outcomeId);
 
-    // ── 6. Roll specific target effect ──
-    const targetDelta = outcome.targetMin + Math.floor(Math.random() * (outcome.targetMax - outcome.targetMin + 1));
+    // ── 6. Roll specific target effect (with telegenic multiplier) ──
+    let targetDelta = outcome.targetMin + Math.floor(Math.random() * (outcome.targetMax - outcome.targetMin + 1));
+    if (targetDelta > 0) {
+        const mult = getTraitApprovalMultiplier(faction, 'rally', 'SWING'); // generic multiplier for rally
+        targetDelta = Math.round(targetDelta * mult);
+    }
 
     // ── 7. Apply effects ──
     // ── 7. Apply effects (momentum only — preference_score recalculated by three-pillar calc) ──
@@ -522,8 +536,9 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
         effects.push({ stat: 'Polarization', value: outcome.polarization });
     }
 
-    // ── 8. Deduct AP ──
-    const apResult = await deductAP(supabase, factionId, RALLY_CONFIG.AP_COST);
+    // ── 8. Deduct AP + track last_action_tick ──
+    const apResult = await deductAP(supabase, factionId, effectiveRallyCost);
+    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId);
 
     // ── 9. Log ──
     const headline = outcome.headline(targetBloc.bloc_name);
@@ -531,7 +546,7 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
         party_id: factionId,
         nation_id: nationId,
         action_type: 'rally',
-        ap_cost: RALLY_CONFIG.AP_COST,
+        ap_cost: effectiveRallyCost,
         money_cost: 0,
         tick_performed: currentTick,
         result: {
@@ -550,7 +565,7 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
         headline,
         effects,
         weights,
-        newAp: apResult.newAp ?? ((faction.action_points || 0) - RALLY_CONFIG.AP_COST),
+        newAp: apResult.newAp ?? ((faction.action_points || 0) - effectiveRallyCost),
     };
 }
 
@@ -656,12 +671,14 @@ export function calcOutreachFriction(targetBloc, allBlocs, factionIdeology) {
  * Returns { success, effects, newAp }
  */
 export async function executeOutreach(supabase, factionId, nationId, blocId, currentTick) {
-    // ── 1. Validate AP ──
+    // ── 1. Validate AP (with leader trait modifiers) ──
     const { data: faction } = await supabase
-        .from('factions').select('action_points').eq('id', factionId).single();
+        .from('factions').select('action_points, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
-    if ((faction.action_points || 0) < OUTREACH_CONFIG.AP_COST)
-        return { success: false, error: `Not enough AP. Need ${OUTREACH_CONFIG.AP_COST}.` };
+    const outreachApMod = getTraitAPModifier('outreach', faction, currentTick);
+    const effectiveOutreachCost = Math.max(1, OUTREACH_CONFIG.AP_COST + outreachApMod);
+    if ((faction.action_points || 0) < effectiveOutreachCost)
+        return { success: false, error: `Not enough AP. Need ${effectiveOutreachCost}.` };
 
     // ── 2. Load recent outreach actions for diminishing returns ──
     const { data: recentOutreach } = await supabase
@@ -704,7 +721,22 @@ export async function executeOutreach(supabase, factionId, nationId, blocId, cur
 
     // ── 6. Compute alignment and effect ──
     const alignment = factionIdeo ? computeOutreachAlignment(factionIdeo, targetBloc) : 50;
-    const { diminished } = calcOutreachEffect(alignment, recentToBloc);
+    let { diminished } = calcOutreachEffect(alignment, recentToBloc);
+
+    // Apply leader trait multipliers: telegenic (+30%), divisive_figure (halved for non-BASE)
+    const targetPrefScore = approvalByBloc[blocId]?.preference_score || 0;
+    const blocDisp = targetPrefScore >= 55 ? 'BASE' : targetPrefScore >= 42 ? 'LEAN' : targetPrefScore >= 30 ? 'SWING' : targetPrefScore >= 18 ? 'SKEPTICAL' : 'HOSTILE';
+    const effectiveDisp = getEffectiveBlocDisposition(blocDisp, faction);
+    // Use effective disposition for trait modifiers (populist_touch makes SKEPTICAL act as SWING)
+    let outreachMult = getTraitApprovalMultiplier(faction, 'outreach', effectiveDisp);
+    // populist_touch/elitist: disposition reclassification affects outreach effectiveness
+    if (effectiveDisp !== blocDisp) {
+        if (effectiveDisp === 'SWING' && blocDisp === 'SKEPTICAL') outreachMult *= 1.25; // easier to reach
+        if (effectiveDisp === 'HOSTILE' && blocDisp === 'SKEPTICAL') outreachMult *= 0.5;  // harder to reach
+    }
+    if (outreachMult !== 1.0) {
+        diminished = Math.max(1, Math.round(diminished * outreachMult));
+    }
 
     // ── 7. Apply target bloc effect (momentum only — preference_score recalculated by three-pillar calc) ──
     const effects = [];
@@ -729,15 +761,16 @@ export async function executeOutreach(supabase, factionId, nationId, blocId, cur
         effects.push({ bloc: fri.blocName, blocId: fri.blocId, value: fri.penalty, oldMom, newMom });
     }
 
-    // ── 9. Deduct AP ──
-    const apResult = await deductAP(supabase, factionId, OUTREACH_CONFIG.AP_COST);
+    // ── 9. Deduct AP + track last_action_tick ──
+    const apResult = await deductAP(supabase, factionId, effectiveOutreachCost);
+    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId);
 
     // ── 10. Log ──
     await supabase.from('campaign_actions').insert({
         party_id: factionId,
         nation_id: nationId,
         action_type: 'outreach',
-        ap_cost: OUTREACH_CONFIG.AP_COST,
+        ap_cost: effectiveOutreachCost,
         money_cost: 0,
         tick_performed: currentTick,
         result: {
@@ -754,7 +787,7 @@ export async function executeOutreach(supabase, factionId, nationId, blocId, cur
         effects,
         alignment,
         diminished,
-        newAp: apResult.newAp ?? ((faction.action_points || 0) - OUTREACH_CONFIG.AP_COST),
+        newAp: apResult.newAp ?? ((faction.action_points || 0) - effectiveOutreachCost),
     };
 }
 
@@ -915,14 +948,6 @@ export const ATTACK_OUTCOMES = [
     { id: 'backfire', name: 'Backfire', icon: '\u26A0', targetMin: 1, targetMax: 2, selfMin: -4, selfMax: -2, polarization: 0.25 },
     { id: 'mutual', name: 'Mutual Destruction', icon: '\u2715', targetMin: -3, targetMax: -3, selfMin: -2, selfMax: -2, polarization: 0.25 },
 ];
-
-const ATTACK_OUTCOME_COLORS = {
-    devastating: '#4ade80',
-    effective: '#22d3ee',
-    glancing: '#facc15',
-    backfire: '#f97316',
-    mutual: '#ef4444',
-};
 
 /**
  * Get outcome probability weights based on evidence strength.
@@ -1157,24 +1182,18 @@ export function buildAttackVectors(evidence) {
 }
 
 /**
- * Compute attack credibility from recent attack history.
- * Starts at 100, -20 per attack in the last COOLDOWN_WINDOW ticks, min 20.
- */
-export function computeAttackCredibility(recentAttackCount) {
-    return Math.max(20, 100 - recentAttackCount * ATTACK_CONFIG.CREDIBILITY_COST);
-}
-
-/**
  * Execute an attack campaign against a target party.
  * Returns { success, outcomeId, outcomeName, headline, effects, weights, opensCounter, newAp }
  */
 export async function executeAttack(supabase, factionId, nationId, targetFactionId, vectorId, currentTick) {
-    // ── 1. Validate AP ──
+    // ── 1. Validate AP (with leader trait modifiers) ──
     const { data: faction } = await supabase
-        .from('factions').select('action_points, faction_name').eq('id', factionId).single();
+        .from('factions').select('action_points, faction_name, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
-    if ((faction.action_points || 0) < ATTACK_CONFIG.AP_COST)
-        return { success: false, error: `Not enough AP. Need ${ATTACK_CONFIG.AP_COST}.` };
+    const attackApMod = getTraitAPModifier('attack', faction, currentTick);
+    const effectiveAttackCost = Math.max(1, ATTACK_CONFIG.AP_COST + attackApMod);
+    if ((faction.action_points || 0) < effectiveAttackCost)
+        return { success: false, error: `Not enough AP. Need ${effectiveAttackCost}.` };
 
     // ── 2. Load target ──
     const { data: targetFaction } = await supabase
@@ -1238,8 +1257,9 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
         effects.push({ label: 'Polarization', value: outcome.polarization });
     }
 
-    // ── 8. Deduct AP ──
-    const apResult = await deductAP(supabase, factionId, ATTACK_CONFIG.AP_COST);
+    // ── 8. Deduct AP + track last_action_tick ──
+    const apResult = await deductAP(supabase, factionId, effectiveAttackCost);
+    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId);
 
     // ── 9. Generate headline ──
     const headline = _attackHeadline(outcomeId, targetFaction.faction_name, vectorId);
@@ -1250,7 +1270,7 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
         party_id: factionId,
         nation_id: nationId,
         action_type: 'attack',
-        ap_cost: ATTACK_CONFIG.AP_COST,
+        ap_cost: effectiveAttackCost,
         money_cost: 0,
         tick_performed: currentTick,
         result: {
@@ -1316,14 +1336,16 @@ export const MAKE_PROMISE_CONFIG = {
 export async function executeMakePromise(supabase, factionId, nationId, currentTick, promiseType, params) {
     const cfg = MAKE_PROMISE_CONFIG;
 
-    // ── 1. Validate faction ──
+    // ── 1. Validate faction (with leader trait modifiers) ──
     const { data: faction } = await supabase
-        .from('factions').select('party_funds, action_points, abbreviation, faction_name')
+        .from('factions').select('party_funds, action_points, abbreviation, faction_name, leader_positive_traits, leader_negative_traits, last_action_tick')
         .eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
 
-    if (cfg.AP_COST > 0 && (faction.action_points || 0) < cfg.AP_COST)
-        return { success: false, error: `Not enough AP. Need ${cfg.AP_COST}.` };
+    const promiseApMod = getTraitAPModifier('promise', faction, currentTick);
+    const effectivePromiseCost = Math.max(1, cfg.AP_COST + promiseApMod);
+    if (effectivePromiseCost > 0 && (faction.action_points || 0) < effectivePromiseCost)
+        return { success: false, error: `Not enough AP. Need ${effectivePromiseCost}.` };
 
     // ── 2. Check active promise limit ──
     const { data: activePromises } = await supabase
@@ -1486,12 +1508,13 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
         blocEffects.push({ blocId, blocName: bloc?.bloc_name, delta: approvalBump });
     }
 
-    // ── 7. Deduct AP if needed ──
+    // ── 7. Deduct AP if needed + track last_action_tick ──
     let newAp = faction.action_points || 0;
-    if (cfg.AP_COST > 0) {
-        const apResult = await deductAP(supabase, factionId, cfg.AP_COST);
-        newAp = apResult.newAp ?? (newAp - cfg.AP_COST);
+    if (effectivePromiseCost > 0) {
+        const apResult = await deductAP(supabase, factionId, effectivePromiseCost);
+        newAp = apResult.newAp ?? (newAp - effectivePromiseCost);
     }
+    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId);
 
     // ── 8. Create promise record ──
     const { data: promise, error: promiseErr } = await supabase

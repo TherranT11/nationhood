@@ -3,7 +3,7 @@ import { initPage } from './common.js';
 import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate, escapeHtml as utilEscapeHtml } from './utils.js';
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, ensureBlocApprovals, getNationNames, IDEOLOGY_AXES } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, getNationNames, IDEOLOGY_AXES } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
@@ -28,7 +28,7 @@ initPage('politics', async (state) => {
     // Fetch total seats from all parties
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color')
+        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -350,15 +350,6 @@ async function renderPartyTab(f, nation, data) {
         deltaHtml = `<span class="pol-stat-delta ${cls}">${sign}${seatDelta}</span>`;
     }
 
-    // Vote share delta (simple: compare to equal share as baseline)
-    let voteShareDeltaHtml = '';
-    // We show the vote share as-is with an up arrow if > 0
-    const vsNum = parseFloat(voteSharePct);
-    if (vsNum > 0) {
-        // Show a delta indicator based on change from hypothetical equal share
-        // For now just show the percentage; delta from last election would need historical data
-    }
-
     // ── Build politics tab content based on government type ──
     let politicsTabContent;
     if (isAutoNation) {
@@ -641,7 +632,7 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
 
     // Vital helpers
     function vitalColor(val, inv) { const v = inv ? (100 - val) : val; return v >= 70 ? 'var(--dgreen)' : v >= 45 ? 'var(--dorange)' : 'var(--dred)'; }
-    function vitalLabel(val, inv) { const v = inv ? (100 - val) : val; return v >= 70 ? 'HIGH' : v >= 45 ? 'MODERATE' : 'LOW'; }
+    function vitalLabel(val) { return val >= 70 ? 'HIGH' : val >= 45 ? 'MODERATE' : 'LOW'; }
 
     const pressF = Math.round(Number(n.press_freedom ?? 50));
     const corruption = Math.round(Number(n.corruption ?? 50));
@@ -922,27 +913,27 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
                         <div class="reg-vitals-grid">
                             <div class="reg-vital">
                                 <span class="reg-vital-label">STABILITY</span>
-                                <span class="reg-vital-val" style="color:${vitalColor(stability, false)}">${isStrongman ? stability : vitalLabel(stability, false)}</span>
+                                <span class="reg-vital-val" style="color:${vitalColor(stability, false)}">${isStrongman ? stability : vitalLabel(stability)}</span>
                             </div>
                             <div class="reg-vital">
                                 <span class="reg-vital-label">LEGITIMACY</span>
-                                <span class="reg-vital-val" style="color:${vitalColor(legitimacy, false)}">${isStrongman ? legitimacy : vitalLabel(legitimacy, false)}</span>
+                                <span class="reg-vital-val" style="color:${vitalColor(legitimacy, false)}">${isStrongman ? legitimacy : vitalLabel(legitimacy)}</span>
                             </div>
                             <div class="reg-vital">
                                 <span class="reg-vital-label">CIVIL UNREST</span>
-                                <span class="reg-vital-val" style="color:${vitalColor(civilUnrest, true)}">${isStrongman ? civilUnrest : vitalLabel(civilUnrest, true)}</span>
+                                <span class="reg-vital-val" style="color:${vitalColor(civilUnrest, true)}">${isStrongman ? civilUnrest : vitalLabel(civilUnrest)}</span>
                             </div>
                             <div class="reg-vital">
                                 <span class="reg-vital-label">CORRUPTION</span>
-                                <span class="reg-vital-val" style="color:${vitalColor(corruption, true)}">${isStrongman ? corruption : vitalLabel(corruption, true)}</span>
+                                <span class="reg-vital-val" style="color:${vitalColor(corruption, true)}">${isStrongman ? corruption : vitalLabel(corruption)}</span>
                             </div>
                             <div class="reg-vital">
                                 <span class="reg-vital-label">PRESS FREEDOM</span>
-                                <span class="reg-vital-val" style="color:${vitalColor(pressF, true)}">${isStrongman ? pressF : vitalLabel(pressF, true)}</span>
+                                <span class="reg-vital-val" style="color:${vitalColor(pressF, true)}">${isStrongman ? pressF : vitalLabel(pressF)}</span>
                             </div>
                             <div class="reg-vital">
                                 <span class="reg-vital-label">FREEDOM INDEX</span>
-                                <span class="reg-vital-val" style="color:${vitalColor(freedomIdx, true)}">${isStrongman ? freedomIdx : vitalLabel(freedomIdx, true)}</span>
+                                <span class="reg-vital-val" style="color:${vitalColor(freedomIdx, true)}">${isStrongman ? freedomIdx : vitalLabel(freedomIdx)}</span>
                             </div>
                         </div>
                     </div>
@@ -4462,9 +4453,10 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
     });
 
     // ── Appoint Successor: family member button ──
-    document.getElementById('successor-family-btn')?.addEventListener('click', async () => {
+    document.getElementById('successor-family-btn')?.addEventListener('click', async function() {
         if (ap < SUCCESSOR_CONFIG.AP_COST) { alert(`Not enough AP (need ${SUCCESSOR_CONFIG.AP_COST}).`); return; }
         if (!confirm(`Appoint a family member as successor?\n\nCost: ${SUCCESSOR_CONFIG.AP_COST} AP + ${SUCCESSOR_CONFIG.FAMILY_AP_PENALTY} AP/tick ongoing\nStability +${SUCCESSOR_CONFIG.FAMILY_STABILITY_BOOST}\nAll pillars: -${SUCCESSOR_CONFIG.FAMILY_PILLAR_PENALTY} support\nAll stewards: Coup Readiness +${SUCCESSOR_CONFIG.FAMILY_COUP_READINESS}\n\nCooldown: ${SUCCESSOR_CONFIG.COOLDOWN_TICKS} ticks`)) return;
+        this.disabled = true;
         const r = await executeAppointSuccessor(_supabase, n.id, f.id, f.id, tick);
         if (!r.success) { alert(r.error || 'Failed to appoint family member.'); await reRender(); return; }
         f.action_points = r.newAp;
@@ -4473,8 +4465,9 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
     });
 
     // ── Revoke Successor ──
-    document.getElementById('successor-revoke-btn')?.addEventListener('click', async () => {
+    document.getElementById('successor-revoke-btn')?.addEventListener('click', async function() {
         if (!confirm('Revoke the current successor?\n\nStability -' + SUCCESSOR_CONFIG.REVOKE_STABILITY_DROP + '\nAll stewards: Coup Readiness +' + SUCCESSOR_CONFIG.REVOKE_COUP_READINESS + '\nFormer successor faction: Loyalty -' + SUCCESSOR_CONFIG.REVOKE_LOYALTY_DROP)) return;
+        this.disabled = true;
         const r = await executeRevokeSuccessor(_supabase, n.id, f.id, tick);
         if (!r.success) { alert(r.error || 'Failed to revoke successor.'); await reRender(); return; }
         alert('Successor revoked.' + (r.revokedName ? ` ${r.revokedName} removed.` : ''));
@@ -4517,7 +4510,7 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
     redistLoser?.addEventListener('change', updateRedistMax);
     updateRedistMax();
 
-    document.getElementById('redist-execute-btn')?.addEventListener('click', async () => {
+    document.getElementById('redist-execute-btn')?.addEventListener('click', async function() {
         if (!redistLoser || !redistGainer || !redistSeats) return;
         const loserId = redistLoser.value;
         const gainerId = redistGainer.value;
@@ -4527,6 +4520,7 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
         const loserFac = (allFactions || []).find(p => p.id === loserId);
         const gainerFac = (allFactions || []).find(p => p.id === gainerId);
         if (!confirm(`Transfer ${seats} seat${seats !== 1 ? 's' : ''} from ${loserFac?.faction_name || '?'} to ${gainerFac?.faction_name || '?'}?`)) return;
+        this.disabled = true;
         const r = await executeRedistributeSeats(_supabase, f.id, n.id, loserId, gainerId, seats, tick);
         if (!r.success) { alert(r.error || 'Redistribution failed.'); await reRender(); return; }
         f.action_points = r.newAp;

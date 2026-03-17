@@ -2285,10 +2285,40 @@ async function submitToCommittee() {
         }
     }
 
+    // Compute effective bill AP cost with leader trait modifiers
+    let billApCost = GAME_CONFIG.DRAFT_BILL_AP_COST;
+    if (currentFaction) {
+        // policy_wonk: Draft bill costs -1 AP
+        if ((currentFaction.leader_positive_traits || []).includes('policy_wonk')) billApCost -= 1;
+        // micromanager: All actions cost +1 AP
+        if ((currentFaction.leader_negative_traits || []).includes('micromanager')) billApCost += 1;
+        // single_issue: Bills outside leader's ideology axis cost +2 AP
+        if ((currentFaction.leader_negative_traits || []).includes('single_issue') && currentFaction.leader_ideology) {
+            const leaderIdeo = currentFaction.leader_ideology.toUpperCase();
+            // Map ideology to axis
+            const IDEO_AXIS_MAP = {
+                'LIBERTY': 'liberty_equality', 'EQUALITY': 'liberty_equality',
+                'TRADITION': 'tradition_progress', 'PROGRESS': 'tradition_progress',
+                'SECURITY': 'security_freedom', 'FREEDOM': 'security_freedom',
+                'GLOBALISM': 'globalism_nationalism', 'NATIONALISM': 'globalism_nationalism',
+                'INDIVIDUALISM': 'individualism_collectivism', 'COLLECTIVISM': 'individualism_collectivism',
+            };
+            const leaderAxis = IDEO_AXIS_MAP[leaderIdeo];
+            // Check if any draft article ideology matches the leader's axis
+            const articleIdeos = draftArticles.flatMap(a => {
+                const ideologies = a.ideologies || (a.ideology ? [a.ideology] : []);
+                return ideologies.map(i => i.toUpperCase());
+            });
+            const matchesAxis = articleIdeos.some(i => IDEO_AXIS_MAP[i] === leaderAxis);
+            if (!matchesAxis && articleIdeos.length > 0) billApCost += 2;
+        }
+        billApCost = Math.max(1, billApCost);
+    }
+
     // Atomic AP deduction — prevents race conditions and double-spend
-    const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.DRAFT_BILL_AP_COST);
+    const apResult = await deductAP(_supabase, currentFaction.id, billApCost);
     if (!apResult.success) {
-        alert('Not enough AP to draft this bill.');
+        alert('Not enough AP to draft this bill. Need ' + billApCost + ' AP.');
         isSubmitting = false;
         document.getElementById('submit-bill-btn').disabled = draftArticles.length === 0;
         return;
