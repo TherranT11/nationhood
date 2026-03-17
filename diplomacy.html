@@ -883,14 +883,14 @@ async function renderAgreementsTab() {
             html += `
                 <div class="agreement-card"${isExpiredOrWithdrawn ? ' style="opacity:0.7;border-left:3px solid var(--amber);"' : ''}>
                     <div class="agreement-card-header">
-                        <div class="agreement-card-name">${escapeHtml(pd.name || 'Unnamed Agreement')}</div>
+                        <div class="agreement-card-name">${ag.proposal_type === 'state_visit' ? escapeHtml((pd.visitor_leader ? pd.visitor_leader + ' — ' : '') + 'State Visit ' + (currentNation && currentNation.name === pd.visitor_nation ? 'to ' + (pd.host_nation || targetName) : 'from ' + (pd.visitor_nation || proposerName))) : escapeHtml(pd.name || 'Unnamed Agreement')}</div>
                         <div class="agreement-card-badges">
                             ${classBadge}
                             ${withdrawHTML}
                         </div>
                     </div>
                     <div class="agreement-card-meta">
-                        ${escapeHtml(proposerName)} &amp; ${escapeHtml(targetName)}
+                        ${ag.proposal_type === 'state_visit' ? escapeHtml(pd.visitor_nation || proposerName) + ' &rarr; ' + escapeHtml(pd.host_nation || targetName) : escapeHtml(proposerName) + ' &amp; ' + escapeHtml(targetName)}
                         ${typeLabel ? ' &middot; ' + escapeHtml(typeLabel) : ''}
                         ${durationYears ? ' &middot; ' + durationYears + ' year' + (durationYears !== 1 ? 's' : '') : ''}
                     </div>
@@ -1801,7 +1801,7 @@ function renderStateVisitInboxCard(p, pd) {
     return `
         <div class="inbox-card ${needsOurAction && !expired ? 'requires-action' : ''}">
             <div class="inbox-card-header">
-                <div class="inbox-card-name">State Visit from ${escapeHtml(pd.visitor_nation || 'Unknown')}</div>
+                <div class="inbox-card-name">${escapeHtml(pd.visitor_leader ? pd.visitor_leader + ' — ' : '')}State Visit ${currentNation && currentNation.name === pd.visitor_nation ? 'to ' + escapeHtml(pd.host_nation || 'Unknown') : 'from ' + escapeHtml(pd.visitor_nation || 'Unknown')}</div>
                 <div class="inbox-card-badges">
                     ${typeBadge}
                     ${statusBadge}
@@ -5165,9 +5165,9 @@ async function viewActiveAgreement(agreementId) {
                     ${FLAG_URLS[targetName] ? '<img src="' + FLAG_URLS[targetName] + '" alt="' + escapeHtml(targetName) + '" style="width:30px;height:20px;object-fit:cover;border:1px solid rgba(255,255,255,0.08);border-radius:2px;">' : ''}
                 </div>
                 <div style="min-width:0;">
-                    <div style="font-size:0.95rem;font-weight:bold;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(pd.name || 'Unnamed Agreement')}</div>
+                    <div style="font-size:0.95rem;font-weight:bold;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${isStateVisit ? escapeHtml((pd.visitor_leader ? pd.visitor_leader + ' — ' : '') + 'State Visit ' + (currentNation && currentNation.name === pd.visitor_nation ? 'to ' + (pd.host_nation || targetName) : 'from ' + (pd.visitor_nation || proposerName))) : escapeHtml(pd.name || 'Unnamed Agreement')}</div>
                     <div style="font-size:0.7rem;color:var(--text-muted);">
-                        ${escapeHtml(proposerName)} ${isStateVisit ? '&rarr;' : '&amp;'} ${escapeHtml(targetName)}
+                        ${escapeHtml(pd.visitor_nation || proposerName)} ${isStateVisit ? '&rarr;' : '&amp;'} ${escapeHtml(pd.host_nation || targetName)}
                         ${classification ? ' · ' + escapeHtml(classification) : ''}
                     </div>
                 </div>
@@ -8336,7 +8336,7 @@ async function submitStateVisit() {
             proposal_tier: 2,
             status: 'proposed',
             proposal_data: {
-                name: 'State Visit from ' + currentNation.name,
+                name: hogName + ' — State Visit to ' + ctx.targetNation.name,
                 visitor_leader: hogName,
                 visitor_nation: currentNation.name,
                 host_nation: ctx.targetNation.name,
@@ -9537,7 +9537,7 @@ function renderStateVisitNegDetail(p, pd, needsOurAction) {
     const expired = deadlineTick != null && shardTick > deadlineTick;
 
     let html = '<div class="neg-detail-header">';
-    html += '<div class="neg-detail-title">' + escapeHtml(pd.name || 'State Visit') + '</div>';
+    html += '<div class="neg-detail-title">' + escapeHtml((pd.visitor_leader ? pd.visitor_leader + ' — ' : '') + 'State Visit ' + (currentNation && currentNation.name === pd.visitor_nation ? 'to ' + (pd.host_nation || 'Unknown') : 'from ' + (pd.visitor_nation || 'Unknown'))) + '</div>';
     html += '<span class="badge badge--dim" style="background:#5c3a1a;color:#FFD700;">STATE VISIT</span>';
     html += '</div>';
 
