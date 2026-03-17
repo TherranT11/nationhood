@@ -3,7 +3,7 @@ import { initPage } from './common.js';
 import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate, escapeHtml as utilEscapeHtml } from './utils.js';
-import { initCivic } from './civic.js';
+
 import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, getNationNames, IDEOLOGY_AXES } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
@@ -438,7 +438,6 @@ async function renderPartyTab(f, nation, data) {
     <div class="pol-page-tabs">
         <button class="pol-page-tab active" data-page-tab="politics">Politics</button>
         <button class="pol-page-tab" data-page-tab="actions">Actions</button>
-        <button class="pol-page-tab" data-page-tab="events">Events</button>
     </div>
     <div class="pol-page-content active" data-page-content="politics">
     ${politicsTabContent}
@@ -448,9 +447,6 @@ async function renderPartyTab(f, nation, data) {
             <div class="pol-section-label">Actions</div>
             <div id="actions-container"></div>
         </div>
-    </div>
-    <div class="pol-page-content" data-page-content="events">
-        <div id="civic-root" style="min-height:400px;"></div>
     </div>`;
 
     document.getElementById('content-area').innerHTML = html;
@@ -503,11 +499,6 @@ async function renderPartyTab(f, nation, data) {
             }
         });
     }
-
-    // ═══════════════════════════════════════
-    // EVENTS TAB — CIVIC Public Discourse Network
-    // ═══════════════════════════════════════
-    await initCivic(_supabase, nation.id, faction.id, currentTick);
 
     // ═══════════════════════════════════════
     // ACTIONS TAB — Democracy Campaign Actions
@@ -2943,7 +2934,7 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// (renderEventsTab removed — replaced by CIVIC feed in civic.js)
+// (Events tab moved to standalone events.html page)
 
 // ═══════════════════════════════════════════════════════════════════
 // DEMOCRACY CAMPAIGN ACTIONS TAB (Rally, Outreach, Attack, Promise)
@@ -3591,7 +3582,6 @@ async function handleCampaignConfirm(container, f, n, ap, blocs, otherParties, f
 
     // Re-render
     await renderDemocracyActions(n, f, _currentShard, _currentAllParties);
-    await initCivic(_supabase, n.id, f.id, tick);
     // Update topbar AP display
     const apEl = document.getElementById('topbar-ap');
     if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + (f.action_points ?? 0) + ' AP</span>';
@@ -4095,7 +4085,6 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
     // Wire up autocracy action buttons
     const reRender = async () => {
         await renderAutocracyActionsTab(nation, faction, shard);
-        await initCivic(_supabase, n.id, f.id, tick);
         // Update topbar AP display immediately after actions
         const apEl = document.getElementById('topbar-ap');
         if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + (f.action_points ?? 0) + ' AP</span>';

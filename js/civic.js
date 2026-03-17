@@ -111,11 +111,13 @@ function shortDate(tick) {
 /**
  * Initialize CIVIC feed. Called when the Events tab is activated.
  */
-export async function initCivic(supabase, nationId, factionId, currentTick) {
+let _nationName = '';
+export async function initCivic(supabase, nationId, factionId, currentTick, nationName) {
     _supabase = supabase;
     _nationId = nationId;
     _factionId = factionId;
     _currentTick = currentTick;
+    _nationName = nationName || '';
 
     const root = document.getElementById('civic-root');
     if (!root) return;
@@ -147,8 +149,8 @@ export async function initCivic(supabase, nationId, factionId, currentTick) {
         if (playerRes.error) console.error('CIVIC civic_posts query error:', playerRes.error);
 
         // Transform system events into CIVIC posts
-        const eventPosts = transformEventLog(eventRes.data || []);
-        const actionPosts = transformCampaignActions(actionRes.data || []);
+        const eventPosts = transformEventLog(eventRes.data || [], _nationName);
+        const actionPosts = transformCampaignActions(actionRes.data || [], _nationName);
         const playerPosts = transformPlayerPosts(playerRes.data || []);
 
         // Merge all posts, sort by tick desc, cap at 100
@@ -167,7 +169,7 @@ export async function initCivic(supabase, nationId, factionId, currentTick) {
 }
 
 /** Transform event_log rows into CIVIC post objects */
-function transformEventLog(rows) {
+function transformEventLog(rows, nationName) {
     const posts = [];
     for (const row of rows) {
         const triggerKey = detectTriggerKey(row);
@@ -178,6 +180,7 @@ function transformEventLog(rows) {
         if (!templates?.length) continue;
 
         const vars = extractEventVars(templateKey, row);
+        vars.nation = nationName;
         // Pick 2 templates deterministically based on row ID
         const idx1 = seededIndex(row.id || String(row.fired_at_tick), templates.length);
         const idx2 = (idx1 + 1 + seededIndex((row.id || '') + '_2', Math.max(templates.length - 1, 1))) % templates.length;
@@ -320,7 +323,7 @@ function detectTriggerKey(row) {
 }
 
 /** Transform campaign_actions rows into CIVIC post objects */
-function transformCampaignActions(rows) {
+function transformCampaignActions(rows, nationName) {
     const posts = [];
     for (const row of rows) {
         const templateKey = CIVIC_ACTION_MAP[row.action_type];
@@ -330,6 +333,7 @@ function transformCampaignActions(rows) {
         if (!templates?.length) continue;
 
         const vars = extractActionVars(templateKey, row);
+        vars.nation = nationName;
         // Pick 1 template for campaign actions (less noisy than events)
         const idx = seededIndex(row.id || String(row.tick_performed) + row.action_type, templates.length);
         const tmpl = templates[idx];
