@@ -7,6 +7,22 @@
  */
 
 // ═══════════════════════════════════════════════════════════
+// AGENDA ITEM TITLE MAP — for state visit template variables
+// ═══════════════════════════════════════════════════════════
+
+const AGENDA_TITLE_MAP = {
+    formal_reception:  'a formal reception ceremony',
+    joint_press:       'a joint press conference',
+    economic_forum:    'an economic forum',
+    university_address:'a university address',
+    bilateral_talks:   'private bilateral talks',
+    military_review:   'a military review',
+    cultural_exchange: 'a cultural exchange programme',
+    monument_visit:    'a monument visit',
+    treaty_signing:    'a treaty signing ceremony',
+};
+
+// ═══════════════════════════════════════════════════════════
 // EVENT TAG MAPPING — which tag badge to show per template key
 // ═══════════════════════════════════════════════════════════
 
@@ -173,6 +189,8 @@ export const CIVIC_TEMPLATES = {
         { id: 'svp1', text: '{nation_a} formally requests a state visit to {nation_b}. Scheduling and agenda under discussion. #StateVisit' },
         { id: 'svp2', text: '{leader} reaching out to {nation_b} directly. This is what proactive diplomacy looks like. #StateVisit' },
         { id: 'svp3', text: '{nation_a} proposing a state visit to {nation_b} right now? The timing is suspicious. #StateVisit' },
+        { id: 'svp4', text: 'Breaking: {leader} proposes an official visit to {nation_b}. Diplomatic circles are watching closely. #StateVisit #Diplomacy' },
+        { id: 'svp5', text: '{nation_a} extends a formal invitation to visit {nation_b}. A lot riding on whether they say yes. #StateVisit' },
     ],
 
     // ── 14. State Visit Accepted ──
@@ -180,6 +198,10 @@ export const CIVIC_TEMPLATES = {
         { id: 'sva1', text: '{nation_b} confirms acceptance of {nation_a} state visit. Dates to be announced. #StateVisit' },
         { id: 'sva2', text: '{nation_b} welcoming {leader}. This is the right move at the right time. #StateVisit #Diplomacy' },
         { id: 'sva3', text: '{nation_b} accepts. Hope they know what they signed up for. {nation_a} always wants something. #StateVisit' },
+        { id: 'sva4', text: 'Official: {leader} will visit {nation_b}. Protocol teams already coordinating the agenda. This is going to be a big one. #StateVisit' },
+        { id: 'sva5', text: '{nation_b} rolls out the red carpet for {nation_a}. Bilateral talks, press events, the works. #StateVisit #Diplomacy' },
+        { id: 'sva6', text: 'State visit confirmed between {nation_a} and {nation_b}. Markets reacting positively. #StateVisit #Trade' },
+        { id: 'sva7', text: '{leader} heading to {nation_b}. The diplomatic calendar just got a lot more interesting. #StateVisit #{nation_b}' },
     ],
 
     // ── 15. State Visit Happens ──
@@ -187,6 +209,10 @@ export const CIVIC_TEMPLATES = {
         { id: 'svh1', text: '{leader} concludes state visit to {nation_b}. Joint communiqu\u00e9 released. #StateVisit' },
         { id: 'svh2', text: '{leader}\'s visit to {nation_b} produced concrete results. This is diplomacy working. #StateVisit #Diplomacy' },
         { id: 'svh3', text: 'Joint communiqu\u00e9 from the {nation_a}\u2013{nation_b} summit is {words} words of nothing. #Diplomacy' },
+        { id: 'svh4', text: '{leader} wraps up in {nation_b}. Highlights included {agenda_1} and {agenda_2}. Both sides calling it a success. #StateVisit' },
+        { id: 'svh5', text: 'The {nation_a}\u2013{nation_b} state visit featured {agenda_1} \u2014 a strong signal to the region. #StateVisit #Diplomacy' },
+        { id: 'svh6', text: '{leader} back from {nation_b}. {agenda_1} went well. {agenda_2} was reportedly tense. Details still emerging. #StateVisit' },
+        { id: 'svh7', text: 'Three days in {nation_b} and {leader} managed to fit in {agenda_1}, {agenda_2}, and still make the evening news. #StateVisit #{nation_a}' },
     ],
 
     // ── 16. State Visit Rejected ──
@@ -194,6 +220,10 @@ export const CIVIC_TEMPLATES = {
         { id: 'svr1', text: '{nation_b} declines {nation_a} state visit request. No official reason given. #Diplomacy' },
         { id: 'svr2', text: '{nation_b} was right to decline. Some visits do more damage than good. #StateVisit #Diplomacy' },
         { id: 'svr3', text: 'Rejecting a state visit request with no counter-offer is not diplomacy. It is provocation. #Diplomacy' },
+        { id: 'svr4', text: '{nation_b} says no to {leader}. Diplomatic channels remain open but the snub is real. #StateVisit #Diplomacy' },
+        { id: 'svr5', text: '{nation_a} wanted a state visit. {nation_b} wanted to make a point. Point made. #Diplomacy' },
+        { id: 'svr6', text: 'Rejected. {nation_b} sends {nation_a} home before they even arrived. Relations will feel this one. #StateVisit' },
+        { id: 'svr7', text: '{leader} will not be visiting {nation_b} after all. The official line is scheduling. Nobody believes that. #Diplomacy' },
     ],
 
     // ── 17. Diplomatic Initiative Proposed ──
@@ -702,13 +732,22 @@ export function extractEventVars(templateKey, row) {
                 leader: e.leader || e.leader_name || '',
             };
 
-        case 'state_visit_happened':
+        case 'state_visit_happened': {
+            // Pick 1-2 agenda item titles for template mentions
+            const agendaKeys = e.agenda || e.computed_effects?.agenda || [];
+            const agendaTitles = agendaKeys.map(k => AGENDA_TITLE_MAP[k] || k.replace(/_/g, ' '));
+            // Shuffle deterministically and pick first two
+            const a1 = agendaTitles[0] || 'bilateral talks';
+            const a2 = agendaTitles.length > 1 ? agendaTitles[Math.floor(agendaTitles.length / 2)] : 'a formal reception';
             return {
                 nation_a: e.nation_a || e.host || '',
                 nation_b: e.nation_b || e.visitor || '',
                 leader: e.leader || e.leader_name || '',
                 words: e.words || '1,200',
+                agenda_1: a1,
+                agenda_2: a2,
             };
+        }
 
         case 'diplomatic_initiative_proposed':
         case 'diplomatic_initiative_accepted':

@@ -139,20 +139,17 @@ export async function initCivic(supabase, nationId, factionId, currentTick, nati
         // Fetch all data sources in parallel
         const [eventRes, actionRes, playerRes] = await Promise.all([
             supabase.from('event_log')
-                .select('*')
-                .eq('nation_id', nationId)
+                .select('*, nations(name)')
                 .order('fired_at_tick', { ascending: false })
-                .limit(80),
+                .limit(200),
             supabase.from('campaign_actions')
-                .select('*, factions(faction_name, abbreviation, party_color)')
-                .eq('nation_id', nationId)
+                .select('*, factions(faction_name, abbreviation, party_color), nations(name)')
                 .order('tick_performed', { ascending: false })
-                .limit(80),
+                .limit(120),
             supabase.from('civic_posts')
-                .select('*, civic_comments(*)')
-                .eq('nation_id', nationId)
+                .select('*, civic_comments(*), nations(name)')
                 .order('created_at', { ascending: false })
-                .limit(100),
+                .limit(150),
         ]);
 
         // Check if ALL queries failed
@@ -211,12 +208,11 @@ function subscribeRealtime() {
     }
 
     _realtimeChannel = _supabase
-        .channel('civic_realtime_' + _nationId)
+        .channel('civic_realtime_all')
         .on('postgres_changes', {
             event: 'INSERT',
             schema: 'public',
             table: 'civic_posts',
-            filter: 'nation_id=eq.' + _nationId,
         }, (payload) => {
             const row = payload.new;
             // Skip if we already have this post (e.g. our own)
@@ -264,7 +260,7 @@ function transformEventLog(rows, nationName) {
         if (!templates?.length) continue;
 
         const vars = extractEventVars(templateKey, row);
-        vars.nation = nationName;
+        vars.nation = row.nations?.name || nationName;
         // Pick 2 templates deterministically based on row ID
         const idx1 = seededIndex(row.id || String(row.fired_at_tick), templates.length);
         const idx2 = (idx1 + 1 + seededIndex((row.id || '') + '_2', Math.max(templates.length - 1, 1))) % templates.length;
@@ -417,7 +413,7 @@ function transformCampaignActions(rows, nationName) {
         if (!templates?.length) continue;
 
         const vars = extractActionVars(templateKey, row);
-        vars.nation = nationName;
+        vars.nation = row.nations?.name || nationName;
         // Pick 1 template for campaign actions (less noisy than events)
         const idx = seededIndex(row.id || String(row.tick_performed) + row.action_type, templates.length);
         const tmpl = templates[idx];
@@ -497,7 +493,7 @@ function renderAll() {
     root.innerHTML = `
         <div class="civ-page-header">
             <div class="civ-page-title">CIVIC</div>
-            <div class="civ-page-subtitle">Public Discourse Network &mdash; ${escapeHtml(_nationName)}</div>
+            <div class="civ-page-subtitle">Public Discourse Network &mdash; All Nations</div>
         </div>
         <div class="civ-layout">
             <div class="civ-sidebar" role="navigation" aria-label="CIVIC navigation">

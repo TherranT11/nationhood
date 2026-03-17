@@ -8342,6 +8342,29 @@ async function submitStateVisit() {
         return;
     }
 
+    // Fire event for all nations
+    try {
+        const { data: allNations } = await _supabase.from('nations').select('id');
+        if (allNations && allNations.length > 0) {
+            const eventRows = allNations.map(n => ({
+                nation_id: n.id,
+                event_name: 'State Visit Proposed',
+                event_type: 'state_visit',
+                category: 'Diplomatic',
+                description_chosen: hosName + ' of ' + currentNation.name + ' has proposed a state visit to ' + ctx.targetNation.name + '.',
+                fired_at_tick: ctx.currentTick,
+                effects_applied: {
+                    nation_a: currentNation.name,
+                    nation_b: ctx.targetNation.name,
+                    leader: hosName,
+                }
+            }));
+            await _supabase.from('event_log').insert(eventRows);
+        }
+    } catch (e) {
+        console.warn('Error firing state visit proposal event:', e);
+    }
+
     alert('State Visit invitation sent to ' + ctx.targetNation.name + '!\n\nThey have ' + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW + ' ticks to accept.');
 
     svState = null; svContext = null;
@@ -8587,15 +8610,41 @@ async function acceptStateVisit(proposalId) {
         processed: true
     });
 
-    // Fire event for all nations
+    // Fire events for all nations: one "accepted" and one "happened"
     try {
         const agendaTitles = agenda.map(k => {
             const item = STATE_VISIT_AGENDA_ITEMS.find(a => a.key === k);
             return item ? item.title : k;
         });
+        const svEffects = {
+            visitor_leader: pd.visitor_leader,
+            visitor_nation: pd.visitor_nation,
+            host_nation: pd.host_nation,
+            host: pd.host_nation,
+            visitor: pd.visitor_nation,
+            nation_a: pd.visitor_nation,
+            nation_b: pd.host_nation,
+            leader: pd.visitor_leader,
+            visit_type: visitType,
+            agenda: agenda,
+            computed_effects: computedEffects,
+            is_first: isFirstVisit,
+            triggered_risks: triggeredRisks
+        };
         const { data: allNations } = await _supabase.from('nations').select('id');
         if (allNations && allNations.length > 0) {
-            const eventRows = allNations.map(n => ({
+            // "Accepted" event
+            const acceptRows = allNations.map(n => ({
+                nation_id: n.id,
+                event_name: 'State Visit Accepted',
+                event_type: 'state_visit',
+                category: 'Diplomatic',
+                description_chosen: pd.host_nation + ' has accepted a ' + vtLabel.toLowerCase() + ' from ' + pd.visitor_leader + ' of ' + pd.visitor_nation + '.',
+                fired_at_tick: currentTick,
+                effects_applied: svEffects
+            }));
+            // "Happened" event
+            const happenedRows = allNations.map(n => ({
                 nation_id: n.id,
                 event_name: 'State Visit',
                 event_type: 'state_visit',
@@ -8605,18 +8654,9 @@ async function acceptStateVisit(proposalId) {
                     (isFirstVisit ? ' This historic first visit marks a new chapter in bilateral relations.' : '') +
                     (triggeredRisks.length > 0 ? ' The visit was not without incident.' : ''),
                 fired_at_tick: currentTick,
-                effects: {
-                    visitor_leader: pd.visitor_leader,
-                    visitor_nation: pd.visitor_nation,
-                    host_nation: pd.host_nation,
-                    visit_type: visitType,
-                    agenda: agenda,
-                    computed_effects: computedEffects,
-                    is_first: isFirstVisit,
-                    triggered_risks: triggeredRisks
-                }
+                effects_applied: svEffects
             }));
-            await _supabase.from('event_log').insert(eventRows);
+            await _supabase.from('event_log').insert([...acceptRows, ...happenedRows]);
         }
     } catch (e) {
         console.warn('Error firing state visit event:', e);
@@ -8671,6 +8711,32 @@ async function declineStateVisit(proposalId) {
     if (!confirm('Decline this State Visit invitation? The visiting nation will not be refunded their AP.')) return;
 
     await _supabase.from('diplomatic_proposals').update({ status: 'rejected' }).eq('id', proposalId);
+
+    // Fire event for all nations
+    try {
+        const pd = proposal.proposal_data || {};
+        const { data: allNations } = await _supabase.from('nations').select('id');
+        if (allNations && allNations.length > 0) {
+            const eventRows = allNations.map(n => ({
+                nation_id: n.id,
+                event_name: 'State Visit Rejected',
+                event_type: 'state_visit',
+                category: 'Diplomatic',
+                description_chosen: (currentNation.name || 'A nation') + ' has declined a state visit from ' + (pd.visitor_nation || 'an unknown nation') + '.',
+                fired_at_tick: currentTick,
+                effects_applied: {
+                    nation_a: pd.visitor_nation || '',
+                    nation_b: currentNation.name || '',
+                    leader: pd.visitor_leader || '',
+                    host: currentNation.name || '',
+                    visitor: pd.visitor_nation || '',
+                }
+            }));
+            await _supabase.from('event_log').insert(eventRows);
+        }
+    } catch (e) {
+        console.warn('Error firing state visit rejection event:', e);
+    }
 
     alert('State Visit declined.');
     await renderNegotiationsBox();
