@@ -643,7 +643,7 @@ const guideContent = {
 <p class="guide-tip">A successful democratic transition is one of the highest-legitimacy actions in the game. It resets negative modifier stacks and opens the full democratic toolkit. But the factions that lose power become potential opposition with existing Standing and accumulated resources.</p>
 </div></details>
 `
-    }
+    },
     events: {
         title: 'Events Guide',
         html: `
