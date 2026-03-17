@@ -5166,6 +5166,91 @@ async function viewActiveAgreement(agreementId) {
             </div>
     `;
 
+    // ── State Visit: show visit config, agenda, effects, costs, risks ──
+    if (ag.proposal_type === 'state_visit') {
+        const vtLabel = STATE_VISIT_TYPES[pd.visit_type]?.label || 'State Visit';
+        const svDurLabel = STATE_VISIT_DURATIONS[pd.duration]?.label || 'Moderate';
+        const delLabel = STATE_VISIT_DELEGATIONS[pd.delegation_size]?.label || 'Standard (8)';
+        const agenda = pd.agenda || [];
+        const computedEffects = pd.computed_effects || {};
+
+        // Visit configuration tags
+        html += '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;">';
+        html += '<span class="sv-effect-tag sv-effect-tag--info">' + escapeHtml(vtLabel) + '</span>';
+        html += '<span class="sv-effect-tag sv-effect-tag--info">' + escapeHtml(svDurLabel) + '</span>';
+        html += '<span class="sv-effect-tag sv-effect-tag--info">' + escapeHtml(delLabel) + '</span>';
+        if (pd.visitor_leader) html += '<span class="sv-effect-tag sv-effect-tag--info">Led by ' + escapeHtml(pd.visitor_leader) + '</span>';
+        html += '</div>';
+
+        // Agenda items
+        if (agenda.length > 0) {
+            html += '<div class="sv-summary-section">';
+            html += '<div class="sv-summary-section-label">Agenda (' + agenda.length + ' items)</div>';
+            for (const key of agenda) {
+                const item = STATE_VISIT_AGENDA_ITEMS.find(a => a.key === key);
+                if (!item) continue;
+                html += '<div style="font-size:11px;padding:5px 0;border-bottom:1px solid var(--border-subtle);display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">';
+                html += '<div style="min-width:0;"><span style="color:var(--text-dim);font-size:10px;">Day ' + item.day + ' &middot; ' + escapeHtml(item.slot) + '</span><br><span style="color:var(--text-primary);">' + escapeHtml(item.title) + '</span>';
+                html += '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">' + escapeHtml(item.desc) + '</div></div>';
+                // Effect tags
+                const effTags = [];
+                if (item.effects) {
+                    for (const [stat, val] of Object.entries(item.effects)) {
+                        if (val) effTags.push('<span class="sv-effect-tag sv-effect-tag--positive">+' + val + ' ' + stat.replace(/_/g, ' ') + '</span>');
+                    }
+                }
+                if (item.costs?.debt) effTags.push('<span class="sv-effect-tag sv-effect-tag--cost">$' + (item.costs.debt / 1e6).toFixed(1) + 'M</span>');
+                if (item.risks?.gaffe) effTags.push('<span class="sv-effect-tag sv-effect-tag--risk">' + Math.round(item.risks.gaffe * 100) + '% gaffe</span>');
+                if (item.risks?.hostiles_alarmed) effTags.push('<span class="sv-effect-tag sv-effect-tag--risk">hostiles alarmed</span>');
+                if (effTags.length) html += '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;flex-shrink:0;">' + effTags.join('') + '</div>';
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+
+        // Projected total effects
+        const effectEntries = Object.entries(computedEffects).filter(([, v]) => v !== 0);
+        if (effectEntries.length > 0) {
+            html += '<div class="sv-summary-section">';
+            html += '<div class="sv-summary-section-label">Projected Effects</div>';
+            html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+            for (const [stat, val] of effectEntries) {
+                const sign = val > 0 ? '+' : '';
+                const color = val > 0 ? '#4caf50' : '#f44';
+                html += '<span class="sv-effect-tag" style="border-color:' + color + '44;color:' + color + ';">' + sign + val + ' ' + escapeHtml(stat.replace(/_/g, ' ')) + '</span>';
+            }
+            html += '</div></div>';
+        }
+
+        // Budget cost
+        if (pd.total_debt && pd.total_debt > 0) {
+            html += '<div class="sv-summary-section">';
+            html += '<div class="sv-summary-section-label">Embassy Budget Cost</div>';
+            html += '<div class="sv-stat-row"><span class="sv-stat-label">Total Cost</span><span class="sv-stat-value sv-stat-value--negative">$' + (pd.total_debt / 1e6).toFixed(1) + 'M</span></div>';
+            html += '</div>';
+        }
+
+        // Risks
+        if (pd.risks && pd.risks.length > 0) {
+            html += '<div class="sv-summary-section">';
+            html += '<div class="sv-summary-section-label">Risks</div>';
+            html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+            for (const r of pd.risks) {
+                if (r.chance) html += '<span class="sv-effect-tag sv-effect-tag--risk">' + escapeHtml(r.source) + ': ' + Math.round(r.chance * 100) + '% ' + escapeHtml(r.key) + '</span>';
+                if (r.flag) html += '<span class="sv-effect-tag sv-effect-tag--risk">' + escapeHtml(r.source) + ': ' + escapeHtml(r.key) + '</span>';
+            }
+            html += '</div></div>';
+        }
+
+        // Special flags
+        if (pd.is_first || pd.is_target_autocracy) {
+            html += '<div class="sv-summary-section">';
+            if (pd.is_first) html += '<div style="color:#FFD700;font-size:11px;margin-bottom:4px;">&#9733; First-ever visit between these nations — bonus stability!</div>';
+            if (pd.is_target_autocracy) html += '<div style="color:#f97316;font-size:11px;">&#9888; Autocracy domestic risk: 1D12 dice roll on visitor\'s gov approval</div>';
+            html += '</div>';
+        }
+    }
+
     // Articles
     if (articles.length > 0) {
         html += '<div class="sv-summary-section"><div class="sv-summary-section-label">Articles</div>';
