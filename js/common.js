@@ -374,7 +374,8 @@ export function renderNavTabs(activeTab) {
             badgeHtml = '<span class="nav-badge" id="bills-badge" style="display:none;"></span>';
         }
         if (tab.id === 'diplomacy') {
-            badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>';
+            badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>'
+                      + '<span class="nav-badge nav-badge--amber" id="diplomacy-awaiting-badge" style="display:none;"></span>';
         }
         if (tab.id === 'events') {
             badgeHtml = '<span class="nav-badge" id="civic-badge" style="display:none;"></span>';
@@ -469,6 +470,50 @@ async function updateDiplomacyBadge(faction, nation) {
         }
     } catch (e) {
         console.error('Error updating diplomacy badge:', e);
+    }
+}
+
+
+// ===== DIPLOMACY AWAITING BADGE (outgoing proposals awaiting other side) =====
+
+async function updateDiplomacyAwaitingBadge(faction, nation) {
+    const badge = document.getElementById('diplomacy-awaiting-badge');
+    if (!badge || !faction || !nation) return;
+    try {
+        // Count outgoing diplomatic proposals awaiting the other nation's response
+        const { data: proposals } = await _supabase
+            .from('diplomatic_proposals')
+            .select('status, proposing_nation_id, target_nation_id, proposal_data')
+            .in('status', ['proposed', 'revised'])
+            .or('proposing_nation_id.eq.' + nation.id + ',target_nation_id.eq.' + nation.id);
+
+        let count = 0;
+        for (const p of (proposals || [])) {
+            const isOutgoing = p.proposing_nation_id === nation.id;
+            const isIncoming = p.target_nation_id === nation.id;
+            const isRevised = p.status === 'revised';
+            const pd = p.proposal_data || {};
+            const revisedByUs = isRevised && (pd.revised_by_nation_id ? pd.revised_by_nation_id === nation.id : !isIncoming);
+            // Awaiting = we proposed and they haven't responded, or we revised and it's their turn
+            if ((p.status === 'proposed' && isOutgoing) || (isRevised && revisedByUs)) count++;
+        }
+
+        // Also count trade negotiations we initiated that are still open
+        const { data: tradeNegs } = await _supabase
+            .from('trade_negotiations')
+            .select('initiated_by_nation, status')
+            .eq('status', 'open')
+            .eq('initiated_by_nation', nation.id);
+        count += (tradeNegs || []).length;
+
+        if (count > 0) {
+            badge.textContent = count;
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Error updating diplomacy awaiting badge:', e);
     }
 }
 
@@ -820,6 +865,8 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (activeTab !== 'diplomacy') {
         updateDiplomacyBadge(state.faction, state.nation);
     }
+    // Update diplomacy awaiting badge (always, shows count of outgoing proposals awaiting response)
+    updateDiplomacyAwaitingBadge(state.faction, state.nation);
     // Update CIVIC badge (non-blocking, skip on events page since it marks seen)
     if (activeTab !== 'events') {
         updateCivicBadge(state.faction, state.nation);
