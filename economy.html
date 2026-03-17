@@ -607,6 +607,10 @@ async function submitTaxBill(nation) {
     if (changedKeys.length === 0) return;
 
     var apCost = GAME_CONFIG.DRAFT_BILL_AP_COST || 2;
+    // Leader trait: policy_wonk → -1 AP for drafting bills
+    if (currentFaction && (currentFaction.leader_positive_traits || []).includes('policy_wonk')) apCost = Math.max(1, apCost - 1);
+    // Leader trait: micromanager → +1 AP for all actions
+    if (currentFaction && (currentFaction.leader_negative_traits || []).includes('micromanager')) apCost += 1;
     var isAutocracyGov = isAutocracy(nation);
     var termBill = isAutocracyGov ? 'decree' : 'bill';
 
@@ -1378,6 +1382,8 @@ function renderTaxationTab(nation) {
     var hasAuthority = mySeats >= 1 || isAutoRuler || isInGovt;
     var canSubmit = hasAuthority && hasChanges;
     var apCost = GAME_CONFIG.DRAFT_BILL_AP_COST || 2;
+    if (currentFaction && (currentFaction.leader_positive_traits || []).includes('policy_wonk')) apCost = Math.max(1, apCost - 1);
+    if (currentFaction && (currentFaction.leader_negative_traits || []).includes('micromanager')) apCost += 1;
     var hasAp = currentFaction ? (currentFaction.action_points || 0) >= apCost : false;
     var btnDisabled = !(canSubmit && hasAp);
     var termBill = isAutocracy(nation) ? 'Decree' : 'Bill';

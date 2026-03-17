@@ -112,6 +112,155 @@ CONTRADICTION_PAIRS.forEach(([a, b]) => {
 export { POSITIVE_MAP, NEGATIVE_MAP };
 
 // ═══════════════════════════════════════
+//  Trait Helper Functions
+// ═══════════════════════════════════════
+
+/**
+ * Check if a faction's leader has a specific positive or negative trait.
+ * @param {object} faction - Faction row with leader_positive_traits / leader_negative_traits
+ * @param {string} traitKey - The trait key to check
+ * @returns {boolean}
+ */
+export function hasLeaderTrait(faction, traitKey) {
+    return (faction.leader_positive_traits || []).includes(traitKey)
+        || (faction.leader_negative_traits || []).includes(traitKey);
+}
+
+/**
+ * Compute the net AP cost modifier for a campaign action based on leader traits.
+ *
+ * @param {string} actionType - 'rally' | 'outreach' | 'attack' | 'promise' | 'draft_bill' | 'executive_order'
+ * @param {object} faction - Faction row with leader_positive_traits, leader_negative_traits, last_action_tick
+ * @param {number} currentTick - Current game tick
+ * @returns {number} Net AP adjustment (negative = cheaper, positive = more expensive). Final cost should be Math.max(1, base + modifier).
+ */
+export function getTraitAPModifier(actionType, faction, currentTick) {
+    const pos = faction.leader_positive_traits || [];
+    const neg = faction.leader_negative_traits || [];
+    let mod = 0;
+
+    // efficient_operator: All campaign actions cost -1 AP
+    if (pos.includes('efficient_operator') && ['rally', 'outreach', 'attack', 'promise'].includes(actionType)) {
+        mod -= 1;
+    }
+
+    // micromanager: All actions cost +1 AP
+    if (neg.includes('micromanager')) {
+        mod += 1;
+    }
+
+    // quick_study: First action each tick costs -1 AP
+    if (pos.includes('quick_study') && (faction.last_action_tick || 0) < currentTick) {
+        mod -= 1;
+    }
+
+    // slow_to_act: First action each tick costs +1 AP
+    if (neg.includes('slow_to_act') && (faction.last_action_tick || 0) < currentTick) {
+        mod += 1;
+    }
+
+    // delegation: Outreach and Rally cost -1 AP each
+    if (pos.includes('delegation') && ['rally', 'outreach'].includes(actionType)) {
+        mod -= 1;
+    }
+
+    // high_maintenance: Outreach and Rally cost +1 AP each
+    if (neg.includes('high_maintenance') && ['rally', 'outreach'].includes(actionType)) {
+        mod += 1;
+    }
+
+    // divisive_figure: Outreach costs +1 AP
+    if (neg.includes('divisive_figure') && actionType === 'outreach') {
+        mod += 1;
+    }
+
+    // policy_wonk: Draft bill costs -1 AP
+    if (pos.includes('policy_wonk') && actionType === 'draft_bill') {
+        mod -= 1;
+    }
+
+    // executive_authority: Executive Orders cost -2 AP (presidential)
+    if (pos.includes('executive_authority') && actionType === 'executive_order') {
+        mod -= 2;
+    }
+
+    // overreach (trait): Executive Orders cost +2 AP
+    if (neg.includes('overreach') && actionType === 'executive_order') {
+        mod += 2;
+    }
+
+    return mod;
+}
+
+/**
+ * Modify rally outcome weights based on leader traits.
+ * Mutates the weights object in place.
+ * @param {object} weights - { rousing, solid, low, gaffe, divisive, counter }
+ * @param {object} faction - Faction row with leader_positive_traits, leader_negative_traits
+ */
+export function applyRallyTraitModifiers(weights, faction) {
+    const pos = faction.leader_positive_traits || [];
+    const neg = faction.leader_negative_traits || [];
+
+    // crowd_pleaser: Rally turnout +8% → boost rousing and solid weights
+    if (pos.includes('crowd_pleaser')) {
+        weights.rousing += 8;
+        weights.solid += 4;
+    }
+
+    // wooden_speaker: Rally turnout -5%, message -30% → worse outcomes
+    if (neg.includes('wooden_speaker')) {
+        weights.gaffe += 5;
+        weights.rousing -= 8;
+        weights.low += 5;
+    }
+}
+
+/**
+ * Compute the approval multiplier for outreach/rally gains based on leader traits.
+ * @param {object} faction - Faction row with leader_positive_traits, leader_negative_traits
+ * @param {string} actionType - 'rally' | 'outreach'
+ * @param {string} blocDisposition - 'BASE' | 'LEAN' | 'SWING' | 'SKEPTICAL' | 'HOSTILE'
+ * @returns {number} Multiplier to apply to approval gain (e.g. 1.3 for telegenic, 0.5 for divisive_figure non-BASE)
+ */
+export function getTraitApprovalMultiplier(faction, actionType, blocDisposition) {
+    const pos = faction.leader_positive_traits || [];
+    const neg = faction.leader_negative_traits || [];
+    let mult = 1.0;
+
+    // telegenic: Campaign message effectiveness +30%
+    if (pos.includes('telegenic') && ['rally', 'outreach'].includes(actionType)) {
+        mult *= 1.3;
+    }
+
+    // divisive_figure: Outreach approval gains with non-BASE blocs halved
+    if (neg.includes('divisive_figure') && actionType === 'outreach' && blocDisposition !== 'BASE') {
+        mult *= 0.5;
+    }
+
+    return mult;
+}
+
+/**
+ * Get the effective bloc disposition after applying leader traits.
+ * populist_touch: SKEPTICAL → SWING
+ * elitist: SKEPTICAL → HOSTILE
+ * @param {string} disposition - Original disposition
+ * @param {object} faction - Faction row with leader_positive_traits, leader_negative_traits
+ * @returns {string} Effective disposition
+ */
+export function getEffectiveBlocDisposition(disposition, faction) {
+    const pos = faction.leader_positive_traits || [];
+    const neg = faction.leader_negative_traits || [];
+
+    if (disposition === 'SKEPTICAL') {
+        if (pos.includes('populist_touch')) return 'SWING';
+        if (neg.includes('elitist')) return 'HOSTILE';
+    }
+    return disposition;
+}
+
+// ═══════════════════════════════════════
 //  Ideology Colors
 // ═══════════════════════════════════════
 export const IDEOLOGY_COLORS = {

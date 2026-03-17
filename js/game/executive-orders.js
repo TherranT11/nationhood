@@ -17,6 +17,7 @@ import { MINISTER_APPROVAL_CONFIG } from './stats.js';
 import { isGovernmentPresidential } from './government-types.js';
 import { adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
 import { getNationNames } from './political-actions.js';
+import { getTraitAPModifier } from './party-leadership.js';
 
 // ─── Executive Order Config Constants ───
 
@@ -79,6 +80,20 @@ function randomMinisterName(nationName = '') {
     const first = firstNames[Math.floor(Math.random() * firstNames.length)];
     const last = lastNames[Math.floor(Math.random() * lastNames.length)];
     return { first, last };
+}
+
+/**
+ * Get the executive order AP modifier from leader traits.
+ * Returns a number to add to the base AP cost.
+ */
+async function getEOTraitAPModifier(supabase, factionId) {
+    const { data: faction } = await supabase
+        .from('factions')
+        .select('leader_positive_traits, leader_negative_traits, last_action_tick')
+        .eq('id', factionId)
+        .single();
+    if (!faction) return 0;
+    return getTraitAPModifier('executive_order', faction, 0); // tick irrelevant for EO traits
 }
 
 async function getCurrentTick(supabase) {
@@ -144,8 +159,10 @@ export async function issueActingMinister(supabase, nationId, factionId, ministr
         return { success: false, error: 'This ministry already has a confirmed minister.' };
     }
 
-    // Deduct AP
-    const apResult = await deductAP(supabase, factionId, EO_CONFIG.ACTING_MINISTER_AP);
+    // Deduct AP (with leader trait modifier)
+    const eoMod = await getEOTraitAPModifier(supabase, factionId);
+    const effectiveEOCost = Math.max(1, EO_CONFIG.ACTING_MINISTER_AP + eoMod);
+    const apResult = await deductAP(supabase, factionId, effectiveEOCost);
     if (!apResult.success) return apResult;
 
     // Generate name
@@ -233,7 +250,9 @@ export async function issueTaxAdjustment(supabase, nationId, factionId, taxType,
         .eq('order_type', 'tax_adjustment')
         .contains('payload', { tax_type: taxType });
 
-    const apCost = Math.min(EO_CONFIG.TAX_ADJUSTMENT_BASE_AP + (totalPriorUses || 0), EO_CONFIG.TAX_ADJUSTMENT_MAX_AP);
+    const baseApCost = Math.min(EO_CONFIG.TAX_ADJUSTMENT_BASE_AP + (totalPriorUses || 0), EO_CONFIG.TAX_ADJUSTMENT_MAX_AP);
+    const eoMod = await getEOTraitAPModifier(supabase, factionId);
+    const apCost = Math.max(1, baseApCost + eoMod);
 
     // Deduct AP
     const apResult = await deductAP(supabase, factionId, apCost);
@@ -302,8 +321,10 @@ export async function issuePriceControls(supabase, nationId, factionId, stat) {
         return { success: false, error: `Price controls for ${stat.replace('_', ' ')} on cooldown.` };
     }
 
-    // Deduct AP
-    const apResult = await deductAP(supabase, factionId, EO_CONFIG.PRICE_CONTROLS_AP);
+    // Deduct AP (with leader trait modifier)
+    const eoModPC = await getEOTraitAPModifier(supabase, factionId);
+    const effectivePCCost = Math.max(1, EO_CONFIG.PRICE_CONTROLS_AP + eoModPC);
+    const apResult = await deductAP(supabase, factionId, effectivePCCost);
     if (!apResult.success) return apResult;
 
     // Read current value
@@ -371,8 +392,10 @@ export async function issueNationalEmergency(supabase, nationId, factionId) {
         return { success: false, error: 'A national emergency is already in effect.' };
     }
 
-    // Deduct AP
-    const apResult = await deductAP(supabase, factionId, EO_CONFIG.NATIONAL_EMERGENCY_AP);
+    // Deduct AP (with leader trait modifier)
+    const eoModNE = await getEOTraitAPModifier(supabase, factionId);
+    const effectiveNECost = Math.max(1, EO_CONFIG.NATIONAL_EMERGENCY_AP + eoModNE);
+    const apResult = await deductAP(supabase, factionId, effectiveNECost);
     if (!apResult.success) return apResult;
 
     // Insert executive order (no auto-expire)
@@ -469,8 +492,10 @@ export async function issueCensure(supabase, nationId, factionId, targetFactionI
         return { success: false, error: 'Target faction not found in this nation.' };
     }
 
-    // Deduct AP
-    const apResult = await deductAP(supabase, factionId, EO_CONFIG.CENSURE_AP);
+    // Deduct AP (with leader trait modifier)
+    const eoModC = await getEOTraitAPModifier(supabase, factionId);
+    const effectiveCensureCost = Math.max(1, EO_CONFIG.CENSURE_AP + eoModC);
+    const apResult = await deductAP(supabase, factionId, effectiveCensureCost);
     if (!apResult.success) return apResult;
 
     // Check for repeat censure against same target

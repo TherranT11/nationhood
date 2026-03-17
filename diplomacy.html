@@ -7867,8 +7867,14 @@ function computeStateVisitEffects(state, ctx) {
         effects[stat] = Math.round(val * mult);
     }
 
-    const totalAp = Math.max(1, DIPLOMACY_CONFIG.STATE_VISIT_AP + dur.apCost + (vt.apMod || 0));
+    let totalAp = Math.max(1, DIPLOMACY_CONFIG.STATE_VISIT_AP + dur.apCost + (vt.apMod || 0));
     const totalDebt = del.debt + agendaDebt;
+
+    // Leader trait: statesman → state visits cost -2 AP, double relations boost
+    if (currentFaction && (currentFaction.leader_positive_traits || []).includes('statesman')) {
+        totalAp = Math.max(1, totalAp - 2);
+        if (effects.relations) effects.relations *= 2;
+    }
 
     return { effects, totalAp, totalDebt, risks, unlocks };
 }
@@ -7878,6 +7884,13 @@ async function renderStateVisitDraftPanel(body, statusEl) {
         body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Select a nation first.</div></div>';
         return;
     }
+
+    // Leader trait: isolationist → cannot initiate state visits
+    if (currentFaction && (currentFaction.leader_negative_traits || []).includes('isolationist')) {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Your party leader\'s Isolationist trait prevents initiating state visits.</div></div>';
+        return;
+    }
+
     if (statusEl) statusEl.textContent = 'Drafting';
 
     const targetNation = selectedTargetNation;
