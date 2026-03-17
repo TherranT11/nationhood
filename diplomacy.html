@@ -883,7 +883,7 @@ async function renderAgreementsTab() {
             html += `
                 <div class="agreement-card"${isExpiredOrWithdrawn ? ' style="opacity:0.7;border-left:3px solid var(--amber);"' : ''}>
                     <div class="agreement-card-header">
-                        <div class="agreement-card-name">${ag.proposal_type === 'state_visit' ? escapeHtml((pd.visitor_leader ? pd.visitor_leader + ' — ' : '') + 'State Visit ' + (currentNation && currentNation.name === pd.visitor_nation ? 'to ' + (pd.host_nation || targetName) : 'from ' + (pd.visitor_nation || proposerName))) : escapeHtml(pd.name || 'Unnamed Agreement')}</div>
+                        <div class="agreement-card-name">${ag.proposal_type === 'state_visit' ? escapeHtml(stateVisitLabel(pd, proposerName, targetName)) : escapeHtml(pd.name || 'Unnamed Agreement')}</div>
                         <div class="agreement-card-badges">
                             ${classBadge}
                             ${withdrawHTML}
@@ -1801,7 +1801,7 @@ function renderStateVisitInboxCard(p, pd) {
     return `
         <div class="inbox-card ${needsOurAction && !expired ? 'requires-action' : ''}">
             <div class="inbox-card-header">
-                <div class="inbox-card-name">${escapeHtml(pd.visitor_leader ? pd.visitor_leader + ' — ' : '')}State Visit ${currentNation && currentNation.name === pd.visitor_nation ? 'to ' + escapeHtml(pd.host_nation || 'Unknown') : 'from ' + escapeHtml(pd.visitor_nation || 'Unknown')}</div>
+                <div class="inbox-card-name">${escapeHtml(stateVisitLabel(pd))}</div>
                 <div class="inbox-card-badges">
                     ${typeBadge}
                     ${statusBadge}
@@ -5165,7 +5165,7 @@ async function viewActiveAgreement(agreementId) {
                     ${FLAG_URLS[targetName] ? '<img src="' + FLAG_URLS[targetName] + '" alt="' + escapeHtml(targetName) + '" style="width:30px;height:20px;object-fit:cover;border:1px solid rgba(255,255,255,0.08);border-radius:2px;">' : ''}
                 </div>
                 <div style="min-width:0;">
-                    <div style="font-size:0.95rem;font-weight:bold;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${isStateVisit ? escapeHtml((pd.visitor_leader ? pd.visitor_leader + ' — ' : '') + 'State Visit ' + (currentNation && currentNation.name === pd.visitor_nation ? 'to ' + (pd.host_nation || targetName) : 'from ' + (pd.visitor_nation || proposerName))) : escapeHtml(pd.name || 'Unnamed Agreement')}</div>
+                    <div style="font-size:0.95rem;font-weight:bold;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${isStateVisit ? escapeHtml(stateVisitLabel(pd, proposerName, targetName)) : escapeHtml(pd.name || 'Unnamed Agreement')}</div>
                     <div style="font-size:0.7rem;color:var(--text-muted);">
                         ${escapeHtml(pd.visitor_nation || proposerName)} ${isStateVisit ? '&rarr;' : '&amp;'} ${escapeHtml(pd.host_nation || targetName)}
                         ${classification ? ' · ' + escapeHtml(classification) : ''}
@@ -7927,6 +7927,25 @@ async function strikeTradeArticles(proposalId) {
 
 // ==================== STATE VISIT ====================
 
+/**
+ * Build a directional state visit label, e.g.
+ *   "John Smith — State Visit to Avelia"   (for the visiting nation)
+ *   "John Smith — State Visit from Sangreza" (for the host nation)
+ *
+ * @param {Object} pd           proposal_data
+ * @param {string} [fallbackFrom] fallback name for visitor nation
+ * @param {string} [fallbackTo]   fallback name for host nation
+ * @returns {string} plain-text label (NOT html-escaped)
+ */
+function stateVisitLabel(pd, fallbackFrom, fallbackTo) {
+    const leader = pd.visitor_leader ? pd.visitor_leader + ' \u2014 ' : '';
+    const isVisitor = currentNation && currentNation.name === pd.visitor_nation;
+    const other = isVisitor
+        ? 'to ' + (pd.host_nation || fallbackTo || 'Unknown')
+        : 'from ' + (pd.visitor_nation || fallbackFrom || 'Unknown');
+    return leader + 'State Visit ' + other;
+}
+
 // ── State Visit Draft Panel State ──
 let svState = null;
 let svContext = null;
@@ -9537,7 +9556,7 @@ function renderStateVisitNegDetail(p, pd, needsOurAction) {
     const expired = deadlineTick != null && shardTick > deadlineTick;
 
     let html = '<div class="neg-detail-header">';
-    html += '<div class="neg-detail-title">' + escapeHtml((pd.visitor_leader ? pd.visitor_leader + ' — ' : '') + 'State Visit ' + (currentNation && currentNation.name === pd.visitor_nation ? 'to ' + (pd.host_nation || 'Unknown') : 'from ' + (pd.visitor_nation || 'Unknown'))) + '</div>';
+    html += '<div class="neg-detail-title">' + escapeHtml(stateVisitLabel(pd)) + '</div>';
     html += '<span class="badge badge--dim" style="background:#5c3a1a;color:#FFD700;">STATE VISIT</span>';
     html += '</div>';
 
