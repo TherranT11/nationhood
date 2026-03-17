@@ -4789,11 +4789,10 @@ export async function processEvents(supabase, nation, currentTick) {
  * - Effects cascade: nation stats, government/coalition approval, minister approval
  */
 export async function processCrises(supabase, nation, currentTick) {
-    // 1. Load all active crisis templates
+    // 1. Load all crisis templates (including is_active=false for programmatic crises like Sovereign Debt/Default)
     const { data: crisisTemplates } = await supabase
         .from('crisis_templates')
-        .select('*, crisis_triggers(*), crisis_effects(*), crisis_end_triggers(*)')
-        .eq('is_active', true);
+        .select('*, crisis_triggers(*), crisis_effects(*), crisis_end_triggers(*)');
 
     if (!crisisTemplates || crisisTemplates.length === 0) return [];
 
@@ -4823,9 +4822,10 @@ export async function processCrises(supabase, nation, currentTick) {
         return getInstFundingPct(_fundingMap, instId);
     }
 
-    // 3. Check inactive crises for activation
+    // 3. Check inactive crises for activation (skip programmatic crises with is_active=false)
     for (const template of crisisTemplates) {
         if (activeMap[template.id]) continue; // already active
+        if (!template.is_active) continue; // programmatic crises are activated elsewhere, not by stat triggers
 
         let allTriggersMet = false;
 
