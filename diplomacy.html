@@ -67,6 +67,8 @@
             </div>
         </div>
     </div>
+    <!-- ═══ World Nations View (hidden by default) ═══ -->
+    <div id="world-nations-view" class="wn-grid wn-grid--hidden"></div>
 </div>
 
 <!-- Shared Scripts -->
@@ -151,6 +153,10 @@ let appointCandidates = [];
 let appointSelectedIndex = null;
 let appointTargetRelation = null;
 let appointCachedExistingAmbs = null; // cache of existing ambassadors for filtering
+
+// World Nations view state
+let currentDiploView = 'diplomacy';
+let worldNationsLoaded = false;
 
 // Legacy INITIATIVE_TYPES kept for backward compat with existing proposals.
 // New proposals use INITIATIVE_ARTICLE_TYPES from diplomacy-constants.js.
@@ -384,6 +390,250 @@ function hasAnyDiplomaticRole() {
     );
 }
 
+// ==================== VIEW TOGGLE ====================
+
+function switchDiploView(view) {
+    if (view === currentDiploView) return;
+    currentDiploView = view;
+
+    const dashboard = document.querySelector('.dashboard');
+    const wnView = document.getElementById('world-nations-view');
+    const btns = document.querySelectorAll('.diplo-view-btn');
+
+    if (view === 'nations') {
+        dashboard.style.display = 'none';
+        wnView.classList.remove('wn-grid--hidden');
+        if (!worldNationsLoaded) {
+            worldNationsLoaded = true;
+            renderWorldNations();
+        }
+    } else {
+        dashboard.style.display = '';
+        wnView.classList.add('wn-grid--hidden');
+    }
+
+    btns.forEach(btn => {
+        btn.classList.toggle('is-active', btn.dataset.view === view);
+    });
+}
+window.switchDiploView = switchDiploView;
+
+// ==================== WORLD NATIONS RENDER ====================
+
+const WN_FALLBACK_COLORS = ['#5b9bd5','#d48a3c','#5aafa5','#8b7ec8','#5cb85c','#d9534f','#c8a64e'];
+const WN_IDEOLOGY_COLORS = {
+    'Liberty':'#3b82f6','Equality':'#ef4444','Tradition':'#a855f7','Progress':'#22c55e',
+    'Security':'#f59e0b','Freedom':'#06b6d4','Globalism':'#14b8a6','Nationalism':'#f97316',
+    'Individualism':'#eab308','Collectivism':'#ec4899'
+};
+
+function wnGetGovClass(govType) {
+    if (govType === 'Autocracy') return 'wn-card__gov--autocracy';
+    if (govType === 'Presidential') return 'wn-card__gov--presidential';
+    return 'wn-card__gov--parliamentary';
+}
+function wnGetGovLabel(govType) {
+    if (govType === 'Autocracy') return 'AUTOCRACY';
+    if (govType === 'Presidential') return 'PRESIDENTIAL';
+    return 'PARLIAMENTARY';
+}
+
+function wnGetIdeologyLabel(p) {
+    if (p.ideology_value_1 && p.ideology_value_2) return p.ideology_value_1 + ', ' + p.ideology_value_2;
+    return '';
+}
+
+function wnColorizeIdeology(text) {
+    if (!text) return '';
+    return text.split(', ').map(w => {
+        const c = WN_IDEOLOGY_COLORS[w];
+        return c ? '<span style="color:' + c + '">' + escapeHtml(w) + '</span>' : escapeHtml(w);
+    }).join('<span style="color:var(--text-dim)">, </span>');
+}
+
+async function renderWorldNations() {
+    const grid = document.getElementById('world-nations-view');
+    if (!grid) return;
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-text">Loading nations...</div></div>';
+
+    if (!currentNation) {
+        grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-text">No nation data available.</div></div>';
+        return;
+    }
+
+    try {
+        const [nationsRes, factionsRes, crisesRes, relationsRes, ambassadorsRes, theirAmbassadorsRes] = await Promise.all([
+            _supabase.from('nations').select('*').order('name'),
+            _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, seats, nation_id, party_color, ideology_value_1, ideology_value_2').eq('faction_type', 'party'),
+            _supabase.from('active_crises').select('nation_id, crisis_id, crisis_templates(name)'),
+            _supabase.from('diplomatic_relations').select('*')
+                .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id),
+            _supabase.from('ambassadors').select('target_nation_id')
+                .eq('nation_id', currentNation.id).eq('is_active', true).eq('status', 'active'),
+            _supabase.from('ambassadors').select('nation_id')
+                .eq('target_nation_id', currentNation.id).eq('is_active', true).eq('status', 'active')
+        ]);
+
+        if (nationsRes.error) {
+            grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-text">Error loading nations.</div></div>';
+            return;
+        }
+
+        const allNations = (nationsRes.data || []).filter(n => n.id !== currentNation.id);
+        const factions = factionsRes.data || [];
+        const crises = crisesRes.data || [];
+        const relations = relationsRes.data || [];
+        const ourAmbs = ambassadorsRes.data || [];
+        const theirAmbs = theirAmbassadorsRes.data || [];
+
+        // Index data by nation
+        const factionsByNation = {};
+        for (const f of factions) {
+            if (!factionsByNation[f.nation_id]) factionsByNation[f.nation_id] = [];
+            factionsByNation[f.nation_id].push(f);
+        }
+        const crisesByNation = {};
+        for (const c of crises) {
+            if (!crisesByNation[c.nation_id]) crisesByNation[c.nation_id] = [];
+            crisesByNation[c.nation_id].push(c);
+        }
+
+        const ourAmbSet = new Set(ourAmbs.map(a => a.target_nation_id));
+        const theirAmbSet = new Set(theirAmbs.map(a => a.nation_id));
+
+        if (allNations.length === 0) {
+            grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-text">No other nations found.</div></div>';
+            return;
+        }
+
+        let html = '';
+        for (const nation of allNations) {
+            const nFactions = (factionsByNation[nation.id] || []).sort((a, b) => (b.seats || 0) - (a.seats || 0));
+            const nCrises = crisesByNation[nation.id] || [];
+            const totalSeats = nation.total_seats || 100;
+
+            // Relation
+            const rel = relations.find(r =>
+                (r.nation_a_id === currentNation.id && r.nation_b_id === nation.id) ||
+                (r.nation_a_id === nation.id && r.nation_b_id === currentNation.id)
+            );
+            const score = rel?.relation_score ?? 35;
+            const tier = getRelationTier(score, false);
+            const dotColor = tierToDotColor(tier);
+            const pillClass = tierToPillClass(tier);
+
+            // Embassy
+            const hasOurAmb = ourAmbSet.has(nation.id);
+            const hasTheirAmb = theirAmbSet.has(nation.id);
+            let embassyClass = 'wn-embassy-tag--none';
+            let embassyLabel = 'No Embassy';
+            if (hasOurAmb && hasTheirAmb) { embassyClass = 'wn-embassy-tag--open'; embassyLabel = 'Embassy Open'; }
+            else if (hasOurAmb || hasTheirAmb) { embassyClass = 'wn-embassy-tag--closed'; embassyLabel = 'Embassy Closed'; }
+
+            // Gov badge
+            const govClass = wnGetGovClass(nation.government_type);
+            const govLabel = wnGetGovLabel(nation.government_type);
+            const flagUrl = nation.flag_url || '';
+
+            // Head of state
+            const hosName = ((nation.head_of_state_first_name || '') + ' ' + (nation.head_of_state_last_name || '')).trim();
+            const hosTitle = nation.head_of_state_title || (nation.government_type === 'Autocracy' ? 'Ruler' : nation.government_type === 'Presidential' ? 'President' : 'PM');
+
+            // Stats
+            const pop = nation.population ? formatNumber(nation.population) : '—';
+            const gdp = nation.gdp ? fmtBudgetCurrency(nation.gdp) : '—';
+            const unemp = nation.unemployment != null ? nation.unemployment.toFixed(1) + '%' : '—';
+            const stab = nation.stability != null ? Math.round(nation.stability) : '—';
+            const approval = nation.gov_approval != null ? Math.round(nation.gov_approval) + '%' : '—';
+
+            // Seat bar
+            const usedSeats = nFactions.reduce((s, p) => s + (p.seats || 0), 0);
+            const seatSegments = nFactions.filter(p => p.seats > 0).map((p, i) => {
+                const pct = ((p.seats / totalSeats) * 100).toFixed(1);
+                const color = p.party_color || WN_FALLBACK_COLORS[i % WN_FALLBACK_COLORS.length];
+                return '<div class="wn-seat-bar__segment" style="width:' + pct + '%;background:' + color + ';" title="' + escapeHtml(p.faction_name) + ': ' + p.seats + ' seats"></div>';
+            }).join('');
+
+            const seatLegend = nFactions.filter(p => p.seats > 0).map((p, i) => {
+                const color = p.party_color || WN_FALLBACK_COLORS[i % WN_FALLBACK_COLORS.length];
+                return '<span class="wn-seat-legend-item"><span class="wn-seat-legend-dot" style="background:' + color + ';"></span>' + escapeHtml(p.abbreviation || '?') + ' ' + p.seats + '</span>';
+            }).join('');
+
+            // Party rows
+            const partyRows = nFactions.map((p, i) => {
+                const color = p.party_color || WN_FALLBACK_COLORS[i % WN_FALLBACK_COLORS.length];
+                const ideoLabel = wnGetIdeologyLabel(p);
+                return '<div class="wn-party-row">' +
+                    '<span class="wn-party-row__dot" style="background:' + color + ';"></span>' +
+                    '<span class="wn-party-row__name">' + escapeHtml(p.faction_name) + '</span>' +
+                    '<span class="wn-party-row__abbr">' + escapeHtml(p.abbreviation || '?') + '</span>' +
+                    (ideoLabel ? '<span class="wn-party-row__ideo">' + wnColorizeIdeology(ideoLabel) + '</span>' : '') +
+                    '<span class="wn-party-row__seats">' + (p.seats || 0) + '</span>' +
+                '</div>';
+            }).join('');
+
+            // Crisis rows
+            const crisisRows = nCrises.length > 0
+                ? nCrises.map(c => '<div class="wn-crisis-row"><span class="wn-crisis-pip"></span><span class="wn-crisis-name">' + escapeHtml(c.crisis_templates?.name || 'Unknown Crisis') + '</span></div>').join('')
+                : '<div class="wn-no-crisis">No active crises</div>';
+
+            // Stability color
+            const stabNum = nation.stability != null ? nation.stability : 50;
+            const stabColor = stabNum >= 60 ? 'var(--green)' : stabNum >= 40 ? 'var(--amber)' : 'var(--red)';
+
+            html += '<div class="wn-card">' +
+                // Header
+                '<div class="wn-card__header">' +
+                    (flagUrl ? '<img class="wn-card__flag" src="' + flagUrl + '" alt="' + escapeHtml(nation.name) + '">' : '') +
+                    '<span class="wn-card__name">' + escapeHtml(nation.name) + '</span>' +
+                    '<span class="wn-card__gov ' + govClass + '">' + govLabel + '</span>' +
+                '</div>' +
+                // Body
+                '<div class="wn-card__body">' +
+                    (hosName ? '<div class="wn-stat-row"><span class="wn-stat-row__label">' + escapeHtml(hosTitle) + '</span><span class="wn-stat-row__value">' + escapeHtml(hosName) + '</span></div>' : '') +
+                    '<div class="wn-stat-row"><span class="wn-stat-row__label">Population</span><span class="wn-stat-row__value">' + pop + '</span></div>' +
+                    '<div class="wn-stat-row"><span class="wn-stat-row__label">GDP</span><span class="wn-stat-row__value">' + gdp + '</span></div>' +
+                    '<div class="wn-stat-row"><span class="wn-stat-row__label">Unemployment</span><span class="wn-stat-row__value">' + unemp + '</span></div>' +
+                    '<div class="wn-stat-row"><span class="wn-stat-row__label">Stability</span><span class="wn-stat-row__value" style="color:' + stabColor + '">' + stab + '</span></div>' +
+                    '<div class="wn-stat-row"><span class="wn-stat-row__label">Gov. Approval</span><span class="wn-stat-row__value">' + approval + '</span></div>' +
+                    // Seat bar
+                    (nFactions.some(p => p.seats > 0) ?
+                        '<div class="wn-seat-bar">' +
+                            '<div class="wn-seat-bar__label">Seat Distribution</div>' +
+                            '<div class="wn-seat-bar__track">' + seatSegments + (usedSeats < totalSeats ? '<div class="wn-seat-bar__empty"></div>' : '') + '</div>' +
+                            '<div class="wn-seat-bar__legend">' + seatLegend + '</div>' +
+                        '</div>'
+                    : '') +
+                    // Party list
+                    (nFactions.length > 0 ?
+                        '<div class="wn-party-list">' +
+                            '<div class="wn-party-list__header">Factions &mdash; ' + nFactions.length + '</div>' +
+                            partyRows +
+                        '</div>'
+                    : '') +
+                    // Crises
+                    '<div class="wn-crisis-section">' +
+                        '<div class="wn-party-list__header">Active Crises</div>' +
+                        crisisRows +
+                    '</div>' +
+                '</div>' +
+                // Footer — relation
+                '<div class="wn-card__footer">' +
+                    '<span class="wn-relation-dot" style="background:' + dotColor + '"></span>' +
+                    '<span class="wn-relation-label pill ' + pillClass + '">' + tier.label + '</span>' +
+                    '<span class="wn-relation-score">(' + score + ')</span>' +
+                    '<span class="wn-embassy-tag ' + embassyClass + '">' + embassyLabel + '</span>' +
+                '</div>' +
+            '</div>';
+        }
+
+        grid.innerHTML = html;
+    } catch (err) {
+        console.error('Error rendering world nations:', err);
+        grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-text">Error loading nations.</div></div>';
+    }
+}
+
 // ==================== HEADER PANEL ====================
 
 async function renderDiploHeader() {
@@ -433,6 +683,10 @@ async function renderDiploHeader() {
 
     header.innerHTML = `
         <div class="diplo-header-roles">${roleBadges.join('')}</div>
+        <div class="diplo-view-toggle">
+            <button class="diplo-view-btn ${currentDiploView === 'diplomacy' ? 'is-active' : ''}" data-view="diplomacy" onclick="switchDiploView('diplomacy')">Diplomacy</button>
+            <button class="diplo-view-btn ${currentDiploView === 'nations' ? 'is-active' : ''}" data-view="nations" onclick="switchDiploView('nations')">World Nations</button>
+        </div>
         <div class="diplo-header-stats">
             <span class="diplo-header-stat">${activeCount} Active Agreement${activeCount !== 1 ? 's' : ''}</span>
             <span class="diplo-header-stat">${pendingCount} Pending</span>
