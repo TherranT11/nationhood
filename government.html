@@ -181,6 +181,7 @@ const MINISTRY_ACTIONS = {
 
 // Build the stat_effects array for the tick processor, applying use-count scaling
 function buildStatEffects(action, useCount) {
+    if (!action?.baseEffects) return [];
     const scale = getUseCountScale(useCount);
     return action.baseEffects.map(eff => ({
         stat_key: eff.stat_key,
@@ -2588,7 +2589,7 @@ function ministryActionDeselect(actionId) {
 // after AP changes (avoids full page re-render)
 function refreshMinistryActionStates(ministryKey) {
     const config = MINISTRY_ACTIONS[ministryKey];
-    if (!config) return;
+    if (!config?.actions) return;
     const ap = currentFaction?.action_points || 0;
     config.actions.forEach(action => {
         const countKey = ministryKey + ':' + action.id;

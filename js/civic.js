@@ -28,6 +28,7 @@ const TAG_COLORS = {
     FACTION:   'var(--tag-faction)',
     PARTY:     'var(--tag-party)',
     ECONOMY:   'var(--tag-economy)',
+    INTERIOR:  'var(--tag-interior)',
 };
 
 // SVG icons for action buttons
@@ -866,13 +867,18 @@ function toggleLike(postId) {
             p_shares: post.shares,
         }).then(({ error }) => {
                 if (error) {
-                    // Revert optimistic update and re-render
                     post.likedByPlayer = prevLiked;
                     post.likes = prevLikes;
                     post._rawLikedBy = prevRawLikedBy;
                     const el = document.querySelector(`[data-post-id="${postId}"]`);
                     if (el) { el.outerHTML = renderPost(post); rewirePost(postId); }
                 }
+            }).catch(() => {
+                post.likedByPlayer = prevLiked;
+                post.likes = prevLikes;
+                post._rawLikedBy = prevRawLikedBy;
+                const el = document.querySelector(`[data-post-id="${postId}"]`);
+                if (el) { el.outerHTML = renderPost(post); rewirePost(postId); }
             });
         post._rawLikedBy = newLikedBy;
     } else {
@@ -916,13 +922,18 @@ function toggleShare(postId) {
             p_shares: post.shares,
         }).then(({ error }) => {
                 if (error) {
-                    // Revert optimistic update and re-render
                     post.sharedByPlayer = prevShared;
                     post.shares = prevShares;
                     post._rawSharedBy = prevRawSharedBy;
                     const el = document.querySelector(`[data-post-id="${postId}"]`);
                     if (el) { el.outerHTML = renderPost(post); rewirePost(postId); }
                 }
+            }).catch(() => {
+                post.sharedByPlayer = prevShared;
+                post.shares = prevShares;
+                post._rawSharedBy = prevRawSharedBy;
+                const el = document.querySelector(`[data-post-id="${postId}"]`);
+                if (el) { el.outerHTML = renderPost(post); rewirePost(postId); }
             });
         post._rawSharedBy = newSharedBy;
     } else {
@@ -1028,6 +1039,7 @@ async function submitComment(postId, body) {
 
     try {
         // Materialize system posts into civic_posts so we have a post_id FK
+        let materialized = false;
         if (!post.dbId) {
             const { data: newRow, error: matErr } = await _supabase.from('civic_posts').insert({
                 nation_id: _nationId,
@@ -1047,6 +1059,7 @@ async function submitComment(postId, body) {
                 return;
             }
             post.dbId = newRow.id;
+            materialized = true;
         }
 
         const { error } = await _supabase.from('civic_comments').insert({
@@ -1061,7 +1074,11 @@ async function submitComment(postId, body) {
         });
 
         if (error) {
-            // Restore reply text so user doesn't lose their comment
+            // Clean up orphaned materialized post if comment insert failed
+            if (materialized) {
+                await _supabase.from('civic_posts').delete().eq('id', post.dbId).catch(() => {});
+                post.dbId = null;
+            }
             _replyTexts[postId] = body;
             const ta = document.querySelector(`[data-post-id="${postId}"] .cmt-textarea`);
             if (ta) ta.value = body;
