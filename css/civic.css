@@ -475,6 +475,28 @@ body.light-mode {
     margin-top: 6px;
 }
 
+.civ-delete-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--dtext-3);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.civ-post:hover .civ-delete-btn {
+    opacity: 0.6;
+}
+
+.civ-delete-btn:hover {
+    opacity: 1 !important;
+    color: var(--civ-danger, #e74c3c);
+}
+
 .civ-action-btn {
     display: flex;
     align-items: center;

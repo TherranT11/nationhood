@@ -256,9 +256,14 @@ export const CIVIC_TEMPLATES = {
 
     // ── 21. Bill Passed ──
     bill_passed: [
-        { id: 'bpa1', text: 'The {bill_name} Act passes {votes_for} to {votes_against}. Signed into law. #BillPassed' },
-        { id: 'bpa2', text: '{bill_name} is now law. {votes_for} to {votes_against}. The right side won today. #BillPassed #{nation}' },
-        { id: 'bpa3', text: '{votes_for} MPs just voted to make {bill_name} the law of the land. Remember their names. #Parliament' },
+        { id: 'bpa1', text: 'The {bill_name} Act passes {votes_for} to {votes_against} in #{nation}. Signed into law by the executive. A landmark day for the legislature. #BillPassed #Parliament' },
+        { id: 'bpa2', text: '{bill_name} is now the law of the land in #{nation}. Final tally: {votes_for} to {votes_against}. The chamber has spoken and the people will feel this one. #BillPassed' },
+        { id: 'bpa3', text: '{votes_for} MPs in #{nation} just voted to make {bill_name} the law of the land. {votes_against} voted against. Remember their names at the next election. #Parliament #BillPassed' },
+        { id: 'bpa4', text: 'After heated debate in #{nation}, the {bill_name} Act clears the chamber {votes_for} to {votes_against}. A victory margin of {margin}. The opposition will not forget this. #BillPassed' },
+        { id: 'bpa5', text: '{bill_name} passes in #{nation} with {votes_for} ayes and {votes_against} nays. {party_yes} whipped the vote hard and delivered. Credit where it is due. #BillPassed #Parliament' },
+        { id: 'bpa6', text: 'Despite fierce opposition from {party_no}, the {bill_name} Act passes {votes_for} to {votes_against} in #{nation}. Their arguments fell short today. #BillPassed' },
+        { id: 'bpa7', text: 'Historic vote in #{nation}: {bill_name} is enacted into law. {votes_for} for, {votes_against} against. {party_yes} can claim this as a win for their platform. #BillPassed #Legislation' },
+        { id: 'bpa8', text: 'The ayes have it. {bill_name} passes {votes_for}-{votes_against} in #{nation}. {party_no} fought hard but could not block the majority. On to implementation. #BillPassed' },
     ],
 
     // ── 22. Bill Failed ──
@@ -612,6 +617,8 @@ export function extractEventVars(templateKey, row) {
                 votes_against: parsedAgainst != null ? String(parsedAgainst) : '?',
                 margin: Math.abs((parseInt(parsedFor) || 0) - (parseInt(parsedAgainst) || 0)),
                 sponsor: e.sponsor || '',
+                party_yes: e.party_yes || e.sponsor || 'the governing coalition',
+                party_no: e.party_no || 'the opposition',
             };
         }
 
