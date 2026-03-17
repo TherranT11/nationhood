@@ -208,7 +208,6 @@ let allPartySeats = {}, allParties = [], allPolicies = [];
 let activeLaws = [], committeeBills = [], floorBills = [], frozenBills = [], presidentDeskBills = [], recentBills = [];
 let lawsIsAutocracy = false, isHeadFaction = false, headFactionId = null;
 let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
-let coalitionLeadPartyId = null;
 let isCaretaker = false;
 let isNoGovernment = false;
 let currentTickGlobal = 0;       // cached current tick
@@ -254,7 +253,6 @@ initPage('laws', async (state) => {
     qCacheBust('coalition_');
     if (!lawsIsAutocracy) {
         const coalition = await fetchActiveCoalition(_supabase, nation.id);
-        coalitionLeadPartyId = coalition?.lead_party_id || null;
         isCaretaker = coalition?.status === 'caretaker';
         isNoGovernment = !coalition;
         // Fallback: frozen bills are ground truth for caretaker status
@@ -1032,7 +1030,6 @@ async function enactDecree(billId) {
                 const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, bill.bill_articles || []);
                 if (dynamicPenalty < 0) {
                     await adjustMomentumAll(_supabase, currentNation.id, bill.proposed_by, dynamicPenalty, 'legislation:floor');
-                    console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
                 }
             }
         }
@@ -1448,8 +1445,6 @@ function addFundingArticle() {
             discretionary: discretionary > 0 ? discretionary : null
         }
     });
-    const fundingArticle = draftArticles[draftArticles.length - 1];
-    console.log('Funding article added:', JSON.stringify(fundingArticle, null, 2));
     renderDraftArticles();
     hideFundingArticleForm();
     if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
@@ -2257,7 +2252,7 @@ async function submitToCommittee() {
         articles: normalizedArticles
     };
 
-    const debugBillSubmission = window.NATIONHOOD_DEBUG_BILL_SUBMISSION ?? true;
+    const debugBillSubmission = window.NATIONHOOD_DEBUG_BILL_SUBMISSION ?? false;
     if (debugBillSubmission) {
         console.log('Submitting bill:', JSON.stringify(billPayload, null, 2));
     }
@@ -2846,45 +2841,6 @@ async function submitCommitteeArticle() {
         await _supabase.from('bill_support').upsert({ bill_id: currentCommitteeBillId, faction_id: currentFaction.id, stance: 'accept', seat_count: currentSeats }, { onConflict: 'bill_id,faction_id' });
         closeCommitteeAddModal(); await loadLawsData(); renderLawsPage();
     } catch (error) { console.error('Error adding article:', error); alert('Error adding article.'); }
-}
-
-async function sendToFloor(billId) {
-    const bill = committeeBills.find(b => b.id === billId);
-    // Require at least one article for non-repeal/non-ratification bills
-    if (bill && bill.bill_type !== 'repeal' && bill.bill_type !== 'ratification'
-        && (!bill.bill_articles || bill.bill_articles.filter(a => a.policy_id || a.effect_data || a.repeal_active_law_id || a.funding_data).length === 0)) {
-        alert('This bill has no policy articles. Add at least one article before sending to the floor.');
-        return;
-    }
-    // Prompt to rename the bill before sending to floor
-    const newName = prompt('Rename this Bill?', bill?.bill_name || '');
-    if (newName === null) return; // User cancelled
-
-    try {
-        const updateFields = { status: 'floor' };
-        const trimmed = newName.trim();
-        if (trimmed && trimmed !== bill?.bill_name) {
-            updateFields.bill_name = trimmed;
-        }
-        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        updateFields.floor_tick = shard?.current_tick || 0;
-        updateFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
-        // Track when the bill was moved to the floor
-        updateFields.floor_tick = shard?.current_tick || 0;
-        await _supabase.from('bills').update(updateFields).eq('id', billId);
-
-        // Apply dynamic ideology penalty to sponsor (skip for system-generated bills)
-        if (bill && bill.proposed_by && factionIdeology) {
-            const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, bill.bill_articles || []);
-            if (dynamicPenalty < 0) {
-                await adjustMomentumAll(_supabase, currentNation.id, bill.proposed_by, dynamicPenalty, 'legislation:floor');
-                console.log(`Dynamic ideology penalty (floor): ${dynamicPenalty} for sponsor`);
-            }
-        }
-
-        await loadLawsData(); renderLawsPage();
-        alert(termBill + ' sent to the floor!');
-    } catch (error) { console.error('Error:', error); alert('Error sending to floor.'); }
 }
 
 // Expose handlers used by inline HTML attributes

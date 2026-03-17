@@ -353,6 +353,7 @@ export function renderNavTabs(activeTab) {
         { id: 'politics', label: 'Politics', href: 'politics.html' },
         { id: 'laws', label: 'Bills', href: 'laws.html' },
         { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
+        { id: 'events', label: 'Events', href: 'events.html' },
         { id: 'economy', label: 'Economy', href: 'economy.html' },
         { id: 'wiki', label: 'Wiki', href: 'wiki.html' }
     ];
@@ -375,7 +376,7 @@ export function renderNavTabs(activeTab) {
         if (tab.id === 'diplomacy') {
             badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>';
         }
-        if (tab.id === 'politics') {
+        if (tab.id === 'events') {
             badgeHtml = '<span class="nav-badge" id="civic-badge" style="display:none;"></span>';
         }
         return `
@@ -819,8 +820,8 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (activeTab !== 'diplomacy') {
         updateDiplomacyBadge(state.faction, state.nation);
     }
-    // Update CIVIC badge (non-blocking, skip on politics page since CIVIC tab marks seen)
-    if (activeTab !== 'politics') {
+    // Update CIVIC badge (non-blocking, skip on events page since it marks seen)
+    if (activeTab !== 'events') {
         updateCivicBadge(state.faction, state.nation);
     }
     if (onReady) {

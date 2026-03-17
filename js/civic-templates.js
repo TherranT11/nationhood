@@ -68,29 +68,29 @@ export const CIVIC_TEMPLATES = {
 
     // ── 1. Parliamentary Election ──
     parliamentary_election: [
-        { id: 'pe1', text: 'Results confirmed. {party} takes {seats} seats in the chamber. Coalition talks expected within {days} days. #ParliamentaryElection #ValdoriaVotes' },
-        { id: 'pe2', text: 'The people spoke clearly. {party} wins {seats} seats — a mandate for change. Democracy works. #ElectionNight #ValdoriaVotes' },
+        { id: 'pe1', text: 'Results confirmed. {party} takes {seats} seats in the chamber. Coalition talks expected within {days} days. #ParliamentaryElection #{nation}Votes' },
+        { id: 'pe2', text: 'The people spoke clearly. {party} wins {seats} seats — a mandate for change. Democracy works. #ElectionNight #{nation}Votes' },
         { id: 'pe3', text: '{party} earns a strong result with {seats} seats. A clear signal from the electorate. Now the work begins. #ParliamentaryElection' },
-        { id: 'pe4', text: '{seats} seats for {party} and somehow that is being called a mandate. {pct}% of voters chose someone else. #ElectionNight #ValdoriaVotes' },
+        { id: 'pe4', text: '{seats} seats for {party} and somehow that is being called a mandate. {pct}% of voters chose someone else. #ElectionNight #{nation}Votes' },
         { id: 'pe5', text: 'Another election, another inconclusive result. {party} at {seats} seats means more dealmaking, less governing. #Parliament' },
     ],
 
     // ── 2. Presidential Election ──
     presidential_election: [
         { id: 'pre1', text: '{candidate} wins the presidency with {pct}% of the vote. Transition begins immediately. #PresidentialElection' },
-        { id: 'pre2', text: '{candidate} is the new president. A decisive result. The republic chose well. #PresidentialElection #Valdoria' },
-        { id: 'pre3', text: '{pct}% is not a squeaker — that is a mandate. Congratulations to {candidate}. #NewPresident #Valdoria' },
+        { id: 'pre2', text: '{candidate} is the new president. A decisive result. The republic chose well. #PresidentialElection #{nation}' },
+        { id: 'pre3', text: '{pct}% is not a squeaker — that is a mandate. Congratulations to {candidate}. #NewPresident #{nation}' },
         { id: 'pre4', text: '{candidate} wins with {pct}%. Nearly half the country voted against this. Let that sink in. #PresidentialElection' },
-        { id: 'pre5', text: '{candidate} takes the presidency. The next {years} years are going to be long. #NewPresident #Valdoria' },
+        { id: 'pre5', text: '{candidate} takes the presidency. The next {years} years are going to be long. #NewPresident #{nation}' },
     ],
 
     // ── 3. Strongman Takes Power ──
     strongman_power: [
         { id: 'sp1', text: '{faction} has consolidated control of the executive. Official statements pending. Situation developing. #PowerTransfer #Faction' },
         { id: 'sp2', text: '{faction} has restored order where the old government failed. Sometimes strong hands are necessary. #Stability' },
-        { id: 'sp3', text: 'The chaos of the last {months} months is over. {faction} steps in. Whatever it takes. #Order #Valdoria' },
+        { id: 'sp3', text: 'The chaos of the last {months} months is over. {faction} steps in. Whatever it takes. #Order #{nation}' },
         { id: 'sp4', text: 'This is not a transition. This is a takeover. {faction} seized power and nobody is stopping them. #DarkTimes' },
-        { id: 'sp5', text: '{faction} controls the ministries now. Opposition offices are quiet. Draw your own conclusions. #Autocracy #Valdoria' },
+        { id: 'sp5', text: '{faction} controls the ministries now. Opposition offices are quiet. Draw your own conclusions. #Autocracy #{nation}' },
     ],
 
     // ── 4. Coalition Formed ──
@@ -105,9 +105,9 @@ export const CIVIC_TEMPLATES = {
     // ── 5. Coalition Fails to Form ──
     coalition_failed: [
         { id: 'cfl1', text: 'Coalition talks between {party_a} and {party_b} collapse. No agreement after {days} days. Next steps unclear. #NoCoalition' },
-        { id: 'cfl2', text: 'Good. A bad coalition is worse than no coalition. Let the voters decide again. #SnapElection #Valdoria' },
+        { id: 'cfl2', text: 'Good. A bad coalition is worse than no coalition. Let the voters decide again. #SnapElection #{nation}' },
         { id: 'cfl3', text: '{party} was right to walk away. The terms were unacceptable. #NoCoalition' },
-        { id: 'cfl4', text: '{days} days of talks and nothing. These parties cannot govern themselves let alone the country. #Deadlock #Valdoria' },
+        { id: 'cfl4', text: '{days} days of talks and nothing. These parties cannot govern themselves let alone the country. #Deadlock #{nation}' },
         { id: 'cfl5', text: 'Coalition falls apart over {issue}. The inability to compromise is going to cost everyone. #NoCoalition #Crisis' },
     ],
 
@@ -115,7 +115,7 @@ export const CIVIC_TEMPLATES = {
     snap_election: [
         { id: 'se1', text: 'Snap election called. Polls open in {days} days. Current standings: {party} leads at {pct}%. #SnapElection' },
         { id: 'se2', text: 'Going back to the people is the right call. Let the electorate settle what the politicians could not. #SnapElection' },
-        { id: 'se3', text: 'A snap election was always the correct move after {event}. Democracy resets itself. #ValdoriaVotes' },
+        { id: 'se3', text: 'A snap election was always the correct move after {event}. Democracy resets itself. #{nation}Votes' },
         { id: 'se4', text: 'A snap election costs {cost} and solves nothing if the same parties return. Expensive theater. #SnapElection' },
         { id: 'se5', text: '{party} called this snap election to catch the opposition off guard. This is strategy, not democracy. #SnapElection' },
     ],
@@ -133,18 +133,18 @@ export const CIVIC_TEMPLATES = {
     crisis_start: [
         { id: 'cs1', text: '{crisis_name} declared. Government convenes emergency session. Situation under active monitoring. #Crisis #CrisisAlert' },
         { id: 'cs2', text: 'The government is responding quickly to {crisis_name}. Emergency session called within hours. #CrisisResponse' },
-        { id: 'cs3', text: '{crisis_name} is serious but manageable. Leadership is in the room. #CrisisResponse #Valdoria' },
+        { id: 'cs3', text: '{crisis_name} is serious but manageable. Leadership is in the room. #CrisisResponse #{nation}' },
         { id: 'cs4', text: '{crisis_name} did not come out of nowhere. This was predictable and the government did nothing. #Crisis #Negligence' },
-        { id: 'cs5', text: 'Emergency session for {crisis_name}. The same people who caused it are now managing it. #Crisis #Valdoria' },
+        { id: 'cs5', text: 'Emergency session for {crisis_name}. The same people who caused it are now managing it. #Crisis #{nation}' },
     ],
 
     // ── 9. Crisis Ends ──
     crisis_end: [
         { id: 'ce1', text: '{crisis_name} officially ended. Recovery assessment underway. Full report expected within {days} days. #CrisisOver' },
-        { id: 'ce2', text: '{crisis_name} is behind us. Credit to the administration for navigating this. #CrisisOver #Valdoria' },
+        { id: 'ce2', text: '{crisis_name} is behind us. Credit to the administration for navigating this. #CrisisOver #{nation}' },
         { id: 'ce3', text: 'The {crisis_name} resolution sets a precedent. When the government acts decisively it works. #Recovery' },
         { id: 'ce4', text: '{crisis_name} is over but the damage is done. {stat} is down {pct}% and nobody is being held accountable. #CrisisOver' },
-        { id: 'ce5', text: 'They are calling it resolved. The people who lived through {crisis_name} would disagree. #CrisisEnd #Valdoria' },
+        { id: 'ce5', text: 'They are calling it resolved. The people who lived through {crisis_name} would disagree. #CrisisEnd #{nation}' },
     ],
 
     // ── 10. Trade Agreement Proposed ──
@@ -219,15 +219,15 @@ export const CIVIC_TEMPLATES = {
 
     // ── 20. Bill Proposed ──
     bill_proposed: [
-        { id: 'bp1', text: 'The {bill_name} Act tabled for first reading. Debate scheduled. Full text published. #Legislation #Valdoria' },
-        { id: 'bp2', text: 'The {bill_name} Act is exactly what {issue} needs. Long overdue. #Legislation #Valdoria' },
+        { id: 'bp1', text: 'The {bill_name} Act tabled for first reading. Debate scheduled. Full text published. #Legislation #{nation}' },
+        { id: 'bp2', text: 'The {bill_name} Act is exactly what {issue} needs. Long overdue. #Legislation #{nation}' },
         { id: 'bp3', text: 'The {bill_name} Act is {pages} pages of {issue} dressed up as reform. Read the fine print. #Legislation' },
     ],
 
     // ── 21. Bill Passed ──
     bill_passed: [
         { id: 'bpa1', text: 'The {bill_name} Act passes {votes_for} to {votes_against}. Signed into law. #BillPassed' },
-        { id: 'bpa2', text: '{bill_name} is now law. {votes_for} to {votes_against}. The right side won today. #BillPassed #Valdoria' },
+        { id: 'bpa2', text: '{bill_name} is now law. {votes_for} to {votes_against}. The right side won today. #BillPassed #{nation}' },
         { id: 'bpa3', text: '{votes_for} MPs just voted to make {bill_name} the law of the land. Remember their names. #Parliament' },
     ],
 
@@ -240,7 +240,7 @@ export const CIVIC_TEMPLATES = {
 
     // ── 23. Minister Appointed ──
     minister_appointed: [
-        { id: 'ma1', text: '{name} confirmed as Minister of {ministry}. Takes effect immediately. First address scheduled. #Cabinet #Valdoria' },
+        { id: 'ma1', text: '{name} confirmed as Minister of {ministry}. Takes effect immediately. First address scheduled. #Cabinet #{nation}' },
         { id: 'ma2', text: '{name} is a strong appointment to {ministry}. Track record speaks for itself. #Cabinet' },
         { id: 'ma3', text: '{name} as Minister of {ministry}. Interesting choice given their history. #Cabinet' },
     ],
@@ -248,7 +248,7 @@ export const CIVIC_TEMPLATES = {
     // ── 24. Minister Resigned or Purged ──
     minister_resigned: [
         { id: 'mr1', text: '{name} has left the post of Minister of {ministry}. No official reason given. Replacement TBD. #Cabinet' },
-        { id: 'mr2', text: '{name} stepping down from {ministry} opens the door to real reform there. #Cabinet #Valdoria' },
+        { id: 'mr2', text: '{name} stepping down from {ministry} opens the door to real reform there. #Cabinet #{nation}' },
         { id: 'mr3', text: '{name} removed from {ministry}. This is a purge, not a resignation. Who gave the order? #Cabinet #Purge' },
     ],
 
@@ -261,14 +261,14 @@ export const CIVIC_TEMPLATES = {
 
     // ── 26. Party Action ──
     party_action: [
-        { id: 'pa1', text: '{party} announces {action}. Full statement published. Response from coalition partners expected. #Politics #Valdoria' },
-        { id: 'pa2', text: '{party} taking {action} at this moment shows real political courage. #Politics #Valdoria' },
+        { id: 'pa1', text: '{party} announces {action}. Full statement published. Response from coalition partners expected. #Politics #{nation}' },
+        { id: 'pa2', text: '{party} taking {action} at this moment shows real political courage. #Politics #{nation}' },
         { id: 'pa3', text: '{party} doing {action} right now is nakedly opportunistic. This is about the polls, not the policy. #Politics' },
     ],
 
     // ── 27. Faction Action ──
     faction_action: [
-        { id: 'fa1', text: '{faction} has moved against {target}. Officials cite {reason}. Situation developing. #Factions #Valdoria' },
+        { id: 'fa1', text: '{faction} has moved against {target}. Officials cite {reason}. Situation developing. #Factions #{nation}' },
         { id: 'fa2', text: '{faction} acted where others hesitated. {target} had this coming. #Factions #Order' },
         { id: 'fa3', text: '{faction} just went after {target}. The list of independent actors in this country is getting shorter. #Factions #Purge' },
     ],
@@ -311,13 +311,13 @@ export const CIVIC_TEMPLATES = {
     // ── 33. Coup Fails ──
     coup_failed: [
         { id: 'cfa1', text: 'Coup attempt defeated. {faction} forces stand down. Government resumes function. Arrests pending. #CoupFailed' },
-        { id: 'cfa2', text: 'The republic held. {faction} is contained. Democracy survived today. #CoupFailed #Valdoria' },
+        { id: 'cfa2', text: 'The republic held. {faction} is contained. Democracy survived today. #CoupFailed #{nation}' },
         { id: 'cfa3', text: 'The coup failed but {faction} still exists, still has resources, and nobody is asking why this happened. #CoupFailed' },
     ],
 
     // ── 34. Regime Health Threshold ──
     regime_health_threshold: [
-        { id: 'rh1', text: 'Regime stability index registers {threshold}. Government continuity under assessment. #RegimeHealth #Valdoria' },
+        { id: 'rh1', text: 'Regime stability index registers {threshold}. Government continuity under assessment. #RegimeHealth #{nation}' },
         { id: 'rh2', text: 'The {threshold} reading is a warning, not a verdict. There is still time to stabilize. #RegimeHealth' },
         { id: 'rh3', text: 'Regime health at {threshold}. The question is no longer whether this government is in trouble. #RegimeHealth' },
     ],
@@ -373,7 +373,7 @@ export const CIVIC_TEMPLATES = {
 
     // ── 42. New Party Founded ──
     party_founded: [
-        { id: 'pf1', text: '{party} formally registered as a political party. Platform published. First candidates announced. #NewParty #Valdoria' },
+        { id: 'pf1', text: '{party} formally registered as a political party. Platform published. First candidates announced. #NewParty #{nation}' },
         { id: 'pf2', text: '{party} enters the field. Real competition is good for democracy. #NewParty #Politics' },
         { id: 'pf3', text: '{party} is {existing_party} with a new logo. The founders are not fooling anyone. #NewParty' },
     ],
@@ -408,7 +408,7 @@ export const CIVIC_TEMPLATES = {
 
     // ── 47. Minister Nomination Rejected ──
     minister_nomination_rejected: [
-        { id: 'mnr1', text: '{name}\'s nomination to {ministry} has been rejected by {body}. President must submit a new candidate. #Cabinet #Valdoria' },
+        { id: 'mnr1', text: '{name}\'s nomination to {ministry} has been rejected by {body}. President must submit a new candidate. #Cabinet #{nation}' },
         { id: 'mnr2', text: '{body} blocking {name} for {ministry} is the confirmation process doing exactly what it is supposed to. #Cabinet' },
         { id: 'mnr3', text: '{body} votes down {name} after a single hearing. This is not vetting, it is a power play. #Cabinet' },
     ],
@@ -548,17 +548,42 @@ export const CIVIC_ACTION_MAP = {
 export function extractEventVars(templateKey, row) {
     const e = row.effects_applied || {};
     const name = row.event_name || '';
+    const desc = row.description_chosen || row.description_used || '';
 
     switch (templateKey) {
         case 'bill_passed':
-        case 'bill_failed':
+        case 'bill_failed': {
+            // Try effects_applied first, then strip known prefixes from event_name,
+            // then try extracting from description_chosen as last resort.
+            let billName = e.bill_name;
+            if (!billName) {
+                const stripped = name.replace(/^(Bill Passed|Bill Failed|BILL PASSED|BILL FAILED|bill_passed|bill_failed|Enacted|Signed into Law|Defeated|Vetoed)[:\s\-—]*/i, '').trim();
+                billName = stripped || null;
+            }
+            if (!billName && desc) {
+                // description_chosen often contains the bill name in quotes or as a leading phrase
+                const quoted = desc.match(/"([^"]+)"|'([^']+)'|"(.+?) Act/);
+                billName = (quoted && (quoted[1] || quoted[2] || quoted[3])) || null;
+            }
+            const votesFor = e.votes_for ?? null;
+            const votesAgainst = e.votes_against ?? null;
+            // Extract vote counts from description if not in effects_applied
+            let parsedFor = votesFor, parsedAgainst = votesAgainst;
+            if (parsedFor == null && desc) {
+                const voteMatch = desc.match(/(\d+)\s*(?:to|-)\s*(\d+)/);
+                if (voteMatch) {
+                    parsedFor = voteMatch[1];
+                    parsedAgainst = voteMatch[2];
+                }
+            }
             return {
-                bill_name: e.bill_name || name.replace(/^(Bill Passed|Bill Failed|BILL PASSED|BILL FAILED):?\s*/i, '') || 'Unknown Bill',
-                votes_for: e.votes_for || '?',
-                votes_against: e.votes_against || '?',
-                margin: Math.abs((parseInt(e.votes_for) || 0) - (parseInt(e.votes_against) || 0)),
+                bill_name: billName || 'Unknown Bill',
+                votes_for: parsedFor != null ? String(parsedFor) : '?',
+                votes_against: parsedAgainst != null ? String(parsedAgainst) : '?',
+                margin: Math.abs((parseInt(parsedFor) || 0) - (parseInt(parsedAgainst) || 0)),
                 sponsor: e.sponsor || '',
             };
+        }
 
         case 'presidential_election':
             return {
@@ -591,12 +616,12 @@ export function extractEventVars(templateKey, row) {
 
         case 'crisis_start':
             return {
-                crisis_name: e.crisis_name || name.replace(/^CRISIS:\s*/i, '') || 'Developing Crisis',
+                crisis_name: e.crisis_name || name.replace(/^(CRISIS|CRISIS_STARTED|crisis)[:\s\-—]*/i, '').trim() || desc || 'Developing Crisis',
             };
 
         case 'crisis_end':
             return {
-                crisis_name: e.crisis_name || name.replace(/^CRISIS_RESOLVED:\s*/i, '') || 'Crisis',
+                crisis_name: e.crisis_name || name.replace(/^(CRISIS_RESOLVED|crisis resolved|crisis ended)[:\s\-—]*/i, '').trim() || desc || 'Crisis',
                 days: e.duration || '?',
                 stat: e.stat || '',
                 pct: e.pct || '?',
@@ -651,20 +676,20 @@ export function extractEventVars(templateKey, row) {
 
         case 'bill_proposed':
             return {
-                bill_name: e.bill_name || name || '',
+                bill_name: e.bill_name || name.replace(/^(Bill Proposed|Bill Introduced|bill_proposed)[:\s\-—]*/i, '').trim() || '',
                 issue: e.issue || e.policy_area || '',
                 pages: e.pages || '?',
             };
 
         case 'bill_amended':
             return {
-                bill_name: e.bill_name || name || '',
+                bill_name: e.bill_name || name.replace(/^(Bill Amended|Amendment|bill_amended)[:\s\-—]*/i, '').trim() || '',
                 clause: e.clause || e.amendment || 'key provision',
             };
 
         case 'filibuster_called':
             return {
-                bill_name: e.bill_name || name || '',
+                bill_name: e.bill_name || name.replace(/^(Filibuster|filibuster_called)[:\s\-—]*/i, '').trim() || '',
                 party: e.party || e.faction_name || '',
             };
 

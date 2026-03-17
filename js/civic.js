@@ -50,6 +50,11 @@ let _playerLikes = {};   // postId -> bool (in-memory for system posts)
 let _playerShares = {};  // postId -> bool
 let _openThreads = {};   // postId -> bool
 let _replyTexts = {};    // postId -> string
+let _factionAbbr = '';   // faction abbreviation for compose avatar
+let _visibleCount = 30;  // pagination: how many posts to show
+let _realtimeChannel = null;
+
+const POSTS_PER_PAGE = 30;
 
 // ═══════════════════════════════════════════════════════════
 // HELPERS
@@ -83,12 +88,12 @@ function fillTemplate(text, vars) {
     );
 }
 
-/** Render hashtags as clickable spans (XSS-safe) */
+/** Render hashtags as clickable buttons (XSS-safe, accessible) */
 function renderHashtags(rawText) {
     const safe = escapeHtml(rawText);
     return safe.replace(/(^|\s)#(\w+)/g,
         (_, space, tag) =>
-            `${space}<span class="hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</span>`
+            `${space}<button type="button" class="hashtag" data-tag="${escapeHtml(tag)}" aria-label="Filter by #${escapeHtml(tag)}">#${escapeHtml(tag)}</button>`
     );
 }
 
@@ -111,15 +116,24 @@ function shortDate(tick) {
 /**
  * Initialize CIVIC feed. Called when the Events tab is activated.
  */
-export async function initCivic(supabase, nationId, factionId, currentTick) {
+let _nationName = '';
+export async function initCivic(supabase, nationId, factionId, currentTick, nationName, factionAbbr) {
     _supabase = supabase;
     _nationId = nationId;
     _factionId = factionId;
     _currentTick = currentTick;
+    _visibleCount = POSTS_PER_PAGE;
+    if (!nationName) console.warn('initCivic: nationName is empty — hashtags will show blank');
+    _nationName = nationName || '';
+    _factionAbbr = factionAbbr || '??';
 
     const root = document.getElementById('civic-root');
     if (!root) return;
-    root.innerHTML = '<div class="civ-loading">Loading CIVIC...</div>';
+    root.innerHTML = `
+        <div class="loading-container">
+            <div class="loading-spinner"></div>
+            <div>Loading CIVIC...</div>
+        </div>`;
 
     try {
         // Fetch all data sources in parallel
@@ -141,33 +155,105 @@ export async function initCivic(supabase, nationId, factionId, currentTick) {
                 .limit(100),
         ]);
 
-        // Log any query errors but continue with available data
+        // Check if ALL queries failed
+        const allFailed = eventRes.error && actionRes.error && playerRes.error;
+        if (allFailed) {
+            console.error('CIVIC: all data queries failed', eventRes.error, actionRes.error, playerRes.error);
+            root.innerHTML = `
+                <div class="civ-error">
+                    <div class="civ-error-msg">Failed to load CIVIC feed.</div>
+                    <button class="civ-retry-btn" id="civ-retry-btn">Retry</button>
+                </div>`;
+            document.getElementById('civ-retry-btn')?.addEventListener('click', () => {
+                initCivic(supabase, nationId, factionId, currentTick, nationName, factionAbbr);
+            });
+            return;
+        }
+
+        // Log individual query errors but continue with available data
         if (eventRes.error) console.error('CIVIC event_log query error:', eventRes.error);
         if (actionRes.error) console.error('CIVIC campaign_actions query error:', actionRes.error);
         if (playerRes.error) console.error('CIVIC civic_posts query error:', playerRes.error);
 
         // Transform system events into CIVIC posts
-        const eventPosts = transformEventLog(eventRes.data || []);
-        const actionPosts = transformCampaignActions(actionRes.data || []);
+        const eventPosts = transformEventLog(eventRes.data || [], _nationName);
+        const actionPosts = transformCampaignActions(actionRes.data || [], _nationName);
         const playerPosts = transformPlayerPosts(playerRes.data || []);
 
-        // Merge all posts, sort by tick desc, cap at 100
+        // Merge all posts, sort by tick desc
         _allPosts = [...eventPosts, ...actionPosts, ...playerPosts]
-            .sort((a, b) => b.tick - a.tick || b.sortOrder - a.sortOrder)
-            .slice(0, 100);
+            .sort((a, b) => b.tick - a.tick || b.sortOrder - a.sortOrder);
 
         // Mark civic as seen
         localStorage.setItem('civic_last_seen_tick_' + nationId, String(currentTick));
 
         renderAll();
+        subscribeRealtime();
     } catch (err) {
         console.error('CIVIC init error:', err);
-        root.innerHTML = '<div class="civ-empty">Failed to load CIVIC feed.</div>';
+        root.innerHTML = `
+            <div class="civ-error">
+                <div class="civ-error-msg">Failed to load CIVIC feed.</div>
+                <button class="civ-retry-btn" id="civ-retry-btn">Retry</button>
+            </div>`;
+        document.getElementById('civ-retry-btn')?.addEventListener('click', () => {
+            initCivic(supabase, nationId, factionId, currentTick, nationName, factionAbbr);
+        });
     }
 }
 
+/** Subscribe to realtime updates for civic_posts */
+function subscribeRealtime() {
+    // Clean up previous subscription
+    if (_realtimeChannel) {
+        _supabase.removeChannel(_realtimeChannel);
+        _realtimeChannel = null;
+    }
+
+    _realtimeChannel = _supabase
+        .channel('civic_realtime_' + _nationId)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'civic_posts',
+            filter: 'nation_id=eq.' + _nationId,
+        }, (payload) => {
+            const row = payload.new;
+            // Skip if we already have this post (e.g. our own)
+            if (_allPosts.some(p => p.dbId === row.id)) return;
+
+            const post = {
+                id: 'player_' + row.id,
+                type: 'user',
+                name: row.display_name,
+                initials: row.initials,
+                handle: row.handle_key,
+                body: row.body,
+                tick: row.game_tick || 0,
+                date: shortDate(row.game_tick),
+                eventTag: null,
+                templateKey: null,
+                likes: row.likes || 0,
+                shares: row.shares || 0,
+                likedByPlayer: false,
+                sharedByPlayer: false,
+                _rawLikedBy: row.liked_by || [],
+                _rawSharedBy: row.shared_by || [],
+                comments: [],
+                sortOrder: 0,
+                isPlayer: true,
+                dbId: row.id,
+            };
+            _allPosts.unshift(post);
+            renderFeed();
+            renderTrending();
+            renderMobileTrending();
+        })
+        .subscribe();
+}
+
 /** Transform event_log rows into CIVIC post objects */
-function transformEventLog(rows) {
+function transformEventLog(rows, nationName) {
     const posts = [];
     for (const row of rows) {
         const triggerKey = detectTriggerKey(row);
@@ -178,6 +264,7 @@ function transformEventLog(rows) {
         if (!templates?.length) continue;
 
         const vars = extractEventVars(templateKey, row);
+        vars.nation = nationName;
         // Pick 2 templates deterministically based on row ID
         const idx1 = seededIndex(row.id || String(row.fired_at_tick), templates.length);
         const idx2 = (idx1 + 1 + seededIndex((row.id || '') + '_2', Math.max(templates.length - 1, 1))) % templates.length;
@@ -320,7 +407,7 @@ function detectTriggerKey(row) {
 }
 
 /** Transform campaign_actions rows into CIVIC post objects */
-function transformCampaignActions(rows) {
+function transformCampaignActions(rows, nationName) {
     const posts = [];
     for (const row of rows) {
         const templateKey = CIVIC_ACTION_MAP[row.action_type];
@@ -330,6 +417,7 @@ function transformCampaignActions(rows) {
         if (!templates?.length) continue;
 
         const vars = extractActionVars(templateKey, row);
+        vars.nation = nationName;
         // Pick 1 template for campaign actions (less noisy than events)
         const idx = seededIndex(row.id || String(row.tick_performed) + row.action_type, templates.length);
         const tmpl = templates[idx];
@@ -407,19 +495,26 @@ function renderAll() {
     if (!root) return;
 
     root.innerHTML = `
-        <div class="civ-sidebar">
-            <div class="civ-header">CIVIC</div>
-            <div class="civ-nav-item active">Home Feed</div>
-            <div class="civ-nav-item">Discover</div>
-            <div class="civ-nav-item">Notifications</div>
-            <div class="civ-nav-item">Messages</div>
+        <div class="civ-page-header">
+            <div class="civ-page-title">CIVIC</div>
+            <div class="civ-page-subtitle">Public Discourse Network &mdash; ${escapeHtml(_nationName)}</div>
         </div>
-        <div class="civ-main">
-            <div class="civ-compose" id="civ-compose"></div>
-            <div class="civ-filter-bar" id="civ-filter-bar" style="display:none"></div>
-            <div class="civ-feed-area">
-                <div class="civ-feed" id="civ-feed"></div>
-                <div class="civ-trending" id="civ-trending"></div>
+        <div class="civ-layout">
+            <div class="civ-sidebar" role="navigation" aria-label="CIVIC navigation">
+                <div class="civ-header">CIVIC</div>
+                <div class="civ-nav-item active">Home Feed</div>
+                <div class="civ-nav-item">Discover</div>
+                <div class="civ-nav-item">Notifications</div>
+                <div class="civ-nav-item">Messages</div>
+            </div>
+            <div class="civ-main">
+                <div class="civ-mobile-trending" id="civ-mobile-trending"></div>
+                <div class="civ-compose" id="civ-compose"></div>
+                <div class="civ-filter-bar" id="civ-filter-bar" style="display:none"></div>
+                <div class="civ-feed-area">
+                    <div class="civ-feed" id="civ-feed" role="feed" aria-label="CIVIC posts"></div>
+                    <div class="civ-trending" id="civ-trending"></div>
+                </div>
             </div>
         </div>
     `;
@@ -428,7 +523,7 @@ function renderAll() {
     renderFilterBar();
     renderFeed();
     renderTrending();
-    wireHashtagClicks();
+    renderMobileTrending();
 }
 
 function renderCompose() {
@@ -437,14 +532,15 @@ function renderCompose() {
 
     el.innerHTML = `
         <div class="civ-compose-row">
-            <div class="civ-compose-avatar">?</div>
+            <div class="civ-compose-avatar" title="Your faction">${escapeHtml(_factionAbbr)}</div>
             <div class="civ-compose-body">
-                <textarea id="civ-textarea" maxlength="280" placeholder="What is happening in the republic?"></textarea>
+                <label for="civ-textarea" class="sr-only">Write a post</label>
+                <textarea id="civ-textarea" maxlength="280" placeholder="What is happening in the republic?" aria-label="Write a post" aria-describedby="civ-char-count"></textarea>
                 <div class="civ-compose-footer">
-                    <span class="civ-char-count" id="civ-char-count">280</span>
-                    <button class="civ-post-btn" id="civ-post-btn" disabled>POST</button>
+                    <span class="civ-char-count" id="civ-char-count" aria-live="polite">280</span>
+                    <button class="civ-post-btn" id="civ-post-btn" disabled aria-label="Post to CIVIC">POST</button>
                 </div>
-                <div class="civ-posted-as" id="civ-posted-as"></div>
+                <div class="civ-posted-as" id="civ-posted-as" aria-live="polite"></div>
             </div>
         </div>
     `;
@@ -452,6 +548,7 @@ function renderCompose() {
     const textarea = document.getElementById('civ-textarea');
     const counter = document.getElementById('civ-char-count');
     const btn = document.getElementById('civ-post-btn');
+    if (!textarea || !counter || !btn) return;
 
     textarea.addEventListener('input', () => {
         const len = textarea.value.length;
@@ -466,12 +563,14 @@ function renderCompose() {
         if (!body) return;
         btn.disabled = true;
         btn.textContent = 'POSTING...';
-        await submitPost(body);
-        textarea.value = '';
-        counter.textContent = '280';
-        counter.classList.remove('warn');
+        const ok = await submitPost(body);
+        if (ok) {
+            textarea.value = '';
+            counter.textContent = '280';
+            counter.classList.remove('warn');
+        }
         btn.textContent = 'POST';
-        btn.disabled = true;
+        btn.disabled = !textarea.value.trim();
     });
 }
 
@@ -488,15 +587,21 @@ async function submitPost(body) {
         game_tick: _currentTick,
     });
 
+    const postedAs = document.getElementById('civ-posted-as');
     if (error) {
         console.error('CIVIC post error:', error);
-        return;
+        if (postedAs) {
+            postedAs.textContent = 'Post failed. Try again.';
+            postedAs.style.color = 'var(--civ-danger)';
+            setTimeout(() => { postedAs.textContent = ''; postedAs.style.color = ''; }, 4000);
+        }
+        return false;
     }
 
     // Show posted-as message
-    const postedAs = document.getElementById('civ-posted-as');
     if (postedAs) {
         postedAs.textContent = `Posted as ${handle.handle}`;
+        postedAs.style.color = '';
         setTimeout(() => { postedAs.textContent = ''; }, 4000);
     }
 
@@ -522,10 +627,10 @@ async function submitPost(body) {
         dbId: null,
     });
 
-    if (_allPosts.length > 100) _allPosts.pop();
     renderFeed();
     renderTrending();
-    wireHashtagClicks();
+    renderMobileTrending();
+    return true;
 }
 
 function renderFilterBar() {
@@ -553,7 +658,6 @@ function renderFilterBar() {
         _searchQuery = '';
         renderFilterBar();
         renderFeed();
-        wireHashtagClicks();
     });
 }
 
@@ -578,46 +682,43 @@ function renderFeed() {
     const feedEl = document.getElementById('civ-feed');
     if (!feedEl) return;
 
-    // Snapshot open threads and reply text before rebuild
-    const snapshots = {};
-    feedEl.querySelectorAll('.civ-post').forEach(el => {
-        const id = el.dataset.postId;
-        if (!id) return;
-        snapshots[id] = {
-            open: _openThreads[id] || false,
-            replyText: _replyTexts[id] || '',
-        };
-    });
+    const allFiltered = getFilteredPosts();
 
-    const posts = getFilteredPosts();
-
-    if (posts.length === 0) {
+    if (allFiltered.length === 0) {
         feedEl.innerHTML = '<div class="civ-empty">No posts yet. Be the first to speak.</div>';
         return;
     }
 
-    feedEl.innerHTML = posts.map(post => renderPost(post)).join('');
+    const visible = allFiltered.slice(0, _visibleCount);
+    const hasMore = allFiltered.length > _visibleCount;
 
-    // Restore open threads and reply text
+    let html = visible.map(post => renderPost(post)).join('');
+    if (hasMore) {
+        const remaining = allFiltered.length - _visibleCount;
+        html += `<div class="civ-load-more">
+            <button class="civ-load-more-btn" id="civ-load-more" aria-label="Load more posts">
+                Load ${Math.min(remaining, POSTS_PER_PAGE)} more posts
+            </button>
+        </div>`;
+    }
+
+    feedEl.innerHTML = html;
+
+    // Wire load-more button
+    document.getElementById('civ-load-more')?.addEventListener('click', () => {
+        _visibleCount += POSTS_PER_PAGE;
+        renderFeed();
+    });
+
+    // Restore reply text from module state
     feedEl.querySelectorAll('.civ-post').forEach(el => {
         const id = el.dataset.postId;
         if (!id) return;
-        const snap = snapshots[id] || { open: _openThreads[id], replyText: _replyTexts[id] || '' };
-        if (snap?.open) {
-            const section = el.querySelector('.civ-comments-section');
-            if (section) section.classList.add('open');
-        }
-        if (snap?.replyText) {
+        if (_replyTexts[id]) {
             const ta = el.querySelector('.cmt-textarea');
-            if (ta) ta.value = snap.replyText;
+            if (ta) ta.value = _replyTexts[id];
         }
-    });
-
-    // Wire post click handlers
-    feedEl.querySelectorAll('.civ-post').forEach(el => {
-        const postId = el.dataset.postId;
-        if (!postId) return;
-        wirePostListeners(el, postId);
+        wirePostListeners(el, id);
     });
 }
 
@@ -652,13 +753,13 @@ function renderPost(post) {
     // Only show reply compose for player posts (v1)
     const replyComposeHtml = post.isPlayer ? `
         <div class="civ-reply-compose">
-            <textarea class="cmt-textarea" maxlength="280" placeholder="Reply..."></textarea>
-            <button class="civ-reply-btn civ-reply-submit">REPLY</button>
+            <textarea class="cmt-textarea" maxlength="280" placeholder="Reply..." aria-label="Reply to ${escapeHtml(post.handle)}"></textarea>
+            <button type="button" class="civ-reply-btn civ-reply-submit" aria-label="Submit reply">REPLY</button>
         </div>
     ` : '';
 
     return `
-        <div class="${cls}" data-post-id="${escapeHtml(post.id)}">
+        <article class="${cls}" data-post-id="${escapeHtml(post.id)}" aria-label="Post by ${escapeHtml(post.handle)}">
             <div class="civ-avatar">${escapeHtml(post.initials)}</div>
             <div class="civ-post-content">
                 <div class="civ-post-header">
@@ -669,15 +770,15 @@ function renderPost(post) {
                 </div>
                 <div class="civ-post-body">${bodyHtml}</div>
                 <div class="civ-actions">
-                    <button class="civ-action-btn civ-comment-btn">
+                    <button type="button" class="civ-action-btn civ-comment-btn" aria-label="Comments${post.comments.length ? ' (' + post.comments.length + ')' : ''}" aria-expanded="${!!_openThreads[post.id]}">
                         ${ICON_COMMENT}
                         <span>${post.comments.length || ''}</span>
                     </button>
-                    <button class="civ-action-btn civ-like-btn ${liked ? 'active' : ''}">
+                    <button type="button" class="civ-action-btn civ-like-btn ${liked ? 'active' : ''}" aria-label="${liked ? 'Unlike' : 'Like'} post by ${escapeHtml(post.handle)}${likeCount ? ' (' + likeCount + ')' : ''}" aria-pressed="${!!liked}">
                         ${ICON_HEART}
                         <span>${likeCount || ''}</span>
                     </button>
-                    <button class="civ-action-btn civ-share-btn ${shared ? 'active' : ''}">
+                    <button type="button" class="civ-action-btn civ-share-btn ${shared ? 'active' : ''}" aria-label="${shared ? 'Unshare' : 'Share'} post by ${escapeHtml(post.handle)}${shareCount ? ' (' + shareCount + ')' : ''}" aria-pressed="${!!shared}">
                         ${ICON_SHARE}
                         <span>${shareCount || ''}</span>
                     </button>
@@ -687,7 +788,7 @@ function renderPost(post) {
                     ${replyComposeHtml}
                 </div>
             </div>
-        </div>
+        </article>
     `;
 }
 
@@ -695,7 +796,14 @@ function renderPost(post) {
 // ACTIONS: Like, Share, Comment
 // ═══════════════════════════════════════════════════════════
 
+let _likeLock = {};
+let _shareLock = {};
+
 function toggleLike(postId) {
+    if (_likeLock[postId]) return;
+    _likeLock[postId] = true;
+    setTimeout(() => { _likeLock[postId] = false; }, 500);
+
     const post = _allPosts.find(p => p.id === postId);
     if (!post) return;
 
@@ -728,6 +836,10 @@ function toggleLike(postId) {
 }
 
 function toggleShare(postId) {
+    if (_shareLock[postId]) return;
+    _shareLock[postId] = true;
+    setTimeout(() => { _shareLock[postId] = false; }, 500);
+
     const post = _allPosts.find(p => p.id === postId);
     if (!post) return;
 
@@ -787,9 +899,11 @@ function wirePostListeners(el, postId) {
     // Reply button
     el.querySelector('.civ-reply-submit')?.addEventListener('click', (e) => {
         e.stopPropagation();
+        const replyBtn = e.currentTarget;
         const ta = el.querySelector('.cmt-textarea');
         if (ta && ta.value.trim()) {
-            submitComment(postId, ta.value.trim());
+            replyBtn.disabled = true;
+            submitComment(postId, ta.value.trim()).finally(() => { replyBtn.disabled = false; });
             ta.value = '';
             _replyTexts[postId] = '';
         }
@@ -823,47 +937,54 @@ function rewirePost(postId) {
     wirePostListeners(el, postId);
 }
 
+let _commentLock = {};
 async function submitComment(postId, body) {
+    if (_commentLock[postId]) return;
     const post = _allPosts.find(p => p.id === postId);
     if (!post || !post.isPlayer || !post.dbId) return;
 
+    _commentLock[postId] = true;
     const handle = pickNoReplace(CIVIC_HANDLES, 1)[0];
 
-    const { error } = await _supabase.from('civic_comments').insert({
-        post_id: post.dbId,
-        nation_id: _nationId,
-        faction_id: _factionId,
-        handle_key: handle.handle,
-        display_name: handle.name,
-        initials: handle.initials,
-        body,
-        game_tick: _currentTick,
-    });
+    try {
+        const { error } = await _supabase.from('civic_comments').insert({
+            post_id: post.dbId,
+            nation_id: _nationId,
+            faction_id: _factionId,
+            handle_key: handle.handle,
+            display_name: handle.name,
+            initials: handle.initials,
+            body,
+            game_tick: _currentTick,
+        });
 
-    if (error) {
-        console.error('CIVIC comment error:', error);
-        return;
-    }
+        if (error) {
+            console.error('CIVIC comment error:', error);
+            return;
+        }
 
-    // Add to local state
-    post.comments.push({
-        id: 'temp_' + Date.now(),
-        postId: post.dbId,
-        name: handle.name,
-        initials: handle.initials,
-        handle: handle.handle,
-        body,
-        date: shortDate(_currentTick),
-    });
+        // Add to local state
+        post.comments.push({
+            id: 'temp_' + Date.now(),
+            postId: post.dbId,
+            name: handle.name,
+            initials: handle.initials,
+            handle: handle.handle,
+            body,
+            date: shortDate(_currentTick),
+        });
 
-    // Keep thread open
-    _openThreads[postId] = true;
+        // Keep thread open
+        _openThreads[postId] = true;
 
-    // Re-render post
-    const el = document.querySelector(`[data-post-id="${postId}"]`);
-    if (el) {
-        el.outerHTML = renderPost(post);
-        rewirePost(postId);
+        // Re-render post
+        const el = document.querySelector(`[data-post-id="${postId}"]`);
+        if (el) {
+            el.outerHTML = renderPost(post);
+            rewirePost(postId);
+        }
+    } finally {
+        _commentLock[postId] = false;
     }
 }
 
@@ -876,18 +997,6 @@ function filterByTag(tag) {
     _searchQuery = '';
     renderFilterBar();
     renderFeed();
-    wireHashtagClicks();
-}
-
-/** Wire hashtag click handlers on all rendered posts */
-function wireHashtagClicks() {
-    document.querySelectorAll('#civ-feed .hashtag').forEach(span => {
-        span.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const tag = span.dataset.tag;
-            if (tag) filterByTag(tag);
-        });
-    });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -951,7 +1060,44 @@ function renderTrending() {
             _activeFilter = null;
             renderFilterBar();
             renderFeed();
-            wireHashtagClicks();
         }, 300);
+    });
+}
+
+/** Render top-3 trending tags inline for mobile (shown when sidebar trending is hidden) */
+function renderMobileTrending() {
+    const el = document.getElementById('civ-mobile-trending');
+    if (!el) return;
+
+    const counts = {};
+    _allPosts.forEach(p => {
+        const matches = p.body.match(/#(\w+)/g) || [];
+        matches.forEach(t => {
+            const key = t.toLowerCase();
+            counts[key] = (counts[key] || 0) + 1;
+        });
+    });
+
+    const top3 = Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3);
+
+    if (top3.length === 0) {
+        el.innerHTML = '';
+        return;
+    }
+
+    el.innerHTML = `
+        <span class="civ-mobile-trending-label">Trending:</span>
+        ${top3.map(([tag]) =>
+            `<button type="button" class="civ-mobile-trending-tag" data-trending-tag="${escapeHtml(tag.replace('#', ''))}" aria-label="Filter by ${escapeHtml(tag)}">${escapeHtml(tag)}</button>`
+        ).join('')}
+    `;
+
+    el.querySelectorAll('.civ-mobile-trending-tag').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tag = btn.dataset.trendingTag;
+            if (tag) filterByTag(tag);
+        });
     });
 }
