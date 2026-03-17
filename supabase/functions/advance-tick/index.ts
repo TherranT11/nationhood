@@ -4119,7 +4119,7 @@ const MINISTER_APPROVAL_CONFIG = {
     EVENTS_DECAY_RATE: 0.10,
 
     // Legislative activity: bonus to gov_approval_events when a bill passes
-    BILL_PASSAGE_EVENT_BONUS: 3,
+    BILL_PASSAGE_EVENT_BONUS: 1,
 
 };
 
@@ -21941,11 +21941,22 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Minister approvals failed for ${nation.name} (non-fatal):`, minAppErr);
         }
 
-        // Decay gov_approval_events by 10% per tick (transient shocks fade naturally)
+        // Decay gov_approval_events per tick.
+        // Positive modifiers (bill bonuses, etc.) decay at 10%/tick.
+        // Negative modifiers decay at only 3%/tick during active crises so
+        // crisis penalties accumulate meaningfully instead of being eroded.
         try {
             const oldEvents = Number(nation.gov_approval_events ?? 0);
             if (Math.abs(oldEvents) > 0.01) {
-                const decayed = Math.round(oldEvents * (1 - MINISTER_APPROVAL_CONFIG.EVENTS_DECAY_RATE) * 100) / 100;
+                let decayRate = MINISTER_APPROVAL_CONFIG.EVENTS_DECAY_RATE; // 0.10
+                if (oldEvents < 0) {
+                    const { count: crisisCount } = await supabase
+                        .from('active_crises')
+                        .select('id', { count: 'exact', head: true })
+                        .eq('nation_id', nation.id);
+                    if (crisisCount > 0) decayRate = 0.03; // slow decay during crises
+                }
+                const decayed = Math.round(oldEvents * (1 - decayRate) * 100) / 100;
                 await supabase.from('nations')
                     .update({ gov_approval_events: decayed })
                     .eq('id', nation.id);

@@ -614,7 +614,7 @@ export const MINISTER_APPROVAL_CONFIG = {
     EVENTS_DECAY_RATE: 0.10,
 
     // Legislative activity: bonus to gov_approval_events when a bill passes
-    BILL_PASSAGE_EVENT_BONUS: 3,
+    BILL_PASSAGE_EVENT_BONUS: 1,
 
 };
 

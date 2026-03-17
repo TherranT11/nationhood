@@ -3,8 +3,31 @@
    Social feed styles for the Nationhood Events tab.
    ═══════════════════════════════════════════════════════════════ */
 
-/* ── CIVIC-specific accent colors ── */
+/* ── CIVIC design tokens ── */
 :root {
+    /* Background tiers (dark theme) */
+    --dbg-0:     #121212;
+    --dbg-2:     #1a1a1a;
+    --dbg-3:     #222220;
+    --dbg-4:     #2a2a28;
+    --dbg-hover: #2e2e2b;
+
+    /* Text tiers */
+    --dtext-0:   #e0e0d8;
+    --dtext-1:   #b0b0a8;
+    --dtext-2:   #888880;
+    --dtext-3:   #666660;
+
+    /* Borders */
+    --dborder-0:    rgba(255,255,255,0.08);
+    --dborder-1:    rgba(255,255,255,0.12);
+    --dborder-hair: rgba(255,255,255,0.05);
+
+    /* Fonts */
+    --dfont-mono: 'JetBrains Mono', monospace;
+    --dfont-ui:   'IBM Plex Sans', -apple-system, sans-serif;
+
+    /* CIVIC-specific accents */
     --civ-accent:         #4d8fc4;
     --civ-accent-dim:     #1e3d5c;
     --civ-accent-bright:  #6aaee0;
@@ -22,6 +45,41 @@
     --tag-faction:    #4D5656;
     --tag-party:      #2E6B8A;
     --tag-economy:    #145A32;
+}
+
+/* ── Light mode overrides ── */
+body.light-mode {
+    --dbg-0:     #f0f1f4;
+    --dbg-2:     #ffffff;
+    --dbg-3:     #f5f5f2;
+    --dbg-4:     #eaeae6;
+    --dbg-hover: #e4e4e0;
+
+    --dtext-0:   #1a1a18;
+    --dtext-1:   #444440;
+    --dtext-2:   #777770;
+    --dtext-3:   #999990;
+
+    --dborder-0:    rgba(0,0,0,0.1);
+    --dborder-1:    rgba(0,0,0,0.14);
+    --dborder-hair: rgba(0,0,0,0.06);
+
+    --civ-accent:         #2a6a9e;
+    --civ-accent-dim:     #d0e4f2;
+    --civ-accent-bright:  #1a5580;
+    --civ-system-border:  #a0c4e0;
+    --civ-danger:         #b04020;
+
+    --tag-election:   #1565c0;
+    --tag-coalition:  #0d7358;
+    --tag-crisis:     #b71c1c;
+    --tag-coup:       #8b3a1a;
+    --tag-bill:       #0d47a1;
+    --tag-cabinet:    #5e2a7a;
+    --tag-diplomacy:  #155a8a;
+    --tag-faction:    #4a5050;
+    --tag-party:      #2a6888;
+    --tag-economy:    #1b6a3a;
 }
 
 /* ── Screen-reader only ── */
@@ -69,6 +127,7 @@
     flex-direction: column;
     font-family: var(--dfont-ui);
     color: var(--dtext-0);
+    background: var(--dbg-0);
 }
 
 .civ-layout {

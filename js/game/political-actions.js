@@ -4351,6 +4351,13 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
 
     if (!ministries || ministries.length === 0) return [];
 
+    // Count active crises — ministers decay faster when the nation is in crisis
+    const { count: activeCrisisCount } = await supabase
+        .from('active_crises')
+        .select('id', { count: 'exact', head: true })
+        .eq('nation_id', nation.id);
+    const crisisMultiplier = 1 + (activeCrisisCount || 0);
+
     const results = [];
 
     for (const ministry of ministries) {
@@ -4390,8 +4397,9 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
         const oldApproval = ministry.minister_approval ?? cfg.NEW_MINISTER_APPROVAL;
         let newApproval = oldApproval;
 
-        // Baseline decay always applies — approval erodes unless stats improve
-        newApproval += cfg.BASELINE_DECAY;
+        // Baseline decay always applies — approval erodes unless stats improve.
+        // During crises, decay is multiplied: 1 crisis = 2×, 2 crises = 3×, etc.
+        newApproval += cfg.BASELINE_DECAY * crisisMultiplier;
         // Apply delta-based movement on top of baseline decay
         if (Math.abs(avgDelta) >= 0.5) {
             newApproval += avgDelta * cfg.DELTA_SENSITIVITY;
@@ -4493,11 +4501,15 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
     let rawApproval = ministerAvg + vacancyPenalty + eventModifier;
     rawApproval = Math.max(0, Math.min(100, rawApproval));
 
-    // Cap per-tick change to ±3 so approval moves gradually
-    const MAX_TICK_CHANGE = 3;
+    // Dynamic per-tick cap: base ±3, but scales with the gap so approval can
+    // crash quickly during crises rather than crawling down 3 pts/tick.
+    // Formula: max(3, |gap| × 0.25) — e.g. 36-point gap → cap of 9.
+    const BASE_TICK_CHANGE = 3;
     const previousApproval = Number(nation.gov_approval ?? 40);
     const delta = rawApproval - previousApproval;
-    const clampedDelta = Math.max(-MAX_TICK_CHANGE, Math.min(MAX_TICK_CHANGE, delta));
+    const gap = Math.abs(delta);
+    const maxChange = Math.max(BASE_TICK_CHANGE, Math.round(gap * 0.25));
+    const clampedDelta = Math.max(-maxChange, Math.min(maxChange, delta));
     const govApproval = Math.round(Math.max(0, Math.min(100, previousApproval + clampedDelta)));
 
     // Store on nation
