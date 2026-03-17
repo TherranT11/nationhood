@@ -253,6 +253,64 @@ function detectTriggerKey(row) {
     if (name.includes('ratification failed'))
         return 'major_initiative_ratification_failed';
 
+    // Parliamentary / general elections
+    if (name.includes('parliamentary election') || name.includes('election results') || name.includes('general election'))
+        return 'parliamentary_election';
+
+    // Ministers
+    if (name.includes('minister appointed') || name.includes('cabinet appointed'))
+        return 'minister_appointed';
+    if (name.includes('minister resigned') || name.includes('minister removed'))
+        return 'minister_resigned';
+    if (name.includes('nomination rejected'))
+        return 'minister_nomination_rejected';
+
+    // Bills
+    if (name.includes('bill proposed') || name.includes('bill introduced'))
+        return 'bill_proposed';
+    if (name.includes('bill amended') || name.includes('amendment'))
+        return 'bill_amended';
+    if (name.includes('filibuster'))
+        return 'filibuster_called';
+
+    // Diplomacy
+    if (name.includes('state visit') && name.includes('proposed'))
+        return 'state_visit_proposed';
+    if (name.includes('state visit') && (name.includes('accepted') || name.includes('confirmed')))
+        return 'state_visit_accepted';
+    if (name.includes('state visit') && name.includes('rejected'))
+        return 'state_visit_rejected';
+    if (name.includes('state visit'))
+        return 'state_visit_happened';
+    if (name.includes('trade') && name.includes('proposed'))
+        return 'trade_agreement_proposed';
+    if (name.includes('trade') && name.includes('accepted'))
+        return 'trade_agreement_accepted';
+    if (name.includes('trade') && name.includes('rejected'))
+        return 'trade_agreement_rejected';
+
+    // International organizations
+    if (name.includes('joins') && (name.includes('org') || name.includes('organization')))
+        return 'nation_joins_org';
+    if (name.includes('leaves') && (name.includes('org') || name.includes('organization')))
+        return 'nation_leaves_org';
+
+    // Executive orders
+    if (name.includes('executive order') && name.includes('issued'))
+        return 'executive_order_issued';
+    if (name.includes('executive order') && name.includes('expired'))
+        return 'executive_order_expired';
+
+    // Parties
+    if (name.includes('party founded') || name.includes('new party'))
+        return 'party_founded';
+    if (name.includes('endorsement') || name.includes('endorses'))
+        return 'presidential_endorsement';
+
+    // Coups
+    if (name.includes('coup') && !name.includes('success') && !name.includes('fail'))
+        return 'coup_attempted';
+
     return name.replace(/[^a-z_]/g, '_').replace(/_+/g, '_').slice(0, 40);
 }
 
@@ -318,6 +376,8 @@ function transformPlayerPosts(rows) {
         shares: row.shares || 0,
         likedByPlayer: (row.liked_by || []).includes(_factionId),
         sharedByPlayer: (row.shared_by || []).includes(_factionId),
+        _rawLikedBy: row.liked_by || [],
+        _rawSharedBy: row.shared_by || [],
         comments: (row.civic_comments || []).map(c => ({
             id: c.id,
             postId: row.id,
@@ -683,15 +743,31 @@ function toggleLike(postId) {
     if (!post) return;
 
     if (post.isPlayer && post.dbId) {
-        // Persist to Supabase
+        // Persist to Supabase via direct update on liked_by array + likes counter
         const nowLiked = !post.likedByPlayer;
         post.likedByPlayer = nowLiked;
         post.likes += nowLiked ? 1 : -1;
 
-        _supabase.rpc('civic_toggle_like', {
-            p_post_id: post.dbId,
-            p_faction_id: _factionId,
-        }).catch(() => {});  // best-effort
+        if (nowLiked) {
+            _supabase.from('civic_posts')
+                .update({
+                    liked_by: [...new Set([...(post._rawLikedBy || []), _factionId])],
+                    likes: Math.max(0, post.likes),
+                })
+                .eq('id', post.dbId)
+                .then();
+        } else {
+            _supabase.from('civic_posts')
+                .update({
+                    liked_by: (post._rawLikedBy || []).filter(id => id !== _factionId),
+                    likes: Math.max(0, post.likes),
+                })
+                .eq('id', post.dbId)
+                .then();
+        }
+        post._rawLikedBy = nowLiked
+            ? [...new Set([...(post._rawLikedBy || []), _factionId])]
+            : (post._rawLikedBy || []).filter(id => id !== _factionId);
     } else {
         // In-memory toggle for system posts
         _playerLikes[postId] = !_playerLikes[postId];
@@ -715,10 +791,26 @@ function toggleShare(postId) {
         post.sharedByPlayer = nowShared;
         post.shares += nowShared ? 1 : -1;
 
-        _supabase.rpc('civic_toggle_share', {
-            p_post_id: post.dbId,
-            p_faction_id: _factionId,
-        }).catch(() => {});
+        if (nowShared) {
+            _supabase.from('civic_posts')
+                .update({
+                    shared_by: [...new Set([...(post._rawSharedBy || []), _factionId])],
+                    shares: Math.max(0, post.shares),
+                })
+                .eq('id', post.dbId)
+                .then();
+        } else {
+            _supabase.from('civic_posts')
+                .update({
+                    shared_by: (post._rawSharedBy || []).filter(id => id !== _factionId),
+                    shares: Math.max(0, post.shares),
+                })
+                .eq('id', post.dbId)
+                .then();
+        }
+        post._rawSharedBy = nowShared
+            ? [...new Set([...(post._rawSharedBy || []), _factionId])]
+            : (post._rawSharedBy || []).filter(id => id !== _factionId);
     } else {
         _playerShares[postId] = !_playerShares[postId];
     }

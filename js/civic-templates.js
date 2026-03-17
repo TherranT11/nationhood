@@ -428,19 +428,58 @@ export const CIVIC_EVENT_MAP = {
     'major_initiative_ratification_failed': 'bill_failed',
 
     // Election events
+    'parliamentary_election':            'parliamentary_election',
+    'election_results':                  'parliamentary_election',
+    'general_election':                  'parliamentary_election',
     'presidential_election':             'presidential_election',
     'formation_snap_election':           'snap_election',
     'emergency_minority_government':     'minority_government',
 
     // Government events
     'pm_appointed':                      'minister_appointed',
+    'minister_appointed':                'minister_appointed',
+    'minister_resigned':                 'minister_resigned',
+    'minister_nomination_rejected':      'minister_nomination_rejected',
     'incumbent_lockin':                  'presidential_election',
 
-    // Trade/economic events
+    // Trade/diplomatic events
+    'trade_agreement_proposed':          'trade_agreement_proposed',
     'trade_agreement_expired':           'trade_agreement_rejected',
+    'trade_agreement_accepted':          'trade_agreement_accepted',
+    'trade_agreement_rejected':          'trade_agreement_rejected',
     'aid_terminated':                    'trade_agreement_rejected',
     'aid_suspended':                     'crisis_start',
     'aid_resumed':                       'trade_agreement_accepted',
+    'state_visit_proposed':              'state_visit_proposed',
+    'state_visit_accepted':              'state_visit_accepted',
+    'state_visit_happened':              'state_visit_happened',
+    'state_visit_rejected':              'state_visit_rejected',
+    'diplomatic_initiative_proposed':    'diplomatic_initiative_proposed',
+    'diplomatic_initiative_accepted':    'diplomatic_initiative_accepted',
+    'diplomatic_initiative_rejected':    'diplomatic_initiative_rejected',
+
+    // Bill events
+    'bill_proposed':                     'bill_proposed',
+    'bill_amended':                      'bill_amended',
+    'filibuster_called':                 'filibuster_called',
+
+    // International organizations
+    'nation_joins_org':                  'nation_joins_org',
+    'nation_leaves_org':                 'nation_leaves_org',
+    'io_charter_amended':                'io_charter_amended',
+    'io_cohesion_collapsed':             'io_cohesion_collapsed',
+
+    // Economy
+    'corporate_contract_signed':         'corporate_contract_signed',
+
+    // Parties
+    'party_founded':                     'party_founded',
+    'party_kicked_coalition':            'party_kicked_coalition',
+    'presidential_endorsement':          'presidential_endorsement',
+
+    // Executive orders
+    'executive_order_issued':            'executive_order_issued',
+    'executive_order_expired':           'executive_order_expired',
 
     // Crisis events (event_name pattern matching)
     'crisis_started':                    'crisis_start',
@@ -477,6 +516,8 @@ export const CIVIC_ACTION_MAP = {
 
     'coup_success':                      'coup_succeeded',
     'coup_failed':                       'coup_failed',
+    'coup_invitation':                   'coup_attempted',
+    'coup_plot_reported':                'coup_attempted',
 
     'party_disbanded':                   'party_dissolved',
 
@@ -584,6 +625,117 @@ export function extractEventVars(templateKey, row) {
                 issue: e.issue || '',
             };
 
+        case 'parliamentary_election':
+            return {
+                party: e.party || e.winner || e.faction_name || '',
+                seats: e.seats || e.seats_won || '?',
+                days: e.days || '30',
+                pct: e.pct || e.vote_pct || '?',
+            };
+
+        case 'minister_resigned':
+            return {
+                name: e.minister_name || e.name || '',
+                ministry: e.ministry || '',
+            };
+
+        case 'minister_nomination_rejected':
+            return {
+                name: e.nominee || e.name || '',
+                ministry: e.ministry || '',
+                body: e.rejecting_body || 'parliament',
+            };
+
+        case 'bill_proposed':
+            return {
+                bill_name: e.bill_name || name || '',
+                issue: e.issue || e.policy_area || '',
+                pages: e.pages || '?',
+            };
+
+        case 'bill_amended':
+            return {
+                bill_name: e.bill_name || name || '',
+                clause: e.clause || e.amendment || 'key provision',
+            };
+
+        case 'filibuster_called':
+            return {
+                bill_name: e.bill_name || name || '',
+                party: e.party || e.faction_name || '',
+            };
+
+        case 'state_visit_proposed':
+        case 'state_visit_accepted':
+        case 'state_visit_rejected':
+            return {
+                nation_a: e.nation_a || e.host || '',
+                nation_b: e.nation_b || e.visitor || '',
+                leader: e.leader || e.leader_name || '',
+            };
+
+        case 'state_visit_happened':
+            return {
+                nation_a: e.nation_a || e.host || '',
+                nation_b: e.nation_b || e.visitor || '',
+                leader: e.leader || e.leader_name || '',
+                words: e.words || '1,200',
+            };
+
+        case 'diplomatic_initiative_proposed':
+        case 'diplomatic_initiative_accepted':
+        case 'diplomatic_initiative_rejected':
+            return {
+                nation_a: e.nation_a || e.proposer || '',
+                nation_b: e.nation_b || e.target || '',
+            };
+
+        case 'nation_joins_org':
+        case 'nation_leaves_org':
+        case 'io_charter_amended':
+        case 'io_cohesion_collapsed':
+            return {
+                org: e.org || e.organization || '',
+                nation: e.nation || '',
+            };
+
+        case 'executive_order_issued':
+        case 'executive_order_expired':
+            return {
+                order: e.order || e.title || '',
+                leader: e.leader || e.faction_name || '',
+            };
+
+        case 'party_founded':
+            return {
+                party: e.party || e.faction_name || '',
+                existing_party: e.existing_party || '',
+            };
+
+        case 'party_kicked_coalition':
+            return {
+                party: e.party || e.faction_name || '',
+                coalition: e.coalition || '',
+            };
+
+        case 'presidential_endorsement':
+            return {
+                candidate: e.candidate || '',
+                endorser: e.endorser || '',
+            };
+
+        case 'corporate_contract_signed':
+            return {
+                company: e.company || e.corp || '',
+                sector: e.sector || '',
+                value: e.value || '?',
+            };
+
+        case 'coup_attempted':
+            return {
+                faction: e.faction || e.faction_name || '',
+            };
+
         default:
             // Pass through all effects_applied as variables
             return { ...e };
@@ -674,6 +826,11 @@ export function extractActionVars(templateKey, row) {
             };
 
         case 'consolidation_begins':
+            return {
+                faction: factionName,
+            };
+
+        case 'coup_attempted':
             return {
                 faction: factionName,
             };

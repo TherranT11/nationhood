@@ -278,12 +278,7 @@
     flex-shrink: 0;
 }
 
-.civ-post.system .civ-avatar {
-    background: var(--civ-accent-dim);
-    color: var(--civ-accent-bright);
-}
-
-.civ-post:not(.system) .civ-avatar {
+.civ-post .civ-avatar {
     background: var(--civ-accent-dim);
     color: var(--civ-accent-bright);
 }
