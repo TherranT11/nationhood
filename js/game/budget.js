@@ -594,7 +594,7 @@ export async function applyGdpGrowth(supabase, nation, currentTick) {
     if (monthlyChangePercent < 0 && startingGdp > 0) {
         const gdpRatio = currentGdp / startingGdp;
         if (gdpRatio < 0.5) {
-            const dampening = gdpRatio * 2; // 50%→1.0, 25%→0.5, 10%→0.2
+            const dampening = Math.max(0.1, gdpRatio * 2); // 50%→1.0, 25%→0.5, 10%→0.2, min 10%
             monthlyChangePercent *= dampening;
         }
     }
