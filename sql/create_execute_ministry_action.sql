@@ -21,6 +21,11 @@ DECLARE
     v_new_ap INT;
     v_action_id UUID;
 BEGIN
+    -- 0. Verify the caller owns this faction (auth.uid() = faction PK)
+    IF p_faction_id != auth.uid() THEN
+        RAISE EXCEPTION 'Faction ID does not match authenticated user';
+    END IF;
+
     -- 1. Reject if this action is already active (prevents double stat application)
     IF EXISTS (
         SELECT 1 FROM ministry_action_log
