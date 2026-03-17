@@ -197,8 +197,11 @@ export const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 5 — general 
 
 /**
  * Atomic AP deduction via database RPC.
- * Returns { success: true, newAp } on success, or { success: false, error } on failure.
- * The DB function checks balance and deducts in a single UPDATE, preventing race conditions.
+ * Returns { success: true, newAp } on success,
+ * or { success: false, error, currentAp } on failure.
+ * The DB function checks balance and deducts in a single UPDATE, preventing
+ * race conditions.  On insufficient AP it returns -(current_ap + 1) so the
+ * caller always has the real server-side balance (single source of truth).
  */
 export async function deductAP(supabase, factionId, cost) {
     const { data, error } = await supabase.rpc('deduct_ap', {
@@ -209,8 +212,9 @@ export async function deductAP(supabase, factionId, cost) {
         console.error(`[deductAP] RPC failed for faction ${factionId}, cost ${cost}:`, error.message);
         return { success: false, error: error.message };
     }
-    if (data === -1) {
-        return { success: false, error: 'Insufficient AP' };
+    if (data < 0) {
+        const currentAp = -(data) - 1;
+        return { success: false, error: 'Insufficient AP', currentAp };
     }
     return { success: true, newAp: data };
 }

@@ -1903,9 +1903,10 @@ async function acceptTradeNegotiation(proposalId, negotiationId) {
     const apCost = DIPLOMACY_CONFIG.ACCEPT_TRADE_NEGOTIATION_AP;
     if (!confirm('Accept trade negotiations? This costs ' + apCost + ' AP.\n\nOnce accepted, the negotiation table opens and both sides can choose an agreement type and draft articles.')) return;
 
-    const apResult = await deductAP(_supabase, currentFaction.id, apCost, currentFaction.action_points);
+    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
     if (!apResult.success) {
-        alert('Not enough AP. Need ' + apCost + ' AP, have ' + (currentFaction.action_points || 0) + '.');
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP. Need ' + apCost + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
         return;
     }
     currentFaction.action_points = apResult.newAp;
@@ -2474,10 +2475,6 @@ async function counterMajorInitiative(proposalId) {
     }
 
     const apCost = MAJOR_INITIATIVE_CONFIG.AP_COST;
-    if ((currentFaction?.action_points ?? 0) < apCost) {
-        alert('Counter-proposal costs ' + apCost + ' AP. You have ' + (currentFaction?.action_points ?? 0) + ' AP.');
-        return;
-    }
 
     const { data: proposal, error: fetchErr } = await _supabase
         .from('diplomatic_proposals')
@@ -2540,7 +2537,11 @@ async function counterMajorInitiative(proposalId) {
 
     // Deduct AP
     const apResult = await deductAP(_supabase, currentFaction.id, apCost);
-    if (!apResult.success) { alert('Failed to deduct AP.'); return; }
+    if (!apResult.success) {
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP. Need ' + apCost + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
+        return;
+    }
 
     // Add counter to history
     const counterHistory = pd.counter_history || [];
@@ -4725,7 +4726,8 @@ async function submitAidProposal() {
     // Deduct AP
     const apResult = await deductAP(_supabase, currentFaction.id, apCost);
     if (!apResult.success) {
-        alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (currentFaction.action_points || 0));
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (apResult.currentAp ?? '?'));
         if (btn) btn.disabled = false;
         return;
     }
@@ -4917,7 +4919,8 @@ async function wizardSubmit() {
     const apCost = DIPLOMACY_CONFIG.PROPOSE_INITIATIVE_AP;
     const apResult = await deductAP(_supabase, currentFaction.id, apCost);
     if (!apResult.success) {
-        alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (currentFaction.action_points || 0));
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (apResult.currentAp ?? '?'));
         return;
     }
     currentFaction.action_points = apResult.newAp;
@@ -5018,7 +5021,8 @@ async function submitTradeProposal() {
     // Deduct AP
     const apResult = await deductAP(_supabase, currentFaction.id, apCost);
     if (!apResult.success) {
-        alert('Not enough AP. Need ' + apCost + ' AP, have ' + (currentFaction.action_points || 0) + '.');
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP. Need ' + apCost + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
         return;
     }
     currentFaction.action_points = apResult.newAp;
@@ -6007,8 +6011,12 @@ async function joinTradeNegotiation(negotiationId, role, apCost) {
     if (!await requireNegStatus(negotiationId, ['active'], () => openTradeNegotiation(negotiationId))) return;
     if (!confirm('Join trade negotiations as ' + role.replace('_', ' ') + '? This costs ' + apCost + ' AP.')) return;
 
-    const apResult = await deductAP(_supabase, currentFaction.id, apCost, currentFaction.action_points);
-    if (!apResult.success) { alert('Not enough AP. Need ' + apCost + ' AP.'); return; }
+    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+    if (!apResult.success) {
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP. Need ' + apCost + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
+        return;
+    }
     currentFaction.action_points = apResult.newAp;
 
     const neg = await fetchNegotiation(negotiationId, 'participants');
@@ -7285,7 +7293,8 @@ async function submitInitiative() {
     const apCost = DIPLOMACY_CONFIG.PROPOSE_INITIATIVE_AP;
     const apResult = await deductAP(_supabase, currentFaction.id, apCost);
     if (!apResult.success) {
-        alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (currentFaction.action_points || 0));
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (apResult.currentAp ?? '?'));
         return;
     }
     currentFaction.action_points = apResult.newAp;
@@ -8311,7 +8320,8 @@ async function submitStateVisit() {
     const apResult = await deductAP(_supabase, currentFaction.id, computed.totalAp);
     if (!apResult.success) {
         _svSubmitLock = false;
-        alert('Not enough AP. Need ' + computed.totalAp + ', have ' + (currentFaction.action_points || 0) + '.');
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP. Need ' + computed.totalAp + ', have ' + (apResult.currentAp ?? '?') + '.');
         return;
     }
     currentFaction.action_points = apResult.newAp;
@@ -10370,7 +10380,8 @@ async function submitRTDraft() {
 
     const apResult = await deductAP(_supabase, currentFaction.id, apCost);
     if (!apResult.success) {
-        alert('Not enough AP (' + apCost + ' needed).');
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (apResult.currentAp ?? '?'));
         if (btn) btn.disabled = false;
         return;
     }
@@ -10558,7 +10569,8 @@ async function submitESDraft() {
 
     const apResult = await deductAP(_supabase, currentFaction.id, apCost);
     if (!apResult.success) {
-        alert('Not enough AP (' + apCost + ' needed).');
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (apResult.currentAp ?? '?'));
         if (btn) btn.disabled = false;
         return;
     }
@@ -10833,7 +10845,8 @@ async function submitEmbargoDraft() {
 
     var apResult = await deductAP(_supabase, currentFaction.id, apCost);
     if (!apResult.success) {
-        alert('Not enough AP (' + apCost + ' needed).');
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (apResult.currentAp ?? '?'));
         if (btn) btn.disabled = false;
         return;
     }
@@ -11867,7 +11880,8 @@ async function executeRecallAmbassador() {
         // 4. Deduct AP
         const apResult = await deductAP(_supabase, currentFaction.id, DIPLOMACY_CONFIG.RECALL_AMBASSADOR_AP);
         if (!apResult.success) {
-            alert(apResult.error || 'Insufficient AP.');
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert('Not enough AP (' + DIPLOMACY_CONFIG.RECALL_AMBASSADOR_AP + ' needed). Current AP: ' + (apResult.currentAp ?? '?'));
             return;
         }
         currentFaction.action_points = apResult.newAp;
@@ -12308,7 +12322,8 @@ async function executeAppointAmbassador() {
         // 5. Deduct AP
         const apResult = await deductAP(_supabase, currentFaction.id, APPOINT_AMBASSADOR_AP);
         if (!apResult.success) {
-            alert(apResult.error || 'Insufficient AP.');
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert('Not enough AP (' + APPOINT_AMBASSADOR_AP + ' needed). Current AP: ' + (apResult.currentAp ?? '?'));
             return;
         }
         currentFaction.action_points = apResult.newAp;
@@ -12424,10 +12439,6 @@ async function submitMinorInitiative() {
     if (wizardArticles.length === 0) { alert('Please add at least one article.'); return; }
 
     const apCost = MINOR_INITIATIVE_CONFIG.AP_COST;
-    if ((currentFaction?.action_points ?? 0) < apCost) {
-        alert('Not enough AP. You need ' + apCost + ' AP.');
-        return;
-    }
 
     _submitMinorLock = true;
     const submitBtn = document.querySelector('[onclick*="submitMinorInitiative"]');
@@ -12500,7 +12511,11 @@ async function submitMinorInitiative() {
 
         // Deduct AP
         const apResult = await deductAP(_supabase, currentFaction.id, apCost);
-        if (!apResult.success) { alert('Failed to deduct AP: ' + (apResult.error || 'Insufficient AP')); return; }
+        if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (apResult.currentAp ?? '?'));
+            return;
+        }
 
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const currentTick = shard?.current_tick || shardTick;
@@ -12722,10 +12737,6 @@ async function submitMajorInitiative() {
 
     const isFM = diplomaticRoles.isFM;
     const apCost = isFM ? MAJOR_INITIATIVE_CONFIG.AP_COST : MAJOR_INITIATIVE_CONFIG.AP_COST + MAJOR_INITIATIVE_CONFIG.HOG_FALLBACK_AP_PENALTY;
-    if ((currentFaction?.action_points ?? 0) < apCost) {
-        alert('Not enough AP. You need ' + apCost + ' AP.');
-        return;
-    }
 
     // Validate: hostile nations blocked
     const targetId = activeDraftTarget.id;
@@ -12786,7 +12797,11 @@ async function submitMajorInitiative() {
 
     try {
         const apResult = await deductAP(_supabase, currentFaction.id, apCost);
-        if (!apResult.success) { alert('Failed to deduct AP: ' + (apResult.error || 'Insufficient AP')); return; }
+        if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (apResult.currentAp ?? '?'));
+            return;
+        }
 
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const currentTick = shard?.current_tick || shardTick;
@@ -12868,12 +12883,8 @@ async function submitDraft() {
         return;
     }
 
-    // Check AP
+    // Check AP — server is the source of truth; deductAP below will validate
     const apCost = activeDraftAction.apCost;
-    if ((currentFaction?.action_points ?? 0) < apCost) {
-        alert('Not enough AP. You need ' + apCost + ' AP.');
-        return;
-    }
 
     // Use existing wizard state variables for compatibility with submitInitiative
     wizardTargetNation = activeDraftTarget;
@@ -12889,7 +12900,11 @@ async function submitDraft() {
     try {
         // Deduct AP
         const apResult = await deductAP(_supabase, currentFaction.id, apCost);
-        if (!apResult.success) { alert('Failed to deduct AP: ' + (apResult.error || 'Insufficient AP')); return; }
+        if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (apResult.currentAp ?? '?'));
+            return;
+        }
 
         // Build proposal
         const proposalData = {

@@ -3293,8 +3293,6 @@ async function purgeMinister(ministryKey) {
     const ministry = ministryData.find(m => m.ministry_key === ministryKey);
     if (!ministry) return;
 
-    if ((currentFaction?.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
-
     const partyName = ministry.factions?.faction_name || 'Unknown';
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
 
@@ -3309,7 +3307,11 @@ async function purgeMinister(ministryKey) {
     )) return;
 
     const apResult = await deductAP(_supabase, currentFaction.id, 1);
-    if (!apResult.success) { alert('Not enough AP (need 1).'); return; }
+    if (!apResult.success) {
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP (need 1). Current AP: ' + (apResult.currentAp ?? '?'));
+        return;
+    }
     currentFaction.action_points = apResult.newAp;
     sessionStorage.removeItem('nationhood_state');
 
@@ -3445,10 +3447,12 @@ async function requestMinistry(ministryKey) {
     if (!currentFaction) return;
     const myCount = ministryRequests.filter(r => r.faction_id === currentFaction.id).length;
     if (myCount >= 2) { alert('You can only have 2 active ministry requests.'); return; }
-    if ((currentFaction.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
-
     const apResult = await deductAP(_supabase, currentFaction.id, 1);
-    if (!apResult.success) { alert('Not enough AP (need 1).'); return; }
+    if (!apResult.success) {
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP (need 1). Current AP: ' + (apResult.currentAp ?? '?'));
+        return;
+    }
     currentFaction.action_points = apResult.newAp;
     sessionStorage.removeItem('nationhood_state');
 
@@ -3525,11 +3529,6 @@ async function fileNoConfidence() {
     // Cannot file no-confidence against a caretaker government
     if (coalitionData.status === 'caretaker') {
         alert('Cannot file a vote of no confidence against a caretaker government. Elections are already scheduled.');
-        return;
-    }
-
-    if ((currentFaction.action_points || 0) < GAME_CONFIG.NO_CONFIDENCE_AP_COST) {
-        alert(`Not enough AP. You need ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP (you have ${currentFaction.action_points || 0}).`);
         return;
     }
 
@@ -3638,7 +3637,11 @@ async function fileNoConfidence() {
 
         // Deduct AP only after bill creation succeeds
         const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.NO_CONFIDENCE_AP_COST);
-        if (!apResult.success) { alert(`Not enough AP. You need ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP.`); return; }
+        if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert('Not enough AP. Need ' + GAME_CONFIG.NO_CONFIDENCE_AP_COST + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
+            return;
+        }
         currentFaction.action_points = apResult.newAp;
 
         // Auto-cast the filer's own vote as YES
@@ -4138,12 +4141,6 @@ async function fileImpeachment() {
         return;
     }
 
-    // AP check
-    if ((currentFaction.action_points || 0) < GAME_CONFIG.IMPEACHMENT_AP_COST) {
-        alert(`Not enough AP. You need ${GAME_CONFIG.IMPEACHMENT_AP_COST} AP (you have ${currentFaction.action_points || 0}).`);
-        return;
-    }
-
     // Check: no existing active impeachment proceeding
     const { data: existingProceeding } = await _supabase
         .from('impeachment_proceedings')
@@ -4308,7 +4305,11 @@ async function fileImpeachment() {
 
         // Deduct AP after bill creation succeeds
         const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.IMPEACHMENT_AP_COST);
-        if (!apResult.success) { alert(`Not enough AP. You need ${GAME_CONFIG.IMPEACHMENT_AP_COST} AP.`); return; }
+        if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert('Not enough AP. Need ' + GAME_CONFIG.IMPEACHMENT_AP_COST + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
+            return;
+        }
         currentFaction.action_points = apResult.newAp;
 
         // Auto-cast the filer's own vote as YES
@@ -4649,8 +4650,6 @@ async function resignPMAction() {
     const canFire = isPresidential ? isPresidentParty : (currentFaction.id === coalitionData?.lead_party_id);
     if (!canFire) { alert('Only the head of government can dismiss ministers.'); return; }
 
-    if ((currentFaction.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
-
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
     const ministryName = ministry.ministry_name || MINISTRY_NAMES[ministryKey] || ministryKey;
     if (!confirm('Dismiss ' + ministerName + ' from ' + ministryName + '?\n\nCosts 1 AP. A replacement will need to be appointed.\nThe new minister starts at 50% approval.\nNote: The underlying national stats will not change.')) return;
@@ -4658,6 +4657,11 @@ async function resignPMAction() {
     try {
         // Deduct AP
         const apResult = await deductAP(_supabase, currentFaction.id, 1);
+        if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert('Not enough AP (need 1). Current AP: ' + (apResult.currentAp ?? '?'));
+            return;
+        }
         currentFaction.action_points = apResult.newAp;
 
         // Clear minister and reset approval
