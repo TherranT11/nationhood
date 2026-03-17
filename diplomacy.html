@@ -9395,7 +9395,7 @@ async function renderNegotiationsBox() {
             } else if (isRatification) {
                 statusBadge = '<span class="badge badge--teal">Parliament</span>';
             } else {
-                statusBadge = '<span class="badge badge--dim">Awaiting</span>';
+                statusBadge = '<span class="badge badge--amber">Awaiting</span>';
             }
 
             const unseenBadge = unseen ? '<span class="neg-unseen-dot"></span>' : '';
@@ -9447,7 +9447,9 @@ async function renderNegotiationsBox() {
             } else if (neg.status === 'ratification') {
                 statusBadge = '<span class="badge badge--teal">Parliament</span>';
             } else {
-                statusBadge = '<span class="badge badge--dim">' + (neg.status === 'open' ? 'Pending' : 'Active') + '</span>';
+                statusBadge = neg.status === 'open'
+                    ? '<span class="badge badge--amber">Pending</span>'
+                    : '<span class="badge badge--green">Active</span>';
             }
 
             const unseenBadge = unseen ? '<span class="neg-unseen-dot"></span>' : '';

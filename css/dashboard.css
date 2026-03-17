@@ -379,6 +379,13 @@ body.light-mode .guide-btn:hover { background: rgba(184,150,10,0.18); }
     min-width: 14px; height: 14px; line-height: 14px;
     text-align: center; padding: 0 3px;
 }
+.nav-badge--amber {
+    background: #b09a5b; color: #fff;
+}
+/* When both red and amber badges coexist, shift amber left */
+.nav-badge + .nav-badge--amber {
+    right: auto; left: 2px;
+}
 
 /* ===== MAIN CONTENT AREA ===== */
 #content-area { flex: 1; overflow-y: auto; overflow-x: hidden; }
