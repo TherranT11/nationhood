@@ -21,7 +21,18 @@ DECLARE
     v_new_ap INT;
     v_action_id UUID;
 BEGIN
-    -- 1. Deduct AP atomically (fails if insufficient)
+    -- 1. Reject if this action is already active (prevents double stat application)
+    IF EXISTS (
+        SELECT 1 FROM ministry_action_log
+        WHERE nation_id   = p_nation_id
+          AND ministry_key = p_ministry_key
+          AND action_key   = p_action_key
+          AND processed    = false
+    ) THEN
+        RAISE EXCEPTION 'Action already active: %.%', p_ministry_key, p_action_key;
+    END IF;
+
+    -- 2. Deduct AP atomically (fails if insufficient)
     UPDATE factions
     SET action_points = action_points - p_ap_cost
     WHERE id = p_faction_id
@@ -32,7 +43,7 @@ BEGIN
         RAISE EXCEPTION 'Insufficient AP: need %, have less', p_ap_cost;
     END IF;
 
-    -- 2. Insert the action log entry
+    -- 3. Insert the action log entry
     INSERT INTO ministry_action_log (
         nation_id, faction_id, ministry_key, action_key,
         ap_cost, applied_at_tick, stat_effects, action_data,
