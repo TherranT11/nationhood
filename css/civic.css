@@ -308,6 +308,84 @@ body.light-mode {
     min-height: 18px;
 }
 
+/* ── Handle input ── */
+.civ-handle-input {
+    width: 100%;
+    background: var(--dbg-0);
+    border: 1px solid var(--dborder-1);
+    color: var(--civ-accent-bright);
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    padding: 5px 10px;
+    border-radius: 3px;
+    outline: none;
+    box-sizing: border-box;
+    margin-bottom: 6px;
+}
+.civ-handle-input:focus { border-color: var(--civ-accent); }
+.civ-handle-input::placeholder { color: var(--dtext-3); }
+
+/* ── Image attach ── */
+.civ-compose-footer-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.civ-attach-btn {
+    cursor: pointer;
+    color: var(--dtext-3);
+    display: flex;
+    align-items: center;
+    transition: color 0.15s;
+}
+.civ-attach-btn:hover { color: var(--civ-accent); }
+
+.civ-image-preview {
+    position: relative;
+    margin: 6px 0;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--dborder-1);
+    max-height: 200px;
+}
+.civ-image-preview img {
+    display: block;
+    width: 100%;
+    max-height: 200px;
+    object-fit: cover;
+}
+.civ-image-remove {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: rgba(0,0,0,0.7);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    font-size: 14px;
+    line-height: 22px;
+    text-align: center;
+    cursor: pointer;
+    padding: 0;
+}
+.civ-image-remove:hover { background: rgba(180,30,30,0.9); }
+
+/* ── Post image display ── */
+.civ-post-image {
+    margin: 8px 0 4px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--dborder-1);
+}
+.civ-post-image img {
+    display: block;
+    width: 100%;
+    max-height: 300px;
+    object-fit: cover;
+}
+
 /* ── Filter bar ── */
 .civ-filter-bar {
     display: flex;
