@@ -538,7 +538,7 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
 
     // ── 8. Deduct AP + track last_action_tick ──
     const apResult = await deductAP(supabase, factionId, effectiveRallyCost);
-    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId);
+    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Rally] last_action_tick update failed:', error.message); });
 
     // ── 9. Log ──
     const headline = outcome.headline(targetBloc.bloc_name);
@@ -763,7 +763,7 @@ export async function executeOutreach(supabase, factionId, nationId, blocId, cur
 
     // ── 9. Deduct AP + track last_action_tick ──
     const apResult = await deductAP(supabase, factionId, effectiveOutreachCost);
-    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId);
+    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Outreach] last_action_tick update failed:', error.message); });
 
     // ── 10. Log ──
     await supabase.from('campaign_actions').insert({
@@ -1259,7 +1259,7 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
 
     // ── 8. Deduct AP + track last_action_tick ──
     const apResult = await deductAP(supabase, factionId, effectiveAttackCost);
-    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId);
+    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Attack] last_action_tick update failed:', error.message); });
 
     // ── 9. Generate headline ──
     const headline = _attackHeadline(outcomeId, targetFaction.faction_name, vectorId);
@@ -1514,7 +1514,7 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
         const apResult = await deductAP(supabase, factionId, effectivePromiseCost);
         newAp = apResult.newAp ?? (newAp - effectivePromiseCost);
     }
-    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId);
+    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Promise] last_action_tick update failed:', error.message); });
 
     // ── 8. Create promise record ──
     const { data: promise, error: promiseErr } = await supabase

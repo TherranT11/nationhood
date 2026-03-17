@@ -93,7 +93,9 @@ async function getEOTraitAPModifier(supabase, factionId) {
         .eq('id', factionId)
         .single();
     if (!faction) return 0;
-    return getTraitAPModifier('executive_order', faction, 0); // tick irrelevant for EO traits
+    // Pass tick=0 so quick_study/slow_to_act (first-action-per-tick traits) never fire for EOs —
+    // those traits only apply to campaign actions, not executive orders.
+    return getTraitAPModifier('executive_order', faction, 0);
 }
 
 async function getCurrentTick(supabase) {

@@ -5320,11 +5320,12 @@ async function syncVoteTallies(supabase, billId) {
             .single();
         if (sponsorFaction) {
             const totalSeats = GAME_CONFIG.TOTAL_SEATS || 120;
-            // arm_twister: +15% of total seats as bonus yes votes
+            // arm_twister: +15% of total seats as virtual yes votes (affects passage calculation only;
+            // these phantom votes are stored in bills.votes_for — UI vote counts include them)
             if ((sponsorFaction.leader_positive_traits || []).includes('arm_twister')) {
                 votesFor += Math.round(totalSeats * 0.15);
             }
-            // poor_whip: -15% of total seats (reduce yes votes)
+            // poor_whip: -15% of total seats as virtual vote reduction (same caveat as arm_twister)
             if ((sponsorFaction.leader_negative_traits || []).includes('poor_whip')) {
                 votesFor = Math.max(0, votesFor - Math.round(totalSeats * 0.15));
             }
@@ -17892,12 +17893,6 @@ async function processPartyLeaderTraitEffects(supabase, nation, currentTick) {
         .eq('faction_type', 'party');
 
     if (!factions || factions.length === 0) return;
-
-    // Check if nation has active crises (for crisis_manager / panic_under_pressure)
-    const { count: crisisCount } = await supabase
-        .from('active_crises')
-        .select('id', { count: 'exact', head: true })
-        .eq('nation_id', nation.id);
 
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     const governmentPartyIds = new Set([
