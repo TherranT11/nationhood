@@ -7,6 +7,7 @@ import { isAutocracy } from './government-types.js';
 import { computeIdeologyAlignment, countIdeologyRelationship, ideologyOppositionMultiplier } from './ideology.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { recalcDerivedApproval } from './bills.js';
+import { ISSUE_CATEGORY_STATS, statDirectionSign } from './stats.js';
 
 // ==================== THREE-PILLAR PREFERENCE ENGINE ====================
 
@@ -14,8 +15,9 @@ import { recalcDerivedApproval } from './bills.js';
  * Master per-tick function that recalculates the three-pillar preference score
  * for every faction-bloc pair in a nation (democracies only).
  *
- * preference_score = ideology_alignment × 0.60
- *                  + clamp(momentum, 0, 100) × 0.40
+ * preference_score = ideology_alignment × 0.40
+ *                  + performance_perception × 0.15
+ *                  + clamp(momentum, 0, 100) × 0.45
  *
  * Governance feed: coalition parties get per-tick momentum nudge
  * from gov_approval: (gov_approval - 50) / 10, capped ±5.
@@ -208,8 +210,9 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
     }
 
     // ── 5. Calculate pillars for each faction-bloc pair ──
-    const PILLAR_WEIGHT_IDEO = 0.45;
-    const PILLAR_WEIGHT_MOM  = 0.55;
+    const PILLAR_WEIGHT_IDEO = 0.40;
+    const PILLAR_WEIGHT_PERF = 0.15;
+    const PILLAR_WEIGHT_MOM  = 0.45;
     const MOMENTUM_DECAY     = 0.70; // 30% decay per tick
     const INACTIVITY_DRAIN   = 1.5;  // momentum drain per tick when inactive
     const INACTIVITY_THRESHOLD = 3;  // ticks without any campaign action to trigger drain
@@ -254,8 +257,36 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         // ─── PILLAR 1: Ideology Alignment (0-100) ───
         const ideoScore = ideo ? computeIdeologyAlignment(ideo, bloc) : 50;
 
-        // ─── PILLAR 2: Performance Perception — DISABLED ───
-        const newPerf = 50; // neutral; column still written for schema compat
+        // ─── PILLAR 2: Performance Perception (drift-based) ───
+        // Coalition parties: target based on how well nation stats match this bloc's priority issues.
+        // Opposition parties: neutral 50 (they aren't governing, so no accountability).
+        // Drifts by max ±2/tick toward target, clamped to [20, 80].
+        const oldPerf = Number(row.performance_perception ?? 50);
+        let perfTarget = 50; // neutral default for opposition
+        if (coalitionPartyIds.has(row.faction_id)) {
+            const blocIssues = bloc.priority_issues || [];
+            let goodTotal = 0;
+            let statCount = 0;
+            for (const issue of blocIssues) {
+                const statKeys = ISSUE_CATEGORY_STATS[issue];
+                if (!statKeys) continue;
+                for (const sk of statKeys) {
+                    const val = Number(nation[sk] ?? 50);
+                    const dir = statDirectionSign(sk);
+                    // dir=+1 → higher is better (goodness = val)
+                    // dir=-1 → lower is better (goodness = 100 - val)
+                    // dir=0  → neutral, skip
+                    if (dir === 0) continue;
+                    goodTotal += dir === 1 ? val : (100 - val);
+                    statCount++;
+                }
+            }
+            if (statCount > 0) {
+                perfTarget = Math.round(goodTotal / statCount);
+            }
+        }
+        const perfDelta = Math.max(-2, Math.min(2, perfTarget - oldPerf));
+        const newPerf = Math.max(20, Math.min(80, Math.round((oldPerf + perfDelta) * 100) / 100));
 
         // ─── PILLAR 3: Momentum (-50 to +50) ───
         // Base decay: 30% per tick. Conviction stacks reduce decay for aligned blocs.
@@ -340,7 +371,7 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         // Multiplier 1.3 stretches the active range to still reach 100 at +50.
         const momMapped = Math.max(0, Math.min(100, 35 + newMomentum * 1.3));
         let prefScore = Math.round(
-            (ideoScore * PILLAR_WEIGHT_IDEO + momMapped * PILLAR_WEIGHT_MOM) * 100
+            (ideoScore * PILLAR_WEIGHT_IDEO + newPerf * PILLAR_WEIGHT_PERF + momMapped * PILLAR_WEIGHT_MOM) * 100
         ) / 100;
 
         // ─── IDEOLOGY OPPOSITION PENALTY (structural) ───
