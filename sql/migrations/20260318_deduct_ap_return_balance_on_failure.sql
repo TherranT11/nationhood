@@ -1,9 +1,6 @@
--- Atomic AP deduction: checks balance and deducts in a single statement.
--- Returns the new AP balance (>= 0) on success.
--- On insufficient AP, returns -(current_ap + 1) so the caller can decode the
--- real balance:  actual_ap = -(return_value) - 1.
--- This keeps the DB as the single source of truth for AP.
--- Run this in Supabase SQL editor.
+-- deduct_ap: return actual AP balance on failure instead of bare -1.
+-- On success: returns new balance (>= 0).
+-- On failure: returns -(current_ap + 1), so caller decodes via -(val) - 1.
 
 CREATE OR REPLACE FUNCTION deduct_ap(
     p_faction_id UUID,
@@ -24,10 +21,9 @@ BEGIN
     RETURNING action_points INTO v_new_ap;
 
     IF NOT FOUND THEN
-        -- Return the actual balance so the client can display it accurately
         SELECT action_points INTO v_current_ap
         FROM factions WHERE id = p_faction_id;
-        RETURN -(COALESCE(v_current_ap, 0) + 1);  -- encode as negative
+        RETURN -(COALESCE(v_current_ap, 0) + 1);
     END IF;
 
     RETURN v_new_ap;
