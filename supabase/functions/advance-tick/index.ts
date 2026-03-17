@@ -4771,8 +4771,8 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
 }
 
 
-// Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -3% to +3% per month
-// Formula: monthlyChange% = ((gdp_growth - 50) / 50) * 3  →  0=-3%, 50=0%, 100=+3%
+// Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
+// Formula: monthlyChange% = ((gdp_growth - 50) / 50) * 1  →  0=-1%, 50=0%, 100=+1%
 // Includes diminishing returns (GDP < 50% of starting) and hard floor (20% of starting → Economic Collapse)
 async function applyGdpGrowth(supabase, nation, currentTick) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
@@ -4780,7 +4780,7 @@ async function applyGdpGrowth(supabase, nation, currentTick) {
     const startingGdp = Number(nation.starting_gdp ?? currentGdp);
     if (currentGdp <= 0 || startingGdp <= 0) return;
 
-    let monthlyChangePercent = ((gdpGrowth - 50) / 50) * 3;
+    let monthlyChangePercent = ((gdpGrowth - 50) / 50) * 1;
 
     // Diminishing returns: scale negative growth when GDP < 50% of starting
     if (monthlyChangePercent < 0) {
