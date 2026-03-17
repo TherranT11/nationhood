@@ -50,6 +50,11 @@ let _playerLikes = {};   // postId -> bool (in-memory for system posts)
 let _playerShares = {};  // postId -> bool
 let _openThreads = {};   // postId -> bool
 let _replyTexts = {};    // postId -> string
+let _factionAbbr = '';   // faction abbreviation for compose avatar
+let _visibleCount = 30;  // pagination: how many posts to show
+let _realtimeChannel = null;
+
+const POSTS_PER_PAGE = 30;
 
 // ═══════════════════════════════════════════════════════════
 // HELPERS
@@ -83,12 +88,12 @@ function fillTemplate(text, vars) {
     );
 }
 
-/** Render hashtags as clickable spans (XSS-safe) */
+/** Render hashtags as clickable buttons (XSS-safe, accessible) */
 function renderHashtags(rawText) {
     const safe = escapeHtml(rawText);
     return safe.replace(/(^|\s)#(\w+)/g,
         (_, space, tag) =>
-            `${space}<span class="hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</span>`
+            `${space}<button type="button" class="hashtag" data-tag="${escapeHtml(tag)}" aria-label="Filter by #${escapeHtml(tag)}">#${escapeHtml(tag)}</button>`
     );
 }
 
@@ -112,17 +117,23 @@ function shortDate(tick) {
  * Initialize CIVIC feed. Called when the Events tab is activated.
  */
 let _nationName = '';
-export async function initCivic(supabase, nationId, factionId, currentTick, nationName) {
+export async function initCivic(supabase, nationId, factionId, currentTick, nationName, factionAbbr) {
     _supabase = supabase;
     _nationId = nationId;
     _factionId = factionId;
     _currentTick = currentTick;
+    _visibleCount = POSTS_PER_PAGE;
     if (!nationName) console.warn('initCivic: nationName is empty — hashtags will show blank');
     _nationName = nationName || '';
+    _factionAbbr = factionAbbr || '??';
 
     const root = document.getElementById('civic-root');
     if (!root) return;
-    root.innerHTML = '<div class="civ-loading">Loading CIVIC...</div>';
+    root.innerHTML = `
+        <div class="loading-container">
+            <div class="loading-spinner"></div>
+            <div>Loading CIVIC...</div>
+        </div>`;
 
     try {
         // Fetch all data sources in parallel
@@ -144,7 +155,22 @@ export async function initCivic(supabase, nationId, factionId, currentTick, nati
                 .limit(100),
         ]);
 
-        // Log any query errors but continue with available data
+        // Check if ALL queries failed
+        const allFailed = eventRes.error && actionRes.error && playerRes.error;
+        if (allFailed) {
+            console.error('CIVIC: all data queries failed', eventRes.error, actionRes.error, playerRes.error);
+            root.innerHTML = `
+                <div class="civ-error">
+                    <div class="civ-error-msg">Failed to load CIVIC feed.</div>
+                    <button class="civ-retry-btn" id="civ-retry-btn">Retry</button>
+                </div>`;
+            document.getElementById('civ-retry-btn')?.addEventListener('click', () => {
+                initCivic(supabase, nationId, factionId, currentTick, nationName, factionAbbr);
+            });
+            return;
+        }
+
+        // Log individual query errors but continue with available data
         if (eventRes.error) console.error('CIVIC event_log query error:', eventRes.error);
         if (actionRes.error) console.error('CIVIC campaign_actions query error:', actionRes.error);
         if (playerRes.error) console.error('CIVIC civic_posts query error:', playerRes.error);
@@ -154,19 +180,76 @@ export async function initCivic(supabase, nationId, factionId, currentTick, nati
         const actionPosts = transformCampaignActions(actionRes.data || [], _nationName);
         const playerPosts = transformPlayerPosts(playerRes.data || []);
 
-        // Merge all posts, sort by tick desc, cap at 100
+        // Merge all posts, sort by tick desc
         _allPosts = [...eventPosts, ...actionPosts, ...playerPosts]
-            .sort((a, b) => b.tick - a.tick || b.sortOrder - a.sortOrder)
-            .slice(0, 100);
+            .sort((a, b) => b.tick - a.tick || b.sortOrder - a.sortOrder);
 
         // Mark civic as seen
         localStorage.setItem('civic_last_seen_tick_' + nationId, String(currentTick));
 
         renderAll();
+        subscribeRealtime();
     } catch (err) {
         console.error('CIVIC init error:', err);
-        root.innerHTML = '<div class="civ-empty">Failed to load CIVIC feed.</div>';
+        root.innerHTML = `
+            <div class="civ-error">
+                <div class="civ-error-msg">Failed to load CIVIC feed.</div>
+                <button class="civ-retry-btn" id="civ-retry-btn">Retry</button>
+            </div>`;
+        document.getElementById('civ-retry-btn')?.addEventListener('click', () => {
+            initCivic(supabase, nationId, factionId, currentTick, nationName, factionAbbr);
+        });
     }
+}
+
+/** Subscribe to realtime updates for civic_posts */
+function subscribeRealtime() {
+    // Clean up previous subscription
+    if (_realtimeChannel) {
+        _supabase.removeChannel(_realtimeChannel);
+        _realtimeChannel = null;
+    }
+
+    _realtimeChannel = _supabase
+        .channel('civic_realtime_' + _nationId)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'civic_posts',
+            filter: 'nation_id=eq.' + _nationId,
+        }, (payload) => {
+            const row = payload.new;
+            // Skip if we already have this post (e.g. our own)
+            if (_allPosts.some(p => p.dbId === row.id)) return;
+
+            const post = {
+                id: 'player_' + row.id,
+                type: 'user',
+                name: row.display_name,
+                initials: row.initials,
+                handle: row.handle_key,
+                body: row.body,
+                tick: row.game_tick || 0,
+                date: shortDate(row.game_tick),
+                eventTag: null,
+                templateKey: null,
+                likes: row.likes || 0,
+                shares: row.shares || 0,
+                likedByPlayer: false,
+                sharedByPlayer: false,
+                _rawLikedBy: row.liked_by || [],
+                _rawSharedBy: row.shared_by || [],
+                comments: [],
+                sortOrder: 0,
+                isPlayer: true,
+                dbId: row.id,
+            };
+            _allPosts.unshift(post);
+            renderFeed();
+            renderTrending();
+            renderMobileTrending();
+        })
+        .subscribe();
 }
 
 /** Transform event_log rows into CIVIC post objects */
@@ -412,19 +495,26 @@ function renderAll() {
     if (!root) return;
 
     root.innerHTML = `
-        <div class="civ-sidebar">
-            <div class="civ-header">CIVIC</div>
-            <div class="civ-nav-item active">Home Feed</div>
-            <div class="civ-nav-item">Discover</div>
-            <div class="civ-nav-item">Notifications</div>
-            <div class="civ-nav-item">Messages</div>
+        <div class="civ-page-header">
+            <div class="civ-page-title">CIVIC</div>
+            <div class="civ-page-subtitle">Public Discourse Network &mdash; ${escapeHtml(_nationName)}</div>
         </div>
-        <div class="civ-main">
-            <div class="civ-compose" id="civ-compose"></div>
-            <div class="civ-filter-bar" id="civ-filter-bar" style="display:none"></div>
-            <div class="civ-feed-area">
-                <div class="civ-feed" id="civ-feed"></div>
-                <div class="civ-trending" id="civ-trending"></div>
+        <div class="civ-layout">
+            <div class="civ-sidebar" role="navigation" aria-label="CIVIC navigation">
+                <div class="civ-header">CIVIC</div>
+                <div class="civ-nav-item active">Home Feed</div>
+                <div class="civ-nav-item">Discover</div>
+                <div class="civ-nav-item">Notifications</div>
+                <div class="civ-nav-item">Messages</div>
+            </div>
+            <div class="civ-main">
+                <div class="civ-mobile-trending" id="civ-mobile-trending"></div>
+                <div class="civ-compose" id="civ-compose"></div>
+                <div class="civ-filter-bar" id="civ-filter-bar" style="display:none"></div>
+                <div class="civ-feed-area">
+                    <div class="civ-feed" id="civ-feed" role="feed" aria-label="CIVIC posts"></div>
+                    <div class="civ-trending" id="civ-trending"></div>
+                </div>
             </div>
         </div>
     `;
@@ -433,6 +523,7 @@ function renderAll() {
     renderFilterBar();
     renderFeed();
     renderTrending();
+    renderMobileTrending();
 }
 
 function renderCompose() {
@@ -441,14 +532,15 @@ function renderCompose() {
 
     el.innerHTML = `
         <div class="civ-compose-row">
-            <div class="civ-compose-avatar">?</div>
+            <div class="civ-compose-avatar" title="Your faction">${escapeHtml(_factionAbbr)}</div>
             <div class="civ-compose-body">
-                <textarea id="civ-textarea" maxlength="280" placeholder="What is happening in the republic?"></textarea>
+                <label for="civ-textarea" class="sr-only">Write a post</label>
+                <textarea id="civ-textarea" maxlength="280" placeholder="What is happening in the republic?" aria-label="Write a post" aria-describedby="civ-char-count"></textarea>
                 <div class="civ-compose-footer">
-                    <span class="civ-char-count" id="civ-char-count">280</span>
-                    <button class="civ-post-btn" id="civ-post-btn" disabled>POST</button>
+                    <span class="civ-char-count" id="civ-char-count" aria-live="polite">280</span>
+                    <button class="civ-post-btn" id="civ-post-btn" disabled aria-label="Post to CIVIC">POST</button>
                 </div>
-                <div class="civ-posted-as" id="civ-posted-as"></div>
+                <div class="civ-posted-as" id="civ-posted-as" aria-live="polite"></div>
             </div>
         </div>
     `;
@@ -535,9 +627,9 @@ async function submitPost(body) {
         dbId: null,
     });
 
-    if (_allPosts.length > 100) _allPosts.pop();
     renderFeed();
     renderTrending();
+    renderMobileTrending();
     return true;
 }
 
@@ -590,14 +682,33 @@ function renderFeed() {
     const feedEl = document.getElementById('civ-feed');
     if (!feedEl) return;
 
-    const posts = getFilteredPosts();
+    const allFiltered = getFilteredPosts();
 
-    if (posts.length === 0) {
+    if (allFiltered.length === 0) {
         feedEl.innerHTML = '<div class="civ-empty">No posts yet. Be the first to speak.</div>';
         return;
     }
 
-    feedEl.innerHTML = posts.map(post => renderPost(post)).join('');
+    const visible = allFiltered.slice(0, _visibleCount);
+    const hasMore = allFiltered.length > _visibleCount;
+
+    let html = visible.map(post => renderPost(post)).join('');
+    if (hasMore) {
+        const remaining = allFiltered.length - _visibleCount;
+        html += `<div class="civ-load-more">
+            <button class="civ-load-more-btn" id="civ-load-more" aria-label="Load more posts">
+                Load ${Math.min(remaining, POSTS_PER_PAGE)} more posts
+            </button>
+        </div>`;
+    }
+
+    feedEl.innerHTML = html;
+
+    // Wire load-more button
+    document.getElementById('civ-load-more')?.addEventListener('click', () => {
+        _visibleCount += POSTS_PER_PAGE;
+        renderFeed();
+    });
 
     // Restore reply text from module state
     feedEl.querySelectorAll('.civ-post').forEach(el => {
@@ -642,13 +753,13 @@ function renderPost(post) {
     // Only show reply compose for player posts (v1)
     const replyComposeHtml = post.isPlayer ? `
         <div class="civ-reply-compose">
-            <textarea class="cmt-textarea" maxlength="280" placeholder="Reply..."></textarea>
-            <button class="civ-reply-btn civ-reply-submit">REPLY</button>
+            <textarea class="cmt-textarea" maxlength="280" placeholder="Reply..." aria-label="Reply to ${escapeHtml(post.handle)}"></textarea>
+            <button type="button" class="civ-reply-btn civ-reply-submit" aria-label="Submit reply">REPLY</button>
         </div>
     ` : '';
 
     return `
-        <div class="${cls}" data-post-id="${escapeHtml(post.id)}">
+        <article class="${cls}" data-post-id="${escapeHtml(post.id)}" aria-label="Post by ${escapeHtml(post.handle)}">
             <div class="civ-avatar">${escapeHtml(post.initials)}</div>
             <div class="civ-post-content">
                 <div class="civ-post-header">
@@ -659,15 +770,15 @@ function renderPost(post) {
                 </div>
                 <div class="civ-post-body">${bodyHtml}</div>
                 <div class="civ-actions">
-                    <button class="civ-action-btn civ-comment-btn">
+                    <button type="button" class="civ-action-btn civ-comment-btn" aria-label="Comments${post.comments.length ? ' (' + post.comments.length + ')' : ''}" aria-expanded="${!!_openThreads[post.id]}">
                         ${ICON_COMMENT}
                         <span>${post.comments.length || ''}</span>
                     </button>
-                    <button class="civ-action-btn civ-like-btn ${liked ? 'active' : ''}">
+                    <button type="button" class="civ-action-btn civ-like-btn ${liked ? 'active' : ''}" aria-label="${liked ? 'Unlike' : 'Like'} post by ${escapeHtml(post.handle)}${likeCount ? ' (' + likeCount + ')' : ''}" aria-pressed="${!!liked}">
                         ${ICON_HEART}
                         <span>${likeCount || ''}</span>
                     </button>
-                    <button class="civ-action-btn civ-share-btn ${shared ? 'active' : ''}">
+                    <button type="button" class="civ-action-btn civ-share-btn ${shared ? 'active' : ''}" aria-label="${shared ? 'Unshare' : 'Share'} post by ${escapeHtml(post.handle)}${shareCount ? ' (' + shareCount + ')' : ''}" aria-pressed="${!!shared}">
                         ${ICON_SHARE}
                         <span>${shareCount || ''}</span>
                     </button>
@@ -677,7 +788,7 @@ function renderPost(post) {
                     ${replyComposeHtml}
                 </div>
             </div>
-        </div>
+        </article>
     `;
 }
 
@@ -937,5 +1048,43 @@ function renderTrending() {
             renderFilterBar();
             renderFeed();
         }, 300);
+    });
+}
+
+/** Render top-3 trending tags inline for mobile (shown when sidebar trending is hidden) */
+function renderMobileTrending() {
+    const el = document.getElementById('civ-mobile-trending');
+    if (!el) return;
+
+    const counts = {};
+    _allPosts.forEach(p => {
+        const matches = p.body.match(/#(\w+)/g) || [];
+        matches.forEach(t => {
+            const key = t.toLowerCase();
+            counts[key] = (counts[key] || 0) + 1;
+        });
+    });
+
+    const top3 = Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3);
+
+    if (top3.length === 0) {
+        el.innerHTML = '';
+        return;
+    }
+
+    el.innerHTML = `
+        <span class="civ-mobile-trending-label">Trending:</span>
+        ${top3.map(([tag]) =>
+            `<button type="button" class="civ-mobile-trending-tag" data-trending-tag="${escapeHtml(tag.replace('#', ''))}" aria-label="Filter by ${escapeHtml(tag)}">${escapeHtml(tag)}</button>`
+        ).join('')}
+    `;
+
+    el.querySelectorAll('.civ-mobile-trending-tag').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tag = btn.dataset.trendingTag;
+            if (tag) filterByTag(tag);
+        });
     });
 }

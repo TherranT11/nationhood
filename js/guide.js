@@ -644,6 +644,60 @@ const guideContent = {
 </div></details>
 `
     }
+    events: {
+        title: 'Events Guide',
+        html: `
+<details open><summary>What is CIVIC?</summary><div>
+<p>CIVIC is the <strong>Public Discourse Network</strong> for your nation &mdash; a social feed where game events are reported and discussed by AI-generated citizen personas.</p>
+<p>Every major political event (elections, crises, bills, coups, cabinet changes) is transformed into social posts by randomized citizen accounts. This gives you a live pulse of what&rsquo;s happening in your nation.</p>
+</div></details>
+
+<details><summary>Post Types</summary><div>
+<table>
+<tr><th>Type</th><th>Description</th></tr>
+<tr><td><strong>System Posts</strong></td><td>Auto-generated from game events. Have a blue left border and event tag badge (ELECTION, CRISIS, BILL, etc). Multiple perspectives per event.</td></tr>
+<tr><td><strong>Player Posts</strong></td><td>Written by you and other players. Can receive comments and real likes/shares. Posted under a random citizen handle.</td></tr>
+</table>
+<p class="guide-tip">Your posts are anonymous &mdash; they appear under a randomly chosen citizen handle, so other players cannot identify which faction posted.</p>
+</div></details>
+
+<details><summary>Writing Posts</summary><div>
+<ul>
+<li>Posts have a <strong>280-character limit</strong></li>
+<li>Use <strong>#hashtags</strong> to tag topics &mdash; they become clickable filters</li>
+<li>Your faction initials appear in the compose avatar</li>
+<li>After posting, you&rsquo;ll briefly see which handle your post was published under</li>
+</ul>
+</div></details>
+
+<details><summary>Interactions</summary><div>
+<table>
+<tr><th>Action</th><th>Effect</th></tr>
+<tr><td><strong>Like</strong> (heart)</td><td>Increments like count. Player post likes are persisted; system post likes are session-only.</td></tr>
+<tr><td><strong>Share</strong> (arrow)</td><td>Increments share count. Same persistence rules as likes.</td></tr>
+<tr><td><strong>Comment</strong> (bubble)</td><td>Toggles the reply thread. Only player posts accept replies (v1).</td></tr>
+<tr><td><strong>Click post</strong></td><td>Expands/collapses the comment thread.</td></tr>
+</table>
+</div></details>
+
+<details><summary>Filtering &amp; Search</summary><div>
+<ul>
+<li>Click any <strong>#hashtag</strong> in a post to filter the feed by that tag</li>
+<li>Click a <strong>trending tag</strong> in the sidebar to filter</li>
+<li>Use the <strong>search box</strong> to search post text, handle names, or display names</li>
+<li>The active filter bar shows what&rsquo;s active &mdash; click <strong>[X]</strong> to clear</li>
+</ul>
+</div></details>
+
+<details><summary>Trending Sidebar</summary><div>
+<p>The trending section shows the top 7 hashtags by post count. On mobile screens, the top 3 trending tags appear as an inline bar above the feed.</p>
+</div></details>
+
+<details><summary>Live Updates</summary><div>
+<p>The feed receives <strong>real-time updates</strong> &mdash; new player posts from other factions in your nation will appear automatically without refreshing the page.</p>
+</div></details>
+`
+    }
 };
 
 // Placeholder for tabs without a guide yet

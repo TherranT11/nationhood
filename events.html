@@ -33,7 +33,7 @@ import { initCivic } from './js/civic.js';
 initPage('events', async (state) => {
     const { faction, nation, shard } = state;
     const currentTick = shard?.current_tick || 0;
-    await initCivic(_supabase, nation.id, faction.id, currentTick, nation.name);
+    await initCivic(_supabase, nation.id, faction.id, currentTick, nation.name, faction.abbreviation);
 });
 </script>
 
