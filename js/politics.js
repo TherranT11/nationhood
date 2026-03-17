@@ -214,7 +214,7 @@ initPage('politics', async (state) => {
     // Fetch player's faction_bloc_approval rows (preference_score per bloc)
     const { data: playerBlocApprovals } = await _supabase
         .from('faction_bloc_approval')
-        .select('bloc_id, preference_score')
+        .select('bloc_id, preference_score, performance_perception')
         .eq('faction_id', f.id);
 
     // Fetch active caucus factions for player's party
@@ -1657,8 +1657,10 @@ function getRepresentativeStat(nation, statKeys) {
 function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIdeologies, playerFactionId, playerPartyColor) {
     const blocs = voterBlocs || [];
     const approvalMap = {};
+    const perfMap = {};
     for (const row of (playerBlocApprovals || [])) {
         approvalMap[row.bloc_id] = Number(row.preference_score ?? 40);
+        perfMap[row.bloc_id] = Number(row.performance_perception ?? 50);
     }
 
     // Classify blocs into tiers based on preference_score
@@ -1719,7 +1721,8 @@ function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIde
             issues = tags.slice(0, 3).map(t => t.charAt(0) + t.slice(1).toLowerCase());
         }
 
-        enrichedBlocs.push({ ...bloc, pref, pct, tierKey, strengths, issues, tags });
+        const perf = perfMap[bloc.id] ?? 50;
+        enrichedBlocs.push({ ...bloc, pref, pct, tierKey, strengths, issues, tags, perf });
     }
 
     // Convert weights to percentages
@@ -1791,6 +1794,7 @@ function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIde
         id: b.id,
         name: b.bloc_name,
         pref: b.pref,
+        perf: b.perf,
         pct: b.pct,
         tier: b.tierKey,
         axes: Object.fromEntries(IDEOLOGY_AXES.map(ax => [ax.key, Number(b[AXIS_COL_MAP[ax.key]] ?? 50)])),
@@ -1852,6 +1856,10 @@ function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIde
             <div class="pol-co-key-block">
                 <div class="pol-co-key-value" id="pol-ba-alignment">—</div>
                 <div class="pol-co-key-label">ALIGNMENT</div>
+            </div>
+            <div class="pol-co-key-block">
+                <div class="pol-co-key-value" id="pol-ba-performance">—</div>
+                <div class="pol-co-key-label">PERFORMANCE</div>
             </div>
             <div class="pol-co-key-block">
                 <div class="pol-co-key-value" id="pol-ba-approval">—</div>
@@ -2723,6 +2731,10 @@ function initBlocAlignment() {
         const alEl = document.getElementById('pol-ba-alignment');
         alEl.textContent = alignment;
         alEl.style.color = tc.raw;
+        const perfEl = document.getElementById('pol-ba-performance');
+        const perf = bloc.perf ?? 50;
+        perfEl.textContent = Math.round(perf);
+        perfEl.style.color = perf >= 55 ? 'var(--dgreen)' : perf >= 40 ? 'var(--damber)' : 'var(--dred)';
         const apEl = document.getElementById('pol-ba-approval');
         apEl.textContent = approval;
         apEl.style.color = 'var(--dtext-0)';

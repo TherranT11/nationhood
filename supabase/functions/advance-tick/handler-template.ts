@@ -1054,7 +1054,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // Apply GDP growth rate
-        await applyGdpGrowth(supabase, nation);
+        await applyGdpGrowth(supabase, nation, newTick);
 
         // Stat decay (equilibrium drift + erosion, modified by institution funding)
         if (!_institutionConfig) {
