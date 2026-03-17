@@ -17099,17 +17099,23 @@ async function processCrises(supabase, nation, currentTick) {
                 });
 
             } else if (effect.target === 'government_approval' || effect.target === 'coalition_approval') {
-                // Floor enforcement: if gov_approval_events is already at or below floor, skip
+                // Floor/ceiling enforcement for gov approval events modifier.
+                // Note: only floor (negative changePT) is enforced here; ceiling for
+                // positive changePT is not implemented (extremely rare for crises).
                 let effectiveGovChange = changePT;
                 if (hasFloor && changePT < 0) {
-                    const { data: govNat } = await supabase.from('nations').select('gov_approval_events').eq('id', nation.id).single();
-                    const curEvents = Number(govNat?.gov_approval_events ?? 0);
-                    // Floor inverted for events modifier: floor 10 means events shouldn't push below -10
-                    const eventsFloor = -(floorVal);
-                    if (curEvents <= eventsFloor) {
-                        effectiveGovChange = 0; // already at floor
-                    } else if (curEvents + changePT < eventsFloor) {
-                        effectiveGovChange = eventsFloor - curEvents; // partial application
+                    const { data: govNat, error: govErr } = await supabase.from('nations').select('gov_approval_events').eq('id', nation.id).single();
+                    if (govErr) {
+                        console.warn(`[processCrises] Failed to read gov_approval_events for floor check: ${govErr.message}`);
+                    } else {
+                        const curEvents = Number(govNat?.gov_approval_events ?? 0);
+                        // Floor inverted for events modifier: floor 10 means events shouldn't push below -10
+                        const eventsFloor = -(floorVal);
+                        if (curEvents <= eventsFloor) {
+                            effectiveGovChange = 0; // already at floor
+                        } else if (curEvents + changePT < eventsFloor) {
+                            effectiveGovChange = eventsFloor - curEvents; // partial application
+                        }
                     }
                 }
                 if (effectiveGovChange !== 0) {

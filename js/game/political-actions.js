@@ -4993,16 +4993,21 @@ export async function processCrises(supabase, nation, currentTick) {
                 });
 
             } else if (effect.target === 'government_approval' || effect.target === 'coalition_approval') {
-                // Floor enforcement: if gov_approval_events is already at or below floor, skip
+                // Floor/ceiling enforcement for gov approval events modifier.
+                // Note: only floor (negative changePT) is enforced; ceiling for positive changePT not implemented.
                 let effectiveGovChange = changePT;
                 if (hasFloor && changePT < 0) {
-                    const { data: govNat } = await supabase.from('nations').select('gov_approval_events').eq('id', nation.id).single();
-                    const curEvents = Number(govNat?.gov_approval_events ?? 0);
-                    const eventsFloor = -(floorVal);
-                    if (curEvents <= eventsFloor) {
-                        effectiveGovChange = 0;
-                    } else if (curEvents + changePT < eventsFloor) {
-                        effectiveGovChange = eventsFloor - curEvents;
+                    const { data: govNat, error: govErr } = await supabase.from('nations').select('gov_approval_events').eq('id', nation.id).single();
+                    if (govErr) {
+                        console.warn(`[processCrises] Failed to read gov_approval_events for floor check: ${govErr.message}`);
+                    } else {
+                        const curEvents = Number(govNat?.gov_approval_events ?? 0);
+                        const eventsFloor = -(floorVal);
+                        if (curEvents <= eventsFloor) {
+                            effectiveGovChange = 0;
+                        } else if (curEvents + changePT < eventsFloor) {
+                            effectiveGovChange = eventsFloor - curEvents;
+                        }
                     }
                 }
                 if (effectiveGovChange !== 0) {

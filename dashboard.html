@@ -1202,7 +1202,14 @@ async function loadActiveCrises(nationId, currentTick) {
       }
     }
 
-    container.innerHTML = resolvedCrises.map(c => {
+    const TARGET_LABELS = {
+      'government_approval': 'Gov Approval',
+      'coalition_approval': 'Coalition Approval',
+      'pm_approval': 'PM Approval',
+      'minister_approval': 'Minister Approval'
+    };
+
+    const html = resolvedCrises.map(c => {
       const t = c.crisis_templates;
       if (!t) return '';
 
@@ -1219,12 +1226,6 @@ async function loadActiveCrises(nationId, currentTick) {
       if (elapsedMonths > 0 || elapsedYears === 0) durationStr += elapsedMonths + (elapsedMonths === 1 ? ' Month' : ' Months');
 
       // Effects: show ALL effect types (nation stats, gov approval, etc.)
-      const TARGET_LABELS = {
-        'government_approval': 'Gov Approval',
-        'coalition_approval': 'Coalition Approval',
-        'pm_approval': 'PM Approval',
-        'minister_approval': 'Minister Approval'
-      };
       const effects = (t.crisis_effects || [])
         .filter(e => e.change_per_tick !== 0)
         .map(e => {
@@ -1253,6 +1254,7 @@ async function loadActiveCrises(nationId, currentTick) {
         ${solutions ? `<div class="crisis-item-solution"><strong>Solution:</strong> ${solutions}</div>` : ''}
       </div>`;
     }).join('');
+    container.innerHTML = html || '<div class="crises-empty">No active crises.</div>';
   } catch (e) {
     console.error('Active crises card error:', e);
     container.innerHTML = '<div class="crises-empty">Failed to load crises.</div>';
