@@ -734,7 +734,7 @@ function renderPost(post) {
         ? `<span class="civ-tag" style="background:${TAG_COLORS[post.eventTag] || 'var(--civ-accent-dim)'}">${escapeHtml(post.eventTag)}</span>`
         : '';
 
-    const isOwn = post.isPlayer && post.factionId === _factionId;
+    const isOwn = post.isPlayer && post.dbId && post.factionId === _factionId;
     const deleteHtml = isOwn
         ? '<button type="button" class="civ-delete-btn" aria-label="Delete post" title="Delete post">&times;</button>'
         : '';
@@ -806,13 +806,18 @@ function renderPost(post) {
 // ACTIONS: Delete, Like, Share, Comment
 // ═══════════════════════════════════════════════════════════
 
+let _deleteLock = {};
+
 async function deletePost(postId) {
+    if (_deleteLock[postId]) return;
     const post = _allPosts.find(p => p.id === postId);
     if (!post || !post.isPlayer || !post.dbId || post.factionId !== _factionId) return;
 
     if (!confirm('Delete this post? This cannot be undone.')) return;
 
+    _deleteLock[postId] = true;
     const { error } = await _supabase.from('civic_posts').delete().eq('id', post.dbId);
+    _deleteLock[postId] = false;
     if (error) {
         console.error('CIVIC delete error:', error);
         alert('Failed to delete post. Try again.');
