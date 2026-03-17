@@ -1,0 +1,620 @@
+/* ═══════════════════════════════════════════════════════════════
+   CIVIC — Public Discourse Network
+   Social feed styles for the Nationhood Events tab.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── CIVIC-specific accent colors ── */
+:root {
+    --civ-accent:         #4d8fc4;
+    --civ-accent-dim:     #1e3d5c;
+    --civ-accent-bright:  #6aaee0;
+    --civ-system-border:  #2a5a8a;
+    --civ-danger:         #c45d3a;
+
+    /* Event tag badge colors */
+    --tag-election:   #1A5276;
+    --tag-coalition:  #0E6655;
+    --tag-crisis:     #922B21;
+    --tag-coup:       #6E2F1A;
+    --tag-bill:       #154360;
+    --tag-cabinet:    #4A235A;
+    --tag-diplomacy:  #1B4F72;
+    --tag-faction:    #4D5656;
+    --tag-party:      #2E6B8A;
+    --tag-economy:    #145A32;
+}
+
+/* ── Root container ── */
+#civic-root {
+    width: 100%;
+    min-height: 400px;
+    display: flex;
+    gap: 0;
+    font-family: var(--dfont-ui);
+    color: var(--dtext-0);
+}
+
+/* ── Layout: sidebar + main ── */
+.civ-sidebar {
+    width: 200px;
+    min-width: 200px;
+    border-right: 1px solid var(--dborder-0);
+    padding: 16px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.civ-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.civ-feed-area {
+    flex: 1;
+    display: flex;
+    gap: 0;
+}
+
+.civ-feed {
+    flex: 1;
+    min-width: 0;
+}
+
+.civ-trending {
+    width: 220px;
+    min-width: 220px;
+    border-left: 1px solid var(--dborder-0);
+    padding: 16px;
+}
+
+/* ── Sidebar nav items ── */
+.civ-nav-item {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 8px 20px;
+    color: var(--dtext-3);
+    cursor: default;
+    border-left: 2px solid transparent;
+}
+
+.civ-nav-item.active {
+    color: var(--dtext-0);
+    border-left-color: var(--civ-accent);
+    background: var(--dbg-3);
+    cursor: pointer;
+}
+
+/* ── CIVIC header ── */
+.civ-header {
+    font-family: var(--dfont-mono);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--dtext-0);
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--dborder-0);
+}
+
+/* ── Compose box ── */
+.civ-compose {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--dborder-0);
+    background: var(--dbg-2);
+}
+
+.civ-compose-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.civ-compose-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 3px;
+    background: var(--civ-accent-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--civ-accent-bright);
+    flex-shrink: 0;
+}
+
+.civ-compose-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.civ-compose textarea {
+    width: 100%;
+    min-height: 56px;
+    max-height: 120px;
+    resize: vertical;
+    background: var(--dbg-0);
+    border: 1px solid var(--dborder-1);
+    color: var(--dtext-0);
+    font-family: var(--dfont-ui);
+    font-size: 12.5px;
+    line-height: 1.5;
+    padding: 8px 10px;
+    border-radius: 3px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.civ-compose textarea:focus {
+    border-color: var(--civ-accent);
+}
+
+.civ-compose textarea::placeholder {
+    color: var(--dtext-3);
+}
+
+.civ-compose-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.civ-char-count {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-3);
+}
+
+.civ-char-count.warn {
+    color: var(--civ-danger);
+}
+
+.civ-post-btn {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 5px 16px;
+    background: var(--civ-accent);
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.civ-post-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.civ-posted-as {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--civ-accent);
+    padding: 4px 0;
+    min-height: 18px;
+}
+
+/* ── Filter bar ── */
+.civ-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--dborder-hair);
+    background: var(--dbg-2);
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-2);
+}
+
+.civ-filter-bar .civ-filter-label {
+    color: var(--dtext-3);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.civ-filter-bar .civ-filter-tag {
+    background: var(--civ-accent-dim);
+    color: var(--civ-accent-bright);
+    padding: 2px 8px;
+    border-radius: 2px;
+}
+
+.civ-filter-bar .civ-filter-clear {
+    color: var(--dtext-3);
+    cursor: pointer;
+    margin-left: 4px;
+}
+
+.civ-filter-bar .civ-filter-clear:hover {
+    color: var(--dtext-0);
+}
+
+/* ── Post row ── */
+.civ-post {
+    display: flex;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--dborder-hair);
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.civ-post:hover {
+    background: var(--dbg-hover);
+}
+
+/* System post styling */
+.civ-post.system {
+    border-left: 2px solid var(--civ-system-border);
+    background: var(--dbg-3);
+}
+
+.civ-post.system:hover {
+    background: var(--dbg-4);
+}
+
+/* ── Avatar ── */
+.civ-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.civ-post .civ-avatar {
+    background: var(--civ-accent-dim);
+    color: var(--civ-accent-bright);
+}
+
+/* ── Post content ── */
+.civ-post-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.civ-post-header {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 3px;
+}
+
+.civ-post-name {
+    font-family: var(--dfont-ui);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--dtext-0);
+}
+
+.civ-post-handle {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-3);
+}
+
+.civ-post-date {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-3);
+}
+
+.civ-post-date::before {
+    content: '\00b7';
+    margin-right: 6px;
+}
+
+/* ── Event tag badge ── */
+.civ-tag {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #fff;
+    padding: 1px 6px;
+    border-radius: 2px;
+    white-space: nowrap;
+}
+
+/* ── Post body ── */
+.civ-post-body {
+    font-family: var(--dfont-ui);
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--dtext-1);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.civ-post-body .hashtag {
+    color: var(--civ-accent);
+    cursor: pointer;
+}
+
+.civ-post-body .hashtag:hover {
+    color: var(--civ-accent-bright);
+    text-decoration: underline;
+}
+
+/* ── Action bar (like, share, comment) ── */
+.civ-actions {
+    display: flex;
+    gap: 18px;
+    margin-top: 6px;
+}
+
+.civ-action-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-3);
+    background: none;
+    border: none;
+    padding: 2px 0;
+    cursor: pointer;
+}
+
+.civ-action-btn:hover {
+    color: var(--dtext-1);
+}
+
+.civ-action-btn.active {
+    color: var(--civ-accent);
+}
+
+.civ-action-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+}
+
+/* ── Comment thread ── */
+.civ-comments-section {
+    display: none;
+    border-top: 1px solid var(--dborder-hair);
+    margin-top: 8px;
+    padding-top: 8px;
+    margin-left: 44px;
+    border-left: 1px solid var(--dborder-1);
+    padding-left: 12px;
+}
+
+.civ-comments-section.open {
+    display: block;
+}
+
+.civ-comment {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--dborder-hair);
+}
+
+.civ-comment:last-child {
+    border-bottom: none;
+}
+
+.civ-comment-header {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-bottom: 2px;
+}
+
+.civ-comment-name {
+    font-family: var(--dfont-ui);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--dtext-0);
+}
+
+.civ-comment-handle {
+    font-family: var(--dfont-mono);
+    font-size: 9.5px;
+    color: var(--dtext-3);
+}
+
+.civ-comment-date {
+    font-family: var(--dfont-mono);
+    font-size: 9.5px;
+    color: var(--dtext-3);
+}
+
+.civ-comment-body {
+    font-family: var(--dfont-ui);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--dtext-1);
+}
+
+.civ-no-comments {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-3);
+    padding: 8px 0;
+    letter-spacing: 0.04em;
+}
+
+/* ── Comment reply compose ── */
+.civ-reply-compose {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    align-items: flex-start;
+}
+
+.civ-reply-compose textarea {
+    flex: 1;
+    min-height: 32px;
+    max-height: 80px;
+    resize: vertical;
+    background: var(--dbg-0);
+    border: 1px solid var(--dborder-1);
+    color: var(--dtext-0);
+    font-family: var(--dfont-ui);
+    font-size: 11.5px;
+    line-height: 1.4;
+    padding: 6px 8px;
+    border-radius: 3px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.civ-reply-compose textarea:focus {
+    border-color: var(--civ-accent);
+}
+
+.civ-reply-btn {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    background: var(--civ-accent-dim);
+    color: var(--civ-accent);
+    border: 1px solid var(--civ-accent-dim);
+    border-radius: 3px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.civ-reply-btn:hover {
+    background: var(--civ-accent);
+    color: #fff;
+}
+
+/* ── Trending sidebar ── */
+.civ-trending-header {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dtext-2);
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--dborder-0);
+    margin-bottom: 8px;
+}
+
+.civ-trending-item {
+    padding: 6px 0;
+    cursor: pointer;
+}
+
+.civ-trending-item:hover .civ-trending-tag {
+    color: var(--civ-accent-bright);
+}
+
+.civ-trending-tag {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--civ-accent);
+}
+
+.civ-trending-count {
+    font-family: var(--dfont-mono);
+    font-size: 9.5px;
+    color: var(--dtext-3);
+}
+
+/* ── Search box ── */
+.civ-search {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--dborder-0);
+}
+
+.civ-search input {
+    width: 100%;
+    background: var(--dbg-0);
+    border: 1px solid var(--dborder-1);
+    color: var(--dtext-0);
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 3px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.civ-search input:focus {
+    border-color: var(--civ-accent);
+}
+
+.civ-search input::placeholder {
+    color: var(--dtext-3);
+}
+
+/* ── Empty state ── */
+.civ-empty {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    color: var(--dtext-3);
+    padding: 40px 16px;
+    text-align: center;
+}
+
+/* ── Loading ── */
+.civ-loading {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    color: var(--dtext-3);
+    padding: 40px 16px;
+    text-align: center;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1000px) {
+    .civ-trending {
+        display: none;
+    }
+}
+
+@media (max-width: 860px) {
+    #civic-root {
+        flex-direction: column;
+    }
+    .civ-sidebar {
+        width: 100%;
+        min-width: 0;
+        flex-direction: row;
+        border-right: none;
+        border-bottom: 1px solid var(--dborder-0);
+        padding: 0;
+        overflow-x: auto;
+    }
+    .civ-nav-item {
+        padding: 8px 14px;
+        border-left: none;
+        border-bottom: 2px solid transparent;
+        white-space: nowrap;
+    }
+    .civ-nav-item.active {
+        border-left-color: transparent;
+        border-bottom-color: var(--civ-accent);
+    }
+    .civ-trending {
+        display: none;
+    }
+}

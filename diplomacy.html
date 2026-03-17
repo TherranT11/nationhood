@@ -807,12 +807,12 @@ async function renderAgreementsTab() {
                 if (moneyStr) effectsHTML += '<span class="effect-tag effect-money">' + moneyStr + '</span>';
             }
 
-            // Withdraw button — only FM or HoG can withdraw (hide for expired/withdrawn)
+            // Withdraw button — only FM or HoG can withdraw (hide for expired/withdrawn and state visits)
             let withdrawHTML = '';
             if (isExpiredOrWithdrawn) {
                 const statusLabel = ag.status === 'withdrawn' ? 'WITHDRAWN' : 'EXPIRED';
                 withdrawHTML = '<span class="badge badge--amber" style="font-size:0.62rem;">' + statusLabel + '</span>';
-            } else if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
+            } else if ((diplomaticRoles.isFM || diplomaticRoles.isHoG) && ag.proposal_type !== 'state_visit') {
                 let totalRelForPenalty = 0;
                 articles.forEach((art, i) => {
                     if (struckIndices.has(i) || art.status === 'struck') return;
@@ -892,8 +892,8 @@ async function renderAgreementsTab() {
                     ${sovereigntyHTML}
                     ${effectsHTML ? '<div class="agreement-card-effects">' + effectsHTML + '</div>' : ''}
                     <div class="agreement-card-dates">
-                        <span>Signed: ${signedTick != null ? tickToDate(signedTick) : '—'}</span>
-                        <span>Expires: ${expiresTick != null ? tickToDate(expiresTick) : '—'}</span>
+                        <span>${ag.proposal_type === 'state_visit' ? 'Occurred' : 'Signed'}: ${signedTick != null ? tickToDate(signedTick) : '—'}</span>
+                        ${ag.proposal_type !== 'state_visit' ? '<span>Expires: ' + (expiresTick != null ? tickToDate(expiresTick) : '—') + '</span>' : ''}
                     </div>
                 </div>
             `;
@@ -5126,6 +5126,7 @@ async function viewActiveAgreement(agreementId) {
     const struckIndices = new Set(pd.struck_articles || []);
     const isV2 = pd.version === 2;
     const isTradeAgreement = ag.proposal_type === 'trade_agreement' || !!pd.agreement_type;
+    const isStateVisit = ag.proposal_type === 'state_visit';
     const classification = pd.classification || '';
     const proposerName = pd.proposer_nation_name || 'Unknown';
     const targetName = pd.target_nation_name || 'Unknown';
@@ -5141,8 +5142,8 @@ async function viewActiveAgreement(agreementId) {
     let html = `
         <div class="sv-box-header" style="margin:-1px -1px 0;border-radius:0;">
             <div class="sv-box-dot sv-box-dot--teal"></div>
-            <span class="sv-box-label">Active Agreement</span>
-            <div class="sv-box-header-right"><span class="sv-badge sv-badge--green">Active</span></div>
+            <span class="sv-box-label">${isStateVisit ? 'State Visit' : 'Active Agreement'}</span>
+            <div class="sv-box-header-right"><span class="sv-badge sv-badge--green">${isStateVisit ? 'Completed' : 'Active'}</span></div>
         </div>
         <div style="padding:14px;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
@@ -5150,13 +5151,13 @@ async function viewActiveAgreement(agreementId) {
                 ${typeInfo ? '<div class="trade-type-icon ' + typeInfo.icon + '" style="width:28px;height:28px;font-size:0.9rem;">' + iconHtml + '</div>' : ''}
                 <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
                     ${FLAG_URLS[proposerName] ? '<img src="' + FLAG_URLS[proposerName] + '" alt="' + escapeHtml(proposerName) + '" style="width:30px;height:20px;object-fit:cover;border:1px solid rgba(255,255,255,0.08);border-radius:2px;">' : ''}
-                    <span style="color:var(--text-faint);font-size:10px;">${ag.proposal_type === 'state_visit' ? '&#8594;' : '&amp;'}</span>
+                    <span style="color:var(--text-faint);font-size:10px;">${isStateVisit ? '&#8594;' : '&amp;'}</span>
                     ${FLAG_URLS[targetName] ? '<img src="' + FLAG_URLS[targetName] + '" alt="' + escapeHtml(targetName) + '" style="width:30px;height:20px;object-fit:cover;border:1px solid rgba(255,255,255,0.08);border-radius:2px;">' : ''}
                 </div>
                 <div style="min-width:0;">
                     <div style="font-size:0.95rem;font-weight:bold;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(pd.name || 'Unnamed Agreement')}</div>
                     <div style="font-size:0.7rem;color:var(--text-muted);">
-                        ${escapeHtml(proposerName)} ${ag.proposal_type === 'state_visit' ? '&rarr;' : '&amp;'} ${escapeHtml(targetName)}
+                        ${escapeHtml(proposerName)} ${isStateVisit ? '&rarr;' : '&amp;'} ${escapeHtml(targetName)}
                         ${classification ? ' · ' + escapeHtml(classification) : ''}
                     </div>
                 </div>
@@ -5164,15 +5165,15 @@ async function viewActiveAgreement(agreementId) {
             <div class="sv-summary-section" style="padding-top:0;">
                 <div class="sv-summary-section-label">Agreement Details</div>
                 <div class="sv-stat-row"><span class="sv-stat-label">Status</span><span class="sv-stat-value sv-stat-value--positive">Active</span></div>
-                <div class="sv-stat-row"><span class="sv-stat-label">Signed</span><span class="sv-stat-value">${signedTick != null ? tickToDate(signedTick) : '—'}</span></div>
-                <div class="sv-stat-row"><span class="sv-stat-label">Expires</span><span class="sv-stat-value">${expiresTick != null ? tickToDate(expiresTick) : '—'}</span></div>
-                <div class="sv-stat-row"><span class="sv-stat-label">Duration</span><span class="sv-stat-value">${durationLabel}</span></div>
+                <div class="sv-stat-row"><span class="sv-stat-label">${isStateVisit ? 'Occurred' : 'Signed'}</span><span class="sv-stat-value">${signedTick != null ? tickToDate(signedTick) : '—'}</span></div>
+                ${!isStateVisit ? '<div class="sv-stat-row"><span class="sv-stat-label">Expires</span><span class="sv-stat-value">' + (expiresTick != null ? tickToDate(expiresTick) : '—') + '</span></div>' : ''}
+                ${!isStateVisit ? '<div class="sv-stat-row"><span class="sv-stat-label">Duration</span><span class="sv-stat-value">' + durationLabel + '</span></div>' : ''}
                 ${typeInfo ? '<div class="sv-stat-row"><span class="sv-stat-label">Type</span><span class="sv-stat-value">' + escapeHtml(typeInfo.label) + '</span></div>' : ''}
             </div>
     `;
 
     // ── State Visit: show visit config, agenda, effects, costs, risks ──
-    if (ag.proposal_type === 'state_visit') {
+    if (isStateVisit) {
         const vtLabel = STATE_VISIT_TYPES[pd.visit_type]?.label || 'State Visit';
         const svDurLabel = STATE_VISIT_DURATIONS[pd.duration]?.label || 'Moderate';
         const delLabel = STATE_VISIT_DELEGATIONS[pd.delegation_size]?.label || 'Standard (8)';
@@ -5345,8 +5346,8 @@ async function viewActiveAgreement(agreementId) {
         }
     }
 
-    // Withdraw button
-    if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
+    // Withdraw button (not shown for state visits — they are one-time events, not ongoing agreements)
+    if ((diplomaticRoles.isFM || diplomaticRoles.isHoG) && !isStateVisit) {
         html += '<div class="sv-summary-section">';
         html += '<button class="detail-btn" style="color:var(--red);border-color:var(--red);" onclick="withdrawAgreement(\'' + ag.id + '\')">Withdraw Agreement</button>';
         html += '</div>';
