@@ -16,11 +16,12 @@ import { ISSUE_CATEGORY_STATS, statDirectionSign } from './stats.js';
  * for every faction-bloc pair in a nation (democracies only).
  *
  * preference_score = ideology_alignment × 0.40
- *                  + performance_perception × 0.15
- *                  + clamp(momentum, 0, 100) × 0.45
+ *                  + performance_perception × 0.25
+ *                  + clamp(momentum, 0, 100) × 0.35
  *
- * Governance feed: coalition parties get per-tick momentum nudge
- * from gov_approval: (gov_approval - 50) / 10, capped ±5.
+ * Governance feed: lead party gets full per-tick momentum nudge
+ * from gov_approval: (gov_approval - 50) / 2.5, capped ±8.
+ * Other cabinet parties get 25% of the nudge.
  *
  * Then runs softmax per bloc to produce vote_share, and aggregates
  * national_vote_share weighted by bloc population.
@@ -43,6 +44,7 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
 
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     const coalitionPartyIds = new Set(coalition?.party_ids || []);
+    const leadPartyId = coalition?.lead_party_id || null; // president/PM's party gets full gov momentum
 
     // ── 2. Load voter blocs first (needed for orphan detection) ──
     const { data: voterBlocs } = await supabase
@@ -211,8 +213,8 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
 
     // ── 5. Calculate pillars for each faction-bloc pair ──
     const PILLAR_WEIGHT_IDEO = 0.40;
-    const PILLAR_WEIGHT_PERF = 0.15;
-    const PILLAR_WEIGHT_MOM  = 0.45;
+    const PILLAR_WEIGHT_PERF = 0.25;
+    const PILLAR_WEIGHT_MOM  = 0.35;
     const MOMENTUM_DECAY     = 0.70; // 30% decay per tick
     const INACTIVITY_DRAIN   = 1.5;  // momentum drain per tick when inactive
     const INACTIVITY_THRESHOLD = 3;  // ticks without any campaign action to trigger drain
@@ -234,12 +236,12 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
     }
 
     // ── 5b. Governance → momentum feed ──
-    // Coalition parties get a per-tick momentum nudge based on gov_approval.
-    // Formula: (gov_approval - 50) / 10, capped at ±5.
-    // gov_approval 95 → +4.5/tick, 75 → +2.5, 50 → 0, 25 → -2.5, 5 → -4.5
+    // Lead party gets a per-tick momentum nudge based on gov_approval (other cabinet parties get 25%).
+    // Formula: (gov_approval - 50) / 2.5, capped at ±8.
+    // gov_approval 70 → +8.0/tick, 60 → +4.0, 53 → +1.2, 50 → 0, 40 → -4.0, 30 → -8.0
     const govApproval = Number(nation.gov_approval ?? 40);
-    const govMomentumNudge = Math.max(-5, Math.min(5,
-        Math.round(((govApproval - 50) / 10) * 100) / 100
+    const govMomentumNudge = Math.max(-8, Math.min(8,
+        Math.round(((govApproval - 50) / 2.5) * 100) / 100
     ));
 
     const updates = [];
@@ -260,7 +262,7 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         // ─── PILLAR 2: Performance Perception (drift-based) ───
         // Coalition parties: target based on how well nation stats match this bloc's priority issues.
         // Opposition parties: neutral 50 (they aren't governing, so no accountability).
-        // Drifts by max ±2/tick toward target, clamped to [20, 80].
+        // Drifts by max ±3/tick toward target, clamped to [20, 80].
         const oldPerf = Number(row.performance_perception ?? 50);
         let perfTarget = 50; // neutral default for opposition
         if (coalitionPartyIds.has(row.faction_id)) {
@@ -285,7 +287,7 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
                 perfTarget = Math.round(goodTotal / statCount);
             }
         }
-        const perfDelta = Math.max(-2, Math.min(2, perfTarget - oldPerf));
+        const perfDelta = Math.max(-3, Math.min(3, perfTarget - oldPerf));
         const newPerf = Math.max(20, Math.min(80, Math.round((oldPerf + perfDelta) * 100) / 100));
 
         // ─── PILLAR 3: Momentum (-50 to +50) ───
@@ -330,9 +332,12 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
             govMultiplier = 2;
         }
 
-        // Governance momentum feed: coalition parties get nudge from gov_approval
-        if (coalitionPartyIds.has(row.faction_id)) {
+        // Governance momentum feed: lead party (president/PM) gets full nudge,
+        // other cabinet parties get 25% — voters credit the president, not minor ministers.
+        if (row.faction_id === leadPartyId) {
             newMomentum += govMomentumNudge * govMultiplier;
+        } else if (coalitionPartyIds.has(row.faction_id)) {
+            newMomentum += govMomentumNudge * govMultiplier * 0.25;
         }
 
         // ─── Build a Bridge: ongoing momentum boost from active bridges ───
