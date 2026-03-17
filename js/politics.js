@@ -3190,7 +3190,7 @@ function renderOutreachConfig(blocs, factionIdeo) {
                 <span class="ca-bloc-name">${escapeHtml(b.bloc_name)}</span>
                 <div style="display:flex;align-items:center;gap:10px">
                     <span style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3)">align</span>
-                    <span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${alignColor}">${alignment}</span>
+                    <span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${alignColor}">${alignment.toFixed(1)}</span>
                     <span style="font-family:var(--dfont-mono);font-size:10px;color:#4ade80;font-weight:700">+${effect.base}</span>
                 </div>
             </div>`;
