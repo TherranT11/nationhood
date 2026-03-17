@@ -74,6 +74,9 @@ export const CIVIC_TAG_MAP = {
     party_founded:                 'PARTY',
     party_dissolved:               'PARTY',
     corporate_contract_signed:     'ECONOMY',
+    ministry_enforce_public_order: 'INTERIOR',
+    ministry_community_outreach:   'INTERIOR',
+    ministry_surveillance_expansion:'INTERIOR',
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -447,6 +450,33 @@ export const CIVIC_TEMPLATES = {
         { id: 'mnr2', text: '{body} blocking {name} for {ministry} is the confirmation process doing exactly what it is supposed to. #Cabinet' },
         { id: 'mnr3', text: '{body} votes down {name} after a single hearing. This is not vetting, it is a power play. #Cabinet' },
     ],
+
+    // ── 48. Ministry Action: Enforce Public Order ──
+    ministry_enforce_public_order: [
+        { id: 'epo1', text: '{minister_name} of the {party} has ordered a crackdown on protests across {nation}. The {ministry} has deployed additional law enforcement units to restore public order. #PublicOrder #Interior' },
+        { id: 'epo2', text: '{party} government moves to suppress civil unrest. Critics call it heavy-handed. #PublicOrder #{nation}' },
+        { id: 'epo3', text: '{minister_name} invokes emergency policing powers. Liberty advocates condemn the move. #PublicOrder #Interior' },
+        { id: 'epo4', text: 'The streets needed this. {minister_name} is restoring the order that this government let collapse. #PublicOrder #Support' },
+        { id: 'epo5', text: 'Crackdown by the {ministry} is state violence dressed up as policy. This will not be forgotten. #PublicOrder #CivilRights' },
+    ],
+
+    // ── 49. Ministry Action: Community Outreach ──
+    ministry_community_outreach: [
+        { id: 'co1', text: '{ministry} launches new community trust initiative across {nation}. #CommunityOutreach #Interior' },
+        { id: 'co2', text: '{minister_name} announces grassroots outreach program funded by the {party} government. #CommunityOutreach' },
+        { id: 'co3', text: 'The {party} government is investing in citizen-institution relations, says {minister_name}. #CommunityOutreach #{nation}' },
+        { id: 'co4', text: '{ministry} outreach drive begins. Opposition calls it an election stunt. #CommunityOutreach' },
+        { id: 'co5', text: 'Community trust programs work. This is the {ministry} doing its job right for once. #CommunityOutreach #Interior' },
+    ],
+
+    // ── 50. Ministry Action: Surveillance Expansion ──
+    ministry_surveillance_expansion: [
+        { id: 'se1', text: '{minister_name} expands national monitoring infrastructure across urban centers. #Surveillance #Interior' },
+        { id: 'se2', text: 'The {ministry} has rolled out new surveillance systems in major cities. #Surveillance #{nation}' },
+        { id: 'se3', text: '{party} government quietly expands digital monitoring network under {minister_name}. #Surveillance' },
+        { id: 'se4', text: 'Civil liberties groups raise alarm as {ministry} deploys new surveillance infrastructure. #Surveillance #CivilRights' },
+        { id: 'se5', text: '{nation}\'s surveillance footprint grows under {minister_name}\'s interior directive. Safety or overreach? #Surveillance #Interior' },
+    ],
 };
 
 
@@ -522,6 +552,11 @@ export const CIVIC_EVENT_MAP = {
     // Crisis events (event_name pattern matching)
     'crisis_started':                    'crisis_start',
     'crisis_resolved':                   'crisis_end',
+
+    // Ministry actions (Interior)
+    'ministry_enforce_public_order':     'ministry_enforce_public_order',
+    'ministry_community_outreach':       'ministry_community_outreach',
+    'ministry_surveillance_expansion':   'ministry_surveillance_expansion',
 };
 
 

@@ -108,6 +108,7 @@ const MINISTRY_ACTIONS = {
         actions: [
             {
                 id: 'enforcePublicOrder',
+                triggerKey: 'ministry_enforce_public_order',
                 name: 'Enforce Public Order',
                 desc: 'Deploy law enforcement to suppress crime and unrest. Effective but politically costly.',
                 apCosts: [2, 3, 5, 8],
@@ -132,6 +133,7 @@ const MINISTRY_ACTIONS = {
             },
             {
                 id: 'communityOutreach',
+                triggerKey: 'ministry_community_outreach',
                 name: 'Community Outreach',
                 desc: 'Grassroots engagement to build trust and improve quality of life. Slow but sustainable.',
                 apCosts: [1, 2, 3, 4],
@@ -152,6 +154,7 @@ const MINISTRY_ACTIONS = {
             },
             {
                 id: 'surveillanceExpansion',
+                triggerKey: 'ministry_surveillance_expansion',
                 name: 'Surveillance Expansion',
                 desc: 'Expand digital monitoring infrastructure. Permanent residue penalties compound with each use.',
                 apCosts: [2, 4, 7, 11],
@@ -2636,6 +2639,33 @@ async function ministryActionConfirm(actionId) {
         ministryActionUseCounts[countKey] = useCount + 1;
         activeMinistryActions[actionId] = true;
         sessionStorage.removeItem('nationhood_state');
+
+        // Fire CIVIC event (non-blocking)
+        if (action.triggerKey) {
+            try {
+                const { data: ministry } = await _supabase
+                    .from('ministries')
+                    .select('minister_first_name, minister_last_name, factions(faction_name)')
+                    .eq('nation_id', currentNation.id)
+                    .eq('ministry_key', ministryKey)
+                    .single();
+                const ministerName = ministry
+                    ? (ministry.minister_first_name + ' ' + (ministry.minister_last_name || '')).trim()
+                    : 'Unknown';
+                const partyName = ministry?.factions?.faction_name || currentFaction?.faction_name || 'Unknown';
+                await _supabase.rpc('fire_system_event', {
+                    p_trigger_key: action.triggerKey,
+                    p_nation_id: currentNation.id,
+                    p_tick: currentTick,
+                    p_placeholders: {
+                        minister_name: ministerName,
+                        party: partyName,
+                        ministry: MINISTRY_NAMES[ministryKey] || ministryKey,
+                        nation: currentNation.name || 'Unknown'
+                    }
+                });
+            } catch (evtErr) { /* non-blocking — event display is best-effort */ }
+        }
 
     } catch (e) {
         // Revert optimistic UI
