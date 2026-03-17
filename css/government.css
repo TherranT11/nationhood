@@ -229,6 +229,7 @@ body {
         /* Outer card */
         .ministry-card {
             width: 380px;
+            max-width: 100%;
             background: #1a1a17;
             border: 1px solid rgba(255,255,255,0.06);
             display: flex;
@@ -938,10 +939,15 @@ body {
             .administration-content { grid-template-columns: 1fr; }
             .admin-chat-section { max-height: 260px; }
             .ministry-grid { grid-template-columns: repeat(2, 1fr); }
+            .ministry-card { width: auto; }
             .formation-penalties { grid-template-columns: 1fr; }
             .snap-warning { flex-direction: column; text-align: center; }
             .formation-header { padding: 18px 16px 14px; }
             .formation-body { padding: 16px; }
+        }
+
+        @media (max-width: 480px) {
+            .ministry-grid { grid-template-columns: 1fr; }
         }
 
         /* ===== CARETAKER GOVERNMENT BANNER ===== */
