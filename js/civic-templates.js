@@ -548,17 +548,42 @@ export const CIVIC_ACTION_MAP = {
 export function extractEventVars(templateKey, row) {
     const e = row.effects_applied || {};
     const name = row.event_name || '';
+    const desc = row.description_chosen || row.description_used || '';
 
     switch (templateKey) {
         case 'bill_passed':
-        case 'bill_failed':
+        case 'bill_failed': {
+            // Try effects_applied first, then strip known prefixes from event_name,
+            // then try extracting from description_chosen as last resort.
+            let billName = e.bill_name;
+            if (!billName) {
+                const stripped = name.replace(/^(Bill Passed|Bill Failed|BILL PASSED|BILL FAILED|bill_passed|bill_failed|Enacted|Signed into Law|Defeated|Vetoed)[:\s\-—]*/i, '').trim();
+                billName = stripped || null;
+            }
+            if (!billName && desc) {
+                // description_chosen often contains the bill name in quotes or as a leading phrase
+                const quoted = desc.match(/"([^"]+)"|'([^']+)'|"(.+?) Act/);
+                billName = (quoted && (quoted[1] || quoted[2] || quoted[3])) || null;
+            }
+            const votesFor = e.votes_for ?? null;
+            const votesAgainst = e.votes_against ?? null;
+            // Extract vote counts from description if not in effects_applied
+            let parsedFor = votesFor, parsedAgainst = votesAgainst;
+            if (parsedFor == null && desc) {
+                const voteMatch = desc.match(/(\d+)\s*(?:to|-)\s*(\d+)/);
+                if (voteMatch) {
+                    parsedFor = voteMatch[1];
+                    parsedAgainst = voteMatch[2];
+                }
+            }
             return {
-                bill_name: e.bill_name || name.replace(/^(Bill Passed|Bill Failed|BILL PASSED|BILL FAILED):?\s*/i, '') || 'Unknown Bill',
-                votes_for: e.votes_for || '?',
-                votes_against: e.votes_against || '?',
-                margin: Math.abs((parseInt(e.votes_for) || 0) - (parseInt(e.votes_against) || 0)),
+                bill_name: billName || 'Unknown Bill',
+                votes_for: parsedFor != null ? String(parsedFor) : '?',
+                votes_against: parsedAgainst != null ? String(parsedAgainst) : '?',
+                margin: Math.abs((parseInt(parsedFor) || 0) - (parseInt(parsedAgainst) || 0)),
                 sponsor: e.sponsor || '',
             };
+        }
 
         case 'presidential_election':
             return {
@@ -591,12 +616,12 @@ export function extractEventVars(templateKey, row) {
 
         case 'crisis_start':
             return {
-                crisis_name: e.crisis_name || name.replace(/^CRISIS:\s*/i, '') || 'Developing Crisis',
+                crisis_name: e.crisis_name || name.replace(/^(CRISIS|CRISIS_STARTED|crisis)[:\s\-—]*/i, '').trim() || desc || 'Developing Crisis',
             };
 
         case 'crisis_end':
             return {
-                crisis_name: e.crisis_name || name.replace(/^CRISIS_RESOLVED:\s*/i, '') || 'Crisis',
+                crisis_name: e.crisis_name || name.replace(/^(CRISIS_RESOLVED|crisis resolved|crisis ended)[:\s\-—]*/i, '').trim() || desc || 'Crisis',
                 days: e.duration || '?',
                 stat: e.stat || '',
                 pct: e.pct || '?',
@@ -651,20 +676,20 @@ export function extractEventVars(templateKey, row) {
 
         case 'bill_proposed':
             return {
-                bill_name: e.bill_name || name || '',
+                bill_name: e.bill_name || name.replace(/^(Bill Proposed|Bill Introduced|bill_proposed)[:\s\-—]*/i, '').trim() || '',
                 issue: e.issue || e.policy_area || '',
                 pages: e.pages || '?',
             };
 
         case 'bill_amended':
             return {
-                bill_name: e.bill_name || name || '',
+                bill_name: e.bill_name || name.replace(/^(Bill Amended|Amendment|bill_amended)[:\s\-—]*/i, '').trim() || '',
                 clause: e.clause || e.amendment || 'key provision',
             };
 
         case 'filibuster_called':
             return {
-                bill_name: e.bill_name || name || '',
+                bill_name: e.bill_name || name.replace(/^(Filibuster|filibuster_called)[:\s\-—]*/i, '').trim() || '',
                 party: e.party || e.faction_name || '',
             };
 

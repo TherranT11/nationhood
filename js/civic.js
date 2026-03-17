@@ -428,7 +428,6 @@ function renderAll() {
     renderFilterBar();
     renderFeed();
     renderTrending();
-    wireHashtagClicks();
 }
 
 function renderCompose() {
@@ -466,12 +465,14 @@ function renderCompose() {
         if (!body) return;
         btn.disabled = true;
         btn.textContent = 'POSTING...';
-        await submitPost(body);
-        textarea.value = '';
-        counter.textContent = '280';
-        counter.classList.remove('warn');
+        const ok = await submitPost(body);
+        if (ok) {
+            textarea.value = '';
+            counter.textContent = '280';
+            counter.classList.remove('warn');
+        }
         btn.textContent = 'POST';
-        btn.disabled = true;
+        btn.disabled = !textarea.value.trim();
     });
 }
 
@@ -488,15 +489,21 @@ async function submitPost(body) {
         game_tick: _currentTick,
     });
 
+    const postedAs = document.getElementById('civ-posted-as');
     if (error) {
         console.error('CIVIC post error:', error);
-        return;
+        if (postedAs) {
+            postedAs.textContent = 'Post failed. Try again.';
+            postedAs.style.color = 'var(--civ-danger)';
+            setTimeout(() => { postedAs.textContent = ''; postedAs.style.color = ''; }, 4000);
+        }
+        return false;
     }
 
     // Show posted-as message
-    const postedAs = document.getElementById('civ-posted-as');
     if (postedAs) {
         postedAs.textContent = `Posted as ${handle.handle}`;
+        postedAs.style.color = '';
         setTimeout(() => { postedAs.textContent = ''; }, 4000);
     }
 
@@ -525,7 +532,7 @@ async function submitPost(body) {
     if (_allPosts.length > 100) _allPosts.pop();
     renderFeed();
     renderTrending();
-    wireHashtagClicks();
+    return true;
 }
 
 function renderFilterBar() {
@@ -553,7 +560,6 @@ function renderFilterBar() {
         _searchQuery = '';
         renderFilterBar();
         renderFeed();
-        wireHashtagClicks();
     });
 }
 
@@ -578,17 +584,6 @@ function renderFeed() {
     const feedEl = document.getElementById('civ-feed');
     if (!feedEl) return;
 
-    // Snapshot open threads and reply text before rebuild
-    const snapshots = {};
-    feedEl.querySelectorAll('.civ-post').forEach(el => {
-        const id = el.dataset.postId;
-        if (!id) return;
-        snapshots[id] = {
-            open: _openThreads[id] || false,
-            replyText: _replyTexts[id] || '',
-        };
-    });
-
     const posts = getFilteredPosts();
 
     if (posts.length === 0) {
@@ -598,26 +593,15 @@ function renderFeed() {
 
     feedEl.innerHTML = posts.map(post => renderPost(post)).join('');
 
-    // Restore open threads and reply text
+    // Restore reply text from module state
     feedEl.querySelectorAll('.civ-post').forEach(el => {
         const id = el.dataset.postId;
         if (!id) return;
-        const snap = snapshots[id] || { open: _openThreads[id], replyText: _replyTexts[id] || '' };
-        if (snap?.open) {
-            const section = el.querySelector('.civ-comments-section');
-            if (section) section.classList.add('open');
-        }
-        if (snap?.replyText) {
+        if (_replyTexts[id]) {
             const ta = el.querySelector('.cmt-textarea');
-            if (ta) ta.value = snap.replyText;
+            if (ta) ta.value = _replyTexts[id];
         }
-    });
-
-    // Wire post click handlers
-    feedEl.querySelectorAll('.civ-post').forEach(el => {
-        const postId = el.dataset.postId;
-        if (!postId) return;
-        wirePostListeners(el, postId);
+        wirePostListeners(el, id);
     });
 }
 
@@ -823,47 +807,54 @@ function rewirePost(postId) {
     wirePostListeners(el, postId);
 }
 
+let _commentLock = {};
 async function submitComment(postId, body) {
+    if (_commentLock[postId]) return;
     const post = _allPosts.find(p => p.id === postId);
     if (!post || !post.isPlayer || !post.dbId) return;
 
+    _commentLock[postId] = true;
     const handle = pickNoReplace(CIVIC_HANDLES, 1)[0];
 
-    const { error } = await _supabase.from('civic_comments').insert({
-        post_id: post.dbId,
-        nation_id: _nationId,
-        faction_id: _factionId,
-        handle_key: handle.handle,
-        display_name: handle.name,
-        initials: handle.initials,
-        body,
-        game_tick: _currentTick,
-    });
+    try {
+        const { error } = await _supabase.from('civic_comments').insert({
+            post_id: post.dbId,
+            nation_id: _nationId,
+            faction_id: _factionId,
+            handle_key: handle.handle,
+            display_name: handle.name,
+            initials: handle.initials,
+            body,
+            game_tick: _currentTick,
+        });
 
-    if (error) {
-        console.error('CIVIC comment error:', error);
-        return;
-    }
+        if (error) {
+            console.error('CIVIC comment error:', error);
+            return;
+        }
 
-    // Add to local state
-    post.comments.push({
-        id: 'temp_' + Date.now(),
-        postId: post.dbId,
-        name: handle.name,
-        initials: handle.initials,
-        handle: handle.handle,
-        body,
-        date: shortDate(_currentTick),
-    });
+        // Add to local state
+        post.comments.push({
+            id: 'temp_' + Date.now(),
+            postId: post.dbId,
+            name: handle.name,
+            initials: handle.initials,
+            handle: handle.handle,
+            body,
+            date: shortDate(_currentTick),
+        });
 
-    // Keep thread open
-    _openThreads[postId] = true;
+        // Keep thread open
+        _openThreads[postId] = true;
 
-    // Re-render post
-    const el = document.querySelector(`[data-post-id="${postId}"]`);
-    if (el) {
-        el.outerHTML = renderPost(post);
-        rewirePost(postId);
+        // Re-render post
+        const el = document.querySelector(`[data-post-id="${postId}"]`);
+        if (el) {
+            el.outerHTML = renderPost(post);
+            rewirePost(postId);
+        }
+    } finally {
+        _commentLock[postId] = false;
     }
 }
 
@@ -876,18 +867,6 @@ function filterByTag(tag) {
     _searchQuery = '';
     renderFilterBar();
     renderFeed();
-    wireHashtagClicks();
-}
-
-/** Wire hashtag click handlers on all rendered posts */
-function wireHashtagClicks() {
-    document.querySelectorAll('#civ-feed .hashtag').forEach(span => {
-        span.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const tag = span.dataset.tag;
-            if (tag) filterByTag(tag);
-        });
-    });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -951,7 +930,6 @@ function renderTrending() {
             _activeFilter = null;
             renderFilterBar();
             renderFeed();
-            wireHashtagClicks();
         }, 300);
     });
 }
