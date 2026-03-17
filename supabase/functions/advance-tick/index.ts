@@ -4820,7 +4820,7 @@ async function applyGdpGrowth(supabase, nation, currentTick) {
     let monthlyChangePercent = ((gdpGrowth - 50) / 50) * 3;
 
     // Diminishing returns: scale negative growth when GDP < 50% of starting
-    if (monthlyChangePercent < 0 && startingGdp > 0) {
+    if (monthlyChangePercent < 0) {
         const gdpRatio = currentGdp / startingGdp;
         if (gdpRatio < 0.5) {
             const dampening = Math.max(0.1, gdpRatio * 2); // 50%→1.0, 25%→0.5, 10%→0.2, min 10%
@@ -4845,54 +4845,64 @@ const ECONOMIC_COLLAPSE_CRISIS_ID = '00000000-0000-0000-0000-000000000010';
 
 // Activate Economic Collapse mega-crisis: clears other economic crises, applies political penalties
 async function activateEconomicCollapse(supabase, nation, currentTick) {
-    // 1. Skip if already active
-    const { data: existing } = await supabase.from('active_crises')
-        .select('id').eq('nation_id', nation.id)
-        .eq('crisis_id', ECONOMIC_COLLAPSE_CRISIS_ID);
-    if (existing?.length > 0) return;
+    try {
+        // 1. Skip if already active
+        const { data: existing, error: existErr } = await supabase.from('active_crises')
+            .select('id').eq('nation_id', nation.id)
+            .eq('crisis_id', ECONOMIC_COLLAPSE_CRISIS_ID);
+        if (existErr) {
+            console.warn(`[activateEconomicCollapse] Failed to check existing crisis: ${existErr.message}`);
+            return; // fail safe — don't double-activate
+        }
+        if (existing?.length > 0) return;
 
-    console.log(`[activateEconomicCollapse] Triggering for ${nation.name} — GDP hit 20% floor`);
+        console.log(`[activateEconomicCollapse] Triggering for ${nation.name} — GDP hit 20% floor`);
 
-    // 2. Clear existing economic crises
-    const econCrisisNames = ['Currency Collapse', 'Hyperinflation Emergency'];
-    const { data: econTemplates } = await supabase.from('crisis_templates')
-        .select('id').in('name', econCrisisNames);
-    const econIds = (econTemplates || []).map(t => t.id)
-        .concat([SOVEREIGN_DEBT_CRISIS_ID, SOVEREIGN_DEFAULT_CRISIS_ID]);
-    await supabase.from('active_crises')
-        .delete().eq('nation_id', nation.id).in('crisis_id', econIds);
+        // 2. Clear existing economic crises
+        const econCrisisNames = ['Currency Collapse', 'Hyperinflation Emergency'];
+        const { data: econTemplates } = await supabase.from('crisis_templates')
+            .select('id').in('name', econCrisisNames);
+        const econIds = (econTemplates || []).map(t => t.id)
+            .concat([SOVEREIGN_DEBT_CRISIS_ID, SOVEREIGN_DEFAULT_CRISIS_ID]);
+        await supabase.from('active_crises')
+            .delete().eq('nation_id', nation.id).in('crisis_id', econIds);
 
-    // 3. Political penalties: -25 gov approval, -20 momentum to all coalition parties
-    await adjustGovernmentApprovalEvent(supabase, nation.id, -25, 'crisis:economic_collapse');
+        // 3. Political penalties: -25 gov approval, -20 momentum to all coalition parties
+        await adjustGovernmentApprovalEvent(supabase, nation.id, -25, 'crisis:economic_collapse');
 
-    const coalition = await fetchActiveCoalition(supabase, nation.id);
-    for (const partyId of (coalition?.party_ids || [])) {
-        await adjustMomentumAll(supabase, nation.id, partyId, -20, 'crisis:economic_collapse');
+        const coalition = await fetchActiveCoalition(supabase, nation.id);
+        for (const partyId of (coalition?.party_ids || [])) {
+            await adjustMomentumAll(supabase, nation.id, partyId, -20, 'crisis:economic_collapse');
+        }
+
+        // 4. Reset gdp_growth to neutral (stop the bleeding) — critical to prevent re-trigger loop
+        nation.gdp_growth = 50;
+        const { error: growthErr } = await supabase.from('nations').update({ gdp_growth: 50 }).eq('id', nation.id);
+        if (growthErr) console.warn(`[activateEconomicCollapse] Failed to reset gdp_growth: ${growthErr.message}`);
+
+        // 5. Insert Economic Collapse crisis
+        const { error: insertErr } = await supabase.from('active_crises').insert({
+            crisis_id: ECONOMIC_COLLAPSE_CRISIS_ID,
+            nation_id: nation.id,
+            started_at_tick: currentTick,
+            effects_applied_log: []
+        });
+        if (insertErr) console.warn(`[activateEconomicCollapse] Failed to insert crisis: ${insertErr.message}`);
+
+        // 6. Event log
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'CRISIS_STARTED: Economic Collapse',
+            description_used: `${nation.name}'s economy has collapsed. GDP has fallen to critical levels. Emergency economic restructuring is underway.`,
+            category: 'crisis',
+            effects_applied: [],
+            fired_at_tick: currentTick
+        });
+
+        console.log(`[activateEconomicCollapse] Economic Collapse activated for ${nation.name}`);
+    } catch (err) {
+        console.error(`[activateEconomicCollapse] Unexpected error for ${nation.name}: ${err.message}`);
     }
-
-    // 4. Reset gdp_growth to neutral (stop the bleeding)
-    nation.gdp_growth = 50;
-    await supabase.from('nations').update({ gdp_growth: 50 }).eq('id', nation.id);
-
-    // 5. Insert Economic Collapse crisis
-    await supabase.from('active_crises').insert({
-        crisis_id: ECONOMIC_COLLAPSE_CRISIS_ID,
-        nation_id: nation.id,
-        started_at_tick: currentTick,
-        effects_applied_log: []
-    });
-
-    // 6. Event log
-    await supabase.from('event_log').insert({
-        nation_id: nation.id,
-        event_name: 'CRISIS_STARTED: Economic Collapse',
-        description_used: `${nation.name}'s economy has collapsed. GDP has fallen to critical levels. Emergency economic restructuring is underway.`,
-        category: 'crisis',
-        effects_applied: [],
-        fired_at_tick: currentTick
-    });
-
-    console.log(`[activateEconomicCollapse] Economic Collapse activated for ${nation.name}`);
 }
 
 // ────────── government-structure ──────────
