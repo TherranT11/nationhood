@@ -382,8 +382,8 @@ body.light-mode {
 .civ-post-image img {
     display: block;
     width: 100%;
-    max-height: 300px;
-    object-fit: cover;
+    max-height: 200px;
+    object-fit: contain;
 }
 
 /* ── Filter bar ── */
