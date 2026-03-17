@@ -98,6 +98,82 @@ const MINISTRY_KEYS_CABINET = [
     'education','healthcare','labor','justice','trade','energy','transportation'
 ];
 
+// ==================== MINISTRY ACTIONS DATA ====================
+const MINISTRY_ACTIONS = {
+    interior: {
+        actions: [
+            {
+                id: 'enforcePublicOrder',
+                name: 'Enforce Public Order',
+                desc: 'Deploy law enforcement to suppress crime and unrest. Effective but politically costly.',
+                apCosts: [2, 3, 5, 8],
+                budgetPerCapita: 1000000 / 4000000, // $1M per 4M pop per tick
+                delay: 1, duration: 4,
+                decayTicks: 3,
+                useResetInterval: 15,
+                tags: [
+                    { label: 'CRIME −4', cls: 'positive' },
+                    { label: 'INCARCERATION +3', cls: 'negative' },
+                    { label: 'HAPPINESS −2', cls: 'negative' },
+                    { label: 'SOC. MOBILITY −1', cls: 'negative' }
+                ]
+            },
+            {
+                id: 'communityOutreach',
+                name: 'Community Outreach',
+                desc: 'Grassroots engagement to build trust and improve quality of life. Slow but sustainable.',
+                apCosts: [1, 2, 3, 4],
+                budgetPerCapita: 1000000 / 20000000, // $1M per 20M pop per tick
+                delay: 3, duration: 8,
+                decayTicks: 4,
+                useResetInterval: 10,
+                tags: [
+                    { label: 'HAPPINESS +2', cls: 'positive' },
+                    { label: 'CRIME −1', cls: 'positive' },
+                    { label: 'STD OF LIVING +1', cls: 'positive' }
+                ]
+            },
+            {
+                id: 'surveillanceExpansion',
+                name: 'Surveillance Expansion',
+                desc: 'Expand digital monitoring infrastructure. Permanent residue penalties compound with each use.',
+                apCosts: [2, 4, 7, 11],
+                budgetPerCapita: 1000000 / 10000000, // $1M per 10M pop per tick
+                delay: 2, duration: 10,
+                decayTicks: 5,
+                useResetInterval: 20,
+                tags: [
+                    { label: 'CRIME −5', cls: 'positive' },
+                    { label: 'HAPPINESS −2', cls: 'negative' },
+                    { label: 'DIGI INFRA +2', cls: 'positive' },
+                    { label: 'STD OF LIVING −1', cls: 'negative' }
+                ]
+            }
+        ]
+    }
+};
+
+function getMinistryActionAPCost(actionId, useCount) {
+    const costs = {
+        enforcePublicOrder:    [2, 3, 5, 8],
+        communityOutreach:     [1, 2, 3, 4],
+        surveillanceExpansion:  [2, 4, 7, 11]
+    };
+    return (costs[actionId] || [1,1,1,1])[Math.min(useCount, 3)];
+}
+
+function getEffectMagnitude(useCount) {
+    const scale = [1.0, 0.70, 0.40, 0.15];
+    return scale[Math.min(useCount, 3)];
+}
+
+function formatBudgetDraw(budgetPerCapita, population) {
+    const draw = Math.round(budgetPerCapita * population);
+    if (draw >= 1000000) return '$' + (draw / 1000000).toFixed(1) + 'M';
+    if (draw >= 1000) return '$' + (draw / 1000).toFixed(0) + 'K';
+    return '$' + draw;
+}
+
 const FIRST_NAMES_POOL = [
     'Carlos','Diego','Fernando','Héctor','Marcos','Ramón','José','Luis','Miguel',
     'Antonio','Roberto','Francisco','Eduardo','Pablo','Alejandro','Rafael','Gabriel',
@@ -2246,217 +2322,322 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
 
 // ==================== CABINET ====================
 
-function renderCabinet(ministries, coalition) {
-    if (!ministries || ministries.length === 0) {
-        // Presidential systems always use their own rendering (with Nominate buttons)
-        if (isPresidential) {
-            const presKeys = MINISTRY_KEYS_CABINET.filter(k => k !== 'prime_minister');
-            const cards = presKeys.map(key => renderPresidentialMinistryCard(key, null)).join('');
-            return `<div class="ministry-grid">${cards}</div>`;
+// --- Shared card builder helpers ---
+
+function buildCardHeader(title, badgeHtml, requestCount) {
+    const reqBadge = requestCount > 0
+        ? `<span class="ministry-card__badge" style="background:rgba(91,155,213,0.1);border-color:rgba(91,155,213,0.25);color:#5b9bd5;">${requestCount}</span>`
+        : '';
+    return `<div class="ministry-card__header">
+        <div class="ministry-card__header-left">
+            <div class="ministry-card__dot"></div>
+            <div class="ministry-card__title">${escapeHtml(title)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">${reqBadge}${badgeHtml || ''}</div>
+    </div>`;
+}
+
+function buildMinisterIdentity(ministry, key) {
+    if (!ministry || !ministry.minister_first_name) return '';
+    const partyName = ministry.factions?.faction_name || 'Unknown';
+    const mColor = getPartyColorById(ministry.party_id);
+    const mLogo = getPartyLogoById(ministry.party_id);
+    const mCustomLogo = getPartyCustomLogoById(ministry.party_id);
+    const mLogoHtml = (mLogo || mCustomLogo)
+        ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: mCustomLogo, iconKey: mLogo, size: 13, color: mColor })}</span>`
+        : '';
+    const appr = ministry.minister_approval ?? NEW_MINISTER_APPROVAL;
+    const apprCls = appr >= 50 ? 'approval-good' : appr >= 35 ? 'approval-warn' : 'approval-bad';
+    return `<div class="ministry-card__minister">
+        <div class="ministry-card__minister-name">${escapeHtml(ministry.minister_first_name)} ${escapeHtml(ministry.minister_last_name)}</div>
+        <div class="ministry-card__minister-meta">
+            Age ${ministry.minister_age || '?'} · ${mLogoHtml}<span class="party" style="color:${mColor};">${escapeHtml(partyName)}</span>
+        </div>
+        <div class="ministry-card__minister-meta" style="margin-top:1px;">
+            Approval: <span class="${apprCls}">${Math.round(appr)}%</span>
+        </div>
+    </div>`;
+}
+
+function buildMgmtButtons(key, ministry, govContext) {
+    // govContext: { type: 'autocracy'|'parliamentary'|'presidential', isRuling, isMyMinistry, canAppoint, isPMParty, isPresidentParty, isCaretaker, requests, myRequest }
+    const ap = currentFaction?.action_points || 0;
+    const isFilled = ministry && ministry.minister_first_name;
+    let btns = '';
+
+    if (govContext.type === 'autocracy') {
+        if (govContext.isRuling) {
+            if (isFilled) {
+                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--purge" onclick="event.stopPropagation();purgeMinister('${key}')" ${ap < 1 ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : ''}>PURGE<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
+            } else {
+                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--assign" onclick="event.stopPropagation();openAssignModal('${key}')">ASSIGN</div>`;
+            }
+        } else if (govContext.isMyMinistry) {
+            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--resign" onclick="event.stopPropagation();resignMinistry('${key}')">RESIGN MINISTRY</div>`;
+        } else {
+            const totalMyRequests = ministryRequests.filter(r => r.faction_id === currentFaction?.id).length;
+            if (govContext.myRequest) {
+                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--unrequest" onclick="event.stopPropagation();unrequestMinistry('${govContext.myRequest.id}')">UNREQUEST<span class="ministry-card__mgmt-ap">0 AP</span></div>`;
+            } else {
+                const canRequest = totalMyRequests < 2 && ap >= 1;
+                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--request" onclick="event.stopPropagation();requestMinistry('${key}')" ${canRequest ? '' : 'style="opacity:0.4;cursor:not-allowed;"'}>REQUEST<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
+            }
         }
+    } else if (govContext.type === 'parliamentary') {
+        if (govContext.isMyMinistry && !govContext.isCaretaker) {
+            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--resign" onclick="event.stopPropagation();resignMinistry('${key}')">RESIGN</div>`;
+        }
+        if (govContext.isPMParty && !govContext.isCaretaker && !govContext.isMyMinistry && isFilled) {
+            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')" ${ap < 1 ? 'style="opacity:0.4;cursor:not-allowed;"' : ''}>DISMISS<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
+        }
+        if (!isFilled && govContext.canAppoint) {
+            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--appoint" onclick="event.stopPropagation();openAssignModal('${key}')">APPOINT</div>`;
+        }
+    } else if (govContext.type === 'presidential') {
+        if (govContext.isMyMinistry && !govContext.isPresidentParty) {
+            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--resign" onclick="event.stopPropagation();resignMinistry('${key}')">RESIGN</div>`;
+        }
+        if (govContext.isPresidentParty && isFilled) {
+            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')" ${ap < 1 ? 'style="opacity:0.4;cursor:not-allowed;"' : ''}>DISMISS<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
+        }
+        if (!isFilled && govContext.isPresidentParty) {
+            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--nominate" onclick="event.stopPropagation();openNominateModal('${key}')">NOMINATE</div>`;
+        }
+    }
+
+    if (!btns) return '';
+    return `<div class="ministry-card__mgmt">${btns}</div>`;
+}
+
+function buildRequestList(requests) {
+    if (!requests || requests.length === 0) return '';
+    let html = '';
+    requests.forEach(r => {
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 14px;font-family:var(--font-mono);font-size:8px;border-bottom:1px solid rgba(255,255,255,0.04);">
+            <span style="color:#5b9bd5;">${escapeHtml(r.factions?.faction_name || 'Unknown')} requests</span>
+            <div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--deny" onclick="event.stopPropagation();denyRequest('${r.id}')" style="font-size:7px;padding:2px 6px;">DENY</div>
+        </div>`;
+    });
+    return html;
+}
+
+function buildMinistryActionRows(ministryKey) {
+    const config = MINISTRY_ACTIONS[ministryKey];
+    if (!config || !config.actions || config.actions.length === 0) return '';
+    const pop = currentNation?.population || 20000000;
+
+    let html = '<div class="ministry-card__actions-label">ACTIONS</div>';
+    config.actions.forEach((action, idx) => {
+        const useCount = 0; // TODO: wire to actual use counter from DB
+        const apCost = action.apCosts[Math.min(useCount, 3)];
+        const budgetDraw = formatBudgetDraw(action.budgetPerCapita, pop);
+        const tagsHtml = action.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
+        const actionId = ministryKey + '-' + action.id;
+
+        html += `<div class="ministry-action" id="${actionId}" onclick="ministryActionSelect('${actionId}')">
+            <div class="ministry-action__top">
+                <span class="ministry-action__name">${escapeHtml(action.name)}</span>
+                <span class="ministry-action__ap-cost">${apCost} AP</span>
+            </div>
+            <div class="ministry-action__desc">${escapeHtml(action.desc)}</div>
+            <div class="ministry-action__bottom">
+                <div class="ministry-action__tags">${tagsHtml}<span class="tag tag--budget">${budgetDraw}/TICK</span></div>
+                <div id="${actionId}-btns">
+                    <div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ ${apCost} AP</div>
+                </div>
+            </div>
+        </div>`;
+    });
+    return html;
+}
+
+// --- Ministry action interaction state machine ---
+let selectedMinistryAction = null;
+
+function ministryActionSelect(actionId) {
+    const row = document.getElementById(actionId);
+    if (!row || row.classList.contains('active') || row.classList.contains('disabled')) return;
+
+    // Deselect previous
+    if (selectedMinistryAction && selectedMinistryAction !== actionId) {
+        ministryActionDeselect(selectedMinistryAction);
+    }
+
+    if (row.classList.contains('selected')) return;
+
+    row.classList.add('selected');
+    selectedMinistryAction = actionId;
+
+    const btns = document.getElementById(actionId + '-btns');
+    if (btns) {
+        btns.innerHTML = `<div style="display:flex;gap:4px;">
+            <div class="ministry-action__btn-confirm" onclick="event.stopPropagation();ministryActionConfirm('${actionId}')">✓ CONFIRM</div>
+            <div class="ministry-action__btn-cancel" onclick="event.stopPropagation();ministryActionDeselect('${actionId}')">✕</div>
+        </div>`;
+    }
+}
+
+function ministryActionDeselect(actionId) {
+    const row = document.getElementById(actionId);
+    if (!row) return;
+    row.classList.remove('selected');
+    if (selectedMinistryAction === actionId) selectedMinistryAction = null;
+
+    // Parse ministry key and action ID to restore AP cost
+    const parts = actionId.split('-');
+    const ministryKey = parts[0];
+    const actId = parts.slice(1).join('');
+    const config = MINISTRY_ACTIONS[ministryKey];
+    let apCost = 1;
+    if (config) {
+        const action = config.actions.find(a => a.id === actId);
+        if (action) {
+            const useCount = 0; // TODO: wire to actual use counter
+            apCost = action.apCosts[Math.min(useCount, 3)];
+        }
+    }
+
+    const btns = document.getElementById(actionId + '-btns');
+    if (btns) {
+        btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+    }
+}
+
+function ministryActionConfirm(actionId) {
+    const row = document.getElementById(actionId);
+    if (!row) return;
+    row.classList.remove('selected');
+    row.classList.add('active');
+    selectedMinistryAction = null;
+
+    const btns = document.getElementById(actionId + '-btns');
+    if (btns) {
+        btns.innerHTML = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+    }
+
+    // TODO: dispatch to backend
+    // const parts = actionId.split('-');
+    // actionDispatch({ ministry: parts[0], action: parts.slice(1).join(''), tick: currentTick });
+}
+
+// --- Main render ---
+
+function renderCabinet(ministries, coalition) {
+    const ministryMap = {};
+    if (ministries) ministries.forEach(m => { ministryMap[m.ministry_key] = m; });
+
+    const isCaretaker = coalition && coalition.status === 'caretaker';
+    const pmMinistry = ministries?.find(m => m.ministry_key === 'prime_minister');
+    const pmFilled = pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name;
+    const isPMParty = currentFaction && coalition && currentFaction.id === coalition.lead_party_id;
+    const canAppoint = isPMParty && pmFilled && !isCaretaker;
+
+    let govType = 'parliamentary';
+    if (isAutocracy) govType = 'autocracy';
+    else if (isPresidential) govType = 'presidential';
+
+    // Determine which keys to show (presidential/parliamentary skip PM)
+    const keys = isAutocracy
+        ? MINISTRY_KEYS_CABINET
+        : MINISTRY_KEYS_CABINET.filter(k => k !== 'prime_minister');
+
+    if ((!ministries || ministries.length === 0) && !isAutocracy && !isPresidential) {
+        // Parliamentary with coalition allocations but no ministers yet
         if (coalition && coalition.ministry_allocations) {
             const cards = Object.entries(coalition.ministry_allocations)
                 .filter(([key]) => key !== 'prime_minister')
                 .map(([key, partyId]) => {
                     const party = partyData.find(p => p.party_id === partyId);
-                    return `<div class="ministry-card vacant" style="padding:10px 12px;"><div class="ministry-title">${MINISTRY_NAMES[key] || key}</div><div class="minister-name" style="color:var(--text-muted);">To be appointed</div><div class="minister-details"><span class="minister-party">${party?.party_name || 'Unknown'}</span></div></div>`;
+                    const title = MINISTRY_NAMES[key] || key;
+                    return `<div class="ministry-card vacant">${buildCardHeader(title, '', 0)}
+                        <div class="ministry-card__minister">
+                            <div class="ministry-card__minister-name" style="color:#3a3a2e;">To be appointed</div>
+                            <div class="ministry-card__minister-meta"><span class="party">${escapeHtml(party?.party_name || 'Unknown')}</span></div>
+                        </div>
+                    </div>`;
                 }).join('');
-            return `<div class="ministry-grid">${cards}</div>`;
-        }
-        if (isAutocracy) {
-            const cards = MINISTRY_KEYS_CABINET.map(key => {
-                const requests = ministryRequests.filter(r => r.ministry_key === key);
-                return `<div class="ministry-card vacant" style="padding:10px 12px;"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests, null)}</div>`;
-            }).join('');
             return `<div class="ministry-grid">${cards}</div>`;
         }
         return '<div class="info-block" style="text-align:center;color:var(--text-secondary);padding:30px;">No cabinet has been formed yet.</div>';
     }
 
-    const ministryMap = {};
-    ministries.forEach(m => { ministryMap[m.ministry_key] = m; });
+    const cards = keys.map(key => {
+        const m = ministryMap[key];
+        const title = m?.ministry_name || MINISTRY_NAMES[key] || key;
+        const isFilled = m && m.minister_first_name;
+        const requests = isAutocracy ? ministryRequests.filter(r => r.ministry_key === key) : [];
+        const myRequest = requests.find(r => r.faction_id === currentFaction?.id);
+        const isMyMinistry = isFilled && m && currentFaction && m.party_id === currentFaction.id;
 
-    if (isAutocracy) {
-        const cards = MINISTRY_KEYS_CABINET.map(key => {
-            const m = ministryMap[key];
-            const isFilled = m && m.minister_first_name;
-            const requests = ministryRequests.filter(r => r.ministry_key === key);
+        const govContext = {
+            type: govType,
+            isRuling: isRulingFaction,
+            isMyMinistry,
+            canAppoint,
+            isPMParty,
+            isPresidentParty: typeof isPresidentParty !== 'undefined' ? isPresidentParty : false,
+            isCaretaker,
+            requests,
+            myRequest
+        };
 
-            if (isFilled) {
-                const partyName = m.factions?.faction_name || 'Unknown';
-                const mColor = getPartyColorById(m.party_id);
-                const mLogo = getPartyLogoById(m.party_id);
-                const mCustomLogo = getPartyCustomLogoById(m.party_id);
-                const mLogoHtml = mLogo || mCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: mCustomLogo, iconKey: mLogo, size: 16, color: mColor })}</span>` : '';
-                const appr = m.minister_approval ?? NEW_MINISTER_APPROVAL;
-                const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
-                return `<div class="ministry-card" style="border-top:3px solid ${mColor};padding:10px 12px;"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${escapeHtml(m.minister_first_name)} ${escapeHtml(m.minister_last_name)}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party" style="color:${mColor};">${mLogoHtml}${escapeHtml(partyName)}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>${renderMinistryStatBreakdown(key, m)}${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests, m)}</div>`;
-            } else {
-                return `<div class="ministry-card vacant" style="padding:10px 12px;"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests, null)}</div>`;
-            }
-        }).join('');
-        return `<div class="ministry-grid">${cards}</div>`;
-    }
-
-    // === PRESIDENTIAL SYSTEM ===
-    if (isPresidential) {
-        const presKeys = MINISTRY_KEYS_CABINET.filter(k => k !== 'prime_minister');
-        const cards = presKeys.map(key => renderPresidentialMinistryCard(key, ministryMap[key])).join('');
-        return `<div class="ministry-grid">${cards}</div>`;
-    }
-
-    const isCaretaker = coalition && coalition.status === 'caretaker';
-    const pmMinistry = ministries.find(m => m.ministry_key === 'prime_minister');
-    const pmFilled = pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name;
-    const isPMParty = currentFaction && coalition && currentFaction.id === coalition.lead_party_id;
-    const canAppoint = isPMParty && pmFilled && !isCaretaker;
-
-    const demKeys = MINISTRY_KEYS_CABINET.filter(function(k) { return k !== 'prime_minister'; });
-    const demCards = demKeys.map(function(key) {
-        var m = ministryMap[key];
-        var vacant = !m || !m.minister_first_name || !m.minister_last_name;
-        var title = MINISTRY_NAMES[key] || key;
-
-        if (vacant) {
-            var appointBtn = canAppoint ? '<div class="ministry-actions"><button class="ministry-btn assign" onclick="openAssignModal(\'' + key + '\')">✦ Appoint</button></div>' : '';
-            return '<div class="ministry-card vacant">'
-                + '<div class="ministry-header"><div class="ministry-title">' + title + '</div></div>'
-                + '<div class="ministry-body"><div class="minister-name" style="color:var(--text-muted);">Vacant</div>' + appointBtn + '</div></div>';
+        // Presidential pending nomination
+        if (isPresidential && m && m.confirmation_status === 'pending' && m.pending_minister) {
+            const pm = m.pending_minister;
+            const nomineeParty = allParties.find(p => p.id === pm.party_id);
+            return `<div class="ministry-card">${buildCardHeader(title, '', 0)}
+                <div class="ministry-card__minister">
+                    <div class="ministry-card__minister-name" style="color:var(--amber);">${escapeHtml(pm.first_name)} ${escapeHtml(pm.last_name)}</div>
+                    <div class="ministry-card__minister-meta">Age ${pm.age || '?'} · <span class="party">${escapeHtml(nomineeParty?.faction_name || 'Unknown')}</span></div>
+                </div>
+                <div class="ministry-card__pending">
+                    <div class="ministry-card__pending-label">AWAITING SENATE CONFIRMATION</div>
+                </div>
+            </div>`;
         }
 
-        var partyName = m.factions?.faction_name || 'Unknown';
-        var mColor = getPartyColorById(m.party_id);
-        var mLogo = getPartyLogoById(m.party_id);
-        var mCustomLogo = getPartyCustomLogoById(m.party_id);
-        var mLogoHtml = (mLogo || mCustomLogo) ? '<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">' + getPartyLogoHTML({ customLogoUrl: mCustomLogo, iconKey: mLogo, size: 16, color: mColor }) + '</span>' : '';
-        var name = m.minister_first_name + ' ' + m.minister_last_name;
-        var isMyMinistry = currentFaction && m.party_id === currentFaction.id;
-        var resignBtn = (isMyMinistry && !isCaretaker) ? '<div class="ministry-actions"><button class="ministry-btn purge" onclick="event.stopPropagation();resignMinistry(\'' + m.ministry_key + '\')">Resign Ministry</button></div>' : '';
-        var appr = m.minister_approval ?? NEW_MINISTER_APPROVAL;
-        var apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
-
-        // Fire button: visible to PM party (parliamentary) — not for own party resignations
-        var fireBtn = '';
-        if (isPMParty && !isCaretaker && !isMyMinistry) {
-            var apCost = (currentFaction?.action_points || 0) < 1;
-            fireBtn = '<div class="ministry-actions"><button class="ministry-btn dismiss" onclick="event.stopPropagation();fireMinister(\'' + m.ministry_key + '\')"' + (apCost ? ' disabled title="Need 1 AP"' : '') + '>Dismiss Minister <span class="ap-cost">1 AP</span></button></div>';
+        // Presidential: skip non-confirmed
+        if (isPresidential && isFilled && m.confirmation_status !== 'confirmed') {
+            return renderVacantCard(key, title, govContext, requests);
         }
 
-        return '<div class="ministry-card" style="border-top-color:' + mColor + ';">'
-            + '<div class="ministry-header"><div class="ministry-title">' + (m.ministry_name || title) + '</div></div>'
-            + '<div class="ministry-body">'
-            + '<div class="minister-name">' + escapeHtml(name) + '</div>'
-            + '<div class="minister-details">' + (m.minister_age ? 'Age ' + m.minister_age + ' &bull; ' : '') + '<span class="minister-party" style="color:' + mColor + ';">' + mLogoHtml + escapeHtml(partyName) + '</span></div>'
-            + '<div class="minister-approval">Approval: <span class="' + apprCls + '">' + Math.round(appr) + '%</span></div>'
-            + renderMinistryStatBreakdown(key, m)
-            + resignBtn + fireBtn + '</div></div>';
+        if (!isFilled) {
+            return renderVacantCard(key, title, govContext, requests);
+        }
+
+        // Filled card
+        const badgeHtml = '';
+        const headerHtml = buildCardHeader(title, badgeHtml, requests.length);
+        const identityHtml = buildMinisterIdentity(m, key);
+        const mgmtHtml = buildMgmtButtons(key, m, govContext);
+        const requestListHtml = (govContext.isRuling && requests.length > 0) ? buildRequestList(requests) : '';
+        const statsHtml = renderMinistryStatBreakdown(key, m);
+        const actionsHtml = buildMinistryActionRows(key);
+
+        return `<div class="ministry-card">${headerHtml}${identityHtml}${mgmtHtml}${requestListHtml}${statsHtml}${actionsHtml}</div>`;
     }).join('');
-    return '<div class="ministry-grid">' + demCards + '</div>';
+
+    return `<div class="ministry-grid">${cards}</div>`;
 }
 
-function renderMinistryActions(key, isFilled, requests, ministry) {
-    if (!isAutocracy) return '';
-    const ap = currentFaction?.action_points || 0;
-    const myRequest = requests.find(r => r.faction_id === currentFaction?.id);
-    const isMyMinistry = isFilled && ministry && currentFaction && ministry.party_id === currentFaction.id;
-    let html = '<div class="ministry-actions">';
-
-    if (isRulingFaction) {
-        if (isFilled) {
-            html += `<button class="ministry-btn purge" onclick="purgeMinister('${key}')" ${ap < 1 ? 'disabled title="Need 1 AP"' : ''}>⛔ Purge <span class="ap-cost">1 AP</span></button>`;
-        } else {
-            html += `<button class="ministry-btn assign" onclick="openAssignModal('${key}')">✦ Assign</button>`;
-        }
-        html += '</div>';
-        if (requests.length > 0) {
-            html += '<div class="request-list">';
-            requests.forEach(r => {
-                html += `<div class="request-item"><span class="request-item-party">${r.factions?.faction_name || 'Unknown'} requests this</span><div class="request-item-actions"><button class="req-btn deny" onclick="denyRequest('${r.id}')">✕ Deny</button></div></div>`;
-            });
-            html += '</div>';
-        }
-    } else if (isMyMinistry) {
-        html += `<button class="ministry-btn purge" onclick="resignMinistry('${key}')">📋 Resign Ministry</button>`;
-        html += '</div>';
-    } else {
-        const totalMyRequests = ministryRequests.filter(r => r.faction_id === currentFaction?.id).length;
-        if (myRequest) {
-            html += `<button class="ministry-btn unrequest" onclick="unrequestMinistry('${myRequest.id}')">↩ Unrequest <span class="ap-cost">0 AP</span></button>`;
-        } else {
-            const canRequest = totalMyRequests < 2 && ap >= 1;
-            html += `<button class="ministry-btn request" onclick="requestMinistry('${key}')" ${canRequest ? '' : 'disabled'}>📋 Request <span class="ap-cost">1 AP</span></button>`;
-            if (totalMyRequests >= 2) html += '<span class="max-requests-note">Max 2 requests</span>';
-            else if (ap < 1) html += '<span class="max-requests-note">Need 1 AP</span>';
-        }
-        html += '</div>';
-    }
-
-    return html;
-}
-
-// ==================== PRESIDENTIAL MINISTRY CARDS ====================
-
-function renderPresidentialMinistryCard(key, ministry) {
-    const isFilled = ministry && ministry.minister_first_name && ministry.confirmation_status === 'confirmed';
-    const isPending = ministry && ministry.confirmation_status === 'pending' && ministry.pending_minister;
-
-    if (isFilled) {
-        const partyName = ministry.factions?.faction_name || 'Unknown';
-        const pmColor = getPartyColorById(ministry.party_id);
-        const pmLogo = getPartyLogoById(ministry.party_id);
-        const pmCustomLogo = getPartyCustomLogoById(ministry.party_id);
-        const pmLogoHtml = pmLogo || pmCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: pmCustomLogo, iconKey: pmLogo, size: 16, color: pmColor })}</span>` : '';
-        const appr = ministry.minister_approval ?? NEW_MINISTER_APPROVAL;
-        const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
-
-        // Fire button for President's party
-        let fireBtn = '';
-        if (isPresidentParty) {
-            const apCost = (currentFaction?.action_points || 0) < 1;
-            fireBtn = `<div class="ministry-actions"><button class="ministry-btn dismiss" onclick="event.stopPropagation();fireMinister('${key}')"${apCost ? ' disabled title="Need 1 AP"' : ''}>Dismiss Minister <span class="ap-cost">1 AP</span></button></div>`;
-        }
-
-        // Resign button for the minister's own party (not the president's party — they use Dismiss)
-        let resignBtn = '';
-        const isMyMinistry = currentFaction && ministry.party_id === currentFaction.id && !isPresidentParty;
-        if (isMyMinistry) {
-            resignBtn = `<div class="ministry-actions"><button class="ministry-btn purge" onclick="event.stopPropagation();resignMinistry('${key}')">Resign Ministry</button></div>`;
-        }
-
-        return `<div class="ministry-card" style="border-top:3px solid ${pmColor};padding:10px 12px;">
-            <div class="ministry-header"><div class="ministry-title">${ministry.ministry_name || MINISTRY_NAMES[key]}</div></div>
-            <div class="minister-name">${ministry.minister_first_name} ${ministry.minister_last_name}</div>
-            <div class="minister-details">Age ${ministry.minister_age || '?'} • <span class="minister-party" style="color:${pmColor};">${pmLogoHtml}${partyName}</span></div>
-            <div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>
-            ${renderMinistryStatBreakdown(key, ministry)}
-            ${resignBtn}${fireBtn}
-        </div>`;
-    }
-
-    if (isPending) {
-        const pm = ministry.pending_minister;
-        const nomineeParty = allParties.find(p => p.id === pm.party_id);
-        return `<div class="ministry-card" style="border-top-color:var(--amber);padding:10px 12px;">
-            <div class="ministry-title">${MINISTRY_NAMES[key]}</div>
-            <div class="minister-name" style="color:var(--amber);">${pm.first_name} ${pm.last_name}</div>
-            <div class="minister-details">Age ${pm.age || '?'} • <span class="minister-party">${nomineeParty?.faction_name || 'Unknown'}</span></div>
-            <div style="margin-top:8px;padding:4px 10px;background:var(--amber-faint);border:1px solid var(--amber-border);border-radius:3px;font-family:var(--font-mono);font-size:8.5px;font-weight:600;color:var(--amber);text-align:center;text-transform:uppercase;letter-spacing:0.06em;">Awaiting Senate Confirmation</div>
-        </div>`;
-    }
-
-    // Vacant slot — president can nominate
-    let actionHtml = '';
-    if (isPresidentParty) {
-        actionHtml = `<div class="ministry-actions">
-            <button class="ministry-btn assign" onclick="openNominateModal('${key}')">Nominate</button>
-        </div>`;
-    }
-
-    return `<div class="ministry-card vacant" style="padding:10px 12px;">
-        <div class="ministry-title">${MINISTRY_NAMES[key]}</div>
-        <div class="minister-name" style="color:var(--text-muted);">Vacant</div>
-        ${actionHtml}
+function renderVacantCard(key, title, govContext, requests) {
+    const headerHtml = buildCardHeader(title, '', requests.length);
+    const mgmtHtml = buildMgmtButtons(key, null, govContext);
+    const requestListHtml = (govContext.isRuling && requests.length > 0) ? buildRequestList(requests) : '';
+    return `<div class="ministry-card vacant">${headerHtml}
+        <div class="ministry-card__vacant-label">VACANT</div>
+        ${mgmtHtml}${requestListHtml}
     </div>`;
+}
+
+// Legacy compat — kept for any external callers
+function renderMinistryActions(key, isFilled, requests, ministry) {
+    return '';
+}
+
+// Legacy compat — renderPresidentialMinistryCard now handled by unified renderCabinet
+function renderPresidentialMinistryCard(key, ministry) {
+    return '';
 }
 
 // ==================== PRESIDENTIAL NOMINATION (Modal) ====================
