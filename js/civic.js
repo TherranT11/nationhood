@@ -796,7 +796,14 @@ function renderPost(post) {
 // ACTIONS: Like, Share, Comment
 // ═══════════════════════════════════════════════════════════
 
+let _likeLock = {};
+let _shareLock = {};
+
 function toggleLike(postId) {
+    if (_likeLock[postId]) return;
+    _likeLock[postId] = true;
+    setTimeout(() => { _likeLock[postId] = false; }, 500);
+
     const post = _allPosts.find(p => p.id === postId);
     if (!post) return;
 
@@ -829,6 +836,10 @@ function toggleLike(postId) {
 }
 
 function toggleShare(postId) {
+    if (_shareLock[postId]) return;
+    _shareLock[postId] = true;
+    setTimeout(() => { _shareLock[postId] = false; }, 500);
+
     const post = _allPosts.find(p => p.id === postId);
     if (!post) return;
 
@@ -888,9 +899,11 @@ function wirePostListeners(el, postId) {
     // Reply button
     el.querySelector('.civ-reply-submit')?.addEventListener('click', (e) => {
         e.stopPropagation();
+        const replyBtn = e.currentTarget;
         const ta = el.querySelector('.cmt-textarea');
         if (ta && ta.value.trim()) {
-            submitComment(postId, ta.value.trim());
+            replyBtn.disabled = true;
+            submitComment(postId, ta.value.trim()).finally(() => { replyBtn.disabled = false; });
             ta.value = '';
             _replyTexts[postId] = '';
         }
