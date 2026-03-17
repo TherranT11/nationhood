@@ -765,13 +765,12 @@ function renderPost(post) {
         `).join('')
         : '<div class="civ-no-comments">NO COMMENTS YET</div>';
 
-    // Only show reply compose for player posts (v1)
-    const replyComposeHtml = post.isPlayer ? `
+    const replyComposeHtml = `
         <div class="civ-reply-compose">
             <textarea class="cmt-textarea" maxlength="400" placeholder="Reply..." aria-label="Reply to ${escapeHtml(post.handle)}"></textarea>
             <button type="button" class="civ-reply-btn civ-reply-submit" aria-label="Submit reply">REPLY</button>
         </div>
-    ` : '';
+    `;
 
     return `
         <article class="${cls}" data-post-id="${escapeHtml(post.id)}" aria-label="Post by ${escapeHtml(post.handle)}">
@@ -972,6 +971,11 @@ function wirePostListeners(el, postId) {
         if (section) section.classList.toggle('open');
     });
 
+    // Prevent clicks inside the comments section from toggling the thread
+    el.querySelector('.civ-comments-section')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+
     // Reply button
     el.querySelector('.civ-reply-submit')?.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1017,12 +1021,34 @@ let _commentLock = {};
 async function submitComment(postId, body) {
     if (_commentLock[postId]) return;
     const post = _allPosts.find(p => p.id === postId);
-    if (!post || !post.isPlayer || !post.dbId) return;
+    if (!post) return;
 
     _commentLock[postId] = true;
     const handle = pickNoReplace(CIVIC_HANDLES, 1)[0];
 
     try {
+        // Materialize system posts into civic_posts so we have a post_id FK
+        if (!post.dbId) {
+            const { data: newRow, error: matErr } = await _supabase.from('civic_posts').insert({
+                nation_id: _nationId,
+                faction_id: _factionId,
+                handle_key: post.handle,
+                display_name: post.name,
+                initials: post.initials,
+                body: (post.body || '').slice(0, 400),
+                game_tick: post.tick || _currentTick,
+                likes: 0,
+                shares: 0,
+            }).select('id').single();
+            if (matErr || !newRow) {
+                _replyTexts[postId] = body;
+                const ta = document.querySelector(`[data-post-id="${postId}"] .cmt-textarea`);
+                if (ta) ta.value = body;
+                return;
+            }
+            post.dbId = newRow.id;
+        }
+
         const { error } = await _supabase.from('civic_comments').insert({
             post_id: post.dbId,
             nation_id: _nationId,
