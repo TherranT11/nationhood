@@ -21950,11 +21950,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             if (Math.abs(oldEvents) > 0.01) {
                 let decayRate = MINISTER_APPROVAL_CONFIG.EVENTS_DECAY_RATE; // 0.10
                 if (oldEvents < 0) {
-                    const { count: crisisCount } = await supabase
+                    const { count: crisisCount, error: crisisErr } = await supabase
                         .from('active_crises')
                         .select('id', { count: 'exact', head: true })
                         .eq('nation_id', nation.id);
-                    if (crisisCount > 0) decayRate = 0.03; // slow decay during crises
+                    // On query failure, assume crises exist (safe side: slower decay)
+                    if (crisisErr || (crisisCount ?? 0) > 0) decayRate = 0.03;
                 }
                 const decayed = Math.round(oldEvents * (1 - decayRate) * 100) / 100;
                 await supabase.from('nations')
