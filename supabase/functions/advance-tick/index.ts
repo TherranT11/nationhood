@@ -17015,6 +17015,10 @@ async function processCrises(supabase, nation, currentTick) {
                 console.warn(`[processCrises] Skipping effect with non-numeric change_per_tick: "${effect.change_per_tick}" in crisis "${template.name}" for ${nation.name}`);
                 continue;
             }
+            // Diagnostic: log government_approval effect values for debugging sign issues
+            if (effect.target === 'government_approval' || effect.target === 'coalition_approval') {
+                console.log(`[processCrises] ${template.name}: ${effect.target} effect change_per_tick=${effect.change_per_tick} (parsed=${changePT}) floor=${effect.stat_floor} for ${nation.name}`);
+            }
             const hasFloor = effect.stat_floor !== null && effect.stat_floor !== undefined;
             const floorVal = hasFloor ? Number(effect.stat_floor) : null;
 
@@ -17095,17 +17099,32 @@ async function processCrises(supabase, nation, currentTick) {
                 });
 
             } else if (effect.target === 'government_approval' || effect.target === 'coalition_approval') {
-                const coalition = await fetchActiveCoalition(supabase, nation.id);
-                const partyIds = coalition?.party_ids || [];
-                for (const partyId of partyIds) {
-                    await adjustMomentumAll(supabase, nation.id, partyId, changePT, 'crisis:' + template.name);
-                    appliedEffects.push({
-                        stat: 'momentum', change: changePT,
-                        target: effect.target, faction_id: partyId
-                    });
+                // Floor enforcement: if gov_approval_events is already at or below floor, skip
+                let effectiveGovChange = changePT;
+                if (hasFloor && changePT < 0) {
+                    const { data: govNat } = await supabase.from('nations').select('gov_approval_events').eq('id', nation.id).single();
+                    const curEvents = Number(govNat?.gov_approval_events ?? 0);
+                    // Floor inverted for events modifier: floor 10 means events shouldn't push below -10
+                    const eventsFloor = -(floorVal);
+                    if (curEvents <= eventsFloor) {
+                        effectiveGovChange = 0; // already at floor
+                    } else if (curEvents + changePT < eventsFloor) {
+                        effectiveGovChange = eventsFloor - curEvents; // partial application
+                    }
                 }
-                // Also push to gov approval events component
-                await adjustGovernmentApprovalEvent(supabase, nation.id, changePT, 'crisis:' + template.name);
+                if (effectiveGovChange !== 0) {
+                    const coalition = await fetchActiveCoalition(supabase, nation.id);
+                    const partyIds = coalition?.party_ids || [];
+                    for (const partyId of partyIds) {
+                        await adjustMomentumAll(supabase, nation.id, partyId, effectiveGovChange, 'crisis:' + template.name);
+                        appliedEffects.push({
+                            stat: 'momentum', change: effectiveGovChange,
+                            target: effect.target, faction_id: partyId
+                        });
+                    }
+                    // Also push to gov approval events component
+                    await adjustGovernmentApprovalEvent(supabase, nation.id, effectiveGovChange, 'crisis:' + template.name);
+                }
 
             } else if (effect.target === 'pm_approval') {
                 const { data: pmMinistry } = await supabase

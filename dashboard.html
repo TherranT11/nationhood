@@ -1160,9 +1160,10 @@ async function loadActiveCrises(nationId, currentTick) {
   if (!container) return;
 
   try {
+    // Step 1: Fetch active crisis records
     const { data: crises, error } = await _supabase
       .from('active_crises')
-      .select('started_at_tick, crisis_templates(name, description, crisis_effects(target, stat_key, change_per_tick), crisis_end_triggers(stat_key, operator, threshold))')
+      .select('id, crisis_id, started_at_tick, crisis_templates(name, description, crisis_effects(target, stat_key, change_per_tick), crisis_end_triggers(stat_key, operator, threshold))')
       .eq('nation_id', nationId);
 
     if (error) throw error;
@@ -1172,7 +1173,36 @@ async function loadActiveCrises(nationId, currentTick) {
       return;
     }
 
-    container.innerHTML = crises.map(c => {
+    // Step 2: If nested select returned null templates (PostgREST schema cache stale),
+    // fall back to separate queries joined in JS
+    let resolvedCrises = crises;
+    const needsFallback = crises.some(c => !c.crisis_templates);
+    if (needsFallback) {
+      const crisisIds = crises.map(c => c.crisis_id).filter(Boolean);
+      if (crisisIds.length > 0) {
+        const [templatesRes, effectsRes, endTriggersRes] = await Promise.all([
+          _supabase.from('crisis_templates').select('id, name, description').in('id', crisisIds),
+          _supabase.from('crisis_effects').select('crisis_id, target, stat_key, change_per_tick').in('crisis_id', crisisIds),
+          _supabase.from('crisis_end_triggers').select('crisis_id, stat_key, operator, threshold').in('crisis_id', crisisIds)
+        ]);
+        const tmplMap = {};
+        for (const t of (templatesRes.data || [])) {
+          tmplMap[t.id] = { ...t, crisis_effects: [], crisis_end_triggers: [] };
+        }
+        for (const e of (effectsRes.data || [])) {
+          if (tmplMap[e.crisis_id]) tmplMap[e.crisis_id].crisis_effects.push(e);
+        }
+        for (const et of (endTriggersRes.data || [])) {
+          if (tmplMap[et.crisis_id]) tmplMap[et.crisis_id].crisis_end_triggers.push(et);
+        }
+        resolvedCrises = crises.map(c => ({
+          ...c,
+          crisis_templates: tmplMap[c.crisis_id] || null
+        }));
+      }
+    }
+
+    container.innerHTML = resolvedCrises.map(c => {
       const t = c.crisis_templates;
       if (!t) return '';
 
@@ -1188,11 +1218,22 @@ async function loadActiveCrises(nationId, currentTick) {
       if (elapsedYears > 0 && elapsedMonths > 0) durationStr += ', ';
       if (elapsedMonths > 0 || elapsedYears === 0) durationStr += elapsedMonths + (elapsedMonths === 1 ? ' Month' : ' Months');
 
-      // Effects: stat going up/down
+      // Effects: show ALL effect types (nation stats, gov approval, etc.)
+      const TARGET_LABELS = {
+        'government_approval': 'Gov Approval',
+        'coalition_approval': 'Coalition Approval',
+        'pm_approval': 'PM Approval',
+        'minister_approval': 'Minister Approval'
+      };
       const effects = (t.crisis_effects || [])
-        .filter(e => e.target === 'nation' && e.stat_key)
+        .filter(e => e.change_per_tick !== 0)
         .map(e => {
-          const label = e.stat_key.replace(/_/g, ' ');
+          let label;
+          if (e.target === 'nation' && e.stat_key) {
+            label = e.stat_key.replace(/_/g, ' ');
+          } else {
+            label = TARGET_LABELS[e.target] || e.target.replace(/_/g, ' ');
+          }
           const isUp = e.change_per_tick > 0;
           return `<span class="${isUp ? 'crisis-effect-up' : 'crisis-effect-down'}">${esc(label)} ${isUp ? '\u25B2' : '\u25BC'}</span>`;
         }).join('');
@@ -1200,8 +1241,6 @@ async function loadActiveCrises(nationId, currentTick) {
       // Solution: what end triggers require
       const solutions = (t.crisis_end_triggers || []).map(et => {
         const label = et.stat_key.replace(/_/g, ' ');
-        // If operator is 'lte' (<=), the stat needs to come DOWN to resolve
-        // If operator is 'gte' (>=), the stat needs to go UP to resolve
         const needsUp = et.operator === 'gte';
         return `<span class="${needsUp ? 'crisis-effect-up' : 'crisis-effect-down'}">${esc(label)} ${needsUp ? '\u25B2' : '\u25BC'} ${et.threshold}</span>`;
       }).join(' ');

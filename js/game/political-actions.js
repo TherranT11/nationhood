@@ -4993,17 +4993,31 @@ export async function processCrises(supabase, nation, currentTick) {
                 });
 
             } else if (effect.target === 'government_approval' || effect.target === 'coalition_approval') {
-                const coalition = await fetchActiveCoalition(supabase, nation.id);
-                const partyIds = coalition?.party_ids || [];
-                for (const partyId of partyIds) {
-                    await adjustMomentumAll(supabase, nation.id, partyId, changePT, 'crisis:' + template.name);
-                    appliedEffects.push({
-                        stat: 'momentum', change: changePT,
-                        target: effect.target, faction_id: partyId
-                    });
+                // Floor enforcement: if gov_approval_events is already at or below floor, skip
+                let effectiveGovChange = changePT;
+                if (hasFloor && changePT < 0) {
+                    const { data: govNat } = await supabase.from('nations').select('gov_approval_events').eq('id', nation.id).single();
+                    const curEvents = Number(govNat?.gov_approval_events ?? 0);
+                    const eventsFloor = -(floorVal);
+                    if (curEvents <= eventsFloor) {
+                        effectiveGovChange = 0;
+                    } else if (curEvents + changePT < eventsFloor) {
+                        effectiveGovChange = eventsFloor - curEvents;
+                    }
                 }
-                // Also push to gov approval events component
-                await adjustGovernmentApprovalEvent(supabase, nation.id, changePT, 'crisis:' + template.name);
+                if (effectiveGovChange !== 0) {
+                    const coalition = await fetchActiveCoalition(supabase, nation.id);
+                    const partyIds = coalition?.party_ids || [];
+                    for (const partyId of partyIds) {
+                        await adjustMomentumAll(supabase, nation.id, partyId, effectiveGovChange, 'crisis:' + template.name);
+                        appliedEffects.push({
+                            stat: 'momentum', change: effectiveGovChange,
+                            target: effect.target, faction_id: partyId
+                        });
+                    }
+                    // Also push to gov approval events component
+                    await adjustGovernmentApprovalEvent(supabase, nation.id, effectiveGovChange, 'crisis:' + template.name);
+                }
 
             } else if (effect.target === 'pm_approval') {
                 const { data: pmMinistry } = await supabase
