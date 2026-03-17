@@ -126,7 +126,6 @@ export async function initCivic(supabase, nationId, factionId, currentTick, nati
     _factionId = factionId;
     _currentTick = currentTick;
     _visibleCount = POSTS_PER_PAGE;
-    if (!nationName) console.warn('initCivic: nationName is empty — hashtags will show blank');
     _nationName = nationName || '';
     _factionAbbr = factionAbbr || '??';
 
@@ -251,7 +250,12 @@ function subscribeRealtime() {
             renderTrending();
             renderMobileTrending();
         })
-        .subscribe();
+        .subscribe((status) => {
+            if (status === 'CHANNEL_ERROR') {
+                // Retry subscription after a delay
+                setTimeout(() => subscribeRealtime(), 5000);
+            }
+        });
 }
 
 /** Transform event_log rows into CIVIC post objects */
@@ -580,7 +584,7 @@ function renderCompose() {
 async function submitPost(body) {
     const handle = pickNoReplace(CIVIC_HANDLES, 1)[0];
 
-    const { error } = await _supabase.from('civic_posts').insert({
+    const { data, error } = await _supabase.from('civic_posts').insert({
         nation_id: _nationId,
         faction_id: _factionId,
         handle_key: handle.handle,
@@ -588,11 +592,10 @@ async function submitPost(body) {
         initials: handle.initials,
         body,
         game_tick: _currentTick,
-    });
+    }).select('id').single();
 
     const postedAs = document.getElementById('civ-posted-as');
     if (error) {
-        console.error('CIVIC post error:', error);
         if (postedAs) {
             postedAs.textContent = 'Post failed. Try again.';
             postedAs.style.color = 'var(--civ-danger)';
@@ -608,9 +611,10 @@ async function submitPost(body) {
         setTimeout(() => { postedAs.textContent = ''; }, 4000);
     }
 
-    // Add to local feed immediately
+    // Add to local feed immediately with the real DB id
+    const newDbId = data?.id || null;
     _allPosts.unshift({
-        id: 'player_temp_' + Date.now(),
+        id: newDbId ? 'player_' + newDbId : 'player_temp_' + Date.now(),
         type: 'user',
         name: handle.name,
         initials: handle.initials,
@@ -624,10 +628,12 @@ async function submitPost(body) {
         shares: 0,
         likedByPlayer: false,
         sharedByPlayer: false,
+        _rawLikedBy: [],
+        _rawSharedBy: [],
         comments: [],
         sortOrder: 0,
         isPlayer: true,
-        dbId: null,
+        dbId: newDbId,
         factionId: _factionId,
     });
 
@@ -844,16 +850,31 @@ function toggleLike(postId) {
     if (post.isPlayer && post.dbId) {
         // Persist to Supabase via direct update on liked_by array + likes counter
         const nowLiked = !post.likedByPlayer;
+        const prevLiked = post.likedByPlayer;
+        const prevLikes = post.likes;
+        const prevRawLikedBy = [...(post._rawLikedBy || [])];
         post.likedByPlayer = nowLiked;
-        post.likes += nowLiked ? 1 : -1;
+        post.likes = Math.max(0, post.likes + (nowLiked ? 1 : -1));
 
         const newLikedBy = nowLiked
             ? [...new Set([...(post._rawLikedBy || []), _factionId])]
             : (post._rawLikedBy || []).filter(id => id !== _factionId);
-        _supabase.from('civic_posts')
-            .update({ liked_by: newLikedBy, likes: Math.max(0, post.likes) })
-            .eq('id', post.dbId)
-            .then(({ error }) => { if (error) console.error('CIVIC like update error:', error); });
+        _supabase.rpc('civic_toggle_reaction', {
+            p_post_id: post.dbId,
+            p_liked_by: newLikedBy,
+            p_shared_by: post._rawSharedBy || [],
+            p_likes: post.likes,
+            p_shares: post.shares,
+        }).then(({ error }) => {
+                if (error) {
+                    // Revert optimistic update and re-render
+                    post.likedByPlayer = prevLiked;
+                    post.likes = prevLikes;
+                    post._rawLikedBy = prevRawLikedBy;
+                    const el = document.querySelector(`[data-post-id="${postId}"]`);
+                    if (el) { el.outerHTML = renderPost(post); rewirePost(postId); }
+                }
+            });
         post._rawLikedBy = newLikedBy;
     } else {
         // In-memory toggle for system posts
@@ -879,16 +900,31 @@ function toggleShare(postId) {
 
     if (post.isPlayer && post.dbId) {
         const nowShared = !post.sharedByPlayer;
+        const prevShared = post.sharedByPlayer;
+        const prevShares = post.shares;
+        const prevRawSharedBy = [...(post._rawSharedBy || [])];
         post.sharedByPlayer = nowShared;
-        post.shares += nowShared ? 1 : -1;
+        post.shares = Math.max(0, post.shares + (nowShared ? 1 : -1));
 
         const newSharedBy = nowShared
             ? [...new Set([...(post._rawSharedBy || []), _factionId])]
             : (post._rawSharedBy || []).filter(id => id !== _factionId);
-        _supabase.from('civic_posts')
-            .update({ shared_by: newSharedBy, shares: Math.max(0, post.shares) })
-            .eq('id', post.dbId)
-            .then(({ error }) => { if (error) console.error('CIVIC share update error:', error); });
+        _supabase.rpc('civic_toggle_reaction', {
+            p_post_id: post.dbId,
+            p_liked_by: post._rawLikedBy || [],
+            p_shared_by: newSharedBy,
+            p_likes: post.likes,
+            p_shares: post.shares,
+        }).then(({ error }) => {
+                if (error) {
+                    // Revert optimistic update and re-render
+                    post.sharedByPlayer = prevShared;
+                    post.shares = prevShares;
+                    post._rawSharedBy = prevRawSharedBy;
+                    const el = document.querySelector(`[data-post-id="${postId}"]`);
+                    if (el) { el.outerHTML = renderPost(post); rewirePost(postId); }
+                }
+            });
         post._rawSharedBy = newSharedBy;
     } else {
         _playerShares[postId] = !_playerShares[postId];
@@ -999,7 +1035,10 @@ async function submitComment(postId, body) {
         });
 
         if (error) {
-            console.error('CIVIC comment error:', error);
+            // Restore reply text so user doesn't lose their comment
+            _replyTexts[postId] = body;
+            const ta = document.querySelector(`[data-post-id="${postId}"] .cmt-textarea`);
+            if (ta) ta.value = body;
             return;
         }
 
@@ -1043,10 +1082,8 @@ function filterByTag(tag) {
 // TRENDING SIDEBAR
 // ═══════════════════════════════════════════════════════════
 
-function renderTrending() {
-    const el = document.getElementById('civ-trending');
-    if (!el) return;
-
+/** Count hashtag frequency across all posts */
+function countHashtags() {
     const counts = {};
     _allPosts.forEach(p => {
         const matches = p.body.match(/#(\w+)/g) || [];
@@ -1055,6 +1092,14 @@ function renderTrending() {
             counts[key] = (counts[key] || 0) + 1;
         });
     });
+    return counts;
+}
+
+function renderTrending() {
+    const el = document.getElementById('civ-trending');
+    if (!el) return;
+
+    const counts = countHashtags();
 
     const trending = Object.entries(counts)
         .sort((a, b) => b[1] - a[1])
@@ -1109,14 +1154,7 @@ function renderMobileTrending() {
     const el = document.getElementById('civ-mobile-trending');
     if (!el) return;
 
-    const counts = {};
-    _allPosts.forEach(p => {
-        const matches = p.body.match(/#(\w+)/g) || [];
-        matches.forEach(t => {
-            const key = t.toLowerCase();
-            counts[key] = (counts[key] || 0) + 1;
-        });
-    });
+    const counts = countHashtags();
 
     const top3 = Object.entries(counts)
         .sort((a, b) => b[1] - a[1])
