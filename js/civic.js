@@ -28,6 +28,7 @@ const TAG_COLORS = {
     FACTION:   'var(--tag-faction)',
     PARTY:     'var(--tag-party)',
     ECONOMY:   'var(--tag-economy)',
+    INTERIOR:  'var(--tag-interior)',
 };
 
 // SVG icons for action buttons
@@ -229,6 +230,7 @@ function subscribeRealtime() {
                 initials: row.initials,
                 handle: row.handle_key,
                 body: row.body,
+                imageUrl: row.image_url || null,
                 tick: row.game_tick || 0,
                 date: shortDate(row.game_tick),
                 eventTag: null,
@@ -467,6 +469,7 @@ function transformPlayerPosts(rows) {
         initials: row.initials,
         handle: row.handle_key,
         body: row.body,
+        imageUrl: row.image_url || null,
         tick: row.game_tick || 0,
         date: shortDate(row.game_tick),
         eventTag: null,
@@ -533,18 +536,34 @@ function renderAll() {
     renderMobileTrending();
 }
 
+let _composeImageFile = null;  // staged image File
+let _composeImagePreview = null;  // object URL for preview
+
 function renderCompose() {
     const el = document.getElementById('civ-compose');
     if (!el) return;
+
+    const savedHandle = localStorage.getItem('civic_handle_' + _factionId) || '';
 
     el.innerHTML = `
         <div class="civ-compose-row">
             <div class="civ-compose-avatar" title="Your faction">${escapeHtml(_factionAbbr)}</div>
             <div class="civ-compose-body">
+                <input type="text" id="civ-handle-input" class="civ-handle-input" maxlength="25" placeholder="@yourhandle" value="${escapeHtml(savedHandle)}" aria-label="Your handle" autocomplete="off" spellcheck="false">
                 <label for="civ-textarea" class="sr-only">Write a post</label>
                 <textarea id="civ-textarea" maxlength="400" placeholder="What is happening in the republic?" aria-label="Write a post" aria-describedby="civ-char-count"></textarea>
+                <div id="civ-image-preview" class="civ-image-preview" style="display:none;">
+                    <img id="civ-image-preview-img" alt="Attached image">
+                    <button type="button" id="civ-image-remove" class="civ-image-remove" aria-label="Remove image">&times;</button>
+                </div>
                 <div class="civ-compose-footer">
-                    <span class="civ-char-count" id="civ-char-count" aria-live="polite">400</span>
+                    <div class="civ-compose-footer-left">
+                        <span class="civ-char-count" id="civ-char-count" aria-live="polite">400</span>
+                        <label class="civ-attach-btn" title="Attach image">
+                            <input type="file" id="civ-image-input" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none">
+                            <svg viewBox="0 0 24 24" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/><path d="M21 15l-5-5L5 21" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                        </label>
+                    </div>
                     <button class="civ-post-btn" id="civ-post-btn" disabled aria-label="Post to CIVIC">POST</button>
                 </div>
                 <div class="civ-posted-as" id="civ-posted-as" aria-live="polite"></div>
@@ -555,7 +574,17 @@ function renderCompose() {
     const textarea = document.getElementById('civ-textarea');
     const counter = document.getElementById('civ-char-count');
     const btn = document.getElementById('civ-post-btn');
+    const handleInput = document.getElementById('civ-handle-input');
+    const imageInput = document.getElementById('civ-image-input');
+    const imagePreview = document.getElementById('civ-image-preview');
+    const imagePreviewImg = document.getElementById('civ-image-preview-img');
+    const imageRemove = document.getElementById('civ-image-remove');
     if (!textarea || !counter || !btn) return;
+
+    // Persist handle as the user types
+    handleInput?.addEventListener('input', () => {
+        localStorage.setItem('civic_handle_' + _factionId, handleInput.value);
+    });
 
     textarea.addEventListener('input', () => {
         const len = textarea.value.length;
@@ -565,34 +594,95 @@ function renderCompose() {
         btn.disabled = textarea.value.trim().length === 0;
     });
 
+    // Image attachment
+    imageInput?.addEventListener('change', () => {
+        const file = imageInput.files?.[0];
+        if (!file) return;
+        if (file.size > 2 * 1024 * 1024) {
+            alert('Image must be under 2 MB.');
+            imageInput.value = '';
+            return;
+        }
+        if (_composeImagePreview) URL.revokeObjectURL(_composeImagePreview);
+        _composeImageFile = file;
+        _composeImagePreview = URL.createObjectURL(file);
+        if (imagePreviewImg) imagePreviewImg.src = _composeImagePreview;
+        if (imagePreview) imagePreview.style.display = 'block';
+    });
+
+    imageRemove?.addEventListener('click', () => {
+        _composeImageFile = null;
+        if (_composeImagePreview) { URL.revokeObjectURL(_composeImagePreview); _composeImagePreview = null; }
+        if (imagePreview) imagePreview.style.display = 'none';
+        if (imageInput) imageInput.value = '';
+    });
+
     btn.addEventListener('click', async () => {
         const body = textarea.value.trim();
         if (!body) return;
         btn.disabled = true;
         btn.textContent = 'POSTING...';
-        const ok = await submitPost(body);
+        const handle = handleInput?.value.trim() || '';
+        const ok = await submitPost(body, handle, _composeImageFile);
         if (ok) {
             textarea.value = '';
             counter.textContent = '400';
             counter.classList.remove('warn');
+            // Clear image state
+            _composeImageFile = null;
+            if (_composeImagePreview) { URL.revokeObjectURL(_composeImagePreview); _composeImagePreview = null; }
+            if (imagePreview) imagePreview.style.display = 'none';
+            if (imageInput) imageInput.value = '';
         }
         btn.textContent = 'POST';
         btn.disabled = !textarea.value.trim();
     });
 }
 
-async function submitPost(body) {
-    const handle = pickNoReplace(CIVIC_HANDLES, 1)[0];
+async function submitPost(body, customHandle, imageFile) {
+    // Build handle from user input, or fall back to random
+    let handleKey, displayName, initials;
+    if (customHandle) {
+        handleKey = customHandle.startsWith('@') ? customHandle : '@' + customHandle;
+        // Display name = handle without @, title-cased
+        const raw = handleKey.slice(1);
+        displayName = raw.charAt(0).toUpperCase() + raw.slice(1);
+        initials = raw.slice(0, 2).toUpperCase();
+    } else {
+        const h = pickNoReplace(CIVIC_HANDLES, 1)[0];
+        handleKey = h.handle;
+        displayName = h.name;
+        initials = h.initials;
+    }
 
-    const { data, error } = await _supabase.from('civic_posts').insert({
+    // Upload image if provided
+    let imageUrl = null;
+    if (imageFile) {
+        try {
+            const ext = imageFile.name.split('.').pop() || 'png';
+            const filePath = `civic/${_nationId}/${Date.now()}.${ext}`;
+            const { error: upErr } = await _supabase.storage
+                .from('public-assets')
+                .upload(filePath, imageFile, { contentType: imageFile.type, upsert: true });
+            if (!upErr) {
+                const { data: urlData } = _supabase.storage.from('public-assets').getPublicUrl(filePath);
+                imageUrl = urlData?.publicUrl || null;
+            }
+        } catch (e) { /* image upload is best-effort */ }
+    }
+
+    const insertPayload = {
         nation_id: _nationId,
         faction_id: _factionId,
-        handle_key: handle.handle,
-        display_name: handle.name,
-        initials: handle.initials,
+        handle_key: handleKey,
+        display_name: displayName,
+        initials,
         body,
         game_tick: _currentTick,
-    }).select('id').single();
+    };
+    if (imageUrl) insertPayload.image_url = imageUrl;
+
+    const { data, error } = await _supabase.from('civic_posts').insert(insertPayload).select('id').single();
 
     const postedAs = document.getElementById('civ-posted-as');
     if (error) {
@@ -604,22 +694,21 @@ async function submitPost(body) {
         return false;
     }
 
-    // Show posted-as message
     if (postedAs) {
-        postedAs.textContent = `Posted as ${handle.handle}`;
+        postedAs.textContent = `Posted as ${handleKey}`;
         postedAs.style.color = '';
         setTimeout(() => { postedAs.textContent = ''; }, 4000);
     }
 
-    // Add to local feed immediately with the real DB id
     const newDbId = data?.id || null;
     _allPosts.unshift({
         id: newDbId ? 'player_' + newDbId : 'player_temp_' + Date.now(),
         type: 'user',
-        name: handle.name,
-        initials: handle.initials,
-        handle: handle.handle,
+        name: displayName,
+        initials,
+        handle: handleKey,
         body,
+        imageUrl,
         tick: _currentTick,
         date: shortDate(_currentTick),
         eventTag: null,
@@ -765,13 +854,12 @@ function renderPost(post) {
         `).join('')
         : '<div class="civ-no-comments">NO COMMENTS YET</div>';
 
-    // Only show reply compose for player posts (v1)
-    const replyComposeHtml = post.isPlayer ? `
+    const replyComposeHtml = `
         <div class="civ-reply-compose">
             <textarea class="cmt-textarea" maxlength="400" placeholder="Reply..." aria-label="Reply to ${escapeHtml(post.handle)}"></textarea>
             <button type="button" class="civ-reply-btn civ-reply-submit" aria-label="Submit reply">REPLY</button>
         </div>
-    ` : '';
+    `;
 
     return `
         <article class="${cls}" data-post-id="${escapeHtml(post.id)}" aria-label="Post by ${escapeHtml(post.handle)}">
@@ -784,7 +872,8 @@ function renderPost(post) {
                     ${tagHtml}
                     ${deleteHtml}
                 </div>
-                <div class="civ-post-body">${bodyHtml}</div>
+                <div class="civ-post-body">${bodyHtml}</div>${post.imageUrl ? `
+                <div class="civ-post-image"><img src="${escapeHtml(post.imageUrl)}" alt="Post image" loading="lazy"></div>` : ''}
                 <div class="civ-actions">
                     <button type="button" class="civ-action-btn civ-comment-btn" aria-label="Comments${post.comments.length ? ' (' + post.comments.length + ')' : ''}" aria-expanded="${!!_openThreads[post.id]}">
                         ${ICON_COMMENT}
@@ -867,13 +956,18 @@ function toggleLike(postId) {
             p_shares: post.shares,
         }).then(({ error }) => {
                 if (error) {
-                    // Revert optimistic update and re-render
                     post.likedByPlayer = prevLiked;
                     post.likes = prevLikes;
                     post._rawLikedBy = prevRawLikedBy;
                     const el = document.querySelector(`[data-post-id="${postId}"]`);
                     if (el) { el.outerHTML = renderPost(post); rewirePost(postId); }
                 }
+            }).catch(() => {
+                post.likedByPlayer = prevLiked;
+                post.likes = prevLikes;
+                post._rawLikedBy = prevRawLikedBy;
+                const el = document.querySelector(`[data-post-id="${postId}"]`);
+                if (el) { el.outerHTML = renderPost(post); rewirePost(postId); }
             });
         post._rawLikedBy = newLikedBy;
     } else {
@@ -917,13 +1011,18 @@ function toggleShare(postId) {
             p_shares: post.shares,
         }).then(({ error }) => {
                 if (error) {
-                    // Revert optimistic update and re-render
                     post.sharedByPlayer = prevShared;
                     post.shares = prevShares;
                     post._rawSharedBy = prevRawSharedBy;
                     const el = document.querySelector(`[data-post-id="${postId}"]`);
                     if (el) { el.outerHTML = renderPost(post); rewirePost(postId); }
                 }
+            }).catch(() => {
+                post.sharedByPlayer = prevShared;
+                post.shares = prevShares;
+                post._rawSharedBy = prevRawSharedBy;
+                const el = document.querySelector(`[data-post-id="${postId}"]`);
+                if (el) { el.outerHTML = renderPost(post); rewirePost(postId); }
             });
         post._rawSharedBy = newSharedBy;
     } else {
@@ -972,6 +1071,11 @@ function wirePostListeners(el, postId) {
         if (section) section.classList.toggle('open');
     });
 
+    // Prevent clicks inside the comments section from toggling the thread
+    el.querySelector('.civ-comments-section')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+
     // Reply button
     el.querySelector('.civ-reply-submit')?.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1017,12 +1121,36 @@ let _commentLock = {};
 async function submitComment(postId, body) {
     if (_commentLock[postId]) return;
     const post = _allPosts.find(p => p.id === postId);
-    if (!post || !post.isPlayer || !post.dbId) return;
+    if (!post) return;
 
     _commentLock[postId] = true;
     const handle = pickNoReplace(CIVIC_HANDLES, 1)[0];
 
     try {
+        // Materialize system posts into civic_posts so we have a post_id FK
+        let materialized = false;
+        if (!post.dbId) {
+            const { data: newRow, error: matErr } = await _supabase.from('civic_posts').insert({
+                nation_id: _nationId,
+                faction_id: _factionId,
+                handle_key: post.handle,
+                display_name: post.name,
+                initials: post.initials,
+                body: (post.body || '').slice(0, 400),
+                game_tick: post.tick || _currentTick,
+                likes: 0,
+                shares: 0,
+            }).select('id').single();
+            if (matErr || !newRow) {
+                _replyTexts[postId] = body;
+                const ta = document.querySelector(`[data-post-id="${postId}"] .cmt-textarea`);
+                if (ta) ta.value = body;
+                return;
+            }
+            post.dbId = newRow.id;
+            materialized = true;
+        }
+
         const { error } = await _supabase.from('civic_comments').insert({
             post_id: post.dbId,
             nation_id: _nationId,
@@ -1035,7 +1163,11 @@ async function submitComment(postId, body) {
         });
 
         if (error) {
-            // Restore reply text so user doesn't lose their comment
+            // Clean up orphaned materialized post if comment insert failed
+            if (materialized) {
+                await _supabase.from('civic_posts').delete().eq('id', post.dbId).catch(() => {});
+                post.dbId = null;
+            }
             _replyTexts[postId] = body;
             const ta = document.querySelector(`[data-post-id="${postId}"] .cmt-textarea`);
             if (ta) ta.value = body;
