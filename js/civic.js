@@ -82,10 +82,13 @@ function pickNoReplace(arr, n) {
 
 /** Fill {var} placeholders in template text */
 function fillTemplate(text, vars) {
-    return text.replace(/\{(\w+)\}/g, (_, key) =>
-        vars[key] !== undefined && vars[key] !== null && vars[key] !== ''
-            ? vars[key] : `{${key}}`
-    );
+    return text.replace(/#?\{(\w+)\}/g, (match, key) => {
+        const val = vars[key];
+        if (val === undefined || val === null || val === '') return match;
+        // If preceded by #, strip spaces so hashtags render correctly (e.g. #SanEstrella)
+        if (match.startsWith('#')) return '#' + String(val).replace(/\s+/g, '');
+        return val;
+    });
 }
 
 /** Render hashtags as clickable buttons (XSS-safe, accessible) */
@@ -241,6 +244,7 @@ function subscribeRealtime() {
                 sortOrder: 0,
                 isPlayer: true,
                 dbId: row.id,
+                factionId: row.faction_id || null,
             };
             _allPosts.unshift(post);
             renderFeed();
@@ -289,8 +293,8 @@ function transformEventLog(rows, nationName) {
                 date: shortDate(row.fired_at_tick),
                 eventTag: tag,
                 templateKey,
-                likes: seededIndex((row.id || '') + '_l', 37) + 3,
-                shares: seededIndex((row.id || '') + '_s', 15),
+                likes: seededIndex((row.id || '') + '_l', 536) + 15,
+                shares: seededIndex((row.id || '') + '_s', 536) + 15,
                 likedByPlayer: false,
                 sharedByPlayer: false,
                 comments: [],
@@ -437,8 +441,8 @@ function transformCampaignActions(rows, nationName) {
             date: shortDate(row.tick_performed),
             eventTag: tag,
             templateKey,
-            likes: seededIndex((row.id || '') + '_al', 25) + 1,
-            shares: seededIndex((row.id || '') + '_as', 10),
+            likes: seededIndex((row.id || '') + '_al', 536) + 15,
+            shares: seededIndex((row.id || '') + '_as', 536) + 15,
             likedByPlayer: false,
             sharedByPlayer: false,
             comments: [],
@@ -481,6 +485,7 @@ function transformPlayerPosts(rows) {
         sortOrder: 0,
         isPlayer: true,
         dbId: row.id,
+        factionId: row.faction_id || null,
     }));
 }
 
@@ -533,9 +538,9 @@ function renderCompose() {
             <div class="civ-compose-avatar" title="Your faction">${escapeHtml(_factionAbbr)}</div>
             <div class="civ-compose-body">
                 <label for="civ-textarea" class="sr-only">Write a post</label>
-                <textarea id="civ-textarea" maxlength="280" placeholder="What is happening in the republic?" aria-label="Write a post" aria-describedby="civ-char-count"></textarea>
+                <textarea id="civ-textarea" maxlength="400" placeholder="What is happening in the republic?" aria-label="Write a post" aria-describedby="civ-char-count"></textarea>
                 <div class="civ-compose-footer">
-                    <span class="civ-char-count" id="civ-char-count" aria-live="polite">280</span>
+                    <span class="civ-char-count" id="civ-char-count" aria-live="polite">400</span>
                     <button class="civ-post-btn" id="civ-post-btn" disabled aria-label="Post to CIVIC">POST</button>
                 </div>
                 <div class="civ-posted-as" id="civ-posted-as" aria-live="polite"></div>
@@ -550,7 +555,7 @@ function renderCompose() {
 
     textarea.addEventListener('input', () => {
         const len = textarea.value.length;
-        const remaining = 280 - len;
+        const remaining = 400 - len;
         counter.textContent = remaining;
         counter.classList.toggle('warn', remaining < 30);
         btn.disabled = textarea.value.trim().length === 0;
@@ -564,7 +569,7 @@ function renderCompose() {
         const ok = await submitPost(body);
         if (ok) {
             textarea.value = '';
-            counter.textContent = '280';
+            counter.textContent = '400';
             counter.classList.remove('warn');
         }
         btn.textContent = 'POST';
@@ -623,6 +628,7 @@ async function submitPost(body) {
         sortOrder: 0,
         isPlayer: true,
         dbId: null,
+        factionId: _factionId,
     });
 
     renderFeed();
@@ -728,6 +734,11 @@ function renderPost(post) {
         ? `<span class="civ-tag" style="background:${TAG_COLORS[post.eventTag] || 'var(--civ-accent-dim)'}">${escapeHtml(post.eventTag)}</span>`
         : '';
 
+    const isOwn = post.isPlayer && post.factionId === _factionId;
+    const deleteHtml = isOwn
+        ? '<button type="button" class="civ-delete-btn" aria-label="Delete post" title="Delete post">&times;</button>'
+        : '';
+
     const bodyHtml = renderHashtags(post.body);
 
     const liked = post.likedByPlayer || _playerLikes[post.id];
@@ -751,7 +762,7 @@ function renderPost(post) {
     // Only show reply compose for player posts (v1)
     const replyComposeHtml = post.isPlayer ? `
         <div class="civ-reply-compose">
-            <textarea class="cmt-textarea" maxlength="280" placeholder="Reply..." aria-label="Reply to ${escapeHtml(post.handle)}"></textarea>
+            <textarea class="cmt-textarea" maxlength="400" placeholder="Reply..." aria-label="Reply to ${escapeHtml(post.handle)}"></textarea>
             <button type="button" class="civ-reply-btn civ-reply-submit" aria-label="Submit reply">REPLY</button>
         </div>
     ` : '';
@@ -765,6 +776,7 @@ function renderPost(post) {
                     <span class="civ-post-handle">${escapeHtml(post.handle)}</span>
                     <span class="civ-post-date">${escapeHtml(post.date)}</span>
                     ${tagHtml}
+                    ${deleteHtml}
                 </div>
                 <div class="civ-post-body">${bodyHtml}</div>
                 <div class="civ-actions">
@@ -791,8 +803,27 @@ function renderPost(post) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ACTIONS: Like, Share, Comment
+// ACTIONS: Delete, Like, Share, Comment
 // ═══════════════════════════════════════════════════════════
+
+async function deletePost(postId) {
+    const post = _allPosts.find(p => p.id === postId);
+    if (!post || !post.isPlayer || !post.dbId || post.factionId !== _factionId) return;
+
+    if (!confirm('Delete this post? This cannot be undone.')) return;
+
+    const { error } = await _supabase.from('civic_posts').delete().eq('id', post.dbId);
+    if (error) {
+        console.error('CIVIC delete error:', error);
+        alert('Failed to delete post. Try again.');
+        return;
+    }
+
+    _allPosts = _allPosts.filter(p => p.id !== postId);
+    renderFeed();
+    renderTrending();
+    renderMobileTrending();
+}
 
 let _likeLock = {};
 let _shareLock = {};
@@ -872,6 +903,12 @@ function wirePostListeners(el, postId) {
         _openThreads[postId] = !_openThreads[postId];
         const section = el.querySelector('.civ-comments-section');
         if (section) section.classList.toggle('open');
+    });
+
+    // Delete button — MUST stopPropagation
+    el.querySelector('.civ-delete-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deletePost(postId);
     });
 
     // Like button — MUST stopPropagation
