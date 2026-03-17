@@ -8934,6 +8934,24 @@ async function selectDraftTarget(nationId) {
     if (nation) {
         activeDraftTarget = nation;
         selectedTargetNation = nation;
+
+        // Auto-select the appropriate initiative action if none is active
+        if (!activeDraftAction) {
+            const hasAmb = diplomaticRoles && diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === nationId);
+            const hasFM = diplomaticRoles && diplomaticRoles.isFM;
+            if (hasAmb) {
+                activeDraftAction = { key: 'minor_initiative', label: 'Minor Diplomatic Initiative', apCost: DIPLOMACY_CONFIG.PROPOSE_INITIATIVE_AP || 2, type: 'amb', role: 'amb' };
+            } else if (hasFM) {
+                activeDraftAction = { key: 'major_initiative', label: 'Major Diplomatic Initiative', apCost: DIPLOMACY_CONFIG.PROPOSE_INITIATIVE_AP || 2, type: 'fm', role: 'fm' };
+            }
+            // Highlight the corresponding action in the right panel
+            if (activeDraftAction) {
+                document.querySelectorAll('.action-item.is-active').forEach(el => el.classList.remove('is-active'));
+                const el = document.querySelector('.action-item[data-action="' + activeDraftAction.key + '"]');
+                if (el) el.classList.add('is-active');
+            }
+        }
+
         renderDraftBox();
     }
 }
