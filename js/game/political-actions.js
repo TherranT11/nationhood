@@ -538,7 +538,7 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
 
     // ── 8. Deduct AP + track last_action_tick ──
     const apResult = await deductAP(supabase, factionId, effectiveRallyCost);
-    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId);
+    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Rally] last_action_tick update failed:', error.message); });
 
     // ── 9. Log ──
     const headline = outcome.headline(targetBloc.bloc_name);
@@ -763,7 +763,7 @@ export async function executeOutreach(supabase, factionId, nationId, blocId, cur
 
     // ── 9. Deduct AP + track last_action_tick ──
     const apResult = await deductAP(supabase, factionId, effectiveOutreachCost);
-    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId);
+    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Outreach] last_action_tick update failed:', error.message); });
 
     // ── 10. Log ──
     await supabase.from('campaign_actions').insert({
@@ -1259,7 +1259,7 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
 
     // ── 8. Deduct AP + track last_action_tick ──
     const apResult = await deductAP(supabase, factionId, effectiveAttackCost);
-    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId);
+    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Attack] last_action_tick update failed:', error.message); });
 
     // ── 9. Generate headline ──
     const headline = _attackHeadline(outcomeId, targetFaction.faction_name, vectorId);
@@ -1514,7 +1514,7 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
         const apResult = await deductAP(supabase, factionId, effectivePromiseCost);
         newAp = apResult.newAp ?? (newAp - effectivePromiseCost);
     }
-    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId);
+    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Promise] last_action_tick update failed:', error.message); });
 
     // ── 8. Create promise record ──
     const { data: promise, error: promiseErr } = await supabase
@@ -4789,11 +4789,10 @@ export async function processEvents(supabase, nation, currentTick) {
  * - Effects cascade: nation stats, government/coalition approval, minister approval
  */
 export async function processCrises(supabase, nation, currentTick) {
-    // 1. Load all active crisis templates
+    // 1. Load all crisis templates (including is_active=false for programmatic crises like Sovereign Debt/Default)
     const { data: crisisTemplates } = await supabase
         .from('crisis_templates')
-        .select('*, crisis_triggers(*), crisis_effects(*), crisis_end_triggers(*)')
-        .eq('is_active', true);
+        .select('*, crisis_triggers(*), crisis_effects(*), crisis_end_triggers(*)');
 
     if (!crisisTemplates || crisisTemplates.length === 0) return [];
 
@@ -4823,9 +4822,10 @@ export async function processCrises(supabase, nation, currentTick) {
         return getInstFundingPct(_fundingMap, instId);
     }
 
-    // 3. Check inactive crises for activation
+    // 3. Check inactive crises for activation (skip programmatic crises with is_active=false)
     for (const template of crisisTemplates) {
         if (activeMap[template.id]) continue; // already active
+        if (!template.is_active) continue; // programmatic crises are activated elsewhere, not by stat triggers
 
         let allTriggersMet = false;
 
@@ -4993,17 +4993,36 @@ export async function processCrises(supabase, nation, currentTick) {
                 });
 
             } else if (effect.target === 'government_approval' || effect.target === 'coalition_approval') {
-                const coalition = await fetchActiveCoalition(supabase, nation.id);
-                const partyIds = coalition?.party_ids || [];
-                for (const partyId of partyIds) {
-                    await adjustMomentumAll(supabase, nation.id, partyId, changePT, 'crisis:' + template.name);
-                    appliedEffects.push({
-                        stat: 'momentum', change: changePT,
-                        target: effect.target, faction_id: partyId
-                    });
+                // Floor/ceiling enforcement for gov approval events modifier.
+                // Note: only floor (negative changePT) is enforced; ceiling for positive changePT not implemented.
+                let effectiveGovChange = changePT;
+                if (hasFloor && changePT < 0) {
+                    const { data: govNat, error: govErr } = await supabase.from('nations').select('gov_approval_events').eq('id', nation.id).single();
+                    if (govErr) {
+                        console.warn(`[processCrises] Failed to read gov_approval_events for floor check: ${govErr.message}`);
+                    } else {
+                        const curEvents = Number(govNat?.gov_approval_events ?? 0);
+                        const eventsFloor = -(floorVal);
+                        if (curEvents <= eventsFloor) {
+                            effectiveGovChange = 0;
+                        } else if (curEvents + changePT < eventsFloor) {
+                            effectiveGovChange = eventsFloor - curEvents;
+                        }
+                    }
                 }
-                // Also push to gov approval events component
-                await adjustGovernmentApprovalEvent(supabase, nation.id, changePT, 'crisis:' + template.name);
+                if (effectiveGovChange !== 0) {
+                    const coalition = await fetchActiveCoalition(supabase, nation.id);
+                    const partyIds = coalition?.party_ids || [];
+                    for (const partyId of partyIds) {
+                        await adjustMomentumAll(supabase, nation.id, partyId, effectiveGovChange, 'crisis:' + template.name);
+                        appliedEffects.push({
+                            stat: 'momentum', change: effectiveGovChange,
+                            target: effect.target, faction_id: partyId
+                        });
+                    }
+                    // Also push to gov approval events component
+                    await adjustGovernmentApprovalEvent(supabase, nation.id, effectiveGovChange, 'crisis:' + template.name);
+                }
 
             } else if (effect.target === 'pm_approval') {
                 const { data: pmMinistry } = await supabase

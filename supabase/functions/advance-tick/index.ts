@@ -4810,16 +4810,99 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
 
 // Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -3% to +3% per month
 // Formula: monthlyChange% = ((gdp_growth - 50) / 50) * 3  →  0=-3%, 50=0%, 100=+3%
-async function applyGdpGrowth(supabase, nation) {
+// Includes diminishing returns (GDP < 50% of starting) and hard floor (20% of starting → Economic Collapse)
+async function applyGdpGrowth(supabase, nation, currentTick) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
     const currentGdp = Number(nation.gdp ?? 0);
-    if (currentGdp <= 0) return;
+    const startingGdp = Number(nation.starting_gdp ?? currentGdp);
+    if (currentGdp <= 0 || startingGdp <= 0) return;
 
-    const monthlyChangePercent = ((gdpGrowth - 50) / 50) * 3;
-    const newGdp = Math.max(0, currentGdp * (1 + monthlyChangePercent / 100));
+    let monthlyChangePercent = ((gdpGrowth - 50) / 50) * 3;
+
+    // Diminishing returns: scale negative growth when GDP < 50% of starting
+    if (monthlyChangePercent < 0) {
+        const gdpRatio = currentGdp / startingGdp;
+        if (gdpRatio < 0.5) {
+            const dampening = Math.max(0.1, gdpRatio * 2); // 50%→1.0, 25%→0.5, 10%→0.2, min 10%
+            monthlyChangePercent *= dampening;
+        }
+    }
+
+    let newGdp = Math.max(0, currentGdp * (1 + monthlyChangePercent / 100));
+
+    // Hard floor: clamp at 20% of starting GDP and trigger Economic Collapse
+    const gdpFloor = startingGdp * 0.20;
+    if (newGdp < gdpFloor) {
+        newGdp = gdpFloor;
+        await activateEconomicCollapse(supabase, nation, currentTick);
+    }
+
     nation.gdp = newGdp;
-
     await supabase.from('nations').update({ gdp: newGdp }).eq('id', nation.id);
+}
+
+const ECONOMIC_COLLAPSE_CRISIS_ID = '00000000-0000-0000-0000-000000000010';
+
+// Activate Economic Collapse mega-crisis: clears other economic crises, applies political penalties
+async function activateEconomicCollapse(supabase, nation, currentTick) {
+    try {
+        // 1. Skip if already active
+        const { data: existing, error: existErr } = await supabase.from('active_crises')
+            .select('id').eq('nation_id', nation.id)
+            .eq('crisis_id', ECONOMIC_COLLAPSE_CRISIS_ID);
+        if (existErr) {
+            console.warn(`[activateEconomicCollapse] Failed to check existing crisis: ${existErr.message}`);
+            return; // fail safe — don't double-activate
+        }
+        if (existing?.length > 0) return;
+
+        console.log(`[activateEconomicCollapse] Triggering for ${nation.name} — GDP hit 20% floor`);
+
+        // 2. Clear existing economic crises
+        const econCrisisNames = ['Currency Collapse', 'Hyperinflation Emergency'];
+        const { data: econTemplates } = await supabase.from('crisis_templates')
+            .select('id').in('name', econCrisisNames);
+        const econIds = (econTemplates || []).map(t => t.id)
+            .concat([SOVEREIGN_DEBT_CRISIS_ID, SOVEREIGN_DEFAULT_CRISIS_ID]);
+        await supabase.from('active_crises')
+            .delete().eq('nation_id', nation.id).in('crisis_id', econIds);
+
+        // 3. Political penalties: -25 gov approval, -20 momentum to all coalition parties
+        await adjustGovernmentApprovalEvent(supabase, nation.id, -25, 'crisis:economic_collapse');
+
+        const coalition = await fetchActiveCoalition(supabase, nation.id);
+        for (const partyId of (coalition?.party_ids || [])) {
+            await adjustMomentumAll(supabase, nation.id, partyId, -20, 'crisis:economic_collapse');
+        }
+
+        // 4. Reset gdp_growth to neutral (stop the bleeding) — critical to prevent re-trigger loop
+        nation.gdp_growth = 50;
+        const { error: growthErr } = await supabase.from('nations').update({ gdp_growth: 50 }).eq('id', nation.id);
+        if (growthErr) console.warn(`[activateEconomicCollapse] Failed to reset gdp_growth: ${growthErr.message}`);
+
+        // 5. Insert Economic Collapse crisis
+        const { error: insertErr } = await supabase.from('active_crises').insert({
+            crisis_id: ECONOMIC_COLLAPSE_CRISIS_ID,
+            nation_id: nation.id,
+            started_at_tick: currentTick,
+            effects_applied_log: []
+        });
+        if (insertErr) console.warn(`[activateEconomicCollapse] Failed to insert crisis: ${insertErr.message}`);
+
+        // 6. Event log
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'CRISIS_STARTED: Economic Collapse',
+            description_used: `${nation.name}'s economy has collapsed. GDP has fallen to critical levels. Emergency economic restructuring is underway.`,
+            category: 'crisis',
+            effects_applied: [],
+            fired_at_tick: currentTick
+        });
+
+        console.log(`[activateEconomicCollapse] Economic Collapse activated for ${nation.name}`);
+    } catch (err) {
+        console.error(`[activateEconomicCollapse] Unexpected error for ${nation.name}: ${err.message}`);
+    }
 }
 
 // ────────── government-structure ──────────
@@ -5320,11 +5403,12 @@ async function syncVoteTallies(supabase, billId) {
             .single();
         if (sponsorFaction) {
             const totalSeats = GAME_CONFIG.TOTAL_SEATS || 120;
-            // arm_twister: +15% of total seats as bonus yes votes
+            // arm_twister: +15% of total seats as virtual yes votes (affects passage calculation only;
+            // these phantom votes are stored in bills.votes_for — UI vote counts include them)
             if ((sponsorFaction.leader_positive_traits || []).includes('arm_twister')) {
                 votesFor += Math.round(totalSeats * 0.15);
             }
-            // poor_whip: -15% of total seats (reduce yes votes)
+            // poor_whip: -15% of total seats as virtual vote reduction (same caveat as arm_twister)
             if ((sponsorFaction.leader_negative_traits || []).includes('poor_whip')) {
                 votesFor = Math.max(0, votesFor - Math.round(totalSeats * 0.15));
             }
@@ -16870,11 +16954,10 @@ async function processEvents(supabase, nation, currentTick) {
  * - Effects cascade: nation stats, government/coalition approval, minister approval
  */
 async function processCrises(supabase, nation, currentTick) {
-    // 1. Load all active crisis templates
+    // 1. Load all crisis templates (including is_active=false for programmatic crises like Sovereign Debt/Default)
     const { data: crisisTemplates } = await supabase
         .from('crisis_templates')
-        .select('*, crisis_triggers(*), crisis_effects(*), crisis_end_triggers(*)')
-        .eq('is_active', true);
+        .select('*, crisis_triggers(*), crisis_effects(*), crisis_end_triggers(*)');
 
     if (!crisisTemplates || crisisTemplates.length === 0) return [];
 
@@ -16904,9 +16987,10 @@ async function processCrises(supabase, nation, currentTick) {
         return getInstFundingPct(_fundingMap, instId);
     }
 
-    // 3. Check inactive crises for activation
+    // 3. Check inactive crises for activation (skip programmatic crises with is_active=false)
     for (const template of crisisTemplates) {
         if (activeMap[template.id]) continue; // already active
+        if (!template.is_active) continue; // programmatic crises are activated elsewhere, not by stat triggers
 
         let allTriggersMet = false;
 
@@ -17014,6 +17098,10 @@ async function processCrises(supabase, nation, currentTick) {
                 console.warn(`[processCrises] Skipping effect with non-numeric change_per_tick: "${effect.change_per_tick}" in crisis "${template.name}" for ${nation.name}`);
                 continue;
             }
+            // Diagnostic: log government_approval effect values for debugging sign issues
+            if (effect.target === 'government_approval' || effect.target === 'coalition_approval') {
+                console.log(`[processCrises] ${template.name}: ${effect.target} effect change_per_tick=${effect.change_per_tick} (parsed=${changePT}) floor=${effect.stat_floor} for ${nation.name}`);
+            }
             const hasFloor = effect.stat_floor !== null && effect.stat_floor !== undefined;
             const floorVal = hasFloor ? Number(effect.stat_floor) : null;
 
@@ -17094,17 +17182,38 @@ async function processCrises(supabase, nation, currentTick) {
                 });
 
             } else if (effect.target === 'government_approval' || effect.target === 'coalition_approval') {
-                const coalition = await fetchActiveCoalition(supabase, nation.id);
-                const partyIds = coalition?.party_ids || [];
-                for (const partyId of partyIds) {
-                    await adjustMomentumAll(supabase, nation.id, partyId, changePT, 'crisis:' + template.name);
-                    appliedEffects.push({
-                        stat: 'momentum', change: changePT,
-                        target: effect.target, faction_id: partyId
-                    });
+                // Floor/ceiling enforcement for gov approval events modifier.
+                // Note: only floor (negative changePT) is enforced here; ceiling for
+                // positive changePT is not implemented (extremely rare for crises).
+                let effectiveGovChange = changePT;
+                if (hasFloor && changePT < 0) {
+                    const { data: govNat, error: govErr } = await supabase.from('nations').select('gov_approval_events').eq('id', nation.id).single();
+                    if (govErr) {
+                        console.warn(`[processCrises] Failed to read gov_approval_events for floor check: ${govErr.message}`);
+                    } else {
+                        const curEvents = Number(govNat?.gov_approval_events ?? 0);
+                        // Floor inverted for events modifier: floor 10 means events shouldn't push below -10
+                        const eventsFloor = -(floorVal);
+                        if (curEvents <= eventsFloor) {
+                            effectiveGovChange = 0; // already at floor
+                        } else if (curEvents + changePT < eventsFloor) {
+                            effectiveGovChange = eventsFloor - curEvents; // partial application
+                        }
+                    }
                 }
-                // Also push to gov approval events component
-                await adjustGovernmentApprovalEvent(supabase, nation.id, changePT, 'crisis:' + template.name);
+                if (effectiveGovChange !== 0) {
+                    const coalition = await fetchActiveCoalition(supabase, nation.id);
+                    const partyIds = coalition?.party_ids || [];
+                    for (const partyId of partyIds) {
+                        await adjustMomentumAll(supabase, nation.id, partyId, effectiveGovChange, 'crisis:' + template.name);
+                        appliedEffects.push({
+                            stat: 'momentum', change: effectiveGovChange,
+                            target: effect.target, faction_id: partyId
+                        });
+                    }
+                    // Also push to gov approval events component
+                    await adjustGovernmentApprovalEvent(supabase, nation.id, effectiveGovChange, 'crisis:' + template.name);
+                }
 
             } else if (effect.target === 'pm_approval') {
                 const { data: pmMinistry } = await supabase
@@ -17892,12 +18001,6 @@ async function processPartyLeaderTraitEffects(supabase, nation, currentTick) {
         .eq('faction_type', 'party');
 
     if (!factions || factions.length === 0) return;
-
-    // Check if nation has active crises (for crisis_manager / panic_under_pressure)
-    const { count: crisisCount } = await supabase
-        .from('active_crises')
-        .select('id', { count: 'exact', head: true })
-        .eq('nation_id', nation.id);
 
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     const governmentPartyIds = new Set([
@@ -21469,8 +21572,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
         }
 
-        // Apply GDP growth rate
-        await applyGdpGrowth(supabase, nation);
+        // Apply GDP growth rate (with diminishing returns + Economic Collapse floor)
+        await applyGdpGrowth(supabase, nation, newTick);
 
         // Stat decay (equilibrium drift + erosion, modified by institution funding)
         if (!_institutionConfig) {

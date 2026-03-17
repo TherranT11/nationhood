@@ -6,6 +6,8 @@
 import { GAME_CONFIG } from './config.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
 import { adjustGovernmentApprovalEvent, adjustMomentumAll } from './momentum.js';
+import { fetchActiveCoalition } from './government-structure.js';
+import { SOVEREIGN_DEFAULT_CRISIS_ID, SOVEREIGN_DEBT_CRISIS_ID, ECONOMIC_COLLAPSE_CRISIS_ID } from './sovereign-default.js';
 import { MINISTER_APPROVAL_CONFIG } from './stats.js';
 import { isPresidentialRepublic, isAutocracy } from './government-types.js';
 import { fireBilateralEvent } from './event-helpers.js';
@@ -579,14 +581,86 @@ export async function processExpiredTradeAgreements(supabase, currentTick) {
 
 // Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -3% to +3% per month
 // Formula: monthlyChange% = ((gdp_growth - 50) / 50) * 3  →  0=-3%, 50=0%, 100=+3%
-export async function applyGdpGrowth(supabase, nation) {
+// Includes diminishing returns (GDP < 50% of starting) and hard floor (20% of starting → Economic Collapse)
+export async function applyGdpGrowth(supabase, nation, currentTick) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
     const currentGdp = Number(nation.gdp ?? 0);
-    if (currentGdp <= 0) return;
+    const startingGdp = Number(nation.starting_gdp ?? currentGdp);
+    if (currentGdp <= 0 || startingGdp <= 0) return;
 
-    const monthlyChangePercent = ((gdpGrowth - 50) / 50) * 3;
-    const newGdp = Math.max(0, currentGdp * (1 + monthlyChangePercent / 100));
+    let monthlyChangePercent = ((gdpGrowth - 50) / 50) * 3;
+
+    // Diminishing returns: scale negative growth when GDP < 50% of starting
+    if (monthlyChangePercent < 0) {
+        const gdpRatio = currentGdp / startingGdp;
+        if (gdpRatio < 0.5) {
+            const dampening = Math.max(0.1, gdpRatio * 2); // 50%→1.0, 25%→0.5, 10%→0.2, min 10%
+            monthlyChangePercent *= dampening;
+        }
+    }
+
+    let newGdp = Math.max(0, currentGdp * (1 + monthlyChangePercent / 100));
+
+    // Hard floor: clamp at 20% of starting GDP and trigger Economic Collapse
+    const gdpFloor = startingGdp * 0.20;
+    if (newGdp < gdpFloor) {
+        newGdp = gdpFloor;
+        await activateEconomicCollapse(supabase, nation, currentTick);
+    }
+
     nation.gdp = newGdp;
-
     await supabase.from('nations').update({ gdp: newGdp }).eq('id', nation.id);
+}
+
+// Activate Economic Collapse mega-crisis: clears other economic crises, applies political penalties
+async function activateEconomicCollapse(supabase, nation, currentTick) {
+    try {
+        // 1. Skip if already active
+        const { data: existing, error: existErr } = await supabase.from('active_crises')
+            .select('id').eq('nation_id', nation.id)
+            .eq('crisis_id', ECONOMIC_COLLAPSE_CRISIS_ID);
+        if (existErr) return; // fail safe — don't double-activate
+        if (existing?.length > 0) return;
+
+        // 2. Clear existing economic crises
+        const econCrisisNames = ['Currency Collapse', 'Hyperinflation Emergency'];
+        const { data: econTemplates } = await supabase.from('crisis_templates')
+            .select('id').in('name', econCrisisNames);
+        const econIds = (econTemplates || []).map(t => t.id)
+            .concat([SOVEREIGN_DEBT_CRISIS_ID, SOVEREIGN_DEFAULT_CRISIS_ID]);
+        await supabase.from('active_crises')
+            .delete().eq('nation_id', nation.id).in('crisis_id', econIds);
+
+        // 3. Political penalties: -25 gov approval, -20 momentum to all coalition parties
+        await adjustGovernmentApprovalEvent(supabase, nation.id, -25, 'crisis:economic_collapse');
+
+        const coalition = await fetchActiveCoalition(supabase, nation.id);
+        for (const partyId of (coalition?.party_ids || [])) {
+            await adjustMomentumAll(supabase, nation.id, partyId, -20, 'crisis:economic_collapse');
+        }
+
+        // 4. Reset gdp_growth to neutral (stop the bleeding) — critical to prevent re-trigger loop
+        nation.gdp_growth = 50;
+        await supabase.from('nations').update({ gdp_growth: 50 }).eq('id', nation.id);
+
+        // 5. Insert Economic Collapse crisis
+        await supabase.from('active_crises').insert({
+            crisis_id: ECONOMIC_COLLAPSE_CRISIS_ID,
+            nation_id: nation.id,
+            started_at_tick: currentTick,
+            effects_applied_log: []
+        });
+
+        // 6. Event log
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'CRISIS_STARTED: Economic Collapse',
+            description_used: `${nation.name}'s economy has collapsed. GDP has fallen to critical levels. Emergency economic restructuring is underway.`,
+            category: 'crisis',
+            effects_applied: [],
+            fired_at_tick: currentTick
+        });
+    } catch (err) {
+        // Non-fatal — GDP is already clamped at floor by caller
+    }
 }

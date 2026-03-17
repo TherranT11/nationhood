@@ -116,17 +116,6 @@ export { POSITIVE_MAP, NEGATIVE_MAP };
 // ═══════════════════════════════════════
 
 /**
- * Check if a faction's leader has a specific positive or negative trait.
- * @param {object} faction - Faction row with leader_positive_traits / leader_negative_traits
- * @param {string} traitKey - The trait key to check
- * @returns {boolean}
- */
-export function hasLeaderTrait(faction, traitKey) {
-    return (faction.leader_positive_traits || []).includes(traitKey)
-        || (faction.leader_negative_traits || []).includes(traitKey);
-}
-
-/**
  * Compute the net AP cost modifier for a campaign action based on leader traits.
  *
  * @param {string} actionType - 'rally' | 'outreach' | 'attack' | 'promise' | 'draft_bill' | 'executive_order'
