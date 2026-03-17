@@ -595,7 +595,7 @@ export const MINISTER_APPROVAL_CONFIG = {
     DELTA_SENSITIVITY: 0.6,
 
     // Baseline decay: approval always erodes by this amount per tick unless stats improve
-    BASELINE_DECAY: -0.25,
+    BASELINE_DECAY: -0.5,
 
     // New minister starts at 40% approval
     NEW_MINISTER_APPROVAL: 40,
