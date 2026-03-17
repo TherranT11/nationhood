@@ -141,6 +141,11 @@ export async function initCivic(supabase, nationId, factionId, currentTick) {
                 .limit(100),
         ]);
 
+        // Log any query errors but continue with available data
+        if (eventRes.error) console.error('CIVIC event_log query error:', eventRes.error);
+        if (actionRes.error) console.error('CIVIC campaign_actions query error:', actionRes.error);
+        if (playerRes.error) console.error('CIVIC civic_posts query error:', playerRes.error);
+
         // Transform system events into CIVIC posts
         const eventPosts = transformEventLog(eventRes.data || []);
         const actionPosts = transformCampaignActions(actionRes.data || []);
@@ -404,10 +409,10 @@ function renderAll() {
     root.innerHTML = `
         <div class="civ-sidebar">
             <div class="civ-header">CIVIC</div>
-            <div class="civ-nav-item active" data-nav="feed">Home Feed</div>
-            <div class="civ-nav-item" data-nav="discover">Discover</div>
-            <div class="civ-nav-item" data-nav="notifications">Notifications</div>
-            <div class="civ-nav-item" data-nav="messages">Messages</div>
+            <div class="civ-nav-item active">Home Feed</div>
+            <div class="civ-nav-item">Discover</div>
+            <div class="civ-nav-item">Notifications</div>
+            <div class="civ-nav-item">Messages</div>
         </div>
         <div class="civ-main">
             <div class="civ-compose" id="civ-compose"></div>
@@ -612,55 +617,7 @@ function renderFeed() {
     feedEl.querySelectorAll('.civ-post').forEach(el => {
         const postId = el.dataset.postId;
         if (!postId) return;
-
-        // Post row click toggles thread
-        el.addEventListener('click', () => {
-            _openThreads[postId] = !_openThreads[postId];
-            const section = el.querySelector('.civ-comments-section');
-            if (section) section.classList.toggle('open');
-        });
-
-        // Like button — MUST stopPropagation
-        el.querySelector('.civ-like-btn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            toggleLike(postId);
-        });
-
-        // Share button — MUST stopPropagation
-        el.querySelector('.civ-share-btn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            toggleShare(postId);
-        });
-
-        // Comment button — MUST stopPropagation
-        el.querySelector('.civ-comment-btn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            _openThreads[postId] = !_openThreads[postId];
-            const section = el.querySelector('.civ-comments-section');
-            if (section) section.classList.toggle('open');
-        });
-
-        // Reply button
-        el.querySelector('.civ-reply-submit')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const ta = el.querySelector('.cmt-textarea');
-            if (ta && ta.value.trim()) {
-                submitComment(postId, ta.value.trim());
-                ta.value = '';
-                _replyTexts[postId] = '';
-            }
-        });
-
-        // Track reply text changes
-        el.querySelector('.cmt-textarea')?.addEventListener('input', (e) => {
-            e.stopPropagation();
-            _replyTexts[postId] = e.target.value;
-        });
-
-        // Prevent textarea clicks from toggling thread
-        el.querySelector('.cmt-textarea')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-        });
+        wirePostListeners(el, postId);
     });
 }
 
@@ -748,26 +705,14 @@ function toggleLike(postId) {
         post.likedByPlayer = nowLiked;
         post.likes += nowLiked ? 1 : -1;
 
-        if (nowLiked) {
-            _supabase.from('civic_posts')
-                .update({
-                    liked_by: [...new Set([...(post._rawLikedBy || []), _factionId])],
-                    likes: Math.max(0, post.likes),
-                })
-                .eq('id', post.dbId)
-                .then();
-        } else {
-            _supabase.from('civic_posts')
-                .update({
-                    liked_by: (post._rawLikedBy || []).filter(id => id !== _factionId),
-                    likes: Math.max(0, post.likes),
-                })
-                .eq('id', post.dbId)
-                .then();
-        }
-        post._rawLikedBy = nowLiked
+        const newLikedBy = nowLiked
             ? [...new Set([...(post._rawLikedBy || []), _factionId])]
             : (post._rawLikedBy || []).filter(id => id !== _factionId);
+        _supabase.from('civic_posts')
+            .update({ liked_by: newLikedBy, likes: Math.max(0, post.likes) })
+            .eq('id', post.dbId)
+            .then(({ error }) => { if (error) console.error('CIVIC like update error:', error); });
+        post._rawLikedBy = newLikedBy;
     } else {
         // In-memory toggle for system posts
         _playerLikes[postId] = !_playerLikes[postId];
@@ -791,26 +736,14 @@ function toggleShare(postId) {
         post.sharedByPlayer = nowShared;
         post.shares += nowShared ? 1 : -1;
 
-        if (nowShared) {
-            _supabase.from('civic_posts')
-                .update({
-                    shared_by: [...new Set([...(post._rawSharedBy || []), _factionId])],
-                    shares: Math.max(0, post.shares),
-                })
-                .eq('id', post.dbId)
-                .then();
-        } else {
-            _supabase.from('civic_posts')
-                .update({
-                    shared_by: (post._rawSharedBy || []).filter(id => id !== _factionId),
-                    shares: Math.max(0, post.shares),
-                })
-                .eq('id', post.dbId)
-                .then();
-        }
-        post._rawSharedBy = nowShared
+        const newSharedBy = nowShared
             ? [...new Set([...(post._rawSharedBy || []), _factionId])]
             : (post._rawSharedBy || []).filter(id => id !== _factionId);
+        _supabase.from('civic_posts')
+            .update({ shared_by: newSharedBy, shares: Math.max(0, post.shares) })
+            .eq('id', post.dbId)
+            .then(({ error }) => { if (error) console.error('CIVIC share update error:', error); });
+        post._rawSharedBy = newSharedBy;
     } else {
         _playerShares[postId] = !_playerShares[postId];
     }
@@ -822,27 +755,28 @@ function toggleShare(postId) {
     }
 }
 
-/** Re-wire event listeners on a single post element after outerHTML replacement */
-function rewirePost(postId) {
-    const el = document.querySelector(`[data-post-id="${postId}"]`);
-    if (!el) return;
-
+/** Wire all event listeners on a single post element */
+function wirePostListeners(el, postId) {
+    // Post row click toggles thread
     el.addEventListener('click', () => {
         _openThreads[postId] = !_openThreads[postId];
         const section = el.querySelector('.civ-comments-section');
         if (section) section.classList.toggle('open');
     });
 
+    // Like button — MUST stopPropagation
     el.querySelector('.civ-like-btn')?.addEventListener('click', (e) => {
         e.stopPropagation();
         toggleLike(postId);
     });
 
+    // Share button — MUST stopPropagation
     el.querySelector('.civ-share-btn')?.addEventListener('click', (e) => {
         e.stopPropagation();
         toggleShare(postId);
     });
 
+    // Comment button — MUST stopPropagation
     el.querySelector('.civ-comment-btn')?.addEventListener('click', (e) => {
         e.stopPropagation();
         _openThreads[postId] = !_openThreads[postId];
@@ -850,6 +784,7 @@ function rewirePost(postId) {
         if (section) section.classList.toggle('open');
     });
 
+    // Reply button
     el.querySelector('.civ-reply-submit')?.addEventListener('click', (e) => {
         e.stopPropagation();
         const ta = el.querySelector('.cmt-textarea');
@@ -860,11 +795,13 @@ function rewirePost(postId) {
         }
     });
 
+    // Track reply text changes
     el.querySelector('.cmt-textarea')?.addEventListener('input', (e) => {
         e.stopPropagation();
         _replyTexts[postId] = e.target.value;
     });
 
+    // Prevent textarea clicks from toggling thread
     el.querySelector('.cmt-textarea')?.addEventListener('click', (e) => {
         e.stopPropagation();
     });
@@ -877,6 +814,13 @@ function rewirePost(postId) {
             if (tag) filterByTag(tag);
         });
     });
+}
+
+/** Re-wire event listeners on a single post element after outerHTML replacement */
+function rewirePost(postId) {
+    const el = document.querySelector(`[data-post-id="${postId}"]`);
+    if (!el) return;
+    wirePostListeners(el, postId);
 }
 
 async function submitComment(postId, body) {

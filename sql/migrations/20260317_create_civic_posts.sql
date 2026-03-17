@@ -45,7 +45,9 @@ CREATE POLICY civic_posts_read ON civic_posts FOR SELECT
 CREATE POLICY civic_posts_insert ON civic_posts FOR INSERT
     WITH CHECK (faction_id = auth.uid());
 
--- Update: only the post author (for like/share array updates, allow any nation member)
+-- Update: any nation member can update (for like/share array updates from other factions).
+-- KNOWN LIMITATION: this allows updating any column, not just liked_by/shared_by/likes/shares.
+-- A future improvement would use a Supabase RPC to restrict writeable columns.
 CREATE POLICY civic_posts_update ON civic_posts FOR UPDATE
     USING (nation_id IN (SELECT nation_id FROM factions WHERE id = auth.uid()));
 

@@ -481,6 +481,9 @@ export const CIVIC_EVENT_MAP = {
     'executive_order_issued':            'executive_order_issued',
     'executive_order_expired':           'executive_order_expired',
 
+    // Overreach
+    'overreach_threshold':               'overreach_threshold',
+
     // Crisis events (event_name pattern matching)
     'crisis_started':                    'crisis_start',
     'crisis_resolved':                   'crisis_end',
@@ -695,15 +698,21 @@ export function extractEventVars(templateKey, row) {
         case 'io_charter_amended':
         case 'io_cohesion_collapsed':
             return {
-                org: e.org || e.organization || '',
+                org_name: e.org_name || e.org || e.organization || '',
                 nation: e.nation || '',
+                date: e.date || 'immediately',
+                change_description: e.change_description || e.description || '',
+                bloc: e.bloc || '',
+                issue: e.issue || '',
             };
 
         case 'executive_order_issued':
         case 'executive_order_expired':
             return {
-                order: e.order || e.title || '',
-                leader: e.leader || e.faction_name || '',
+                number: e.order_number || e.number || '—',
+                description: e.description || e.title || '',
+                date: e.effective_date || e.date || 'immediately',
+                issue: e.issue || e.policy_area || '',
             };
 
         case 'party_founded':
@@ -715,18 +724,23 @@ export function extractEventVars(templateKey, row) {
         case 'party_kicked_coalition':
             return {
                 party: e.party || e.faction_name || '',
-                coalition: e.coalition || '',
+                seats: e.seats || '?',
+                new_seats: e.new_seats || e.remaining_seats || '?',
+                margin: e.margin || '?',
             };
 
         case 'presidential_endorsement':
             return {
+                president: e.president || e.endorser || '',
                 candidate: e.candidate || '',
-                endorser: e.endorser || '',
+                election: e.election || 'the upcoming election',
+                nation: e.nation || 'the country',
             };
 
         case 'corporate_contract_signed':
             return {
                 company: e.company || e.corp || '',
+                ministry: e.ministry || '',
                 sector: e.sector || '',
                 value: e.value || '?',
             };
@@ -734,6 +748,12 @@ export function extractEventVars(templateKey, row) {
         case 'coup_attempted':
             return {
                 faction: e.faction || e.faction_name || '',
+                government: e.government || 'the government',
+            };
+
+        case 'overreach_threshold':
+            return {
+                threshold: e.threshold || e.index || 'critical',
             };
 
         default:
@@ -759,7 +779,6 @@ export function extractActionVars(templateKey, row) {
                 action: r.headline || row.action_type?.replace(/_/g, ' ') || 'political action',
                 issue: r.issue || r.bloc_name || '',
                 region: r.region || '',
-                recent_event: '',
             };
 
         case 'faction_action':
@@ -773,7 +792,6 @@ export function extractActionVars(templateKey, row) {
             return {
                 faction: factionName,
                 seats: r.seats_gained || r.seats || '?',
-                months: '',
             };
 
         case 'strongman_power':
@@ -800,7 +818,6 @@ export function extractActionVars(templateKey, row) {
                 seats: r.seats || '?',
                 days: '30',
                 event: r.reason || 'internal collapse',
-                constituency: '',
             };
 
         case 'coalition_formed':
