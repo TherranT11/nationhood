@@ -5148,10 +5148,15 @@ async function viewActiveAgreement(agreementId) {
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
                 <button class="wizard-back-btn" onclick="renderDraftBox()" style="padding:5px 10px;font-size:0.72rem;">Back</button>
                 ${typeInfo ? '<div class="trade-type-icon ' + typeInfo.icon + '" style="width:28px;height:28px;font-size:0.9rem;">' + iconHtml + '</div>' : ''}
+                <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                    ${FLAG_URLS[proposerName] ? '<img src="' + FLAG_URLS[proposerName] + '" alt="' + escapeHtml(proposerName) + '" style="width:30px;height:20px;object-fit:cover;border:1px solid rgba(255,255,255,0.08);border-radius:2px;">' : ''}
+                    <span style="color:var(--text-faint);font-size:10px;">${ag.proposal_type === 'state_visit' ? '&#8594;' : '&amp;'}</span>
+                    ${FLAG_URLS[targetName] ? '<img src="' + FLAG_URLS[targetName] + '" alt="' + escapeHtml(targetName) + '" style="width:30px;height:20px;object-fit:cover;border:1px solid rgba(255,255,255,0.08);border-radius:2px;">' : ''}
+                </div>
                 <div style="min-width:0;">
                     <div style="font-size:0.95rem;font-weight:bold;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(pd.name || 'Unnamed Agreement')}</div>
                     <div style="font-size:0.7rem;color:var(--text-muted);">
-                        ${escapeHtml(proposerName)} &amp; ${escapeHtml(targetName)}
+                        ${escapeHtml(proposerName)} ${ag.proposal_type === 'state_visit' ? '&rarr;' : '&amp;'} ${escapeHtml(targetName)}
                         ${classification ? ' · ' + escapeHtml(classification) : ''}
                     </div>
                 </div>
