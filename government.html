@@ -117,7 +117,7 @@ const MINISTRY_ACTIONS = {
                 decayTicks: 3,
                 useResetInterval: 15,
                 tags: [
-                    { label: 'CRIME −4', cls: 'positive' },
+                    { label: 'CRIME −2', cls: 'positive' },
                     { label: 'INCARCERATION +3', cls: 'negative' },
                     { label: 'HAPPINESS −2', cls: 'negative' },
                     { label: 'SOC. MOBILITY −1', cls: 'negative' }
@@ -125,7 +125,7 @@ const MINISTRY_ACTIONS = {
                 // stat_effects: scalable = true means rate is multiplied by use-count scale
                 // scalable = false means penalty stays at 100% regardless of use count
                 baseEffects: [
-                    { stat_key: 'crime_rate',         direction: 'down', rate: 4, scalable: true },
+                    { stat_key: 'crime_rate',         direction: 'down', rate: 2, scalable: true },
                     { stat_key: 'incarceration_rate',  direction: 'up',   rate: 3, scalable: true },
                     { stat_key: 'happiness',           direction: 'down', rate: 2, scalable: false },
                     { stat_key: 'social_mobility',     direction: 'down', rate: 1, scalable: false }
@@ -2584,6 +2584,38 @@ function ministryActionDeselect(actionId) {
     }
 }
 
+// Refresh button states and disabled classes for all actions in a ministry
+// after AP changes (avoids full page re-render)
+function refreshMinistryActionStates(ministryKey) {
+    const config = MINISTRY_ACTIONS[ministryKey];
+    if (!config) return;
+    const ap = currentFaction?.action_points || 0;
+    config.actions.forEach(action => {
+        const countKey = ministryKey + ':' + action.id;
+        const useCount = ministryActionUseCounts[countKey] || 0;
+        const apCost = action.apCosts[Math.min(useCount, 3)];
+        const actionId = ministryKey + '-' + action.id;
+        const row = document.getElementById(actionId);
+        if (!row || row.classList.contains('active')) return;
+
+        const isDisabled = ap < apCost;
+        const btns = document.getElementById(actionId + '-btns');
+        const apLabel = row.querySelector('.ministry-action__ap-cost');
+        if (apLabel) apLabel.textContent = apCost + ' AP' + (useCount > 0 ? ' (use ' + (useCount + 1) + ')' : '');
+
+        if (isDisabled) {
+            row.classList.add('disabled');
+            row.classList.remove('selected');
+            row.removeAttribute('onclick');
+            if (btns) btns.innerHTML = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${apCost} AP">▶ ${apCost} AP</div>`;
+        } else {
+            row.classList.remove('disabled');
+            row.setAttribute('onclick', `ministryActionSelect('${actionId}')`);
+            if (btns) btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+        }
+    });
+}
+
 let _ministryActionConfirming = false; // debounce lock
 
 async function ministryActionConfirm(actionId) {
@@ -2591,7 +2623,7 @@ async function ministryActionConfirm(actionId) {
     _ministryActionConfirming = true;
 
     const row = document.getElementById(actionId);
-    if (!row) { _ministryActionConfirming = false; return; }
+    if (!row || !currentFaction || !currentNation) { _ministryActionConfirming = false; return; }
 
     // Parse IDs
     const parts = actionId.split('-');
@@ -2635,10 +2667,14 @@ async function ministryActionConfirm(actionId) {
         if (error) throw error;
 
         // Update local state
-        currentFaction.action_points = Math.max(0, (currentFaction.action_points || 0) - apCost);
+        const prevAP = currentFaction.action_points || 0;
+        currentFaction.action_points = Math.max(0, prevAP - apCost);
         ministryActionUseCounts[countKey] = useCount + 1;
         activeMinistryActions[actionId] = true;
         sessionStorage.removeItem('nationhood_state');
+
+        // Refresh sibling action rows to reflect new AP balance
+        refreshMinistryActionStates(ministryKey);
 
         // Fire CIVIC event (non-blocking)
         if (action.triggerKey) {
