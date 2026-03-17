@@ -367,6 +367,13 @@ async function refreshRoles() {
     return diplomaticRoles;
 }
 
+/** Can this faction accept/reject incoming state visits?
+ *  Autocracy: ruling faction (HoG). Democracy/Presidential: Foreign Minister. */
+function canHandleStateVisit() {
+    if (isGovernmentAutocracy(currentNation)) return diplomaticRoles.isHoG;
+    return diplomaticRoles.isFM;
+}
+
 // Check if the current player has any qualifying diplomatic role
 function hasAnyDiplomaticRole() {
     return diplomaticRoles && (
@@ -1777,13 +1784,16 @@ function renderStateVisitInboxCard(p, pd) {
     benefitsHTML += '</div>';
 
     let actionsHTML = '';
-    if (needsOurAction && !expired) {
+    const svRole = isGovernmentAutocracy(currentNation) ? 'Ruling Faction' : 'Foreign Minister';
+    if (needsOurAction && !expired && canHandleStateVisit()) {
         actionsHTML = `
             <div class="inbox-card-actions">
                 <button class="proposal-accept-btn" onclick="acceptStateVisit('${p.id}')">Accept Visit</button>
                 <button class="proposal-reject-btn" onclick="declineStateVisit('${p.id}')">Decline</button>
             </div>
         `;
+    } else if (needsOurAction && !expired && !canHandleStateVisit()) {
+        actionsHTML = `<div style="font-size:0.78rem;color:var(--text-muted);padding:4px 0;">Awaiting ${svRole} decision.</div>`;
     } else if (expired) {
         actionsHTML = '<div style="color:#f44;font-size:0.78rem;padding:4px 0;">Invitation expired.</div>';
     }
@@ -8306,7 +8316,15 @@ async function submitStateVisit() {
     }
     currentFaction.action_points = apResult.newAp;
 
-    const hosName = [currentNation.head_of_state_first_name, currentNation.head_of_state_last_name].filter(Boolean).join(' ') || 'Head of State';
+    // Visitor is the Head of Government (PM/President), not Head of State
+    const { data: hog } = await _supabase.from('head_of_government')
+        .select('first_name, last_name')
+        .eq('nation_id', currentNation.id)
+        .eq('active', true)
+        .maybeSingle();
+    const hogName = hog
+        ? [hog.first_name, hog.last_name].filter(Boolean).join(' ')
+        : [currentNation.head_of_state_first_name, currentNation.head_of_state_last_name].filter(Boolean).join(' ') || 'Head of Government';
 
     const { error: proposalErr } = await _supabase
         .from('diplomatic_proposals')
@@ -8319,7 +8337,7 @@ async function submitStateVisit() {
             status: 'proposed',
             proposal_data: {
                 name: 'State Visit from ' + currentNation.name,
-                visitor_leader: hosName,
+                visitor_leader: hogName,
                 visitor_nation: currentNation.name,
                 host_nation: ctx.targetNation.name,
                 proposer_nation_name: currentNation.name,
@@ -8356,12 +8374,12 @@ async function submitStateVisit() {
                 event_name: 'State Visit Proposed',
                 event_type: 'state_visit',
                 category: 'Diplomatic',
-                description_chosen: hosName + ' of ' + currentNation.name + ' has proposed a state visit to ' + ctx.targetNation.name + '.',
+                description_chosen: hogName + ' of ' + currentNation.name + ' has proposed a state visit to ' + ctx.targetNation.name + '.',
                 fired_at_tick: ctx.currentTick,
                 effects_applied: {
                     nation_a: currentNation.name,
                     nation_b: ctx.targetNation.name,
-                    leader: hosName,
+                    leader: hogName,
                 }
             }));
             await _supabase.from('event_log').insert(eventRows);
@@ -8395,11 +8413,12 @@ async function acceptStateVisit(proposalId) {
     if (fetchErr || !proposal) { _svAcceptLock[proposalId] = false; alert('Could not load proposal.'); return; }
     if (proposal.proposal_type !== 'state_visit') { _svAcceptLock[proposalId] = false; alert('Not a state visit proposal.'); return; }
 
-    // Authorization: caller must be target nation's HoG
+    // Authorization: FM in democracies, ruling faction in autocracies
     await refreshRoles();
-    if (!diplomaticRoles.isHoG || proposal.target_nation_id !== currentNation.id) {
+    if (proposal.target_nation_id !== currentNation.id || !canHandleStateVisit()) {
         _svAcceptLock[proposalId] = false;
-        alert('Only the Head of Government of the visited nation can accept a State Visit.');
+        const roleLabel = isGovernmentAutocracy(currentNation) ? 'ruling faction' : 'Foreign Minister';
+        alert('Only the ' + roleLabel + ' of the visited nation can accept a State Visit.');
         return;
     }
 
@@ -8721,6 +8740,15 @@ async function declineStateVisit(proposalId) {
         _svDeclineLock[proposalId] = false;
         alert('This invitation is no longer actionable (status: ' + (proposal?.status || 'unknown') + ').');
         await renderNegotiationsBox();
+        return;
+    }
+
+    // Authorization: FM in democracies, ruling faction in autocracies
+    await refreshRoles();
+    if (!canHandleStateVisit()) {
+        _svDeclineLock[proposalId] = false;
+        const roleLabel = isGovernmentAutocracy(currentNation) ? 'ruling faction' : 'Foreign Minister';
+        alert('Only the ' + roleLabel + ' can decline a State Visit.');
         return;
     }
 
@@ -9592,11 +9620,14 @@ function renderStateVisitNegDetail(p, pd, needsOurAction) {
         html += '<div style="margin-top:4px;color:#f97316;font-size:11px;">⚠ Autocracy domestic risk: 1D12 dice roll on visitor\'s gov approval</div>';
     }
 
-    // Action buttons
+    // Action buttons — FM in democracies, ruling faction in autocracies
     html += '<div class="detail-actions" style="margin-top:10px;">';
-    if (needsOurAction && !expired) {
+    const detailSvRole = isGovernmentAutocracy(currentNation) ? 'Ruling Faction' : 'Foreign Minister';
+    if (needsOurAction && !expired && canHandleStateVisit()) {
         html += '<button class="detail-btn" onclick="acceptStateVisit(\'' + p.id + '\')">Accept Visit</button>';
         html += '<button class="detail-btn" onclick="declineStateVisit(\'' + p.id + '\')">Decline</button>';
+    } else if (needsOurAction && !expired) {
+        html += '<div style="font-size:11px;color:var(--text-muted);">Only the ' + detailSvRole + ' can accept or decline this visit.</div>';
     } else if (expired) {
         html += '<div style="color:var(--red);font-size:11px;">Invitation has expired.</div>';
     } else if (!isIncoming) {
