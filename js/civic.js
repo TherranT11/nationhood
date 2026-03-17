@@ -117,6 +117,7 @@ export async function initCivic(supabase, nationId, factionId, currentTick, nati
     _nationId = nationId;
     _factionId = factionId;
     _currentTick = currentTick;
+    if (!nationName) console.warn('initCivic: nationName is empty — hashtags will show blank');
     _nationName = nationName || '';
 
     const root = document.getElementById('civic-root');
@@ -455,6 +456,7 @@ function renderCompose() {
     const textarea = document.getElementById('civ-textarea');
     const counter = document.getElementById('civ-char-count');
     const btn = document.getElementById('civ-post-btn');
+    if (!textarea || !counter || !btn) return;
 
     textarea.addEventListener('input', () => {
         const len = textarea.value.length;
