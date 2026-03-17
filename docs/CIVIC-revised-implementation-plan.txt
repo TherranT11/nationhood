@@ -1,0 +1,744 @@
+CIVIC — Revised Implementation Plan
+Adapted from Design Guide v3.0 to match Nationhood codebase
+========================================================================
+
+SUMMARY OF CHANGES FROM ORIGINAL GUIDE
+---------------------------------------
+The original guide assumed: standalone Events.html, local gameState with
+save/load, client-side function hooks (47 civicFireEvent calls), and a
+single-page app. The actual codebase is: multi-page Vite app, Supabase
+backend, events tab inside politics.html, server-side tick processing
+via edge functions, and two existing event tables (event_log +
+campaign_actions).
+
+This plan adapts CIVIC to work WITH the existing architecture instead of
+against it.
+
+
+========================================================================
+ARCHITECTURE DECISION: PULL MODEL (not Push)
+========================================================================
+
+The original guide uses a PUSH model: inject civicFireEvent() into 47
+game functions. This is unworkable because:
+
+  1. Most game events fire server-side in supabase/functions/advance-tick/
+     index.ts — client JS cannot inject hooks there.
+  2. Events already write to two Supabase tables:
+     - event_log (system events: bills, crises, elections, trade, etc.)
+     - campaign_actions (faction actions: rally, outreach, attack, etc.)
+  3. Modifying 47 server functions is fragile and high-risk.
+
+REVISED APPROACH: CIVIC reads from event_log and campaign_actions, then
+transforms those rows into styled CIVIC posts using the v3.0 templates.
+Player posts go to a new civic_posts table in Supabase.
+
+  event_log row  -->  template lookup  -->  CIVIC post object  -->  render
+  campaign_action  -->  template lookup  -->  CIVIC post object  -->  render
+  player input  -->  civic_posts insert  -->  CIVIC post object  -->  render
+
+
+========================================================================
+FILE STRUCTURE (revised)
+========================================================================
+
+  css/civic.css              -- CIVIC styles, CSS variables, tag colors
+  js/civic.js                -- core logic: render, compose, threads, queue
+  js/civic-handles.js        -- 20-entry handle pool (unchanged from guide)
+  js/civic-templates.js      -- event templates + mapping from event_log
+                                trigger keys to template sets
+
+  politics.html              -- add <link> to civic.css, add <script> tags
+                                for civic-handles.js, civic-templates.js,
+                                civic.js. Modify Events tab container.
+
+  sql/migrations/YYYYMMDD_create_civic_posts.sql
+                             -- new table for player-authored posts
+
+NO standalone Events.html. NO events/ subdirectory.
+
+
+========================================================================
+PHASE 1: DATABASE — civic_posts table
+========================================================================
+
+Create a Supabase migration:
+
+  CREATE TABLE civic_posts (
+    id            uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    nation_id     uuid NOT NULL REFERENCES nations(id),
+    faction_id    uuid REFERENCES factions(id),  -- null for system posts
+    handle_key    text NOT NULL,                  -- e.g. '@freepress_vald'
+    display_name  text NOT NULL,
+    initials      text NOT NULL,
+    body          text NOT NULL CHECK (char_length(body) <= 280),
+    created_at    timestamptz DEFAULT now(),
+    game_tick     int NOT NULL,
+    likes         int DEFAULT 0,
+    shares        int DEFAULT 0,
+    liked_by      uuid[] DEFAULT '{}',
+    shared_by     uuid[] DEFAULT '{}',
+    created_at_ts timestamptz DEFAULT now()
+  );
+
+  CREATE TABLE civic_comments (
+    id            uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    post_id       uuid NOT NULL REFERENCES civic_posts(id) ON DELETE CASCADE,
+    nation_id     uuid NOT NULL,
+    faction_id    uuid REFERENCES factions(id),
+    handle_key    text NOT NULL,
+    display_name  text NOT NULL,
+    initials      text NOT NULL,
+    body          text NOT NULL CHECK (char_length(body) <= 280),
+    game_tick     int NOT NULL,
+    created_at    timestamptz DEFAULT now()
+  );
+
+  -- RLS: players can read all posts for their nation, insert their own
+  ALTER TABLE civic_posts ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY civic_posts_read ON civic_posts FOR SELECT
+    USING (nation_id IN (SELECT nation_id FROM factions WHERE id = auth.uid()));
+  CREATE POLICY civic_posts_insert ON civic_posts FOR INSERT
+    WITH CHECK (faction_id = auth.uid());
+
+  -- Same for comments
+  ALTER TABLE civic_comments ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY civic_comments_read ON civic_comments FOR SELECT
+    USING (nation_id IN (SELECT nation_id FROM factions WHERE id = auth.uid()));
+  CREATE POLICY civic_comments_insert ON civic_comments FOR INSERT
+    WITH CHECK (faction_id = auth.uid());
+
+NOTE: System-generated posts (from event_log) are NOT stored in
+civic_posts. They are generated client-side from event_log rows on each
+render. Only player-authored posts persist in civic_posts.
+
+ALTERNATIVE: If you want system posts to also persist (so likes/shares
+on system posts survive page reloads), insert them into civic_posts with
+faction_id = null during advance-tick processing. This is cleaner but
+requires a server-side change. Decide before implementing.
+
+
+========================================================================
+PHASE 2: CSS — civic.css
+========================================================================
+
+Use the existing design system variables from politics.html:
+  --dbg-0 through --dbg-5   (backgrounds)
+  --dtext-0 through --dtext-3 (text colors)
+  --dborder-0, --dborder-1   (borders)
+  --dfont-mono                (JetBrains Mono)
+  --dfont-ui                  (IBM Plex Sans)
+
+DO NOT declare new --civ-* variables. Map the guide's values to existing
+variables:
+
+  Guide v3.0 variable        Use instead
+  ─────────────────────────   ────────────────────────
+  --civ-bg                    --dbg-0
+  --civ-surface               --dbg-2
+  --civ-border                --dborder-1
+  --civ-text                  --dtext-0
+  --civ-muted                 --dtext-3
+  --civ-system                --dbg-3 (or custom dark navy)
+  --civ-comment-bg            --dbg-1
+
+ADD civic-specific variables only where no existing variable fits:
+  --civ-accent:         #4d8fc4;   (blue accent — no existing match)
+  --civ-accent-dim:     #1e3d5c;
+  --civ-accent-bright:  #6aaee0;
+  --civ-system-border:  #2a5a8a;
+  --civ-danger:         #c45d3a;
+
+Event tag colors: unchanged from guide Section 5.
+  --tag-election, --tag-coalition, --tag-crisis, etc.
+
+FIX from review: --tag-election and --tag-party are both #1A5276.
+Change --tag-party to #2E6B8A or similar to differentiate.
+
+All CIVIC classes should be prefixed with 'civ-' to avoid collisions
+with existing pol-* classes.
+
+Fonts: do NOT add a new Google Fonts <link>. The fonts are already
+loaded by politics.html.
+
+CIVIC fills the .pol-page-content container directly. No 340x450 box.
+Set #civic-root to: width: 100%; min-height: 400px; overflow-y: auto.
+
+Layout: sidebar (trending) on the right, feed on the left. Use flexbox.
+On mobile (<860px), stack vertically with trending above feed.
+
+
+========================================================================
+PHASE 3: civic-handles.js
+========================================================================
+
+Unchanged from guide Section 3.2. Export as:
+
+  const CIVIC_HANDLES = [ ... 20 entries ... ];
+
+Use the guide's pool exactly. Consider expanding to 30-40 later if
+repetition becomes noticeable.
+
+
+========================================================================
+PHASE 4: civic-templates.js — EVENT MAPPING
+========================================================================
+
+This is the critical adaptation layer. The guide's 47 event types must
+be mapped to the actual trigger keys in event_log and action types in
+campaign_actions.
+
+Structure:
+
+  const CIVIC_EVENT_MAP = {
+    // event_log trigger keys -> CIVIC template key
+    'bill_passed':                    'bill_passed',
+    'bill_failed':                    'bill_failed',
+    'quorum_failed':                  'bill_failed',  // reuse bill_failed templates
+    'presidential_election':          'presidential_election',
+    'formation_snap_election':        'snap_election',
+    'emergency_minority_government':  'minority_government',
+    'trade_agreement_expired':        'trade_agreement_rejected',
+    'aid_terminated':                 'trade_agreement_rejected',
+    'aid_suspended':                  'crisis_start',
+    'aid_resumed':                    'trade_agreement_accepted',
+    'pm_appointed':                   'minister_appointed',
+    'incumbent_lockin':               'presidential_election',
+    // ... map all known trigger keys
+  };
+
+  const CIVIC_ACTION_MAP = {
+    // campaign_actions action_types -> CIVIC template key
+    'rally':                          'party_action',
+    'outreach':                       'party_action',
+    'attack':                         'faction_action',
+    'buy_influence':                  'faction_influence',
+    'faction_buy_influence':          'faction_influence',
+    'intimidate':                     'faction_action',
+    'purge':                          'faction_action',
+    'coup_success':                   'coup_succeeded',
+    'coup_failed':                    'coup_failed',
+    'party_disbanded':                'party_dissolved',
+    'faction_consolidate_power':      'strongman_power',
+    // ... map all known action types
+  };
+
+Each template set is exactly as written in guide Section 6 (all 47 sets,
+5 templates each). The mapping layer translates real DB records into the
+correct template set.
+
+VARIABLE EXTRACTION: Each mapping also needs a variable extractor that
+pulls template variables from the event_log/campaign_actions row:
+
+  const CIVIC_VAR_EXTRACTORS = {
+    'bill_passed': (row) => ({
+      bill_name: row.effects_applied?.bill_name || row.event_name || 'Unknown Bill',
+      votes_for: row.effects_applied?.votes_for || '?',
+      votes_against: row.effects_applied?.votes_against || '?',
+      margin: Math.abs((row.effects_applied?.votes_for||0) - (row.effects_applied?.votes_against||0)),
+    }),
+    'party_action': (row) => ({
+      party: row.result?.faction_name || row.factions?.faction_name || 'Unknown',
+      action: row.action_type?.replace(/_/g, ' ') || 'action',
+      issue: row.result?.issue || '',
+      region: row.result?.region || '',
+    }),
+    // ... one per template set
+  };
+
+UNMAPPED EVENTS: Some of the guide's 47 events do not currently fire in
+the codebase. These template sets should still be written (they're good
+content) but will only activate when the game adds those features:
+
+  - state_visit_proposed/accepted/happened/rejected (no state visit
+    system exists yet — diplomacy uses proposals, not visits)
+  - diplomatic_initiative_proposed/accepted/rejected (partially exists
+    via diplomatic_proposals table but no client-side trigger keys)
+  - bill_proposed (bills go straight to committee, no "proposed" event)
+  - bill_amended, filibuster_called (not implemented)
+  - nation_joins_org, nation_leaves_org (no IO membership system)
+  - io_charter_amended, io_cohesion_collapsed (not implemented)
+  - party_founded (no party creation system — factions are fixed)
+  - party_kicked_coalition (coalition kicks not a distinct event)
+  - presidential_endorsement (endorsements exist but no event_log entry)
+  - corporate_contract_signed (no corporate system)
+  - minister_nomination_rejected (exists but may not fire event_log)
+  - executive_order_issued/expired (EOs exist but may not fire event_log)
+  - overreach_threshold, regime_health_threshold (thresholds fire to
+    campaign_actions, need mapping)
+  - consolidation_begins (no distinct event — inferred from regime health)
+
+RECOMMENDATION: Implement templates for all 47 but map only the ~25
+that have real trigger keys today. The rest activate automatically when
+their trigger keys appear in event_log. No dead code, no wasted work.
+
+
+========================================================================
+PHASE 5: civic.js — CORE LOGIC
+========================================================================
+
+5.1  INITIALIZATION
+--------------------
+Called when the Events tab is activated in politics.html.
+
+  async function initCivic(supabase, nationId, factionId, currentTick) {
+    // Fetch data sources in parallel
+    const [eventLogRows, campaignRows, playerPosts] = await Promise.all([
+      supabase.from('event_log')
+        .select('*')
+        .eq('nation_id', nationId)
+        .order('fired_at_tick', { ascending: false })
+        .limit(80),
+      supabase.from('campaign_actions')
+        .select('*, factions(faction_name, abbreviation, party_color)')
+        .eq('nation_id', nationId)
+        .order('tick_performed', { ascending: false })
+        .limit(80),
+      supabase.from('civic_posts')
+        .select('*, civic_comments(*)')
+        .eq('nation_id', nationId)
+        .order('created_at', { ascending: false })
+        .limit(100),
+    ]);
+
+    // Transform event_log + campaign_actions into CIVIC post objects
+    const systemPosts = transformToCivicPosts(eventLogRows.data, campaignRows.data, currentTick);
+
+    // Merge with player posts, sort by game_tick desc, cap at 100
+    const allPosts = mergeAndSort(systemPosts, playerPosts.data);
+
+    // Render
+    renderCivicFeed(allPosts);
+    renderTrending(allPosts);
+  }
+
+5.2  TRANSFORM FUNCTION
+------------------------
+  function transformToCivicPosts(eventRows, actionRows, currentTick) {
+    const posts = [];
+
+    // Process event_log rows
+    for (const row of (eventRows || [])) {
+      const triggerKey = extractTriggerKey(row);  // parse from event_name
+      const templateKey = CIVIC_EVENT_MAP[triggerKey];
+      if (!templateKey) continue;  // no template for this event type
+
+      const templates = CIVIC_TEMPLATES[templateKey];
+      if (!templates?.length) continue;
+
+      const vars = CIVIC_VAR_EXTRACTORS[templateKey]?.(row) || {};
+      const picked = pickNoReplace(templates, 2);  // 2 posts per event
+
+      for (const tmpl of picked) {
+        const body = fillTemplate(tmpl.text, vars);
+        if (/\{\w+\}/.test(body)) continue;  // skip if variables unfilled
+        const handle = pickNoReplace(CIVIC_HANDLES, 1)[0];
+
+        posts.push({
+          id: 'sys_' + row.id + '_' + tmpl.id,
+          type: 'system',
+          name: handle.name,
+          initials: handle.initials,
+          handle: handle.handle,
+          body: body,
+          date: tickToDate(row.fired_at_tick),
+          tick: row.fired_at_tick,
+          eventTag: tmpl.eventTag,
+          likes: Math.floor(Math.random() * 40) + 3,   // cosmetic seed
+          shares: Math.floor(Math.random() * 15),        // cosmetic seed
+          likedByPlayer: false,
+          sharedByPlayer: false,
+          comments: [],
+          open: false,
+        });
+      }
+    }
+
+    // Process campaign_actions rows (similar logic using CIVIC_ACTION_MAP)
+    // ...
+
+    return posts;
+  }
+
+NOTE: System post likes/shares are seeded randomly on each render.
+They are cosmetic and do not persist. If persistence is desired, use
+the civic_posts table approach (Phase 1 alternative).
+
+DETERMINISTIC HANDLES: Because system posts regenerate on each page
+load, the handle assigned to a given event will change each time.
+To make handles stable, seed the random picker with the event row ID:
+
+  function seededRandom(seed) {
+    // Simple hash-based PRNG from row UUID
+    let h = 0;
+    for (let i = 0; i < seed.length; i++) {
+      h = ((h << 5) - h) + seed.charCodeAt(i);
+      h |= 0;
+    }
+    return Math.abs(h);
+  }
+  const handleIndex = seededRandom(row.id) % CIVIC_HANDLES.length;
+
+5.3  tickToDate()
+-----------------
+The game already has tickToDate() defined in politics.js. Also,
+gameState.shard.current_date provides the formatted date string.
+
+For CIVIC, reuse the existing tickToDate() or import it. Do not
+duplicate the function. The function signature in the codebase:
+
+  function tickToDate(tick) { ... }  // returns 'Mar 2031' format
+
+It is defined locally in politics.js and dashboard.html. If not
+exported, either export it from common.js or duplicate minimally.
+
+5.4  COMPOSE BOX
+-----------------
+Unchanged from guide Section 7.5 with these adaptations:
+
+  - On submit: insert into civic_posts table via Supabase
+  - Random handle from pool (no persistent identity)
+  - 280 char limit, counter turns red below 30
+  - Show 'Posted as @handle' for 4 seconds
+  - No AP cost, no cooldown
+
+  async function submitPost(body) {
+    const handle = pickNoReplace(CIVIC_HANDLES, 1)[0];
+    const { error } = await _supabase.from('civic_posts').insert({
+      nation_id: gameState.nation.id,
+      faction_id: gameState.faction.id,
+      handle_key: handle.handle,
+      display_name: handle.name,
+      initials: handle.initials,
+      body: body.trim(),
+      game_tick: gameState.shard.current_tick,
+    });
+    if (!error) {
+      showPostedAs(handle.handle);
+      await refreshFeed();
+    }
+  }
+
+5.5  POST RENDERING
+---------------------
+Unchanged from guide Section 7.6:
+  - Entire post row clickable to toggle comment thread
+  - stopPropagation on like, share, comment buttons (MANDATORY)
+  - System posts: left blue border, dark tint, colored tag badge
+  - Player posts: blue avatar tint, visually similar to citizen posts
+  - Hashtags: XSS-safe rendering from guide Section 7.10
+  - Feed order: newest at top
+
+5.6  LIKE / SHARE
+------------------
+For player posts (in civic_posts table): update liked_by/shared_by
+arrays via Supabase. Optimistic UI update.
+
+For system posts (generated from event_log): purely cosmetic, no
+persistence. Track in-memory only for the current session.
+
+  // For player posts:
+  async function toggleLike(postId) {
+    if (postId.startsWith('sys_')) {
+      // In-memory toggle only
+      toggleInMemoryLike(postId);
+      return;
+    }
+    // Supabase update for civic_posts
+    // ...
+  }
+
+5.7  COMMENT THREADS
+---------------------
+For player posts: comments stored in civic_comments table.
+For system posts: comments stored in civic_comments with a
+synthetic post_id derived from the event_log row ID (requires
+the system post to first be inserted into civic_posts on first
+comment — or disallow comments on system posts for v1).
+
+RECOMMENDATION FOR V1: Allow comments only on player posts.
+System posts are read-only. This avoids the complexity of
+materializing system posts into the database on first interaction.
+
+5.8  SNAPSHOT-RESTORE ON RE-RENDER
+------------------------------------
+Unchanged from guide Section 7.9. Save open thread states and
+in-progress reply text before innerHTML rebuild, restore after.
+
+5.9  TRENDING SIDEBAR
+-----------------------
+Unchanged from guide Section 7.11. Calculate from all visible posts
+(both system and player). Top 7 hashtags. Clicking a tag filters feed.
+
+5.10  FILTER BAR
+-----------------
+Filter by: event tag (ELECTION, CRISIS, etc.), hashtag, or search text.
+Show active filter with an X to clear. When filtered, trending sidebar
+still shows global counts (not filtered counts).
+
+
+========================================================================
+PHASE 6: INTEGRATE INTO POLITICS.HTML
+========================================================================
+
+6.1  Replace the Events tab content container:
+
+  BEFORE:
+    <div class="pol-page-content" data-page-content="events">
+      <div class="pol-page" style="min-height:300px;">
+        <div class="pol-section-label">Political Events</div>
+        <div id="events-container"></div>
+      </div>
+    </div>
+
+  AFTER:
+    <div class="pol-page-content" data-page-content="events">
+      <div id="civic-root"></div>
+    </div>
+
+6.2  Add CSS and JS references in politics.html <head>:
+
+    <link rel="stylesheet" href="css/civic.css">
+
+  Before closing </body>:
+
+    <script src="js/civic-handles.js"></script>
+    <script src="js/civic-templates.js"></script>
+    <script src="js/civic.js"></script>
+
+  OR if using ES modules (the codebase uses import/export):
+    Import civic.js from politics.js and call initCivic() when the
+    Events tab is activated.
+
+6.3  Wire tab activation:
+
+  In the tab click handler (politics.js line ~461), add:
+
+    if (target === 'events') {
+      initCivic(_supabase, nationId, factionId, currentTick);
+    }
+
+  Remove the old renderEventsTab() call. Keep the function in the
+  codebase temporarily (commented out) for rollback safety.
+
+6.4  Navigation stubs inside CIVIC:
+
+  The guide specifies Home Feed / Discover / Notifications / Messages
+  as sidebar nav items. These are CIVIC-internal navigation, not the
+  main game nav. Only Home Feed is functional. The rest are visual
+  stubs with cursor: default (not cursor: not-allowed).
+
+
+========================================================================
+PHASE 7: UNREAD BADGE
+========================================================================
+
+The existing badge system (common.js lines 389-469) uses Supabase
+queries on page load to count unseen items. Follow the same pattern.
+
+  In common.js, add updateCivicBadge():
+
+    async function updateCivicBadge(faction, nation) {
+      const badge = document.getElementById('civic-badge');
+      if (!badge || !faction || !nation) return;
+      const lastSeenTick = parseInt(
+        localStorage.getItem('civic_last_seen_tick_' + nation.id) || '0'
+      );
+      const { count } = await _supabase
+        .from('event_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('nation_id', nation.id)
+        .gt('fired_at_tick', lastSeenTick);
+      if (count > 0) {
+        badge.textContent = count > 99 ? '99+' : count;
+        badge.style.display = '';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+  In renderNavTabs(), add badge HTML to the politics tab (or add a
+  dedicated 'events' entry — design decision needed).
+
+  When the Events tab is opened:
+    localStorage.setItem(
+      'civic_last_seen_tick_' + nationId,
+      String(currentTick)
+    );
+    clearBadge();
+
+NOTE: The badge goes on the Politics nav tab since Events is a sub-tab
+of Politics. Alternatively, promote Events to a top-level nav tab —
+this is a significant UI change that should be decided explicitly.
+
+OPTION: Add CIVIC/Events as a top-level nav tab between Politics and
+Bills. This makes the badge more visible and gives CIVIC its own page.
+If chosen, create a new events.html page (not a sub-tab of politics).
+
+
+========================================================================
+PHASE 8: DASHBOARD EVENTS CARD
+========================================================================
+
+The dashboard currently shows events via loadDashEvents() reading from
+event_log (dashboard.html line 1083). This should remain unchanged —
+it serves a different purpose (compact event log, not social feed).
+
+Optionally, add a small "View on CIVIC" link in the dashboard events
+card that navigates to politics.html with the events tab pre-selected:
+
+  <a href="politics.html?tab=events">View on CIVIC</a>
+
+Wire politics.js to check URL params on load and auto-select the
+events tab if ?tab=events is present.
+
+
+========================================================================
+PHASE 9: IMPLEMENTATION ORDER
+========================================================================
+
+Step  Description                                         Est. Files
+────  ──────────────────────────────────────────────────  ──────────
+ 1    Write and run civic_posts + civic_comments SQL       1 SQL
+      migration. Verify tables exist.
+
+ 2    Create css/civic.css. Define tag colors, post        1 CSS
+      layout, compose box, thread styles, trending
+      sidebar. Use existing --dbg/--dtext/--dborder
+      variables where possible.
+
+ 3    Create js/civic-handles.js with 20-entry pool.       1 JS
+
+ 4    Create js/civic-templates.js with all 47 template    1 JS
+      sets from guide Section 6, plus CIVIC_EVENT_MAP,
+      CIVIC_ACTION_MAP, and CIVIC_VAR_EXTRACTORS.
+
+ 5    Create js/civic.js:                                  1 JS
+      - initCivic() — fetch and transform data
+      - transformToCivicPosts() — event_log/campaign
+        rows to CIVIC post objects
+      - renderCivicFeed() with snapshot-restore
+      - Compose box with Supabase insert
+      - Like/share (cosmetic for system, persisted for
+        player posts)
+      - Comment threads (player posts only for v1)
+      - stopPropagation on all action buttons
+      - Hashtag rendering (XSS-safe)
+      - filterByTag(), search
+      - recalcTrending(), trending sidebar
+      - Seeded random handles for deterministic renders
+
+ 6    Modify politics.html:                                1 HTML
+      - Add civic.css link
+      - Add script tags (or imports)
+      - Replace events-container with civic-root
+      - Wire tab activation to initCivic()
+
+ 7    Add unread badge to common.js:                       1 JS
+      - updateCivicBadge() function
+      - Badge HTML in renderNavTabs()
+      - localStorage tracking of last-seen tick
+
+ 8    Test end-to-end:
+      - Open Events tab, verify system posts render
+        from event_log and campaign_actions
+      - Submit a player post, verify it persists
+      - Like/share, verify UI updates
+      - Open a comment thread, submit a reply
+      - Check trending sidebar
+      - Switch tabs, verify badge appears
+      - Check mobile layout
+
+ 9    (Optional) Add ?tab=events deep link support          1 JS
+      to politics.js page init.
+
+10    (Future) If system post persistence is desired,
+      add server-side civic_posts insertion in
+      advance-tick edge function. This makes likes/
+      shares/comments on system posts persistent.
+
+
+========================================================================
+WHAT TO KEEP FROM THE ORIGINAL GUIDE
+========================================================================
+
+KEEP AS-IS:
+  - All 47 template sets (Section 6) — excellent content
+  - Handle pool (Section 3.2)
+  - Tag badge colors (Section 5) — except fix PARTY duplicate color
+  - Post data model shape (Section 2.1-2.2)
+  - pickNoReplace() (Section 4.2)
+  - fillTemplate() (Section 4.3)
+  - Compose box UX (Section 7.5)
+  - stopPropagation pattern (Section 7.6)
+  - Snapshot-restore re-render (Section 7.9)
+  - XSS-safe hashtag rendering (Section 7.10)
+  - Trending calculation (Section 7.11)
+  - Nav stub items (Section 7.4) — Home Feed only is functional
+  - Share is cosmetic only (Section 7.7)
+  - Comment thread UX (Section 7.8)
+  - No player profile, no persistent handle (Section 7.3)
+  - Dark navy aesthetic, no emoji, no rounded corners
+
+DISCARD:
+  - Events.html as standalone page (Section 7.1)
+  - events/ subdirectory
+  - gameState.civic local state (Section 2.4)
+  - Push-model civicFireEvent() dispatcher (Section 4.1)
+  - 47 hook call sites in game functions (Section 4.7)
+  - The grep audit for 47 call sites (Section 4.5)
+  - Post queue/drain system (Section 4.6) — not needed in pull model
+  - tickToDate() — reuse existing implementation
+  - Google Fonts <link> — already loaded
+  - New --civ-* CSS variables that duplicate existing --dbg/--dtext vars
+  - Save/load via gameState (Section 9) — use Supabase instead
+  - Section 10 implementation order (replaced by Phase 9 above)
+  - Section 11 coder prompt (replaced by this plan)
+
+MODIFY:
+  - CSS variables: map to existing --dbg/--dtext system, add only
+    civic-specific accent colors
+  - Unread badge: use localStorage + Supabase count, not in-memory
+  - Post persistence: Supabase table, not gameState array
+  - System posts: generated from event_log query, not pushed by hooks
+  - Date format: use existing tickToDate(), not new implementation
+
+
+========================================================================
+RISK REGISTER
+========================================================================
+
+1. TEMPLATE COVERAGE GAP
+   Only ~25 of 47 event types have trigger keys in event_log today.
+   The remaining templates sit dormant until those features ship.
+   MITIGATION: This is fine. Templates are cheap. They activate
+   automatically when trigger keys appear.
+
+2. VARIABLE EXTRACTION FRAGILITY
+   event_log rows store data in effects_applied (JSONB) with
+   inconsistent key names across different event types.
+   MITIGATION: Write extractors defensively with fallbacks.
+   Test each extractor against real event_log rows.
+
+3. SYSTEM POST NON-PERSISTENCE
+   Likes/shares/comments on system posts don't survive page reload
+   in v1 (pull model generates fresh posts each time).
+   MITIGATION: Acceptable for v1. If it bothers users, add server-
+   side materialization in v2.
+
+4. HANDLE STABILITY
+   System posts get different random handles on each page load.
+   MITIGATION: Use seeded PRNG based on row UUID (see Phase 5.2).
+
+5. PERFORMANCE
+   Fetching 80 event_log + 80 campaign_actions + 100 civic_posts
+   on every tab open could be slow.
+   MITIGATION: Cache in sessionStorage with 2-minute TTL. Only
+   refresh on explicit pull-to-refresh or tab re-entry after 2min.
+
+6. MULTI-PAGE BADGE STALENESS
+   Badge count is calculated on page load. If events fire while
+   the player is on the page, badge won't update until next
+   navigation.
+   MITIGATION: Acceptable. Same behavior as existing bills/diplomacy
+   badges. Could add Supabase realtime subscription later.
