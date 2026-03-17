@@ -736,7 +736,7 @@ export function extractEventVars(templateKey, row) {
             // Pick 1-2 agenda item titles for template mentions
             const agendaKeys = e.agenda || e.computed_effects?.agenda || [];
             const agendaTitles = agendaKeys.map(k => AGENDA_TITLE_MAP[k] || k.replace(/_/g, ' '));
-            // Shuffle deterministically and pick first two
+            // Pick first and midpoint to get two distinct items
             const a1 = agendaTitles[0] || 'bilateral talks';
             const a2 = agendaTitles.length > 1 ? agendaTitles[Math.floor(agendaTitles.length / 2)] : 'a formal reception';
             return {

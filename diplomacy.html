@@ -8284,19 +8284,23 @@ function renderStateVisitHTML(body) {
     document.getElementById('sv-submit-btn')?.addEventListener('click', () => submitStateVisit());
 }
 
+let _svSubmitLock = false;
 async function submitStateVisit() {
+    if (_svSubmitLock) return;
     if (!svState || !svContext) return;
+    _svSubmitLock = true;
     const ctx = svContext;
     const computed = computeStateVisitEffects(svState, ctx);
 
     // Validate
-    if (!ctx.hasAmbassador) { alert('No ambassador posted to ' + ctx.targetNation.name + '.'); return; }
-    if (!ctx.noConflict) { alert('Cannot visit during active conflict.'); return; }
-    if (ctx.cooldownActive) { alert(ctx.targetNation.name + ' was recently visited. Cooldown: ' + ctx.cooldownTicks + ' tick(s) remaining.'); return; }
-    if (ctx.alreadyPending) { alert('A State Visit invitation to ' + ctx.targetNation.name + ' is already pending.'); return; }
+    if (!ctx.hasAmbassador) { _svSubmitLock = false; alert('No ambassador posted to ' + ctx.targetNation.name + '.'); return; }
+    if (!ctx.noConflict) { _svSubmitLock = false; alert('Cannot visit during active conflict.'); return; }
+    if (ctx.cooldownActive) { _svSubmitLock = false; alert(ctx.targetNation.name + ' was recently visited. Cooldown: ' + ctx.cooldownTicks + ' tick(s) remaining.'); return; }
+    if (ctx.alreadyPending) { _svSubmitLock = false; alert('A State Visit invitation to ' + ctx.targetNation.name + ' is already pending.'); return; }
 
     const apResult = await deductAP(_supabase, currentFaction.id, computed.totalAp);
     if (!apResult.success) {
+        _svSubmitLock = false;
         alert('Not enough AP. Need ' + computed.totalAp + ', have ' + (currentFaction.action_points || 0) + '.');
         return;
     }
@@ -8338,6 +8342,7 @@ async function submitStateVisit() {
         });
 
     if (proposalErr) {
+        _svSubmitLock = false;
         alert('Error proposing State Visit: ' + proposalErr.message);
         return;
     }
@@ -8365,6 +8370,7 @@ async function submitStateVisit() {
         console.warn('Error firing state visit proposal event:', e);
     }
 
+    _svSubmitLock = false;
     alert('State Visit invitation sent to ' + ctx.targetNation.name + '!\n\nThey have ' + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW + ' ticks to accept.');
 
     svState = null; svContext = null;
@@ -8375,7 +8381,10 @@ async function submitStateVisit() {
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; }
 }
 
+let _svAcceptLock = {};
 async function acceptStateVisit(proposalId) {
+    if (_svAcceptLock[proposalId]) return;
+    _svAcceptLock[proposalId] = true;
     // Fetch proposal
     const { data: proposal, error: fetchErr } = await _supabase
         .from('diplomatic_proposals')
@@ -8383,12 +8392,13 @@ async function acceptStateVisit(proposalId) {
         .eq('id', proposalId)
         .single();
 
-    if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
-    if (proposal.proposal_type !== 'state_visit') { alert('Not a state visit proposal.'); return; }
+    if (fetchErr || !proposal) { _svAcceptLock[proposalId] = false; alert('Could not load proposal.'); return; }
+    if (proposal.proposal_type !== 'state_visit') { _svAcceptLock[proposalId] = false; alert('Not a state visit proposal.'); return; }
 
     // Authorization: caller must be target nation's HoG
     await refreshRoles();
     if (!diplomaticRoles.isHoG || proposal.target_nation_id !== currentNation.id) {
+        _svAcceptLock[proposalId] = false;
         alert('Only the Head of Government of the visited nation can accept a State Visit.');
         return;
     }
@@ -8399,6 +8409,7 @@ async function acceptStateVisit(proposalId) {
     const pd = proposal.proposal_data || {};
 
     if (proposal.fm_review_expires_tick && currentTick > proposal.fm_review_expires_tick) {
+        _svAcceptLock[proposalId] = false;
         alert('This State Visit invitation has expired.');
         await _supabase.from('diplomatic_proposals').update({ status: 'expired' }).eq('id', proposalId);
         await renderNegotiationsBox();
@@ -8690,6 +8701,7 @@ async function acceptStateVisit(proposalId) {
 
     resultMsg += '\n' + pd.host_nation + ' is now on a ' + DIPLOMACY_CONFIG.STATE_VISIT_COOLDOWN + '-tick visit cooldown.';
 
+    _svAcceptLock[proposalId] = false;
     alert(resultMsg);
 
     // Refresh
@@ -8698,23 +8710,32 @@ async function acceptStateVisit(proposalId) {
     if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
 }
 
+let _svDeclineLock = {};
 async function declineStateVisit(proposalId) {
+    if (_svDeclineLock[proposalId]) return;
+    _svDeclineLock[proposalId] = true;
     // Validate proposal is still actionable
     const { data: proposal } = await _supabase.from('diplomatic_proposals')
-        .select('status').eq('id', proposalId).single();
+        .select('status, proposal_data').eq('id', proposalId).single();
     if (!proposal || proposal.status !== 'proposed') {
+        _svDeclineLock[proposalId] = false;
         alert('This invitation is no longer actionable (status: ' + (proposal?.status || 'unknown') + ').');
         await renderNegotiationsBox();
         return;
     }
 
-    if (!confirm('Decline this State Visit invitation? The visiting nation will not be refunded their AP.')) return;
+    if (!confirm('Decline this State Visit invitation? The visiting nation will not be refunded their AP.')) {
+        _svDeclineLock[proposalId] = false;
+        return;
+    }
 
     await _supabase.from('diplomatic_proposals').update({ status: 'rejected' }).eq('id', proposalId);
 
     // Fire event for all nations
     try {
         const pd = proposal.proposal_data || {};
+        const { data: shard } = await _supabase.from('game_shards').select('current_tick').eq('id', currentNation.shard_id).single();
+        const tick = shard?.current_tick || 0;
         const { data: allNations } = await _supabase.from('nations').select('id');
         if (allNations && allNations.length > 0) {
             const eventRows = allNations.map(n => ({
@@ -8723,7 +8744,7 @@ async function declineStateVisit(proposalId) {
                 event_type: 'state_visit',
                 category: 'Diplomatic',
                 description_chosen: (currentNation.name || 'A nation') + ' has declined a state visit from ' + (pd.visitor_nation || 'an unknown nation') + '.',
-                fired_at_tick: currentTick,
+                fired_at_tick: tick,
                 effects_applied: {
                     nation_a: pd.visitor_nation || '',
                     nation_b: currentNation.name || '',
@@ -8738,6 +8759,7 @@ async function declineStateVisit(proposalId) {
         console.warn('Error firing state visit rejection event:', e);
     }
 
+    _svDeclineLock[proposalId] = false;
     alert('State Visit declined.');
     await renderNegotiationsBox();
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };

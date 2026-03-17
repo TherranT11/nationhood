@@ -136,20 +136,22 @@ export async function initCivic(supabase, nationId, factionId, currentTick, nati
         </div>`;
 
     try {
-        // Fetch all data sources in parallel
+        // Fetch all data sources in parallel (no nation filter — global feed).
+        // event_log + campaign_actions: global. civic_posts: RLS restricts to own nation.
+        // Limits tuned for games with up to ~20 nations. Pagination handles display.
         const [eventRes, actionRes, playerRes] = await Promise.all([
             supabase.from('event_log')
                 .select('*, nations(name)')
                 .order('fired_at_tick', { ascending: false })
-                .limit(200),
+                .limit(300),
             supabase.from('campaign_actions')
                 .select('*, factions(faction_name, abbreviation, party_color), nations(name)')
                 .order('tick_performed', { ascending: false })
-                .limit(120),
+                .limit(150),
             supabase.from('civic_posts')
                 .select('*, civic_comments(*), nations(name)')
                 .order('created_at', { ascending: false })
-                .limit(150),
+                .limit(200),
         ]);
 
         // Check if ALL queries failed
