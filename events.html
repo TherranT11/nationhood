@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Events | Nationhood Alpha</title>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<!-- Shared Styles -->
+<link rel="stylesheet" href="css/dashboard.css">
+<link rel="stylesheet" href="css/civic.css">
+
+<style>
+:root {
+    --dbg-0: #0e0e0c;
+    --dbg-1: #141412;
+    --dbg-2: #1a1a17;
+    --dbg-3: #1e1e1a;
+    --dbg-4: #24241f;
+    --dbg-5: #2c2c26;
+    --dbg-hover: #282822;
+    --dborder-hair: rgba(255,255,255,0.04);
+    --dborder-0: rgba(255,255,255,0.06);
+    --dborder-1: rgba(255,255,255,0.08);
+    --dborder-2: rgba(255,255,255,0.12);
+    --dtext-0: #e2e0d6;
+    --dtext-1: #c4c2b8;
+    --dtext-2: #8a8778;
+    --dtext-3: #6b6a5e;
+    --dfont-mono: 'JetBrains Mono', monospace;
+    --dfont-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+    --dfont-serif: 'IBM Plex Serif', Georgia, serif;
+}
+body {
+    margin: 0;
+    background: var(--dbg-0);
+    color: var(--dtext-0);
+    font-family: var(--dfont-ui);
+}
+.events-page {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px 28px 60px;
+}
+.events-page-header {
+    font-family: var(--dfont-mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dtext-2);
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--dborder-0);
+    margin-bottom: 16px;
+}
+</style>
+</head>
+<body>
+
+<!-- ===== TOP BAR (rendered by common.js) ===== -->
+<div id="top-bar"></div>
+
+<!-- ===== CONTENT AREA ===== -->
+<div id="content-area">
+    <div class="events-page">
+        <div class="events-page-header">CIVIC — Public Discourse Network</div>
+        <div id="civic-root" style="min-height:400px;"></div>
+    </div>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage } from './js/common.js';
+import './js/guide.js';
+import { initCivic } from './js/civic.js';
+
+initPage('events', async (state) => {
+    const { nation, faction, shard } = state;
+    const currentTick = shard?.current_tick ?? nation?.current_tick ?? 0;
+    await initCivic(_supabase, nation.id, faction.id, currentTick);
+});
+</script>
+
+</body>
+</html>
