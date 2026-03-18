@@ -881,7 +881,7 @@ async function renderRevolutionBanner(nation) {
 
 function formatGdpGrowth(rawValue) {
     var v = Number(rawValue ?? 50);
-    var pct = ((v - 50) / 50) * 3;
+    var pct = ((v - 50) / 50) * 1;
     return (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
 }
 
@@ -970,7 +970,7 @@ function buildFeaturedAbpHTML(statKey) {
 function renderFeaturedGDP(nation) {
     var gdpRaw = nation.gdp;
     var gdpGrowthRaw = Number(nation.gdp_growth ?? 50);
-    var monthlyPct = ((gdpGrowthRaw - 50) / 50) * 3;
+    var monthlyPct = ((gdpGrowthRaw - 50) / 50) * 1;
     var yearlyPct = (Math.pow(1 + monthlyPct / 100, 12) - 1) * 100;
     var gdpDisplay = formatCurrencyShort(scaleRawToDollars(gdpRaw));
     // Split "$88.7 Billion" into value + unit
@@ -995,10 +995,10 @@ function renderFeaturedGDP(nation) {
 
     // GDP growth label
     var gdpLabel, tagColor, tagBorder;
-    if (monthlyPct < -1) { gdpLabel = 'Recession'; tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; }
+    if (monthlyPct < -0.33) { gdpLabel = 'Recession'; tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; }
     else if (monthlyPct < 0) { gdpLabel = 'Stagnant'; tagColor = 'var(--n-orange)'; tagBorder = 'rgba(249,115,22,0.3)'; }
-    else if (monthlyPct < 0.5) { gdpLabel = 'No Growth'; tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; }
-    else if (monthlyPct < 3) { gdpLabel = 'Growing'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
+    else if (monthlyPct < 0.17) { gdpLabel = 'No Growth'; tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; }
+    else if (monthlyPct < 1) { gdpLabel = 'Growing'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
     else { gdpLabel = 'Booming'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
 
     // Dot color matches tag
@@ -1006,11 +1006,11 @@ function renderFeaturedGDP(nation) {
 
     // Scale items
     var scaleItems = [
-        { label: 'Recession', range: '< -1%', active: monthlyPct < -1 },
-        { label: 'Stagnant', range: '-1% to 0%', active: monthlyPct >= -1 && monthlyPct < 0 },
-        { label: 'No Growth', range: '0% to 0.5%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
-        { label: 'Growing', range: '0.5% to 3%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
-        { label: 'Booming', range: '> 3%', active: monthlyPct >= 3 }
+        { label: 'Recession', range: '< -0.33%', active: monthlyPct < -0.33 },
+        { label: 'Stagnant', range: '-0.33% to 0%', active: monthlyPct >= -0.33 && monthlyPct < 0 },
+        { label: 'No Growth', range: '0% to 0.17%', active: monthlyPct >= 0 && monthlyPct < 0.17 },
+        { label: 'Growing', range: '0.17% to 1%', active: monthlyPct >= 0.17 && monthlyPct < 1 },
+        { label: 'Booming', range: '> 1%', active: monthlyPct >= 1 }
     ];
 
     // Sparkline
@@ -1154,14 +1154,14 @@ function renderFeaturedInflation(nation) {
 
 function renderFeaturedGDPGrowth(nation) {
     var gdpGrowthRaw = Number(nation.gdp_growth ?? 50);
-    var monthlyPct = ((gdpGrowthRaw - 50) / 50) * 3;
+    var monthlyPct = ((gdpGrowthRaw - 50) / 50) * 1;
     var yearlyPct = (Math.pow(1 + monthlyPct / 100, 12) - 1) * 100;
     var growthStr = (monthlyPct >= 0 ? '+' : '') + monthlyPct.toFixed(2) + '%';
     var yearlyStr = (yearlyPct >= 0 ? '+' : '') + yearlyPct.toFixed(2) + '%';
 
     // Color based on growth
     var growthColor, borderColor, dotColor, tagColor, tagBorder;
-    if (monthlyPct >= 0.5) { growthColor = '#4ade80'; borderColor = '#4ade80'; dotColor = 'var(--n-green)'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
+    if (monthlyPct >= 0.17) { growthColor = '#4ade80'; borderColor = '#4ade80'; dotColor = 'var(--n-green)'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
     else if (monthlyPct >= 0) { growthColor = '#facc15'; borderColor = '#facc15'; dotColor = 'var(--n-yellow)'; tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; }
     else { growthColor = '#ef4444'; borderColor = '#ef4444'; dotColor = 'var(--n-red)'; tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; }
 
@@ -1169,10 +1169,10 @@ function renderFeaturedGDPGrowth(nation) {
 
     // Growth label
     var gdpLabel;
-    if (monthlyPct < -1) { gdpLabel = 'Recession'; }
+    if (monthlyPct < -0.33) { gdpLabel = 'Recession'; }
     else if (monthlyPct < 0) { gdpLabel = 'Stagnant'; }
-    else if (monthlyPct < 0.5) { gdpLabel = 'No Growth'; }
-    else if (monthlyPct < 3) { gdpLabel = 'Growing'; }
+    else if (monthlyPct < 0.17) { gdpLabel = 'No Growth'; }
+    else if (monthlyPct < 1) { gdpLabel = 'Growing'; }
     else { gdpLabel = 'Booming'; }
 
     // Delta per tick
@@ -1183,17 +1183,17 @@ function renderFeaturedGDPGrowth(nation) {
         if (Math.abs(delta) >= 0.01) {
             var deltaDir = delta > 0 ? '\u25B2' : '\u25BC';
             var deltaColor = delta > 0 ? 'var(--n-green)' : 'var(--n-red)';
-            deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + ' ' + Math.abs(((delta) / 50) * 3).toFixed(2) + '% per tick</span>';
+            deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + ' ' + Math.abs(((delta) / 50) * 1).toFixed(2) + '% per tick</span>';
         }
     }
 
     // Scale items
     var scaleItems = [
-        { label: 'Recession', range: '< -1%', active: monthlyPct < -1 },
-        { label: 'Stagnant', range: '-1% to 0%', active: monthlyPct >= -1 && monthlyPct < 0 },
-        { label: 'No Growth', range: '0% to 0.5%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
-        { label: 'Growing', range: '0.5% to 3%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
-        { label: 'Booming', range: '> 3%', active: monthlyPct >= 3 }
+        { label: 'Recession', range: '< -0.33%', active: monthlyPct < -0.33 },
+        { label: 'Stagnant', range: '-0.33% to 0%', active: monthlyPct >= -0.33 && monthlyPct < 0 },
+        { label: 'No Growth', range: '0% to 0.17%', active: monthlyPct >= 0 && monthlyPct < 0.17 },
+        { label: 'Growing', range: '0.17% to 1%', active: monthlyPct >= 0.17 && monthlyPct < 1 },
+        { label: 'Booming', range: '> 1%', active: monthlyPct >= 1 }
     ];
 
     // Sparkline (large chart)
