@@ -42,11 +42,11 @@
             transition: border-color 0.3s;
         }
         .demand-card.urgent {
-            border-left-color: #ff4444;
+            border-left-color: var(--red);
             background: #1e1515;
         }
         .demand-card.warning {
-            border-left-color: #ff9800;
+            border-left-color: var(--orange);
         }
         .demand-header {
             display: flex;
@@ -78,8 +78,8 @@
             font-weight: bold;
         }
         .deadline-normal { color: #ffcc00; }
-        .deadline-warning { color: #ff9800; }
-        .deadline-urgent { color: #ff4444; }
+        .deadline-warning { color: var(--orange); }
+        .deadline-urgent { color: var(--red); }
         .demand-body {
             font-size: 0.85rem;
             color: #aaa;
@@ -117,12 +117,12 @@
             font-size: 0.75rem;
             font-weight: bold;
         }
-        .target-high { background: #1a2a1a; color: #4CAF50; }
-        .target-low { background: #2a1a1a; color: #ff4444; }
-        .target-moderate { background: #2a2a1a; color: #ff9800; }
+        .target-high { background: #1a2a1a; color: var(--green); }
+        .target-low { background: #2a1a1a; color: var(--red); }
+        .target-moderate { background: #2a2a1a; color: var(--orange); }
         .demand-penalty {
             font-size: 0.78rem;
-            color: #ff4444;
+            color: var(--red);
             font-weight: bold;
         }
 
@@ -214,5 +214,5 @@
             font-weight: bold;
             text-transform: uppercase;
         }
-        .badge-met { background: #1a2a1a; color: #4CAF50; border: 1px solid #4CAF50; }
-        .badge-failed { background: #2a1a1a; color: #ff4444; border: 1px solid #ff4444; }
+        .badge-met { background: #1a2a1a; color: var(--green); border: 1px solid #4CAF50; }
+        .badge-failed { background: #2a1a1a; color: var(--red); border: 1px solid #ff4444; }

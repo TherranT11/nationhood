@@ -39,7 +39,7 @@
 
         #tick-status-bar .tick-countdown {
             font-size: 1.3rem;
-            color: #4CAF50;
+            color: var(--green);
             font-weight: bold;
             font-family: 'Courier New', monospace;
         }
@@ -117,7 +117,7 @@
             overflow-y: auto;
         }
 
-        #sidebar .logout-btn { background: transparent; border: 1px solid #ff4444; color: #ff4444; padding: 6px 12px; cursor: pointer; border-radius: 4px; transition: 0.3s; margin-top: 10px; font-size: 0.75rem; width: 100%; }
+        #sidebar .logout-btn { background: transparent; border: 1px solid #ff4444; color: var(--red); padding: 6px 12px; cursor: pointer; border-radius: 4px; transition: 0.3s; margin-top: 10px; font-size: 0.75rem; width: 100%; }
         #sidebar .logout-btn:hover { background: #ff4444; color: white; }
         
         #details { background: #222; padding: 15px; border-radius: 4px; line-height: 1.6; border-left: 2px solid #444; }

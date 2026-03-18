@@ -74,7 +74,7 @@ body { background-color: #121212; color: #e0e0e0; font-family: sans-serif; displ
         .btn-join:disabled { background: #666; cursor: not-allowed; }
         .login-link { text-align: center; margin-top: 15px; font-size: 0.8rem; }
         .login-link a { color: #ffcc00; text-decoration: none; }
-        .error { color: #ff4444; font-size: 0.9rem; margin-top: 10px; text-align: center; }
+        .error { color: var(--red); font-size: 0.9rem; margin-top: 10px; text-align: center; }
         .info-note {
             background: #1a2a1a;
             border-left: 3px solid #4CAF50;
