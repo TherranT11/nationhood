@@ -160,7 +160,7 @@ body {
 
 /* ===== TOP BAR ===== */
 #top-bar {
-    background: #141412;
+    background: var(--bg-body);
     border-bottom: 1px solid rgba(255,255,255,0.06);
     z-index: 100;
     flex-shrink: 0;
@@ -804,7 +804,7 @@ body.light-mode .action-desc { color: var(--text-secondary); }
 .action-btn {
     width: 100%; padding: 10px;
     background: linear-gradient(135deg, #d4b45c 0%, #c8a64e 100%);
-    border: none; border-radius: 6px; color: #141412;
+    border: none; border-radius: 6px; color: var(--bg-body);
     font-family: var(--font-mono);
     font-weight: 700; font-size: 0.78rem;
     letter-spacing: 0.06em; text-transform: uppercase;

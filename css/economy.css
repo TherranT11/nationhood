@@ -2,7 +2,7 @@
 
 /* ===== TITLE BAR ===== */
 .econ-title-bar {
-    background: #141412;
+    background: var(--bg-body);
     border-bottom: 1px solid rgba(255,255,255,0.06);
     padding: 18px 24px 14px;
     text-align: center;
@@ -32,7 +32,7 @@ body.light-mode .econ-title {
     justify-content: center;
     gap: 2px;
     padding: 0;
-    background: #141412;
+    background: var(--bg-body);
     border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
@@ -372,7 +372,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    background: #141412;
+    background: var(--bg-body);
     border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 .bv2-col-title {
@@ -1012,7 +1012,7 @@ body.light-mode .econ-health-threshold {
 /* ===== LEGACY HERO BAR (kept for backward compat) ===== */
 
 .economy-hero {
-    background: #141412;
+    background: var(--bg-body);
     border-bottom: 1px solid rgba(255,255,255,0.06);
     padding: 24px 24px 28px;
     text-align: center;
@@ -1209,7 +1209,7 @@ body.light-mode .economy-stat-box {
 
 /* --- Header --- */
 .budget-header {
-    background: #141412;
+    background: var(--bg-body);
     padding: 16px 20px;
     border-bottom: 1px solid rgba(255,255,255,0.06);
     text-align: left;
@@ -1779,7 +1779,7 @@ body.light-mode .trade-score-bar {
     cursor: help;
 }
 .aff-tip-trigger {
-    border-bottom: 1px dotted #6b6a5e;
+    border-bottom: 1px dotted var(--text-muted);
 }
 .aff-tooltip {
     display: none;
@@ -1887,9 +1887,9 @@ body.light-mode .aff-tip-trigger { border-bottom-color: var(--text-secondary); }
 }
 
 .partner-stat-value.exports { color: var(--green, #5cb85c); }
-.partner-stat-value.imports { color: var(--red, #f44336); }
+.partner-stat-value.imports { color: var(--red, #d9534f); }
 .partner-stat-value.surplus { color: var(--green, #5cb85c); }
-.partner-stat-value.deficit { color: var(--red, #f44336); }
+.partner-stat-value.deficit { color: var(--red, #d9534f); }
 
 /* Volume bar */
 .partner-bar-container {
@@ -1912,7 +1912,7 @@ body.light-mode .aff-tip-trigger { border-bottom-color: var(--text-secondary); }
 }
 
 .partner-bar-imports {
-    background: var(--red, #f44336);
+    background: var(--red, #d9534f);
     border-radius: 0 3px 3px 0;
     min-width: 2px;
 }
@@ -1927,7 +1927,7 @@ body.light-mode .aff-tip-trigger { border-bottom-color: var(--text-secondary); }
 }
 
 .partner-legend-exports { color: var(--green, #5cb85c); }
-.partner-legend-imports { color: var(--red, #f44336); }
+.partner-legend-imports { color: var(--red, #d9534f); }
 
 /* Sector breakdown */
 .partner-sectors {
@@ -2300,7 +2300,7 @@ body.light-mode .partner-card {
     padding: 8px 12px;
     background: rgba(255, 68, 68, 0.06);
     border: 1px solid rgba(255, 68, 68, 0.12);
-    border-left: 3px solid #ff4444;
+    border-left: 3px solid var(--red);
     border-radius: 3px;
     font-family: var(--font-mono);
     font-size: 0.62rem;
@@ -2574,7 +2574,7 @@ body.light-mode .sector-score-threshold {
     font-family: var(--font-mono);
     font-size: 0.52rem;
     font-weight: 700;
-    color: #141412;
+    color: var(--bg-body);
     padding: 2px 6px;
     border-radius: 2px;
     letter-spacing: 0.06em;
@@ -2746,7 +2746,7 @@ body.light-mode .sector-score-threshold {
     font-family: var(--font-mono);
     font-size: 0.5rem;
     font-weight: 700;
-    color: #141412;
+    color: var(--bg-body);
     padding: 2px 6px;
     border-radius: 2px;
     letter-spacing: 0.04em;
@@ -3123,8 +3123,8 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
     transform: translateY(-50%);
     width: 14px;
     height: 14px;
-    background: #e2e0d6;
-    border: 2px solid #1e1e1a;
+    background: var(--text-bright);
+    border: 2px solid var(--bg-card);
     border-radius: 2px;
     box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
     z-index: 1;
@@ -3138,8 +3138,8 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
     transform: translateY(-50%);
     width: 14px;
     height: 14px;
-    background: #e2e0d6;
-    border: 2px solid #1e1e1a;
+    background: var(--text-bright);
+    border: 2px solid var(--bg-card);
     border-radius: 2px;
     box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
     z-index: 1;
@@ -3367,7 +3367,7 @@ body.light-mode .tax-hit-tag {
 }
 
 .tax-spark-bar.current {
-    background: #8a8778;
+    background: var(--text-secondary);
 }
 
 body.light-mode .tax-spark-bar { background: rgba(0,0,0,0.08); }
