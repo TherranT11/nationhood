@@ -19808,7 +19808,7 @@ async function executeDynastyAction(supabase, nationId, factionId, mode, targetF
  * Get regime health threshold label and effects.
  */
 function getRegimeHealthTier(regimeHealth) {
-    if (regimeHealth >= 60) return { label: 'HEALTHY', color: '#4CAF50', coupBonus: 0, loyaltyDecay: -2 };
+    if (regimeHealth >= 60) return { label: 'HEALTHY', color: '#5cb85c', coupBonus: 0, loyaltyDecay: -2 };
     if (regimeHealth >= 40) return { label: 'WEAKENING', color: '#FFC107', coupBonus: 5, loyaltyDecay: -2.5 };
     if (regimeHealth >= 20) return { label: 'DECLINING', color: '#FF9800', coupBonus: 10, loyaltyDecay: -3 };
     if (regimeHealth >= 1) return { label: 'CRITICAL', color: '#F44336', coupBonus: 20, loyaltyDecay: -4 };
@@ -20082,7 +20082,7 @@ function getCoupEstimate(faction, nation, allies = []) {
     else if (displayed < 40) { tier = 'RISKY'; color = '#FF9800'; }
     else if (displayed < 55) { tier = 'UNCERTAIN'; color = '#FFC107'; }
     else if (displayed < 70) { tier = 'FAVORABLE'; color = '#8BC34A'; }
-    else { tier = 'STRONG'; color = '#4CAF50'; }
+    else { tier = 'STRONG'; color = '#5cb85c'; }
 
     return { tier, color, displayed, trueProbability };
 }
@@ -22867,6 +22867,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             await processIdeologyShifts(supabase, nation.id, resolutions, newTick);
         } catch (ideoErr) {
             console.error(`[advanceTick] Ideology shifts failed for ${nation.name} (non-fatal):`, ideoErr);
+        }
+
+        // Natural ideology decay toward center (extremism erodes over time)
+        try {
+            await processIdeologyDecay(supabase, nation.id, newTick);
+        } catch (decayErr) {
+            console.error(`[advanceTick] Ideology decay failed for ${nation.name} (non-fatal):`, decayErr);
         }
 
         // Purge approval decay (autocracy scapegoat mechanic)
