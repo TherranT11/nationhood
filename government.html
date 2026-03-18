@@ -2241,7 +2241,7 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
     if (!stats || stats.length === 0 || !currentNation) return '';
 
     const DELTA_SENSITIVITY = 0.6; // must match MINISTER_APPROVAL_CONFIG.DELTA_SENSITIVITY
-    const BASELINE_DECAY = -0.25;  // must match MINISTER_APPROVAL_CONFIG.BASELINE_DECAY
+    const BASELINE_DECAY = -0.5;   // must match MINISTER_APPROVAL_CONFIG.BASELINE_DECAY
 
     const panelId = 'mstat-' + ministryKey;
     const baselines = ministry?.stat_baselines || {};
