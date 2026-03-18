@@ -462,7 +462,7 @@ async function renderWorldNations() {
     }
 
     try {
-        const [nationsRes, factionsRes, crisesRes, relationsRes, ambassadorsRes, theirAmbassadorsRes] = await Promise.all([
+        const [nationsRes, factionsRes, crisesRes, relationsRes, ambassadorsRes, theirAmbassadorsRes, ceasefireRes] = await Promise.all([
             _supabase.from('nations').select('*').order('name'),
             _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, seats, nation_id, party_color, ideology_value_1, ideology_value_2').eq('faction_type', 'party'),
             _supabase.from('active_crises').select('nation_id, crisis_id, crisis_templates(name)'),
@@ -471,13 +471,23 @@ async function renderWorldNations() {
             _supabase.from('ambassadors').select('target_nation_id')
                 .eq('nation_id', currentNation.id).eq('is_active', true).eq('status', 'active'),
             _supabase.from('ambassadors').select('nation_id')
-                .eq('target_nation_id', currentNation.id).eq('is_active', true).eq('status', 'active')
+                .eq('target_nation_id', currentNation.id).eq('is_active', true).eq('status', 'active'),
+            _supabase.from('diplomatic_proposals').select('proposing_nation_id, target_nation_id')
+                .eq('proposal_type', 'ceasefire').eq('status', 'active')
+                .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id)
         ]);
 
         if (nationsRes.error) {
             grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-text">Error loading nations.</div></div>';
             return;
         }
+
+        if (factionsRes.error) console.warn('World Nations: factions query error:', factionsRes.error);
+        if (crisesRes.error) console.warn('World Nations: crises query error:', crisesRes.error);
+        if (relationsRes.error) console.warn('World Nations: relations query error:', relationsRes.error);
+        if (ambassadorsRes.error) console.warn('World Nations: ambassadors query error:', ambassadorsRes.error);
+        if (theirAmbassadorsRes.error) console.warn('World Nations: their ambassadors query error:', theirAmbassadorsRes.error);
+        if (ceasefireRes.error) console.warn('World Nations: ceasefire query error:', ceasefireRes.error);
 
         const allNations = (nationsRes.data || []).filter(n => n.id !== currentNation.id);
         const factions = factionsRes.data || [];
@@ -501,6 +511,13 @@ async function renderWorldNations() {
         const ourAmbSet = new Set(ourAmbs.map(a => a.target_nation_id));
         const theirAmbSet = new Set(theirAmbs.map(a => a.nation_id));
 
+        // Build ceasefire set: nation IDs that have an active ceasefire with us
+        const ceasefireNations = new Set();
+        for (const cf of (ceasefireRes.data || [])) {
+            const otherId = cf.proposing_nation_id === currentNation.id ? cf.target_nation_id : cf.proposing_nation_id;
+            ceasefireNations.add(otherId);
+        }
+
         if (allNations.length === 0) {
             grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-text">No other nations found.</div></div>';
             return;
@@ -518,7 +535,8 @@ async function renderWorldNations() {
                 (r.nation_a_id === nation.id && r.nation_b_id === currentNation.id)
             );
             const score = rel?.relation_score ?? 35;
-            const tier = getRelationTier(score, false);
+            const hasCeasefire = ceasefireNations.has(nation.id);
+            const tier = getRelationTier(score, hasCeasefire);
             const dotColor = tierToDotColor(tier);
             const pillClass = tierToPillClass(tier);
 
@@ -543,7 +561,11 @@ async function renderWorldNations() {
             const pop = nation.population ? formatNumber(nation.population) : '—';
             const gdp = nation.gdp ? fmtBudgetCurrency(nation.gdp) : '—';
             const unemp = nation.unemployment != null ? nation.unemployment.toFixed(1) + '%' : '—';
-            const stab = nation.stability != null ? Math.round(nation.stability) : '—';
+            const stabRaw = nation.stability;
+            const stab = stabRaw != null ? Math.round(stabRaw) : '—';
+            const stabColor = stabRaw != null
+                ? (stabRaw >= 60 ? 'var(--green)' : stabRaw >= 40 ? 'var(--amber)' : 'var(--red)')
+                : 'var(--text-primary)';
             const approval = nation.gov_approval != null ? Math.round(nation.gov_approval) + '%' : '—';
 
             // Seat bar
@@ -576,10 +598,6 @@ async function renderWorldNations() {
             const crisisRows = nCrises.length > 0
                 ? nCrises.map(c => '<div class="wn-crisis-row"><span class="wn-crisis-pip"></span><span class="wn-crisis-name">' + escapeHtml(c.crisis_templates?.name || 'Unknown Crisis') + '</span></div>').join('')
                 : '<div class="wn-no-crisis">No active crises</div>';
-
-            // Stability color
-            const stabNum = nation.stability != null ? nation.stability : 50;
-            const stabColor = stabNum >= 60 ? 'var(--green)' : stabNum >= 40 ? 'var(--amber)' : 'var(--red)';
 
             html += '<div class="wn-card">' +
                 // Header
@@ -629,7 +647,8 @@ async function renderWorldNations() {
 
         grid.innerHTML = html;
     } catch (err) {
-        console.error('Error rendering world nations:', err);
+        console.warn('Error rendering world nations:', err);
+        worldNationsLoaded = false; // allow retry on next toggle
         grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-text">Error loading nations.</div></div>';
     }
 }
