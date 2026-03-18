@@ -77,9 +77,9 @@ html { overflow-y: scroll !important; height: auto !important; }
         .bill-articles { padding: 24px; }
         .article { background: var(--bg-card); border-radius: 3px; padding: 20px; margin-bottom: 16px; border-left: 4px solid var(--text-muted); border: 1px solid var(--border-main); border-left: 4px solid var(--text-muted); }
         .article.preamble { border-left-color: var(--amber); background: var(--amber-faint); }
-        .article-number { font-size: 0.72rem; color: var(--amber); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; font-family: var(--font-mono); font-weight: 600; }
+        .article-number { font-size: 0.72rem; color: var(--amber); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; font-family: var(--font-mono); font-weight: 500; }
         .article-title { font-size: 1.05rem; font-weight: 700; color: var(--text-bright); margin-bottom: 8px; font-family: var(--font-ui); }
-        .article-ideology { display: inline-block; font-size: 0.68rem; padding: 2px 8px; border-radius: 3px; margin-left: 8px; vertical-align: middle; font-family: var(--font-mono); font-weight: 600; }
+        .article-ideology { display: inline-block; font-size: 0.68rem; padding: 2px 8px; border-radius: 3px; margin-left: 8px; vertical-align: middle; font-family: var(--font-mono); font-weight: 500; }
         .article-ideology.aligned { background: var(--green-faint); color: var(--green); border: 1px solid var(--green-border); }
         .article-ideology.opposed { background: var(--red-faint); color: var(--red); border: 1px solid var(--red-border); }
         .article-ideology.neutral { background: rgba(255,255,255,0.04); color: var(--text-muted); border: 1px solid var(--border-mid); }
@@ -99,7 +99,7 @@ html { overflow-y: scroll !important; height: auto !important; }
         .policy-type-badge.lever { background: var(--teal-faint); color: var(--teal); border: 1px solid var(--teal-border); }
         .bill-totals { background: var(--bg-card); border-radius: 3px; padding: 20px; margin: 0 24px 24px; display: flex; justify-content: space-around; border: 1px solid var(--border-strong); }
         .total-item { text-align: center; }
-        .total-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; font-family: var(--font-mono); font-weight: 600; }
+        .total-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; font-family: var(--font-mono); font-weight: 500; }
         .total-value { font-size: 1.5rem; font-weight: 700; color: var(--orange); font-family: var(--font-mono); }
         .total-value.revenue { color: var(--green); }
 
@@ -113,7 +113,7 @@ html { overflow-y: scroll !important; height: auto !important; }
         .ideology-warning-detail { font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px; }
 
         .voting-section { padding: 24px; border-top: 1px solid var(--border-main); background: var(--bg-card); }
-        .voting-title { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 16px; font-family: var(--font-mono); font-weight: 600; }
+        .voting-title { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 16px; font-family: var(--font-mono); font-weight: 500; }
         .voting-buttons { display: flex; gap: 12px; }
         .vote-btn { flex: 1; padding: 14px; border: none; border-radius: 3px; font-size: 0.78rem; font-weight: 700; cursor: pointer; transition: opacity 0.2s; text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--font-mono); }
         .vote-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -125,7 +125,7 @@ html { overflow-y: scroll !important; height: auto !important; }
         .vote-btn.abstain:hover:not(:disabled) { opacity: 0.85; }
         .vote-btn.selected { box-shadow: 0 0 0 2px var(--amber); }
         .current-vote { margin-top: 16px; padding: 12px; background: var(--bg-card); border-radius: 3px; text-align: center; border: 1px solid var(--border-main); }
-        .current-vote-label { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; }
+        .current-vote-label { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; }
         .current-vote-value { font-weight: 700; font-size: 1.1rem; }
         .current-vote-value.yes { color: var(--green); }
         .current-vote-value.no { color: var(--red); }
@@ -142,7 +142,7 @@ html { overflow-y: scroll !important; height: auto !important; }
         .bill-sidebar { display: flex; flex-direction: column; gap: 16px; max-height: calc(100vh - 120px); position: sticky; top: 80px; align-self: start; }
         .support-box { background: var(--bg-panel); border-radius: 3px; overflow: hidden; border: 1px solid var(--border-main); }
         .support-box-header { padding: 14px; background: var(--bg-card); border-bottom: 1px solid var(--border-light); }
-        .support-box-title { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; font-family: var(--font-mono); }
+        .support-box-title { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; font-family: var(--font-mono); }
         .support-box-content { padding: 14px; max-height: 200px; overflow-y: auto; }
         .support-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; background: var(--bg-card); border-radius: 3px; margin-bottom: 8px; border: 1px solid var(--border-light); }
         .support-item:last-child { margin-bottom: 0; }
@@ -168,7 +168,7 @@ html { overflow-y: scroll !important; height: auto !important; }
         .amendment-btn.reject { background: var(--red); color: white; }
         .vote-tally { background: var(--bg-panel); border-radius: 3px; overflow: hidden; border: 1px solid var(--border-main); }
         .vote-tally-header { padding: 14px; background: var(--bg-card); border-bottom: 1px solid var(--border-light); }
-        .vote-tally-title { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; font-family: var(--font-mono); }
+        .vote-tally-title { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; font-family: var(--font-mono); }
         .vote-tally-content { padding: 14px; }
         .vote-tally-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border-main); }
         .vote-tally-row:last-child { border-bottom: none; }
@@ -193,7 +193,7 @@ html { overflow-y: scroll !important; height: auto !important; }
         .amendment-text { color: var(--text-secondary); font-size: 0.82rem; font-style: italic; margin-bottom: 8px; white-space: pre-wrap; }
         .chat-container { background: var(--bg-panel); border-radius: 3px; flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 300px; border: 1px solid var(--border-main); }
         .chat-header { padding: 14px; background: var(--bg-card); border-bottom: 1px solid var(--border-light); }
-        .chat-title { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; font-family: var(--font-mono); }
+        .chat-title { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; font-family: var(--font-mono); }
         .chat-messages { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; max-height: 250px; }
         .chat-message { background: var(--bg-card); border-radius: 3px; padding: 12px; border: 1px solid var(--border-light); }
         .chat-message-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -212,11 +212,11 @@ html { overflow-y: scroll !important; height: auto !important; }
         .modal-overlay.active { display: flex; }
         .modal-content { background: var(--bg-panel); border: 1px solid var(--border-strong); border-radius: 3px; padding: 24px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-main); }
-        .modal-title { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; font-family: var(--font-mono); }
+        .modal-title { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--font-mono); }
         .modal-close { background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer; }
         .modal-close:hover { color: var(--text-bright); }
         .form-group { margin-bottom: 16px; }
-        .form-label { display: block; font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; font-family: var(--font-mono); font-weight: 600; }
+        .form-label { display: block; font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; font-family: var(--font-mono); font-weight: 500; }
         .form-select { width: 100%; padding: 12px; background: var(--bg-card); border: 1px solid var(--border-mid); border-radius: 3px; color: var(--text-primary); font-size: 0.9rem; font-family: var(--font-ui); }
         .form-select:focus { outline: none; border-color: var(--blue); }
         .policy-option { position: relative; background: var(--bg-card); border: 1px solid var(--border-mid); border-radius: 3px; padding: 12px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.2s; }
@@ -319,7 +319,7 @@ html { overflow-y: scroll !important; height: auto !important; }
     font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
     color: var(--blue);
     margin-bottom: 12px;
     padding-bottom: 6px;
@@ -382,7 +382,7 @@ html { overflow-y: scroll !important; height: auto !important; }
 }
 .counterparty-nation {
     color: var(--text-bright);
-    font-weight: 600;
+    font-weight: 500;
     font-family: var(--font-ui);
 }
 .counterparty-badge {

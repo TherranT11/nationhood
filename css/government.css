@@ -99,10 +99,10 @@ body {
         .administration-title {
             font-family: var(--font-mono);
             font-size: 11px;
-            font-weight: 600;
+            font-weight: 500;
             color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.06em;
             margin-bottom: 8px;
         }
         .administration-subtitle { font-size: 0.85rem; color: var(--text-secondary); }
@@ -113,7 +113,7 @@ body {
         }
         .admin-leaders-column { display: flex; flex-direction: column; gap: 12px; }
         .admin-section { background: var(--bg-panel); border-radius: 3px; padding: 16px; }
-        .admin-section-title { font-family: var(--font-mono); font-size: 9px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; }
+        .admin-section-title { font-family: var(--font-mono); font-size: 9px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
         .admin-person-name { font-size: 1.1rem; color: var(--text-primary); font-weight: bold; margin-bottom: 4px; }
         .admin-person-details { font-size: 0.8rem; color: var(--text-secondary); }
         .admin-person-party { color: var(--text-bright); font-weight: bold; }
@@ -132,10 +132,10 @@ body {
             border-bottom: 1px solid var(--border-hair);
             font-family: var(--font-mono);
             font-size: 9px;
-            font-weight: 600;
+            font-weight: 500;
             color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.06em;
         }
         .admin-chat-messages {
             flex: 1;
@@ -211,9 +211,9 @@ body {
             padding: 8px 16px;
             font-family: var(--font-mono);
             font-size: 9px;
-            font-weight: 600;
+            font-weight: 500;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.06em;
             cursor: pointer;
             transition: opacity 0.2s;
         }
@@ -273,7 +273,7 @@ body {
         .ministry-card__title {
             font-family: var(--font-mono);
             font-size: 0.7rem;
-            font-weight: 600;
+            font-weight: 500;
             letter-spacing: 0.08em;
             text-transform: uppercase;
             color: var(--text-secondary);
@@ -329,7 +329,7 @@ body {
             font-family: var(--font-mono);
             font-size: 7.5px;
             font-weight: 700;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.06em;
             text-transform: uppercase;
             padding: 4px 9px;
             cursor: pointer;
@@ -395,7 +395,7 @@ body {
         .ministry-card__vacant-label {
             font-family: var(--font-mono);
             font-size: 11px;
-            font-weight: 600;
+            font-weight: 500;
             color: var(--text-faint);
             padding: 14px 20px;
         }
@@ -404,14 +404,14 @@ body {
         .ministry-card__pending {
             padding: 8px 20px;
             background: rgba(200,166,78,0.05);
-            border-bottom: 1px solid rgba(255,255,255,0.04);
+            border-bottom: 1px solid var(--border-light);
             flex-shrink: 0;
         }
         .ministry-card__pending-label {
             font-family: var(--font-mono);
             font-size: 8px;
-            font-weight: 600;
-            letter-spacing: 0.1em;
+            font-weight: 500;
+            letter-spacing: 0.06em;
             text-transform: uppercase;
             color: var(--amber);
             background: var(--amber-faint);
@@ -425,7 +425,7 @@ body {
         .ministry-card__actions-label {
             font-family: var(--font-mono);
             font-size: 7.5px;
-            font-weight: 600;
+            font-weight: 500;
             letter-spacing: 0.15em;
             text-transform: uppercase;
             color: var(--text-secondary);
@@ -559,7 +559,7 @@ body {
             font-family: var(--font-mono);
             font-size: 7.5px;
             font-weight: 700;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.06em;
             text-transform: uppercase;
             background-color: var(--teal);
             border: 1px solid var(--teal-border);
@@ -575,7 +575,7 @@ body {
             font-family: var(--font-mono);
             font-size: 7.5px;
             font-weight: 700;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.06em;
             text-transform: uppercase;
             background-color: #3a7a38;
             border: 1px solid #4e9e4c;
@@ -590,7 +590,7 @@ body {
             font-family: var(--font-mono);
             font-size: 7.5px;
             font-weight: 700;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.06em;
             text-transform: uppercase;
             background-color: var(--bg-card);
             border: 1px solid var(--border-main);
@@ -614,7 +614,7 @@ body {
             font-family: var(--font-mono); font-size: 9px; color: var(--text-muted);
             cursor: pointer; user-select: none;
             border: none; background: none; width: 100%; text-align: left;
-            border-bottom: 1px solid rgba(255,255,255,0.04);
+            border-bottom: 1px solid var(--border-light);
             flex-shrink: 0;
         }
         .ministry-stats-toggle:hover { color: var(--text-secondary); }
@@ -667,7 +667,7 @@ body {
         }
         .ministry-btn {
             padding: 4px 10px; border: none; border-radius: 3px; font-family: var(--font-mono); font-size: 8.5px;
-            font-weight: 600; cursor: pointer; text-transform: uppercase; letter-spacing: 0.06em;
+            font-weight: 500; cursor: pointer; text-transform: uppercase; letter-spacing: 0.06em;
             transition: all 0.2s; display: inline-flex; align-items: center; gap: 4px;
         }
         .ministry-btn:hover { opacity: 0.85; transform: translateY(-1px); }
@@ -743,7 +743,7 @@ body {
             display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-main);
         }
-        .modal-title { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; }
+        .modal-title { font-family: var(--font-mono); font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
         .modal-close { background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer; }
         .modal-close:hover { color: var(--text-primary); }
         .modal-subtitle { color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 16px; }
@@ -764,12 +764,12 @@ body {
             display: flex; justify-content: flex-end; gap: 12px;
             margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-main);
         }
-        .btn-cancel { padding: 12px 24px; background: var(--bg-card); border: 1px solid var(--border-0); border-radius: 3px; color: var(--text-secondary); cursor: pointer; font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
+        .btn-cancel { padding: 12px 24px; background: var(--bg-card); border: 1px solid var(--border-0); border-radius: 3px; color: var(--text-secondary); cursor: pointer; font-family: var(--font-mono); font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
         .btn-cancel:hover { background: var(--bg-hover); color: var(--text-primary); }
         .btn-submit {
             padding: 12px 24px; background: var(--green);
-            border: none; border-radius: 3px; color: #fff; font-weight: 600; cursor: pointer;
-            font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
+            border: none; border-radius: 3px; color: #fff; font-weight: 500; cursor: pointer;
+            font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em;
         }
         .btn-submit:disabled { background: var(--bg-card); color: var(--text-dim); cursor: not-allowed; }
 
@@ -786,8 +786,8 @@ body {
         }
         .revolution-banner .revolution-icon { font-size: 2.5rem; margin-bottom: 8px; }
         .revolution-banner .revolution-title {
-            font-family: var(--font-mono); font-size: 11px; color: var(--red); font-weight: 600;
-            text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;
+            font-family: var(--font-mono); font-size: 11px; color: var(--red); font-weight: 500;
+            text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;
         }
         .revolution-banner .revolution-subtitle {
             font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px;
@@ -810,8 +810,8 @@ body {
         }
         .revolution-complete-banner .revolution-icon { font-size: 2.5rem; margin-bottom: 8px; }
         .revolution-complete-banner .revolution-title {
-            font-family: var(--font-mono); font-size: 11px; color: var(--green); font-weight: 600;
-            text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;
+            font-family: var(--font-mono); font-size: 11px; color: var(--green); font-weight: 500;
+            text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;
         }
         .revolution-complete-banner .revolution-subtitle {
             font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px;
@@ -856,8 +856,8 @@ body {
         }
         .formation-icon { font-size: 2.4rem; margin-bottom: 8px; }
         .formation-title {
-            font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--green);
-            text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px;
+            font-family: var(--font-mono); font-size: 11px; font-weight: 500; color: var(--green);
+            text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
         }
         .formation-title.warning { color: var(--amber); }
         .formation-title.critical { color: var(--red); letter-spacing: 0.12em; font-size: 12px; }
@@ -871,8 +871,8 @@ body {
             padding: 18px 20px; margin-bottom: 20px; text-align: center;
         }
         .countdown-label {
-            font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
-            color: var(--text-muted); font-weight: 600; margin-bottom: 10px;
+            font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em;
+            color: var(--text-muted); font-weight: 500; margin-bottom: 10px;
         }
         .countdown-track {
             width: 100%; height: 6px; background: var(--bg-card); border-radius: 0;
@@ -930,11 +930,11 @@ body {
         }
         .snap-warning-icon { font-size: 1.8rem; flex-shrink: 0; }
         .snap-warning-content { flex: 1; }
-        .snap-warning-title { font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: var(--red); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+        .snap-warning-title { font-family: var(--font-mono); font-size: 10px; font-weight: 500; color: var(--red); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
         .snap-warning-desc { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4; }
         .snap-penalty-tags { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
         .snap-penalty-tag {
-            font-family: var(--font-mono); font-size: 8.5px; font-weight: 600;
+            font-family: var(--font-mono); font-size: 8.5px; font-weight: 500;
             padding: 3px 10px; border-radius: 3px;
         }
         .snap-penalty-tag.first { background: var(--red-faint); color: var(--red); border: 1px solid var(--red-border); }
@@ -945,8 +945,8 @@ body {
         .formation-cta-btn {
             display: inline-block; padding: 12px 32px;
             background: var(--green);
-            color: #fff; border-radius: 3px; font-weight: 600;
-            font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
+            color: #fff; border-radius: 3px; font-weight: 500;
+            font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em;
             cursor: pointer; transition: all 0.2s; border: none;
         }
         .formation-cta-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(92,184,92,0.3); }
@@ -983,8 +983,8 @@ body {
         }
         .caretaker-icon { font-size: 1.4rem; margin-bottom: 6px; }
         .caretaker-title {
-            font-family: var(--font-mono); font-size: 10px; color: var(--amber); font-weight: 600;
-            text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;
+            font-family: var(--font-mono); font-size: 10px; color: var(--amber); font-weight: 500;
+            text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;
         }
         .caretaker-subtitle {
             font-size: 0.8rem; color: var(--text-secondary); margin-top: 6px; line-height: 1.5;
@@ -995,7 +995,7 @@ body {
             margin-top: 10px;
         }
         .caretaker-restriction-tag {
-            font-family: var(--font-mono); font-size: 8.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+            font-family: var(--font-mono); font-size: 8.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em;
             padding: 4px 10px; border-radius: 3px;
             background: var(--amber-faint); color: var(--amber); border: 1px solid var(--amber-border);
         }
@@ -1015,7 +1015,7 @@ body {
             user-select: none;
         }
         .past-admins-toggle:hover { border-color: var(--text-dim); background: var(--bg-card); }
-        .past-admins-toggle-text { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+        .past-admins-toggle-text { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
         .past-admins-toggle .chevron { color: var(--text-muted); font-size: 1.2rem; transition: transform 0.3s; }
         .past-admins-toggle.open .chevron { transform: rotate(180deg); }
 
@@ -1094,10 +1094,10 @@ body {
         .pad-section-title {
             font-family: var(--font-mono);
             font-size: 9px;
-            font-weight: 600;
+            font-weight: 500;
             color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.06em;
             margin: 16px 0 8px;
             padding-bottom: 4px;
             border-bottom: 1px solid var(--border-hair);
@@ -1232,10 +1232,10 @@ body {
         .gov-tip-title {
             font-family: var(--font-mono);
             font-size: 0.65rem;
-            font-weight: 600;
+            font-weight: 500;
             color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.06em;
             margin-bottom: 10px;
         }
         .gov-tip-row {
@@ -1262,7 +1262,7 @@ body {
         .gov-tip-val {
             font-family: var(--font-mono);
             font-size: 0.68rem;
-            font-weight: 600;
+            font-weight: 500;
             color: var(--text-bright);
             width: 24px;
             text-align: right;
@@ -1293,7 +1293,7 @@ body {
             padding: 1px 0;
         }
         .gov-tip-evt span:last-child {
-            font-weight: 600;
+            font-weight: 500;
             font-variant-numeric: tabular-nums;
             margin-left: 8px;
         }
@@ -1310,7 +1310,7 @@ body {
             padding: 20px 24px;
             margin-bottom: 20px;
         }
-        .formation-header-box .formation-title { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; letter-spacing: 0.1em; }
+        .formation-header-box .formation-title { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); font-weight: 500; margin-bottom: 4px; letter-spacing: 0.06em; }
         .formation-proposer { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px; }
         .formation-parties-row { display: flex; flex-wrap: wrap; gap: 16px; }
         .formation-party-chip { background: var(--bg-panel); border: 1px solid var(--border-0); border-radius: 3px; padding: 8px 16px; font-size: 0.9rem; color: var(--text-primary); font-weight: bold; }
@@ -1320,7 +1320,7 @@ body {
         .formation-header-box .formation-stat .stat-highlight { color: var(--green); font-weight: bold; }
         .formation-header-box .formation-stat .stat-highlight.below-threshold { color: var(--red); }
         .formation-ideologies { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-        .ideology-chip { padding: 4px 10px; border-radius: 3px; font-family: var(--font-mono); font-size: 8.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+        .ideology-chip { padding: 4px 10px; border-radius: 3px; font-family: var(--font-mono); font-size: 8.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
         .ideology-chip.liberty { background: #9C27B0; color: white; }
         .ideology-chip.equality { background: #E91E63; color: white; }
         .ideology-chip.freedom { background: #5b9bd5; color: white; }
@@ -1334,15 +1334,15 @@ body {
 
         /* Support bar */
         .support-bar { background: var(--bg-panel); border-radius: 3px; padding: 16px; margin-bottom: 20px; border: 1px solid var(--border-0); }
-        .support-bar-title { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; font-weight: 600; }
+        .support-bar-title { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; font-weight: 500; }
         .support-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-hair); }
         .support-row:last-child { border-bottom: none; }
         .support-party-name { font-size: 0.9rem; color: var(--text-bright); font-weight: bold; }
         .support-party-name .you-tag { font-family: var(--font-mono); font-size: 8.5px; color: var(--blue); margin-left: 6px; }
-        .support-status { font-family: var(--font-mono); font-size: 8.5px; font-weight: 600; padding: 4px 12px; border-radius: 3px; }
+        .support-status { font-family: var(--font-mono); font-size: 8.5px; font-weight: 500; padding: 4px 12px; border-radius: 3px; }
         .support-status.yes { background: var(--green-faint); color: var(--green); border: 1px solid var(--green-border); }
         .support-status.pending { background: var(--bg-card); color: var(--text-muted); }
-        .support-toggle-btn { padding: 8px 20px; border: none; border-radius: 3px; font-family: var(--font-mono); font-size: 9px; font-weight: 600; cursor: pointer; transition: 0.3s; text-transform: uppercase; letter-spacing: 0.06em; }
+        .support-toggle-btn { padding: 8px 20px; border: none; border-radius: 3px; font-family: var(--font-mono); font-size: 9px; font-weight: 500; cursor: pointer; transition: 0.3s; text-transform: uppercase; letter-spacing: 0.06em; }
         .support-toggle-btn.btn-support { background: var(--green); color: white; }
         .support-toggle-btn.btn-withdraw { background: var(--red); color: white; }
         .support-toggle-btn:hover { opacity: 0.85; }
@@ -1358,7 +1358,7 @@ body {
         .ministry-item.locked { border-left-color: var(--green); }
         .ministry-item.inactive-ministry { border-left-color: var(--text-faint); opacity: 0.4; }
         .ministry-info { flex: 1; min-width: 0; }
-        .ministry-item-name { font-family: var(--font-mono); font-size: 9px; font-weight: 600; color: var(--text-muted); margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.06em; }
+        .ministry-item-name { font-family: var(--font-mono); font-size: 9px; font-weight: 500; color: var(--text-muted); margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.06em; }
         .ministry-item.locked .ministry-item-name { color: var(--green); }
         .ministry-item-desc { font-size: 0.72rem; color: var(--text-dim); line-height: 1.3; }
         .ministry-minister-name { font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px; }
@@ -1368,7 +1368,7 @@ body {
 
         /* Chat panel (formation negotiation) */
         .chat-panel { background: var(--bg-panel); border-radius: 3px; border: 1px solid var(--border-0); display: flex; flex-direction: column; height: 520px; }
-        .chat-header { padding: 12px 16px; border-bottom: 1px solid var(--border-hair); font-family: var(--font-mono); font-size: 9px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; }
+        .chat-header { padding: 12px 16px; border-bottom: 1px solid var(--border-hair); font-family: var(--font-mono); font-size: 9px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
         .chat-messages { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
         .chat-msg { max-width: 85%; }
         .chat-msg.mine { align-self: flex-end; }
@@ -1381,13 +1381,13 @@ body {
         .chat-input-row { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border-hair); }
         .chat-input-row input { flex: 1; padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-0); color: var(--text-primary); border-radius: 3px; font-size: 0.85rem; font-family: var(--font-ui); }
         .chat-input-row input:focus { outline: none; border-color: var(--text-muted); }
-        .chat-send-btn { padding: 10px 20px; background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border-0); border-radius: 3px; font-family: var(--font-mono); font-size: 9px; font-weight: 600; cursor: pointer; text-transform: uppercase; letter-spacing: 0.06em; }
+        .chat-send-btn { padding: 10px 20px; background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border-0); border-radius: 3px; font-family: var(--font-mono); font-size: 9px; font-weight: 500; cursor: pointer; text-transform: uppercase; letter-spacing: 0.06em; }
         .chat-send-btn:hover { background: var(--bg-hover); }
         .chat-empty { color: var(--text-dim); font-style: italic; text-align: center; padding: 40px 20px; font-size: 0.85rem; }
 
         /* Form government button */
         .form-gov-section { text-align: center; margin: 20px 0; }
-        .form-gov-btn { padding: 16px 48px; background: var(--green); color: white; border: none; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; cursor: pointer; text-transform: uppercase; letter-spacing: 0.1em; transition: 0.3s; }
+        .form-gov-btn { padding: 16px 48px; background: var(--green); color: white; border: none; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 500; cursor: pointer; text-transform: uppercase; letter-spacing: 0.06em; transition: 0.3s; }
         .form-gov-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(92,184,92,0.3); }
         .form-gov-btn:disabled { background: var(--bg-card); color: var(--text-dim); cursor: not-allowed; transform: none; box-shadow: none; }
 
@@ -1408,7 +1408,7 @@ body {
         .proposal-card-ideologies { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
         .proposal-card-support { font-size: 0.8rem; color: var(--text-secondary); }
         .proposal-card-support .count { color: var(--green); font-weight: bold; }
-        .proposal-your-status { display: inline-block; font-family: var(--font-mono); font-size: 8.5px; padding: 3px 8px; border-radius: 3px; font-weight: 600; margin-left: 8px; }
+        .proposal-your-status { display: inline-block; font-family: var(--font-mono); font-size: 8.5px; padding: 3px 8px; border-radius: 3px; font-weight: 500; margin-left: 8px; }
         .proposal-your-status.supporting { background: var(--green-faint); color: var(--green); border: 1px solid var(--green-border); }
         .proposal-your-status.invited { background: var(--amber-faint); color: var(--orange); border: 1px solid var(--amber-border); }
         .proposal-card.not-invited { cursor: default; opacity: 0.7; border-color: var(--border-hair); }
@@ -1472,8 +1472,8 @@ body {
             gap: 8px; margin-bottom: 6px;
         }
         .overreach-label {
-            font-family: var(--font-mono); font-size: 8px; font-weight: 600;
-            text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted);
+            font-family: var(--font-mono); font-size: 8px; font-weight: 500;
+            text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted);
         }
         .overreach-count {
             font-family: var(--font-mono); font-size: 8px; color: var(--text-secondary);
@@ -1542,7 +1542,7 @@ body {
         .eo-card.unavailable:hover { border-color: var(--border-0); background: var(--bg-card); }
         .eo-card-left { flex: 1; }
         .eo-card-name {
-            font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+            font-family: var(--font-mono); font-size: 10px; font-weight: 500;
             text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-primary);
             margin-bottom: 4px;
         }
@@ -1557,7 +1557,7 @@ body {
             color: var(--amber);
         }
         .eo-card-status {
-            font-family: var(--font-mono); font-size: 8px; font-weight: 600;
+            font-family: var(--font-mono); font-size: 8px; font-weight: 500;
             text-transform: uppercase; letter-spacing: 0.05em;
             padding: 2px 6px; border-radius: 2px;
         }
@@ -1569,8 +1569,8 @@ body {
         .eo-confirm-panel { display: none; }
         .eo-confirm-panel.active { display: block; }
         .eo-confirm-title {
-            font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-            text-transform: uppercase; letter-spacing: 0.1em; color: var(--amber);
+            font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+            text-transform: uppercase; letter-spacing: 0.06em; color: var(--amber);
             margin-bottom: 12px;
         }
         .eo-confirm-desc {
@@ -1587,7 +1587,7 @@ body {
         .eo-option-btn {
             padding: 8px 16px; background: var(--bg-card); border: 1px solid var(--border-0);
             border-radius: 3px; color: var(--text-secondary); cursor: pointer;
-            font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+            font-family: var(--font-mono); font-size: 9px; font-weight: 500;
             text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.2s;
         }
         .eo-option-btn:hover { border-color: var(--text-dim); color: var(--text-primary); }
@@ -1606,7 +1606,7 @@ body {
         .eo-btn-confirm {
             padding: 12px 24px; background: var(--amber);
             border: none; border-radius: 3px; color: var(--bg-body); font-weight: 700; cursor: pointer;
-            font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
+            font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em;
             transition: background 0.2s;
         }
         .eo-btn-confirm:hover { background: var(--accent-hover); }
@@ -1626,7 +1626,7 @@ body {
         }
         .emergency-banner-label {
             font-family: var(--font-mono); font-size: 9px; font-weight: 700;
-            text-transform: uppercase; letter-spacing: 0.1em; color: var(--red);
+            text-transform: uppercase; letter-spacing: 0.06em; color: var(--red);
         }
         .emergency-banner-ticks {
             font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary);
@@ -1636,7 +1636,7 @@ body {
         .emergency-advance-btn {
             padding: 6px 14px; background: transparent; border: 1px solid var(--red-border);
             border-radius: 3px; color: var(--red); cursor: pointer;
-            font-family: var(--font-mono); font-size: 8px; font-weight: 600;
+            font-family: var(--font-mono); font-size: 8px; font-weight: 500;
             text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.2s;
             margin-left: 8px;
         }

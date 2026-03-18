@@ -495,7 +495,7 @@
         .sc-sentence .sc-src { font-weight: bold; font-family: monospace; font-size: 0.82rem; }
         .sc-sentence .sc-tgt { font-weight: bold; font-family: monospace; font-size: 0.82rem; }
         .sc-sentence .sc-cond {
-            font-family: monospace; font-size: 0.78rem; font-weight: 600;
+            font-family: monospace; font-size: 0.78rem; font-weight: 500;
             padding: 1px 6px; border-radius: 3px;
         }
         .sc-sentence .sc-cond-above { color: #f97316; background: rgba(249,115,22,0.1); }

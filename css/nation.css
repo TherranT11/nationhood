@@ -59,15 +59,15 @@
 .nation-header__stat-label {
     font-family: var(--n-font-mono);
     font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.1em;
+    font-weight: 500;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--n-tertiary);
 }
 .nation-header__stat-value {
     font-family: var(--n-font-mono);
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--n-primary);
     margin-top: 2px;
 }
@@ -100,8 +100,8 @@
 .nation-summary__label {
     font-family: var(--n-font-mono);
     font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.1em;
+    font-weight: 500;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--n-tertiary);
     display: block;
@@ -153,7 +153,7 @@
     font-family: var(--n-font-sans);
     font-size: 11px;
     color: var(--n-red);
-    font-weight: 600;
+    font-weight: 500;
 }
 .crisis-summary-item__desc {
     font-family: var(--n-font-sans);
@@ -320,7 +320,7 @@
     font-weight: 700;
     color: var(--n-red);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
     margin-bottom: 6px;
 }
 .revolution-banner__subtitle {
@@ -348,7 +348,7 @@
 .revolution-tag {
     font-family: var(--n-font-mono);
     font-size: 9px;
-    font-weight: 600;
+    font-weight: 500;
     padding: 3px 8px;
     border-radius: 2px;
 }
@@ -521,7 +521,7 @@
     font-family: var(--n-font-mono);
     font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--n-primary);
     flex: 1;
@@ -647,8 +647,8 @@
 .featured-card__abp-title {
     font-family: var(--n-font-mono);
     font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.1em;
+    font-weight: 500;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--n-tertiary);
     margin-bottom: 6px;
@@ -660,7 +660,7 @@
     align-items: center;
     gap: 8px;
     padding: 7px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--border-light);
     font-size: 12px;
 }
 .featured-card__abp-name {
