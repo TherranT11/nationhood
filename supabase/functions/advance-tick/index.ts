@@ -13470,7 +13470,7 @@ async function processInstitutionGrowth(supabase, nation, instConfig, itemAlloca
     const nationUpdates = {};
 
     for (const inst of instConfig) {
-        if (!inst.growth_stat || !inst.growth_ceiling) continue;
+        if (!inst.growth_stat || inst.growth_ceiling == null) continue;
         if (!NATION_STAT_COLUMN_SET.has(inst.growth_stat)) continue;
         if (STAT_PROCESSOR_SKIP.has(inst.growth_stat)) continue;
 

@@ -54,6 +54,34 @@ UPDATE ministry_institution_config SET primary_stat = 'renewable_energy_percenta
 UPDATE ministry_institution_config SET secondary_stat = 'renewable_energy_percentage'
     WHERE id = 'generation' AND secondary_stat = 'environment';
 
+-- Energy: power_grid secondary digital_infrastructure → energy_generation
+-- (digital_infrastructure is already covered by intelligence institution;
+--  energy_generation needs coverage so institution growth isn't cancelled by decay)
+UPDATE ministry_institution_config SET secondary_stat = 'energy_generation'
+    WHERE id = 'power_grid' AND secondary_stat = 'digital_infrastructure';
+
+-- Transportation: public_transit secondary environment → pollution
+UPDATE ministry_institution_config SET secondary_stat = 'pollution'
+    WHERE id = 'public_transit' AND secondary_stat = 'environment';
+
+-- Finance: tax_admin secondary rule_of_law → corruption
+-- (funded tax admin combats corruption — blocks corruption's erosion toward 70)
+UPDATE ministry_institution_config SET secondary_stat = 'corruption'
+    WHERE id = 'tax_admin' AND secondary_stat = 'rule_of_law';
+
+-- Interior: civil_service secondary rule_of_law → legitimacy
+UPDATE ministry_institution_config SET secondary_stat = 'legitimacy'
+    WHERE id = 'civil_service' AND secondary_stat = 'rule_of_law';
+
+-- Trade: customs secondary rule_of_law → manufacturing_output
+-- (customs supports industrial output; also ensures growth isn't cancelled by decay)
+UPDATE ministry_institution_config SET secondary_stat = 'manufacturing_output'
+    WHERE id = 'customs' AND secondary_stat = 'rule_of_law';
+
+-- Trade: competition primary rule_of_law → trade_balance
+UPDATE ministry_institution_config SET primary_stat = 'trade_balance'
+    WHERE id = 'competition' AND primary_stat = 'rule_of_law';
+
 
 -- ============================================================
 -- 2. Add growth columns
