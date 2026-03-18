@@ -1,5 +1,4 @@
-/* ===== ECONOMY PAGE — Command & Control Financial Dashboard ===== */
-/* Design system: warm olive-dark palette, JetBrains Mono, brutalist cards */
+/* ===== ECONOMY PAGE — v5 Design System ===== */
 
 /* ===== TITLE BAR ===== */
 .econ-title-bar {
@@ -10,12 +9,12 @@
 }
 
 .econ-title {
-    font-family: 'JetBrains Mono', monospace;
-    color: #e2e0d6;
-    font-size: 0.85rem;
+    font-family: var(--font-mono);
+    color: var(--text-bright);
+    font-size: 0.78rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.2em;
+    letter-spacing: 0.1em;
 }
 
 body.light-mode .econ-title-bar {
@@ -39,27 +38,27 @@ body.light-mode .econ-title {
 
 .econ-tab {
     padding: 12px 22px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
     border: none;
     border-bottom: 2px solid transparent;
     border-radius: 0;
     background: transparent;
-    color: #6b6a5e;
+    color: #8a8978;
     cursor: pointer;
     transition: all 0.2s;
 }
 
 .econ-tab:hover {
-    color: #8a8778;
+    color: #a8a797;
 }
 
 .econ-tab.active {
-    color: #e2e0d6;
-    border-bottom-color: #e2e0d6;
+    color: #f0efe6;
+    border-bottom-color: #f0efe6;
     background: transparent;
 }
 
@@ -101,7 +100,7 @@ body.light-mode .econ-tab.active {
 
 /* Section */
 .econ-section {
-    background: #1e1e1a;
+    background: var(--bg-card);
     border: 1px solid rgba(255,255,255,0.06);
     border-radius: 3px;
     padding: 16px 20px;
@@ -109,9 +108,9 @@ body.light-mode .econ-tab.active {
 }
 
 .econ-section-header {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.62rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.15em;
     font-weight: 600;
@@ -122,7 +121,7 @@ body.light-mode .econ-tab.active {
 
 .econ-section-subtitle {
     font-size: 0.65rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     font-style: italic;
     margin-top: -6px;
     margin-bottom: 12px;
@@ -166,12 +165,12 @@ body.light-mode .econ-section-header {
 
 .econ-card-surplus { border-left-color: var(--green, #4CAF50); }
 .econ-card-deficit { border-left-color: var(--red, #ff4444); }
-.econ-card-neutral { border-left-color: #8a8778; }
+.econ-card-neutral { border-left-color: var(--text-secondary); }
 
 .econ-card-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     font-weight: 600;
@@ -180,9 +179,9 @@ body.light-mode .econ-section-header {
 
 .econ-card-value {
     font-size: 1.3rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-weight: 700;
-    color: #e2e0d6;
+    color: var(--text-bright);
     line-height: 1;
     margin-bottom: 4px;
 }
@@ -191,9 +190,9 @@ body.light-mode .econ-section-header {
 .econ-card-deficit .econ-card-value { color: var(--red, #ff4444); }
 
 .econ-card-sub {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.65rem;
-    color: #8a8778;
+    color: var(--text-secondary);
     font-weight: 600;
 }
 
@@ -229,7 +228,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     align-items: center;
     padding: 7px 12px;
     font-size: 0.78rem;
-    color: #c4c2b6;
+    color: var(--text-primary);
     border-bottom: 1px solid rgba(255,255,255,0.04);
 }
 .budget-line-item:last-child {
@@ -239,14 +238,14 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     flex: 1;
 }
 .budget-line-value {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-weight: 600;
-    color: #e2e0d6;
+    color: var(--text-bright);
     text-align: right;
 }
 .budget-line-bold .budget-line-label {
     font-weight: 700;
-    color: #e2e0d6;
+    color: var(--text-bright);
 }
 .budget-line-bold .budget-line-value {
     font-weight: 700;
@@ -262,14 +261,14 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     justify-content: space-between;
     padding: 8px 12px;
     font-size: 0.75rem;
-    color: #8a8778;
+    color: var(--text-secondary);
     border-top: 1px solid rgba(255,255,255,0.06);
     margin-top: 4px;
 }
 .budget-cr-value {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-weight: 600;
-    color: #c4c2b6;
+    color: var(--text-primary);
 }
 .budget-net-box {
     margin-top: 16px;
@@ -283,17 +282,17 @@ body.light-mode .econ-card-value { color: #2a2a25; }
 .budget-net-label {
     font-size: 0.7rem;
     letter-spacing: 0.08em;
-    color: #8a8778;
+    color: var(--text-secondary);
     margin-bottom: 4px;
 }
 .budget-net-value {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 1.4rem;
     font-weight: 700;
 }
 .budget-net-note {
     font-size: 0.72rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     margin-top: 6px;
     font-style: italic;
 }
@@ -323,7 +322,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 0;
-    background: #1e1e1a;
+    background: var(--bg-card);
     border: 1px solid rgba(255,255,255,0.06);
     border-radius: 3px;
     margin-bottom: 12px;
@@ -337,7 +336,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     border-right: none;
 }
 .bv2-card-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -345,10 +344,10 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     margin-bottom: 4px;
 }
 .bv2-card-value {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 1.3rem;
     font-weight: 700;
-    color: #e2e0d6;
+    color: var(--text-bright);
 }
 
 /* --- Two-column breakdown --- */
@@ -356,7 +355,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0;
-    background: #1e1e1a;
+    background: var(--bg-card);
     border: 1px solid rgba(255,255,255,0.06);
     border-radius: 3px;
     margin-bottom: 12px;
@@ -377,14 +376,14 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 .bv2-col-title {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.62rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
 }
 .bv2-col-total {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
     font-weight: 600;
     letter-spacing: 0.02em;
@@ -412,34 +411,34 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     flex-shrink: 0;
 }
 .bv2-row-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.7rem;
     font-weight: 700;
-    color: #e2e0d6;
+    color: var(--text-bright);
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }
 .bv2-row-subtitle {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.58rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     margin-top: 1px;
 }
 .bv2-row-value {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     font-weight: 600;
-    color: #e2e0d6;
+    color: var(--text-bright);
     white-space: nowrap;
 }
 
 /* --- Funding badge --- */
 .bv2-funding-badge {
     display: inline-block;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.58rem;
     font-weight: 700;
-    color: #4CAF50;
+    color: var(--green);
     background: rgba(76, 175, 80, 0.12);
     border: 1px solid rgba(76, 175, 80, 0.25);
     border-radius: 3px;
@@ -457,23 +456,23 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     background: rgba(255,255,255,0.015);
 }
 .bv2-total-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.62rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: #8a8778;
+    color: var(--text-secondary);
 }
 .bv2-total-value {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.82rem;
     font-weight: 700;
-    color: #e2e0d6;
+    color: var(--text-bright);
 }
 
 /* --- Net balance box --- */
 .bv2-net-box {
-    background: #1e1e1a;
+    background: var(--bg-card);
     border: 1px solid rgba(255,255,255,0.06);
     border-left-width: 3px;
     border-radius: 3px;
@@ -492,22 +491,22 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     font-size: 0.7rem;
 }
 .bv2-net-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.65rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.12em;
 }
 .bv2-net-amount {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 1.8rem;
     font-weight: 700;
     margin-bottom: 6px;
 }
 .bv2-net-subtext {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.58rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     margin-bottom: 14px;
@@ -523,19 +522,19 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     text-align: center;
 }
 .bv2-net-col-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.52rem;
     font-weight: 600;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     margin-bottom: 3px;
 }
 .bv2-net-col-value {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.9rem;
     font-weight: 700;
-    color: #e2e0d6;
+    color: var(--text-bright);
 }
 
 /* --- Info notice bar --- */
@@ -545,7 +544,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     border-radius: 3px;
     padding: 12px 16px;
     font-size: 0.72rem;
-    color: #8a8778;
+    color: var(--text-secondary);
     line-height: 1.5;
 }
 .bv2-info-icon {
@@ -556,7 +555,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     height: 16px;
     border-radius: 50%;
     background: rgba(255,255,255,0.06);
-    color: #8a8778;
+    color: var(--text-secondary);
     font-size: 0.6rem;
     font-weight: 700;
     vertical-align: middle;
@@ -606,7 +605,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
 /* Placeholder */
 .econ-placeholder {
     text-align: center;
-    color: #6b6a5e;
+    color: var(--text-muted);
     padding: 24px 16px;
     font-size: 0.8rem;
     font-style: italic;
@@ -620,32 +619,32 @@ body.light-mode .econ-card-value { color: #2a2a25; }
 
 .econ-debt-amount {
     font-size: 1.6rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-weight: 700;
-    color: #e2e0d6;
+    color: var(--text-bright);
     margin-bottom: 6px;
 }
 
 .econ-debt-ratio {
     font-size: 0.72rem;
-    color: #8a8778;
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
     margin-bottom: 8px;
 }
 
 .econ-debt-rating {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.15em;
 }
 
-.econ-debt-rating.rating-excellent { color: #4CAF50; }
-.econ-debt-rating.rating-good      { color: #2196F3; }
-.econ-debt-rating.rating-moderate   { color: #8a8778; }
-.econ-debt-rating.rating-poor       { color: #ff9800; }
-.econ-debt-rating.rating-critical   { color: #ff4444; }
+.econ-debt-rating.rating-excellent { color: var(--green); }
+.econ-debt-rating.rating-good      { color: var(--blue); }
+.econ-debt-rating.rating-moderate   { color: var(--text-secondary); }
+.econ-debt-rating.rating-poor       { color: var(--orange); }
+.econ-debt-rating.rating-critical   { color: var(--red); }
 
 /* ===== DEBT METRICS ===== */
 .econ-debt-metrics {
@@ -665,16 +664,16 @@ body.light-mode .econ-card-value { color: #2a2a25; }
 }
 .debt-metric-label {
     font-size: 0.62rem;
-    color: #8a8778;
+    color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
 }
 .debt-metric-value {
     font-size: 0.88rem;
     font-weight: 700;
-    font-family: 'JetBrains Mono', monospace;
-    color: #e2e0d6;
+    font-family: var(--font-mono);
+    color: var(--text-bright);
 }
 
 /* ===== DEBT SERVICE BURDEN BAR ===== */
@@ -687,11 +686,11 @@ body.light-mode .econ-card-value { color: #2a2a25; }
 }
 .debt-burden-label {
     font-size: 0.7rem;
-    color: #c4a03e;
+    color: var(--amber);
     margin-bottom: 6px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
 }
-.debt-burden-label strong { color: #ff9800; }
+.debt-burden-label strong { color: var(--orange); }
 .debt-burden-track {
     height: 6px;
     background: rgba(255,255,255,0.06);
@@ -715,7 +714,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     border: 1px solid rgba(183,28,28,0.4);
     border-radius: 6px;
     font-size: 0.72rem;
-    color: #ff6666;
+    color: var(--red);
     font-weight: 600;
     letter-spacing: 0.03em;
 }
@@ -751,8 +750,8 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     letter-spacing: 1.2px;
     margin-bottom: 4px;
 }
-.debt-distress-critical .distress-banner-title { color: #ff4444; }
-.debt-distress-warning .distress-banner-title { color: #ff9800; }
+.debt-distress-critical .distress-banner-title { color: var(--red); }
+.debt-distress-warning .distress-banner-title { color: var(--orange); }
 .distress-banner-text {
     font-size: 0.78rem;
     color: #ccc;
@@ -764,7 +763,7 @@ body.light-mode .econ-debt-metrics { border-color: rgba(0,0,0,0.08); }
 body.light-mode .debt-metric-label { color: #888; }
 body.light-mode .debt-metric-value { color: #333; }
 body.light-mode .debt-burden-bar { background: rgba(255,152,0,0.05); border-color: rgba(255,152,0,0.12); }
-body.light-mode .debt-burden-label { color: #8a6a1e; }
+body.light-mode .debt-burden-label { color: var(--amber); }
 body.light-mode .debt-burden-track { background: rgba(0,0,0,0.06); }
 body.light-mode .credit-lockout-warning { background: rgba(183,28,28,0.06); border-color: rgba(183,28,28,0.2); color: #b71c1c; }
 body.light-mode .debt-distress-critical { background: rgba(183,28,28,0.06); border-color: rgba(255,68,68,0.3); }
@@ -793,9 +792,9 @@ body.light-mode .distress-banner-text { color: #555; }
 }
 
 .econ-ranking-header .econ-ranking-cell {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     font-weight: 600;
@@ -812,15 +811,15 @@ body.light-mode .distress-banner-text { color: #555; }
 .econ-ranking-metric {
     flex: 0 0 130px;
     text-align: left;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
     font-weight: 600;
-    color: #8a8778;
+    color: var(--text-secondary);
 }
 
 .econ-ranking-name {
     font-size: 0.68rem;
-    color: #8a8778;
+    color: var(--text-secondary);
     margin-bottom: 1px;
     white-space: nowrap;
     overflow: hidden;
@@ -829,9 +828,9 @@ body.light-mode .distress-banner-text { color: #555; }
 
 .econ-ranking-val {
     font-size: 0.78rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-weight: 600;
-    color: #e2e0d6;
+    color: var(--text-bright);
 }
 
 .econ-ranking-highlight {
@@ -840,7 +839,7 @@ body.light-mode .distress-banner-text { color: #555; }
 }
 
 .econ-ranking-highlight .econ-ranking-name {
-    color: #e2e0d6;
+    color: var(--text-bright);
     font-weight: 700;
 }
 
@@ -861,7 +860,7 @@ body.light-mode .distress-banner-text { color: #555; }
 .econ-sector-label {
     font-size: 0.75rem;
     font-weight: 600;
-    color: #e2e0d6;
+    color: var(--text-bright);
 }
 
 .econ-health-track {
@@ -889,13 +888,13 @@ body.light-mode .distress-banner-text { color: #555; }
 
 .econ-health-value {
     font-size: 0.78rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-weight: 700;
     text-align: right;
 }
 
 .econ-health-warning {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.58rem;
     color: var(--red, #ff4444);
     font-style: italic;
@@ -914,7 +913,7 @@ body.light-mode .econ-health-threshold {
 .econ-stub {
     text-align: center;
     padding: 60px 24px;
-    color: #6b6a5e;
+    color: var(--text-muted);
 }
 
 .econ-stub-icon {
@@ -924,18 +923,18 @@ body.light-mode .econ-health-threshold {
 }
 
 .econ-stub-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.15em;
-    color: #6b6a5e;
+    color: var(--text-muted);
     margin-bottom: 8px;
 }
 
 .econ-stub-text {
     font-size: 0.78rem;
-    color: #4a493e;
+    color: var(--text-faint);
     max-width: 400px;
     margin: 0 auto;
     line-height: 1.5;
@@ -1020,8 +1019,8 @@ body.light-mode .econ-health-threshold {
 }
 
 .economy-hero-title {
-    font-family: 'JetBrains Mono', monospace;
-    color: #e2e0d6;
+    font-family: var(--font-mono);
+    color: var(--text-bright);
     font-size: 0.85rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -1062,9 +1061,9 @@ body.light-mode .econ-health-threshold {
 }
 
 .economy-stat-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     margin-bottom: 8px;
@@ -1073,9 +1072,9 @@ body.light-mode .econ-health-threshold {
 
 .economy-stat-value {
     font-size: 1.6rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-weight: 700;
-    color: #e2e0d6;
+    color: var(--text-bright);
     margin-bottom: 6px;
     line-height: 1;
 }
@@ -1091,10 +1090,10 @@ body.light-mode .econ-health-threshold {
 
 .economy-stat-trend .trend-up { color: var(--green, #4CAF50); }
 .economy-stat-trend .trend-down { color: var(--red, #ff4444); }
-.economy-stat-trend .trend-neutral { color: #6b6a5e; }
+.economy-stat-trend .trend-neutral { color: var(--text-muted); }
 
 .economy-stat-rating {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.62rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -1102,11 +1101,11 @@ body.light-mode .econ-health-threshold {
     margin-top: 6px;
 }
 
-.economy-stat-rating.rating-excellent { color: #4CAF50; }
-.economy-stat-rating.rating-good      { color: #2196F3; }
-.economy-stat-rating.rating-moderate   { color: #8a8778; }
-.economy-stat-rating.rating-poor       { color: #ff9800; }
-.economy-stat-rating.rating-critical   { color: #ff4444; }
+.economy-stat-rating.rating-excellent { color: var(--green); }
+.economy-stat-rating.rating-good      { color: var(--blue); }
+.economy-stat-rating.rating-moderate   { color: var(--text-secondary); }
+.economy-stat-rating.rating-poor       { color: var(--orange); }
+.economy-stat-rating.rating-critical   { color: var(--red); }
 
 .economy-stat-trend .trend-up.inverted { color: var(--red, #ff4444); }
 .economy-stat-trend .trend-down.inverted { color: var(--green, #4CAF50); }
@@ -1132,14 +1131,14 @@ body.light-mode .econ-health-threshold {
     justify-content: center;
     gap: 5px;
     font-size: 0.65rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     margin-top: 4px;
-    color: #6b6a5e;
+    color: var(--text-muted);
 }
 .breakdown-revenue { color: var(--green, #4CAF50); }
 .breakdown-expense { color: var(--red, #ff4444); }
-.breakdown-sep { color: #3a3930; }
-.breakdown-ratio { color: #6b6a5e; }
+.breakdown-sep { color: var(--text-faint); }
+.breakdown-ratio { color: var(--text-muted); }
 
 @media (max-width: 1100px) {
     .economy-hero-stats { grid-template-columns: repeat(3, 1fr); }
@@ -1202,7 +1201,7 @@ body.light-mode .economy-stat-box {
 /* ===== BUDGET PANEL ===== */
 
 .budget-panel {
-    background: #1e1e1a;
+    background: var(--bg-card);
     border: 1px solid rgba(255,255,255,0.06);
     border-radius: 3px;
     overflow: hidden;
@@ -1217,8 +1216,8 @@ body.light-mode .economy-stat-box {
 }
 
 .budget-title {
-    font-family: 'JetBrains Mono', monospace;
-    color: #e2e0d6;
+    font-family: var(--font-mono);
+    color: var(--text-bright);
     font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -1227,8 +1226,8 @@ body.light-mode .economy-stat-box {
 }
 
 .budget-subtitle {
-    font-family: 'JetBrains Mono', monospace;
-    color: #6b6a5e;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
     font-size: 0.62rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -1254,9 +1253,9 @@ body.light-mode .economy-stat-box {
 }
 
 .budget-summary-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     font-weight: 600;
@@ -1264,9 +1263,9 @@ body.light-mode .economy-stat-box {
 
 .budget-summary-value {
     font-size: 1.2rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-weight: 700;
-    color: #e2e0d6;
+    color: var(--text-bright);
 }
 
 /* --- Balance --- */
@@ -1274,7 +1273,7 @@ body.light-mode .economy-stat-box {
     text-align: center;
     padding: 8px 12px;
     border-radius: 3px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-weight: 700;
     font-size: 0.9rem;
 }
@@ -1322,9 +1321,9 @@ body.light-mode .economy-stat-box {
 }
 
 .budget-column-header {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     font-weight: 600;
@@ -1369,7 +1368,7 @@ body.light-mode .budget-line-clickable:hover {
 
 .budget-line-label {
     font-size: 0.75rem;
-    color: #e2e0d6;
+    color: var(--text-bright);
     font-weight: 500;
     flex: 1;
     min-width: 0;
@@ -1377,9 +1376,9 @@ body.light-mode .budget-line-clickable:hover {
 
 .budget-line-value {
     font-size: 0.78rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-weight: 600;
-    color: #e2e0d6;
+    color: var(--text-bright);
     white-space: nowrap;
     text-align: right;
     flex-shrink: 0;
@@ -1391,9 +1390,9 @@ body.light-mode .budget-line-clickable:hover {
 }
 
 .trade-stat-hint {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.58rem;
-    color: #4a493e;
+    color: var(--text-faint);
     font-style: italic;
     margin-top: 1px;
     letter-spacing: 0.02em;
@@ -1408,30 +1407,30 @@ body.light-mode .budget-line-clickable:hover {
 }
 
 .budget-line-total .budget-line-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.62rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    color: #8a8778;
+    color: var(--text-secondary);
 }
 
 .budget-line-total .budget-line-value {
     font-size: 0.82rem;
     font-weight: 700;
-    color: #e2e0d6;
+    color: var(--text-bright);
 }
 
 /* --- Trend Indicators --- */
 .budget-trend {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.62rem;
     font-weight: 600;
 }
 
 .budget-trend.trend-up { color: var(--green); }
 .budget-trend.trend-down { color: var(--red); }
-.budget-trend.trend-neutral { color: #6b6a5e; }
+.budget-trend.trend-neutral { color: var(--text-muted); }
 
 /* ===== RESPONSIVE — Budget Panel ===== */
 @media (max-width: 1100px) {
@@ -1519,7 +1518,7 @@ body.light-mode .budget-balance.deficit {
 
 .ministry-tab {
     padding: 10px 14px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -1528,18 +1527,18 @@ body.light-mode .budget-balance.deficit {
     border-bottom: 2px solid transparent;
     border-radius: 0;
     background: transparent;
-    color: #6b6a5e;
+    color: var(--text-muted);
     cursor: pointer;
     transition: all 0.2s;
 }
 
 .ministry-tab:hover {
-    color: #8a8778;
+    color: var(--text-secondary);
 }
 
 .ministry-tab.active {
-    color: #e2e0d6;
-    border-bottom-color: #e2e0d6;
+    color: var(--text-bright);
+    border-bottom-color: var(--text-bright);
     background: transparent;
 }
 
@@ -1548,9 +1547,9 @@ body.light-mode .budget-balance.deficit {
 }
 
 .ministry-section-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.58rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     margin: 8px 0 4px;
@@ -1559,9 +1558,9 @@ body.light-mode .budget-balance.deficit {
 
 .ministry-empty {
     text-align: center;
-    color: #6b6a5e;
+    color: var(--text-muted);
     padding: 28px 16px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     font-style: italic;
 }
@@ -1604,9 +1603,9 @@ body.light-mode .ministry-tab.active {
 }
 
 .trade-summary-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     font-weight: 600;
@@ -1614,7 +1613,7 @@ body.light-mode .ministry-tab.active {
 
 .trade-summary-value {
     font-size: 1rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-weight: 700;
 }
 
@@ -1629,9 +1628,9 @@ body.light-mode .ministry-tab.active {
 
 .trade-placeholder {
     text-align: center;
-    color: #6b6a5e;
+    color: var(--text-muted);
     padding: 28px 16px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     font-style: italic;
 }
@@ -1643,9 +1642,9 @@ body.light-mode .ministry-tab.active {
 }
 
 .trade-scores-header {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.62rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.15em;
     font-weight: 600;
@@ -1654,7 +1653,7 @@ body.light-mode .ministry-tab.active {
 
 .trade-scores-subtitle {
     font-size: 0.6rem;
-    color: #4a493e;
+    color: var(--text-faint);
     font-style: italic;
     margin-bottom: 12px;
 }
@@ -1674,10 +1673,10 @@ body.light-mode .ministry-tab.active {
 }
 
 .trade-score-name {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.62rem;
     font-weight: 600;
-    color: #8a8778;
+    color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     margin-bottom: 4px;
@@ -1685,7 +1684,7 @@ body.light-mode .ministry-tab.active {
 
 .trade-score-value {
     font-size: 1.2rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-weight: 700;
     line-height: 1;
     margin-bottom: 6px;
@@ -1707,8 +1706,8 @@ body.light-mode .ministry-tab.active {
 
 .trade-score-formula {
     font-size: 0.55rem;
-    color: #4a493e;
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-faint);
+    font-family: var(--font-mono);
     margin-bottom: 4px;
     letter-spacing: 0.02em;
 }
@@ -1721,11 +1720,11 @@ body.light-mode .ministry-tab.active {
 
 .trade-score-stat {
     font-size: 0.6rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
 }
 
 .trade-score-stat strong {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
 }
 
 body.light-mode .trade-score-card {
@@ -1763,15 +1762,15 @@ body.light-mode .trade-score-bar {
 .partner-name {
     font-size: 0.85rem;
     font-weight: 700;
-    color: #e2e0d6;
+    color: var(--text-bright);
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 
 .partner-affinity {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.62rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
 }
 
 /* Affinity tooltip */
@@ -1791,12 +1790,12 @@ body.light-mode .trade-score-bar {
     width: 260px;
     padding: 10px 12px;
     margin-top: 4px;
-    background: #1a1a18;
+    background: var(--bg-panel);
     border: 1px solid #3a3a35;
     border-radius: 6px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.65rem;
-    color: #c5c4b8;
+    color: var(--text-primary);
     box-shadow: 0 4px 16px rgba(0,0,0,0.5);
     pointer-events: none;
 }
@@ -1806,12 +1805,12 @@ body.light-mode .trade-score-bar {
 .aff-tip-title {
     font-size: 0.7rem;
     font-weight: 700;
-    color: #e8e6d9;
+    color: var(--text-bright);
     margin-bottom: 4px;
 }
 .aff-tip-desc {
     font-size: 0.58rem;
-    color: #8a8778;
+    color: var(--text-secondary);
     margin-bottom: 8px;
     line-height: 1.4;
 }
@@ -1827,14 +1826,14 @@ body.light-mode .trade-score-bar {
     align-items: center;
 }
 .aff-tip-row span:last-child {
-    color: #4CAF50;
+    color: var(--green);
     font-weight: 600;
 }
 .aff-tip-row.aff-tip-negative span:last-child {
-    color: #f44336;
+    color: var(--red);
 }
 .aff-tip-detail {
-    color: #6b6a5e;
+    color: var(--text-muted);
     font-size: 0.55rem;
 }
 .aff-tip-total {
@@ -1843,19 +1842,19 @@ body.light-mode .trade-score-bar {
     border-top: 1px solid #3a3a35;
     padding-top: 6px;
     font-weight: 700;
-    color: #e8e6d9;
+    color: var(--text-bright);
 }
 body.light-mode .aff-tooltip {
     background: #f5f4f0;
-    border-color: #d5d4c8;
-    color: #3a3a35;
+    border-color: var(--text-primary);
+    color: var(--text-faint);
     box-shadow: 0 4px 16px rgba(0,0,0,0.12);
 }
 body.light-mode .aff-tip-title { color: #1a1a18; }
-body.light-mode .aff-tip-desc { color: #6b6a5e; }
-body.light-mode .aff-tip-detail { color: #8a8778; }
-body.light-mode .aff-tip-total { color: #1a1a18; border-color: #d5d4c8; }
-body.light-mode .aff-tip-trigger { border-bottom-color: #8a8778; }
+body.light-mode .aff-tip-desc { color: var(--text-muted); }
+body.light-mode .aff-tip-detail { color: var(--text-secondary); }
+body.light-mode .aff-tip-total { color: #1a1a18; border-color: var(--text-primary); }
+body.light-mode .aff-tip-trigger { border-bottom-color: var(--text-secondary); }
 
 .partner-stats {
     display: flex;
@@ -1872,19 +1871,19 @@ body.light-mode .aff-tip-trigger { border-bottom-color: #8a8778; }
 }
 
 .partner-stat-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.58rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     margin-bottom: 2px;
 }
 
 .partner-stat-value {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     font-weight: 600;
-    color: #e2e0d6;
+    color: var(--text-bright);
 }
 
 .partner-stat-value.exports { color: var(--green, #4CAF50); }
@@ -1921,9 +1920,9 @@ body.light-mode .aff-tip-trigger { border-bottom-color: #8a8778; }
 .partner-bar-legend {
     display: flex;
     justify-content: space-between;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.55rem;
-    color: #4a493e;
+    color: var(--text-faint);
     margin-top: 2px;
 }
 
@@ -1946,13 +1945,13 @@ body.light-mode .aff-tip-trigger { border-bottom-color: #8a8778; }
 
 .partner-sector-name {
     font-size: 0.65rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
 }
 
 .partner-sector-detail {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.65rem;
-    color: #8a8778;
+    color: var(--text-secondary);
     font-weight: 500;
 }
 
@@ -1982,9 +1981,9 @@ body.light-mode .partner-card {
 }
 
 .tft-header .tft-cell {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.55rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     font-weight: 600;
@@ -2015,14 +2014,14 @@ body.light-mode .partner-card {
 }
 
 .tft-row.tft-total .tft-sector {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.62rem;
-    color: #8a8778;
+    color: var(--text-secondary);
     letter-spacing: 0.1em;
 }
 
 .tft-cell {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     min-width: 0;
 }
@@ -2035,7 +2034,7 @@ body.light-mode .partner-card {
 
 .tft-sector-name {
     font-size: 0.75rem;
-    color: #e2e0d6;
+    color: var(--text-bright);
     font-weight: 500;
     font-family: inherit;
     white-space: nowrap;
@@ -2044,9 +2043,9 @@ body.light-mode .partner-card {
 }
 
 .tft-export-only {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.5rem;
-    color: #4a493e;
+    color: var(--text-faint);
     background: rgba(255,255,255,0.04);
     padding: 1px 5px;
     border-radius: 2px;
@@ -2124,7 +2123,7 @@ body.light-mode .partner-card {
     display: flex;
     flex-wrap: wrap;
     gap: 2px;
-    background: #1e1e1a;
+    background: var(--bg-card);
     border: 1px solid rgba(255,255,255,0.06);
     border-radius: 3px;
     overflow: hidden;
@@ -2133,7 +2132,7 @@ body.light-mode .partner-card {
 .sector-tab {
     flex: 1;
     padding: 10px 8px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.58rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -2141,7 +2140,7 @@ body.light-mode .partner-card {
     border: none;
     border-bottom: 2px solid transparent;
     background: transparent;
-    color: #6b6a5e;
+    color: var(--text-muted);
     cursor: pointer;
     transition: all 0.2s;
     text-align: center;
@@ -2150,19 +2149,19 @@ body.light-mode .partner-card {
 }
 
 .sector-tab:hover {
-    color: #8a8778;
+    color: var(--text-secondary);
     background: rgba(255,255,255,0.02);
 }
 
 .sector-tab.active {
-    color: #e2e0d6;
+    color: var(--text-bright);
     background: rgba(255,255,255,0.03);
 }
 
 /* Sector badge (export only) */
 .sector-badge {
     font-size: 0.5rem;
-    color: #4a493e;
+    color: var(--text-faint);
     background: rgba(255,255,255,0.04);
     padding: 1px 6px;
     border-radius: 2px;
@@ -2186,9 +2185,9 @@ body.light-mode .partner-card {
 }
 
 .sector-score-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.55rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     font-weight: 600;
@@ -2196,7 +2195,7 @@ body.light-mode .partner-card {
 }
 
 .sector-score-big {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 2.4rem;
     font-weight: 700;
     line-height: 1;
@@ -2228,17 +2227,17 @@ body.light-mode .partner-card {
 }
 
 .sector-threshold-status {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.58rem;
     font-weight: 600;
 }
 
 .sector-threshold-status.sector-above {
-    color: #4CAF50;
+    color: var(--green);
 }
 
 .sector-threshold-status.sector-below {
-    color: #ff4444;
+    color: var(--red);
 }
 
 /* Volume panel (right) */
@@ -2260,36 +2259,36 @@ body.light-mode .partner-card {
 }
 
 .sector-vol-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.55rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-weight: 600;
 }
 
 .sector-vol-value {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 1.1rem;
     font-weight: 700;
     line-height: 1;
 }
 
 .sector-price-mod {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.65rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     margin-bottom: 4px;
 }
 
 .sector-trend-line {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.62rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
 }
 
 .sector-no-data {
-    color: #6b6a5e;
+    color: var(--text-muted);
     font-style: italic;
     font-size: 0.75rem;
     padding: 12px 0;
@@ -2303,9 +2302,9 @@ body.light-mode .partner-card {
     border: 1px solid rgba(255, 68, 68, 0.12);
     border-left: 3px solid #ff4444;
     border-radius: 3px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.62rem;
-    color: #ff4444;
+    color: var(--red);
     font-weight: 600;
     letter-spacing: 0.02em;
 }
@@ -2332,7 +2331,7 @@ body.light-mode .partner-card {
 
 .sector-driver-composite .sector-driver-label {
     font-weight: 700;
-    color: #8a8778;
+    color: var(--text-secondary);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     font-size: 0.6rem;
@@ -2341,7 +2340,7 @@ body.light-mode .partner-card {
 .sector-driver-label {
     font-size: 0.75rem;
     font-weight: 500;
-    color: #e2e0d6;
+    color: var(--text-bright);
 }
 
 .sector-driver-track {
@@ -2359,7 +2358,7 @@ body.light-mode .partner-card {
 }
 
 .sector-driver-value {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     font-weight: 700;
     text-align: right;
@@ -2378,9 +2377,9 @@ body.light-mode .partner-card {
 }
 
 .sector-partner-col-header {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     font-weight: 600;
@@ -2405,7 +2404,7 @@ body.light-mode .partner-card {
 .sector-partner-name {
     font-size: 0.72rem;
     font-weight: 600;
-    color: #e2e0d6;
+    color: var(--text-bright);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2425,7 +2424,7 @@ body.light-mode .partner-card {
 }
 
 .sector-partner-amount {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
     font-weight: 600;
     text-align: right;
@@ -2433,7 +2432,7 @@ body.light-mode .partner-card {
 }
 
 .sector-partner-empty {
-    color: #4a493e;
+    color: var(--text-faint);
     font-style: italic;
     font-size: 0.72rem;
     padding: 12px 0;
@@ -2526,20 +2525,20 @@ body.light-mode .sector-score-threshold {
     border: 1px solid rgba(255,255,255,0.04);
     border-radius: 3px;
     font-size: 0.65rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     line-height: 1.6;
 }
 
 .tariff-explainer strong {
-    color: #8a8778;
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
 }
 
 .tariff-explainer-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.55rem;
     font-weight: 700;
-    color: #4a493e;
+    color: var(--text-faint);
     letter-spacing: 0.08em;
 }
 
@@ -2568,11 +2567,11 @@ body.light-mode .sector-score-threshold {
 .ta-card-name {
     font-size: 0.78rem;
     font-weight: 700;
-    color: #e2e0d6;
+    color: var(--text-bright);
 }
 
 .ta-card-badge {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.52rem;
     font-weight: 700;
     color: #141412;
@@ -2583,45 +2582,45 @@ body.light-mode .sector-score-threshold {
 
 .ta-card-partner {
     font-size: 0.68rem;
-    color: #8a8778;
+    color: var(--text-secondary);
     margin-bottom: 2px;
 }
 
 .ta-card-partner strong {
-    color: #e2e0d6;
+    color: var(--text-bright);
 }
 
 .ta-card-duration {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.58rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     margin-bottom: 8px;
 }
 
 .ta-card-detail {
     font-size: 0.65rem;
-    color: #8a8778;
+    color: var(--text-secondary);
     margin-top: 4px;
 }
 
 .ta-card-effect {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
-    color: #4CAF50;
+    color: var(--green);
     font-weight: 600;
 }
 
 .ta-card-exemptions {
     font-size: 0.62rem;
-    color: #ff9800;
+    color: var(--orange);
     margin-top: 4px;
 }
 
 .ta-card-detail-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.52rem;
     font-weight: 700;
-    color: #6b6a5e;
+    color: var(--text-muted);
     letter-spacing: 0.06em;
 }
 
@@ -2642,23 +2641,23 @@ body.light-mode .sector-score-threshold {
 
 .ta-reduction-sector {
     font-size: 0.65rem;
-    color: #e2e0d6;
+    color: var(--text-bright);
     font-weight: 500;
 }
 
 .ta-reduction-dir {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.55rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }
 
 .ta-reduction-pct {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
     font-weight: 700;
-    color: #4CAF50;
+    color: var(--green);
 }
 
 /* Tariff matrix */
@@ -2675,9 +2674,9 @@ body.light-mode .sector-score-threshold {
 }
 
 .tm-header .tm-cell {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.55rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     font-weight: 600;
@@ -2705,14 +2704,14 @@ body.light-mode .sector-score-threshold {
 }
 
 .tm-cell {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     min-width: 0;
 }
 
 .tm-cell.tm-nation-name {
     font-size: 0.75rem;
-    color: #e2e0d6;
+    color: var(--text-bright);
     font-weight: 500;
     font-family: inherit;
     white-space: nowrap;
@@ -2721,9 +2720,9 @@ body.light-mode .sector-score-threshold {
 }
 
 .tm-you {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.52rem;
-    color: #8a8778;
+    color: var(--text-secondary);
     font-weight: 600;
     letter-spacing: 0.06em;
 }
@@ -2736,7 +2735,7 @@ body.light-mode .sector-score-threshold {
 }
 
 .tm-cell.tm-dampener {
-    color: #8a8778;
+    color: var(--text-secondary);
 }
 
 .tm-cell.tm-agreement {
@@ -2744,7 +2743,7 @@ body.light-mode .sector-score-threshold {
 }
 
 .tm-ag-badge {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.5rem;
     font-weight: 700;
     color: #141412;
@@ -2754,9 +2753,9 @@ body.light-mode .sector-score-threshold {
 }
 
 .tm-no-agreement {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.52rem;
-    color: #4a493e;
+    color: var(--text-faint);
     letter-spacing: 0.06em;
 }
 
@@ -2808,7 +2807,7 @@ body.light-mode .tariff-explainer {
 /* ===== TREND ARROWS (overview cards) ===== */
 .trend-up { color: var(--green, #4CAF50); }
 .trend-down { color: var(--red, #ff4444); }
-.trend-neutral { color: #6b6a5e; }
+.trend-neutral { color: var(--text-muted); }
 .trend-up.inverted { color: var(--red, #ff4444); }
 .trend-down.inverted { color: var(--green, #4CAF50); }
 
@@ -2830,28 +2829,28 @@ body.light-mode .tariff-explainer {
 }
 
 .tax-summary-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: #6b6a5e;
+    color: var(--text-muted);
 }
 
 .tax-summary-value {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 1rem;
     font-weight: 600;
-    color: #e2e0d6;
+    color: var(--text-bright);
 }
 
-.tax-summary-value.green { color: #6ab86a; }
-.tax-summary-value.yellow { color: #b8a63e; }
-.tax-summary-value.red { color: #c45c4a; }
+.tax-summary-value.green { color: var(--green); }
+.tax-summary-value.yellow { color: var(--amber); }
+.tax-summary-value.red { color: var(--red); }
 
 .tax-summary-detail {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
-    color: #4a493f;
+    color: var(--text-faint);
     margin-top: 1px;
 }
 
@@ -2859,12 +2858,12 @@ body.light-mode .tariff-explainer {
 .tax-summary-spacer { flex: 1; }
 
 .tax-submit-btn {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
-    color: #e2e0d6;
+    color: var(--text-bright);
     background: rgba(90, 154, 90, 0.15);
     border: 1px solid rgba(90, 154, 90, 0.3);
     border-radius: 2px;
@@ -2879,11 +2878,11 @@ body.light-mode .tariff-explainer {
 .tax-submit-btn:hover:not(:disabled) {
     background: rgba(90, 154, 90, 0.25);
     border-color: rgba(90, 154, 90, 0.5);
-    color: #6ab86a;
+    color: var(--green);
 }
 
 .tax-submit-btn:disabled {
-    color: #4a493f;
+    color: var(--text-faint);
     background: rgba(255,255,255,0.02);
     border-color: rgba(255,255,255,0.04);
     cursor: not-allowed;
@@ -2891,7 +2890,7 @@ body.light-mode .tariff-explainer {
 }
 
 body.light-mode .tax-submit-btn {
-    color: #2d7a2d;
+    color: var(--green);
     background: rgba(45, 122, 45, 0.08);
     border-color: rgba(45, 122, 45, 0.2);
 }
@@ -2928,21 +2927,21 @@ body.light-mode .tax-submit-btn:disabled {
 }
 
 .tax-info-callout-icon {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.7rem;
-    color: #5a8a9a;
+    color: var(--teal);
     flex-shrink: 0;
 }
 
 .tax-info-callout-text {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
-    color: #5a8a9a;
+    color: var(--teal);
     line-height: 1.5;
 }
 
 .tax-info-callout-text strong {
-    color: #7ab0c0;
+    color: var(--teal);
 }
 
 body.light-mode .tax-info-callout {
@@ -2956,7 +2955,7 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 
 /* ── Tax Card ── */
 .tax-card {
-    background: #1e1e1a;
+    background: var(--bg-card);
     border: 1px solid rgba(255,255,255,0.06);
     border-radius: 3px;
     padding: 18px 20px;
@@ -2976,17 +2975,17 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 }
 
 .tax-name {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: #e2e0d6;
+    color: var(--text-bright);
     min-width: 180px;
 }
 
 .tax-category-pill {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.55rem;
     font-weight: 500;
     letter-spacing: 0.5px;
@@ -2996,9 +2995,9 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
     flex-shrink: 0;
 }
 
-.pill-income { color: #5a9a5a; background: rgba(90,154,90,0.12); border: 1px solid rgba(90,154,90,0.2); }
-.pill-consumption { color: #5a8a9a; background: rgba(90,138,154,0.12); border: 1px solid rgba(90,138,154,0.2); }
-.pill-corporate { color: #c48a3e; background: rgba(196,138,62,0.12); border: 1px solid rgba(196,138,62,0.2); }
+.pill-income { color: var(--green); background: rgba(90,154,90,0.12); border: 1px solid rgba(90,154,90,0.2); }
+.pill-consumption { color: var(--teal); background: rgba(90,138,154,0.12); border: 1px solid rgba(90,138,154,0.2); }
+.pill-corporate { color: var(--amber); background: rgba(196,138,62,0.12); border: 1px solid rgba(196,138,62,0.2); }
 
 .tax-spacer { flex: 1; }
 
@@ -3012,18 +3011,18 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 }
 
 .tax-revenue-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.55rem;
     letter-spacing: 1px;
     text-transform: uppercase;
-    color: #4a493f;
+    color: var(--text-faint);
 }
 
 .tax-revenue-value {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.85rem;
     font-weight: 600;
-    color: #5a9a5a;
+    color: var(--green);
 }
 
 /* ── Slider Row ── */
@@ -3035,10 +3034,10 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 }
 
 .tax-rate-display {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 1.35rem;
     font-weight: 700;
-    color: #e2e0d6;
+    color: var(--text-bright);
     min-width: 70px;
     text-align: right;
 }
@@ -3046,7 +3045,7 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 .tax-pct {
     font-size: 0.8rem;
     font-weight: 400;
-    color: #6b6a5e;
+    color: var(--text-muted);
 }
 
 .tax-slider-container {
@@ -3155,20 +3154,20 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 }
 
 .tax-slider-min, .tax-slider-max {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.55rem;
-    color: #4a493f;
+    color: var(--text-faint);
 }
 
 /* ── Revenue Delta ── */
 .tax-revenue-delta {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
     font-weight: 500;
 }
 
-.tax-delta-positive { color: #6ab86a; }
-.tax-delta-negative { color: #c45c4a; }
+.tax-delta-positive { color: var(--green); }
+.tax-delta-negative { color: var(--red); }
 
 /* ── Changed Card Highlight ── */
 .tax-card-changed {
@@ -3177,12 +3176,12 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 
 /* ── Reset Button ── */
 .tax-reset-btn {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
     font-weight: 500;
     letter-spacing: 1px;
     text-transform: uppercase;
-    color: #8a8778;
+    color: var(--text-secondary);
     background: rgba(255,255,255,0.03);
     border: 1px solid rgba(255,255,255,0.06);
     border-radius: 2px;
@@ -3193,7 +3192,7 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 }
 
 .tax-reset-btn:hover {
-    color: #e2e0d6;
+    color: var(--text-bright);
     border-color: rgba(255,255,255,0.12);
     background: rgba(255,255,255,0.06);
 }
@@ -3218,7 +3217,7 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 }
 
 .tax-effect-arrow {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
     font-weight: 600;
     width: 14px;
@@ -3230,20 +3229,20 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
     flex-shrink: 0;
 }
 
-.tax-effect-arrow.up { color: #5a9a5a; background: rgba(90,154,90,0.12); }
-.tax-effect-arrow.down { color: #c45c4a; background: rgba(196,92,74,0.12); }
+.tax-effect-arrow.up { color: var(--green); background: rgba(90,154,90,0.12); }
+.tax-effect-arrow.down { color: var(--red); background: rgba(196,92,74,0.12); }
 
 .tax-effect-stat {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
-    color: #8a8778;
+    color: var(--text-secondary);
     letter-spacing: 0.3px;
 }
 
 .tax-effects-empty {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
-    color: #4a493f;
+    color: var(--text-faint);
     font-style: italic;
     margin-bottom: 10px;
 }
@@ -3258,10 +3257,10 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 }
 
 .tax-hits-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.55rem;
     letter-spacing: 1px;
-    color: #4a493f;
+    color: var(--text-faint);
     text-transform: uppercase;
     flex-shrink: 0;
 }
@@ -3273,9 +3272,9 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 }
 
 .tax-hit-tag {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.55rem;
-    color: #4a493f;
+    color: var(--text-faint);
     background: rgba(255,255,255,0.03);
     border: 1px solid rgba(255,255,255,0.04);
     border-radius: 2px;
@@ -3289,7 +3288,7 @@ body.light-mode .tax-summary-bar {
 
 body.light-mode .tax-summary-label { color: #666; }
 body.light-mode .tax-summary-value { color: #2a2a25; }
-body.light-mode .tax-summary-value.green { color: #2d7a2d; }
+body.light-mode .tax-summary-value.green { color: var(--green); }
 body.light-mode .tax-summary-value.yellow { color: #8a7a1e; }
 body.light-mode .tax-summary-value.red { color: #b03020; }
 body.light-mode .tax-summary-detail { color: #999; }
@@ -3304,7 +3303,7 @@ body.light-mode .tax-name { color: #2a2a25; }
 body.light-mode .tax-rate-display { color: #2a2a25; }
 body.light-mode .tax-pct { color: #888; }
 body.light-mode .tax-revenue-label { color: #999; }
-body.light-mode .tax-revenue-value { color: #2d7a2d; }
+body.light-mode .tax-revenue-value { color: var(--green); }
 
 body.light-mode .tax-slider-track { background: rgba(0,0,0,0.06); }
 body.light-mode .tax-slider-fill::after {
@@ -3314,7 +3313,7 @@ body.light-mode .tax-slider-fill::after {
 }
 body.light-mode .tax-slider-min,
 body.light-mode .tax-slider-max { color: #999; }
-body.light-mode .tax-delta-positive { color: #2d7a2d; }
+body.light-mode .tax-delta-positive { color: var(--green); }
 body.light-mode .tax-delta-negative { color: #b03020; }
 body.light-mode .tax-card-changed { border-color: rgba(140, 120, 30, 0.3); }
 body.light-mode .tax-reset-btn {
@@ -3347,9 +3346,9 @@ body.light-mode .tax-hit-tag {
 }
 
 .tax-sparkline-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.55rem;
-    color: #4a493f;
+    color: var(--text-faint);
     letter-spacing: 0.3px;
 }
 
@@ -3383,7 +3382,7 @@ body.light-mode .tax-sparkline-label { color: #999; }
     padding: 8px 12px;
     border-radius: 2px;
     margin-bottom: 14px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     flex-wrap: wrap;
 }
 
@@ -3407,12 +3406,12 @@ body.light-mode .tax-sparkline-label { color: #999; }
 }
 
 .tax-approval-increase .tax-approval-badge {
-    color: #5a9a5a;
+    color: var(--green);
     background: rgba(90, 154, 90, 0.15);
 }
 
 .tax-approval-decrease .tax-approval-badge {
-    color: #c45c4a;
+    color: var(--red);
     background: rgba(196, 92, 74, 0.15);
 }
 
@@ -3421,17 +3420,17 @@ body.light-mode .tax-sparkline-label { color: #999; }
     font-weight: 700;
 }
 
-.tax-approval-increase .tax-approval-value { color: #6ab86a; }
-.tax-approval-decrease .tax-approval-value { color: #c45c4a; }
+.tax-approval-increase .tax-approval-value { color: var(--green); }
+.tax-approval-decrease .tax-approval-value { color: var(--red); }
 
 .tax-approval-explain {
     font-size: 0.6rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
 }
 
 .tax-approval-scope {
     font-size: 0.55rem;
-    color: #4a493f;
+    color: var(--text-faint);
     font-style: italic;
     margin-left: auto;
 }
@@ -3446,7 +3445,7 @@ body.light-mode .tax-approval-decrease {
     border-color: rgba(180, 60, 40, 0.15);
 }
 
-body.light-mode .tax-approval-increase .tax-approval-value { color: #2d7a2d; }
+body.light-mode .tax-approval-increase .tax-approval-value { color: var(--green); }
 body.light-mode .tax-approval-decrease .tax-approval-value { color: #b03020; }
 body.light-mode .tax-approval-explain { color: #888; }
 body.light-mode .tax-approval-scope { color: #999; }
@@ -3475,21 +3474,21 @@ body.light-mode .tax-approval-scope { color: #999; }
 }
 
 .tax-proposed-text {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
-    color: #c48a3e;
+    color: var(--amber);
     flex: 1;
 }
 
 .tax-proposed-text strong {
-    color: #d9a54e;
+    color: var(--amber);
 }
 
 .tax-proposed-status {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
     font-weight: 500;
-    color: #c48a3e;
+    color: var(--amber);
     background: rgba(196, 138, 62, 0.12);
     border: 1px solid rgba(196, 138, 62, 0.2);
     border-radius: 2px;
@@ -3505,10 +3504,10 @@ body.light-mode .tax-proposed-change {
 }
 
 body.light-mode .tax-proposed-change:hover { border-color: rgba(160, 110, 30, 0.3); }
-body.light-mode .tax-proposed-text { color: #8a6a1e; }
+body.light-mode .tax-proposed-text { color: var(--amber); }
 body.light-mode .tax-proposed-text strong { color: #6a5010; }
 body.light-mode .tax-proposed-status {
-    color: #8a6a1e;
+    color: var(--amber);
     background: rgba(160, 110, 30, 0.08);
     border-color: rgba(160, 110, 30, 0.2);
 }
@@ -3521,9 +3520,9 @@ body.light-mode .tax-proposed-status {
     overflow: hidden;
 }
 .trade-diag-header {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.58rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.12em;
     padding: 6px 10px;
@@ -3533,7 +3532,7 @@ body.light-mode .tax-proposed-status {
     gap: 6px;
     user-select: none;
 }
-.trade-diag-header:hover { color: #8a8a7a; }
+.trade-diag-header:hover { color: var(--text-secondary); }
 .trade-diag-toggle {
     font-size: 0.7rem;
     transition: transform 0.2s;
@@ -3563,20 +3562,20 @@ body.light-mode .tax-proposed-status {
     border-radius: 4px;
 }
 .trade-diag-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.55rem;
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.1em;
 }
 .trade-diag-value {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.85rem;
-    color: #d4d4c8;
+    color: var(--text-primary);
     font-weight: 600;
 }
 .trade-diag-effect {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.55rem;
     color: #555;
 }
@@ -3584,12 +3583,12 @@ body.light-mode .tax-proposed-status {
 .trade-diag-table {
     width: 100%;
     border-collapse: collapse;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.65rem;
     margin-bottom: 10px;
 }
 .trade-diag-table th {
-    color: #6b6a5e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-size: 0.55rem;
@@ -3606,8 +3605,8 @@ body.light-mode .tax-proposed-status {
     border-bottom: 1px solid rgba(255,255,255,0.02);
 }
 .trade-diag-table td:first-child { text-align: left; color: #999; }
-.trade-diag-table td.surplus { color: #4CAF50; }
-.trade-diag-table td.deficit { color: #f44336; }
+.trade-diag-table td.surplus { color: var(--green); }
+.trade-diag-table td.deficit { color: var(--red); }
 .trade-diag-table td.muted { color: #444; }
 
 .trade-diag-affinity-summary {
@@ -3627,7 +3626,7 @@ body.light-mode .tax-proposed-status {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
     padding: 2px 0;
 }
