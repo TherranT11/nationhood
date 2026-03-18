@@ -563,8 +563,9 @@ async function saveCrisis() {
             crisisId = r.data.id;
         } else {
             crisisId = currentCrisis.id;
-            var r2 = await _supabase.from('crisis_templates').update(payload).eq('id', crisisId);
+            var r2 = await _supabase.from('crisis_templates').update(payload).eq('id', crisisId).select().single();
             if (r2.error) throw r2.error;
+            if (!r2.data) throw new Error('Update failed — crisis may have been deleted or you lack permission. Try refreshing the page.');
         }
 
         // Delete removed items
@@ -963,8 +964,9 @@ async function saveMC() {
             crisisId = r.data.id;
         } else {
             crisisId = mc.id;
-            var r2 = await _supabase.from('crisis_templates').update(payload).eq('id', crisisId);
+            var r2 = await _supabase.from('crisis_templates').update(payload).eq('id', crisisId).select().single();
             if (r2.error) throw r2.error;
+            if (!r2.data) throw new Error('Update failed — crisis may have been deleted or you lack permission. Try refreshing the page.');
         }
 
         // Delete removed effects
