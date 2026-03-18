@@ -2313,7 +2313,8 @@ async function submitToCommittee() {
     // Atomic AP deduction — prevents race conditions and double-spend
     const apResult = await deductAP(_supabase, currentFaction.id, billApCost);
     if (!apResult.success) {
-        alert('Not enough AP to draft this bill. Need ' + billApCost + ' AP.');
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP to draft this bill. Need ' + billApCost + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
         isSubmitting = false;
         document.getElementById('submit-bill-btn').disabled = draftArticles.length === 0;
         return;
@@ -2431,11 +2432,6 @@ async function openDefaultResolutionModal() {
             default_cooldown: `Cannot file another default for ${eligibility.ticksRemaining} more ticks.`
         };
         alert(reasons[eligibility.reason] || 'Cannot propose a Default Resolution right now.');
-        return;
-    }
-
-    if ((currentFaction?.action_points || 0) < SOVEREIGN_DEFAULT_CONFIG.DEFAULT_RESOLUTION_AP_COST) {
-        alert(`Not enough AP. Need ${SOVEREIGN_DEFAULT_CONFIG.DEFAULT_RESOLUTION_AP_COST} AP.`);
         return;
     }
 
@@ -2627,7 +2623,8 @@ async function submitDefaultResolution() {
     // Deduct AP
     const apResult = await deductAP(_supabase, currentFaction.id, cfg.DEFAULT_RESOLUTION_AP_COST);
     if (!apResult.success) {
-        alert('Not enough AP.');
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP. Need ' + cfg.DEFAULT_RESOLUTION_AP_COST + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
         isSubmitting = false;
         document.getElementById('submit-default-btn').disabled = false;
         return;

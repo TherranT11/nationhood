@@ -339,8 +339,6 @@ async function confirmAmbassador() {
 
     const candidate = candidates[selectedCandidateIndex];
 
-    if ((currentFaction.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
-
     const actionLabel = isAutocracy ? 'appoint' : 'nominate';
     if (!confirm(
         '\u{1F3DB}\uFE0F ' + actionLabel.charAt(0).toUpperCase() + actionLabel.slice(1) + ' ' +
@@ -358,7 +356,12 @@ async function confirmAmbassador() {
     try {
         // Deduct 1 AP
         const apResult = await deductAP(_supabase, currentFaction.id, 1);
-        if (!apResult.success) { alert('Not enough AP (need 1).'); btn.disabled = false; btn.textContent = 'Nominate Ambassador'; return; }
+        if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert('Not enough AP (need 1). Current AP: ' + (apResult.currentAp ?? '?'));
+            btn.disabled = false; btn.textContent = 'Nominate Ambassador';
+            return;
+        }
         currentFaction.action_points = apResult.newAp;
 
         const { data: shard } = await _supabase
