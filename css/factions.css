@@ -214,5 +214,5 @@
             font-weight: bold;
             text-transform: uppercase;
         }
-        .badge-met { background: #1a2a1a; color: var(--green); border: 1px solid #4CAF50; }
-        .badge-failed { background: #2a1a1a; color: var(--red); border: 1px solid #ff4444; }
+        .badge-met { background: #1a2a1a; color: var(--green); border: 1px solid var(--green); }
+        .badge-failed { background: #2a1a1a; color: var(--red); border: 1px solid var(--red); }

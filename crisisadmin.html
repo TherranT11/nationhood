@@ -380,7 +380,7 @@ function renderEditor() {
                 // End Triggers (Recovery)
                 '<div class="editor-section">' +
                     '<div class="editor-section-header">' +
-                        '<div class="editor-section-title" style="color:#4CAF50;">Recovery Triggers (End Conditions)</div>' +
+                        '<div class="editor-section-title" style="color:#5cb85c;">Recovery Triggers (End Conditions)</div>' +
                         '<button class="btn btn-ghost btn-small" onclick="addEndTrigger()">+ Add Condition</button>' +
                     '</div>' +
                     '<div class="form-hint" style="margin-bottom:12px;">ALL conditions must be met to resolve the crisis. Use recovery thresholds with hysteresis (e.g., trigger at GDP &lt;= 20, recover at GDP &gt;= 35).</div>' +
@@ -635,10 +635,10 @@ function renderMCListView() {
     var c = document.getElementById('content-area');
     c.innerHTML =
         '<div class="admin-header"><div>' +
-            '<div class="admin-title" style="color:#ff9800;">Ministry Crises</div>' +
+            '<div class="admin-title" style="color:#d48a3c;">Ministry Crises</div>' +
             '<div class="admin-subtitle">Budget-linked crises that activate when ministry funding drops below a threshold</div>' +
         '</div><div class="admin-actions">' +
-            '<button class="btn btn-primary" style="background:linear-gradient(135deg,#ff9800,#e68900);" onclick="createNewMC()">+ New Ministry Crisis</button>' +
+            '<button class="btn btn-primary" style="background:linear-gradient(135deg,#d48a3c,#b8742f);" onclick="createNewMC()">+ New Ministry Crisis</button>' +
         '</div></div>' +
         renderTabBar() +
         '<div class="filters">' +
@@ -667,7 +667,7 @@ function renderMCList(crises) {
         var desc = (cr.description || '').substring(0, 80);
         return '<div class="crisis-card mc-card ' + (cr.is_active ? 'active' : 'inactive') + '" onclick="editMC(\'' + cr.id + '\')">' +
             '<div class="crisis-card-left">' +
-                '<div class="crisis-card-name" style="color:#ff9800;">' + escapeHtml(cr.name) + '</div>' +
+                '<div class="crisis-card-name" style="color:#d48a3c;">' + escapeHtml(cr.name) + '</div>' +
                 '<div class="crisis-card-meta">' +
                     '<span class="tag tag-ministry">' + fcLabel + '</span>' +
                     '<span class="tag tag-funding">Below ' + (cr.funding_threshold_pct || 0) + '%</span>' +
@@ -735,7 +735,7 @@ function renderMCEditor() {
     c.innerHTML =
         '<button class="btn-back" onclick="cancelMCEditor()">&#8592; Back to Ministry Crises</button>' +
         '<div class="editor mc-editor">' +
-            '<div class="editor-header" style="border-bottom-color:#ff9800;"><div class="editor-title" style="color:#ff9800;">' + title + '</div>' +
+            '<div class="editor-header" style="border-bottom-color:#d48a3c;"><div class="editor-title" style="color:#d48a3c;">' + title + '</div>' +
                 (!isNewMinistryCrisis ? '<button class="btn btn-danger btn-small" onclick="deleteMC(\'' + mc.id + '\')">Delete</button>' : '') +
             '</div>' +
             '<div class="editor-body">' +
@@ -759,8 +759,8 @@ function renderMCEditor() {
                 '</div>' +
 
                 // Ministry + Threshold section
-                '<div class="editor-section" style="border-color:#ff9800;">' +
-                    '<div class="editor-section-title" style="color:#ff9800;margin-bottom:12px;">Funding Trigger</div>' +
+                '<div class="editor-section" style="border-color:#d48a3c;">' +
+                    '<div class="editor-section-title" style="color:#d48a3c;margin-bottom:12px;">Funding Trigger</div>' +
                     '<div class="form-hint" style="margin-bottom:16px;">Crisis activates when the ministry\'s budget allocation / fulfilled cost ratio drops below the activation threshold. Resolves when funding is restored above the recovery threshold.</div>' +
 
                     '<div class="form-row" style="grid-template-columns:1fr 1fr 1fr;">' +
@@ -786,7 +786,7 @@ function renderMCEditor() {
                     '<div id="mc-institutions-area">' + renderMCInstitutions(ministryKey, mc.institution_ids || []) + '</div>' +
                 '</div>' +
 
-                '<div class="section-divider" style="color:#ff9800;">when active, every tick applies</div>' +
+                '<div class="section-divider" style="color:#d48a3c;">when active, every tick applies</div>' +
 
                 // Effects
                 '<div class="editor-section">' +
@@ -801,7 +801,7 @@ function renderMCEditor() {
             '</div>' +
             '<div class="editor-footer">' +
                 '<button class="btn btn-ghost" onclick="cancelMCEditor()">Cancel</button>' +
-                '<button class="btn btn-primary" style="background:linear-gradient(135deg,#ff9800,#e68900);" onclick="saveMC()">Save Ministry Crisis</button>' +
+                '<button class="btn btn-primary" style="background:linear-gradient(135deg,#d48a3c,#b8742f);" onclick="saveMC()">Save Ministry Crisis</button>' +
             '</div>' +
         '</div>';
 

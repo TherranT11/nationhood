@@ -45,7 +45,7 @@
 
 .laws-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; gap:12px; flex-wrap:wrap; }
         .laws-header-buttons { display:flex; gap:10px; }
-        .draft-btn { background:var(--amber); border:none; border-radius:3px; padding:12px 24px; color:#141412; font-family:var(--font-mono); font-weight:700; font-size:0.8rem; cursor:pointer; text-transform:uppercase; letter-spacing:0.06em; transition:opacity 0.2s; }
+        .draft-btn { background:var(--amber); border:none; border-radius:3px; padding:12px 24px; color:var(--bg-body); font-family:var(--font-mono); font-weight:700; font-size:0.8rem; cursor:pointer; text-transform:uppercase; letter-spacing:0.06em; transition:opacity 0.2s; }
         .draft-btn:hover { opacity:0.85; }
         .draft-btn:disabled { background:var(--bg-card); color:var(--text-muted); cursor:not-allowed; }
         .draft-btn.autocracy-btn { background:var(--red); color:#fff; }
@@ -116,7 +116,7 @@
         .stance-btn:hover { opacity:0.85; }
         .stance-btn.accept { background:var(--green); color:#fff; }
         .stance-btn.reject { background:var(--red); color:#fff; }
-        .stance-btn.send-floor { background:var(--amber); color:#141412; font-weight:700; }
+        .stance-btn.send-floor { background:var(--amber); color:var(--bg-body); font-weight:700; }
         .stance-btn.retract { background:var(--text-muted); color:#fff; }
         .stance-btn.veto { background:var(--red); color:#fff; font-weight:700; text-transform:uppercase; letter-spacing:1px; }
         .floor-bill { background:var(--bg-panel); border:1px solid var(--green-border); border-radius:3px; padding:20px; margin-bottom:16px; border-left:4px solid var(--green); }
@@ -227,7 +227,7 @@
         .modal-footer { display:flex; justify-content:flex-end; gap:12px; margin-top:20px; padding-top:16px; border-top:1px solid var(--border-main); }
         .btn-cancel { padding:12px 24px; background:var(--bg-card); border:1px solid var(--border-mid); border-radius:3px; color:var(--text-secondary); cursor:pointer; font-family:var(--font-mono); }
         .btn-cancel:hover { background:var(--bg-hover); color:var(--text-bright); }
-        .btn-submit { padding:12px 24px; background:var(--amber); border:none; border-radius:3px; color:#141412; font-weight:700; cursor:pointer; font-family:var(--font-mono); }
+        .btn-submit { padding:12px 24px; background:var(--amber); border:none; border-radius:3px; color:var(--bg-body); font-weight:700; cursor:pointer; font-family:var(--font-mono); }
         .btn-submit:hover { opacity:0.85; }
         .btn-submit:disabled { background:var(--bg-card); color:var(--text-muted); cursor:not-allowed; }
         .btn-add { padding:8px 16px; background:var(--green); border:none; border-radius:3px; color:#fff; font-weight:700; cursor:pointer; font-family:var(--font-mono); }

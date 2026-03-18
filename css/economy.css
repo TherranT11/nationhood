@@ -2,7 +2,7 @@
 
 /* ===== TITLE BAR ===== */
 .econ-title-bar {
-    background: #141412;
+    background: var(--bg-body);
     border-bottom: 1px solid rgba(255,255,255,0.06);
     padding: 18px 24px 14px;
     text-align: center;
@@ -32,7 +32,7 @@ body.light-mode .econ-title {
     justify-content: center;
     gap: 2px;
     padding: 0;
-    background: #141412;
+    background: var(--bg-body);
     border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
@@ -163,8 +163,8 @@ body.light-mode .econ-section-header {
     display: none;
 }
 
-.econ-card-surplus { border-left-color: var(--green, #4CAF50); }
-.econ-card-deficit { border-left-color: var(--red, #ff4444); }
+.econ-card-surplus { border-left-color: var(--green, #5cb85c); }
+.econ-card-deficit { border-left-color: var(--red, #d9534f); }
 .econ-card-neutral { border-left-color: var(--text-secondary); }
 
 .econ-card-label {
@@ -186,8 +186,8 @@ body.light-mode .econ-section-header {
     margin-bottom: 4px;
 }
 
-.econ-card-surplus .econ-card-value { color: var(--green, #4CAF50); }
-.econ-card-deficit .econ-card-value { color: var(--red, #ff4444); }
+.econ-card-surplus .econ-card-value { color: var(--green, #5cb85c); }
+.econ-card-deficit .econ-card-value { color: var(--red, #d9534f); }
 
 .econ-card-sub {
     font-family: var(--font-mono);
@@ -372,7 +372,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    background: #141412;
+    background: var(--bg-body);
     border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 .bv2-col-title {
@@ -835,7 +835,7 @@ body.light-mode .distress-banner-text { color: #555; }
 
 .econ-ranking-highlight {
     background: rgba(226, 224, 214, 0.04);
-    border-left: 2px solid #e2e0d6;
+    border-left: 2px solid var(--text-bright);
 }
 
 .econ-ranking-highlight .econ-ranking-name {
@@ -896,7 +896,7 @@ body.light-mode .distress-banner-text { color: #555; }
 .econ-health-warning {
     font-family: var(--font-mono);
     font-size: 0.58rem;
-    color: var(--red, #ff4444);
+    color: var(--red, #d9534f);
     font-style: italic;
     white-space: nowrap;
 }
@@ -1012,7 +1012,7 @@ body.light-mode .econ-health-threshold {
 /* ===== LEGACY HERO BAR (kept for backward compat) ===== */
 
 .economy-hero {
-    background: #141412;
+    background: var(--bg-body);
     border-bottom: 1px solid rgba(255,255,255,0.06);
     padding: 24px 24px 28px;
     text-align: center;
@@ -1088,8 +1088,8 @@ body.light-mode .econ-health-threshold {
     gap: 4px;
 }
 
-.economy-stat-trend .trend-up { color: var(--green, #4CAF50); }
-.economy-stat-trend .trend-down { color: var(--red, #ff4444); }
+.economy-stat-trend .trend-up { color: var(--green, #5cb85c); }
+.economy-stat-trend .trend-down { color: var(--red, #d9534f); }
 .economy-stat-trend .trend-neutral { color: var(--text-muted); }
 
 .economy-stat-rating {
@@ -1107,8 +1107,8 @@ body.light-mode .econ-health-threshold {
 .economy-stat-rating.rating-poor       { color: var(--orange); }
 .economy-stat-rating.rating-critical   { color: var(--red); }
 
-.economy-stat-trend .trend-up.inverted { color: var(--red, #ff4444); }
-.economy-stat-trend .trend-down.inverted { color: var(--green, #4CAF50); }
+.economy-stat-trend .trend-up.inverted { color: var(--red, #d9534f); }
+.economy-stat-trend .trend-down.inverted { color: var(--green, #5cb85c); }
 
 .economy-stat-financial.hero-surplus {
     border-color: rgba(76, 175, 80, 0.15);
@@ -1117,13 +1117,13 @@ body.light-mode .econ-health-threshold {
     border-color: rgba(255, 68, 68, 0.15);
 }
 .economy-stat-financial.hero-surplus::before {
-    background: var(--green, #4CAF50);
+    background: var(--green, #5cb85c);
 }
 .economy-stat-financial.hero-deficit::before {
-    background: var(--red, #ff4444);
+    background: var(--red, #d9534f);
 }
-.economy-stat-value.hero-surplus { color: var(--green, #4CAF50); }
-.economy-stat-value.hero-deficit { color: var(--red, #ff4444); }
+.economy-stat-value.hero-surplus { color: var(--green, #5cb85c); }
+.economy-stat-value.hero-deficit { color: var(--red, #d9534f); }
 
 .economy-stat-breakdown {
     display: flex;
@@ -1135,8 +1135,8 @@ body.light-mode .econ-health-threshold {
     margin-top: 4px;
     color: var(--text-muted);
 }
-.breakdown-revenue { color: var(--green, #4CAF50); }
-.breakdown-expense { color: var(--red, #ff4444); }
+.breakdown-revenue { color: var(--green, #5cb85c); }
+.breakdown-expense { color: var(--red, #d9534f); }
 .breakdown-sep { color: var(--text-faint); }
 .breakdown-ratio { color: var(--text-muted); }
 
@@ -1209,7 +1209,7 @@ body.light-mode .economy-stat-box {
 
 /* --- Header --- */
 .budget-header {
-    background: #141412;
+    background: var(--bg-body);
     padding: 16px 20px;
     border-bottom: 1px solid rgba(255,255,255,0.06);
     text-align: left;
@@ -1779,7 +1779,7 @@ body.light-mode .trade-score-bar {
     cursor: help;
 }
 .aff-tip-trigger {
-    border-bottom: 1px dotted #6b6a5e;
+    border-bottom: 1px dotted var(--text-muted);
 }
 .aff-tooltip {
     display: none;
@@ -1886,10 +1886,10 @@ body.light-mode .aff-tip-trigger { border-bottom-color: var(--text-secondary); }
     color: var(--text-bright);
 }
 
-.partner-stat-value.exports { color: var(--green, #4CAF50); }
-.partner-stat-value.imports { color: var(--red, #f44336); }
-.partner-stat-value.surplus { color: var(--green, #4CAF50); }
-.partner-stat-value.deficit { color: var(--red, #f44336); }
+.partner-stat-value.exports { color: var(--green, #5cb85c); }
+.partner-stat-value.imports { color: var(--red, #d9534f); }
+.partner-stat-value.surplus { color: var(--green, #5cb85c); }
+.partner-stat-value.deficit { color: var(--red, #d9534f); }
 
 /* Volume bar */
 .partner-bar-container {
@@ -1906,13 +1906,13 @@ body.light-mode .aff-tip-trigger { border-bottom-color: var(--text-secondary); }
 }
 
 .partner-bar-exports {
-    background: var(--green, #4CAF50);
+    background: var(--green, #5cb85c);
     border-radius: 3px 0 0 3px;
     min-width: 2px;
 }
 
 .partner-bar-imports {
-    background: var(--red, #f44336);
+    background: var(--red, #d9534f);
     border-radius: 0 3px 3px 0;
     min-width: 2px;
 }
@@ -1926,8 +1926,8 @@ body.light-mode .aff-tip-trigger { border-bottom-color: var(--text-secondary); }
     margin-top: 2px;
 }
 
-.partner-legend-exports { color: var(--green, #4CAF50); }
-.partner-legend-imports { color: var(--red, #f44336); }
+.partner-legend-exports { color: var(--green, #5cb85c); }
+.partner-legend-imports { color: var(--red, #d9534f); }
 
 /* Sector breakdown */
 .partner-sectors {
@@ -2300,7 +2300,7 @@ body.light-mode .partner-card {
     padding: 8px 12px;
     background: rgba(255, 68, 68, 0.06);
     border: 1px solid rgba(255, 68, 68, 0.12);
-    border-left: 3px solid #ff4444;
+    border-left: 3px solid var(--red);
     border-radius: 3px;
     font-family: var(--font-mono);
     font-size: 0.62rem;
@@ -2574,7 +2574,7 @@ body.light-mode .sector-score-threshold {
     font-family: var(--font-mono);
     font-size: 0.52rem;
     font-weight: 700;
-    color: #141412;
+    color: var(--bg-body);
     padding: 2px 6px;
     border-radius: 2px;
     letter-spacing: 0.06em;
@@ -2697,7 +2697,7 @@ body.light-mode .sector-score-threshold {
 
 .tm-row.tm-highlight {
     background: rgba(226, 224, 214, 0.04);
-    border-left: 2px solid #e2e0d6;
+    border-left: 2px solid var(--text-bright);
     padding-left: 8px;
     margin: 0 -10px;
     padding-right: 10px;
@@ -2746,7 +2746,7 @@ body.light-mode .sector-score-threshold {
     font-family: var(--font-mono);
     font-size: 0.5rem;
     font-weight: 700;
-    color: #141412;
+    color: var(--bg-body);
     padding: 2px 6px;
     border-radius: 2px;
     letter-spacing: 0.04em;
@@ -2805,11 +2805,11 @@ body.light-mode .tariff-explainer {
 }
 
 /* ===== TREND ARROWS (overview cards) ===== */
-.trend-up { color: var(--green, #4CAF50); }
-.trend-down { color: var(--red, #ff4444); }
+.trend-up { color: var(--green, #5cb85c); }
+.trend-down { color: var(--red, #d9534f); }
 .trend-neutral { color: var(--text-muted); }
-.trend-up.inverted { color: var(--red, #ff4444); }
-.trend-down.inverted { color: var(--green, #4CAF50); }
+.trend-up.inverted { color: var(--red, #d9534f); }
+.trend-down.inverted { color: var(--green, #5cb85c); }
 
 /* ===== TAXATION TAB ===== */
 
@@ -3123,8 +3123,8 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
     transform: translateY(-50%);
     width: 14px;
     height: 14px;
-    background: #e2e0d6;
-    border: 2px solid #1e1e1a;
+    background: var(--text-bright);
+    border: 2px solid var(--bg-card);
     border-radius: 2px;
     box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
     z-index: 1;
@@ -3138,8 +3138,8 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
     transform: translateY(-50%);
     width: 14px;
     height: 14px;
-    background: #e2e0d6;
-    border: 2px solid #1e1e1a;
+    background: var(--text-bright);
+    border: 2px solid var(--bg-card);
     border-radius: 2px;
     box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
     z-index: 1;
@@ -3367,7 +3367,7 @@ body.light-mode .tax-hit-tag {
 }
 
 .tax-spark-bar.current {
-    background: #8a8778;
+    background: var(--text-secondary);
 }
 
 body.light-mode .tax-spark-bar { background: rgba(0,0,0,0.08); }

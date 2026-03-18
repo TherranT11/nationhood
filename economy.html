@@ -799,7 +799,7 @@ function renderOverviewTab(nation) {
         h += '<div class="distress-banner-text">Debt has reached ' + formatDebtToGDP(getDebtToGDP(nation)) + ' of GDP. Credit is deteriorating rapidly. ';
         if (_distressInfo.locked) h += 'Borrowing is locked out. ';
         if (_distressInfo.burden > 0) h += 'Government spending effectiveness reduced by ' + (_distressInfo.burden * 100).toFixed(0) + '%. ';
-        h += 'Consider a <a href="laws.html" style="color:#ff9800;text-decoration:underline;">Default Resolution</a> to restructure debt.</div>';
+        h += 'Consider a <a href="laws.html" style="color:#d48a3c;text-decoration:underline;">Default Resolution</a> to restructure debt.</div>';
         h += '</div></div>';
     } else if (_distressInfo.level === 'distressed') {
         h += '<div class="debt-distress-banner debt-distress-warning">';
@@ -864,7 +864,7 @@ function renderOverviewTab(nation) {
         h += '<div class="trade-diag-modifiers">';
         h += '<div class="trade-diag-mod">';
         h += '<span class="trade-diag-label">Tariff Rate</span>';
-        h += '<span class="trade-diag-value" style="color:' + (tariffVal > 50 ? 'var(--red, #f44336)' : tariffVal > 25 ? 'var(--accent, #ffcc00)' : 'var(--green, #4CAF50)') + '">' + tariffVal + '%</span>';
+        h += '<span class="trade-diag-value" style="color:' + (tariffVal > 50 ? 'var(--red, #d9534f)' : tariffVal > 25 ? 'var(--accent, #ffcc00)' : 'var(--green, #5cb85c)') + '">' + tariffVal + '%</span>';
         h += '<span class="trade-diag-effect">Import dampening: ' + (tariffDampener * 100).toFixed(0) + '%</span>';
         h += '</div>';
         h += '<div class="trade-diag-mod">';
@@ -874,7 +874,7 @@ function renderOverviewTab(nation) {
         h += '</div>';
         h += '<div class="trade-diag-mod">';
         h += '<span class="trade-diag-label">Stability</span>';
-        h += '<span class="trade-diag-value" style="color:' + (stabilityVal < 25 ? 'var(--red, #f44336)' : stabilityVal < 40 ? 'var(--accent, #ffcc00)' : 'var(--green, #4CAF50)') + '">' + stabilityVal.toFixed(0) + '/100</span>';
+        h += '<span class="trade-diag-value" style="color:' + (stabilityVal < 25 ? 'var(--red, #d9534f)' : stabilityVal < 40 ? 'var(--accent, #ffcc00)' : 'var(--green, #5cb85c)') + '">' + stabilityVal.toFixed(0) + '/100</span>';
         h += '<span class="trade-diag-effect">Export modifier: ' + stabilityMod.toFixed(2) + 'x</span>';
         h += '</div>';
         h += '</div>';
@@ -920,7 +920,7 @@ function renderOverviewTab(nation) {
             h += '<span class="trade-diag-label">Trade Partners</span>';
             h += '<span class="trade-diag-value">' + positiveAffinities + ' eligible</span>';
             if (blockedAffinities > 0) {
-                h += '<span class="trade-diag-effect" style="color:var(--red, #f44336)">' + blockedAffinities + ' blocked (affinity ≤ 0)</span>';
+                h += '<span class="trade-diag-effect" style="color:var(--red, #d9534f)">' + blockedAffinities + ' blocked (affinity ≤ 0)</span>';
             }
             h += '</div>';
 
@@ -933,7 +933,7 @@ function renderOverviewTab(nation) {
                     var _ad = affinityDetails[_aj];
                     var _name = _ad.name || 'Nation';
                     var _b = _ad.breakdown;
-                    var _affColor = _b.total > 50 ? 'var(--green, #4CAF50)' : _b.total > 0 ? 'var(--accent, #ffcc00)' : 'var(--red, #f44336)';
+                    var _affColor = _b.total > 50 ? 'var(--green, #5cb85c)' : _b.total > 0 ? 'var(--accent, #ffcc00)' : 'var(--red, #d9534f)';
                     h += '<div class="trade-diag-affinity-row">';
                     h += '<span class="trade-diag-affinity-name">' + escapeHtml(_name) + '</span>';
                     h += '<span class="trade-diag-affinity-score" style="color:' + _affColor + '">' + _b.total.toFixed(0) + '</span>';
@@ -980,7 +980,7 @@ function renderOverviewTab(nation) {
     if (burden > 0) {
         h += '<div class="debt-burden-bar">';
         h += '<div class="debt-burden-label">Debt Service Burden: <strong>' + (burden * 100).toFixed(1) + '%</strong> spending reduction</div>';
-        h += '<div class="debt-burden-track"><div class="debt-burden-fill" style="width:' + Math.min(100, (burden / SOVEREIGN_DEFAULT_CONFIG.BURDEN_MAX) * 100) + '%;background:' + (burden >= 0.3 ? '#ff4444' : burden >= 0.15 ? '#ff9800' : '#ffcc00') + ';"></div></div>';
+        h += '<div class="debt-burden-track"><div class="debt-burden-fill" style="width:' + Math.min(100, (burden / SOVEREIGN_DEFAULT_CONFIG.BURDEN_MAX) * 100) + '%;background:' + (burden >= 0.3 ? '#d9534f' : burden >= 0.15 ? '#d48a3c' : '#ffcc00') + ';"></div></div>';
         h += '</div>';
     }
     if (isLocked) {
@@ -1121,7 +1121,7 @@ function renderSectorHealth(nation) {
         var sector = TRADE_SECTORS[i];
         var score = getSectorScore(nation, sector);
         var pct = Math.min(100, Math.max(0, Math.round(score)));
-        var color = pct >= 70 ? 'var(--green, #4CAF50)' : pct >= 40 ? 'var(--accent, #ffcc00)' : 'var(--red, #f44336)';
+        var color = pct >= 70 ? 'var(--green, #5cb85c)' : pct >= 40 ? 'var(--accent, #ffcc00)' : 'var(--red, #d9534f)';
         var aboveThreshold = score >= sector.export_threshold;
 
         h += '<div class="econ-sector-row">';
@@ -1650,16 +1650,16 @@ function renderBudgetTab(nation) {
     // --- Summary bar: 3 cards ---
     h += '<div class="bv2-summary-bar">';
     h += '<div class="bv2-card">';
-    h += '<div class="bv2-card-label" style="color:#4CAF50;">REVENUE</div>';
+    h += '<div class="bv2-card-label" style="color:#5cb85c;">REVENUE</div>';
     h += '<div class="bv2-card-value">' + formatBudgetCurrency(budget.grossRevenue) + '</div>';
     h += '</div>';
     h += '<div class="bv2-card">';
-    h += '<div class="bv2-card-label" style="color:#ff4444;">EXPENDITURES</div>';
+    h += '<div class="bv2-card-label" style="color:#d9534f;">EXPENDITURES</div>';
     h += '<div class="bv2-card-value">' + formatBudgetCurrency(totalExpenditure) + '</div>';
     h += '</div>';
     h += '<div class="bv2-card">';
-    h += '<div class="bv2-card-label" style="color:' + (isDeficit ? '#ff4444' : '#4CAF50') + ';">' + (isDeficit ? 'DEFICIT' : 'SURPLUS') + '</div>';
-    h += '<div class="bv2-card-value" style="color:' + (isDeficit ? '#ff4444' : '#4CAF50') + ';">' + balSign + formatBudgetCurrency(balance) + '</div>';
+    h += '<div class="bv2-card-label" style="color:' + (isDeficit ? '#d9534f' : '#5cb85c') + ';">' + (isDeficit ? 'DEFICIT' : 'SURPLUS') + '</div>';
+    h += '<div class="bv2-card-value" style="color:' + (isDeficit ? '#d9534f' : '#5cb85c') + ';">' + balSign + formatBudgetCurrency(balance) + '</div>';
     h += '</div>';
     h += '</div>';
 
@@ -1673,8 +1673,8 @@ function renderBudgetTab(nation) {
     // LEFT: Revenues
     h += '<div class="bv2-col">';
     h += '<div class="bv2-col-header">';
-    h += '<span class="bv2-col-title" style="color:#4CAF50;">REVENUES</span>';
-    h += '<span class="bv2-col-total" style="color:#4CAF50;">Total: ' + formatBudgetCurrency(budget.grossRevenue) + ' / yr</span>';
+    h += '<span class="bv2-col-title" style="color:#5cb85c;">REVENUES</span>';
+    h += '<span class="bv2-col-total" style="color:#5cb85c;">Total: ' + formatBudgetCurrency(budget.grossRevenue) + ' / yr</span>';
     h += '</div>';
 
     h += bv2RevenueRow('INCOME TAX', Math.round(Number(nation.income_tax || 0)) + '% rate · Income bracket', budget.incomeRevenue);
@@ -1697,8 +1697,8 @@ function renderBudgetTab(nation) {
     // RIGHT: Expenditures
     h += '<div class="bv2-col">';
     h += '<div class="bv2-col-header">';
-    h += '<span class="bv2-col-title" style="color:#ff4444;">EXPENDITURES &mdash; MINISTRY COSTS</span>';
-    h += '<span class="bv2-col-total" style="color:#ff4444;">Total: ' + formatBudgetCurrency(totalExpenditure) + ' / yr</span>';
+    h += '<span class="bv2-col-title" style="color:#d9534f;">EXPENDITURES &mdash; MINISTRY COSTS</span>';
+    h += '<span class="bv2-col-total" style="color:#d9534f;">Total: ' + formatBudgetCurrency(totalExpenditure) + ' / yr</span>';
     h += '</div>';
 
     // Sort ministries by cost descending
@@ -1733,7 +1733,7 @@ function renderBudgetTab(nation) {
     h += '</div>'; // .bv2-breakdown
 
     // --- Net balance box ---
-    var netColor = isDeficit ? '#ff4444' : '#4CAF50';
+    var netColor = isDeficit ? '#d9534f' : '#5cb85c';
     var netIcon = isDeficit ? '&#9650;' : '&#9660;';
     var netLabel = isDeficit ? 'DEFICIT' : 'SURPLUS';
     h += '<div class="bv2-net-box" style="border-color:' + netColor + ';">';
@@ -1756,7 +1756,7 @@ function renderBudgetTab(nation) {
     if (isDeficit) {
         h += '<div class="bv2-info-bar">';
         h += '<span class="bv2-info-icon">i</span> ';
-        h += 'The shortfall of <strong style="color:#ff4444;">' + formatBudgetCurrency(Math.abs(balance)) + '</strong> exceeds available revenue ';
+        h += 'The shortfall of <strong style="color:#d9534f;">' + formatBudgetCurrency(Math.abs(balance)) + '</strong> exceeds available revenue ';
         h += 'and is being added to the national debt each tick. ';
         h += 'Raise taxes, grow the economy, or reduce ministry funding to close the gap.';
         h += '</div>';
@@ -1879,9 +1879,9 @@ function renderSectorFlowsTable(nation) {
         totalExp += expVol;
         totalImp += impVol;
 
-        var netColor = net > 0 ? '#4CAF50' : net < 0 ? '#ff4444' : '#6b6a5e';
+        var netColor = net > 0 ? '#5cb85c' : net < 0 ? '#d9534f' : '#666';
         var netSign = net > 0 ? '+' : '';
-        var priceColor = priceMod >= 1.05 ? '#4CAF50' : priceMod <= 0.95 ? '#ff4444' : '#8a8778';
+        var priceColor = priceMod >= 1.05 ? '#5cb85c' : priceMod <= 0.95 ? '#d9534f' : '#888';
 
         // Trend from previous tick
         var prevExp = tradeData.prevFlows[sKey] ? Number(tradeData.prevFlows[sKey].export_volume) || 0 : null;
@@ -1893,8 +1893,8 @@ function renderSectorFlowsTable(nation) {
         h += '<span class="tft-sector-name">' + escapeHtml(sector.label) + '</span>';
         if (sector.export_only) h += '<span class="tft-export-only">EXPORT ONLY</span>';
         h += '</div>';
-        h += '<div class="tft-cell tft-num" style="color:#4CAF50">' + formatBudgetCurrency(expVol) + '</div>';
-        h += '<div class="tft-cell tft-num" style="color:#ff4444">' + (impVol > 0 ? formatBudgetCurrency(impVol) : '—') + '</div>';
+        h += '<div class="tft-cell tft-num" style="color:#5cb85c">' + formatBudgetCurrency(expVol) + '</div>';
+        h += '<div class="tft-cell tft-num" style="color:#d9534f">' + (impVol > 0 ? formatBudgetCurrency(impVol) : '—') + '</div>';
         h += '<div class="tft-cell tft-num" style="color:' + netColor + '">' + netSign + formatBudgetCurrency(net) + '</div>';
         h += '<div class="tft-cell tft-num" style="color:' + priceColor + '">' + priceMod.toFixed(2) + 'x</div>';
         h += '<div class="tft-cell tft-trend">';
@@ -1909,12 +1909,12 @@ function renderSectorFlowsTable(nation) {
 
     // Totals row
     var totalNet = totalExp - totalImp;
-    var totalNetColor = totalNet > 0 ? '#4CAF50' : totalNet < 0 ? '#ff4444' : '#6b6a5e';
+    var totalNetColor = totalNet > 0 ? '#5cb85c' : totalNet < 0 ? '#d9534f' : '#666';
     var totalNetSign = totalNet > 0 ? '+' : '';
     h += '<div class="tft-row tft-total">';
     h += '<div class="tft-cell tft-sector">TOTAL</div>';
-    h += '<div class="tft-cell tft-num" style="color:#4CAF50">' + formatBudgetCurrency(totalExp) + '</div>';
-    h += '<div class="tft-cell tft-num" style="color:#ff4444">' + formatBudgetCurrency(totalImp) + '</div>';
+    h += '<div class="tft-cell tft-num" style="color:#5cb85c">' + formatBudgetCurrency(totalExp) + '</div>';
+    h += '<div class="tft-cell tft-num" style="color:#d9534f">' + formatBudgetCurrency(totalImp) + '</div>';
     h += '<div class="tft-cell tft-num" style="color:' + totalNetColor + '">' + totalNetSign + formatBudgetCurrency(totalNet) + '</div>';
     h += '<div class="tft-cell tft-num"></div>';
     h += '<div class="tft-cell tft-trend"></div>';
@@ -1970,8 +1970,8 @@ function renderTradeScoresSection(nation) {
         var s = scores[i];
         var rounded = Math.round(s.value * 10) / 10;
         var pct = Math.min(100, Math.round(s.value));
-        var color = pct >= 70 ? '#4CAF50' : pct >= 40 ? '#e2e0d6' : '#ff4444';
-        var borderColor = pct >= 70 ? '#4CAF50' : pct >= 40 ? '#8a8778' : '#ff4444';
+        var color = pct >= 70 ? '#5cb85c' : pct >= 40 ? '#f0efe6' : '#d9534f';
+        var borderColor = pct >= 70 ? '#5cb85c' : pct >= 40 ? '#888' : '#d9534f';
 
         h += '<div class="trade-score-card" style="border-left-color:' + borderColor + '">';
         h += '<div class="trade-score-name"' + (NATION_COLORS[s.name] ? ' style="color:' + NATION_COLORS[s.name] + '"' : '') + '>' + escapeHtml(s.name) + '</div>';
@@ -1980,7 +1980,7 @@ function renderTradeScoresSection(nation) {
         h += '<div class="trade-score-stats">';
         for (var j = 0; j < s.stats.length; j++) {
             var st = s.stats[j];
-            var stColor = st.value >= 70 ? '#4CAF50' : st.value >= 40 ? '#e2e0d6' : '#ff4444';
+            var stColor = st.value >= 70 ? '#5cb85c' : st.value >= 40 ? '#f0efe6' : '#d9534f';
             h += '<span class="trade-score-stat">' + escapeHtml(st.label) + ' <strong style="color:' + stColor + '">' + Math.round(st.value) + '</strong></span>';
         }
         h += '</div>';
@@ -2026,7 +2026,7 @@ function renderTradePartnersSection() {
         var p = partners[pid];
         var balance = p.totalExports - p.totalImports;
         var totalVol = p.totalExports + p.totalImports;
-        var borderColor = balance > 0 ? '#4CAF50' : balance < 0 ? '#ff4444' : '#8a8778';
+        var borderColor = balance > 0 ? '#5cb85c' : balance < 0 ? '#d9534f' : '#888';
 
         h += '<div class="partner-card" style="border-left-color:' + borderColor + '">';
 
@@ -2094,11 +2094,11 @@ function renderTradePartnersSection() {
                 var sp = sectorParts[si];
                 var detail = '';
                 if (sp.exp > 0 && sp.imp > 0) {
-                    detail = '<span style="color:#4CAF50">' + formatBudgetCurrency(sp.exp) + '</span> / <span style="color:#ff4444">' + formatBudgetCurrency(sp.imp) + '</span>';
+                    detail = '<span style="color:#5cb85c">' + formatBudgetCurrency(sp.exp) + '</span> / <span style="color:#d9534f">' + formatBudgetCurrency(sp.imp) + '</span>';
                 } else if (sp.exp > 0) {
-                    detail = '<span style="color:#4CAF50">' + formatBudgetCurrency(sp.exp) + '</span>';
+                    detail = '<span style="color:#5cb85c">' + formatBudgetCurrency(sp.exp) + '</span>';
                 } else {
-                    detail = '<span style="color:#ff4444">' + formatBudgetCurrency(sp.imp) + '</span>';
+                    detail = '<span style="color:#d9534f">' + formatBudgetCurrency(sp.imp) + '</span>';
                 }
                 h += '<div class="partner-sector-line">';
                 h += '<span class="partner-sector-name">' + escapeHtml(sp.label) + '</span>';
@@ -2127,7 +2127,7 @@ function renderSectorsTab(nation) {
         var s = TRADE_SECTORS[i];
         var score = getSectorScore(nation, s);
         var isActive = s.key === activeSector;
-        var borderColor = score >= 70 ? '#4CAF50' : score >= 40 ? '#8a8778' : '#ff4444';
+        var borderColor = score >= 70 ? '#5cb85c' : score >= 40 ? '#888' : '#d9534f';
         h += '<button class="sector-tab' + (isActive ? ' active' : '') + '" data-sector="' + s.key + '" style="' + (isActive ? 'border-bottom-color:' + borderColor : '') + '">';
         h += escapeHtml(s.label);
         h += '</button>';
@@ -2157,7 +2157,7 @@ function selectSector(sectorKey, nation) {
         var sector = TRADE_SECTOR_MAP[sectorKey];
         if (sector && nation) {
             var score = getSectorScore(nation, sector);
-            var borderColor = score >= 70 ? '#4CAF50' : score >= 40 ? '#8a8778' : '#ff4444';
+            var borderColor = score >= 70 ? '#5cb85c' : score >= 40 ? '#888' : '#d9534f';
             target.style.borderBottomColor = borderColor;
         }
     }
@@ -2172,8 +2172,8 @@ function renderSectorDetail(nation, sectorKey) {
     var score = getSectorScore(nation, sector);
     var pct = Math.min(100, Math.max(0, Math.round(score)));
     var aboveThreshold = score >= sector.export_threshold;
-    var scoreColor = pct >= 70 ? '#4CAF50' : pct >= 40 ? '#e2e0d6' : '#ff4444';
-    var borderColor = pct >= 70 ? '#4CAF50' : pct >= 40 ? '#8a8778' : '#ff4444';
+    var scoreColor = pct >= 70 ? '#5cb85c' : pct >= 40 ? '#f0efe6' : '#d9534f';
+    var borderColor = pct >= 70 ? '#5cb85c' : pct >= 40 ? '#888' : '#d9534f';
 
     var flow = (tradeData && tradeData.flows) ? tradeData.flows[sectorKey] : null;
     var expVol = flow ? Number(flow.export_volume) || 0 : 0;
@@ -2211,17 +2211,17 @@ function renderSectorDetail(nation, sectorKey) {
     h += '<div class="sector-volume-panel">';
     if (flow) {
         h += '<div class="sector-vol-row">';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">EXPORTS</span><span class="sector-vol-value" style="color:#4CAF50">' + formatBudgetCurrency(expVol) + '</span></div>';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">EXPORTS</span><span class="sector-vol-value" style="color:#5cb85c">' + formatBudgetCurrency(expVol) + '</span></div>';
         if (!sector.export_only) {
-            h += '<div class="sector-vol-item"><span class="sector-vol-label">IMPORTS</span><span class="sector-vol-value" style="color:#ff4444">' + formatBudgetCurrency(impVol) + '</span></div>';
+            h += '<div class="sector-vol-item"><span class="sector-vol-label">IMPORTS</span><span class="sector-vol-value" style="color:#d9534f">' + formatBudgetCurrency(impVol) + '</span></div>';
         }
-        var netColor = net > 0 ? '#4CAF50' : net < 0 ? '#ff4444' : '#8a8778';
+        var netColor = net > 0 ? '#5cb85c' : net < 0 ? '#d9534f' : '#888';
         var netSign = net > 0 ? '+' : '';
         h += '<div class="sector-vol-item"><span class="sector-vol-label">NET</span><span class="sector-vol-value" style="color:' + netColor + '">' + netSign + formatBudgetCurrency(net) + '</span></div>';
         h += '</div>';
 
         // Price modifier
-        var priceColor = priceMod >= 1.05 ? '#4CAF50' : priceMod <= 0.95 ? '#ff4444' : '#8a8778';
+        var priceColor = priceMod >= 1.05 ? '#5cb85c' : priceMod <= 0.95 ? '#d9534f' : '#888';
         h += '<div class="sector-price-mod">';
         h += 'Price modifier: <strong style="color:' + priceColor + '">' + priceMod.toFixed(2) + 'x</strong>';
         h += '</div>';
@@ -2287,8 +2287,8 @@ function renderSectorDrivers(nation, sector) {
     for (var i = 0; i < stats.length; i++) {
         var st = stats[i];
         var stPct = Math.min(100, Math.max(0, Math.round(st.value)));
-        var stColor = stPct >= 70 ? '#4CAF50' : stPct >= 40 ? '#e2e0d6' : '#ff4444';
-        var barColor = stPct >= 70 ? '#4CAF50' : stPct >= 40 ? '#8a8778' : '#ff4444';
+        var stColor = stPct >= 70 ? '#5cb85c' : stPct >= 40 ? '#f0efe6' : '#d9534f';
+        var barColor = stPct >= 70 ? '#5cb85c' : stPct >= 40 ? '#888' : '#d9534f';
 
         h += '<div class="sector-driver-row">';
         h += '<div class="sector-driver-label">' + escapeHtml(st.label) + '</div>';
@@ -2309,11 +2309,11 @@ function renderSectorDrivers(nation, sector) {
     h += '<div class="sector-driver-label">Composite Score</div>';
     h += '<div class="sector-driver-track">';
     var compPct = Math.min(100, Math.max(0, Math.round(compositeScore)));
-    var compColor = compPct >= 70 ? '#4CAF50' : compPct >= 40 ? '#8a8778' : '#ff4444';
+    var compColor = compPct >= 70 ? '#5cb85c' : compPct >= 40 ? '#888' : '#d9534f';
     h += '<div class="sector-driver-fill" style="width:' + compPct + '%;background:' + compColor + '"></div>';
     h += '<div class="sector-score-threshold" style="left:' + sector.export_threshold + '%"></div>';
     h += '</div>';
-    h += '<div class="sector-driver-value" style="color:' + (compPct >= 70 ? '#4CAF50' : compPct >= 40 ? '#e2e0d6' : '#ff4444') + '">' + compPct + '</div>';
+    h += '<div class="sector-driver-value" style="color:' + (compPct >= 70 ? '#5cb85c' : compPct >= 40 ? '#f0efe6' : '#d9534f') + '">' + compPct + '</div>';
     h += '<div class="sector-driver-trend"></div>';
     h += '</div>';
 
@@ -2361,9 +2361,9 @@ function renderSectorPartners(sectorKey, sector) {
             h += '<div class="sector-partner-row">';
             h += '<div class="sector-partner-name"' + (NATION_COLORS[ep.name] ? ' style="color:' + NATION_COLORS[ep.name] + '"' : '') + '>' + escapeHtml(ep.name) + '</div>';
             h += '<div class="sector-partner-bar-wrap">';
-            h += '<div class="sector-partner-bar" style="width:' + barW.toFixed(1) + '%;background:#4CAF50"></div>';
+            h += '<div class="sector-partner-bar" style="width:' + barW.toFixed(1) + '%;background:#5cb85c"></div>';
             h += '</div>';
-            h += '<div class="sector-partner-amount" style="color:#4CAF50">' + formatBudgetCurrency(ep.amount) + '</div>';
+            h += '<div class="sector-partner-amount" style="color:#5cb85c">' + formatBudgetCurrency(ep.amount) + '</div>';
             h += '</div>';
         }
     }
@@ -2383,9 +2383,9 @@ function renderSectorPartners(sectorKey, sector) {
                 h += '<div class="sector-partner-row">';
                 h += '<div class="sector-partner-name"' + (NATION_COLORS[ip.name] ? ' style="color:' + NATION_COLORS[ip.name] + '"' : '') + '>' + escapeHtml(ip.name) + '</div>';
                 h += '<div class="sector-partner-bar-wrap">';
-                h += '<div class="sector-partner-bar" style="width:' + barW.toFixed(1) + '%;background:#ff4444"></div>';
+                h += '<div class="sector-partner-bar" style="width:' + barW.toFixed(1) + '%;background:#d9534f"></div>';
                 h += '</div>';
-                h += '<div class="sector-partner-amount" style="color:#ff4444">' + formatBudgetCurrency(ip.amount) + '</div>';
+                h += '<div class="sector-partner-amount" style="color:#d9534f">' + formatBudgetCurrency(ip.amount) + '</div>';
                 h += '</div>';
             }
         }
@@ -2496,7 +2496,7 @@ function renderTariffAgreementsSection(nation) {
         }
 
         // Border color by type
-        var borderColor = ag.agreement_type === 'fta' ? '#4CAF50' : ag.agreement_type === 'pta' ? '#2196F3' : '#8a8778';
+        var borderColor = ag.agreement_type === 'fta' ? '#5cb85c' : ag.agreement_type === 'pta' ? '#5b9bd5' : '#888';
 
         h += '<div class="tariff-agreement-card" style="border-left-color:' + borderColor + '">';
         h += '<div class="ta-card-header">';
@@ -2648,7 +2648,7 @@ function renderTariffMatrix(nation) {
                 } else {
                     effectiveRate = 0;
                 }
-                agBadgeColor = '#4CAF50';
+                agBadgeColor = '#5cb85c';
             } else if (ag.agreement_type === 'pta') {
                 // PTA: partial reductions — approximate as weighted average
                 var articles = ag.articles || [];
@@ -2661,14 +2661,14 @@ function renderTariffMatrix(nation) {
                     var avgReduction = totalReduction / reductions.length;
                     effectiveRate = Math.max(0, rate * (1 - avgReduction / 100));
                 }
-                agBadgeColor = '#2196F3';
+                agBadgeColor = '#5b9bd5';
             } else if (ag.agreement_type === 'resource_supply') {
-                agBadgeColor = '#ff9800';
+                agBadgeColor = '#d48a3c';
             }
         }
 
-        var rateColor = rate <= 20 ? '#4CAF50' : rate <= 50 ? '#e2e0d6' : '#ff4444';
-        var effColor = effectiveRate <= 5 ? '#4CAF50' : effectiveRate <= 20 ? '#e2e0d6' : effectiveRate <= 50 ? '#8a8778' : '#ff4444';
+        var rateColor = rate <= 20 ? '#5cb85c' : rate <= 50 ? '#f0efe6' : '#d9534f';
+        var effColor = effectiveRate <= 5 ? '#5cb85c' : effectiveRate <= 20 ? '#f0efe6' : effectiveRate <= 50 ? '#888' : '#d9534f';
 
         h += '<div class="tm-row' + (isYou ? ' tm-highlight' : '') + '">';
         h += '<div class="tm-cell tm-nation-name"' + (NATION_COLORS[n.name] ? ' style="color:' + NATION_COLORS[n.name] + '"' : '') + '>' + escapeHtml(n.name) + (isYou ? ' <span class="tm-you">(YOU)</span>' : '') + '</div>';

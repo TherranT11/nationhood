@@ -342,7 +342,7 @@ body {
         .ministry-card__mgmt-btn--appoint {
             background-color: var(--teal);
             border: 1px solid var(--teal-border);
-            color: #141412;
+            color: var(--bg-body);
         }
         .ministry-card__mgmt-btn--resign {
             background-color: var(--red);
@@ -352,7 +352,7 @@ body {
         .ministry-card__mgmt-btn--nominate {
             background-color: var(--teal);
             border: 1px solid var(--teal-border);
-            color: #141412;
+            color: var(--bg-body);
         }
         .ministry-card__mgmt-btn--purge {
             background-color: var(--red);
@@ -367,7 +367,7 @@ body {
         .ministry-card__mgmt-btn--request {
             background-color: var(--blue);
             border: 1px solid var(--blue-border);
-            color: #141412;
+            color: var(--bg-body);
         }
         .ministry-card__mgmt-btn--unrequest {
             background-color: var(--bg-card);
@@ -377,7 +377,7 @@ body {
         .ministry-card__mgmt-btn--assign {
             background-color: var(--teal);
             border: 1px solid var(--teal-border);
-            color: #141412;
+            color: var(--bg-body);
         }
         .ministry-card__mgmt-btn--deny {
             background-color: var(--red);
@@ -563,7 +563,7 @@ body {
             text-transform: uppercase;
             background-color: var(--teal);
             border: 1px solid var(--teal-border);
-            color: #141412;
+            color: var(--bg-body);
             padding: 4px 9px;
             cursor: pointer;
             white-space: nowrap;
@@ -1323,7 +1323,7 @@ body {
         .ideology-chip { padding: 4px 10px; border-radius: 3px; font-family: var(--font-mono); font-size: 8.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
         .ideology-chip.liberty { background: #9C27B0; color: white; }
         .ideology-chip.equality { background: #E91E63; color: white; }
-        .ideology-chip.freedom { background: #2196F3; color: white; }
+        .ideology-chip.freedom { background: #5b9bd5; color: white; }
         .ideology-chip.security { background: #FF9800; color: white; }
         .ideology-chip.collectivism { background: #ec4899; color: white; }
         .ideology-chip.individualism { background: #eab308; color: white; }
@@ -1605,7 +1605,7 @@ body {
         }
         .eo-btn-confirm {
             padding: 12px 24px; background: var(--amber);
-            border: none; border-radius: 3px; color: #141412; font-weight: 700; cursor: pointer;
+            border: none; border-radius: 3px; color: var(--bg-body); font-weight: 700; cursor: pointer;
             font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
             transition: background 0.2s;
         }
