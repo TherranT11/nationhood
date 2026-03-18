@@ -4343,12 +4343,16 @@ export async function processMinistryActions(supabase, nation, currentTick) {
 export async function updateMinisterApprovals(supabase, nation, currentTick) {
     const cfg = MINISTER_APPROVAL_CONFIG;
 
-    const { data: ministries } = await supabase
+    const { data: ministries, error: fetchErr } = await supabase
         .from('ministries')
         .select('id, ministry_key, minister_approval, minister_first_name, party_id, stat_baselines')
         .eq('nation_id', nation.id)
         .eq('is_active', true);
 
+    if (fetchErr) {
+        console.error(`[updateMinisterApprovals] Failed to fetch ministries for ${nation.name}:`, fetchErr.message);
+        return [];
+    }
     if (!ministries || ministries.length === 0) return [];
 
     // Count active crises — ministers decay faster when the nation is in crisis
@@ -4371,9 +4375,10 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
         let baselines = ministry.stat_baselines;
         if (!baselines || Object.keys(baselines).length === 0) {
             baselines = buildMinistryBaselines(ministry.ministry_key, nation);
-            await supabase.from('ministries')
+            const { error: blErr } = await supabase.from('ministries')
                 .update({ stat_baselines: baselines })
                 .eq('id', ministry.id);
+            if (blErr) console.error(`[updateMinisterApprovals] Baseline init failed for ${ministry.ministry_key}:`, blErr.message);
         }
 
         // Calculate average delta: how much each stat moved in the "good" direction
@@ -4433,9 +4438,13 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
             updatedBaselines[statKey] = Number(nation[statKey] ?? 50);
         }
 
-        await supabase.from('ministries')
+        const { error: updateErr } = await supabase.from('ministries')
             .update({ minister_approval: newApproval, stat_baselines: updatedBaselines })
             .eq('id', ministry.id);
+
+        if (updateErr) {
+            console.error(`[updateMinisterApprovals] Write failed for ${ministry.ministry_key} in ${nation.name}:`, updateErr.message);
+        }
 
         results.push({
             ministry_key: ministry.ministry_key,

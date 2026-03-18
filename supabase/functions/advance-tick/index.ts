@@ -252,8 +252,11 @@ const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 5 — general snap cy
 
 /**
  * Atomic AP deduction via database RPC.
- * Returns { success: true, newAp } on success, or { success: false, error } on failure.
- * The DB function checks balance and deducts in a single UPDATE, preventing race conditions.
+ * Returns { success: true, newAp } on success,
+ * or { success: false, error, currentAp } on failure.
+ * The DB function checks balance and deducts in a single UPDATE, preventing
+ * race conditions.  On insufficient AP it returns -(current_ap + 1) so the
+ * caller always has the real server-side balance (single source of truth).
  */
 async function deductAP(supabase, factionId, cost) {
     const { data, error } = await supabase.rpc('deduct_ap', {
@@ -264,8 +267,9 @@ async function deductAP(supabase, factionId, cost) {
         console.error(`[deductAP] RPC failed for faction ${factionId}, cost ${cost}:`, error.message);
         return { success: false, error: error.message };
     }
-    if (data === -1) {
-        return { success: false, error: 'Insufficient AP' };
+    if (data < 0) {
+        const currentAp = -(data) - 1;
+        return { success: false, error: 'Insufficient AP', currentAp };
     }
     return { success: true, newAp: data };
 }
@@ -6480,11 +6484,6 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
 
         if (hasChanges) {
             await supabase.from('faction_ideology').update(updateObj).eq('faction_id', factionId);
-            // Bust ideology cache so subsequent reads (e.g. processIdeologyDecay) see fresh values
-            if (typeof qCacheBust === 'function') {
-                qCacheBust('faction_ideo_' + factionId);
-                qCacheBust('nation_ideos_' + nationId);
-            }
 
             // Record snapshot for ideology_history
             if (typeof currentTick === 'number') {
@@ -6560,11 +6559,6 @@ async function processIdeologyDecay(supabase, nationId, currentTick) {
 
         if (hasChanges) {
             await supabase.from('faction_ideology').update(updateObj).eq('faction_id', faction.id);
-            // Bust cache so downstream reads (e.g. calculateThreePillarPreferences) see post-decay values
-            if (typeof qCacheBust === 'function') {
-                qCacheBust('faction_ideo_' + faction.id);
-                qCacheBust('nation_ideos_' + nationId);
-            }
 
             if (typeof currentTick === 'number') {
                 const finalScores = { ...currentScores, ...updateObj };
@@ -17646,12 +17640,16 @@ async function processMinistryActions(supabase, nation, currentTick) {
 async function updateMinisterApprovals(supabase, nation, currentTick) {
     const cfg = MINISTER_APPROVAL_CONFIG;
 
-    const { data: ministries } = await supabase
+    const { data: ministries, error: fetchErr } = await supabase
         .from('ministries')
         .select('id, ministry_key, minister_approval, minister_first_name, party_id, stat_baselines')
         .eq('nation_id', nation.id)
         .eq('is_active', true);
 
+    if (fetchErr) {
+        console.error(`[updateMinisterApprovals] Failed to fetch ministries for ${nation.name}:`, fetchErr.message);
+        return [];
+    }
     if (!ministries || ministries.length === 0) return [];
 
     // Count active crises — ministers decay faster when the nation is in crisis
@@ -17674,9 +17672,10 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
         let baselines = ministry.stat_baselines;
         if (!baselines || Object.keys(baselines).length === 0) {
             baselines = buildMinistryBaselines(ministry.ministry_key, nation);
-            await supabase.from('ministries')
+            const { error: blErr } = await supabase.from('ministries')
                 .update({ stat_baselines: baselines })
                 .eq('id', ministry.id);
+            if (blErr) console.error(`[updateMinisterApprovals] Baseline init failed for ${ministry.ministry_key}:`, blErr.message);
         }
 
         // Calculate average delta: how much each stat moved in the "good" direction
@@ -17736,9 +17735,13 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
             updatedBaselines[statKey] = Number(nation[statKey] ?? 50);
         }
 
-        await supabase.from('ministries')
+        const { error: updateErr } = await supabase.from('ministries')
             .update({ minister_approval: newApproval, stat_baselines: updatedBaselines })
             .eq('id', ministry.id);
+
+        if (updateErr) {
+            console.error(`[updateMinisterApprovals] Write failed for ${ministry.ministry_key} in ${nation.name}:`, updateErr.message);
+        }
 
         results.push({
             ministry_key: ministry.ministry_key,
@@ -22864,13 +22867,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             await processIdeologyShifts(supabase, nation.id, resolutions, newTick);
         } catch (ideoErr) {
             console.error(`[advanceTick] Ideology shifts failed for ${nation.name} (non-fatal):`, ideoErr);
-        }
-
-        // Natural ideology decay toward center (extremism erodes over time)
-        try {
-            await processIdeologyDecay(supabase, nation.id, newTick);
-        } catch (decayErr) {
-            console.error(`[advanceTick] Ideology decay failed for ${nation.name} (non-fatal):`, decayErr);
         }
 
         // Purge approval decay (autocracy scapegoat mechanic)
