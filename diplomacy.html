@@ -403,10 +403,9 @@ function switchDiploView(view) {
     if (view === 'nations') {
         dashboard.style.display = 'none';
         wnView.classList.remove('wn-grid--hidden');
-        if (!worldNationsLoaded) {
-            worldNationsLoaded = true;
-            renderWorldNations();
-        }
+        // Always re-fetch when switching to nations view to avoid stale data
+        worldNationsLoaded = true;
+        renderWorldNations();
     } else {
         dashboard.style.display = '';
         wnView.classList.add('wn-grid--hidden');
