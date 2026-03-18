@@ -164,7 +164,7 @@ const guideContent = {
 
 <h3>Each Tick</h3>
 <ul>
-<li><strong>GDP Growth</strong>: <code>monthly_change% = ((gdp_growth - 50) / 50) &times; 3</code>. Range: &minus;3% to +3%/month.</li>
+<li><strong>GDP Growth</strong>: <code>monthly_change% = ((gdp_growth - 50) / 50) &times; 1</code>. Range: &minus;1% to +1%/month.</li>
 <li><strong>Budget</strong>: Revenue computed, ministry costs (inflation-adjusted), debt service deducted</li>
 <li><strong>Debt</strong>: Deficit adds to debt; surplus reduces it</li>
 <li><strong>Trade</strong>: Export capacities, import demands, trade volumes, tariff revenue</li>
@@ -201,7 +201,7 @@ const guideContent = {
 <p><code>debt_service = debt &times; interest</code></p>
 
 <h3>GDP Growth</h3>
-<p><code>monthly% = ((gdp_growth - 50) / 50) &times; 3</code></p>
+<p><code>monthly% = ((gdp_growth - 50) / 50) &times; 1</code></p>
 <p><code>yearly% = (1 + monthly/100)^12 - 1</code></p>
 
 <h3>Trade</h3>

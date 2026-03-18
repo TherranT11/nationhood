@@ -231,7 +231,7 @@ function statCard(label, key, val, desc, format, inverted, displayVal) {
 var STAT_SECTIONS = [
     { id: 'economy', icon: '&#128176;', title: 'Economy', stats: [
         ['GDP', 'gdp', 'Gross domestic product', 'gdp', false, function(n){ return scaleGDP(n.gdp); }],
-        ['GDP Growth', 'gdp_growth', 'Monthly growth rate', null, false, function(n){ var p = ((Number(n.gdp_growth ?? 50) - 50) / 50) * 3; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; }],
+        ['GDP Growth', 'gdp_growth', 'Monthly growth rate', null, false, function(n){ var p = ((Number(n.gdp_growth ?? 50) - 50) / 50) * 1; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; }],
         ['National Debt', 'debt', 'Government debt', 'currency', true, function(n){ return scaleGDP(n.debt); }],
         ['Debt Growth', 'debt_growth', 'Rate of debt increase', null, true],
         ['Inflation', 'inflation', 'Inflation growth rate', null, true, function(n){ return formatInflationRate(n.inflation) + ' \u2014 ' + getInflationLabel(n.inflation); }],

@@ -1000,7 +1000,7 @@ function renderOverviewTab(nation) {
     h += '<div class="econ-cards-row econ-cards-4">';
 
     var gdpGrowth = Number(nation.gdp_growth) || 50;
-    var growthPct = ((gdpGrowth - 50) / 50) * 3;
+    var growthPct = ((gdpGrowth - 50) / 50) * 1;
     var growthDisplay = (growthPct >= 0 ? '+' : '') + growthPct.toFixed(2) + '%';
     var gdpGrowthSub = getTrendArrow('gdp_growth', gdpGrowth, false);
     if (tradeData && tradeData.summary) {
@@ -1066,7 +1066,7 @@ function renderRankings(nation) {
     }
     var metrics = [
         { key: 'gdp', label: 'GDP', higher: true, fmt: fmtMonetary('gdp') },
-        { key: 'gdp_growth', label: 'GDP Growth', higher: true, fmt: function(v) { var p = ((v - 50) / 50) * 3; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; } },
+        { key: 'gdp_growth', label: 'GDP Growth', higher: true, fmt: function(v) { var p = ((v - 50) / 50) * 1; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; } },
         { key: 'standard_of_living', label: 'Std of Living', higher: true, fmt: function(v) { return Math.round(v); } },
         { key: 'unemployment', label: 'Unemployment', higher: false, fmt: function(v) { return formatUnemploymentPct(v); } },
         { key: 'debt', label: 'National Debt', higher: false, fmt: fmtMonetary('debt') }
