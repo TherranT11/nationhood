@@ -221,7 +221,7 @@ body {
         .ministry-grid {
             display: flex;
             flex-wrap: wrap;
-            gap: 12px;
+            gap: 16px;
             margin-top: 16px;
             padding: 0 0 12px;
         }
@@ -232,6 +232,7 @@ body {
             max-width: 100%;
             background: #1a1a17;
             border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 4px;
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -285,7 +286,7 @@ body {
 
         /* Minister identity strip */
         .ministry-card__minister {
-            padding: 8px 14px;
+            padding: 10px 16px;
             border-bottom: 1px solid rgba(255,255,255,0.04);
             background: #1e1e1a;
             flex-shrink: 0;
@@ -422,37 +423,45 @@ body {
             letter-spacing: 0.15em;
             text-transform: uppercase;
             color: #3a3a2e;
-            padding: 3px 14px;
+            padding: 8px 14px 4px;
             background: #1a1a17;
-            border-bottom: 1px solid rgba(255,255,255,0.04);
             flex-shrink: 0;
         }
 
         /* Action row */
         .ministry-action {
             flex: 1;
-            border-bottom: 1px solid rgba(255,255,255,0.04);
-            padding: 8px 14px 7px;
+            background: #1e1e1a;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-left: 3px solid #c8b45a;
+            border-radius: 4px;
+            margin: 4px 10px;
+            padding: 10px 14px 9px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
             box-sizing: border-box;
             min-height: 0;
             cursor: pointer;
-            border-left: 3px solid transparent;
+            transition: background 0.15s, border-color 0.15s;
         }
-        .ministry-action:last-child { border-bottom: none; }
+        .ministry-action:last-child { margin-bottom: 10px; }
+        .ministry-action:hover:not(.active):not(.disabled) {
+            background: #242420;
+        }
 
         /* Selected state */
         .ministry-action.selected {
-            background: rgba(200,180,90,0.05);
+            background: rgba(200,180,90,0.07);
             border-left: 3px solid #c8b45a;
+            border-color: rgba(200,166,78,0.25);
         }
 
         /* Active state (post-confirm) */
         .ministry-action.active {
             background: rgba(58,122,56,0.08);
             border-left: 3px solid #4e9e4c;
+            border-color: rgba(78,158,76,0.2);
             cursor: default;
         }
 
@@ -488,10 +497,10 @@ body {
         /* Description */
         .ministry-action__desc {
             font-family: 'IBM Plex Sans', sans-serif;
-            font-size: 10px;
-            color: #4e4d42;
+            font-size: 10.5px;
+            color: #6b6a5e;
             line-height: 1.4;
-            margin-bottom: 5px;
+            margin-bottom: 6px;
         }
 
         /* Bottom row: tags + button */
