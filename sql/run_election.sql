@@ -290,7 +290,17 @@ BEGIN
             ELSE 0 END
     );
 
-    -- ---- Sync seats to factions ----
+    -- ---- Zero seats for excluded (inactive) parties ----
+    UPDATE factions
+    SET seats = 0
+    WHERE nation_id = p_nation_id
+      AND faction_type = 'party'
+      AND id NOT IN (
+          SELECT (je.value->>'party_id')::UUID
+          FROM jsonb_array_elements(v_seat_rows) je
+      );
+
+    -- ---- Sync seats to participating factions ----
     FOR v_party IN SELECT * FROM jsonb_array_elements(v_seat_rows)
     LOOP
         UPDATE factions
