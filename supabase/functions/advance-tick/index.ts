@@ -22856,6 +22856,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Ideology shifts failed for ${nation.name} (non-fatal):`, ideoErr);
         }
 
+        // Natural ideology decay toward center (extremism erodes over time)
+        try {
+            await processIdeologyDecay(supabase, nation.id, newTick);
+        } catch (decayErr) {
+            console.error(`[advanceTick] Ideology decay failed for ${nation.name} (non-fatal):`, decayErr);
+        }
+
         // Purge approval decay (autocracy scapegoat mechanic)
         try {
             if (isAutocracy(nation)) {
