@@ -13444,6 +13444,79 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
     return appliedDecay;
 }
 
+// ==================== INSTITUTION GROWTH (fully-funded → slow stat increase) ====================
+
+const INSTITUTION_GROWTH_RATE = 0.25; // per tick when institution is 100% funded
+
+/**
+ * Process institution growth for a nation. Institutions with a growth_stat
+ * and growth_ceiling will slowly increase that stat by INSTITUTION_GROWTH_RATE
+ * per tick when funded at 100%, up to the configured ceiling.
+ *
+ * This represents the baseline outcome of well-funded government machinery:
+ * "barely functioning" — legislation is still needed to push stats higher.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {object} nation   - Full nation row (in-memory, mutated on success)
+ * @param {Array}  instConfig - Rows from ministry_institution_config
+ * @param {Array}  itemAllocations - Rows from budget_item_allocations
+ * @returns {Array<object>} Applied growth descriptors for tick summary
+ */
+async function processInstitutionGrowth(supabase, nation, instConfig, itemAllocations) {
+    if (!instConfig || instConfig.length === 0) return [];
+
+    const fundingPctMap = buildFundingPctMap(itemAllocations);
+    const applied = [];
+    const nationUpdates = {};
+
+    for (const inst of instConfig) {
+        if (!inst.growth_stat || !inst.growth_ceiling) continue;
+        if (!NATION_STAT_COLUMN_SET.has(inst.growth_stat)) continue;
+        if (STAT_PROCESSOR_SKIP.has(inst.growth_stat)) continue;
+
+        const fundingPct = getInstFundingPct(fundingPctMap, inst.id);
+        if (fundingPct < 100) continue; // Only grow at 100% funding
+
+        const currentVal = nationUpdates[inst.growth_stat] !== undefined
+            ? nationUpdates[inst.growth_stat]
+            : Number(nation[inst.growth_stat] ?? 50);
+        const ceiling = Number(inst.growth_ceiling);
+
+        if (currentVal >= ceiling) continue; // Already at or above ceiling
+
+        const newVal = Math.round(Math.min(ceiling, currentVal + INSTITUTION_GROWTH_RATE) * 10) / 10;
+
+        if (newVal !== Math.round(currentVal * 10) / 10) {
+            nationUpdates[inst.growth_stat] = newVal;
+            applied.push({
+                institution: inst.institution_name,
+                stat: inst.growth_stat,
+                previousValue: Math.round(currentVal * 10) / 10,
+                newValue: newVal,
+                ceiling
+            });
+        }
+    }
+
+    if (Object.keys(nationUpdates).length > 0) {
+        const { error } = await supabase
+            .from('nations')
+            .update(nationUpdates)
+            .eq('id', nation.id);
+
+        if (error) {
+            console.error('[processInstitutionGrowth] Nation stat update FAILED',
+                { nationId: nation.id, payload: nationUpdates, error: error.message });
+            return [];
+        }
+
+        console.log(`[processInstitutionGrowth] Growth applied for ${nation.name}: ${applied.length} stat(s)`);
+        Object.assign(nation, nationUpdates);
+    }
+
+    return applied;
+}
+
 // ==================== STAT CONNECTIONS (threshold-triggered ripple effects) ====================
 
 /**
@@ -22575,6 +22648,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         if (decayResults.length > 0) {
             summary.decay = summary.decay || [];
             summary.decay.push({ nation: nation.name, effects: decayResults });
+        }
+
+        // Institution growth (100% funded → slow stat increase toward ceiling)
+        const growthResults = await processInstitutionGrowth(supabase, nation, _institutionConfig, _fundingRows);
+        if (growthResults.length > 0) {
+            summary.institutionGrowth = summary.institutionGrowth || [];
+            summary.institutionGrowth.push({ nation: nation.name, effects: growthResults });
         }
 
         // Stat connections (threshold-triggered ripple effects)
