@@ -216,7 +216,7 @@ body {
     color: #f0c040;
     flex-shrink: 0;
     min-width: 40px;
-    font-weight: 600;
+    font-weight: 500;
 }
 .timeline-event {
     color: #aaa;
@@ -316,7 +316,7 @@ body {
 .stat-val {
     font-family: var(--font-mono);
     font-size: 1.2rem;
-    font-weight: 600;
+    font-weight: 500;
 }
 .stat-val.good { color: #4caf50; }
 .stat-val.medium { color: #f0c040; }
@@ -410,7 +410,7 @@ body {
     font-family: var(--font-mono);
     font-size: 0.82rem;
     color: #e0e0e0;
-    font-weight: 600;
+    font-weight: 500;
     margin-bottom: 4px;
 }
 .party-card-seats {
@@ -445,7 +445,7 @@ body {
     font-family: var(--font-mono);
     font-size: 0.82rem;
     color: #e0e0e0;
-    font-weight: 600;
+    font-weight: 500;
     margin-bottom: 8px;
 }
 .relation-type {
@@ -579,7 +579,7 @@ body {
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 1px;
     transition: 0.2s;

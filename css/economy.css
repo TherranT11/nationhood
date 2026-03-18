@@ -3,7 +3,7 @@
 /* ===== TITLE BAR ===== */
 .econ-title-bar {
     background: var(--bg-body);
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-main);
     padding: 18px 24px 14px;
     text-align: center;
 }
@@ -14,7 +14,7 @@
     font-size: 0.78rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
 }
 
 body.light-mode .econ-title-bar {
@@ -33,7 +33,7 @@ body.light-mode .econ-title {
     gap: 2px;
     padding: 0;
     background: var(--bg-body);
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-main);
 }
 
 .econ-tab {
@@ -101,7 +101,7 @@ body.light-mode .econ-tab.active {
 /* Section */
 .econ-section {
     background: var(--bg-card);
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border-main);
     border-radius: 3px;
     padding: 16px 20px;
     overflow: hidden;
@@ -113,10 +113,10 @@ body.light-mode .econ-tab.active {
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.15em;
-    font-weight: 600;
+    font-weight: 500;
     margin-bottom: 12px;
     padding-bottom: 8px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-main);
 }
 
 .econ-section-subtitle {
@@ -151,7 +151,7 @@ body.light-mode .econ-section-header {
 /* Card */
 .econ-card {
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border-main);
     border-left: 3px solid #3a3930;
     border-radius: 3px;
     padding: 12px 14px;
@@ -172,8 +172,8 @@ body.light-mode .econ-section-header {
     font-size: 0.6rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 600;
+    letter-spacing: 0.06em;
+    font-weight: 500;
     margin-bottom: 6px;
 }
 
@@ -193,7 +193,7 @@ body.light-mode .econ-section-header {
     font-family: var(--font-mono);
     font-size: 0.65rem;
     color: var(--text-secondary);
-    font-weight: 600;
+    font-weight: 500;
 }
 
 body.light-mode .econ-card {
@@ -229,7 +229,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     padding: 7px 12px;
     font-size: 0.78rem;
     color: var(--text-primary);
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--border-light);
 }
 .budget-line-item:last-child {
     border-bottom: none;
@@ -239,7 +239,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
 }
 .budget-line-value {
     font-family: var(--font-mono);
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-bright);
     text-align: right;
 }
@@ -262,19 +262,19 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     padding: 8px 12px;
     font-size: 0.75rem;
     color: var(--text-secondary);
-    border-top: 1px solid rgba(255,255,255,0.06);
+    border-top: 1px solid var(--border-main);
     margin-top: 4px;
 }
 .budget-cr-value {
     font-family: var(--font-mono);
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-primary);
 }
 .budget-net-box {
     margin-top: 16px;
     padding: 16px 20px;
     background: rgba(255,255,255,0.02);
-    border: 1px solid rgba(255,255,255,0.08);
+    border: 1px solid var(--border-mid);
     border-left-width: 3px;
     border-radius: 6px;
     text-align: center;
@@ -315,7 +315,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
 }
 .bv2-budget-right {
     padding-left: 10px;
-    border-left: 1px solid rgba(255,255,255,0.06);
+    border-left: 1px solid var(--border-main);
 }
 
 .bv2-summary-bar {
@@ -323,14 +323,14 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     grid-template-columns: 1fr 1fr 1fr;
     gap: 0;
     background: var(--bg-card);
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border-main);
     border-radius: 3px;
     margin-bottom: 12px;
     overflow: hidden;
 }
 .bv2-card {
     padding: 18px 24px;
-    border-right: 1px solid rgba(255,255,255,0.06);
+    border-right: 1px solid var(--border-main);
 }
 .bv2-card:last-child {
     border-right: none;
@@ -356,7 +356,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     grid-template-columns: 1fr 1fr;
     gap: 0;
     background: var(--bg-card);
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border-main);
     border-radius: 3px;
     margin-bottom: 12px;
     overflow: hidden;
@@ -365,7 +365,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     padding: 0;
 }
 .bv2-col:first-child {
-    border-right: 1px solid rgba(255,255,255,0.06);
+    border-right: 1px solid var(--border-main);
 }
 .bv2-col-header {
     display: flex;
@@ -373,19 +373,19 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     align-items: center;
     padding: 12px 16px;
     background: var(--bg-body);
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-main);
 }
 .bv2-col-title {
     font-family: var(--font-mono);
     font-size: 0.62rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
 }
 .bv2-col-total {
     font-family: var(--font-mono);
     font-size: 0.6rem;
-    font-weight: 600;
+    font-weight: 500;
     letter-spacing: 0.02em;
 }
 
@@ -395,7 +395,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     justify-content: space-between;
     align-items: center;
     padding: 10px 16px;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--border-light);
 }
 .bv2-row:last-of-type {
     border-bottom: none;
@@ -427,7 +427,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
 .bv2-row-value {
     font-family: var(--font-mono);
     font-size: 0.78rem;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-bright);
     white-space: nowrap;
 }
@@ -460,7 +460,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     font-size: 0.62rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
     color: var(--text-secondary);
 }
 .bv2-total-value {
@@ -473,7 +473,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
 /* --- Net balance box --- */
 .bv2-net-box {
     background: var(--bg-card);
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border-main);
     border-left-width: 3px;
     border-radius: 3px;
     padding: 20px 24px;
@@ -515,7 +515,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 16px;
-    border-top: 1px solid rgba(255,255,255,0.06);
+    border-top: 1px solid var(--border-main);
     padding-top: 12px;
 }
 .bv2-net-col {
@@ -524,7 +524,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
 .bv2-net-col-label {
     font-family: var(--font-mono);
     font-size: 0.52rem;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -540,7 +540,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
 /* --- Info notice bar --- */
 .bv2-info-bar {
     background: rgba(255,255,255,0.02);
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border-main);
     border-radius: 3px;
     padding: 12px 16px;
     font-size: 0.72rem;
@@ -573,7 +573,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     .bv2-budget-right {
         padding-left: 0;
         border-left: none;
-        border-top: 1px solid rgba(255,255,255,0.06);
+        border-top: 1px solid var(--border-main);
         padding-top: 12px;
         margin-top: 12px;
     }
@@ -584,7 +584,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     }
     .bv2-card {
         border-right: none;
-        border-bottom: 1px solid rgba(255,255,255,0.06);
+        border-bottom: 1px solid var(--border-main);
     }
     .bv2-card:last-child {
         border-bottom: none;
@@ -594,7 +594,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     }
     .bv2-col:first-child {
         border-right: none;
-        border-bottom: 1px solid rgba(255,255,255,0.06);
+        border-bottom: 1px solid var(--border-main);
     }
     .bv2-net-breakdown {
         grid-template-columns: 1fr;
@@ -653,8 +653,8 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     gap: 24px;
     margin: 10px 0;
     padding: 8px 0;
-    border-top: 1px solid rgba(255,255,255,0.06);
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-top: 1px solid var(--border-main);
+    border-bottom: 1px solid var(--border-main);
 }
 .econ-debt-metric {
     display: flex;
@@ -715,7 +715,7 @@ body.light-mode .econ-card-value { color: #2a2a25; }
     border-radius: 6px;
     font-size: 0.72rem;
     color: var(--red);
-    font-weight: 600;
+    font-weight: 500;
     letter-spacing: 0.03em;
 }
 .lockout-icon { font-size: 1.1rem; }
@@ -780,7 +780,7 @@ body.light-mode .distress-banner-text { color: #555; }
 
 .econ-ranking-row {
     display: flex;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--border-light);
 }
 
 .econ-ranking-row:last-child {
@@ -788,7 +788,7 @@ body.light-mode .distress-banner-text { color: #555; }
 }
 
 .econ-ranking-header {
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    border-bottom: 1px solid var(--border-mid);
 }
 
 .econ-ranking-header .econ-ranking-cell {
@@ -796,8 +796,8 @@ body.light-mode .distress-banner-text { color: #555; }
     font-size: 0.6rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 600;
+    letter-spacing: 0.06em;
+    font-weight: 500;
     padding: 8px 10px;
 }
 
@@ -813,7 +813,7 @@ body.light-mode .distress-banner-text { color: #555; }
     text-align: left;
     font-family: var(--font-mono);
     font-size: 0.68rem;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-secondary);
 }
 
@@ -829,7 +829,7 @@ body.light-mode .distress-banner-text { color: #555; }
 .econ-ranking-val {
     font-size: 0.78rem;
     font-family: var(--font-mono);
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-bright);
 }
 
@@ -859,7 +859,7 @@ body.light-mode .distress-banner-text { color: #555; }
 
 .econ-sector-label {
     font-size: 0.75rem;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-bright);
 }
 
@@ -1013,7 +1013,7 @@ body.light-mode .econ-health-threshold {
 
 .economy-hero {
     background: var(--bg-body);
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-main);
     padding: 24px 24px 28px;
     text-align: center;
 }
@@ -1024,7 +1024,7 @@ body.light-mode .econ-health-threshold {
     font-size: 0.85rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.2em;
+    letter-spacing: 0.08em;
     margin-bottom: 20px;
 }
 
@@ -1038,7 +1038,7 @@ body.light-mode .econ-health-threshold {
 
 .economy-stat-box {
     background: rgba(255,255,255,0.02);
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border-main);
     border-radius: 3px;
     padding: 14px 12px;
     position: relative;
@@ -1047,7 +1047,7 @@ body.light-mode .econ-health-threshold {
 }
 
 .economy-stat-box:hover {
-    border-color: rgba(255,255,255,0.12);
+    border-color: var(--border-strong);
 }
 
 .economy-stat-box::before {
@@ -1065,9 +1065,9 @@ body.light-mode .econ-health-threshold {
     font-size: 0.6rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
     margin-bottom: 8px;
-    font-weight: 600;
+    font-weight: 500;
 }
 
 .economy-stat-value {
@@ -1081,7 +1081,7 @@ body.light-mode .econ-health-threshold {
 
 .economy-stat-trend {
     font-size: 0.78rem;
-    font-weight: 600;
+    font-weight: 500;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1097,7 +1097,7 @@ body.light-mode .econ-health-threshold {
     font-size: 0.62rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
     margin-top: 6px;
 }
 
@@ -1182,7 +1182,7 @@ body.light-mode .economy-stat-box {
 
 .economy-right {
     padding-left: 10px;
-    border-left: 1px solid rgba(255,255,255,0.06);
+    border-left: 1px solid var(--border-main);
 }
 
 /* ===== TRADE ROW — Side-by-Side Trade + Partners ===== */
@@ -1202,7 +1202,7 @@ body.light-mode .economy-stat-box {
 
 .budget-panel {
     background: var(--bg-card);
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border-main);
     border-radius: 3px;
     overflow: hidden;
 }
@@ -1211,7 +1211,7 @@ body.light-mode .economy-stat-box {
 .budget-header {
     background: var(--bg-body);
     padding: 16px 20px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-main);
     text-align: left;
 }
 
@@ -1236,7 +1236,7 @@ body.light-mode .economy-stat-box {
 /* --- Summary Row --- */
 .budget-summary {
     padding: 14px 20px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-main);
 }
 
 .budget-summary-row {
@@ -1257,8 +1257,8 @@ body.light-mode .economy-stat-box {
     font-size: 0.6rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 600;
+    letter-spacing: 0.06em;
+    font-weight: 500;
 }
 
 .budget-summary-value {
@@ -1317,7 +1317,7 @@ body.light-mode .economy-stat-box {
 }
 
 .budget-column:first-child {
-    border-right: 1px solid rgba(255,255,255,0.04);
+    border-right: 1px solid var(--border-light);
 }
 
 .budget-column-header {
@@ -1325,11 +1325,11 @@ body.light-mode .economy-stat-box {
     font-size: 0.6rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 600;
+    letter-spacing: 0.06em;
+    font-weight: 500;
     margin-bottom: 10px;
     padding-bottom: 6px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-main);
 }
 
 /* --- Line Items --- */
@@ -1377,7 +1377,7 @@ body.light-mode .budget-line-clickable:hover {
 .budget-line-value {
     font-size: 0.78rem;
     font-family: var(--font-mono);
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-bright);
     white-space: nowrap;
     text-align: right;
@@ -1400,7 +1400,7 @@ body.light-mode .budget-line-clickable:hover {
 
 /* --- Total Line --- */
 .budget-line-total {
-    border-top: 1px solid rgba(255,255,255,0.08);
+    border-top: 1px solid var(--border-mid);
     border-bottom: none;
     margin-top: 4px;
     padding-top: 8px;
@@ -1425,7 +1425,7 @@ body.light-mode .budget-line-clickable:hover {
 .budget-trend {
     font-family: var(--font-mono);
     font-size: 0.62rem;
-    font-weight: 600;
+    font-weight: 500;
 }
 
 .budget-trend.trend-up { color: var(--green); }
@@ -1446,7 +1446,7 @@ body.light-mode .budget-line-clickable:hover {
     .economy-right {
         padding-left: 0;
         border-left: none;
-        border-top: 1px solid rgba(255,255,255,0.06);
+        border-top: 1px solid var(--border-main);
         padding-top: 16px;
     }
 
@@ -1466,7 +1466,7 @@ body.light-mode .budget-line-clickable:hover {
 
     .budget-column:first-child {
         border-right: none;
-        border-bottom: 1px solid rgba(255,255,255,0.04);
+        border-bottom: 1px solid var(--border-light);
         padding-bottom: 10px;
     }
 
@@ -1513,14 +1513,14 @@ body.light-mode .budget-balance.deficit {
     flex-wrap: wrap;
     gap: 2px;
     padding: 0;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-main);
 }
 
 .ministry-tab {
     padding: 10px 14px;
     font-family: var(--font-mono);
     font-size: 0.6rem;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     border: none;
@@ -1551,7 +1551,7 @@ body.light-mode .budget-balance.deficit {
     font-size: 0.58rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
     margin: 8px 0 4px;
     padding-left: 2px;
 }
@@ -1591,7 +1591,7 @@ body.light-mode .ministry-tab.active {
     justify-content: space-between;
     align-items: center;
     padding: 12px 20px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-main);
     gap: 10px;
 }
 
@@ -1607,8 +1607,8 @@ body.light-mode .ministry-tab.active {
     font-size: 0.6rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 600;
+    letter-spacing: 0.06em;
+    font-weight: 500;
 }
 
 .trade-summary-value {
@@ -1637,7 +1637,7 @@ body.light-mode .ministry-tab.active {
 
 /* --- Derived Trade Scores --- */
 .trade-scores-section {
-    border-top: 1px solid rgba(255,255,255,0.06);
+    border-top: 1px solid var(--border-main);
     padding: 16px 16px 14px;
 }
 
@@ -1647,7 +1647,7 @@ body.light-mode .ministry-tab.active {
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.15em;
-    font-weight: 600;
+    font-weight: 500;
     margin-bottom: 4px;
 }
 
@@ -1666,7 +1666,7 @@ body.light-mode .ministry-tab.active {
 
 .trade-score-card {
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border-main);
     border-left: 3px solid #3a3930;
     border-radius: 3px;
     padding: 10px 12px;
@@ -1675,7 +1675,7 @@ body.light-mode .ministry-tab.active {
 .trade-score-name {
     font-family: var(--font-mono);
     font-size: 0.62rem;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -1744,7 +1744,7 @@ body.light-mode .trade-score-bar {
 
 /* --- Partner Cards --- */
 .partner-card {
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border-main);
     border-left: 3px solid #3a3930;
     border-radius: 3px;
     padding: 12px 14px;
@@ -1827,7 +1827,7 @@ body.light-mode .trade-score-bar {
 }
 .aff-tip-row span:last-child {
     color: var(--green);
-    font-weight: 600;
+    font-weight: 500;
 }
 .aff-tip-row.aff-tip-negative span:last-child {
     color: var(--red);
@@ -1882,7 +1882,7 @@ body.light-mode .aff-tip-trigger { border-bottom-color: var(--text-secondary); }
 .partner-stat-value {
     font-family: var(--font-mono);
     font-size: 0.78rem;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-bright);
 }
 
@@ -1931,7 +1931,7 @@ body.light-mode .aff-tip-trigger { border-bottom-color: var(--text-secondary); }
 
 /* Sector breakdown */
 .partner-sectors {
-    border-top: 1px solid rgba(255,255,255,0.04);
+    border-top: 1px solid var(--border-light);
     margin-top: 6px;
     padding-top: 6px;
 }
@@ -1977,7 +1977,7 @@ body.light-mode .partner-card {
     grid-template-columns: 1.8fr 1fr 1fr 1fr 0.7fr 0.6fr;
     gap: 4px;
     padding: 6px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    border-bottom: 1px solid var(--border-mid);
 }
 
 .tft-header .tft-cell {
@@ -1985,8 +1985,8 @@ body.light-mode .partner-card {
     font-size: 0.55rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 600;
+    letter-spacing: 0.06em;
+    font-weight: 500;
 }
 
 .tft-row {
@@ -2003,7 +2003,7 @@ body.light-mode .partner-card {
 }
 
 .tft-row.tft-total {
-    border-top: 1px solid rgba(255,255,255,0.08);
+    border-top: 1px solid var(--border-mid);
     border-bottom: none;
     margin-top: 2px;
     padding-top: 8px;
@@ -2017,7 +2017,7 @@ body.light-mode .partner-card {
     font-family: var(--font-mono);
     font-size: 0.62rem;
     color: var(--text-secondary);
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
 }
 
 .tft-cell {
@@ -2056,7 +2056,7 @@ body.light-mode .partner-card {
 
 .tft-cell.tft-num {
     text-align: right;
-    font-weight: 600;
+    font-weight: 500;
 }
 
 .tft-cell.tft-trend {
@@ -2124,7 +2124,7 @@ body.light-mode .partner-card {
     flex-wrap: wrap;
     gap: 2px;
     background: var(--bg-card);
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border-main);
     border-radius: 3px;
     overflow: hidden;
 }
@@ -2134,7 +2134,7 @@ body.light-mode .partner-card {
     padding: 10px 8px;
     font-family: var(--font-mono);
     font-size: 0.58rem;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     border: none;
@@ -2189,8 +2189,8 @@ body.light-mode .partner-card {
     font-size: 0.55rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 600;
+    letter-spacing: 0.06em;
+    font-weight: 500;
     margin-bottom: 6px;
 }
 
@@ -2229,7 +2229,7 @@ body.light-mode .partner-card {
 .sector-threshold-status {
     font-family: var(--font-mono);
     font-size: 0.58rem;
-    font-weight: 600;
+    font-weight: 500;
 }
 
 .sector-threshold-status.sector-above {
@@ -2264,7 +2264,7 @@ body.light-mode .partner-card {
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    font-weight: 600;
+    font-weight: 500;
 }
 
 .sector-vol-value {
@@ -2305,7 +2305,7 @@ body.light-mode .partner-card {
     font-family: var(--font-mono);
     font-size: 0.62rem;
     color: var(--red);
-    font-weight: 600;
+    font-weight: 500;
     letter-spacing: 0.02em;
 }
 
@@ -2324,7 +2324,7 @@ body.light-mode .partner-card {
 }
 
 .sector-driver-composite {
-    border-top: 1px solid rgba(255,255,255,0.06);
+    border-top: 1px solid var(--border-main);
     margin-top: 4px;
     padding-top: 8px;
 }
@@ -2381,11 +2381,11 @@ body.light-mode .partner-card {
     font-size: 0.6rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 600;
+    letter-spacing: 0.06em;
+    font-weight: 500;
     margin-bottom: 10px;
     padding-bottom: 6px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-main);
 }
 
 .sector-partner-row {
@@ -2403,7 +2403,7 @@ body.light-mode .partner-card {
 
 .sector-partner-name {
     font-size: 0.72rem;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-bright);
     white-space: nowrap;
     overflow: hidden;
@@ -2426,7 +2426,7 @@ body.light-mode .partner-card {
 .sector-partner-amount {
     font-family: var(--font-mono);
     font-size: 0.68rem;
-    font-weight: 600;
+    font-weight: 500;
     text-align: right;
     white-space: nowrap;
 }
@@ -2522,7 +2522,7 @@ body.light-mode .sector-score-threshold {
     margin-top: 10px;
     padding: 8px 12px;
     background: rgba(255,255,255,0.02);
-    border: 1px solid rgba(255,255,255,0.04);
+    border: 1px solid var(--border-light);
     border-radius: 3px;
     font-size: 0.65rem;
     color: var(--text-muted);
@@ -2551,7 +2551,7 @@ body.light-mode .sector-score-threshold {
 
 .tariff-agreement-card {
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border-main);
     border-left: 3px solid #3a3930;
     border-radius: 3px;
     padding: 12px 14px;
@@ -2607,7 +2607,7 @@ body.light-mode .sector-score-threshold {
     font-family: var(--font-mono);
     font-size: 0.6rem;
     color: var(--green);
-    font-weight: 600;
+    font-weight: 500;
 }
 
 .ta-card-exemptions {
@@ -2627,7 +2627,7 @@ body.light-mode .sector-score-threshold {
 /* PTA reduction lines */
 .ta-card-reductions {
     margin-top: 6px;
-    border-top: 1px solid rgba(255,255,255,0.04);
+    border-top: 1px solid var(--border-light);
     padding-top: 6px;
 }
 
@@ -2670,7 +2670,7 @@ body.light-mode .sector-score-threshold {
     grid-template-columns: 1.6fr 0.8fr 0.8fr 0.8fr 0.8fr;
     gap: 4px;
     padding: 6px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    border-bottom: 1px solid var(--border-mid);
 }
 
 .tm-header .tm-cell {
@@ -2678,8 +2678,8 @@ body.light-mode .sector-score-threshold {
     font-size: 0.55rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 600;
+    letter-spacing: 0.06em;
+    font-weight: 500;
 }
 
 .tm-row {
@@ -2723,7 +2723,7 @@ body.light-mode .sector-score-threshold {
     font-family: var(--font-mono);
     font-size: 0.52rem;
     color: var(--text-secondary);
-    font-weight: 600;
+    font-weight: 500;
     letter-spacing: 0.06em;
 }
 
@@ -2731,7 +2731,7 @@ body.light-mode .sector-score-threshold {
 .tm-cell.tm-dampener,
 .tm-cell.tm-effective {
     text-align: center;
-    font-weight: 600;
+    font-weight: 500;
 }
 
 .tm-cell.tm-dampener {
@@ -2818,7 +2818,7 @@ body.light-mode .tariff-explainer {
     display: flex;
     gap: 36px;
     padding: 14px 24px 18px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-main);
     margin-bottom: 22px;
 }
 
@@ -2839,7 +2839,7 @@ body.light-mode .tariff-explainer {
 .tax-summary-value {
     font-family: var(--font-mono);
     font-size: 1rem;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-bright);
 }
 
@@ -2860,7 +2860,7 @@ body.light-mode .tariff-explainer {
 .tax-submit-btn {
     font-family: var(--font-mono);
     font-size: 0.6rem;
-    font-weight: 600;
+    font-weight: 500;
     letter-spacing: 1px;
     text-transform: uppercase;
     color: var(--text-bright);
@@ -2884,7 +2884,7 @@ body.light-mode .tariff-explainer {
 .tax-submit-btn:disabled {
     color: var(--text-faint);
     background: rgba(255,255,255,0.02);
-    border-color: rgba(255,255,255,0.04);
+    border-color: var(--border-light);
     cursor: not-allowed;
     opacity: 0.6;
 }
@@ -2956,14 +2956,14 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 /* ── Tax Card ── */
 .tax-card {
     background: var(--bg-card);
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border-main);
     border-radius: 3px;
     padding: 18px 20px;
     transition: border-color 0.15s ease;
 }
 
 .tax-card:hover {
-    border-color: rgba(255,255,255,0.12);
+    border-color: var(--border-strong);
 }
 
 /* ── Top Row ── */
@@ -2977,7 +2977,7 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 .tax-name {
     font-family: var(--font-mono);
     font-size: 0.75rem;
-    font-weight: 600;
+    font-weight: 500;
     letter-spacing: 1.5px;
     text-transform: uppercase;
     color: var(--text-bright);
@@ -3021,7 +3021,7 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 .tax-revenue-value {
     font-family: var(--font-mono);
     font-size: 0.85rem;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--green);
 }
 
@@ -3183,7 +3183,7 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
     text-transform: uppercase;
     color: var(--text-secondary);
     background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border-main);
     border-radius: 2px;
     padding: 4px 10px;
     cursor: pointer;
@@ -3193,14 +3193,14 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 
 .tax-reset-btn:hover {
     color: var(--text-bright);
-    border-color: rgba(255,255,255,0.12);
+    border-color: var(--border-strong);
     background: rgba(255,255,255,0.06);
 }
 
 /* ── Effects & Hits Footer ── */
 .tax-bottom {
     padding-top: 12px;
-    border-top: 1px solid rgba(255,255,255,0.06);
+    border-top: 1px solid var(--border-main);
 }
 
 .tax-effects-grid {
@@ -3219,7 +3219,7 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
 .tax-effect-arrow {
     font-family: var(--font-mono);
     font-size: 0.6rem;
-    font-weight: 600;
+    font-weight: 500;
     width: 14px;
     height: 14px;
     display: flex;
@@ -3276,7 +3276,7 @@ body.light-mode .tax-info-callout-text strong { color: #2a5060; }
     font-size: 0.55rem;
     color: var(--text-faint);
     background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.04);
+    border: 1px solid var(--border-light);
     border-radius: 2px;
     padding: 2px 6px;
 }
@@ -3398,7 +3398,7 @@ body.light-mode .tax-sparkline-label { color: #999; }
 
 .tax-approval-badge {
     font-size: 0.55rem;
-    font-weight: 600;
+    font-weight: 500;
     letter-spacing: 0.5px;
     text-transform: uppercase;
     padding: 2px 6px;
@@ -3515,7 +3515,7 @@ body.light-mode .tax-proposed-status {
 /* ==================== Trade Diagnostics ==================== */
 .trade-diagnostics {
     margin-top: 8px;
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border-main);
     border-radius: 6px;
     overflow: hidden;
 }
@@ -3566,13 +3566,13 @@ body.light-mode .tax-proposed-status {
     font-size: 0.55rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
 }
 .trade-diag-value {
     font-family: var(--font-mono);
     font-size: 0.85rem;
     color: var(--text-primary);
-    font-weight: 600;
+    font-weight: 500;
 }
 .trade-diag-effect {
     font-family: var(--font-mono);
@@ -3595,7 +3595,7 @@ body.light-mode .tax-proposed-status {
     font-weight: 500;
     padding: 4px 6px;
     text-align: right;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-main);
 }
 .trade-diag-table th:first-child { text-align: left; }
 .trade-diag-table td {
@@ -3614,7 +3614,7 @@ body.light-mode .tax-proposed-status {
     align-items: center;
     gap: 10px;
     padding: 6px 0;
-    border-top: 1px solid rgba(255,255,255,0.04);
+    border-top: 1px solid var(--border-light);
     margin-bottom: 6px;
 }
 .trade-diag-affinity-list {
@@ -3635,7 +3635,7 @@ body.light-mode .tax-proposed-status {
     color: #999;
 }
 .trade-diag-affinity-score {
-    font-weight: 600;
+    font-weight: 500;
     min-width: 28px;
     text-align: right;
 }

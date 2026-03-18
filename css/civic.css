@@ -178,7 +178,7 @@ body.light-mode {
 .civ-nav-item {
     font-family: var(--dfont-mono);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 500;
     letter-spacing: 0.04em;
     padding: 8px 20px;
     color: var(--dtext-3);
@@ -482,7 +482,7 @@ body.light-mode {
 .civ-post-name {
     font-family: var(--dfont-ui);
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--dtext-0);
 }
 
@@ -646,7 +646,7 @@ body.light-mode {
 .civ-comment-name {
     font-family: var(--dfont-ui);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--dtext-0);
 }
 
@@ -751,7 +751,7 @@ body.light-mode {
 .civ-trending-tag {
     font-family: var(--dfont-mono);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--civ-accent);
 }
 
@@ -890,7 +890,7 @@ body.light-mode {
     .civ-mobile-trending-tag {
         font-family: var(--dfont-mono);
         font-size: 10px;
-        font-weight: 600;
+        font-weight: 500;
         color: var(--civ-accent);
         background: var(--civ-accent-dim);
         border: none;

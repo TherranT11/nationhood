@@ -102,7 +102,7 @@ body:has(.wiki-container) #top-bar .hamburger-btn {
 .wiki-btn {
     font-family: var(--font-mono);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
     padding: 7px 14px;
     border: 1px solid var(--border-main);
@@ -227,7 +227,7 @@ a.wiki-link-missing:hover {
 
 .wiki-infobox-type {
     font-size: 10px;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     text-align: center;
@@ -256,7 +256,7 @@ a.wiki-link-missing:hover {
 }
 
 .wiki-infobox-table td:first-child {
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-secondary);
     width: 40%;
     white-space: nowrap;
@@ -317,7 +317,7 @@ a.wiki-link-missing:hover {
 .wiki-field label {
     display: block;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
     color: var(--text-secondary);
     margin-bottom: 6px;
@@ -507,7 +507,7 @@ a.wiki-link-missing:hover {
 .wiki-filter-btn {
     font-family: var(--font-mono);
     font-size: 10px;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
     padding: 6px 10px;
     border: 1px solid var(--border-main);
@@ -568,14 +568,14 @@ a.wiki-link-missing:hover {
 
 .wiki-page-row-title {
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-primary);
     flex: 1;
 }
 
 .wiki-page-row-type {
     font-size: 9px;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 3px 8px;
@@ -664,7 +664,7 @@ a.wiki-link-missing:hover {
 
 .wiki-search-create {
     color: var(--accent);
-    font-weight: 600;
+    font-weight: 500;
 }
 
 /* ---------- HOME PAGE ---------- */
@@ -750,7 +750,7 @@ a.wiki-link-missing:hover {
 
 .wiki-page-meta strong {
     color: var(--text-secondary);
-    font-weight: 600;
+    font-weight: 500;
 }
 
 /* ---------- BACKLINKS ---------- */
@@ -801,7 +801,7 @@ a.wiki-link-missing:hover {
 .wiki-lock-badge {
     display: inline-block;
     font-size: 9px;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
     padding: 2px 8px;
     border-radius: 3px;
@@ -984,7 +984,7 @@ body.light-mode a.wiki-link-missing:hover {
 /* Tag badges — new vs existing */
 .wiki-tag-badge {
     font-size: 8px;
-    font-weight: 600;
+    font-weight: 500;
     margin-left: 3px;
     text-transform: uppercase;
 }

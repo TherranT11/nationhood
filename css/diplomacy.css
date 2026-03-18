@@ -63,7 +63,7 @@
 .diplo-role-badge {
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.04em;
   padding: 3px 10px;
   border-radius: 3px;
@@ -92,28 +92,28 @@
 .diplo-role-badge.role-none {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-dim);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-mid);
 }
 .page-title {
   font-family: var(--font-serif);
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
   letter-spacing: -0.01em;
 }
 .page-subtitle {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
 }
 .page-ap {
   margin-left: auto;
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--teal);
 }
 .dashboard {
@@ -163,9 +163,9 @@
 .box-label {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--text-muted);
 }
 .box-header-right {
@@ -246,7 +246,7 @@
 .embassy-tag {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
@@ -257,7 +257,7 @@
 .agreements-count {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-dim);
 }
 .expand-arrow {
@@ -283,7 +283,7 @@
 .detail-label {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-dim);
@@ -320,7 +320,7 @@
 .relation-bar-label {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   display: flex;
   justify-content: space-between;
   color: var(--text-dim);
@@ -339,7 +339,7 @@
 .detail-btn {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 4px 10px;
@@ -361,10 +361,10 @@
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
   padding: 12px 14px 6px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid var(--border-main);
   margin-bottom: 2px;
 }
 .action-item {
@@ -413,13 +413,13 @@
 .action-cost {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-dim);
 }
 .action-type {
   font-family: var(--font-mono);
   font-size: 7.5px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-faint);
@@ -591,7 +591,7 @@
 .draft-field-label {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-dim);
@@ -658,7 +658,7 @@
 .draft-article-remove {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--red);
@@ -684,7 +684,7 @@
 .action-bar-info {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -823,7 +823,7 @@
 .appoint-status-label {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
@@ -848,7 +848,7 @@
   padding: 4px 0;
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-dim);
@@ -939,12 +939,12 @@
 .trade-radio-option:hover { border-color: var(--border-subtle); }
 .trade-radio-option.selected { border-color: var(--accent); background: rgba(200,166,78,0.08); }
 .trade-radio-option input[type="radio"] { display: none; }
-.trade-radio-label { font-size: 0.78rem; font-weight: 600; color: var(--text-primary); }
+.trade-radio-label { font-size: 0.78rem; font-weight: 500; color: var(--text-primary); }
 .trade-radio-hint { font-size: 0.68rem; color: var(--text-muted); }
 
 /* ── Trade Field & Article Builder ── */
 .trade-field { margin-bottom: 10px; }
-.trade-field label { display: block; font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+.trade-field label { display: block; font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; }
 .trade-field input[type="text"],
 .trade-field input[type="number"],
 .trade-field select {
@@ -974,7 +974,7 @@
 .trade-article-title {
   font-family: var(--font-sans);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
 }
 .trade-article-card {
@@ -1127,7 +1127,7 @@
 .type-card-title {
   font-family: var(--font-sans);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
 }
 .type-card-desc {
@@ -1205,7 +1205,7 @@
 .trade-type-label {
   font-family: var(--font-sans);
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
 }
 .trade-type-short {
@@ -1241,7 +1241,7 @@
 .agreement-card-name {
   font-family: var(--font-sans);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
   flex: 1;
   min-width: 0;
@@ -1520,7 +1520,7 @@
   color: var(--teal);
   border-color: var(--teal-border);
 }
-.agreement-tab-label { font-weight: 600; }
+.agreement-tab-label { font-weight: 500; }
 .agreement-tab-count {
   font-size: 0.65rem;
   color: var(--text-dim);
@@ -1544,7 +1544,7 @@
 .config-label {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
@@ -1581,7 +1581,7 @@
 .toggle-opt {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 3px 8px;
   border: 1px solid var(--border-subtle);
   background: transparent;
@@ -1604,7 +1604,7 @@
 .check-opt {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 3px 8px;
   border: 1px solid var(--border-subtle);
   background: transparent;
@@ -1654,7 +1654,7 @@
 .range-value {
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--teal);
   min-width: 36px;
   text-align: right;
@@ -1664,7 +1664,7 @@
 .sector-tag {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 3px 8px;
   border: 1px solid var(--border-subtle);
   background: var(--bg-4);
@@ -1695,7 +1695,7 @@
   font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
   margin-bottom: 6px;
 }
@@ -1713,7 +1713,7 @@
 .stat-value {
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .stat-value--positive { color: var(--green); }
 .stat-value--negative { color: var(--red); }
@@ -1775,7 +1775,7 @@
 .sector-bar-label {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   min-width: 30px;
   text-align: right;
 }
@@ -1968,7 +1968,7 @@
 .initiative-article-remove {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--red);
@@ -2020,7 +2020,7 @@
 .config-label {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
@@ -2036,7 +2036,7 @@
 .toggle-opt {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 3px 8px;
   border: 1px solid var(--border-subtle);
   background: transparent;
@@ -2065,7 +2065,7 @@
 .check-opt {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 3px 8px;
   border: 1px solid var(--border-subtle);
   background: transparent;
@@ -2285,9 +2285,9 @@
 .sv-box-label {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--text-muted);
 }
 .sv-box-header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
@@ -2324,7 +2324,7 @@
 .sv-draft-label {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-dim);
@@ -2346,7 +2346,7 @@
 .sv-ap-cost {
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-dim);
 }
 
@@ -2362,7 +2362,7 @@
 .sv-config-label {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
@@ -2379,7 +2379,7 @@
 .sv-toggle-opt {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 3px 8px;
   border: 1px solid var(--border-subtle);
   background: transparent;
@@ -2404,7 +2404,7 @@
   font-size: 8.5px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
 }
 .sv-agenda-area {
@@ -2478,7 +2478,7 @@
 .sv-agenda-remove {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--red);
   cursor: pointer;
   opacity: 0.4;
@@ -2515,7 +2515,7 @@
 .sv-action-bar-info {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -2562,7 +2562,7 @@
   font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
   margin-bottom: 6px;
 }
@@ -2580,7 +2580,7 @@
 .sv-stat-value {
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .sv-stat-value--positive { color: var(--green); }
 .sv-stat-value--negative { color: var(--red); }
@@ -2616,7 +2616,7 @@
 .sv-delegation-role {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-dim);
@@ -2638,7 +2638,7 @@
   display: inline-block;
   color: #ef4444;
   font-size: 0.7rem;
-  font-weight: 600;
+  font-weight: 500;
   font-family: var(--font-mono);
   letter-spacing: 0.3px;
   animation: diplo-msg-pulse 2s ease-in-out infinite;
@@ -2850,7 +2850,7 @@ body.light-mode .action-badge {
 .diplo-view-btn {
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.04em;
   padding: 4px 12px;
   background: transparent;
@@ -2935,16 +2935,16 @@ body.light-mode .action-badge {
   font-size: 10.5px;
 }
 .wn-stat-row__label { color: var(--text-muted); }
-.wn-stat-row__value { font-weight: 600; color: var(--text-primary); }
+.wn-stat-row__value { font-weight: 500; color: var(--text-primary); }
 
 /* Seat bar (reuses diplomacy tokens) */
 .wn-seat-bar { margin: 8px 0; }
 .wn-seat-bar__label {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-dim);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   margin-bottom: 4px;
 }
@@ -2977,9 +2977,9 @@ body.light-mode .action-badge {
 .wn-party-list__header {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-dim);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   margin-bottom: 4px;
   padding-bottom: 3px;
@@ -2997,7 +2997,7 @@ body.light-mode .action-badge {
 .wn-party-row__name {
   font-family: var(--font-sans);
   font-size: 10.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
   flex: 1;
 }
@@ -3018,7 +3018,7 @@ body.light-mode .action-badge {
 .wn-party-row__seats {
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-muted);
   min-width: 30px;
   text-align: right;
@@ -3041,7 +3041,7 @@ body.light-mode .action-badge {
 .wn-crisis-name {
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--red);
 }
 .wn-no-crisis {
@@ -3070,7 +3070,7 @@ body.light-mode .action-badge {
 .wn-relation-label {
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .wn-relation-score {
   font-family: var(--font-mono);
@@ -3081,7 +3081,7 @@ body.light-mode .action-badge {
   margin-left: auto;
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 2px 6px;
   letter-spacing: 0.04em;
 }

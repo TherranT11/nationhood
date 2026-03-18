@@ -161,7 +161,7 @@ body {
 /* ===== TOP BAR ===== */
 #top-bar {
     background: var(--bg-body);
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-main);
     z-index: 100;
     flex-shrink: 0;
 }
@@ -173,7 +173,7 @@ body {
     align-items: center;
     padding: 8px 20px;
     height: 48px;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--border-light);
 }
 .top-bar-left { display: flex; align-items: center; gap: 0; }
 .top-bar-sep {
@@ -185,17 +185,17 @@ body {
 .tick-label {
     font-family: var(--font-mono);
     font-size: 8.5px; font-weight: 500;
-    letter-spacing: 0.1em; text-transform: uppercase;
+    letter-spacing: 0.06em; text-transform: uppercase;
     color: #7a7868;
 }
 .tick-value {
     font-family: var(--font-mono);
-    font-size: 12px; font-weight: 600;
+    font-size: 12px; font-weight: 500;
     color: #f0efe6;
 }
 .tick-countdown {
     font-family: var(--font-mono);
-    font-size: 12px; font-weight: 600;
+    font-size: 12px; font-weight: 500;
     color: #f0efe6;
 }
 .top-bar-right { display: flex; align-items: center; gap: 10px; }
@@ -222,7 +222,7 @@ body {
 .topbar-ap__label {
     font-family: var(--font-mono);
     font-size: 8.5px; font-weight: 700; color: #7a7868;
-    letter-spacing: 0.1em; text-transform: uppercase;
+    letter-spacing: 0.06em; text-transform: uppercase;
     margin-right: 3px;
 }
 .topbar-ap__pip {
@@ -283,7 +283,7 @@ body {
     font-family: var(--font-mono);
     font-size: 0.78rem; font-weight: 700;
     color: var(--accent); text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
 }
 .guide-close {
     background: none; border: none;
@@ -297,17 +297,17 @@ body {
     font-family: var(--font-mono);
     color: var(--accent); font-size: 0.78rem; font-weight: 700;
     margin: 20px 0 8px; text-transform: uppercase;
-    letter-spacing: 0.1em; border-bottom: 1px solid var(--border-light);
+    letter-spacing: 0.06em; border-bottom: 1px solid var(--border-light);
     padding-bottom: 6px;
 }
 .guide-panel h3 {
     font-family: var(--font-mono);
-    color: var(--text-bright); font-size: 0.72rem; font-weight: 600;
+    color: var(--text-bright); font-size: 0.72rem; font-weight: 500;
     margin: 14px 0 6px; text-transform: uppercase;
     letter-spacing: 0.08em;
 }
 .guide-panel h4 {
-    color: var(--text-secondary); font-size: 0.72rem; font-weight: 600;
+    color: var(--text-secondary); font-size: 0.72rem; font-weight: 500;
     margin: 10px 0 4px;
 }
 .guide-panel p { margin: 6px 0; color: var(--text-secondary); }
@@ -341,7 +341,7 @@ body {
 }
 .guide-panel summary {
     padding: 10px 14px; cursor: pointer;
-    font-weight: 600; color: var(--text-bright);
+    font-weight: 500; color: var(--text-bright);
     background: var(--bg-card);
     list-style: none;
     font-family: var(--font-mono);
@@ -405,7 +405,7 @@ body.light-mode .guide-btn:hover { background: rgba(184,150,10,0.18); }
 /* ===== THEME TOGGLE ===== */
 .theme-toggle-btn {
     font-family: var(--font-mono);
-    font-size: 9px; font-weight: 600;
+    font-size: 9px; font-weight: 500;
     letter-spacing: 0.06em; text-transform: uppercase;
     background: var(--bg-card);
     border: 1px solid var(--border-main);
@@ -438,7 +438,7 @@ body.light-mode .guide-btn:hover { background: rgba(184,150,10,0.18); }
 }
 .nation-name {
     font-family: var(--font-serif);
-    font-size: 13px; font-weight: 600;
+    font-size: 13px; font-weight: 500;
     color: #f0efe6;
     letter-spacing: 0.02em;
     white-space: nowrap;
@@ -493,8 +493,8 @@ body.light-mode .guide-btn:hover { background: rgba(184,150,10,0.18); }
 .panel-padding { padding: 24px; }
 .section-header {
     font-family: var(--font-mono);
-    color: var(--text-secondary); font-size: 0.72rem; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--text-secondary); font-size: 0.72rem; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.06em;
     margin-bottom: 12px; padding-bottom: 6px;
     border-bottom: 1px solid var(--border-main);
 }
@@ -518,7 +518,7 @@ body.light-mode .guide-btn:hover { background: rgba(184,150,10,0.18); }
 }
 .info-value {
     font-family: var(--font-mono);
-    font-size: 0.9rem; color: var(--text-bright); font-weight: 600;
+    font-size: 0.9rem; color: var(--text-bright); font-weight: 500;
 }
 .info-value.gold { color: var(--accent); }
 
@@ -583,7 +583,7 @@ body.light-mode .guide-btn:hover { background: rgba(184,150,10,0.18); }
 body.light-mode .nation-hero { background: var(--bg-card); }
 .nation-hero h2 {
     font-family: var(--font-serif);
-    color: var(--text-bright); font-size: 2.0rem; font-weight: 600;
+    color: var(--text-bright); font-size: 2.0rem; font-weight: 500;
     letter-spacing: 0.02em; margin-bottom: 4px;
 }
 .nation-hero .capital-label {
@@ -601,7 +601,7 @@ body.light-mode .nation-hero { background: var(--bg-card); }
 }
 .person-card .person-role {
     font-family: var(--font-mono);
-    font-size: 0.68rem; font-weight: 600; color: var(--text-muted);
+    font-size: 0.68rem; font-weight: 500; color: var(--text-muted);
     text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px;
 }
 .person-card .person-name {
@@ -638,7 +638,7 @@ body.light-mode .person-card .person-meta { color: var(--text-secondary); }
 }
 .minister-card .minister-party {
     font-family: var(--font-mono);
-    font-size: 0.68rem; font-weight: 600; color: var(--text-secondary);
+    font-size: 0.68rem; font-weight: 500; color: var(--text-secondary);
     text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 7px;
 }
 .minister-card .minister-desc {
@@ -660,7 +660,7 @@ body.light-mode .person-card .person-meta { color: var(--text-secondary); }
 }
 body.light-mode .legend-item { color: var(--text-secondary); }
 .legend-swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.legend-name { font-weight: 600; }
+.legend-name { font-weight: 500; }
 .legend-seats { color: var(--text-muted); font-size: 0.65rem; font-weight: 700; }
 
 /* ===== PARTY TAB ===== */
@@ -674,8 +674,8 @@ body.light-mode .legend-item { color: var(--text-secondary); }
 }
 .party-abbr-big {
     font-family: var(--font-mono);
-    color: var(--text-muted); font-size: 0.72rem; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 14px;
+    color: var(--text-muted); font-size: 0.72rem; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 14px;
 }
 .party-ideologies { margin-bottom: 18px; }
 .party-stat-row {
@@ -714,7 +714,7 @@ body.light-mode .legend-item { color: var(--text-secondary); }
 .party-display-name { font-size: 1.05rem; color: var(--text-bright); font-weight: 700; margin-bottom: 4px; }
 .party-display-abbr {
     font-family: var(--font-mono);
-    font-size: 0.68rem; font-weight: 600; color: var(--text-secondary);
+    font-size: 0.68rem; font-weight: 500; color: var(--text-secondary);
     text-transform: uppercase; letter-spacing: 0.08em;
 }
 .party-status-badge {
@@ -769,8 +769,8 @@ body.light-mode .legend-item { color: var(--text-secondary); }
 }
 .placeholder-panel h3 {
     font-family: var(--font-mono);
-    color: var(--text-muted); font-size: 0.78rem; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px;
+    color: var(--text-muted); font-size: 0.78rem; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
 }
 .placeholder-panel p { font-size: 0.82rem; color: var(--text-faint); }
 
@@ -890,7 +890,7 @@ body.light-mode .coalition-party-card.locked { background: var(--orange-faint); 
     background: var(--bg-card); border: 1px solid var(--border-mid);
     border-radius: 3px; padding: 3px 10px;
     font-family: var(--font-mono);
-    font-size: 0.72rem; font-weight: 600; color: var(--text-primary);
+    font-size: 0.72rem; font-weight: 500; color: var(--text-primary);
     text-transform: uppercase; letter-spacing: 0.06em;
 }
 .coalition-vote-buttons { display: flex; gap: 12px; }
@@ -965,8 +965,8 @@ body.light-mode .coalition-party-card.locked { background: var(--orange-faint); 
 }
 #world-sidebar h3 {
     font-family: var(--font-mono);
-    color: var(--text-secondary); font-size: 0.72rem; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    color: var(--text-secondary); font-size: 0.72rem; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px;
 }
 #world-intel p {
     font-family: var(--font-ui);
@@ -1009,8 +1009,8 @@ body.light-mode .coalition-party-card.locked { background: var(--orange-faint); 
 /* ===== FORM ELEMENTS ===== */
 .form-label {
     font-family: var(--font-mono);
-    font-size: 0.68rem; font-weight: 600;
-    letter-spacing: 0.1em; text-transform: uppercase;
+    font-size: 0.68rem; font-weight: 500;
+    letter-spacing: 0.06em; text-transform: uppercase;
     color: var(--text-muted);
 }
 .form-input, .form-select {
