@@ -2837,3 +2837,273 @@ body.light-mode .trade-radio-option.selected {
 body.light-mode .action-badge {
   background: #d32f2f;
 }
+
+/* ═══════════════════════════════════════════════════════
+   WORLD NATIONS VIEW
+   ═══════════════════════════════════════════════════════ */
+
+/* ── View toggle in header ── */
+.diplo-view-toggle {
+  display: flex;
+  margin-left: 12px;
+}
+.diplo-view-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 4px 12px;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.diplo-view-btn:first-child { border-right: none; }
+.diplo-view-btn:hover { color: var(--text-muted); background: var(--bg-3); }
+.diplo-view-btn.is-active {
+  color: var(--teal);
+  background: var(--teal-faint);
+  border-color: var(--teal-border);
+}
+.diplo-view-btn.is-active + .diplo-view-btn { border-left-color: var(--teal-border); }
+
+/* ── Nations grid ── */
+.wn-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+  padding: 20px 24px;
+}
+.wn-grid--hidden { display: none; }
+
+/* ── Nation card ── */
+.wn-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-hair);
+  transition: border-color 0.15s;
+}
+.wn-card:hover { border-color: var(--border-subtle); }
+
+/* Card header */
+.wn-card__header {
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--border-hair);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.wn-card__flag {
+  width: 36px;
+  height: 24px;
+  object-fit: cover;
+  border: 1px solid var(--border-hair);
+}
+.wn-card__name {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wn-card__gov {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.wn-card__gov--parliamentary { background: var(--green-faint); color: var(--green); border: 1px solid var(--green-border); }
+.wn-card__gov--presidential  { background: var(--blue-faint);  color: var(--blue);  border: 1px solid var(--blue-border);  }
+.wn-card__gov--autocracy     { background: var(--red-faint);   color: var(--red);   border: 1px solid var(--red-border);   }
+
+/* Card body — stats */
+.wn-card__body {
+  padding: 10px 12px;
+}
+.wn-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+.wn-stat-row__label { color: var(--text-muted); }
+.wn-stat-row__value { font-weight: 600; color: var(--text-primary); }
+
+/* Seat bar (reuses diplomacy tokens) */
+.wn-seat-bar { margin: 8px 0; }
+.wn-seat-bar__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.wn-seat-bar__track {
+  display: flex;
+  height: 6px;
+  gap: 2px;
+  overflow: hidden;
+}
+.wn-seat-bar__segment { height: 100%; }
+.wn-seat-bar__empty { flex: 1; height: 100%; background: var(--bg-4); }
+.wn-seat-bar__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.wn-seat-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.wn-seat-legend-dot { width: 6px; height: 6px; }
+
+/* Party list */
+.wn-party-list { margin-top: 8px; }
+.wn-party-list__header {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--border-hair);
+}
+.wn-party-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-hair);
+}
+.wn-party-row:last-child { border-bottom: none; }
+.wn-party-row__dot { width: 6px; height: 6px; flex-shrink: 0; }
+.wn-party-row__name {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+.wn-party-row__abbr {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 4px;
+  color: var(--text-muted);
+  background: var(--bg-4);
+  border: 1px solid var(--border-hair);
+}
+.wn-party-row__ideo {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text-dim);
+}
+.wn-party-row__seats {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 30px;
+  text-align: right;
+}
+
+/* Crisis section */
+.wn-crisis-section { margin-top: 8px; }
+.wn-crisis-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+.wn-crisis-pip {
+  width: 3px;
+  height: 14px;
+  background: var(--red);
+  flex-shrink: 0;
+}
+.wn-crisis-name {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--red);
+}
+.wn-no-crisis {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  padding: 2px 0;
+  font-style: italic;
+}
+
+/* Relation footer */
+.wn-card__footer {
+  background: var(--bg-3);
+  border-top: 1px solid var(--border-hair);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.wn-relation-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.wn-relation-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+}
+.wn-relation-score {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+}
+.wn-embassy-tag {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  padding: 2px 6px;
+  letter-spacing: 0.04em;
+}
+.wn-embassy-tag--open  { color: var(--green); background: var(--green-faint); border: 1px solid var(--green-border); }
+.wn-embassy-tag--closed { color: var(--amber); background: var(--amber-faint); border: 1px solid var(--amber-border); }
+.wn-embassy-tag--none  { color: var(--text-dim); background: transparent; border: 1px solid var(--border-hair); }
+
+/* ── Light mode overrides ── */
+body.light-mode .wn-card { background: #fff; border-color: rgba(0,0,0,0.08); }
+body.light-mode .wn-card:hover { border-color: rgba(0,0,0,0.15); }
+body.light-mode .wn-card__header { background: #fafaf8; }
+body.light-mode .wn-card__footer { background: #fafaf8; }
+body.light-mode .diplo-view-btn { color: #999; border-color: rgba(0,0,0,0.1); }
+body.light-mode .diplo-view-btn:hover { color: #666; background: rgba(0,0,0,0.03); }
+body.light-mode .diplo-view-btn.is-active {
+  color: var(--teal);
+  background: rgba(91,154,139,0.06);
+  border-color: rgba(91,154,139,0.25);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .wn-grid { grid-template-columns: 1fr; padding: 14px; gap: 12px; }
+  .diplo-view-toggle { margin-left: 0; margin-top: 4px; }
+}
