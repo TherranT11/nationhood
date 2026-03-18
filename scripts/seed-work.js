@@ -194,9 +194,9 @@ async function main() {
     console.log('\n[4/5] Inserting factions...');
     const factionDefs = {
         'Valdoria': [
-            { faction_name: 'Progressive Alliance', seats: 42, approval_rating: 58, action_points: 5, color: '#2196F3' },
+            { faction_name: 'Progressive Alliance', seats: 42, approval_rating: 58, action_points: 5, color: '#5b9bd5' },
             { faction_name: 'National Unity Party', seats: 35, approval_rating: 52, action_points: 5, color: '#F44336' },
-            { faction_name: 'Green Future Coalition', seats: 25, approval_rating: 48, action_points: 5, color: '#4CAF50' },
+            { faction_name: 'Green Future Coalition', seats: 25, approval_rating: 48, action_points: 5, color: '#5cb85c' },
             { faction_name: 'Conservative Bloc', seats: 18, approval_rating: 42, action_points: 5, color: '#FF9800' }
         ],
         'Sangreza': [

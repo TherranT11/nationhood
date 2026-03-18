@@ -165,7 +165,7 @@ if (!faction) {
                 
                 if (!nation) {
                     document.getElementById('details').innerHTML = `
-                        <p style="color: #ff4444;">Error: Nation data not found.</p>
+                        <p style="color: #d9534f;">Error: Nation data not found.</p>
                     `;
                     return;
                 }
@@ -215,17 +215,17 @@ if (!faction) {
                             <div style="font-size: 1.1rem; color: #fff; font-weight: bold;">${formatNumber(nation.population)}</div>
                         </div>
                         
-                        <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; border-left: 3px solid #4CAF50;">
+                        <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; border-left: 3px solid #5cb85c;">
                             <div style="font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 5px;">Government Type</div>
                             <div style="font-size: 1.1rem; color: #fff; font-weight: bold;">${nation.government_type || 'Not Set'}</div>
                         </div>
                         
-                        <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; border-left: 3px solid #2196F3;">
+                        <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; border-left: 3px solid #5b9bd5;">
                             <div style="font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 5px;">GDP</div>
                             <div style="font-size: 1.1rem; color: #fff; font-weight: bold;">${formatCurrency(scaleRawToDollars(nation.gdp))}</div>
                         </div>
 
-                        <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; border-left: 3px solid #ff9800;">
+                        <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; border-left: 3px solid #d48a3c;">
                             <div style="font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 5px;">National Debt</div>
                             <div style="font-size: 1.1rem; color: #fff; font-weight: bold;">${formatCurrency(scaleRawToDollars(nation.debt))}</div>
                         </div>
@@ -248,7 +248,7 @@ if (!faction) {
             } catch (error) {
                 console.error('Error loading nation data:', error);
                 document.getElementById('details').innerHTML = `
-                    <p style="color: #ff4444;">Error loading nation data. Please try again.</p>
+                    <p style="color: #d9534f;">Error loading nation data. Please try again.</p>
                 `;
                 
                 // Hide the button on error

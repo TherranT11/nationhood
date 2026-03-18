@@ -212,7 +212,7 @@ async function loadActiveDemands() {
                     <div class="demand-requirement">
                         <div class="demand-stat-info">
                             <span class="demand-stat-name">${statDisplay}</span>
-                            <span class="demand-stat-current" style="color:${isMovingRight ? '#4CAF50' : '#ff4444'}">
+                            <span class="demand-stat-current" style="color:${isMovingRight ? '#5cb85c' : '#d9534f'}">
                                 ${currentVal}
                             </span>
                             <span class="demand-stat-arrow">→</span>
@@ -228,7 +228,7 @@ async function loadActiveDemands() {
         
     } catch (error) {
         console.error('Error loading demands:', error);
-        container.innerHTML = `<div class="empty-state"><p style="color:#ff4444;">Error loading demands</p></div>`;
+        container.innerHTML = `<div class="empty-state"><p style="color:#d9534f;">Error loading demands</p></div>`;
     }
 }
 
@@ -294,7 +294,7 @@ async function loadVoterBlocs() {
         
     } catch (error) {
         console.error('Error loading blocs:', error);
-        container.innerHTML = `<div class="empty-state"><p style="color:#ff4444;">Error loading voter blocs</p></div>`;
+        container.innerHTML = `<div class="empty-state"><p style="color:#d9534f;">Error loading voter blocs</p></div>`;
     }
 }
 
@@ -347,7 +347,7 @@ async function loadHistory() {
         
     } catch (error) {
         console.error('Error loading history:', error);
-        container.innerHTML = `<div class="empty-state"><p style="color:#ff4444;">Error loading history</p></div>`;
+        container.innerHTML = `<div class="empty-state"><p style="color:#d9534f;">Error loading history</p></div>`;
     }
 }
 

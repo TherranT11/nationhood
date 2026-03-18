@@ -300,9 +300,9 @@ const guideContent = {
 
 <h3>Ranking Pip Colors</h3>
 <ul>
-<li><span style="color:#4caf50;">&bull;</span> <strong>Green</strong> = Top third of all nations</li>
-<li><span style="color:#ff9800;">&bull;</span> <strong>Amber</strong> = Middle third</li>
-<li><span style="color:#f44336;">&bull;</span> <strong>Red</strong> = Bottom third</li>
+<li><span style="color:#5cb85c;">&bull;</span> <strong>Green</strong> = Top third of all nations</li>
+<li><span style="color:#d48a3c;">&bull;</span> <strong>Amber</strong> = Middle third</li>
+<li><span style="color:#d9534f;">&bull;</span> <strong>Red</strong> = Bottom third</li>
 </ul>
 
 <p class="guide-tip">Click any stat card to expand its &ldquo;Affected By&rdquo; breakdown &mdash; this is the most important analytical feature on the page.</p>
@@ -367,7 +367,7 @@ const guideContent = {
 
 <details><summary>Strategic Tips</summary><div>
 <h3>Identify Weak Spots</h3>
-<p>Look for stats with <span style="color:#f44336;">&bull;</span> red ranking pips &mdash; these are in the bottom third of all nations. Proposing laws that address weak stats will resonate with voter blocs who care about those issues.</p>
+<p>Look for stats with <span style="color:#d9534f;">&bull;</span> red ranking pips &mdash; these are in the bottom third of all nations. Proposing laws that address weak stats will resonate with voter blocs who care about those issues.</p>
 
 <h3>Use &ldquo;Affected By&rdquo; Before Legislating</h3>
 <p>Before proposing a law, check what's already influencing the stat you want to change. Stacking effects in the same direction compounds results. Counteracting existing negatives is often more impactful than boosting already-strong stats.</p>

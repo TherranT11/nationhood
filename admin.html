@@ -109,18 +109,18 @@
                     <option value="presidential">Presidential (candidate popular vote — new president)</option>
                 </select>
             </div>
-            <div id="election-type-warning" style="display:none;background:#3a2a1a;border:1px solid #ff9800;border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.82rem;color:#ff9800;"></div>
+            <div id="election-type-warning" style="display:none;background:#3a2a1a;border:1px solid #d48a3c;border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.82rem;color:#d48a3c;"></div>
             <div style="display:flex; gap:10px; margin-bottom:10px;">
                 <button class="btn btn-success" style="flex:1;" id="run-election-btn" disabled onclick="runElection()">🗳️ RUN ELECTION NOW</button>
                 <button class="btn btn-secondary" style="flex:1;" id="preview-election-btn" disabled onclick="previewElection()">🔍 PREVIEW ELECTION</button>
             </div>
             <div id="election-status" class="status info hidden"></div>
             <div id="election-results" class="election-results hidden">
-                <h3 style="color: #4CAF50; margin-bottom: 15px;">📊 Election Results</h3>
+                <h3 style="color: #5cb85c; margin-bottom: 15px;">📊 Election Results</h3>
                 <div id="election-results-content"></div>
             </div>
-            <div id="election-preview" class="election-results hidden" style="border-color:#ff9800;">
-                <h3 id="election-preview-header" style="color: #ff9800; margin-bottom: 15px;">🔍 Election Preview (Client-Side Simulation)</h3>
+            <div id="election-preview" class="election-results hidden" style="border-color:#d48a3c;">
+                <h3 id="election-preview-header" style="color: #d48a3c; margin-bottom: 15px;">🔍 Election Preview (Client-Side Simulation)</h3>
                 <div id="election-preview-summary" style="color:#ccc; font-size:0.85rem; margin-bottom:12px;"></div>
                 <div id="election-preview-content"></div>
                 <div id="election-preview-blocs" style="margin-top:15px;"></div>
@@ -259,8 +259,8 @@
             <h2>🔥 Danger Zone</h2>
 
             <!-- Seed Snapshot Section -->
-            <div style="background:#1a2a1a; border:1px solid #4CAF50; border-radius:8px; padding:16px; margin-bottom:24px;">
-                <strong style="color:#4CAF50;">📸 Seed Snapshot</strong><br>
+            <div style="background:#1a2a1a; border:1px solid #5cb85c; border-radius:8px; padding:16px; margin-bottom:24px;">
+                <strong style="color:#5cb85c;">📸 Seed Snapshot</strong><br>
                 <p style="color:#aaa; font-size:0.85rem; margin:8px 0;">
                     Saves every nation's current stats as the reset point. When you reset the shard, nation stats will be restored to this snapshot.
                     Do this once after setting up nations and before starting gameplay.
@@ -559,7 +559,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                     document.getElementById('info-next-tick').style.color = '#ffcc00';
                 } else {
                     document.getElementById('info-next-tick').textContent = `${nextTickDate.toLocaleString()} (OVERDUE)`;
-                    document.getElementById('info-next-tick').style.color = '#ff4444';
+                    document.getElementById('info-next-tick').style.color = '#d9534f';
                 }
             } else { document.getElementById('info-next-tick').textContent = 'Not Scheduled'; }
         } catch (error) { console.error('Error loading shard info:', error); }
@@ -835,7 +835,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 const sorted = [...candidateResults].sort((a, b) => b.votes - a.votes);
                 resultsContent.innerHTML = sorted.map(c => {
                     const isWinner = c.winner;
-                    return `<div class="result-party" style="${isWinner ? 'border-left:3px solid #4CAF50;padding-left:8px;' : ''}">
+                    return `<div class="result-party" style="${isWinner ? 'border-left:3px solid #5cb85c;padding-left:8px;' : ''}">
                         <div><div class="result-party-name">${isWinner ? '&#x2713; ' : ''}${escHtml(c.candidate_name)} (${escHtml(c.party_name)})</div>
                         <div style="font-size:0.75rem;color:#888;">${c.ideology || ''}</div>
                         <div class="result-bar" style="width:200px;"><div class="result-bar-fill" style="width:${c.vote_percentage || 0}%"></div></div></div>
@@ -943,14 +943,14 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                     <span>Votes cast: <strong>${result.total_votes_cast.toLocaleString()}</strong></span>
                     <span>Abstentions: <strong>${result.total_abstentions.toLocaleString()}</strong></span>
                     <span>Turnout: <strong>${result.turnout_pct}%</strong></span>
-                    ${result.was_runoff ? '<span style="color:#ff9800; font-weight:bold;">⚡ RUNOFF TRIGGERED</span>' : '<span style="color:#4CAF50;">Majority achieved — no runoff</span>'}
+                    ${result.was_runoff ? '<span style="color:#d48a3c; font-weight:bold;">⚡ RUNOFF TRIGGERED</span>' : '<span style="color:#5cb85c;">Majority achieved — no runoff</span>'}
                 </div>
             `;
 
             // Winner banner
             const w = result.winner;
-            let html = `<div style="background:#1a2e1a; border:1px solid #4CAF50; border-radius:6px; padding:10px 14px; margin-bottom:12px;">
-                <div style="color:#4CAF50; font-weight:bold; font-size:0.9rem; margin-bottom:4px;">
+            let html = `<div style="background:#1a2e1a; border:1px solid #5cb85c; border-radius:6px; padding:10px 14px; margin-bottom:12px;">
+                <div style="color:#5cb85c; font-weight:bold; font-size:0.9rem; margin-bottom:4px;">
                     🏆 Projected Winner${result.was_runoff ? ' (Runoff)' : ''}: ${escHtml(w.candidate_name)}
                 </div>
                 <div style="color:#aaa; font-size:0.8rem;">
@@ -961,7 +961,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             // Runoff results table (if runoff)
             if (result.was_runoff && result.runoff_results) {
                 html += `<div style="margin-bottom:12px;">
-                    <div style="color:#ff9800; font-weight:bold; font-size:0.85rem; margin-bottom:6px;">⚡ Runoff Results (Top 2)</div>
+                    <div style="color:#d48a3c; font-weight:bold; font-size:0.85rem; margin-bottom:6px;">⚡ Runoff Results (Top 2)</div>
                     ${renderCandidateTable(result.runoff_results)}
                 </div>`;
             }
@@ -969,7 +969,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             // Round 1 results (collapsible if runoff, visible otherwise)
             if (result.was_runoff) {
                 html += `<details style="margin-bottom:12px;">
-                    <summary style="cursor:pointer; color:#ff9800; font-size:0.85rem;">Round 1 Results (${result.round_1_results.length} candidates)</summary>
+                    <summary style="cursor:pointer; color:#d48a3c; font-size:0.85rem;">Round 1 Results (${result.round_1_results.length} candidates)</summary>
                     <div style="margin-top:6px;">
                         ${renderCandidateTable(result.round_1_results)}
                     </div>
@@ -1002,7 +1002,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         return candidates.map(c => {
             const isWinner = c.winner;
             const barW = maxVotes > 0 ? (c.votes / maxVotes) * 100 : 0;
-            return `<div class="result-party" style="${isWinner ? 'border-left:3px solid #4CAF50; padding-left:8px;' : ''}">
+            return `<div class="result-party" style="${isWinner ? 'border-left:3px solid #5cb85c; padding-left:8px;' : ''}">
                 <div>
                     <div class="result-party-name">
                         ${isWinner ? '&#x2713; ' : ''}${escHtml(c.candidate_name)}
@@ -1052,7 +1052,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
 
         container.innerHTML = `
             <details>
-                <summary style="cursor:pointer; color:#ff9800; font-size:0.85rem;">
+                <summary style="cursor:pointer; color:#d48a3c; font-size:0.85rem;">
                     ${summaryLabel}
                     (${stepInfo})
                 </summary>
@@ -1219,17 +1219,17 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             allPlayersCache = factions || [];
             shardCurrentTick = shard?.current_tick || 0;
             renderPlayers(filter);
-        } catch (error) { console.error(error); document.getElementById('players-list').innerHTML = '<div class="no-players" style="color:#ff4444;">Error loading players</div>'; }
+        } catch (error) { console.error(error); document.getElementById('players-list').innerHTML = '<div class="no-players" style="color:#d9534f;">Error loading players</div>'; }
     }
     function filterPlayers(filter) { renderPlayers(filter); }
     function getInactivityBadge(player) {
         if (!player.nation_id) return '';
         if (player.last_seen_tick == null) return '<span style="background:#1a1a2a; color:#64b5f6; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NEW</span>';
         const inactive = shardCurrentTick - player.last_seen_tick;
-        if (inactive >= 12) return `<span style="background:#2a1a1a; color:#ff4444; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NO SEATS (${inactive} ticks)</span>`;
+        if (inactive >= 12) return `<span style="background:#2a1a1a; color:#d9534f; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NO SEATS (${inactive} ticks)</span>`;
         if (inactive >= 6) return `<span style="background:#2a1a0a; color:#ff8800; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">DRAINING (${inactive} ticks)</span>`;
         if (inactive >= 3) return `<span style="background:#2a2a0a; color:#ffcc00; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">IDLE (${inactive} ticks)</span>`;
-        return '<span style="background:#1a2a1a; color:#4CAF50; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">ACTIVE</span>';
+        return '<span style="background:#1a2a1a; color:#5cb85c; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">ACTIVE</span>';
     }
     function renderPlayers(filter) {
         const playersList = document.getElementById('players-list');
@@ -1243,12 +1243,12 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         playersList.innerHTML = filtered.map(player => {
             const hasNation = !!player.nation_id;
             const inactive = player.last_seen_tick != null ? shardCurrentTick - player.last_seen_tick : null;
-            const borderColor = hasNation ? (inactive === null ? '#64b5f6' : inactive >= 12 ? '#ff4444' : inactive >= 6 ? '#ff8800' : '#4CAF50') : '#ff4444';
+            const borderColor = hasNation ? (inactive === null ? '#64b5f6' : inactive >= 12 ? '#d9534f' : inactive >= 6 ? '#ff8800' : '#5cb85c') : '#d9534f';
             const nationBadge = hasNation
-                ? `<span style="background:#1a2a1a; color:#4CAF50; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">${escHtml(player.nation || 'Unknown')}</span>`
-                : `<span style="background:#2a1a1a; color:#ff4444; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NO NATION</span>`;
+                ? `<span style="background:#1a2a1a; color:#5cb85c; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">${escHtml(player.nation || 'Unknown')}</span>`
+                : `<span style="background:#2a1a1a; color:#d9534f; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NO NATION</span>`;
             const inactivityBadge = getInactivityBadge(player);
-            const statsHTML = hasNation ? `<div style="display:flex; gap:12px; margin-top:6px; font-size:0.75rem; color:#888;"><span>Seats: <strong style="color:#ffcc00;">${player.seats||0}</strong></span><span>Approval: <strong style="color:#ffcc00;">${player.approval_rating||0}%</strong></span><span>AP: <strong style="color:#ffcc00;">${player.action_points||0}</strong></span>${player.last_seen_tick != null ? '<span>Last seen: <strong style="color:#ffcc00;">tick ' + player.last_seen_tick + '</strong></span>' : ''}</div>` : `<div style="margin-top:6px; font-size:0.75rem; color:#ff4444; font-style:italic;">Not assigned to any nation</div>`;
+            const statsHTML = hasNation ? `<div style="display:flex; gap:12px; margin-top:6px; font-size:0.75rem; color:#888;"><span>Seats: <strong style="color:#ffcc00;">${player.seats||0}</strong></span><span>Approval: <strong style="color:#ffcc00;">${player.approval_rating||0}%</strong></span><span>AP: <strong style="color:#ffcc00;">${player.action_points||0}</strong></span>${player.last_seen_tick != null ? '<span>Last seen: <strong style="color:#ffcc00;">tick ' + player.last_seen_tick + '</strong></span>' : ''}</div>` : `<div style="margin-top:6px; font-size:0.75rem; color:#d9534f; font-style:italic;">Not assigned to any nation</div>`;
             return `<div class="player-item" style="border-left-color:${borderColor}; margin-bottom:10px;"><div class="player-info" style="flex:1;"><div style="display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap;"><span class="player-party">${escHtml(player.faction_name||'Unnamed')} ${player.abbreviation ? '['+escHtml(player.abbreviation)+']' : ''}</span>${nationBadge}${inactivityBadge}</div><div class="player-id">ID: ${player.id}</div>${statsHTML}</div><div style="display:flex; gap:6px; flex-direction:column;">${hasNation ? `<button class="btn-remove" style="font-size:0.75rem; padding:6px 12px;" onclick="removePlayer('${player.id}', '${player.nation_id}', '${(player.faction_name||'').replace(/'/g,"\\'")}')">KICK</button>` : ''}<button class="btn-remove" style="background:#aa0000; font-size:0.75rem; padding:6px 12px;" onclick="deleteParty('${player.id}', '${(player.faction_name||'').replace(/'/g,"\\'")}')">DELETE</button></div></div>`;
         }).join('');
     }
@@ -1273,12 +1273,12 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     async function snapshotSeedStats() {
         const statusEl = document.getElementById('seed-status');
         const infoEl = document.getElementById('seed-info');
-        statusEl.innerHTML = '<span style="color:#2196F3; font-weight:bold;">Snapshotting...</span>';
+        statusEl.innerHTML = '<span style="color:#5b9bd5; font-weight:bold;">Snapshotting...</span>';
 
         try {
             const { data: nations, error } = await _supabase.from('nations').select('*');
             if (error) throw error;
-            if (!nations || nations.length === 0) { statusEl.innerHTML = '<span style="color:#ff9800;">No nations found.</span>'; return; }
+            if (!nations || nations.length === 0) { statusEl.innerHTML = '<span style="color:#d48a3c;">No nations found.</span>'; return; }
 
             let count = 0;
             for (const nation of nations) {
@@ -1297,12 +1297,12 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 // (prevents snapshotting corrupted 0-100 stat scores)
                 if (snapshot.gdp !== undefined && snapshot.gdp >= 0 && snapshot.gdp <= 100000) {
                     console.error(`[snapshotSeedStats] REFUSING to snapshot ${nation.name}: GDP=${snapshot.gdp} is not dollar-scale`);
-                    statusEl.innerHTML = `<span style="color:#ff4444; font-weight:bold;">⚠ ${nation.name} GDP=${snapshot.gdp} looks corrupted (0-100 stat score). Fix data first.</span>`;
+                    statusEl.innerHTML = `<span style="color:#d9534f; font-weight:bold;">⚠ ${nation.name} GDP=${snapshot.gdp} looks corrupted (0-100 stat score). Fix data first.</span>`;
                     return;
                 }
                 if (snapshot.debt !== undefined && snapshot.debt > 0 && snapshot.debt <= 100000) {
                     console.error(`[snapshotSeedStats] REFUSING to snapshot ${nation.name}: debt=${snapshot.debt} is not dollar-scale`);
-                    statusEl.innerHTML = `<span style="color:#ff4444; font-weight:bold;">⚠ ${nation.name} debt=${snapshot.debt} looks corrupted (0-100 stat score). Fix data first.</span>`;
+                    statusEl.innerHTML = `<span style="color:#d9534f; font-weight:bold;">⚠ ${nation.name} debt=${snapshot.debt} looks corrupted (0-100 stat score). Fix data first.</span>`;
                     return;
                 }
 
@@ -1313,11 +1313,11 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 count++;
             }
 
-            statusEl.innerHTML = `<span style="color:#4CAF50; font-weight:bold;">✅ Saved seed for ${count} nation(s)</span>`;
+            statusEl.innerHTML = `<span style="color:#5cb85c; font-weight:bold;">✅ Saved seed for ${count} nation(s)</span>`;
             infoEl.textContent = 'Snapshot taken at ' + new Date().toLocaleString();
         } catch (error) {
             console.error(error);
-            statusEl.innerHTML = `<span style="color:#ff4444; font-weight:bold;">❌ ${error.message}</span>`;
+            statusEl.innerHTML = `<span style="color:#d9534f; font-weight:bold;">❌ ${error.message}</span>`;
         }
     }
 
@@ -1346,23 +1346,23 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 current_date: 'January, 2000', current_tick: 0,
                 next_tick_at: nextTick.toISOString()
             }).eq('name', 'Alpha Shard');
-            logMsg('✓ Shard clock reset to January 2000, tick 0', '#4CAF50');
+            logMsg('✓ Shard clock reset to January 2000, tick 0', '#5cb85c');
 
             // 2. Clear all game-state tables via RPC (bypasses RLS, handles FK ordering)
             logMsg('Clearing game state tables...');
             const { data: clearResult, error: clearErr } = await _supabase.rpc('admin_reset_tables');
             if (clearErr) {
-                logMsg('⚠ admin_reset_tables RPC failed: ' + clearErr.message, '#ff9800');
+                logMsg('⚠ admin_reset_tables RPC failed: ' + clearErr.message, '#d48a3c');
                 logMsg('  (Run sql/create_admin_reset_tables.sql in Supabase first)', '#888');
             } else {
                 for (const [table, val] of Object.entries(clearResult || {})) {
                     if (typeof val === 'number') {
                         logMsg(`  ✓ ${table}: ${val} rows deleted`, '#666');
                     } else {
-                        logMsg(`  ⚠ ${table}: ${val}`, '#ff9800');
+                        logMsg(`  ⚠ ${table}: ${val}`, '#d48a3c');
                     }
                 }
-                logMsg('✓ Game state tables cleared', '#4CAF50');
+                logMsg('✓ Game state tables cleared', '#5cb85c');
             }
 
             // 3. Delete all factions using admin_delete_party RPC (bypasses RLS)
@@ -1372,14 +1372,14 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             for (const f of (allFactions || [])) {
                 const { error: rpcErr } = await _supabase.rpc('admin_delete_party', { p_faction_id: f.id });
                 if (rpcErr) {
-                    logMsg(`  ⚠ ${f.faction_name}: ${rpcErr.message}`, '#ff9800');
+                    logMsg(`  ⚠ ${f.faction_name}: ${rpcErr.message}`, '#d48a3c');
                     delFail++;
                 } else {
                     delOk++;
                 }
             }
-            if (delOk > 0) logMsg(`✓ Deleted ${delOk} political parties`, '#4CAF50');
-            if (delFail > 0) logMsg(`⚠ ${delFail} parties failed to delete`, '#ff9800');
+            if (delOk > 0) logMsg(`✓ Deleted ${delOk} political parties`, '#5cb85c');
+            if (delFail > 0) logMsg(`⚠ ${delFail} parties failed to delete`, '#d48a3c');
             if (delOk === 0 && delFail === 0) logMsg('No parties to delete', '#888');
 
             // 4. Restore nation stats from seed_stats
@@ -1390,7 +1390,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             let restored = 0, skipped = 0;
             for (const nation of (nations || [])) {
                 if (!nation.seed_stats || Object.keys(nation.seed_stats).length === 0) {
-                    logMsg(`  ⚠ ${nation.name}: no seed stats saved, skipping`, '#ff9800');
+                    logMsg(`  ⚠ ${nation.name}: no seed stats saved, skipping`, '#d48a3c');
                     skipped++;
                     continue;
                 }
@@ -1401,11 +1401,11 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                     if (validKeys.has(k)) update[k] = v;
                 }
                 const { error: uErr } = await _supabase.from('nations').update(update).eq('id', nation.id);
-                if (uErr) logMsg(`  ⚠ ${nation.name}: ${uErr.message}`, '#ff9800');
+                if (uErr) logMsg(`  ⚠ ${nation.name}: ${uErr.message}`, '#d48a3c');
                 else { logMsg(`  ✓ ${nation.name} restored (${Object.keys(update).length} stats)`, '#666'); restored++; }
             }
-            if (skipped > 0) logMsg(`⚠ ${skipped} nation(s) had no seed — use "Save Current Stats as Seed" first`, '#ff9800');
-            logMsg(`✓ ${restored} nation(s) restored from seed`, '#4CAF50');
+            if (skipped > 0) logMsg(`⚠ ${skipped} nation(s) had no seed — use "Save Current Stats as Seed" first`, '#d48a3c');
+            logMsg(`✓ ${restored} nation(s) restored from seed`, '#5cb85c');
 
             // 5. Done
             status.className = 'status success';
@@ -1413,7 +1413,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             await loadAllData();
         } catch (error) {
             console.error(error);
-            logMsg('❌ FATAL: ' + error.message, '#ff4444');
+            logMsg('❌ FATAL: ' + error.message, '#d9534f');
             status.className = 'status error'; status.textContent = '❌ Error: ' + error.message;
         }
         btn.disabled = false;
@@ -1485,11 +1485,11 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             VOTER_AXES.forEach(a => { savedAxes[a.column] = currentAxes[a.column]; });
             voterNationData.eligible_voters = updateObj.eligible_voters;
             statusEl.textContent = '✅ Saved!';
-            statusEl.style.color = '#4CAF50';
+            statusEl.style.color = '#5cb85c';
             setTimeout(() => { statusEl.textContent = ''; }, 3000);
         } catch (error) {
             statusEl.textContent = '❌ ' + error.message;
-            statusEl.style.color = '#ff4444';
+            statusEl.style.color = '#d9534f';
         }
     }
 
@@ -1663,13 +1663,13 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         const statusEl = document.getElementById('weight-status');
         if (Math.abs(totalRounded - 100) < 0.01) {
             statusEl.textContent = '✅ Valid';
-            statusEl.style.color = '#4CAF50';
+            statusEl.style.color = '#5cb85c';
         } else if (totalRounded > 100) {
             statusEl.textContent = '⚠️ Over 100%';
-            statusEl.style.color = '#ff4444';
+            statusEl.style.color = '#d9534f';
         } else {
             statusEl.textContent = '⚠️ Under 100% (' + (100 - totalRounded).toFixed(2) + '% remaining)';
-            statusEl.style.color = '#ff9800';
+            statusEl.style.color = '#d48a3c';
         }
     }
 
@@ -1692,7 +1692,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             container.innerHTML = voterBlocsCache.map(bloc => renderBlocCard(bloc)).join('');
         } catch (error) {
             console.error(error);
-            container.innerHTML = '<div class="no-players" style="color:#ff4444;">Error loading blocs: ' + error.message + '</div>';
+            container.innerHTML = '<div class="no-players" style="color:#d9534f;">Error loading blocs: ' + error.message + '</div>';
         }
     }
 
@@ -1879,12 +1879,12 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             if (editingBlocId) {
                 const { error } = await _supabase.from('voter_blocs').update(blocData).eq('id', editingBlocId);
                 if (error) throw error;
-                statusEl.innerHTML = '<span style="color:#4CAF50;font-weight:bold;">✅ Bloc updated!</span>';
+                statusEl.innerHTML = '<span style="color:#5cb85c;font-weight:bold;">✅ Bloc updated!</span>';
             } else {
                 blocData.nation_id = voterNationData.id;
                 const { error } = await _supabase.from('voter_blocs').insert(blocData);
                 if (error) throw error;
-                statusEl.innerHTML = '<span style="color:#4CAF50;font-weight:bold;">✅ Bloc created!</span>';
+                statusEl.innerHTML = '<span style="color:#5cb85c;font-weight:bold;">✅ Bloc created!</span>';
             }
             setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
             cancelBlocForm();
@@ -1892,7 +1892,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             // Auto-initialize faction_bloc_approval rows for the new bloc
             await initializeBlocApprovals();
         } catch (error) {
-            statusEl.innerHTML = '<span style="color:#ff4444;font-weight:bold;">❌ Error: ' + error.message + '</span>';
+            statusEl.innerHTML = '<span style="color:#d9534f;font-weight:bold;">❌ Error: ' + error.message + '</span>';
         }
     }
 
@@ -1903,11 +1903,11 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         try {
             const { error } = await _supabase.from('voter_blocs').delete().eq('id', blocId);
             if (error) throw error;
-            statusEl.innerHTML = '<span style="color:#4CAF50;font-weight:bold;">✅ Bloc deleted.</span>';
+            statusEl.innerHTML = '<span style="color:#5cb85c;font-weight:bold;">✅ Bloc deleted.</span>';
             setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
             await loadExistingBlocsDisplay(voterNationData.id);
         } catch (error) {
-            statusEl.innerHTML = '<span style="color:#ff4444;font-weight:bold;">❌ Error: ' + error.message + '</span>';
+            statusEl.innerHTML = '<span style="color:#d9534f;font-weight:bold;">❌ Error: ' + error.message + '</span>';
         }
     }
 
@@ -1919,7 +1919,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         }
 
         const statusEl = document.getElementById('bloc-action-status');
-        statusEl.innerHTML = '<span style="color:#2196F3;font-weight:bold;">Generating stat-seeded blocs...</span>';
+        statusEl.innerHTML = '<span style="color:#5b9bd5;font-weight:bold;">Generating stat-seeded blocs...</span>';
 
         try {
             // Delete existing blocs (and cascade deletes faction_bloc_approval rows)
@@ -1986,15 +1986,15 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             showBlocSeedBreakdown(computed);
         } catch (error) {
             console.error(error);
-            statusEl.innerHTML = '<span style="color:#ff4444;font-weight:bold;">❌ Error: ' + error.message + '</span>';
+            statusEl.innerHTML = '<span style="color:#d9534f;font-weight:bold;">❌ Error: ' + error.message + '</span>';
         }
     }
 
     /** Show a breakdown of how nation stats seeded each bloc's weight */
     function showBlocSeedBreakdown(computed) {
         const statusEl = document.getElementById('bloc-action-status');
-        let html = '<div style="background:#1a2a1a; border:1px solid #4CAF50; border-radius:8px; padding:12px; margin-top:8px;">';
-        html += '<div style="color:#4CAF50; font-weight:bold; margin-bottom:8px;">✅ Generated ' + computed.length + ' blocs from nation stats</div>';
+        let html = '<div style="background:#1a2a1a; border:1px solid #5cb85c; border-radius:8px; padding:12px; margin-top:8px;">';
+        html += '<div style="color:#5cb85c; font-weight:bold; margin-bottom:8px;">✅ Generated ' + computed.length + ' blocs from nation stats</div>';
         html += '<table style="width:100%; font-size:0.82rem; border-collapse:collapse;">';
         html += '<tr style="color:#aaa; border-bottom:1px solid #333;"><th style="text-align:left; padding:4px;">Bloc</th><th style="text-align:right; padding:4px;">Weight</th><th style="text-align:left; padding:4px 4px 4px 12px;">Seeded From</th><th style="text-align:right; padding:4px;">Raw</th></tr>';
         for (const c of computed) {
@@ -2018,7 +2018,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         }
 
         const statusEl = document.getElementById('bloc-action-status');
-        statusEl.innerHTML = '<span style="color:#2196F3;font-weight:bold;">Initializing approvals...</span>';
+        statusEl.innerHTML = '<span style="color:#5b9bd5;font-weight:bold;">Initializing approvals...</span>';
 
         try {
             // Get all parties for this nation
@@ -2028,7 +2028,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 .eq('faction_type', 'party');
             if (pErr) throw pErr;
             if (!parties || parties.length === 0) {
-                statusEl.innerHTML = '<span style="color:#ff9800;font-weight:bold;">No parties found for this nation.</span>';
+                statusEl.innerHTML = '<span style="color:#d48a3c;font-weight:bold;">No parties found for this nation.</span>';
                 return;
             }
 
@@ -2067,11 +2067,11 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 await recalcDerivedApproval(_supabase, party.id, partyRows.map(r => ({ bloc_id: r.bloc_id, preference_score: r.preference_score })));
             }
 
-            statusEl.innerHTML = `<span style="color:#4CAF50;font-weight:bold;">✅ Initialized approval for ${parties.length} parties × ${voterBlocsCache.length} blocs (${rows.length} records, ideology-adjusted)</span>`;
+            statusEl.innerHTML = `<span style="color:#5cb85c;font-weight:bold;">✅ Initialized approval for ${parties.length} parties × ${voterBlocsCache.length} blocs (${rows.length} records, ideology-adjusted)</span>`;
             setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
         } catch (error) {
             console.error(error);
-            statusEl.innerHTML = '<span style="color:#ff4444;font-weight:bold;">❌ Error: ' + error.message + '</span>';
+            statusEl.innerHTML = '<span style="color:#d9534f;font-weight:bold;">❌ Error: ' + error.message + '</span>';
         }
     }
 
@@ -2211,7 +2211,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             renderMinistryConfig();
         } catch (err) {
             console.error('loadMinistryConfig error:', err);
-            document.getElementById('ministry-config-body').innerHTML = '<div style="color:#ff4444;">Error loading config: ' + err.message + '</div>';
+            document.getElementById('ministry-config-body').innerHTML = '<div style="color:#d9534f;">Error loading config: ' + err.message + '</div>';
         }
     }
 
@@ -2505,7 +2505,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
 
                 for (const p of policies) {
                     nationTotal += p.cost;
-                    const rowColor = p.cost > 1e12 ? '#ff4444' : (p.cost > 0 ? '#e0e0e0' : '#666');
+                    const rowColor = p.cost > 1e12 ? '#d9534f' : (p.cost > 0 ? '#e0e0e0' : '#666');
                     h += '<tr style="border-bottom:1px solid #222; color:' + rowColor + ';">';
                     h += '<td style="padding:6px 8px;">' + (p.name || '—') + '</td>';
                     h += '<td style="padding:6px 8px; color:#888;">' + p.category + '</td>';
@@ -2702,9 +2702,9 @@ function renderScOverview() {
     h += '<div class="sc-overview-value">' + enabled.length + '</div>';
     h += '<div class="sc-overview-sub">' + (scConnections.length - enabled.length) + ' disabled</div></div>';
 
-    h += '<div class="sc-overview-card" style="border-top-color:#4CAF50;">';
+    h += '<div class="sc-overview-card" style="border-top-color:#5cb85c;">';
     h += '<div class="sc-overview-label">STATS CONNECTED</div>';
-    h += '<div class="sc-overview-value" style="color:#4CAF50;">' + connected.size + '</div>';
+    h += '<div class="sc-overview-value" style="color:#5cb85c;">' + connected.size + '</div>';
     h += '<div class="sc-overview-sub">of ' + SC_ALL_STATS.length + ' total</div></div>';
 
     h += '<div class="sc-overview-card" style="border-top-color:#f97316;">';
@@ -3389,7 +3389,7 @@ async function loadIntegrityData() {
         _integrityFactions = facRes.data || [];
         if (status) status.textContent = `${_integrityFingerprints.length} fingerprint(s), ${_integrityBans.filter(b => b.is_active).length} active ban(s), ${_integrityFactions.length} player(s)`;
     } catch (e) {
-        if (status) status.innerHTML = `<span style="color:#ff4444;">Error: ${e.message}</span><br><span style="color:#888;font-size:0.8rem;">Run the migration: sql/migrations/20260301_player_integrity.sql</span>`;
+        if (status) status.innerHTML = `<span style="color:#d9534f;">Error: ${e.message}</span><br><span style="color:#888;font-size:0.8rem;">Run the migration: sql/migrations/20260301_player_integrity.sql</span>`;
         _integrityFingerprints = [];
         _integrityBans = [];
         _integrityFactions = [];
@@ -3412,7 +3412,7 @@ function showIntegrityView(view) {
     }).catch(err => {
         console.error('Integrity view error:', err);
         const container = document.getElementById('integrity-content');
-        if (container) container.innerHTML = `<div style="color:#ff4444;padding:20px;">Error loading integrity data: ${err.message}</div>`;
+        if (container) container.innerHTML = `<div style="color:#d9534f;padding:20px;">Error loading integrity data: ${err.message}</div>`;
     });
 }
 window.showIntegrityView = showIntegrityView;
@@ -3439,11 +3439,11 @@ function renderIntegrityClusters(container) {
         .sort((a, b) => b[1].length - a[1].length);
 
     if (suspicious.length === 0) {
-        container.innerHTML = '<div style="color:#4CAF50;padding:20px;text-align:center;font-weight:bold;">No suspicious clusters detected. All fingerprints are unique per user.</div>';
+        container.innerHTML = '<div style="color:#5cb85c;padding:20px;text-align:center;font-weight:bold;">No suspicious clusters detected. All fingerprints are unique per user.</div>';
         return;
     }
 
-    let html = `<div style="color:#ff9800;margin-bottom:16px;font-weight:bold;">${suspicious.length} suspicious cluster(s) found — multiple accounts sharing the same browser fingerprint</div>`;
+    let html = `<div style="color:#d48a3c;margin-bottom:16px;font-weight:bold;">${suspicious.length} suspicious cluster(s) found — multiple accounts sharing the same browser fingerprint</div>`;
 
     for (const [fpHash, group] of suspicious) {
         const uniqueUsers = [...new Set(group.map(g => g.user_id))];
@@ -3451,11 +3451,11 @@ function renderIntegrityClusters(container) {
         const sameNation = nations.length <= 1 && nations.length > 0;
 
         html += `
-        <div style="border:1px solid ${sameNation ? '#ff4444' : '#ff9800'};border-radius:6px;padding:16px;margin-bottom:12px;background:${sameNation ? 'rgba(255,68,68,0.08)' : 'rgba(255,152,0,0.06)'};">
+        <div style="border:1px solid ${sameNation ? '#d9534f' : '#d48a3c'};border-radius:6px;padding:16px;margin-bottom:12px;background:${sameNation ? 'rgba(255,68,68,0.08)' : 'rgba(255,152,0,0.06)'};">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
                 <div>
-                    <span style="color:${sameNation ? '#ff4444' : '#ff9800'};font-weight:bold;font-size:1rem;">${sameNation ? '🚨 HIGH RISK' : '⚠️ SUSPICIOUS'} — ${uniqueUsers.length} accounts</span>
-                    ${sameNation ? '<span style="color:#ff4444;font-size:0.8rem;margin-left:8px;">(Same nation!)</span>' : ''}
+                    <span style="color:${sameNation ? '#d9534f' : '#d48a3c'};font-weight:bold;font-size:1rem;">${sameNation ? '🚨 HIGH RISK' : '⚠️ SUSPICIOUS'} — ${uniqueUsers.length} accounts</span>
+                    ${sameNation ? '<span style="color:#d9534f;font-size:0.8rem;margin-left:8px;">(Same nation!)</span>' : ''}
                 </div>
                 <span style="color:#555;font-size:0.75rem;font-family:monospace;">FP: ${escHtml(fpHash.substring(0, 16))}...</span>
             </div>
@@ -3466,7 +3466,7 @@ function renderIntegrityClusters(container) {
                     const nation = faction?.nation || '—';
                     const isBanned = faction?.is_banned;
                     return `<div style="background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:8px 12px;font-size:0.8rem;">
-                        <div style="font-weight:bold;color:${isBanned ? '#666' : '#e0e0e0'};">${escHtml(name)} ${isBanned ? '<span style="color:#ff4444;">[BANNED]</span>' : ''}</div>
+                        <div style="font-weight:bold;color:${isBanned ? '#666' : '#e0e0e0'};">${escHtml(name)} ${isBanned ? '<span style="color:#d9534f;">[BANNED]</span>' : ''}</div>
                         <div style="color:#888;font-size:0.75rem;">Nation: ${escHtml(nation)}</div>
                         <div style="color:#666;font-size:0.7rem;">${escHtml(g.timezone || '?')} · ${escHtml(g.screen_sig || '?')} · ${escHtml(g.language || '?')}</div>
                         <div style="color:#555;font-size:0.7rem;">Sessions: ${g.session_count} · Last: ${new Date(g.last_seen_at).toLocaleDateString()}</div>
@@ -3500,7 +3500,7 @@ function renderAllFingerprints(container) {
         const rowColor = dupeCount > 0 ? 'rgba(255,152,0,0.1)' : 'transparent';
 
         html += `<tr style="border-bottom:1px solid #222;background:${rowColor};">
-            <td style="padding:8px;color:${isBanned ? '#666' : '#e0e0e0'};font-weight:bold;">${escHtml(name)} ${isBanned ? '<span style="color:#ff4444;font-size:0.7rem;">[BANNED]</span>' : ''} ${dupeCount > 0 ? `<span style="color:#ff9800;font-size:0.7rem;">[${dupeCount} match${dupeCount > 1 ? 'es' : ''}]</span>` : ''}</td>
+            <td style="padding:8px;color:${isBanned ? '#666' : '#e0e0e0'};font-weight:bold;">${escHtml(name)} ${isBanned ? '<span style="color:#d9534f;font-size:0.7rem;">[BANNED]</span>' : ''} ${dupeCount > 0 ? `<span style="color:#d48a3c;font-size:0.7rem;">[${dupeCount} match${dupeCount > 1 ? 'es' : ''}]</span>` : ''}</td>
             <td style="padding:8px;color:#888;">${escHtml(nation)}</td>
             <td style="padding:8px;color:#888;">${escHtml(fp.timezone || '—')}</td>
             <td style="padding:8px;color:#888;font-family:monospace;">${escHtml(fp.screen_sig || '—')}</td>
@@ -3520,7 +3520,7 @@ function renderAllFingerprints(container) {
 function renderActiveBans(container) {
     const activeBans = _integrityBans.filter(b => b.is_active);
     if (activeBans.length === 0) {
-        container.innerHTML = '<div style="color:#4CAF50;padding:20px;text-align:center;">No active bans.</div>';
+        container.innerHTML = '<div style="color:#5cb85c;padding:20px;text-align:center;">No active bans.</div>';
         return;
     }
 
@@ -3529,9 +3529,9 @@ function renderActiveBans(container) {
         const faction = _integrityFactions.find(f => f.id === ban.user_id);
         const name = faction ? faction.faction_name : 'Unknown';
         html += `
-        <div style="border:1px solid #ff4444;border-radius:6px;padding:14px;margin-bottom:10px;background:rgba(255,68,68,0.06);display:flex;justify-content:space-between;align-items:center;">
+        <div style="border:1px solid #d9534f;border-radius:6px;padding:14px;margin-bottom:10px;background:rgba(255,68,68,0.06);display:flex;justify-content:space-between;align-items:center;">
             <div>
-                <div style="font-weight:bold;color:#e0e0e0;">${escHtml(name)} <span style="color:#ff4444;font-size:0.8rem;">[${ban.ban_type.toUpperCase()}]</span></div>
+                <div style="font-weight:bold;color:#e0e0e0;">${escHtml(name)} <span style="color:#d9534f;font-size:0.8rem;">[${ban.ban_type.toUpperCase()}]</span></div>
                 <div style="color:#888;font-size:0.8rem;">Reason: ${escHtml(ban.reason || 'No reason given')}</div>
                 <div style="color:#666;font-size:0.75rem;">Banned: ${new Date(ban.banned_at).toLocaleString()}${ban.banned_until ? ' · Until: ' + new Date(ban.banned_until).toLocaleString() : ' · Permanent'}</div>
             </div>
@@ -3569,10 +3569,10 @@ function renderCreationTimeline(container) {
         const rowBg = burst ? 'rgba(255,152,0,0.12)' : 'transparent';
 
         html += `<tr style="border-bottom:1px solid #222;background:${rowBg};">
-            <td style="padding:8px;color:#888;font-family:monospace;">${tick} ${burst ? '<span style="color:#ff9800;font-weight:bold;">⚡ BURST</span>' : ''}</td>
-            <td style="padding:8px;font-weight:bold;color:${f.is_banned ? '#666' : '#e0e0e0'};">${escHtml(f.faction_name || '?')} ${f.abbreviation ? '[' + escHtml(f.abbreviation) + ']' : ''} ${f.is_banned ? '<span style="color:#ff4444;font-size:0.7rem;">[BANNED]</span>' : ''}</td>
+            <td style="padding:8px;color:#888;font-family:monospace;">${tick} ${burst ? '<span style="color:#d48a3c;font-weight:bold;">⚡ BURST</span>' : ''}</td>
+            <td style="padding:8px;font-weight:bold;color:${f.is_banned ? '#666' : '#e0e0e0'};">${escHtml(f.faction_name || '?')} ${f.abbreviation ? '[' + escHtml(f.abbreviation) + ']' : ''} ${f.is_banned ? '<span style="color:#d9534f;font-size:0.7rem;">[BANNED]</span>' : ''}</td>
             <td style="padding:8px;color:#888;">${escHtml(f.nation || '—')}</td>
-            <td style="padding:8px;color:${f.nation_id ? '#4CAF50' : '#ff4444'};">${f.nation_id ? 'Active' : 'No Nation'}</td>
+            <td style="padding:8px;color:${f.nation_id ? '#5cb85c' : '#d9534f'};">${f.nation_id ? 'Active' : 'No Nation'}</td>
         </tr>`;
     }
 

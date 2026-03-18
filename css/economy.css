@@ -163,8 +163,8 @@ body.light-mode .econ-section-header {
     display: none;
 }
 
-.econ-card-surplus { border-left-color: var(--green, #4CAF50); }
-.econ-card-deficit { border-left-color: var(--red, #ff4444); }
+.econ-card-surplus { border-left-color: var(--green, #5cb85c); }
+.econ-card-deficit { border-left-color: var(--red, #d9534f); }
 .econ-card-neutral { border-left-color: var(--text-secondary); }
 
 .econ-card-label {
@@ -186,8 +186,8 @@ body.light-mode .econ-section-header {
     margin-bottom: 4px;
 }
 
-.econ-card-surplus .econ-card-value { color: var(--green, #4CAF50); }
-.econ-card-deficit .econ-card-value { color: var(--red, #ff4444); }
+.econ-card-surplus .econ-card-value { color: var(--green, #5cb85c); }
+.econ-card-deficit .econ-card-value { color: var(--red, #d9534f); }
 
 .econ-card-sub {
     font-family: var(--font-mono);
@@ -835,7 +835,7 @@ body.light-mode .distress-banner-text { color: #555; }
 
 .econ-ranking-highlight {
     background: rgba(226, 224, 214, 0.04);
-    border-left: 2px solid #e2e0d6;
+    border-left: 2px solid var(--text-bright);
 }
 
 .econ-ranking-highlight .econ-ranking-name {
@@ -896,7 +896,7 @@ body.light-mode .distress-banner-text { color: #555; }
 .econ-health-warning {
     font-family: var(--font-mono);
     font-size: 0.58rem;
-    color: var(--red, #ff4444);
+    color: var(--red, #d9534f);
     font-style: italic;
     white-space: nowrap;
 }
@@ -1088,8 +1088,8 @@ body.light-mode .econ-health-threshold {
     gap: 4px;
 }
 
-.economy-stat-trend .trend-up { color: var(--green, #4CAF50); }
-.economy-stat-trend .trend-down { color: var(--red, #ff4444); }
+.economy-stat-trend .trend-up { color: var(--green, #5cb85c); }
+.economy-stat-trend .trend-down { color: var(--red, #d9534f); }
 .economy-stat-trend .trend-neutral { color: var(--text-muted); }
 
 .economy-stat-rating {
@@ -1107,8 +1107,8 @@ body.light-mode .econ-health-threshold {
 .economy-stat-rating.rating-poor       { color: var(--orange); }
 .economy-stat-rating.rating-critical   { color: var(--red); }
 
-.economy-stat-trend .trend-up.inverted { color: var(--red, #ff4444); }
-.economy-stat-trend .trend-down.inverted { color: var(--green, #4CAF50); }
+.economy-stat-trend .trend-up.inverted { color: var(--red, #d9534f); }
+.economy-stat-trend .trend-down.inverted { color: var(--green, #5cb85c); }
 
 .economy-stat-financial.hero-surplus {
     border-color: rgba(76, 175, 80, 0.15);
@@ -1117,13 +1117,13 @@ body.light-mode .econ-health-threshold {
     border-color: rgba(255, 68, 68, 0.15);
 }
 .economy-stat-financial.hero-surplus::before {
-    background: var(--green, #4CAF50);
+    background: var(--green, #5cb85c);
 }
 .economy-stat-financial.hero-deficit::before {
-    background: var(--red, #ff4444);
+    background: var(--red, #d9534f);
 }
-.economy-stat-value.hero-surplus { color: var(--green, #4CAF50); }
-.economy-stat-value.hero-deficit { color: var(--red, #ff4444); }
+.economy-stat-value.hero-surplus { color: var(--green, #5cb85c); }
+.economy-stat-value.hero-deficit { color: var(--red, #d9534f); }
 
 .economy-stat-breakdown {
     display: flex;
@@ -1135,8 +1135,8 @@ body.light-mode .econ-health-threshold {
     margin-top: 4px;
     color: var(--text-muted);
 }
-.breakdown-revenue { color: var(--green, #4CAF50); }
-.breakdown-expense { color: var(--red, #ff4444); }
+.breakdown-revenue { color: var(--green, #5cb85c); }
+.breakdown-expense { color: var(--red, #d9534f); }
 .breakdown-sep { color: var(--text-faint); }
 .breakdown-ratio { color: var(--text-muted); }
 
@@ -1886,9 +1886,9 @@ body.light-mode .aff-tip-trigger { border-bottom-color: var(--text-secondary); }
     color: var(--text-bright);
 }
 
-.partner-stat-value.exports { color: var(--green, #4CAF50); }
+.partner-stat-value.exports { color: var(--green, #5cb85c); }
 .partner-stat-value.imports { color: var(--red, #f44336); }
-.partner-stat-value.surplus { color: var(--green, #4CAF50); }
+.partner-stat-value.surplus { color: var(--green, #5cb85c); }
 .partner-stat-value.deficit { color: var(--red, #f44336); }
 
 /* Volume bar */
@@ -1906,7 +1906,7 @@ body.light-mode .aff-tip-trigger { border-bottom-color: var(--text-secondary); }
 }
 
 .partner-bar-exports {
-    background: var(--green, #4CAF50);
+    background: var(--green, #5cb85c);
     border-radius: 3px 0 0 3px;
     min-width: 2px;
 }
@@ -1926,7 +1926,7 @@ body.light-mode .aff-tip-trigger { border-bottom-color: var(--text-secondary); }
     margin-top: 2px;
 }
 
-.partner-legend-exports { color: var(--green, #4CAF50); }
+.partner-legend-exports { color: var(--green, #5cb85c); }
 .partner-legend-imports { color: var(--red, #f44336); }
 
 /* Sector breakdown */
@@ -2697,7 +2697,7 @@ body.light-mode .sector-score-threshold {
 
 .tm-row.tm-highlight {
     background: rgba(226, 224, 214, 0.04);
-    border-left: 2px solid #e2e0d6;
+    border-left: 2px solid var(--text-bright);
     padding-left: 8px;
     margin: 0 -10px;
     padding-right: 10px;
@@ -2805,11 +2805,11 @@ body.light-mode .tariff-explainer {
 }
 
 /* ===== TREND ARROWS (overview cards) ===== */
-.trend-up { color: var(--green, #4CAF50); }
-.trend-down { color: var(--red, #ff4444); }
+.trend-up { color: var(--green, #5cb85c); }
+.trend-down { color: var(--red, #d9534f); }
 .trend-neutral { color: var(--text-muted); }
-.trend-up.inverted { color: var(--red, #ff4444); }
-.trend-down.inverted { color: var(--green, #4CAF50); }
+.trend-up.inverted { color: var(--red, #d9534f); }
+.trend-down.inverted { color: var(--green, #5cb85c); }
 
 /* ===== TAXATION TAB ===== */
 

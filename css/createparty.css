@@ -152,7 +152,7 @@ body {
             padding: 15px 20px;
             border-radius: 4px;
             margin-bottom: 30px;
-            border-left: 4px solid #4CAF50;
+            border-left: 4px solid var(--green);
             display: flex;
             align-items: center;
             gap: 15px;
@@ -262,7 +262,7 @@ body {
         }
         
         .btn-confirm {
-            background: #4CAF50;
+            background: var(--green);
             color: white;
         }
         
@@ -278,7 +278,7 @@ body {
         
         .error {
             background: #2a1a1a;
-            border: 1px solid #ff4444;
+            border: 1px solid var(--red);
             color: var(--red);
             padding: 15px;
             border-radius: 4px;
@@ -295,7 +295,7 @@ body {
         /* Autocracy-specific styles */
         .autocracy-info {
             background: #2a1a1a;
-            border: 1px solid #ff4444;
+            border: 1px solid var(--red);
             border-radius: 8px;
             padding: 25px;
             margin-bottom: 30px;
@@ -326,7 +326,7 @@ body {
         }
         .autocracy-warning {
             background: #252525;
-            border-left: 4px solid #ff9800;
+            border-left: 4px solid var(--orange);
             padding: 15px;
             border-radius: 4px;
             margin-bottom: 20px;

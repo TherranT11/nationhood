@@ -53,7 +53,7 @@ let allParties = [];
 let electionResults = [];
 let totalLegislatureSeats = 0;
 const GENERAL_ELECTION_TYPE = 'parliamentary';
-const FALLBACK_COLORS = ['#E91E63','#2196F3','#4CAF50','#FF9800','#9C27B0','#00BCD4','#F44336','#8BC34A','#FFC107','#673AB7'];
+const FALLBACK_COLORS = ['#E91E63','#5b9bd5','#5cb85c','#d48a3c','#9C27B0','#00BCD4','#d9534f','#8BC34A','#FFC107','#673AB7'];
 
 function getPartyColor(partyId, fallbackIndex) {
     const p = allParties.find(x => x.id === partyId);
@@ -269,7 +269,7 @@ async function renderElectionResults(election) {
             <span style="font-size: 0.9rem; color: ${pColor}; font-weight: bold;">${logoHtml}${r.party_name}</span>
             <span style="font-size: 0.85rem; color: #aaa; text-align: right;">${(r.votes || 0).toLocaleString()} Votes</span>
             <span style="font-size: 0.85rem; color: #aaa; text-align: right;">${r.vote_percentage || 0}%</span>
-            <span style="font-size: 0.85rem; font-weight: bold; color: #4CAF50; text-align: right;">${r.seats || 0} Seats</span>
+            <span style="font-size: 0.85rem; font-weight: bold; color: #5cb85c; text-align: right;">${r.seats || 0} Seats</span>
         </div>`;
     }).join('');
 }
@@ -337,8 +337,8 @@ async function renderElectionBreakdown(election) {
         const sorted = [...blocDetails].sort((a, b) => b.voter_count - a.voter_count);
 
         const ideologyColors = {
-            'LIBERTY': '#9C27B0', 'EQUALITY': '#E91E63', 'FREEDOM': '#2196F3',
-            'SECURITY': '#FF9800', 'INDIVIDUALISM': '#eab308', 'COLLECTIVISM': '#ec4899',
+            'LIBERTY': '#9C27B0', 'EQUALITY': '#E91E63', 'FREEDOM': '#5b9bd5',
+            'SECURITY': '#d48a3c', 'INDIVIDUALISM': '#eab308', 'COLLECTIVISM': '#ec4899',
             'TRADITION': '#795548', 'PROGRESS': '#00BCD4', 'NATIONALISM': '#FF5722',
             'GLOBALISM': '#3F51B5'
         };
@@ -453,8 +453,8 @@ async function renderPresidentialResults(election) {
     }
 
     const ideologyColors = {
-        'LIBERTY': '#9C27B0', 'EQUALITY': '#E91E63', 'FREEDOM': '#2196F3',
-        'SECURITY': '#FF9800', 'INDIVIDUALISM': '#eab308', 'COLLECTIVISM': '#ec4899',
+        'LIBERTY': '#9C27B0', 'EQUALITY': '#E91E63', 'FREEDOM': '#5b9bd5',
+        'SECURITY': '#d48a3c', 'INDIVIDUALISM': '#eab308', 'COLLECTIVISM': '#ec4899',
         'TRADITION': '#795548', 'PROGRESS': '#00BCD4', 'NATIONALISM': '#FF5722',
         'GLOBALISM': '#3F51B5'
     };
@@ -484,7 +484,7 @@ async function renderPresidentialResults(election) {
             const cLogoHtml = (cLogo || cCustomLogoUrl) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: cCustomLogoUrl, iconKey: cLogo, size: 16, color: cPartyColor })}</span>` : '';
             return `
                 <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 0.8fr;gap:12px;padding:12px 0;border-bottom:1px solid #222;align-items:center;border-left:3px solid ${cPartyColor};padding-left:10px;">
-                    <span style="font-size:0.9rem;color:${isWinner ? '#4CAF50' : '#e0e0e0'};font-weight:bold;">
+                    <span style="font-size:0.9rem;color:${isWinner ? '#5cb85c' : '#e0e0e0'};font-weight:bold;">
                         ${isWinner ? '&#x2713; ' : ''}${c.candidate_name}
                         <span style="display:inline-block;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;color:#fff;background:${color};margin-left:6px;vertical-align:middle;">${c.ideology}</span>
                     </span>
@@ -526,8 +526,8 @@ async function renderPresidentialResults(election) {
 
     // Winner banner
     let html = `
-        <div style="background:linear-gradient(135deg,#1a2a1a,#0a1a0a);border:2px solid #4CAF50;border-radius:8px;padding:16px;margin-bottom:16px;border-left:4px solid ${winnerPartyColor};">
-            <div style="font-size:0.75rem;color:#4CAF50;text-transform:uppercase;letter-spacing:1px;font-weight:bold;margin-bottom:6px;">Presidential Election Winner${wasRunoff ? ' (Runoff)' : ''}</div>
+        <div style="background:linear-gradient(135deg,#1a2a1a,#0a1a0a);border:2px solid #5cb85c;border-radius:8px;padding:16px;margin-bottom:16px;border-left:4px solid ${winnerPartyColor};">
+            <div style="font-size:0.75rem;color:#5cb85c;text-transform:uppercase;letter-spacing:1px;font-weight:bold;margin-bottom:6px;">Presidential Election Winner${wasRunoff ? ' (Runoff)' : ''}</div>
             <div style="font-size:1.1rem;color:#fff;font-weight:bold;">${winner.candidate_name}</div>
             <div style="font-size:0.85rem;color:#aaa;margin-top:4px;">
                 ${winnerLogoHtml}${winner.party_name}
@@ -539,8 +539,8 @@ async function renderPresidentialResults(election) {
     if (wasRunoff) {
         // Runoff banner
         html += `
-            <div style="background:linear-gradient(135deg,#2a1a0a,#1a0a00);border:1px solid #FF9800;border-radius:6px;padding:10px 14px;margin-bottom:16px;">
-                <span style="font-size:0.75rem;color:#FF9800;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">Runoff Election</span>
+            <div style="background:linear-gradient(135deg,#2a1a0a,#1a0a00);border:1px solid #d48a3c;border-radius:6px;padding:10px 14px;margin-bottom:16px;">
+                <span style="font-size:0.75rem;color:#d48a3c;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">Runoff Election</span>
                 <span style="font-size:0.78rem;color:#aaa;margin-left:8px;">No candidate won a majority in Round 1. The top two advanced to a runoff.</span>
             </div>`;
 
@@ -674,7 +674,7 @@ async function renderAutocracyPage() {
                 <div style="flex: 1;">
                     <div style="font-weight: bold; color: ${isYou ? '#ffcc00' : '#e0e0e0'}; font-size: 0.9rem;">
                         ${f.faction_name} ${isYou ? '(You)' : ''}
-                        ${f.id === currentNation.ruling_faction_id ? '<span style="color: #ff4444; font-size: 0.75rem; margin-left: 8px;">RULING</span>' : ''}
+                        ${f.id === currentNation.ruling_faction_id ? '<span style="color: #d9534f; font-size: 0.75rem; margin-left: 8px;">RULING</span>' : ''}
                     </div>
                     <div style="margin-top: 6px; background: #333; height: 6px; border-radius: 3px; overflow: hidden;">
                         <div style="width: ${barWidth}%; height: 100%; background: ${isYou ? '#ffcc00' : '#666'}; border-radius: 3px;"></div>
@@ -685,7 +685,7 @@ async function renderAutocracyPage() {
                     <div style="font-size: 0.7rem; color: #888;">seats</div>
                 </div>
                 <div style="text-align: right; min-width: 60px;">
-                    <div style="font-size: 0.9rem; color: #4CAF50;">${f.approval_rating || 0}%</div>
+                    <div style="font-size: 0.9rem; color: #5cb85c;">${f.approval_rating || 0}%</div>
                     <div style="font-size: 0.7rem; color: #888;">approval</div>
                 </div>
             </div>`;
@@ -700,7 +700,7 @@ async function renderAutocracyPage() {
                     <div class="strongman-name-display">${currentNation.head_of_state_first_name || 'Unknown'} ${currentNation.head_of_state_last_name || 'Leader'}</div>
                     <div class="strongman-meta">
                         Age ${currentNation.head_of_state_age || '??'} · Rules until dead or deposed ·
-                        Stability: <span style="color: ${currentNation.stability < 20 ? '#ff4444' : currentNation.stability < 50 ? '#ff9800' : '#4CAF50'};">${currentNation.stability}%</span>
+                        Stability: <span style="color: ${currentNation.stability < 20 ? '#d9534f' : currentNation.stability < 50 ? '#d48a3c' : '#5cb85c'};">${currentNation.stability}%</span>
                     </div>
                 </div>
             </div>
@@ -737,7 +737,7 @@ function renderShakeupUI(shakeup, allFactions) {
             <div class="shakeup-title">⚔️ SHAKEUP IN PROGRESS ⚔️</div>
             <div class="shakeup-desc">
                 A faction is attempting to seize power!
-                <br>All factions must choose a side. <strong style="color:#ff9800;">Non-voters will be counted as abstaining at next tick.</strong>
+                <br>All factions must choose a side. <strong style="color:#d48a3c;">Non-voters will be counted as abstaining at next tick.</strong>
             </div>
             <div class="shakeup-sides">
                 <div class="shakeup-side ruling">
@@ -764,7 +764,7 @@ function renderShakeupUI(shakeup, allFactions) {
             `}
             <div style="margin-top: 16px; font-size: 0.85rem; color: #888;">
                 Votes cast: ${totalVotes} / ${totalFactions}
-                ${nonVoters > 0 && !allVoted ? `<br><span style="color: #ff9800;">${nonVoters} faction${nonVoters > 1 ? 's' : ''} haven't voted — they will abstain at next tick</span>` : ''}
+                ${nonVoters > 0 && !allVoted ? `<br><span style="color: #d48a3c;">${nonVoters} faction${nonVoters > 1 ? 's' : ''} haven't voted — they will abstain at next tick</span>` : ''}
                 ${(totalVotes >= Math.ceil(totalFactions / 2) && currentFaction.id === shakeup.initiated_by) ? '<br><button class="action-btn" style="margin-top: 12px;" onclick="resolveActiveShakeup(\'' + shakeup.id + '\')">⚔️ Resolve Shakeup Now</button>' : ''}
             </div>
         </div>

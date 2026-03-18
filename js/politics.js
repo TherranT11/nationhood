@@ -428,7 +428,7 @@ async function renderPartyTab(f, nation, data) {
         ${renderBlocVotingBox(lastParliamentary, lastPresidential, allParties)}
         </div>
         <div class="pol-row-4" style="margin-top:24px;text-align:center">
-            <button class="pol-disband-btn" id="pol-disband-party-btn" style="background:transparent;color:#ff4444;border:1px solid #ff4444;padding:8px 20px;border-radius:4px;cursor:pointer;font-size:0.75rem;opacity:0.6;transition:opacity 0.2s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">Disband Party</button>
+            <button class="pol-disband-btn" id="pol-disband-party-btn" style="background:transparent;color:#d9534f;border:1px solid #d9534f;padding:8px 20px;border-radius:4px;cursor:pointer;font-size:0.75rem;opacity:0.6;transition:opacity 0.2s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">Disband Party</button>
             <div style="font-size:0.65rem;color:var(--dtext-3);margin-top:4px">Permanently disband your party and leave the game.</div>
         </div>
     </div>`;
@@ -1077,7 +1077,7 @@ function renderModifiersBox(f) {
 }
 
 function miniLogo(color, acronym, name) {
-    const c = color || '#8a8778';
+    const c = color || '#888';
     const abbr = acronym || (name ? name.substring(0, 2).toUpperCase() : '??');
     return `<div class="pol-mini-logo" style="background:${c}">${escapeHtml(abbr)}</div>`;
 }
@@ -1163,7 +1163,7 @@ function renderParliamentBox(allParties, coalition, nation, playerFactionId) {
         ? barParties.map(p => {
             const pct = ((p.seats || 0) / totalSeats) * 100;
             if (pct <= 0) return '';
-            const c = p.party_color || '#8a8778';
+            const c = p.party_color || '#888';
             return `<div class="pol-seat-segment" style="width:${pct.toFixed(2)}%;background:${c}"></div>`;
         }).join('')
         : '';
@@ -1279,7 +1279,7 @@ function renderIdeologyBox(allParties, allPartyIdeologies, playerFactionId) {
         id: p.id,
         name: p.faction_name || 'Unknown',
         abbr: p.abbreviation || (p.faction_name || '??').substring(0, 2).toUpperCase(),
-        color: p.party_color || '#8a8778',
+        color: p.party_color || '#888',
         isPlayer: p.id === playerFactionId,
         ideo: ideoMap[p.id] || {}
     }));
@@ -1464,7 +1464,7 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
         const hi = Math.min(p.estSeats + seatMargin, totalSeats);
         const loPct = (lo / totalSeats) * 100;
         const hiPct = (hi / totalSeats) * 100;
-        const color = p.party_color || '#8a8778';
+        const color = p.party_color || '#888';
         const abbr = p.abbreviation || (p.faction_name || '??').substring(0, 2).toUpperCase();
         const isPlayer = p.id === playerFactionId;
         const momColor = p.momentum > 0 ? 'var(--dgreen)' : p.momentum < 0 ? 'var(--dred)' : 'var(--dtxt-muted)';
@@ -2017,14 +2017,14 @@ function renderGovCard(nation, coalition, allParties, currentTick, prevApproval,
         ? sortedGov.map(p => {
             const pct = ((p.seats || 0) / totalSeats) * 100;
             if (pct <= 0) return '';
-            return `<div style="width:${pct.toFixed(2)}%;height:100%;background:${p.party_color || '#8a8778'}"></div>`;
+            return `<div style="width:${pct.toFixed(2)}%;height:100%;background:${p.party_color || '#888'}"></div>`;
           }).join('')
         : '';
 
     // ── Coalition party rows ──
     const partyRowsHtml = sortedGov.map(p =>
         `<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
-            <div style="width:7px;height:7px;border-radius:2px;background:${p.party_color || '#8a8778'};flex-shrink:0"></div>
+            <div style="width:7px;height:7px;border-radius:2px;background:${p.party_color || '#888'};flex-shrink:0"></div>
             <span style="font-family:var(--dfont-ui);font-size:12px;color:var(--dtext-0);flex:1">${escapeHtml(p.faction_name || 'Unknown')}</span>
             <span style="font-family:var(--dfont-mono);font-size:12px;font-weight:600;color:${p.party_color || 'var(--dtext-0)'}">${p.seats || 0}</span>
         </div>`
@@ -2099,8 +2099,8 @@ function renderEditIdentityBox(f, currentTick) {
         iconsHtml += `<div class="pol-id-icon-cat">${escapeHtml(cat)}</div><div class="pol-id-icon-grid">`;
         for (const item of items) {
             const sel = item.key === icon ? ' selected' : '';
-            const svg = getPartyIconSVG(item.key, 16, item.key === icon ? color : '#8a8778');
-            iconsHtml += `<div class="pol-id-icon-tile${sel}" data-icon="${item.key}" title="${escapeHtml(item.label)}" style="color:${item.key === icon ? color : '#8a8778'}">${svg}</div>`;
+            const svg = getPartyIconSVG(item.key, 16, item.key === icon ? color : '#888');
+            iconsHtml += `<div class="pol-id-icon-tile${sel}" data-icon="${item.key}" title="${escapeHtml(item.label)}" style="color:${item.key === icon ? color : '#888'}">${svg}</div>`;
         }
         iconsHtml += '</div>';
     }
@@ -2281,8 +2281,8 @@ function initEditIdentityBox(f) {
             const key = t.dataset.icon;
             const isSelected = key === sel;
             t.classList.toggle('selected', isSelected);
-            t.style.color = isSelected ? c : '#8a8778';
-            t.innerHTML = getPartyIconSVG(key, 16, isSelected ? c : '#8a8778');
+            t.style.color = isSelected ? c : '#888';
+            t.innerHTML = getPartyIconSVG(key, 16, isSelected ? c : '#888');
         });
     }
 
@@ -3647,7 +3647,7 @@ function renderSuccessorPanel(n, f, ap, tick, allStewardRows, allFactions, nonRu
                     <div style="color:var(--damber);font-weight:700;font-size:11px;margin-bottom:6px">CHOSEN SUCCESSOR</div>
                     <div style="font-weight:700;color:var(--dtext-1)">Family Member</div>
                     <div style="font-size:10px;color:var(--dtext-3);margin-top:2px">Dynasty succession — costs ${SUCCESSOR_CONFIG.FAMILY_AP_PENALTY} AP/tick while active</div>
-                    <div style="font-size:9px;color:#ff9800;margin-top:6px">All pillar support -${SUCCESSOR_CONFIG.FAMILY_PILLAR_PENALTY}, All coup readiness +${SUCCESSOR_CONFIG.FAMILY_COUP_READINESS}</div>
+                    <div style="font-size:9px;color:#d48a3c;margin-top:6px">All pillar support -${SUCCESSOR_CONFIG.FAMILY_PILLAR_PENALTY}, All coup readiness +${SUCCESSOR_CONFIG.FAMILY_COUP_READINESS}</div>
                     <button class="pol-action-execute" style="margin-top:8px;background:#880000" id="successor-revoke-btn">REVOKE SUCCESSION</button>
                 </div>`;
         }
@@ -3719,7 +3719,7 @@ function renderPurgePanel(n, f, ap, tick, nonRuling, stewardByFaction) {
             const steward = stewardByFaction[p.id];
             const stName = steward ? `${steward.first_name} ${steward.last_name}` : '?';
             return `<button class="pol-action-execute" style="margin:4px;border-left:3px solid ${p.party_color || '#888'};text-align:left;display:block;width:100%" data-purge-target="${p.id}" ${ap < (GAME_CONFIG.PURGE_AP || 3) ? 'disabled' : ''}>
-                <div>${escapeHtml(p.faction_name)} <span style="color:#ff4444;font-size:10px">Loyalty: ${loy}</span></div>
+                <div>${escapeHtml(p.faction_name)} <span style="color:#d9534f;font-size:10px">Loyalty: ${loy}</span></div>
                 <div style="font-size:9px;opacity:0.7">Steward: ${escapeHtml(stName)}</div>
             </button>`;
         }).join('');
@@ -3940,7 +3940,7 @@ async function renderAutocracyActionsTab(nation, faction, shard) {
             const partnerName = factionNameMap[partnerId] || '?';
             const isSecret = c.coalition_type === 'secret';
             const ticksLeft = c.expires_at_tick ? Math.max(0, c.expires_at_tick - tick) : '?';
-            return `<div class="pol-action-panel" style="border-left:3px solid ${isSecret ? '#9C27B0' : '#4CAF50'}">
+            return `<div class="pol-action-panel" style="border-left:3px solid ${isSecret ? '#9C27B0' : '#5cb85c'}">
                 <div class="pol-action-header">
                     <span class="pol-action-title">${isSecret ? 'SECRET' : 'PUBLIC'} COALITION</span>
                     <span class="pol-action-cost">${ticksLeft} ticks left</span>

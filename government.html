@@ -62,7 +62,7 @@ import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
     'use strict';
 
 const IDEOLOGY_COLORS = {
-    liberty: '#9C27B0', equality: '#E91E63', freedom: '#2196F3', security: '#FF9800',
+    liberty: '#9C27B0', equality: '#E91E63', freedom: '#5b9bd5', security: '#d48a3c',
     individualism: '#eab308', collectivism: '#ec4899', tradition: '#795548',
     progress: '#00BCD4', nationalism: '#FF5722', globalism: '#3F51B5'
 };
@@ -646,7 +646,7 @@ function getPartyNameById(partyId) {
     return p ? p.party_name : (allParties.find(f => f.id === partyId)?.faction_name || 'Unknown');
 }
 
-const FALLBACK_COLORS = ['#E91E63','#2196F3','#4CAF50','#FF9800','#9C27B0','#00BCD4','#F44336','#8BC34A','#FFC107','#673AB7'];
+const FALLBACK_COLORS = ['#E91E63','#5b9bd5','#5cb85c','#d48a3c','#9C27B0','#00BCD4','#d9534f','#8BC34A','#FFC107','#673AB7'];
 
 function getPartyColorById(partyId) {
     const idx = allParties.findIndex(p => p.id === partyId);
@@ -4451,7 +4451,7 @@ async function callEarlyElections() {
 
 function drawParliament(parties, options = {}) {
     const { showLegend = true, showMajorityLine = true, majoritySeats = GAME_CONFIG.MAJORITY_SEATS } = options;
-    const PALETTE = ['#E91E63','#2196F3','#4CAF50','#FF9800','#9C27B0','#00BCD4','#F44336','#8BC34A','#FFC107','#673AB7'];
+    const PALETTE = ['#E91E63','#5b9bd5','#5cb85c','#d48a3c','#9C27B0','#00BCD4','#d9534f','#8BC34A','#FFC107','#673AB7'];
     const fmt = parties.map((p, i) => ({ name: p.party_name, seats: p.seats, color: p.color || PALETTE[i % PALETTE.length] }));
     const total = fmt.reduce((s, p) => s + p.seats, 0);
     if (total === 0) return;

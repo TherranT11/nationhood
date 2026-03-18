@@ -887,14 +887,14 @@ initPage('home', async (state) => {
       ? sortedGov.map(p => {
           const pct = ((p.seats || 0) / totalSeats) * 100;
           if (pct <= 0) return '';
-          return `<div class="gov-seat-segment" style="width:${pct.toFixed(2)}%;background:${p.party_color || '#8a8778'}"></div>`;
+          return `<div class="gov-seat-segment" style="width:${pct.toFixed(2)}%;background:${p.party_color || '#888'}"></div>`;
         }).join('')
       : '';
 
     // ── Coalition party rows ──
     const partyRowsHtml = sortedGov.map(p =>
       `<div class="gov-coalition-row">
-        <div class="gov-party-dot" style="background:${p.party_color || '#8a8778'}"></div>
+        <div class="gov-party-dot" style="background:${p.party_color || '#888'}"></div>
         <span class="gov-coalition-name">${esc(p.faction_name || 'Unknown')}</span>
         <span class="gov-coalition-seats" style="color:${p.party_color || 'var(--text-primary)'}">${p.seats || 0}</span>
       </div>`

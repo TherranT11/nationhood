@@ -9,34 +9,34 @@
         .admin-container { max-width: 1400px; margin: 0 auto; }
         .login-box {
             background: #1e1e1e; padding: 40px; border-radius: 8px;
-            border-top: 4px solid #ff4444; max-width: 600px; margin: 100px auto;
+            border-top: 4px solid var(--red); max-width: 600px; margin: 100px auto;
             box-shadow: 0 20px 60px rgba(0,0,0,0.8);
         }
         h1 { color: var(--red); font-size: 2rem; text-align: center; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; }
         h2 { color: #ffcc00; font-size: 1.5rem; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #333; text-transform: uppercase; letter-spacing: 1px; }
-        .warning { background: #2a1a1a; border-left: 4px solid #ff4444; padding: 15px; margin: 20px 0; font-size: 0.9rem; line-height: 1.6; }
-        .info-box { background: #1a2a1a; border-left: 4px solid #4CAF50; padding: 15px; margin: 20px 0; font-size: 0.9rem; line-height: 1.6; }
+        .warning { background: #2a1a1a; border-left: 4px solid var(--red); padding: 15px; margin: 20px 0; font-size: 0.9rem; line-height: 1.6; }
+        .info-box { background: #1a2a1a; border-left: 4px solid var(--green); padding: 15px; margin: 20px 0; font-size: 0.9rem; line-height: 1.6; }
         .input-group { margin-bottom: 25px; }
         label { display: block; margin-bottom: 8px; font-size: 0.9rem; color: #888; text-transform: uppercase; letter-spacing: 1px; }
         input[type="password"], select { width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 4px; font-size: 1rem; }
         input[type="password"]:focus, select:focus { outline: none; border-color: var(--red); }
         .btn { padding: 15px 30px; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; font-size: 0.9rem; transition: 0.3s; text-transform: uppercase; letter-spacing: 1px; margin-right: 10px; margin-bottom: 10px; }
         .btn-full { width: 100%; margin-right: 0; }
-        .btn-danger { background: #ff4444; color: white; }
+        .btn-danger { background: var(--red); color: white; }
         .btn-danger:hover { background: #cc0000; }
-        .btn-warning { background: #ff9800; color: white; }
+        .btn-warning { background: var(--orange); color: white; }
         .btn-warning:hover { background: #f57c00; }
         .btn-primary { background: #ffcc00; color: #121212; }
         .btn-primary:hover { background: #e6b800; }
-        .btn-success { background: #4CAF50; color: white; }
+        .btn-success { background: var(--green); color: white; }
         .btn-success:hover { background: #388E3C; }
         .btn-secondary { background: #444; color: white; }
         .btn-secondary:hover { background: #555; }
         .btn:disabled { background: #666; cursor: not-allowed; opacity: 0.5; }
         .status { margin-top: 20px; padding: 15px; border-radius: 4px; font-weight: bold; }
-        .status.error { background: #2a1a1a; color: var(--red); border: 1px solid #ff4444; }
-        .status.success { background: #1a2a1a; color: var(--green); border: 1px solid #4CAF50; }
-        .status.info { background: #1a1a2a; color: var(--blue); border: 1px solid #2196F3; }
+        .status.error { background: #2a1a1a; color: var(--red); border: 1px solid var(--red); }
+        .status.success { background: #1a2a1a; color: var(--green); border: 1px solid var(--green); }
+        .status.info { background: #1a1a2a; color: var(--blue); border: 1px solid var(--blue); }
         .hidden { display: none; }
         .shard-info { background: #252525; padding: 20px; border-radius: 6px; margin: 20px 0; }
         .info-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.9rem; align-items: center; }
@@ -49,7 +49,7 @@
         .stat-card { background: #1a1a1a; border-radius: 6px; padding: 20px; text-align: center; border-top: 3px solid #ffcc00; }
         .stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
         .stat-value { font-size: 2rem; color: #ffcc00; font-weight: bold; }
-        .logout-btn { position: fixed; top: 20px; right: 20px; background: #ff4444; border: none; border-radius: 4px; color: white; padding: 10px 20px; cursor: pointer; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; font-size: 0.8rem; z-index: 1000; }
+        .logout-btn { position: fixed; top: 20px; right: 20px; background: var(--red); border: none; border-radius: 4px; color: white; padding: 10px 20px; cursor: pointer; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; font-size: 0.8rem; z-index: 1000; }
         .logout-btn:hover { background: #cc0000; }
 
         /* Tabs */
@@ -69,19 +69,19 @@
         .result-bar-fill { height: 100%; background: #ffcc00; }
 
         /* Tick Interval */
-        .tick-interval-box { background: #1a2a2a; border: 1px solid #2196F3; border-radius: 6px; padding: 20px; margin: 20px 0; }
+        .tick-interval-box { background: #1a2a2a; border: 1px solid var(--blue); border-radius: 6px; padding: 20px; margin: 20px 0; }
         .tick-interval-box h3 { color: var(--blue); font-size: 1rem; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; }
         .interval-selector { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
         .interval-btn { padding: 12px 20px; background: #252525; border: 2px solid #444; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer; transition: all 0.2s; }
         .interval-btn:hover { border-color: var(--blue); color: #e0e0e0; }
-        .interval-btn.active { background: #2196F3; border-color: var(--blue); color: white; }
+        .interval-btn.active { background: var(--blue); border-color: var(--blue); color: white; }
 
         /* Player items */
-        .player-item { background: #1a1a1a; padding: 12px; margin-bottom: 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #4CAF50; }
+        .player-item { background: #1a1a1a; padding: 12px; margin-bottom: 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid var(--green); }
         .player-info { flex: 1; margin-right: 10px; }
         .player-party { color: #ffcc00; font-size: 0.85rem; font-weight: bold; margin-bottom: 4px; }
         .player-id { color: #666; font-size: 0.75rem; }
-        .btn-remove { background: #ff4444; border: none; border-radius: 4px; color: white; padding: 8px 16px; cursor: pointer; font-size: 0.8rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0; }
+        .btn-remove { background: var(--red); border: none; border-radius: 4px; color: white; padding: 8px 16px; cursor: pointer; font-size: 0.8rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0; }
         .btn-remove:hover { background: #cc0000; }
         .no-players { color: #666; font-style: italic; padding: 20px; text-align: center; }
 
@@ -227,7 +227,7 @@
         }
         .mc-select:focus { outline: none; border-color: #ffcc00; }
         .mc-save-btn {
-            padding: 4px 12px; background: #4CAF50; color: #fff; border: none;
+            padding: 4px 12px; background: var(--green); color: #fff; border: none;
             border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: bold;
             text-transform: uppercase;
         }
@@ -360,7 +360,7 @@
         .bp-modal .budget-rev-negative .budget-rev-value { color: var(--red); }
         .bp-modal .budget-rev-divider { border-top: 1px solid #444; margin: 4px 0; }
         .bp-modal .budget-inflation-notice {
-            background: #2a2200; border: 1px solid #ff9800; border-radius: 6px;
+            background: #2a2200; border: 1px solid var(--orange); border-radius: 6px;
             padding: 10px 14px; margin-top: 12px; font-size: 0.82rem; color: var(--orange);
         }
         .bp-modal .budget-ministry-tabs {
