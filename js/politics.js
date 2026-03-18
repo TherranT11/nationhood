@@ -29,7 +29,7 @@ initPage('politics', async (state) => {
     // Fetch total seats from all parties
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty')
+        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -1402,6 +1402,7 @@ function initIdeologyToggle() {
 function renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, playerFactionId) {
     const FORECAST_START = 12;
     const MARGIN_START = 12;
+    const INACTIVITY_EXCLUSION = 12;
     const electionTick = nextElection?.election_tick || 0;
     const ticksLeft = electionTick > currentTick ? electionTick - currentTick : 0;
     const forecastVisible = electionTick > 0 && ticksLeft <= FORECAST_START;
@@ -1441,8 +1442,11 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
 
     const seatMargin = Math.max(1, MARGIN_START - (FORECAST_START - ticksLeft));
 
-    // Build party forecast data
-    const parties = (allParties || []).map(p => {
+    // Build party forecast data (exclude inactive parties — they won't participate in the election)
+    const eligibleParties = (allParties || []).filter(p =>
+        p.last_seen_tick == null || (currentTick - p.last_seen_tick) < INACTIVITY_EXCLUSION
+    );
+    const parties = eligibleParties.map(p => {
         const voteShare = Number(p.national_vote_share || 0);
         const estSeats = Math.round((voteShare / 100) * totalSeats);
         const avgMom = momCount[p.id] ? Math.round(momMap[p.id] / momCount[p.id]) : 0;
