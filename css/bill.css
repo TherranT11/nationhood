@@ -1,42 +1,46 @@
-/* ── Nationhood Bill Detail — Style Guide v4 Override ── */
+/* ── Nationhood Bill Detail — v5 Design System ── */
 :root {
-    --bg-body: #141412;
-    --bg-panel: #1a1a17;
-    --bg-card: #1e1e1a;
-    --bg-elevated: #24241f;
-    --bg-input: #1e1e1a;
-    --bg-hover: #282822;
-    --text-bright: #e8e4d9;
-    --text-primary: #c8c4b8;
-    --text-secondary: #8a8778;
-    --text-muted: #6b6a5e;
-    --text-dim: #5c5a50;
-    --border-main: rgba(255,255,255,0.06);
-    --border-light: rgba(255,255,255,0.04);
-    --border-mid: rgba(255,255,255,0.08);
+    --bg-body:   #141412;
+    --bg-panel:  #1a1a1a;
+    --bg-card:   #252525;
+    --bg-elevated: #252525;
+    --bg-input:  #252525;
+    --bg-hover:  #2a2a2a;
+    --text-bright:    #f0efe6;
+    --text-primary:   #e0e0e0;
+    --text-secondary: #888888;
+    --text-muted:     #666666;
+    --text-dim:       #555555;
+    --text-faint:     #444444;
+    --border-main:   rgba(255,255,255,0.06);
+    --border-light:  rgba(255,255,255,0.04);
+    --border-mid:    rgba(255,255,255,0.08);
     --border-strong: rgba(255,255,255,0.12);
-    --green: #5cb85c;
-    --green-faint: rgba(92,184,92,0.08);
+    --green:  #5cb85c;
+    --green-faint:  rgba(92,184,92,0.08);
     --green-border: rgba(92,184,92,0.2);
-    --red: #d9534f;
-    --red-faint: rgba(217,83,79,0.08);
-    --red-border: rgba(217,83,79,0.2);
-    --amber: #c8a64e;
-    --amber-faint: rgba(200,166,78,0.08);
+    --red:    #d9534f;
+    --red-faint:    rgba(217,83,79,0.08);
+    --red-border:   rgba(217,83,79,0.2);
+    --amber:  #c8a64e;
+    --amber-faint:  rgba(200,166,78,0.08);
     --amber-border: rgba(200,166,78,0.2);
-    --blue: #5b9bd5;
-    --blue-faint: rgba(91,155,213,0.08);
-    --blue-border: rgba(91,155,213,0.2);
+    --blue:   #5b9bd5;
+    --blue-faint:   rgba(91,155,213,0.08);
+    --blue-border:  rgba(91,155,213,0.2);
     --purple: #8b7ec8;
-    --purple-faint: rgba(139,126,200,0.08);
+    --purple-faint:  rgba(139,126,200,0.08);
     --purple-border: rgba(139,126,200,0.2);
     --orange: #d48a3c;
-    --orange-faint: rgba(212,138,60,0.08);
+    --orange-faint:  rgba(212,138,60,0.08);
     --orange-border: rgba(212,138,60,0.2);
-    --teal: #5aafa5;
+    --teal:   #5aafa5;
+    --teal-faint:   rgba(90,175,165,0.08);
+    --teal-border:  rgba(90,175,165,0.2);
     --accent: #c8a64e;
-    --font-mono: 'JetBrains Mono', monospace;
-    --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+    --font-mono:  'JetBrains Mono', monospace;
+    --font-ui:    'IBM Plex Sans', -apple-system, sans-serif;
+    --font-serif: 'IBM Plex Serif', serif;
 }
 
 html { overflow-y: scroll !important; height: auto !important; }
@@ -91,8 +95,8 @@ html { overflow-y: scroll !important; height: auto !important; }
         .article-author { font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; }
         .article { position: relative; }
         .policy-type-badge { position: absolute; top: 10px; right: 12px; font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 8px; border-radius: 3px; }
-        .policy-type-badge.structural { background: var(--purple-faint, rgba(155,89,182,0.12)); color: var(--purple, #a855f7); border: 1px solid var(--purple-border, rgba(155,89,182,0.3)); }
-        .policy-type-badge.lever { background: var(--teal-faint, rgba(26,188,156,0.12)); color: var(--teal, #1abc9c); border: 1px solid var(--teal-border, rgba(26,188,156,0.3)); }
+        .policy-type-badge.structural { background: var(--purple-faint); color: var(--purple); border: 1px solid var(--purple-border); }
+        .policy-type-badge.lever { background: var(--teal-faint); color: var(--teal); border: 1px solid var(--teal-border); }
         .bill-totals { background: var(--bg-card); border-radius: 3px; padding: 20px; margin: 0 24px 24px; display: flex; justify-content: space-around; border: 1px solid var(--border-strong); }
         .total-item { text-align: center; }
         .total-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; font-family: var(--font-mono); font-weight: 600; }
@@ -111,13 +115,13 @@ html { overflow-y: scroll !important; height: auto !important; }
         .voting-section { padding: 24px; border-top: 1px solid var(--border-main); background: var(--bg-card); }
         .voting-title { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 16px; font-family: var(--font-mono); font-weight: 600; }
         .voting-buttons { display: flex; gap: 12px; }
-        .vote-btn { flex: 1; padding: 14px; border: none; border-radius: 3px; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: opacity 0.2s; text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--font-mono); }
+        .vote-btn { flex: 1; padding: 14px; border: none; border-radius: 3px; font-size: 0.78rem; font-weight: 700; cursor: pointer; transition: opacity 0.2s; text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--font-mono); }
         .vote-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .vote-btn.yes { background: var(--green); color: white; }
         .vote-btn.yes:hover:not(:disabled) { opacity: 0.85; }
         .vote-btn.no { background: var(--red); color: white; }
         .vote-btn.no:hover:not(:disabled) { opacity: 0.85; }
-        .vote-btn.abstain { background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-mid); }
+        .vote-btn.abstain { background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border-mid); }
         .vote-btn.abstain:hover:not(:disabled) { opacity: 0.85; }
         .vote-btn.selected { box-shadow: 0 0 0 2px var(--amber); }
         .current-vote { margin-top: 16px; padding: 12px; background: var(--bg-card); border-radius: 3px; text-align: center; border: 1px solid var(--border-main); }
@@ -182,7 +186,7 @@ html { overflow-y: scroll !important; height: auto !important; }
         .add-amendment-section { padding: 14px; border-top: 1px solid var(--border-main); display: flex; gap: 8px; }
         .add-amendment-btn { flex: 1; padding: 12px; background: var(--blue); border: none; border-radius: 3px; color: white; font-weight: 700; cursor: pointer; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; transition: opacity 0.2s; font-family: var(--font-mono); }
         .add-amendment-btn:hover { opacity: 0.85; }
-        .add-text-amendment-btn { flex: 1; padding: 12px; background: var(--bg-elevated); border: 1px solid var(--border-mid); border-radius: 3px; color: var(--text-primary); font-weight: 700; cursor: pointer; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; transition: opacity 0.2s; font-family: var(--font-mono); }
+        .add-text-amendment-btn { flex: 1; padding: 12px; background: var(--bg-card); border: 1px solid var(--border-mid); border-radius: 3px; color: var(--text-primary); font-weight: 700; cursor: pointer; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; transition: opacity 0.2s; font-family: var(--font-mono); }
         .add-text-amendment-btn:hover { opacity: 0.85; }
         .text-article-input { width: 100%; min-height: 80px; padding: 12px; background: var(--bg-card); border: 1px solid var(--border-mid); border-radius: 3px; color: var(--text-primary); font-size: 0.9rem; resize: vertical; font-family: var(--font-ui); }
         .text-article-input:focus { outline: none; border-color: var(--blue); }

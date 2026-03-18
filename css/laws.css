@@ -1,42 +1,46 @@
-/* ── Nationhood Bills/Laws — Style Guide v4 Override ── */
+/* ── Nationhood Bills/Laws — v5 Design System ── */
 :root {
-    --bg-body: #141412;
-    --bg-panel: #1a1a17;
-    --bg-card: #1e1e1a;
-    --bg-elevated: #24241f;
-    --bg-input: #1e1e1a;
-    --bg-hover: #282822;
-    --text-bright: #e8e4d9;
-    --text-primary: #c8c4b8;
-    --text-secondary: #8a8778;
-    --text-muted: #6b6a5e;
-    --text-dim: #5c5a50;
-    --border-main: rgba(255,255,255,0.06);
-    --border-light: rgba(255,255,255,0.04);
-    --border-mid: rgba(255,255,255,0.08);
+    --bg-body:   #141412;
+    --bg-panel:  #1a1a1a;
+    --bg-card:   #252525;
+    --bg-elevated: #252525;
+    --bg-input:  #252525;
+    --bg-hover:  #2a2a2a;
+    --text-bright:    #f0efe6;
+    --text-primary:   #e0e0e0;
+    --text-secondary: #888888;
+    --text-muted:     #666666;
+    --text-dim:       #555555;
+    --text-faint:     #444444;
+    --border-main:   rgba(255,255,255,0.06);
+    --border-light:  rgba(255,255,255,0.04);
+    --border-mid:    rgba(255,255,255,0.08);
     --border-strong: rgba(255,255,255,0.12);
-    --green: #5cb85c;
-    --green-faint: rgba(92,184,92,0.08);
+    --green:  #5cb85c;
+    --green-faint:  rgba(92,184,92,0.08);
     --green-border: rgba(92,184,92,0.2);
-    --red: #d9534f;
-    --red-faint: rgba(217,83,79,0.08);
-    --red-border: rgba(217,83,79,0.2);
-    --amber: #c8a64e;
-    --amber-faint: rgba(200,166,78,0.08);
+    --red:    #d9534f;
+    --red-faint:    rgba(217,83,79,0.08);
+    --red-border:   rgba(217,83,79,0.2);
+    --amber:  #c8a64e;
+    --amber-faint:  rgba(200,166,78,0.08);
     --amber-border: rgba(200,166,78,0.2);
-    --blue: #5b9bd5;
-    --blue-faint: rgba(91,155,213,0.08);
-    --blue-border: rgba(91,155,213,0.2);
+    --blue:   #5b9bd5;
+    --blue-faint:   rgba(91,155,213,0.08);
+    --blue-border:  rgba(91,155,213,0.2);
     --purple: #8b7ec8;
-    --purple-faint: rgba(139,126,200,0.08);
+    --purple-faint:  rgba(139,126,200,0.08);
     --purple-border: rgba(139,126,200,0.2);
     --orange: #d48a3c;
-    --orange-faint: rgba(212,138,60,0.08);
+    --orange-faint:  rgba(212,138,60,0.08);
     --orange-border: rgba(212,138,60,0.2);
-    --teal: #5aafa5;
+    --teal:   #5aafa5;
+    --teal-faint:   rgba(90,175,165,0.08);
+    --teal-border:  rgba(90,175,165,0.2);
     --accent: #c8a64e;
-    --font-mono: 'JetBrains Mono', monospace;
-    --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+    --font-mono:  'JetBrains Mono', monospace;
+    --font-ui:    'IBM Plex Sans', -apple-system, sans-serif;
+    --font-serif: 'IBM Plex Serif', serif;
 }
 
 .laws-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; gap:12px; flex-wrap:wrap; }
@@ -85,8 +89,8 @@
         .support-percent { font-size:1.5rem; font-weight:700; color:var(--orange); font-family:var(--font-mono); }
         .support-percent.enough { color:var(--green); }
         .support-label { font-size:0.75rem; color:var(--text-secondary); font-family:var(--font-mono); text-transform:uppercase; }
-        .support-bar-track { height:6px; background:var(--bg-card); border-radius:3px; margin:12px 0; overflow:hidden; position:relative; }
-        .support-bar-fill { height:100%; background:var(--orange); transition:width 0.3s; border-radius:3px; }
+        .support-bar-track { height:6px; background:var(--bg-hover); margin:12px 0; overflow:hidden; position:relative; /* NO border-radius — square ends */ }
+        .support-bar-fill { height:100%; background:var(--orange); transition:width 0.3s; /* NO border-radius — square ends */ }
         .support-bar-fill.enough { background:var(--green); }
         .threshold-marker { position:absolute; left:51%; top:0; width:2px; height:100%; background:var(--text-secondary); z-index:1; }
         .bill-articles { background:var(--bg-card); border-radius:3px; padding:12px; margin-bottom:16px; }
@@ -94,20 +98,20 @@
         .bill-article-item:last-child { border-bottom:none; }
         .article-info { flex:1; }
         .article-title { color:var(--text-bright); font-weight:700; font-family:var(--font-ui); }
-        .article-ideology { font-size:0.7rem; background:var(--green); color:white; padding:2px 6px; border-radius:3px; margin-left:8px; font-family:var(--font-mono); font-weight:600; }
-        .article-ideology.aligned { background:var(--green); }
-        .article-ideology.opposed { background:var(--red); }
-        .article-ideology.neutral { background:var(--text-muted); }
+        .article-ideology { font-size:0.68rem; padding:2px 8px; border-radius:3px; margin-left:8px; font-family:var(--font-mono); font-weight:700; text-transform:uppercase; letter-spacing:0.06em; border:1px solid; }
+        .article-ideology.aligned { background:var(--green-faint); color:var(--green); border-color:var(--green-border); }
+        .article-ideology.opposed { background:var(--red-faint); color:var(--red); border-color:var(--red-border); }
+        .article-ideology.neutral { background:rgba(255,255,255,0.04); color:var(--text-muted); border-color:var(--border-mid); }
         .article-author { font-size:0.75rem; color:var(--text-secondary); }
         .article-desc { font-size:0.8rem; color:var(--text-secondary); margin-top:4px; font-style:italic; }
         .party-stances { margin-top:16px; }
         .party-stance-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border-main); }
         .party-stance-row:last-child { border-bottom:none; }
         .stance-badge { font-size:0.75rem; padding:4px 10px; border-radius:3px; font-weight:700; font-family:var(--font-mono); }
-        .stance-sponsor { background:var(--amber); color:#141412; }
-        .stance-accept { background:var(--green); color:#fff; }
-        .stance-reject { background:var(--red); color:#fff; }
-        .stance-pending { background:var(--bg-card); color:var(--text-secondary); }
+        .stance-sponsor { background:var(--amber-faint); color:var(--amber); border:1px solid var(--amber-border); }
+        .stance-accept { background:var(--green-faint); color:var(--green); border:1px solid var(--green-border); }
+        .stance-reject { background:var(--red-faint); color:var(--red); border:1px solid var(--red-border); }
+        .stance-pending { background:rgba(255,255,255,0.04); color:var(--text-muted); border:1px solid var(--border-mid); }
         .stance-btn { padding:6px 12px; border:none; border-radius:3px; font-size:0.8rem; cursor:pointer; transition:opacity 0.2s; font-family:var(--font-mono); font-weight:600; }
         .stance-btn:hover { opacity:0.85; }
         .stance-btn.accept { background:var(--green); color:#fff; }
@@ -119,9 +123,9 @@
         .floor-bill.vetoed { border-color:var(--red-border); border-left-color:var(--red); opacity:0.6; }
         .floor-bill.recent-failed { border-color:var(--red-border); border-left-color:var(--red); }
         .floor-bill-name { font-size:1.1rem; font-weight:700; color:var(--green); margin-bottom:4px; font-family:var(--font-ui); }
-        .floor-status { background:var(--green); color:#fff; padding:4px 12px; border-radius:3px; font-size:0.75rem; font-weight:700; font-family:var(--font-mono); }
-        .floor-status.vetoed-status { background:var(--red); }
-        .floor-status.failed-status { background:var(--red); }
+        .floor-status { background:var(--green-faint); color:var(--green); border:1px solid var(--green-border); padding:3px 10px; border-radius:3px; font-size:0.7rem; font-weight:700; font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.06em; }
+        .floor-status.vetoed-status { background:var(--red-faint); color:var(--red); border-color:var(--red-border); }
+        .floor-status.failed-status { background:var(--red-faint); color:var(--red); border-color:var(--red-border); }
         .floor-votes { display:flex; gap:24px; margin-top:12px; }
         .votes-for { color:var(--green); font-weight:700; }
         .votes-against { color:var(--red); font-weight:700; }
@@ -165,7 +169,7 @@
         .decree-action-btn { padding:14px 24px; border:none; border-radius:3px; font-weight:700; font-size:0.85rem; cursor:pointer; transition:opacity 0.2s; min-height:48px; touch-action:manipulation; -webkit-tap-highlight-color:transparent; font-family:var(--font-mono); }
         .decree-action-btn:hover { opacity:0.85; }
         .decree-action-btn.enact { background:var(--red); color:white; }
-        .decree-action-btn.retract-decree { background:var(--bg-elevated); color:var(--text-secondary); }
+        .decree-action-btn.retract-decree { background:var(--bg-card); color:var(--text-secondary); }
 
         /* Modal */
         .modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.8); z-index:1000; align-items:center; justify-content:center; }
@@ -251,8 +255,8 @@
         .archive-bill-title { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:6px; }
         .archive-bill-name { font-size:1rem; font-weight:700; color:var(--text-bright); font-family:var(--font-ui); }
         .archive-badge { padding:3px 10px; border-radius:3px; font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; font-family:var(--font-mono); }
-        .archive-badge.passed { background:var(--green); color:#fff; }
-        .archive-badge.failed { background:var(--red); color:#fff; }
+        .archive-badge.passed { background:var(--green-faint); color:var(--green); border:1px solid var(--green-border); }
+        .archive-badge.failed { background:var(--red-faint); color:var(--red); border:1px solid var(--red-border); }
         .archive-type-badge { color:#fff; padding:2px 8px; border-radius:3px; font-size:0.65rem; font-weight:700; text-transform:uppercase; margin-left:6px; font-family:var(--font-mono); }
         .archive-bill-meta { display:flex; justify-content:space-between; font-size:0.82rem; color:var(--text-secondary); }
         .archive-tick { color:var(--text-muted); }
