@@ -211,7 +211,7 @@ var STAT_CATEGORIES = [
     ]},
     { id: 'labor', label: 'Labor & Employment', icon: '\u{1F464}', blocs: ['Urban Workers', 'Business Owners'],
       stats: [
-        { name: 'Unemployment', key: 'unemployment', desc: 'Percentage without work', inverted: true },
+        { name: 'Unemployment', key: 'unemployment', desc: 'Percentage without work', inverted: true, format: 'unemployment' },
         { name: 'Labor Participation', key: 'labor_force_participation', desc: 'Working-age adults employed' },
         { name: 'Minimum Wage', key: 'minimum_wage', desc: 'Lowest legal hourly wage' },
         { name: 'Union Strength', key: 'union_strength', desc: 'Power of labor unions' },
@@ -900,6 +900,10 @@ function isMisscaledMonetary(key, val) {
     return RAW_DOLLAR_KEYS[key] && val != null && Number(val) >= 0 && Number(val) <= 100000;
 }
 
+function formatUnemploymentPct(stat) {
+    return (0.7 + (stat - 1) * 34.3 / 99).toFixed(1) + '%';
+}
+
 function getDisplayValue(stat, nation) {
     var raw = nation[stat.key];
     var format = stat.format;
@@ -917,6 +921,7 @@ function getDisplayValue(stat, nation) {
     if (format === 'trade') return formatTradeBalance(raw);
     if (format === 'inflation') return formatInflationRate(raw);
     if (format === 'years') return (Math.round(Number(raw) * 10) / 10) + ' yrs';
+    if (format === 'unemployment') return formatUnemploymentPct(Number(raw));
     return Math.round(Number(raw) * 10) / 10;
 }
 

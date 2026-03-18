@@ -779,6 +779,10 @@ function computeBudgetSummary(nation) {
     return { budget: budget, totalExpenditure: totalExp, balance: budget.grossRevenue - totalExp };
 }
 
+function formatUnemploymentPct(stat) {
+    return (0.7 + (stat - 1) * 34.3 / 99).toFixed(1) + '%';
+}
+
 function renderOverviewTab(nation) {
     var bs = computeBudgetSummary(nation);
     var debt = Number(nation.debt) || 0;
@@ -1015,7 +1019,7 @@ function renderOverviewTab(nation) {
     h += renderOverviewCard('GDP Growth', growthDisplay, growthPct >= 0 ? 'surplus' : 'deficit', gdpGrowthSub);
 
     var unemp = Number(nation.unemployment) || 50;
-    h += renderOverviewCard('Unemployment', Math.round(unemp), unemp <= 30 ? 'surplus' : unemp <= 60 ? 'neutral' : 'deficit', getTrendArrow('unemployment', unemp, true));
+    h += renderOverviewCard('Unemployment', formatUnemploymentPct(unemp), unemp <= 30 ? 'surplus' : unemp <= 60 ? 'neutral' : 'deficit', getTrendArrow('unemployment', unemp, true));
 
     var infl = Number(nation.inflation) || 0;
     var inflCC = inflationColorClass(infl);
@@ -1064,7 +1068,7 @@ function renderRankings(nation) {
         { key: 'gdp', label: 'GDP', higher: true, fmt: fmtMonetary('gdp') },
         { key: 'gdp_growth', label: 'GDP Growth', higher: true, fmt: function(v) { var p = ((v - 50) / 50) * 3; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; } },
         { key: 'standard_of_living', label: 'Std of Living', higher: true, fmt: function(v) { return Math.round(v); } },
-        { key: 'unemployment', label: 'Unemployment', higher: false, fmt: function(v) { return Math.round(v); } },
+        { key: 'unemployment', label: 'Unemployment', higher: false, fmt: function(v) { return formatUnemploymentPct(v); } },
         { key: 'debt', label: 'National Debt', higher: false, fmt: fmtMonetary('debt') }
     ];
 
