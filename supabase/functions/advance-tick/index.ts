@@ -6480,6 +6480,11 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
 
         if (hasChanges) {
             await supabase.from('faction_ideology').update(updateObj).eq('faction_id', factionId);
+            // Bust ideology cache so subsequent reads (e.g. processIdeologyDecay) see fresh values
+            if (typeof qCacheBust === 'function') {
+                qCacheBust('faction_ideo_' + factionId);
+                qCacheBust('nation_ideos_' + nationId);
+            }
 
             // Record snapshot for ideology_history
             if (typeof currentTick === 'number') {
@@ -6555,6 +6560,11 @@ async function processIdeologyDecay(supabase, nationId, currentTick) {
 
         if (hasChanges) {
             await supabase.from('faction_ideology').update(updateObj).eq('faction_id', faction.id);
+            // Bust cache so downstream reads (e.g. calculateThreePillarPreferences) see post-decay values
+            if (typeof qCacheBust === 'function') {
+                qCacheBust('faction_ideo_' + faction.id);
+                qCacheBust('nation_ideos_' + nationId);
+            }
 
             if (typeof currentTick === 'number') {
                 const finalScores = { ...currentScores, ...updateObj };
