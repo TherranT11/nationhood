@@ -22,7 +22,7 @@ body {
         }
         
         h1 {
-            color: #ff4444;
+            color: var(--red);
             margin: 0 0 10px 0;
             font-size: 2.5rem;
             text-align: center;
@@ -74,12 +74,12 @@ body {
             font-weight: bold;
         }
         
-        .stat-value.danger { color: #ff4444; }
-        .stat-value.warning { color: #ff9800; }
-        .stat-value.good { color: #4CAF50; }
+        .stat-value.danger { color: var(--red); }
+        .stat-value.warning { color: var(--orange); }
+        .stat-value.good { color: var(--green); }
         
         h2 {
-            color: #ff4444;
+            color: var(--red);
             font-size: 1.3rem;
             margin: 30px 0 15px 0;
             text-transform: uppercase;
@@ -106,7 +106,7 @@ body {
         }
         .strongman-name {
             font-size: 1.8rem;
-            color: #ff4444;
+            color: var(--red);
             font-weight: bold;
             margin-bottom: 4px;
         }
@@ -122,7 +122,7 @@ body {
             color: #aaa;
         }
         .strongman-ruling-party strong {
-            color: #ff4444;
+            color: var(--red);
         }
         
         /* Factions */
@@ -159,14 +159,14 @@ body {
         }
         .faction-ruling-tag {
             font-size: 0.7rem;
-            color: #ff4444;
+            color: var(--red);
             text-transform: uppercase;
             letter-spacing: 1px;
             margin-left: 8px;
         }
         .faction-seats {
             font-size: 1rem;
-            color: #ff4444;
+            color: var(--red);
             font-weight: bold;
         }
         
@@ -200,7 +200,7 @@ body {
         
         .interest-group-name {
             font-size: 1.2rem;
-            color: #4CAF50;
+            color: var(--green);
             font-weight: bold;
             text-transform: uppercase;
         }
@@ -254,7 +254,7 @@ body {
         }
         .regime-info-title {
             font-size: 0.8rem;
-            color: #ff4444;
+            color: var(--red);
             text-transform: uppercase;
             letter-spacing: 1px;
             margin-bottom: 12px;
@@ -317,7 +317,7 @@ body {
         .error {
             background: #2a1a1a;
             border: 1px solid #ff4444;
-            color: #ff4444;
+            color: var(--red);
             padding: 15px;
             border-radius: 4px;
             margin: 20px 0;

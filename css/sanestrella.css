@@ -43,7 +43,7 @@ body {
 }
 
 .toc-title {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.65rem;
     color: #666;
     text-transform: uppercase;
@@ -56,7 +56,7 @@ body {
     padding: 6px 10px;
     color: #888;
     text-decoration: none;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     border-left: 2px solid transparent;
     transition: all 0.15s;
@@ -73,7 +73,7 @@ body {
     display: inline-block;
     margin-top: 20px;
     padding: 8px 14px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     color: #888;
     text-decoration: none;
@@ -117,7 +117,7 @@ body {
     font-weight: 700;
 }
 .nation-subtitle {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     color: #888;
     text-transform: uppercase;
@@ -132,7 +132,7 @@ body {
 
 /* Edit toggle button */
 .edit-toggle {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     padding: 8px 16px;
     background: transparent;
@@ -157,7 +157,7 @@ body {
 .section-anchor { scroll-margin-top: 20px; }
 
 .section-heading {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.8rem;
     color: #f0c040;
     text-transform: uppercase;
@@ -211,7 +211,7 @@ body {
     border-radius: 50%;
 }
 .timeline-year {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     color: #f0c040;
     flex-shrink: 0;
@@ -224,7 +224,7 @@ body {
 }
 
 .timeline-add-btn {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     color: #f0c040;
     background: transparent;
@@ -238,7 +238,7 @@ body {
 .timeline-add-btn:hover { border-color: #f0c040; }
 
 .timeline-remove-btn {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.65rem;
     color: #ff5555;
     background: transparent;
@@ -279,7 +279,7 @@ body {
     border-radius: 999px;
     background: rgba(240, 192, 64, 0.12);
     color: #f0c040;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
 }
 
@@ -299,7 +299,7 @@ body {
 .stat-card:hover { border-color: #333; }
 
 .stat-name {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
     color: #777;
     text-transform: uppercase;
@@ -314,7 +314,7 @@ body {
 }
 
 .stat-val {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 1.2rem;
     font-weight: 600;
 }
@@ -323,7 +323,7 @@ body {
 .stat-val.bad { color: #ff5555; }
 
 .stat-trend {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.72rem;
 }
 .stat-trend.up { color: #4caf50; }
@@ -350,7 +350,7 @@ body {
 .stat-bar-fill.bad { background: #ff5555; }
 
 .stat-rank {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.62rem;
     color: #555;
     margin-top: 6px;
@@ -380,7 +380,7 @@ body {
     position: relative;
 }
 .seat-bar-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
     color: #fff;
     position: absolute;
@@ -407,19 +407,19 @@ body {
     padding: 14px;
 }
 .party-card-name {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.82rem;
     color: #e0e0e0;
     font-weight: 600;
     margin-bottom: 4px;
 }
 .party-card-seats {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     color: #f0c040;
 }
 .party-card-tag {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.6rem;
     color: #111;
     background: #f0c040;
@@ -442,14 +442,14 @@ body {
     padding: 14px;
 }
 .relation-nation {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.82rem;
     color: #e0e0e0;
     font-weight: 600;
     margin-bottom: 8px;
 }
 .relation-type {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
     padding: 3px 8px;
     border-radius: 3px;
@@ -464,12 +464,12 @@ body {
 .relation-type.allied { background: #1b2a3a; color: #4ea8de; }
 
 .relation-score {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     color: #666;
 }
 .relation-embassy {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.65rem;
     color: #555;
     margin-top: 4px;
@@ -489,7 +489,7 @@ body {
 }
 
 .sidebar-title {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.65rem;
     color: #666;
     text-transform: uppercase;
@@ -502,7 +502,7 @@ body {
     border-bottom: 1px solid #1a1a1a;
 }
 .sidebar-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.62rem;
     color: #666;
     text-transform: uppercase;
@@ -548,7 +548,7 @@ body {
     background: #1a1a1a;
     border: 1px solid #333;
     color: #c0c0c0;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     padding: 4px 8px;
     border-radius: 3px;
@@ -571,7 +571,7 @@ body {
 .editing .save-bar { display: block; }
 
 .save-btn {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     padding: 10px 28px;
     background: #f0c040;
@@ -588,14 +588,14 @@ body {
 .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .save-status {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     color: #4caf50;
     margin-right: 16px;
 }
 
 .cancel-btn {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     padding: 10px 20px;
     background: transparent;
@@ -617,7 +617,7 @@ body {
     min-height: 100vh;
     color: #666;
     gap: 12px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.82rem;
 }
 .loading-spinner {

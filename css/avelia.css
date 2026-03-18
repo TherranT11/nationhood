@@ -97,7 +97,7 @@ body {
         
         .interest-group-name {
             font-size: 1.2rem;
-            color: #4CAF50;
+            color: var(--green);
             font-weight: bold;
             text-transform: uppercase;
         }
@@ -194,7 +194,7 @@ body {
         
         .party-seats {
             font-size: 1rem;
-            color: #2196F3;
+            color: var(--blue);
             font-weight: bold;
         }
         
@@ -250,7 +250,7 @@ body {
         .error {
             background: #2a1a1a;
             border: 1px solid #ff4444;
-            color: #ff4444;
+            color: var(--red);
             padding: 15px;
             border-radius: 4px;
             margin: 20px 0;

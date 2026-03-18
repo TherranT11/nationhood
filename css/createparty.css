@@ -22,7 +22,7 @@ body {
         }
         
         .container.autocracy {
-            border-top-color: #ff4444;
+            border-top-color: var(--red);
         }
         
         h1 {
@@ -35,7 +35,7 @@ body {
         }
         
         .container.autocracy h1 {
-            color: #ff4444;
+            color: var(--red);
         }
         
         .subtitle {
@@ -279,7 +279,7 @@ body {
         .error {
             background: #2a1a1a;
             border: 1px solid #ff4444;
-            color: #ff4444;
+            color: var(--red);
             padding: 15px;
             border-radius: 4px;
             margin: 20px 0;
@@ -310,7 +310,7 @@ body {
         }
         .autocracy-info .strongman-name {
             font-size: 1.6rem;
-            color: #ff4444;
+            color: var(--red);
             font-weight: bold;
             margin-bottom: 4px;
         }

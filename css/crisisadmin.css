@@ -2,7 +2,7 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, san
 
         .admin-container { max-width: 1400px; margin: 0 auto; padding: 24px; }
         .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 2px solid #ff4444; padding-bottom: 16px; }
-        .admin-title { font-size: 1.6rem; color: #ff4444; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; }
+        .admin-title { font-size: 1.6rem; color: var(--red); font-weight: bold; text-transform: uppercase; letter-spacing: 2px; }
         .admin-subtitle { font-size: 0.85rem; color: #888; margin-top: 4px; }
         .admin-actions { display: flex; gap: 10px; }
 
@@ -17,35 +17,35 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, san
         .btn-ghost:hover { color: #fff; border-color: #666; }
         .btn-small { padding: 6px 12px; font-size: 0.75rem; }
         .btn-icon { padding: 6px 10px; font-size: 0.85rem; background: none; border: 1px solid #444; color: #888; border-radius: 4px; cursor: pointer; }
-        .btn-icon:hover { color: #ff4444; border-color: #ff4444; }
+        .btn-icon:hover { color: var(--red); border-color: var(--red); }
         .btn-back { background: none; border: none; color: #888; cursor: pointer; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 6px; margin-bottom: 16px; padding: 0; }
-        .btn-back:hover { color: #ff4444; }
+        .btn-back:hover { color: var(--red); }
 
         .filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
         .filters input, .filters select { padding: 10px 14px; background: #1a1a1a; border: 1px solid #333; border-radius: 5px; color: #e0e0e0; font-size: 0.85rem; }
         .filters input { flex: 1; min-width: 200px; }
-        .filters input:focus, .filters select:focus { outline: none; border-color: #ff4444; }
+        .filters input:focus, .filters select:focus { outline: none; border-color: var(--red); }
         .event-count { color: #888; font-size: 0.85rem; margin-left: auto; }
 
         .crisis-card { background: #1a1a1a; border-radius: 8px; padding: 16px 20px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.2s; border-left: 4px solid #333; }
         .crisis-card:hover { background: #222; transform: translateX(4px); }
-        .crisis-card.active { border-left-color: #ff4444; }
+        .crisis-card.active { border-left-color: var(--red); }
         .crisis-card.inactive { border-left-color: #666; opacity: 0.6; }
         .crisis-card-left { flex: 1; }
-        .crisis-card-name { font-weight: bold; color: #ff4444; font-size: 1rem; margin-bottom: 4px; }
+        .crisis-card-name { font-weight: bold; color: var(--red); font-size: 1rem; margin-bottom: 4px; }
         .crisis-card-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.78rem; color: #888; align-items: center; }
         .crisis-card-right { display: flex; align-items: center; gap: 12px; }
 
         .tag { display: inline-block; padding: 3px 10px; border-radius: 3px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
         .tag-trigger { background: #2a1a1a; color: #ff6666; border: 1px solid #ff4444; }
         .tag-effect { background: #2a1a2a; color: #e040fb; border: 1px solid #e040fb; }
-        .tag-end { background: #1a2a1a; color: #4CAF50; border: 1px solid #4CAF50; }
-        .tag-active { background: #2a1a1a; color: #ff4444; }
+        .tag-end { background: #1a2a1a; color: var(--green); border: 1px solid #4CAF50; }
+        .tag-active { background: #2a1a1a; color: var(--red); }
         .tag-inactive { background: #1a1a1a; color: #666; }
 
         .editor { background: #141414; border: 2px solid #333; border-radius: 12px; overflow: hidden; }
         .editor-header { background: #1a1a1a; padding: 20px 24px; border-bottom: 2px solid #ff4444; display: flex; justify-content: space-between; align-items: center; }
-        .editor-title { font-size: 1.2rem; color: #ff4444; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+        .editor-title { font-size: 1.2rem; color: var(--red); font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
         .editor-body { padding: 24px; }
         .editor-footer { padding: 16px 24px; background: #1a1a1a; border-top: 1px solid #333; display: flex; justify-content: flex-end; gap: 10px; }
 
@@ -53,13 +53,13 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, san
         .form-group { margin-bottom: 16px; }
         .form-label { display: block; font-size: 0.78rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; font-weight: bold; }
         .form-input, .form-select, .form-textarea { width: 100%; padding: 10px 14px; background: #252525; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 0.9rem; font-family: inherit; box-sizing: border-box; }
-        .form-input:focus, .form-select:focus, .form-textarea:focus { outline: none; border-color: #ff4444; }
+        .form-input:focus, .form-select:focus, .form-textarea:focus { outline: none; border-color: var(--red); }
         .form-textarea { min-height: 80px; resize: vertical; }
         .form-hint { font-size: 0.75rem; color: #666; margin-top: 4px; }
 
         .editor-section { background: #1a1a1a; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; border: 1px solid #333; }
         .editor-section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-        .editor-section-title { font-size: 0.85rem; color: #ff4444; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
+        .editor-section-title { font-size: 0.85rem; color: var(--red); text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
 
         .trigger-item { display: grid; grid-template-columns: 1fr 140px 100px 36px; gap: 10px; align-items: center; padding: 10px; background: #252525; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid #ff4444; }
         .end-trigger-item { display: grid; grid-template-columns: 1fr 140px 100px 36px; gap: 10px; align-items: center; padding: 10px; background: #1a2a1a; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid #4CAF50; }
@@ -86,13 +86,13 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, san
         .tab-bar { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid #333; }
         .tab-btn { padding: 12px 24px; background: none; border: none; color: #666; font-size: 0.9rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s; margin-bottom: -2px; }
         .tab-btn:hover { color: #aaa; }
-        .tab-btn.active { color: #ff4444; border-bottom-color: #ff4444; }
+        .tab-btn.active { color: var(--red); border-bottom-color: var(--red); }
         .tab-count { display: inline-block; background: #252525; color: #888; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; margin-left: 6px; }
         .tab-btn.active .tab-count { background: #2a1a1a; color: #ff6666; }
 
         /* Ministry crisis card accents */
-        .mc-card.active { border-left-color: #ff9800; }
-        .mc-card .crisis-card-name { color: #ff9800; }
+        .mc-card.active { border-left-color: var(--orange); }
+        .mc-card .crisis-card-name { color: var(--orange); }
         .tag-ministry { background: #2a2010; color: #ffb74d; border: 1px solid #ff9800; }
         .tag-funding { background: #1a1a2a; color: #64b5f6; border: 1px solid #42a5f5; }
         .tag-inst { background: #1a2a2a; color: #4dd0e1; border: 1px solid #26c6da; }
@@ -105,16 +105,16 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, san
         /* Institution checkbox grid */
         .institution-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
         .institution-check { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: #252525; border: 1px solid #333; border-radius: 6px; cursor: pointer; transition: all 0.2s; }
-        .institution-check:hover { border-color: #ff9800; background: #2a2010; }
-        .institution-check.checked { border-color: #ff9800; background: #2a2010; }
-        .institution-check input[type="checkbox"] { accent-color: #ff9800; width: 16px; height: 16px; cursor: pointer; }
+        .institution-check:hover { border-color: var(--orange); background: #2a2010; }
+        .institution-check.checked { border-color: var(--orange); background: #2a2010; }
+        .institution-check input[type="checkbox"] { accent-color: var(--orange); width: 16px; height: 16px; cursor: pointer; }
         .inst-icon { font-size: 1.1rem; }
         .inst-name { flex: 1; font-size: 0.82rem; color: #ccc; }
         .inst-share { font-size: 0.7rem; color: #666; }
 
         /* Ministry editor border override */
         .mc-editor .editor-section { border-color: #3a3020; }
-        .mc-editor .form-input:focus, .mc-editor .form-select:focus, .mc-editor .form-textarea:focus { border-color: #ff9800; }
+        .mc-editor .form-input:focus, .mc-editor .form-select:focus, .mc-editor .form-textarea:focus { border-color: var(--orange); }
 
         @media (max-width: 768px) {
             .form-row { grid-template-columns: 1fr; }

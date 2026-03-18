@@ -187,8 +187,8 @@ body { overflow-y: auto !important; height: auto !important; min-height: 100vh; 
     line-height: 1.5;
     padding: 4px 0;
 }
-.sc-trait-effect.upside { color: #4CAF50; }
-.sc-trait-effect.downside { color: #ff4444; }
+.sc-trait-effect.upside { color: var(--green); }
+.sc-trait-effect.downside { color: var(--red); }
 
 /* Party affiliation section (Ambassador) */
 .sc-card-party {
