@@ -36,18 +36,6 @@
                 </div>
             </div>
             <div id="ideology-warning-container"></div>
-            <div class="voting-section" id="voting-section" style="display: none;">
-                <div class="voting-title">Cast Your Vote</div>
-                <div class="voting-buttons">
-                    <button class="vote-btn yes" onclick="castVote('yes')">✓ Vote Yes</button>
-                    <button class="vote-btn no" onclick="castVote('no')">✗ Vote No</button>
-                    <button class="vote-btn abstain" onclick="castVote('abstain')">— Abstain</button>
-                </div>
-                <div class="current-vote" id="current-vote" style="display: none;">
-                    <div class="current-vote-label">Your current vote:</div>
-                    <div class="current-vote-value" id="current-vote-value">—</div>
-                </div>
-            </div>
             <div class="sponsor-actions" id="sponsor-actions" style="display: none;"></div>
         </div>
         <div class="vote-status-badge" id="vote-status-badge" style="display:none;"></div>
@@ -64,6 +52,18 @@
                     <textarea class="chat-input" id="chat-input" placeholder="Share your thoughts..." rows="2"></textarea>
                     <button class="chat-send-btn" onclick="sendComment()">Send</button>
                 </div>
+            </div>
+        </div>
+        <div class="voting-section" id="voting-section" style="display: none;">
+            <div class="voting-title">Cast Your Vote</div>
+            <div class="voting-buttons">
+                <button class="vote-btn yes" onclick="castVote('yes')">✓ Vote Yes</button>
+                <button class="vote-btn no" onclick="castVote('no')">✗ Vote No</button>
+                <button class="vote-btn abstain" onclick="castVote('abstain')">— Abstain</button>
+            </div>
+            <div class="current-vote" id="current-vote" style="display: none;">
+                <div class="current-vote-label">Your current vote:</div>
+                <div class="current-vote-value" id="current-vote-value">—</div>
             </div>
         </div>
     </div>
