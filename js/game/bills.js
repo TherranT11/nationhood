@@ -6,7 +6,7 @@
 import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
 import { isPresidentialRepublic } from './government-types.js';
 import { DIPLOMACY_CONFIG } from './diplomacy-constants.js';
-import { IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology } from './ideology.js';
+import { IDEOLOGY_AXES, IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology } from './ideology.js';
 import { adjustMomentum, adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
@@ -668,23 +668,28 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
 const IDEOLOGY_DECAY_DEAD_ZONE = 10; // no decay within ±10 of center
 /**
  * Per-tick ideology decay toward center (0).
- * Decay scales with extremism: decay = abs(score) / 50, so:
- *   ±20 → -0.4/tick, ±50 → -1.0/tick, ±100 → -2.0/tick
+ * Uses integer arithmetic to match INTEGER column types in faction_ideology.
+ * Minimum 1 point of decay when outside dead zone, scaling with extremism:
+ *   ±11–74 → 1/tick, ±75–100 → 2/tick
  * Dead zone: scores within ±10 don't decay.
  */
 export async function processIdeologyDecay(supabase, nationId, currentTick) {
-    const { data: factions } = await supabase
+    const { data: factions, error: factionsErr } = await supabase
         .from('factions')
         .select('id')
         .eq('nation_id', nationId)
         .eq('faction_type', 'party');
 
+    if (factionsErr) {
+        console.error('[processIdeologyDecay] factions query failed:', factionsErr.message);
+        return;
+    }
     if (!factions || factions.length === 0) return;
 
     const historyRows = [];
 
     for (const faction of factions) {
-        let ideologyRow = await loadFactionIdeology(supabase, faction.id);
+        const ideologyRow = await loadFactionIdeology(supabase, faction.id);
         if (ideologyRow?._error || !ideologyRow) continue;
 
         const currentScores = extractAxisScores(ideologyRow);
@@ -695,10 +700,11 @@ export async function processIdeologyDecay(supabase, nationId, currentTick) {
             const score = currentScores[axis.key] || 0;
             if (Math.abs(score) <= IDEOLOGY_DECAY_DEAD_ZONE) continue;
 
-            const decay = -(Math.abs(score) / 50) * Math.sign(score);
-            const newScore = Math.max(-100, Math.min(100,
-                Math.round((score + decay) * 100) / 100
-            ));
+            // Integer-safe decay: at least 1 point, scaling with extremism
+            const absDecay = Math.max(1, Math.round(Math.abs(score) / 50));
+            const newScore = score > 0
+                ? Math.max(0, score - absDecay)
+                : Math.min(0, score + absDecay);
 
             if (newScore !== score) {
                 updateObj[axis.key] = newScore;
@@ -707,7 +713,15 @@ export async function processIdeologyDecay(supabase, nationId, currentTick) {
         }
 
         if (hasChanges) {
-            await supabase.from('faction_ideology').update(updateObj).eq('faction_id', faction.id);
+            const { error: updateErr } = await supabase
+                .from('faction_ideology')
+                .update(updateObj)
+                .eq('faction_id', faction.id);
+
+            if (updateErr) {
+                console.error(`[processIdeologyDecay] update failed for faction ${faction.id}:`, updateErr.message);
+                continue;
+            }
 
             if (typeof currentTick === 'number') {
                 const finalScores = { ...currentScores, ...updateObj };
