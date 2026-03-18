@@ -14,13 +14,21 @@ CREATE OR REPLACE FUNCTION fire_system_event(
     p_tick         INT,
     p_placeholders JSONB DEFAULT '{}'::jsonb
 )
-RETURNS UUID
+RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
-DECLARE
-    v_event_id UUID;
 BEGIN
+    -- Guard: caller must belong to this nation (skip check for service_role / tick processor)
+    IF auth.role() = 'authenticated' THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM factions
+            WHERE id = auth.uid() AND nation_id = p_nation_id
+        ) THEN
+            RAISE EXCEPTION 'Not authorized to fire events for this nation';
+        END IF;
+    END IF;
+
     INSERT INTO event_log (
         nation_id,
         event_name,
@@ -35,9 +43,6 @@ BEGIN
         'system',
         p_placeholders,
         p_tick
-    )
-    RETURNING id INTO v_event_id;
-
-    RETURN v_event_id;
+    );
 END;
 $$;
