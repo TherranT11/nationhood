@@ -900,6 +900,10 @@ function isMisscaledMonetary(key, val) {
     return RAW_DOLLAR_KEYS[key] && val != null && Number(val) >= 0 && Number(val) <= 100000;
 }
 
+function formatUnemploymentPct(stat) {
+    return (0.7 + (stat - 1) * 34.3 / 99).toFixed(1) + '%';
+}
+
 function getDisplayValue(stat, nation) {
     var raw = nation[stat.key];
     var format = stat.format;
@@ -917,7 +921,7 @@ function getDisplayValue(stat, nation) {
     if (format === 'trade') return formatTradeBalance(raw);
     if (format === 'inflation') return formatInflationRate(raw);
     if (format === 'years') return (Math.round(Number(raw) * 10) / 10) + ' yrs';
-    if (format === 'unemployment') return (0.7 + (Number(raw) - 1) * 34.3 / 99).toFixed(1) + '%';
+    if (format === 'unemployment') return formatUnemploymentPct(Number(raw));
     return Math.round(Number(raw) * 10) / 10;
 }
 
