@@ -1,46 +1,54 @@
-/* Nationhood — Government Page
-   Design language v4: warm olive-dark, monospace system text, color as status only */
+/* Nationhood — Government Page — v5 Design System */
 
 :root {
-    /* Backgrounds — warm olive-dark */
-    --bg-body: #141412;
-    --bg-panel: #1a1a17;
-    --bg-card: #1e1e1a;
-    --bg-input: #1e1e1a;
-    --bg-hover: #242420;
-    --bg-danger-subtle: #2a1a17;
-    --bg-success-subtle: #1a2a17;
+    /* Backgrounds — neutral grays */
+    --bg-body:   #141412;
+    --bg-panel:  #1a1a1a;
+    --bg-card:   #252525;
+    --bg-input:  #252525;
+    --bg-hover:  #2a2a2a;
+    --bg-danger-subtle:  rgba(217,83,79,0.08);
+    --bg-success-subtle: rgba(92,184,92,0.08);
 
-    /* Text — warm tones */
-    --text-bright: #e8e4d9;
-    --text-primary: #c8c4b8;
-    --text-secondary: #8a8778;
-    --text-muted: #6b6a5e;
-    --text-dim: #5c5a50;
-    --text-faint: #3d3b34;
+    /* Text */
+    --text-bright:    #f0efe6;
+    --text-primary:   #e0e0e0;
+    --text-secondary: #888888;
+    --text-muted:     #666666;
+    --text-dim:       #555555;
+    --text-faint:     #444444;
 
     /* Borders */
-    --border-main: rgba(255,255,255,0.06);
-    --border-light: rgba(255,255,255,0.04);
-    --border-0: rgba(255,255,255,0.06);
+    --border-main:   rgba(255,255,255,0.06);
+    --border-light:  rgba(255,255,255,0.04);
+    --border-mid:    rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.12);
+    /* Legacy aliases */
+    --border-0:    rgba(255,255,255,0.06);
     --border-hair: rgba(255,255,255,0.04);
 
-    /* Status colors — style guide palette */
-    --green: #5cb85c;
-    --green-faint: rgba(92,184,92,0.08);
+    /* Status colors */
+    --green:  #5cb85c;
+    --green-faint:  rgba(92,184,92,0.08);
     --green-border: rgba(92,184,92,0.2);
-    --red: #d9534f;
-    --red-faint: rgba(217,83,79,0.08);
-    --red-border: rgba(217,83,79,0.2);
-    --blue: #5b9bd5;
-    --blue-faint: rgba(91,155,213,0.08);
-    --blue-border: rgba(91,155,213,0.2);
+    --red:    #d9534f;
+    --red-faint:    rgba(217,83,79,0.08);
+    --red-border:   rgba(217,83,79,0.2);
+    --blue:   #5b9bd5;
+    --blue-faint:   rgba(91,155,213,0.08);
+    --blue-border:  rgba(91,155,213,0.2);
     --orange: #d48a3c;
-    --amber: #c8a64e;
-    --amber-faint: rgba(200,166,78,0.08);
+    --orange-faint:  rgba(212,138,60,0.08);
+    --orange-border: rgba(212,138,60,0.2);
+    --amber:  #c8a64e;
+    --amber-faint:  rgba(200,166,78,0.08);
     --amber-border: rgba(200,166,78,0.2);
-    --teal: #5aafa5;
+    --teal:   #5aafa5;
+    --teal-faint:   rgba(90,175,165,0.08);
+    --teal-border:  rgba(90,175,165,0.2);
     --purple: #8b7ec8;
+    --purple-faint:  rgba(139,126,200,0.08);
+    --purple-border: rgba(139,126,200,0.2);
 
     /* Electability */
     --elect-vlow: var(--red);
@@ -57,17 +65,14 @@
     --cat-diplomatic: var(--teal);
     --cat-blocs: var(--orange);
 
-    /* Accent — amber (muted, not gold) */
+    /* Accent */
     --accent: #c8a64e;
-    --accent-hover: #b8963e;
-
-    /* Shadows */
-    --shadow-card: rgba(0,0,0,0.4);
-    --shadow-accent: rgba(200,166,78,0.3);
+    --accent-hover: #d4b45c;
 
     /* Fonts */
-    --font-mono: 'JetBrains Mono', monospace;
-    --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+    --font-mono:  'JetBrains Mono', monospace;
+    --font-ui:    'IBM Plex Sans', -apple-system, sans-serif;
+    --font-serif: 'IBM Plex Serif', serif;
 }
 
 body {
@@ -76,8 +81,9 @@ body {
 }
 
 .administration-box {
-            background: linear-gradient(135deg, var(--bg-panel) 0%, var(--bg-card) 100%);
-            border: 2px solid var(--accent);
+            background: var(--bg-panel);
+            border: 1px solid var(--border-main);
+            border-left: 3px solid var(--accent);
             border-radius: 3px;
             padding: 24px;
             margin-bottom: 24px;
@@ -261,7 +267,7 @@ body {
             width: 5px;
             height: 5px;
             border-radius: 50%;
-            background: #5aafa5;
+            background: var(--teal);
             flex-shrink: 0;
         }
         .ministry-card__title {
@@ -277,9 +283,11 @@ body {
             font-size: 8.5px;
             font-weight: 700;
             padding: 1px 6px;
-            background: rgba(90,175,165,0.1);
-            border: 1px solid rgba(90,175,165,0.25);
-            color: #5aafa5;
+            background: var(--teal-faint);
+            border: 1px solid var(--teal-border);
+            color: var(--teal);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
         }
 
         /* Minister identity strip */
@@ -332,48 +340,48 @@ body {
         .ministry-card__mgmt-btn:hover { opacity: 0.85; }
         .ministry-card__mgmt-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .ministry-card__mgmt-btn--appoint {
-            background-color: #5aafa5;
-            border: 1px solid #6ec4ba;
-            color: #0a2422;
+            background-color: var(--teal);
+            border: 1px solid var(--teal-border);
+            color: #141412;
         }
         .ministry-card__mgmt-btn--resign {
-            background-color: #d9534f;
-            border: 1px solid #e06b68;
+            background-color: var(--red);
+            border: 1px solid var(--red-border);
             color: #fff;
         }
         .ministry-card__mgmt-btn--nominate {
-            background-color: #5aafa5;
-            border: 1px solid #6ec4ba;
-            color: #0a2422;
+            background-color: var(--teal);
+            border: 1px solid var(--teal-border);
+            color: #141412;
         }
         .ministry-card__mgmt-btn--purge {
-            background-color: #d9534f;
-            border: 1px solid #e06b68;
+            background-color: var(--red);
+            border: 1px solid var(--red-border);
             color: #fff;
         }
         .ministry-card__mgmt-btn--dismiss {
-            background-color: #b71c1c;
-            border: 1px solid #d32f2f;
+            background-color: var(--red);
+            border: 1px solid var(--red-border);
             color: #fff;
         }
         .ministry-card__mgmt-btn--request {
-            background-color: #5b9bd5;
-            border: 1px solid #74aee0;
-            color: #0a1a2e;
+            background-color: var(--blue);
+            border: 1px solid var(--blue-border);
+            color: #141412;
         }
         .ministry-card__mgmt-btn--unrequest {
-            background-color: #1e1e1a;
-            border: 1px solid rgba(255,255,255,0.12);
-            color: #6b6a5e;
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-strong);
+            color: var(--text-muted);
         }
         .ministry-card__mgmt-btn--assign {
-            background-color: #5aafa5;
-            border: 1px solid #6ec4ba;
-            color: #0a2422;
+            background-color: var(--teal);
+            border: 1px solid var(--teal-border);
+            color: #141412;
         }
         .ministry-card__mgmt-btn--deny {
-            background-color: #d9534f;
-            border: 1px solid #e06b68;
+            background-color: var(--red);
+            border: 1px solid var(--red-border);
             color: #fff;
         }
         .ministry-card__mgmt-ap {
@@ -541,8 +549,8 @@ body {
         }
         .tag--budget {
             background: rgba(255,255,255,0.03);
-            border: 1px solid rgba(255,255,255,0.07);
-            color: #3e3d34;
+            border: 1px solid var(--border-mid);
+            color: var(--text-dim);
             letter-spacing: 0.04em;
         }
 
@@ -554,8 +562,8 @@ body {
             letter-spacing: 0.1em;
             text-transform: uppercase;
             background-color: var(--teal);
-            border: 1px solid #6ec4ba;
-            color: #0a2422;
+            border: 1px solid var(--teal-border);
+            color: #141412;
             padding: 4px 9px;
             cursor: pointer;
             white-space: nowrap;
@@ -683,14 +691,14 @@ body {
             margin-left: auto;
         }
         .minister-badge.embattled {
-            background: rgba(255, 152, 0, 0.2);
-            color: #FF9800;
-            border: 1px solid rgba(255, 152, 0, 0.4);
+            background: var(--orange-faint);
+            color: var(--orange);
+            border: 1px solid var(--orange-border);
         }
         .minister-badge.crisis {
-            background: rgba(244, 67, 54, 0.2);
-            color: #F44336;
-            border: 1px solid rgba(244, 67, 54, 0.4);
+            background: var(--red-faint);
+            color: var(--red);
+            border: 1px solid var(--red-border);
             animation: crisis-pulse 2s ease-in-out infinite;
         }
         @keyframes crisis-pulse {
@@ -701,8 +709,10 @@ body {
         /* Request badges & list */
         .request-badge {
             position: absolute; top: 8px; right: 8px;
-            background: var(--blue); color: white; font-size: 0.65rem;
-            padding: 2px 8px; border-radius: 10px; font-weight: bold;
+            background: var(--blue-faint); color: var(--blue); font-size: 0.65rem;
+            padding: 2px 8px; border-radius: 3px; font-weight: 700;
+            border: 1px solid var(--blue-border);
+            font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em;
         }
         .request-list { margin-top: 8px; }
         .request-item {
@@ -765,8 +775,8 @@ body {
 
         /* ===== REVOLUTION BANNER ===== */
         .revolution-banner {
-            background: linear-gradient(135deg, #2a1412 0%, #1a0800 100%);
-            border: 2px solid var(--red); border-radius: 3px;
+            background: var(--red-faint);
+            border: 1px solid var(--red-border); border-radius: 3px;
             padding: 24px; margin-bottom: 24px; text-align: center;
             animation: revolution-pulse 2s ease-in-out infinite;
         }
@@ -789,8 +799,8 @@ body {
             font-size: 1.1rem; font-weight: 700; color: var(--red);
         }
         .revolution-complete-banner {
-            background: linear-gradient(135deg, #122012 0%, #0a170a 100%);
-            border: 2px solid var(--green); border-radius: 3px;
+            background: var(--green-faint);
+            border: 1px solid var(--green-border); border-radius: 3px;
             padding: 24px; margin-bottom: 24px; text-align: center;
             animation: revolution-celebrate 3s ease-in-out infinite;
         }
@@ -815,20 +825,20 @@ body {
         /* ===== NO GOVERNMENT — FORMATION IN PROGRESS ===== */
         /* Urgency-scaled: safe (calm) → warning (amber) → critical (red) */
         .formation-box {
-            border: 1px solid rgba(92,184,92,0.2);
+            border: 1px solid var(--green-border);
             border-radius: 3px;
             padding: 0;
             margin-bottom: 24px;
             overflow: hidden;
-            background: linear-gradient(135deg, #141a14 0%, #121612 100%);
+            background: var(--bg-panel);
         }
         .formation-box.warning {
             border-color: var(--amber-border);
-            background: linear-gradient(135deg, #1a1812 0%, #181410 100%);
+            background: var(--bg-panel);
         }
         .formation-box.critical {
             border-color: var(--red-border);
-            background: linear-gradient(135deg, #1a1412 0%, #1a1210 100%);
+            background: var(--bg-panel);
         }
         .formation-header {
             padding: 24px 28px 20px;
@@ -837,12 +847,12 @@ body {
             border-bottom: 1px solid var(--border-hair);
         }
         .formation-header.warning {
-            background: linear-gradient(90deg, #1e1a12 0%, #1a1610 100%);
-            border-bottom-color: var(--border-0);
+            background: var(--bg-card);
+            border-bottom-color: var(--border-main);
         }
         .formation-header.critical {
-            background: linear-gradient(90deg, #1e1412 0%, #1a1010 100%);
-            border-bottom-color: var(--border-0);
+            background: var(--bg-card);
+            border-bottom-color: var(--border-main);
         }
         .formation-icon { font-size: 2.4rem; margin-bottom: 8px; }
         .formation-title {
@@ -963,7 +973,7 @@ body {
             margin-top: 16px;
             padding: 18px 20px;
             border-top: 2px solid var(--amber);
-            background: linear-gradient(135deg, #1e1a12, #1a1610);
+            background: var(--amber-faint);
             border-radius: 0 0 3px 3px;
             animation: caretaker-pulse 2.5s ease-in-out infinite;
         }
@@ -1132,17 +1142,17 @@ body {
             border-radius: 3px;
             margin-left: 6px;
         }
-        .pad-end-reason.election_loss { background: rgba(244,67,54,0.15); color: var(--red); }
-        .pad-end-reason.new_coalition { background: rgba(76,175,80,0.15); color: var(--green); }
-        .pad-end-reason.coalition_collapse { background: rgba(255,152,0,0.15); color: var(--orange); }
-        .pad-end-reason.coup { background: rgba(139,0,0,0.2); color: #ff4444; }
-        .pad-end-reason.dissolved { background: rgba(150,150,150,0.15); color: var(--text-muted); }
-        .pad-end-reason.pm_replaced { background: rgba(156,39,176,0.15); color: #ce93d8; }
-        .pad-end-reason.current { background: var(--green-faint); color: var(--green); }
-        .pad-end-reason.regime_collapse { background: rgba(139,0,0,0.2); color: #ff4444; }
-        .pad-end-reason.revolution { background: rgba(244,67,54,0.2); color: #ef5350; }
-        .pad-end-reason.power_vacuum { background: rgba(255,152,0,0.2); color: var(--orange); }
-        .pad-end-reason.impeachment { background: rgba(156,39,176,0.2); color: #ce93d8; }
+        .pad-end-reason.election_loss { background: var(--red-faint); color: var(--red); border: 1px solid var(--red-border); }
+        .pad-end-reason.new_coalition { background: var(--green-faint); color: var(--green); border: 1px solid var(--green-border); }
+        .pad-end-reason.coalition_collapse { background: var(--orange-faint); color: var(--orange); border: 1px solid var(--orange-border); }
+        .pad-end-reason.coup { background: var(--red-faint); color: var(--red); border: 1px solid var(--red-border); }
+        .pad-end-reason.dissolved { background: rgba(255,255,255,0.04); color: var(--text-muted); border: 1px solid var(--border-mid); }
+        .pad-end-reason.pm_replaced { background: var(--purple-faint); color: var(--purple); border: 1px solid var(--purple-border); }
+        .pad-end-reason.current { background: var(--green-faint); color: var(--green); border: 1px solid var(--green-border); }
+        .pad-end-reason.regime_collapse { background: var(--red-faint); color: var(--red); border: 1px solid var(--red-border); }
+        .pad-end-reason.revolution { background: var(--red-faint); color: var(--red); border: 1px solid var(--red-border); }
+        .pad-end-reason.power_vacuum { background: var(--orange-faint); color: var(--orange); border: 1px solid var(--orange-border); }
+        .pad-end-reason.impeachment { background: var(--purple-faint); color: var(--purple); border: 1px solid var(--purple-border); }
 
         .pad-stat-table-toggle {
             background: var(--bg-card);
@@ -1184,14 +1194,16 @@ body {
 
         .pad-no-data { font-size: 0.8rem; color: var(--text-muted); font-style: italic; padding: 8px 0; }
         .pad-current-badge {
-            background: var(--green);
-            color: #fff;
+            background: var(--green-faint);
+            color: var(--green);
+            border: 1px solid var(--green-border);
+            font-family: var(--font-mono);
             font-size: 0.6rem;
-            font-weight: bold;
+            font-weight: 700;
             padding: 2px 8px;
             border-radius: 3px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.06em;
             margin-left: 8px;
         }
 
@@ -1202,14 +1214,14 @@ body {
         }
 
         /* Government approval breakdown tooltip */
-        .gov-approval-hover { cursor: help; text-decoration: underline dotted var(--text-muted, #666); text-underline-offset: 3px; }
+        .gov-approval-hover { cursor: help; text-decoration: underline dotted var(--text-muted); text-underline-offset: 3px; }
         .gov-approval-tooltip {
             display: none;
             position: absolute;
             top: calc(100% + 8px);
             right: 0;
             background: var(--bg-card);
-            border: 1px solid var(--border-0);
+            border: 1px solid var(--border-strong);
             border-radius: 3px;
             padding: 14px 16px;
             width: 260px;
@@ -1218,10 +1230,12 @@ body {
         }
         .gov-approval-hover:hover .gov-approval-tooltip { display: block; }
         .gov-tip-title {
-            font-size: 0.68rem;
-            color: var(--text-muted, #666);
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            font-weight: 600;
+            color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.8px;
+            letter-spacing: 0.1em;
             margin-bottom: 10px;
         }
         .gov-tip-row {
@@ -1231,48 +1245,51 @@ body {
             margin-bottom: 2px;
         }
         .gov-tip-label {
-            font-size: 0.72rem;
-            color: var(--text-secondary, #aaa);
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            color: var(--text-secondary);
             width: 110px;
             flex-shrink: 0;
         }
         .gov-tip-bar {
             flex: 1;
             height: 6px;
-            background: var(--bg-body, #121212);
-            border-radius: 3px;
+            background: var(--bg-body);
             overflow: hidden;
+            /* NO border-radius — square ends */
         }
-        .gov-tip-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+        .gov-tip-bar-fill { height: 100%; transition: width 0.3s; /* NO border-radius */ }
         .gov-tip-val {
-            font-size: 0.72rem;
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
             font-weight: 600;
-            color: var(--text-primary, #e0e0e0);
+            color: var(--text-bright);
             width: 24px;
             text-align: right;
             font-variant-numeric: tabular-nums;
         }
         .gov-tip-desc {
             font-size: 0.62rem;
-            color: var(--text-muted, #666);
+            color: var(--text-muted);
             margin-bottom: 8px;
             padding-left: 2px;
         }
         .gov-tip-events-title {
+            font-family: var(--font-mono);
             font-size: 0.62rem;
-            color: var(--text-muted, #666);
+            color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.6px;
+            letter-spacing: 0.08em;
             margin-top: 8px;
             padding-top: 8px;
-            border-top: 1px solid var(--border-main, #333);
+            border-top: 1px solid var(--border-main);
             margin-bottom: 4px;
         }
         .gov-tip-evt {
             display: flex;
             justify-content: space-between;
             font-size: 0.68rem;
-            color: var(--text-secondary, #aaa);
+            color: var(--text-secondary);
             padding: 1px 0;
         }
         .gov-tip-evt span:last-child {
@@ -1597,7 +1614,7 @@ body {
 
         /* Emergency Banner */
         .emergency-banner {
-            background: linear-gradient(135deg, #2a1412 0%, #1a0800 100%);
+            background: var(--red-faint);
             border: 1px solid var(--red-border); border-radius: 3px;
             padding: 10px 16px; margin-top: 12px;
             display: flex; justify-content: space-between; align-items: center;

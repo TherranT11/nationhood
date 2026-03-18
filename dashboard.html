@@ -22,7 +22,7 @@
     max-width: 1580px;
   }
 
-  /* ── Nation Card ── */
+  /* ── Dashboard Cards — 8px radius, panel bg ── */
   .dash-card {
     background: var(--bg-panel);
     border: 1px solid var(--border-main);
@@ -41,16 +41,19 @@
     grid-column: 4;
     grid-row: 2;
   }
+
+  /* Card Header — v5: mono, 0.72rem, 600, centered, uppercase */
   .dash-card-header {
     background: var(--bg-card);
     padding: 10px 20px;
-    margin-bottom: 14px;
-    font-size: 0.9rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     color: var(--text-secondary);
     text-align: center;
+    border-bottom: 1px solid var(--border-light);
   }
 
   /* ── Tabbed card header ── */
@@ -58,17 +61,16 @@
     display: flex;
     gap: 0;
     background: var(--bg-card);
-    border-bottom: 1px solid var(--border-main);
-    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border-light);
   }
   .dash-card-tab {
     flex: 1;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--text-secondary);
+    color: var(--text-muted);
     background: none;
     border: none;
     border-bottom: 2px solid transparent;
@@ -76,15 +78,15 @@
     cursor: pointer;
     transition: color 0.15s, border-color 0.15s;
   }
-  .dash-card-tab:hover { color: var(--text-primary); }
+  .dash-card-tab:hover { color: var(--text-secondary); }
   .dash-card-tab.active {
-    color: var(--text-primary);
-    border-bottom-color: var(--text-primary);
+    color: var(--text-bright);
+    border-bottom-color: var(--text-bright);
   }
   .dash-tab-pane { display: none; }
   .dash-tab-pane.active { display: block; }
 
-  /* ── Events list ── */
+  /* ── Events list — event rows with left border accent ── */
   .dash-events-scroll {
     overflow-y: auto;
     padding: 0 14px 14px;
@@ -95,15 +97,15 @@
     align-items: baseline;
     gap: 8px;
     padding: 7px 6px;
-    border-bottom: 1px solid var(--border-main);
-    font-family: 'JetBrains Mono', monospace;
+    border-bottom: 1px solid var(--border-light);
+    font-family: var(--font-mono);
     font-size: 0.68rem;
   }
   .dash-event-date {
-    color: var(--text-secondary);
+    color: var(--text-dim);
     min-width: 70px;
     flex-shrink: 0;
-    opacity: 0.6;
+    font-weight: 500;
   }
   .dash-event-icon {
     flex-shrink: 0;
@@ -111,22 +113,27 @@
   }
   .dash-event-text {
     color: var(--text-primary);
+    font-family: var(--font-ui);
+    font-size: 0.82rem;
     flex: 1;
     line-height: 1.4;
   }
   .dash-event-category {
+    font-family: var(--font-mono);
     font-size: 0.6rem;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 1px 5px;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
     border-radius: 3px;
     flex-shrink: 0;
+    border: 1px solid;
   }
   .dash-card-body {
     padding: 6px 20px 20px;
   }
 
+  /* ── Nation identity — serif name, serif motto ── */
   .nation-identity {
     display: flex;
     flex-direction: column;
@@ -139,7 +146,7 @@
     height: 56px;
     background: var(--bg-card);
     border: 1px solid var(--border-main);
-    border-radius: 4px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -152,25 +159,26 @@
     object-fit: contain;
   }
   .nation-flag-box .abbr-fallback {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--text-secondary);
+    font-weight: 700;
+    color: var(--text-dim);
     letter-spacing: 0.05em;
   }
   .nation-identity h2 {
-    font-family: 'IBM Plex Serif', serif;
+    font-family: var(--font-serif);
     font-size: 1.35rem;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--text-bright);
   }
   .nation-identity .motto {
-    font-family: 'IBM Plex Serif', serif;
+    font-family: var(--font-serif);
     font-style: italic;
     font-size: 0.9rem;
     color: var(--text-secondary);
   }
 
+  /* ── Nation stat rows — v5 stat row pattern ── */
   .nation-stats-list {
     display: flex;
     flex-direction: column;
@@ -180,28 +188,34 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 4px;
+    padding: 5px 4px;
     border-top: 1px solid var(--border-light);
-    font-size: 0.9rem;
   }
   .nation-stat-row:last-child {
     padding-bottom: 0;
   }
   .nation-stat-row .label {
-    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
   }
   .nation-stat-row .value {
-    color: var(--text-primary);
-    font-weight: 500;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-bright);
     text-align: right;
   }
 
   /* ── Government Card ── */
   .gov-admin-name {
-    font-family: 'IBM Plex Sans', sans-serif;
+    font-family: var(--font-ui);
     font-size: 1.05rem;
     font-weight: 700;
-    color: var(--text-primary);
+    color: var(--text-bright);
     margin-bottom: 6px;
   }
   .gov-badges {
@@ -210,16 +224,14 @@
     margin-bottom: 10px;
   }
   .gov-badge {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.65rem;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
     padding: 3px 8px;
     border-radius: 3px;
-    border: 1px solid var(--border-main);
-    color: var(--text-primary);
-    background: var(--bg-card);
+    border: 1px solid;
   }
   .gov-leader-row {
     display: flex;
@@ -227,29 +239,29 @@
     gap: 10px;
     margin-bottom: 8px;
   }
+  /* Avatar — v5: initials, 32x32, bg-card, mono, dim */
   .gov-initials {
-    width: 28px;
-    height: 28px;
-    border-radius: 4px;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
     background: var(--bg-card);
     border: 1px solid var(--border-main);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-dim);
     flex-shrink: 0;
   }
   .gov-leader-name {
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.88rem;
-    font-weight: 600;
-    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-bright);
   }
   .gov-leader-meta {
-    font-family: 'IBM Plex Sans', sans-serif;
+    font-family: var(--font-ui);
     font-size: 0.72rem;
     color: var(--text-secondary);
     margin-top: 1px;
@@ -261,23 +273,25 @@
     margin-top: 3px;
   }
   .gov-party-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
     flex-shrink: 0;
   }
   .gov-party-label {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
-    font-weight: 500;
-  }
-  .gov-section-title {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.65rem;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--text-secondary);
+  }
+  .gov-section-title {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
     margin-bottom: 6px;
   }
   .gov-divider {
@@ -285,13 +299,14 @@
     background: var(--border-light);
     margin: 10px 0;
   }
+  /* Seat bar — v5: NO border-radius, square ends */
   .gov-seat-bar {
     display: flex;
-    height: 10px;
-    border-radius: 3px;
-    overflow: hidden;
-    background: rgba(255,255,255,0.04);
+    height: 6px;
+    gap: 2px;
+    background: var(--bg-hover);
     margin-bottom: 6px;
+    /* NO border-radius — square ends always */
   }
   .gov-seat-segment {
     height: 100%;
@@ -303,39 +318,41 @@
     padding: 4px 0;
   }
   .gov-coalition-name {
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.78rem;
-    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-bright);
     flex: 1;
   }
   .gov-coalition-seats {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.78rem;
-    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 700;
   }
   .gov-seats-combined {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
     color: var(--text-muted);
     text-align: right;
     margin-top: 2px;
   }
+  /* Approval display — v5: 1.6rem, 800 weight */
   .gov-approval-big {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 1.6rem;
-    font-weight: 700;
+    font-weight: 800;
     line-height: 1;
   }
   .gov-footer {
     background: var(--bg-card);
-    border-top: 1px solid var(--border-main);
+    border-top: 1px solid var(--border-light);
     margin: 0;
     padding: 8px 20px 8px 24px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
     font-weight: 600;
     color: var(--text-secondary);
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -349,97 +366,115 @@
     font-weight: 400;
   }
 
-  /* ── Elections Card ── */
+  /* ── Elections Card — v5: left border accent, bg-card ── */
   .election-item {
-    border-left: 3px solid #888;
+    border-left: 3px solid var(--text-dim);
+    background: var(--bg-card);
     padding: 8px 14px;
     margin-bottom: 12px;
   }
-  .election-item.midterm { border-left-color: #e8a435; }
-  .election-item.presidential { border-left-color: #e05c4d; }
-  .election-item.parliamentary { border-left-color: #4da6e0; }
+  .election-item.midterm      { border-left-color: var(--amber); }
+  .election-item.presidential { border-left-color: var(--red); }
+  .election-item.parliamentary { border-left-color: var(--blue); }
+  /* Urgent elections — within 5 ticks */
+  .election-item.urgent {
+    border-left-color: var(--amber);
+    background: var(--amber-faint);
+    border: 1px solid var(--amber-border);
+    border-left: 3px solid var(--amber);
+    animation: deadline-pulse 2s ease-in-out infinite;
+  }
   .election-item-type {
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--text-primary);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
   }
   .election-item-date {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.78rem;
-    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 500;
+    color: var(--text-dim);
     margin-top: 2px;
   }
   .elections-suspended {
-    font-style: italic;
-    color: var(--red, #e74c3c);
-    font-size: 0.9rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--red);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
     padding: 20px 0;
   }
 
-  /* ── Active Crises Card ── */
+  /* ── Active Crises Card — v5: left border, red triad ── */
   .crises-scroll {
     overflow-y: auto;
     padding: 0 14px 14px;
     flex: 1;
   }
   .crisis-item {
-    border-left: 3px solid #e74c3c;
-    padding: 10px 14px;
+    border-left: 3px solid var(--red);
+    padding: 8px 10px;
     margin-bottom: 12px;
-    background: rgba(231,76,60,0.06);
-    border-radius: 0 4px 4px 0;
+    background: var(--red-faint);
+    border-radius: 0 6px 6px 0;
+    border: 1px solid var(--border-main);
+    border-left: 3px solid var(--red);
   }
   .crisis-item-name {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.82rem;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
     font-weight: 700;
-    color: #e74c3c;
+    color: var(--red);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
   }
   .crisis-item-since {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
-    color: var(--text-secondary);
+    color: var(--text-dim);
     margin-top: 2px;
   }
   .crisis-item-desc {
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.78rem;
+    font-family: var(--font-ui);
+    font-size: 0.82rem;
     color: var(--text-primary);
     margin-top: 6px;
     line-height: 1.45;
   }
   .crisis-item-effects {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
     color: var(--text-secondary);
     margin-top: 6px;
     display: flex;
     flex-wrap: wrap;
     gap: 4px 10px;
   }
-  .crisis-effect-up { color: #2ecc71; }
-  .crisis-effect-down { color: #e74c3c; }
+  .crisis-effect-up   { color: var(--green); }
+  .crisis-effect-down { color: var(--red); }
   .crisis-item-solution {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
     color: var(--text-secondary);
     margin-top: 8px;
     padding-top: 6px;
-    border-top: 1px solid var(--border-main);
+    border-top: 1px solid var(--border-light);
   }
   .crisis-item-solution strong {
-    color: var(--text-primary);
-    font-weight: 600;
+    color: var(--text-bright);
+    font-weight: 700;
   }
   .crises-empty {
-    color: var(--text-secondary);
-    font-size: 0.8rem;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    font-size: 0.72rem;
     text-align: center;
     padding: 30px 10px;
-    font-style: italic;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
 
   /* ── Mobile responsive ── */
@@ -480,7 +515,7 @@
     }
     .dash-card-header {
       padding: 8px 14px;
-      font-size: 0.8rem;
+      font-size: 0.68rem;
     }
     .dash-card-body {
       padding: 6px 14px 14px;
@@ -492,8 +527,7 @@
       font-size: 0.8rem;
     }
     .nation-stat-row {
-      font-size: 0.82rem;
-      padding: 8px 4px;
+      padding: 5px 4px;
     }
     .gov-admin-name {
       font-size: 0.95rem;
