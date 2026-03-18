@@ -6480,6 +6480,11 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
 
         if (hasChanges) {
             await supabase.from('faction_ideology').update(updateObj).eq('faction_id', factionId);
+            // Bust ideology cache so subsequent reads (e.g. processIdeologyDecay) see fresh values
+            if (typeof qCacheBust === 'function') {
+                qCacheBust('faction_ideo_' + factionId);
+                qCacheBust('nation_ideos_' + nationId);
+            }
 
             // Record snapshot for ideology_history
             if (typeof currentTick === 'number') {
@@ -6555,6 +6560,11 @@ async function processIdeologyDecay(supabase, nationId, currentTick) {
 
         if (hasChanges) {
             await supabase.from('faction_ideology').update(updateObj).eq('faction_id', faction.id);
+            // Bust cache so downstream reads (e.g. calculateThreePillarPreferences) see post-decay values
+            if (typeof qCacheBust === 'function') {
+                qCacheBust('faction_ideo_' + faction.id);
+                qCacheBust('nation_ideos_' + nationId);
+            }
 
             if (typeof currentTick === 'number') {
                 const finalScores = { ...currentScores, ...updateObj };
@@ -22854,6 +22864,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             await processIdeologyShifts(supabase, nation.id, resolutions, newTick);
         } catch (ideoErr) {
             console.error(`[advanceTick] Ideology shifts failed for ${nation.name} (non-fatal):`, ideoErr);
+        }
+
+        // Natural ideology decay toward center (extremism erodes over time)
+        try {
+            await processIdeologyDecay(supabase, nation.id, newTick);
+        } catch (decayErr) {
+            console.error(`[advanceTick] Ideology decay failed for ${nation.name} (non-fatal):`, decayErr);
         }
 
         // Purge approval decay (autocracy scapegoat mechanic)
