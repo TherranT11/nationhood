@@ -203,12 +203,12 @@ body {
 /* Party badge */
 .party-badge {
     font-family: var(--font-mono);
-    font-size: 9px; font-weight: 700;
+    font-size: 11px; font-weight: 700;
     letter-spacing: 0.06em; text-transform: uppercase;
-    color: var(--blue);
-    background: var(--blue-faint);
-    border: 1px solid var(--blue-border);
-    border-left: 3px solid var(--blue);
+    color: var(--accent);
+    background: var(--amber-faint);
+    border: 1px solid var(--amber-border);
+    border-left: 3px solid var(--accent);
     padding: 3px 8px;
 }
 
