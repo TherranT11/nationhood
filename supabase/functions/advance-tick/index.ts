@@ -6519,74 +6519,54 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
 const IDEOLOGY_DECAY_DEAD_ZONE = 10; // no decay within ±10 of center
 /**
  * Per-tick ideology decay toward center (0).
- * Uses integer arithmetic to match INTEGER column types in faction_ideology.
- * Minimum 1 point of decay when outside dead zone, scaling with extremism:
+ * Integer arithmetic to match INTEGER columns in faction_ideology.
  *   ±11–74 → 1/tick, ±75–100 → 2/tick
  * Dead zone: scores within ±10 don't decay.
  */
 async function processIdeologyDecay(supabase, nationId, currentTick) {
-    const { data: factions, error: factionsErr } = await supabase
-        .from('factions')
-        .select('id')
-        .eq('nation_id', nationId)
-        .eq('faction_type', 'party');
-
-    if (factionsErr) {
-        console.error('[processIdeologyDecay] factions query failed:', factionsErr.message);
-        return;
-    }
-    if (!factions || factions.length === 0) return;
+    const ideologies = await loadNationIdeologies(supabase, nationId);
+    if (!ideologies || ideologies.length === 0) return;
 
     const historyRows = [];
 
-    for (const faction of factions) {
-        const ideologyRow = await loadFactionIdeology(supabase, faction.id);
-        if (ideologyRow?._error || !ideologyRow) continue;
-
-        const currentScores = extractAxisScores(ideologyRow);
+    for (const ideo of ideologies) {
         const updateObj = {};
-        let hasChanges = false;
 
         for (const axis of IDEOLOGY_AXES) {
-            const score = currentScores[axis.key] || 0;
+            const score = ideo[axis.key] || 0;
             if (Math.abs(score) <= IDEOLOGY_DECAY_DEAD_ZONE) continue;
 
-            // Integer-safe decay: at least 1 point, scaling with extremism
             const absDecay = Math.max(1, Math.round(Math.abs(score) / 50));
             const newScore = score > 0
                 ? Math.max(0, score - absDecay)
                 : Math.min(0, score + absDecay);
 
-            if (newScore !== score) {
-                updateObj[axis.key] = newScore;
-                hasChanges = true;
-            }
+            if (newScore !== score) updateObj[axis.key] = newScore;
         }
 
-        if (hasChanges) {
-            const { error: updateErr } = await supabase
-                .from('faction_ideology')
-                .update(updateObj)
-                .eq('faction_id', faction.id);
+        if (Object.keys(updateObj).length === 0) continue;
 
-            if (updateErr) {
-                console.error(`[processIdeologyDecay] update failed for faction ${faction.id}:`, updateErr.message);
-                continue;
-            }
+        const { error: updateErr } = await supabase
+            .from('faction_ideology')
+            .update(updateObj)
+            .eq('faction_id', ideo.faction_id);
 
-            if (typeof currentTick === 'number') {
-                const finalScores = { ...currentScores, ...updateObj };
-                historyRows.push({
-                    faction_id: faction.id,
-                    nation_id: nationId,
-                    tick: currentTick,
-                    liberty_equality: finalScores.liberty_equality || 0,
-                    tradition_progress: finalScores.tradition_progress || 0,
-                    security_freedom: finalScores.security_freedom || 0,
-                    globalism_nationalism: finalScores.globalism_nationalism || 0,
-                    individualism_collectivism: finalScores.individualism_collectivism || 0
-                });
-            }
+        if (updateErr) {
+            console.error(`[processIdeologyDecay] update failed for faction ${ideo.faction_id}:`, updateErr.message);
+            continue;
+        }
+
+        if (typeof currentTick === 'number') {
+            historyRows.push({
+                faction_id: ideo.faction_id,
+                nation_id: nationId,
+                tick: currentTick,
+                liberty_equality: updateObj.liberty_equality ?? ideo.liberty_equality ?? 0,
+                tradition_progress: updateObj.tradition_progress ?? ideo.tradition_progress ?? 0,
+                security_freedom: updateObj.security_freedom ?? ideo.security_freedom ?? 0,
+                globalism_nationalism: updateObj.globalism_nationalism ?? ideo.globalism_nationalism ?? 0,
+                individualism_collectivism: updateObj.individualism_collectivism ?? ideo.individualism_collectivism ?? 0,
+            });
         }
     }
 
