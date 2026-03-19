@@ -924,6 +924,7 @@ export const CIVIC_ACTION_MAP = {
     'coalition_detected':                'coalition_detected',
 
     // Intimidation responses
+    'intimidate_failed':                 'intimidation_response',
     'intimidation_pending':              'intimidation_response',
     'intimidation_reported':             'intimidation_response',
     'intimidation_retaliated':           'intimidation_response',
