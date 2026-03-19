@@ -8041,6 +8041,169 @@ async function resolveExpiredVotes(supabase, nationId) {
     return results;
 }
 
+/**
+ * Safety net: catch any bills still stuck on the floor past their voting deadline.
+ *
+ * resolveExpiredVotes uses a complex multi-join query that can silently fail
+ * (returning an error and early-returning []).  When that happens every bill
+ * for the nation is skipped and stays on the floor forever.
+ *
+ * This function runs AFTER resolveExpiredVotes with a deliberately simple
+ * query (no joins) so a single broken FK or query timeout cannot block all
+ * bills.  For each stuck bill it loads support data individually, computes
+ * the vote, and resolves it.
+ */
+async function resolveStuckFloorBills(supabase, nationId) {
+    const { data: shard } = await supabase
+        .from('shard')
+        .select('current_tick')
+        .eq('name', 'Alpha Shard')
+        .single();
+    if (!shard) return [];
+    const currentTick = shard.current_tick;
+
+    // Simple query — no joins that can break
+    const { data: stuckBills, error: stuckErr } = await supabase
+        .from('bills')
+        .select('id, bill_name, bill_type, nation_id, voting_ends_tick, quorum_failures')
+        .eq('nation_id', nationId)
+        .eq('status', 'floor')
+        .lte('voting_ends_tick', currentTick);
+
+    if (stuckErr || !stuckBills || stuckBills.length === 0) return [];
+
+    console.warn(`[resolveStuckFloorBills] nation=${nationId} found ${stuckBills.length} bills still on floor past deadline — resolving individually`);
+
+    const { data: factionRows } = await supabase
+        .from('factions')
+        .select('seats')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+    const factionSeatSum = (factionRows || []).reduce((sum, f) => sum + (f.seats || 0), 0);
+
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('name, government_type, total_seats')
+        .eq('id', nationId)
+        .single();
+    const nominalTotalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+    const totalSeats = Math.min(nominalTotalSeats, Math.max(factionSeatSum, 1));
+
+    const results = [];
+
+    for (const bill of stuckBills) {
+      try {
+        // Skip special bill types that need specialized resolution logic
+        // (no_confidence, foundational, default_resolution, veto_override,
+        //  impeachment_motion, impeachment_conviction, ratification).
+        // For these, failing is safer than applying wrong resolution.
+        const specialTypes = ['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'ambassador_confirmation'];
+        if (specialTypes.includes(bill.bill_type)) {
+            console.warn(`[resolveStuckFloorBills] Skipping special bill type "${bill.bill_type}" for bill ${bill.id} "${bill.bill_name}" — needs resolveExpiredVotes`);
+            await failBill(supabase, bill);
+            await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor: 0, votesAgainst: 0, extra: { reason: `safety net: special type ${bill.bill_type} could not be resolved normally` } });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_safety_net', billType: bill.bill_type });
+            continue;
+        }
+
+        // Load support data individually — if this bill has broken FKs only it is affected.
+        // NOTE: This simplified path does not apply emergency minority government penalty
+        // (-20% effective YES) or caucus withheld votes.  For stuck bills this is an
+        // acceptable tradeoff — getting them resolved is better than leaving them stuck.
+        const { data: supportRows } = await supabase
+            .from('bill_support')
+            .select('faction_id, stance, seat_count')
+            .eq('bill_id', bill.id);
+
+        let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
+        (supportRows || []).forEach(s => {
+            const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+            if (stance === 'yes') votesFor += (s.seat_count || 0);
+            else if (stance === 'no') votesAgainst += (s.seat_count || 0);
+            else if (stance === 'abstain') votesAbstain += (s.seat_count || 0);
+        });
+
+        const resolveBill = {
+            ...bill,
+            votes_for: votesFor,
+            votes_against: votesAgainst,
+            votes_abstain: votesAbstain,
+            quorum_failures: bill.quorum_failures || 0
+        };
+        const resolution = resolveBillVote(resolveBill, totalSeats);
+        console.log(`[resolveStuckFloorBills] bill=${bill.id} "${bill.bill_name}" votes yes=${votesFor} no=${votesAgainst} abstain=${votesAbstain} totalSeats=${totalSeats} resolution=${resolution}`);
+
+        if (resolution === 'deferred') {
+            await supabase.from('bills').update({
+                quorum_failures: (bill.quorum_failures || 0) + 1,
+                voting_ends_tick: currentTick + 1
+            }).eq('id', bill.id);
+            results.push({ billId: bill.id, billName: bill.bill_name, result: 'deferred' });
+            continue;
+        }
+
+        if (resolution === 'failed_no_quorum') {
+            await failBill(supabase, bill);
+            await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, extra: { reason: 'quorum not met (safety net)' } });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_no_quorum' });
+            continue;
+        }
+
+        const passed = resolution === 'passed';
+        if (passed) {
+            if (isPresidentialRepublic(nation)) {
+                await supabase.from('bills').update({
+                    status: 'president_desk',
+                    passed_tick: currentTick,
+                    president_desk_deadline: currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS
+                }).eq('id', bill.id);
+                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk' });
+            } else {
+                // Load full bill data for enactment
+                const { data: fullBill } = await supabase
+                    .from('bills')
+                    .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+                    .eq('id', bill.id)
+                    .single();
+
+                let enactment;
+                try {
+                    enactment = await enactBill(supabase, fullBill || bill, currentTick);
+                } catch (enactErr) {
+                    console.error(`[resolveStuckFloorBills] enactBill threw for bill ${bill.id}:`, enactErr);
+                    enactment = { success: false, error: `enactBill threw: ${enactErr?.message || enactErr}` };
+                }
+                if (!enactment?.success) {
+                    await markBillEnactmentFailed(supabase, bill, currentTick, enactment?.error || 'Unknown enactment failure (safety net)');
+                    results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_enactment' });
+                } else {
+                    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst });
+                    results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed' });
+                }
+            }
+        } else {
+            await failBill(supabase, bill);
+            await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed' });
+        }
+      } catch (billErr) {
+        console.error(`[resolveStuckFloorBills] Error processing bill ${bill.id}:`, billErr);
+        try {
+            await markBillEnactmentFailed(supabase, bill, currentTick, `Safety net error: ${billErr?.message || billErr}`);
+        } catch (_) {
+            console.error(`[resolveStuckFloorBills] Failed to mark bill ${bill.id} as failed`);
+        }
+        results.push({ billId: bill.id, billName: bill.bill_name, result: 'error', error: String(billErr) });
+      }
+    }
+
+    if (results.length > 0) {
+        console.log(`[resolveStuckFloorBills] Resolved ${results.length} stuck bills for nation=${nationId}:`, JSON.stringify(results));
+    }
+    return results;
+}
+
 async function markBillEnactmentFailed(supabase, bill, currentTick, enactError) {
     const normalizedError = typeof enactError === 'string' ? enactError : 'Unknown enactment failure';
     const { error } = await supabase.from('bills').update({
@@ -11792,9 +11955,16 @@ async function processPresidentDesk(supabase, nation, currentTick) {
             president_action_tick: currentTick
         }).eq('id', bill.id);
 
-        const enactment = await enactBill(supabase, bill, currentTick);
+        let enactment;
+        try {
+            enactment = await enactBill(supabase, bill, currentTick);
+        } catch (enactErr) {
+            console.error(`[processPresidentDesk] enactBill threw for bill ${bill.id}:`, enactErr);
+            enactment = { success: false, error: `enactBill threw: ${enactErr?.message || enactErr}` };
+        }
         if (!enactment?.success) {
             console.error(`[processPresidentDesk] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
+            await markBillEnactmentFailed(supabase, bill, currentTick, enactment?.error || 'President desk enactment failure');
             results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: enactment?.error });
             continue;
         }
@@ -22763,6 +22933,16 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
         } catch (resolveErr) {
             console.error(`[advanceTick] Vote resolution failed for ${nation.name} (non-fatal):`, resolveErr);
+        }
+
+        // Safety net: catch any floor bills that resolveExpiredVotes missed
+        try {
+            const stuckResults = await resolveStuckFloorBills(supabase, nation.id);
+            if (stuckResults.length > 0) {
+                summary.resolutions.push({ nation: nation.name, bills: stuckResults, safetyNet: true });
+            }
+        } catch (stuckErr) {
+            console.error(`[advanceTick] resolveStuckFloorBills failed for ${nation.name} (non-fatal):`, stuckErr);
         }
 
         // ── Impeachment processing (Presidential systems) ──
