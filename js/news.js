@@ -276,7 +276,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-modal">
                 <div class="nws-modal-header">
                     <h3>Write Article</h3>
-                    <span class="nws-ap-badge">+2 Momentum (700+ chars)</span>
+                    <span class="nws-ap-badge">+2 Momentum (4000+ chars)</span>
                 </div>
                 <button class="nws-modal-close" id="nws-modal-close">&times;</button>
                 <div class="nws-modal-body">
@@ -322,8 +322,8 @@ export async function initNewspaper(supabase, state) {
 
                     <div class="nws-form-group">
                         <label for="nws-article-body">Article Body</label>
-                        <textarea id="nws-article-body" placeholder="Write your article (max 1000 characters)..." maxlength="1000"></textarea>
-                        <div class="nws-char-count" id="nws-char-count">0 / 1000</div>
+                        <textarea id="nws-article-body" placeholder="Write your article (max 7000 characters). Use blank lines for paragraph breaks." maxlength="7000"></textarea>
+                        <div class="nws-char-count" id="nws-char-count">0 / 7000</div>
                     </div>
 
                     <button class="nws-submit-btn" id="nws-submit-btn">Publish Article</button>
@@ -381,10 +381,10 @@ function bindModalEvents() {
     if (bodyInput && charCount) {
         bodyInput.addEventListener('input', () => {
             const len = bodyInput.value.length;
-            const tag = len >= 700 ? ' · +2 Momentum' : ` · ${700 - len} more for momentum`;
-            charCount.textContent = `${len} / 1000${tag}`;
-            charCount.classList.toggle('nws-near-limit', len >= 900);
-            charCount.classList.toggle('nws-ap-qualified', len >= 700 && len < 900);
+            const tag = len >= 4000 ? ' · +2 Momentum' : ` · ${4000 - len} more for momentum`;
+            charCount.textContent = `${len} / 7000${tag}`;
+            charCount.classList.toggle('nws-near-limit', len >= 6500);
+            charCount.classList.toggle('nws-ap-qualified', len >= 4000 && len < 6500);
         });
     }
 
@@ -455,7 +455,7 @@ function bindSubmitHandler() {
         if (!author) return showFormError('Please enter a writer name.');
         if (!category) return showFormError('Please select a category.');
         if (!body) return showFormError('Please write an article body.');
-        if (body.length > 1000) return showFormError('Article body must be 1000 characters or fewer.');
+        if (body.length > 7000) return showFormError('Article body must be 7000 characters or fewer.');
 
         submitBtn.disabled = true;
         submitBtn.textContent = 'Publishing...';
@@ -470,7 +470,7 @@ function bindSubmitHandler() {
             }
 
             // Insert article
-            const qualifiesForMomentum = body.length >= 700;
+            const qualifiesForMomentum = body.length >= 4000;
             const { error } = await _supabase
                 .from('player_articles')
                 .insert({
@@ -494,7 +494,7 @@ function bindSubmitHandler() {
                     .catch(err => console.error('[News] Momentum adjustment failed:', err));
                 successMsg = 'Article published! +2 Momentum.';
             } else {
-                successMsg = `Article published! (${body.length}/700 chars — no momentum reward)`;
+                successMsg = `Article published! (${body.length}/4000 chars — no momentum reward)`;
             }
 
             showFormSuccess(successMsg);
@@ -507,7 +507,7 @@ function bindSubmitHandler() {
             fileInput.value = '';
             document.getElementById('nws-file-label-text').textContent = 'Click to select an image...';
             document.getElementById('nws-image-preview').style.display = 'none';
-            document.getElementById('nws-char-count').textContent = '0 / 1000';
+            document.getElementById('nws-char-count').textContent = '0 / 7000';
             document.getElementById('nws-char-count').classList.remove('nws-near-limit');
 
             // Close modal after short delay
@@ -603,13 +603,7 @@ function renderArticleView(root, article) {
     const body = article.body || '';
     const gameDate = _state?.shard?.current_date || '[Month], [Year]';
 
-    // Split body into paragraphs on double newlines, or treat as single block
-    const paragraphs = body.split(/\n\n+/).filter(p => p.trim());
-    const bodyHtml = paragraphs.length > 1
-        ? paragraphs.map((p, i) =>
-            `<p class="${i === 0 ? 'nws-drop-cap' : ''}">${escapeHtml(p.trim())}</p>`
-        ).join('')
-        : `<p class="nws-drop-cap">${escapeHtml(body)}</p>`;
+    const bodyHtml = formatBodyHtml(body);
 
     const imageHtml = article.image_url
         ? `<div class="nws-reader-image">
@@ -670,6 +664,16 @@ function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+}
+
+function formatBodyHtml(body) {
+    const paragraphs = body.split(/\n\n+/).filter(p => p.trim());
+    if (paragraphs.length <= 1) {
+        return `<p class="nws-drop-cap">${escapeHtml(body)}</p>`;
+    }
+    return paragraphs.map((p, i) =>
+        `<p class="${i === 0 ? 'nws-drop-cap' : ''}">${escapeHtml(p.trim())}</p>`
+    ).join('');
 }
 
 function categoryLabel(cat) {
@@ -782,7 +786,7 @@ function populateLeadSection(lead, sidebar) {
                 ${deleteBtn(a)}
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sidebar-headline">${escapeHtml(a.headline)}</h3>
-                <p class="nws-sidebar-deck">${escapeHtml((a.body || '').substring(0, 120))}${(a.body || '').length > 120 ? '...' : ''}</p>
+                <p class="nws-sidebar-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 120))}${(a.body || '').length > 120 ? '...' : ''}</p>
                 <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>Tick ${a.published_tick ?? '—'}</span></div>
             </div>
         `).join('')
@@ -792,9 +796,10 @@ function populateLeadSection(lead, sidebar) {
         ? `<img src="${escapeHtml(lead.image_url)}" alt="${escapeHtml(lead.headline)}">`
         : renderImageOrPlaceholder(null, 'Photo');
 
-    // Truncate body for deck (first ~200 chars)
+    // Truncate body for deck (first ~200 chars), collapsing newlines for clean display
     const leadBody = lead.body || '';
-    const deck = leadBody.length > 200 ? leadBody.substring(0, 200) + '...' : leadBody;
+    const deckText = leadBody.replace(/\n+/g, ' ');
+    const deck = deckText.length > 200 ? deckText.substring(0, 200) + '...' : deckText;
 
     section.innerHTML = `
         <div class="nws-lead-main" data-article-id="${lead.id}">
@@ -808,7 +813,7 @@ function populateLeadSection(lead, sidebar) {
                 <span>Tick ${lead.published_tick ?? '—'}</span>
             </div>
             <div class="nws-lead-body">
-                <p class="nws-drop-cap">${escapeHtml(leadBody)}</p>
+                ${formatBodyHtml(leadBody)}
             </div>
         </div>
         <div class="nws-lead-sidebar">
@@ -842,7 +847,7 @@ function populateSecondaryGrid(articles) {
                 <div class="nws-sec-image">${imgHtml}</div>
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sec-headline">${escapeHtml(a.headline)}</h3>
-                <p class="nws-sec-deck">${escapeHtml((a.body || '').substring(0, 150))}${(a.body || '').length > 150 ? '...' : ''}</p>
+                <p class="nws-sec-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 150))}${(a.body || '').length > 150 ? '...' : ''}</p>
                 <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>Tick ${a.published_tick ?? '—'}</span></div>
             </div>`;
         } else {
@@ -877,7 +882,7 @@ function populateBriefs(articles) {
             <div class="nws-brief-num">${i + 1}</div>
             <div class="nws-brief-text">
                 <strong>${escapeHtml(a.headline)}${deleteBtn(a)}</strong>
-                ${escapeHtml((a.body || '').substring(0, 100))}${(a.body || '').length > 100 ? '...' : ''}
+                ${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 100))}${(a.body || '').length > 100 ? '...' : ''}
             </div>
         </div>
     `).join('');
