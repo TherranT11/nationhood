@@ -78,6 +78,7 @@ ALTER TABLE factions ADD COLUMN IF NOT EXISTS protest_use_count INTEGER NOT NULL
 ALTER TABLE factions ADD COLUMN IF NOT EXISTS protest_last_use_tick INTEGER;
 ALTER TABLE factions ADD COLUMN IF NOT EXISTS protest_cooldown_until_tick INTEGER;
 ALTER TABLE factions ADD COLUMN IF NOT EXISTS protest_locked_by TEXT;  -- NULL, or protest_log.id::text of locking T6/T7
+ALTER TABLE factions ADD COLUMN IF NOT EXISTS pyrrhic_victory_until_tick INTEGER;  -- Tick when pyrrhic victory commitment expires
 
 -- ═══════════════════════════════════════════════════════════════════
 -- 4. RLS — public read, system write

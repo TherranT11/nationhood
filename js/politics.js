@@ -2976,6 +2976,8 @@ let _protestTab = 'minister';       // 'minister' | 'activePolicy' | 'statFailur
 let _protestTarget = null;          // selected grievance target object
 let _protestState = null;           // null | 'resolving' | 'result' | 'active' | 'locked' | 'cooldown'
 let _protestActiveData = null;      // active protest_log row (if any)
+let _endorseableProtest = null;     // another party's resolving protest that we can endorse
+let _alreadyEndorsed = false;       // whether we already endorsed the current endorseable protest
 let _protestCachedMinisters = null;
 let _protestCachedPolicies = null;
 let _protestCachedStats = null;
@@ -3122,6 +3124,30 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
             } else {
                 _protestState = null;
             }
+        }
+    }
+
+    // Check for another party's resolving protest (endorsement window)
+    _endorseableProtest = null;
+    _alreadyEndorsed = false;
+    if (!_caIsGoverning && !_protestActiveData) {
+        const { data: otherProtest } = await _supabase
+            .from('protest_log')
+            .select('id, faction_id, status, tier, demand_label, grievance_type')
+            .eq('nation_id', n.id)
+            .eq('status', 'resolving')
+            .neq('faction_id', f.id)
+            .limit(1).maybeSingle();
+        if (otherProtest) {
+            _endorseableProtest = otherProtest;
+            // Check if already endorsed
+            const { data: existingEndorse } = await _supabase
+                .from('protest_endorsements')
+                .select('id')
+                .eq('protest_id', otherProtest.id)
+                .eq('faction_id', f.id)
+                .maybeSingle();
+            _alreadyEndorsed = !!existingEndorse;
         }
     }
 
@@ -3649,20 +3675,26 @@ function renderProtestActionRow(act, isSel, ap, faction, tick) {
     // Active crisis state (calling party)
     if (state === 'active' && _protestActiveData) {
         const remaining = (_protestActiveData.crisis_started_tick + (_protestActiveData.crisis_duration || 6)) - tick;
+        const canCallOff = _protestActiveData.tier === 6 && (faction.action_points || 0) >= PROTEST_CONFIG.CALL_OFF_AP;
+        const callOffDisabled = _protestActiveData.tier === 7;
         return `<div class="ca-item ca-item--protest ca-item--active" data-action-id="protest">
             <div class="ca-item-head">
                 <div style="display:flex;align-items:center;gap:6px">
                     <span class="ca-item-icon" style="color:rgba(217,83,79,0.5)">!</span>
                     <span class="ca-item-name" style="color:rgba(217,83,79,0.5)">${escapeHtml(act.name)}</span>
                 </div>
-                <span class="ca-item-ap" style="color:rgba(217,83,79,0.5)">ACTIVE</span>
+                <span class="ca-item-ap" style="color:rgba(217,83,79,0.5)">ACTIVE — TIER ${_protestActiveData.tier}</span>
             </div>
-            <div class="ca-item-desc" style="color:#4a4840">A protest is already running. Cannot call another until resolved.</div>
+            <div class="ca-item-desc" style="color:#4a4840">Your protest crisis is running. ${_protestActiveData.demand_label ? `Demand: ${escapeHtml(_protestActiveData.demand_label)}` : ''}</div>
             <div class="protest-passive-status">Running — ${Math.max(0, remaining)} tick${remaining !== 1 ? 's' : ''} remaining.</div>
+            ${callOffDisabled
+                ? `<div class="protest-calloff-note">Tier 7 protests cannot be called off.</div>`
+                : `<div class="protest-calloff-btn${canCallOff ? '' : ' disabled'}" onclick="window._protestCallOff()">Call Off Protest — ${PROTEST_CONFIG.CALL_OFF_AP} AP</div>`
+            }
         </div>`;
     }
 
-    // Locked state (another party's crisis)
+    // Locked state (another party's crisis) — may have endorsement opportunity
     if (state === 'locked') {
         return `<div class="ca-item ca-item--protest ca-item--locked" data-action-id="protest">
             <div class="ca-item-head">
@@ -3687,6 +3719,24 @@ function renderProtestActionRow(act, isSel, ap, faction, tick) {
                 </div>
                 <span class="ca-item-ap" style="color:#4a4840">COOLDOWN ${Math.max(0, remaining)}</span>
             </div>
+        </div>`;
+    }
+
+    // Endorsement opportunity (another party's protest is resolving)
+    if (_endorseableProtest && !state) {
+        const canEndorse = !_alreadyEndorsed && (faction.action_points || 0) >= 1;
+        const endorseLabel = _alreadyEndorsed ? 'ENDORSED' : 'ENDORSE — 1 AP';
+        return `<div class="ca-item ca-item--protest ca-item--endorse" data-action-id="protest">
+            <div class="ca-item-head">
+                <div style="display:flex;align-items:center;gap:6px">
+                    <span class="ca-item-icon" style="color:#a78bfa">!</span>
+                    <span class="ca-item-name" style="color:#a78bfa">${escapeHtml(act.name)}</span>
+                </div>
+                <span class="ca-item-ap" style="color:#a78bfa">ENDORSEMENT</span>
+            </div>
+            <div class="ca-item-desc" style="color:#4a4840">Another opposition party has called a protest. You can endorse it to boost turnout (+15 per endorsement).</div>
+            ${_endorseableProtest.demand_label ? `<div style="font-family:var(--dfont-mono);font-size:9px;color:#f97316;padding:0 12px 4px">Demand: ${escapeHtml(_endorseableProtest.demand_label)}</div>` : ''}
+            <div class="protest-endorse-btn${canEndorse ? '' : ' disabled'}" onclick="window._protestEndorse()">${endorseLabel}</div>
         </div>`;
     }
 
@@ -4144,6 +4194,48 @@ function wireCampaignConfig(container, f, n, ap, blocs, otherParties, factionIde
         });
     }
 }
+
+// ── Protest Endorse & Call-Off handlers ──
+
+window._protestEndorse = async function() {
+    if (!_endorseableProtest || _alreadyEndorsed) return;
+    if (!confirm('Endorse this protest? Costs 1 AP and boosts turnout (+15).')) return;
+    try {
+        const result = await endorseProtest(_supabase, _currentFaction.id, _currentNation.id, _endorseableProtest.id, _currentShard.current_tick);
+        if (!result.success) {
+            alert(result.error || 'Endorsement failed.');
+            return;
+        }
+        _alreadyEndorsed = true;
+        _currentFaction.action_points = Math.max(0, (_currentFaction.action_points || 0) - 1);
+        const apEl = document.getElementById('topbar-ap');
+        if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + (_currentFaction.action_points ?? 0) + ' AP</span>';
+        await renderDemocracyActions(_currentNation, _currentFaction, _currentShard, _currentAllParties);
+    } catch (err) {
+        console.error('[Protest] Endorse failed:', err);
+        alert('Endorsement failed: ' + err.message);
+    }
+};
+
+window._protestCallOff = async function() {
+    if (!_protestActiveData) return;
+    if (_protestActiveData.tier === 7) { alert('Tier 7 protests cannot be called off.'); return; }
+    if (!confirm('Call off this protest? Costs ' + PROTEST_CONFIG.CALL_OFF_AP + ' AP. A small approval boost from moderate blocs will be applied.')) return;
+    try {
+        const result = await callOffProtest(_supabase, _currentFaction.id, _protestActiveData.id, _currentShard.current_tick);
+        if (!result.success) {
+            alert(result.error || 'Call-off failed.');
+            return;
+        }
+        _currentFaction.action_points = Math.max(0, (_currentFaction.action_points || 0) - PROTEST_CONFIG.CALL_OFF_AP);
+        const apEl = document.getElementById('topbar-ap');
+        if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + (_currentFaction.action_points ?? 0) + ' AP</span>';
+        await renderDemocracyActions(_currentNation, _currentFaction, _currentShard, _currentAllParties);
+    } catch (err) {
+        console.error('[Protest] Call-off failed:', err);
+        alert('Call-off failed: ' + err.message);
+    }
+};
 
 // ── Confirm handler ──
 
