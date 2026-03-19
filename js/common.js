@@ -515,38 +515,6 @@ async function updateDiplomacyAwaitingBadge(faction, nation) {
 }
 
 
-// ===== CIVIC BADGE (unseen events since last visit) =====
-
-async function updateCivicBadge(faction, nation) {
-    const badge = document.getElementById('civic-badge');
-    if (!badge || !faction || !nation) return;
-    try {
-        const lastSeenTick = parseInt(
-            localStorage.getItem('civic_last_seen_tick_' + nation.id) || '0'
-        );
-        if (lastSeenTick <= 0) {
-            badge.style.display = 'none';
-            return;
-        }
-        const { count, error } = await _supabase
-            .from('event_log')
-            .select('id', { count: 'exact', head: true })
-            .eq('nation_id', nation.id)
-            .gt('fired_at_tick', lastSeenTick);
-
-        if (error) throw error;
-        if (count > 0) {
-            badge.textContent = count > 99 ? '99+' : count;
-            badge.style.display = '';
-        } else {
-            badge.style.display = 'none';
-        }
-    } catch (e) {
-        console.error('Error updating civic badge:', e);
-    }
-}
-
-
 // ===== TICK COUNTDOWN =====
 
 let tickInterval = null;

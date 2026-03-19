@@ -13,9 +13,6 @@
     --nws-rule-light: #ddd0bc;
     --nws-red: #8b1a1a;
     --nws-red-light: #b52020;
-    --nws-accent: #2a4a6b;
-    --nws-accent-light: #3a6a9b;
-    --nws-gold: #8a6a20;
 
     background: var(--nws-paper);
     color: var(--nws-ink);

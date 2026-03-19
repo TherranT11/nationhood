@@ -5,6 +5,7 @@ import { accumulateAP } from './game/config.js';
 // Module-level references set during init
 let _supabase = null;
 let _state = null;
+let _initialized = false;
 
 export async function initNewspaper(supabase, state) {
     _supabase = supabase;
@@ -331,9 +332,12 @@ export async function initNewspaper(supabase, state) {
 
     </div>`;
 
-    // === EVENT BINDINGS ===
-    bindModalEvents();
-    bindSubmitHandler();
+    // === EVENT BINDINGS (once only) ===
+    if (!_initialized) {
+        bindModalEvents();
+        bindSubmitHandler();
+        _initialized = true;
+    }
 
     // === LOAD & DISPLAY ARTICLES ===
     await loadAndDisplayArticles();
@@ -584,40 +588,46 @@ function renderImageOrPlaceholder(imageUrl, label) {
 async function loadAndDisplayArticles() {
     if (!_supabase || !_state) return;
 
-    const { nation } = _state;
+    try {
+        const { nation } = _state;
 
-    const { data: articles, error } = await _supabase
-        .from('player_articles')
-        .select('*')
-        .eq('nation_id', nation.id)
-        .eq('status', 'published')
-        .order('created_at', { ascending: false });
+        const { data: articles, error } = await _supabase
+            .from('player_articles')
+            .select('*')
+            .eq('nation_id', nation.id)
+            .eq('status', 'published')
+            .order('created_at', { ascending: false });
 
-    if (error) {
-        console.error('[News] Failed to load articles:', error);
-        return;
+        if (error) {
+            console.error('[News] Failed to load articles:', error);
+            return;
+        }
+
+        if (!articles || articles.length === 0) return;
+
+        // Sort by body length DESC — longest gets A1
+        const sorted = [...articles].sort((a, b) =>
+            (b.body || '').length - (a.body || '').length
+        );
+
+        // A1 lead = longest article
+        const lead = sorted[0];
+        // Sidebar stories = next 3
+        const sidebar = sorted.slice(1, 4);
+        // Secondary grid = next 3 after sidebar
+        const secondary = sorted.slice(4, 7);
+        // In Brief = next 5 after secondary
+        const briefs = sorted.slice(7, 12);
+
+        // Populate lead section
+        populateLeadSection(lead, sidebar);
+        // Populate secondary grid
+        populateSecondaryGrid(secondary);
+        // Populate briefs
+        populateBriefs(briefs);
+    } catch (err) {
+        console.error('[News] Error loading articles:', err);
     }
-
-    if (!articles || articles.length === 0) return;
-
-    // Sort by body length DESC — longest gets A1
-    const sorted = [...articles].sort((a, b) => b.body.length - a.body.length);
-
-    // A1 lead = longest article
-    const lead = sorted[0];
-    // Sidebar stories = next 3
-    const sidebar = sorted.slice(1, 4);
-    // Secondary grid = next 3 after sidebar
-    const secondary = sorted.slice(4, 7);
-    // In Brief = next 5 after secondary
-    const briefs = sorted.slice(7, 12);
-
-    // Populate lead section
-    populateLeadSection(lead, sidebar);
-    // Populate secondary grid
-    populateSecondaryGrid(secondary);
-    // Populate briefs
-    populateBriefs(briefs);
 }
 
 function populateLeadSection(lead, sidebar) {

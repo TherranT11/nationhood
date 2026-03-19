@@ -29,7 +29,6 @@ import './js/guide.js';
 import { initNewspaper } from './js/news.js';
 
 initPage('news', async (state) => {
-    const { faction, nation, shard } = state;
     await initNewspaper(_supabase, state);
 });
 </script>
