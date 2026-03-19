@@ -5,6 +5,7 @@ import { adjustMomentumAll } from './game/momentum.js';
 // Module-level references set during init
 let _supabase = null;
 let _state = null;
+let _articles = []; // cached for article reader lookup
 
 export async function initNewspaper(supabase, state) {
     _supabase = supabase;
@@ -338,6 +339,7 @@ export async function initNewspaper(supabase, state) {
     bindModalEvents();
     bindSubmitHandler();
     bindDeleteHandlers(root);
+    bindArticleReader(root);
 
     // === LOAD & DISPLAY ARTICLES ===
     await loadAndDisplayArticles();
@@ -578,6 +580,90 @@ function bindDeleteHandlers(root) {
     });
 }
 
+// === ARTICLE READER ===
+
+function bindArticleReader(root) {
+    root.addEventListener('click', (e) => {
+        // Don't open reader when clicking delete buttons or other controls
+        if (e.target.closest('.nws-delete-btn, .nws-write-btn, .nws-modal-overlay, button, a, input, select, textarea')) return;
+
+        // Find the closest clickable article element
+        const clickable = e.target.closest('[data-article-id]');
+        if (!clickable) return;
+
+        const articleId = clickable.dataset.articleId;
+        const article = _articles.find(a => a.id === articleId);
+        if (!article) return;
+
+        renderArticleView(root, article);
+    });
+}
+
+function renderArticleView(root, article) {
+    const body = article.body || '';
+    const gameDate = _state?.shard?.current_date || '[Month], [Year]';
+
+    // Split body into paragraphs on double newlines, or treat as single block
+    const paragraphs = body.split(/\n\n+/).filter(p => p.trim());
+    const bodyHtml = paragraphs.length > 1
+        ? paragraphs.map((p, i) =>
+            `<p class="${i === 0 ? 'nws-drop-cap' : ''}">${escapeHtml(p.trim())}</p>`
+        ).join('')
+        : `<p class="nws-drop-cap">${escapeHtml(body)}</p>`;
+
+    const imageHtml = article.image_url
+        ? `<div class="nws-reader-image">
+            <img src="${escapeHtml(article.image_url)}" alt="${escapeHtml(article.headline)}">
+            <p class="nws-img-caption">${escapeHtml(article.headline)}</p>
+           </div>`
+        : '';
+
+    root.innerHTML = `<div class="newspaper-container">
+        <!-- TOP RIBBON -->
+        <div class="nws-top-ribbon">
+            <div class="nws-top-ribbon-inner">
+                <span>${gameDate}</span>
+                <span class="nws-edition">The Cruceran &mdash; Continental Edition</span>
+                <button class="nws-write-btn" id="nws-back-btn">&larr; Back to Front Page</button>
+            </div>
+        </div>
+
+        <!-- READER CONTENT -->
+        <div class="nws-main-content">
+            <div class="nws-reader">
+                <span class="nws-section-tag">${escapeHtml(categoryLabel(article.category))} &mdash; Tick ${article.published_tick ?? '—'}</span>
+                <h1 class="nws-reader-headline">${escapeHtml(article.headline)}</h1>
+                <div class="nws-byline">
+                    <span class="nws-author">${escapeHtml(article.author_name)}</span>
+                    <span class="nws-dot">&middot;</span>
+                    <span>Tick ${article.published_tick ?? '—'}</span>
+                </div>
+                <hr class="nws-reader-rule">
+                ${imageHtml}
+                <div class="nws-reader-body">
+                    ${bodyHtml}
+                </div>
+                <hr class="nws-reader-rule">
+                <button class="nws-back-link" id="nws-back-btn-bottom">&larr; Back to Front Page</button>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="nws-footer">
+            <h2>The Cruceran</h2>
+            <p>Continental Edition &nbsp;&middot;&nbsp; Est. Year 1 &nbsp;&middot;&nbsp; All rights reserved &nbsp;&middot;&nbsp; Truth in the service of the people</p>
+        </div>
+    </div>`;
+
+    // Bind back buttons
+    const goBack = () => initNewspaper(_supabase, _state);
+    document.getElementById('nws-back-btn')?.addEventListener('click', goBack);
+    document.getElementById('nws-back-btn-bottom')?.addEventListener('click', goBack);
+
+    // Scroll to top
+    root.scrollTop = 0;
+}
+
 // === LOAD & DISPLAY ARTICLES ===
 
 function escapeHtml(str) {
@@ -652,6 +738,9 @@ async function loadAndDisplayArticles() {
 
         if (activeArticles.length === 0) return;
 
+        // Cache for article reader lookup
+        _articles = activeArticles;
+
         // Separate opinion articles from news articles
         const opinionArticles = activeArticles.filter(a => a.category === 'opinion');
         const newsArticles = activeArticles.filter(a => a.category !== 'opinion');
@@ -689,7 +778,7 @@ function populateLeadSection(lead, sidebar) {
 
     const sidebarHtml = sidebar.length > 0
         ? sidebar.map(a => `
-            <div class="nws-sidebar-story">
+            <div class="nws-sidebar-story" data-article-id="${a.id}">
                 ${deleteBtn(a)}
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sidebar-headline">${escapeHtml(a.headline)}</h3>
@@ -708,7 +797,7 @@ function populateLeadSection(lead, sidebar) {
     const deck = leadBody.length > 200 ? leadBody.substring(0, 200) + '...' : leadBody;
 
     section.innerHTML = `
-        <div class="nws-lead-main">
+        <div class="nws-lead-main" data-article-id="${lead.id}">
             ${deleteBtn(lead)}
             <span class="nws-section-tag">${escapeHtml(categoryLabel(lead.category))}</span>
             <h2 class="nws-lead-headline">${escapeHtml(lead.headline)}</h2>
@@ -748,7 +837,7 @@ function populateSecondaryGrid(articles) {
                 ? `<img src="${escapeHtml(a.image_url)}" alt="${escapeHtml(a.headline)}" style="width:100%;height:100%;object-fit:cover;">`
                 : `<div class="nws-img-ph" style="background:${categoryGradient(a.category)};">${escapeHtml(categoryLabel(a.category))}</div>`;
 
-            return `<div class="nws-sec-story">
+            return `<div class="nws-sec-story" data-article-id="${a.id}">
                 ${deleteBtn(a)}
                 <div class="nws-sec-image">${imgHtml}</div>
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
@@ -784,7 +873,7 @@ function populateBriefs(articles) {
 
     const headerHtml = '<div class="nws-col-header">In Brief</div>';
     const briefsHtml = articles.map((a, i) => `
-        <div class="nws-brief-row">
+        <div class="nws-brief-row" data-article-id="${a.id}">
             <div class="nws-brief-num">${i + 1}</div>
             <div class="nws-brief-text">
                 <strong>${escapeHtml(a.headline)}${deleteBtn(a)}</strong>
@@ -824,7 +913,7 @@ function populateOpinionStrip(articles) {
             const quote = (a.body || '').length > 80
                 ? (a.body || '').substring(0, 80) + '...'
                 : (a.body || '');
-            return `<div class="nws-op-card">
+            return `<div class="nws-op-card" data-article-id="${a.id}">
                 ${deleteBtn(a)}
                 <div class="nws-op-author">${escapeHtml(a.author_name)} &mdash; Opinion</div>
                 <div class="nws-op-headline">&ldquo;${escapeHtml(quote)}&rdquo;</div>
