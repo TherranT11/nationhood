@@ -36,5 +36,36 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-masthead-tagline">&ldquo;Truth in the service of the people&rdquo;</div>
         </div>
 
+        <!-- NAV -->
+        <nav class="nws-nav">
+            <div class="nws-nav-inner">
+                <div class="nws-nav-item active">Front Page</div>
+                <div class="nws-nav-item">Politics</div>
+                <div class="nws-nav-item">Economy</div>
+                <div class="nws-nav-item">International</div>
+                <div class="nws-nav-item">Social</div>
+                <div class="nws-nav-item">Entertainment</div>
+                <div class="nws-nav-item">Elections</div>
+                <div class="nws-nav-item">Sports</div>
+            </div>
+        </nav>
+
+        <!-- BREAKING TICKER -->
+        <div class="nws-breaking-bar">
+            <div class="nws-breaking-label">Breaking</div>
+            <div class="nws-ticker-scroll">
+                Markets steady as continental trade talks enter third round &nbsp;<span class="nws-ticker-sep">&#9670;</span>&nbsp;
+                Weather advisory issued for eastern coastal regions &nbsp;<span class="nws-ticker-sep">&#9670;</span>&nbsp;
+                International athletics federation announces host city for next games &nbsp;<span class="nws-ticker-sep">&#9670;</span>&nbsp;
+                Central banking consortium releases quarterly stability report &nbsp;<span class="nws-ticker-sep">&#9670;</span>&nbsp;
+                Continental rail expansion project clears environmental review &nbsp;<span class="nws-ticker-sep">&#9670;</span>&nbsp;
+                Markets steady as continental trade talks enter third round &nbsp;<span class="nws-ticker-sep">&#9670;</span>&nbsp;
+                Weather advisory issued for eastern coastal regions &nbsp;<span class="nws-ticker-sep">&#9670;</span>&nbsp;
+                International athletics federation announces host city for next games &nbsp;<span class="nws-ticker-sep">&#9670;</span>&nbsp;
+                Central banking consortium releases quarterly stability report &nbsp;<span class="nws-ticker-sep">&#9670;</span>&nbsp;
+                Continental rail expansion project clears environmental review
+            </div>
+        </div>
+
     </div>`;
 }
