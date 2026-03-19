@@ -20,6 +20,10 @@ BEGIN
     END LOOP;
 END $$;
 
+-- Migrate legacy category values to nearest equivalent
+UPDATE player_articles SET category = 'social'        WHERE category = 'weather';
+UPDATE player_articles SET category = 'social'        WHERE category = 'science';
+
 -- Add the updated CHECK constraint with an explicit name
 ALTER TABLE player_articles
     ADD CONSTRAINT player_articles_category_check
