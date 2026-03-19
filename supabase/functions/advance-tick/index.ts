@@ -6933,7 +6933,10 @@ async function resolveExpiredVotes(supabase, nationId) {
 
     const { data: expiredBills, error } = await supabase
         .from('bills')
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+        // Simplified query: bill_support only needs faction_id/stance/seat_count for vote
+        // tallying. Nesting factions() inside bill_support adds a FK join that can cause
+        // the entire query to fail silently in PostgREST, leaving all bills stuck on floor.
+        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .lte('voting_ends_tick', currentTick);
@@ -8044,14 +8047,13 @@ async function resolveExpiredVotes(supabase, nationId) {
 /**
  * Safety net: catch any bills still stuck on the floor past their voting deadline.
  *
- * resolveExpiredVotes uses a complex multi-join query that can silently fail
+ * resolveExpiredVotes uses a multi-join query that can silently fail
  * (returning an error and early-returning []).  When that happens every bill
  * for the nation is skipped and stays on the floor forever.
  *
- * This function runs AFTER resolveExpiredVotes with a deliberately simple
- * query (no joins) so a single broken FK or query timeout cannot block all
- * bills.  For each stuck bill it loads support data individually, computes
- * the vote, and resolves it.
+ * This function runs AFTER resolveExpiredVotes with deliberately simple
+ * queries (no complex joins) so a single broken FK or query timeout cannot
+ * block all bills.
  */
 async function resolveStuckFloorBills(supabase, nationId) {
     const { data: shard } = await supabase
@@ -8094,9 +8096,6 @@ async function resolveStuckFloorBills(supabase, nationId) {
     for (const bill of stuckBills) {
       try {
         // Skip special bill types that need specialized resolution logic
-        // (no_confidence, foundational, default_resolution, veto_override,
-        //  impeachment_motion, impeachment_conviction, ratification).
-        // For these, failing is safer than applying wrong resolution.
         const specialTypes = ['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'ambassador_confirmation'];
         if (specialTypes.includes(bill.bill_type)) {
             console.warn(`[resolveStuckFloorBills] Skipping special bill type "${bill.bill_type}" for bill ${bill.id} "${bill.bill_name}" — needs resolveExpiredVotes`);
@@ -8106,10 +8105,7 @@ async function resolveStuckFloorBills(supabase, nationId) {
             continue;
         }
 
-        // Load support data individually — if this bill has broken FKs only it is affected.
-        // NOTE: This simplified path does not apply emergency minority government penalty
-        // (-20% effective YES) or caucus withheld votes.  For stuck bills this is an
-        // acceptable tradeoff — getting them resolved is better than leaving them stuck.
+        // Load support data individually — simple query, no nested joins
         const { data: supportRows } = await supabase
             .from('bill_support')
             .select('faction_id, stance, seat_count')
@@ -8160,10 +8156,10 @@ async function resolveStuckFloorBills(supabase, nationId) {
                 await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk' });
             } else {
-                // Load full bill data for enactment
+                // Load full bill data for enactment — use simplified join (no nested factions in bill_support)
                 const { data: fullBill } = await supabase
                     .from('bills')
-                    .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+                    .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
                     .eq('id', bill.id)
                     .single();
 
@@ -11955,17 +11951,9 @@ async function processPresidentDesk(supabase, nation, currentTick) {
             president_action_tick: currentTick
         }).eq('id', bill.id);
 
-        let enactment;
-        try {
-            enactment = await enactBill(supabase, bill, currentTick);
-        } catch (enactErr) {
-            console.error(`[processPresidentDesk] enactBill threw for bill ${bill.id}:`, enactErr);
-            enactment = { success: false, error: `enactBill threw: ${enactErr?.message || enactErr}` };
-        }
+        const enactment = await enactBill(supabase, bill, currentTick);
         if (!enactment?.success) {
             console.error(`[processPresidentDesk] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
-            await markBillEnactmentFailed(supabase, bill, currentTick, enactment?.error || 'President desk enactment failure');
-            await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationId: nation.id, nationName: nation.name, extra: { reason: 'enactment failed after president auto-sign' } });
             results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: enactment?.error });
             continue;
         }
@@ -17950,6 +17938,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
             }
         }
 
+        // minister_approval is an integer column — round to whole number
         newApproval = Math.round(Math.max(0, Math.min(100, newApproval)));
 
         // Update baselines to current values so next tick only sees incremental change
@@ -22806,7 +22795,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
                 _institutionConfig = icRows || [];
             }
-            // Build institution funding map for stat decay modification
             const { data: _fundingRows } = await supabase.from('budget_item_allocations')
                 .select('item_id, item_type, allocation_amount, needed_amount')
                 .eq('nation_id', nation.id)
@@ -22923,8 +22911,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 summary.earlyMajority = summary.earlyMajority || [];
                 summary.earlyMajority.push({ nation: nation.name, bills: earlyResults });
             }
-        } catch (earlyMajErr) {
-            console.error(`[advanceTick] Early majority check failed for ${nation.name} (non-fatal):`, earlyMajErr);
+        } catch (earlyErr) {
+            console.error(`[advanceTick] checkEarlyMajority failed for ${nation.name} (non-fatal):`, earlyErr);
         }
 
         // Resolve expired votes (includes early-locked bills whose grace tick ended)
@@ -22933,10 +22921,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             resolutions = await resolveExpiredVotes(supabase, nation.id);
             if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
         } catch (resolveErr) {
-            console.error(`[advanceTick] Vote resolution failed for ${nation.name} (non-fatal):`, resolveErr);
+            console.error(`[advanceTick] resolveExpiredVotes failed for ${nation.name} (non-fatal):`, resolveErr);
         }
 
         // Safety net: catch any floor bills that resolveExpiredVotes missed
+        // (e.g. due to complex query failure or thrown error). Uses simple queries per-bill.
         try {
             const stuckResults = await resolveStuckFloorBills(supabase, nation.id);
             if (stuckResults.length > 0) {
@@ -23135,39 +23124,19 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // Auto-sign expired president's desk bills (Presidential systems)
-        try {
-            const deskResults = await processPresidentDesk(supabase, nation, newTick);
-            if (deskResults.length > 0) {
-                summary.presidentDesk = summary.presidentDesk || [];
-                summary.presidentDesk.push({ nation: nation.name, bills: deskResults });
-            }
-        } catch (deskErr) {
-            console.error(`[advanceTick] President desk processing failed for ${nation.name} (non-fatal):`, deskErr);
+        const deskResults = await processPresidentDesk(supabase, nation, newTick);
+        if (deskResults.length > 0) {
+            summary.presidentDesk = summary.presidentDesk || [];
+            summary.presidentDesk.push({ nation: nation.name, bills: deskResults });
         }
 
         // Presidential pre-election candidate generation, term end safety net, + selection timeout
-        try {
-            await triggerPresidentialCandidateSelection(supabase, nation, newTick);
-        } catch (candErr) {
-            console.error(`[advanceTick] Presidential candidate selection failed for ${nation.name} (non-fatal):`, candErr);
-        }
-        try {
-            await processPresidentialTermEnd(supabase, nation, newTick);
-        } catch (termErr) {
-            console.error(`[advanceTick] Presidential term end failed for ${nation.name} (non-fatal):`, termErr);
-        }
-        try {
-            await processParliamentaryPMTimeout(supabase, nation, newTick);
-        } catch (pmTimeoutErr) {
-            console.error(`[advanceTick] Parliamentary PM timeout failed for ${nation.name} (non-fatal):`, pmTimeoutErr);
-        }
+        await triggerPresidentialCandidateSelection(supabase, nation, newTick);
+        await processPresidentialTermEnd(supabase, nation, newTick);
+        await processParliamentaryPMTimeout(supabase, nation, newTick);
 
         // Incumbent campaign bonuses (+2 approval/tick during pre-election window)
-        try {
-            await processIncumbentCampaignBonuses(supabase, nation, newTick);
-        } catch (campErr) {
-            console.error(`[advanceTick] Incumbent campaign bonuses failed for ${nation.name} (non-fatal):`, campErr);
-        }
+        await processIncumbentCampaignBonuses(supabase, nation, newTick);
 
         // Ideology shifts from resolved bills
         try {
