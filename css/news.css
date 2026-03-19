@@ -971,6 +971,101 @@
     }
 }
 
+/* ===== ARCHIVES ===== */
+
+.nws-nav-archives {
+    font-weight: 600;
+    border-left: 1px solid var(--nws-rule);
+    margin-left: 8px;
+    padding-left: 16px;
+}
+
+.nws-archives {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 40px 20px;
+}
+
+.nws-archives-title {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 32px;
+    font-weight: 900;
+    color: var(--nws-ink);
+    margin-bottom: 4px;
+}
+
+.nws-archives-subtitle {
+    font-size: 14px;
+    color: var(--nws-ink-3);
+    margin-bottom: 32px;
+}
+
+.nws-archive-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.nws-archive-month {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--nws-rule-light);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.nws-archive-month:first-child {
+    border-top: 1px solid var(--nws-rule-light);
+}
+
+.nws-archive-month:hover {
+    background: var(--nws-paper-2);
+}
+
+.nws-archive-month-name {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--nws-ink);
+}
+
+.nws-archive-current {
+    display: inline-block;
+    font-family: 'Inter', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--nws-red);
+    background: rgba(139, 26, 26, 0.08);
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-left: 10px;
+    vertical-align: middle;
+}
+
+.nws-archive-month-count {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: var(--nws-ink-3);
+}
+
+.nws-archive-edition-banner {
+    text-align: center;
+    padding: 10px 20px;
+    background: var(--nws-paper-2);
+    border-top: 1px solid var(--nws-rule-light);
+    border-bottom: 1px solid var(--nws-rule-light);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--nws-ink-3);
+}
+
 /* ===== DELETE BUTTON ===== */
 .nws-delete-btn {
     position: absolute;
