@@ -3184,6 +3184,14 @@ function renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo,
     // Action list (left)
     let listHtml = '';
 
+    // Pyrrhic Victory warning banner
+    if (f.pyrrhic_victory_until_tick && f.pyrrhic_victory_until_tick > tick) {
+        const pyrrhicRemaining = f.pyrrhic_victory_until_tick - tick;
+        listHtml += `<div class="protest-pyrrhic-banner">
+            <span style="font-weight:700">PYRRHIC VICTORY</span> — ${pyrrhicRemaining} tick${pyrrhicRemaining !== 1 ? 's' : ''} remaining. AP income reduced by 2/tick.
+        </div>`;
+    }
+
     // Public Address pinned row for governing parties during T6/T7 crisis
     if (_caIsGoverning && _govProtestCrisis) {
         const pc = _govProtestCrisis;
@@ -3246,6 +3254,8 @@ function renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo,
             panelHtml += renderActionResult(_caResult);
         } else if (sel.id === 'protest' && _protestState === 'result' && _protestActiveData) {
             panelHtml += renderProtestResultPanel(_protestActiveData);
+        } else if (sel.id === 'protest' && _protestState === 'resolving') {
+            panelHtml += renderProtestResolvingPanel();
         } else {
             panelHtml += renderActionConfig(sel, blocs, otherParties, factionIdeo, n, ap, tick);
             // Confirm button
@@ -3786,6 +3796,19 @@ function renderProtestConfig(nation, tick) {
         <span class="protest-stat-pill__label">PROTEST FATIGUE</span>
         <span class="protest-stat-pill__value" style="color:${fatigueLevel.color}">${fatigueLevel.label}</span>
     </div>`;
+    // Potential endorsers pill
+    const oppositionPartyCount = (_currentAllParties || []).filter(p => {
+        if (p.id === _currentFaction?.id) return false;
+        if (_caIsGoverning) return false;
+        return true; // other parties that could potentially endorse
+    }).length;
+    if (oppositionPartyCount > 0) {
+        const endorseColor = oppositionPartyCount >= 2 ? '#a78bfa' : '#4a4840';
+        html += `<div class="protest-stat-pill">
+            <span class="protest-stat-pill__label">ENDORSERS</span>
+            <span class="protest-stat-pill__value" style="color:${endorseColor}">${oppositionPartyCount}</span>
+        </div>`;
+    }
     html += `</div>`;
 
     // Grievance type tabs
@@ -4043,6 +4066,40 @@ function renderProtestResultPanel(protestData) {
         html += `</div>`;
     }
 
+    html += `</div></div>`;
+    return html;
+}
+
+function renderProtestResolvingPanel() {
+    const data = _protestActiveData;
+    let html = `<div class="ca-result-box" style="border-color:rgba(217,83,79,0.3)">`;
+    html += `<div class="ca-result-header" style="background:rgba(217,83,79,0.06)">
+        <span style="font-family:var(--dfont-ui);font-size:14px;font-weight:700;color:#d9534f">Protest Resolving...</span>
+    </div>`;
+    html += `<div class="ca-result-body">`;
+    html += `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-2);line-height:1.8">
+        Your protest has been called and is gathering momentum. The turnout will be determined at the next tick based on national conditions.
+    </div>`;
+
+    if (data) {
+        if (data.grievance_type) {
+            const typeLabel = data.grievance_type === 'minister' ? 'Minister' : data.grievance_type === 'activePolicy' ? 'Active Policy' : 'Stat Failure';
+            html += `<div class="ca-result-row" style="margin-top:8px">
+                <span class="ca-result-label">Grievance</span>
+                <span class="ca-result-val" style="color:#f97316">${typeLabel}</span>
+            </div>`;
+        }
+        if (data.demand_label) {
+            html += `<div class="ca-result-row">
+                <span class="ca-result-label">Demand</span>
+                <span class="ca-result-val" style="color:#a78bfa">${escapeHtml(data.demand_label)}</span>
+            </div>`;
+        }
+    }
+
+    html += `<div style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3);margin-top:12px;font-style:italic">
+        Other opposition parties can endorse this protest during this tick to boost turnout (+15 per endorsement).
+    </div>`;
     html += `</div></div>`;
     return html;
 }

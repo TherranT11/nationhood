@@ -23578,7 +23578,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
       try {
         const { data: factions } = await supabase
             .from('factions')
-            .select('id, approval_rating, faction_type')
+            .select('id, approval_rating, faction_type, pyrrhic_victory_until_tick')
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party');
 
@@ -23598,6 +23598,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             // Family member successor penalty: ruling faction loses 1 AP/tick
             if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) {
                 apGain = Math.max(1, apGain - 1);
+            }
+
+            // Pyrrhic Victory penalty: -2 AP/tick during commitment period
+            if (faction.pyrrhic_victory_until_tick && faction.pyrrhic_victory_until_tick > newTick) {
+                apGain = Math.max(1, apGain - 2);
             }
 
             const result = await accumulateAP(supabase, faction.id, apGain);
