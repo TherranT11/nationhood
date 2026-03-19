@@ -4,7 +4,7 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate, escapeHtml as utilEscapeHtml } from './utils.js';
 
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, getNationNames, IDEOLOGY_AXES } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
@@ -2955,14 +2955,12 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// (Events tab moved to standalone events.html page)
-
 // ═══════════════════════════════════════════════════════════════════
 // DEMOCRACY CAMPAIGN ACTIONS TAB (Rally, Outreach, Attack, Promise)
 // ═══════════════════════════════════════════════════════════════════
 
 // Campaign action state
-let _caSelected = null;   // 'rally' | 'outreach' | 'attack' | 'promise'
+let _caSelected = null;   // 'rally' | 'outreach' | 'attack' | 'promise' | 'protest'
 let _caBloc = null;       // selected bloc id
 let _caRival = null;      // selected rival faction id
 let _caVector = null;     // attack vector id
@@ -2972,6 +2970,18 @@ let _caCrisisId = null;   // selected crisis id for promise
 let _caResult = null;     // last action result for display
 let _caAttackEvidence = null; // cached attack evidence
 let _caAttackVectors = null;  // cached built vectors
+
+// Protest action state
+let _protestTab = 'minister';       // 'minister' | 'activePolicy' | 'statFailure'
+let _protestTarget = null;          // selected grievance target object
+let _protestState = null;           // null | 'resolving' | 'result' | 'active' | 'locked' | 'cooldown'
+let _protestActiveData = null;      // active protest_log row (if any)
+let _endorseableProtest = null;     // another party's resolving protest that we can endorse
+let _alreadyEndorsed = false;       // whether we already endorsed the current endorseable protest
+let _protestCachedMinisters = null;
+let _protestCachedPolicies = null;
+let _protestCachedStats = null;
+let _govProtestCrisis = null;       // active protest crisis for governing party PA row
 
 // Store references for re-rendering
 let _currentNation = null, _currentFaction = null, _currentShard = null, _currentAllParties = null;
@@ -2992,6 +3002,8 @@ function caReset() {
     _caBloc = null; _caRival = null; _caVector = null;
     _caPromiseType = null; _caStatKey = null; _caCrisisId = null;
     _caAttackEvidence = null; _caAttackVectors = null;
+    _protestTab = 'minister'; _protestTarget = null;
+    _protestCachedMinisters = null; _protestCachedPolicies = null; _protestCachedStats = null;
 }
 
 function caIsReady() {
@@ -3003,10 +3015,18 @@ function caIsReady() {
         if (_caPromiseType === 'crisis') return !!_caCrisisId;
         return false;
     }
+    if (_caSelected === 'protest') return !!_protestTarget;
     return false;
 }
 
 function caGetCost() {
+    if (_caSelected === 'protest') {
+        // Dynamic cost based on use counter
+        const f = _currentFaction;
+        const tick = _currentShard?.current_tick || 0;
+        const decayed = getDecayedUseCount(f?.protest_use_count || 0, f?.protest_last_use_tick, tick);
+        return getProtestCost(decayed);
+    }
     const act = CA_ACTIONS.find(a => a.id === _caSelected);
     return act ? act.ap : 0;
 }
@@ -3064,16 +3084,147 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
         return { ...b, approval: Math.round(pref), momentum: ba?.momentum ?? 0 };
     });
 
-    renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo, approvalByBloc, tick);
+    // Fetch protest state for the action row
+    let protestCheck = { allowed: false, reason: '' };
+    let protestApCost = 2;
+    if (!_caIsGoverning) {
+        const { data: activeProtest } = await _supabase
+            .from('protest_log')
+            .select('id, status, tier, tick_called, tick_resolved, crisis_started_tick, crisis_duration, demand_label, turnout_score, effects_applied, grievance_type, grievance_data')
+            .eq('faction_id', f.id)
+            .in('status', ['resolving', 'crisis_active'])
+            .limit(1).maybeSingle();
+        _protestActiveData = activeProtest;
+
+        const decayedCount = getDecayedUseCount(f.protest_use_count || 0, f.protest_last_use_tick, tick);
+        protestApCost = getProtestCost(decayedCount);
+
+        protestCheck = canCallProtest(f, tick, true, activeProtest);
+
+        // Detect protest state for visual display
+        if (activeProtest) {
+            _protestState = activeProtest.status === 'resolving' ? 'resolving' : 'active';
+        } else if (f.protest_locked_by) {
+            _protestState = 'locked';
+        } else if (f.protest_cooldown_until_tick && f.protest_cooldown_until_tick > tick) {
+            _protestState = 'cooldown';
+        } else {
+            // Check for recently resolved protest (result flash, 1 tick)
+            const { data: recentResolved } = await _supabase
+                .from('protest_log')
+                .select('id, tier, turnout_score, effects_applied, tick_resolved, roll_breakdown, condition_score')
+                .eq('faction_id', f.id)
+                .eq('status', 'resolved')
+                .gte('tick_resolved', tick - 1)
+                .order('tick_resolved', { ascending: false })
+                .limit(1).maybeSingle();
+            if (recentResolved && recentResolved.tick_resolved === tick) {
+                _protestState = 'result';
+                _protestActiveData = recentResolved;
+            } else {
+                _protestState = null;
+            }
+        }
+    }
+
+    // Check for another party's resolving protest (endorsement window)
+    _endorseableProtest = null;
+    _alreadyEndorsed = false;
+    if (!_caIsGoverning && !_protestActiveData) {
+        const { data: otherProtest } = await _supabase
+            .from('protest_log')
+            .select('id, faction_id, status, tier, demand_label, grievance_type')
+            .eq('nation_id', n.id)
+            .eq('status', 'resolving')
+            .neq('faction_id', f.id)
+            .limit(1).maybeSingle();
+        if (otherProtest) {
+            _endorseableProtest = otherProtest;
+            // Check if already endorsed
+            const { data: existingEndorse } = await _supabase
+                .from('protest_endorsements')
+                .select('id')
+                .eq('protest_id', otherProtest.id)
+                .eq('faction_id', f.id)
+                .maybeSingle();
+            _alreadyEndorsed = !!existingEndorse;
+        }
+    }
+
+    // Governing party: check for active protest crisis (for Public Address row)
+    _govProtestCrisis = null;
+    if (_caIsGoverning) {
+        const { data: govCrisis } = await _supabase
+            .from('protest_log')
+            .select('id, tier, status, public_address_last_tick, tier7_demand, crisis_started_tick, crisis_duration')
+            .eq('nation_id', n.id)
+            .eq('status', 'crisis_active')
+            .order('crisis_started_tick', { ascending: false })
+            .limit(1).maybeSingle();
+        _govProtestCrisis = govCrisis;
+    }
+
+    renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo, approvalByBloc, tick, protestCheck, protestApCost);
 }
 
-function renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo, approvalByBloc, tick) {
-    const sel = CA_ACTIONS.find(a => a.id === _caSelected);
+function renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo, approvalByBloc, tick, protestCheck, protestApCost) {
+    const allActions = [...CA_ACTIONS];
+
+    // Add protest action for opposition only
+    if (!_caIsGoverning) {
+        allActions.push({
+            id: 'protest', name: 'Organise a Protest', ap: protestApCost || 2,
+            color: '#d9534f', icon: '!',
+            desc: 'Turnout is probabilistic. A fizzle hands the government a free headline. Choose your moment.',
+        });
+    }
+
+    const sel = allActions.find(a => a.id === _caSelected);
 
     // Action list (left)
     let listHtml = '';
-    for (const act of CA_ACTIONS) {
+
+    // Pyrrhic Victory warning banner
+    if (f.pyrrhic_victory_until_tick && f.pyrrhic_victory_until_tick > tick) {
+        const pyrrhicRemaining = f.pyrrhic_victory_until_tick - tick;
+        listHtml += `<div class="protest-pyrrhic-banner">
+            <span style="font-weight:700">PYRRHIC VICTORY</span> — ${pyrrhicRemaining} tick${pyrrhicRemaining !== 1 ? 's' : ''} remaining. AP income reduced by 2/tick.
+        </div>`;
+    }
+
+    // Public Address pinned row for governing parties during T6/T7 crisis
+    if (_caIsGoverning && _govProtestCrisis) {
+        const pc = _govProtestCrisis;
+        const paCooldownRemaining = pc.public_address_last_tick != null
+            ? Math.max(0, PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN - (tick - pc.public_address_last_tick))
+            : 0;
+        const paReady = ap >= PROTEST_CONFIG.PUBLIC_ADDRESS_AP && paCooldownRemaining === 0;
+        const cooldownClass = paCooldownRemaining > 0 ? ' ca-item--cooldown' : '';
+        const paApLabel = paCooldownRemaining > 0
+            ? `${paCooldownRemaining} TICK CD`
+            : `${PROTEST_CONFIG.PUBLIC_ADDRESS_AP} AP`;
+        listHtml += `<div class="ca-item ca-item--public-address${cooldownClass}${!paReady ? ' disabled' : ''}" data-action-id="public_address" style="${!paReady ? 'opacity:0.5;' : ''}">
+            <div class="ca-item-head">
+                <div style="display:flex;align-items:center;gap:6px">
+                    <span class="ca-item-icon" style="color:#5b9bd5">&#9788;</span>
+                    <span class="ca-item-name">Public Address</span>
+                </div>
+                <span class="ca-item-ap">${paApLabel}</span>
+            </div>
+            <div class="ca-item-desc" style="font-size:9px;color:#4a4840;">Reduces civil unrest buildup this tick. +1 moderate bloc approval.</div>
+        </div>`;
+    }
+
+    for (const act of allActions) {
         const isSel = _caSelected === act.id;
+        const isProtest = act.id === 'protest';
+
+        // Protest row has special state-driven rendering
+        if (isProtest) {
+            listHtml += renderProtestActionRow(act, isSel, ap, f, tick);
+            continue;
+        }
+
         const ok = ap >= act.ap;
         const borderColor = isSel ? act.color : ok ? act.color + '55' : 'var(--dtext-3)';
         const bgStyle = isSel ? `background:${act.color}08;` : '';
@@ -3101,6 +3252,10 @@ function renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo,
         // Show last result if present
         if (_caResult) {
             panelHtml += renderActionResult(_caResult);
+        } else if (sel.id === 'protest' && _protestState === 'result' && _protestActiveData) {
+            panelHtml += renderProtestResultPanel(_protestActiveData);
+        } else if (sel.id === 'protest' && _protestState === 'resolving') {
+            panelHtml += renderProtestResolvingPanel();
         } else {
             panelHtml += renderActionConfig(sel, blocs, otherParties, factionIdeo, n, ap, tick);
             // Confirm button
@@ -3116,8 +3271,29 @@ function renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo,
 
     // Wire up action selection
     container.querySelectorAll('.ca-item').forEach(el => {
-        el.addEventListener('click', () => {
+        el.addEventListener('click', async () => {
             const id = el.dataset.actionId;
+
+            // Public Address — execute immediately, no config
+            if (id === 'public_address' && _govProtestCrisis) {
+                if (el.classList.contains('disabled')) return;
+                el.style.opacity = '0.4';
+                try {
+                    const result = await executePublicAddress(_supabase, f.id, n.id, _govProtestCrisis.id, tick);
+                    if (result.success) {
+                        f.action_points = result.newAp;
+                        await renderDemocracyActions(n, f, _currentShard, _currentAllParties);
+                    } else {
+                        alert(result.error || 'Public Address failed.');
+                        el.style.opacity = '';
+                    }
+                } catch (e) {
+                    alert('Error: ' + (e.message || 'Unknown'));
+                    el.style.opacity = '';
+                }
+                return;
+            }
+
             const act = CA_ACTIONS.find(a => a.id === id);
             if (act && ap < act.ap) return;
             if (_caSelected === id) { _caSelected = null; } else { _caSelected = id; }
@@ -3138,6 +3314,7 @@ function renderActionConfig(sel, blocs, otherParties, factionIdeo, nation, ap, t
     if (sel.id === 'outreach') return renderOutreachConfig(blocs, factionIdeo);
     if (sel.id === 'attack') return renderAttackConfig(otherParties);
     if (sel.id === 'promise') return renderPromiseConfig(nation);
+    if (sel.id === 'protest') return renderProtestConfig(nation, tick);
     return '';
 }
 
@@ -3374,6 +3551,386 @@ function renderPromiseConfig(nation) {
 
 // ── Result display ──
 
+// ── Protest Data Loading ──
+
+async function loadProtestData(nation, faction, tick) {
+    // Load ministers (sorted by approval ascending)
+    if (!_protestCachedMinisters) {
+        const { data: ministers } = await _supabase
+            .from('ministries')
+            .select('ministry_key, minister_first_name, minister_last_name, minister_approval, is_vacant, party_id')
+            .eq('nation_id', nation.id)
+            .eq('is_vacant', false)
+            .order('minister_approval', { ascending: true });
+        _protestCachedMinisters = ministers || [];
+    }
+
+    // Load active policies from current government
+    if (!_protestCachedPolicies) {
+        const coalition = await fetchActiveCoalition(_supabase, nation.id);
+        const coalitionIds = coalition?.party_ids || [];
+        if (coalitionIds.length > 0) {
+            const { data: bills } = await _supabase
+                .from('bills')
+                .select('id, bill_type, proposed_by_faction_id, proposed_tick, bill_articles(policy_id, policies(name))')
+                .eq('nation_id', nation.id)
+                .eq('status', 'enacted')
+                .in('proposed_by_faction_id', coalitionIds)
+                .order('proposed_tick', { ascending: false });
+            _protestCachedPolicies = (bills || []).map(b => {
+                const firstArticle = b.bill_articles?.[0];
+                const policyName = firstArticle?.policies?.name || `Bill ${b.id.slice(0, 8)}`;
+                return {
+                    id: b.id,
+                    name: policyName,
+                    bill_type: b.bill_type,
+                    enacted_tick: b.proposed_tick,
+                    ministry: '',
+                };
+            });
+        } else {
+            _protestCachedPolicies = [];
+        }
+    }
+
+    // Load stat failure data
+    if (!_protestCachedStats) {
+        const { data: statHistory } = await _supabase
+            .from('stat_history')
+            .select('stat_name, value, tick')
+            .eq('nation_id', nation.id)
+            .gte('tick', tick - 6)
+            .order('tick', { ascending: true });
+
+        const statMap = {};
+        for (const row of (statHistory || [])) {
+            if (!statMap[row.stat_name]) statMap[row.stat_name] = [];
+            statMap[row.stat_name].push({ tick: row.tick, value: row.value });
+        }
+
+        const failingStats = [];
+        for (const [key, history] of Object.entries(statMap)) {
+            if (isExcludedStat(key)) continue;
+            const sorted = history.sort((a, b) => a.tick - b.tick);
+            const current = nation[key] ?? sorted[sorted.length - 1]?.value ?? 0;
+            const sixAgo = sorted[0]?.value ?? current;
+            const delta = current - sixAgo;
+            const failureScore = getStatFailureScore(current, sixAgo, key);
+            if (failureScore > 0) {
+                failingStats.push({
+                    key, current, sixTicksAgo: sixAgo, delta, failureScore,
+                    displayName: key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+                });
+            }
+        }
+        failingStats.sort((a, b) => b.failureScore - a.failureScore);
+
+        // Protest fatigue
+        const { data: recentProtests } = await _supabase
+            .from('protest_log')
+            .select('tick_called')
+            .eq('nation_id', nation.id)
+            .gte('tick_called', tick - 6);
+        const fatigueLevel = getProtestFatigueLevel(
+            (recentProtests || []).map(p => ({ tick: p.tick_called })),
+            tick
+        );
+
+        _protestCachedStats = { failingStats, _fatigueLevel: fatigueLevel };
+    }
+}
+
+// ── Protest Action Row (left panel) ──
+
+function renderProtestActionRow(act, isSel, ap, faction, tick) {
+    const state = _protestState;
+    const cost = act.ap;
+    const ok = ap >= cost;
+
+    // Resolving state
+    if (state === 'resolving') {
+        return `<div class="ca-item ca-item--protest ca-item--resolving" data-action-id="protest">
+            <div class="ca-item-head">
+                <div style="display:flex;align-items:center;gap:6px">
+                    <span class="ca-item-icon" style="color:#c8a64e">!</span>
+                    <span class="ca-item-name" style="color:#c8a64e">${escapeHtml(act.name)}</span>
+                </div>
+                <span class="ca-item-ap" style="color:#c8a64e">RESOLVING...</span>
+            </div>
+        </div>`;
+    }
+
+    // Result flash state (Tier 3, 4, or 5)
+    if (state === 'result' && _protestActiveData) {
+        const tier = _protestActiveData.tier;
+        if (tier >= 3 && tier <= 5) {
+            const tierLabel = getTierLabel(tier).toUpperCase();
+            const rb = _protestActiveData.roll_breakdown || {};
+            const endorseCount = rb.endorsements || 0;
+            const jointBonus = rb.joint_bonus || 0;
+            const endorseNote = endorseCount > 0 ? ` (+${endorseCount} endorse${endorseCount > 1 ? 's' : ''})` : '';
+            return `<div class="ca-item ca-item--protest ca-item--result-${tier}" data-action-id="protest">
+                <div class="ca-item-head">
+                    <div style="display:flex;align-items:center;gap:6px">
+                        <span class="ca-item-icon" style="color:#5cb85c">!</span>
+                        <span class="ca-item-name" style="color:#5cb85c">${escapeHtml(act.name)}</span>
+                    </div>
+                    <span class="ca-item-ap" style="color:#5cb85c">TIER ${tier} — ${tierLabel}</span>
+                </div>
+                ${endorseCount > 0 ? `<div style="font-family:var(--dfont-mono);font-size:9px;color:#a78bfa;margin-top:2px;padding:0 12px 4px">${endorseCount} party endorsement${endorseCount > 1 ? 's' : ''} (+${jointBonus} bonus)</div>` : ''}
+            </div>`;
+        }
+    }
+
+    // Active crisis state (calling party)
+    if (state === 'active' && _protestActiveData) {
+        const remaining = ((_protestActiveData.crisis_started_tick ?? tick) + (_protestActiveData.crisis_duration || 6)) - tick;
+        const canCallOff = _protestActiveData.tier === 6 && (faction.action_points || 0) >= PROTEST_CONFIG.CALL_OFF_AP;
+        const callOffDisabled = _protestActiveData.tier === 7;
+        return `<div class="ca-item ca-item--protest ca-item--active" data-action-id="protest">
+            <div class="ca-item-head">
+                <div style="display:flex;align-items:center;gap:6px">
+                    <span class="ca-item-icon" style="color:rgba(217,83,79,0.5)">!</span>
+                    <span class="ca-item-name" style="color:rgba(217,83,79,0.5)">${escapeHtml(act.name)}</span>
+                </div>
+                <span class="ca-item-ap" style="color:rgba(217,83,79,0.5)">ACTIVE — TIER ${_protestActiveData.tier}</span>
+            </div>
+            <div class="ca-item-desc" style="color:#4a4840">Your protest crisis is running. ${_protestActiveData.demand_label ? `Demand: ${escapeHtml(_protestActiveData.demand_label)}` : ''}</div>
+            <div class="protest-passive-status">Running — ${Math.max(0, remaining)} tick${remaining !== 1 ? 's' : ''} remaining.</div>
+            ${callOffDisabled
+                ? `<div class="protest-calloff-note">Tier 7 protests cannot be called off.</div>`
+                : `<div class="protest-calloff-btn${canCallOff ? '' : ' disabled'}" onclick="window._protestCallOff()">Call Off Protest — ${PROTEST_CONFIG.CALL_OFF_AP} AP</div>`
+            }
+        </div>`;
+    }
+
+    // Locked state (another party's crisis) — may have endorsement opportunity
+    if (state === 'locked') {
+        return `<div class="ca-item ca-item--protest ca-item--locked" data-action-id="protest">
+            <div class="ca-item-head">
+                <div style="display:flex;align-items:center;gap:6px">
+                    <span class="ca-item-icon" style="color:rgba(217,83,79,0.5)">!</span>
+                    <span class="ca-item-name" style="color:rgba(217,83,79,0.5)">${escapeHtml(act.name)}</span>
+                </div>
+                <span class="ca-item-ap" style="color:rgba(217,83,79,0.5)">LOCKED</span>
+            </div>
+            <div class="ca-item-desc" style="color:#4a4840">Historic or Nationwide Protests already underway, led by another party.</div>
+        </div>`;
+    }
+
+    // Cooldown state
+    if (state === 'cooldown') {
+        const remaining = (faction.protest_cooldown_until_tick || 0) - tick;
+        return `<div class="ca-item ca-item--protest ca-item--cooldown" data-action-id="protest">
+            <div class="ca-item-head">
+                <div style="display:flex;align-items:center;gap:6px">
+                    <span class="ca-item-icon" style="color:rgba(217,83,79,0.3)">!</span>
+                    <span class="ca-item-name" style="color:rgba(217,83,79,0.3)">${escapeHtml(act.name)}</span>
+                </div>
+                <span class="ca-item-ap" style="color:#4a4840">COOLDOWN ${Math.max(0, remaining)}</span>
+            </div>
+        </div>`;
+    }
+
+    // Endorsement opportunity (another party's protest is resolving)
+    if (_endorseableProtest && !state) {
+        const canEndorse = !_alreadyEndorsed && (faction.action_points || 0) >= 1;
+        const endorseLabel = _alreadyEndorsed ? 'ENDORSED' : 'ENDORSE — 1 AP';
+        return `<div class="ca-item ca-item--protest ca-item--endorse" data-action-id="protest">
+            <div class="ca-item-head">
+                <div style="display:flex;align-items:center;gap:6px">
+                    <span class="ca-item-icon" style="color:#a78bfa">!</span>
+                    <span class="ca-item-name" style="color:#a78bfa">${escapeHtml(act.name)}</span>
+                </div>
+                <span class="ca-item-ap" style="color:#a78bfa">ENDORSEMENT</span>
+            </div>
+            <div class="ca-item-desc" style="color:#4a4840">Another opposition party has called a protest. You can endorse it to boost turnout (+15 per endorsement).</div>
+            ${_endorseableProtest.demand_label ? `<div style="font-family:var(--dfont-mono);font-size:9px;color:#f97316;padding:0 12px 4px">Demand: ${escapeHtml(_endorseableProtest.demand_label)}</div>` : ''}
+            <div class="protest-endorse-btn${canEndorse ? '' : ' disabled'}" onclick="window._protestEndorse()">${endorseLabel}</div>
+        </div>`;
+    }
+
+    // Normal state
+    const borderColor = isSel ? '#d9534f' : ok ? 'rgba(217,83,79,0.55)' : 'var(--dtext-3)';
+    const bgStyle = isSel ? 'background:rgba(217,83,79,0.07);' : '';
+    const borderStyle = isSel ? 'border-color:rgba(217,83,79,0.2);' : '';
+    const nameColor = isSel ? '#e06460' : 'var(--dtext-0)';
+    return `<div class="ca-item ca-item--protest${isSel ? ' selected' : ''}${!ok ? ' disabled' : ''}" data-action-id="protest" style="border-left-color:${borderColor};${bgStyle}${borderStyle}${!ok ? 'opacity:0.35;' : ''}">
+        <div class="ca-item-head">
+            <div style="display:flex;align-items:center;gap:6px">
+                <span class="ca-item-icon" style="color:#d9534f">!</span>
+                <span class="ca-item-name" style="color:${nameColor}">${escapeHtml(act.name)}</span>
+            </div>
+            <span class="ca-item-ap" style="color:#d9534f">${cost} AP</span>
+        </div>
+        ${isSel ? `<div class="ca-item-desc">${escapeHtml(act.desc)}</div>` : ''}
+    </div>`;
+}
+
+// ── Protest Config Panel (right panel) ──
+
+function renderProtestConfig(nation, tick) {
+    let html = '';
+
+    // Warning bar
+    html += `<div class="protest-warning">Turnout is probabilistic — based on Civil Unrest, Happiness, Polarisation, and Political Violence. A fizzle hands the government a free headline. Choose your moment.</div>`;
+
+    // Live stat hint pills
+    const stats = [
+        { key: 'civil_unrest', label: 'CIVIL UNREST', value: nation.civil_unrest || 0 },
+        { key: 'happiness', label: 'HAPPINESS', value: nation.happiness || 50 },
+        { key: 'polarization', label: 'POLARISATION', value: nation.polarization || 0 },
+        { key: 'political_violence', label: 'POL VIOLENCE', value: nation.political_violence || 0 },
+    ];
+    html += `<div class="protest-stat-hints">`;
+    for (const s of stats) {
+        const color = getStatHintColor(s.key, s.value);
+        html += `<div class="protest-stat-pill">
+            <span class="protest-stat-pill__label">${s.label}</span>
+            <span class="protest-stat-pill__value" style="color:${color}">${Math.round(s.value)}</span>
+        </div>`;
+    }
+    // Protest fatigue pill (loaded async, placeholder)
+    const fatigueLevel = _protestCachedStats?._fatigueLevel || { label: '...', color: '#4a4840' };
+    html += `<div class="protest-stat-pill">
+        <span class="protest-stat-pill__label">PROTEST FATIGUE</span>
+        <span class="protest-stat-pill__value" style="color:${fatigueLevel.color}">${fatigueLevel.label}</span>
+    </div>`;
+    // Potential endorsers pill
+    const oppositionPartyCount = (_currentAllParties || []).filter(p => {
+        if (p.id === _currentFaction?.id) return false;
+        if (_caIsGoverning) return false;
+        return true; // other parties that could potentially endorse
+    }).length;
+    if (oppositionPartyCount > 0) {
+        const endorseColor = oppositionPartyCount >= 2 ? '#a78bfa' : '#4a4840';
+        html += `<div class="protest-stat-pill">
+            <span class="protest-stat-pill__label">ENDORSERS</span>
+            <span class="protest-stat-pill__value" style="color:${endorseColor}">${oppositionPartyCount}</span>
+        </div>`;
+    }
+    html += `</div>`;
+
+    // Grievance type tabs
+    const tabs = [
+        { id: 'minister', label: 'Minister' },
+        { id: 'activePolicy', label: 'Active Policy' },
+        { id: 'statFailure', label: 'Stat Failure' },
+    ];
+    html += `<div class="protest-tabs">`;
+    for (const tab of tabs) {
+        html += `<div class="protest-tab${_protestTab === tab.id ? ' active' : ''}" data-protest-tab="${tab.id}">${tab.label}</div>`;
+    }
+    html += `</div>`;
+
+    // Target list based on active tab
+    html += `<div class="protest-target-list" id="protest-target-list">`;
+    if (_protestTab === 'minister') {
+        html += renderProtestMinisterTargets();
+    } else if (_protestTab === 'activePolicy') {
+        html += renderProtestPolicyTargets();
+    } else if (_protestTab === 'statFailure') {
+        html += renderProtestStatTargets(nation, tick);
+    }
+    html += `</div>`;
+
+    // Confirm bar
+    const targetLabel = _protestTarget?.label || null;
+    html += `<div class="protest-confirm">`;
+    html += `<div class="protest-confirm__note">${targetLabel ? `Targeting: ${escapeHtml(targetLabel)}` : 'Select a target above'}</div>`;
+    // Button rendered by the parent renderCampaignUI confirm logic
+    html += `</div>`;
+
+    return html;
+}
+
+function renderProtestMinisterTargets() {
+    const ministers = _protestCachedMinisters;
+    if (!ministers) return `<div class="protest-empty">Loading ministers...</div>`;
+    if (ministers.length === 0) return `<div class="protest-empty">No government ministers found.</div>`;
+
+    let html = '';
+    for (const m of ministers) {
+        const approval = Math.round(m.minister_approval || 50);
+        const colorClass = approval > 50 ? 'high' : approval >= 35 ? 'mid' : 'low';
+        const isSel = _protestTarget?.id === m.ministry_key;
+        const targetData = JSON.stringify({
+            id: m.ministry_key,
+            type: 'minister',
+            label: `${m.minister_first_name || ''} ${m.minister_last_name || ''}`.trim() || m.ministry_key,
+            demandLabel: `${(m.minister_first_name || '') + ' ' + (m.minister_last_name || '')} must resign.`.trim(),
+            grievanceData: { ministryKey: m.ministry_key, approval, name: `${m.minister_first_name || ''} ${m.minister_last_name || ''}`.trim() },
+        }).replace(/"/g, '&quot;');
+
+        html += `<div class="protest-target${isSel ? ' selected' : ''}" data-protest-target="${targetData}">
+            <div>
+                <div class="protest-target__name">${escapeHtml(`${m.minister_first_name || ''} ${m.minister_last_name || ''}`.trim() || m.ministry_key)}</div>
+                <div class="protest-target__meta">${escapeHtml(m.ministry_key)}</div>
+            </div>
+            <span class="protest-target__value protest-target__value--${colorClass}">${approval}%</span>
+        </div>`;
+    }
+    return html;
+}
+
+function renderProtestPolicyTargets() {
+    const policies = _protestCachedPolicies;
+    if (!policies) return `<div class="protest-empty">Loading active policies...</div>`;
+    if (policies.length === 0) return `<div class="protest-empty">No active policies enacted by the current government.</div>`;
+
+    let html = '';
+    for (const p of policies) {
+        const isSel = _protestTarget?.id === p.id;
+        const isLever = p.bill_type === 'lever' || p.bill_type === 'normal';
+        const demandLabel = isLever
+            ? `The government must commit to not reactivating ${p.name} for 8 ticks.`
+            : `The government must repeal ${p.name}.`;
+        const targetData = JSON.stringify({
+            id: p.id,
+            type: 'activePolicy',
+            label: p.name,
+            demandLabel,
+            grievanceData: { billId: p.id, name: p.name, publicApproval: p.publicApproval || 50 },
+        }).replace(/"/g, '&quot;');
+
+        html += `<div class="protest-target${isSel ? ' selected' : ''}" data-protest-target="${targetData}">
+            <div>
+                <div class="protest-target__name">${escapeHtml(p.name)}</div>
+                <div class="protest-target__meta">${escapeHtml(p.ministry || '')} · tick ${p.enacted_tick || '?'}</div>
+            </div>
+        </div>`;
+    }
+    return html;
+}
+
+function renderProtestStatTargets(nation, tick) {
+    const stats = _protestCachedStats?.failingStats;
+    if (!stats) return `<div class="protest-empty">Loading stats...</div>`;
+    if (stats.length === 0) return `<div class="protest-empty">No stats are currently declining. The government appears to be performing.</div>`;
+
+    let html = '';
+    for (const s of stats) {
+        const isSel = _protestTarget?.id === s.key;
+        const arrow = isHigherIsBad(s.key) ? '&#9650;' : '&#9660;';
+        const targetData = JSON.stringify({
+            id: s.key,
+            type: 'statFailure',
+            label: s.displayName,
+            demandLabel: `The government must address ${s.displayName}.`,
+            grievanceData: { statKey: s.key, failureScore: s.failureScore, current: s.current },
+        }).replace(/"/g, '&quot;');
+
+        html += `<div class="protest-target${isSel ? ' selected' : ''}" data-protest-target="${targetData}">
+            <div>
+                <div class="protest-target__name">${escapeHtml(s.displayName)}</div>
+                <div class="protest-target__meta">${Math.round(s.current)} <span class="protest-target__delta" style="color:#d9534f">${arrow} ${Math.abs(s.delta).toFixed(1)}</span></div>
+            </div>
+            <span class="protest-target__value protest-target__value--low">${s.failureScore.toFixed(1)}</span>
+        </div>`;
+    }
+    return html;
+}
+
 function renderActionResult(result) {
     if (!result) return '';
     const isPositive = !result.error && result.success;
@@ -3435,6 +3992,114 @@ function renderActionResult(result) {
         </div>`;
     }
 
+    html += `</div></div>`;
+    return html;
+}
+
+function renderProtestResultPanel(protestData) {
+    const tier = protestData.tier || 0;
+    const tierLabel = getTierLabel(tier).toUpperCase();
+    const rb = protestData.roll_breakdown || {};
+    const score = protestData.condition_score ?? protestData.turnout_score ?? 0;
+    const endorseCount = rb.endorsements || 0;
+    const jointBonus = rb.joint_bonus || 0;
+    const effects = protestData.effects_applied || [];
+
+    let html = `<div class="ca-result-box" style="border-color:#5cb85c33">`;
+    html += `<div class="ca-result-header" style="background:#5cb85c08">
+        <span style="font-family:var(--dfont-ui);font-size:14px;font-weight:700;color:#5cb85c">Protest Result — Tier ${tier}</span>
+    </div>`;
+    html += `<div class="ca-result-body">`;
+
+    // Tier label
+    html += `<div class="ca-result-row">
+        <span class="ca-result-label">Outcome</span>
+        <span class="ca-result-val" style="color:#5cb85c">${tierLabel}</span>
+    </div>`;
+
+    // Condition score
+    html += `<div class="ca-result-row">
+        <span class="ca-result-label">Condition Score</span>
+        <span class="ca-result-val" style="color:var(--dtext-1)">${Math.round(score)}</span>
+    </div>`;
+
+    // Roll breakdown
+    if (Object.keys(rb).length > 0) {
+        html += `<div style="border-top:1px solid var(--dborder-1);margin-top:8px;padding-top:8px">
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-bottom:4px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">Score Breakdown</div>`;
+        const skipKeys = new Set(['endorsements', 'joint_bonus']);
+        for (const [key, val] of Object.entries(rb)) {
+            if (skipKeys.has(key)) continue;
+            const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const numVal = Number(val);
+            const vColor = numVal >= 0 ? '#4ade80' : '#ef4444';
+            html += `<div class="ca-result-row">
+                <span class="ca-result-label" style="font-size:10px">${escapeHtml(label)}</span>
+                <span class="ca-result-val" style="color:${vColor};font-size:10px">${numVal >= 0 ? '+' : ''}${numVal.toFixed(1)}</span>
+            </div>`;
+        }
+        html += `</div>`;
+    }
+
+    // Endorsements
+    if (endorseCount > 0) {
+        html += `<div class="protest-endorse-breakdown">
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#a78bfa;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:2px">Coalition Support</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-1)">${endorseCount} party endorsement${endorseCount > 1 ? 's' : ''} — +${jointBonus} bonus</div>
+        </div>`;
+    }
+
+    // Effects applied
+    const statEffects = effects.filter(e => e.stat && e.stat !== 'electoral_wound');
+    if (statEffects.length > 0) {
+        html += `<div style="border-top:1px solid var(--dborder-1);margin-top:8px;padding-top:8px">
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-bottom:4px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">Effects on Nation</div>`;
+        for (const e of statEffects) {
+            const label = (e.stat || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const delta = Number(e.delta || e.value || 0);
+            const vColor = delta >= 0 ? '#4ade80' : '#ef4444';
+            html += `<div class="ca-result-row">
+                <span class="ca-result-label" style="font-size:10px">${escapeHtml(label)}</span>
+                <span class="ca-result-val" style="color:${vColor};font-size:10px">${delta >= 0 ? '+' : ''}${delta}</span>
+            </div>`;
+        }
+        html += `</div>`;
+    }
+
+    html += `</div></div>`;
+    return html;
+}
+
+function renderProtestResolvingPanel() {
+    const data = _protestActiveData;
+    let html = `<div class="ca-result-box" style="border-color:rgba(217,83,79,0.3)">`;
+    html += `<div class="ca-result-header" style="background:rgba(217,83,79,0.06)">
+        <span style="font-family:var(--dfont-ui);font-size:14px;font-weight:700;color:#d9534f">Protest Resolving...</span>
+    </div>`;
+    html += `<div class="ca-result-body">`;
+    html += `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-2);line-height:1.8">
+        Your protest has been called and is gathering momentum. The turnout will be determined at the next tick based on national conditions.
+    </div>`;
+
+    if (data) {
+        if (data.grievance_type) {
+            const typeLabel = data.grievance_type === 'minister' ? 'Minister' : data.grievance_type === 'activePolicy' ? 'Active Policy' : 'Stat Failure';
+            html += `<div class="ca-result-row" style="margin-top:8px">
+                <span class="ca-result-label">Grievance</span>
+                <span class="ca-result-val" style="color:#f97316">${typeLabel}</span>
+            </div>`;
+        }
+        if (data.demand_label) {
+            html += `<div class="ca-result-row">
+                <span class="ca-result-label">Demand</span>
+                <span class="ca-result-val" style="color:#a78bfa">${escapeHtml(data.demand_label)}</span>
+            </div>`;
+        }
+    }
+
+    html += `<div style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3);margin-top:12px;font-style:italic">
+        Other opposition parties can endorse this protest during this tick to boost turnout (+15 per endorsement).
+    </div>`;
     html += `</div></div>`;
     return html;
 }
@@ -3548,6 +4213,34 @@ function wireCampaignConfig(container, f, n, ap, blocs, otherParties, factionIde
         });
     }
 
+    // Protest: load data when first visible
+    if (_caSelected === 'protest' && !_caResult) {
+        loadProtestData(n, f, tick).then(rerender);
+    }
+
+    // Protest tab selection
+    container.querySelectorAll('[data-protest-tab]').forEach(el => {
+        el.addEventListener('click', () => {
+            _protestTab = el.dataset.protestTab;
+            _protestTarget = null;
+            rerender();
+        });
+    });
+
+    // Protest target selection
+    container.querySelectorAll('[data-protest-target]').forEach(el => {
+        el.addEventListener('click', () => {
+            const targetData = el.dataset.protestTarget;
+            try {
+                const parsed = JSON.parse(targetData);
+                _protestTarget = _protestTarget?.id === parsed.id ? null : parsed;
+            } catch (e) {
+                _protestTarget = null;
+            }
+            rerender();
+        });
+    });
+
     // Confirm button
     const confirmBtn = container.querySelector('#ca-confirm-btn');
     if (confirmBtn) {
@@ -3558,6 +4251,58 @@ function wireCampaignConfig(container, f, n, ap, blocs, otherParties, factionIde
         });
     }
 }
+
+// ── Protest Endorse & Call-Off handlers ──
+
+let _protestEndorseLock = false;
+window._protestEndorse = async function() {
+    if (_protestEndorseLock) return;
+    if (!_endorseableProtest || _alreadyEndorsed) return;
+    if (!confirm('Endorse this protest? Costs 1 AP and boosts turnout (+15).')) return;
+    _protestEndorseLock = true;
+    try {
+        const result = await endorseProtest(_supabase, _currentFaction.id, _currentNation.id, _endorseableProtest.id, _currentShard.current_tick);
+        if (!result.success) {
+            alert(result.error || 'Endorsement failed.');
+            return;
+        }
+        _alreadyEndorsed = true;
+        _currentFaction.action_points = Math.max(0, (_currentFaction.action_points || 0) - 1);
+        const apEl = document.getElementById('topbar-ap');
+        if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + (_currentFaction.action_points ?? 0) + ' AP</span>';
+        await renderDemocracyActions(_currentNation, _currentFaction, _currentShard, _currentAllParties);
+    } catch (err) {
+        console.error('[Protest] Endorse failed:', err);
+        alert('Endorsement failed: ' + err.message);
+    } finally {
+        _protestEndorseLock = false;
+    }
+};
+
+let _protestCallOffLock = false;
+window._protestCallOff = async function() {
+    if (_protestCallOffLock) return;
+    if (!_protestActiveData) return;
+    if (_protestActiveData.tier === 7) { alert('Tier 7 protests cannot be called off.'); return; }
+    if (!confirm('Call off this protest? Costs ' + PROTEST_CONFIG.CALL_OFF_AP + ' AP. A small approval boost from moderate blocs will be applied.')) return;
+    _protestCallOffLock = true;
+    try {
+        const result = await callOffProtest(_supabase, _currentFaction.id, _protestActiveData.id, _currentShard.current_tick);
+        if (!result.success) {
+            alert(result.error || 'Call-off failed.');
+            return;
+        }
+        _currentFaction.action_points = Math.max(0, (_currentFaction.action_points || 0) - PROTEST_CONFIG.CALL_OFF_AP);
+        const apEl = document.getElementById('topbar-ap');
+        if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + (_currentFaction.action_points ?? 0) + ' AP</span>';
+        await renderDemocracyActions(_currentNation, _currentFaction, _currentShard, _currentAllParties);
+    } catch (err) {
+        console.error('[Protest] Call-off failed:', err);
+        alert('Call-off failed: ' + err.message);
+    } finally {
+        _protestCallOffLock = false;
+    }
+};
 
 // ── Confirm handler ──
 
@@ -3581,6 +4326,11 @@ async function handleCampaignConfirm(container, f, n, ap, blocs, otherParties, f
         } else if (sel.id === 'promise') {
             const params = _caPromiseType === 'stat' ? { statKey: _caStatKey } : { crisisId: _caCrisisId };
             result = await executeMakePromise(_supabase, f.id, n.id, tick, _caPromiseType, params);
+        } else if (sel.id === 'protest') {
+            if (!_protestTarget) return;
+            const grievanceData = _protestTarget.grievanceData || {};
+            const demandLabel = _protestTarget.demandLabel || '';
+            result = await executeProtest(_supabase, f.id, n.id, _protestTarget.type, grievanceData, demandLabel, tick);
         }
     } catch (err) {
         console.error('Campaign action error:', err);

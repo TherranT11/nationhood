@@ -428,3 +428,161 @@ function guessSeverity(effects) {
     if (totalDamage >= 2) return 'moderate';
     return 'minor';
 }
+
+// ════════════════════════════════════════════════════════════════
+// PROTEST EVENT BUILDERS
+// ════════════════════════════════════════════════════════════════
+
+const TIER_LABELS = {
+    1: 'Embarrassing Fizzle', 2: 'Modest Showing', 3: 'Respectable Turnout',
+    4: 'Strong Protest', 5: 'Mass Demonstration', 6: 'Historic Protest', 7: 'Nationwide Protest',
+};
+
+function protestEventType(tier) {
+    if (tier <= 2) return 'protest_fizzle';
+    if (tier === 3) return 'protest_respectable';
+    if (tier === 4) return 'protest_strong';
+    if (tier === 5) return 'protest_mass';
+    return 'protest_crisis_started';
+}
+
+/**
+ * Build a Valdorian event for a resolved protest (tiers 1-7).
+ */
+export function buildProtestResolvedEvent(opts) {
+    const { tier, turnoutScore, conditionScore, partyName, nationName,
+        grievanceLabel, demandLabel, endorsementCount, crisisCreated, currentTick } = opts;
+
+    const eventType = crisisCreated ? 'protest_crisis_started' : protestEventType(tier);
+    const tierNum = tier || 3;
+    const articleTier = tierNum >= 6 ? 1 : tierNum >= 4 ? 2 : 3;
+
+    return {
+        event_type: eventType,
+        section: 'politics',
+        tier: articleTier,
+        topic_tags: ['protest', tierNum >= 6 ? 'crisis' : 'opposition'],
+        nation_name: nationName,
+        party_name: partyName,
+        grievance_label: grievanceLabel || 'government policy',
+        demand_label: demandLabel || '',
+        demand_window: 6,
+        turnout_score: Math.round(turnoutScore || 0),
+        condition_score: Math.round(conditionScore || 0),
+        tier: articleTier,
+        protest_tier: tierNum,
+        tier_label: TIER_LABELS[tierNum] || 'Protest',
+        endorsement_count: endorsementCount || 0,
+        tick: currentTick,
+    };
+}
+
+/**
+ * Build event for an ongoing protest crisis tick.
+ */
+export function buildProtestCrisisTickEvent(opts) {
+    const { tier, ticksActive, partyName, nationName, currentTick } = opts;
+    return {
+        event_type: 'protest_crisis_tick',
+        section: 'politics',
+        tier: 2,
+        topic_tags: ['protest', 'crisis'],
+        nation_name: nationName,
+        party_name: partyName,
+        tier_label: TIER_LABELS[tier] || 'Protest Crisis',
+        ticks_active: ticksActive,
+        tick: currentTick,
+    };
+}
+
+/**
+ * Build event for when a protest crisis ends (natural expiry or demand met).
+ */
+export function buildProtestCrisisEndedEvent(opts) {
+    const { tier, ticksActive, partyName, nationName, demandMet, currentTick } = opts;
+    return {
+        event_type: 'protest_crisis_ended',
+        section: 'politics',
+        tier: 2,
+        topic_tags: ['protest', 'crisis'],
+        nation_name: nationName,
+        party_name: partyName,
+        tier_label: TIER_LABELS[tier] || 'Protest',
+        ticks_active: ticksActive,
+        demand_met: !!demandMet,
+        tick: currentTick,
+    };
+}
+
+/**
+ * Build event for EPO resolving a protest crisis.
+ */
+export function buildProtestEPOResolvedEvent(nationName, currentTick) {
+    return {
+        event_type: 'protest_epo_resolved',
+        section: 'politics',
+        tier: 1,
+        topic_tags: ['protest', 'crisis', 'crackdown'],
+        nation_name: nationName,
+        tick: currentTick,
+    };
+}
+
+/**
+ * Build event for EPO escalating a protest to Tier 7.
+ */
+export function buildProtestEPOEscalatedEvent(nationName, demandLabel, currentTick) {
+    return {
+        event_type: 'protest_epo_escalated',
+        section: 'politics',
+        tier: 1,
+        topic_tags: ['protest', 'crisis', 'crackdown', 'escalation'],
+        nation_name: nationName,
+        demand_label: demandLabel || '',
+        tick: currentTick,
+    };
+}
+
+/**
+ * Build event for National Emergency ending a protest.
+ */
+export function buildProtestEmergencyEvent(nationName, currentTick) {
+    return {
+        event_type: 'protest_emergency',
+        section: 'politics',
+        tier: 1,
+        topic_tags: ['protest', 'crisis', 'emergency'],
+        nation_name: nationName,
+        tick: currentTick,
+    };
+}
+
+/**
+ * Build event for calling off a protest.
+ */
+export function buildProtestCalledOffEvent(partyName, nationName, currentTick) {
+    return {
+        event_type: 'protest_called_off',
+        section: 'politics',
+        tier: 2,
+        topic_tags: ['protest'],
+        nation_name: nationName,
+        party_name: partyName,
+        tick: currentTick,
+    };
+}
+
+/**
+ * Build event for a Public Address during a crisis.
+ */
+export function buildProtestPublicAddressEvent(nationName, ticksActive, currentTick) {
+    return {
+        event_type: 'protest_public_address',
+        section: 'politics',
+        tier: 3,
+        topic_tags: ['protest', 'crisis'],
+        nation_name: nationName,
+        ticks_active: ticksActive,
+        tick: currentTick,
+    };
+}

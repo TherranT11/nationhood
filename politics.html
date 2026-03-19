@@ -3033,6 +3033,514 @@ body.light-mode .pol-blocs-box {
         font-size: 10px;
     }
 }
+
+/* ════════════════════════ PROTEST ACTION SYSTEM ════════════════════════ */
+
+/* ── Action Row States ── */
+.ca-item--protest {
+    border-left: 3px solid #d9534f;
+    background: rgba(217,83,79,0.07);
+}
+.ca-item--protest .ca-item-name { color: #e06460; }
+.ca-item--protest .ca-item-ap { color: #d9534f; }
+
+.ca-item--protest.ca-item--resolving {
+    border-left-color: #c8a64e;
+    background: rgba(200,166,78,0.06);
+}
+.ca-item--protest.ca-item--resolving .ca-item-ap { color: #c8a64e; }
+
+.ca-item--protest.ca-item--result-3,
+.ca-item--protest.ca-item--result-4,
+.ca-item--protest.ca-item--result-5 {
+    border-left-color: #5cb85c;
+}
+.ca-item--protest.ca-item--result-3 .ca-item-ap,
+.ca-item--protest.ca-item--result-4 .ca-item-ap,
+.ca-item--protest.ca-item--result-5 .ca-item-ap { color: #5cb85c; }
+
+.ca-item--protest.ca-item--active {
+    border-left-color: rgba(217,83,79,0.2);
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.ca-item--protest.ca-item--active .ca-item-ap { color: rgba(217,83,79,0.5); }
+
+.ca-item--protest.ca-item--locked {
+    border-left-color: rgba(217,83,79,0.2);
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.ca-item--protest.ca-item--locked .ca-item-ap { color: rgba(217,83,79,0.5); }
+
+.ca-item--protest.ca-item--cooldown {
+    border-left-color: rgba(217,83,79,0.2);
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+.ca-item--protest.ca-item--cooldown .ca-item-ap { color: #4a4840; }
+
+/* ── Warning Bar ── */
+.protest-warning {
+    background: rgba(217,83,79,0.07);
+    border: 1px solid rgba(217,83,79,0.15);
+    border-radius: 4px;
+    padding: 5px 10px;
+    margin-bottom: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: #8a3a38;
+    line-height: 1.5;
+}
+
+/* ── Live Stat Hint Pills ── */
+.protest-stat-hints {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+.protest-stat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 3px;
+    padding: 3px 7px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.protest-stat-pill__label { color: #4a4840; }
+.protest-stat-pill__value { font-weight: 700; }
+
+/* ── Grievance Tabs ── */
+.protest-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--dborder-1);
+}
+.protest-tab {
+    padding: 6px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #4a4840;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.12s;
+    background: transparent;
+}
+.protest-tab:hover { color: #d9534f; }
+.protest-tab.active {
+    color: #d9534f;
+    background: rgba(217,83,79,0.1);
+    border-bottom-color: #d9534f;
+}
+
+/* ── Target List ── */
+.protest-target-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 240px;
+    overflow-y: auto;
+}
+.protest-target-list::-webkit-scrollbar { width: 4px; }
+.protest-target-list::-webkit-scrollbar-thumb { background: var(--dborder-2); border-radius: 2px; }
+
+.protest-target {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border: 1px solid var(--dborder-1);
+    border-left: 3px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.1s;
+}
+.protest-target:hover { border-color: rgba(217,83,79,0.3); }
+.protest-target.selected {
+    border-left-color: #d9534f;
+    background: rgba(217,83,79,0.06);
+}
+.protest-target__name {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    color: #c8c0a0;
+}
+.protest-target__meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: #4a4840;
+    margin-top: 2px;
+}
+.protest-target__value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+}
+.protest-target__delta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    margin-left: 4px;
+}
+
+/* Approval thresholds */
+.protest-target__value--high { color: #5cb85c; }
+.protest-target__value--mid { color: #c8a64e; }
+.protest-target__value--low { color: #d9534f; }
+
+/* ── Empty State ── */
+.protest-empty {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 11px;
+    font-style: italic;
+    color: var(--dtext-3);
+    padding: 16px 0;
+    text-align: center;
+}
+
+/* ── Confirm Bar ── */
+.protest-confirm {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid var(--dborder-1);
+}
+.protest-confirm__note {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #4a4840;
+}
+.protest-confirm__btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 8px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.12s;
+    border: 1px solid transparent;
+}
+.protest-confirm__btn--locked {
+    background: #1e1e1a;
+    border-color: rgba(255,255,255,0.1);
+    color: #3a3a2e;
+    cursor: default;
+}
+.protest-confirm__btn--ready {
+    background: #d9534f;
+    border-color: #e06460;
+    color: #1a0808;
+}
+.protest-confirm__btn--ready:hover {
+    background: #e06460;
+}
+
+/* ── Endorsement Panel ── */
+.protest-endorse-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    margin-top: 10px;
+    background: rgba(217,83,79,0.05);
+    border: 1px solid rgba(217,83,79,0.12);
+    border-radius: 4px;
+}
+.protest-endorse-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.protest-endorse-info__label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    text-transform: uppercase;
+    color: #4a4840;
+}
+.protest-endorse-info__value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+}
+.protest-endorse-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 3px;
+    background: rgba(217,83,79,0.15);
+    border: 1px solid rgba(217,83,79,0.25);
+    color: #d9534f;
+    cursor: pointer;
+    transition: all 0.1s;
+}
+.protest-endorse-btn:hover {
+    background: rgba(217,83,79,0.25);
+}
+.protest-endorse-btn.disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+/* ── Crisis Card (government page) ── */
+.protest-crisis-card {
+    border: 1px solid rgba(217,83,79,0.25);
+    border-left: 4px solid #d9534f;
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 12px;
+    background: rgba(217,83,79,0.04);
+}
+.protest-crisis-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.protest-crisis-card__title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #d9534f;
+}
+.protest-crisis-card__tick {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #4a4840;
+}
+.protest-crisis-card__demand {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px;
+    font-style: italic;
+    color: #c8c0a0;
+    margin-bottom: 10px;
+    padding: 6px 0;
+}
+.protest-crisis-card__effects {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: #4a4840;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 12px;
+}
+.protest-crisis-card__effects span { margin-right: 12px; }
+.protest-crisis-card__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.protest-crisis-btn {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px;
+    border: 1px solid var(--dborder-1);
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.1s;
+    background: rgba(255,255,255,0.02);
+    color: #c8c0a0;
+}
+.protest-crisis-btn:hover { background: rgba(255,255,255,0.04); }
+.protest-crisis-btn.disabled { opacity: 0.35; cursor: default; }
+.protest-crisis-btn__note {
+    font-size: 8px;
+    font-weight: 400;
+    color: #4a4840;
+}
+.protest-crisis-btn--danger {
+    border-color: rgba(217,83,79,0.3);
+    color: #d9534f;
+}
+.protest-crisis-btn--danger:hover { background: rgba(217,83,79,0.08); }
+
+/* ── Separator ── */
+.protest-crisis-card__sep {
+    border: 0;
+    border-top: 1px solid var(--dborder-1);
+    margin: 8px 0;
+}
+
+/* ── Public Address Row (pinned in Actions panel) ── */
+.ca-item--public-address {
+    border-left: 3px solid #5b9bd5;
+    background: rgba(91,155,213,0.06);
+}
+.ca-item--public-address .ca-item-name { color: #5b9bd5; }
+.ca-item--public-address .ca-item-ap { color: #5b9bd5; }
+.ca-item--public-address.ca-item--cooldown {
+    border-left-color: rgba(91,155,213,0.2);
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+.ca-item--public-address.ca-item--cooldown .ca-item-ap { color: #4a4840; }
+
+/* ── Result Breakdown ── */
+.protest-result {
+    padding: 12px;
+    border: 1px solid var(--dborder-1);
+    border-radius: 4px;
+    margin-bottom: 12px;
+}
+.protest-result__tier {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+.protest-result__score {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #4a4840;
+    margin-bottom: 8px;
+}
+.protest-result__effects {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.protest-result__effect {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    display: flex;
+    justify-content: space-between;
+}
+.protest-result__effect-stat { color: #4a4840; text-transform: uppercase; }
+.protest-result__effect-delta--pos { color: #5cb85c; }
+.protest-result__effect-delta--neg { color: #d9534f; }
+
+/* ── Endorsement Breakdown (post-resolution) ── */
+.protest-endorse-breakdown {
+    padding: 8px 12px;
+    margin-top: 8px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--dborder-1);
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: #4a4840;
+    line-height: 1.8;
+}
+
+/* ── Call-off passive status ── */
+.protest-passive-status {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: #4a4840;
+    font-style: italic;
+    margin-top: 4px;
+}
+
+/* ── Endorse Protest Button ── */
+.protest-endorse-btn {
+    display: inline-block;
+    margin: 6px 12px 4px;
+    padding: 5px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #a78bfa;
+    background: rgba(167,139,250,0.08);
+    border: 1px solid rgba(167,139,250,0.25);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.protest-endorse-btn:hover:not(.disabled) {
+    background: rgba(167,139,250,0.15);
+    border-color: rgba(167,139,250,0.4);
+}
+.protest-endorse-btn.disabled {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
+}
+
+/* ── Call Off Protest Button ── */
+.protest-calloff-btn {
+    display: inline-block;
+    margin: 6px 12px 4px;
+    padding: 5px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #f97316;
+    background: rgba(249,115,22,0.08);
+    border: 1px solid rgba(249,115,22,0.25);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.protest-calloff-btn:hover:not(.disabled) {
+    background: rgba(249,115,22,0.15);
+    border-color: rgba(249,115,22,0.4);
+}
+.protest-calloff-btn.disabled {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
+}
+.protest-calloff-note {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: #4a4840;
+    font-style: italic;
+    margin: 4px 12px;
+}
+
+/* ── Endorse state accent ── */
+.ca-item--endorse {
+    border-left-color: rgba(167,139,250,0.55) !important;
+}
+
+/* ── Pyrrhic Victory Banner ── */
+.protest-pyrrhic-banner {
+    padding: 6px 12px;
+    margin-bottom: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #f97316;
+    background: rgba(249,115,22,0.06);
+    border: 1px solid rgba(249,115,22,0.2);
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+}
+
+/* ── Responsive ── */
+@media (max-width: 860px) {
+    .protest-stat-hints { gap: 4px; }
+    .protest-stat-pill { font-size: 7px; padding: 2px 5px; }
+    .protest-tabs { overflow-x: auto; }
+    .protest-tab { font-size: 8px; padding: 5px 8px; white-space: nowrap; }
+    .protest-crisis-card { padding: 12px; }
+    .protest-crisis-card__actions { gap: 4px; }
+}
 </style>
 </head>
 <body>
