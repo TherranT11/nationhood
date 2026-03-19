@@ -489,12 +489,15 @@ async function updateDiplomacyAwaitingBadge(faction, nation) {
 
         let count = 0;
         for (const p of (proposals || [])) {
-            const isIncoming = p.target_nation_id === nation.id;
-            const isRevised = p.status === 'revised';
-            const pd = p.proposal_data || {};
-            const revisedByUs = isRevised && (pd.revised_by_nation_id ? pd.revised_by_nation_id === nation.id : !isIncoming);
-            // Incoming = they proposed to us, or they revised and it's now our turn
-            if ((p.status === 'proposed' && isIncoming) || (isRevised && !revisedByUs)) count++;
+            // All rows are incoming (query filtered to target_nation_id = us)
+            if (p.status === 'proposed') {
+                count++;
+            } else if (p.status === 'revised') {
+                const pd = p.proposal_data || {};
+                // Only count if the OTHER side revised (now it's our turn)
+                const revisedByUs = pd.revised_by_nation_id === nation.id;
+                if (!revisedByUs) count++;
+            }
         }
 
         // Also count trade negotiations targeting us that are still open
