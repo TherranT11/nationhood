@@ -8065,7 +8065,7 @@ async function resolveStuckFloorBills(supabase, nationId) {
     // Simple query — no joins that can break
     const { data: stuckBills, error: stuckErr } = await supabase
         .from('bills')
-        .select('id, bill_name, bill_type, nation_id, voting_ends_tick, quorum_failures, proposed_by_faction, diplomatic_proposal_id, impeachment_id, early_resolution_status')
+        .select('id, bill_name, bill_type, nation_id, voting_ends_tick, quorum_failures')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .lte('voting_ends_tick', currentTick);
@@ -8093,7 +8093,23 @@ async function resolveStuckFloorBills(supabase, nationId) {
 
     for (const bill of stuckBills) {
       try {
-        // Load support data individually — if this bill has broken FKs only it is affected
+        // Skip special bill types that need specialized resolution logic
+        // (no_confidence, foundational, default_resolution, veto_override,
+        //  impeachment_motion, impeachment_conviction, ratification).
+        // For these, failing is safer than applying wrong resolution.
+        const specialTypes = ['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'ambassador_confirmation'];
+        if (specialTypes.includes(bill.bill_type)) {
+            console.warn(`[resolveStuckFloorBills] Skipping special bill type "${bill.bill_type}" for bill ${bill.id} "${bill.bill_name}" — needs resolveExpiredVotes`);
+            await failBill(supabase, bill);
+            await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor: 0, votesAgainst: 0, extra: { reason: `safety net: special type ${bill.bill_type} could not be resolved normally` } });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_safety_net', billType: bill.bill_type });
+            continue;
+        }
+
+        // Load support data individually — if this bill has broken FKs only it is affected.
+        // NOTE: This simplified path does not apply emergency minority government penalty
+        // (-20% effective YES) or caucus withheld votes.  For stuck bills this is an
+        // acceptable tradeoff — getting them resolved is better than leaving them stuck.
         const { data: supportRows } = await supabase
             .from('bill_support')
             .select('faction_id, stance, seat_count')
