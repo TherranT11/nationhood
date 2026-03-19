@@ -1129,6 +1129,72 @@
     opacity: 1;
 }
 
+/* Edit button — mirrors delete button placement, offset to the left */
+.nws-edit-btn {
+    position: absolute;
+    top: 4px;
+    right: 30px;
+    background: var(--nws-paper-2);
+    border: 1px solid var(--nws-rule);
+    color: var(--nws-ink-4);
+    font-size: 14px;
+    line-height: 1;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+    z-index: 2;
+}
+
+.nws-lead-main:hover .nws-edit-btn,
+.nws-sidebar-story:hover .nws-edit-btn,
+.nws-sec-story:hover .nws-edit-btn,
+.nws-brief-row:hover .nws-edit-btn,
+.nws-op-card:hover .nws-edit-btn {
+    opacity: 1;
+}
+
+.nws-edit-btn:hover {
+    color: var(--nws-ink);
+    border-color: var(--nws-ink);
+}
+
+/* Brief row edit button sits inline */
+.nws-brief-text .nws-edit-btn {
+    position: static;
+    display: inline-flex;
+    opacity: 0;
+    vertical-align: middle;
+    margin-left: 4px;
+    width: 18px;
+    height: 18px;
+    font-size: 12px;
+}
+
+.nws-brief-row:hover .nws-brief-text .nws-edit-btn {
+    opacity: 1;
+}
+
+/* Remove image button in edit modal */
+.nws-remove-image-btn {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    color: var(--nws-red);
+    background: none;
+    border: none;
+    cursor: pointer;
+    margin-top: 4px;
+    padding: 0;
+}
+
+.nws-remove-image-btn:hover {
+    text-decoration: underline;
+}
+
 /* AP qualified counter */
 .nws-char-count.nws-ap-qualified {
     color: #2a6a2a;
