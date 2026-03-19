@@ -3684,7 +3684,7 @@ function renderProtestActionRow(act, isSel, ap, faction, tick) {
 
     // Active crisis state (calling party)
     if (state === 'active' && _protestActiveData) {
-        const remaining = (_protestActiveData.crisis_started_tick + (_protestActiveData.crisis_duration || 6)) - tick;
+        const remaining = ((_protestActiveData.crisis_started_tick ?? tick) + (_protestActiveData.crisis_duration || 6)) - tick;
         const canCallOff = _protestActiveData.tier === 6 && (faction.action_points || 0) >= PROTEST_CONFIG.CALL_OFF_AP;
         const callOffDisabled = _protestActiveData.tier === 7;
         return `<div class="ca-item ca-item--protest ca-item--active" data-action-id="protest">
