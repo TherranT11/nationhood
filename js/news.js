@@ -808,8 +808,15 @@ async function loadAndDisplayArticles() {
             : activeArticles;
 
         if (filtered.length === 0 && _categoryFilter !== 'all') {
+            const emptyMsg = `<p class="nws-placeholder" style="text-align:center;padding:40px;grid-column:1/-1;">No ${categoryLabel(_categoryFilter)} articles in this edition.</p>`;
             const section = document.getElementById('nws-lead-section');
-            if (section) section.innerHTML = `<p class="nws-placeholder" style="text-align:center;padding:40px;grid-column:1/-1;">No ${categoryLabel(_categoryFilter)} articles in this edition.</p>`;
+            if (section) section.innerHTML = emptyMsg;
+            const grid = document.getElementById('nws-secondary-grid');
+            if (grid) grid.innerHTML = '';
+            const opinionGrid = document.querySelector('.nws-opinion-grid');
+            if (opinionGrid) opinionGrid.innerHTML = '';
+            const briefsContainer = document.querySelector('.nws-bottom-left');
+            if (briefsContainer) briefsContainer.innerHTML = '';
             return;
         }
 
