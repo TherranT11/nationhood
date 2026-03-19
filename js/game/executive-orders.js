@@ -18,6 +18,7 @@ import { isGovernmentPresidential } from './government-types.js';
 import { adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
 import { getNationNames } from './political-actions.js';
 import { getTraitAPModifier } from './party-leadership.js';
+import { calculateCaucusDispositions, calculateCaucusVoteAdjustment } from './caucus.js';
 
 // ─── Executive Order Config Constants ───
 
@@ -609,6 +610,17 @@ export async function advanceBillEmergency(supabase, nationId, factionId, billId
 
     const { error: billErr } = await supabase.from('bills').update(updateFields).eq('id', billId);
     if (billErr) return { success: false, error: billErr.message };
+
+    // Calculate caucus dispositions when bill enters floor so players can see/whip during voting
+    if (advancedTo === 'floor') {
+        try {
+            const { data: arts } = await supabase.from('bill_articles').select('*, policies(*)').eq('bill_id', billId);
+            await calculateCaucusDispositions(supabase, billId, nationId, arts || []);
+            await calculateCaucusVoteAdjustment(supabase, billId);
+        } catch (caucusErr) {
+            console.warn(`[EmergencyAdvance] Caucus disposition calc failed for ${billId} (non-fatal):`, caucusErr);
+        }
+    }
 
     // Update emergency payload
     const newPayload = {

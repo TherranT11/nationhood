@@ -1180,6 +1180,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     if (cb.impeachment_id) {
                         await supabase.from('impeachment_proceedings').update({ phase: 'motion_floor' }).eq('id', cb.impeachment_id);
                     }
+                    // Calculate caucus dispositions at floor entry so players can see/whip during voting
+                    try {
+                        const { data: arts } = await supabase.from('bill_articles').select('*, policies(*)').eq('bill_id', cb.id);
+                        await calculateCaucusDispositions(supabase, cb.id, nation.id, arts || []);
+                        await calculateCaucusVoteAdjustment(supabase, cb.id);
+                    } catch (caucusErr) {
+                        console.warn(`[Impeachment] Caucus disposition calc failed for ${cb.id} (non-fatal):`, caucusErr);
+                    }
                     console.log(`[Impeachment] Motion ${cb.id} auto-transitioned from committee to floor`);
                 }
 

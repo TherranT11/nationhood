@@ -209,7 +209,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination, advanceBillEmergency, EO_CONFIG, executeWhipCaucus } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination, advanceBillEmergency, EO_CONFIG, executeWhipCaucus, calculateCaucusDispositions, calculateCaucusVoteAdjustment } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 /** Scale a policy cost by its scaling stat (e.g., population). */
 function scalePolicyCost(baseCost, scalingStat, nation) {
@@ -2095,6 +2095,14 @@ async function enactDecree() {
             }
         }
 
+        // Calculate caucus dispositions now so players can see them while voting
+        try {
+            await calculateCaucusDispositions(_supabase, billId, currentNation.id, currentBill.bill_articles || []);
+            await calculateCaucusVoteAdjustment(_supabase, billId);
+        } catch (caucusErr) {
+            console.warn('[enactDecree] Caucus disposition calc failed (non-fatal):', caucusErr);
+        }
+
         alert('⚡ Decree sent to the floor!');
         window.location.reload();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
@@ -2142,6 +2150,14 @@ async function sendToFloor() {
                 await adjustMomentumAll(_supabase, currentNation.id, currentBill.proposed_by, dynamicPenalty, 'legislation:floor');
                 penaltyMsg = `\n\n⚠ Ideology penalty: ${dynamicPenalty.toFixed(1)} momentum (bill conflicts with your values)`;
             }
+        }
+
+        // Calculate caucus dispositions now so players can see them (and whip) while voting
+        try {
+            await calculateCaucusDispositions(_supabase, billId, currentNation.id, currentBill.bill_articles || []);
+            await calculateCaucusVoteAdjustment(_supabase, billId);
+        } catch (caucusErr) {
+            console.warn('[sendToFloor] Caucus disposition calc failed (non-fatal):', caucusErr);
         }
 
         alert('Bill sent to the floor!' + penaltyMsg);

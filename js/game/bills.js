@@ -1136,9 +1136,19 @@ export async function resolveExpiredVotes(supabase, nationId) {
             console.log(`[MinorityPenalty] ${bill.bill_name}: votesFor ${votesFor} → ${effectiveVotesFor} (emergency minority -20%)`);
         }
 
-        // Caucus system: calculate dispositions and subtract withheld votes
+        // Caucus system: read existing dispositions (created when bill entered floor)
+        // and recalculate vote adjustment to account for any whipping during voting window.
+        // Fallback: if no dispositions exist yet (legacy bills), calculate them now.
         try {
-            await calculateCaucusDispositions(supabase, bill.id, bill.nation_id, bill.bill_articles || []);
+            const { data: existingDisp } = await supabase
+                .from('caucus_dispositions')
+                .select('id')
+                .eq('bill_id', bill.id)
+                .limit(1);
+            if (!existingDisp || existingDisp.length === 0) {
+                // Legacy fallback: dispositions weren't created at floor entry
+                await calculateCaucusDispositions(supabase, bill.id, bill.nation_id, bill.bill_articles || []);
+            }
             const caucusAdj = await calculateCaucusVoteAdjustment(supabase, bill.id);
             if (caucusAdj.withheld > 0) {
                 effectiveVotesFor = Math.max(0, effectiveVotesFor - caucusAdj.withheld);
