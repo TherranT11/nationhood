@@ -2095,6 +2095,12 @@ async function enactDecree() {
             }
         }
 
+        // Calculate caucus dispositions via server-side RPC (RLS blocks client writes)
+        try {
+            const { error: caucusErr } = await _supabase.rpc('calculate_caucus_dispositions', { p_bill_id: billId });
+            if (caucusErr) console.warn('[enactDecree] Caucus RPC error (non-fatal):', caucusErr.message);
+        } catch (e) { /* non-fatal */ }
+
         alert('⚡ Decree sent to the floor!');
         window.location.reload();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
@@ -2143,6 +2149,12 @@ async function sendToFloor() {
                 penaltyMsg = `\n\n⚠ Ideology penalty: ${dynamicPenalty.toFixed(1)} momentum (bill conflicts with your values)`;
             }
         }
+
+        // Calculate caucus dispositions via server-side RPC (RLS blocks client writes)
+        try {
+            const { error: caucusErr } = await _supabase.rpc('calculate_caucus_dispositions', { p_bill_id: billId });
+            if (caucusErr) console.warn('[sendToFloor] Caucus RPC error (non-fatal):', caucusErr.message);
+        } catch (e) { /* non-fatal */ }
 
         alert('Bill sent to the floor!' + penaltyMsg);
         window.location.reload();

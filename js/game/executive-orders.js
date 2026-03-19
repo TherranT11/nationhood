@@ -610,6 +610,14 @@ export async function advanceBillEmergency(supabase, nationId, factionId, billId
     const { error: billErr } = await supabase.from('bills').update(updateFields).eq('id', billId);
     if (billErr) return { success: false, error: billErr.message };
 
+    // Calculate caucus dispositions via server-side RPC (this runs client-side, RLS blocks direct writes)
+    if (advancedTo === 'floor') {
+        try {
+            const { error: caucusErr } = await supabase.rpc('calculate_caucus_dispositions', { p_bill_id: billId });
+            if (caucusErr) console.warn(`[EmergencyAdvance] Caucus RPC error for ${billId} (non-fatal):`, caucusErr.message);
+        } catch (e) { /* non-fatal */ }
+    }
+
     // Update emergency payload
     const newPayload = {
         ...emergency.payload,
