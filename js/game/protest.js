@@ -10,6 +10,24 @@ import { fetchActiveCoalition } from './government-structure.js';
 import { adjustMomentum, adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
 import { computeIdeologyAlignment, loadFactionIdeology } from './ideology.js';
 
+// ==================== PROTEST LOG UPDATE RPC ====================
+// All protest_log writes from client code must go through this RPC
+// because protest_log RLS only allows service_role writes.
+
+async function protestUpdate(supabase, protestId, updates, clearLockouts = false, cooldownFactionId = null, cooldownUntil = null) {
+    const { error } = await supabase.rpc('protest_update', {
+        p_protest_id: protestId,
+        p_updates: updates,
+        p_clear_lockouts: clearLockouts,
+        p_cooldown_faction_id: cooldownFactionId,
+        p_cooldown_until: cooldownUntil,
+    });
+    if (error) {
+        console.error('[Protest] protest_update RPC failed:', error.message);
+        throw new Error(error.message);
+    }
+}
+
 // ==================== CONSTANTS ====================
 
 export const PROTEST_CONFIG = {
@@ -856,7 +874,7 @@ export async function endorseProtest(supabase, factionId, nationId, protestId, c
 
     return {
         success: true,
-        endorsementBonus: calculateJointProtestBonus(count || 1),
+        endorsementBonus: calculateJointProtestBonus(count ?? 0),
     };
 }
 
@@ -911,10 +929,10 @@ export async function callOffProtest(supabase, factionId, protestId, currentTick
 
     // ── 4. Set crisis to wind down — tick processor will end it after 2 ticks ──
     const windDownEndTick = currentTick + PROTEST_CONFIG.CALL_OFF_WIND_DOWN_TICKS;
-    await supabase.from('protest_log').update({
+    await protestUpdate(supabase, protestId, {
         crisis_ended_tick: windDownEndTick,
         status: 'called_off',
-    }).eq('id', protestId);
+    });
 
     // ── 5. Small approval boost from moderate blocs ──
     const nationId = protest.nation_id;
@@ -926,7 +944,11 @@ export async function callOffProtest(supabase, factionId, protestId, currentTick
         .or('bloc_name.ilike.%centrist%,bloc_name.ilike.%moderate%,bloc_name.ilike.%business%');
 
     for (const bloc of (moderateBlocs || [])) {
-        await adjustMomentum(supabase, nationId, factionId, bloc.id, 1, 'protest:called_off');
+        try {
+            await adjustMomentum(supabase, nationId, factionId, bloc.id, 1, 'protest:called_off');
+        } catch (momErr) {
+            console.error('[Protest] Momentum adjust failed for bloc', bloc.id, momErr.message);
+        }
     }
 
     console.log(`[Protest] Faction ${factionId} called off protest ${protestId}, wind-down until tick ${windDownEndTick}`);
@@ -1069,9 +1091,9 @@ export async function executePublicAddress(supabase, factionId, nationId, protes
     if (newAp < 0) return { success: false, error: 'Insufficient AP.' };
 
     // ── 6. Mark Public Address on the protest log ──
-    await supabase.from('protest_log').update({
+    await protestUpdate(supabase, protestId, {
         public_address_last_tick: currentTick,
-    }).eq('id', protestId);
+    });
 
     console.log(`[Protest] Public Address issued by faction ${factionId} on protest ${protestId} at tick ${currentTick}`);
 
@@ -1150,30 +1172,20 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
     const success = roll < PROTEST_CONFIG.TIER6_ENFORCE_SUCCESS_CHANCE;
 
     if (success) {
-        // Crisis ends immediately
-        await supabase.from('protest_log').update({
+        // Crisis ends immediately — single RPC handles protest_log + lockouts + cooldown
+        await protestUpdate(supabase, protestId, {
             status: 'resolved',
             tick_resolved: currentTick,
             effects_applied: [
                 ...(protest.effects_applied || []),
                 { stat: 'epo_resolved', tick: currentTick },
             ],
-        }).eq('id', protestId);
+        }, true, protest.faction_id, currentTick + PROTEST_CONFIG.CALLING_PARTY_COOLDOWN);
 
-        // Remove active crisis
+        // Remove active crisis (no RLS on active_crises)
         await supabase.from('active_crises').delete()
             .eq('nation_id', nationId)
             .eq('crisis_id', PROTEST_CONFIG.TIER6_CRISIS_ID);
-
-        // Clear lockouts
-        await supabase.from('factions')
-            .update({ protest_locked_by: null })
-            .eq('protest_locked_by', protestId);
-
-        // Set cooldowns
-        await supabase.from('factions').update({
-            protest_cooldown_until_tick: currentTick + PROTEST_CONFIG.CALLING_PARTY_COOLDOWN,
-        }).eq('id', protest.faction_id);
 
         console.log(`[Protest] EPO SUCCESS — Tier 6 crisis ${protestId} resolved by force`);
         const resolvedHeadline = pickHeadline('protest_epo_resolved');
@@ -1232,7 +1244,7 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
         const demand = generateTier7Demand(statSnapshots, ministerList);
 
         // Update protest to T7
-        await supabase.from('protest_log').update({
+        await protestUpdate(supabase, protestId, {
             tier: 7,
             crisis_started_tick: currentTick,
             crisis_duration: PROTEST_CONFIG.TIER7_DURATION,
@@ -1241,7 +1253,7 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
                 ...(protest.effects_applied || []),
                 { stat: 'epo_escalated', tick: currentTick },
             ],
-        }).eq('id', protestId);
+        });
 
         console.log(`[Protest] EPO FAILED — Tier 6 escalated to Tier 7 for protest ${protestId}`);
         const escalatedHeadline = pickHeadline('protest_epo_escalated');
@@ -1306,24 +1318,15 @@ export async function executeNationalEmergencyOnProtest(supabase, factionId, nat
     await supabase.from('active_crises').delete()
         .eq('nation_id', nationId).eq('crisis_id', crisisId);
 
-    await supabase.from('protest_log').update({
+    // Single RPC handles protest_log + lockouts + cooldown
+    await protestUpdate(supabase, protestId, {
         status: 'resolved',
         tick_resolved: currentTick,
         effects_applied: [
             ...(protest.effects_applied || []),
             { stat: 'national_emergency', tick: currentTick },
         ],
-    }).eq('id', protestId);
-
-    // Clear lockouts
-    await supabase.from('factions')
-        .update({ protest_locked_by: null })
-        .eq('protest_locked_by', protestId);
-
-    // Set cooldowns
-    await supabase.from('factions').update({
-        protest_cooldown_until_tick: currentTick + PROTEST_CONFIG.CALLING_PARTY_COOLDOWN,
-    }).eq('id', protest.faction_id);
+    }, true, protest.faction_id, currentTick + PROTEST_CONFIG.CALLING_PARTY_COOLDOWN);
 
     // ── 6. Apply severe stat costs ──
     const { data: nation } = await supabase
@@ -1510,15 +1513,7 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
             .eq('nation_id', nationId)
             .neq('id', factionId);
 
-        const oppoIds = [];
-        const coalitionSet = new Set(coalition?.party_ids || []);
-        for (const f of (allFactions || [])) {
-            if (!coalitionSet.has(f.id) && f.id !== nationStats.ruling_faction_id) {
-                oppoIds.push(f.id);
-            }
-        }
-
-        // Refetch coalition for lockout (need it in this scope)
+        // Determine opposition parties for lockout
         const coalitionForLockout = await fetchActiveCoalition(supabase, nationId);
         const coalitionLockoutSet = new Set(coalitionForLockout?.party_ids || []);
         const { data: nRow } = await supabase.from('nations').select('ruling_faction_id').eq('id', nationId).single();

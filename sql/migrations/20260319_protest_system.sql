@@ -193,7 +193,52 @@ END;
 $$;
 
 -- ═══════════════════════════════════════════════════════════════════
--- 7. Crisis templates for Tier 6 and Tier 7
+-- 7. RPC: protest_update — generic protest_log update + lockout clearing
+--    Used by client-side government response actions (PA, EPO, NE, call-off)
+--    that cannot write to protest_log directly due to RLS.
+-- ═══════════════════════════════════════════════════════════════════
+CREATE OR REPLACE FUNCTION protest_update(
+    p_protest_id UUID,
+    p_updates JSONB,
+    p_clear_lockouts BOOLEAN DEFAULT FALSE,
+    p_cooldown_faction_id UUID DEFAULT NULL,
+    p_cooldown_until INTEGER DEFAULT NULL
+) RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    -- Apply updates to the protest_log row
+    -- Only allow known safe columns
+    UPDATE protest_log SET
+        status = COALESCE((p_updates->>'status')::TEXT, status),
+        tick_resolved = COALESCE((p_updates->>'tick_resolved')::INTEGER, tick_resolved),
+        crisis_ended_tick = COALESCE((p_updates->>'crisis_ended_tick')::INTEGER, crisis_ended_tick),
+        public_address_last_tick = COALESCE((p_updates->>'public_address_last_tick')::INTEGER, public_address_last_tick),
+        tier = COALESCE((p_updates->>'tier')::INTEGER, tier),
+        crisis_started_tick = COALESCE((p_updates->>'crisis_started_tick')::INTEGER, crisis_started_tick),
+        crisis_duration = COALESCE((p_updates->>'crisis_duration')::INTEGER, crisis_duration),
+        tier7_demand = COALESCE((p_updates->'tier7_demand')::JSONB, tier7_demand),
+        effects_applied = COALESCE((p_updates->'effects_applied')::JSONB, effects_applied)
+    WHERE id = p_protest_id;
+
+    -- Clear lockouts on all factions locked by this protest
+    IF p_clear_lockouts THEN
+        UPDATE factions SET protest_locked_by = NULL
+        WHERE protest_locked_by = p_protest_id::TEXT;
+    END IF;
+
+    -- Set cooldown on a specific faction
+    IF p_cooldown_faction_id IS NOT NULL AND p_cooldown_until IS NOT NULL THEN
+        UPDATE factions SET protest_cooldown_until_tick = p_cooldown_until
+        WHERE id = p_cooldown_faction_id;
+    END IF;
+END;
+$$;
+
+-- ═══════════════════════════════════════════════════════════════════
+-- 8. Crisis templates for Tier 6 and Tier 7
 -- ═══════════════════════════════════════════════════════════════════
 INSERT INTO crisis_templates (id, name, description, is_active, crisis_type)
 VALUES (

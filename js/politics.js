@@ -4254,9 +4254,12 @@ function wireCampaignConfig(container, f, n, ap, blocs, otherParties, factionIde
 
 // ── Protest Endorse & Call-Off handlers ──
 
+let _protestEndorseLock = false;
 window._protestEndorse = async function() {
+    if (_protestEndorseLock) return;
     if (!_endorseableProtest || _alreadyEndorsed) return;
     if (!confirm('Endorse this protest? Costs 1 AP and boosts turnout (+15).')) return;
+    _protestEndorseLock = true;
     try {
         const result = await endorseProtest(_supabase, _currentFaction.id, _currentNation.id, _endorseableProtest.id, _currentShard.current_tick);
         if (!result.success) {
@@ -4271,13 +4274,18 @@ window._protestEndorse = async function() {
     } catch (err) {
         console.error('[Protest] Endorse failed:', err);
         alert('Endorsement failed: ' + err.message);
+    } finally {
+        _protestEndorseLock = false;
     }
 };
 
+let _protestCallOffLock = false;
 window._protestCallOff = async function() {
+    if (_protestCallOffLock) return;
     if (!_protestActiveData) return;
     if (_protestActiveData.tier === 7) { alert('Tier 7 protests cannot be called off.'); return; }
     if (!confirm('Call off this protest? Costs ' + PROTEST_CONFIG.CALL_OFF_AP + ' AP. A small approval boost from moderate blocs will be applied.')) return;
+    _protestCallOffLock = true;
     try {
         const result = await callOffProtest(_supabase, _currentFaction.id, _protestActiveData.id, _currentShard.current_tick);
         if (!result.success) {
@@ -4291,6 +4299,8 @@ window._protestCallOff = async function() {
     } catch (err) {
         console.error('[Protest] Call-off failed:', err);
         alert('Call-off failed: ' + err.message);
+    } finally {
+        _protestCallOffLock = false;
     }
 };
 
