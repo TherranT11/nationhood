@@ -1,9 +1,14 @@
 /**
- * protest.js — Organise a Protest: core game logic (pure functions)
+ * protest.js — Organise a Protest: game logic + execute functions
  *
  * Phase 1: AP cost scaling, protest fatigue, condition score, turnout roll,
  * tier resolution, escalation path, grievance scoring, tier effects.
+ * Phase 2: executeProtest, endorseProtest, callOffProtest server-side handlers.
  */
+
+import { fetchActiveCoalition } from './government-structure.js';
+import { adjustMomentum, adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
+import { computeIdeologyAlignment, loadFactionIdeology } from './ideology.js';
 
 // ==================== CONSTANTS ====================
 
@@ -709,4 +714,496 @@ export function getStatHintColor(statKey, value) {
         return '#d9534f';
     }
     return '#c8a64e';
+}
+
+// ==================== EXECUTE FUNCTIONS ====================
+
+/**
+ * Execute the Organise a Protest action.
+ * 1. Validate opposition status, cooldowns, AP
+ * 2. Atomically deduct AP + insert protest_log via RPC
+ * 3. Protest enters 'resolving' state (1-tick delay before turnout rolls)
+ *
+ * Returns { success, protestId, apCost, newAp, useCount } or { success: false, error }
+ */
+export async function executeProtest(supabase, factionId, nationId, grievanceType, grievanceData, demandLabel, currentTick) {
+    // ── 1. Load faction ──
+    const { data: faction } = await supabase
+        .from('factions')
+        .select('id, action_points, protest_use_count, protest_last_use_tick, protest_cooldown_until_tick, protest_locked_by, nation_id')
+        .eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+
+    // ── 2. Check opposition status ──
+    const coalition = await fetchActiveCoalition(supabase, nationId);
+    const coalitionIds = new Set(coalition?.party_ids || []);
+    const { data: nationRow } = await supabase
+        .from('nations').select('ruling_faction_id').eq('id', nationId).single();
+    const isOpposition = !coalitionIds.has(factionId) && nationRow?.ruling_faction_id !== factionId;
+
+    // ── 3. Check for active protest by this faction ──
+    const { data: activeProtest } = await supabase
+        .from('protest_log')
+        .select('id')
+        .eq('faction_id', factionId)
+        .in('status', ['resolving', 'crisis_active'])
+        .limit(1).maybeSingle();
+
+    const check = canCallProtest(faction, currentTick, isOpposition, activeProtest);
+    if (!check.allowed) return { success: false, error: check.reason };
+
+    // ── 4. Compute decayed use count and AP cost ──
+    const decayedUseCount = getDecayedUseCount(
+        faction.protest_use_count || 0,
+        faction.protest_last_use_tick,
+        currentTick
+    );
+    const apCost = getProtestCost(decayedUseCount);
+
+    if ((faction.action_points || 0) < apCost) {
+        return { success: false, error: `Not enough AP. Need ${apCost}, have ${faction.action_points || 0}.` };
+    }
+
+    // ── 5. Atomic RPC: deduct AP + insert protest_log ──
+    const { data: protestId, error: rpcError } = await supabase.rpc('execute_protest', {
+        p_faction_id: factionId,
+        p_nation_id: nationId,
+        p_ap_cost: apCost,
+        p_grievance_type: grievanceType,
+        p_grievance_data: grievanceData || {},
+        p_demand_label: demandLabel || '',
+        p_use_count: decayedUseCount,
+        p_tick: currentTick,
+    });
+
+    if (rpcError) {
+        console.error('[Protest] execute_protest RPC failed:', rpcError.message);
+        return { success: false, error: rpcError.message };
+    }
+
+    console.log(`[Protest] Faction ${factionId} called protest ${protestId} (${grievanceType}), AP cost ${apCost}, use count ${decayedUseCount + 1}`);
+
+    return {
+        success: true,
+        protestId,
+        apCost,
+        newAp: (faction.action_points || 0) - apCost,
+        useCount: decayedUseCount + 1,
+    };
+}
+
+/**
+ * Endorse an active protest called by another opposition party.
+ * Costs 1 AP (non-refundable). Adds +15 to the turnout roll on resolution.
+ *
+ * Returns { success, endorsementBonus } or { success: false, error }
+ */
+export async function endorseProtest(supabase, factionId, nationId, protestId, currentTick) {
+    // ── 1. Load faction ──
+    const { data: faction } = await supabase
+        .from('factions')
+        .select('id, action_points')
+        .eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+
+    // ── 2. Load the protest ──
+    const { data: protest } = await supabase
+        .from('protest_log')
+        .select('id, faction_id, status, nation_id')
+        .eq('id', protestId).single();
+    if (!protest) return { success: false, error: 'Protest not found.' };
+    if (protest.status !== 'resolving') {
+        return { success: false, error: 'Can only endorse protests that are still resolving.' };
+    }
+
+    // ── 3. Check opposition status ──
+    const coalition = await fetchActiveCoalition(supabase, nationId);
+    const coalitionIds = new Set(coalition?.party_ids || []);
+    const { data: nationRow } = await supabase
+        .from('nations').select('ruling_faction_id').eq('id', nationId).single();
+    const isOpposition = !coalitionIds.has(factionId) && nationRow?.ruling_faction_id !== factionId;
+
+    // ── 4. Check if already endorsed ──
+    const { data: existing } = await supabase
+        .from('protest_endorsements')
+        .select('id')
+        .eq('protest_id', protestId)
+        .eq('faction_id', factionId)
+        .maybeSingle();
+
+    const check = canEndorseProtest(faction, currentTick, isOpposition, protest.faction_id, !!existing);
+    if (!check.allowed) return { success: false, error: check.reason };
+
+    // ── 5. Atomic RPC: deduct 1 AP + insert endorsement ──
+    const { error: rpcError } = await supabase.rpc('endorse_protest', {
+        p_faction_id: factionId,
+        p_protest_id: protestId,
+        p_tick: currentTick,
+    });
+
+    if (rpcError) {
+        console.error('[Protest] endorse_protest RPC failed:', rpcError.message);
+        return { success: false, error: rpcError.message };
+    }
+
+    // Count total endorsements for bonus calculation
+    const { count } = await supabase
+        .from('protest_endorsements')
+        .select('id', { count: 'exact', head: true })
+        .eq('protest_id', protestId);
+
+    console.log(`[Protest] Faction ${factionId} endorsed protest ${protestId}, total endorsements: ${count}`);
+
+    return {
+        success: true,
+        endorsementBonus: calculateJointProtestBonus(count || 1),
+    };
+}
+
+/**
+ * Call off an active Tier 6 protest crisis. Costs 1 AP.
+ * Crisis ends in CALL_OFF_WIND_DOWN_TICKS (2 ticks). Small approval boost from moderate blocs.
+ * Tier 7 cannot be called off.
+ *
+ * Returns { success } or { success: false, error }
+ */
+export async function callOffProtest(supabase, factionId, protestId, currentTick) {
+    // ── 1. Load the protest ──
+    const { data: protest } = await supabase
+        .from('protest_log')
+        .select('id, faction_id, nation_id, tier, status, crisis_started_tick')
+        .eq('id', protestId).single();
+    if (!protest) return { success: false, error: 'Protest not found.' };
+
+    // Only the calling faction can call it off
+    if (protest.faction_id !== factionId) {
+        return { success: false, error: 'Only the party that called the protest can call it off.' };
+    }
+    if (protest.status !== 'crisis_active') {
+        return { success: false, error: 'No active crisis to call off.' };
+    }
+    if (protest.tier === 7) {
+        return { success: false, error: 'Tier 7 Nationwide Protests cannot be called off.' };
+    }
+
+    // ── 2. Load faction for AP check ──
+    const { data: faction } = await supabase
+        .from('factions')
+        .select('id, action_points')
+        .eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+    if ((faction.action_points || 0) < PROTEST_CONFIG.CALL_OFF_AP) {
+        return { success: false, error: `Not enough AP. Need ${PROTEST_CONFIG.CALL_OFF_AP}.` };
+    }
+
+    // ── 3. Deduct AP ──
+    const { data: newAp, error: apErr } = await supabase.rpc('deduct_ap', {
+        p_faction_id: factionId,
+        p_cost: PROTEST_CONFIG.CALL_OFF_AP,
+    });
+    if (apErr) {
+        console.error('[Protest] deduct_ap failed for call-off:', apErr.message);
+        return { success: false, error: apErr.message };
+    }
+    if (newAp < 0) {
+        return { success: false, error: 'Insufficient AP.' };
+    }
+
+    // ── 4. Set crisis to wind down — tick processor will end it after 2 ticks ──
+    const windDownEndTick = currentTick + PROTEST_CONFIG.CALL_OFF_WIND_DOWN_TICKS;
+    await supabase.from('protest_log').update({
+        crisis_ended_tick: windDownEndTick,
+        status: 'called_off',
+    }).eq('id', protestId);
+
+    // ── 5. Small approval boost from moderate blocs ──
+    const nationId = protest.nation_id;
+    const { data: moderateBlocs } = await supabase
+        .from('voter_blocs')
+        .select('id, bloc_name')
+        .eq('nation_id', nationId)
+        .eq('is_active', true)
+        .or('bloc_name.ilike.%centrist%,bloc_name.ilike.%moderate%,bloc_name.ilike.%business%');
+
+    for (const bloc of (moderateBlocs || [])) {
+        await adjustMomentum(supabase, nationId, factionId, bloc.id, 1, 'protest:called_off');
+    }
+
+    console.log(`[Protest] Faction ${factionId} called off protest ${protestId}, wind-down until tick ${windDownEndTick}`);
+
+    return {
+        success: true,
+        newAp: newAp,
+        windDownEndTick,
+    };
+}
+
+/**
+ * Resolve a protest that has been in 'resolving' state for 1 tick.
+ * Called by the tick processor, NOT by the client.
+ *
+ * 1. Fetch global protest history + endorsements
+ * 2. Calculate condition score → roll turnout → get tier
+ * 3. Check escalation path
+ * 4. Apply tier effects (1-5 one-time, 6-7 create crisis)
+ * 5. Update protest_log with results
+ * 6. Set cooldowns and lockouts
+ *
+ * Returns { tier, score, effects, crisisCreated }
+ */
+export async function resolveProtest(supabase, protest, nationStats, currentTick) {
+    const { id: protestId, faction_id: factionId, nation_id: nationId, grievance_type, grievance_data } = protest;
+
+    // ── 1. Fetch protest history (global, all parties) ──
+    const { data: protestHistory } = await supabase
+        .from('protest_log')
+        .select('tick_called, tier, turnout_score')
+        .eq('nation_id', nationId)
+        .eq('status', 'resolved')
+        .gte('tick_called', currentTick - Math.max(PROTEST_CONFIG.FATIGUE_LOOKBACK_TICKS, PROTEST_CONFIG.ESCALATION_LOOKBACK_TICKS))
+        .order('tick_called', { ascending: false });
+    const historyForFatigue = (protestHistory || []).map(p => ({ tick: p.tick_called }));
+    const historyForEscalation = (protestHistory || []).map(p => ({
+        tick: p.tick_called, tier: p.tier, score: p.turnout_score,
+    }));
+
+    // ── 2. Fetch ministry action history (for crackdown detection) ──
+    const { data: ministryActions } = await supabase
+        .from('ministry_action_log')
+        .select('action_key, applied_at_tick')
+        .eq('nation_id', nationId)
+        .gte('applied_at_tick', currentTick - 4);
+
+    // ── 3. Fetch endorsements ──
+    const { data: endorsements } = await supabase
+        .from('protest_endorsements')
+        .select('id, faction_id')
+        .eq('protest_id', protestId);
+    const endorsementCount = (endorsements || []).length;
+
+    // ── 4. Build grievance object for condition score ──
+    const grievance = {
+        type: grievance_type,
+        approval: grievance_data?.approval,
+        publicApproval: grievance_data?.publicApproval,
+        failureScore: grievance_data?.failureScore,
+    };
+
+    // ── 5. Calculate condition score ──
+    const { score: conditionScore, breakdown } = calculateConditionScore(
+        nationStats, grievance, historyForFatigue, ministryActions || [], currentTick
+    );
+
+    // ── 6. Roll turnout + add joint protest bonus ──
+    const jointBonus = calculateJointProtestBonus(endorsementCount);
+    const adjustedCondition = Math.min(100, conditionScore + jointBonus);
+    let turnoutScore = rollTurnout(adjustedCondition);
+
+    // Add endorsement bonus (+15 per endorsing party, already in joint bonus)
+    // Joint bonus already accounts for this via JOINT_BONUS_PER_PARTY
+
+    // ── 7. Get tier + check escalation ──
+    let tier = getTurnoutTier(turnoutScore);
+    tier = checkEscalationPath(tier, turnoutScore, historyForEscalation, currentTick);
+
+    // ── 8. Apply tier effects ──
+    const effects = computeTierEffects(tier, { govApproval: nationStats.gov_approval });
+    const appliedEffects = [];
+
+    // Gov approval one-time delta (Tiers 3-5)
+    if (effects.govApprovalDelta !== 0) {
+        await adjustGovernmentApprovalEvent(supabase, nationId, effects.govApprovalDelta, `protest:tier${tier}`);
+        appliedEffects.push({ stat: 'gov_approval_events', delta: effects.govApprovalDelta });
+    }
+
+    // Civil unrest one-time delta (Tier 5)
+    if (effects.civilUnrestDelta !== 0) {
+        const { data: nation } = await supabase
+            .from('nations').select('civil_unrest').eq('id', nationId).single();
+        const newVal = Math.min(100, (nation?.civil_unrest || 0) + effects.civilUnrestDelta);
+        await supabase.from('nations').update({ civil_unrest: newVal }).eq('id', nationId);
+        appliedEffects.push({ stat: 'civil_unrest', delta: effects.civilUnrestDelta });
+    }
+
+    // Fizzle effects (Tier 1-2): bloc penalties + gov boost
+    if (effects.blocPenalties.length > 0) {
+        const { data: allBlocs } = await supabase
+            .from('voter_blocs')
+            .select('id, bloc_name')
+            .eq('nation_id', nationId)
+            .eq('is_active', true);
+
+        for (const penalty of effects.blocPenalties) {
+            const matchingBloc = (allBlocs || []).find(b =>
+                b.bloc_name.toLowerCase().includes(penalty.blocName.replace('_', ' '))
+            );
+            if (matchingBloc) {
+                await adjustMomentum(supabase, nationId, factionId, matchingBloc.id, penalty.delta, `protest:fizzle:tier${tier}`);
+                appliedEffects.push({ stat: `momentum:${matchingBloc.bloc_name}`, delta: penalty.delta });
+            }
+        }
+    }
+    if (effects.fizzleGovBoost > 0) {
+        await adjustGovernmentApprovalEvent(supabase, nationId, effects.fizzleGovBoost, `protest:fizzle:tier${tier}`);
+        appliedEffects.push({ stat: 'gov_approval_events', delta: effects.fizzleGovBoost, note: 'fizzle_boost' });
+    }
+
+    // Tier 4: +2 approval with ideologically aligned blocs
+    if (tier === 4) {
+        const factionIdeo = await loadFactionIdeology(supabase, factionId);
+        if (factionIdeo) {
+            const { data: allBlocs } = await supabase
+                .from('voter_blocs')
+                .select('id, bloc_name, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
+                .eq('nation_id', nationId)
+                .eq('is_active', true);
+
+            for (const bloc of (allBlocs || [])) {
+                const alignment = computeIdeologyAlignment(factionIdeo, bloc);
+                if (alignment >= 0.6) {
+                    await adjustMomentum(supabase, nationId, factionId, bloc.id, 2, 'protest:tier4:aligned');
+                    appliedEffects.push({ stat: `momentum:${bloc.bloc_name}`, delta: 2, note: 'aligned_bloc' });
+                }
+            }
+        }
+    }
+
+    // ── 9. Tier 6/7: create crisis ──
+    let crisisCreated = false;
+    if (effects.isCrisis) {
+        const crisisId = tier === 6 ? PROTEST_CONFIG.TIER6_CRISIS_ID : PROTEST_CONFIG.TIER7_CRISIS_ID;
+        const duration = tier === 6 ? PROTEST_CONFIG.TIER6_DURATION : PROTEST_CONFIG.TIER7_DURATION;
+
+        await supabase.from('active_crises').insert({
+            crisis_id: crisisId,
+            nation_id: nationId,
+            started_at_tick: currentTick,
+            effects_applied_log: [],
+        });
+
+        // Update protest_log to crisis_active
+        await supabase.from('protest_log').update({
+            status: 'crisis_active',
+            crisis_started_tick: currentTick,
+            crisis_duration: duration,
+        }).eq('id', protestId);
+
+        // Lock all other opposition parties
+        const { data: allFactions } = await supabase
+            .from('factions')
+            .select('id')
+            .eq('nation_id', nationId)
+            .neq('id', factionId);
+
+        const oppoIds = [];
+        const coalitionSet = new Set(coalition?.party_ids || []);
+        for (const f of (allFactions || [])) {
+            if (!coalitionSet.has(f.id) && f.id !== nationStats.ruling_faction_id) {
+                oppoIds.push(f.id);
+            }
+        }
+
+        // Refetch coalition for lockout (need it in this scope)
+        const coalitionForLockout = await fetchActiveCoalition(supabase, nationId);
+        const coalitionLockoutSet = new Set(coalitionForLockout?.party_ids || []);
+        const { data: nRow } = await supabase.from('nations').select('ruling_faction_id').eq('id', nationId).single();
+        const allOppo = (allFactions || []).filter(f =>
+            !coalitionLockoutSet.has(f.id) && f.id !== nRow?.ruling_faction_id
+        );
+
+        if (allOppo.length > 0) {
+            await supabase.from('factions')
+                .update({ protest_locked_by: protestId })
+                .in('id', allOppo.map(f => f.id));
+        }
+
+        // Generate Tier 7 demand
+        if (tier === 7) {
+            const { data: statRows } = await supabase
+                .from('stat_history')
+                .select('stat_name, value, tick')
+                .eq('nation_id', nationId)
+                .gte('tick', currentTick - 6)
+                .order('tick', { ascending: true });
+
+            const statMap = {};
+            for (const row of (statRows || [])) {
+                if (!statMap[row.stat_name]) statMap[row.stat_name] = [];
+                statMap[row.stat_name].push({ tick: row.tick, value: row.value });
+            }
+
+            const statSnapshots = Object.entries(statMap).map(([key, history]) => {
+                const sorted = history.sort((a, b) => a.tick - b.tick);
+                const current = nationStats[key] ?? sorted[sorted.length - 1]?.value ?? 0;
+                const sixAgo = sorted[0]?.value ?? current;
+                const changes = sorted.slice(1).map((h, i) => Math.abs(h.value - sorted[i].value));
+                const avgAbsChangePerTick = changes.length > 0 ? changes.reduce((s, v) => s + v, 0) / changes.length : 1;
+                return { key, current, sixTicksAgo: sixAgo, avgAbsChangePerTick, displayName: key.replace(/_/g, ' ') };
+            });
+
+            const { data: ministers } = await supabase
+                .from('ministries')
+                .select('ministry_key, party_id, minister_approval, is_vacant')
+                .eq('nation_id', nationId);
+
+            const demand = generateTier7Demand(statSnapshots, ministers || []);
+            await supabase.from('protest_log').update({ tier7_demand: demand }).eq('id', protestId);
+        }
+
+        crisisCreated = true;
+    }
+
+    // ── 10. Update protest_log with results (non-crisis tiers) ──
+    if (!crisisCreated) {
+        await supabase.from('protest_log').update({
+            status: 'resolved',
+            tick_resolved: currentTick,
+            condition_score: conditionScore,
+            turnout_score: turnoutScore,
+            tier,
+            roll_breakdown: { ...breakdown, joint_bonus: jointBonus, endorsements: endorsementCount },
+            effects_applied: appliedEffects,
+        }).eq('id', protestId);
+    } else {
+        // Crisis tiers: update scores but keep status as crisis_active
+        await supabase.from('protest_log').update({
+            condition_score: conditionScore,
+            turnout_score: turnoutScore,
+            tier,
+            roll_breakdown: { ...breakdown, joint_bonus: jointBonus, endorsements: endorsementCount },
+            effects_applied: appliedEffects,
+        }).eq('id', protestId);
+    }
+
+    // ── 11. Set cooldowns ──
+    // Calling party: 12-tick cooldown from resolution tick
+    // (For crises, cooldown starts when crisis ends — handled by tick processor)
+    if (!crisisCreated) {
+        const cooldownUntil = currentTick + PROTEST_CONFIG.CALLING_PARTY_COOLDOWN;
+        await supabase.from('factions').update({
+            protest_cooldown_until_tick: cooldownUntil,
+        }).eq('id', factionId);
+
+        // Endorsing parties: 6-tick cooldown from resolution
+        if (endorsements && endorsements.length > 0) {
+            const endorseCooldown = currentTick + PROTEST_CONFIG.ENDORSING_PARTY_COOLDOWN;
+            await supabase.from('factions')
+                .update({ protest_cooldown_until_tick: endorseCooldown })
+                .in('id', endorsements.map(e => e.faction_id));
+        }
+    }
+
+    console.log(`[Protest] Resolved protest ${protestId}: tier ${tier}, score ${turnoutScore.toFixed(1)}, condition ${conditionScore.toFixed(1)}, crisis: ${crisisCreated}`);
+
+    return {
+        tier,
+        tierLabel: getTierLabel(tier),
+        score: turnoutScore,
+        conditionScore,
+        breakdown,
+        endorsementCount,
+        jointBonus,
+        effects: appliedEffects,
+        crisisCreated,
+    };
 }
