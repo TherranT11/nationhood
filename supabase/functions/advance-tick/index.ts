@@ -11965,6 +11965,7 @@ async function processPresidentDesk(supabase, nation, currentTick) {
         if (!enactment?.success) {
             console.error(`[processPresidentDesk] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
             await markBillEnactmentFailed(supabase, bill, currentTick, enactment?.error || 'President desk enactment failure');
+            await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationId: nation.id, nationName: nation.name, extra: { reason: 'enactment failed after president auto-sign' } });
             results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: enactment?.error });
             continue;
         }
