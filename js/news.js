@@ -11,6 +11,8 @@ let _categoryFilter = 'all'; // current nav filter
 let _shardNationIds = null; // cached nation IDs in the same shard
 let _articleReaderHandler = null; // stored ref to prevent listener accumulation
 let _archiveBackContext = null; // navigation context for article reader back button
+let _editingArticleId = null; // null = create mode, UUID string = edit mode
+let _removeExistingImage = false; // flag: user wants to drop the current image on edit
 
 export async function initNewspaper(supabase, state) {
     _supabase = supabase;
@@ -326,6 +328,7 @@ export async function initNewspaper(supabase, state) {
                         <div class="nws-image-preview" id="nws-image-preview">
                             <img id="nws-image-preview-img" src="" alt="Preview">
                         </div>
+                        <button type="button" class="nws-remove-image-btn" id="nws-remove-image-btn" style="display:none;">Remove image</button>
                     </div>
 
                     <div class="nws-form-group">
@@ -347,6 +350,7 @@ export async function initNewspaper(supabase, state) {
     bindModalEvents();
     bindSubmitHandler();
     bindDeleteHandlers(root);
+    bindEditHandlers(root);
     bindArticleReader(root);
     bindArchivesNav(root);
     bindCategoryNav(root);
@@ -366,9 +370,10 @@ function bindModalEvents() {
     const previewContainer = document.getElementById('nws-image-preview');
     const previewImg = document.getElementById('nws-image-preview-img');
 
-    // Open modal
+    // Open modal (always in create mode)
     if (openBtn) {
         openBtn.addEventListener('click', () => {
+            resetModalToCreateMode();
             overlay.classList.add('active');
         });
     }
@@ -377,13 +382,30 @@ function bindModalEvents() {
     if (closeBtn) {
         closeBtn.addEventListener('click', () => {
             overlay.classList.remove('active');
+            resetModalToCreateMode();
         });
     }
 
     // Close on overlay click
     if (overlay) {
         overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) overlay.classList.remove('active');
+            if (e.target === overlay) {
+                overlay.classList.remove('active');
+                resetModalToCreateMode();
+            }
+        });
+    }
+
+    // Remove image button (visible in edit mode when article has existing image)
+    const removeImgBtn = document.getElementById('nws-remove-image-btn');
+    if (removeImgBtn) {
+        removeImgBtn.addEventListener('click', () => {
+            _removeExistingImage = true;
+            const preview = document.getElementById('nws-image-preview');
+            if (preview) preview.style.display = 'none';
+            const label = document.getElementById('nws-file-label-text');
+            if (label) label.textContent = 'Click to select an image...';
+            removeImgBtn.style.display = 'none';
         });
     }
 
@@ -470,57 +492,75 @@ function bindSubmitHandler() {
         if (!body) return showFormError('Please write an article body.');
         if (body.length > 12000) return showFormError('Article body must be 12000 characters or fewer.');
 
+        const isEdit = !!_editingArticleId;
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Publishing...';
+        submitBtn.textContent = isEdit ? 'Updating...' : 'Publishing...';
 
         try {
             const { nation, faction, shard } = _state;
-            let imageUrl = null;
 
-            // Upload image if provided
-            if (file) {
-                imageUrl = await uploadArticleImage(nation.id, file);
-            }
+            if (isEdit) {
+                // ── EDIT MODE ──
+                let imageUrl = undefined; // undefined = keep existing
+                if (file) {
+                    imageUrl = await uploadArticleImage(nation.id, file);
+                } else if (_removeExistingImage) {
+                    imageUrl = null; // explicitly remove
+                }
 
-            // Insert article — momentum tiers: 4000+ = +2, 8000+ = +4 (not stacked)
-            const momentumReward = body.length >= 8000 ? 4 : body.length >= 4000 ? 2 : 0;
-            const { error } = await _supabase
-                .from('player_articles')
-                .insert({
-                    nation_id: nation.id,
-                    author_faction_id: faction.id,
-                    author_name: author,
+                const updates = {
                     headline: title,
+                    author_name: author,
                     body: body,
                     category: category,
-                    image_url: imageUrl,
-                    status: 'published',
-                    published_tick: shard?.current_tick || 0
-                });
+                };
+                if (imageUrl !== undefined) updates.image_url = imageUrl;
 
-            if (error) throw error;
+                const { error } = await _supabase
+                    .from('player_articles')
+                    .update(updates)
+                    .eq('id', _editingArticleId)
+                    .eq('author_faction_id', faction.id);
 
-            let successMsg = 'Article published!';
-            if (momentumReward > 0) {
-                adjustMomentumAll(_supabase, nation.id, faction.id, momentumReward, 'article:published')
-                    .catch(err => console.error('[News] Momentum adjustment failed:', err));
-                successMsg = `Article published! +${momentumReward} Momentum.`;
+                if (error) throw error;
+
+                showFormSuccess('Article updated!');
             } else {
-                successMsg = `Article published! (${body.length}/4000 chars — no momentum reward)`;
+                // ── CREATE MODE ──
+                let imageUrl = null;
+                if (file) {
+                    imageUrl = await uploadArticleImage(nation.id, file);
+                }
+
+                const momentumReward = body.length >= 8000 ? 4 : body.length >= 4000 ? 2 : 0;
+                const { error } = await _supabase
+                    .from('player_articles')
+                    .insert({
+                        nation_id: nation.id,
+                        author_faction_id: faction.id,
+                        author_name: author,
+                        headline: title,
+                        body: body,
+                        category: category,
+                        image_url: imageUrl,
+                        status: 'published',
+                        published_tick: shard?.current_tick || 0
+                    });
+
+                if (error) throw error;
+
+                let successMsg = 'Article published!';
+                if (momentumReward > 0) {
+                    adjustMomentumAll(_supabase, nation.id, faction.id, momentumReward, 'article:published')
+                        .catch(err => console.error('[News] Momentum adjustment failed:', err));
+                    successMsg = `Article published! +${momentumReward} Momentum.`;
+                } else {
+                    successMsg = `Article published! (${body.length}/4000 chars — no momentum reward)`;
+                }
+                showFormSuccess(successMsg);
             }
 
-            showFormSuccess(successMsg);
-
-            // Reset form
-            document.getElementById('nws-article-title').value = '';
-            document.getElementById('nws-article-author').value = '';
-            document.getElementById('nws-article-category').value = '';
-            document.getElementById('nws-article-body').value = '';
-            fileInput.value = '';
-            document.getElementById('nws-file-label-text').textContent = 'Click to select an image...';
-            document.getElementById('nws-image-preview').style.display = 'none';
-            document.getElementById('nws-char-count').textContent = '0 / 12000';
-            document.getElementById('nws-char-count').classList.remove('nws-near-limit');
+            resetModalToCreateMode();
 
             // Close modal after short delay
             setTimeout(() => {
@@ -531,11 +571,11 @@ function bindSubmitHandler() {
             await loadAndDisplayArticles();
 
         } catch (err) {
-            console.error('[News] Article submission failed:', err);
-            showFormError('Failed to publish article. Please try again.');
+            console.error(`[News] Article ${isEdit ? 'update' : 'submission'} failed:`, err);
+            showFormError(`Failed to ${isEdit ? 'update' : 'publish'} article. Please try again.`);
         } finally {
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Publish Article';
+            submitBtn.textContent = _editingArticleId ? 'Update Article' : 'Publish Article';
         }
     });
 }
@@ -566,6 +606,11 @@ function deleteBtn(article) {
     return `<button class="nws-delete-btn" data-article-id="${article.id}" title="Delete article">&times;</button>`;
 }
 
+function editBtn(article) {
+    if (!_state?.faction || article.author_faction_id !== _state.faction.id) return '';
+    return `<button class="nws-edit-btn" data-edit-id="${article.id}" title="Edit article">&#9998;</button>`;
+}
+
 function bindDeleteHandlers(root) {
     root.addEventListener('click', async (e) => {
         const btn = e.target.closest('.nws-delete-btn');
@@ -592,6 +637,96 @@ function bindDeleteHandlers(root) {
     });
 }
 
+// === EDIT ARTICLE ===
+
+function resetModalToCreateMode() {
+    _editingArticleId = null;
+    _removeExistingImage = false;
+    document.getElementById('nws-article-title').value = '';
+    document.getElementById('nws-article-author').value = '';
+    document.getElementById('nws-article-category').value = '';
+    document.getElementById('nws-article-body').value = '';
+    const fileInput = document.getElementById('nws-article-image');
+    if (fileInput) fileInput.value = '';
+    const fileLabelText = document.getElementById('nws-file-label-text');
+    if (fileLabelText) fileLabelText.textContent = 'Click to select an image...';
+    const preview = document.getElementById('nws-image-preview');
+    if (preview) preview.style.display = 'none';
+    const charCount = document.getElementById('nws-char-count');
+    if (charCount) {
+        charCount.textContent = '0 / 12000';
+        charCount.classList.remove('nws-near-limit', 'nws-ap-qualified');
+    }
+    const removeBtn = document.getElementById('nws-remove-image-btn');
+    if (removeBtn) removeBtn.style.display = 'none';
+    const header = document.querySelector('.nws-modal-header h3');
+    if (header) header.textContent = 'Write Article';
+    const submitBtn = document.getElementById('nws-submit-btn');
+    if (submitBtn) submitBtn.textContent = 'Publish Article';
+}
+
+function openEditModal(article) {
+    _editingArticleId = article.id;
+    _removeExistingImage = false;
+
+    document.getElementById('nws-article-title').value = article.headline || '';
+    document.getElementById('nws-article-author').value = article.author_name || '';
+    document.getElementById('nws-article-category').value = article.category || '';
+    document.getElementById('nws-article-body').value = article.body || '';
+
+    // Fire char count update
+    const bodyLen = (article.body || '').length;
+    const charCount = document.getElementById('nws-char-count');
+    if (charCount) {
+        let tag;
+        if (bodyLen >= 8000) tag = ' · +4 Momentum';
+        else if (bodyLen >= 4000) tag = ` · +2 Momentum · ${8000 - bodyLen} more for +4`;
+        else tag = ` · ${4000 - bodyLen} more for momentum`;
+        charCount.textContent = `${bodyLen} / 12000${tag}`;
+        charCount.classList.toggle('nws-near-limit', bodyLen >= 11500);
+        charCount.classList.toggle('nws-ap-qualified', bodyLen >= 4000 && bodyLen < 11500);
+    }
+
+    // Image state
+    const previewContainer = document.getElementById('nws-image-preview');
+    const previewImg = document.getElementById('nws-image-preview-img');
+    const fileLabelText = document.getElementById('nws-file-label-text');
+    const removeBtn = document.getElementById('nws-remove-image-btn');
+    const fileInput = document.getElementById('nws-article-image');
+    if (fileInput) fileInput.value = '';
+
+    if (article.image_url) {
+        if (previewImg) previewImg.src = article.image_url;
+        if (previewContainer) previewContainer.style.display = 'block';
+        if (fileLabelText) fileLabelText.textContent = 'Current image (select new to replace)';
+        if (removeBtn) removeBtn.style.display = 'inline';
+    } else {
+        if (previewContainer) previewContainer.style.display = 'none';
+        if (fileLabelText) fileLabelText.textContent = 'Click to select an image...';
+        if (removeBtn) removeBtn.style.display = 'none';
+    }
+
+    // Update modal chrome
+    const header = document.querySelector('.nws-modal-header h3');
+    if (header) header.textContent = 'Edit Article';
+    const submitBtn = document.getElementById('nws-submit-btn');
+    if (submitBtn) submitBtn.textContent = 'Update Article';
+
+    document.getElementById('nws-modal-overlay').classList.add('active');
+}
+
+function bindEditHandlers(root) {
+    root.addEventListener('click', (e) => {
+        const btn = e.target.closest('.nws-edit-btn');
+        if (!btn) return;
+        e.stopPropagation();
+        const articleId = btn.dataset.editId;
+        const article = _articles.find(a => String(a.id) === String(articleId));
+        if (!article) return;
+        openEditModal(article);
+    });
+}
+
 // === ARTICLE READER ===
 
 function bindArticleReader(root) {
@@ -601,7 +736,7 @@ function bindArticleReader(root) {
     }
     _articleReaderHandler = (e) => {
         // Don't open reader when clicking delete buttons or other controls
-        if (e.target.closest('.nws-delete-btn, .nws-write-btn, .nws-modal-overlay, button, a, input, select, textarea')) return;
+        if (e.target.closest('.nws-delete-btn, .nws-edit-btn, .nws-write-btn, .nws-modal-overlay, button, a, input, select, textarea')) return;
 
         // Find the closest clickable article element
         const clickable = e.target.closest('[data-article-id]');
@@ -873,7 +1008,7 @@ function populateLeadSection(lead, sidebar) {
     const sidebarHtml = sidebar.length > 0
         ? sidebar.map(a => `
             <div class="nws-sidebar-story" data-article-id="${a.id}">
-                ${deleteBtn(a)}
+                ${editBtn(a)}${deleteBtn(a)}
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sidebar-headline">${escapeHtml(a.headline)}</h3>
                 <p class="nws-sidebar-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 120))}${(a.body || '').length > 120 ? '...' : ''}</p>
@@ -893,7 +1028,7 @@ function populateLeadSection(lead, sidebar) {
 
     section.innerHTML = `
         <div class="nws-lead-main" data-article-id="${lead.id}">
-            ${deleteBtn(lead)}
+            ${editBtn(lead)}${deleteBtn(lead)}
             <span class="nws-section-tag">${escapeHtml(categoryLabel(lead.category))}</span>
             <h2 class="nws-lead-headline">${escapeHtml(lead.headline)}</h2>
             <p class="nws-lead-deck">${escapeHtml(deck)}</p>
@@ -933,7 +1068,7 @@ function populateSecondaryGrid(articles) {
                 : `<div class="nws-img-ph" style="background:${categoryGradient(a.category)};">${escapeHtml(categoryLabel(a.category))}</div>`;
 
             return `<div class="nws-sec-story" data-article-id="${a.id}">
-                ${deleteBtn(a)}
+                ${editBtn(a)}${deleteBtn(a)}
                 <div class="nws-sec-image">${imgHtml}</div>
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sec-headline">${escapeHtml(a.headline)}</h3>
@@ -971,7 +1106,7 @@ function populateBriefs(articles) {
         <div class="nws-brief-row" data-article-id="${a.id}">
             <div class="nws-brief-num">${i + 1}</div>
             <div class="nws-brief-text">
-                <strong>${escapeHtml(a.headline)}${deleteBtn(a)}</strong>
+                <strong>${escapeHtml(a.headline)}${editBtn(a)}${deleteBtn(a)}</strong>
                 ${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 100))}${(a.body || '').length > 100 ? '...' : ''}
             </div>
         </div>
@@ -1009,7 +1144,7 @@ function populateOpinionStrip(articles) {
                 ? (a.body || '').substring(0, 80) + '...'
                 : (a.body || '');
             return `<div class="nws-op-card" data-article-id="${a.id}">
-                ${deleteBtn(a)}
+                ${editBtn(a)}${deleteBtn(a)}
                 <div class="nws-op-author">${escapeHtml(a.author_name)} &mdash; Opinion</div>
                 <div class="nws-op-headline">&ldquo;${escapeHtml(quote)}&rdquo;</div>
             </div>`;
