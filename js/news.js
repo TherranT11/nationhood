@@ -608,10 +608,14 @@ function bindArticleReader(root) {
         if (!clickable) return;
 
         const articleId = clickable.dataset.articleId;
-        const article = _articles.find(a => a.id === articleId);
+        const article = _articles.find(a => String(a.id) === String(articleId));
         if (!article) return;
 
-        renderArticleView(root, article);
+        try {
+            renderArticleView(root, article);
+        } catch (err) {
+            console.error('[News] Failed to open article:', err);
+        }
     };
     root.addEventListener('click', _articleReaderHandler);
 }
