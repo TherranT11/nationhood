@@ -931,11 +931,82 @@ export async function callOffProtest(supabase, factionId, protestId, currentTick
 
     console.log(`[Protest] Faction ${factionId} called off protest ${protestId}, wind-down until tick ${windDownEndTick}`);
 
+    // Dispatch article + event
+    const { data: callingFaction } = await supabase.from('factions').select('faction_name').eq('id', factionId).single();
+    const partyName = callingFaction?.faction_name || 'Opposition';
+    const coHeadline = pickHeadline('protest_called_off').replace('{party}', partyName);
+    dispatchProtestArticle(supabase, nationId, 'protest_called_off', coHeadline,
+        `${partyName} has called off the protest, ordering supporters to return home. The crisis is expected to wind down within two ticks.`,
+        2, currentTick, protestId);
+    fireProtestEvent(supabase, nationId, 'protest:called_off', currentTick, { party: partyName, protest_id: protestId });
+
     return {
         success: true,
         newAp: newAp,
         windDownEndTick,
     };
+}
+
+// ==================== ARTICLE DISPATCH HELPER ====================
+
+const PROTEST_HEADLINE_POOLS = {
+    protest_epo_resolved: [
+        'Government Crackdown Ends Protest Crisis',
+        'Enforce Public Order Succeeds: Protest Dispersed by Authorities',
+    ],
+    protest_epo_escalated: [
+        'Crackdown Backfires — Protest Escalates to Nationwide Crisis',
+        'Police Action Inflames Protesters — Nationwide Uprising Erupts',
+    ],
+    protest_emergency: [
+        'National Emergency Declared — Protest Crisis Ended at Severe Cost',
+        'Government Crushes Protest Movement Under Emergency Rule',
+    ],
+    protest_called_off: [
+        'Protest Called Off — Moderates Breathe Sigh of Relief',
+    ],
+    protest_public_address: [
+        'Government Issues Public Address Amid Ongoing Protest Crisis',
+    ],
+};
+
+function pickHeadline(eventType) {
+    const pool = PROTEST_HEADLINE_POOLS[eventType] || ['Protest Update'];
+    return pool[Math.floor(Math.random() * pool.length)];
+}
+
+async function dispatchProtestArticle(supabase, nationId, eventType, headline, lede, tier, tick, sourceId) {
+    try {
+        await supabase.from('valdorian_articles').insert({
+            nation_id: nationId,
+            event_type: eventType,
+            tier,
+            section: 'politics',
+            headline,
+            lede,
+            body_paragraphs: [],
+            quotes: [],
+            byline_reporter: ['Maren Solis', 'Davi Cortes', 'Elena Brandt'][Math.floor(Math.random() * 3)],
+            topic_tags: ['protest'],
+            source_event_id: sourceId || null,
+            tick,
+        });
+    } catch (err) {
+        console.warn('[Protest] Article dispatch failed:', err.message);
+    }
+}
+
+async function fireProtestEvent(supabase, nationId, triggerKey, tick, placeholders) {
+    try {
+        await supabase.rpc('fire_system_event', {
+            p_nation_id: nationId,
+            p_trigger_key: triggerKey,
+            p_tick: tick,
+            p_placeholders: placeholders || {},
+        });
+    } catch (err) {
+        console.warn('[Protest] fire_system_event failed:', err.message);
+    }
 }
 
 // ==================== GOVERNMENT RESPONSE FUNCTIONS ====================
@@ -1003,6 +1074,12 @@ export async function executePublicAddress(supabase, factionId, nationId, protes
     }).eq('id', protestId);
 
     console.log(`[Protest] Public Address issued by faction ${factionId} on protest ${protestId} at tick ${currentTick}`);
+
+    // Dispatch article + event (non-blocking)
+    const headline = pickHeadline('protest_public_address');
+    const lede = 'The government issued a public address amid the ongoing protest crisis, calling for calm and dialogue.';
+    dispatchProtestArticle(supabase, nationId, 'protest_public_address', headline, lede, 3, currentTick, protestId);
+    fireProtestEvent(supabase, nationId, 'protest:public_address', currentTick, { protest_id: protestId });
 
     return {
         success: true,
@@ -1099,6 +1176,10 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
         }).eq('id', protest.faction_id);
 
         console.log(`[Protest] EPO SUCCESS — Tier 6 crisis ${protestId} resolved by force`);
+        const resolvedHeadline = pickHeadline('protest_epo_resolved');
+        dispatchProtestArticle(supabase, nationId, 'protest_epo_resolved', resolvedHeadline,
+            'The Interior Ministry\'s enforcement action successfully ended the protest crisis.', 1, currentTick, protestId);
+        fireProtestEvent(supabase, nationId, 'protest:epo_resolved', currentTick, { protest_id: protestId });
         return { success: true, outcome: 'resolved', newAp };
     } else {
         // Escalation: T6 → T7
@@ -1163,6 +1244,13 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
         }).eq('id', protestId);
 
         console.log(`[Protest] EPO FAILED — Tier 6 escalated to Tier 7 for protest ${protestId}`);
+        const escalatedHeadline = pickHeadline('protest_epo_escalated');
+        dispatchProtestArticle(supabase, nationId, 'protest_epo_escalated', escalatedHeadline,
+            `A government crackdown backfired, escalating the crisis to a Nationwide Protest. Demonstrators now demand: ${demand?.label || 'immediate action'}.`,
+            1, currentTick, protestId);
+        fireProtestEvent(supabase, nationId, 'protest:epo_escalated', currentTick, {
+            protest_id: protestId, demand: demand?.label || '',
+        });
         return { success: true, outcome: 'escalated', newAp, demand };
     }
 }
@@ -1250,6 +1338,13 @@ export async function executeNationalEmergencyOnProtest(supabase, factionId, nat
     await adjustGovernmentApprovalEvent(supabase, nationId, -10, 'protest:national_emergency');
 
     console.log(`[Protest] National Emergency declared on protest ${protestId} — crisis ended with severe penalties`);
+
+    // Dispatch article + event
+    const neHeadline = pickHeadline('protest_emergency');
+    dispatchProtestArticle(supabase, nationId, 'protest_emergency', neHeadline,
+        'The government declared a national emergency to end the protest crisis. The cost was severe: civil unrest surged, political violence spiked, happiness plummeted, and government approval took a devastating hit.',
+        1, currentTick, protestId);
+    fireProtestEvent(supabase, nationId, 'protest:national_emergency', currentTick, { protest_id: protestId });
 
     return {
         success: true,

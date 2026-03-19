@@ -22597,6 +22597,132 @@ const PROTEST_JOINT_BONUS_PER = 15;
 const PROTEST_JOINT_BONUS_CAP = 30;
 const PROTEST_FIZZLE_BLOCS = ['centrist', 'business', 'academic'];
 
+const PROTEST_TIER_LABELS: Record<number, string> = {
+    1: 'Embarrassing Fizzle', 2: 'Modest Showing', 3: 'Respectable Turnout',
+    4: 'Strong Protest', 5: 'Mass Demonstration', 6: 'Historic Protest', 7: 'Nationwide Protest',
+};
+
+// Inline headline templates for protest articles (subset of valdorian-templates.js)
+const PROTEST_HEADLINES: Record<string, string[]> = {
+    protest_fizzle: [
+        "{party} Protest Fizzles — Sparse Turnout Embarrasses Opposition",
+        "Opposition Rally Draws Modest Crowd; Government Approval Holds Steady",
+        "{party}'s Protest Over {grievance} Fails to Gain Traction",
+    ],
+    protest_respectable: [
+        "Thousands March Against {grievance} in {nation}",
+        "{party} Draws Respectable Turnout for {grievance} Protest",
+    ],
+    protest_strong: [
+        "Large Crowds Rally Against Government — {party} Leads Protest Over {grievance}",
+        "Tens of Thousands Take to Streets Demanding Action on {grievance}",
+    ],
+    protest_mass: [
+        "Mass Demonstration Rocks {nation} — Unrest Rises as Protesters Demand Change",
+        "Unprecedented Turnout: {party} Leads Massive Protest Over {grievance}",
+    ],
+    protest_crisis_started: [
+        "Historic Protest Erupts — {nation} Plunged Into Crisis",
+        "Nationwide Protest Paralyzes {nation} — Government Faces Existential Crisis",
+    ],
+    protest_crisis_tick: [
+        "Protest Crisis Enters Day {ticks_active} — No Resolution in Sight",
+        "{nation} Protest Continues: Government Approval Slides Further",
+    ],
+    protest_crisis_ended: [
+        "Protest Crisis Ends in {nation} — Protesters Disperse",
+        "Protesters Claim Victory as Government Meets Demands",
+        "Government Weathers Protest Storm — Crisis Declared Over",
+    ],
+    protest_epo_resolved: [
+        "Government Crackdown Ends Protest Crisis — Interior Ministry Deploys Forces",
+    ],
+    protest_epo_escalated: [
+        "Crackdown Backfires Spectacularly — Protest Escalates to Nationwide Crisis",
+        "Police Action Inflames Protesters — {nation} Faces Nationwide Uprising",
+    ],
+    protest_emergency: [
+        "National Emergency Declared — Government Ends Protest Crisis at Severe Cost",
+        "{nation} Under Emergency Rule as Government Crushes Protest Movement",
+    ],
+    protest_called_off: [
+        "{party} Calls Off Protest — Moderates Breathe Sigh of Relief",
+    ],
+    protest_public_address: [
+        "Government Issues Public Address Amid Ongoing Protest Crisis",
+    ],
+};
+
+function pickProtestHeadline(eventType: string, vars: Record<string, string>): string {
+    const pool = PROTEST_HEADLINES[eventType] || ['Protest Update'];
+    const template = pool[Math.floor(Math.random() * pool.length)];
+    return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] || '');
+}
+
+function protestArticleTier(protestTier: number): number {
+    if (protestTier >= 6) return 1;
+    if (protestTier >= 4) return 2;
+    return 3;
+}
+
+function getProtestEventType(tier: number, crisisCreated: boolean): string {
+    if (crisisCreated) return 'protest_crisis_started';
+    if (tier <= 2) return 'protest_fizzle';
+    if (tier === 3) return 'protest_respectable';
+    if (tier === 4) return 'protest_strong';
+    if (tier === 5) return 'protest_mass';
+    return 'protest_crisis_started';
+}
+
+async function dispatchProtestArticle(
+    supabase: any,
+    nationId: string,
+    eventType: string,
+    headline: string,
+    lede: string,
+    articleTier: number,
+    tick: number,
+    sourceId?: string
+) {
+    try {
+        await supabase.from('valdorian_articles').insert({
+            nation_id: nationId,
+            event_type: eventType,
+            tier: articleTier,
+            section: 'politics',
+            headline,
+            lede,
+            body_paragraphs: [],
+            quotes: [],
+            byline_reporter: ['Maren Solis', 'Davi Cortes', 'Elena Brandt'][Math.floor(Math.random() * 3)],
+            topic_tags: ['protest'],
+            source_event_id: sourceId || null,
+            tick,
+        });
+    } catch (err: any) {
+        console.warn(`[Protest] Article dispatch failed (non-fatal): ${err.message}`);
+    }
+}
+
+async function fireProtestEvent(
+    supabase: any,
+    nationId: string,
+    triggerKey: string,
+    tick: number,
+    placeholders: Record<string, any>
+) {
+    try {
+        await supabase.rpc('fire_system_event', {
+            p_nation_id: nationId,
+            p_trigger_key: triggerKey,
+            p_tick: tick,
+            p_placeholders: placeholders,
+        });
+    } catch (err: any) {
+        console.warn(`[Protest] fire_system_event failed (non-fatal): ${err.message}`);
+    }
+}
+
 const PROTEST_HIGHER_IS_BAD = new Set([
     'civil_unrest', 'terrorism', 'political_violence', 'crime_rate',
     'corruption', 'pollution', 'carbon_emissions', 'poverty_rate',
@@ -22965,9 +23091,29 @@ async function resolveProtestTick(supabase, nation, protest, currentTick) {
         }
     }
 
-    const tierLabels = { 1: 'Embarrassing Fizzle', 2: 'Modest Showing', 3: 'Respectable Turnout',
-        4: 'Strong Protest', 5: 'Mass Demonstration', 6: 'Historic Protest', 7: 'Nationwide Protest' };
-    console.log(`[Protest] Resolved ${protest.id}: Tier ${tier} (${tierLabels[tier]}), score ${turnoutScore.toFixed(1)}, condition ${conditionScore.toFixed(1)}`);
+    console.log(`[Protest] Resolved ${protest.id}: Tier ${tier} (${PROTEST_TIER_LABELS[tier]}), score ${turnoutScore.toFixed(1)}, condition ${conditionScore.toFixed(1)}`);
+
+    // ── Dispatch news article + system event ──
+    try {
+        const { data: callingFaction } = await supabase
+            .from('factions').select('faction_name').eq('id', factionId).single();
+        const partyName = callingFaction?.faction_name || 'Opposition';
+        const grievanceLabel = protest.demand_label || protest.grievance_data?.label || protest.grievance_type || 'government policy';
+        const demandLabel = protest.tier7_demand?.label || grievanceLabel;
+        const eventType = getProtestEventType(tier, crisisCreated);
+        const vars = { party: partyName, nation: nation.name || '', grievance: grievanceLabel, demand: demandLabel, ticks_active: '1' };
+        const headline = pickProtestHeadline(eventType, vars);
+        const lede = `${partyName} organised a protest in ${nation.name || 'the nation'} over ${grievanceLabel}. ` +
+            `The turnout was rated as ${PROTEST_TIER_LABELS[tier] || 'Tier ' + tier} (score: ${turnoutScore.toFixed(0)}).` +
+            (crisisCreated ? ` The protest has triggered a national crisis.` : '');
+
+        await dispatchProtestArticle(supabase, nationId, eventType, headline, lede, protestArticleTier(tier), currentTick, protest.id);
+        await fireProtestEvent(supabase, nationId, `protest:resolved:tier${tier}`, currentTick, {
+            party: partyName, tier, score: Math.round(turnoutScore), grievance: grievanceLabel, crisis: crisisCreated,
+        });
+    } catch (artErr) {
+        console.warn(`[Protest] Article/event dispatch failed (non-fatal):`, artErr);
+    }
 
     return { tier, turnoutScore, conditionScore, crisisCreated, effects: appliedEffects };
 }
@@ -23053,7 +23199,35 @@ async function processProtestCrisisTick(supabase, nation, protest, currentTick) 
             }).eq('id', protest.id);
         }
 
+        // Dispatch crisis-ended article
+        try {
+            const { data: cf } = await supabase.from('factions').select('faction_name').eq('id', protest.faction_id).single();
+            const pName = cf?.faction_name || 'Opposition';
+            const demandMet = !!(isTier7 && protest.tier7_demand_met);
+            const vars = { party: pName, nation: nation.name || '', ticks_active: String(ticksActive) };
+            const headline = pickProtestHeadline(demandMet ? 'protest_crisis_ended' : 'protest_crisis_ended', vars);
+            const lede = demandMet
+                ? `The protest crisis in ${nation.name} has ended after the government met the demonstrators' demand. ${pName}'s supporters are dispersing after ${ticksActive} ticks of unrest.`
+                : `After ${ticksActive} ticks of sustained unrest, the protest crisis in ${nation.name} has come to an end. The ${PROTEST_TIER_LABELS[protest.tier] || 'protest'} organised by ${pName} has left its mark on the nation.`;
+            await dispatchProtestArticle(supabase, nationId, 'protest_crisis_ended', headline, lede, 2, currentTick, protest.id);
+            await fireProtestEvent(supabase, nationId, 'protest:crisis_ended', currentTick, {
+                party: pName, tier: protest.tier, ticks_active: ticksActive, demand_met: demandMet,
+            });
+        } catch (artErr) { console.warn('[Protest] Crisis-ended article dispatch failed:', artErr); }
+
         return { expired: true, ticksActive };
+    }
+
+    // Dispatch ongoing crisis article every 2 ticks
+    if (ticksActive > 0 && ticksActive % 2 === 0) {
+        try {
+            const { data: cf } = await supabase.from('factions').select('faction_name').eq('id', protest.faction_id).single();
+            const pName = cf?.faction_name || 'Opposition';
+            const vars = { party: pName, nation: nation.name || '', ticks_active: String(ticksActive) };
+            const headline = pickProtestHeadline('protest_crisis_tick', vars);
+            const lede = `The protest crisis in ${nation.name} continues for its ${ticksActive}th tick. ${PROTEST_TIER_LABELS[protest.tier] || 'The protest'} shows no sign of abating.`;
+            await dispatchProtestArticle(supabase, nationId, 'protest_crisis_tick', headline, lede, 2, currentTick, protest.id);
+        } catch (artErr) { console.warn('[Protest] Crisis-tick article dispatch failed:', artErr); }
     }
 
     return { expired: false, ticksActive, updates };
