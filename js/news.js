@@ -8,10 +8,12 @@ let _supabase = null;
 let _state = null;
 let _articles = []; // cached for article reader lookup
 let _categoryFilter = 'all'; // current nav filter
+let _shardNationIds = null; // cached nation IDs in the same shard
 
 export async function initNewspaper(supabase, state) {
     _supabase = supabase;
     _state = state;
+    _shardNationIds = null; // reset cache on reinit
     const root = document.getElementById('newspaper-root');
     if (!root) return;
 
@@ -737,16 +739,31 @@ function renderImageOrPlaceholder(imageUrl, label) {
     </div>`;
 }
 
+async function getShardNationIds() {
+    if (_shardNationIds) return _shardNationIds;
+    const shard = _state?.shard;
+    const nation = _state?.nation;
+    if (!shard || !nation) return [nation?.id].filter(Boolean);
+
+    const { data: nations } = await _supabase
+        .from('nations')
+        .select('id')
+        .eq('shard_id', shard.id);
+
+    _shardNationIds = nations ? nations.map(n => n.id) : [nation.id];
+    return _shardNationIds;
+}
+
 async function loadAndDisplayArticles() {
     if (!_supabase || !_state) return;
 
     try {
-        const { nation } = _state;
+        const nationIds = await getShardNationIds();
 
         const { data: articles, error } = await _supabase
             .from('player_articles')
             .select('*')
-            .eq('nation_id', nation.id)
+            .in('nation_id', nationIds)
             .eq('status', 'published')
             .order('created_at', { ascending: false });
 
@@ -992,15 +1009,15 @@ function bindArchivesNav(root) {
 async function renderArchivesListView(root) {
     if (!_supabase || !_state) return;
 
-    const { nation } = _state;
     const currentTick = _state.shard?.current_tick ?? 0;
     const gameDate = _state.shard?.current_date || '[Month], [Year]';
+    const nationIds = await getShardNationIds();
 
-    // Fetch ALL published articles for this nation
+    // Fetch ALL published articles across all nations in this shard
     const { data: articles, error } = await _supabase
         .from('player_articles')
         .select('*')
-        .eq('nation_id', nation.id)
+        .in('nation_id', nationIds)
         .eq('status', 'published')
         .order('published_tick', { ascending: false });
 
