@@ -3110,7 +3110,7 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
             // Check for recently resolved protest (result flash, 1 tick)
             const { data: recentResolved } = await _supabase
                 .from('protest_log')
-                .select('id, tier, turnout_score, effects_applied, tick_resolved')
+                .select('id, tier, turnout_score, effects_applied, tick_resolved, roll_breakdown, condition_score')
                 .eq('faction_id', f.id)
                 .eq('status', 'resolved')
                 .gte('tick_resolved', tick - 1)
@@ -3218,6 +3218,8 @@ function renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo,
         // Show last result if present
         if (_caResult) {
             panelHtml += renderActionResult(_caResult);
+        } else if (sel.id === 'protest' && _protestState === 'result' && _protestActiveData) {
+            panelHtml += renderProtestResultPanel(_protestActiveData);
         } else {
             panelHtml += renderActionConfig(sel, blocs, otherParties, factionIdeo, n, ap, tick);
             // Confirm button
@@ -3627,6 +3629,10 @@ function renderProtestActionRow(act, isSel, ap, faction, tick) {
         const tier = _protestActiveData.tier;
         if (tier >= 3 && tier <= 5) {
             const tierLabel = getTierLabel(tier).toUpperCase();
+            const rb = _protestActiveData.roll_breakdown || {};
+            const endorseCount = rb.endorsements || 0;
+            const jointBonus = rb.joint_bonus || 0;
+            const endorseNote = endorseCount > 0 ? ` (+${endorseCount} endorse${endorseCount > 1 ? 's' : ''})` : '';
             return `<div class="ca-item ca-item--protest ca-item--result-${tier}" data-action-id="protest">
                 <div class="ca-item-head">
                     <div style="display:flex;align-items:center;gap:6px">
@@ -3635,6 +3641,7 @@ function renderProtestActionRow(act, isSel, ap, faction, tick) {
                     </div>
                     <span class="ca-item-ap" style="color:#5cb85c">TIER ${tier} — ${tierLabel}</span>
                 </div>
+                ${endorseCount > 0 ? `<div style="font-family:var(--dfont-mono);font-size:9px;color:#a78bfa;margin-top:2px;padding:0 12px 4px">${endorseCount} party endorsement${endorseCount > 1 ? 's' : ''} (+${jointBonus} bonus)</div>` : ''}
             </div>`;
         }
     }
@@ -3910,6 +3917,80 @@ function renderActionResult(result) {
             <div style="font-family:var(--dfont-mono);font-size:10px;color:#ef4444;margin-top:2px">Broken: ${MAKE_PROMISE_CONFIG.BROKEN_MOMENTUM} momentum, ${MAKE_PROMISE_CONFIG.BROKEN_ALL_PREF} all blocs</div>
             <div style="font-family:var(--dfont-mono);font-size:10px;color:#f97316;margin-top:2px">While unfulfilled: −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX}/tick</div>
         </div>`;
+    }
+
+    html += `</div></div>`;
+    return html;
+}
+
+function renderProtestResultPanel(protestData) {
+    const tier = protestData.tier || 0;
+    const tierLabel = getTierLabel(tier).toUpperCase();
+    const rb = protestData.roll_breakdown || {};
+    const score = protestData.condition_score ?? protestData.turnout_score ?? 0;
+    const endorseCount = rb.endorsements || 0;
+    const jointBonus = rb.joint_bonus || 0;
+    const effects = protestData.effects_applied || [];
+
+    let html = `<div class="ca-result-box" style="border-color:#5cb85c33">`;
+    html += `<div class="ca-result-header" style="background:#5cb85c08">
+        <span style="font-family:var(--dfont-ui);font-size:14px;font-weight:700;color:#5cb85c">Protest Result — Tier ${tier}</span>
+    </div>`;
+    html += `<div class="ca-result-body">`;
+
+    // Tier label
+    html += `<div class="ca-result-row">
+        <span class="ca-result-label">Outcome</span>
+        <span class="ca-result-val" style="color:#5cb85c">${tierLabel}</span>
+    </div>`;
+
+    // Condition score
+    html += `<div class="ca-result-row">
+        <span class="ca-result-label">Condition Score</span>
+        <span class="ca-result-val" style="color:var(--dtext-1)">${Math.round(score)}</span>
+    </div>`;
+
+    // Roll breakdown
+    if (Object.keys(rb).length > 0) {
+        html += `<div style="border-top:1px solid var(--dborder-1);margin-top:8px;padding-top:8px">
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-bottom:4px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">Score Breakdown</div>`;
+        const skipKeys = new Set(['endorsements', 'joint_bonus']);
+        for (const [key, val] of Object.entries(rb)) {
+            if (skipKeys.has(key)) continue;
+            const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const numVal = Number(val);
+            const vColor = numVal >= 0 ? '#4ade80' : '#ef4444';
+            html += `<div class="ca-result-row">
+                <span class="ca-result-label" style="font-size:10px">${escapeHtml(label)}</span>
+                <span class="ca-result-val" style="color:${vColor};font-size:10px">${numVal >= 0 ? '+' : ''}${numVal.toFixed(1)}</span>
+            </div>`;
+        }
+        html += `</div>`;
+    }
+
+    // Endorsements
+    if (endorseCount > 0) {
+        html += `<div class="protest-endorse-breakdown">
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#a78bfa;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:2px">Coalition Support</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-1)">${endorseCount} party endorsement${endorseCount > 1 ? 's' : ''} — +${jointBonus} bonus</div>
+        </div>`;
+    }
+
+    // Effects applied
+    const statEffects = effects.filter(e => e.stat && e.stat !== 'electoral_wound');
+    if (statEffects.length > 0) {
+        html += `<div style="border-top:1px solid var(--dborder-1);margin-top:8px;padding-top:8px">
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-bottom:4px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">Effects on Nation</div>`;
+        for (const e of statEffects) {
+            const label = (e.stat || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const delta = Number(e.delta || e.value || 0);
+            const vColor = delta >= 0 ? '#4ade80' : '#ef4444';
+            html += `<div class="ca-result-row">
+                <span class="ca-result-label" style="font-size:10px">${escapeHtml(label)}</span>
+                <span class="ca-result-val" style="color:${vColor};font-size:10px">${delta >= 0 ? '+' : ''}${delta}</span>
+            </div>`;
+        }
+        html += `</div>`;
     }
 
     html += `</div></div>`;

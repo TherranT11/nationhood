@@ -3679,7 +3679,7 @@ const STAT_DECAY_CONFIG = {
     civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
     polarization:        { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
     terrorism:           { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
-    political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
+    // political_violence: handled by protest-aware decay override (see PV Decay block)
     happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
@@ -10845,6 +10845,62 @@ async function processElections(supabase, nation, currentTick) {
             await autoSelectPresidentialCandidates(supabase, nation, currentTick);
         }
 
+        // Apply electoral wound penalties from unresolved T7 protest demands
+        // Temporarily reduce governing faction's electability by 5 for the election
+        const woundRestorations = [];
+        try {
+            const { data: woundRows } = await supabase
+                .from('protest_log')
+                .select('id, effects_applied')
+                .eq('nation_id', nation.id)
+                .eq('status', 'resolved');
+            const woundsToApply = [];
+            for (const row of (woundRows || [])) {
+                const effects = row.effects_applied || [];
+                for (const e of effects) {
+                    if (e.stat === 'electoral_wound' && !e.applied_in_election) {
+                        woundsToApply.push(row.id);
+                        break;
+                    }
+                }
+            }
+            if (woundsToApply.length > 0) {
+                // Find the governing coalition's lead party
+                const { data: govFormation } = await supabase
+                    .from('government_formations')
+                    .select('lead_faction_id')
+                    .eq('nation_id', nation.id)
+                    .eq('status', 'formed')
+                    .maybeSingle();
+                const leadFactionId = govFormation?.lead_faction_id;
+                if (leadFactionId) {
+                    const { data: fRow } = await supabase
+                        .from('factions')
+                        .select('electability')
+                        .eq('id', leadFactionId)
+                        .single();
+                    const origElect = fRow?.electability ?? 50;
+                    const penaltyTotal = Math.min(woundsToApply.length * 5, 25); // cap at -25
+                    const newElect = Math.max(0, origElect - penaltyTotal);
+                    await supabase.from('factions').update({ electability: newElect }).eq('id', leadFactionId);
+                    woundRestorations.push({ factionId: leadFactionId, originalElectability: origElect });
+                    console.log(`[Electoral Wound] Applied -${penaltyTotal} electability to governing party for ${nation.name} (${woundsToApply.length} wound(s))`);
+                    // Mark wounds as applied so they only count once
+                    for (const wId of woundsToApply) {
+                        const wRow = (woundRows || []).find(r => r.id === wId);
+                        if (wRow) {
+                            const updatedEffects = (wRow.effects_applied || []).map(e =>
+                                e.stat === 'electoral_wound' ? { ...e, applied_in_election: true } : e
+                            );
+                            await supabase.from('protest_log').update({ effects_applied: updatedEffects }).eq('id', wId);
+                        }
+                    }
+                }
+            }
+        } catch (woundErr) {
+            console.error(`[Electoral Wound] Failed to apply wound penalty for ${nation.name} (non-fatal):`, woundErr);
+        }
+
         // Use candidate-based voting for presidential elections, party-based for parliamentary
         let data, error;
         if (electionType === 'presidential') {
@@ -10891,6 +10947,11 @@ async function processElections(supabase, nation, currentTick) {
             console.log(`Election RPC succeeded on retry for ${nation.name}`);
         }
 
+        // Restore electability after electoral wound penalty
+        for (const wr of woundRestorations) {
+            await supabase.from('factions').update({ electability: wr.originalElectability }).eq('id', wr.factionId);
+        }
+
         // Mark the scheduled election record as completed with full results
         await supabase.from('elections')
             .update({ status: 'completed', results: data })
@@ -10908,6 +10969,41 @@ async function processElections(supabase, nation, currentTick) {
                     .eq('id', r.party_id);
             }
             console.log(`Seats synced to factions for ${nation.name}`);
+
+            // Pyrrhic Victory: if a protest crisis was active during this election,
+            // and the protest-calling faction won the most seats, mark them with a
+            // 12-tick commitment flag (reduced effectiveness of some actions)
+            try {
+                const { data: crisisAtElection } = await supabase
+                    .from('protest_log')
+                    .select('id, faction_id')
+                    .eq('nation_id', nation.id)
+                    .eq('status', 'crisis_active')
+                    .limit(1)
+                    .maybeSingle();
+                if (crisisAtElection) {
+                    const seats = completedElection.results.seats || [];
+                    const sorted = [...seats].sort((a, b) => (b.seats || 0) - (a.seats || 0));
+                    if (sorted.length > 0 && sorted[0].party_id === crisisAtElection.faction_id) {
+                        const pyrrhicUntil = currentTick + 12;
+                        await supabase.from('factions')
+                            .update({ pyrrhic_victory_until_tick: pyrrhicUntil })
+                            .eq('id', crisisAtElection.faction_id);
+                        console.log(`[Pyrrhic Victory] Protest-calling faction ${crisisAtElection.faction_id} won election — commitment until tick ${pyrrhicUntil}`);
+                        // Log event
+                        await supabase.from('event_log').insert({
+                            nation_id: nation.id,
+                            event_name: 'PYRRHIC_VICTORY',
+                            description_used: `The party that organised the protest crisis has won the election, but faces a 12-tick commitment period with reduced political capital.`,
+                            category: 'POLITICAL',
+                            effects_applied: { faction_id: crisisAtElection.faction_id, until_tick: pyrrhicUntil },
+                            fired_at_tick: currentTick,
+                        });
+                    }
+                }
+            } catch (pyrErr) {
+                console.error(`[Pyrrhic Victory] Detection failed for ${nation.name} (non-fatal):`, pyrErr);
+            }
         }
 
         // Dissolve legislature — fail all pending bills (new parliament must re-propose)
@@ -23663,6 +23759,48 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (decayErr) {
             console.error(`[advanceTick] Stat decay failed for ${nation.name} (non-fatal):`, decayErr);
+        }
+
+        // Political Violence decay override — protest-aware with dynamic floor
+        try {
+            const pvCurrent = Number(nation.political_violence ?? 0);
+            const incomeIneq = Number(nation.income_inequality ?? 0);
+            const povertyRate = Number(nation.poverty_rate ?? 0);
+
+            // Check if a protest crisis is active for this nation
+            const { data: pvCrisisRows } = await supabase
+                .from('protest_log')
+                .select('id')
+                .eq('nation_id', nation.id)
+                .eq('status', 'crisis_active')
+                .limit(1);
+            const pvCrisisActive = (pvCrisisRows || []).length > 0;
+
+            // Check if EPO ministry action is active (last 4 ticks)
+            const { data: pvEpoRows } = await supabase
+                .from('ministry_action_log')
+                .select('id')
+                .eq('nation_id', nation.id)
+                .eq('action_key', 'enforcePublicOrder')
+                .gte('applied_at_tick', newTick - 4)
+                .limit(1);
+            const pvEpoActive = (pvEpoRows || []).length > 0;
+
+            // Compute protest-aware decay
+            if (!pvCrisisActive) {
+                const pvFloor = (incomeIneq / 100) * 20 + (povertyRate / 100) * 15;
+                const pvDecayRate = pvEpoActive ? 1.5 : 0.5;
+                const pvNew = Math.round(Math.max(pvFloor, pvCurrent - pvDecayRate) * 10) / 10;
+                if (pvNew !== Math.round(pvCurrent * 10) / 10) {
+                    await supabase.from('nations').update({ political_violence: pvNew }).eq('id', nation.id);
+                    nation.political_violence = pvNew;
+                    console.log(`[PV Decay] ${nation.name}: ${pvCurrent} → ${pvNew} (floor=${pvFloor.toFixed(1)}, epo=${pvEpoActive})`);
+                }
+            } else {
+                console.log(`[PV Decay] ${nation.name}: paused (crisis active)`);
+            }
+        } catch (pvErr) {
+            console.error(`[advanceTick] PV decay override failed for ${nation.name} (non-fatal):`, pvErr);
         }
 
         // Stat connections (threshold-triggered ripple effects)
