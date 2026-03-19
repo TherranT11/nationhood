@@ -1,11 +1,13 @@
 // js/news.js — The Cruceran newspaper page
 
 import { adjustMomentumAll } from './game/momentum.js';
+import { tickToDate, MONTHS } from './utils.js';
 
 // Module-level references set during init
 let _supabase = null;
 let _state = null;
 let _articles = []; // cached for article reader lookup
+let _categoryFilter = 'all'; // current nav filter
 
 export async function initNewspaper(supabase, state) {
     _supabase = supabase;
@@ -48,14 +50,15 @@ export async function initNewspaper(supabase, state) {
         <!-- NAV -->
         <nav class="nws-nav">
             <div class="nws-nav-inner">
-                <div class="nws-nav-item active">Front Page</div>
-                <div class="nws-nav-item">Politics</div>
-                <div class="nws-nav-item">Economy</div>
-                <div class="nws-nav-item">International</div>
-                <div class="nws-nav-item">Social</div>
-                <div class="nws-nav-item">Entertainment</div>
-                <div class="nws-nav-item">Elections</div>
-                <div class="nws-nav-item">Sports</div>
+                <div class="nws-nav-item active" data-category="all">Front Page</div>
+                <div class="nws-nav-item" data-category="politics">Politics</div>
+                <div class="nws-nav-item" data-category="economy">Economy</div>
+                <div class="nws-nav-item" data-category="international">International</div>
+                <div class="nws-nav-item" data-category="social">Social</div>
+                <div class="nws-nav-item" data-category="entertainment">Entertainment</div>
+                <div class="nws-nav-item" data-category="elections">Elections</div>
+                <div class="nws-nav-item" data-category="sports">Sports</div>
+                <div class="nws-nav-item nws-nav-archives" id="nws-nav-archives">Older Issues</div>
             </div>
         </nav>
 
@@ -340,6 +343,8 @@ export async function initNewspaper(supabase, state) {
     bindSubmitHandler();
     bindDeleteHandlers(root);
     bindArticleReader(root);
+    bindArchivesNav(root);
+    bindCategoryNav(root);
 
     // === LOAD & DISPLAY ARTICLES ===
     await loadAndDisplayArticles();
@@ -764,9 +769,16 @@ async function loadAndDisplayArticles() {
         // Cache for article reader lookup
         _articles = activeArticles;
 
+        // Apply category filter if set
+        const filtered = _categoryFilter && _categoryFilter !== 'all'
+            ? activeArticles.filter(a => a.category === _categoryFilter)
+            : activeArticles;
+
+        if (filtered.length === 0 && _categoryFilter !== 'all') return;
+
         // Separate opinion articles from news articles
-        const opinionArticles = activeArticles.filter(a => a.category === 'opinion');
-        const newsArticles = activeArticles.filter(a => a.category !== 'opinion');
+        const opinionArticles = filtered.filter(a => a.category === 'opinion');
+        const newsArticles = filtered.filter(a => a.category !== 'opinion');
 
         // Sort news by body length DESC — longest gets A1
         const sorted = [...newsArticles].sort((a, b) =>
@@ -951,4 +963,297 @@ function populateOpinionStrip(articles) {
     }).join('');
 
     grid.innerHTML = html;
+}
+
+// === CATEGORY NAV ===
+
+function bindCategoryNav(root) {
+    const navItems = root.querySelectorAll('.nws-nav-item[data-category]');
+    navItems.forEach(item => {
+        item.addEventListener('click', () => {
+            // Update active state
+            navItems.forEach(n => n.classList.remove('active'));
+            item.classList.add('active');
+            // Set filter and reload
+            _categoryFilter = item.dataset.category;
+            loadAndDisplayArticles();
+        });
+    });
+}
+
+// === ARCHIVES ===
+
+function bindArchivesNav(root) {
+    const btn = document.getElementById('nws-nav-archives');
+    if (!btn) return;
+    btn.addEventListener('click', () => renderArchivesListView(root));
+}
+
+async function renderArchivesListView(root) {
+    if (!_supabase || !_state) return;
+
+    const { nation } = _state;
+    const currentTick = _state.shard?.current_tick ?? 0;
+    const gameDate = _state.shard?.current_date || '[Month], [Year]';
+
+    // Fetch ALL published articles for this nation
+    const { data: articles, error } = await _supabase
+        .from('player_articles')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .eq('status', 'published')
+        .order('published_tick', { ascending: false });
+
+    if (error) {
+        console.error('[News] Failed to load archive articles:', error);
+        return;
+    }
+
+    // Group articles by their published tick (each tick = one month)
+    const grouped = {};
+    for (const a of (articles || [])) {
+        const tick = a.published_tick ?? 0;
+        const dateLabel = tickToDate(tick);
+        if (!grouped[tick]) grouped[tick] = { dateLabel, tick, articles: [] };
+        grouped[tick].articles.push(a);
+    }
+
+    // Sort by tick descending
+    const months = Object.values(grouped).sort((a, b) => b.tick - a.tick);
+
+    // Mark current edition ticks (within 3 ticks)
+    const isCurrentEdition = (tick) => currentTick - tick < 3;
+
+    const monthListHtml = months.length > 0
+        ? months.map(m => {
+            const current = isCurrentEdition(m.tick) ? ' <span class="nws-archive-current">Current</span>' : '';
+            return `<div class="nws-archive-month" data-archive-tick="${m.tick}">
+                <div class="nws-archive-month-name">${escapeHtml(m.dateLabel)}${current}</div>
+                <div class="nws-archive-month-count">${m.articles.length} article${m.articles.length !== 1 ? 's' : ''}</div>
+            </div>`;
+        }).join('')
+        : '<p class="nws-placeholder" style="text-align:center;padding:40px;">No articles have been published yet.</p>';
+
+    root.innerHTML = `<div class="newspaper-container">
+        <!-- TOP RIBBON -->
+        <div class="nws-top-ribbon">
+            <div class="nws-top-ribbon-inner">
+                <span>${gameDate}</span>
+                <span class="nws-edition">The Cruceran &mdash; Continental Edition</span>
+                <button class="nws-write-btn" id="nws-back-btn">&larr; Back to Front Page</button>
+            </div>
+        </div>
+
+        <!-- MASTHEAD -->
+        <div class="nws-masthead">
+            <div class="nws-masthead-top">
+                <div class="nws-masthead-meta">Est. Year 1<br>Continental Record</div>
+                <h1>The Cruceran</h1>
+                <div class="nws-masthead-meta nws-masthead-meta-right">Free Press<br>International Wire</div>
+            </div>
+            <hr class="nws-masthead-rule">
+            <div class="nws-rule-ornament">&mdash; &#10022; &mdash;</div>
+            <div class="nws-masthead-tagline">&ldquo;Truth in the service of the people&rdquo;</div>
+        </div>
+
+        <!-- ARCHIVE CONTENT -->
+        <div class="nws-main-content">
+            <div class="nws-archives">
+                <h2 class="nws-archives-title">Older Issues</h2>
+                <p class="nws-archives-subtitle">Browse past editions of The Cruceran by month.</p>
+                <div class="nws-archive-list">
+                    ${monthListHtml}
+                </div>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="nws-footer">
+            <h2>The Cruceran</h2>
+            <p>Continental Edition &nbsp;&middot;&nbsp; Est. Year 1 &nbsp;&middot;&nbsp; All rights reserved &nbsp;&middot;&nbsp; Truth in the service of the people</p>
+        </div>
+    </div>`;
+
+    // Bind back button
+    document.getElementById('nws-back-btn')?.addEventListener('click', () => initNewspaper(_supabase, _state));
+
+    // Bind month clicks
+    root.querySelectorAll('[data-archive-tick]').forEach(el => {
+        el.addEventListener('click', () => {
+            const tick = parseInt(el.dataset.archiveTick, 10);
+            const monthData = grouped[tick];
+            if (monthData) renderArchivedEdition(root, monthData.articles, monthData.dateLabel);
+        });
+    });
+
+    root.scrollTop = 0;
+}
+
+function renderArchivedEdition(root, articles, dateLabel) {
+    // Cache for article reader
+    _articles = articles;
+
+    // Separate opinion from news, sort news by body length
+    const opinionArticles = articles.filter(a => a.category === 'opinion');
+    const newsArticles = articles.filter(a => a.category !== 'opinion');
+    const sorted = [...newsArticles].sort((a, b) => (b.body || '').length - (a.body || '').length);
+
+    const lead = sorted[0];
+    const sidebar = sorted.slice(1, 4);
+    const secondary = sorted.slice(4, 7);
+    const briefs = sorted.slice(7, 12);
+    const opinions = opinionArticles.slice(0, 4);
+
+    const leadHtml = lead ? buildLeadHtml(lead, sidebar, dateLabel) : '<p class="nws-placeholder" style="padding:40px;text-align:center;">[No articles in this edition]</p>';
+    const secondaryHtml = buildSecondaryGridHtml(secondary);
+    const opinionHtml = buildOpinionStripHtml(opinions);
+    const briefsHtml = buildBriefsHtml(briefs);
+
+    root.innerHTML = `<div class="newspaper-container">
+        <!-- TOP RIBBON -->
+        <div class="nws-top-ribbon">
+            <div class="nws-top-ribbon-inner">
+                <span>${escapeHtml(dateLabel)}</span>
+                <span class="nws-edition">The Cruceran &mdash; Continental Edition</span>
+                <button class="nws-write-btn" id="nws-back-to-archives">&larr; Back to Older Issues</button>
+            </div>
+        </div>
+
+        <!-- MASTHEAD -->
+        <div class="nws-masthead">
+            <div class="nws-masthead-top">
+                <div class="nws-masthead-meta">Est. Year 1<br>Continental Record</div>
+                <h1>The Cruceran</h1>
+                <div class="nws-masthead-meta nws-masthead-meta-right">Free Press<br>International Wire</div>
+            </div>
+            <hr class="nws-masthead-rule">
+            <div class="nws-rule-ornament">&mdash; &#10022; &mdash;</div>
+            <div class="nws-masthead-tagline">&ldquo;Truth in the service of the people&rdquo;</div>
+        </div>
+
+        <div class="nws-archive-edition-banner">
+            <span>Archived Edition &mdash; ${escapeHtml(dateLabel)}</span>
+        </div>
+
+        <!-- MAIN CONTENT -->
+        <div class="nws-main-content">
+            <div class="nws-lead-section">${leadHtml}</div>
+            ${secondaryHtml ? `<div class="nws-secondary-grid">${secondaryHtml}</div>` : ''}
+        </div>
+
+        ${opinionHtml}
+
+        ${briefsHtml ? `<div class="nws-main-content">
+            <div class="nws-bottom-grid">
+                <div class="nws-bottom-left">
+                    <div class="nws-col-header">In Brief</div>
+                    ${briefsHtml}
+                </div>
+            </div>
+        </div>` : ''}
+
+        <!-- FOOTER -->
+        <div class="nws-footer">
+            <h2>The Cruceran</h2>
+            <p>Continental Edition &nbsp;&middot;&nbsp; Est. Year 1 &nbsp;&middot;&nbsp; All rights reserved &nbsp;&middot;&nbsp; Truth in the service of the people</p>
+        </div>
+    </div>`;
+
+    // Bind back to archives list
+    document.getElementById('nws-back-to-archives')?.addEventListener('click', () => renderArchivesListView(root));
+
+    // Bind article reader for archived articles
+    bindArticleReader(root);
+
+    root.scrollTop = 0;
+}
+
+// === ARCHIVE LAYOUT BUILDERS ===
+
+function buildLeadHtml(lead, sidebar, dateLabel) {
+    const sidebarHtml = sidebar.length > 0
+        ? sidebar.map(a => `
+            <div class="nws-sidebar-story" data-article-id="${a.id}">
+                <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
+                <h3 class="nws-sidebar-headline">${escapeHtml(a.headline)}</h3>
+                <p class="nws-sidebar-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 120))}${(a.body || '').length > 120 ? '...' : ''}</p>
+                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${escapeHtml(dateLabel)}</span></div>
+            </div>
+        `).join('')
+        : '';
+
+    const leadImageHtml = lead.image_url
+        ? `<img src="${escapeHtml(lead.image_url)}" alt="${escapeHtml(lead.headline)}">`
+        : renderImageOrPlaceholder(null, 'Photo');
+
+    const leadBody = lead.body || '';
+    const deckText = leadBody.replace(/\n+/g, ' ');
+    const deck = deckText.length > 200 ? deckText.substring(0, 200) + '...' : deckText;
+
+    return `
+        <div class="nws-lead-main" data-article-id="${lead.id}">
+            <span class="nws-section-tag">${escapeHtml(categoryLabel(lead.category))}</span>
+            <h2 class="nws-lead-headline">${escapeHtml(lead.headline)}</h2>
+            <p class="nws-lead-deck">${escapeHtml(deck)}</p>
+            <div class="nws-byline">
+                <span class="nws-author">${escapeHtml(lead.author_name)}</span>
+                <span class="nws-dot">&middot;</span>
+                <span>${escapeHtml(dateLabel)}</span>
+            </div>
+            <div class="nws-lead-body">
+                ${formatLeadPreview(leadBody)}
+            </div>
+        </div>
+        <div class="nws-lead-sidebar">
+            <div class="nws-lead-image">${leadImageHtml}</div>
+            <p class="nws-img-caption">${lead.image_url ? escapeHtml(lead.headline) : '<span class="nws-placeholder">[Photo]</span>'}</p>
+            ${sidebarHtml}
+        </div>
+    `;
+}
+
+function buildSecondaryGridHtml(articles) {
+    if (articles.length === 0) return '';
+    return articles.map(a => {
+        const imgHtml = a.image_url
+            ? `<img src="${escapeHtml(a.image_url)}" alt="${escapeHtml(a.headline)}" style="width:100%;height:100%;object-fit:cover;">`
+            : `<div class="nws-img-ph" style="background:${categoryGradient(a.category)};">${escapeHtml(categoryLabel(a.category))}</div>`;
+        return `<div class="nws-sec-story" data-article-id="${a.id}">
+            <div class="nws-sec-image">${imgHtml}</div>
+            <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
+            <h3 class="nws-sec-headline">${escapeHtml(a.headline)}</h3>
+            <p class="nws-sec-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 150))}${(a.body || '').length > 150 ? '...' : ''}</p>
+            <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span></div>
+        </div>`;
+    }).join('');
+}
+
+function buildOpinionStripHtml(articles) {
+    if (articles.length === 0) return '';
+    const cardsHtml = articles.map(a => {
+        const quote = (a.body || '').length > 80 ? (a.body || '').substring(0, 80) + '...' : (a.body || '');
+        return `<div class="nws-op-card" data-article-id="${a.id}">
+            <div class="nws-op-author">${escapeHtml(a.author_name)} &mdash; Opinion</div>
+            <div class="nws-op-headline">&ldquo;${escapeHtml(quote)}&rdquo;</div>
+        </div>`;
+    }).join('');
+    return `<div class="nws-opinion-strip">
+        <div class="nws-opinion-inner">
+            <div class="nws-opinion-label">&mdash; Opinion &amp; Commentary &mdash;</div>
+            <div class="nws-opinion-grid">${cardsHtml}</div>
+        </div>
+    </div>`;
+}
+
+function buildBriefsHtml(articles) {
+    if (articles.length === 0) return '';
+    return articles.map((a, i) => `
+        <div class="nws-brief-row" data-article-id="${a.id}">
+            <div class="nws-brief-num">${i + 1}</div>
+            <div class="nws-brief-text">
+                <strong>${escapeHtml(a.headline)}</strong>
+                ${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 100))}${(a.body || '').length > 100 ? '...' : ''}
+            </div>
+        </div>
+    `).join('');
 }
