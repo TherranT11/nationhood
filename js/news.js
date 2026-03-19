@@ -608,10 +608,14 @@ function bindArticleReader(root) {
         if (!clickable) return;
 
         const articleId = clickable.dataset.articleId;
-        const article = _articles.find(a => a.id === articleId);
+        const article = _articles.find(a => String(a.id) === String(articleId));
         if (!article) return;
 
-        renderArticleView(root, article);
+        try {
+            renderArticleView(root, article);
+        } catch (err) {
+            console.error('[News] Failed to open article:', err);
+        }
     };
     root.addEventListener('click', _articleReaderHandler);
 }
@@ -644,12 +648,12 @@ function renderArticleView(root, article) {
         <!-- READER CONTENT -->
         <div class="nws-main-content">
             <div class="nws-reader">
-                <span class="nws-section-tag">${escapeHtml(categoryLabel(article.category))} &mdash; ${gameDate}</span>
+                <span class="nws-section-tag">${escapeHtml(categoryLabel(article.category))} &mdash; ${escapeHtml(articleDate)}</span>
                 <h1 class="nws-reader-headline">${escapeHtml(article.headline)}</h1>
                 <div class="nws-byline">
                     <span class="nws-author">${escapeHtml(article.author_name)}</span>
                     <span class="nws-dot">&middot;</span>
-                    <span>${gameDate}</span>
+                    <span>${escapeHtml(articleDate)}</span>
                 </div>
                 <hr class="nws-reader-rule">
                 ${imageHtml}

@@ -963,6 +963,11 @@
 /* Clickable article cards */
 [data-article-id] {
     cursor: pointer;
+    transition: background 0.15s;
+}
+
+[data-article-id]:hover {
+    background: rgba(0,0,0,0.02);
 }
 
 @media (max-width: 768px) {
