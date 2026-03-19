@@ -489,7 +489,7 @@ function bindSubmitHandler() {
             const apResult = await accumulateAP(_supabase, faction.id, 1);
             if (apResult.success) {
                 const apEl = document.getElementById('topbar-ap');
-                if (apEl) apEl.textContent = `${apResult.newAp} AP`;
+                if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + apResult.newAp + ' AP</span>';
                 // Mark reward as granted in DB (non-critical — don't block on failure)
                 _supabase
                     .from('player_articles')
@@ -500,7 +500,9 @@ function bindSubmitHandler() {
                     });
             }
 
-            showFormSuccess('Article published! +1 AP awarded.');
+            showFormSuccess(apResult.success
+                ? 'Article published! +1 AP awarded.'
+                : 'Article published! (AP reward failed — try refreshing.)');
 
             // Reset form
             document.getElementById('nws-article-title').value = '';
