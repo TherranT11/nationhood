@@ -4,7 +4,7 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate, escapeHtml as utilEscapeHtml } from './utils.js';
 
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, MOBILIZE_CONFIG, executeMobilize, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction, executePledgeAllegiance, executeConsolidatePower, executeDemonstrateCompetence, executeEmbezzleFunds, getEmbezzleRiskLabel, executeBuyInfluence, executeIntimidate, executeIntimidationResponse, executePurge, executeRedistributeSeats, canAttemptCoup, getCoupEstimate, executeCoupAttempt, sendCoupInvitation, respondToCoupInvitation, getRegimeHealthTier, deductAP, disbandParty, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
@@ -2979,6 +2979,7 @@ let _protestActiveData = null;      // active protest_log row (if any)
 let _protestCachedMinisters = null;
 let _protestCachedPolicies = null;
 let _protestCachedStats = null;
+let _govProtestCrisis = null;       // active protest crisis for governing party PA row
 
 // Store references for re-rendering
 let _currentNation = null, _currentFaction = null, _currentShard = null, _currentAllParties = null;
@@ -3124,6 +3125,19 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
         }
     }
 
+    // Governing party: check for active protest crisis (for Public Address row)
+    _govProtestCrisis = null;
+    if (_caIsGoverning) {
+        const { data: govCrisis } = await _supabase
+            .from('protest_log')
+            .select('id, tier, status, public_address_last_tick, tier7_demand, crisis_started_tick, crisis_duration')
+            .eq('nation_id', n.id)
+            .eq('status', 'crisis_active')
+            .order('crisis_started_tick', { ascending: false })
+            .limit(1).maybeSingle();
+        _govProtestCrisis = govCrisis;
+    }
+
     renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo, approvalByBloc, tick, protestCheck, protestApCost);
 }
 
@@ -3143,6 +3157,30 @@ function renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo,
 
     // Action list (left)
     let listHtml = '';
+
+    // Public Address pinned row for governing parties during T6/T7 crisis
+    if (_caIsGoverning && _govProtestCrisis) {
+        const pc = _govProtestCrisis;
+        const paCooldownRemaining = pc.public_address_last_tick != null
+            ? Math.max(0, PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN - (tick - pc.public_address_last_tick))
+            : 0;
+        const paReady = ap >= PROTEST_CONFIG.PUBLIC_ADDRESS_AP && paCooldownRemaining === 0;
+        const cooldownClass = paCooldownRemaining > 0 ? ' ca-item--cooldown' : '';
+        const paApLabel = paCooldownRemaining > 0
+            ? `${paCooldownRemaining} TICK CD`
+            : `${PROTEST_CONFIG.PUBLIC_ADDRESS_AP} AP`;
+        listHtml += `<div class="ca-item ca-item--public-address${cooldownClass}${!paReady ? ' disabled' : ''}" data-action-id="public_address" style="${!paReady ? 'opacity:0.5;' : ''}">
+            <div class="ca-item-head">
+                <div style="display:flex;align-items:center;gap:6px">
+                    <span class="ca-item-icon" style="color:#5b9bd5">&#9788;</span>
+                    <span class="ca-item-name">Public Address</span>
+                </div>
+                <span class="ca-item-ap">${paApLabel}</span>
+            </div>
+            <div class="ca-item-desc" style="font-size:9px;color:#4a4840;">Reduces civil unrest buildup this tick. +1 moderate bloc approval.</div>
+        </div>`;
+    }
+
     for (const act of allActions) {
         const isSel = _caSelected === act.id;
         const isProtest = act.id === 'protest';
@@ -3195,8 +3233,29 @@ function renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo,
 
     // Wire up action selection
     container.querySelectorAll('.ca-item').forEach(el => {
-        el.addEventListener('click', () => {
+        el.addEventListener('click', async () => {
             const id = el.dataset.actionId;
+
+            // Public Address — execute immediately, no config
+            if (id === 'public_address' && _govProtestCrisis) {
+                if (el.classList.contains('disabled')) return;
+                el.style.opacity = '0.4';
+                try {
+                    const result = await executePublicAddress(_supabase, f.id, n.id, _govProtestCrisis.id, tick);
+                    if (result.success) {
+                        f.action_points = result.newAp;
+                        await renderDemocracyActions(n, f, _currentShard, _currentAllParties);
+                    } else {
+                        alert(result.error || 'Public Address failed.');
+                        el.style.opacity = '';
+                    }
+                } catch (e) {
+                    alert('Error: ' + (e.message || 'Unknown'));
+                    el.style.opacity = '';
+                }
+                return;
+            }
+
             const act = CA_ACTIONS.find(a => a.id === id);
             if (act && ap < act.ap) return;
             if (_caSelected === id) { _caSelected = null; } else { _caSelected = id; }

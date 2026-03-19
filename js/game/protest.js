@@ -938,6 +938,326 @@ export async function callOffProtest(supabase, factionId, protestId, currentTick
     };
 }
 
+// ==================== GOVERNMENT RESPONSE FUNCTIONS ====================
+
+/**
+ * Execute Public Address — governing party action during T6/T7 crisis.
+ * Costs 1 AP, 3-tick cooldown. Reduces civil unrest accumulation by 1 that tick,
+ * gives +1 moderate bloc approval to the RULING party.
+ *
+ * Returns { success, newAp, cooldownUntilTick } or { success: false, error }
+ */
+export async function executePublicAddress(supabase, factionId, nationId, protestId, currentTick) {
+    // ── 1. Load the protest crisis ──
+    const { data: protest } = await supabase
+        .from('protest_log')
+        .select('id, status, tier, public_address_last_tick')
+        .eq('id', protestId).single();
+    if (!protest) return { success: false, error: 'Protest not found.' };
+    if (protest.status !== 'crisis_active') {
+        return { success: false, error: 'No active protest crisis to address.' };
+    }
+    if (protest.tier < 6) {
+        return { success: false, error: 'Public Address is only available during Tier 6/7 crises.' };
+    }
+
+    // ── 2. Check faction is governing ──
+    const coalition = await fetchActiveCoalition(supabase, nationId);
+    const coalitionIds = new Set(coalition?.party_ids || []);
+    const { data: nationRow } = await supabase
+        .from('nations').select('ruling_faction_id').eq('id', nationId).single();
+    const isGoverning = coalitionIds.has(factionId) || nationRow?.ruling_faction_id === factionId;
+    if (!isGoverning) {
+        return { success: false, error: 'Only governing parties can issue a Public Address.' };
+    }
+
+    // ── 3. Cooldown check ──
+    if (protest.public_address_last_tick != null &&
+        (currentTick - protest.public_address_last_tick) < PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN) {
+        const remaining = PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN - (currentTick - protest.public_address_last_tick);
+        return { success: false, error: `Public Address on cooldown: ${remaining} tick${remaining !== 1 ? 's' : ''} remaining.` };
+    }
+
+    // ── 4. Mutual exclusion: no EPO or NE same tick ──
+    const { data: sameTickActions } = await supabase
+        .from('ministry_action_log')
+        .select('action_key')
+        .eq('nation_id', nationId)
+        .eq('applied_at_tick', currentTick)
+        .in('action_key', ['enforcePublicOrder', 'nationalEmergencyOnProtest']);
+    if (sameTickActions && sameTickActions.length > 0) {
+        return { success: false, error: 'Cannot use Public Address in the same tick as Enforce Public Order or National Emergency.' };
+    }
+
+    // ── 5. Deduct 1 AP ──
+    const { data: newAp, error: apErr } = await supabase.rpc('deduct_ap', {
+        p_faction_id: factionId,
+        p_cost: PROTEST_CONFIG.PUBLIC_ADDRESS_AP,
+    });
+    if (apErr) return { success: false, error: apErr.message };
+    if (newAp < 0) return { success: false, error: 'Insufficient AP.' };
+
+    // ── 6. Mark Public Address on the protest log ──
+    await supabase.from('protest_log').update({
+        public_address_last_tick: currentTick,
+    }).eq('id', protestId);
+
+    console.log(`[Protest] Public Address issued by faction ${factionId} on protest ${protestId} at tick ${currentTick}`);
+
+    return {
+        success: true,
+        newAp,
+        cooldownUntilTick: currentTick + PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN,
+    };
+}
+
+/**
+ * Execute Enforce Public Order on an active protest crisis.
+ * 33% chance: crisis ends immediately. 66% chance: escalates to Tier 7.
+ * Only works on Tier 6. Can only be used by the Interior ministry owner.
+ *
+ * Returns { success, outcome: 'resolved'|'escalated', ... } or { success: false, error }
+ */
+export async function executeEPOOnCrisis(supabase, factionId, nationId, protestId, currentTick) {
+    // ── 1. Load the protest crisis ──
+    const { data: protest } = await supabase
+        .from('protest_log')
+        .select('id, status, tier, faction_id, crisis_started_tick, crisis_duration')
+        .eq('id', protestId).single();
+    if (!protest) return { success: false, error: 'Protest not found.' };
+    if (protest.status !== 'crisis_active') {
+        return { success: false, error: 'No active protest crisis.' };
+    }
+    if (protest.tier !== 6) {
+        return { success: false, error: 'Enforce Public Order can only be used on Tier 6 (Historic Protest) crises.' };
+    }
+
+    // ── 2. Check faction owns Interior ministry ──
+    const { data: interiorMinistry } = await supabase
+        .from('ministries')
+        .select('party_id')
+        .eq('nation_id', nationId)
+        .eq('ministry_key', 'interior')
+        .single();
+    if (!interiorMinistry || interiorMinistry.party_id !== factionId) {
+        return { success: false, error: 'Only the party controlling the Interior Ministry can use EPO.' };
+    }
+
+    // ── 3. Mutual exclusion: no Public Address or NE same tick ──
+    const paCheck = await supabase.from('protest_log')
+        .select('public_address_last_tick')
+        .eq('id', protestId).single();
+    if (paCheck?.data?.public_address_last_tick === currentTick) {
+        return { success: false, error: 'Cannot use EPO in the same tick as Public Address.' };
+    }
+
+    // ── 4. AP cost — use the normal EPO action cost from ministry config ──
+    const { data: faction } = await supabase
+        .from('factions')
+        .select('id, action_points')
+        .eq('id', factionId).single();
+    const epoApCost = 2; // Base EPO cost
+    if ((faction?.action_points || 0) < epoApCost) {
+        return { success: false, error: `Not enough AP. Need ${epoApCost}, have ${faction?.action_points || 0}.` };
+    }
+
+    const { data: newAp, error: apErr } = await supabase.rpc('deduct_ap', {
+        p_faction_id: factionId,
+        p_cost: epoApCost,
+    });
+    if (apErr) return { success: false, error: apErr.message };
+    if (newAp < 0) return { success: false, error: 'Insufficient AP.' };
+
+    // ── 5. Roll: 33% success, 66% escalation ──
+    const roll = Math.random();
+    const success = roll < PROTEST_CONFIG.TIER6_ENFORCE_SUCCESS_CHANCE;
+
+    if (success) {
+        // Crisis ends immediately
+        await supabase.from('protest_log').update({
+            status: 'resolved',
+            tick_resolved: currentTick,
+            effects_applied: [
+                ...(protest.effects_applied || []),
+                { stat: 'epo_resolved', tick: currentTick },
+            ],
+        }).eq('id', protestId);
+
+        // Remove active crisis
+        await supabase.from('active_crises').delete()
+            .eq('nation_id', nationId)
+            .eq('crisis_id', PROTEST_CONFIG.TIER6_CRISIS_ID);
+
+        // Clear lockouts
+        await supabase.from('factions')
+            .update({ protest_locked_by: null })
+            .eq('protest_locked_by', protestId);
+
+        // Set cooldowns
+        await supabase.from('factions').update({
+            protest_cooldown_until_tick: currentTick + PROTEST_CONFIG.CALLING_PARTY_COOLDOWN,
+        }).eq('id', protest.faction_id);
+
+        console.log(`[Protest] EPO SUCCESS — Tier 6 crisis ${protestId} resolved by force`);
+        return { success: true, outcome: 'resolved', newAp };
+    } else {
+        // Escalation: T6 → T7
+        // Remove T6 crisis, create T7
+        await supabase.from('active_crises').delete()
+            .eq('nation_id', nationId)
+            .eq('crisis_id', PROTEST_CONFIG.TIER6_CRISIS_ID);
+
+        await supabase.from('active_crises').insert({
+            crisis_id: PROTEST_CONFIG.TIER7_CRISIS_ID,
+            nation_id: nationId,
+            started_at_tick: currentTick,
+            effects_applied_log: [],
+        });
+
+        // Generate T7 demand
+        const { data: statRows } = await supabase
+            .from('stat_history')
+            .select('stat_name, value, tick')
+            .eq('nation_id', nationId)
+            .gte('tick', currentTick - 6)
+            .order('tick', { ascending: true });
+
+        const statMap = {};
+        for (const row of (statRows || [])) {
+            if (!statMap[row.stat_name]) statMap[row.stat_name] = [];
+            statMap[row.stat_name].push({ tick: row.tick, value: row.value });
+        }
+        const { data: nationData } = await supabase
+            .from('nations').select('*').eq('id', nationId).single();
+
+        const statSnapshots = Object.entries(statMap).map(([key, history]) => {
+            const sorted = history.sort((a, b) => a.tick - b.tick);
+            const current = nationData?.[key] ?? sorted[sorted.length - 1]?.value ?? 0;
+            const sixAgo = sorted[0]?.value ?? current;
+            const changes = sorted.slice(1).map((h, i) => Math.abs(h.value - sorted[i].value));
+            const avgAbsChangePerTick = changes.length > 0 ? changes.reduce((s, v) => s + v, 0) / changes.length : 1;
+            return { key, current, sixTicksAgo: sixAgo, avgAbsChangePerTick, displayName: key.replace(/_/g, ' ') };
+        });
+
+        const { data: ministers } = await supabase
+            .from('ministries')
+            .select('ministry_key, minister_first_name, minister_last_name, minister_approval, is_vacant')
+            .eq('nation_id', nationId);
+        const ministerList = (ministers || []).map(m => ({
+            ...m,
+            minister_name: `${m.minister_first_name || ''} ${m.minister_last_name || ''}`.trim(),
+        }));
+
+        const demand = generateTier7Demand(statSnapshots, ministerList);
+
+        // Update protest to T7
+        await supabase.from('protest_log').update({
+            tier: 7,
+            crisis_started_tick: currentTick,
+            crisis_duration: PROTEST_CONFIG.TIER7_DURATION,
+            tier7_demand: demand,
+            effects_applied: [
+                ...(protest.effects_applied || []),
+                { stat: 'epo_escalated', tick: currentTick },
+            ],
+        }).eq('id', protestId);
+
+        console.log(`[Protest] EPO FAILED — Tier 6 escalated to Tier 7 for protest ${protestId}`);
+        return { success: true, outcome: 'escalated', newAp, demand };
+    }
+}
+
+/**
+ * Execute National Emergency on an active protest crisis.
+ * Immediately ends ANY tier crisis but at severe cost:
+ * civil_unrest +15, political_violence +10, happiness -10, gov_approval -10.
+ * Only the ruling faction can invoke this.
+ *
+ * Returns { success, newAp } or { success: false, error }
+ */
+export async function executeNationalEmergencyOnProtest(supabase, factionId, nationId, protestId, currentTick) {
+    // ── 1. Load the protest crisis ──
+    const { data: protest } = await supabase
+        .from('protest_log')
+        .select('id, status, tier, faction_id')
+        .eq('id', protestId).single();
+    if (!protest) return { success: false, error: 'Protest not found.' };
+    if (protest.status !== 'crisis_active') {
+        return { success: false, error: 'No active protest crisis.' };
+    }
+
+    // ── 2. Check faction is the ruling faction (head of government) ──
+    const { data: nationRow } = await supabase
+        .from('nations').select('ruling_faction_id').eq('id', nationId).single();
+    const coalition = await fetchActiveCoalition(supabase, nationId);
+    const isLeadParty = coalition?.lead_party_id === factionId;
+    const isRuling = nationRow?.ruling_faction_id === factionId || isLeadParty;
+    if (!isRuling) {
+        return { success: false, error: 'Only the ruling party can declare a National Emergency.' };
+    }
+
+    // ── 3. Mutual exclusion ──
+    const paCheck = await supabase.from('protest_log')
+        .select('public_address_last_tick')
+        .eq('id', protestId).single();
+    if (paCheck?.data?.public_address_last_tick === currentTick) {
+        return { success: false, error: 'Cannot declare National Emergency in the same tick as Public Address.' };
+    }
+
+    // ── 4. AP cost: 5 AP ──
+    const neCost = 5;
+    const { data: newAp, error: apErr } = await supabase.rpc('deduct_ap', {
+        p_faction_id: factionId,
+        p_cost: neCost,
+    });
+    if (apErr) return { success: false, error: apErr.message };
+    if (newAp < 0) return { success: false, error: `Insufficient AP. Need ${neCost}.` };
+
+    // ── 5. End the crisis immediately ──
+    const crisisId = protest.tier === 7 ? PROTEST_CONFIG.TIER7_CRISIS_ID : PROTEST_CONFIG.TIER6_CRISIS_ID;
+    await supabase.from('active_crises').delete()
+        .eq('nation_id', nationId).eq('crisis_id', crisisId);
+
+    await supabase.from('protest_log').update({
+        status: 'resolved',
+        tick_resolved: currentTick,
+        effects_applied: [
+            ...(protest.effects_applied || []),
+            { stat: 'national_emergency', tick: currentTick },
+        ],
+    }).eq('id', protestId);
+
+    // Clear lockouts
+    await supabase.from('factions')
+        .update({ protest_locked_by: null })
+        .eq('protest_locked_by', protestId);
+
+    // Set cooldowns
+    await supabase.from('factions').update({
+        protest_cooldown_until_tick: currentTick + PROTEST_CONFIG.CALLING_PARTY_COOLDOWN,
+    }).eq('id', protest.faction_id);
+
+    // ── 6. Apply severe stat costs ──
+    const { data: nation } = await supabase
+        .from('nations').select('civil_unrest, political_violence, happiness').eq('id', nationId).single();
+
+    await supabase.from('nations').update({
+        civil_unrest: Math.min(100, (nation?.civil_unrest || 0) + 15),
+        political_violence: Math.min(100, (nation?.political_violence || 0) + 10),
+        happiness: Math.max(0, (nation?.happiness || 50) - 10),
+    }).eq('id', nationId);
+
+    await adjustGovernmentApprovalEvent(supabase, nationId, -10, 'protest:national_emergency');
+
+    console.log(`[Protest] National Emergency declared on protest ${protestId} — crisis ended with severe penalties`);
+
+    return {
+        success: true,
+        newAp,
+        statPenalties: { civil_unrest: +15, political_violence: +10, happiness: -10, gov_approval: -10 },
+    };
+}
+
 /**
  * Resolve a protest that has been in 'resolving' state for 1 tick.
  * Called by the tick processor, NOT by the client.
