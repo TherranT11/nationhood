@@ -303,6 +303,7 @@ export async function initNewspaper(supabase, state) {
                             <option value="entertainment">Entertainment</option>
                             <option value="elections">Elections</option>
                             <option value="sports">Sports</option>
+                            <option value="opinion">Opinion</option>
                         </select>
                     </div>
 
@@ -556,7 +557,8 @@ function escapeHtml(str) {
 function categoryLabel(cat) {
     const labels = {
         politics: 'Politics', economy: 'Economy', international: 'International',
-        social: 'Social', entertainment: 'Entertainment', elections: 'Elections', sports: 'Sports'
+        social: 'Social', entertainment: 'Entertainment', elections: 'Elections', sports: 'Sports',
+        opinion: 'Opinion'
     };
     return labels[cat] || cat;
 }
@@ -569,7 +571,8 @@ function categoryGradient(cat) {
         social: 'linear-gradient(135deg,#1a2a1a,#0d1a0d)',
         entertainment: 'linear-gradient(135deg,#2a2a0a,#1a1a00)',
         elections: 'linear-gradient(135deg,#1a1a2a,#0d0d1a)',
-        sports: 'linear-gradient(135deg,#2a0a0a,#1a0000)'
+        sports: 'linear-gradient(135deg,#2a0a0a,#1a0000)',
+        opinion: 'linear-gradient(135deg,#2a2a2a,#1a1a1a)'
     };
     return gradients[cat] || 'linear-gradient(135deg,#1a1a1a,#0d0d0d)';
 }
@@ -608,8 +611,12 @@ async function loadAndDisplayArticles() {
 
         if (!articles || articles.length === 0) return;
 
-        // Sort by body length DESC — longest gets A1
-        const sorted = [...articles].sort((a, b) =>
+        // Separate opinion articles from news articles
+        const opinionArticles = articles.filter(a => a.category === 'opinion');
+        const newsArticles = articles.filter(a => a.category !== 'opinion');
+
+        // Sort news by body length DESC — longest gets A1
+        const sorted = [...newsArticles].sort((a, b) =>
             (b.body || '').length - (a.body || '').length
         );
 
@@ -623,9 +630,11 @@ async function loadAndDisplayArticles() {
         const briefs = sorted.slice(7, 12);
 
         // Populate lead section
-        populateLeadSection(lead, sidebar);
+        if (lead) populateLeadSection(lead, sidebar);
         // Populate secondary grid
         populateSecondaryGrid(secondary);
+        // Populate opinion strip (up to 4 opinion articles)
+        populateOpinionStrip(opinionArticles.slice(0, 4));
         // Populate briefs
         populateBriefs(briefs);
     } catch (err) {
@@ -756,4 +765,32 @@ function populateBriefs(articles) {
     }
 
     container.innerHTML = headerHtml + briefsHtml + placeholderHtml;
+}
+
+function populateOpinionStrip(articles) {
+    const grid = document.querySelector('.nws-opinion-grid');
+    if (!grid) return;
+    if (articles.length === 0) return;
+
+    // Pad to 4 slots with placeholders
+    const html = [0, 1, 2, 3].map(i => {
+        const a = articles[i];
+        if (a) {
+            // Truncate body to ~80 chars for the quote
+            const quote = (a.body || '').length > 80
+                ? (a.body || '').substring(0, 80) + '...'
+                : (a.body || '');
+            return `<div class="nws-op-card">
+                <div class="nws-op-author">${escapeHtml(a.author_name)} &mdash; Opinion</div>
+                <div class="nws-op-headline">&ldquo;${escapeHtml(quote)}&rdquo;</div>
+            </div>`;
+        } else {
+            return `<div class="nws-op-card">
+                <div class="nws-op-author nws-placeholder">[Columnist] &mdash; [Topic]</div>
+                <div class="nws-op-headline nws-placeholder">&ldquo;[Opinion headline will appear here.]&rdquo;</div>
+            </div>`;
+        }
+    }).join('');
+
+    grid.innerHTML = html;
 }
