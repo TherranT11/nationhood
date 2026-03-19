@@ -411,6 +411,38 @@ function detectTriggerKey(row) {
     if (name.includes('coup') && !name.includes('success') && !name.includes('fail'))
         return 'coup_attempted';
 
+    // Impeachment / No-confidence
+    if (name.includes('impeach'))
+        return 'impeachment_failed';
+    if (name.includes('no confidence') || name.includes('no_confidence'))
+        return 'no_confidence_failed';
+
+    // Interior ministry events
+    if (name.includes('secret police') || name.includes('police overreach'))
+        return 'interior_auto_secret_police_overreach';
+    if (name.includes('dissident'))
+        return 'interior_auto_dissident_cell';
+    if (name.includes('ethnic') && (name.includes('tension') || name.includes('unrest')))
+        return 'interior_auto_ethnic_unrest';
+    if (name.includes('governor') && name.includes('defi'))
+        return 'interior_auto_governor_defiance';
+    if (name.includes('loyalty test'))
+        return 'interior_auto_loyalty_test';
+    if (name.includes('media') && name.includes('expos'))
+        return 'interior_auto_media_expose';
+    if (name.includes('border') && name.includes('warlord'))
+        return 'interior_auto_border_warlord';
+    if (name.includes('succession') && name.includes('anxiety'))
+        return 'interior_auto_succession_anxiety';
+    if (name.includes('police brutal'))
+        return 'interior_dem_police_brutality';
+    if (name.includes('prison') && name.includes('overcrowd'))
+        return 'interior_dem_prison_overcrowding';
+    if (name.includes('flood'))
+        return 'interior_dem_flood_response';
+    if (name.includes('immigration') && name.includes('surge'))
+        return 'interior_dem_immigration_surge';
+
     return name.replace(/[^a-z_]/g, '_').replace(/_+/g, '_').slice(0, 40);
 }
 

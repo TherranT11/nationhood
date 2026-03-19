@@ -6,7 +6,7 @@
 import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
 import { isPresidentialRepublic } from './government-types.js';
 import { DIPLOMACY_CONFIG } from './diplomacy-constants.js';
-import { IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology } from './ideology.js';
+import { IDEOLOGY_AXES, IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology, loadNationIdeologies } from './ideology.js';
 import { adjustMomentum, adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
@@ -668,60 +668,54 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
 const IDEOLOGY_DECAY_DEAD_ZONE = 10; // no decay within ±10 of center
 /**
  * Per-tick ideology decay toward center (0).
- * Decay scales with extremism: decay = abs(score) / 50, so:
- *   ±20 → -0.4/tick, ±50 → -1.0/tick, ±100 → -2.0/tick
+ * Integer arithmetic to match INTEGER columns in faction_ideology.
+ *   ±11–74 → 1/tick, ±75–100 → 2/tick
  * Dead zone: scores within ±10 don't decay.
  */
 export async function processIdeologyDecay(supabase, nationId, currentTick) {
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id')
-        .eq('nation_id', nationId)
-        .eq('faction_type', 'party');
-
-    if (!factions || factions.length === 0) return;
+    const ideologies = await loadNationIdeologies(supabase, nationId);
+    if (!ideologies || ideologies.length === 0) return;
 
     const historyRows = [];
 
-    for (const faction of factions) {
-        let ideologyRow = await loadFactionIdeology(supabase, faction.id);
-        if (ideologyRow?._error || !ideologyRow) continue;
-
-        const currentScores = extractAxisScores(ideologyRow);
+    for (const ideo of ideologies) {
         const updateObj = {};
-        let hasChanges = false;
 
         for (const axis of IDEOLOGY_AXES) {
-            const score = currentScores[axis.key] || 0;
+            const score = ideo[axis.key] || 0;
             if (Math.abs(score) <= IDEOLOGY_DECAY_DEAD_ZONE) continue;
 
-            const decay = -(Math.abs(score) / 50) * Math.sign(score);
-            const newScore = Math.max(-100, Math.min(100,
-                Math.round((score + decay) * 100) / 100
-            ));
+            const absDecay = Math.max(1, Math.round(Math.abs(score) / 50));
+            const newScore = score > 0
+                ? Math.max(0, score - absDecay)
+                : Math.min(0, score + absDecay);
 
-            if (newScore !== score) {
-                updateObj[axis.key] = newScore;
-                hasChanges = true;
-            }
+            if (newScore !== score) updateObj[axis.key] = newScore;
         }
 
-        if (hasChanges) {
-            await supabase.from('faction_ideology').update(updateObj).eq('faction_id', faction.id);
+        if (Object.keys(updateObj).length === 0) continue;
 
-            if (typeof currentTick === 'number') {
-                const finalScores = { ...currentScores, ...updateObj };
-                historyRows.push({
-                    faction_id: faction.id,
-                    nation_id: nationId,
-                    tick: currentTick,
-                    liberty_equality: finalScores.liberty_equality || 0,
-                    tradition_progress: finalScores.tradition_progress || 0,
-                    security_freedom: finalScores.security_freedom || 0,
-                    globalism_nationalism: finalScores.globalism_nationalism || 0,
-                    individualism_collectivism: finalScores.individualism_collectivism || 0
-                });
-            }
+        const { error: updateErr } = await supabase
+            .from('faction_ideology')
+            .update(updateObj)
+            .eq('faction_id', ideo.faction_id);
+
+        if (updateErr) {
+            console.error(`[processIdeologyDecay] update failed for faction ${ideo.faction_id}:`, updateErr.message);
+            continue;
+        }
+
+        if (typeof currentTick === 'number') {
+            historyRows.push({
+                faction_id: ideo.faction_id,
+                nation_id: nationId,
+                tick: currentTick,
+                liberty_equality: updateObj.liberty_equality ?? ideo.liberty_equality ?? 0,
+                tradition_progress: updateObj.tradition_progress ?? ideo.tradition_progress ?? 0,
+                security_freedom: updateObj.security_freedom ?? ideo.security_freedom ?? 0,
+                globalism_nationalism: updateObj.globalism_nationalism ?? ideo.globalism_nationalism ?? 0,
+                individualism_collectivism: updateObj.individualism_collectivism ?? ideo.individualism_collectivism ?? 0,
+            });
         }
     }
 

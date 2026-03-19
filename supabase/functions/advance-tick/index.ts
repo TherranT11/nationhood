@@ -6519,60 +6519,54 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
 const IDEOLOGY_DECAY_DEAD_ZONE = 10; // no decay within ±10 of center
 /**
  * Per-tick ideology decay toward center (0).
- * Decay scales with extremism: decay = abs(score) / 50, so:
- *   ±20 → -0.4/tick, ±50 → -1.0/tick, ±100 → -2.0/tick
+ * Integer arithmetic to match INTEGER columns in faction_ideology.
+ *   ±11–74 → 1/tick, ±75–100 → 2/tick
  * Dead zone: scores within ±10 don't decay.
  */
 async function processIdeologyDecay(supabase, nationId, currentTick) {
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id')
-        .eq('nation_id', nationId)
-        .eq('faction_type', 'party');
-
-    if (!factions || factions.length === 0) return;
+    const ideologies = await loadNationIdeologies(supabase, nationId);
+    if (!ideologies || ideologies.length === 0) return;
 
     const historyRows = [];
 
-    for (const faction of factions) {
-        let ideologyRow = await loadFactionIdeology(supabase, faction.id);
-        if (ideologyRow?._error || !ideologyRow) continue;
-
-        const currentScores = extractAxisScores(ideologyRow);
+    for (const ideo of ideologies) {
         const updateObj = {};
-        let hasChanges = false;
 
         for (const axis of IDEOLOGY_AXES) {
-            const score = currentScores[axis.key] || 0;
+            const score = ideo[axis.key] || 0;
             if (Math.abs(score) <= IDEOLOGY_DECAY_DEAD_ZONE) continue;
 
-            const decay = -(Math.abs(score) / 50) * Math.sign(score);
-            const newScore = Math.max(-100, Math.min(100,
-                Math.round((score + decay) * 100) / 100
-            ));
+            const absDecay = Math.max(1, Math.round(Math.abs(score) / 50));
+            const newScore = score > 0
+                ? Math.max(0, score - absDecay)
+                : Math.min(0, score + absDecay);
 
-            if (newScore !== score) {
-                updateObj[axis.key] = newScore;
-                hasChanges = true;
-            }
+            if (newScore !== score) updateObj[axis.key] = newScore;
         }
 
-        if (hasChanges) {
-            await supabase.from('faction_ideology').update(updateObj).eq('faction_id', faction.id);
+        if (Object.keys(updateObj).length === 0) continue;
 
-            if (typeof currentTick === 'number') {
-                const finalScores = { ...currentScores, ...updateObj };
-                historyRows.push({
-                    faction_id: faction.id,
-                    nation_id: nationId,
-                    tick: currentTick,
-                    liberty_equality: finalScores.liberty_equality || 0,
-                    tradition_progress: finalScores.tradition_progress || 0,
-                    security_freedom: finalScores.security_freedom || 0,
-                    globalism_nationalism: finalScores.globalism_nationalism || 0,
-                    individualism_collectivism: finalScores.individualism_collectivism || 0
-                });
-            }
+        const { error: updateErr } = await supabase
+            .from('faction_ideology')
+            .update(updateObj)
+            .eq('faction_id', ideo.faction_id);
+
+        if (updateErr) {
+            console.error(`[processIdeologyDecay] update failed for faction ${ideo.faction_id}:`, updateErr.message);
+            continue;
+        }
+
+        if (typeof currentTick === 'number') {
+            historyRows.push({
+                faction_id: ideo.faction_id,
+                nation_id: nationId,
+                tick: currentTick,
+                liberty_equality: updateObj.liberty_equality ?? ideo.liberty_equality ?? 0,
+                tradition_progress: updateObj.tradition_progress ?? ideo.tradition_progress ?? 0,
+                security_freedom: updateObj.security_freedom ?? ideo.security_freedom ?? 0,
+                globalism_nationalism: updateObj.globalism_nationalism ?? ideo.globalism_nationalism ?? 0,
+                individualism_collectivism: updateObj.individualism_collectivism ?? ideo.individualism_collectivism ?? 0,
+            });
         }
     }
 
@@ -13450,6 +13444,79 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
     return appliedDecay;
 }
 
+// ==================== INSTITUTION GROWTH (fully-funded → slow stat increase) ====================
+
+const INSTITUTION_GROWTH_RATE = 0.25; // per tick when institution is 100% funded
+
+/**
+ * Process institution growth for a nation. Institutions with a growth_stat
+ * and growth_ceiling will slowly increase that stat by INSTITUTION_GROWTH_RATE
+ * per tick when funded at 100%, up to the configured ceiling.
+ *
+ * This represents the baseline outcome of well-funded government machinery:
+ * "barely functioning" — legislation is still needed to push stats higher.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {object} nation   - Full nation row (in-memory, mutated on success)
+ * @param {Array}  instConfig - Rows from ministry_institution_config
+ * @param {Array}  itemAllocations - Rows from budget_item_allocations
+ * @returns {Array<object>} Applied growth descriptors for tick summary
+ */
+async function processInstitutionGrowth(supabase, nation, instConfig, itemAllocations) {
+    if (!instConfig || instConfig.length === 0) return [];
+
+    const fundingPctMap = buildFundingPctMap(itemAllocations);
+    const applied = [];
+    const nationUpdates = {};
+
+    for (const inst of instConfig) {
+        if (!inst.growth_stat || inst.growth_ceiling == null) continue;
+        if (!NATION_STAT_COLUMN_SET.has(inst.growth_stat)) continue;
+        if (STAT_PROCESSOR_SKIP.has(inst.growth_stat)) continue;
+
+        const fundingPct = getInstFundingPct(fundingPctMap, inst.id);
+        if (fundingPct < 100) continue; // Only grow at 100% funding
+
+        const currentVal = nationUpdates[inst.growth_stat] !== undefined
+            ? nationUpdates[inst.growth_stat]
+            : Number(nation[inst.growth_stat] ?? 50);
+        const ceiling = Number(inst.growth_ceiling);
+
+        if (currentVal >= ceiling) continue; // Already at or above ceiling
+
+        const newVal = Math.round(Math.min(ceiling, currentVal + INSTITUTION_GROWTH_RATE) * 10) / 10;
+
+        if (newVal !== Math.round(currentVal * 10) / 10) {
+            nationUpdates[inst.growth_stat] = newVal;
+            applied.push({
+                institution: inst.institution_name,
+                stat: inst.growth_stat,
+                previousValue: Math.round(currentVal * 10) / 10,
+                newValue: newVal,
+                ceiling
+            });
+        }
+    }
+
+    if (Object.keys(nationUpdates).length > 0) {
+        const { error } = await supabase
+            .from('nations')
+            .update(nationUpdates)
+            .eq('id', nation.id);
+
+        if (error) {
+            console.error('[processInstitutionGrowth] Nation stat update FAILED',
+                { nationId: nation.id, payload: nationUpdates, error: error.message });
+            return [];
+        }
+
+        console.log(`[processInstitutionGrowth] Growth applied for ${nation.name}: ${applied.length} stat(s)`);
+        Object.assign(nation, nationUpdates);
+    }
+
+    return applied;
+}
+
 // ==================== STAT CONNECTIONS (threshold-triggered ripple effects) ====================
 
 /**
@@ -19808,7 +19875,7 @@ async function executeDynastyAction(supabase, nationId, factionId, mode, targetF
  * Get regime health threshold label and effects.
  */
 function getRegimeHealthTier(regimeHealth) {
-    if (regimeHealth >= 60) return { label: 'HEALTHY', color: '#4CAF50', coupBonus: 0, loyaltyDecay: -2 };
+    if (regimeHealth >= 60) return { label: 'HEALTHY', color: '#5cb85c', coupBonus: 0, loyaltyDecay: -2 };
     if (regimeHealth >= 40) return { label: 'WEAKENING', color: '#FFC107', coupBonus: 5, loyaltyDecay: -2.5 };
     if (regimeHealth >= 20) return { label: 'DECLINING', color: '#FF9800', coupBonus: 10, loyaltyDecay: -3 };
     if (regimeHealth >= 1) return { label: 'CRITICAL', color: '#F44336', coupBonus: 20, loyaltyDecay: -4 };
@@ -20082,7 +20149,7 @@ function getCoupEstimate(faction, nation, allies = []) {
     else if (displayed < 40) { tier = 'RISKY'; color = '#FF9800'; }
     else if (displayed < 55) { tier = 'UNCERTAIN'; color = '#FFC107'; }
     else if (displayed < 70) { tier = 'FAVORABLE'; color = '#8BC34A'; }
-    else { tier = 'STRONG'; color = '#4CAF50'; }
+    else { tier = 'STRONG'; color = '#5cb85c'; }
 
     return { tier, color, displayed, trueProbability };
 }
@@ -22583,6 +22650,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.decay.push({ nation: nation.name, effects: decayResults });
         }
 
+        // Institution growth (100% funded → slow stat increase toward ceiling)
+        const growthResults = await processInstitutionGrowth(supabase, nation, _institutionConfig, _fundingRows);
+        if (growthResults.length > 0) {
+            summary.institutionGrowth = summary.institutionGrowth || [];
+            summary.institutionGrowth.push({ nation: nation.name, effects: growthResults });
+        }
+
         // Stat connections (threshold-triggered ripple effects)
         if (!_statConnections) {
             const { data: scRows } = await supabase.from('stat_connections').select('*').eq('enabled', true);
@@ -22867,6 +22941,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             await processIdeologyShifts(supabase, nation.id, resolutions, newTick);
         } catch (ideoErr) {
             console.error(`[advanceTick] Ideology shifts failed for ${nation.name} (non-fatal):`, ideoErr);
+        }
+
+        // Natural ideology decay toward center (extremism erodes over time)
+        try {
+            await processIdeologyDecay(supabase, nation.id, newTick);
+        } catch (decayErr) {
+            console.error(`[advanceTick] Ideology decay failed for ${nation.name} (non-fatal):`, decayErr);
         }
 
         // Purge approval decay (autocracy scapegoat mechanic)
