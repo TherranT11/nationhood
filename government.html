@@ -56,7 +56,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game-common.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 (function () {
     'use strict';
@@ -233,6 +233,7 @@ let activeMinistryActions = {};   // { 'interior-enforcePublicOrder': true } —
 let missingAmbassadorCount = 0; // pre-fetched for Foreign Minister performance panel
 let currentTick = 0;
 let lastElectionTick = null;
+let _protestCrisisData = null; // active protest crisis (T6/T7) for crisis card
 
 // Assign modal state
 let assignMinistryKey = null;
@@ -553,12 +554,25 @@ async function renderGovernmentPage() {
             try { eoOrderData = await fetchActiveOrders(_supabase, currentNation.id); } catch (e) { console.error('[EO] preload failed:', e); }
         }
 
+        // Fetch active protest crisis for crisis card
+        const { data: activeProtestCrisis } = await _supabase
+            .from('protest_log')
+            .select('id, faction_id, tier, status, grievance_type, grievance_data, demand_label, tier7_demand, tier7_demand_met, crisis_started_tick, crisis_duration, public_address_last_tick')
+            .eq('nation_id', currentNation.id)
+            .eq('status', 'crisis_active')
+            .order('crisis_started_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        _protestCrisisData = activeProtestCrisis;
+
         const revolutionBannerHtml = await renderRevolutionBannerGov();
         const administrationBoxHtml = await renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress, allPartySeats);
+        const protestCrisisCardHtml = renderProtestCrisisCard();
 
         document.getElementById('content-area').innerHTML = `
             <div class="panel-padding">
                 ${revolutionBannerHtml}
+                ${protestCrisisCardHtml}
                 ${administrationBoxHtml}
 
                 <div class="section-header">Government Structure</div>
@@ -2740,6 +2754,148 @@ async function ministryActionConfirm(actionId) {
         alert('Action failed: ' + (e.message || 'Unknown error'));
     } finally {
         _ministryActionConfirming = false;
+    }
+}
+
+// ==================== PROTEST CRISIS CARD ====================
+
+function renderProtestCrisisCard() {
+    if (!_protestCrisisData) return '';
+    const p = _protestCrisisData;
+    const isTier7 = p.tier === 7;
+    const tierLabel = isTier7 ? 'NATIONWIDE PROTEST' : 'HISTORIC PROTEST';
+    const ticksElapsed = currentTick - (p.crisis_started_tick || currentTick);
+    const duration = p.crisis_duration || (isTier7 ? PROTEST_CONFIG.TIER7_DURATION : PROTEST_CONFIG.TIER6_DURATION);
+    const ticksRemaining = Math.max(0, duration - ticksElapsed);
+
+    // Per-tick effects display
+    let effectsHtml = '';
+    if (isTier7) {
+        effectsHtml = '<span style="color:#d9534f;">GOV −3</span><span style="color:#d9534f;">UNREST +3</span><span style="color:#d9534f;">GDP −0.2</span><span style="color:#d9534f;">INVEST −2</span><span style="color:#d9534f;">VIOLENCE +1</span>';
+    } else {
+        effectsHtml = '<span style="color:#d9534f;">GOV −2</span><span style="color:#d9534f;">UNREST +2</span><span style="color:#d9534f;">HAPPY −1</span>';
+        if (ticksElapsed > 3) {
+            effectsHtml += '<span style="color:#d9534f;">VIOLENCE +1</span>';
+        }
+    }
+
+    // Demand text for T7
+    let demandHtml = '';
+    if (isTier7 && p.tier7_demand) {
+        const metClass = p.tier7_demand_met ? 'style="color:#5cb85c;text-decoration:line-through;"' : '';
+        demandHtml = `<div class="protest-crisis-card__demand" ${metClass}>DEMAND: ${escapeHtml(p.tier7_demand.label || 'Unknown')}</div>`;
+    }
+
+    // Determine which buttons to show
+    const isGoverning = coalitionData && (
+        coalitionData.party_ids?.includes(currentFaction?.id) ||
+        currentNation?.ruling_faction_id === currentFaction?.id
+    );
+    const isLeadParty = coalitionData?.lead_party_id === currentFaction?.id ||
+                        currentNation?.ruling_faction_id === currentFaction?.id;
+    const ownsInterior = ministryData.some(m => m.ministry_key === 'interior' && m.party_id === currentFaction?.id);
+    const ap = currentFaction?.action_points || 0;
+
+    // Public Address cooldown check
+    const paCooldownRemaining = p.public_address_last_tick != null
+        ? Math.max(0, PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN - (currentTick - p.public_address_last_tick))
+        : 0;
+    const paDisabled = !isGoverning || ap < PROTEST_CONFIG.PUBLIC_ADDRESS_AP || paCooldownRemaining > 0;
+    const paLabel = paCooldownRemaining > 0
+        ? `PUBLIC ADDRESS (${paCooldownRemaining} TICK CD)`
+        : 'PUBLIC ADDRESS';
+    const paCostLabel = `${PROTEST_CONFIG.PUBLIC_ADDRESS_AP} AP`;
+
+    // EPO: only on T6, only Interior owner
+    const epoDisabled = !ownsInterior || ap < 2 || isTier7;
+    const epoNote = isTier7 ? 'T6 only' : '33% resolve / 66% escalate to T7';
+
+    // National Emergency: only lead party, 5 AP
+    const neDisabled = !isLeadParty || ap < 5;
+
+    let actionsHtml = `<div class="protest-crisis-card__actions">`;
+
+    // Public Address button
+    actionsHtml += `<div class="protest-crisis-btn${paDisabled ? ' disabled' : ''}" onclick="${paDisabled ? '' : `protestCrisisAction('public_address')`}">
+        <span>${paLabel}</span>
+        <span>${paCostLabel}</span>
+    </div>`;
+
+    // EPO button
+    actionsHtml += `<div class="protest-crisis-btn protest-crisis-btn--danger${epoDisabled ? ' disabled' : ''}" onclick="${epoDisabled ? '' : `protestCrisisAction('epo')`}">
+        <span>ENFORCE PUBLIC ORDER</span>
+        <span>2 AP <span class="protest-crisis-btn__note">${epoNote}</span></span>
+    </div>`;
+
+    // National Emergency button
+    actionsHtml += `<div class="protest-crisis-btn protest-crisis-btn--danger${neDisabled ? ' disabled' : ''}" onclick="${neDisabled ? '' : `protestCrisisAction('national_emergency')`}">
+        <span>NATIONAL EMERGENCY</span>
+        <span>5 AP <span class="protest-crisis-btn__note">ends crisis — severe penalties</span></span>
+    </div>`;
+
+    actionsHtml += '</div>';
+
+    return `<div class="protest-crisis-card">
+        <div class="protest-crisis-card__header">
+            <div class="protest-crisis-card__title">⚠ TIER ${p.tier} — ${tierLabel}</div>
+            <div class="protest-crisis-card__tick">${ticksRemaining} tick${ticksRemaining !== 1 ? 's' : ''} remaining</div>
+        </div>
+        ${demandHtml}
+        <div class="protest-crisis-card__effects">PER TICK: ${effectsHtml}</div>
+        <hr class="protest-crisis-card__sep">
+        ${actionsHtml}
+    </div>`;
+}
+
+let _protestCrisisActionLock = false;
+
+async function protestCrisisAction(actionType) {
+    if (_protestCrisisActionLock || !_protestCrisisData || !currentFaction || !currentNation) return;
+    _protestCrisisActionLock = true;
+
+    const protestId = _protestCrisisData.id;
+    let result;
+
+    try {
+        if (actionType === 'public_address') {
+            result = await executePublicAddress(_supabase, currentFaction.id, currentNation.id, protestId, currentTick);
+        } else if (actionType === 'epo') {
+            if (!confirm('Enforce Public Order on the protest?\n\n33% chance the crisis ends. 66% chance it escalates to a Nationwide Protest (Tier 7).\n\nProceed?')) {
+                _protestCrisisActionLock = false;
+                return;
+            }
+            result = await executeEPOOnCrisis(_supabase, currentFaction.id, currentNation.id, protestId, currentTick);
+        } else if (actionType === 'national_emergency') {
+            if (!confirm('Declare a National Emergency to end the protest crisis?\n\nThis will cause:\n• Civil Unrest +15\n• Political Violence +10\n• Happiness −10\n• Government Approval −10\n\nAre you sure?')) {
+                _protestCrisisActionLock = false;
+                return;
+            }
+            result = await executeNationalEmergencyOnProtest(_supabase, currentFaction.id, currentNation.id, protestId, currentTick);
+        }
+
+        if (result && result.success) {
+            // Update local AP
+            if (result.newAp != null) currentFaction.action_points = result.newAp;
+            sessionStorage.removeItem('nationhood_state');
+
+            if (actionType === 'epo' && result.outcome === 'escalated') {
+                alert('The crackdown backfired! The protest has escalated to a Nationwide Protest (Tier 7).');
+            } else if (actionType === 'epo' && result.outcome === 'resolved') {
+                alert('The crackdown succeeded. The protest crisis has been resolved.');
+            } else if (actionType === 'national_emergency') {
+                alert('National Emergency declared. The crisis has ended, but at a severe cost to stability.');
+            } else if (actionType === 'public_address') {
+                // Subtle feedback — no alert, just re-render
+            }
+
+            await renderGovernmentPage();
+        } else if (result) {
+            alert(result.error || 'Action failed.');
+        }
+    } catch (e) {
+        alert('Error: ' + (e.message || 'Unknown error'));
+    } finally {
+        _protestCrisisActionLock = false;
     }
 }
 
@@ -5256,6 +5412,8 @@ window.onMinistryChange = onMinistryChange;
 window.ministryActionSelect = ministryActionSelect;
 window.ministryActionConfirm = ministryActionConfirm;
 window.ministryActionDeselect = ministryActionDeselect;
+// Protest crisis card exports
+window.protestCrisisAction = protestCrisisAction;
 })();
 </script>
 </body>

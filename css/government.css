@@ -1646,3 +1646,86 @@ body {
         .emergency-advance-btn:disabled {
             opacity: 0.4; cursor: not-allowed; background: transparent;
         }
+
+/* ==================== PROTEST CRISIS CARD ==================== */
+.protest-crisis-card {
+    border: 1px solid rgba(217,83,79,0.25);
+    border-left: 4px solid #d9534f;
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 12px;
+    background: rgba(217,83,79,0.04);
+}
+.protest-crisis-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.protest-crisis-card__title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #d9534f;
+}
+.protest-crisis-card__tick {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #4a4840;
+}
+.protest-crisis-card__demand {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px;
+    font-style: italic;
+    color: #c8c0a0;
+    margin-bottom: 10px;
+    padding: 6px 0;
+}
+.protest-crisis-card__effects {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: #4a4840;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 12px;
+}
+.protest-crisis-card__effects span { margin-right: 12px; }
+.protest-crisis-card__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.protest-crisis-btn {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px;
+    border: 1px solid var(--dborder-1);
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.1s;
+    background: rgba(255,255,255,0.02);
+    color: #c8c0a0;
+}
+.protest-crisis-btn:hover { background: rgba(255,255,255,0.04); }
+.protest-crisis-btn.disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+.protest-crisis-btn__note {
+    font-size: 8px;
+    font-weight: 400;
+    color: #4a4840;
+}
+.protest-crisis-btn--danger {
+    border-color: rgba(217,83,79,0.3);
+    color: #d9534f;
+}
+.protest-crisis-btn--danger:hover { background: rgba(217,83,79,0.08); }
+.protest-crisis-card__sep {
+    border: 0;
+    border-top: 1px solid var(--dborder-1);
+    margin: 8px 0;
+}

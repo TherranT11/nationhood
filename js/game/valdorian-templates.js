@@ -265,6 +265,20 @@ export const EVENT_TYPES = {
     financial_ticker:   { section: 'economy', tier: 3, label: 'Financial Ticker' },
     ambient:            { section: 'society', tier: 3, label: 'Ambient Blurbs' },
     opinion:            { section: 'opinion', tier: 2, label: 'Opinion / Editorial' },
+
+    // ── Protest ──
+    protest_fizzle:         { section: 'politics', tier: 3, label: 'Protest Fizzle' },
+    protest_respectable:    { section: 'politics', tier: 2, label: 'Protest Turnout' },
+    protest_strong:         { section: 'politics', tier: 2, label: 'Strong Protest' },
+    protest_mass:           { section: 'politics', tier: 1, label: 'Mass Demonstration' },
+    protest_crisis_started: { section: 'politics', tier: 1, label: 'Protest Crisis' },
+    protest_crisis_tick:    { section: 'politics', tier: 2, label: 'Protest Crisis Update' },
+    protest_crisis_ended:   { section: 'politics', tier: 2, label: 'Protest Crisis Over' },
+    protest_epo_resolved:   { section: 'politics', tier: 1, label: 'Crackdown Ends Protest' },
+    protest_epo_escalated:  { section: 'politics', tier: 1, label: 'Crackdown Backfires' },
+    protest_emergency:      { section: 'politics', tier: 1, label: 'National Emergency' },
+    protest_called_off:     { section: 'politics', tier: 2, label: 'Protest Called Off' },
+    protest_public_address: { section: 'politics', tier: 3, label: 'Public Address' },
 };
 
 // ════════════════════════════════════════════════════════════════
@@ -657,6 +671,89 @@ export const HEADLINE_TEMPLATES = {
         { id: 'opinion_h_03', template: "Analysis: What {topic} Means for {nation_name}'s Future", conditions: [], weight: 1 },
         { id: 'opinion_h_04', template: "Opinion: The Cost of Inaction on {topic}", conditions: [], weight: 1 },
     ],
+
+    // ─────────── PROTEST: FIZZLE (Tier 1-2) ───────────
+    protest_fizzle: [
+        { id: 'pf_h_01', template: "{party_name} Protest Fizzles — Sparse Turnout Embarrasses Opposition", conditions: [{ field: 'tier', op: '==', value: 1 }], weight: 2 },
+        { id: 'pf_h_02', template: "Opposition Rally Draws Modest Crowd; Government Approval Holds Steady", conditions: [], weight: 2 },
+        { id: 'pf_h_03', template: "{party_name}'s Protest Over {grievance_label} Fails to Gain Traction", conditions: [], weight: 1 },
+        { id: 'pf_h_04', template: "Empty Streets: {party_name} Protest Falls Short of Expectations", conditions: [{ field: 'tier', op: '==', value: 1 }], weight: 1 },
+    ],
+
+    // ─────────── PROTEST: RESPECTABLE (Tier 3) ───────────
+    protest_respectable: [
+        { id: 'pr_h_01', template: "Thousands March Against {grievance_label} in {nation_name}", conditions: [], weight: 2 },
+        { id: 'pr_h_02', template: "{party_name} Draws Respectable Turnout for {grievance_label} Protest", conditions: [], weight: 1 },
+        { id: 'pr_h_03', template: "Opposition Protest Sends Message to Government on {grievance_label}", conditions: [], weight: 1 },
+    ],
+
+    // ─────────── PROTEST: STRONG (Tier 4) ───────────
+    protest_strong: [
+        { id: 'ps_h_01', template: "Large Crowds Rally Against Government — {party_name} Leads Protest Over {grievance_label}", conditions: [], weight: 2 },
+        { id: 'ps_h_02', template: "Tens of Thousands Take to Streets Demanding Action on {grievance_label}", conditions: [], weight: 1 },
+        { id: 'ps_h_03', template: "Government Approval Dips as {party_name} Protest Draws Strong Turnout", conditions: [], weight: 1 },
+    ],
+
+    // ─────────── PROTEST: MASS DEMONSTRATION (Tier 5) ───────────
+    protest_mass: [
+        { id: 'pm_h_01', template: "Mass Demonstration Rocks {nation_name} — Unrest Rises as Protesters Demand Change", conditions: [], weight: 2 },
+        { id: 'pm_h_02', template: "Unprecedented Turnout: {party_name} Leads Massive Protest Over {grievance_label}", conditions: [], weight: 1 },
+        { id: 'pm_h_03', template: "Streets Overflow as Mass Protest Shakes Government — Civil Unrest Surges", conditions: [], weight: 1 },
+    ],
+
+    // ─────────── PROTEST: CRISIS STARTED (Tier 6/7) ───────────
+    protest_crisis_started: [
+        { id: 'pcs_h_01', template: "Historic Protest Erupts — {nation_name} Plunged Into Crisis", conditions: [{ field: 'tier', op: '==', value: 6 }], weight: 2 },
+        { id: 'pcs_h_02', template: "Nationwide Protest Paralyzes {nation_name} — Government Faces Existential Crisis", conditions: [{ field: 'tier', op: '==', value: 7 }], weight: 2 },
+        { id: 'pcs_h_03', template: "{party_name} Protest Escalates to National Crisis — {tier_label}", conditions: [], weight: 1 },
+        { id: 'pcs_h_04', template: "BREAKING: Protesters Demand {demand_label} — Crisis Engulfs {nation_name}", conditions: [{ field: 'tier', op: '==', value: 7 }], weight: 2 },
+    ],
+
+    // ─────────── PROTEST: CRISIS TICK UPDATE ───────────
+    protest_crisis_tick: [
+        { id: 'pct_h_01', template: "Protest Crisis Enters Day {ticks_active} — No Resolution in Sight", conditions: [], weight: 2 },
+        { id: 'pct_h_02', template: "{nation_name} Protest Continues: Government Approval Slides Further", conditions: [], weight: 1 },
+        { id: 'pct_h_03', template: "Streets Still Full: {tier_label} Shows No Sign of Abating", conditions: [], weight: 1 },
+    ],
+
+    // ─────────── PROTEST: CRISIS ENDED (Natural / Demand Met) ───────────
+    protest_crisis_ended: [
+        { id: 'pce_h_01', template: "Protest Crisis Ends in {nation_name} — Protesters Disperse After {ticks_active} Days", conditions: [], weight: 2 },
+        { id: 'pce_h_02', template: "Government Weathers Protest Storm — Crisis Declared Over", conditions: [{ field: 'demand_met', op: '==', value: false }], weight: 1 },
+        { id: 'pce_h_03', template: "Protesters Claim Victory as Government Meets Demands", conditions: [{ field: 'demand_met', op: '==', value: true }], weight: 3 },
+    ],
+
+    // ─────────── PROTEST: EPO RESOLVED ───────────
+    protest_epo_resolved: [
+        { id: 'per_h_01', template: "Government Crackdown Ends Protest Crisis — Interior Ministry Deploys Forces", conditions: [], weight: 2 },
+        { id: 'per_h_02', template: "Enforce Public Order Succeeds: {nation_name} Protest Dispersed by Authorities", conditions: [], weight: 1 },
+    ],
+
+    // ─────────── PROTEST: EPO ESCALATED ───────────
+    protest_epo_escalated: [
+        { id: 'pee_h_01', template: "Crackdown Backfires Spectacularly — Protest Escalates to Nationwide Crisis", conditions: [], weight: 2 },
+        { id: 'pee_h_02', template: "Police Action Inflames Protesters — {nation_name} Faces Nationwide Uprising", conditions: [], weight: 1 },
+        { id: 'pee_h_03', template: "BREAKING: Failed Crackdown Triggers Tier 7 Nationwide Protest in {nation_name}", conditions: [], weight: 1 },
+    ],
+
+    // ─────────── PROTEST: NATIONAL EMERGENCY ───────────
+    protest_emergency: [
+        { id: 'pne_h_01', template: "National Emergency Declared — Government Ends Protest Crisis at Severe Cost", conditions: [], weight: 2 },
+        { id: 'pne_h_02', template: "{nation_name} Under Emergency Rule as Government Crushes Protest Movement", conditions: [], weight: 1 },
+        { id: 'pne_h_03', template: "Martial Law: Government Ends Protest but Pays Heavy Price in Stability", conditions: [], weight: 1 },
+    ],
+
+    // ─────────── PROTEST: CALLED OFF ───────────
+    protest_called_off: [
+        { id: 'pco_h_01', template: "{party_name} Calls Off Protest — Moderates Breathe Sigh of Relief", conditions: [], weight: 2 },
+        { id: 'pco_h_02', template: "Protest Crisis Winding Down as {party_name} Orders Supporters Home", conditions: [], weight: 1 },
+    ],
+
+    // ─────────── PROTEST: PUBLIC ADDRESS ───────────
+    protest_public_address: [
+        { id: 'ppa_h_01', template: "Government Issues Public Address Amid Ongoing Protest Crisis", conditions: [], weight: 2 },
+        { id: 'ppa_h_02', template: "Head of Government Appeals for Calm as Protest Enters Day {ticks_active}", conditions: [], weight: 1 },
+    ],
 };
 
 // ════════════════════════════════════════════════════════════════
@@ -756,6 +853,69 @@ export const LEDE_TEMPLATES = {
         { id: 'bill_fail_l_02', conditions: [{ field: 'vote_for', op: '!=', value: '' }], template: "Parliament has rejected {bill_name} in a {vote_for}-{vote_against} vote. The proposed legislation has been defeated." },
         { id: 'bill_fail_l_03', conditions: [{ field: 'party_name', op: '!=', value: '' }], template: "Parliament has rejected {bill_name}. {party_name}'s legislative agenda has suffered a setback." },
         { id: 'bill_fail_l_04', conditions: [], template: "Parliament has rejected {bill_name}. The proposed legislation has been defeated." },
+    ],
+
+    // ─── Protest: Fizzle ───
+    protest_fizzle: [
+        { id: 'pf_l_01', conditions: [{ field: 'tier', op: '==', value: 1 }], template: "A protest organised by {party_name} over {grievance_label} drew embarrassingly low turnout in {nation_name}. The sparse crowds handed the government a free headline, and centrist voters appear unimpressed by the opposition's tactics." },
+        { id: 'pf_l_02', conditions: [], template: "{party_name} called for public demonstrations against {grievance_label}, but turnout fell well short of expectations. Political analysts noted that protest fatigue and weak public sentiment contributed to the modest showing." },
+    ],
+
+    // ─── Protest: Respectable ───
+    protest_respectable: [
+        { id: 'pr_l_01', conditions: [], template: "Thousands took to the streets in {nation_name} as {party_name} organised a protest against {grievance_label}. The respectable turnout signals growing public discontent, though the demonstration fell short of creating a major crisis for the government." },
+    ],
+
+    // ─── Protest: Strong ───
+    protest_strong: [
+        { id: 'ps_l_01', conditions: [], template: "A large protest organised by {party_name} drew tens of thousands to the streets of {nation_name}. Demonstrators demanded action on {grievance_label}, and government approval took a significant hit. Ideologically aligned voter blocs rallied behind the opposition." },
+    ],
+
+    // ─── Protest: Mass Demonstration ───
+    protest_mass: [
+        { id: 'pm_l_01', conditions: [], template: "An unprecedented mass demonstration organised by {party_name} brought {nation_name} to a standstill. Hundreds of thousands marched against {grievance_label}, with government approval plummeting and civil unrest surging. The government faces mounting pressure to respond." },
+    ],
+
+    // ─── Protest: Crisis Started ───
+    protest_crisis_started: [
+        { id: 'pcs_l_01', conditions: [{ field: 'tier', op: '==', value: 6 }], template: "A historic protest movement has erupted in {nation_name}, plunging the country into crisis. Organised by {party_name} over {grievance_label}, the demonstrations have overwhelmed authorities. Government approval is eroding rapidly, and civil unrest is rising with each passing day." },
+        { id: 'pcs_l_02', conditions: [{ field: 'tier', op: '==', value: 7 }], template: "Nationwide protests have paralysed {nation_name} as millions take to the streets demanding {demand_label}. The {party_name}-led movement has triggered a full national crisis, with the economy suffering alongside soaring unrest and plummeting government approval. The government has {demand_window} ticks to meet the protesters' demands or face severe consequences." },
+    ],
+
+    // ─── Protest: Crisis Tick ───
+    protest_crisis_tick: [
+        { id: 'pct_l_01', conditions: [], template: "The protest crisis in {nation_name} continues with no resolution in sight. Government approval dropped further as civil unrest rises. {party_name}'s supporters remain on the streets, and the government faces growing pressure to either address the demonstrators' concerns or take decisive action." },
+    ],
+
+    // ─── Protest: Crisis Ended ───
+    protest_crisis_ended: [
+        { id: 'pce_l_01', conditions: [{ field: 'demand_met', op: '==', value: true }], template: "The protest crisis in {nation_name} has ended after the government met the demonstrators' key demand. Protesters are dispersing from the streets, though the political damage to the government may take time to repair." },
+        { id: 'pce_l_02', conditions: [], template: "After {ticks_active} ticks of sustained unrest, the protest crisis in {nation_name} has come to an end. The demonstrations, which were organised by {party_name}, have left their mark on the nation's political landscape." },
+    ],
+
+    // ─── Protest: EPO Resolved ───
+    protest_epo_resolved: [
+        { id: 'per_l_01', conditions: [], template: "The Interior Ministry's decision to enforce public order has ended the protest crisis in {nation_name}. Security forces moved in to disperse the remaining demonstrators, drawing condemnation from opposition parties but bringing an end to the disruption." },
+    ],
+
+    // ─── Protest: EPO Escalated ───
+    protest_epo_escalated: [
+        { id: 'pee_l_01', conditions: [], template: "A government crackdown on protesters in {nation_name} has backfired catastrophically. Rather than dispersing, the demonstrators swelled in numbers, escalating the crisis from a Tier 6 Historic Protest to a Tier 7 Nationwide Protest. The streets are now filled with millions demanding {demand_label}." },
+    ],
+
+    // ─── Protest: National Emergency ───
+    protest_emergency: [
+        { id: 'pne_l_01', conditions: [], template: "The government of {nation_name} has declared a national emergency to end the protest crisis. While the demonstrations have been forcibly ended, the cost has been severe: civil unrest has surged, political violence has spiked, happiness has plummeted, and government approval has taken a devastating hit." },
+    ],
+
+    // ─── Protest: Called Off ───
+    protest_called_off: [
+        { id: 'pco_l_01', conditions: [], template: "{party_name} has called off the protest in {nation_name}, ordering supporters to return home. The decision was welcomed by moderate voters, and the crisis is expected to wind down within two ticks." },
+    ],
+
+    // ─── Protest: Public Address ───
+    protest_public_address: [
+        { id: 'ppa_l_01', conditions: [], template: "The government of {nation_name} issued a public address amid the ongoing protest crisis, calling for calm and dialogue. The address has slightly reduced civil unrest accumulation and bolstered support among moderate voters." },
     ],
 };
 
