@@ -575,6 +575,7 @@ async function loadStatEffectSources(nationId, nation) {
     parseDiplomaticEffects(results[3].data || [], map, currentTick);
     parseLeaderTraitEffects(results[4], map);
     parseInstitutionEffects(results[6].data || [], results[7].data || [], nation, map);
+    parseDebtPressureEffects(nation, map);
     parseStatConnectionEffects(results[5].data || [], nation, map);
     parseTradeSystemEffects(nation, map);
     parseDecayEffects(nation, map);
@@ -867,6 +868,45 @@ function parseInstitutionEffects(allocations, institutions, nation, map) {
     }
 }
 
+// ── Debt Pressure: graduated stat effects from debt-to-GDP ratio ──
+var DEBT_PRESSURE_TIERS_CLIENT = [
+    { maxRatio: 0.60, label: 'Healthy',     color: '#4ade80', effects: {} },
+    { maxRatio: 0.80, label: 'Elevated',    color: '#a3e635', effects: { interest_rates: 0.05 } },
+    { maxRatio: 1.00, label: 'Concerning',  color: '#fbbf24', effects: { interest_rates: 0.1, foreign_investment: -0.1, currency_strength: -0.05 } },
+    { maxRatio: 1.50, label: 'Dangerous',   color: '#f97316', effects: { interest_rates: 0.2, foreign_investment: -0.2, currency_strength: -0.15 } },
+    { maxRatio: 2.00, label: 'Severe',      color: '#ef4444', effects: { interest_rates: 0.4, foreign_investment: -0.4, currency_strength: -0.3 } },
+    { maxRatio: Infinity, label: 'Crisis',  color: '#f43f5e', effects: { interest_rates: 0.7, foreign_investment: -0.7, currency_strength: -0.5 } },
+];
+
+function parseDebtPressureEffects(nation, map) {
+    var debt = Number(nation.debt || 0);
+    var gdp = Number(nation.gdp || 0);
+    if (gdp <= 0 || debt <= 0) return;
+    var ratio = debt / gdp;
+
+    var tier = DEBT_PRESSURE_TIERS_CLIENT[0];
+    for (var i = 0; i < DEBT_PRESSURE_TIERS_CLIENT.length; i++) {
+        if (ratio <= DEBT_PRESSURE_TIERS_CLIENT[i].maxRatio) { tier = DEBT_PRESSURE_TIERS_CLIENT[i]; break; }
+    }
+
+    // Only show entries for stats that have nonzero effects at this tier
+    var effects = tier.effects;
+    var pctLabel = Math.round(ratio * 100) + '% Debt-to-GDP';
+    for (var statKey in effects) {
+        if (!effects.hasOwnProperty(statKey)) continue;
+        var delta = effects[statKey];
+        if (delta === 0) continue;
+        var dir = delta > 0 ? 'up' : 'down';
+        // interest_rates going UP is bad; foreign_investment/currency going DOWN is bad
+        // So for display: interest_rates up = red arrow, others down = red arrow
+        addEffectToMap(map, statKey, pctLabel, dir, 'Debt Pressure', Math.abs(delta), null, {
+            tierLabel: tier.label,
+            tierColor: tier.color,
+            isDebtPressure: true,
+        });
+    }
+}
+
 // Stats known to be affected by the trade system engine each tick
 var TRADE_AFFECTED_STATS = {
     gdp_growth: 'Trade Balance',
@@ -1045,6 +1085,8 @@ function buildFeaturedAbpHTML(statKey) {
         var eff = effects[i];
         var ext = eff.extras;
         var isInst = eff.type === 'Institution' && ext;
+        var isDebtP = ext && ext.isDebtPressure;
+        var hasTierColor = isInst || isDebtP;
 
         // Row class — collapsed institutions get warning background
         var rowClass = 'featured-card__abp-row';
@@ -1065,20 +1107,21 @@ function buildFeaturedAbpHTML(statKey) {
         } else {
             var arrow = eff.direction === 'up' ? '&#9650;' : '&#9660;';
             var arrowClass = eff.direction === 'up' ? 'featured-card__abp-arrow--up' : 'featured-card__abp-arrow--down';
-            // Override arrow color for institution tiers
-            if (isInst) arrowClass += ' featured-card__abp-arrow--inst';
-            h += '<span class="featured-card__abp-arrow ' + arrowClass + '"' + (isInst ? ' style="color:' + ext.tierColor + '"' : '') + '>' + arrow + '</span>';
+            if (hasTierColor) arrowClass += ' featured-card__abp-arrow--inst';
+            h += '<span class="featured-card__abp-arrow ' + arrowClass + '"' + (hasTierColor ? ' style="color:' + ext.tierColor + '"' : '') + '>' + arrow + '</span>';
         }
 
         if (eff.rate !== null && eff.rate !== undefined) {
             var sign = eff.direction === 'up' ? '+' : '-';
-            var rateStyle = isInst ? ' style="color:' + ext.tierColor + '"' : '';
+            var rateStyle = hasTierColor ? ' style="color:' + ext.tierColor + '"' : '';
             h += '<span class="featured-card__abp-rate"' + rateStyle + '>' + sign + (Math.round(Math.abs(Number(eff.rate)) * 100) / 100) + '/tick</span>';
         }
 
-        // Type badge — institutions get tier-specific badge instead of generic "Institution"
+        // Type badge — institutions and debt pressure get tier-specific badges
         if (isInst) {
             h += '<span class="featured-card__abp-type featured-card__abp-type--institution" style="background:' + ext.tierColor + '18;color:' + ext.tierColor + '">' + escapeHtml(ext.tierLabel) + '</span>';
+        } else if (isDebtP) {
+            h += '<span class="featured-card__abp-type featured-card__abp-type--debt-pressure" style="background:' + ext.tierColor + '18;color:' + ext.tierColor + '">' + escapeHtml(ext.tierLabel) + '</span>';
         } else {
             var typeClass = 'featured-card__abp-type--' + eff.type.toLowerCase().replace(/ /g, '-');
             h += '<span class="featured-card__abp-type ' + typeClass + '">' + escapeHtml(eff.type) + '</span>';

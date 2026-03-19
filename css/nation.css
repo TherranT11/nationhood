@@ -702,6 +702,7 @@
 .featured-card__abp-type--stat-link { background: rgba(192,132,252,0.12); color: #c084fc; }
 .featured-card__abp-type--trade { background: rgba(251,191,36,0.12); color: #fbbf24; }
 .featured-card__abp-type--institution { background: rgba(45,212,191,0.12); color: #2dd4bf; }
+.featured-card__abp-type--debt-pressure { background: rgba(251,146,60,0.12); color: #fb923c; }
 /* Institution collapsed row — faint red background tint */
 .featured-card__abp-row--collapsed {
     background: rgba(244,63,94,0.06);
