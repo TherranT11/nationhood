@@ -5,7 +5,6 @@ import { accumulateAP } from './game/config.js';
 // Module-level references set during init
 let _supabase = null;
 let _state = null;
-let _initialized = false;
 
 export async function initNewspaper(supabase, state) {
     _supabase = supabase;
@@ -332,12 +331,11 @@ export async function initNewspaper(supabase, state) {
 
     </div>`;
 
-    // === EVENT BINDINGS (once only) ===
-    if (!_initialized) {
-        bindModalEvents();
-        bindSubmitHandler();
-        _initialized = true;
-    }
+    // === EVENT BINDINGS ===
+    // Must rebind every call — innerHTML replaces all DOM nodes,
+    // so old listeners are garbage collected with the old elements.
+    bindModalEvents();
+    bindSubmitHandler();
 
     // === LOAD & DISPLAY ARTICLES ===
     await loadAndDisplayArticles();
@@ -464,8 +462,8 @@ function bindSubmitHandler() {
                 imageUrl = await uploadArticleImage(nation.id, file);
             }
 
-            // Insert article
-            const { data, error } = await _supabase
+            // Insert article (reward_granted starts false until AP confirmed)
+            const { data: article, error } = await _supabase
                 .from('player_articles')
                 .insert({
                     nation_id: nation.id,
@@ -478,18 +476,23 @@ function bindSubmitHandler() {
                     status: 'published',
                     published_tick: shard?.current_tick || 0,
                     reward_ap: 1,
-                    reward_granted: true
+                    reward_granted: false
                 })
                 .select()
                 .single();
 
             if (error) throw error;
 
-            // Award 1 AP
+            // Award 1 AP, then mark reward as granted
             const apResult = await accumulateAP(_supabase, faction.id, 1);
             if (apResult.success) {
                 const apEl = document.getElementById('topbar-ap');
                 if (apEl) apEl.textContent = `${apResult.newAp} AP`;
+                // Mark reward as granted in DB
+                await _supabase
+                    .from('player_articles')
+                    .update({ reward_granted: true })
+                    .eq('id', article.id);
             }
 
             showFormSuccess('Article published! +1 AP awarded.');
@@ -639,7 +642,7 @@ function populateLeadSection(lead, sidebar) {
             <div class="nws-sidebar-story">
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sidebar-headline">${escapeHtml(a.headline)}</h3>
-                <p class="nws-sidebar-deck">${escapeHtml(a.body.substring(0, 120))}${a.body.length > 120 ? '...' : ''}</p>
+                <p class="nws-sidebar-deck">${escapeHtml((a.body || '').substring(0, 120))}${(a.body || '').length > 120 ? '...' : ''}</p>
                 <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>Tick ${a.published_tick || '—'}</span></div>
             </div>
         `).join('')
@@ -650,7 +653,8 @@ function populateLeadSection(lead, sidebar) {
         : renderImageOrPlaceholder(null, 'Photo');
 
     // Truncate body for deck (first ~200 chars)
-    const deck = lead.body.length > 200 ? lead.body.substring(0, 200) + '...' : lead.body;
+    const leadBody = lead.body || '';
+    const deck = leadBody.length > 200 ? leadBody.substring(0, 200) + '...' : leadBody;
 
     section.innerHTML = `
         <div class="nws-lead-main">
@@ -663,7 +667,7 @@ function populateLeadSection(lead, sidebar) {
                 <span>Tick ${lead.published_tick || '—'}</span>
             </div>
             <div class="nws-lead-body">
-                <p class="nws-drop-cap">${escapeHtml(lead.body)}</p>
+                <p class="nws-drop-cap">${escapeHtml(leadBody)}</p>
             </div>
         </div>
         <div class="nws-lead-sidebar">
@@ -696,7 +700,7 @@ function populateSecondaryGrid(articles) {
                 <div class="nws-sec-image">${imgHtml}</div>
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sec-headline">${escapeHtml(a.headline)}</h3>
-                <p class="nws-sec-deck">${escapeHtml(a.body.substring(0, 150))}${a.body.length > 150 ? '...' : ''}</p>
+                <p class="nws-sec-deck">${escapeHtml((a.body || '').substring(0, 150))}${(a.body || '').length > 150 ? '...' : ''}</p>
                 <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>Tick ${a.published_tick || '—'}</span></div>
             </div>`;
         } else {
@@ -731,7 +735,7 @@ function populateBriefs(articles) {
             <div class="nws-brief-num">${i + 1}</div>
             <div class="nws-brief-text">
                 <strong>${escapeHtml(a.headline)}</strong>
-                ${escapeHtml(a.body.substring(0, 100))}${a.body.length > 100 ? '...' : ''}
+                ${escapeHtml((a.body || '').substring(0, 100))}${(a.body || '').length > 100 ? '...' : ''}
             </div>
         </div>
     `).join('');
