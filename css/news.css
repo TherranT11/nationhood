@@ -872,6 +872,70 @@
     display: none;
 }
 
+/* ===== DELETE BUTTON ===== */
+.nws-delete-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: var(--nws-paper-2);
+    border: 1px solid var(--nws-rule);
+    color: var(--nws-ink-4);
+    font-size: 16px;
+    line-height: 1;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+    z-index: 2;
+}
+
+.nws-lead-main,
+.nws-sidebar-story,
+.nws-sec-story,
+.nws-brief-row,
+.nws-op-card {
+    position: relative;
+}
+
+.nws-lead-main:hover .nws-delete-btn,
+.nws-sidebar-story:hover .nws-delete-btn,
+.nws-sec-story:hover .nws-delete-btn,
+.nws-brief-row:hover .nws-delete-btn,
+.nws-op-card:hover .nws-delete-btn {
+    opacity: 1;
+}
+
+.nws-delete-btn:hover {
+    color: var(--nws-red);
+    border-color: var(--nws-red);
+}
+
+/* Brief row delete button sits inline */
+.nws-brief-text .nws-delete-btn {
+    position: static;
+    display: inline-flex;
+    opacity: 0;
+    vertical-align: middle;
+    margin-left: 6px;
+    width: 18px;
+    height: 18px;
+    font-size: 13px;
+}
+
+.nws-brief-row:hover .nws-brief-text .nws-delete-btn {
+    opacity: 1;
+}
+
+/* AP qualified counter */
+.nws-char-count.nws-ap-qualified {
+    color: #2a6a2a;
+    font-weight: 600;
+}
+
 /* ===== ARTICLE IMAGE IN LAYOUT ===== */
 .nws-lead-image img,
 .nws-sec-image img {

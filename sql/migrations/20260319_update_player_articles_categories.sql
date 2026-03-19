@@ -28,3 +28,10 @@ UPDATE player_articles SET category = 'social'        WHERE category = 'science'
 ALTER TABLE player_articles
     ADD CONSTRAINT player_articles_category_check
     CHECK (category IN ('politics', 'economy', 'international', 'social', 'entertainment', 'elections', 'sports', 'opinion'));
+
+-- Add DELETE policy so authors can remove their own articles
+DO $$ BEGIN
+  CREATE POLICY "Users can delete own player_articles" ON player_articles
+    FOR DELETE USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
