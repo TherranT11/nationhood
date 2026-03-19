@@ -330,8 +330,8 @@ export async function initNewspaper(supabase, state) {
 
                     <div class="nws-form-group">
                         <label for="nws-article-body">Article Body</label>
-                        <textarea id="nws-article-body" placeholder="Write your article (max 10000 characters). Use blank lines for paragraph breaks." maxlength="10000"></textarea>
-                        <div class="nws-char-count" id="nws-char-count">0 / 10000</div>
+                        <textarea id="nws-article-body" placeholder="Write your article (max 12000 characters). Use blank lines for paragraph breaks. Formatting: *italic*, **bold**, __underline__" maxlength="12000"></textarea>
+                        <div class="nws-char-count" id="nws-char-count">0 / 12000</div>
                     </div>
 
                     <button class="nws-submit-btn" id="nws-submit-btn">Publish Article</button>
@@ -395,9 +395,9 @@ function bindModalEvents() {
             if (len >= 8000) tag = ' · +4 Momentum';
             else if (len >= 4000) tag = ` · +2 Momentum · ${8000 - len} more for +4`;
             else tag = ` · ${4000 - len} more for momentum`;
-            charCount.textContent = `${len} / 10000${tag}`;
-            charCount.classList.toggle('nws-near-limit', len >= 9500);
-            charCount.classList.toggle('nws-ap-qualified', len >= 4000 && len < 9500);
+            charCount.textContent = `${len} / 12000${tag}`;
+            charCount.classList.toggle('nws-near-limit', len >= 11500);
+            charCount.classList.toggle('nws-ap-qualified', len >= 4000 && len < 11500);
         });
     }
 
@@ -468,7 +468,7 @@ function bindSubmitHandler() {
         if (!author) return showFormError('Please enter a writer name.');
         if (!category) return showFormError('Please select a category.');
         if (!body) return showFormError('Please write an article body.');
-        if (body.length > 10000) return showFormError('Article body must be 10000 characters or fewer.');
+        if (body.length > 12000) return showFormError('Article body must be 12000 characters or fewer.');
 
         submitBtn.disabled = true;
         submitBtn.textContent = 'Publishing...';
@@ -519,7 +519,7 @@ function bindSubmitHandler() {
             fileInput.value = '';
             document.getElementById('nws-file-label-text').textContent = 'Click to select an image...';
             document.getElementById('nws-image-preview').style.display = 'none';
-            document.getElementById('nws-char-count').textContent = '0 / 10000';
+            document.getElementById('nws-char-count').textContent = '0 / 12000';
             document.getElementById('nws-char-count').classList.remove('nws-near-limit');
 
             // Close modal after short delay
@@ -692,7 +692,7 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
-function formatLeadPreview(body, limit = 600) {
+function formatLeadPreview(body, limit = 1200) {
     if (body.length <= limit) return formatBodyHtml(body);
 
     // Truncate at word boundary near the limit
@@ -703,19 +703,28 @@ function formatLeadPreview(body, limit = 600) {
     // Render preview paragraphs, then append a Read More prompt
     const paragraphs = preview.split(/\n\n+/).filter(p => p.trim());
     const html = paragraphs.map((p, i) =>
-        `<p class="${i === 0 ? 'nws-drop-cap' : ''}">${escapeHtml(p.trim())}${i === paragraphs.length - 1 ? '...' : ''}</p>`
+        `<p class="${i === 0 ? 'nws-drop-cap' : ''}">${applyInlineFormatting(escapeHtml(p.trim()))}${i === paragraphs.length - 1 ? '...' : ''}</p>`
     ).join('');
 
     return html + `<p class="nws-read-more">Read More &rarr;</p>`;
 }
 
+// Inline formatting: **bold**, *italic*, __underline__
+// Applied after escapeHtml so markers are safe plain-text characters.
+function applyInlineFormatting(escaped) {
+    return escaped
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/__(.+?)__/g, '<u>$1</u>');
+}
+
 function formatBodyHtml(body) {
     const paragraphs = body.split(/\n\n+/).filter(p => p.trim());
     if (paragraphs.length <= 1) {
-        return `<p class="nws-drop-cap">${escapeHtml(body)}</p>`;
+        return `<p class="nws-drop-cap">${applyInlineFormatting(escapeHtml(body))}</p>`;
     }
     return paragraphs.map((p, i) =>
-        `<p class="${i === 0 ? 'nws-drop-cap' : ''}">${escapeHtml(p.trim())}</p>`
+        `<p class="${i === 0 ? 'nws-drop-cap' : ''}">${applyInlineFormatting(escapeHtml(p.trim()))}</p>`
     ).join('');
 }
 
@@ -867,7 +876,7 @@ function populateLeadSection(lead, sidebar) {
                 ${deleteBtn(a)}
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sidebar-headline">${escapeHtml(a.headline)}</h3>
-                <p class="nws-sidebar-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 120))}${(a.body || '').length > 120 ? '...' : ''}</p>
+                <p class="nws-sidebar-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 240))}${(a.body || '').length > 240 ? '...' : ''}</p>
                 <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${_state?.shard?.current_date || '—'}</span></div>
             </div>
         `).join('')
@@ -880,7 +889,7 @@ function populateLeadSection(lead, sidebar) {
     // Truncate body for deck (first ~200 chars), collapsing newlines for clean display
     const leadBody = lead.body || '';
     const deckText = leadBody.replace(/\n+/g, ' ');
-    const deck = deckText.length > 200 ? deckText.substring(0, 200) + '...' : deckText;
+    const deck = deckText.length > 400 ? deckText.substring(0, 400) + '...' : deckText;
 
     section.innerHTML = `
         <div class="nws-lead-main" data-article-id="${lead.id}">
@@ -928,7 +937,7 @@ function populateSecondaryGrid(articles) {
                 <div class="nws-sec-image">${imgHtml}</div>
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sec-headline">${escapeHtml(a.headline)}</h3>
-                <p class="nws-sec-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 150))}${(a.body || '').length > 150 ? '...' : ''}</p>
+                <p class="nws-sec-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 300))}${(a.body || '').length > 300 ? '...' : ''}</p>
                 <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${_state?.shard?.current_date || '—'}</span></div>
             </div>`;
         } else {
@@ -963,7 +972,7 @@ function populateBriefs(articles) {
             <div class="nws-brief-num">${i + 1}</div>
             <div class="nws-brief-text">
                 <strong>${escapeHtml(a.headline)}${deleteBtn(a)}</strong>
-                ${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 100))}${(a.body || '').length > 100 ? '...' : ''}
+                ${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 200))}${(a.body || '').length > 200 ? '...' : ''}
             </div>
         </div>
     `).join('');
@@ -996,8 +1005,8 @@ function populateOpinionStrip(articles) {
         const a = articles[i];
         if (a) {
             // Truncate body to ~80 chars for the quote
-            const quote = (a.body || '').length > 80
-                ? (a.body || '').substring(0, 80) + '...'
+            const quote = (a.body || '').length > 160
+                ? (a.body || '').substring(0, 160) + '...'
                 : (a.body || '');
             return `<div class="nws-op-card" data-article-id="${a.id}">
                 ${deleteBtn(a)}
@@ -1233,7 +1242,7 @@ function buildLeadHtml(lead, sidebar, dateLabel) {
             <div class="nws-sidebar-story" data-article-id="${a.id}">
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sidebar-headline">${escapeHtml(a.headline)}</h3>
-                <p class="nws-sidebar-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 120))}${(a.body || '').length > 120 ? '...' : ''}</p>
+                <p class="nws-sidebar-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 240))}${(a.body || '').length > 240 ? '...' : ''}</p>
                 <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${escapeHtml(dateLabel)}</span></div>
             </div>
         `).join('')
@@ -1245,7 +1254,7 @@ function buildLeadHtml(lead, sidebar, dateLabel) {
 
     const leadBody = lead.body || '';
     const deckText = leadBody.replace(/\n+/g, ' ');
-    const deck = deckText.length > 200 ? deckText.substring(0, 200) + '...' : deckText;
+    const deck = deckText.length > 400 ? deckText.substring(0, 400) + '...' : deckText;
 
     return `
         <div class="nws-lead-main" data-article-id="${lead.id}">
@@ -1279,7 +1288,7 @@ function buildSecondaryGridHtml(articles) {
             <div class="nws-sec-image">${imgHtml}</div>
             <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
             <h3 class="nws-sec-headline">${escapeHtml(a.headline)}</h3>
-            <p class="nws-sec-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 150))}${(a.body || '').length > 150 ? '...' : ''}</p>
+            <p class="nws-sec-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 300))}${(a.body || '').length > 300 ? '...' : ''}</p>
             <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span></div>
         </div>`;
     }).join('');
@@ -1288,7 +1297,7 @@ function buildSecondaryGridHtml(articles) {
 function buildOpinionStripHtml(articles) {
     if (articles.length === 0) return '';
     const cardsHtml = articles.map(a => {
-        const quote = (a.body || '').length > 80 ? (a.body || '').substring(0, 80) + '...' : (a.body || '');
+        const quote = (a.body || '').length > 160 ? (a.body || '').substring(0, 160) + '...' : (a.body || '');
         return `<div class="nws-op-card" data-article-id="${a.id}">
             <div class="nws-op-author">${escapeHtml(a.author_name)} &mdash; Opinion</div>
             <div class="nws-op-headline">&ldquo;${escapeHtml(quote)}&rdquo;</div>
@@ -1309,7 +1318,7 @@ function buildBriefsHtml(articles) {
             <div class="nws-brief-num">${i + 1}</div>
             <div class="nws-brief-text">
                 <strong>${escapeHtml(a.headline)}</strong>
-                ${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 100))}${(a.body || '').length > 100 ? '...' : ''}
+                ${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 200))}${(a.body || '').length > 200 ? '...' : ''}
             </div>
         </div>
     `).join('');
