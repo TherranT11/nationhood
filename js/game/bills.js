@@ -2240,13 +2240,12 @@ export async function resolveStuckFloorBills(supabase, nationId) {
     const nominalTotalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
     const totalSeats = Math.min(nominalTotalSeats, Math.max(factionSeatSum, 1));
 
+    const specialTypes = new Set(['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'ambassador_confirmation']);
     const results = [];
 
     for (const bill of stuckBills) {
       try {
-        // Skip special bill types that need specialized resolution logic
-        const specialTypes = ['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'ambassador_confirmation'];
-        if (specialTypes.includes(bill.bill_type)) {
+        if (specialTypes.has(bill.bill_type)) {
             console.warn(`[resolveStuckFloorBills] Skipping special bill type "${bill.bill_type}" for bill ${bill.id} "${bill.bill_name}" — needs resolveExpiredVotes`);
             await failBill(supabase, bill);
             await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor: 0, votesAgainst: 0, extra: { reason: `safety net: special type ${bill.bill_type} could not be resolved normally` } });
