@@ -1159,6 +1159,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         const resolutions = await resolveExpiredVotes(supabase, nation.id);
         if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
 
+        // Safety net: catch any floor bills that resolveExpiredVotes missed
+        // (e.g. due to complex query failure). Uses simple queries per-bill.
+        try {
+            const stuckResults = await resolveStuckFloorBills(supabase, nation.id);
+            if (stuckResults.length > 0) {
+                summary.resolutions.push({ nation: nation.name, bills: stuckResults, safetyNet: true });
+            }
+        } catch (stuckErr) {
+            console.error(`[advanceTick] resolveStuckFloorBills failed for ${nation.name} (non-fatal):`, stuckErr);
+        }
+
         // ── Impeachment processing (Presidential systems) ──
         if (isPresidentialRepublic(nation)) {
             try {
