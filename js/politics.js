@@ -4213,8 +4213,8 @@ function wireCampaignConfig(container, f, n, ap, blocs, otherParties, factionIde
         });
     }
 
-    // Protest: load data when first visible
-    if (_caSelected === 'protest' && !_caResult) {
+    // Protest: load data when first visible (only if not already cached)
+    if (_caSelected === 'protest' && !_caResult && !_protestCachedMinisters) {
         loadProtestData(n, f, tick).then(rerender);
     }
 
