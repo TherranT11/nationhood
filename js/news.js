@@ -1,6 +1,5 @@
 // js/news.js — The Cruceran newspaper page
 
-import { accumulateAP } from './game/config.js';
 import { adjustMomentumAll } from './game/momentum.js';
 
 // Module-level references set during init
@@ -23,7 +22,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-top-ribbon-inner">
                 <span>${gameDate}</span>
                 <span class="nws-edition">The Cruceran &mdash; Continental Edition</span>
-                <button class="nws-write-btn" id="nws-write-article-btn">Write Article &mdash; 700+ chars for 1 AP</button>
+                <button class="nws-write-btn" id="nws-write-article-btn">Write Article</button>
             </div>
         </div>
 
@@ -276,7 +275,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-modal">
                 <div class="nws-modal-header">
                     <h3>Write Article</h3>
-                    <span class="nws-ap-badge">+1 AP (700+ chars)</span>
+                    <span class="nws-ap-badge">+2 Momentum (700+ chars)</span>
                 </div>
                 <button class="nws-modal-close" id="nws-modal-close">&times;</button>
                 <div class="nws-modal-body">
@@ -380,8 +379,8 @@ function bindModalEvents() {
     if (bodyInput && charCount) {
         bodyInput.addEventListener('input', () => {
             const len = bodyInput.value.length;
-            const apTag = len >= 700 ? ' · +1 AP' : ` · ${700 - len} more for AP`;
-            charCount.textContent = `${len} / 1000${apTag}`;
+            const tag = len >= 700 ? ' · +2 Momentum' : ` · ${700 - len} more for momentum`;
+            charCount.textContent = `${len} / 1000${tag}`;
             charCount.classList.toggle('nws-near-limit', len >= 900);
             charCount.classList.toggle('nws-ap-qualified', len >= 700 && len < 900);
         });
@@ -468,11 +467,9 @@ function bindSubmitHandler() {
                 imageUrl = await uploadArticleImage(nation.id, file);
             }
 
-            // AP only awarded for articles >= 700 characters
-            const qualifiesForAp = body.length >= 700;
-
             // Insert article
-            const { data: article, error } = await _supabase
+            const qualifiesForMomentum = body.length >= 700;
+            const { error } = await _supabase
                 .from('player_articles')
                 .insert({
                     nation_id: nation.id,
@@ -483,39 +480,19 @@ function bindSubmitHandler() {
                     category: category,
                     image_url: imageUrl,
                     status: 'published',
-                    published_tick: shard?.current_tick || 0,
-                    reward_ap: qualifiesForAp ? 1 : 0,
-                    reward_granted: false
-                })
-                .select()
-                .single();
+                    published_tick: shard?.current_tick || 0
+                });
 
             if (error) throw error;
 
-            // Award 1 AP and +2 momentum only if article qualifies (700+ chars)
+            // Award +2 momentum only if article qualifies (700+ chars)
             let successMsg = 'Article published!';
-            if (qualifiesForAp) {
-                // +2 momentum (fire-and-forget)
+            if (qualifiesForMomentum) {
                 adjustMomentumAll(_supabase, nation.id, faction.id, 2, 'article:published')
                     .catch(err => console.error('[News] Momentum adjustment failed:', err));
-
-                const apResult = await accumulateAP(_supabase, faction.id, 1);
-                if (apResult.success) {
-                    const apEl = document.getElementById('topbar-ap');
-                    if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + apResult.newAp + ' AP</span>';
-                    _supabase
-                        .from('player_articles')
-                        .update({ reward_granted: true })
-                        .eq('id', article.id)
-                        .then(({ error: grantErr }) => {
-                            if (grantErr) console.error('[News] Failed to mark reward_granted:', grantErr);
-                        });
-                    successMsg = 'Article published! +1 AP, +2 Momentum.';
-                } else {
-                    successMsg = 'Article published! (AP reward failed — try refreshing.)';
-                }
+                successMsg = 'Article published! +2 Momentum.';
             } else {
-                successMsg = `Article published! (${body.length}/700 chars — no AP or momentum reward)`;
+                successMsg = `Article published! (${body.length}/700 chars — no momentum reward)`;
             }
 
             showFormSuccess(successMsg);
