@@ -2488,11 +2488,18 @@ function buildRequestList(requests) {
     return html;
 }
 
-function buildMinistryActionRows(ministryKey) {
+function isMyMinistryByKey(ministryKey) {
+    if (!currentFaction) return false;
+    const m = ministryData.find(md => md.ministry_key === ministryKey);
+    return !!(m && m.party_id === currentFaction.id);
+}
+
+function buildMinistryActionRows(ministryKey, isMyMinistry) {
     const config = MINISTRY_ACTIONS[ministryKey];
     if (!config || !config.actions || config.actions.length === 0) return '';
     const pop = currentNation?.population || 20000000;
     const ap = currentFaction?.action_points || 0;
+    const canUse = isMyMinistry === true;
 
     let html = '<div class="ministry-card__actions-label">ACTIONS</div>';
     config.actions.forEach(action => {
@@ -2503,13 +2510,16 @@ function buildMinistryActionRows(ministryKey) {
         const tagsHtml = action.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
         const actionId = ministryKey + '-' + action.id;
         const isActive = activeMinistryActions[actionId] || false;
-        const isDisabled = ap < apCost && !isActive;
+        const isDisabled = !canUse || (ap < apCost && !isActive);
 
         let stateClass = '';
         let btnHtml = '';
         if (isActive) {
             stateClass = ' active';
             btnHtml = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+        } else if (!canUse) {
+            stateClass = ' disabled';
+            btnHtml = '';
         } else if (isDisabled) {
             stateClass = ' disabled';
             btnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${apCost} AP">▶ ${apCost} AP</div>`;
@@ -2517,7 +2527,7 @@ function buildMinistryActionRows(ministryKey) {
             btnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
         }
 
-        html += `<div class="ministry-action${stateClass}" id="${actionId}" ${!isActive && !isDisabled ? `onclick="ministryActionSelect('${actionId}')"` : ''}>
+        html += `<div class="ministry-action${stateClass}" id="${actionId}" ${canUse && !isActive && !isDisabled ? `onclick="ministryActionSelect('${actionId}')"` : ''}>
             <div class="ministry-action__top">
                 <span class="ministry-action__name">${escapeHtml(action.name)}</span>
                 <span class="ministry-action__ap-cost">${apCost} AP${useCount > 0 ? ' (use ' + (useCount + 1) + ')' : ''}</span>
@@ -2538,6 +2548,10 @@ let selectedMinistryAction = null;
 function ministryActionSelect(actionId) {
     const row = document.getElementById(actionId);
     if (!row || row.classList.contains('active') || row.classList.contains('disabled')) return;
+
+    // Ownership guard: only the party that owns this ministry can use actions
+    const ministryKey = actionId.split('-')[0];
+    if (!isMyMinistryByKey(ministryKey)) return;
 
     // Deselect previous
     if (selectedMinistryAction && selectedMinistryAction !== actionId) {
@@ -2591,6 +2605,7 @@ function refreshMinistryActionStates(ministryKey) {
     const config = MINISTRY_ACTIONS[ministryKey];
     if (!config?.actions) return;
     const ap = currentFaction?.action_points || 0;
+    const canUse = isMyMinistryByKey(ministryKey);
     config.actions.forEach(action => {
         const countKey = ministryKey + ':' + action.id;
         const useCount = ministryActionUseCounts[countKey] || 0;
@@ -2599,12 +2614,17 @@ function refreshMinistryActionStates(ministryKey) {
         const row = document.getElementById(actionId);
         if (!row || row.classList.contains('active')) return;
 
-        const isDisabled = ap < apCost;
+        const isDisabled = !canUse || ap < apCost;
         const btns = document.getElementById(actionId + '-btns');
         const apLabel = row.querySelector('.ministry-action__ap-cost');
         if (apLabel) apLabel.textContent = apCost + ' AP' + (useCount > 0 ? ' (use ' + (useCount + 1) + ')' : '');
 
-        if (isDisabled) {
+        if (!canUse) {
+            row.classList.add('disabled');
+            row.classList.remove('selected');
+            row.removeAttribute('onclick');
+            if (btns) btns.innerHTML = '';
+        } else if (isDisabled) {
             row.classList.add('disabled');
             row.classList.remove('selected');
             row.removeAttribute('onclick');
@@ -2629,6 +2649,13 @@ async function ministryActionConfirm(actionId) {
     // Parse IDs
     const parts = actionId.split('-');
     const ministryKey = parts[0];
+
+    // Ownership guard: only the party that owns this ministry can execute actions
+    if (!isMyMinistryByKey(ministryKey)) {
+        _ministryActionConfirming = false;
+        alert('Your party does not control this ministry.');
+        return;
+    }
     const actId = parts.slice(1).join('');
     const config = MINISTRY_ACTIONS[ministryKey];
     if (!config) { _ministryActionConfirming = false; return; }
@@ -2807,7 +2834,7 @@ function renderCabinet(ministries, coalition) {
         const mgmtHtml = buildMgmtButtons(key, m, govContext);
         const requestListHtml = (govContext.isRuling && requests.length > 0) ? buildRequestList(requests) : '';
         const statsHtml = renderMinistryStatBreakdown(key, m);
-        const actionsHtml = buildMinistryActionRows(key);
+        const actionsHtml = buildMinistryActionRows(key, isMyMinistry);
 
         return `<div class="ministry-card">${headerHtml}${identityHtml}${mgmtHtml}${requestListHtml}${statsHtml}${actionsHtml}</div>`;
     }).join('');
