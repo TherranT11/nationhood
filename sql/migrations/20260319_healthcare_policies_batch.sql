@@ -46,8 +46,7 @@ INSERT INTO policies (
         {"stat_key":"healthcare_accessibility", "direction":"up",   "rate":0.5, "delay_ticks":5, "duration_ticks":20, "adjust_type":null, "adjust_value":0},
         {"stat_key":"beds_per_100k",            "direction":"up",   "rate":0.2, "delay_ticks":5, "duration_ticks":20, "adjust_type":null, "adjust_value":0},
         {"stat_key":"death_rate",               "direction":"down", "rate":0.1, "delay_ticks":8, "duration_ticks":20, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"unemployment",             "direction":"down", "rate":0.1, "delay_ticks":3, "duration_ticks":12, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"debt_growth",              "direction":"up",   "rate":0.3, "delay_ticks":1, "duration_ticks":12, "adjust_type":null, "adjust_value":0}
+        {"stat_key":"unemployment",             "direction":"down", "rate":0.1, "delay_ticks":3, "duration_ticks":12, "adjust_type":null, "adjust_value":0}
     ]'::jsonb,
     NULL, NULL,
     'healthcare_accessibility', 'UP', 0.5, 20, 0, 100, 0, true
@@ -82,8 +81,7 @@ INSERT INTO policies (
     '[
         {"stat_key":"healthcare_accessibility", "direction":"up",   "rate":0.2, "delay_ticks":4, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
         {"stat_key":"healthcare_quality",       "direction":"up",   "rate":0.1, "delay_ticks":5, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"death_rate",               "direction":"down", "rate":0.1, "delay_ticks":6, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"debt_growth",              "direction":"up",   "rate":0.1, "delay_ticks":1, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
+        {"stat_key":"death_rate",               "direction":"down", "rate":0.1, "delay_ticks":6, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
     ]'::jsonb,
     NULL, NULL,
     'healthcare_accessibility', 'UP', 0.2, 48, 0, 100, 0, true
@@ -119,8 +117,7 @@ INSERT INTO policies (
         {"stat_key":"healthcare_accessibility", "direction":"up", "rate":0.2, "delay_ticks":3, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
         {"stat_key":"healthcare_quality",       "direction":"up", "rate":0.1, "delay_ticks":4, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
         {"stat_key":"digital_infrastructure",   "direction":"up", "rate":0.1, "delay_ticks":3, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"efficiency",               "direction":"up", "rate":0.1, "delay_ticks":4, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"debt_growth",              "direction":"up", "rate":0.1, "delay_ticks":1, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
+        {"stat_key":"efficiency",               "direction":"up", "rate":0.1, "delay_ticks":4, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
     ]'::jsonb,
     NULL, NULL,
     'healthcare_accessibility', 'UP', 0.2, 48, 0, 100, 0, true
@@ -155,8 +152,7 @@ INSERT INTO policies (
     '[
         {"stat_key":"healthcare_accessibility", "direction":"up",   "rate":0.3,  "delay_ticks":3, "duration_ticks":16, "adjust_type":null, "adjust_value":0},
         {"stat_key":"death_rate",               "direction":"down", "rate":0.1,  "delay_ticks":5, "duration_ticks":16, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"poverty_rate",             "direction":"down", "rate":0.05, "delay_ticks":5, "duration_ticks":16, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"debt_growth",              "direction":"up",   "rate":0.2,  "delay_ticks":1, "duration_ticks":12, "adjust_type":null, "adjust_value":0}
+        {"stat_key":"poverty_rate",             "direction":"down", "rate":0.05, "delay_ticks":5, "duration_ticks":16, "adjust_type":null, "adjust_value":0}
     ]'::jsonb,
     NULL, NULL,
     'healthcare_accessibility', 'UP', 0.3, 16, 0, 100, 0, true
@@ -191,8 +187,7 @@ INSERT INTO policies (
     '[
         {"stat_key":"healthcare_accessibility", "direction":"up",   "rate":0.25, "delay_ticks":2, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
         {"stat_key":"happiness",                "direction":"up",   "rate":0.1,  "delay_ticks":3, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"income_inequality",        "direction":"down", "rate":0.1,  "delay_ticks":5, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"debt_growth",              "direction":"up",   "rate":0.2,  "delay_ticks":1, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
+        {"stat_key":"income_inequality",        "direction":"down", "rate":0.1,  "delay_ticks":5, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
     ]'::jsonb,
     NULL, NULL,
     'healthcare_accessibility', 'UP', 0.25, 48, 0, 100, 0, true
@@ -228,8 +223,7 @@ INSERT INTO policies (
         {"stat_key":"healthcare_accessibility", "direction":"up",   "rate":0.2, "delay_ticks":3, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
         {"stat_key":"death_rate",               "direction":"down", "rate":0.1, "delay_ticks":5, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
         {"stat_key":"social_mobility",          "direction":"up",   "rate":0.1, "delay_ticks":6, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"unemployment",             "direction":"down", "rate":0.1, "delay_ticks":2, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"debt_growth",              "direction":"up",   "rate":0.1, "delay_ticks":1, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
+        {"stat_key":"unemployment",             "direction":"down", "rate":0.1, "delay_ticks":2, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
     ]'::jsonb,
     NULL, NULL,
     'healthcare_accessibility', 'UP', 0.2, 48, 0, 100, 0, true
@@ -264,8 +258,7 @@ INSERT INTO policies (
     '[
         {"stat_key":"healthcare_accessibility", "direction":"up", "rate":0.15, "delay_ticks":2, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
         {"stat_key":"legitimacy",               "direction":"up", "rate":0.1,  "delay_ticks":3, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"happiness",                "direction":"up", "rate":0.1,  "delay_ticks":3, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"debt_growth",              "direction":"up", "rate":0.1,  "delay_ticks":1, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
+        {"stat_key":"happiness",                "direction":"up", "rate":0.1,  "delay_ticks":3, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
     ]'::jsonb,
     NULL, NULL,
     'healthcare_accessibility', 'UP', 0.15, 48, 0, 100, 0, true
@@ -301,8 +294,7 @@ INSERT INTO policies (
         {"stat_key":"healthcare_accessibility", "direction":"up",   "rate":0.15, "delay_ticks":4, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
         {"stat_key":"healthcare_quality",       "direction":"up",   "rate":0.1,  "delay_ticks":5, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
         {"stat_key":"lifespan",                 "direction":"up",   "rate":0.2,  "delay_ticks":6, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"death_rate",               "direction":"down", "rate":0.2,  "delay_ticks":6, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"debt_growth",              "direction":"up",   "rate":0.1,  "delay_ticks":1, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
+        {"stat_key":"death_rate",               "direction":"down", "rate":0.2,  "delay_ticks":6, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
     ]'::jsonb,
     NULL, NULL,
     'healthcare_accessibility', 'UP', 0.15, 48, 0, 100, 0, true
@@ -338,8 +330,7 @@ INSERT INTO policies (
         {"stat_key":"healthcare_accessibility", "direction":"up",   "rate":0.2, "delay_ticks":8,  "duration_ticks":20, "adjust_type":null, "adjust_value":0},
         {"stat_key":"healthcare_quality",       "direction":"up",   "rate":0.1, "delay_ticks":10, "duration_ticks":20, "adjust_type":null, "adjust_value":0},
         {"stat_key":"higher_education",         "direction":"up",   "rate":0.1, "delay_ticks":6,  "duration_ticks":16, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"unemployment",             "direction":"down", "rate":0.1, "delay_ticks":4,  "duration_ticks":12, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"debt_growth",              "direction":"up",   "rate":0.2, "delay_ticks":1,  "duration_ticks":12, "adjust_type":null, "adjust_value":0}
+        {"stat_key":"unemployment",             "direction":"down", "rate":0.1, "delay_ticks":4,  "duration_ticks":12, "adjust_type":null, "adjust_value":0}
     ]'::jsonb,
     NULL, NULL,
     'healthcare_accessibility', 'UP', 0.2, 20, 0, 100, 0, true
@@ -375,8 +366,7 @@ INSERT INTO policies (
         {"stat_key":"healthcare_accessibility", "direction":"up",   "rate":0.2, "delay_ticks":3, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
         {"stat_key":"death_rate",               "direction":"down", "rate":0.2, "delay_ticks":5, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
         {"stat_key":"birth_rate",               "direction":"up",   "rate":0.1, "delay_ticks":3, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"happiness",                "direction":"up",   "rate":0.1, "delay_ticks":4, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"debt_growth",              "direction":"up",   "rate":0.1, "delay_ticks":1, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
+        {"stat_key":"happiness",                "direction":"up",   "rate":0.1, "delay_ticks":4, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
     ]'::jsonb,
     NULL, NULL,
     'healthcare_accessibility', 'UP', 0.2, 48, 0, 100, 0, true
@@ -412,8 +402,7 @@ INSERT INTO policies (
         {"stat_key":"healthcare_accessibility",  "direction":"up",   "rate":0.15, "delay_ticks":4, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
         {"stat_key":"happiness",                 "direction":"up",   "rate":0.2,  "delay_ticks":5, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
         {"stat_key":"drug_use",                  "direction":"down", "rate":0.1,  "delay_ticks":6, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"labor_force_participation", "direction":"up",   "rate":0.1,  "delay_ticks":6, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"debt_growth",               "direction":"up",   "rate":0.1,  "delay_ticks":1, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
+        {"stat_key":"labor_force_participation", "direction":"up",   "rate":0.1,  "delay_ticks":6, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
     ]'::jsonb,
     NULL, NULL,
     'healthcare_accessibility', 'UP', 0.15, 48, 0, 100, 0, true
@@ -447,8 +436,7 @@ INSERT INTO policies (
     0, NULL,
     '[
         {"stat_key":"healthcare_accessibility", "direction":"up",   "rate":0.1,  "delay_ticks":2, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"cost_of_living",           "direction":"down", "rate":0.05, "delay_ticks":3, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"debt_growth",              "direction":"up",   "rate":0.05, "delay_ticks":1, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
+        {"stat_key":"cost_of_living",           "direction":"down", "rate":0.05, "delay_ticks":3, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
     ]'::jsonb,
     NULL, NULL,
     'healthcare_accessibility', 'UP', 0.1, 48, 0, 100, 0, true
@@ -484,8 +472,7 @@ INSERT INTO policies (
         {"stat_key":"healthcare_accessibility", "direction":"up",   "rate":0.15, "delay_ticks":3, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
         {"stat_key":"education_accessibility",  "direction":"up",   "rate":0.1,  "delay_ticks":4, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
         {"stat_key":"death_rate",               "direction":"down", "rate":0.05, "delay_ticks":5, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"drug_use",                 "direction":"down", "rate":0.05, "delay_ticks":5, "duration_ticks":48, "adjust_type":null, "adjust_value":0},
-        {"stat_key":"debt_growth",              "direction":"up",   "rate":0.1,  "delay_ticks":1, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
+        {"stat_key":"drug_use",                 "direction":"down", "rate":0.05, "delay_ticks":5, "duration_ticks":48, "adjust_type":null, "adjust_value":0}
     ]'::jsonb,
     NULL, NULL,
     'healthcare_accessibility', 'UP', 0.15, 48, 0, 100, 0, true
