@@ -22604,52 +22604,76 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         initGameConfigForNation(nation);
 
         // Stat effects (from passed bills/active laws)
-        const effectResults = await processStatEffects(supabase, nation, newTick);
-        if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
+        try {
+            const effectResults = await processStatEffects(supabase, nation, newTick);
+            if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
+        } catch (statEffErr) {
+            console.error(`[advanceTick] Stat effects failed for ${nation.name} (non-fatal):`, statEffErr);
+        }
 
         // Ministry action effects
-        const ministryResults = await processMinistryActions(supabase, nation, newTick);
-        if (ministryResults.length > 0) {
-            summary.ministryActions = summary.ministryActions || [];
-            summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
+        try {
+            const ministryResults = await processMinistryActions(supabase, nation, newTick);
+            if (ministryResults.length > 0) {
+                summary.ministryActions = summary.ministryActions || [];
+                summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
+            }
+        } catch (minActErr) {
+            console.error(`[advanceTick] Ministry actions failed for ${nation.name} (non-fatal):`, minActErr);
         }
 
         // Apply GDP growth rate
-        await applyGdpGrowth(supabase, nation, newTick);
+        try {
+            await applyGdpGrowth(supabase, nation, newTick);
+        } catch (gdpErr) {
+            console.error(`[advanceTick] GDP growth failed for ${nation.name} (non-fatal):`, gdpErr);
+        }
 
         // Stat decay (equilibrium drift + erosion, modified by institution funding)
-        if (!_institutionConfig) {
-            const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
-            _institutionConfig = icRows || [];
-        }
-        // Build institution funding map for stat decay modification
-        const { data: _fundingRows } = await supabase.from('budget_item_allocations')
-            .select('item_id, item_type, allocation_amount, needed_amount')
-            .eq('nation_id', nation.id)
-            .eq('item_type', 'institution')
-            .order('created_at', { ascending: true });
-        const statInstMap = buildStatInstitutionMap(_institutionConfig, _fundingRows);
-        const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
-        const decayResults = await processStatDecay(supabase, nation, statInstMap, policyDecayAdj);
-        if (decayResults.length > 0) {
-            summary.decay = summary.decay || [];
-            summary.decay.push({ nation: nation.name, effects: decayResults });
+        try {
+            if (!_institutionConfig) {
+                const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
+                _institutionConfig = icRows || [];
+            }
+            // Build institution funding map for stat decay modification
+            const { data: _fundingRows } = await supabase.from('budget_item_allocations')
+                .select('item_id, item_type, allocation_amount, needed_amount')
+                .eq('nation_id', nation.id)
+                .eq('item_type', 'institution')
+                .order('created_at', { ascending: true });
+            const statInstMap = buildStatInstitutionMap(_institutionConfig, _fundingRows);
+            const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
+            const decayResults = await processStatDecay(supabase, nation, statInstMap, policyDecayAdj);
+            if (decayResults.length > 0) {
+                summary.decay = summary.decay || [];
+                summary.decay.push({ nation: nation.name, effects: decayResults });
+            }
+        } catch (decayErr) {
+            console.error(`[advanceTick] Stat decay failed for ${nation.name} (non-fatal):`, decayErr);
         }
 
         // Stat connections (threshold-triggered ripple effects)
-        if (!_statConnections) {
-            const { data: scRows } = await supabase.from('stat_connections').select('*').eq('enabled', true);
-            _statConnections = scRows || [];
-        }
-        const connResults = await processStatConnections(supabase, nation, newTick, _statConnections);
-        if (connResults.length > 0) {
-            summary.statConnections = summary.statConnections || [];
-            summary.statConnections.push({ nation: nation.name, effects: connResults });
+        try {
+            if (!_statConnections) {
+                const { data: scRows } = await supabase.from('stat_connections').select('*').eq('enabled', true);
+                _statConnections = scRows || [];
+            }
+            const connResults = await processStatConnections(supabase, nation, newTick, _statConnections);
+            if (connResults.length > 0) {
+                summary.statConnections = summary.statConnections || [];
+                summary.statConnections.push({ nation: nation.name, effects: connResults });
+            }
+        } catch (connErr) {
+            console.error(`[advanceTick] Stat connections failed for ${nation.name} (non-fatal):`, connErr);
         }
 
         // Ongoing costs (tracking only — accumulated per-policy, does not modify debt)
-        const costResult = await processOngoingCosts(supabase, nation, newTick);
-        if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
+        try {
+            const costResult = await processOngoingCosts(supabase, nation, newTick);
+            if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
+        } catch (costErr) {
+            console.error(`[advanceTick] Ongoing costs failed for ${nation.name} (non-fatal):`, costErr);
+        }
 
         // Budget deficit → debt accumulation (surplus pays down debt, deficit adds to it)
         try {
@@ -22685,20 +22709,32 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // PM trait effects
-        await processPMTraitEffects(supabase, nation, newTick);
+        try {
+            await processPMTraitEffects(supabase, nation, newTick);
+        } catch (pmTraitErr) {
+            console.error(`[advanceTick] PM trait effects failed for ${nation.name} (non-fatal):`, pmTraitErr);
+        }
 
         // Elections (democracy only)
-        const electionResults = await processElections(supabase, nation, newTick);
-        if (electionResults.length > 0) {
-            summary.elections = summary.elections || [];
-            summary.elections.push({ nation: nation.name, elections: electionResults });
+        try {
+            const electionResults = await processElections(supabase, nation, newTick);
+            if (electionResults.length > 0) {
+                summary.elections = summary.elections || [];
+                summary.elections.push({ nation: nation.name, elections: electionResults });
+            }
+        } catch (electionErr) {
+            console.error(`[advanceTick] Elections failed for ${nation.name} (non-fatal):`, electionErr);
         }
 
         // Government vacancy penalties (democracy only)
-        const vacancyResult = await processGovernmentVacancy(supabase, nation, newTick);
-        if (vacancyResult) {
-            summary.vacancies = summary.vacancies || [];
-            summary.vacancies.push(vacancyResult);
+        try {
+            const vacancyResult = await processGovernmentVacancy(supabase, nation, newTick);
+            if (vacancyResult) {
+                summary.vacancies = summary.vacancies || [];
+                summary.vacancies.push(vacancyResult);
+            }
+        } catch (vacancyErr) {
+            console.error(`[advanceTick] Government vacancy failed for ${nation.name} (non-fatal):`, vacancyErr);
         }
 
         // Caucus system: activate/deactivate internal factions based on seat share
@@ -22710,15 +22746,24 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // Check for early majority on active floor bills (lock outcome + set grace tick)
-        const earlyResults = await checkEarlyMajority(supabase, nation.id);
-        if (earlyResults.length > 0) {
-            summary.earlyMajority = summary.earlyMajority || [];
-            summary.earlyMajority.push({ nation: nation.name, bills: earlyResults });
+        try {
+            const earlyResults = await checkEarlyMajority(supabase, nation.id);
+            if (earlyResults.length > 0) {
+                summary.earlyMajority = summary.earlyMajority || [];
+                summary.earlyMajority.push({ nation: nation.name, bills: earlyResults });
+            }
+        } catch (earlyMajErr) {
+            console.error(`[advanceTick] Early majority check failed for ${nation.name} (non-fatal):`, earlyMajErr);
         }
 
         // Resolve expired votes (includes early-locked bills whose grace tick ended)
-        const resolutions = await resolveExpiredVotes(supabase, nation.id);
-        if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
+        let resolutions = [];
+        try {
+            resolutions = await resolveExpiredVotes(supabase, nation.id);
+            if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
+        } catch (resolveErr) {
+            console.error(`[advanceTick] Vote resolution failed for ${nation.name} (non-fatal):`, resolveErr);
+        }
 
         // ── Impeachment processing (Presidential systems) ──
         if (isPresidentialRepublic(nation)) {
@@ -22909,19 +22954,39 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // Auto-sign expired president's desk bills (Presidential systems)
-        const deskResults = await processPresidentDesk(supabase, nation, newTick);
-        if (deskResults.length > 0) {
-            summary.presidentDesk = summary.presidentDesk || [];
-            summary.presidentDesk.push({ nation: nation.name, bills: deskResults });
+        try {
+            const deskResults = await processPresidentDesk(supabase, nation, newTick);
+            if (deskResults.length > 0) {
+                summary.presidentDesk = summary.presidentDesk || [];
+                summary.presidentDesk.push({ nation: nation.name, bills: deskResults });
+            }
+        } catch (deskErr) {
+            console.error(`[advanceTick] President desk processing failed for ${nation.name} (non-fatal):`, deskErr);
         }
 
         // Presidential pre-election candidate generation, term end safety net, + selection timeout
-        await triggerPresidentialCandidateSelection(supabase, nation, newTick);
-        await processPresidentialTermEnd(supabase, nation, newTick);
-        await processParliamentaryPMTimeout(supabase, nation, newTick);
+        try {
+            await triggerPresidentialCandidateSelection(supabase, nation, newTick);
+        } catch (candErr) {
+            console.error(`[advanceTick] Presidential candidate selection failed for ${nation.name} (non-fatal):`, candErr);
+        }
+        try {
+            await processPresidentialTermEnd(supabase, nation, newTick);
+        } catch (termErr) {
+            console.error(`[advanceTick] Presidential term end failed for ${nation.name} (non-fatal):`, termErr);
+        }
+        try {
+            await processParliamentaryPMTimeout(supabase, nation, newTick);
+        } catch (pmTimeoutErr) {
+            console.error(`[advanceTick] Parliamentary PM timeout failed for ${nation.name} (non-fatal):`, pmTimeoutErr);
+        }
 
         // Incumbent campaign bonuses (+2 approval/tick during pre-election window)
-        await processIncumbentCampaignBonuses(supabase, nation, newTick);
+        try {
+            await processIncumbentCampaignBonuses(supabase, nation, newTick);
+        } catch (campErr) {
+            console.error(`[advanceTick] Incumbent campaign bonuses failed for ${nation.name} (non-fatal):`, campErr);
+        }
 
         // Ideology shifts from resolved bills
         try {
