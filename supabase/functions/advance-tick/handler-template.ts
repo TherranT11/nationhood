@@ -1149,18 +1149,26 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // Check for early majority on active floor bills (lock outcome + set grace tick)
-        const earlyResults = await checkEarlyMajority(supabase, nation.id);
-        if (earlyResults.length > 0) {
-            summary.earlyMajority = summary.earlyMajority || [];
-            summary.earlyMajority.push({ nation: nation.name, bills: earlyResults });
+        try {
+            const earlyResults = await checkEarlyMajority(supabase, nation.id);
+            if (earlyResults.length > 0) {
+                summary.earlyMajority = summary.earlyMajority || [];
+                summary.earlyMajority.push({ nation: nation.name, bills: earlyResults });
+            }
+        } catch (earlyErr) {
+            console.error(`[advanceTick] checkEarlyMajority failed for ${nation.name} (non-fatal):`, earlyErr);
         }
 
         // Resolve expired votes (includes early-locked bills whose grace tick ended)
-        const resolutions = await resolveExpiredVotes(supabase, nation.id);
-        if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
+        try {
+            const resolutions = await resolveExpiredVotes(supabase, nation.id);
+            if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
+        } catch (resolveErr) {
+            console.error(`[advanceTick] resolveExpiredVotes failed for ${nation.name} (non-fatal):`, resolveErr);
+        }
 
         // Safety net: catch any floor bills that resolveExpiredVotes missed
-        // (e.g. due to complex query failure). Uses simple queries per-bill.
+        // (e.g. due to complex query failure or thrown error). Uses simple queries per-bill.
         try {
             const stuckResults = await resolveStuckFloorBills(supabase, nation.id);
             if (stuckResults.length > 0) {
