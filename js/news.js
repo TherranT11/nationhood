@@ -1,6 +1,14 @@
 // js/news.js — The Cruceran newspaper page
 
+import { accumulateAP } from './game/config.js';
+
+// Module-level references set during init
+let _supabase = null;
+let _state = null;
+
 export async function initNewspaper(supabase, state) {
+    _supabase = supabase;
+    _state = state;
     const root = document.getElementById('newspaper-root');
     if (!root) return;
 
@@ -325,6 +333,10 @@ export async function initNewspaper(supabase, state) {
 
     // === EVENT BINDINGS ===
     bindModalEvents();
+    bindSubmitHandler();
+
+    // === LOAD & DISPLAY ARTICLES ===
+    await loadAndDisplayArticles();
 }
 
 function bindModalEvents() {
@@ -413,4 +425,321 @@ function showFormSuccess(msg) {
         el.style.display = 'block';
         setTimeout(() => { el.style.display = 'none'; }, 5000);
     }
+}
+
+// === SUBMIT HANDLER ===
+
+function bindSubmitHandler() {
+    const submitBtn = document.getElementById('nws-submit-btn');
+    if (!submitBtn) return;
+
+    submitBtn.addEventListener('click', async () => {
+        const title = document.getElementById('nws-article-title').value.trim();
+        const author = document.getElementById('nws-article-author').value.trim();
+        const category = document.getElementById('nws-article-category').value;
+        const body = document.getElementById('nws-article-body').value.trim();
+        const fileInput = document.getElementById('nws-article-image');
+        const file = fileInput.files[0] || null;
+
+        // Validation
+        if (!title) return showFormError('Please enter a headline.');
+        if (!author) return showFormError('Please enter a writer name.');
+        if (!category) return showFormError('Please select a category.');
+        if (!body) return showFormError('Please write an article body.');
+        if (body.length > 1000) return showFormError('Article body must be 1000 characters or fewer.');
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Publishing...';
+
+        try {
+            const { nation, faction, shard } = _state;
+            let imageUrl = null;
+
+            // Upload image if provided
+            if (file) {
+                imageUrl = await uploadArticleImage(nation.id, file);
+            }
+
+            // Insert article
+            const { data, error } = await _supabase
+                .from('player_articles')
+                .insert({
+                    nation_id: nation.id,
+                    author_faction_id: faction.id,
+                    author_name: author,
+                    headline: title,
+                    body: body,
+                    category: category,
+                    image_url: imageUrl,
+                    status: 'published',
+                    published_tick: shard?.current_tick || 0,
+                    reward_ap: 1,
+                    reward_granted: true
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            // Award 1 AP
+            const apResult = await accumulateAP(_supabase, faction.id, 1);
+            if (apResult.success) {
+                const apEl = document.getElementById('topbar-ap');
+                if (apEl) apEl.textContent = `${apResult.newAp} AP`;
+            }
+
+            showFormSuccess('Article published! +1 AP awarded.');
+
+            // Reset form
+            document.getElementById('nws-article-title').value = '';
+            document.getElementById('nws-article-author').value = '';
+            document.getElementById('nws-article-category').value = '';
+            document.getElementById('nws-article-body').value = '';
+            fileInput.value = '';
+            document.getElementById('nws-file-label-text').textContent = 'Click to select an image...';
+            document.getElementById('nws-image-preview').style.display = 'none';
+            document.getElementById('nws-char-count').textContent = '0 / 1000';
+            document.getElementById('nws-char-count').classList.remove('nws-near-limit');
+
+            // Close modal after short delay
+            setTimeout(() => {
+                document.getElementById('nws-modal-overlay').classList.remove('active');
+            }, 1500);
+
+            // Refresh articles
+            await loadAndDisplayArticles();
+
+        } catch (err) {
+            console.error('[News] Article submission failed:', err);
+            showFormError('Failed to publish article. Please try again.');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Publish Article';
+        }
+    });
+}
+
+// === IMAGE UPLOAD ===
+
+async function uploadArticleImage(nationId, file) {
+    const ext = file.name.split('.').pop() || 'png';
+    const filePath = `player-articles/${nationId}/${Date.now()}.${ext}`;
+
+    const { error } = await _supabase.storage
+        .from('public-assets')
+        .upload(filePath, file, { contentType: file.type, upsert: true });
+
+    if (error) throw error;
+
+    const { data } = _supabase.storage
+        .from('public-assets')
+        .getPublicUrl(filePath);
+
+    return data?.publicUrl || null;
+}
+
+// === LOAD & DISPLAY ARTICLES ===
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function categoryLabel(cat) {
+    const labels = {
+        politics: 'Politics', economy: 'Economy', international: 'International',
+        social: 'Social', entertainment: 'Entertainment', elections: 'Elections', sports: 'Sports'
+    };
+    return labels[cat] || cat;
+}
+
+function categoryGradient(cat) {
+    const gradients = {
+        politics: 'linear-gradient(135deg,#2a1a2a,#1a0d1a)',
+        economy: 'linear-gradient(135deg,#2a1a0a,#1a0d00)',
+        international: 'linear-gradient(135deg,#0a1a2a,#001a2a)',
+        social: 'linear-gradient(135deg,#1a2a1a,#0d1a0d)',
+        entertainment: 'linear-gradient(135deg,#2a2a0a,#1a1a00)',
+        elections: 'linear-gradient(135deg,#1a1a2a,#0d0d1a)',
+        sports: 'linear-gradient(135deg,#2a0a0a,#1a0000)'
+    };
+    return gradients[cat] || 'linear-gradient(135deg,#1a1a1a,#0d0d0d)';
+}
+
+function renderImageOrPlaceholder(imageUrl, label) {
+    if (imageUrl) {
+        return `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(label)}">`;
+    }
+    return `<div class="nws-img-placeholder">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <rect width="48" height="48" rx="4" fill="rgba(255,255,255,0.05)"/>
+            <circle cx="18" cy="20" r="6" fill="rgba(255,255,255,0.1)"/>
+            <path d="M6 38 L18 26 L26 34 L34 22 L42 38Z" fill="rgba(255,255,255,0.08)"/>
+        </svg>
+        <span style="font-family:'Inter',sans-serif;font-size:9px;color:rgba(255,255,255,0.2);letter-spacing:1px;text-transform:uppercase;">${escapeHtml(label)}</span>
+    </div>`;
+}
+
+async function loadAndDisplayArticles() {
+    if (!_supabase || !_state) return;
+
+    const { nation } = _state;
+
+    const { data: articles, error } = await _supabase
+        .from('player_articles')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .eq('status', 'published')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('[News] Failed to load articles:', error);
+        return;
+    }
+
+    if (!articles || articles.length === 0) return;
+
+    // Sort by body length DESC — longest gets A1
+    const sorted = [...articles].sort((a, b) => b.body.length - a.body.length);
+
+    // A1 lead = longest article
+    const lead = sorted[0];
+    // Sidebar stories = next 3
+    const sidebar = sorted.slice(1, 4);
+    // Secondary grid = next 3 after sidebar
+    const secondary = sorted.slice(4, 7);
+    // In Brief = next 5 after secondary
+    const briefs = sorted.slice(7, 12);
+
+    // Populate lead section
+    populateLeadSection(lead, sidebar);
+    // Populate secondary grid
+    populateSecondaryGrid(secondary);
+    // Populate briefs
+    populateBriefs(briefs);
+}
+
+function populateLeadSection(lead, sidebar) {
+    const section = document.getElementById('nws-lead-section');
+    if (!section || !lead) return;
+
+    const sidebarHtml = sidebar.length > 0
+        ? sidebar.map(a => `
+            <div class="nws-sidebar-story">
+                <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
+                <h3 class="nws-sidebar-headline">${escapeHtml(a.headline)}</h3>
+                <p class="nws-sidebar-deck">${escapeHtml(a.body.substring(0, 120))}${a.body.length > 120 ? '...' : ''}</p>
+                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>Tick ${a.published_tick || '—'}</span></div>
+            </div>
+        `).join('')
+        : `<div class="nws-sidebar-story"><p class="nws-placeholder">[More stories will appear as articles are published.]</p></div>`;
+
+    const leadImageHtml = lead.image_url
+        ? `<img src="${escapeHtml(lead.image_url)}" alt="${escapeHtml(lead.headline)}">`
+        : renderImageOrPlaceholder(null, 'Photo');
+
+    // Truncate body for deck (first ~200 chars)
+    const deck = lead.body.length > 200 ? lead.body.substring(0, 200) + '...' : lead.body;
+
+    section.innerHTML = `
+        <div class="nws-lead-main">
+            <span class="nws-section-tag">${escapeHtml(categoryLabel(lead.category))}</span>
+            <h2 class="nws-lead-headline">${escapeHtml(lead.headline)}</h2>
+            <p class="nws-lead-deck">${escapeHtml(deck)}</p>
+            <div class="nws-byline">
+                <span class="nws-author">${escapeHtml(lead.author_name)}</span>
+                <span class="nws-dot">&middot;</span>
+                <span>Tick ${lead.published_tick || '—'}</span>
+            </div>
+            <div class="nws-lead-body">
+                <p class="nws-drop-cap">${escapeHtml(lead.body)}</p>
+            </div>
+        </div>
+        <div class="nws-lead-sidebar">
+            <div class="nws-lead-image">${leadImageHtml}</div>
+            <p class="nws-img-caption">${lead.image_url ? escapeHtml(lead.headline) : '<span class="nws-placeholder">[Photo]</span>'}</p>
+            ${sidebarHtml}
+        </div>
+    `;
+}
+
+function populateSecondaryGrid(articles) {
+    const grid = document.getElementById('nws-secondary-grid');
+    if (!grid) return;
+
+    // If we have articles, replace the placeholder slots
+    if (articles.length === 0) return;
+
+    // Pad to 3 with placeholders
+    const slots = [...articles];
+    const placeholderLabels = ['Crisis', 'Election', 'Economy'];
+
+    const html = [0, 1, 2].map(i => {
+        const a = slots[i];
+        if (a) {
+            const imgHtml = a.image_url
+                ? `<img src="${escapeHtml(a.image_url)}" alt="${escapeHtml(a.headline)}" style="width:100%;height:100%;object-fit:cover;">`
+                : `<div class="nws-img-ph" style="background:${categoryGradient(a.category)};">${escapeHtml(categoryLabel(a.category))}</div>`;
+
+            return `<div class="nws-sec-story">
+                <div class="nws-sec-image">${imgHtml}</div>
+                <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
+                <h3 class="nws-sec-headline">${escapeHtml(a.headline)}</h3>
+                <p class="nws-sec-deck">${escapeHtml(a.body.substring(0, 150))}${a.body.length > 150 ? '...' : ''}</p>
+                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>Tick ${a.published_tick || '—'}</span></div>
+            </div>`;
+        } else {
+            const label = placeholderLabels[i] || 'News';
+            const defaultGradients = [
+                'linear-gradient(135deg,#1a2a1a,#0d1a0d)',
+                'linear-gradient(135deg,#1a1a2a,#0d0d1a)',
+                'linear-gradient(135deg,#2a1a0a,#1a0d00)'
+            ];
+            return `<div class="nws-sec-story">
+                <div class="nws-sec-image"><div class="nws-img-ph" style="background:${defaultGradients[i]};">${label}</div></div>
+                <span class="nws-section-tag nws-placeholder">[${label}]</span>
+                <h3 class="nws-sec-headline nws-placeholder">[${label} Section Headline]</h3>
+                <p class="nws-sec-deck nws-placeholder">[Summary will appear here.]</p>
+                <div class="nws-byline"><span class="nws-author nws-placeholder">[Author]</span><span class="nws-dot">&middot;</span><span class="nws-placeholder">[Date]</span></div>
+            </div>`;
+        }
+    }).join('');
+
+    grid.innerHTML = html;
+}
+
+function populateBriefs(articles) {
+    if (articles.length === 0) return;
+
+    const container = document.querySelector('.nws-bottom-left');
+    if (!container) return;
+
+    const headerHtml = '<div class="nws-col-header">In Brief</div>';
+    const briefsHtml = articles.map((a, i) => `
+        <div class="nws-brief-row">
+            <div class="nws-brief-num">${i + 1}</div>
+            <div class="nws-brief-text">
+                <strong>${escapeHtml(a.headline)}</strong>
+                ${escapeHtml(a.body.substring(0, 100))}${a.body.length > 100 ? '...' : ''}
+            </div>
+        </div>
+    `).join('');
+
+    // Keep remaining placeholder rows if < 5 articles
+    const remaining = 5 - articles.length;
+    let placeholderHtml = '';
+    for (let i = 0; i < remaining; i++) {
+        placeholderHtml += `
+            <div class="nws-brief-row">
+                <div class="nws-brief-num">${articles.length + i + 1}</div>
+                <div class="nws-brief-text">
+                    <strong class="nws-placeholder">[Brief headline]</strong>
+                    <span class="nws-placeholder">[Short summary of a recent story.]</span>
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = headerHtml + briefsHtml + placeholderHtml;
 }
