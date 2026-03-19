@@ -1,6 +1,13 @@
 /* ===== THE CRUCERAN — Newspaper Styles ===== */
-/* Scoped under .newspaper-container to avoid conflicts with game CSS */
 
+/* Make the newspaper root scroll within the game layout (body is overflow:hidden + 100vh) */
+#newspaper-root {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Scoped under .newspaper-container to avoid conflicts with game CSS */
 .newspaper-container {
     --nws-ink: #1a1208;
     --nws-ink-2: #3d3020;
