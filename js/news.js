@@ -262,5 +262,155 @@ export async function initNewspaper(supabase, state) {
             <p>Continental Edition &nbsp;&middot;&nbsp; Est. Year 1 &nbsp;&middot;&nbsp; All rights reserved &nbsp;&middot;&nbsp; Truth in the service of the people</p>
         </div>
 
+        <!-- WRITE ARTICLE MODAL -->
+        <div class="nws-modal-overlay" id="nws-modal-overlay">
+            <div class="nws-modal">
+                <div class="nws-modal-header">
+                    <h3>Write Article</h3>
+                    <span class="nws-ap-badge">+1 AP</span>
+                </div>
+                <button class="nws-modal-close" id="nws-modal-close">&times;</button>
+                <div class="nws-modal-body">
+                    <div class="nws-form-error" id="nws-form-error"></div>
+                    <div class="nws-form-success" id="nws-form-success"></div>
+
+                    <div class="nws-form-group">
+                        <label for="nws-article-title">Headline</label>
+                        <input type="text" id="nws-article-title" placeholder="Enter article headline..." maxlength="200">
+                    </div>
+
+                    <div class="nws-form-group">
+                        <label for="nws-article-author">Writer Name</label>
+                        <input type="text" id="nws-article-author" placeholder="Enter writer name..." maxlength="100">
+                    </div>
+
+                    <div class="nws-form-group">
+                        <label for="nws-article-category">Category</label>
+                        <select id="nws-article-category">
+                            <option value="">Select a category...</option>
+                            <option value="politics">Politics</option>
+                            <option value="economy">Economy</option>
+                            <option value="international">International</option>
+                            <option value="social">Social</option>
+                            <option value="entertainment">Entertainment</option>
+                            <option value="elections">Elections</option>
+                            <option value="sports">Sports</option>
+                        </select>
+                    </div>
+
+                    <div class="nws-form-group">
+                        <label>Image (optional, max 2MB)</label>
+                        <label class="nws-file-label" for="nws-article-image">
+                            <span id="nws-file-label-text">Click to select an image...</span>
+                        </label>
+                        <input type="file" id="nws-article-image" accept="image/*">
+                        <div class="nws-file-info">Accepted formats: JPG, PNG, GIF, WebP. Maximum file size: 2MB.</div>
+                        <div class="nws-image-preview" id="nws-image-preview">
+                            <img id="nws-image-preview-img" src="" alt="Preview">
+                        </div>
+                    </div>
+
+                    <div class="nws-form-group">
+                        <label for="nws-article-body">Article Body</label>
+                        <textarea id="nws-article-body" placeholder="Write your article (max 1000 characters)..." maxlength="1000"></textarea>
+                        <div class="nws-char-count" id="nws-char-count">0 / 1000</div>
+                    </div>
+
+                    <button class="nws-submit-btn" id="nws-submit-btn">Publish Article</button>
+                </div>
+            </div>
+        </div>
+
     </div>`;
+
+    // === EVENT BINDINGS ===
+    bindModalEvents();
+}
+
+function bindModalEvents() {
+    const overlay = document.getElementById('nws-modal-overlay');
+    const openBtn = document.getElementById('nws-write-article-btn');
+    const closeBtn = document.getElementById('nws-modal-close');
+    const bodyInput = document.getElementById('nws-article-body');
+    const charCount = document.getElementById('nws-char-count');
+    const fileInput = document.getElementById('nws-article-image');
+    const fileLabelText = document.getElementById('nws-file-label-text');
+    const previewContainer = document.getElementById('nws-image-preview');
+    const previewImg = document.getElementById('nws-image-preview-img');
+
+    // Open modal
+    if (openBtn) {
+        openBtn.addEventListener('click', () => {
+            overlay.classList.add('active');
+        });
+    }
+
+    // Close modal
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            overlay.classList.remove('active');
+        });
+    }
+
+    // Close on overlay click
+    if (overlay) {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.classList.remove('active');
+        });
+    }
+
+    // Character counter
+    if (bodyInput && charCount) {
+        bodyInput.addEventListener('input', () => {
+            const len = bodyInput.value.length;
+            charCount.textContent = `${len} / 1000`;
+            charCount.classList.toggle('nws-near-limit', len >= 900);
+        });
+    }
+
+    // Image file selection + 2MB validation + preview
+    if (fileInput) {
+        fileInput.addEventListener('change', () => {
+            const file = fileInput.files[0];
+            if (!file) {
+                fileLabelText.textContent = 'Click to select an image...';
+                previewContainer.style.display = 'none';
+                return;
+            }
+            const maxSize = 2 * 1024 * 1024; // 2MB
+            if (file.size > maxSize) {
+                showFormError('Image must be under 2MB.');
+                fileInput.value = '';
+                fileLabelText.textContent = 'Click to select an image...';
+                previewContainer.style.display = 'none';
+                return;
+            }
+            fileLabelText.textContent = file.name;
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImg.src = e.target.result;
+                previewContainer.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+}
+
+function showFormError(msg) {
+    const el = document.getElementById('nws-form-error');
+    if (el) {
+        el.textContent = msg;
+        el.style.display = 'block';
+        setTimeout(() => { el.style.display = 'none'; }, 5000);
+    }
+}
+
+function showFormSuccess(msg) {
+    const el = document.getElementById('nws-form-success');
+    if (el) {
+        el.textContent = msg;
+        el.style.display = 'block';
+        setTimeout(() => { el.style.display = 'none'; }, 5000);
+    }
 }
