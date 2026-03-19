@@ -471,36 +471,39 @@ async function updateDiplomacyBadge(faction, nation) {
 }
 
 
-// ===== DIPLOMACY AWAITING BADGE (outgoing proposals awaiting other side) =====
+// ===== DIPLOMACY AWAITING BADGE (incoming proposals needing our attention) =====
 
 async function updateDiplomacyAwaitingBadge(faction, nation) {
     const badge = document.getElementById('diplomacy-awaiting-badge');
     if (!badge || !faction || !nation) return;
     try {
-        // Count outgoing diplomatic proposals awaiting the other nation's response
+        // Count incoming diplomatic proposals that need our attention
         const { data: proposals } = await _supabase
             .from('diplomatic_proposals')
             .select('status, proposing_nation_id, target_nation_id, proposal_data')
             .in('status', ['proposed', 'revised'])
-            .or('proposing_nation_id.eq.' + nation.id + ',target_nation_id.eq.' + nation.id);
+            .eq('target_nation_id', nation.id);
 
         let count = 0;
         for (const p of (proposals || [])) {
-            const isOutgoing = p.proposing_nation_id === nation.id;
-            const isIncoming = p.target_nation_id === nation.id;
-            const isRevised = p.status === 'revised';
-            const pd = p.proposal_data || {};
-            const revisedByUs = isRevised && (pd.revised_by_nation_id ? pd.revised_by_nation_id === nation.id : !isIncoming);
-            // Awaiting = we proposed and they haven't responded, or we revised and it's their turn
-            if ((p.status === 'proposed' && isOutgoing) || (isRevised && revisedByUs)) count++;
+            // All rows are incoming (query filtered to target_nation_id = us)
+            if (p.status === 'proposed') {
+                count++;
+            } else if (p.status === 'revised') {
+                const pd = p.proposal_data || {};
+                // Only count if the OTHER side revised (now it's our turn)
+                const revisedByUs = pd.revised_by_nation_id === nation.id;
+                if (!revisedByUs) count++;
+            }
         }
 
-        // Also count trade negotiations we initiated that are still open
+        // Also count trade negotiations targeting us that are still open
         const { data: tradeNegs } = await _supabase
             .from('trade_negotiations')
-            .select('initiated_by_nation, status')
+            .select('initiated_by_nation, nation_a_id, nation_b_id, status')
             .eq('status', 'open')
-            .eq('initiated_by_nation', nation.id);
+            .or('nation_a_id.eq.' + nation.id + ',nation_b_id.eq.' + nation.id)
+            .neq('initiated_by_nation', nation.id);
         count += (tradeNegs || []).length;
 
         if (count > 0) {
@@ -830,7 +833,7 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (activeTab !== 'diplomacy') {
         updateDiplomacyBadge(state.faction, state.nation);
     }
-    // Update diplomacy awaiting badge (always, shows count of outgoing proposals awaiting response)
+    // Update diplomacy awaiting badge (always, shows count of incoming proposals needing attention)
     updateDiplomacyAwaitingBadge(state.faction, state.nation);
     if (onReady) {
         await onReady(state);
