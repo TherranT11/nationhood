@@ -1,10 +1,11 @@
 // js/news.js — The Cruceran newspaper page
 
-import { accumulateAP } from './game/config.js';
+import { adjustMomentumAll } from './game/momentum.js';
 
 // Module-level references set during init
 let _supabase = null;
 let _state = null;
+let _articles = []; // cached for article reader lookup
 
 export async function initNewspaper(supabase, state) {
     _supabase = supabase;
@@ -22,7 +23,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-top-ribbon-inner">
                 <span>${gameDate}</span>
                 <span class="nws-edition">The Cruceran &mdash; Continental Edition</span>
-                <button class="nws-write-btn" id="nws-write-article-btn">Write Article &mdash; Gain 1 AP</button>
+                <button class="nws-write-btn" id="nws-write-article-btn">Write Article</button>
             </div>
         </div>
 
@@ -275,7 +276,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-modal">
                 <div class="nws-modal-header">
                     <h3>Write Article</h3>
-                    <span class="nws-ap-badge">+1 AP</span>
+                    <span class="nws-ap-badge">+2 Momentum (700+ chars)</span>
                 </div>
                 <button class="nws-modal-close" id="nws-modal-close">&times;</button>
                 <div class="nws-modal-body">
@@ -337,6 +338,8 @@ export async function initNewspaper(supabase, state) {
     // so old listeners are garbage collected with the old elements.
     bindModalEvents();
     bindSubmitHandler();
+    bindDeleteHandlers(root);
+    bindArticleReader(root);
 
     // === LOAD & DISPLAY ARTICLES ===
     await loadAndDisplayArticles();
@@ -374,12 +377,14 @@ function bindModalEvents() {
         });
     }
 
-    // Character counter
+    // Character counter with AP threshold indicator
     if (bodyInput && charCount) {
         bodyInput.addEventListener('input', () => {
             const len = bodyInput.value.length;
-            charCount.textContent = `${len} / 1000`;
+            const tag = len >= 700 ? ' · +2 Momentum' : ` · ${700 - len} more for momentum`;
+            charCount.textContent = `${len} / 1000${tag}`;
             charCount.classList.toggle('nws-near-limit', len >= 900);
+            charCount.classList.toggle('nws-ap-qualified', len >= 700 && len < 900);
         });
     }
 
@@ -464,8 +469,9 @@ function bindSubmitHandler() {
                 imageUrl = await uploadArticleImage(nation.id, file);
             }
 
-            // Insert article (reward_granted starts false until AP confirmed)
-            const { data: article, error } = await _supabase
+            // Insert article
+            const qualifiesForMomentum = body.length >= 700;
+            const { error } = await _supabase
                 .from('player_articles')
                 .insert({
                     nation_id: nation.id,
@@ -476,33 +482,22 @@ function bindSubmitHandler() {
                     category: category,
                     image_url: imageUrl,
                     status: 'published',
-                    published_tick: shard?.current_tick || 0,
-                    reward_ap: 1,
-                    reward_granted: false
-                })
-                .select()
-                .single();
+                    published_tick: shard?.current_tick || 0
+                });
 
             if (error) throw error;
 
-            // Award 1 AP, then mark reward as granted
-            const apResult = await accumulateAP(_supabase, faction.id, 1);
-            if (apResult.success) {
-                const apEl = document.getElementById('topbar-ap');
-                if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + apResult.newAp + ' AP</span>';
-                // Mark reward as granted in DB (non-critical — don't block on failure)
-                _supabase
-                    .from('player_articles')
-                    .update({ reward_granted: true })
-                    .eq('id', article.id)
-                    .then(({ error: grantErr }) => {
-                        if (grantErr) console.error('[News] Failed to mark reward_granted:', grantErr);
-                    });
+            // Award +2 momentum only if article qualifies (700+ chars)
+            let successMsg = 'Article published!';
+            if (qualifiesForMomentum) {
+                adjustMomentumAll(_supabase, nation.id, faction.id, 2, 'article:published')
+                    .catch(err => console.error('[News] Momentum adjustment failed:', err));
+                successMsg = 'Article published! +2 Momentum.';
+            } else {
+                successMsg = `Article published! (${body.length}/700 chars — no momentum reward)`;
             }
 
-            showFormSuccess(apResult.success
-                ? 'Article published! +1 AP awarded.'
-                : 'Article published! (AP reward failed — try refreshing.)');
+            showFormSuccess(successMsg);
 
             // Reset form
             document.getElementById('nws-article-title').value = '';
@@ -550,6 +545,123 @@ async function uploadArticleImage(nationId, file) {
         .getPublicUrl(filePath);
 
     return data?.publicUrl || null;
+}
+
+// === DELETE ARTICLE ===
+
+function deleteBtn(article) {
+    if (!_state?.faction || article.author_faction_id !== _state.faction.id) return '';
+    return `<button class="nws-delete-btn" data-article-id="${article.id}" title="Delete article">&times;</button>`;
+}
+
+function bindDeleteHandlers(root) {
+    root.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.nws-delete-btn');
+        if (!btn) return;
+        const articleId = btn.dataset.articleId;
+        if (!articleId || !confirm('Delete this article?')) return;
+
+        btn.disabled = true;
+        btn.textContent = '...';
+        try {
+            const { error } = await _supabase
+                .from('player_articles')
+                .delete()
+                .eq('id', articleId)
+                .eq('author_faction_id', _state.faction.id);
+
+            if (error) throw error;
+            await loadAndDisplayArticles();
+        } catch (err) {
+            console.error('[News] Failed to delete article:', err);
+            btn.disabled = false;
+            btn.textContent = '×';
+        }
+    });
+}
+
+// === ARTICLE READER ===
+
+function bindArticleReader(root) {
+    root.addEventListener('click', (e) => {
+        // Don't open reader when clicking delete buttons or other controls
+        if (e.target.closest('.nws-delete-btn, .nws-write-btn, .nws-modal-overlay, button, a, input, select, textarea')) return;
+
+        // Find the closest clickable article element
+        const clickable = e.target.closest('[data-article-id]');
+        if (!clickable) return;
+
+        const articleId = clickable.dataset.articleId;
+        const article = _articles.find(a => a.id === articleId);
+        if (!article) return;
+
+        renderArticleView(root, article);
+    });
+}
+
+function renderArticleView(root, article) {
+    const body = article.body || '';
+    const gameDate = _state?.shard?.current_date || '[Month], [Year]';
+
+    // Split body into paragraphs on double newlines, or treat as single block
+    const paragraphs = body.split(/\n\n+/).filter(p => p.trim());
+    const bodyHtml = paragraphs.length > 1
+        ? paragraphs.map((p, i) =>
+            `<p class="${i === 0 ? 'nws-drop-cap' : ''}">${escapeHtml(p.trim())}</p>`
+        ).join('')
+        : `<p class="nws-drop-cap">${escapeHtml(body)}</p>`;
+
+    const imageHtml = article.image_url
+        ? `<div class="nws-reader-image">
+            <img src="${escapeHtml(article.image_url)}" alt="${escapeHtml(article.headline)}">
+            <p class="nws-img-caption">${escapeHtml(article.headline)}</p>
+           </div>`
+        : '';
+
+    root.innerHTML = `<div class="newspaper-container">
+        <!-- TOP RIBBON -->
+        <div class="nws-top-ribbon">
+            <div class="nws-top-ribbon-inner">
+                <span>${gameDate}</span>
+                <span class="nws-edition">The Cruceran &mdash; Continental Edition</span>
+                <button class="nws-write-btn" id="nws-back-btn">&larr; Back to Front Page</button>
+            </div>
+        </div>
+
+        <!-- READER CONTENT -->
+        <div class="nws-main-content">
+            <div class="nws-reader">
+                <span class="nws-section-tag">${escapeHtml(categoryLabel(article.category))} &mdash; Tick ${article.published_tick ?? '—'}</span>
+                <h1 class="nws-reader-headline">${escapeHtml(article.headline)}</h1>
+                <div class="nws-byline">
+                    <span class="nws-author">${escapeHtml(article.author_name)}</span>
+                    <span class="nws-dot">&middot;</span>
+                    <span>Tick ${article.published_tick ?? '—'}</span>
+                </div>
+                <hr class="nws-reader-rule">
+                ${imageHtml}
+                <div class="nws-reader-body">
+                    ${bodyHtml}
+                </div>
+                <hr class="nws-reader-rule">
+                <button class="nws-back-link" id="nws-back-btn-bottom">&larr; Back to Front Page</button>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="nws-footer">
+            <h2>The Cruceran</h2>
+            <p>Continental Edition &nbsp;&middot;&nbsp; Est. Year 1 &nbsp;&middot;&nbsp; All rights reserved &nbsp;&middot;&nbsp; Truth in the service of the people</p>
+        </div>
+    </div>`;
+
+    // Bind back buttons
+    const goBack = () => initNewspaper(_supabase, _state);
+    document.getElementById('nws-back-btn')?.addEventListener('click', goBack);
+    document.getElementById('nws-back-btn-bottom')?.addEventListener('click', goBack);
+
+    // Scroll to top
+    root.scrollTop = 0;
 }
 
 // === LOAD & DISPLAY ARTICLES ===
@@ -617,9 +729,21 @@ async function loadAndDisplayArticles() {
 
         if (!articles || articles.length === 0) return;
 
+        // Filter out articles older than 3 ticks
+        const currentTick = _state.shard?.current_tick ?? 0;
+        const activeArticles = articles.filter(a => {
+            const tick = a.published_tick ?? 0;
+            return currentTick - tick < 3;
+        });
+
+        if (activeArticles.length === 0) return;
+
+        // Cache for article reader lookup
+        _articles = activeArticles;
+
         // Separate opinion articles from news articles
-        const opinionArticles = articles.filter(a => a.category === 'opinion');
-        const newsArticles = articles.filter(a => a.category !== 'opinion');
+        const opinionArticles = activeArticles.filter(a => a.category === 'opinion');
+        const newsArticles = activeArticles.filter(a => a.category !== 'opinion');
 
         // Sort news by body length DESC — longest gets A1
         const sorted = [...newsArticles].sort((a, b) =>
@@ -654,7 +778,8 @@ function populateLeadSection(lead, sidebar) {
 
     const sidebarHtml = sidebar.length > 0
         ? sidebar.map(a => `
-            <div class="nws-sidebar-story">
+            <div class="nws-sidebar-story" data-article-id="${a.id}">
+                ${deleteBtn(a)}
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sidebar-headline">${escapeHtml(a.headline)}</h3>
                 <p class="nws-sidebar-deck">${escapeHtml((a.body || '').substring(0, 120))}${(a.body || '').length > 120 ? '...' : ''}</p>
@@ -672,7 +797,8 @@ function populateLeadSection(lead, sidebar) {
     const deck = leadBody.length > 200 ? leadBody.substring(0, 200) + '...' : leadBody;
 
     section.innerHTML = `
-        <div class="nws-lead-main">
+        <div class="nws-lead-main" data-article-id="${lead.id}">
+            ${deleteBtn(lead)}
             <span class="nws-section-tag">${escapeHtml(categoryLabel(lead.category))}</span>
             <h2 class="nws-lead-headline">${escapeHtml(lead.headline)}</h2>
             <p class="nws-lead-deck">${escapeHtml(deck)}</p>
@@ -711,7 +837,8 @@ function populateSecondaryGrid(articles) {
                 ? `<img src="${escapeHtml(a.image_url)}" alt="${escapeHtml(a.headline)}" style="width:100%;height:100%;object-fit:cover;">`
                 : `<div class="nws-img-ph" style="background:${categoryGradient(a.category)};">${escapeHtml(categoryLabel(a.category))}</div>`;
 
-            return `<div class="nws-sec-story">
+            return `<div class="nws-sec-story" data-article-id="${a.id}">
+                ${deleteBtn(a)}
                 <div class="nws-sec-image">${imgHtml}</div>
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sec-headline">${escapeHtml(a.headline)}</h3>
@@ -746,10 +873,10 @@ function populateBriefs(articles) {
 
     const headerHtml = '<div class="nws-col-header">In Brief</div>';
     const briefsHtml = articles.map((a, i) => `
-        <div class="nws-brief-row">
+        <div class="nws-brief-row" data-article-id="${a.id}">
             <div class="nws-brief-num">${i + 1}</div>
             <div class="nws-brief-text">
-                <strong>${escapeHtml(a.headline)}</strong>
+                <strong>${escapeHtml(a.headline)}${deleteBtn(a)}</strong>
                 ${escapeHtml((a.body || '').substring(0, 100))}${(a.body || '').length > 100 ? '...' : ''}
             </div>
         </div>
@@ -786,7 +913,8 @@ function populateOpinionStrip(articles) {
             const quote = (a.body || '').length > 80
                 ? (a.body || '').substring(0, 80) + '...'
                 : (a.body || '');
-            return `<div class="nws-op-card">
+            return `<div class="nws-op-card" data-article-id="${a.id}">
+                ${deleteBtn(a)}
                 <div class="nws-op-author">${escapeHtml(a.author_name)} &mdash; Opinion</div>
                 <div class="nws-op-headline">&ldquo;${escapeHtml(quote)}&rdquo;</div>
             </div>`;

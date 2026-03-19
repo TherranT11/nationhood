@@ -872,6 +872,155 @@
     display: none;
 }
 
+/* ===== ARTICLE READER VIEW ===== */
+.nws-reader {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 32px 0 40px;
+}
+
+.nws-reader-headline {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(32px, 5vw, 48px);
+    font-weight: 900;
+    line-height: 1.1;
+    color: var(--nws-ink);
+    margin-bottom: 16px;
+    letter-spacing: -0.5px;
+}
+
+.nws-reader-rule {
+    border: none;
+    border-top: 1px solid var(--nws-rule);
+    margin: 20px 0;
+}
+
+.nws-reader-image {
+    margin-bottom: 20px;
+}
+
+.nws-reader-image img {
+    width: 100%;
+    max-height: 420px;
+    object-fit: cover;
+}
+
+.nws-reader-body {
+    font-size: 16px;
+    color: var(--nws-ink-2);
+    line-height: 1.8;
+    column-count: 2;
+    column-gap: 32px;
+}
+
+.nws-reader-body p {
+    margin-bottom: 16px;
+}
+
+.nws-reader-body .nws-drop-cap::first-letter {
+    font-family: 'Playfair Display', serif;
+    font-size: 64px;
+    font-weight: 900;
+    float: left;
+    line-height: 0.75;
+    margin-right: 6px;
+    margin-top: 8px;
+    color: var(--nws-ink);
+}
+
+.nws-back-link {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--nws-ink-3);
+    background: none;
+    border: 1px solid var(--nws-rule);
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.nws-back-link:hover {
+    color: var(--nws-ink);
+    border-color: var(--nws-ink);
+}
+
+/* Clickable article cards */
+[data-article-id] {
+    cursor: pointer;
+}
+
+@media (max-width: 768px) {
+    .nws-reader-body {
+        column-count: 1;
+    }
+}
+
+/* ===== DELETE BUTTON ===== */
+.nws-delete-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: var(--nws-paper-2);
+    border: 1px solid var(--nws-rule);
+    color: var(--nws-ink-4);
+    font-size: 16px;
+    line-height: 1;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+    z-index: 2;
+}
+
+.nws-lead-main,
+.nws-sidebar-story,
+.nws-sec-story,
+.nws-brief-row,
+.nws-op-card {
+    position: relative;
+}
+
+.nws-lead-main:hover .nws-delete-btn,
+.nws-sidebar-story:hover .nws-delete-btn,
+.nws-sec-story:hover .nws-delete-btn,
+.nws-brief-row:hover .nws-delete-btn,
+.nws-op-card:hover .nws-delete-btn {
+    opacity: 1;
+}
+
+.nws-delete-btn:hover {
+    color: var(--nws-red);
+    border-color: var(--nws-red);
+}
+
+/* Brief row delete button sits inline */
+.nws-brief-text .nws-delete-btn {
+    position: static;
+    display: inline-flex;
+    opacity: 0;
+    vertical-align: middle;
+    margin-left: 6px;
+    width: 18px;
+    height: 18px;
+    font-size: 13px;
+}
+
+.nws-brief-row:hover .nws-brief-text .nws-delete-btn {
+    opacity: 1;
+}
+
+/* AP qualified counter */
+.nws-char-count.nws-ap-qualified {
+    color: #2a6a2a;
+    font-weight: 600;
+}
+
 /* ===== ARTICLE IMAGE IN LAYOUT ===== */
 .nws-lead-image img,
 .nws-sec-image img {
