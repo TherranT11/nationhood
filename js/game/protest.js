@@ -1234,10 +1234,11 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
 
         const { data: ministers } = await supabase
             .from('ministries')
-            .select('ministry_key, minister_first_name, minister_last_name, minister_approval, is_vacant')
+            .select('ministry_key, minister_first_name, minister_last_name, minister_approval, party_id')
             .eq('nation_id', nationId);
         const ministerList = (ministers || []).map(m => ({
             ...m,
+            is_vacant: m.party_id == null,
             minister_name: `${m.minister_first_name || ''} ${m.minister_last_name || ''}`.trim(),
         }));
 
@@ -1553,10 +1554,11 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
 
             const { data: ministers } = await supabase
                 .from('ministries')
-                .select('ministry_key, party_id, minister_approval, is_vacant')
+                .select('ministry_key, party_id, minister_approval')
                 .eq('nation_id', nationId);
+            const ministerList = (ministers || []).map(m => ({ ...m, is_vacant: m.party_id == null }));
 
-            const demand = generateTier7Demand(statSnapshots, ministers || []);
+            const demand = generateTier7Demand(statSnapshots, ministerList);
             await supabase.from('protest_log').update({ tier7_demand: demand }).eq('id', protestId);
         }
 
