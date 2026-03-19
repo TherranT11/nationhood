@@ -876,7 +876,7 @@ function populateLeadSection(lead, sidebar) {
                 ${deleteBtn(a)}
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sidebar-headline">${escapeHtml(a.headline)}</h3>
-                <p class="nws-sidebar-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 240))}${(a.body || '').length > 240 ? '...' : ''}</p>
+                <p class="nws-sidebar-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 120))}${(a.body || '').length > 120 ? '...' : ''}</p>
                 <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${_state?.shard?.current_date || '—'}</span></div>
             </div>
         `).join('')
@@ -889,7 +889,7 @@ function populateLeadSection(lead, sidebar) {
     // Truncate body for deck (first ~200 chars), collapsing newlines for clean display
     const leadBody = lead.body || '';
     const deckText = leadBody.replace(/\n+/g, ' ');
-    const deck = deckText.length > 400 ? deckText.substring(0, 400) + '...' : deckText;
+    const deck = deckText.length > 200 ? deckText.substring(0, 200) + '...' : deckText;
 
     section.innerHTML = `
         <div class="nws-lead-main" data-article-id="${lead.id}">
@@ -937,7 +937,7 @@ function populateSecondaryGrid(articles) {
                 <div class="nws-sec-image">${imgHtml}</div>
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sec-headline">${escapeHtml(a.headline)}</h3>
-                <p class="nws-sec-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 300))}${(a.body || '').length > 300 ? '...' : ''}</p>
+                <p class="nws-sec-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 150))}${(a.body || '').length > 150 ? '...' : ''}</p>
                 <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${_state?.shard?.current_date || '—'}</span></div>
             </div>`;
         } else {
@@ -972,7 +972,7 @@ function populateBriefs(articles) {
             <div class="nws-brief-num">${i + 1}</div>
             <div class="nws-brief-text">
                 <strong>${escapeHtml(a.headline)}${deleteBtn(a)}</strong>
-                ${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 200))}${(a.body || '').length > 200 ? '...' : ''}
+                ${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 100))}${(a.body || '').length > 100 ? '...' : ''}
             </div>
         </div>
     `).join('');
@@ -1005,8 +1005,8 @@ function populateOpinionStrip(articles) {
         const a = articles[i];
         if (a) {
             // Truncate body to ~80 chars for the quote
-            const quote = (a.body || '').length > 160
-                ? (a.body || '').substring(0, 160) + '...'
+            const quote = (a.body || '').length > 80
+                ? (a.body || '').substring(0, 80) + '...'
                 : (a.body || '');
             return `<div class="nws-op-card" data-article-id="${a.id}">
                 ${deleteBtn(a)}
@@ -1242,7 +1242,7 @@ function buildLeadHtml(lead, sidebar, dateLabel) {
             <div class="nws-sidebar-story" data-article-id="${a.id}">
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sidebar-headline">${escapeHtml(a.headline)}</h3>
-                <p class="nws-sidebar-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 240))}${(a.body || '').length > 240 ? '...' : ''}</p>
+                <p class="nws-sidebar-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 120))}${(a.body || '').length > 120 ? '...' : ''}</p>
                 <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${escapeHtml(dateLabel)}</span></div>
             </div>
         `).join('')
@@ -1254,7 +1254,7 @@ function buildLeadHtml(lead, sidebar, dateLabel) {
 
     const leadBody = lead.body || '';
     const deckText = leadBody.replace(/\n+/g, ' ');
-    const deck = deckText.length > 400 ? deckText.substring(0, 400) + '...' : deckText;
+    const deck = deckText.length > 200 ? deckText.substring(0, 200) + '...' : deckText;
 
     return `
         <div class="nws-lead-main" data-article-id="${lead.id}">
@@ -1288,7 +1288,7 @@ function buildSecondaryGridHtml(articles) {
             <div class="nws-sec-image">${imgHtml}</div>
             <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
             <h3 class="nws-sec-headline">${escapeHtml(a.headline)}</h3>
-            <p class="nws-sec-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 300))}${(a.body || '').length > 300 ? '...' : ''}</p>
+            <p class="nws-sec-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 150))}${(a.body || '').length > 150 ? '...' : ''}</p>
             <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span></div>
         </div>`;
     }).join('');
@@ -1297,7 +1297,7 @@ function buildSecondaryGridHtml(articles) {
 function buildOpinionStripHtml(articles) {
     if (articles.length === 0) return '';
     const cardsHtml = articles.map(a => {
-        const quote = (a.body || '').length > 160 ? (a.body || '').substring(0, 160) + '...' : (a.body || '');
+        const quote = (a.body || '').length > 80 ? (a.body || '').substring(0, 80) + '...' : (a.body || '');
         return `<div class="nws-op-card" data-article-id="${a.id}">
             <div class="nws-op-author">${escapeHtml(a.author_name)} &mdash; Opinion</div>
             <div class="nws-op-headline">&ldquo;${escapeHtml(quote)}&rdquo;</div>
@@ -1318,7 +1318,7 @@ function buildBriefsHtml(articles) {
             <div class="nws-brief-num">${i + 1}</div>
             <div class="nws-brief-text">
                 <strong>${escapeHtml(a.headline)}</strong>
-                ${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 200))}${(a.body || '').length > 200 ? '...' : ''}
+                ${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 100))}${(a.body || '').length > 100 ? '...' : ''}
             </div>
         </div>
     `).join('');
