@@ -22747,7 +22747,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         await calculateCaucusDispositions(supabase, cb.id, nation.id, arts || []);
                         await calculateCaucusVoteAdjustment(supabase, cb.id);
                     } catch (caucusErr) {
-                        console.warn(`[Impeachment] Caucus disposition calc failed for ${cb.id} (non-fatal):`, caucusErr);
+                        console.error(`[Impeachment] Caucus disposition calc failed for ${cb.id} (non-fatal):`, caucusErr);
                     }
                     console.log(`[Impeachment] Motion ${cb.id} auto-transitioned from committee to floor`);
                 }
