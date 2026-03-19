@@ -2955,8 +2955,6 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// (Events tab moved to standalone events.html page)
-
 // ═══════════════════════════════════════════════════════════════════
 // DEMOCRACY CAMPAIGN ACTIONS TAB (Rally, Outreach, Attack, Promise)
 // ═══════════════════════════════════════════════════════════════════

@@ -353,7 +353,7 @@ export function renderNavTabs(activeTab) {
         { id: 'politics', label: 'Politics', href: 'politics.html' },
         { id: 'laws', label: 'Bills', href: 'laws.html' },
         { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
-        { id: 'events', label: 'Events', href: 'events.html' },
+        { id: 'news', label: 'News', href: 'news.html' },
         { id: 'economy', label: 'Economy', href: 'economy.html' },
         { id: 'wiki', label: 'Wiki', href: 'wiki.html' }
     ];
@@ -376,9 +376,6 @@ export function renderNavTabs(activeTab) {
         if (tab.id === 'diplomacy') {
             badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>'
                       + '<span class="nav-badge nav-badge--amber" id="diplomacy-awaiting-badge" style="display:none;"></span>';
-        }
-        if (tab.id === 'events') {
-            badgeHtml = '<span class="nav-badge" id="civic-badge" style="display:none;"></span>';
         }
         return `
             <a href="${href}"
@@ -514,38 +511,6 @@ async function updateDiplomacyAwaitingBadge(faction, nation) {
         }
     } catch (e) {
         console.error('Error updating diplomacy awaiting badge:', e);
-    }
-}
-
-
-// ===== CIVIC BADGE (unseen events since last visit) =====
-
-async function updateCivicBadge(faction, nation) {
-    const badge = document.getElementById('civic-badge');
-    if (!badge || !faction || !nation) return;
-    try {
-        const lastSeenTick = parseInt(
-            localStorage.getItem('civic_last_seen_tick_' + nation.id) || '0'
-        );
-        if (lastSeenTick <= 0) {
-            badge.style.display = 'none';
-            return;
-        }
-        const { count, error } = await _supabase
-            .from('event_log')
-            .select('id', { count: 'exact', head: true })
-            .eq('nation_id', nation.id)
-            .gt('fired_at_tick', lastSeenTick);
-
-        if (error) throw error;
-        if (count > 0) {
-            badge.textContent = count > 99 ? '99+' : count;
-            badge.style.display = '';
-        } else {
-            badge.style.display = 'none';
-        }
-    } catch (e) {
-        console.error('Error updating civic badge:', e);
     }
 }
 
@@ -867,10 +832,6 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     }
     // Update diplomacy awaiting badge (always, shows count of outgoing proposals awaiting response)
     updateDiplomacyAwaitingBadge(state.faction, state.nation);
-    // Update CIVIC badge (non-blocking, skip on events page since it marks seen)
-    if (activeTab !== 'events') {
-        updateCivicBadge(state.faction, state.nation);
-    }
     if (onReady) {
         await onReady(state);
     }
