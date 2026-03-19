@@ -1844,7 +1844,7 @@ async function renderSidebar() {
 // ==================== CAUCUS DISPOSITION PANEL ====================
 
 async function renderCaucusDispositions() {
-    if (!currentBill || !nationId) return;
+    if (!currentBill || !currentNation) return;
 
     const { data: dispositions, error } = await _supabase
         .from('caucus_dispositions')
