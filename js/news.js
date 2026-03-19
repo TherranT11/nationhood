@@ -154,5 +154,113 @@ export async function initNewspaper(supabase, state) {
 
         </div>
 
+        <!-- OPINION STRIP -->
+        <div class="nws-opinion-strip">
+            <div class="nws-opinion-inner">
+                <div class="nws-opinion-label">&mdash; Opinion &amp; Commentary &mdash;</div>
+                <div class="nws-opinion-grid">
+                    <div class="nws-op-card">
+                        <div class="nws-op-author nws-placeholder">[Columnist] &mdash; [Topic]</div>
+                        <div class="nws-op-headline nws-placeholder">&ldquo;[Opinion headline will appear here.]&rdquo;</div>
+                    </div>
+                    <div class="nws-op-card">
+                        <div class="nws-op-author nws-placeholder">[Columnist] &mdash; [Topic]</div>
+                        <div class="nws-op-headline nws-placeholder">&ldquo;[Opinion headline will appear here.]&rdquo;</div>
+                    </div>
+                    <div class="nws-op-card">
+                        <div class="nws-op-author nws-placeholder">[Columnist] &mdash; [Topic]</div>
+                        <div class="nws-op-headline nws-placeholder">&ldquo;[Opinion headline will appear here.]&rdquo;</div>
+                    </div>
+                    <div class="nws-op-card">
+                        <div class="nws-op-author nws-placeholder">[Columnist] &mdash; [Topic]</div>
+                        <div class="nws-op-headline nws-placeholder">&ldquo;[Opinion headline will appear here.]&rdquo;</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOTTOM GRID -->
+        <div class="nws-main-content">
+            <div class="nws-bottom-grid">
+                <div class="nws-bottom-left">
+                    <div class="nws-col-header">In Brief</div>
+                    <div class="nws-brief-row">
+                        <div class="nws-brief-num">1</div>
+                        <div class="nws-brief-text">
+                            <strong class="nws-placeholder">[Brief headline]</strong>
+                            <span class="nws-placeholder">[Short summary of a recent story.]</span>
+                        </div>
+                    </div>
+                    <div class="nws-brief-row">
+                        <div class="nws-brief-num">2</div>
+                        <div class="nws-brief-text">
+                            <strong class="nws-placeholder">[Brief headline]</strong>
+                            <span class="nws-placeholder">[Short summary of a recent story.]</span>
+                        </div>
+                    </div>
+                    <div class="nws-brief-row">
+                        <div class="nws-brief-num">3</div>
+                        <div class="nws-brief-text">
+                            <strong class="nws-placeholder">[Brief headline]</strong>
+                            <span class="nws-placeholder">[Short summary of a recent story.]</span>
+                        </div>
+                    </div>
+                    <div class="nws-brief-row">
+                        <div class="nws-brief-num">4</div>
+                        <div class="nws-brief-text">
+                            <strong class="nws-placeholder">[Brief headline]</strong>
+                            <span class="nws-placeholder">[Short summary of a recent story.]</span>
+                        </div>
+                    </div>
+                    <div class="nws-brief-row">
+                        <div class="nws-brief-num">5</div>
+                        <div class="nws-brief-text">
+                            <strong class="nws-placeholder">[Brief headline]</strong>
+                            <span class="nws-placeholder">[Short summary of a recent story.]</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="nws-bottom-right">
+                    <div class="nws-col-header">Economic Indicators</div>
+                    <div class="nws-market-row">
+                        <span class="nws-market-name">GDP Growth</span>
+                        <span class="nws-market-val nws-placeholder">--</span>
+                        <span class="nws-market-chg nws-placeholder">--</span>
+                    </div>
+                    <div class="nws-market-row">
+                        <span class="nws-market-name">Inflation</span>
+                        <span class="nws-market-val nws-placeholder">--</span>
+                        <span class="nws-market-chg nws-placeholder">--</span>
+                    </div>
+                    <div class="nws-market-row">
+                        <span class="nws-market-name">Unemployment</span>
+                        <span class="nws-market-val nws-placeholder">--</span>
+                        <span class="nws-market-chg nws-placeholder">--</span>
+                    </div>
+                    <div class="nws-market-row">
+                        <span class="nws-market-name">Interest Rate</span>
+                        <span class="nws-market-val nws-placeholder">--</span>
+                        <span class="nws-market-chg nws-placeholder">--</span>
+                    </div>
+                    <div class="nws-market-row">
+                        <span class="nws-market-name">Trade Balance</span>
+                        <span class="nws-market-val nws-placeholder">--</span>
+                        <span class="nws-market-chg nws-placeholder">--</span>
+                    </div>
+                    <div class="nws-market-row">
+                        <span class="nws-market-name">Gov. Approval</span>
+                        <span class="nws-market-val nws-placeholder">--</span>
+                        <span class="nws-market-chg nws-placeholder">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="nws-footer">
+            <h2>The Cruceran</h2>
+            <p>Continental Edition &nbsp;&middot;&nbsp; Est. Year 1 &nbsp;&middot;&nbsp; All rights reserved &nbsp;&middot;&nbsp; Truth in the service of the people</p>
+        </div>
+
     </div>`;
 }
