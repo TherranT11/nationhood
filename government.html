@@ -2494,7 +2494,15 @@ function isMyMinistryByKey(ministryKey) {
     return !!(m && m.party_id === currentFaction.id);
 }
 
+const MINISTRY_ACTION_REDIRECTS = {
+    foreign: 'Foreign Minister\'s actions are in the <a href="diplomacy.html" style="color:#ffcc00;text-decoration:underline;">Diplomacy</a> tab.'
+};
+
 function buildMinistryActionRows(ministryKey, isMyMinistry) {
+    if (MINISTRY_ACTION_REDIRECTS[ministryKey]) {
+        return `<div class="ministry-card__actions-label">ACTIONS</div>
+            <div style="text-align:center;color:#888;font-size:0.82rem;padding:14px 10px 18px;">${MINISTRY_ACTION_REDIRECTS[ministryKey]}</div>`;
+    }
     const config = MINISTRY_ACTIONS[ministryKey];
     if (!config || !config.actions || config.actions.length === 0) return '';
     const pop = currentNation?.population || 20000000;
