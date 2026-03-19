@@ -547,11 +547,11 @@ async function loadStatEffectSources(nationId, nation) {
             .select('crisis_id, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')
             .eq('nation_id', nationId),
         _supabase.from('ministry_action_log')
-            .select('action_key, stat_effects')
+            .select('action_key, stat_effects, applied_at_tick')
             .eq('nation_id', nationId)
             .eq('processed', false),
         _supabase.from('diplomatic_action_log')
-            .select('action_type, stat_effects')
+            .select('action_type, stat_effects, applied_at_tick')
             .eq('nation_id', nationId)
             .eq('processed', false),
         loadLeaderTraitEffects(nationId, nation),
@@ -571,8 +571,8 @@ async function loadStatEffectSources(nationId, nation) {
     var map = {};
     parsePolicyEffects(results[0].data || [], map, currentTick);
     parseCrisisEffects(results[1].data || [], map);
-    parseMinistryEffects(results[2].data || [], map);
-    parseDiplomaticEffects(results[3].data || [], map);
+    parseMinistryEffects(results[2].data || [], map, currentTick);
+    parseDiplomaticEffects(results[3].data || [], map, currentTick);
     parseLeaderTraitEffects(results[4], map);
     parseStatConnectionEffects(results[5].data || [], nation, map);
     parseInstitutionEffects(results[6].data || [], results[7].data || [], nation, map);
@@ -616,22 +616,27 @@ async function loadLeaderTraitEffects(nationId, nation) {
     }
 }
 
-function addEffectToMap(map, statKey, name, direction, type, rate) {
+function addEffectToMap(map, statKey, name, direction, type, rate, remainingTicks) {
     var key = normalizeNationStatKey(statKey);
     if (!key) return;
     if (!map[key]) map[key] = [];
     var parsedRate = (rate === null || rate === undefined || rate === '') ? null : Number(rate);
     if (!Number.isFinite(parsedRate)) parsedRate = null;
+    var parsedRemaining = (remainingTicks === null || remainingTicks === undefined) ? null : Number(remainingTicks);
+    if (!Number.isFinite(parsedRemaining) || parsedRemaining < 0) parsedRemaining = null;
     // Deduplicate and backfill missing rate where available
     for (var i = 0; i < map[key].length; i++) {
         if (map[key][i].name === name && map[key][i].direction === direction && map[key][i].type === type) {
             if ((map[key][i].rate === null || map[key][i].rate === undefined) && parsedRate !== null) {
                 map[key][i].rate = parsedRate;
             }
+            if ((map[key][i].remainingTicks === null || map[key][i].remainingTicks === undefined) && parsedRemaining !== null) {
+                map[key][i].remainingTicks = parsedRemaining;
+            }
             return;
         }
     }
-    map[key].push({ name: name, direction: direction, type: type, rate: parsedRate });
+    map[key].push({ name: name, direction: direction, type: type, rate: parsedRate, remainingTicks: parsedRemaining });
 }
 
 function parsePolicyEffects(laws, map, currentTick) {
@@ -657,7 +662,8 @@ function parsePolicyEffects(laws, map, currentTick) {
                 var rate = Number(eff.rate);
                 if (!Number.isFinite(rate)) rate = Number(policy.stat_change_per_tick);
                 if (!Number.isFinite(rate)) rate = 1;
-                addEffectToMap(map, eff.stat_key, label, dir, 'Policy', rate);
+                var remaining = (delay + dur) - ticksSince;
+                addEffectToMap(map, eff.stat_key, label, dir, 'Policy', rate, remaining);
             }
             continue;
         }
@@ -670,7 +676,8 @@ function parsePolicyEffects(laws, map, currentTick) {
         if (law.is_reversal) legacyDir = (legacyDir === 'up') ? 'down' : 'up';
         var legacyRate = Number(policy.stat_change_per_tick);
         if (!Number.isFinite(legacyRate)) legacyRate = 1;
-        addEffectToMap(map, policy.target_stat, label, legacyDir, 'Policy', legacyRate);
+        var legacyRemaining = legacyDur - ticksSince;
+        addEffectToMap(map, policy.target_stat, label, legacyDir, 'Policy', legacyRate, legacyRemaining);
     }
 }
 
@@ -689,31 +696,39 @@ function parseCrisisEffects(crises, map) {
     }
 }
 
-function parseMinistryEffects(actions, map) {
+function parseMinistryEffects(actions, map, currentTick) {
     for (var i = 0; i < actions.length; i++) {
         var action = actions[i];
         var effects = action.stat_effects;
         if (!effects || !Array.isArray(effects)) continue;
+        var ticksSince = currentTick - (action.applied_at_tick || 0);
         for (var j = 0; j < effects.length; j++) {
             var eff = effects[j];
             if (eff.target && eff.target !== 'nation') continue;
             if (!eff.stat_key) continue;
             var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
-            addEffectToMap(map, eff.stat_key, prettyStatName(action.action_key), dir, 'Ministry Action');
+            var delay = Number(eff.delay_ticks) || 0;
+            var dur = Number(eff.duration_ticks) || 4;
+            var remaining = (delay + dur) - ticksSince;
+            addEffectToMap(map, eff.stat_key, prettyStatName(action.action_key), dir, 'Ministry Action', eff.rate || null, remaining);
         }
     }
 }
 
-function parseDiplomaticEffects(actions, map) {
+function parseDiplomaticEffects(actions, map, currentTick) {
     for (var i = 0; i < actions.length; i++) {
         var action = actions[i];
         var effects = action.stat_effects;
         if (!effects || !Array.isArray(effects)) continue;
+        var ticksSince = currentTick - (action.applied_at_tick || 0);
         for (var j = 0; j < effects.length; j++) {
             var eff = effects[j];
             if (!eff.stat_key) continue;
             var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
-            addEffectToMap(map, eff.stat_key, prettyStatName(action.action_type), dir, 'Diplomatic Action');
+            var delay = Number(eff.delay_ticks) || 0;
+            var dur = Number(eff.duration_ticks) || 4;
+            var remaining = (delay + dur) - ticksSince;
+            addEffectToMap(map, eff.stat_key, prettyStatName(action.action_type), dir, 'Diplomatic Action', eff.rate || null, remaining);
         }
     }
 }
@@ -962,6 +977,9 @@ function buildFeaturedAbpHTML(statKey) {
             h += '<span class="featured-card__abp-rate">' + sign + (Math.round(Math.abs(Number(eff.rate)) * 100) / 100) + '/tick</span>';
         }
         h += '<span class="featured-card__abp-type ' + typeClass + '">' + escapeHtml(eff.type) + '</span>';
+        if (eff.remainingTicks !== null && eff.remainingTicks !== undefined) {
+            h += '<span class="featured-card__abp-ticks">' + eff.remainingTicks + ' tick' + (eff.remainingTicks !== 1 ? 's' : '') + '</span>';
+        }
         h += '</div>';
     }
     return h;
