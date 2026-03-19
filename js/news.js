@@ -121,6 +121,37 @@ export async function initNewspaper(supabase, state) {
                 </div>
             </div>
 
+            <!-- SECONDARY GRID -->
+            <div class="nws-secondary-grid" id="nws-secondary-grid">
+                <div class="nws-sec-story">
+                    <div class="nws-sec-image">
+                        <div class="nws-img-ph" style="background:linear-gradient(135deg,#1a2a1a,#0d1a0d);">Crisis</div>
+                    </div>
+                    <span class="nws-section-tag nws-placeholder">[Crisis]</span>
+                    <h3 class="nws-sec-headline nws-placeholder">[Crisis Section Headline]</h3>
+                    <p class="nws-sec-deck nws-placeholder">[Summary of a crisis-related article will appear here.]</p>
+                    <div class="nws-byline"><span class="nws-author nws-placeholder">[Author]</span><span class="nws-dot">&middot;</span><span class="nws-placeholder">[Date]</span></div>
+                </div>
+                <div class="nws-sec-story">
+                    <div class="nws-sec-image">
+                        <div class="nws-img-ph" style="background:linear-gradient(135deg,#1a1a2a,#0d0d1a);">Election</div>
+                    </div>
+                    <span class="nws-section-tag nws-placeholder">[Elections]</span>
+                    <h3 class="nws-sec-headline nws-placeholder">[Election Section Headline]</h3>
+                    <p class="nws-sec-deck nws-placeholder">[Summary of an election-related article will appear here.]</p>
+                    <div class="nws-byline"><span class="nws-author nws-placeholder">[Author]</span><span class="nws-dot">&middot;</span><span class="nws-placeholder">[Date]</span></div>
+                </div>
+                <div class="nws-sec-story">
+                    <div class="nws-sec-image">
+                        <div class="nws-img-ph" style="background:linear-gradient(135deg,#2a1a0a,#1a0d00);">Economy</div>
+                    </div>
+                    <span class="nws-section-tag nws-placeholder">[Economy]</span>
+                    <h3 class="nws-sec-headline nws-placeholder">[Economy Section Headline]</h3>
+                    <p class="nws-sec-deck nws-placeholder">[Summary of an economy-related article will appear here.]</p>
+                    <div class="nws-byline"><span class="nws-author nws-placeholder">[Author]</span><span class="nws-dot">&middot;</span><span class="nws-placeholder">[Date]</span></div>
+                </div>
+            </div>
+
         </div>
 
     </div>`;
