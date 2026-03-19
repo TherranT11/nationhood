@@ -17950,7 +17950,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
             }
         }
 
-        newApproval = Math.round(Math.max(0, Math.min(100, newApproval)) * 10) / 10;
+        newApproval = Math.round(Math.max(0, Math.min(100, newApproval)));
 
         // Update baselines to current values so next tick only sees incremental change
         const updatedBaselines = {};
