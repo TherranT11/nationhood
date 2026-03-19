@@ -12178,13 +12178,22 @@ async function rejectOwnNomination(supabase, billId, nomineePartyId) {
 async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     if (isAutocracy(nation)) return;
 
-    // ── 1. Load all party factions ──
-    const { data: factions } = await supabase
+    // ── 1. Load all party factions (exclude inactive ≥12 ticks) ──
+    const INACTIVITY_EXCLUSION = 12;
+    const { data: allFactions } = await supabase
         .from('factions')
-        .select('id, seats')
+        .select('id, seats, last_seen_tick')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
-    if (!factions || factions.length === 0) return;
+    if (!allFactions || allFactions.length === 0) return;
+
+    const factions = allFactions.filter(f =>
+        f.last_seen_tick == null || (currentTick - f.last_seen_tick) < INACTIVITY_EXCLUSION
+    );
+    const inactiveFactions = allFactions.filter(f =>
+        f.last_seen_tick != null && (currentTick - f.last_seen_tick) >= INACTIVITY_EXCLUSION
+    );
+    if (factions.length === 0) return;
     const factionIds = factions.map(f => f.id);
 
     const coalition = await fetchActiveCoalition(supabase, nation.id);
@@ -12666,6 +12675,16 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
         await supabase.from('factions')
             .update({ national_vote_share: pct })
             .eq('id', factionId);
+    }
+
+    // ── 10b. Zero national_vote_share for inactive parties so stale data doesn't persist ──
+    for (const f of inactiveFactions) {
+        await supabase.from('factions')
+            .update({ national_vote_share: 0 })
+            .eq('id', f.id);
+    }
+    if (inactiveFactions.length > 0) {
+        console.log(`[Three-Pillar] Zeroed national_vote_share for ${inactiveFactions.length} inactive parties in ${nation.name}`);
     }
 
     // ── 11. Update derived approval_rating cache (backward compat) ──

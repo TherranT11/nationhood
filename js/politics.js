@@ -1443,9 +1443,14 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
     const seatMargin = Math.max(1, MARGIN_START - (FORECAST_START - ticksLeft));
 
     // Build party forecast data (exclude inactive parties — they won't participate in the election)
-    const eligibleParties = (allParties || []).filter(p =>
-        p.last_seen_tick == null || (currentTick - p.last_seen_tick) < INACTIVITY_EXCLUSION
-    );
+    // A party is eligible if it has been seen within INACTIVITY_EXCLUSION ticks, or if
+    // last_seen_tick is null AND it still has a non-zero vote share (prevents ghost parties).
+    const eligibleParties = (allParties || []).filter(p => {
+        const voteShare = Number(p.national_vote_share || 0);
+        if (voteShare <= 0) return false; // zeroed by Three-Pillar — definitely inactive
+        if (p.last_seen_tick == null) return true; // new/unseen party with vote share — include
+        return (currentTick - p.last_seen_tick) < INACTIVITY_EXCLUSION;
+    });
     const parties = eligibleParties.map(p => {
         const voteShare = Number(p.national_vote_share || 0);
         const estSeats = Math.round((voteShare / 100) * totalSeats);
