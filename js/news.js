@@ -1,7 +1,7 @@
 // js/news.js — The Cruceran newspaper page
 
 import { adjustMomentumAll } from './game/momentum.js';
-import { tickToDate, MONTHS } from './utils.js';
+import { tickToDate } from './utils.js';
 
 // Module-level references set during init
 let _supabase = null;
@@ -9,16 +9,19 @@ let _state = null;
 let _articles = []; // cached for article reader lookup
 let _categoryFilter = 'all'; // current nav filter
 let _shardNationIds = null; // cached nation IDs in the same shard
+let _articleReaderHandler = null; // stored ref to prevent listener accumulation
+let _archiveBackContext = null; // navigation context for article reader back button
 
 export async function initNewspaper(supabase, state) {
     _supabase = supabase;
     _state = state;
     _shardNationIds = null; // reset cache on reinit
+    _categoryFilter = 'all'; // reset filter on reinit
+    _archiveBackContext = null; // reset: article reader "Back" goes to front page
     const root = document.getElementById('newspaper-root');
     if (!root) return;
 
-    const { nation, faction, shard } = state;
-    const gameDate = shard?.current_date || '[Month], [Year]';
+    const gameDate = state.shard?.current_date || '[Month], [Year]';
 
     root.innerHTML = `<div class="newspaper-container">
 
@@ -592,7 +595,11 @@ function bindDeleteHandlers(root) {
 // === ARTICLE READER ===
 
 function bindArticleReader(root) {
-    root.addEventListener('click', (e) => {
+    // Remove previous handler to prevent listener accumulation on the persistent root element
+    if (_articleReaderHandler) {
+        root.removeEventListener('click', _articleReaderHandler);
+    }
+    _articleReaderHandler = (e) => {
         // Don't open reader when clicking delete buttons or other controls
         if (e.target.closest('.nws-delete-btn, .nws-write-btn, .nws-modal-overlay, button, a, input, select, textarea')) return;
 
@@ -605,12 +612,15 @@ function bindArticleReader(root) {
         if (!article) return;
 
         renderArticleView(root, article);
-    });
+    };
+    root.addEventListener('click', _articleReaderHandler);
 }
 
 function renderArticleView(root, article) {
     const body = article.body || '';
-    const gameDate = _state?.shard?.current_date || '[Month], [Year]';
+    const articleDate = article.published_tick != null ? tickToDate(article.published_tick) : (_state?.shard?.current_date || '[Month], [Year]');
+    const isArchived = !!_archiveBackContext;
+    const backLabel = isArchived ? '&larr; Back to Edition' : '&larr; Back to Front Page';
 
     const bodyHtml = formatBodyHtml(body);
 
@@ -625,9 +635,9 @@ function renderArticleView(root, article) {
         <!-- TOP RIBBON -->
         <div class="nws-top-ribbon">
             <div class="nws-top-ribbon-inner">
-                <span>${gameDate}</span>
+                <span>${escapeHtml(articleDate)}</span>
                 <span class="nws-edition">The Cruceran &mdash; Continental Edition</span>
-                <button class="nws-write-btn" id="nws-back-btn">&larr; Back to Front Page</button>
+                <button class="nws-write-btn" id="nws-back-btn">${backLabel}</button>
             </div>
         </div>
 
@@ -647,7 +657,7 @@ function renderArticleView(root, article) {
                     ${bodyHtml}
                 </div>
                 <hr class="nws-reader-rule">
-                <button class="nws-back-link" id="nws-back-btn-bottom">&larr; Back to Front Page</button>
+                <button class="nws-back-link" id="nws-back-btn-bottom">${backLabel}</button>
             </div>
         </div>
 
@@ -658,8 +668,11 @@ function renderArticleView(root, article) {
         </div>
     </div>`;
 
-    // Bind back buttons
-    const goBack = () => initNewspaper(_supabase, _state);
+    // Bind back buttons — return to archived edition if opened from one, else front page
+    const ctx = _archiveBackContext;
+    const goBack = ctx
+        ? () => renderArchivedEdition(ctx.root, ctx.articles, ctx.dateLabel)
+        : () => initNewspaper(_supabase, _state);
     document.getElementById('nws-back-btn')?.addEventListener('click', goBack);
     document.getElementById('nws-back-btn-bottom')?.addEventListener('click', goBack);
 
@@ -745,12 +758,15 @@ async function getShardNationIds() {
     const nation = _state?.nation;
     if (!shard || !nation) return [nation?.id].filter(Boolean);
 
-    const { data: nations } = await _supabase
+    const { data: nations, error } = await _supabase
         .from('nations')
         .select('id')
         .eq('shard_id', shard.id);
 
-    _shardNationIds = nations ? nations.map(n => n.id) : [nation.id];
+    if (error) {
+        console.error('[News] Failed to fetch shard nations:', error);
+    }
+    _shardNationIds = (nations && nations.length > 0) ? nations.map(n => n.id) : [nation.id];
     return _shardNationIds;
 }
 
@@ -791,7 +807,11 @@ async function loadAndDisplayArticles() {
             ? activeArticles.filter(a => a.category === _categoryFilter)
             : activeArticles;
 
-        if (filtered.length === 0 && _categoryFilter !== 'all') return;
+        if (filtered.length === 0 && _categoryFilter !== 'all') {
+            const section = document.getElementById('nws-lead-section');
+            if (section) section.innerHTML = `<p class="nws-placeholder" style="text-align:center;padding:40px;grid-column:1/-1;">No ${categoryLabel(_categoryFilter)} articles in this edition.</p>`;
+            return;
+        }
 
         // Separate opinion articles from news articles
         const opinionArticles = filtered.filter(a => a.category === 'opinion');
@@ -1009,101 +1029,105 @@ function bindArchivesNav(root) {
 async function renderArchivesListView(root) {
     if (!_supabase || !_state) return;
 
-    const currentTick = _state.shard?.current_tick ?? 0;
-    const gameDate = _state.shard?.current_date || '[Month], [Year]';
-    const nationIds = await getShardNationIds();
+    try {
+        const currentTick = _state.shard?.current_tick ?? 0;
+        const gameDate = _state.shard?.current_date || '[Month], [Year]';
+        const nationIds = await getShardNationIds();
 
-    // Fetch ALL published articles across all nations in this shard
-    const { data: articles, error } = await _supabase
-        .from('player_articles')
-        .select('*')
-        .in('nation_id', nationIds)
-        .eq('status', 'published')
-        .order('published_tick', { ascending: false });
+        // Fetch ALL published articles across all nations in this shard
+        const { data: articles, error } = await _supabase
+            .from('player_articles')
+            .select('*')
+            .in('nation_id', nationIds)
+            .eq('status', 'published')
+            .order('published_tick', { ascending: false });
 
-    if (error) {
-        console.error('[News] Failed to load archive articles:', error);
-        return;
-    }
+        if (error) {
+            console.error('[News] Failed to load archive articles:', error);
+            return;
+        }
 
-    // Group articles by their published tick (each tick = one month)
-    const grouped = {};
-    for (const a of (articles || [])) {
-        const tick = a.published_tick ?? 0;
-        const dateLabel = tickToDate(tick);
-        if (!grouped[tick]) grouped[tick] = { dateLabel, tick, articles: [] };
-        grouped[tick].articles.push(a);
-    }
+        // Group articles by their published tick (each tick = one month)
+        const grouped = {};
+        for (const a of (articles || [])) {
+            const tick = a.published_tick ?? 0;
+            const dateLabel = tickToDate(tick);
+            if (!grouped[tick]) grouped[tick] = { dateLabel, tick, articles: [] };
+            grouped[tick].articles.push(a);
+        }
 
-    // Sort by tick descending
-    const months = Object.values(grouped).sort((a, b) => b.tick - a.tick);
+        // Sort by tick descending
+        const months = Object.values(grouped).sort((a, b) => b.tick - a.tick);
 
-    // Mark current edition ticks (within 3 ticks)
-    const isCurrentEdition = (tick) => currentTick - tick < 3;
+        // Mark current edition ticks (within 3 ticks)
+        const isCurrentEdition = (tick) => currentTick - tick < 3;
 
-    const monthListHtml = months.length > 0
-        ? months.map(m => {
-            const current = isCurrentEdition(m.tick) ? ' <span class="nws-archive-current">Current</span>' : '';
-            return `<div class="nws-archive-month" data-archive-tick="${m.tick}">
-                <div class="nws-archive-month-name">${escapeHtml(m.dateLabel)}${current}</div>
-                <div class="nws-archive-month-count">${m.articles.length} article${m.articles.length !== 1 ? 's' : ''}</div>
-            </div>`;
-        }).join('')
-        : '<p class="nws-placeholder" style="text-align:center;padding:40px;">No articles have been published yet.</p>';
+        const monthListHtml = months.length > 0
+            ? months.map(m => {
+                const current = isCurrentEdition(m.tick) ? ' <span class="nws-archive-current">Current</span>' : '';
+                return `<div class="nws-archive-month" data-archive-tick="${m.tick}">
+                    <div class="nws-archive-month-name">${escapeHtml(m.dateLabel)}${current}</div>
+                    <div class="nws-archive-month-count">${m.articles.length} article${m.articles.length !== 1 ? 's' : ''}</div>
+                </div>`;
+            }).join('')
+            : '<p class="nws-placeholder" style="text-align:center;padding:40px;">No articles have been published yet.</p>';
 
-    root.innerHTML = `<div class="newspaper-container">
-        <!-- TOP RIBBON -->
-        <div class="nws-top-ribbon">
-            <div class="nws-top-ribbon-inner">
-                <span>${gameDate}</span>
-                <span class="nws-edition">The Cruceran &mdash; Continental Edition</span>
-                <button class="nws-write-btn" id="nws-back-btn">&larr; Back to Front Page</button>
-            </div>
-        </div>
-
-        <!-- MASTHEAD -->
-        <div class="nws-masthead">
-            <div class="nws-masthead-top">
-                <div class="nws-masthead-meta">Est. Year 1<br>Continental Record</div>
-                <h1>The Cruceran</h1>
-                <div class="nws-masthead-meta nws-masthead-meta-right">Free Press<br>International Wire</div>
-            </div>
-            <hr class="nws-masthead-rule">
-            <div class="nws-rule-ornament">&mdash; &#10022; &mdash;</div>
-            <div class="nws-masthead-tagline">&ldquo;Truth in the service of the people&rdquo;</div>
-        </div>
-
-        <!-- ARCHIVE CONTENT -->
-        <div class="nws-main-content">
-            <div class="nws-archives">
-                <h2 class="nws-archives-title">Older Issues</h2>
-                <p class="nws-archives-subtitle">Browse past editions of The Cruceran by month.</p>
-                <div class="nws-archive-list">
-                    ${monthListHtml}
+        root.innerHTML = `<div class="newspaper-container">
+            <!-- TOP RIBBON -->
+            <div class="nws-top-ribbon">
+                <div class="nws-top-ribbon-inner">
+                    <span>${gameDate}</span>
+                    <span class="nws-edition">The Cruceran &mdash; Continental Edition</span>
+                    <button class="nws-write-btn" id="nws-back-btn">&larr; Back to Front Page</button>
                 </div>
             </div>
-        </div>
 
-        <!-- FOOTER -->
-        <div class="nws-footer">
-            <h2>The Cruceran</h2>
-            <p>Continental Edition &nbsp;&middot;&nbsp; Est. Year 1 &nbsp;&middot;&nbsp; All rights reserved &nbsp;&middot;&nbsp; Truth in the service of the people</p>
-        </div>
-    </div>`;
+            <!-- MASTHEAD -->
+            <div class="nws-masthead">
+                <div class="nws-masthead-top">
+                    <div class="nws-masthead-meta">Est. Year 1<br>Continental Record</div>
+                    <h1>The Cruceran</h1>
+                    <div class="nws-masthead-meta nws-masthead-meta-right">Free Press<br>International Wire</div>
+                </div>
+                <hr class="nws-masthead-rule">
+                <div class="nws-rule-ornament">&mdash; &#10022; &mdash;</div>
+                <div class="nws-masthead-tagline">&ldquo;Truth in the service of the people&rdquo;</div>
+            </div>
 
-    // Bind back button
-    document.getElementById('nws-back-btn')?.addEventListener('click', () => initNewspaper(_supabase, _state));
+            <!-- ARCHIVE CONTENT -->
+            <div class="nws-main-content">
+                <div class="nws-archives">
+                    <h2 class="nws-archives-title">Older Issues</h2>
+                    <p class="nws-archives-subtitle">Browse past editions of The Cruceran by month.</p>
+                    <div class="nws-archive-list">
+                        ${monthListHtml}
+                    </div>
+                </div>
+            </div>
 
-    // Bind month clicks
-    root.querySelectorAll('[data-archive-tick]').forEach(el => {
-        el.addEventListener('click', () => {
-            const tick = parseInt(el.dataset.archiveTick, 10);
-            const monthData = grouped[tick];
-            if (monthData) renderArchivedEdition(root, monthData.articles, monthData.dateLabel);
+            <!-- FOOTER -->
+            <div class="nws-footer">
+                <h2>The Cruceran</h2>
+                <p>Continental Edition &nbsp;&middot;&nbsp; Est. Year 1 &nbsp;&middot;&nbsp; All rights reserved &nbsp;&middot;&nbsp; Truth in the service of the people</p>
+            </div>
+        </div>`;
+
+        // Bind back button
+        document.getElementById('nws-back-btn')?.addEventListener('click', () => initNewspaper(_supabase, _state));
+
+        // Bind month clicks
+        root.querySelectorAll('[data-archive-tick]').forEach(el => {
+            el.addEventListener('click', () => {
+                const tick = parseInt(el.dataset.archiveTick, 10);
+                const monthData = grouped[tick];
+                if (monthData) renderArchivedEdition(root, monthData.articles, monthData.dateLabel);
+            });
         });
-    });
 
-    root.scrollTop = 0;
+        root.scrollTop = 0;
+    } catch (err) {
+        console.error('[News] Error loading archives:', err);
+    }
 }
 
 function renderArchivedEdition(root, articles, dateLabel) {
@@ -1178,6 +1202,9 @@ function renderArchivedEdition(root, articles, dateLabel) {
 
     // Bind back to archives list
     document.getElementById('nws-back-to-archives')?.addEventListener('click', () => renderArchivesListView(root));
+
+    // Set context so article reader "Back" returns to this archived edition
+    _archiveBackContext = { root, articles, dateLabel };
 
     // Bind article reader for archived articles
     bindArticleReader(root);
