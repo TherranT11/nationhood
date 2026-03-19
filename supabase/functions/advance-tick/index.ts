@@ -23418,9 +23418,9 @@ async function generateTier7DemandTick(supabase, nation, currentTick) {
     // Fallback: most unpopular minister
     const { data: ministers } = await supabase
         .from('ministries')
-        .select('ministry_key, minister_first_name, minister_last_name, minister_approval, is_vacant')
+        .select('ministry_key, minister_first_name, minister_last_name, minister_approval, party_id')
         .eq('nation_id', nationId)
-        .eq('is_vacant', false)
+        .not('party_id', 'is', null)
         .order('minister_approval', { ascending: true })
         .limit(1);
 
@@ -23451,11 +23451,11 @@ async function checkTier7DemandMet(supabase, nation, demand, currentTick) {
         // Check if the demanded minister has been fired
         const { data: ministry } = await supabase
             .from('ministries')
-            .select('is_vacant')
+            .select('party_id')
             .eq('nation_id', nation.id)
             .eq('ministry_key', demand.target)
             .single();
-        return ministry?.is_vacant === true;
+        return ministry?.party_id == null;
     }
 
     if (demand.type === 'stat') {

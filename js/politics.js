@@ -3558,9 +3558,9 @@ async function loadProtestData(nation, faction, tick) {
     if (!_protestCachedMinisters) {
         const { data: ministers } = await _supabase
             .from('ministries')
-            .select('ministry_key, minister_first_name, minister_last_name, minister_approval, is_vacant, party_id')
+            .select('ministry_key, minister_first_name, minister_last_name, minister_approval, party_id')
             .eq('nation_id', nation.id)
-            .eq('is_vacant', false)
+            .not('party_id', 'is', null)
             .order('minister_approval', { ascending: true });
         _protestCachedMinisters = ministers || [];
     }
@@ -3572,14 +3572,14 @@ async function loadProtestData(nation, faction, tick) {
         if (coalitionIds.length > 0) {
             const { data: bills } = await _supabase
                 .from('bills')
-                .select('id, bill_type, proposed_by_faction_id, proposed_tick, bill_articles(policy_id, policies(name))')
+                .select('id, bill_type, proposed_by, proposed_tick, bill_articles(policy_id, policies(policy_name))')
                 .eq('nation_id', nation.id)
                 .eq('status', 'enacted')
-                .in('proposed_by_faction_id', coalitionIds)
+                .in('proposed_by', coalitionIds)
                 .order('proposed_tick', { ascending: false });
             _protestCachedPolicies = (bills || []).map(b => {
                 const firstArticle = b.bill_articles?.[0];
-                const policyName = firstArticle?.policies?.name || `Bill ${b.id.slice(0, 8)}`;
+                const policyName = firstArticle?.policies?.policy_name || `Bill ${b.id.slice(0, 8)}`;
                 return {
                     id: b.id,
                     name: policyName,
