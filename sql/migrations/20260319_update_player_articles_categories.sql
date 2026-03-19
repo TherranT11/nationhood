@@ -2,13 +2,25 @@
 -- Expands allowed categories to: politics, economy, international, social, entertainment, elections, sports, opinion
 -- Safe to re-run.
 
--- Drop the old CHECK constraint if it exists
-DO $$ BEGIN
-    ALTER TABLE player_articles DROP CONSTRAINT IF EXISTS player_articles_category_check;
-EXCEPTION WHEN undefined_object THEN NULL;
+-- Drop ALL existing CHECK constraints on the category column (handles auto-named constraints)
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT con.conname
+        FROM pg_constraint con
+        JOIN pg_attribute att ON att.attnum = ANY(con.conkey)
+            AND att.attrelid = con.conrelid
+        WHERE con.conrelid = 'player_articles'::regclass
+            AND con.contype = 'c'
+            AND att.attname = 'category'
+    LOOP
+        EXECUTE format('ALTER TABLE player_articles DROP CONSTRAINT %I', r.conname);
+    END LOOP;
 END $$;
 
--- Add the updated CHECK constraint
+-- Add the updated CHECK constraint with an explicit name
 ALTER TABLE player_articles
     ADD CONSTRAINT player_articles_category_check
     CHECK (category IN ('politics', 'economy', 'international', 'social', 'entertainment', 'elections', 'sports', 'opinion'));
