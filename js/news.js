@@ -437,6 +437,7 @@ function bindSubmitHandler() {
     if (!submitBtn) return;
 
     submitBtn.addEventListener('click', async () => {
+        if (submitBtn.disabled) return; // guard against queued double-clicks
         const title = document.getElementById('nws-article-title').value.trim();
         const author = document.getElementById('nws-article-author').value.trim();
         const category = document.getElementById('nws-article-category').value;
@@ -489,11 +490,14 @@ function bindSubmitHandler() {
             if (apResult.success) {
                 const apEl = document.getElementById('topbar-ap');
                 if (apEl) apEl.textContent = `${apResult.newAp} AP`;
-                // Mark reward as granted in DB
-                await _supabase
+                // Mark reward as granted in DB (non-critical — don't block on failure)
+                _supabase
                     .from('player_articles')
                     .update({ reward_granted: true })
-                    .eq('id', article.id);
+                    .eq('id', article.id)
+                    .then(({ error: grantErr }) => {
+                        if (grantErr) console.error('[News] Failed to mark reward_granted:', grantErr);
+                    });
             }
 
             showFormSuccess('Article published! +1 AP awarded.');
@@ -652,7 +656,7 @@ function populateLeadSection(lead, sidebar) {
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sidebar-headline">${escapeHtml(a.headline)}</h3>
                 <p class="nws-sidebar-deck">${escapeHtml((a.body || '').substring(0, 120))}${(a.body || '').length > 120 ? '...' : ''}</p>
-                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>Tick ${a.published_tick || '—'}</span></div>
+                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>Tick ${a.published_tick ?? '—'}</span></div>
             </div>
         `).join('')
         : `<div class="nws-sidebar-story"><p class="nws-placeholder">[More stories will appear as articles are published.]</p></div>`;
@@ -673,7 +677,7 @@ function populateLeadSection(lead, sidebar) {
             <div class="nws-byline">
                 <span class="nws-author">${escapeHtml(lead.author_name)}</span>
                 <span class="nws-dot">&middot;</span>
-                <span>Tick ${lead.published_tick || '—'}</span>
+                <span>Tick ${lead.published_tick ?? '—'}</span>
             </div>
             <div class="nws-lead-body">
                 <p class="nws-drop-cap">${escapeHtml(leadBody)}</p>
@@ -710,7 +714,7 @@ function populateSecondaryGrid(articles) {
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sec-headline">${escapeHtml(a.headline)}</h3>
                 <p class="nws-sec-deck">${escapeHtml((a.body || '').substring(0, 150))}${(a.body || '').length > 150 ? '...' : ''}</p>
-                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>Tick ${a.published_tick || '—'}</span></div>
+                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>Tick ${a.published_tick ?? '—'}</span></div>
             </div>`;
         } else {
             const label = placeholderLabels[i] || 'News';
