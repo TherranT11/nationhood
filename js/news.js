@@ -835,8 +835,10 @@ async function loadAndDisplayArticles() {
         const sidebar = sorted.slice(1, 4);
         // Secondary grid = next 3 after sidebar
         const secondary = sorted.slice(4, 7);
-        // In Brief = next 5 after secondary
-        const briefs = sorted.slice(7, 12);
+        // In Brief = 5 most recent articles (all categories, by recency)
+        const briefs = [...activeArticles]
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+            .slice(0, 5);
 
         // Populate lead section
         if (lead) populateLeadSection(lead, sidebar);
