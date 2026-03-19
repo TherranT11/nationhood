@@ -67,5 +67,61 @@ export async function initNewspaper(supabase, state) {
             </div>
         </div>
 
+        <!-- MAIN CONTENT -->
+        <div class="nws-main-content">
+
+            <!-- LEAD SECTION (A1) -->
+            <div class="nws-lead-section" id="nws-lead-section">
+                <div class="nws-lead-main">
+                    <span class="nws-section-tag nws-placeholder">[Category]</span>
+                    <h2 class="nws-lead-headline nws-placeholder">[Lead Headline]</h2>
+                    <p class="nws-lead-deck nws-placeholder">[Article summary will appear here. The longest article by character count is always promoted to the A1 lead position on the front page.]</p>
+                    <div class="nws-byline">
+                        <span class="nws-author nws-placeholder">[Author]</span>
+                        <span class="nws-dot">&middot;</span>
+                        <span class="nws-placeholder">[Date]</span>
+                    </div>
+                    <div class="nws-lead-body">
+                        <p class="nws-placeholder">[Article body text will appear here when articles are submitted. Write an article using the button in the top right to get started.]</p>
+                    </div>
+                </div>
+                <div class="nws-lead-sidebar">
+                    <div class="nws-lead-image">
+                        <div class="nws-img-placeholder">
+                            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                                <rect width="48" height="48" rx="4" fill="rgba(255,255,255,0.05)"/>
+                                <circle cx="18" cy="20" r="6" fill="rgba(255,255,255,0.1)"/>
+                                <path d="M6 38 L18 26 L26 34 L34 22 L42 38Z" fill="rgba(255,255,255,0.08)"/>
+                            </svg>
+                            <span style="font-family:'Inter',sans-serif;font-size:9px;color:rgba(255,255,255,0.2);letter-spacing:1px;text-transform:uppercase;">Photo</span>
+                        </div>
+                    </div>
+                    <p class="nws-img-caption nws-placeholder">[Photo caption]</p>
+
+                    <div class="nws-sidebar-story">
+                        <span class="nws-section-tag nws-placeholder">[Category]</span>
+                        <h3 class="nws-sidebar-headline nws-placeholder">[Sidebar Story Headline]</h3>
+                        <p class="nws-sidebar-deck nws-placeholder">[Brief summary of the second-longest article.]</p>
+                        <div class="nws-byline"><span class="nws-author nws-placeholder">[Author]</span><span class="nws-dot">&middot;</span><span class="nws-placeholder">[Date]</span></div>
+                    </div>
+
+                    <div class="nws-sidebar-story">
+                        <span class="nws-section-tag nws-placeholder">[Category]</span>
+                        <h3 class="nws-sidebar-headline nws-placeholder">[Sidebar Story Headline]</h3>
+                        <p class="nws-sidebar-deck nws-placeholder">[Brief summary of another article.]</p>
+                        <div class="nws-byline"><span class="nws-author nws-placeholder">[Author]</span><span class="nws-dot">&middot;</span><span class="nws-placeholder">[Date]</span></div>
+                    </div>
+
+                    <div class="nws-sidebar-story">
+                        <span class="nws-section-tag nws-placeholder">[Category]</span>
+                        <h3 class="nws-sidebar-headline nws-placeholder">[Sidebar Story Headline]</h3>
+                        <p class="nws-sidebar-deck nws-placeholder">[Brief summary of another article.]</p>
+                        <div class="nws-byline"><span class="nws-author nws-placeholder">[Author]</span><span class="nws-dot">&middot;</span><span class="nws-placeholder">[Date]</span></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
     </div>`;
 }
