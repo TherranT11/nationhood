@@ -666,6 +666,23 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+function formatLeadPreview(body, limit = 600) {
+    if (body.length <= limit) return formatBodyHtml(body);
+
+    // Truncate at word boundary near the limit
+    let cut = body.lastIndexOf(' ', limit);
+    if (cut < limit * 0.5) cut = limit; // fallback if no space found
+    const preview = body.substring(0, cut);
+
+    // Render preview paragraphs, then append a Read More prompt
+    const paragraphs = preview.split(/\n\n+/).filter(p => p.trim());
+    const html = paragraphs.map((p, i) =>
+        `<p class="${i === 0 ? 'nws-drop-cap' : ''}">${escapeHtml(p.trim())}${i === paragraphs.length - 1 ? '...' : ''}</p>`
+    ).join('');
+
+    return html + `<p class="nws-read-more">Read More &rarr;</p>`;
+}
+
 function formatBodyHtml(body) {
     const paragraphs = body.split(/\n\n+/).filter(p => p.trim());
     if (paragraphs.length <= 1) {
@@ -813,7 +830,7 @@ function populateLeadSection(lead, sidebar) {
                 <span>Tick ${lead.published_tick ?? '—'}</span>
             </div>
             <div class="nws-lead-body">
-                ${formatBodyHtml(leadBody)}
+                ${formatLeadPreview(leadBody)}
             </div>
         </div>
         <div class="nws-lead-sidebar">

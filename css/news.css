@@ -946,6 +946,20 @@
     border-color: var(--nws-ink);
 }
 
+.nws-read-more {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--nws-red);
+    margin-top: 8px;
+}
+
+[data-article-id]:hover .nws-read-more {
+    text-decoration: underline;
+}
+
 /* Clickable article cards */
 [data-article-id] {
     cursor: pointer;
