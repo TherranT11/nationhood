@@ -68,6 +68,7 @@ DECLARE
     v_bloc_party_votes JSONB;
     v_prev_votes BIGINT;
     v_new_votes BIGINT;
+    v_eligible          BIGINT;
 BEGIN
     IF v_election_type NOT IN ('parliamentary', 'presidential') THEN
         RAISE EXCEPTION 'Invalid election type: % (allowed: parliamentary, presidential)', p_election_type;
@@ -84,6 +85,7 @@ BEGIN
     END IF;
 
     v_total_seats := COALESCE(v_nation.total_seats, 120);
+    v_eligible := COALESCE(v_nation.eligible_voters, 0);
 
     -- ---- Load parties with ideology axes ----
     SELECT COALESCE(jsonb_agg(row_to_json(t)::JSONB), '[]'::JSONB)
@@ -152,7 +154,6 @@ BEGIN
     -- eligible_voters is a raw count (actual number of eligible voters).
     DECLARE
         v_total_bloc_voters BIGINT;
-        v_eligible          BIGINT := COALESCE(v_nation.eligible_voters, 0);
         v_bloc_scale        NUMERIC := 1;
     BEGIN
         IF v_eligible > 0 THEN
