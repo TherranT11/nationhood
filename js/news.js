@@ -627,12 +627,12 @@ function renderArticleView(root, article) {
         <!-- READER CONTENT -->
         <div class="nws-main-content">
             <div class="nws-reader">
-                <span class="nws-section-tag">${escapeHtml(categoryLabel(article.category))} &mdash; Tick ${article.published_tick ?? '—'}</span>
+                <span class="nws-section-tag">${escapeHtml(categoryLabel(article.category))} &mdash; ${gameDate}</span>
                 <h1 class="nws-reader-headline">${escapeHtml(article.headline)}</h1>
                 <div class="nws-byline">
                     <span class="nws-author">${escapeHtml(article.author_name)}</span>
                     <span class="nws-dot">&middot;</span>
-                    <span>Tick ${article.published_tick ?? '—'}</span>
+                    <span>${gameDate}</span>
                 </div>
                 <hr class="nws-reader-rule">
                 ${imageHtml}
@@ -806,7 +806,7 @@ function populateLeadSection(lead, sidebar) {
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sidebar-headline">${escapeHtml(a.headline)}</h3>
                 <p class="nws-sidebar-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 120))}${(a.body || '').length > 120 ? '...' : ''}</p>
-                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>Tick ${a.published_tick ?? '—'}</span></div>
+                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${_state?.shard?.current_date || '—'}</span></div>
             </div>
         `).join('')
         : `<div class="nws-sidebar-story"><p class="nws-placeholder">[More stories will appear as articles are published.]</p></div>`;
@@ -829,7 +829,7 @@ function populateLeadSection(lead, sidebar) {
             <div class="nws-byline">
                 <span class="nws-author">${escapeHtml(lead.author_name)}</span>
                 <span class="nws-dot">&middot;</span>
-                <span>Tick ${lead.published_tick ?? '—'}</span>
+                <span>${_state?.shard?.current_date || '—'}</span>
             </div>
             <div class="nws-lead-body">
                 ${formatLeadPreview(leadBody)}
@@ -867,7 +867,7 @@ function populateSecondaryGrid(articles) {
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sec-headline">${escapeHtml(a.headline)}</h3>
                 <p class="nws-sec-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 150))}${(a.body || '').length > 150 ? '...' : ''}</p>
-                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>Tick ${a.published_tick ?? '—'}</span></div>
+                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${_state?.shard?.current_date || '—'}</span></div>
             </div>`;
         } else {
             const label = placeholderLabels[i] || 'News';
