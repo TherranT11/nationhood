@@ -2981,6 +2981,7 @@ let _alreadyEndorsed = false;       // whether we already endorsed the current e
 let _protestCachedMinisters = null;
 let _protestCachedPolicies = null;
 let _protestCachedStats = null;
+let _protestLoading = false;
 let _govProtestCrisis = null;       // active protest crisis for governing party PA row
 
 // Store references for re-rendering
@@ -3004,6 +3005,7 @@ function caReset() {
     _caAttackEvidence = null; _caAttackVectors = null;
     _protestTab = 'minister'; _protestTarget = null;
     _protestCachedMinisters = null; _protestCachedPolicies = null; _protestCachedStats = null;
+    _protestLoading = false;
 }
 
 function caIsReady() {
@@ -4213,9 +4215,20 @@ function wireCampaignConfig(container, f, n, ap, blocs, otherParties, factionIde
         });
     }
 
-    // Protest: load data when first visible
-    if (_caSelected === 'protest' && !_caResult) {
-        loadProtestData(n, f, tick).then(rerender);
+    // Protest: load data when first visible (only if not already cached or loading)
+    if (_caSelected === 'protest' && !_caResult && !_protestCachedMinisters && !_protestLoading) {
+        _protestLoading = true;
+        loadProtestData(n, f, tick).then(() => {
+            _protestLoading = false;
+            rerender();
+        }).catch(err => {
+            console.error('[Protest] loadProtestData failed:', err);
+            _protestLoading = false;
+            _protestCachedMinisters = _protestCachedMinisters || [];
+            _protestCachedPolicies = _protestCachedPolicies || [];
+            _protestCachedStats = _protestCachedStats || { failingStats: [], _fatigueLevel: { label: '—', color: '#4a4840' } };
+            rerender();
+        });
     }
 
     // Protest tab selection

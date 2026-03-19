@@ -23455,7 +23455,7 @@ async function checkTier7DemandMet(supabase, nation, demand, currentTick) {
             .eq('nation_id', nation.id)
             .eq('ministry_key', demand.target)
             .single();
-        return ministry?.party_id == null;
+        return ministry != null && ministry.party_id == null;
     }
 
     if (demand.type === 'stat') {
