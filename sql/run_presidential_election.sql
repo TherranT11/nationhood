@@ -41,6 +41,7 @@ DECLARE
     v_winner_id    TEXT;
     v_bloc_approvals JSONB;
     v_election_id UUID := p_election_id;
+    v_eligible          BIGINT;
 BEGIN
     -- ---- Load nation ----
     SELECT id, name, population, eligible_voters
@@ -51,6 +52,8 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Nation not found: %', p_nation_id;
     END IF;
+
+    v_eligible := COALESCE(v_nation.eligible_voters, 0);
 
     IF v_election_id IS NULL THEN
         RAISE EXCEPTION 'Election id is required for presidential election snapshots';
@@ -160,7 +163,6 @@ BEGIN
     -- eligible_voters is a raw count (actual number of eligible voters).
     DECLARE
         v_total_bloc_voters BIGINT;
-        v_eligible          BIGINT := COALESCE(v_nation.eligible_voters, 0);
         v_bloc_scale        NUMERIC := 1;
     BEGIN
         IF v_eligible > 0 THEN

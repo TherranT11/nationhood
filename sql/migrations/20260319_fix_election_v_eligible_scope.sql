@@ -1,0 +1,12 @@
+-- Fix: v_eligible variable scoping bug in run_election + run_presidential_election
+--
+-- v_eligible was declared inside a nested DECLARE block that closed before
+-- the variable was referenced in the result-building code (turnout_pct).
+-- PostgreSQL error: column "v_eligible" does not exist
+--
+-- Fix: move v_eligible to the outer DECLARE block so it remains in scope
+-- for the entire function body.
+--
+-- To apply: run the two source files which contain CREATE OR REPLACE FUNCTION:
+--   \i sql/run_election.sql
+--   \i sql/run_presidential_election.sql
