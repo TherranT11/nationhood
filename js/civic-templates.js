@@ -77,6 +77,39 @@ export const CIVIC_TAG_MAP = {
     ministry_enforce_public_order: 'INTERIOR',
     ministry_community_outreach:   'INTERIOR',
     ministry_surveillance_expansion:'INTERIOR',
+    impeachment_failed:            'CRISIS',
+    no_confidence_failed:          'CRISIS',
+    succession_action:             'FACTION',
+    strongman_death:               'CRISIS',
+    become_steward:                'FACTION',
+    steward_action:                'FACTION',
+    steward_detected:              'FACTION',
+    dynasty_action:                'FACTION',
+    dynasty_detected:              'FACTION',
+    embezzlement:                  'ECONOMY',
+    embezzlement_detected:         'ECONOMY',
+    loyalty_demand:                'FACTION',
+    campaign_promise:              'ELECTION',
+    pledge_allegiance:             'FACTION',
+    coalition_proposal:            'COALITION',
+    coalition_betrayal:            'COALITION',
+    coalition_detected:            'COALITION',
+    intimidation_response:         'CRISIS',
+    campaign_endorsement:          'ELECTION',
+    seat_redistribution:           'ELECTION',
+    no_vote_penalty:               'BILL',
+    interior_secret_police:        'INTERIOR',
+    interior_dissident_cell:       'INTERIOR',
+    interior_ethnic_unrest:        'INTERIOR',
+    interior_governor_defiance:    'INTERIOR',
+    interior_loyalty_test:         'INTERIOR',
+    interior_media_expose:         'INTERIOR',
+    interior_border_warlord:       'INTERIOR',
+    interior_succession_anxiety:   'INTERIOR',
+    interior_police_brutality:     'INTERIOR',
+    interior_prison_overcrowding:  'INTERIOR',
+    interior_flood_response:       'INTERIOR',
+    interior_immigration_surge:    'INTERIOR',
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -477,6 +510,237 @@ export const CIVIC_TEMPLATES = {
         { id: 'se4', text: 'Civil liberties groups raise alarm as {ministry} deploys new surveillance infrastructure. #Surveillance #CivilRights' },
         { id: 'se5', text: '{nation}\'s surveillance footprint grows under {minister_name}\'s interior directive. Safety or overreach? #Surveillance #Interior' },
     ],
+
+    // ── 51. Impeachment Failed ──
+    impeachment_failed: [
+        { id: 'imf1', text: 'Impeachment motion against the president fails to reach the required threshold. Government survives. #Impeachment #Crisis' },
+        { id: 'imf2', text: 'The constitution worked as intended. Impeachment required a higher bar and it was not met. #Impeachment' },
+        { id: 'imf3', text: 'Failed impeachment vote just hands the president a political victory. Opponents played this badly. #Impeachment #Crisis' },
+    ],
+
+    // ── 52. No Confidence Failed ──
+    no_confidence_failed: [
+        { id: 'ncf1', text: 'No-confidence motion against the government defeated in parliament. The coalition holds — for now. #NoConfidence #Parliament' },
+        { id: 'ncf2', text: 'Government survives the no-confidence vote. This is stability, not weakness. #NoConfidence' },
+        { id: 'ncf3', text: 'Another no-confidence vote fails. Is the opposition even trying? #NoConfidence #Parliament' },
+    ],
+
+    // ── 53. Succession Action ──
+    succession_action: [
+        { id: 'suc1', text: '{faction} announces a leadership transition. {action} — the succession plan is in motion. #Succession #Leadership' },
+        { id: 'suc2', text: 'Orderly transfer of power within {faction}. {action}. Institutional stability at its best. #Succession' },
+        { id: 'suc3', text: '{faction} restructuring its leadership behind closed doors. {action}. Transparency? Never heard of it. #Succession' },
+    ],
+
+    // ── 54. Strongman Death ──
+    strongman_death: [
+        { id: 'smd1', text: 'The leader of {faction} has died. Power vacuum opens as loyalists scramble for position. #Succession #Crisis' },
+        { id: 'smd2', text: '{faction} loses its figurehead. A moment of uncertainty for the entire nation. #Leadership #Crisis' },
+        { id: 'smd3', text: 'The strongman is gone. Celebrations in some quarters, panic in others. What comes next? #Succession' },
+    ],
+
+    // ── 55. Become Steward ──
+    become_steward: [
+        { id: 'bst1', text: '{faction} installs a caretaker steward to manage affairs during the transition. #Steward #Succession' },
+        { id: 'bst2', text: 'A steward takes the reins in {faction}. Continuity in uncertain times. #Steward' },
+        { id: 'bst3', text: 'Who appointed this steward? {faction} putting an unelected figure in charge raises questions. #Steward #Democracy' },
+    ],
+
+    // ── 56. Steward Action ──
+    steward_action: [
+        { id: 'sta1', text: '{faction}\'s steward {action}. Political observers watching closely. #Steward #Power' },
+        { id: 'sta2', text: 'Strong move by {faction}\'s steward. {action}. This is leadership. #Steward' },
+        { id: 'sta3', text: '{faction} steward overstepping. {action} — caretakers are not meant to make power plays. #Steward #Overreach' },
+    ],
+
+    // ── 57. Steward Detected ──
+    steward_detected: [
+        { id: 'std1', text: '{faction}\'s steward has been caught mobilizing resources without authorization. Investigation expected. #Steward #Scandal' },
+        { id: 'std2', text: 'Steward of {faction} exposed coordinating a shadow campaign. This needs accountability. #Steward #Transparency' },
+        { id: 'std3', text: 'So {faction}\'s caretaker was building a power base all along. Shocked? Nobody is. #Steward #Corruption' },
+    ],
+
+    // ── 58. Dynasty Action ──
+    dynasty_action: [
+        { id: 'dyn1', text: '{faction} engages in dynastic maneuvering. {action}. Power consolidation continues. #Dynasty #Power' },
+        { id: 'dyn2', text: '{faction} building institutional depth through {action}. Long-term vision. #Dynasty' },
+        { id: 'dyn3', text: '{faction} treating the state like a family business. {action} is not governance, it is nepotism. #Dynasty #Corruption' },
+    ],
+
+    // ── 59. Dynasty Detected ──
+    dynasty_detected: [
+        { id: 'dyd1', text: 'Intelligence reports reveal {faction} has been grooming a successor in secret. Dynastic ambitions confirmed. #Dynasty #Exposed' },
+        { id: 'dyd2', text: '{faction} dynastic preparations exposed. The public deserves to know who is really being positioned for power. #Dynasty' },
+        { id: 'dyd3', text: 'Everyone knew {faction} was building a dynasty. Now there is proof. Will anyone actually do something about it? #Dynasty #Corruption' },
+    ],
+
+    // ── 60. Embezzlement ──
+    embezzlement: [
+        { id: 'emb1', text: 'Funds diverted from state accounts. {faction} officials under scrutiny for financial irregularities. #Corruption #Economy' },
+        { id: 'emb2', text: '{faction} enriching itself from public coffers. This is theft, plain and simple. #Corruption #Accountability' },
+        { id: 'emb3', text: 'Another day, another embezzlement scandal. {faction} treating the treasury like a personal account. #Corruption' },
+    ],
+
+    // ── 61. Embezzlement Detected ──
+    embezzlement_detected: [
+        { id: 'emd1', text: '{faction} embezzlement scheme uncovered by auditors. Criminal referrals expected. #Corruption #Justice' },
+        { id: 'emd2', text: 'Oversight works. {faction} financial misconduct caught and documented. Prosecution must follow. #Corruption #Accountability' },
+        { id: 'emd3', text: '{faction} caught with its hand in the till. Watch them claim it was a clerical error. #Corruption #Scandal' },
+    ],
+
+    // ── 62. Loyalty Demand ──
+    loyalty_demand: [
+        { id: 'lyd1', text: '{faction} leadership demands a public loyalty pledge from members. Refusal carries consequences. #Loyalty #Power' },
+        { id: 'lyd2', text: 'Unity requires commitment. {faction} asking members to stand together is not unreasonable. #Loyalty' },
+        { id: 'lyd3', text: '{faction} issuing loyalty oaths like a medieval fiefdom. This is a political party, not a cult. #Loyalty #Authoritarianism' },
+    ],
+
+    // ── 63. Campaign Promise ──
+    campaign_promise: [
+        { id: 'cpr1', text: '{faction} pledges to deliver on {promise}. Voters will be watching. #CampaignPromise #Election' },
+        { id: 'cpr2', text: 'Bold commitment from {faction}: {promise}. This is the kind of policy vision we need. #CampaignPromise' },
+        { id: 'cpr3', text: '{faction} promising {promise}. Sure. Let us see the budget for that. #CampaignPromise #Skepticism' },
+    ],
+
+    // ── 64. Pledge Allegiance ──
+    pledge_allegiance: [
+        { id: 'pla1', text: '{faction} publicly pledges allegiance to {target}. The political landscape shifts. #Allegiance #Coalition' },
+        { id: 'pla2', text: 'Wise move by {faction} aligning with {target}. Strength through unity. #Allegiance' },
+        { id: 'pla3', text: '{faction} bending the knee to {target}. Independence traded for protection. #Allegiance #Power' },
+    ],
+
+    // ── 65. Coalition Proposal ──
+    coalition_proposal: [
+        { id: 'cop1', text: '{faction} proposes a formal coalition with {target}. Negotiations underway. #Coalition #Parliament' },
+        { id: 'cop2', text: 'Coalition building is how democracies work. {faction} reaching out to {target} is pragmatic governance. #Coalition' },
+        { id: 'cop3', text: '{faction} and {target} in coalition talks. Principles for sale to the highest bidder. #Coalition #Dealmaking' },
+    ],
+
+    // ── 66. Coalition Betrayal ──
+    coalition_betrayal: [
+        { id: 'cob1', text: '{faction} breaks its coalition agreement. Partner faction blindsided. Political crisis deepens. #Coalition #Betrayal' },
+        { id: 'cob2', text: 'Sometimes alliances must end. {faction} is putting its principles ahead of a failing partnership. #Coalition' },
+        { id: 'cob3', text: '{faction} stabs its coalition partner in the back. And they wonder why nobody trusts politicians. #Coalition #Betrayal' },
+    ],
+
+    // ── 67. Coalition Detected ──
+    coalition_detected: [
+        { id: 'cod1', text: 'Secret coalition negotiations between factions have been uncovered. Backroom deals exposed. #Coalition #Transparency' },
+        { id: 'cod2', text: 'Coalition talks happening behind closed doors is normal politics. The outrage is performative. #Coalition' },
+        { id: 'cod3', text: 'So while they talk about transparency, they are cutting secret deals in private. Classic. #Coalition #Hypocrisy' },
+    ],
+
+    // ── 68. Intimidation Response ──
+    intimidation_response: [
+        { id: 'inr1', text: '{faction} intimidation tactics reported. Authorities assessing the situation. #Intimidation #Democracy' },
+        { id: 'inr2', text: 'Political intimidation has no place in a democracy. {faction} must be held accountable. #Intimidation #Rule0fLaw' },
+        { id: 'inr3', text: '{faction} thugs threatening opponents and everyone pretends to be surprised. This has been happening for months. #Intimidation' },
+    ],
+
+    // ── 69. Campaign Endorsement ──
+    campaign_endorsement: [
+        { id: 'cen1', text: '{faction} officially endorses {target} for the upcoming contest. A significant political signal. #Endorsement #Election' },
+        { id: 'cen2', text: 'Smart endorsement by {faction}. Backing {target} is the right call for the country. #Endorsement' },
+        { id: 'cen3', text: '{faction} endorsing {target} is pure political calculation. Do not pretend this is about policy. #Endorsement #Politics' },
+    ],
+
+    // ── 70. Seat Redistribution ──
+    seat_redistribution: [
+        { id: 'srd1', text: 'Parliamentary seats redistributed. New allocation reflects shifting political dynamics. #Parliament #Reform' },
+        { id: 'srd2', text: 'Seat redistribution ensures fairer representation. Democracy is self-correcting. #Parliament #Reform' },
+        { id: 'srd3', text: 'Gerrymandering disguised as reform. Seat redistribution just happens to benefit whoever is in charge. #Parliament #Rigged' },
+    ],
+
+    // ── 71. No-Vote Penalty ──
+    no_vote_penalty: [
+        { id: 'nvp1', text: 'Parliamentarian penalized for failure to participate in a key vote. Attendance rules enforced. #Parliament #Accountability' },
+        { id: 'nvp2', text: 'If you cannot be bothered to show up and vote, you should not hold office. Penalties are deserved. #Parliament' },
+        { id: 'nvp3', text: 'Penalizing legislators for missing votes when the system itself is broken. Fix the institution, not the symptoms. #Parliament' },
+    ],
+
+    // ── 72. Interior: Secret Police Overreach ──
+    interior_secret_police: [
+        { id: 'isp1', text: 'Reports emerge that the secret police have been operating beyond their legal mandate. {ministry} under pressure. #Interior #CivilRights' },
+        { id: 'isp2', text: 'Security services must have latitude to protect the state. Oversight can come later. #Interior #Security' },
+        { id: 'isp3', text: 'Secret police operating without oversight is not security, it is tyranny. {minister_name} must answer for this. #Interior #Abuse' },
+    ],
+
+    // ── 73. Interior: Dissident Cell ──
+    interior_dissident_cell: [
+        { id: 'idc1', text: 'Underground dissident network identified operating across multiple provinces. {ministry} monitoring the situation. #Interior #Security' },
+        { id: 'idc2', text: 'Dissidents are a threat to national stability. The {ministry} is right to act decisively. #Interior #Order' },
+        { id: 'idc3', text: 'People organizing in secret because they cannot speak freely in public. Maybe the regime should ask why. #Interior #Freedom' },
+    ],
+
+    // ── 74. Interior: Ethnic Unrest ──
+    interior_ethnic_unrest: [
+        { id: 'ieu1', text: 'Ethnic tensions escalating in the northern territories. {ministry} deploying mediators. #Interior #Tensions' },
+        { id: 'ieu2', text: 'Ethnic unrest requires a firm but fair response. The {ministry} must protect all communities equally. #Interior' },
+        { id: 'ieu3', text: 'Decades of marginalization produce predictable results. Ethnic unrest is a policy failure, not a policing problem. #Interior #Justice' },
+    ],
+
+    // ── 75. Interior: Governor Defiance ──
+    interior_governor_defiance: [
+        { id: 'igd1', text: 'Regional governor openly defying central authority directives. Constitutional standoff brewing. #Interior #Federalism' },
+        { id: 'igd2', text: 'Regional autonomy matters. A governor pushing back against overreach from the capital is doing their job. #Interior' },
+        { id: 'igd3', text: 'When governors defy the central government, it is not principled — it is a power grab with local flavor. #Interior #Unity' },
+    ],
+
+    // ── 76. Interior: Loyalty Test ──
+    interior_loyalty_test: [
+        { id: 'ilt1', text: 'Regime loyalty tests administered across government institutions. Officials required to demonstrate allegiance. #Interior #Regime' },
+        { id: 'ilt2', text: 'Ensuring loyalty in the ranks is essential for stable governance. The state must know who it can trust. #Interior' },
+        { id: 'ilt3', text: 'Loyalty tests are the hallmark of a regime that knows it has lost legitimacy. Fear is not loyalty. #Interior #Authoritarianism' },
+    ],
+
+    // ── 77. Interior: Media Expose ──
+    interior_media_expose: [
+        { id: 'ime1', text: 'Investigative journalists publish damaging expose on regime operations. {ministry} scrambles to respond. #Interior #Press' },
+        { id: 'ime2', text: 'A free press holding power to account. This is exactly what journalism is supposed to do. #Interior #Freedom' },
+        { id: 'ime3', text: 'Media expose conveniently timed and selectively sourced. Who is really behind this story? #Interior #MediaBias' },
+    ],
+
+    // ── 78. Interior: Border Warlord ──
+    interior_border_warlord: [
+        { id: 'ibw1', text: 'Armed group consolidating control in border region. Central authority challenged. {ministry} weighing options. #Interior #Security' },
+        { id: 'ibw2', text: 'Border security is national security. The {ministry} must act before this becomes uncontrollable. #Interior #Defense' },
+        { id: 'ibw3', text: 'A warlord controls the border and the government controls the press conference about it. Priorities. #Interior #FailedState' },
+    ],
+
+    // ── 79. Interior: Succession Anxiety ──
+    interior_succession_anxiety: [
+        { id: 'isa1', text: 'Growing anxiety within power structures over unclear succession plans. Factions positioning for influence. #Interior #Succession' },
+        { id: 'isa2', text: 'Succession planning is a sign of institutional maturity. Better to prepare now than face chaos later. #Interior' },
+        { id: 'isa3', text: 'The regime cannot even manage its own succession without a crisis. Inspiring confidence, as always. #Interior #Instability' },
+    ],
+
+    // ── 80. Interior: Police Brutality ──
+    interior_police_brutality: [
+        { id: 'ipb1', text: 'Police brutality incident sparks public outcry. {ministry} promises investigation. #Interior #CivilRights' },
+        { id: 'ipb2', text: 'No one is above the law, including those who enforce it. This incident demands accountability. #Interior #Justice' },
+        { id: 'ipb3', text: 'Another brutality case, another promise of investigation, another result of nothing. The system protects its own. #Interior #Reform' },
+    ],
+
+    // ── 81. Interior: Prison Overcrowding ──
+    interior_prison_overcrowding: [
+        { id: 'ipo1', text: 'Prison overcrowding reaches critical levels. {ministry} under pressure to address conditions. #Interior #Justice' },
+        { id: 'ipo2', text: 'Overcrowded prisons are a humanitarian crisis. Reform is overdue and alternatives must be explored. #Interior #Reform' },
+        { id: 'ipo3', text: 'Lock everyone up and then complain about overcrowding. Criminal justice policy at its finest. #Interior #SystemFailure' },
+    ],
+
+    // ── 82. Interior: Flood Response ──
+    interior_flood_response: [
+        { id: 'ifr1', text: 'Major flooding reported. {ministry} coordinating emergency response across affected regions. #Interior #Disaster' },
+        { id: 'ifr2', text: 'Government mobilizing resources for flood relief. Communities need support now, not politics. #Interior #Emergency' },
+        { id: 'ifr3', text: 'Floods devastate communities while the government argues about budgets. Infrastructure investment could have prevented this. #Interior #Neglect' },
+    ],
+
+    // ── 83. Interior: Immigration Surge ──
+    interior_immigration_surge: [
+        { id: 'iis1', text: 'Immigration surge strains processing systems. {ministry} expanding capacity at border facilities. #Interior #Immigration' },
+        { id: 'iis2', text: 'People seek a better life here because this nation offers opportunity. Managing the influx is a challenge, not a crisis. #Interior #Immigration' },
+        { id: 'iis3', text: 'Immigration system overwhelmed and nobody had a plan. Years of warnings ignored. #Interior #Immigration #PolicyFailure' },
+    ],
 };
 
 
@@ -553,10 +817,29 @@ export const CIVIC_EVENT_MAP = {
     'crisis_started':                    'crisis_start',
     'crisis_resolved':                   'crisis_end',
 
-    // Ministry actions (Interior)
+    // Ministry actions (Interior) — generic
     'ministry_enforce_public_order':     'ministry_enforce_public_order',
     'ministry_community_outreach':       'ministry_community_outreach',
     'ministry_surveillance_expansion':   'ministry_surveillance_expansion',
+
+    // No-vote penalty
+    'no_vote_penalty':                   'no_vote_penalty',
+
+    // Interior ministry — autocracy events
+    'interior_auto_secret_police_overreach': 'interior_secret_police',
+    'interior_auto_dissident_cell':          'interior_dissident_cell',
+    'interior_auto_ethnic_unrest':           'interior_ethnic_unrest',
+    'interior_auto_governor_defiance':       'interior_governor_defiance',
+    'interior_auto_loyalty_test':            'interior_loyalty_test',
+    'interior_auto_media_expose':            'interior_media_expose',
+    'interior_auto_border_warlord':          'interior_border_warlord',
+    'interior_auto_succession_anxiety':      'interior_succession_anxiety',
+
+    // Interior ministry — democracy events
+    'interior_dem_police_brutality':         'interior_police_brutality',
+    'interior_dem_prison_overcrowding':       'interior_prison_overcrowding',
+    'interior_dem_flood_response':           'interior_flood_response',
+    'interior_dem_immigration_surge':        'interior_immigration_surge',
 };
 
 
@@ -602,6 +885,54 @@ export const CIVIC_ACTION_MAP = {
     'regime_health_threshold':           'regime_health_threshold',
     'power_vacuum':                      'consolidation_begins',
     'regime_succession':                 'strongman_power',
+
+    // Non-prefixed variants (same as faction_ prefixed ones)
+    'consolidate_power':                 'strongman_power',
+    'demonstrate_competence':            'strongman_power',
+
+    // Succession & steward actions
+    'appoint_successor':                 'succession_action',
+    'revoke_successor':                  'succession_action',
+    'clean_succession':                  'succession_action',
+    'family_succession':                 'succession_action',
+    'strongman_death':                   'strongman_death',
+    'become_steward':                    'become_steward',
+    'steward_mobilize':                  'steward_action',
+    'steward_show_of_force':             'steward_action',
+    'steward_detected_mobilize':         'steward_detected',
+
+    // Dynasty actions
+    'dynasty_shadow':                    'dynasty_action',
+    'dynasty_cultivate':                 'dynasty_action',
+    'dynasty_prepare':                   'dynasty_action',
+    'dynasty_detected_prepare':          'dynasty_detected',
+
+    // Embezzlement
+    'embezzle_funds':                    'embezzlement',
+    'faction_embezzle':                  'embezzlement',
+    'faction_embezzle_detected':         'embezzlement_detected',
+
+    // Loyalty & pledges
+    'demand_loyalty':                    'loyalty_demand',
+    'loyalty_demand_expired':            'loyalty_demand',
+    'make_promise':                      'campaign_promise',
+    'pledge_allegiance':                 'pledge_allegiance',
+
+    // Coalition actions
+    'propose_coalition':                 'coalition_proposal',
+    'betray_coalition':                  'coalition_betrayal',
+    'coalition_detected':                'coalition_detected',
+
+    // Intimidation responses
+    'intimidation_pending':              'intimidation_response',
+    'intimidation_reported':             'intimidation_response',
+    'intimidation_retaliated':           'intimidation_response',
+
+    // Campaign actions
+    'endorsement_preference':            'campaign_endorsement',
+    'redistribute_seats':                'seat_redistribution',
+    'impeachment_failed':                'impeachment_failed',
+    'no_confidence_failed':              'no_confidence_failed',
 };
 
 
@@ -862,6 +1193,31 @@ export function extractEventVars(templateKey, row) {
                 threshold: e.threshold || e.index || 'critical',
             };
 
+        case 'no_vote_penalty':
+            return {
+                party: e.party || e.faction_name || '',
+                penalty: e.penalty || e.description || 'attendance violation',
+            };
+
+        case 'interior_secret_police':
+        case 'interior_dissident_cell':
+        case 'interior_ethnic_unrest':
+        case 'interior_governor_defiance':
+        case 'interior_loyalty_test':
+        case 'interior_media_expose':
+        case 'interior_border_warlord':
+        case 'interior_succession_anxiety':
+        case 'interior_police_brutality':
+        case 'interior_prison_overcrowding':
+        case 'interior_flood_response':
+        case 'interior_immigration_surge':
+            return {
+                minister_name: e.minister_name || e.minister || '',
+                ministry: e.ministry || 'Interior Ministry',
+                party: e.party || '',
+                nation: e.nation || '',
+            };
+
         default:
             // Pass through all effects_applied as variables
             return { ...e };
@@ -954,6 +1310,108 @@ export function extractActionVars(templateKey, row) {
             };
 
         case 'coup_attempted':
+            return {
+                faction: factionName,
+            };
+
+        case 'succession_action':
+            return {
+                faction: factionName,
+                action: r.headline || row.action_type?.replace(/_/g, ' ') || 'leadership transition',
+            };
+
+        case 'strongman_death':
+            return {
+                faction: factionName,
+            };
+
+        case 'become_steward':
+            return {
+                faction: factionName,
+            };
+
+        case 'steward_action':
+            return {
+                faction: factionName,
+                action: r.headline || row.action_type?.replace(/_/g, ' ') || 'mobilization',
+            };
+
+        case 'steward_detected':
+            return {
+                faction: factionName,
+            };
+
+        case 'dynasty_action':
+            return {
+                faction: factionName,
+                action: r.headline || row.action_type?.replace(/_/g, ' ') || 'dynastic maneuver',
+            };
+
+        case 'dynasty_detected':
+            return {
+                faction: factionName,
+            };
+
+        case 'embezzlement':
+        case 'embezzlement_detected':
+            return {
+                faction: factionName,
+                amount: r.amount || r.value || '',
+            };
+
+        case 'loyalty_demand':
+            return {
+                faction: factionName,
+            };
+
+        case 'campaign_promise':
+            return {
+                faction: factionName,
+                promise: r.promise || r.headline || r.description || 'reform',
+            };
+
+        case 'pledge_allegiance':
+            return {
+                faction: factionName,
+                target: r.target_faction || r.target_name || r.target || 'the leadership',
+            };
+
+        case 'coalition_proposal':
+            return {
+                faction: factionName,
+                target: r.target_faction || r.partner || r.target || '',
+            };
+
+        case 'coalition_betrayal':
+            return {
+                faction: factionName,
+            };
+
+        case 'coalition_detected':
+            return {
+                faction: factionName,
+            };
+
+        case 'intimidation_response':
+            return {
+                faction: factionName,
+                target: r.target_name || r.target || 'political opponents',
+            };
+
+        case 'campaign_endorsement':
+            return {
+                faction: factionName,
+                target: r.endorsed || r.target_name || r.candidate || '',
+            };
+
+        case 'seat_redistribution':
+            return {
+                faction: factionName,
+                seats: r.seats || r.new_seats || '?',
+            };
+
+        case 'impeachment_failed':
+        case 'no_confidence_failed':
             return {
                 faction: factionName,
             };
