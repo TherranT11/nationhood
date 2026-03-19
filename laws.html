@@ -1034,6 +1034,12 @@ async function enactDecree(billId) {
             }
         }
 
+        // Calculate caucus dispositions via server-side RPC (RLS blocks client writes)
+        try {
+            const { error: caucusErr } = await _supabase.rpc('calculate_caucus_dispositions', { p_bill_id: billId });
+            if (caucusErr) console.warn('[enactDecree/laws] Caucus RPC error (non-fatal):', caucusErr.message);
+        } catch (e) { /* non-fatal */ }
+
         alert('⚡ Decree sent to the floor!');
         await loadLawsData(); renderLawsPage();
         // Scroll to the floor section so the enacted decree is visible

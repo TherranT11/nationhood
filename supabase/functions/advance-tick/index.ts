@@ -11965,6 +11965,7 @@ async function processPresidentDesk(supabase, nation, currentTick) {
         if (!enactment?.success) {
             console.error(`[processPresidentDesk] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
             await markBillEnactmentFailed(supabase, bill, currentTick, enactment?.error || 'President desk enactment failure');
+            await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationId: nation.id, nationName: nation.name, extra: { reason: 'enactment failed after president auto-sign' } });
             results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: enactment?.error });
             continue;
         }
@@ -19648,10 +19649,10 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
  */
 async function executeAppointSuccessor(supabase, nationId, strongmanFactionId, targetFactionId, currentTick) {
     // 1. Validate: caller is ruling faction
-    const { data: nation } = await supabase
-        .from('nations').select('id, ruling_faction_id, stability, successor_cooldown_end_tick')
+    const { data: nation, error: nationErr } = await supabase
+        .from('nations').select('*')
         .eq('id', nationId).single();
-    if (!nation) return { success: false, error: 'Nation not found.' };
+    if (nationErr || !nation) return { success: false, error: nationErr?.message || 'Nation not found.' };
     if (nation.ruling_faction_id !== strongmanFactionId) return { success: false, error: 'Only the Strongman can appoint a successor.' };
 
     // 2. Check cooldown
@@ -19805,10 +19806,10 @@ async function executeAppointSuccessor(supabase, nationId, strongmanFactionId, t
  * Cooldown from original appointment persists.
  */
 async function executeRevokeSuccessor(supabase, nationId, strongmanFactionId, currentTick) {
-    const { data: nation } = await supabase
-        .from('nations').select('id, ruling_faction_id, stability, successor_is_family_member')
+    const { data: nation, error: nationErr } = await supabase
+        .from('nations').select('*')
         .eq('id', nationId).single();
-    if (!nation) return { success: false, error: 'Nation not found.' };
+    if (nationErr || !nation) return { success: false, error: nationErr?.message || 'Nation not found.' };
     if (nation.ruling_faction_id !== strongmanFactionId) return { success: false, error: 'Only the Strongman can revoke.' };
 
     const isFamilyRevoke = nation.successor_is_family_member;
