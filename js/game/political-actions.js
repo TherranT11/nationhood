@@ -4429,7 +4429,8 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
             }
         }
 
-        newApproval = Math.round(Math.max(0, Math.min(100, newApproval)) * 10) / 10;
+        // minister_approval is an integer column — round to whole number
+        newApproval = Math.round(Math.max(0, Math.min(100, newApproval)));
 
         // Update baselines to current values so next tick only sees incremental change
         const updatedBaselines = {};
