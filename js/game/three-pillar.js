@@ -228,13 +228,27 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
     const INACTIVITY_DRAIN   = 1.5;  // momentum drain per tick when inactive
     const INACTIVITY_THRESHOLD = 3;  // ticks without any campaign action to trigger drain
 
+    // ── Engagement decay: ideology alignment loses effectiveness when inactive ──
+    // After INACTIVITY_THRESHOLD ticks without a campaign action, ideology effectiveness
+    // decays 5% per additional inactive tick, down to a 40% floor.
+    // Rationale: voters may agree with you ideologically, but if you're not campaigning
+    // they don't know you exist. High ideology alignment shouldn't be a free ride.
+    const ENGAGEMENT_DECAY_RATE = 0.05;  // 5% per inactive tick beyond threshold
+    const ENGAGEMENT_FLOOR     = 0.40;   // minimum 40% ideology effectiveness
+
+    // ── Opposition performance drift: inactive opposition drifts toward skepticism ──
+    // Instead of sitting at a free 50, inactive opposition parties drift toward 35.
+    // Active opposition parties (recent campaign action) stay at 50.
+    const OPPOSITION_INACTIVE_PERF_TARGET = 35;
+
     // ── 5a. Fetch last campaign action tick per faction (for inactivity detection) ──
-    // Only look at recent ticks to avoid fetching the entire action history.
+    // We need the most recent action tick per faction for both inactivity drain (3-tick threshold)
+    // and engagement decay (which scales with how many ticks since last action).
+    // Fetch only the most recent action per faction to keep the query efficient.
     const { data: lastActions } = await supabase
         .from('campaign_actions')
         .select('party_id, tick_performed')
         .in('party_id', factionIds)
-        .gte('tick_performed', currentTick - INACTIVITY_THRESHOLD)
         .order('tick_performed', { ascending: false })
         .limit(factionIds.length * 2);
     const lastActionTickMap = new Map();
@@ -266,14 +280,30 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         let platformChanged = false;
 
         // ─── PILLAR 1: Ideology Alignment (0-100) ───
-        const ideoScore = ideo ? computeIdeologyAlignment(ideo, bloc) : 50;
+        // Raw alignment from axis positions
+        const rawIdeoScore = ideo ? computeIdeologyAlignment(ideo, bloc) : 50;
+
+        // ─── Engagement decay: ideology loses effectiveness when inactive ───
+        // Voters may agree with you, but if you're not visible they forget you exist.
+        const lastAction = lastActionTickMap.get(row.faction_id) ?? -999;
+        const ticksSinceAction = currentTick - lastAction;
+        let engagementMult = 1.0;
+        if (currentTick >= INACTIVITY_THRESHOLD && ticksSinceAction >= INACTIVITY_THRESHOLD) {
+            const extraInactiveTicks = ticksSinceAction - INACTIVITY_THRESHOLD;
+            engagementMult = Math.max(ENGAGEMENT_FLOOR, 1.0 - extraInactiveTicks * ENGAGEMENT_DECAY_RATE);
+        }
+        const ideoScore = Math.round(rawIdeoScore * engagementMult * 100) / 100;
 
         // ─── PILLAR 2: Performance Perception (drift-based) ───
         // Coalition parties: target based on how well nation stats match this bloc's priority issues.
         // Opposition parties: neutral 50 (they aren't governing, so no accountability).
         // Drifts by max ±3/tick toward target, clamped to [20, 80].
         const oldPerf = Number(row.performance_perception ?? 50);
-        let perfTarget = 50; // neutral default for opposition
+        let perfTarget = 50; // neutral default for active opposition
+        // Inactive opposition: drift toward skepticism (35) instead of free 50
+        if (!coalitionPartyIds.has(row.faction_id) && currentTick >= INACTIVITY_THRESHOLD && ticksSinceAction >= INACTIVITY_THRESHOLD) {
+            perfTarget = OPPOSITION_INACTIVE_PERF_TARGET;
+        }
         if (coalitionPartyIds.has(row.faction_id)) {
             const blocIssues = bloc.priority_issues || [];
             let goodTotal = 0;
