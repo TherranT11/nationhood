@@ -938,22 +938,35 @@ async function loadAndDisplayArticles() {
 
         if (!articles || articles.length === 0) return;
 
-        // Filter out articles older than 3 ticks
+        // Filter out articles older than 3 ticks (except opinion — those persist until replaced)
         const currentTick = _state.shard?.current_tick ?? 0;
         const activeArticles = articles.filter(a => {
             const tick = a.published_tick ?? 0;
             return currentTick - tick < 3;
         });
 
-        if (activeArticles.length === 0) return;
+        // Opinion articles persist — keep the 4 most recent regardless of tick age
+        const allOpinionArticles = articles
+            .filter(a => a.category === 'opinion')
+            .sort((a, b) => (b.published_tick ?? 0) - (a.published_tick ?? 0))
+            .slice(0, 4);
+
+        // Merge: active news + persistent opinions (deduplicate)
+        const activeIds = new Set(activeArticles.map(a => a.id));
+        const mergedArticles = [...activeArticles];
+        for (const op of allOpinionArticles) {
+            if (!activeIds.has(op.id)) mergedArticles.push(op);
+        }
+
+        if (mergedArticles.length === 0) return;
 
         // Cache for article reader lookup
-        _articles = activeArticles;
+        _articles = mergedArticles;
 
         // Apply category filter if set
         const filtered = _categoryFilter && _categoryFilter !== 'all'
-            ? activeArticles.filter(a => a.category === _categoryFilter)
-            : activeArticles;
+            ? mergedArticles.filter(a => a.category === _categoryFilter)
+            : mergedArticles;
 
         if (filtered.length === 0 && _categoryFilter !== 'all') {
             const emptyMsg = `<p class="nws-placeholder" style="text-align:center;padding:40px;grid-column:1/-1;">No ${categoryLabel(_categoryFilter)} articles in this edition.</p>`;
@@ -1204,27 +1217,41 @@ async function renderArchivesListView(root) {
             return;
         }
 
-        // Group articles by their published tick (each tick = one month)
+        // Group articles by season (3-month windows)
+        // Spring: Feb(1), Mar(2), Apr(3)  Summer: May(4), Jun(5), Jul(6)
+        // Fall: Aug(7), Sep(8), Oct(9)    Winter: Nov(10), Dec(11), Jan(0)
+        const SEASON_NAMES = ['Winter', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer', 'Fall', 'Fall', 'Fall', 'Winter', 'Winter'];
+        function seasonKey(tick) {
+            const month = tick % 12; // 0=Jan..11=Dec
+            const year = 2000 + Math.floor(tick / 12);
+            // Winter spans Dec-Jan: Nov(10)/Dec(11) belong to that year's winter,
+            // Jan(0) belongs to previous year's winter
+            const season = SEASON_NAMES[month];
+            const seasonYear = (month === 0) ? year - 1 : year;
+            return `${season} ${seasonYear}`;
+        }
+
         const grouped = {};
         for (const a of (articles || [])) {
             const tick = a.published_tick ?? 0;
-            const dateLabel = tickToDate(tick);
-            if (!grouped[tick]) grouped[tick] = { dateLabel, tick, articles: [] };
-            grouped[tick].articles.push(a);
+            const key = seasonKey(tick);
+            if (!grouped[key]) grouped[key] = { label: key, maxTick: tick, articles: [] };
+            grouped[key].articles.push(a);
+            if (tick > grouped[key].maxTick) grouped[key].maxTick = tick;
         }
 
-        // Sort by tick descending
-        const months = Object.values(grouped).sort((a, b) => b.tick - a.tick);
+        // Sort by max tick descending (newest seasons first)
+        const seasons = Object.values(grouped).sort((a, b) => b.maxTick - a.maxTick);
 
-        // Mark current edition ticks (within 3 ticks)
-        const isCurrentEdition = (tick) => currentTick - tick < 3;
+        // Mark current season
+        const currentSeasonKey = seasonKey(currentTick);
 
-        const monthListHtml = months.length > 0
-            ? months.map(m => {
-                const current = isCurrentEdition(m.tick) ? ' <span class="nws-archive-current">Current</span>' : '';
-                return `<div class="nws-archive-month" data-archive-tick="${m.tick}">
-                    <div class="nws-archive-month-name">${escapeHtml(m.dateLabel)}${current}</div>
-                    <div class="nws-archive-month-count">${m.articles.length} article${m.articles.length !== 1 ? 's' : ''}</div>
+        const monthListHtml = seasons.length > 0
+            ? seasons.map(s => {
+                const current = s.label === currentSeasonKey ? ' <span class="nws-archive-current">Current</span>' : '';
+                return `<div class="nws-archive-month" data-archive-season="${escapeHtml(s.label)}">
+                    <div class="nws-archive-month-name">${escapeHtml(s.label)}${current}</div>
+                    <div class="nws-archive-month-count">${s.articles.length} article${s.articles.length !== 1 ? 's' : ''}</div>
                 </div>`;
             }).join('')
             : '<p class="nws-placeholder" style="text-align:center;padding:40px;">No articles have been published yet.</p>';
@@ -1255,7 +1282,7 @@ async function renderArchivesListView(root) {
             <div class="nws-main-content">
                 <div class="nws-archives">
                     <h2 class="nws-archives-title">Older Issues</h2>
-                    <p class="nws-archives-subtitle">Browse past editions of The Cruceran by month.</p>
+                    <p class="nws-archives-subtitle">Browse past editions of The Cruceran by season.</p>
                     <div class="nws-archive-list">
                         ${monthListHtml}
                     </div>
@@ -1272,12 +1299,12 @@ async function renderArchivesListView(root) {
         // Bind back button
         document.getElementById('nws-back-btn')?.addEventListener('click', () => initNewspaper(_supabase, _state));
 
-        // Bind month clicks
-        root.querySelectorAll('[data-archive-tick]').forEach(el => {
+        // Bind season clicks
+        root.querySelectorAll('[data-archive-season]').forEach(el => {
             el.addEventListener('click', () => {
-                const tick = parseInt(el.dataset.archiveTick, 10);
-                const monthData = grouped[tick];
-                if (monthData) renderArchivedEdition(root, monthData.articles, monthData.dateLabel);
+                const key = el.dataset.archiveSeason;
+                const seasonData = grouped[key];
+                if (seasonData) renderArchivedEdition(root, seasonData.articles, seasonData.label);
             });
         });
 
