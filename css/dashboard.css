@@ -140,6 +140,17 @@ body.light-mode {
     --nav-active-bg: #f0f1f4;
 }
 
+/* ── Light-mode: top bar, nav tabs, tick info ── */
+body.light-mode .top-bar-sep { background: rgba(0,0,0,0.10); }
+body.light-mode .tick-label { color: #777770; }
+body.light-mode .tick-value { color: #1a1a1a; }
+body.light-mode .tick-countdown { color: #1a1a1a; }
+body.light-mode .topbar-ap__label { color: #777770; }
+body.light-mode .nation-name { color: #1a1a1a; }
+body.light-mode .nav-tab { color: #666660; }
+body.light-mode .nav-tab:hover { color: #333330; }
+body.light-mode .nav-tab.active { color: #1a1a1a; border-bottom-color: #1a1a1a; }
+
 /* ===== BODY ===== */
 body {
     background: var(--bg-body);
