@@ -4188,7 +4188,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     // 2. Fetch nation for autocracy/ruling checks + seat redistribution
     const { data: nation } = await supabase
         .from('nations')
-        .select('id, name, ruling_faction_id, government_type, total_seats')
+        .select('id, name, ruling_faction_id, government_type, total_seats, designated_successor_faction_id')
         .eq('id', nationId)
         .single();
 
@@ -4226,6 +4226,17 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
             .update({ steward_faction_id: null })
             .eq('nation_id', nationId)
             .eq('steward_faction_id', factionId);
+
+        // 2d. V5 Autocracy: clean up faction_pillar_state, offers, votes for departing faction
+        await Promise.allSettled([
+            supabase.from('faction_pillar_state').delete().eq('faction_id', factionId).eq('nation_id', nationId),
+            supabase.from('silent_coup_offers').delete().eq('to_faction_id', factionId).eq('nation_id', nationId),
+            supabase.from('silent_coup_votes').delete().eq('faction_id', factionId).eq('nation_id', nationId),
+        ]);
+        // If this faction was designated successor, clear it
+        if (nation.designated_successor_faction_id === factionId) {
+            await supabase.from('nations').update({ designated_successor_faction_id: null }).eq('id', nationId);
+        }
     }
 
     // 3. PM check — if this faction is the active PM, resign first
