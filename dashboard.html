@@ -1227,6 +1227,7 @@ async function loadDashEvents(nationId, currentTick, parties) {
 // ══════════════════════════════════════
 let _activeEventsTab = 'nation';
 
+window.switchEventsTab = switchEventsTab;
 function switchEventsTab(tab) {
   if (tab === _activeEventsTab) return;
   _activeEventsTab = tab;
