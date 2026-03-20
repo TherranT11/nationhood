@@ -914,6 +914,21 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         if (!factions || factions.length === 0) continue;
 
+        // Autocracy V5: +5 AP per tick, capped at 20. No coalition bonus.
+        if (isAutocracy(nation)) {
+            for (const faction of factions) {
+                const result = await accumulateAP(supabase, faction.id, 5, GAME_CONFIG.MAX_AP);
+                if (result.success) {
+                    console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+5, autocracy)`);
+                    apDistributed++;
+                } else {
+                    console.error(`[advanceTick] Autocracy AP FAILED for faction ${faction.id}: ${result.error}`);
+                    apFailed++;
+                }
+            }
+            continue;  // skip democracy AP logic
+        }
+
         const coalition = await fetchActiveCoalition(supabase, nation.id);
         const governmentPartyIds = new Set([
             ...(coalition?.party_ids || []),
