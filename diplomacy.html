@@ -735,47 +735,59 @@ async function renderDiploHeader() {
 async function updateTabBadges() {
     if (!currentNation) return;
     try {
+        const _fm = diplomaticRoles && diplomaticRoles.isFM;
+        const _mot = diplomaticRoles && diplomaticRoles.isMoT;
+        const _ambIds = (diplomaticRoles && diplomaticRoles.ambassadorTo || []).map(a => a.target_nation_id);
+        const _hasDiploRole = _fm || _mot || _ambIds.length > 0;
+
         // Count items needing action on Initiative tab:
         // Open trade negotiations where we're the recipient (not yet in participants)
-        const { data: openNegs } = await _supabase
-            .from('trade_negotiations')
-            .select('participants')
-            .eq('status', 'open')
-            .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id);
-
         let initiativeCount = 0;
-        (openNegs || []).forEach(n => {
-            const participants = n.participants || [];
-            if (!participants.some(p => p.nation_id === currentNation.id)) {
-                initiativeCount++;
-            }
-        });
+        if (_hasDiploRole) {
+            const { data: openNegs } = await _supabase
+                .from('trade_negotiations')
+                .select('participants, initiated_by_nation')
+                .eq('status', 'open')
+                .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id);
+
+            (openNegs || []).forEach(n => {
+                const participants = n.participants || [];
+                if (participants.some(p => p.nation_id === currentNation.id)) return;
+                const fromNation = n.initiated_by_nation;
+                if (_fm || _mot || _ambIds.includes(fromNation)) initiativeCount++;
+            });
+        }
 
         const initBadge = document.getElementById('initiative-badge');
         if (initBadge) initBadge.textContent = initiativeCount > 0 ? initiativeCount : '';
 
         // Count items needing action on Inbox tab:
         // Incoming proposals needing our response + revised proposals sent back to us
-        const { data: inboxProposals } = await _supabase
-            .from('diplomatic_proposals')
-            .select('status, proposing_nation_id, target_nation_id')
-            .in('status', ['proposed', 'revised', 'fm_review', 'ratification', 'ratification_failed'])
-            .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id);
-
         let inboxCount = 0;
-        (inboxProposals || []).forEach(p => {
-            const isIncoming = p.target_nation_id === currentNation.id;
-            const isRevised = p.status === 'revised';
-            const pd = p.proposal_data || {};
-            const revisedByUs = isRevised && (pd.revised_by_nation_id ? pd.revised_by_nation_id === currentNation.id : !isIncoming);
-            if ((p.status === 'proposed' && isIncoming) || (isRevised && !revisedByUs)) {
-                inboxCount++;
-            } else if (p.status === 'fm_review' && diplomaticRoles.isFM) {
-                inboxCount++;
-            } else if ((p.status === 'ratification' || p.status === 'ratification_failed') && (diplomaticRoles.isFM || diplomaticRoles.isHoG)) {
-                inboxCount++;
-            }
-        });
+        if (_hasDiploRole) {
+            const { data: inboxProposals } = await _supabase
+                .from('diplomatic_proposals')
+                .select('status, proposing_nation_id, target_nation_id')
+                .in('status', ['proposed', 'revised', 'fm_review', 'ratification', 'ratification_failed'])
+                .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id);
+
+            (inboxProposals || []).forEach(p => {
+                const isIncoming = p.target_nation_id === currentNation.id;
+                const fromNation = p.proposing_nation_id;
+                const isRevised = p.status === 'revised';
+                const pd = p.proposal_data || {};
+                const revisedByUs = isRevised && (pd.revised_by_nation_id ? pd.revised_by_nation_id === currentNation.id : !isIncoming);
+                if ((p.status === 'proposed' && isIncoming) && (_fm || _mot || _ambIds.includes(fromNation))) {
+                    inboxCount++;
+                } else if (isRevised && !revisedByUs && (_fm || _mot || _ambIds.includes(fromNation))) {
+                    inboxCount++;
+                } else if (p.status === 'fm_review' && _fm) {
+                    inboxCount++;
+                } else if ((p.status === 'ratification' || p.status === 'ratification_failed') && (_fm || (diplomaticRoles && diplomaticRoles.isHoG))) {
+                    inboxCount++;
+                }
+            });
+        }
 
         const inboxBadge = document.getElementById('inbox-badge');
         if (inboxBadge) inboxBadge.textContent = inboxCount > 0 ? inboxCount : '';
@@ -857,12 +869,19 @@ async function renderRelationsTab() {
         const theirAmbassadors = theirAmbassadorsRes.data || [];
         const activeAgreements = agreementsRes.data || [];
 
-        // Build unread message count per source nation
+        // Build unread message count per source nation (role-gated)
+        const hasFM = diplomaticRoles && diplomaticRoles.isFM;
+        const hasMoT = diplomaticRoles && diplomaticRoles.isMoT;
+        const ambTargets = (diplomaticRoles && diplomaticRoles.ambassadorTo || []).map(a => a.target_nation_id);
+        const hasDiploRole = hasFM || hasMoT || ambTargets.length > 0;
+
         const unreadByNation = {};
         let unreadTotal = 0;
         for (const msg of (unreadMsgsRes.data || [])) {
             const readBy = msg.read_by_factions || [];
-            if (!readBy.includes(currentFaction?.id)) {
+            if (readBy.includes(currentFaction?.id)) continue;
+            // Only count if this faction has a relevant diplomatic role for the sending nation
+            if (hasDiploRole && (hasFM || hasMoT || ambTargets.includes(msg.from_nation_id))) {
                 unreadByNation[msg.from_nation_id] = (unreadByNation[msg.from_nation_id] || 0) + 1;
                 unreadTotal++;
             }
@@ -9428,19 +9447,27 @@ async function renderActionsBox() {
     const body = document.getElementById('actions-body');
     if (!body) return;
 
-    // Fetch unread message count for the Send Message badge
-    if (currentNation && currentFaction) {
+    // Fetch unread message count for the Send Message badge (role-gated)
+    if (currentNation && currentFaction && diplomaticRoles) {
         try {
-            const { data: msgs } = await _supabase
-                .from('diplomatic_messages')
-                .select('id, read_by_factions')
-                .eq('to_nation_id', currentNation.id)
-                .neq('from_nation_id', currentNation.id);
-            let count = 0;
-            for (const msg of (msgs || [])) {
-                if (!(msg.read_by_factions || []).includes(currentFaction.id)) count++;
+            const _fm = diplomaticRoles.isFM;
+            const _mot = diplomaticRoles.isMoT;
+            const _ambIds = (diplomaticRoles.ambassadorTo || []).map(a => a.target_nation_id);
+            if (_fm || _mot || _ambIds.length > 0) {
+                const { data: msgs } = await _supabase
+                    .from('diplomatic_messages')
+                    .select('id, from_nation_id, read_by_factions')
+                    .eq('to_nation_id', currentNation.id)
+                    .neq('from_nation_id', currentNation.id);
+                let count = 0;
+                for (const msg of (msgs || [])) {
+                    if ((msg.read_by_factions || []).includes(currentFaction.id)) continue;
+                    if (_fm || _mot || _ambIds.includes(msg.from_nation_id)) count++;
+                }
+                totalUnreadMessages = count;
+            } else {
+                totalUnreadMessages = 0;
             }
-            totalUnreadMessages = count;
         } catch (e) { /* non-blocking */ }
     }
 
