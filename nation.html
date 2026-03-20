@@ -313,12 +313,16 @@ function healthColor(val, inverted) {
     return 'var(--n-red)';
 }
 
+// Resolve a CSS variable to its computed hex value (for SVG attributes that can't use var())
+function getCSSColor(varName) {
+    return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+}
 function healthColorRaw(val, inverted) {
     var v = inverted ? 100 - val : val;
-    if (v >= 65) return '#4ade80';
-    if (v >= 45) return '#facc15';
-    if (v >= 25) return '#f97316';
-    return '#ef4444';
+    if (v >= 65) return getCSSColor('--n-green');
+    if (v >= 45) return getCSSColor('--n-yellow');
+    if (v >= 25) return getCSSColor('--n-orange');
+    return getCSSColor('--n-red');
 }
 
 function catHealth(cat, nation) {
@@ -1163,11 +1167,11 @@ function renderFeaturedGDP(nation) {
 
     // GDP growth label
     var gdpLabel, tagColor, tagBorder;
-    if (monthlyPct < -0.33) { gdpLabel = 'Recession'; tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; }
-    else if (monthlyPct < 0) { gdpLabel = 'Stagnant'; tagColor = 'var(--n-orange)'; tagBorder = 'rgba(249,115,22,0.3)'; }
-    else if (monthlyPct < 0.17) { gdpLabel = 'No Growth'; tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; }
-    else if (monthlyPct < 1) { gdpLabel = 'Growing'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
-    else { gdpLabel = 'Booming'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
+    if (monthlyPct < -0.33) { gdpLabel = 'Recession'; tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red-dim)'; }
+    else if (monthlyPct < 0) { gdpLabel = 'Stagnant'; tagColor = 'var(--n-orange)'; tagBorder = 'var(--n-orange-dim)'; }
+    else if (monthlyPct < 0.17) { gdpLabel = 'No Growth'; tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow-dim)'; }
+    else if (monthlyPct < 1) { gdpLabel = 'Growing'; tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green-dim)'; }
+    else { gdpLabel = 'Booming'; tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green-dim)'; }
 
     // Dot color matches tag
     var dotColor = tagColor;
@@ -1184,7 +1188,7 @@ function renderFeaturedGDP(nation) {
     // Sparkline
     var sparkData = sparklineHistory['gdp'] ? sparklineHistory['gdp'].slice() : [];
     if (gdpRaw != null) sparkData.push(Number(gdpRaw));
-    var chartColor = monthlyPct >= 0 ? '#4ade80' : '#ef4444';
+    var chartColor = monthlyPct >= 0 ? getCSSColor('--n-green') : getCSSColor('--n-red');
     var chartSVG = buildFeaturedSparkSVG(sparkData, chartColor);
 
     var h = '<div class="featured-card featured-card--gdp">';
@@ -1249,9 +1253,9 @@ function renderFeaturedInflation(nation) {
     // Tag color
     var iClass = inflationColorClass(inflRaw);
     var tagColor, tagBorder, dotColor;
-    if (iClass === 'good') { tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; dotColor = 'var(--n-green)'; }
-    else if (iClass === 'medium') { tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; dotColor = 'var(--n-yellow)'; }
-    else { tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; dotColor = 'var(--n-red)'; }
+    if (iClass === 'good') { tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green-dim)'; dotColor = 'var(--n-green)'; }
+    else if (iClass === 'medium') { tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow-dim)'; dotColor = 'var(--n-yellow)'; }
+    else { tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red-dim)'; dotColor = 'var(--n-red)'; }
 
     // Delta per tick
     var deltaStr = '';
@@ -1277,7 +1281,7 @@ function renderFeaturedInflation(nation) {
     var sparkData = sparklineHistory['inflation'] ? sparklineHistory['inflation'].slice() : [];
     if (inflRaw != null) sparkData.push(inflRaw);
     // Color: green if good/stable, red if bad
-    var chartColor = iClass === 'good' ? '#4ade80' : iClass === 'medium' ? '#facc15' : '#ef4444';
+    var chartColor = iClass === 'good' ? getCSSColor('--n-green') : iClass === 'medium' ? getCSSColor('--n-yellow') : getCSSColor('--n-red');
     var chartSVG = buildFeaturedSparkSVG(sparkData, chartColor);
 
     var h = '<div class="featured-card featured-card--inflation">';
@@ -1329,9 +1333,9 @@ function renderFeaturedGDPGrowth(nation) {
 
     // Color based on growth
     var growthColor, borderColor, dotColor, tagColor, tagBorder;
-    if (monthlyPct >= 0.17) { growthColor = '#4ade80'; borderColor = '#4ade80'; dotColor = 'var(--n-green)'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
-    else if (monthlyPct >= 0) { growthColor = '#facc15'; borderColor = '#facc15'; dotColor = 'var(--n-yellow)'; tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; }
-    else { growthColor = '#ef4444'; borderColor = '#ef4444'; dotColor = 'var(--n-red)'; tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; }
+    if (monthlyPct >= 0.17) { growthColor = getCSSColor('--n-green'); borderColor = 'var(--n-green)'; dotColor = 'var(--n-green)'; tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green-dim)'; }
+    else if (monthlyPct >= 0) { growthColor = getCSSColor('--n-yellow'); borderColor = 'var(--n-yellow)'; dotColor = 'var(--n-yellow)'; tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow-dim)'; }
+    else { growthColor = getCSSColor('--n-red'); borderColor = 'var(--n-red)'; dotColor = 'var(--n-red)'; tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red-dim)'; }
 
     var yearlyColor = yearlyPct >= 0 ? 'var(--n-green)' : 'var(--n-red)';
 
@@ -1427,11 +1431,11 @@ function renderFeaturedDebt(nation) {
     var debtUnit = parts ? parts[2] : '';
 
     // Debt is inverted: higher = worse → red
-    var hcRaw = '#ef4444';
-    var borderColor = hcRaw;
+    var hcRaw = getCSSColor('--n-red');
+    var borderColor = 'var(--n-red)';
     var dotColor = 'var(--n-red)';
     var tagColor = 'var(--n-red)';
-    var tagBorder = 'rgba(239,68,68,0.3)';
+    var tagBorder = 'var(--n-red-dim)';
 
     // Delta per tick
     var deltaStr = '';
@@ -1453,7 +1457,7 @@ function renderFeaturedDebt(nation) {
     var rankHTML = '';
     if (rank) {
         var total = totalNations || 6;
-        var pipColor = rank <= 2 ? '#4ade80' : rank <= 4 ? '#facc15' : '#ef4444';
+        var pipColor = rank <= 2 ? 'var(--n-green)' : rank <= 4 ? 'var(--n-yellow)' : 'var(--n-red)';
         rankHTML = '<div class="compact-bottom__rank">';
         for (var i = 0; i < total; i++) {
             if (i < rank) {
@@ -1513,7 +1517,7 @@ function renderFeaturedStatCard(stat, nation) {
     var hc = healthColor(numVal, inv);
     var hcRaw = healthColorRaw(numVal, inv);
     var displayVal = getDisplayValue(stat, nation);
-    var borderColor = hcRaw;
+    var borderColor = hc;
     var dotColor = hc;
 
     // Delta per tick
@@ -1540,7 +1544,7 @@ function renderFeaturedStatCard(stat, nation) {
     var rankHTML = '';
     if (rank) {
         var total = totalNations || 6;
-        var pipColor = rank <= 2 ? '#4ade80' : rank <= 4 ? '#facc15' : '#ef4444';
+        var pipColor = rank <= 2 ? 'var(--n-green)' : rank <= 4 ? 'var(--n-yellow)' : 'var(--n-red)';
         rankHTML = '<div class="compact-bottom__rank">';
         for (var ri = 0; ri < total; ri++) {
             if (ri < rank) {
