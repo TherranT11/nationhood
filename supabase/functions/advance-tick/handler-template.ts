@@ -1531,7 +1531,20 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Three-pillar prefs failed for ${nation.name} (non-fatal):`, pillarErr);
         }
 
-        // (Autocracy action systems removed — Phase 0)
+        // (Autocracy action systems removed — Phase 0. Actions will be added in Phase 4+.)
+
+        // Autocracy V5: tracker natural decay toward 30 (runs after actions resolve)
+        try {
+            if (isAutocracy(nation)) {
+                const trackerDecayResult = await processAutocracyTrackerDecay(supabase, nation, newTick);
+                if (trackerDecayResult) {
+                    summary.autocracyTrackerDecay = summary.autocracyTrackerDecay || [];
+                    summary.autocracyTrackerDecay.push(trackerDecayResult);
+                }
+            }
+        } catch (trackerDecayErr) {
+            console.error(`[advanceTick] Autocracy tracker decay failed for ${nation.name} (non-fatal):`, trackerDecayErr);
+        }
 
         // Re-fetch nation with post-effect values for remaining processors
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();

@@ -1,8 +1,9 @@
 /**
  * autocracy-pillars.js — Five Pillars system: Backing, zero-sum enforcement,
- * passive drift, wildcard decay, and longevity tracking.
+ * passive drift, wildcard decay, longevity tracking, Power calculation,
+ * tracker contributions, and tracker natural decay.
  *
- * V5 Autocracy System — Phase 2
+ * V5 Autocracy System — Phases 2 & 3
  */
 
 import { isAutocracy } from './government-types.js';
@@ -271,4 +272,181 @@ export async function processAutocracyPillarTick(supabase, nation, currentTick) 
     }
 
     return changes.length > 0 ? { nation: nation.name, tick: currentTick, changes } : null;
+}
+
+// ─── Power calculation (server-side only) ────────────────────────────────────
+
+/**
+ * Power → Tracker delta magnitude map.
+ * Power 1 → ±2, Power 2 → ±3, Power 3 → ±4, Power 4 → ±5, Power 5 → ±7.
+ */
+export const POWER_DELTA_MAP = { 1: 2, 2: 3, 3: 4, 4: 5, 5: 7 };
+
+/**
+ * Compute a faction's Power level (1–5). Never exposed to client.
+ *
+ * Formula:
+ *   base = CEIL(backing / 4)
+ *   if is_prime_minister: base += 1
+ *   base += FLOOR(minister_count / 2)
+ *   if longevity_ticks >= 36: base += 1
+ *   power = CLAMP(base, 1, 5)
+ *
+ * @param {Object} factionState - faction_pillar_state row (or working copy)
+ * @returns {number} power level 1–5
+ */
+export function computeFactionPower(factionState) {
+    let base = Math.ceil(Number(factionState.backing) / 4);
+    if (factionState.is_prime_minister) base += 1;
+    base += Math.floor((factionState.minister_count || 0) / 2);
+    if ((factionState.longevity_ticks || 0) >= 36) base += 1;
+    return Math.max(1, Math.min(5, base));
+}
+
+/**
+ * Get the tracker delta magnitude for a given power level.
+ * @param {number} power - 1 to 5
+ * @returns {number} delta magnitude
+ */
+export function getPowerDelta(power) {
+    return POWER_DELTA_MAP[power] || 0;
+}
+
+// ─── Tracker contributions ───────────────────────────────────────────────────
+
+/**
+ * Actions that contribute at half power when used FOR_REGIME.
+ */
+const HALF_POWER_ACTIONS = ['agitate', 'capital_flight'];
+
+/**
+ * Apply a tracker contribution from a faction action.
+ *
+ * Rules:
+ *   - Strongman using foundation pillar actions: skip entirely (no tracker movement)
+ *   - FOR_REGIME: tracker -= delta
+ *   - FOR_YOURSELF: tracker += delta
+ *   - AGITATE / CAPITAL_FLIGHT in FOR_REGIME mode: delta = floor(delta / 2)
+ *   - Stand Down: always FOR_YOURSELF (no mode toggle)
+ *
+ * @param {number} currentTracker - current tracker_value (0–100)
+ * @param {Object} factionState   - faction_pillar_state row
+ * @param {string} actionType     - action key (e.g. 'deploy', 'rally')
+ * @param {string} mode           - 'regime' or 'self'
+ * @param {string|null} strongmanPillar - the strongman's foundation pillar (to detect no-op)
+ * @returns {number} new tracker value (clamped 0–100)
+ */
+export function applyTrackerContribution(currentTracker, factionState, actionType, mode, strongmanPillar) {
+    // Strongman using their own foundation pillar actions → no tracker movement
+    if (factionState.is_strongman && factionState.pillar === strongmanPillar) {
+        return currentTracker;
+    }
+
+    const power = computeFactionPower(factionState);
+    let delta = getPowerDelta(power);
+
+    // Half power for specific actions in FOR_REGIME mode
+    if (mode === 'regime' && HALF_POWER_ACTIONS.includes(actionType)) {
+        delta = Math.floor(delta / 2);
+    }
+
+    // Apply direction
+    if (mode === 'regime') {
+        currentTracker -= delta;
+    } else {
+        // 'self' — includes stand_down which is always for yourself
+        currentTracker += delta;
+    }
+
+    return Math.max(0, Math.min(100, currentTracker));
+}
+
+// ─── Tracker natural decay ───────────────────────────────────────────────────
+
+/**
+ * Apply natural tracker decay toward 30.
+ * Runs after all actions resolve each tick.
+ *
+ *   if tracker > 30: tracker -= 1 (floor 30)
+ *   if tracker < 30: tracker += 1 (ceiling 30)
+ *
+ * @param {number} trackerValue - current tracker (0–100)
+ * @returns {number} decayed tracker value
+ */
+export function applyTrackerDecay(trackerValue) {
+    if (trackerValue > 30) return Math.max(30, trackerValue - 1);
+    if (trackerValue < 30) return Math.min(30, trackerValue + 1);
+    return 30;
+}
+
+// ─── Tracker word (Strongman-only display) ───────────────────────────────────
+
+/**
+ * Map tracker value to the word the Strongman sees.
+ *   0–20  → IRON
+ *   21–40 → FIRM
+ *   41–60 → RESTLESS
+ *   61–80 → VOLATILE
+ *   81–100→ CRITICAL
+ *
+ * @param {number} trackerValue
+ * @returns {string}
+ */
+export function getTrackerWord(trackerValue) {
+    if (trackerValue <= 20) return 'IRON';
+    if (trackerValue <= 40) return 'FIRM';
+    if (trackerValue <= 60) return 'RESTLESS';
+    if (trackerValue <= 80) return 'VOLATILE';
+    return 'CRITICAL';
+}
+
+// ─── Tracker reset values ────────────────────────────────────────────────────
+
+export const TRACKER_RESET = Object.freeze({
+    AFTER_FAILED_COUP: 10,     // catastrophic or failure
+    AFTER_SUCCESSFUL_COUP: 30, // pyrrhic, clean, or dominant
+});
+
+// ─── Tracker tick processor ──────────────────────────────────────────────────
+
+/**
+ * Process tracker natural decay for a single autocracy nation.
+ * Tick order step 3: runs after all actions resolve.
+ *
+ * @param {Object} supabase
+ * @param {Object} nation
+ * @param {number} currentTick
+ * @returns {Object|null} change summary or null
+ */
+export async function processAutocracyTrackerDecay(supabase, nation, currentTick) {
+    if (!isAutocracy(nation)) return null;
+
+    const { data: tracker, error: trackerErr } = await supabase
+        .from('autocracy_tracker')
+        .select('tracker_value, nation_id')
+        .eq('nation_id', nation.id)
+        .single();
+
+    if (trackerErr || !tracker) return null;
+
+    const oldValue = tracker.tracker_value;
+    const newValue = applyTrackerDecay(oldValue);
+
+    if (newValue === oldValue) return null;
+
+    const { error: updateErr } = await supabase
+        .from('autocracy_tracker')
+        .update({
+            tracker_value: newValue,
+            last_updated_tick: currentTick,
+        })
+        .eq('nation_id', nation.id);
+
+    if (updateErr) {
+        console.error(`[trackerDecay] Failed to update tracker for ${nation.name}:`, updateErr.message);
+        return null;
+    }
+
+    console.log(`[trackerDecay] ${nation.name}: ${oldValue} → ${newValue}`);
+    return { nation: nation.name, tick: currentTick, oldTracker: oldValue, newTracker: newValue };
 }
