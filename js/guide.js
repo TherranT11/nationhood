@@ -556,10 +556,115 @@ const guideContent = {
 </ul>
 </div></details>
 
-<details><summary>Autocratic System</summary><div>
+<details><summary>Autocratic System &mdash; Five Pillars</summary><div>
 <h3>How It Works</h3>
-<p>Autocracy is a different political system. A strongman controls the nation, and factions vie for influence within the regime. All factions receive equal seat allocations that rebalance automatically when parties join or leave.</p>
-<p>The autocratic action systems (loyalty, standing, regime health, embezzlement, coups, purges) are currently being redesigned. Check back for updates.</p>
+<p>Autocracy replaces elections with internal power struggles. A <strong>Strongman</strong> leads the regime, and four factions each control one of the <strong>Five Pillars of Power</strong>. The fifth pillar &mdash; the Wildcard &mdash; is always unclaimed and decays over time.</p>
+
+<h3>The Five Pillars</h3>
+<table>
+<tr><th>Pillar</th><th>Actions</th><th>Passive Drift Triggers</th></tr>
+<tr><td><strong>Military</strong></td><td>Deploy, Stand Down, Military Exercises</td><td>Civil Unrest &le; 20, Crime Rate &le; 20</td></tr>
+<tr><td><strong>Party</strong></td><td>Rally, Agitate, Party Congress</td><td>Stability &ge; 70, Polarization &ge; 70</td></tr>
+<tr><td><strong>Oligarchs</strong></td><td>Patronage, Capital Flight, Bribe</td><td>GDP Growth &ge; 70, Corruption &ge; 70</td></tr>
+<tr><td><strong>Media</strong></td><td>Broadcast, Smear, Blackout</td><td>Press Freedom &le; 20, Legitimacy &ge; 70</td></tr>
+<tr><td><strong>Security</strong></td><td>Surveillance, Blackmail, Disappear</td><td>Crime Rate &le; 20, Freedom Index &le; 20</td></tr>
+</table>
+
+<h3>Backing (0&ndash;20)</h3>
+<p>Each pillar has a Backing value (0&ndash;20). Backing is <strong>zero-sum</strong>: gaining Backing on one pillar reduces all others proportionally. Sources of Backing change:</p>
+<ul>
+<li><strong>Actions</strong> &mdash; Most actions increase your pillar&rsquo;s Backing</li>
+<li><strong>Passive Drift</strong> &mdash; National stats can trigger +1 Backing per tick</li>
+<li><strong>Neglect</strong> &mdash; Pillar Backing &le; 3 for 5+ consecutive ticks: extra -1 decay</li>
+<li><strong>Wildcard Decay</strong> &mdash; The unclaimed pillar loses &minus;0.1 per tick (floor 0)</li>
+</ul>
+
+<h3>Dual Mode Actions</h3>
+<p>Most actions can be used in two modes:</p>
+<table>
+<tr><th>Mode</th><th>Effect on Tracker</th></tr>
+<tr><td><strong>FOR REGIME</strong></td><td>Tracker decreases (stabilizes regime)</td></tr>
+<tr><td><strong>FOR YOURSELF</strong></td><td>Tracker increases (destabilizes regime)</td></tr>
+</table>
+<p><strong>Stand Down</strong> is always FOR YOURSELF. <strong>Agitate</strong> and <strong>Capital Flight</strong> contribute at half power in regime mode.</p>
+
+<h3>The Tracker (0&ndash;100)</h3>
+<p>The regime stability tracker. Only the Strongman sees the exact word:</p>
+<table>
+<tr><th>Range</th><th>Word</th><th>Meaning</th></tr>
+<tr><td>0&ndash;20</td><td>IRON</td><td>Regime is rock solid</td></tr>
+<tr><td>21&ndash;40</td><td>FIRM</td><td>Stable but watchful</td></tr>
+<tr><td>41&ndash;60</td><td>RESTLESS</td><td>Discontent growing</td></tr>
+<tr><td>61&ndash;80</td><td>VOLATILE</td><td>Regime is fragile</td></tr>
+<tr><td>81&ndash;100</td><td>CRITICAL</td><td>Coup is imminent</td></tr>
+</table>
+<p>The tracker naturally decays toward 30 each tick (+1 or &minus;1).</p>
+
+<h3>Power Level (1&ndash;5)</h3>
+<p>Each faction has a hidden Power level that determines the magnitude of tracker contributions:</p>
+<p><code>base = CEIL(backing / 4) + FLOOR(ministers / 2) + (is_pm ? 1 : 0) + (longevity &ge; 36 ticks ? 1 : 0)</code></p>
+<table>
+<tr><th>Power</th><th>Tracker &Delta;</th></tr>
+<tr><td>1</td><td>&pm;2</td></tr>
+<tr><td>2</td><td>&pm;3</td></tr>
+<tr><td>3</td><td>&pm;4</td></tr>
+<tr><td>4</td><td>&pm;5</td></tr>
+<tr><td>5</td><td>&pm;7</td></tr>
+</table>
+
+<h3>Strongman Exclusives</h3>
+<p>Only the Strongman (ruling faction) can use:</p>
+<ul>
+<li><strong>Arrest Leader</strong> &mdash; Detain a faction leader. Costs 3 AP.</li>
+<li><strong>Execute Leader</strong> &mdash; Kill an arrested leader. Permanent. Pillar becomes Wildcard.</li>
+<li><strong>Release Leader</strong> &mdash; Free a detained leader.</li>
+<li><strong>Favor</strong> &mdash; Grant favour to a faction (+Backing, +Loyalty).</li>
+<li><strong>Emergency Decree</strong> &mdash; Issue decree for immediate stat effects.</li>
+<li><strong>Appoint/Revoke Successor</strong> &mdash; Designate an heir for succession.</li>
+</ul>
+<p>The Strongman can only use their own foundation pillar actions (no tracker movement).</p>
+
+<h3>Coup Types</h3>
+<table>
+<tr><th>Type</th><th>Who</th><th>How</th></tr>
+<tr><td><strong>Standard Coup</strong></td><td>Any non-Strongman</td><td>Roll + Backing bonus vs threshold. Success = seize power.</td></tr>
+<tr><td><strong>Putsch</strong></td><td>Military pillar only</td><td>Declare martial law. Strongman must respond (decree or appeal to security).</td></tr>
+<tr><td><strong>Silent Coup</strong></td><td>Security pillar only</td><td>Multi-phase. Security approaches other factions with offers. If enough accept, vote resolves the coup.</td></tr>
+</table>
+
+<h3>Coup Outcomes</h3>
+<table>
+<tr><th>Result</th><th>Tracker Reset</th><th>Effect</th></tr>
+<tr><td>Dominant</td><td>&rarr; 30</td><td>+5 Stability, -5 Unrest. Strongman purged.</td></tr>
+<tr><td>Clean</td><td>&rarr; 30</td><td>Normal transfer of power.</td></tr>
+<tr><td>Pyrrhic</td><td>&rarr; 30</td><td>Win but weakened. Other factions can counter-coup for 3 ticks.</td></tr>
+<tr><td>Failure</td><td>&rarr; 10</td><td>Faction Backing zeroed. Leader may be arrested.</td></tr>
+<tr><td>Catastrophic</td><td>&rarr; 10</td><td>Backing zeroed, leader arrested, pillar becomes Wildcard.</td></tr>
+</table>
+
+<h3>Succession</h3>
+<p>When the Strongman dies:</p>
+<ul>
+<li><strong>With designated successor</strong> &mdash; Successor takes power immediately.</li>
+<li><strong>Without successor</strong> &mdash; Highest-Backing faction auto-coups at +20 bonus. If that fails, Democratic Revolution triggers immediately.</li>
+</ul>
+
+<h3>Leader Lifecycle</h3>
+<ul>
+<li>Leaders age +1 year every 12 ticks</li>
+<li>Death age: randomized 75&ndash;85 at leader creation</li>
+<li>When a leader dies: their pillar becomes the Wildcard, a new leader is auto-generated who claims the old Wildcard pillar</li>
+</ul>
+
+<h3>Democratic Revolution</h3>
+<p>Triggered when <strong>Stability &lt; 20 AND Civil Unrest &gt; 50</strong> (autocracies only).</p>
+<ol>
+<li><strong>WARNING</strong> &mdash; Random 13&ndash;22 tick timer starts. No stat effects on first tick.</li>
+<li><strong>ESCALATION</strong> &mdash; Each tick: stability &minus;1, civil unrest +1, international reputation &minus;1.</li>
+<li><strong>AVERTABLE</strong> &mdash; Break either condition to cancel the revolution.</li>
+<li><strong>REVOLUTION FIRES</strong> &mdash; Government converts to Democracy (50% Parliamentary, 50% Presidential). Emergency election in 3 ticks.</li>
+</ol>
+<p class="guide-tip">Revolution is the endgame for a mismanaged autocracy. Watch stability and unrest closely &mdash; once the timer starts, you have limited time to act.</p>
 </div></details>
 `
     },
