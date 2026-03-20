@@ -14,6 +14,18 @@ let _archiveBackContext = null; // navigation context for article reader back bu
 let _editingArticleId = null; // null = create mode, UUID string = edit mode
 let _removeExistingImage = false; // flag: user wants to drop the current image on edit
 
+// Season key for quarterly issue grouping
+// Spring: Feb(1), Mar(2), Apr(3)  Summer: May(4), Jun(5), Jul(6)
+// Fall: Aug(7), Sep(8), Oct(9)    Winter: Nov(10), Dec(11), Jan(0)
+const _SEASON_NAMES = ['Winter', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer', 'Fall', 'Fall', 'Fall', 'Winter', 'Winter'];
+function _seasonKey(tick) {
+    const month = tick % 12;
+    const year = 2000 + Math.floor(tick / 12);
+    const season = _SEASON_NAMES[month];
+    const seasonYear = (month === 0) ? year - 1 : year;
+    return `${season} ${seasonYear}`;
+}
+
 export async function initNewspaper(supabase, state) {
     _supabase = supabase;
     _state = state;
@@ -938,25 +950,28 @@ async function loadAndDisplayArticles() {
 
         if (!articles || articles.length === 0) return;
 
-        // Filter out articles older than 3 ticks (except opinion — those persist until replaced)
+        // Quarterly issue logic: show all articles from the current season,
+        // plus previous season's articles for categories that have no new content yet
         const currentTick = _state.shard?.current_tick ?? 0;
-        const activeArticles = articles.filter(a => {
-            const tick = a.published_tick ?? 0;
-            return currentTick - tick < 3;
-        });
+        const currentSeason = _seasonKey(currentTick);
+        const prevSeason = currentTick >= 3 ? _seasonKey(currentTick - 3) : null;
 
-        // Opinion articles persist — keep the 4 most recent regardless of tick age
-        const allOpinionArticles = articles
-            .filter(a => a.category === 'opinion')
-            .sort((a, b) => (b.published_tick ?? 0) - (a.published_tick ?? 0))
-            .slice(0, 4);
+        const currentSeasonArticles = articles.filter(a =>
+            _seasonKey(a.published_tick ?? 0) === currentSeason
+        );
+        const prevSeasonArticles = prevSeason
+            ? articles.filter(a => _seasonKey(a.published_tick ?? 0) === prevSeason)
+            : [];
 
-        // Merge: active news + persistent opinions (deduplicate)
-        const activeIds = new Set(activeArticles.map(a => a.id));
-        const mergedArticles = [...activeArticles];
-        for (const op of allOpinionArticles) {
-            if (!activeIds.has(op.id)) mergedArticles.push(op);
-        }
+        // Categories that already have articles in the current season
+        const currentCategories = new Set(currentSeasonArticles.map(a => a.category));
+
+        // Fill in previous-season articles for categories with no current content
+        const fallbackArticles = prevSeasonArticles.filter(a =>
+            !currentCategories.has(a.category)
+        );
+
+        const mergedArticles = [...currentSeasonArticles, ...fallbackArticles];
 
         if (mergedArticles.length === 0) return;
 
@@ -997,7 +1012,7 @@ async function loadAndDisplayArticles() {
         // Secondary grid = next 3 after sidebar
         const secondary = sorted.slice(4, 7);
         // In Brief = 5 most recent articles (all categories, by recency)
-        const briefs = [...activeArticles]
+        const briefs = [...mergedArticles]
             .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
             .slice(0, 5);
 
@@ -1217,24 +1232,11 @@ async function renderArchivesListView(root) {
             return;
         }
 
-        // Group articles by season (3-month windows)
-        // Spring: Feb(1), Mar(2), Apr(3)  Summer: May(4), Jun(5), Jul(6)
-        // Fall: Aug(7), Sep(8), Oct(9)    Winter: Nov(10), Dec(11), Jan(0)
-        const SEASON_NAMES = ['Winter', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer', 'Fall', 'Fall', 'Fall', 'Winter', 'Winter'];
-        function seasonKey(tick) {
-            const month = tick % 12; // 0=Jan..11=Dec
-            const year = 2000 + Math.floor(tick / 12);
-            // Winter spans Dec-Jan: Nov(10)/Dec(11) belong to that year's winter,
-            // Jan(0) belongs to previous year's winter
-            const season = SEASON_NAMES[month];
-            const seasonYear = (month === 0) ? year - 1 : year;
-            return `${season} ${seasonYear}`;
-        }
-
+        // Group articles by season (3-month windows) using shared _seasonKey
         const grouped = {};
         for (const a of (articles || [])) {
             const tick = a.published_tick ?? 0;
-            const key = seasonKey(tick);
+            const key = _seasonKey(tick);
             if (!grouped[key]) grouped[key] = { label: key, maxTick: tick, articles: [] };
             grouped[key].articles.push(a);
             if (tick > grouped[key].maxTick) grouped[key].maxTick = tick;
@@ -1244,7 +1246,7 @@ async function renderArchivesListView(root) {
         const seasons = Object.values(grouped).sort((a, b) => b.maxTick - a.maxTick);
 
         // Mark current season
-        const currentSeasonKey = seasonKey(currentTick);
+        const currentSeasonKey = _seasonKey(currentTick);
 
         const monthListHtml = seasons.length > 0
             ? seasons.map(s => {
