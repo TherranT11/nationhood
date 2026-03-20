@@ -1988,6 +1988,7 @@ function renderCurrentVote() {
 }
 
 let _castingVote = false;
+let _actionLock = false;
 async function castVote(vote) {
     if (_castingVote) return;
     if (!currentFaction || currentBill.status !== 'floor') return;
@@ -2042,29 +2043,34 @@ async function castVote(vote) {
 // ==================== PRESIDENTIAL SIGN/VETO ====================
 
 async function signBillAction() {
-    if (!isPresidentParty) return;
+    if (_actionLock || !isPresidentParty) return;
     if (!confirm('Sign this bill into law?')) return;
+    _actionLock = true;
     try {
         await signPresidentialBill(_supabase, currentBill.id, currentFaction.id);
         alert('Bill signed into law.');
         window.location.reload();
     } catch (error) { console.error('Sign error:', error); alert('Error: ' + error.message); }
+    finally { _actionLock = false; }
 }
 
 async function vetoBillAction() {
-    if (!isPresidentParty) return;
+    if (_actionLock || !isPresidentParty) return;
     const overrideSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
     if (!confirm(`VETO this bill?\nA veto override bill will be automatically created requiring ${overrideSeats}/${GAME_CONFIG.TOTAL_SEATS} seats (2/3 supermajority).\n\nProceed?`)) return;
+    _actionLock = true;
     try {
         await vetoPresidentialBill(_supabase, currentBill.id, currentFaction.id);
         alert('Bill vetoed. A veto override bill has been sent to the floor.');
         window.location.href = 'laws.html';
     } catch (error) { console.error('Veto error:', error); alert('Error: ' + error.message); }
+    finally { _actionLock = false; }
 }
 
 async function enactDecree() {
-    if (!isAutocracy || !isHeadFaction) return;
+    if (_actionLock || !isAutocracy || !isHeadFaction) return;
     if (!confirm('⚡ ENACT this decree?\n\nThis will send it directly to the floor for a vote.\n\nProceed?')) return;
+    _actionLock = true;
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const currentTick = shard?.current_tick || 0;
@@ -2104,6 +2110,7 @@ async function enactDecree() {
         alert('⚡ Decree sent to the floor!');
         window.location.reload();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
+    finally { _actionLock = false; }
 }
 
 

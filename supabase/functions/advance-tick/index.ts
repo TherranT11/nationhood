@@ -10898,6 +10898,7 @@ async function processElections(supabase, nation, currentTick) {
 
         // Use candidate-based voting for presidential elections, party-based for parliamentary
         let data, error;
+        try {
         if (electionType === 'presidential') {
             const { error: snapshotErr } = await supabase.rpc('snapshot_presidential_endorsements', {
                 p_nation_id: nation.id,
@@ -10941,10 +10942,11 @@ async function processElections(supabase, nation, currentTick) {
             }
             console.log(`Election RPC succeeded on retry for ${nation.name}`);
         }
-
-        // Restore electability after electoral wound penalty
-        for (const wr of woundRestorations) {
-            await supabase.from('factions').update({ electability: wr.originalElectability }).eq('id', wr.factionId);
+        } finally {
+            // Always restore electability after electoral wound penalty, even if election RPC throws
+            for (const wr of woundRestorations) {
+                await supabase.from('factions').update({ electability: wr.originalElectability }).eq('id', wr.factionId);
+            }
         }
 
         // Mark the scheduled election record as completed with full results
@@ -23313,11 +23315,15 @@ async function processProtestCrisisTick(supabase, nation, protest, currentTick) 
     const publicAddressThisTick = protest.public_address_last_tick === currentTick;
 
     // Apply per-tick stat effects
+    // KNOWN ISSUE: reads from pre-tick `nation` snapshot — if earlier processors in
+    // this tick already modified these stats, this write overwrites their changes.
+    // Safe for now because protest-affected stats (civil_unrest, happiness, etc.)
+    // are not modified by other processors in the same tick cycle.
     const updates = {};
     if (isTier7) {
         // Tier 7: gov approval -3, civil unrest +3, gdp_growth -0.2, foreign_investment -2, political_violence +1
         updates.civil_unrest = Math.min(100, (nation.civil_unrest || 0) + (publicAddressThisTick ? 2 : 3));
-        updates.gdp_growth = (nation.gdp_growth || 0) - 0.2;
+        updates.gdp_growth = Math.max(-10, (nation.gdp_growth || 0) - 0.2);
         updates.foreign_investment = Math.max(0, (nation.foreign_investment || 0) - 2);
         updates.political_violence = Math.min(100, (nation.political_violence || 0) + 1);
         await adjustGovernmentApprovalEvent(supabase, nationId, -3, 'protest:tier7:per_tick');
@@ -23350,7 +23356,7 @@ async function processProtestCrisisTick(supabase, nation, protest, currentTick) 
 
     // Check Tier 7 demand met
     if (isTier7 && protest.tier7_demand && !protest.tier7_demand_met) {
-        const demandMet = await checkTier7DemandMet(supabase, nation, protest.tier7_demand, currentTick);
+        const demandMet = await checkTier7DemandMet(supabase, nation, protest.tier7_demand, currentTick, protest.crisis_started_tick);
         if (demandMet) {
             await supabase.from('protest_log').update({ tier7_demand_met: true }).eq('id', protest.id);
             // Crisis ends 2 ticks after demand met for minister, immediately for stat
@@ -23542,7 +23548,7 @@ async function generateTier7DemandTick(supabase, nation, currentTick) {
 /**
  * Check if a Tier 7 demand has been met.
  */
-async function checkTier7DemandMet(supabase, nation, demand, currentTick) {
+async function checkTier7DemandMet(supabase, nation, demand, currentTick, crisisStartTick) {
     if (!demand) return false;
 
     if (demand.type === 'minister') {
@@ -23557,12 +23563,13 @@ async function checkTier7DemandMet(supabase, nation, demand, currentTick) {
     }
 
     if (demand.type === 'stat') {
-        // Check if stat moved by the demanded magnitude
+        // Check if stat moved by the demanded magnitude since crisis start
         const { data: historyRows } = await supabase
             .from('stat_history')
             .select('value')
             .eq('nation_id', nation.id)
             .eq('stat_name', demand.stat)
+            .lte('tick', crisisStartTick || currentTick)
             .order('tick', { ascending: false })
             .limit(1);
 

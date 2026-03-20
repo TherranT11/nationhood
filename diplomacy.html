@@ -91,6 +91,7 @@ let currentCoalition = null;
 let diplomaticRoles = { isHoG: false, isFM: false, isMoT: false, ambassadorTo: [] };
 let shardTick = 0;
 let totalUnreadMessages = 0;
+let _diploActionLock = false;
 
 // Cached list of other nations for dropdowns
 let cachedOtherNations = [];
@@ -1425,6 +1426,7 @@ async function renderAgreementsTab() {
 }
 
 async function withdrawTradeAgreement(agreementId) {
+    if (_diploActionLock) return;
     await refreshRoles();
     if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG && !diplomaticRoles.isMoT) {
         alert('Only the Foreign Minister, Head of Government, or Minister of Trade can withdraw trade agreements.');
@@ -1456,6 +1458,9 @@ async function withdrawTradeAgreement(agreementId) {
         alert('Only the Minister of Trade, Foreign Minister, or Head of Government can lift this action.');
         return;
     }
+
+    _diploActionLock = true;
+    try {
 
     // Embargoes: lifting improves relations (partial recovery)
     if (isEmbargo) {
@@ -1603,10 +1608,15 @@ async function withdrawTradeAgreement(agreementId) {
     alert('Withdrawal notice filed. Agreement will terminate in ' + noticeTicks + ' ticks.' +
         (financialPenalty > 0 ? ' $' + financialPenalty + 'M deducted from treasury.' : ''));
     await renderAgreementsTab();
+
+    } finally {
+        _diploActionLock = false;
+    }
 }
 
 let _withdrawAgreementLock = false;
 async function withdrawAgreement(agreementId) {
+    if (_diploActionLock) return;
     if (_withdrawAgreementLock) return;
     // Authorization: must be FM or HoG
     await refreshRoles();
@@ -1642,6 +1652,7 @@ async function withdrawAgreement(agreementId) {
         'This action cannot be undone.'
     )) return;
 
+    _diploActionLock = true;
     _withdrawAgreementLock = true;
     try {
 
@@ -1687,6 +1698,7 @@ async function withdrawAgreement(agreementId) {
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
 
     } finally {
+        _diploActionLock = false;
         _withdrawAgreementLock = false;
     }
 }
@@ -2181,6 +2193,7 @@ function renderTradeNegInboxCard(p, pd) {
 }
 
 async function acceptTradeNegotiation(proposalId, negotiationId) {
+    if (_diploActionLock) return;
     if (!negotiationId) { alert('Missing negotiation ID.'); return; }
 
     const neg = await fetchNegotiation(negotiationId);
@@ -2193,6 +2206,9 @@ async function acceptTradeNegotiation(proposalId, negotiationId) {
 
     const apCost = DIPLOMACY_CONFIG.ACCEPT_TRADE_NEGOTIATION_AP;
     if (!confirm('Accept trade negotiations? This costs ' + apCost + ' AP.\n\nOnce accepted, the negotiation table opens and both sides can choose an agreement type and draft articles.')) return;
+
+    _diploActionLock = true;
+    try {
 
     const apResult = await deductAP(_supabase, currentFaction.id, apCost);
     if (!apResult.success) {
@@ -2239,6 +2255,10 @@ async function acceptTradeNegotiation(proposalId, negotiationId) {
 
     alert('Trade negotiations accepted! The negotiation table is now open.\n\nGo to the Initiative tab to choose an agreement type and begin drafting articles.');
     location.reload();
+
+    } finally {
+        _diploActionLock = false;
+    }
 }
 
 async function rejectTradeNegotiation(proposalId, negotiationId) {
@@ -2379,6 +2399,7 @@ function renderPipelineTracker(proposal) {
 // ==================== FM ACTION FUNCTIONS ====================
 
 async function fmApprove(proposalId) {
+    if (_diploActionLock) return;
     // Authorization: must be FM or HoG
     await refreshRoles();
     if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
@@ -2414,6 +2435,8 @@ async function fmApprove(proposalId) {
         'Approve "' + (pd.name || 'Agreement') + '" as Foreign Minister?\n\n' +
         'This MINOR agreement will become active immediately.'
     )) return;
+    _diploActionLock = true;
+    try {
 
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
@@ -2444,9 +2467,11 @@ async function fmApprove(proposalId) {
 
     alert('"' + (pd.name || 'Agreement') + '" approved and is now active!');
     location.reload();
+    } finally { _diploActionLock = false; }
 }
 
 async function fmEscalate(proposalId) {
+    if (_diploActionLock) return;
     // Authorization: must be FM or HoG
     await refreshRoles();
     if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
@@ -2474,6 +2499,8 @@ async function fmEscalate(proposalId) {
         'Escalate "' + (pd.name || 'Agreement') + '" to Parliament for ratification?\n\n' +
         'A ratification bill will be submitted to the legislature.'
     )) return;
+    _diploActionLock = true;
+    try {
 
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
@@ -2523,9 +2550,11 @@ async function fmEscalate(proposalId) {
     alert('"' + (pd.name || 'Agreement') + '" escalated to Parliament. Ratification bill submitted.');
     await renderNegotiationsBox();
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
+    } finally { _diploActionLock = false; }
 }
 
 async function fmReject(proposalId) {
+    if (_diploActionLock) return;
     // Authorization: must be FM or HoG
     await refreshRoles();
     if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
@@ -2558,6 +2587,8 @@ async function fmReject(proposalId) {
         (action === 'abandon' ? 'Abandon' : 'Reject') + ' "' + (pd.name || 'Agreement') + '" as Foreign Minister?\n\n' +
         'This cannot be undone.'
     )) return;
+    _diploActionLock = true;
+    try {
 
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
@@ -2578,6 +2609,7 @@ async function fmReject(proposalId) {
     alert('"' + (pd.name || 'Agreement') + '" ' + action + 'ed.');
     await renderNegotiationsBox();
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
+    } finally { _diploActionLock = false; }
 }
 
 // ==================== MAJOR DIPLOMATIC INITIATIVE — FM ACTIONS ====================
@@ -2588,6 +2620,7 @@ async function fmReject(proposalId) {
  */
 let _forwardMajorLock = false;
 async function forwardMajorToParliament(proposalId) {
+    if (_diploActionLock) return;
     if (_forwardMajorLock) return;
     await refreshRoles();
     if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
@@ -2618,6 +2651,7 @@ async function forwardMajorToParliament(proposalId) {
         ' parliaments must pass the ratification bill for this initiative to activate.'
     )) return;
 
+    _diploActionLock = true;
     _forwardMajorLock = true;
     try {
 
@@ -2757,6 +2791,7 @@ async function forwardMajorToParliament(proposalId) {
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
 
     } finally {
+        _diploActionLock = false;
         _forwardMajorLock = false;
     }
 }
@@ -3957,6 +3992,7 @@ async function renderChatSection(targetNation, roles, ourAmbassador, theirAmbass
 }
 
 async function sendDiploMessage(targetNationId, targetNationName) {
+    if (_diploActionLock) return;
     const input = document.getElementById('diplo-msg-input');
     if (!input) return;
     const text = input.value.trim();
@@ -3968,6 +4004,7 @@ async function sendDiploMessage(targetNationId, targetNationName) {
         alert('You must have an active ambassador to send diplomatic messages.');
         return;
     }
+    _diploActionLock = true;
 
     try {
         // Get current tick
@@ -4023,7 +4060,7 @@ async function sendDiploMessage(targetNationId, targetNationName) {
     } catch (e) {
         console.error('Error sending message:', e);
         alert('Failed to send message: ' + e.message);
-    }
+    } finally { _diploActionLock = false; }
 }
 
 // ==================== AMBASSADOR DROPDOWN NAV ====================
@@ -5206,6 +5243,7 @@ function wizardUpdatePreview() {
 }
 
 async function wizardSubmit() {
+    if (_diploActionLock) return;
     if (!wizardName) { alert('Please enter a name for the agreement.'); return; }
     const filledArticles = wizardArticles.filter(a => a.text.trim());
     if (filledArticles.length === 0) { alert('Please add at least one article with content.'); return; }
@@ -5225,6 +5263,8 @@ async function wizardSubmit() {
 
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
     if (!ourAmb) { alert('You are not ambassador to this nation.'); return; }
+    _diploActionLock = true;
+    try {
 
     // Deduct AP for diplomatic initiative
     const apCost = DIPLOMACY_CONFIG.PROPOSE_INITIATIVE_AP;
@@ -5313,6 +5353,10 @@ async function wizardSubmit() {
     // Reset and re-render wizard
     await renderInitiativeWizard();
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
+
+    } finally {
+        _diploActionLock = false;
+    }
 }
 
 // (Step 4B removed — trade type selection now happens inside negotiations)
@@ -7717,6 +7761,7 @@ async function activateTradeAgreement(proposal, currentTick) {
 }
 
 async function acceptProposal(proposalId) {
+    if (_diploActionLock) return;
     // Fetch the proposal
     const { data: proposal, error: fetchErr } = await _supabase
         .from('diplomatic_proposals')
@@ -7809,6 +7854,8 @@ async function acceptProposal(proposalId) {
           'Duration: ' + (pd.duration_years || '?') + ' year(s)';
 
     if (!confirm(confirmMsg)) return;
+    _diploActionLock = true;
+    try {
 
     // Get current tick
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -7863,6 +7910,7 @@ async function acceptProposal(proposalId) {
         location.reload();
         return;
     }
+    } finally { _diploActionLock = false; }
 }
 
 async function rejectProposal(proposalId) {
@@ -8857,6 +8905,9 @@ async function acceptStateVisit(proposalId) {
         confirmMsg += '\nEmbassy budget cost: $' + (totalDebt / 1000000).toFixed(1) + 'M\n';
     }
     if (!confirm(confirmMsg)) return;
+
+    _diploActionLock = true;
+    try {
 
     // ── Apply computed effects to both nations ──
     const visitorUpdates = {};

@@ -123,7 +123,7 @@ const HIGHER_IS_BAD = new Set([
 ]);
 
 // Blocs penalised on fizzle (Tier 1-2)
-const FIZZLE_PENALTY_BLOCS = ['centrists', 'business_owners', 'academics'];
+const FIZZLE_PENALTY_BLOCS = ['centrist', 'business', 'academic'];
 
 // ==================== AP COST ====================
 
@@ -799,7 +799,6 @@ export async function executeProtest(supabase, factionId, nationId, grievanceTyp
         return { success: false, error: rpcError.message };
     }
 
-    console.log(`[Protest] Faction ${factionId} called protest ${protestId} (${grievanceType}), AP cost ${apCost}, use count ${decayedUseCount + 1}`);
 
     return {
         success: true,
@@ -870,7 +869,6 @@ export async function endorseProtest(supabase, factionId, nationId, protestId, c
         .select('id', { count: 'exact', head: true })
         .eq('protest_id', protestId);
 
-    console.log(`[Protest] Faction ${factionId} endorsed protest ${protestId}, total endorsements: ${count}`);
 
     return {
         success: true,
@@ -951,7 +949,6 @@ export async function callOffProtest(supabase, factionId, protestId, currentTick
         }
     }
 
-    console.log(`[Protest] Faction ${factionId} called off protest ${protestId}, wind-down until tick ${windDownEndTick}`);
 
     // Dispatch article + event
     const { data: callingFaction } = await supabase.from('factions').select('faction_name').eq('id', factionId).single();
@@ -1095,7 +1092,6 @@ export async function executePublicAddress(supabase, factionId, nationId, protes
         public_address_last_tick: currentTick,
     });
 
-    console.log(`[Protest] Public Address issued by faction ${factionId} on protest ${protestId} at tick ${currentTick}`);
 
     // Dispatch article + event (non-blocking)
     const headline = pickHeadline('protest_public_address');
@@ -1183,11 +1179,11 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
         }, true, protest.faction_id, currentTick + PROTEST_CONFIG.CALLING_PARTY_COOLDOWN);
 
         // Remove active crisis (no RLS on active_crises)
-        await supabase.from('active_crises').delete()
+        const { error: delErr } = await supabase.from('active_crises').delete()
             .eq('nation_id', nationId)
             .eq('crisis_id', PROTEST_CONFIG.TIER6_CRISIS_ID);
+        if (delErr) console.error('[Protest] Failed to delete T6 crisis:', delErr);
 
-        console.log(`[Protest] EPO SUCCESS — Tier 6 crisis ${protestId} resolved by force`);
         const resolvedHeadline = pickHeadline('protest_epo_resolved');
         dispatchProtestArticle(supabase, nationId, 'protest_epo_resolved', resolvedHeadline,
             'The Interior Ministry\'s enforcement action successfully ended the protest crisis.', 1, currentTick, protestId);
@@ -1196,16 +1192,18 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
     } else {
         // Escalation: T6 → T7
         // Remove T6 crisis, create T7
-        await supabase.from('active_crises').delete()
+        const { error: delT6Err } = await supabase.from('active_crises').delete()
             .eq('nation_id', nationId)
             .eq('crisis_id', PROTEST_CONFIG.TIER6_CRISIS_ID);
+        if (delT6Err) console.error('[Protest] Failed to delete T6 crisis during escalation:', delT6Err);
 
-        await supabase.from('active_crises').insert({
+        const { error: insT7Err } = await supabase.from('active_crises').insert({
             crisis_id: PROTEST_CONFIG.TIER7_CRISIS_ID,
             nation_id: nationId,
             started_at_tick: currentTick,
             effects_applied_log: [],
         });
+        if (insT7Err) console.error('[Protest] Failed to insert T7 crisis:', insT7Err);
 
         // Generate T7 demand
         const { data: statRows } = await supabase
@@ -1256,7 +1254,6 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
             ],
         });
 
-        console.log(`[Protest] EPO FAILED — Tier 6 escalated to Tier 7 for protest ${protestId}`);
         const escalatedHeadline = pickHeadline('protest_epo_escalated');
         dispatchProtestArticle(supabase, nationId, 'protest_epo_escalated', escalatedHeadline,
             `A government crackdown backfired, escalating the crisis to a Nationwide Protest. Demonstrators now demand: ${demand?.label || 'immediate action'}.`,
@@ -1341,7 +1338,6 @@ export async function executeNationalEmergencyOnProtest(supabase, factionId, nat
 
     await adjustGovernmentApprovalEvent(supabase, nationId, -10, 'protest:national_emergency');
 
-    console.log(`[Protest] National Emergency declared on protest ${protestId} — crisis ended with severe penalties`);
 
     // Dispatch article + event
     const neHeadline = pickHeadline('protest_emergency');
@@ -1605,7 +1601,6 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
         }
     }
 
-    console.log(`[Protest] Resolved protest ${protestId}: tier ${tier}, score ${turnoutScore.toFixed(1)}, condition ${conditionScore.toFixed(1)}, crisis: ${crisisCreated}`);
 
     return {
         tier,
