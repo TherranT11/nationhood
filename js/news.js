@@ -971,7 +971,17 @@ async function loadAndDisplayArticles() {
             !currentCategories.has(a.category)
         );
 
-        const mergedArticles = [...currentSeasonArticles, ...fallbackArticles];
+        // Opinion articles persist until replaced — take the 4 most recent
+        // regardless of season so all slots stay filled
+        const opinionArticles = articles
+            .filter(a => a.category === 'opinion')
+            .slice(0, 4);
+
+        const mergedArticles = [
+            ...currentSeasonArticles.filter(a => a.category !== 'opinion'),
+            ...fallbackArticles.filter(a => a.category !== 'opinion'),
+            ...opinionArticles
+        ];
 
         if (mergedArticles.length === 0) return;
 
