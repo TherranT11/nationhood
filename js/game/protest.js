@@ -123,7 +123,7 @@ const HIGHER_IS_BAD = new Set([
 ]);
 
 // Blocs penalised on fizzle (Tier 1-2)
-const FIZZLE_PENALTY_BLOCS = ['centrists', 'business_owners', 'academics'];
+const FIZZLE_PENALTY_BLOCS = ['centrist', 'business', 'academic'];
 
 // ==================== AP COST ====================
 
