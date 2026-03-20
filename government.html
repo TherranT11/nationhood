@@ -2719,7 +2719,8 @@ async function ministryActionConfirm(actionId) {
         refreshMinistryActionStates(ministryKey);
 
         // Fire CIVIC event (non-blocking)
-        if (action.triggerKey) {
+        {
+            const effectiveTriggerKey = action.triggerKey || 'ministry_ability_used';
             try {
                 const { data: ministry } = await _supabase
                     .from('ministries')
@@ -2732,7 +2733,7 @@ async function ministryActionConfirm(actionId) {
                     : 'Unknown';
                 const partyName = ministry?.factions?.faction_name || currentFaction?.faction_name || 'Unknown';
                 await _supabase.rpc('fire_system_event', {
-                    p_trigger_key: action.triggerKey,
+                    p_trigger_key: effectiveTriggerKey,
                     p_nation_id: currentNation.id,
                     p_tick: currentTick,
                     p_placeholders: {

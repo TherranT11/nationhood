@@ -1847,6 +1847,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     await supabase.from('event_log').insert({
                         nation_id: targetId,
                         event_name: 'Retaliatory Tariff Enacted',
+                        trigger_key: 'sanctions_imposed',
                         category: 'Trade',
                         description_chosen: imposerName + ' has enacted a retaliatory tariff on your exports. Relations have decreased by ' + relPenalty + '.',
                         fired_at_tick: currentTick
@@ -1911,6 +1912,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     await supabase.from('event_log').insert({
                         nation_id: targetId,
                         event_name: 'Embargo Enacted',
+                        trigger_key: 'sanctions_imposed',
                         category: 'Trade',
                         description_chosen: imposerName + ' has imposed an embargo on your trade. Relations have decreased by ' + relPenalty + '.',
                         fired_at_tick: currentTick
@@ -3424,6 +3426,7 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
                 await supabase.from('event_log').insert({
                     nation_id: amb.target_nation_id,
                     event_name: 'Diplomatic Negotiations Lapsed',
+                    trigger_key: 'diplomatic_initiative_rejected',
                     category: 'Diplomatic',
                     description_chosen: `${nation.name}'s ambassador has retired. ${lapsedProposals.length} pending negotiation(s) have lapsed. The new ambassador may re-propose if desired.`,
                     fired_at_tick: currentTick

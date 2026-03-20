@@ -613,6 +613,7 @@ export async function executeLeaderStepDown(supabase, nationId, factionId, curre
     const { error: eventErr } = await supabase.from('event_log').insert({
         nation_id: nationId,
         event_name: 'Party Leader Steps Down',
+        trigger_key: 'party_leader_replaced',
         description_chosen: reason,
         category: 'POLITICAL',
         fired_at_tick: currentTick,

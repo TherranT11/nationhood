@@ -2212,6 +2212,7 @@ async function acceptTradeNegotiation(proposalId, negotiationId) {
     _supabase.from('event_log').insert({
         nation_id: currentNation.id,
         event_name: 'Trade Negotiations Accepted',
+        trigger_key: 'trade_agreement_accepted',
         category: 'Trade',
         description_chosen: currentNation.name + ' has accepted trade negotiations with ' + (partnerNation?.name || 'Unknown') + '. The negotiation table is now open.',
         fired_at_tick: shardTick
@@ -2241,6 +2242,16 @@ async function rejectTradeNegotiation(proposalId, negotiationId) {
     if (proposalId) {
         await _supabase.from('diplomatic_proposals').update({ status: 'rejected' }).eq('id', proposalId);
     }
+
+    // Fire timeline event
+    try {
+        await _supabase.rpc('fire_system_event', {
+            p_trigger_key: 'trade_agreement_rejected',
+            p_nation_id: currentNation.id,
+            p_tick: shardTick,
+            p_placeholders: {}
+        });
+    } catch (e) { /* non-blocking */ }
 
     alert('Trade negotiations rejected.');
     await refreshDiplomacyUI();
@@ -3047,11 +3058,21 @@ async function addEmbassyCost(nationId, amount) {
 
 async function fireProposalEvent(pd, currentTick, stage, description) {
     try {
+        // Map stage to trigger_key
+        const triggerMap = {
+            'activated': 'diplomatic_initiative_accepted',
+            'ambassador_accepted': 'diplomatic_initiative_accepted',
+            'rejected': 'diplomatic_initiative_rejected',
+            'proposed': 'diplomatic_initiative_proposed',
+        };
+        const triggerKey = triggerMap[stage] || 'diplomatic_initiative_proposed';
+
         const { data: allNations } = await _supabase.from('nations').select('id');
         if (allNations && allNations.length > 0) {
             const eventRows = allNations.map(n => ({
                 nation_id: n.id,
                 event_name: (pd.name || 'Diplomatic Agreement') + ' — ' + stage.charAt(0).toUpperCase() + stage.slice(1),
+                trigger_key: triggerKey,
                 category: 'Diplomatic',
                 description_chosen: description,
                 fired_at_tick: currentTick
@@ -5257,6 +5278,16 @@ async function wizardSubmit() {
         return;
     }
 
+    // Fire timeline event for diplomatic initiative proposed
+    try {
+        await _supabase.rpc('fire_system_event', {
+            p_trigger_key: 'diplomatic_initiative_proposed',
+            p_nation_id: currentNation.id,
+            p_tick: currentTick,
+            p_placeholders: { name: wizardName, type: typeInfo.label, target_nation: targetNation?.name || 'Unknown', classification: typeInfo.classification }
+        });
+    } catch (e) { /* non-blocking */ }
+
     alert('Diplomatic Initiative "' + wizardName + '" proposed!\n\n' +
         (typeInfo.classification === 'MINOR' ? 'As a MINOR agreement, it can be accepted directly by the target ambassador.' :
         'As a MAJOR agreement, it will require escalation through the legislative pipeline after ambassador acceptance.'));
@@ -5356,6 +5387,7 @@ async function submitTradeProposal() {
     await _supabase.from('event_log').insert({
         nation_id: currentNation.id,
         event_name: 'Trade Agreement Proposed',
+        trigger_key: 'trade_agreement_proposed',
         category: 'Trade',
         description_chosen: currentNation.name + ' has proposed a ' + (allAgreementTypes.length > 1 ? 'trade package' : (typeInfo?.label || 'trade agreement')) + ' ("' + agreementName + '") with ' + targetName + '.',
         fired_at_tick: currentTick
@@ -7851,6 +7883,18 @@ async function rejectProposal(proposalId) {
 
     if (error) { alert('Error rejecting proposal: ' + error.message); return; }
 
+    // Fire timeline event
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const triggerKey = proposal.proposal_type === 'trade_agreement' ? 'trade_agreement_rejected' : 'diplomatic_initiative_rejected';
+        await _supabase.rpc('fire_system_event', {
+            p_trigger_key: triggerKey,
+            p_nation_id: currentNation.id,
+            p_tick: shard?.current_tick || 0,
+            p_placeholders: { proposer_nation: proposal.proposing_nation_id, target_nation: proposal.target_nation_id }
+        });
+    } catch (e) { /* non-blocking */ }
+
     alert('Proposal rejected.');
     if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
@@ -8673,6 +8717,7 @@ async function submitStateVisit() {
             const eventRows = allNations.map(n => ({
                 nation_id: n.id,
                 event_name: 'State Visit Proposed',
+                trigger_key: 'state_visit',
                 event_type: 'state_visit',
                 category: 'Diplomatic',
                 description_chosen: hogName + ' of ' + currentNation.name + ' has proposed a state visit to ' + ctx.targetNation.name + '.',
@@ -8968,6 +9013,7 @@ async function acceptStateVisit(proposalId) {
             const acceptRows = allNations.map(n => ({
                 nation_id: n.id,
                 event_name: 'State Visit Accepted',
+                trigger_key: 'state_visit',
                 event_type: 'state_visit',
                 category: 'Diplomatic',
                 description_chosen: pd.host_nation + ' has accepted a ' + vtLabel.toLowerCase() + ' from ' + pd.visitor_leader + ' of ' + pd.visitor_nation + '.',
@@ -8978,6 +9024,7 @@ async function acceptStateVisit(proposalId) {
             const happenedRows = allNations.map(n => ({
                 nation_id: n.id,
                 event_name: 'State Visit',
+                trigger_key: 'state_visit',
                 event_type: 'state_visit',
                 category: 'Diplomatic',
                 description_chosen: pd.visitor_leader + ' of ' + pd.visitor_nation + ' conducted a ' + vtLabel + ' to ' + pd.host_nation + '.' +

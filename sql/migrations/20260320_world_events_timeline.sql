@@ -1,16 +1,18 @@
--- RPC: fire_system_event
--- Inserts a system event into event_log with a trigger_key and placeholders.
--- Called from the tick processor, ministry actions, elections, bills, etc.
--- SECURITY DEFINER so client-side callers can write to event_log.
+-- World Events Timeline: ensure indexes support the world events query,
+-- update fire_system_event RPC with proper event name/category mapping,
+-- and add trigger_key to existing event_log inserts that were missing it.
 
--- Ensure trigger_key column exists (may already be present)
-ALTER TABLE event_log
-ADD COLUMN IF NOT EXISTS trigger_key TEXT DEFAULT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_event_log_trigger_key
-ON event_log (trigger_key)
+-- Composite index for world events feed (all nations, ordered by tick, filtered by trigger_key NOT NULL)
+CREATE INDEX IF NOT EXISTS idx_event_log_world_feed
+ON event_log (fired_at_tick DESC)
 WHERE trigger_key IS NOT NULL;
 
+-- Ensure nation_id index exists for the join
+CREATE INDEX IF NOT EXISTS idx_event_log_nation_id
+ON event_log (nation_id);
+
+-- Update fire_system_event RPC with proper event name & category mapping
+-- (See sql/create_fire_system_event.sql for the full function definition)
 CREATE OR REPLACE FUNCTION fire_system_event(
     p_nation_id    UUID,
     p_trigger_key  TEXT,
@@ -25,7 +27,6 @@ DECLARE
     v_event_name TEXT;
     v_category TEXT;
 BEGIN
-    -- Guard: caller must belong to this nation (skip check for service_role / tick processor)
     IF auth.role() = 'authenticated' THEN
         IF NOT EXISTS (
             SELECT 1 FROM factions
@@ -35,7 +36,6 @@ BEGIN
         END IF;
     END IF;
 
-    -- Map trigger_key to readable event_name and category
     SELECT
         CASE p_trigger_key
             WHEN 'election_held'            THEN 'Election Held'
