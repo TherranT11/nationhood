@@ -12636,7 +12636,7 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     const PILLAR_WEIGHT_PERF = 0.25;
     const PILLAR_WEIGHT_MOM  = 0.35;
     const MOMENTUM_DECAY     = 0.70; // 30% decay per tick
-    const INACTIVITY_DRAIN   = 1.5;  // momentum drain per tick when inactive
+    const INACTIVITY_DRAIN   = 3.0;  // momentum drain per tick when inactive
     const INACTIVITY_THRESHOLD = 3;  // ticks without any campaign action to trigger drain
 
     // ── Engagement decay: ideology alignment loses effectiveness when inactive ──
@@ -23809,6 +23809,35 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
       try {
         // Set correct seat count for this nation (affects supermajority thresholds, etc.)
         initGameConfigForNation(nation);
+
+        // Auto-disband parties inactive for 15+ ticks
+        const AUTO_DISBAND_TICKS = 15;
+        try {
+            const { data: allFactions } = await supabase
+                .from('factions')
+                .select('id, faction_name, last_seen_tick, faction_type')
+                .eq('nation_id', nation.id)
+                .eq('faction_type', 'party');
+
+            const inactiveFactions = (allFactions || []).filter(f => {
+                if (f.last_seen_tick == null) return false; // new parties that haven't loaded yet — don't punish
+                return (newTick - f.last_seen_tick) >= AUTO_DISBAND_TICKS;
+            });
+
+            for (const inactive of inactiveFactions) {
+                try {
+                    console.log(`[advanceTick] Auto-disbanding "${inactive.faction_name}" (${inactive.id}) — inactive for ${newTick - inactive.last_seen_tick} ticks in ${nation.name}`);
+                    await disbandParty(supabase, nation.id, inactive.id, newTick);
+                    summary.autoDisbands = summary.autoDisbands || [];
+                    summary.autoDisbands.push({ nation: nation.name, faction: inactive.faction_name, inactiveTicks: newTick - inactive.last_seen_tick });
+                } catch (disbandErr) {
+                    // Non-fatal: e.g. Survivor PM blocks disband — log and continue
+                    console.warn(`[advanceTick] Auto-disband failed for "${inactive.faction_name}" in ${nation.name}:`, disbandErr.message || disbandErr);
+                }
+            }
+        } catch (inactErr) {
+            console.error(`[advanceTick] Inactivity check failed for ${nation.name} (non-fatal):`, inactErr);
+        }
 
         // Stat effects (from passed bills/active laws)
         try {

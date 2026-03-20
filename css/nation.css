@@ -754,3 +754,98 @@
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+/* ===== Light mode overrides ===== */
+body.light-mode {
+    /* ── Background tokens ── */
+    --n-bg: #f0f1f4;
+    --n-bg-card: #ffffff;
+    --n-bg-card-hi: #f5f5f2;
+
+    /* ── Text tokens ── */
+    --n-primary: #1a1a18;
+    --n-secondary: #555550;
+    --n-tertiary: #777770;
+
+    /* ── Border tokens ── */
+    --n-border: rgba(0,0,0,0.08);
+    --n-border-hi: rgba(0,0,0,0.16);
+
+    /* ── Status colors (darker for legibility on white) ── */
+    --n-green: #2e7d32;
+    --n-green-dim: rgba(46,125,50,0.08);
+    --n-yellow: #a07000;
+    --n-yellow-dim: rgba(160,112,0,0.08);
+    --n-orange: #c65100;
+    --n-orange-dim: rgba(198,81,0,0.08);
+    --n-red: #c62828;
+    --n-red-dim: rgba(198,40,40,0.08);
+    --n-cyan: #0e7490;
+    --n-cyan-dim: rgba(14,116,144,0.08);
+    --n-blue: #1565c0;
+    --n-purple: #7c3aed;
+}
+
+/* Hardcoded rgba(255,…) overrides — backgrounds that assumed dark mode */
+body.light-mode .cat-header__health-bar {
+    background: rgba(0,0,0,0.06);
+}
+body.light-mode .compact-bottom__rank-pip--empty {
+    background: rgba(0,0,0,0.06);
+}
+body.light-mode .featured-card__chart {
+    background: rgba(0,0,0,0.02);
+}
+body.light-mode .featured-card__scale-item--active {
+    background: rgba(0,0,0,0.05);
+}
+
+/* Card elevation — subtle shadow instead of border-on-dark */
+body.light-mode .featured-card,
+body.light-mode .nation-summary__card {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+body.light-mode .cat-body {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+/* ABP type badges — darker variants for white backgrounds */
+body.light-mode .featured-card__abp-type--policy { background: rgba(21,101,192,0.10); color: #1565c0; }
+body.light-mode .featured-card__abp-type--crisis { background: rgba(198,40,40,0.10); color: #c62828; }
+body.light-mode .featured-card__abp-type--ministry-action { background: rgba(46,125,50,0.10); color: #2e7d32; }
+body.light-mode .featured-card__abp-type--diplomatic-action { background: rgba(198,81,0,0.10); color: #c65100; }
+body.light-mode .featured-card__abp-type--leader-trait { background: rgba(160,112,0,0.10); color: #a07000; }
+body.light-mode .featured-card__abp-type--decay { background: rgba(0,0,0,0.05); color: #777770; }
+body.light-mode .featured-card__abp-type--stat-link { background: rgba(124,58,237,0.10); color: #7c3aed; }
+body.light-mode .featured-card__abp-type--trade { background: rgba(160,112,0,0.10); color: #a07000; }
+body.light-mode .featured-card__abp-type--institution { background: rgba(13,148,136,0.10); color: #0d9488; }
+body.light-mode .featured-card__abp-type--debt-pressure { background: rgba(198,81,0,0.10); color: #c65100; }
+
+/* Bloc pills in category headers */
+body.light-mode .cat-header__bloc {
+    color: #0e7490;
+    background: rgba(14,116,144,0.08);
+    border-color: rgba(14,116,144,0.18);
+}
+
+/* Revolution banners */
+body.light-mode .revolution-banner {
+    background: rgba(198,40,40,0.04);
+    border-color: rgba(198,40,40,0.25);
+}
+body.light-mode .revolution-complete-banner {
+    background: rgba(46,125,50,0.04);
+    border-color: rgba(46,125,50,0.25);
+}
+body.light-mode .revolution-tag--red {
+    border-color: rgba(198,40,40,0.2);
+}
+body.light-mode .revolution-tag--green {
+    border-color: rgba(46,125,50,0.2);
+}
+
+/* Loading spinner */
+body.light-mode .loading-spinner {
+    border-color: rgba(0,0,0,0.08);
+    border-top-color: #555550;
+}

@@ -435,8 +435,8 @@ textarea {
         </div>
         <div class="input-group">
           <label class="input-label">Abbreviation</label>
-          <input type="text" id="party-abbr" placeholder="PWA" maxlength="3" style="text-transform:uppercase; font-family:var(--font-mono); font-weight:700; letter-spacing:0.1em;">
-          <div class="char-counter"><span id="abbr-counter">0</span>/3</div>
+          <input type="text" id="party-abbr" placeholder="PWA" maxlength="4" style="text-transform:uppercase; font-family:var(--font-mono); font-weight:700; letter-spacing:0.1em;">
+          <div class="char-counter"><span id="abbr-counter">0</span>/4</div>
         </div>
       </div>
       <div class="input-group">
@@ -644,7 +644,7 @@ function validateForm() {
   const name = document.getElementById('party-name').value.trim();
   const abbr = document.getElementById('party-abbr').value.trim();
   const btn = document.getElementById('btn-next');
-  const valid = name.length > 0 && abbr.length === 3;
+  const valid = name.length > 0 && abbr.length >= 2 && abbr.length <= 4;
   btn.disabled = !valid;
   btn.classList.toggle('ready', valid);
 }
@@ -723,7 +723,7 @@ async function proceed() {
   const abbr = document.getElementById('party-abbr').value.trim();
   const desc = document.getElementById('party-desc').value.trim();
 
-  if (!name || abbr.length !== 3) return;
+  if (!name || abbr.length < 2 || abbr.length > 4) return;
 
   const btn = document.getElementById('btn-next');
   btn.disabled = true;

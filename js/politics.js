@@ -2110,17 +2110,20 @@ function renderEditIdentityBox(f, currentTick) {
         iconsHtml += '</div>';
     }
 
-    // Rename section
+    // Rename / abbreviation section (shared cooldown)
     const apColor = ap >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)';
     let renameHtml;
+    let abbrHtml;
     if (onCooldown) {
         const pct = (cooldownRemaining / RENAME_COOLDOWN * 100).toFixed(1);
-        renameHtml = `
+        const cooldownBar = `
             <div class="pol-id-cooldown">
                 <span class="pol-id-cooldown-label">Rename cooldown</span>
                 <div class="pol-id-cooldown-track"><div class="pol-id-cooldown-fill" style="width:${pct}%"></div></div>
                 <span class="pol-id-cooldown-ticks">${cooldownRemaining}t</span>
             </div>`;
+        renameHtml = cooldownBar;
+        abbrHtml = cooldownBar;
     } else {
         renameHtml = `
             <button class="pol-id-rename-btn" id="pol-id-rename-btn">
@@ -2138,6 +2141,23 @@ function renderEditIdentityBox(f, currentTick) {
                     <span id="pol-id-ap-available" style="color:${apColor}">${ap} AP available</span>
                 </div>
                 <div class="pol-id-error" id="pol-id-rename-error" style="display:none"></div>
+            </div>`;
+        abbrHtml = `
+            <button class="pol-id-rename-btn" id="pol-id-abbr-btn">
+                <span>Change Abbreviation</span>
+                <span class="pol-id-rename-cost">${RENAME_AP_COST} AP · ${RENAME_COOLDOWN}t cooldown</span>
+            </button>
+            <div class="pol-id-rename-form" id="pol-id-abbr-form" style="display:none">
+                <div class="pol-id-rename-row">
+                    <input class="pol-id-rename-input" id="pol-id-abbr-input" placeholder="2–4 letters" maxlength="4" style="text-transform:uppercase;font-family:var(--dfont-mono);font-weight:700;letter-spacing:0.1em;width:80px">
+                    <button class="pol-id-rename-confirm" id="pol-id-abbr-confirm">Confirm</button>
+                    <button class="pol-id-rename-cancel" id="pol-id-abbr-cancel">✕</button>
+                </div>
+                <div class="pol-id-rename-meta">
+                    <span>Costs <span style="color:var(--damber)">${RENAME_AP_COST} AP</span> · locks rename for <span style="color:var(--damber)">${RENAME_COOLDOWN} ticks</span></span>
+                    <span id="pol-id-abbr-ap-available" style="color:${apColor}">${ap} AP available</span>
+                </div>
+                <div class="pol-id-error" id="pol-id-abbr-error" style="display:none"></div>
             </div>`;
     }
 
@@ -2170,6 +2190,19 @@ function renderEditIdentityBox(f, currentTick) {
                 <span>current</span>
             </div>
             ${renameHtml}
+        </div>
+        <div class="pol-id-divider"></div>
+
+        <!-- Abbreviation -->
+        <div style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <span class="pol-id-section-label">Abbreviation</span>
+            </div>
+            <div class="pol-id-name-display">
+                <span id="pol-id-current-abbr">${escapeHtml(f.abbreviation || '???')}</span>
+                <span>current</span>
+            </div>
+            ${abbrHtml}
         </div>
         <div class="pol-id-divider"></div>
 
@@ -2249,6 +2282,14 @@ function initEditIdentityBox(f) {
     const renameConfirm = document.getElementById('pol-id-rename-confirm');
     const renameCancel = document.getElementById('pol-id-rename-cancel');
     const renameError  = document.getElementById('pol-id-rename-error');
+    const abbrBtn      = document.getElementById('pol-id-abbr-btn');
+    const abbrForm     = document.getElementById('pol-id-abbr-form');
+    const abbrInput    = document.getElementById('pol-id-abbr-input');
+    const abbrConfirm  = document.getElementById('pol-id-abbr-confirm');
+    const abbrCancel   = document.getElementById('pol-id-abbr-cancel');
+    const abbrError    = document.getElementById('pol-id-abbr-error');
+    const abbrDisplay  = document.getElementById('pol-id-current-abbr');
+    const abbrApAvail  = document.getElementById('pol-id-abbr-ap-available');
     const nameDisplay  = document.getElementById('pol-id-current-name');
     const apDisplay    = document.getElementById('pol-id-ap-display');
     const apAvailable  = document.getElementById('pol-id-ap-available');
@@ -2411,6 +2452,96 @@ function initEditIdentityBox(f) {
         });
     }
 
+    // Abbreviation change flow (shared cooldown with rename)
+    if (abbrBtn && abbrForm) {
+        abbrBtn.addEventListener('click', () => {
+            abbrBtn.style.display = 'none';
+            abbrForm.style.display = '';
+            abbrInput.focus();
+        });
+    }
+    if (abbrCancel) {
+        abbrCancel.addEventListener('click', () => {
+            abbrForm.style.display = 'none';
+            abbrBtn.style.display = '';
+            abbrInput.value = '';
+            abbrError.style.display = 'none';
+            abbrInput.classList.remove('has-error');
+        });
+    }
+    if (abbrInput) {
+        abbrInput.addEventListener('input', () => {
+            abbrInput.value = abbrInput.value.toUpperCase();
+        });
+    }
+    if (abbrConfirm) {
+        abbrConfirm.addEventListener('click', async () => {
+            if (abbrConfirm.disabled) return;
+            abbrError.style.display = 'none';
+            abbrInput.classList.remove('has-error');
+            const trimmed = abbrInput.value.trim().toUpperCase();
+            if (trimmed.length < 2 || trimmed.length > 4) {
+                abbrError.textContent = '⚠ Must be 2–4 letters.';
+                abbrError.style.display = '';
+                abbrInput.classList.add('has-error');
+                return;
+            }
+            abbrConfirm.disabled = true;
+            // Deduct AP via RPC
+            const result = await deductAP(_supabase, f.id, RENAME_AP_COST);
+            if (!result.success) {
+                abbrError.textContent = '⚠ ' + (result.error || 'Insufficient AP');
+                abbrError.style.display = '';
+                abbrConfirm.disabled = false;
+                return;
+            }
+            // Update abbreviation + last_rename_tick in DB
+            const tick = parseInt(box.dataset.currentTick) || 0;
+            const { error: abbrUpdateErr } = await _supabase.from('factions').update({
+                abbreviation: trimmed,
+                last_rename_tick: tick
+            }).eq('id', f.id);
+            if (abbrUpdateErr) {
+                abbrError.textContent = '⚠ Failed to save — try again.';
+                abbrError.style.display = '';
+                abbrConfirm.disabled = false;
+                return;
+            }
+
+            // Update UI
+            abbrDisplay.textContent = trimmed;
+            apDisplay.textContent = result.newAp;
+            apDisplay.style.color = result.newAp >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)';
+            if (abbrApAvail) {
+                abbrApAvail.textContent = result.newAp + ' AP available';
+                abbrApAvail.style.color = result.newAp >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)';
+            }
+            if (apAvailable) {
+                apAvailable.textContent = result.newAp + ' AP available';
+                apAvailable.style.color = result.newAp >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)';
+            }
+            abbrForm.style.display = 'none';
+            abbrInput.value = '';
+            // Replace abbr button with cooldown bar
+            abbrBtn.outerHTML = `
+                <div class="pol-id-cooldown">
+                    <span class="pol-id-cooldown-label">Rename cooldown</span>
+                    <div class="pol-id-cooldown-track"><div class="pol-id-cooldown-fill" style="width:100%"></div></div>
+                    <span class="pol-id-cooldown-ticks">${RENAME_COOLDOWN}t</span>
+                </div>`;
+            // Also lock the rename button if it exists
+            if (renameBtn) {
+                renameForm.style.display = 'none';
+                renameBtn.outerHTML = `
+                    <div class="pol-id-cooldown">
+                        <span class="pol-id-cooldown-label">Rename cooldown</span>
+                        <div class="pol-id-cooldown-track"><div class="pol-id-cooldown-fill" style="width:100%"></div></div>
+                        <span class="pol-id-cooldown-ticks">${RENAME_COOLDOWN}t</span>
+                    </div>`;
+            }
+        });
+    }
+
     // Rename flow
     if (renameBtn && renameForm) {
         renameBtn.addEventListener('click', () => {
@@ -2476,6 +2607,16 @@ function initEditIdentityBox(f) {
                     <div class="pol-id-cooldown-track"><div class="pol-id-cooldown-fill" style="width:100%"></div></div>
                     <span class="pol-id-cooldown-ticks">${RENAME_COOLDOWN}t</span>
                 </div>`;
+            // Also lock the abbreviation button (shared cooldown)
+            if (abbrBtn) {
+                abbrForm.style.display = 'none';
+                abbrBtn.outerHTML = `
+                    <div class="pol-id-cooldown">
+                        <span class="pol-id-cooldown-label">Rename cooldown</span>
+                        <div class="pol-id-cooldown-track"><div class="pol-id-cooldown-fill" style="width:100%"></div></div>
+                        <span class="pol-id-cooldown-ticks">${RENAME_COOLDOWN}t</span>
+                    </div>`;
+            }
         });
     }
 

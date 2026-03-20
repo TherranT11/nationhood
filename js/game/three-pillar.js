@@ -225,7 +225,7 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
     const PILLAR_WEIGHT_PERF = 0.25;
     const PILLAR_WEIGHT_MOM  = 0.35;
     const MOMENTUM_DECAY     = 0.70; // 30% decay per tick
-    const INACTIVITY_DRAIN   = 1.5;  // momentum drain per tick when inactive
+    const INACTIVITY_DRAIN   = 3.0;  // momentum drain per tick when inactive
     const INACTIVITY_THRESHOLD = 3;  // ticks without any campaign action to trigger drain
 
     // ── Engagement decay: ideology alignment loses effectiveness when inactive ──
