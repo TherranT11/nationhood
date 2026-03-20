@@ -1006,8 +1006,7 @@ async function loadAndDisplayArticles() {
             return;
         }
 
-        // Separate opinion articles from news articles
-        const opinionArticles = filtered.filter(a => a.category === 'opinion');
+        // Separate news articles (opinions are handled separately via opinionArticles above)
         const newsArticles = filtered.filter(a => a.category !== 'opinion');
 
         // Sort news by body length DESC — longest gets A1
