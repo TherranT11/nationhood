@@ -23,6 +23,7 @@ export * from './game/three-pillar.js';
 export * from './game/autocracy-pillars.js';
 export * from './game/autocracy-actions.js';
 export * from './game/autocracy-actions-military-party-oligarch.js';
+export * from './game/autocracy-actions-security-media-strongman.js';
 export * from './game/political-actions.js';
 export * from './game/executive-orders.js';
 export * from './game/election-simulation.js';
