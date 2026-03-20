@@ -1167,11 +1167,11 @@ function renderFeaturedGDP(nation) {
 
     // GDP growth label
     var gdpLabel, tagColor, tagBorder;
-    if (monthlyPct < -0.33) { gdpLabel = 'Recession'; tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red-dim)'; }
-    else if (monthlyPct < 0) { gdpLabel = 'Stagnant'; tagColor = 'var(--n-orange)'; tagBorder = 'var(--n-orange-dim)'; }
-    else if (monthlyPct < 0.17) { gdpLabel = 'No Growth'; tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow-dim)'; }
-    else if (monthlyPct < 1) { gdpLabel = 'Growing'; tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green-dim)'; }
-    else { gdpLabel = 'Booming'; tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green-dim)'; }
+    if (monthlyPct < -0.33) { gdpLabel = 'Recession'; tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red)'; }
+    else if (monthlyPct < 0) { gdpLabel = 'Stagnant'; tagColor = 'var(--n-orange)'; tagBorder = 'var(--n-orange)'; }
+    else if (monthlyPct < 0.17) { gdpLabel = 'No Growth'; tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow)'; }
+    else if (monthlyPct < 1) { gdpLabel = 'Growing'; tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green)'; }
+    else { gdpLabel = 'Booming'; tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green)'; }
 
     // Dot color matches tag
     var dotColor = tagColor;
@@ -1253,9 +1253,9 @@ function renderFeaturedInflation(nation) {
     // Tag color
     var iClass = inflationColorClass(inflRaw);
     var tagColor, tagBorder, dotColor;
-    if (iClass === 'good') { tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green-dim)'; dotColor = 'var(--n-green)'; }
-    else if (iClass === 'medium') { tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow-dim)'; dotColor = 'var(--n-yellow)'; }
-    else { tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red-dim)'; dotColor = 'var(--n-red)'; }
+    if (iClass === 'good') { tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green)'; dotColor = 'var(--n-green)'; }
+    else if (iClass === 'medium') { tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow)'; dotColor = 'var(--n-yellow)'; }
+    else { tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red)'; dotColor = 'var(--n-red)'; }
 
     // Delta per tick
     var deltaStr = '';
@@ -1333,9 +1333,9 @@ function renderFeaturedGDPGrowth(nation) {
 
     // Color based on growth
     var growthColor, borderColor, dotColor, tagColor, tagBorder;
-    if (monthlyPct >= 0.17) { growthColor = getCSSColor('--n-green'); borderColor = 'var(--n-green)'; dotColor = 'var(--n-green)'; tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green-dim)'; }
-    else if (monthlyPct >= 0) { growthColor = getCSSColor('--n-yellow'); borderColor = 'var(--n-yellow)'; dotColor = 'var(--n-yellow)'; tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow-dim)'; }
-    else { growthColor = getCSSColor('--n-red'); borderColor = 'var(--n-red)'; dotColor = 'var(--n-red)'; tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red-dim)'; }
+    if (monthlyPct >= 0.17) { growthColor = getCSSColor('--n-green'); borderColor = 'var(--n-green)'; dotColor = 'var(--n-green)'; tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green)'; }
+    else if (monthlyPct >= 0) { growthColor = getCSSColor('--n-yellow'); borderColor = 'var(--n-yellow)'; dotColor = 'var(--n-yellow)'; tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow)'; }
+    else { growthColor = getCSSColor('--n-red'); borderColor = 'var(--n-red)'; dotColor = 'var(--n-red)'; tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red)'; }
 
     var yearlyColor = yearlyPct >= 0 ? 'var(--n-green)' : 'var(--n-red)';
 
@@ -1435,7 +1435,7 @@ function renderFeaturedDebt(nation) {
     var borderColor = 'var(--n-red)';
     var dotColor = 'var(--n-red)';
     var tagColor = 'var(--n-red)';
-    var tagBorder = 'var(--n-red-dim)';
+    var tagBorder = 'var(--n-red)';
 
     // Delta per tick
     var deltaStr = '';
