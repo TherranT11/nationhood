@@ -551,7 +551,7 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
                 <div style="width:${pct}%;height:100%;background:${color};opacity:${isWildcard ? 0.4 : 0.7};border-radius:2px;transition:width 0.3s"></div>
             </div>
             <div style="width:30px;text-align:right;font-size:11px;color:var(--dtext-1);font-family:var(--dfont-mono)">${backing.toFixed(1)}</div>
-            <div style="width:80px;font-size:9px;color:${isWildcard ? '#d9534f' : 'var(--dtext-3)'};text-align:right;font-style:${isWildcard ? 'italic' : 'normal'}">${ownerLabel}</div>
+            <div style="width:80px;font-size:9px;color:${isWildcard ? '#d9534f' : 'var(--dtext-3)'};text-align:right;font-style:${isWildcard ? 'italic' : 'normal'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ownerLabel}</div>
         </div>`;
     }
 
@@ -583,13 +583,16 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
                 </div>
                 <span style="font-size:10px;color:${pColorPillar};font-weight:600;text-transform:uppercase">${pLabel}</span>
             </div>
-            <div style="display:flex;gap:16px;margin-top:6px;font-size:11px">
+            <div style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:6px;font-size:11px">
                 <div><span style="color:var(--dtext-3)">Backing</span> <span style="color:var(--dtext-1);font-weight:600;font-family:var(--dfont-mono)">${backing}</span></div>
                 <div><span style="color:var(--dtext-3)">Leader</span> <span style="color:var(--dtext-1)">${escapeHtml(lName)}</span> <span style="color:var(--dtext-3)">(${lAge})</span></div>
                 ${ministerCount > 0 ? `<div><span style="color:var(--dtext-3)">Ministers</span> <span style="color:var(--dtext-1)">${ministerCount}</span></div>` : ''}
             </div>
             ${fps.arrested_leader ? '<div style="font-size:9px;color:#d9534f;margin-top:4px;font-weight:600">LEADER ARRESTED</div>' : ''}
         </div>`;
+    }
+    if (pillarStates.length === 0) {
+        factionCardsHtml = '<div style="padding:16px;text-align:center;color:var(--dtext-3);font-size:12px">No factions have claimed pillars yet.</div>';
     }
 
     // ── Revolution warning ──
@@ -4289,7 +4292,7 @@ async function renderAutocracyActionsTab(nation, faction, shard, pillarStates, a
         if (cd.onCooldown) costLabel = `${cd.remainingTicks} CD`;
 
         listHtml += `
-        <div class="auto-action-item" data-action="${actionKey}" style="background:${bgColor};border:1px solid ${borderColor};border-radius:3px;padding:8px 10px;margin-bottom:4px;cursor:pointer;opacity:${opacity};transition:all 0.15s">
+        <div class="auto-action-item" data-action="${actionKey}" data-disabled="${disabled}" style="background:${bgColor};border:1px solid ${borderColor};border-radius:3px;padding:8px 10px;margin-bottom:4px;cursor:${disabled ? 'default' : 'pointer'};opacity:${opacity};transition:all 0.15s">
             <div style="display:flex;justify-content:space-between;align-items:center">
                 <div style="display:flex;align-items:center;gap:6px">
                     <span style="font-size:13px;color:${meta.color};width:18px;text-align:center">${meta.icon}</span>
@@ -4306,18 +4309,20 @@ async function renderAutocracyActionsTab(nation, faction, shard, pillarStates, a
     let detailHtml = '<div id="auto-action-detail" style="padding:24px;text-align:center;color:var(--dtext-3);font-size:12px">Select an action to see details.</div>';
 
     container.innerHTML = `
-    <div style="display:flex;gap:16px;min-height:400px">
-        <div id="auto-action-list" style="width:320px;min-width:280px;flex-shrink:0">
+    <div class="auto-actions-wrap" style="display:flex;gap:16px;min-height:400px">
+        <div id="auto-action-list" style="width:320px;min-width:0;flex-shrink:1">
             ${listHtml}
         </div>
-        <div style="flex:1;background:var(--dbg-2);border:1px solid var(--dborder-0);border-radius:3px;padding:16px;overflow-y:auto">
+        <div style="flex:1;min-width:0;background:var(--dbg-2);border:1px solid var(--dborder-0);border-radius:3px;padding:16px;overflow-y:auto">
             ${detailHtml}
         </div>
-    </div>`;
+    </div>
+    <style>.auto-actions-wrap{flex-wrap:wrap}@media(max-width:700px){.auto-actions-wrap{flex-direction:column}.auto-actions-wrap>#auto-action-list{width:100%}}</style>`;
 
     // Wire up click handlers
     container.querySelectorAll('.auto-action-item').forEach(el => {
         el.addEventListener('click', () => {
+            if (el.getAttribute('data-disabled') === 'true') return;
             const actionKey = el.getAttribute('data-action');
             _autoSelectedAction = actionKey;
             _autoActionMode = 'regime'; // reset mode on action switch
