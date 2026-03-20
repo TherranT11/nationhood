@@ -1179,9 +1179,10 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
         }, true, protest.faction_id, currentTick + PROTEST_CONFIG.CALLING_PARTY_COOLDOWN);
 
         // Remove active crisis (no RLS on active_crises)
-        await supabase.from('active_crises').delete()
+        const { error: delErr } = await supabase.from('active_crises').delete()
             .eq('nation_id', nationId)
             .eq('crisis_id', PROTEST_CONFIG.TIER6_CRISIS_ID);
+        if (delErr) console.error('[Protest] Failed to delete T6 crisis:', delErr);
 
         const resolvedHeadline = pickHeadline('protest_epo_resolved');
         dispatchProtestArticle(supabase, nationId, 'protest_epo_resolved', resolvedHeadline,
@@ -1191,16 +1192,18 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
     } else {
         // Escalation: T6 → T7
         // Remove T6 crisis, create T7
-        await supabase.from('active_crises').delete()
+        const { error: delT6Err } = await supabase.from('active_crises').delete()
             .eq('nation_id', nationId)
             .eq('crisis_id', PROTEST_CONFIG.TIER6_CRISIS_ID);
+        if (delT6Err) console.error('[Protest] Failed to delete T6 crisis during escalation:', delT6Err);
 
-        await supabase.from('active_crises').insert({
+        const { error: insT7Err } = await supabase.from('active_crises').insert({
             crisis_id: PROTEST_CONFIG.TIER7_CRISIS_ID,
             nation_id: nationId,
             started_at_tick: currentTick,
             effects_applied_log: [],
         });
+        if (insT7Err) console.error('[Protest] Failed to insert T7 crisis:', insT7Err);
 
         // Generate T7 demand
         const { data: statRows } = await supabase
