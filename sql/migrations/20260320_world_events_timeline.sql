@@ -13,6 +13,9 @@ ON event_log (nation_id);
 
 -- Update fire_system_event RPC with proper event name & category mapping
 -- (See sql/create_fire_system_event.sql for the full function definition)
+-- Drop first: the old version may have a different return type which blocks CREATE OR REPLACE
+DROP FUNCTION IF EXISTS fire_system_event(uuid, text, integer, jsonb);
+
 CREATE OR REPLACE FUNCTION fire_system_event(
     p_nation_id    UUID,
     p_trigger_key  TEXT,
