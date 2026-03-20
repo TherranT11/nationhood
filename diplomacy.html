@@ -8906,9 +8906,6 @@ async function acceptStateVisit(proposalId) {
     }
     if (!confirm(confirmMsg)) return;
 
-    _diploActionLock = true;
-    try {
-
     // ── Apply computed effects to both nations ──
     const visitorUpdates = {};
     const hostUpdates = {};
