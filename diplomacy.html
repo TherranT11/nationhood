@@ -8813,7 +8813,6 @@ async function submitStateVisit() {
 
 let _svAcceptLock = {};
 async function acceptStateVisit(proposalId) {
-    if (_diploActionLock) return;
     if (_svAcceptLock[proposalId]) return;
     _svAcceptLock[proposalId] = true;
     // Fetch proposal
