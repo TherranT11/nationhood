@@ -628,11 +628,23 @@ async function resolveAutoCoup(supabase, nation, allFps, strongmanFps, currentTi
     };
 }
 
+// ── Leader name generation ────────────────────────────────────────────────────
+
+const LEADER_FIRST_NAMES = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
+const LEADER_LAST_NAMES = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
+
+function generateLeaderName() {
+    const first = LEADER_FIRST_NAMES[Math.floor(Math.random() * LEADER_FIRST_NAMES.length)];
+    const last = LEADER_LAST_NAMES[Math.floor(Math.random() * LEADER_LAST_NAMES.length)];
+    return `${first} ${last}`;
+}
+
 /**
  * Process pillar leader aging for autocracy factions.
  * Each pillar leader ages +1 year per 12 ticks.
- * Leaders who reach their death_age die — pillar becomes wildcard,
- * escalations reset.
+ * Leaders who reach their death_age die — their old pillar becomes the new
+ * wildcard, and the faction auto-generates a new leader who claims the
+ * previous wildcard pillar. This maintains exactly 1 wildcard at all times.
  */
 export async function processAutocracyLeaderAging(supabase, nation, currentTick) {
     if (currentTick % 12 !== 0) return null;
@@ -654,22 +666,38 @@ export async function processAutocracyLeaderAging(supabase, nation, currentTick)
 
         // Check if leader has reached death age
         if (fps.death_age && newAge >= fps.death_age) {
-            // Leader dies of natural causes
-            // Pillar becomes wildcard
             const { data: tracker } = await supabase.from('autocracy_tracker')
                 .select('*').eq('nation_id', nation.id).single();
 
+            const oldWildcardPillar = tracker?.wildcard_pillar;
+            const oldWildcardBacking = Number(tracker?.wildcard_backing || 0);
+            const deadPillar = fps.pillar;
+            const deadPillarBacking = Number(fps.backing);
+
+            // Dead leader's pillar becomes the new wildcard
             if (tracker) {
                 await supabase.from('autocracy_tracker').update({
-                    wildcard_pillar: fps.pillar,
-                    wildcard_backing: Number(fps.backing),
+                    wildcard_pillar: deadPillar,
+                    wildcard_backing: deadPillarBacking,
                     wildcard_neglect_ticks: 0,
                 }).eq('nation_id', nation.id);
             }
 
+            // Generate new leader and assign them the old wildcard pillar
+            const newLeaderName = generateLeaderName();
+            const newLeaderAge = 40 + Math.floor(Math.random() * 16); // 40-55
+            const newDeathAge = 75 + Math.floor(Math.random() * 11); // 75-85
+
             await supabase.from('faction_pillar_state').update({
-                leader_name: null, leader_age: null, death_age: null,
+                pillar: oldWildcardPillar || deadPillar, // fallback if no wildcard existed
+                leader_name: newLeaderName,
+                leader_age: newLeaderAge,
+                leader_birth_tick: currentTick - (newLeaderAge * 12),
+                death_age: newDeathAge,
+                backing: oldWildcardBacking,
                 arrested_leader: false,
+                longevity_ticks: 0,
+                neglect_ticks: 0,
                 updated_at: new Date().toISOString(),
             }).eq('id', fps.id);
 
@@ -678,7 +706,7 @@ export async function processAutocracyLeaderAging(supabase, nation, currentTick)
             await supabase.from('event_log').insert({
                 nation_id: nation.id,
                 event_name: 'Pillar Leader Death',
-                description_chosen: `${fps.leader_name || 'A faction leader'} has died at age ${newAge}. Their pillar is now unclaimed.`,
+                description_chosen: `${fps.leader_name || 'A faction leader'} has died at age ${newAge}. ${newLeaderName} rises to lead the faction, claiming the ${oldWildcardPillar || deadPillar} pillar.`,
                 category: 'POLITICAL',
                 fired_at_tick: currentTick,
             });
@@ -686,8 +714,10 @@ export async function processAutocracyLeaderAging(supabase, nation, currentTick)
             results.push({
                 type: 'pillar_leader_death',
                 faction_id: fps.faction_id,
-                pillar: fps.pillar,
+                old_pillar: deadPillar,
+                new_pillar: oldWildcardPillar || deadPillar,
                 leader_name: fps.leader_name,
+                new_leader_name: newLeaderName,
                 age: newAge,
             });
         } else {
@@ -701,3 +731,92 @@ export async function processAutocracyLeaderAging(supabase, nation, currentTick)
 
     return results.length > 0 ? results : null;
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CLAIM WILDCARD PILLAR
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Claim Wildcard ───────────────────────────────────────────────────────────
+// 0 AP. A faction whose leader was removed (pillar became wildcard via Execute
+// or Catastrophic coup) can generate a new leader and claim the current wildcard
+// pillar. Only usable if the faction has no active leader.
+
+registerAutocracyAction('claim_wildcard', {
+    pillar: 'any',
+    baseCost: 0,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, currentTick } = ctx;
+
+        // Must not have an active leader
+        if (factionState.leader_name) {
+            return { error: 'Faction already has a leader' };
+        }
+
+        // Must be a wildcard pillar available
+        const { data: tracker } = await supabase.from('autocracy_tracker')
+            .select('*').eq('nation_id', nation.id).single();
+        if (!tracker || !tracker.wildcard_pillar) {
+            return { error: 'No wildcard pillar available to claim' };
+        }
+
+        const claimedPillar = tracker.wildcard_pillar;
+        const claimedBacking = Number(tracker.wildcard_backing);
+
+        // Generate new leader
+        const newLeaderName = generateLeaderName();
+        const newLeaderAge = 40 + Math.floor(Math.random() * 16);
+        const newDeathAge = 75 + Math.floor(Math.random() * 11);
+
+        // Old pillar of this faction (if any) becomes new wildcard
+        const oldPillar = factionState.pillar;
+        const oldBacking = Number(factionState.backing || 0);
+
+        // Update faction to claim wildcard pillar
+        await supabase.from('faction_pillar_state').update({
+            pillar: claimedPillar,
+            backing: claimedBacking,
+            leader_name: newLeaderName,
+            leader_age: newLeaderAge,
+            leader_birth_tick: currentTick - (newLeaderAge * 12),
+            death_age: newDeathAge,
+            arrested_leader: false,
+            longevity_ticks: 0,
+            neglect_ticks: 0,
+            updated_at: new Date().toISOString(),
+        }).eq('id', factionState.id);
+
+        // Set old pillar as new wildcard (or clear if same)
+        if (oldPillar !== claimedPillar) {
+            await supabase.from('autocracy_tracker').update({
+                wildcard_pillar: oldPillar,
+                wildcard_backing: oldBacking,
+                wildcard_neglect_ticks: 0,
+            }).eq('nation_id', nation.id);
+        } else {
+            // Claimed same pillar — no wildcard remains
+            await supabase.from('autocracy_tracker').update({
+                wildcard_pillar: null,
+                wildcard_backing: 0,
+                wildcard_neglect_ticks: 0,
+            }).eq('nation_id', nation.id);
+        }
+
+        await resetLeaderEscalations(supabase, factionState.faction_id);
+
+        return {
+            effects: {
+                claimed_pillar: claimedPillar,
+                new_leader: newLeaderName,
+                new_leader_age: newLeaderAge,
+            },
+        };
+    },
+});
