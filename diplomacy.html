@@ -2238,7 +2238,7 @@ async function acceptTradeNegotiation(proposalId, negotiationId) {
     }).then(() => {});
 
     alert('Trade negotiations accepted! The negotiation table is now open.\n\nGo to the Initiative tab to choose an agreement type and begin drafting articles.');
-    await refreshDiplomacyUI();
+    location.reload();
 }
 
 async function rejectTradeNegotiation(proposalId, negotiationId) {
@@ -2443,8 +2443,7 @@ async function fmApprove(proposalId) {
         pd.proposer_nation_name + ' and ' + pd.target_nation_name + '. The agreement is now active.');
 
     alert('"' + (pd.name || 'Agreement') + '" approved and is now active!');
-    await renderNegotiationsBox();
-    { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
+    location.reload();
 }
 
 async function fmEscalate(proposalId) {
@@ -6512,7 +6511,7 @@ async function approveTradeNegotiation(negotiationId) {
     alert(otherApproved
         ? 'Both sides have approved! Ratification bills have been submitted to both parliaments.'
         : 'You have approved the agreement. Waiting for the other side to approve.');
-    await openTradeNegotiation(negotiationId);
+    location.reload();
 }
 
 // ==================== TRADE ARTICLE EDITORS (Phases 3-6) ====================
@@ -7834,6 +7833,8 @@ async function acceptProposal(proposalId) {
             '. The MAJOR agreement now awaits Foreign Minister review.');
 
         alert('"' + (pd.name || 'Initiative') + '" accepted by ambassadors.\n\nAs a MAJOR agreement, it has been forwarded to the Foreign Minister for review.');
+        location.reload();
+        return;
     } else {
         // MINOR: activate immediately (original flow)
         const { error: updateErr } = await _supabase
@@ -7859,11 +7860,9 @@ async function acceptProposal(proposalId) {
             'The ' + articleCount + '-article agreement (' + articleNames + ') is effective for ' + (pd.duration_years || '?') + ' year(s).');
 
         alert('"' + (pd.name || 'Initiative') + '" has been accepted and is now active!');
+        location.reload();
+        return;
     }
-
-    // Refresh the expanded card + inbox
-    if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
-    { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
 }
 
 async function rejectProposal(proposalId) {
@@ -9089,11 +9088,7 @@ async function acceptStateVisit(proposalId) {
 
     _svAcceptLock[proposalId] = false;
     alert(resultMsg);
-
-    // Refresh
-    await renderNegotiationsBox();
-    { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
-    if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
+    location.reload();
 }
 
 let _svDeclineLock = {};
