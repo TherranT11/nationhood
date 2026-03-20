@@ -951,25 +951,33 @@ async function loadAndDisplayArticles() {
         if (!articles || articles.length === 0) return;
 
         // Quarterly issue logic: show all articles from the current season,
-        // plus previous season's articles for categories that have no new content yet
+        // plus the most recent articles from ANY past season for categories
+        // that have no new content yet — articles persist until replaced.
         const currentTick = _state.shard?.current_tick ?? 0;
         const currentSeason = _seasonKey(currentTick);
-        const prevSeason = currentTick >= 3 ? _seasonKey(currentTick - 3) : null;
 
         const currentSeasonArticles = articles.filter(a =>
             _seasonKey(a.published_tick ?? 0) === currentSeason
         );
-        const prevSeasonArticles = prevSeason
-            ? articles.filter(a => _seasonKey(a.published_tick ?? 0) === prevSeason)
-            : [];
+        const pastArticles = articles.filter(a =>
+            _seasonKey(a.published_tick ?? 0) !== currentSeason
+        );
 
         // Categories that already have articles in the current season
         const currentCategories = new Set(currentSeasonArticles.map(a => a.category));
 
-        // Fill in previous-season articles for categories with no current content
-        const fallbackArticles = prevSeasonArticles.filter(a =>
-            !currentCategories.has(a.category)
-        );
+        // For each category with no current content, pull the most recent
+        // past articles (already sorted by created_at DESC from the query)
+        const fallbackArticles = [];
+        const fallbackCategories = new Set();
+        for (const a of pastArticles) {
+            if (a.category === 'opinion') continue;
+            if (currentCategories.has(a.category)) continue;
+            if (!fallbackCategories.has(a.category)) {
+                fallbackCategories.add(a.category);
+            }
+            fallbackArticles.push(a);
+        }
 
         // Opinion articles persist until replaced — take the 4 most recent
         // regardless of season so all slots stay filled
@@ -979,7 +987,7 @@ async function loadAndDisplayArticles() {
 
         const mergedArticles = [
             ...currentSeasonArticles.filter(a => a.category !== 'opinion'),
-            ...fallbackArticles.filter(a => a.category !== 'opinion'),
+            ...fallbackArticles,
             ...opinionArticles
         ];
 
