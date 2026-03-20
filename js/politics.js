@@ -4167,6 +4167,9 @@ const AUTO_ACTION_META = {
     // Coups
     coup_attempt:        { label: 'Coup Attempt', desc: 'Attempt a coup. High risk, high reward.', icon: '⚡', color: '#d9534f' },
     declare_putsch:      { label: 'Declare Putsch', desc: 'Declare martial law. Military-only.', icon: '⛊', color: '#5b9bd5' },
+    appeal_security:     { label: 'Appeal to Security', desc: 'Strongman appeals to Security Services during putsch.', icon: '◎', color: '#d9534f' },
+    security_putsch_response: { label: 'Respond to Putsch', desc: 'Security Services responds to Strongman appeal.', icon: '◉', color: '#d9534f' },
+    putsch_do_nothing:   { label: 'Ignore Putsch', desc: 'Strongman chooses not to respond to putsch.', icon: '—', color: '#888' },
     silent_coup:         { label: 'Silent Coup', desc: 'Security Services power play. Multi-phase.', icon: '◉', color: '#d9534f' },
     silent_coup_vote:    { label: 'Vote on Silent Coup', desc: 'Cast your vote on the silent coup.', icon: '✓', color: '#d9534f' },
     // Wildcard
@@ -4181,7 +4184,7 @@ const AUTO_ACTION_GROUPS = {
     media: ['broadcast', 'smear', 'blackout'],
     security: ['surveillance', 'blackmail', 'disappear'],
     strongman: ['arrest_leader', 'execute_leader', 'release_leader', 'favor', 'emergency_decree', 'appoint_successor', 'revoke_successor'],
-    coups: ['coup_attempt', 'declare_putsch', 'silent_coup'],
+    coups: ['coup_attempt', 'declare_putsch', 'appeal_security', 'security_putsch_response', 'putsch_do_nothing', 'silent_coup'],
     special: ['claim_wildcard', 'silent_coup_vote'],
 };
 

@@ -217,6 +217,7 @@ ALTER TABLE putsch_state ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "putsch_select" ON putsch_state FOR SELECT USING (true);
 CREATE POLICY "putsch_insert" ON putsch_state FOR INSERT WITH CHECK (true);
 CREATE POLICY "putsch_update" ON putsch_state FOR UPDATE USING (true);
+CREATE POLICY "putsch_delete" ON putsch_state FOR DELETE USING (true);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 8. VULNERABILITY_WINDOW — tracks when Strongman foundation backing = 0
