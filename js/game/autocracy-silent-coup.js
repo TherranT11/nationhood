@@ -834,3 +834,108 @@ registerAutocracyAction('claim_wildcard', {
         };
     },
 });
+
+// ── Select Pillar — one-time initial pillar choice ───────────────────────────
+// 0 AP. Available only when pillar_confirmed = false.
+// Player picks any pillar not already confirmed by another faction.
+// Swaps with the unconfirmed holder or takes the wildcard.
+
+registerAutocracyAction('select_pillar', {
+    pillar: 'any',
+    baseCost: 0,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, extra, currentTick } = ctx;
+
+        // Must not have already confirmed
+        if (factionState.pillar_confirmed) {
+            return { error: 'You have already selected your pillar' };
+        }
+
+        const desiredPillar = extra?.pillar;
+        const VALID_PILLARS = ['military', 'party', 'oligarchs', 'media', 'security'];
+        if (!desiredPillar || !VALID_PILLARS.includes(desiredPillar)) {
+            return { error: 'Invalid pillar selection' };
+        }
+
+        // If we already have the desired pillar, just confirm
+        if (factionState.pillar === desiredPillar) {
+            await supabase.from('faction_pillar_state').update({
+                pillar_confirmed: true,
+                updated_at: new Date().toISOString(),
+            }).eq('id', factionState.id);
+            return { effects: { confirmed_pillar: desiredPillar, swapped: false } };
+        }
+
+        // Load all pillar states for this nation
+        const { data: allFps } = await supabase.from('faction_pillar_state')
+            .select('*').eq('nation_id', nation.id);
+        const { data: tracker } = await supabase.from('autocracy_tracker')
+            .select('*').eq('nation_id', nation.id).single();
+
+        // Check if desired pillar is the wildcard
+        if (tracker && tracker.wildcard_pillar === desiredPillar) {
+            // Take wildcard, give our old pillar to wildcard
+            const oldPillar = factionState.pillar;
+            const oldBacking = Number(factionState.backing ?? 0);
+            const wildcardBacking = Number(tracker.wildcard_backing ?? 0);
+
+            await supabase.from('faction_pillar_state').update({
+                pillar: desiredPillar,
+                backing: wildcardBacking,
+                pillar_confirmed: true,
+                updated_at: new Date().toISOString(),
+            }).eq('id', factionState.id);
+
+            await supabase.from('autocracy_tracker').update({
+                wildcard_pillar: oldPillar,
+                wildcard_backing: oldBacking,
+                wildcard_neglect_ticks: 0,
+            }).eq('nation_id', nation.id);
+
+            return { effects: { confirmed_pillar: desiredPillar, swapped: true, gave_up: oldPillar } };
+        }
+
+        // Check if another faction holds the desired pillar
+        const holder = (allFps || []).find(fps => fps.pillar === desiredPillar && fps.faction_id !== factionState.faction_id);
+        if (!holder) {
+            return { error: 'Pillar not available' };
+        }
+
+        // Cannot take a pillar from a faction that already confirmed
+        if (holder.pillar_confirmed) {
+            return { error: 'That pillar is already claimed by another faction' };
+        }
+
+        // Swap pillars: we get theirs, they get ours
+        const myOldPillar = factionState.pillar;
+        const myOldBacking = Number(factionState.backing ?? 0);
+        const theirBacking = Number(holder.backing ?? 0);
+
+        // Update our faction: take desired pillar + their backing
+        const { error: err1 } = await supabase.from('faction_pillar_state').update({
+            pillar: desiredPillar,
+            backing: theirBacking,
+            pillar_confirmed: true,
+            updated_at: new Date().toISOString(),
+        }).eq('id', factionState.id);
+        if (err1) return { error: 'Failed to update your pillar: ' + err1.message };
+
+        // Update their faction: give them our old pillar + our backing
+        const { error: err2 } = await supabase.from('faction_pillar_state').update({
+            pillar: myOldPillar,
+            backing: myOldBacking,
+            updated_at: new Date().toISOString(),
+        }).eq('id', holder.id);
+        if (err2) return { error: 'Failed to swap pillar: ' + err2.message };
+
+        return { effects: { confirmed_pillar: desiredPillar, swapped: true, gave_up: myOldPillar } };
+    },
+});

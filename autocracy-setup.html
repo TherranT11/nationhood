@@ -449,6 +449,22 @@ body {
     </div>
   </div>
 
+  <!-- Pillar Selection -->
+  <div class="section-panel">
+    <div class="panel">
+      <div class="panel__header">
+        <div class="panel__dot" style="background:#d48a3c"></div>
+        <span class="panel__title">Pillar of Power</span>
+      </div>
+      <div class="panel__body">
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px;padding:0 4px">
+          Choose the institution your faction controls. Each pillar grants unique actions.
+        </div>
+        <div id="pillar-container" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="action-bar">
     <button class="btn" onclick="goBack()">&#x25C0; BACK</button>
     <button class="btn btn-create" id="btn-create" disabled onclick="createFaction()">CREATE FACTION &#x25B6;</button>
@@ -553,6 +569,16 @@ let nationData = null;
 let takenNames = new Set();
 let selectedIdeologies = []; // array of {name, axisKey}
 let selectedName = null;
+let selectedPillar = null;
+let takenPillars = new Set(); // pillars confirmed by other factions
+
+const PILLAR_DEFS = [
+    { key: 'military', label: 'Military', icon: '⚔', color: '#5b9bd5', desc: 'Deploy forces, exercises, stand down. Putsch coup type.' },
+    { key: 'party', label: 'The Party', icon: '◎', color: '#c8a64e', desc: 'Rallies, agitation, party congress.' },
+    { key: 'oligarchs', label: 'Oligarchs', icon: '$', color: '#5cb85c', desc: 'Patronage, capital flight, bribery.' },
+    { key: 'media', label: 'Media', icon: '◈', color: '#d48a3c', desc: 'Broadcasts, smear campaigns, blackouts.' },
+    { key: 'security', label: 'Security', icon: '◉', color: '#d9534f', desc: 'Surveillance, blackmail, disappearances. Silent coup type.' },
+];
 
 async function init() {
   const { data: { user } } = await _supabase.auth.getUser();
@@ -600,8 +626,21 @@ async function init() {
     }
   }
 
+  // Load already-confirmed pillars in this nation
+  const { data: existingPillars } = await _supabase
+    .from('faction_pillar_state')
+    .select('pillar, pillar_confirmed')
+    .eq('nation_id', nationData.id)
+    .eq('pillar_confirmed', true);
+  if (existingPillars) {
+    for (const fps of existingPillars) {
+      takenPillars.add(fps.pillar);
+    }
+  }
+
   renderAxes();
   renderNames();
+  renderPillars();
 
   document.getElementById('loading').style.display = 'none';
   const content = document.getElementById('page-content');
@@ -631,6 +670,38 @@ function renderAxes() {
       </div>
     </div>
   `}).join('');
+}
+
+function renderPillars() {
+  const container = document.getElementById('pillar-container');
+  container.innerHTML = PILLAR_DEFS.map(p => {
+    const taken = takenPillars.has(p.key);
+    const selected = selectedPillar === p.key;
+    return `
+      <div class="pillar-card ${taken ? 'taken' : ''} ${selected ? 'selected' : ''}"
+           data-pillar="${p.key}" onclick="selectPillar(this)"
+           style="flex:1;min-width:140px;border:2px solid ${selected ? p.color : taken ? 'var(--border-dim)' : p.color + '55'};
+                  border-radius:4px;padding:12px;text-align:center;cursor:${taken ? 'default' : 'pointer'};
+                  opacity:${taken ? '0.35' : '1'};background:${selected ? p.color + '15' : 'transparent'};transition:all 0.15s">
+        <div style="font-size:20px;color:${p.color}">${p.icon}</div>
+        <div style="font-size:12px;font-weight:700;color:var(--text-bright);margin-top:4px">${p.label}</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:4px">${p.desc}</div>
+        ${taken ? '<div style="font-size:9px;color:var(--text-dim);margin-top:6px;font-weight:600">CLAIMED</div>' : ''}
+        ${selected ? '<div style="font-size:9px;color:' + p.color + ';margin-top:6px;font-weight:600">SELECTED</div>' : ''}
+      </div>`;
+  }).join('');
+}
+
+function selectPillar(el) {
+  if (el.classList.contains('taken')) return;
+  const pillar = el.dataset.pillar;
+  if (selectedPillar === pillar) {
+    selectedPillar = null;
+  } else {
+    selectedPillar = pillar;
+  }
+  renderPillars();
+  updateCreateButton();
 }
 
 function renderNames() {
@@ -699,15 +770,18 @@ function updateUI() {
     }).join('');
   }
 
-  // Create button
+  updateCreateButton();
+}
+
+function updateCreateButton() {
   const btn = document.getElementById('btn-create');
-  const valid = selectedIdeologies.length === 2 && selectedName;
+  const valid = selectedIdeologies.length === 2 && selectedName && selectedPillar;
   btn.disabled = !valid;
   btn.classList.toggle('ready', !!valid);
 }
 
 async function createFaction() {
-  if (selectedIdeologies.length !== 2 || !selectedName) return;
+  if (selectedIdeologies.length !== 2 || !selectedName || !selectedPillar) return;
 
   const btn = document.getElementById('btn-create');
   btn.disabled = true;
@@ -823,6 +897,24 @@ async function createFaction() {
           .upsert(rows, { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true });
       }
     } catch (e) { console.warn('Bloc approval seeding non-blocking:', e); }
+
+    // Create faction_pillar_state with confirmed pillar
+    const deathAge = 75 + Math.floor(Math.random() * 11);
+    const leaderAge = 55 + Math.floor(Math.random() * 15);
+    const isRuling = !!(nationData.ruling_faction_id && nationData.ruling_faction_id === currentUser.id);
+
+    await _supabase.from('faction_pillar_state').upsert({
+      faction_id: currentUser.id,
+      nation_id: nationData.id,
+      pillar: selectedPillar,
+      is_strongman: isRuling,
+      backing: 20.00,
+      leader_name: `${leader.first} ${leader.last}`,
+      leader_age: leaderAge,
+      leader_birth_tick: currentTick - (leaderAge * 12),
+      death_age: deathAge,
+      pillar_confirmed: true,
+    }, { onConflict: 'faction_id' });
 
     // Clean up and redirect
     sessionStorage.removeItem('nationhood_pending_nation');

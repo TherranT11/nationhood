@@ -87,6 +87,9 @@ CREATE TABLE IF NOT EXISTS faction_pillar_state (
     -- Neglect tracking: consecutive ticks with backing ≤ 3
     neglect_ticks           INTEGER NOT NULL DEFAULT 0,
 
+    -- Whether the player explicitly chose this pillar (false = auto-assigned by migration)
+    pillar_confirmed        BOOLEAN NOT NULL DEFAULT false,
+
     created_at              TIMESTAMPTZ DEFAULT now(),
     updated_at              TIMESTAMPTZ DEFAULT now(),
     UNIQUE(faction_id),
@@ -266,6 +269,9 @@ CREATE POLICY "pw_delete" ON pyrrhic_window FOR DELETE USING (true);
 
 -- designated_successor_faction_id: which faction is the designated successor
 ALTER TABLE nations ADD COLUMN IF NOT EXISTS designated_successor_faction_id UUID REFERENCES factions(id) ON DELETE SET NULL;
+
+-- pillar_confirmed: whether the player explicitly chose their pillar (false = auto-assigned)
+ALTER TABLE faction_pillar_state ADD COLUMN IF NOT EXISTS pillar_confirmed BOOLEAN NOT NULL DEFAULT false;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 11. SEED: Initialize autocracy_tracker for existing autocracy nations

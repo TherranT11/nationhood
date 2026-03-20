@@ -4175,8 +4175,9 @@ const AUTO_ACTION_META = {
     putsch_do_nothing:   { label: 'Ignore Putsch', desc: 'Strongman chooses not to respond to putsch.', icon: '—', color: '#888' },
     silent_coup:         { label: 'Silent Coup', desc: 'Security Services power play. Multi-phase.', icon: '◉', color: '#d9534f' },
     silent_coup_vote:    { label: 'Vote on Silent Coup', desc: 'Cast your vote on the silent coup.', icon: '✓', color: '#d9534f' },
-    // Wildcard
+    // Wildcard / Pillar selection
     claim_wildcard:      { label: 'Claim Wildcard', desc: 'Claim wildcard pillar with new leader.', icon: '?', color: '#888' },
+    select_pillar:       { label: 'Select Pillar', desc: 'Choose your pillar (one-time).', icon: '◆', color: '#d48a3c' },
 };
 
 // Actions grouped by pillar for display
@@ -4188,7 +4189,7 @@ const AUTO_ACTION_GROUPS = {
     security: ['surveillance', 'blackmail', 'disappear'],
     strongman: ['arrest_leader', 'execute_leader', 'release_leader', 'favor', 'emergency_decree', 'appoint_successor', 'revoke_successor'],
     coups: ['coup_attempt', 'declare_putsch', 'appeal_security', 'security_putsch_response', 'putsch_do_nothing', 'silent_coup'],
-    special: ['claim_wildcard', 'silent_coup_vote'],
+    special: ['claim_wildcard', 'silent_coup_vote', 'select_pillar'],
 };
 
 let _autoSelectedAction = null;
@@ -4265,13 +4266,58 @@ async function renderAutocracyActionsTab(nation, faction, shard, pillarStates, a
     }
 
     // Build action list HTML
+    const pillarConfirmed = myFps?.pillar_confirmed;
     let listHtml = `<div style="font-size:10px;color:var(--dtext-3);margin-bottom:12px">
         AP: <span style="color:var(--dtext-0);font-weight:700;font-family:var(--dfont-mono)">${ap}</span>
         &nbsp;|&nbsp; Pillar: <span style="color:var(--dtext-0);font-weight:600">${myPillar ? myPillar.charAt(0).toUpperCase() + myPillar.slice(1) : '—'}</span>
+        ${!pillarConfirmed && myFps ? '&nbsp;<span style="color:#d48a3c;font-size:9px">(auto-assigned)</span>' : ''}
         ${isStrongman ? '&nbsp;|&nbsp; <span style="color:#d9534f;font-weight:700">STRONGMAN</span>' : ''}
     </div>`;
 
-    if (availableActions.length === 0) {
+    // Pillar selection banner (shown when pillar not yet confirmed)
+    if (myFps && !pillarConfirmed) {
+        const PILLAR_INFO = {
+            military: { label: 'Military', icon: '⚔', color: '#5b9bd5', desc: 'Deploy forces, military exercises, stand down' },
+            party: { label: 'The Party', icon: '◎', color: '#c8a64e', desc: 'Rallies, agitation, party congress' },
+            oligarchs: { label: 'Oligarchs', icon: '$', color: '#5cb85c', desc: 'Patronage, capital flight, bribery' },
+            media: { label: 'Media', icon: '◈', color: '#d48a3c', desc: 'Broadcasts, smear campaigns, blackouts' },
+            security: { label: 'Security', icon: '◉', color: '#d9534f', desc: 'Surveillance, blackmail, disappearances' },
+        };
+        // Find which pillars are already confirmed by others
+        const confirmedPillars = new Set((pillarStates || [])
+            .filter(fps => fps.pillar_confirmed && fps.faction_id !== f.id)
+            .map(fps => fps.pillar));
+
+        let pillarPickerHtml = `
+        <div style="background:#d48a3c11;border:1px solid #d48a3c44;border-radius:4px;padding:12px;margin-bottom:12px">
+            <div style="font-size:11px;font-weight:700;color:#d48a3c;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">SELECT YOUR PILLAR</div>
+            <div style="font-size:11px;color:var(--dtext-2);margin-bottom:10px">Your pillar was auto-assigned. Choose the one you want. Confirmed pillars cannot be taken.</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">`;
+
+        for (const [key, info] of Object.entries(PILLAR_INFO)) {
+            const isMine = key === myPillar;
+            const isLocked = confirmedPillars.has(key);
+            const borderCol = isMine ? info.color : isLocked ? 'var(--dborder-0)' : info.color + '66';
+            const bg = isMine ? info.color + '15' : 'transparent';
+            const op = isLocked ? '0.35' : '1';
+            const cursor = isLocked ? 'default' : 'pointer';
+            pillarPickerHtml += `
+            <div class="pillar-pick-btn" data-pillar="${key}" data-locked="${isLocked}" style="flex:1;min-width:120px;border:2px solid ${borderCol};border-radius:4px;padding:10px;text-align:center;cursor:${cursor};opacity:${op};background:${bg};transition:all 0.15s">
+                <div style="font-size:16px;color:${info.color}">${info.icon}</div>
+                <div style="font-size:11px;font-weight:700;color:var(--dtext-0);margin-top:2px">${info.label}</div>
+                <div style="font-size:9px;color:var(--dtext-3);margin-top:2px">${info.desc}</div>
+                ${isMine ? '<div style="font-size:8px;color:#d48a3c;margin-top:4px;font-weight:600">CURRENT</div>' : ''}
+                ${isLocked ? '<div style="font-size:8px;color:var(--dtext-3);margin-top:4px">CLAIMED</div>' : ''}
+            </div>`;
+        }
+
+        pillarPickerHtml += `</div>
+            <div id="pillar-pick-result" style="margin-top:8px;font-size:11px"></div>
+        </div>`;
+        listHtml += pillarPickerHtml;
+    }
+
+    if (availableActions.length === 0 && (pillarConfirmed || !myFps)) {
         listHtml += '<div style="padding:20px;text-align:center;color:var(--dtext-3);font-size:12px">No actions available.</div>';
     }
 
@@ -4336,6 +4382,48 @@ async function renderAutocracyActionsTab(nation, faction, shard, pillarStates, a
             const meta = AUTO_ACTION_META[actionKey] || { color: '#888' };
             el.style.background = meta.color + '0a';
             el.style.borderColor = meta.color;
+        });
+    });
+
+    // Wire up pillar picker buttons
+    container.querySelectorAll('.pillar-pick-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (btn.getAttribute('data-locked') === 'true') return;
+            const pillar = btn.getAttribute('data-pillar');
+            const resultDiv = document.getElementById('pillar-pick-result');
+
+            // Confirm selection
+            btn.style.opacity = '0.5';
+            btn.style.pointerEvents = 'none';
+
+            try {
+                const result = await dispatchAutocracyAction(_supabase, {
+                    factionId: _autoFaction.id,
+                    nationId: _autoNation.id,
+                    actionType: 'select_pillar',
+                    mode: 'self',
+                    currentTick: tick,
+                    extra: { pillar },
+                });
+
+                if (result.success) {
+                    if (resultDiv) resultDiv.innerHTML = `<div style="color:#5cb85c;font-weight:600">Pillar confirmed: ${escapeHtml(pillar)}</div>`;
+                    // Refresh the whole tab
+                    try {
+                        const { data: refreshedFps } = await _supabase.from('faction_pillar_state').select('*').eq('nation_id', _autoNation.id);
+                        const { data: refreshedTracker } = await _supabase.from('autocracy_tracker').select('*').eq('nation_id', _autoNation.id).maybeSingle();
+                        await renderAutocracyActionsTab(_autoNation, _autoFaction, _autoShard, refreshedFps || [], refreshedTracker, _autoAllParties);
+                    } catch (e) { console.warn('[PillarPick] Refresh failed:', e); }
+                } else {
+                    if (resultDiv) resultDiv.innerHTML = `<div style="color:#d9534f">${escapeHtml(result.error || 'Selection failed')}</div>`;
+                    btn.style.opacity = '1';
+                    btn.style.pointerEvents = 'auto';
+                }
+            } catch (err) {
+                if (resultDiv) resultDiv.innerHTML = `<div style="color:#d9534f">${escapeHtml(err.message)}</div>`;
+                btn.style.opacity = '1';
+                btn.style.pointerEvents = 'auto';
+            }
         });
     });
 }
