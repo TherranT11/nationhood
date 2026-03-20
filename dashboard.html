@@ -162,6 +162,15 @@
     padding: 6px 20px 20px;
   }
 
+  /* ── World event date + nation column ── */
+  .dash-event-date-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+
   /* ── World event nation badge ── */
   .world-event-nation-badge {
     display: inline-flex;
@@ -1323,8 +1332,10 @@ async function loadWorldEvents(excludeNationId, currentTick) {
         : '';
 
       return `<div class="dash-event-row">
-        <span class="dash-event-date">${esc(dateStr)}</span>
-        <span class="world-event-nation-badge" style="color:${nc.color};background:${nc.bg};border-color:${nc.border};">${flagHtml}${esc(nationName)}</span>
+        <span class="dash-event-date-col">
+          <span class="dash-event-date">${esc(dateStr)}</span>
+          <span class="world-event-nation-badge" style="color:${nc.color};background:${nc.bg};border-color:${nc.border};">${flagHtml}${esc(nationName)}</span>
+        </span>
         <span class="dash-event-text">
           ${displayText}
         </span>
