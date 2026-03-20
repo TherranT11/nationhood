@@ -450,19 +450,13 @@ async function getDiploBadgeRoles(faction, nation) {
     if (!faction || !nation) return roles;
 
     try {
-        const [coalRes, minRes, ambRes] = await Promise.all([
-            _supabase.from('coalitions').select('ministry_allocations')
-                .eq('nation_id', nation.id).eq('is_active', true).maybeSingle(),
+        const [minRes, ambRes] = await Promise.all([
             _supabase.from('ministries').select('ministry_key, party_id')
                 .eq('nation_id', nation.id).in('ministry_key', ['foreign', 'trade']).eq('is_active', true),
             _supabase.from('ambassadors').select('target_nation_id')
                 .eq('nation_id', nation.id).eq('faction_id', faction.id)
                 .eq('is_active', true).eq('status', 'active')
         ]);
-
-        const alloc = coalRes.data?.ministry_allocations || {};
-        roles.isFM = alloc.foreign === faction.id;
-        roles.isMoT = alloc.trade === faction.id;
 
         (minRes.data || []).forEach(m => {
             if (m.party_id === faction.id) {
