@@ -1277,7 +1277,6 @@ async function loadWorldEvents(excludeNationId, currentTick) {
       .from('event_log')
       .select('*, nations!inner(name, nation_profiles(flag_url))')
       .neq('nation_id', excludeNationId)
-      .not('trigger_key', 'is', null)
       .order('fired_at_tick', { ascending: false })
       .limit(80);
 
