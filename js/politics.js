@@ -4250,7 +4250,7 @@ async function renderAutocracyActionsTab(nation, faction, shard, pillarStates, a
 
     // 4. Silent coup vote (if there's an active vote phase and I'm not security)
     const { data: activeOffer } = await _supabase.from('silent_coup_offers')
-        .select('id').eq('nation_id', n.id).eq('to_faction_id', f.id).eq('voided', false).eq('accepted', false)
+        .select('id').eq('nation_id', n.id).eq('to_faction_id', f.id).eq('voided', false).is('accepted', null)
         .limit(1).maybeSingle();
     if (activeOffer && AUTOCRACY_ACTIONS['silent_coup_vote']) {
         availableActions.push('silent_coup_vote');
