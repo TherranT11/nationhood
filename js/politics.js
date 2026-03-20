@@ -2476,6 +2476,7 @@ function initEditIdentityBox(f) {
     }
     if (abbrConfirm) {
         abbrConfirm.addEventListener('click', async () => {
+            if (abbrConfirm.disabled) return;
             abbrError.style.display = 'none';
             abbrInput.classList.remove('has-error');
             const trimmed = abbrInput.value.trim().toUpperCase();
@@ -2485,19 +2486,27 @@ function initEditIdentityBox(f) {
                 abbrInput.classList.add('has-error');
                 return;
             }
+            abbrConfirm.disabled = true;
             // Deduct AP via RPC
             const result = await deductAP(_supabase, f.id, RENAME_AP_COST);
             if (!result.success) {
                 abbrError.textContent = '⚠ ' + (result.error || 'Insufficient AP');
                 abbrError.style.display = '';
+                abbrConfirm.disabled = false;
                 return;
             }
             // Update abbreviation + last_rename_tick in DB
             const tick = parseInt(box.dataset.currentTick) || 0;
-            await _supabase.from('factions').update({
+            const { error: abbrUpdateErr } = await _supabase.from('factions').update({
                 abbreviation: trimmed,
                 last_rename_tick: tick
             }).eq('id', f.id);
+            if (abbrUpdateErr) {
+                abbrError.textContent = '⚠ Failed to save — try again.';
+                abbrError.style.display = '';
+                abbrConfirm.disabled = false;
+                return;
+            }
 
             // Update UI
             abbrDisplay.textContent = trimmed;
