@@ -3491,6 +3491,20 @@ export async function executePurge(supabase, factionId, nationId, targetFactionI
         }
     });
 
+    // Fire timeline event
+    try {
+        await supabase.rpc('fire_system_event', {
+            p_trigger_key: 'minister_purged',
+            p_nation_id: nationId,
+            p_tick: currentTick,
+            p_placeholders: {
+                target: target.faction_name,
+                purged_steward: targetSteward ? `${targetSteward.first_name} ${targetSteward.last_name}` : 'Unknown',
+                seats_lost: String(seatsLost)
+            }
+        });
+    } catch (e) { /* non-blocking */ }
+
     return {
         success: true,
         newAp: apResult.newAp,
@@ -4915,6 +4929,7 @@ export async function processCrises(supabase, nation, currentTick) {
         await supabase.from('event_log').insert({
             nation_id: nation.id,
             event_name: 'CRISIS_STARTED: ' + template.name,
+            trigger_key: 'crisis_started',
             description_used: template.description || template.name,
             category: 'crisis',
             effects_applied: [],
@@ -5194,6 +5209,7 @@ export async function processCrises(supabase, nation, currentTick) {
             await supabase.from('event_log').insert({
                 nation_id: nation.id,
                 event_name: 'CRISIS_RESOLVED: ' + template.name,
+                trigger_key: 'crisis_ended',
                 description_used: 'The crisis "' + template.name + '" has been resolved.',
                 category: 'crisis',
                 effects_applied: [],
@@ -5272,6 +5288,7 @@ export async function processRevolution(supabase, nation, currentTick) {
             await supabase.from('event_log').insert({
                 nation_id: nation.id,
                 event_name: 'REVOLUTION_AVERTED',
+                trigger_key: 'crisis_ended',
                 description_used: 'The revolutionary movement has lost momentum. The regime has stabilized — for now.',
                 category: 'crisis',
                 effects_applied: [],
@@ -5297,6 +5314,7 @@ export async function processRevolution(supabase, nation, currentTick) {
         await supabase.from('event_log').insert({
             nation_id: nation.id,
             event_name: 'REVOLUTION_WARNING',
+            trigger_key: 'crisis_started',
             description_used: 'Pro-democracy demonstrations have erupted across multiple cities. Opposition groups are calling for free elections. The regime must act to restore order — or face revolution.',
             category: 'crisis',
             effects_applied: [],
@@ -5433,6 +5451,7 @@ export async function processRevolution(supabase, nation, currentTick) {
     await supabase.from('event_log').insert({
         nation_id: nation.id,
         event_name: 'DEMOCRATIC_REVOLUTION',
+        trigger_key: 'crisis_ended',
         description_used: `The people have risen. The autocratic regime has fallen. A ${govLabel} has been established — emergency elections will determine the first freely elected government.`,
         category: 'crisis',
         effects_applied: [
@@ -5897,6 +5916,16 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
     });
 
     console.log(`  Scheduled immediate election for tick ${currentTick}`);
+
+    // Fire timeline event
+    try {
+        await supabase.rpc('fire_system_event', {
+            p_trigger_key: 'minister_resigned',
+            p_nation_id: nationId,
+            p_tick: currentTick,
+            p_placeholders: { role: 'Prime Minister', name: `${hog.first_name} ${hog.last_name}` }
+        });
+    } catch (e) { /* non-blocking */ }
 
     return { result: 'election_called', reason: hog.trait_key === 'iron_will' ? 'iron_will' : 'pm_resignation' };
 }
@@ -7066,6 +7095,16 @@ export async function executeCoupAttempt(supabase, factionId, nationId, fundsCom
             },
         });
 
+        // Fire timeline event
+        try {
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'coup_attempt',
+                p_nation_id: nationId,
+                p_tick: currentTick,
+                p_placeholders: { result: 'success', faction: faction.faction_name, allies: allies.map(a => a.faction_name).join(', ') }
+            });
+        } catch (e) { /* non-blocking */ }
+
         // Close the old administration and create a new one for the coup leader
         try {
             const currentDate = _tickToDate(currentTick);
@@ -7192,6 +7231,16 @@ export async function executeCoupAttempt(supabase, factionId, nationId, fundsCom
                 seats_lost: seatLoss,
             },
         });
+
+        // Fire timeline event
+        try {
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'coup_attempt',
+                p_nation_id: nationId,
+                p_tick: currentTick,
+                p_placeholders: { result: 'failed', faction: faction.faction_name, steward_killed: leaderSteward ? `${leaderSteward.first_name} ${leaderSteward.last_name}` : 'Unknown', seats_lost: String(seatLoss) }
+            });
+        } catch (e) { /* non-blocking */ }
 
         return {
             success: true,

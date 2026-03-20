@@ -21607,6 +21607,104 @@ function calculateCreditDeterioration(nation) {
     return 2.0;
 }
 
+// ==================== DEBT PRESSURE SYSTEM ====================
+// Graduated per-tick stat effects based on debt-to-GDP ratio.
+// These apply independently of (and in addition to) credit deterioration.
+// Credit deterioration only hits the credit stat; debt pressure hits
+// interest_rates, foreign_investment, and currency_strength.
+//
+// Tiers are cumulative with the bracket the nation falls into.
+// Effects are mild at first and escalate as debt grows unchecked.
+
+const DEBT_PRESSURE_TIERS = [
+    // { maxRatio, interest_rates, foreign_investment, currency_strength }
+    // interest_rates pushed UP (positive), others pushed DOWN (negative)
+    { maxRatio: 0.60, interest_rates: 0,    foreign_investment: 0,    currency_strength: 0    }, // Healthy
+    { maxRatio: 0.80, interest_rates: 0.05, foreign_investment: 0,    currency_strength: 0    }, // Elevated
+    { maxRatio: 1.00, interest_rates: 0.1,  foreign_investment: -0.1, currency_strength: -0.05 }, // Concerning
+    { maxRatio: 1.50, interest_rates: 0.2,  foreign_investment: -0.2, currency_strength: -0.15 }, // Dangerous
+    { maxRatio: 2.00, interest_rates: 0.4,  foreign_investment: -0.4, currency_strength: -0.3  }, // Severe
+    { maxRatio: Infinity, interest_rates: 0.7, foreign_investment: -0.7, currency_strength: -0.5 }, // Crisis
+];
+
+const DEBT_PRESSURE_LABELS = ['Healthy', 'Elevated', 'Concerning', 'Dangerous', 'Severe', 'Crisis'];
+
+function getDebtPressureTier(ratio) {
+    for (let i = 0; i < DEBT_PRESSURE_TIERS.length; i++) {
+        if (ratio <= DEBT_PRESSURE_TIERS[i].maxRatio) return i;
+    }
+    return DEBT_PRESSURE_TIERS.length - 1;
+}
+
+/**
+ * Apply graduated debt pressure effects to interest_rates, foreign_investment,
+ * and currency_strength based on current debt-to-GDP ratio.
+ *
+ * Returns the updates applied (empty if no pressure), or null on error.
+ */
+async function processDebtPressure(supabase, nation) {
+    const ratio = getDebtToGDP(nation);
+    if (!isFinite(ratio)) return null;
+
+    const tierIdx = getDebtPressureTier(ratio);
+    const tier = DEBT_PRESSURE_TIERS[tierIdx];
+
+    // Healthy tier = no pressure
+    if (tier.interest_rates === 0 && tier.foreign_investment === 0 && tier.currency_strength === 0) {
+        return { tierIdx, tierLabel: DEBT_PRESSURE_LABELS[tierIdx], ratio, applied: false };
+    }
+
+    const updates: any = {};
+    const details: any = {};
+
+    // Interest rates: push UP (higher debt = higher rates)
+    if (tier.interest_rates !== 0) {
+        const curr = Number(nation.interest_rates ?? 50);
+        const next = Math.round(Math.min(100, Math.max(0, curr + tier.interest_rates)) * 10) / 10;
+        if (next !== curr) {
+            updates.interest_rates = next;
+            details.interest_rates = { before: curr, after: next, delta: tier.interest_rates };
+        }
+    }
+
+    // Foreign investment: push DOWN
+    if (tier.foreign_investment !== 0) {
+        const curr = Number(nation.foreign_investment ?? 50);
+        const next = Math.round(Math.min(100, Math.max(0, curr + tier.foreign_investment)) * 10) / 10;
+        if (next !== curr) {
+            updates.foreign_investment = next;
+            details.foreign_investment = { before: curr, after: next, delta: tier.foreign_investment };
+        }
+    }
+
+    // Currency strength: push DOWN
+    if (tier.currency_strength !== 0) {
+        const curr = Number(nation.currency_strength ?? 50);
+        const next = Math.round(Math.min(100, Math.max(0, curr + tier.currency_strength)) * 10) / 10;
+        if (next !== curr) {
+            updates.currency_strength = next;
+            details.currency_strength = { before: curr, after: next, delta: tier.currency_strength };
+        }
+    }
+
+    if (Object.keys(updates).length > 0) {
+        const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
+        if (error) {
+            console.error(`[DebtPressure] Update failed for ${nation.name}:`, error.message);
+            return null;
+        }
+        Object.assign(nation, updates);
+    }
+
+    return {
+        tierIdx,
+        tierLabel: DEBT_PRESSURE_LABELS[tierIdx],
+        ratio,
+        applied: Object.keys(updates).length > 0,
+        details,
+    };
+}
+
 /**
  * Calculate penalty multiplier for default consequences.
  * Full default = 1.0 (100% of penalties).
@@ -23838,6 +23936,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (debtErr) {
             console.error(`[advanceTick] Sovereign debt mechanics failed for ${nation.name} (non-fatal):`, debtErr);
+        }
+
+        // Debt pressure: graduated stat effects from debt-to-GDP ratio
+        try {
+            const pressureResult = await processDebtPressure(supabase, nation);
+            if (pressureResult && pressureResult.applied) {
+                summary.debtPressure = summary.debtPressure || [];
+                summary.debtPressure.push({ nation: nation.name, ...pressureResult });
+            }
+        } catch (pressureErr) {
+            console.error(`[advanceTick] Debt pressure failed for ${nation.name} (non-fatal):`, pressureErr);
         }
 
         // Austerity commitments from enacted sovereign defaults

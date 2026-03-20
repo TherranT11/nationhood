@@ -338,6 +338,23 @@ export async function createAdministration(supabase, nationId, nation, coalition
             });
         if (insertErr) throw insertErr;
 
+        // Fire timeline event for government formed
+        try {
+            const partyNames = coalitionParties.map(p => p.party_name).join(', ');
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'government_formed',
+                p_nation_id: nationId,
+                p_tick: currentTick,
+                p_placeholders: {
+                    admin_name: adminName,
+                    pm: pmName || 'Unknown',
+                    pm_party: pmPartyName,
+                    coalition_parties: partyNames,
+                    total_seats: String(totalSeats)
+                }
+            });
+        } catch (e) { /* non-blocking */ }
+
         console.log(`Administration created: "${adminName}" at tick ${currentTick}`);
     } catch (err) {
         console.error('createAdministration error:', err);
@@ -569,6 +586,7 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
             await supabase.from('event_log').insert({
                 nation_id: nationId,
                 event_name: 'No Confidence — Government Falls',
+                trigger_key: 'vonc_passed',
                 fired_at_tick: currentTick,
                 category: 'government',
                 description_chosen: `The ${pmLastName} Government has fallen. A motion of no confidence passed ${votesFor} to ${votesAgainst}. Snap elections scheduled.`,
@@ -598,6 +616,7 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
         await supabase.from('event_log').insert({
             nation_id: nationId,
             event_name: 'No Confidence — Motion Fails',
+            trigger_key: 'vonc_failed',
             fired_at_tick: currentTick,
             category: 'government',
             description_chosen: `Motion of no confidence against the ${pmLastName} Government failed ${votesFor} to ${votesAgainst}.`,
@@ -724,6 +743,7 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
     await supabase.from('event_log').insert({
         nation_id: nationId,
         event_name: 'Legislature Dissolved — Early Elections Called',
+        trigger_key: 'snap_election_called',
         fired_at_tick: currentTick,
         category: 'government',
         description_chosen: `Prime Minister ${pmName} has dissolved the Legislature. Caretaker government in place until elections.`,
@@ -858,6 +878,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
         await supabase.from('event_log').insert({
             nation_id: nation.id,
             event_name: 'FORMATION_WINDOW_START',
+            trigger_key: 'coalition_formation_started',
             description_used: `Coalition formation underway in ${nation.name}. Parties have ${FORMATION_DEADLINE_TICKS} ticks to form a government.`,
             category: 'POLITICAL',
             effects_applied: { ticks_remaining: FORMATION_DEADLINE_TICKS, ongoing_penalty: -2 },
@@ -974,6 +995,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
         await supabase.from('event_log').insert({
             nation_id: nation.id,
             event_name: 'FORMATION_SNAP_ELECTION',
+            trigger_key: 'formation_snap_election',
             description_used: `Snap election called in ${nation.name} after coalition formation failed. Parties had ${FORMATION_DEADLINE_TICKS} ticks to negotiate.`,
             category: 'POLITICAL',
             effects_applied: {
@@ -988,21 +1010,6 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
         }).then(({ error }) => {
             if (error) console.warn('Formation snap election event log failed:', error.message);
         });
-
-        // Fire system notification
-        try {
-            await supabase.rpc('fire_system_event', {
-                p_trigger_key: 'formation_snap_election',
-                p_nation_id: nation.id,
-                p_tick: currentTick,
-                p_placeholders: {
-                    nation: nation.name,
-                    ticks: String(ticksElapsed)
-                }
-            });
-        } catch (e) {
-            console.warn('fire_system_event (formation_snap_election) failed:', e.message);
-        }
 
         result.snapElection = true;
         result.snapTick = currentTick + 1;
@@ -1086,6 +1093,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
     await supabase.from('event_log').insert({
         nation_id: nation.id,
         event_name: 'EMERGENCY_MINORITY_GOVERNMENT',
+        trigger_key: 'minority_government_formed',
         description_used: `${largestParty.faction_name} installed as emergency minority government in ${nation.name} after two failed formation windows. Legislative effectiveness reduced by 20%.`,
         category: 'POLITICAL',
         effects_applied: {
@@ -1099,21 +1107,6 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
     }).then(({ error }) => {
         if (error) console.warn('Emergency minority government event log failed:', error.message);
     });
-
-    // Fire system notification
-    try {
-        await supabase.rpc('fire_system_event', {
-            p_trigger_key: 'emergency_minority_government',
-            p_nation_id: nation.id,
-            p_tick: currentTick,
-            p_placeholders: {
-                nation: nation.name,
-                party: largestParty.faction_name
-            }
-        });
-    } catch (e) {
-        console.warn('fire_system_event (emergency_minority_government) failed:', e.message);
-    }
 
     result.emergencyMinority = true;
     result.rulingParty = largestParty.faction_name;
@@ -1569,6 +1562,20 @@ export async function processElections(supabase, nation, currentTick) {
                     .eq('id', r.party_id);
             }
             console.log(`Seats synced to factions for ${nation.name}`);
+
+            // Fire election result timeline event with seat breakdown
+            try {
+                const seatSummary = completedElection.results.seats
+                    .slice().sort((a, b) => (b.seats || 0) - (a.seats || 0))
+                    .map(s => `${s.party_name || 'Unknown'}: ${s.seats}`)
+                    .join(', ');
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'election_held',
+                    p_nation_id: nation.id,
+                    p_tick: currentTick,
+                    p_placeholders: { election_type: electionType || 'parliamentary', seats: seatSummary }
+                });
+            } catch (e) { /* non-blocking */ }
         }
 
         // Dissolve legislature — fail all pending bills (new parliament must re-propose)
@@ -1952,6 +1959,7 @@ export async function processPresidentialElectionResult(supabase, nation, comple
                 await supabase.from('event_log').insert({
                     nation_id: nation.id,
                     event_name: 'President Retires (Term Limited)',
+                    trigger_key: 'party_leader_replaced',
                     description_chosen: `${outgoingName}, having served the maximum ${effectiveTermLimit} term${effectiveTermLimit !== 1 ? 's' : ''} as president, has retired from party leadership. ${factionData?.faction_name || 'The party'} must appoint a new leader.`,
                     category: 'POLITICAL',
                     fired_at_tick: currentTick,

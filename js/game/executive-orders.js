@@ -109,6 +109,7 @@ async function insertEventLog(supabase, nationId, eventName, eventDescription, c
         await supabase.from('event_log').insert({
             nation_id: nationId,
             event_name: eventName,
+            trigger_key: 'ministry_ability_used',
             description_chosen: eventDescription,
             category: 'executive_order',
             fired_at_tick: currentTick,

@@ -439,24 +439,75 @@ async function updateBillsBadge(faction, nation, shard) {
 }
 
 
+// ===== DIPLOMACY ROLE DETECTION (for badge gating) =====
+
+/**
+ * Lightweight role check: is this faction the FM, MoT, or ambassador to specific nations?
+ * Used by the nav-bar badge functions so only relevant players see notifications.
+ */
+async function getDiploBadgeRoles(faction, nation) {
+    const roles = { isFM: false, isMoT: false, ambassadorTargetIds: [] };
+    if (!faction || !nation) return roles;
+
+    try {
+        const [coalRes, minRes, ambRes] = await Promise.all([
+            _supabase.from('coalitions').select('ministry_allocations')
+                .eq('nation_id', nation.id).eq('is_active', true).maybeSingle(),
+            _supabase.from('ministries').select('ministry_key, party_id')
+                .eq('nation_id', nation.id).in('ministry_key', ['foreign', 'trade']).eq('is_active', true),
+            _supabase.from('ambassadors').select('target_nation_id')
+                .eq('nation_id', nation.id).eq('faction_id', faction.id)
+                .eq('is_active', true).eq('status', 'active')
+        ]);
+
+        const alloc = coalRes.data?.ministry_allocations || {};
+        roles.isFM = alloc.foreign === faction.id;
+        roles.isMoT = alloc.trade === faction.id;
+
+        (minRes.data || []).forEach(m => {
+            if (m.party_id === faction.id) {
+                if (m.ministry_key === 'foreign') roles.isFM = true;
+                if (m.ministry_key === 'trade') roles.isMoT = true;
+            }
+        });
+
+        roles.ambassadorTargetIds = (ambRes.data || []).map(a => a.target_nation_id);
+    } catch (e) {
+        console.warn('Error fetching diplo badge roles:', e);
+    }
+
+    return roles;
+}
+
 // ===== DIPLOMACY BADGE (unread diplomatic messages) =====
 
-async function updateDiplomacyBadge(faction, nation) {
+async function updateDiplomacyBadge(faction, nation, roles) {
     const badge = document.getElementById('diplomacy-badge');
     if (!badge || !faction || !nation) return;
     try {
-        // Fetch messages sent TO our nation that our faction hasn't read yet.
-        // We only care about messages FROM other nations (not our own).
+        if (!roles) roles = await getDiploBadgeRoles(faction, nation);
+
+        // No diplomatic role → no badge
+        if (!roles.isFM && !roles.isMoT && roles.ambassadorTargetIds.length === 0) {
+            badge.style.display = 'none';
+            return;
+        }
+
+        // Fetch incoming messages our faction hasn't read yet
         const { data: msgs } = await _supabase
             .from('diplomatic_messages')
-            .select('id, read_by_factions')
+            .select('id, from_nation_id, read_by_factions')
             .eq('to_nation_id', nation.id)
             .neq('from_nation_id', nation.id);
 
         let count = 0;
         for (const msg of (msgs || [])) {
             const readBy = msg.read_by_factions || [];
-            if (!readBy.includes(faction.id)) count++;
+            if (readBy.includes(faction.id)) continue;
+            // FM and MoT see all messages; ambassadors only from their posted nation
+            if (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.includes(msg.from_nation_id)) {
+                count++;
+            }
         }
 
         if (count > 0) {
@@ -473,10 +524,18 @@ async function updateDiplomacyBadge(faction, nation) {
 
 // ===== DIPLOMACY AWAITING BADGE (incoming proposals needing our attention) =====
 
-async function updateDiplomacyAwaitingBadge(faction, nation) {
+async function updateDiplomacyAwaitingBadge(faction, nation, roles) {
     const badge = document.getElementById('diplomacy-awaiting-badge');
     if (!badge || !faction || !nation) return;
     try {
+        if (!roles) roles = await getDiploBadgeRoles(faction, nation);
+
+        // No diplomatic role → no badge
+        if (!roles.isFM && !roles.isMoT && roles.ambassadorTargetIds.length === 0) {
+            badge.style.display = 'none';
+            return;
+        }
+
         // Count incoming diplomatic proposals that need our attention
         const { data: proposals } = await _supabase
             .from('diplomatic_proposals')
@@ -486,14 +545,16 @@ async function updateDiplomacyAwaitingBadge(faction, nation) {
 
         let count = 0;
         for (const p of (proposals || [])) {
-            // All rows are incoming (query filtered to target_nation_id = us)
             if (p.status === 'proposed') {
-                count++;
+                if (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.includes(p.proposing_nation_id)) {
+                    count++;
+                }
             } else if (p.status === 'revised') {
                 const pd = p.proposal_data || {};
-                // Only count if the OTHER side revised (now it's our turn)
                 const revisedByUs = pd.revised_by_nation_id === nation.id;
-                if (!revisedByUs) count++;
+                if (!revisedByUs && (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.includes(p.proposing_nation_id))) {
+                    count++;
+                }
             }
         }
 
@@ -504,7 +565,13 @@ async function updateDiplomacyAwaitingBadge(faction, nation) {
             .eq('status', 'open')
             .or('nation_a_id.eq.' + nation.id + ',nation_b_id.eq.' + nation.id)
             .neq('initiated_by_nation', nation.id);
-        count += (tradeNegs || []).length;
+
+        for (const n of (tradeNegs || [])) {
+            const otherNationId = n.initiated_by_nation;
+            if (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.includes(otherNationId)) {
+                count++;
+            }
+        }
 
         if (count > 0) {
             badge.textContent = count;
@@ -829,12 +896,12 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (activeTab !== 'laws') {
         updateBillsBadge(state.faction, state.nation, state.shard);
     }
-    // Update diplomacy badge (non-blocking, skip on diplomacy page since it marks read)
+    // Update diplomacy badges (role-gated: only FM, MoT, or ambassadors see them)
+    const diploRoles = await getDiploBadgeRoles(state.faction, state.nation);
     if (activeTab !== 'diplomacy') {
-        updateDiplomacyBadge(state.faction, state.nation);
+        updateDiplomacyBadge(state.faction, state.nation, diploRoles);
     }
-    // Update diplomacy awaiting badge (always, shows count of incoming proposals needing attention)
-    updateDiplomacyAwaitingBadge(state.faction, state.nation);
+    updateDiplomacyAwaitingBadge(state.faction, state.nation, diploRoles);
     if (onReady) {
         await onReady(state);
     }

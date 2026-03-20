@@ -655,6 +655,7 @@ async function activateEconomicCollapse(supabase, nation, currentTick) {
         await supabase.from('event_log').insert({
             nation_id: nation.id,
             event_name: 'CRISIS_STARTED: Economic Collapse',
+            trigger_key: 'crisis_started',
             description_used: `${nation.name}'s economy has collapsed. GDP has fallen to critical levels. Emergency economic restructuring is underway.`,
             category: 'crisis',
             effects_applied: [],
