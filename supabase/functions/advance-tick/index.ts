@@ -17007,7 +17007,7 @@ async function processAutocracyLeaderAging(supabase, nation, currentTick) {
 
     const { data: allFps } = await supabase.from('faction_pillar_state')
         .select('*').eq('nation_id', nation.id);
-    if (!allFps) return null;
+    if (!allFps || allFps.length === 0) return null;
 
     const results = [];
 
@@ -17015,37 +17015,56 @@ async function processAutocracyLeaderAging(supabase, nation, currentTick) {
         if (!fps.leader_age || fps.is_strongman) continue; // Strongman ages via HOS system
 
         const newAge = fps.leader_age + 1;
-        await supabase.from('faction_pillar_state').update({
+        const { error: ageErr } = await supabase.from('faction_pillar_state').update({
             leader_age: newAge,
             updated_at: new Date().toISOString(),
         }).eq('id', fps.id);
+        if (ageErr) { console.error(`[leaderAging] age update failed for ${fps.id}:`, ageErr.message); continue; }
 
         // Check if leader has reached death age
         if (fps.death_age && newAge >= fps.death_age) {
             const { data: tracker } = await supabase.from('autocracy_tracker')
                 .select('*').eq('nation_id', nation.id).single();
 
-            const oldWildcardPillar = tracker?.wildcard_pillar;
-            const oldWildcardBacking = Number(tracker?.wildcard_backing || 0);
+            // If no tracker exists, we can't do the wildcard swap — just null the leader
+            if (!tracker || !tracker.wildcard_pillar) {
+                await supabase.from('faction_pillar_state').update({
+                    leader_name: null, leader_age: null, death_age: null,
+                    arrested_leader: false,
+                    updated_at: new Date().toISOString(),
+                }).eq('id', fps.id);
+                await resetLeaderEscalations(supabase, fps.faction_id);
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: 'Pillar Leader Death',
+                    description_chosen: `${fps.leader_name || 'A faction leader'} has died at age ${newAge}. Their pillar is now unclaimed.`,
+                    category: 'POLITICAL',
+                    fired_at_tick: currentTick,
+                });
+                results.push({ type: 'pillar_leader_death', faction_id: fps.faction_id, old_pillar: fps.pillar, leader_name: fps.leader_name, age: newAge });
+                continue;
+            }
+
+            const oldWildcardPillar = tracker.wildcard_pillar;
+            const oldWildcardBacking = Number(tracker.wildcard_backing ?? 0);
             const deadPillar = fps.pillar;
-            const deadPillarBacking = Number(fps.backing);
+            const deadPillarBacking = Number(fps.backing ?? 0);
 
             // Dead leader's pillar becomes the new wildcard
-            if (tracker) {
-                await supabase.from('autocracy_tracker').update({
-                    wildcard_pillar: deadPillar,
-                    wildcard_backing: deadPillarBacking,
-                    wildcard_neglect_ticks: 0,
-                }).eq('nation_id', nation.id);
-            }
+            const { error: trackerErr } = await supabase.from('autocracy_tracker').update({
+                wildcard_pillar: deadPillar,
+                wildcard_backing: deadPillarBacking,
+                wildcard_neglect_ticks: 0,
+            }).eq('nation_id', nation.id);
+            if (trackerErr) { console.error(`[leaderAging] tracker update failed:`, trackerErr.message); continue; }
 
             // Generate new leader and assign them the old wildcard pillar
             const newLeaderName = generateLeaderName();
             const newLeaderAge = 40 + Math.floor(Math.random() * 16); // 40-55
             const newDeathAge = 75 + Math.floor(Math.random() * 11); // 75-85
 
-            await supabase.from('faction_pillar_state').update({
-                pillar: oldWildcardPillar || deadPillar, // fallback if no wildcard existed
+            const { error: fpsErr } = await supabase.from('faction_pillar_state').update({
+                pillar: oldWildcardPillar,
                 leader_name: newLeaderName,
                 leader_age: newLeaderAge,
                 leader_birth_tick: currentTick - (newLeaderAge * 12),
@@ -17056,13 +17075,14 @@ async function processAutocracyLeaderAging(supabase, nation, currentTick) {
                 neglect_ticks: 0,
                 updated_at: new Date().toISOString(),
             }).eq('id', fps.id);
+            if (fpsErr) { console.error(`[leaderAging] fps update failed:`, fpsErr.message); }
 
             await resetLeaderEscalations(supabase, fps.faction_id);
 
             await supabase.from('event_log').insert({
                 nation_id: nation.id,
                 event_name: 'Pillar Leader Death',
-                description_chosen: `${fps.leader_name || 'A faction leader'} has died at age ${newAge}. ${newLeaderName} rises to lead the faction, claiming the ${oldWildcardPillar || deadPillar} pillar.`,
+                description_chosen: `${fps.leader_name || 'A faction leader'} has died at age ${newAge}. ${newLeaderName} rises to lead the faction, claiming the ${oldWildcardPillar} pillar.`,
                 category: 'POLITICAL',
                 fired_at_tick: currentTick,
             });
@@ -17071,7 +17091,7 @@ async function processAutocracyLeaderAging(supabase, nation, currentTick) {
                 type: 'pillar_leader_death',
                 faction_id: fps.faction_id,
                 old_pillar: deadPillar,
-                new_pillar: oldWildcardPillar || deadPillar,
+                new_pillar: oldWildcardPillar,
                 leader_name: fps.leader_name,
                 new_leader_name: newLeaderName,
                 age: newAge,
@@ -17124,7 +17144,7 @@ registerAutocracyAction('claim_wildcard', {
         }
 
         const claimedPillar = tracker.wildcard_pillar;
-        const claimedBacking = Number(tracker.wildcard_backing);
+        const claimedBacking = Number(tracker.wildcard_backing ?? 0);
 
         // Generate new leader
         const newLeaderName = generateLeaderName();
@@ -17133,10 +17153,10 @@ registerAutocracyAction('claim_wildcard', {
 
         // Old pillar of this faction (if any) becomes new wildcard
         const oldPillar = factionState.pillar;
-        const oldBacking = Number(factionState.backing || 0);
+        const oldBacking = Number(factionState.backing ?? 0);
 
         // Update faction to claim wildcard pillar
-        await supabase.from('faction_pillar_state').update({
+        const { error: claimErr } = await supabase.from('faction_pillar_state').update({
             pillar: claimedPillar,
             backing: claimedBacking,
             leader_name: newLeaderName,
@@ -17148,22 +17168,16 @@ registerAutocracyAction('claim_wildcard', {
             neglect_ticks: 0,
             updated_at: new Date().toISOString(),
         }).eq('id', factionState.id);
+        if (claimErr) return { error: 'Failed to update faction: ' + claimErr.message };
 
-        // Set old pillar as new wildcard (or clear if same)
-        if (oldPillar !== claimedPillar) {
-            await supabase.from('autocracy_tracker').update({
-                wildcard_pillar: oldPillar,
-                wildcard_backing: oldBacking,
-                wildcard_neglect_ticks: 0,
-            }).eq('nation_id', nation.id);
-        } else {
-            // Claimed same pillar — no wildcard remains
-            await supabase.from('autocracy_tracker').update({
-                wildcard_pillar: null,
-                wildcard_backing: 0,
-                wildcard_neglect_ticks: 0,
-            }).eq('nation_id', nation.id);
-        }
+        // Set old pillar as new wildcard (or clear if faction had no pillar)
+        const newWildcard = oldPillar && oldPillar !== claimedPillar ? oldPillar : null;
+        const { error: trackErr } = await supabase.from('autocracy_tracker').update({
+            wildcard_pillar: newWildcard,
+            wildcard_backing: newWildcard ? oldBacking : 0,
+            wildcard_neglect_ticks: 0,
+        }).eq('nation_id', nation.id);
+        if (trackErr) return { error: 'Failed to update tracker: ' + trackErr.message };
 
         await resetLeaderEscalations(supabase, factionState.faction_id);
 
@@ -20786,18 +20800,21 @@ async function processRevolution(supabase, nation, currentTick) {
     await supabase.from('active_crises').delete().eq('nation_id', nation.id);
 
     // 3c. V5 Autocracy cleanup — remove all autocracy-specific state
-    try {
-        await supabase.from('faction_pillar_state').delete().eq('nation_id', nation.id);
-        await supabase.from('autocracy_tracker').delete().eq('nation_id', nation.id);
-        await supabase.from('putsch_state').delete().eq('nation_id', nation.id);
-        await supabase.from('vulnerability_window').delete().eq('nation_id', nation.id);
-        await supabase.from('pyrrhic_window').delete().eq('nation_id', nation.id);
-        await supabase.from('silent_coup_offers').delete().eq('nation_id', nation.id);
-        await supabase.from('silent_coup_votes').delete().eq('nation_id', nation.id);
-        await supabase.from('nations').update({ designated_successor_faction_id: null }).eq('id', nation.id);
-        console.log(`[Revolution] V5 autocracy state cleaned for ${nation.name}`);
-    } catch (cleanupErr) {
-        console.warn('[Revolution] V5 autocracy cleanup (non-fatal):', cleanupErr);
+    // Use allSettled so each cleanup runs even if others fail (Supabase client
+    // returns { error } rather than throwing, but guard against both patterns)
+    const cleanupResults = await Promise.allSettled([
+        supabase.from('faction_pillar_state').delete().eq('nation_id', nation.id),
+        supabase.from('autocracy_tracker').delete().eq('nation_id', nation.id),
+        supabase.from('putsch_state').delete().eq('nation_id', nation.id),
+        supabase.from('vulnerability_window').delete().eq('nation_id', nation.id),
+        supabase.from('pyrrhic_window').delete().eq('nation_id', nation.id),
+        supabase.from('silent_coup_offers').delete().eq('nation_id', nation.id),
+        supabase.from('silent_coup_votes').delete().eq('nation_id', nation.id),
+        supabase.from('nations').update({ designated_successor_faction_id: null }).eq('id', nation.id),
+    ]);
+    const cleanupFailures = cleanupResults.filter(r => r.status === 'rejected' || r.value?.error);
+    if (cleanupFailures.length > 0) {
+        console.warn(`[Revolution] V5 cleanup: ${cleanupFailures.length} of ${cleanupResults.length} failed (non-fatal)`);
     }
 
     // 4. Reset all faction bloc approvals to 50

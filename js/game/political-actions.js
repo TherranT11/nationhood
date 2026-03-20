@@ -3620,18 +3620,21 @@ export async function processRevolution(supabase, nation, currentTick) {
     await supabase.from('active_crises').delete().eq('nation_id', nation.id);
 
     // 3c. V5 Autocracy cleanup — remove all autocracy-specific state
-    try {
-        await supabase.from('faction_pillar_state').delete().eq('nation_id', nation.id);
-        await supabase.from('autocracy_tracker').delete().eq('nation_id', nation.id);
-        await supabase.from('putsch_state').delete().eq('nation_id', nation.id);
-        await supabase.from('vulnerability_window').delete().eq('nation_id', nation.id);
-        await supabase.from('pyrrhic_window').delete().eq('nation_id', nation.id);
-        await supabase.from('silent_coup_offers').delete().eq('nation_id', nation.id);
-        await supabase.from('silent_coup_votes').delete().eq('nation_id', nation.id);
-        await supabase.from('nations').update({ designated_successor_faction_id: null }).eq('id', nation.id);
-        console.log(`[Revolution] V5 autocracy state cleaned for ${nation.name}`);
-    } catch (cleanupErr) {
-        console.warn('[Revolution] V5 autocracy cleanup (non-fatal):', cleanupErr);
+    // Use allSettled so each cleanup runs even if others fail (Supabase client
+    // returns { error } rather than throwing, but guard against both patterns)
+    const cleanupResults = await Promise.allSettled([
+        supabase.from('faction_pillar_state').delete().eq('nation_id', nation.id),
+        supabase.from('autocracy_tracker').delete().eq('nation_id', nation.id),
+        supabase.from('putsch_state').delete().eq('nation_id', nation.id),
+        supabase.from('vulnerability_window').delete().eq('nation_id', nation.id),
+        supabase.from('pyrrhic_window').delete().eq('nation_id', nation.id),
+        supabase.from('silent_coup_offers').delete().eq('nation_id', nation.id),
+        supabase.from('silent_coup_votes').delete().eq('nation_id', nation.id),
+        supabase.from('nations').update({ designated_successor_faction_id: null }).eq('id', nation.id),
+    ]);
+    const cleanupFailures = cleanupResults.filter(r => r.status === 'rejected' || r.value?.error);
+    if (cleanupFailures.length > 0) {
+        console.warn(`[Revolution] V5 cleanup: ${cleanupFailures.length} of ${cleanupResults.length} failed (non-fatal)`);
     }
 
     // 4. Reset all faction bloc approvals to 50

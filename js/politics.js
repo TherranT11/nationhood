@@ -10,7 +10,6 @@ import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
 import { getElectabilityTier } from './game/party-leadership.js';
 import { AUTOCRACY_ACTIONS, dispatchAutocracyAction, getEscalatingCost, checkCooldown } from './game/autocracy-actions.js';
-import { PILLAR_KEYS } from './game/autocracy-pillars.js';
 
 initPage('politics', async (state) => {
     const { nation, faction, shard } = state;
@@ -4287,7 +4286,7 @@ async function renderAutocracyActionsTab(nation, faction, shard, pillarStates, a
 
     // 4. Silent coup vote (if there's an active vote phase and I'm not security)
     const { data: activeOffer } = await _supabase.from('silent_coup_offers')
-        .select('id').eq('nation_id', n.id).eq('target_faction_id', f.id).eq('voided', false).eq('accepted', false)
+        .select('id').eq('nation_id', n.id).eq('to_faction_id', f.id).eq('voided', false).eq('accepted', false)
         .limit(1).maybeSingle();
     if (activeOffer && AUTOCRACY_ACTIONS['silent_coup_vote']) {
         availableActions.push('silent_coup_vote');
@@ -4466,7 +4465,13 @@ function renderAutoActionDetail(actionKey, ap, tick, myFps, isStrongman, pillarS
             execBtn.textContent = 'Executing...';
             try {
                 const extra = {};
-                if (_autoActionTarget) extra.targetFactionId = _autoActionTarget;
+                if (_autoActionTarget) {
+                    if (actionKey === 'appoint_successor') {
+                        extra.successorFactionId = _autoActionTarget;
+                    } else {
+                        extra.targetFactionId = _autoActionTarget;
+                    }
+                }
 
                 const result = await dispatchAutocracyAction(_supabase, {
                     factionId: _autoFaction.id,
@@ -4479,14 +4484,21 @@ function renderAutoActionDetail(actionKey, ap, tick, myFps, isStrongman, pillarS
 
                 const resultDiv = document.getElementById('auto-exec-result');
                 if (result.success) {
-                    resultDiv.innerHTML = `<div style="color:#5cb85c;font-weight:600">Action executed successfully.</div>
-                        ${result.result ? `<div style="color:var(--dtext-2);margin-top:4px">${JSON.stringify(result.result.effects || result.result, null, 0)}</div>` : ''}`;
+                    if (resultDiv) {
+                        const effectsText = result.result ? escapeHtml(JSON.stringify(result.result.effects || result.result, null, 0)) : '';
+                        resultDiv.innerHTML = `<div style="color:#5cb85c;font-weight:600">Action executed successfully.</div>
+                            ${effectsText ? `<div style="color:var(--dtext-2);margin-top:4px">${effectsText}</div>` : ''}`;
+                    }
                     // Refresh the tab
-                    const { data: refreshedFps } = await _supabase.from('faction_pillar_state').select('*').eq('nation_id', _autoNation.id);
-                    const { data: refreshedTracker } = await _supabase.from('autocracy_tracker').select('*').eq('nation_id', _autoNation.id).single();
-                    await renderAutocracyActionsTab(_autoNation, _autoFaction, _autoShard, refreshedFps || [], refreshedTracker, _autoAllParties);
+                    try {
+                        const { data: refreshedFps } = await _supabase.from('faction_pillar_state').select('*').eq('nation_id', _autoNation.id);
+                        const { data: refreshedTracker } = await _supabase.from('autocracy_tracker').select('*').eq('nation_id', _autoNation.id).single();
+                        await renderAutocracyActionsTab(_autoNation, _autoFaction, _autoShard, refreshedFps || [], refreshedTracker, _autoAllParties);
+                    } catch (refreshErr) {
+                        console.warn('[AutoActions] Refresh after action failed:', refreshErr);
+                    }
                 } else {
-                    resultDiv.innerHTML = `<div style="color:#d9534f;font-weight:600">${escapeHtml(result.error || 'Action failed')}</div>`;
+                    if (resultDiv) resultDiv.innerHTML = `<div style="color:#d9534f;font-weight:600">${escapeHtml(result.error || 'Action failed')}</div>`;
                     execBtn.disabled = false;
                     execBtn.textContent = execLabel;
                 }

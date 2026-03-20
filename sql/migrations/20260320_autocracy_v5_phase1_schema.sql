@@ -150,6 +150,7 @@ ALTER TABLE silent_coup_offers ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "sco_select" ON silent_coup_offers FOR SELECT USING (true);
 CREATE POLICY "sco_insert" ON silent_coup_offers FOR INSERT WITH CHECK (true);
 CREATE POLICY "sco_update" ON silent_coup_offers FOR UPDATE USING (true);
+CREATE POLICY "sco_delete" ON silent_coup_offers FOR DELETE USING (true);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 5. SILENT_COUP_VOTES — faction choices during Silent Coup vote phase
@@ -170,6 +171,7 @@ CREATE INDEX IF NOT EXISTS idx_scv_nation_tick ON silent_coup_votes(nation_id, t
 ALTER TABLE silent_coup_votes ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "scv_select" ON silent_coup_votes FOR SELECT USING (true);
 CREATE POLICY "scv_insert" ON silent_coup_votes FOR INSERT WITH CHECK (true);
+CREATE POLICY "scv_delete" ON silent_coup_votes FOR DELETE USING (true);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 6. AUTOCRACY_ACTION_LOG — tracks all faction actions for surveillance reveal
@@ -234,6 +236,7 @@ ALTER TABLE vulnerability_window ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "vw_select" ON vulnerability_window FOR SELECT USING (true);
 CREATE POLICY "vw_insert" ON vulnerability_window FOR INSERT WITH CHECK (true);
 CREATE POLICY "vw_update" ON vulnerability_window FOR UPDATE USING (true);
+CREATE POLICY "vw_delete" ON vulnerability_window FOR DELETE USING (true);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 9. PYRRHIC_WINDOW — tracks 3-tick window after pyrrhic coup success
@@ -254,6 +257,7 @@ ALTER TABLE pyrrhic_window ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "pw_select" ON pyrrhic_window FOR SELECT USING (true);
 CREATE POLICY "pw_insert" ON pyrrhic_window FOR INSERT WITH CHECK (true);
 CREATE POLICY "pw_update" ON pyrrhic_window FOR UPDATE USING (true);
+CREATE POLICY "pw_delete" ON pyrrhic_window FOR DELETE USING (true);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 10. NATIONS TABLE — add successor columns for Strongman succession
