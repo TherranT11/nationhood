@@ -1479,6 +1479,45 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Autocracy timed effects failed for ${nation.name} (non-fatal):`, timedErr);
         }
 
+        // Autocracy V5: vulnerability windows (Strongman backing = 0 → 3-tick window)
+        try {
+            if (isAutocracy(nation)) {
+                const vulnResult = await processVulnerabilityWindows(supabase, nation, newTick);
+                if (vulnResult) {
+                    summary.autocracyVulnerability = summary.autocracyVulnerability || [];
+                    summary.autocracyVulnerability.push({ nation: nation.name, events: vulnResult });
+                }
+            }
+        } catch (vulnErr) {
+            console.error(`[advanceTick] Vulnerability window processing failed for ${nation.name} (non-fatal):`, vulnErr);
+        }
+
+        // Autocracy V5: putsch resolution (after response window expires)
+        try {
+            if (isAutocracy(nation)) {
+                const putschResult = await processPutschResolution(supabase, nation, newTick);
+                if (putschResult) {
+                    summary.autocracyPutsch = summary.autocracyPutsch || [];
+                    summary.autocracyPutsch.push({ nation: nation.name, result: putschResult });
+                }
+            }
+        } catch (putschErr) {
+            console.error(`[advanceTick] Putsch resolution failed for ${nation.name} (non-fatal):`, putschErr);
+        }
+
+        // Autocracy V5: pyrrhic window expiry (3-tick window closes, regime stabilizes)
+        try {
+            if (isAutocracy(nation)) {
+                const pyrrhicResult = await processPyrrhicWindows(supabase, nation, newTick);
+                if (pyrrhicResult) {
+                    summary.autocracyPyrrhic = summary.autocracyPyrrhic || [];
+                    summary.autocracyPyrrhic.push({ nation: nation.name, events: pyrrhicResult });
+                }
+            }
+        } catch (pyrrhicErr) {
+            console.error(`[advanceTick] Pyrrhic window processing failed for ${nation.name} (non-fatal):`, pyrrhicErr);
+        }
+
         // Seat rebalancing: if factions were disbanded and seats are vacant,
         // proportionally redistribute the empty seats across remaining factions.
         try {
