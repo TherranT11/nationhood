@@ -8917,12 +8917,7 @@ async function acceptStateVisit(proposalId) {
         autocracyResult.host_change = approvalChange;
         bonusSummary.push('Autocracy dice (host): rolled ' + roll + ' → ' + (approvalChange > 0 ? '+' : '') + approvalChange + ' Gov Approval (host)');
 
-        // Regime health cost: the strongman leaving home weakens the regime
-        const regimeDie = DIPLOMACY_CONFIG.STATE_VISIT_AUTOCRACY_REGIME_DIE;
-        const regimeRoll = Math.floor(Math.random() * regimeDie) + 1;
-        visitorUpdates.regime_health = Math.max(0, Math.round(Number(visitorNation.regime_health ?? 80) - regimeRoll));
-        autocracyResult.regime_roll = regimeRoll;
-        bonusSummary.push('Regime health: -' + regimeRoll + ' (1D10, strongman abroad)');
+        // (Regime health cost removed — Phase 0)
     }
 
     // ── Track debt for logging (actual budget cost applied via addEmbassyCost below) ──
