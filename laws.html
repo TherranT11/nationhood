@@ -223,7 +223,7 @@ let showingPassedLaws = false;
 const FALLBACK_COLORS = ['var(--red)','var(--green)','var(--blue)','var(--orange)','var(--purple)','var(--blue)','var(--red)','var(--amber)'];
 
 function _getCompatiblePolicies(sector) {
-    const _activePolicyIds = new Set(activeLaws.map(al => al.policy_id));
+    const _activePolicyIds = new Set(activeLaws.filter(al => !al.is_reversal).map(al => al.policy_id));
     return getCompatiblePolicies(sector, allPolicies, currentFaction, lawsIsAutocracy, draftArticles.map(a => a.policy?.id).filter(Boolean), _activePolicyIds);
 }
 
@@ -499,7 +499,7 @@ function filterAllLaws() {
     const sector = document.getElementById('law-filter-sector')?.value || '';
     const ideology = document.getElementById('law-filter-ideology')?.value || '';
 
-    const activePolicyIds = new Set(activeLaws.map(al => al.policy_id));
+    const activePolicyIds = new Set(activeLaws.filter(al => !al.is_reversal).map(al => al.policy_id));
 
     let filtered = allPolicies.filter(p => {
         if (search && !(p.policy_name || '').toLowerCase().includes(search) && !(p.description || '').toLowerCase().includes(search)) return false;
