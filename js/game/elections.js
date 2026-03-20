@@ -1011,21 +1011,6 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
             if (error) console.warn('Formation snap election event log failed:', error.message);
         });
 
-        // Fire system notification
-        try {
-            await supabase.rpc('fire_system_event', {
-                p_trigger_key: 'formation_snap_election',
-                p_nation_id: nation.id,
-                p_tick: currentTick,
-                p_placeholders: {
-                    nation: nation.name,
-                    ticks: String(ticksElapsed)
-                }
-            });
-        } catch (e) {
-            console.warn('fire_system_event (formation_snap_election) failed:', e.message);
-        }
-
         result.snapElection = true;
         result.snapTick = currentTick + 1;
         result.stage = 1;
@@ -1122,21 +1107,6 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
     }).then(({ error }) => {
         if (error) console.warn('Emergency minority government event log failed:', error.message);
     });
-
-    // Fire system notification
-    try {
-        await supabase.rpc('fire_system_event', {
-            p_trigger_key: 'emergency_minority_government',
-            p_nation_id: nation.id,
-            p_tick: currentTick,
-            p_placeholders: {
-                nation: nation.name,
-                party: largestParty.faction_name
-            }
-        });
-    } catch (e) {
-        console.warn('fire_system_event (emergency_minority_government) failed:', e.message);
-    }
 
     result.emergencyMinority = true;
     result.rulingParty = largestParty.faction_name;
@@ -1596,7 +1566,7 @@ export async function processElections(supabase, nation, currentTick) {
             // Fire election result timeline event with seat breakdown
             try {
                 const seatSummary = completedElection.results.seats
-                    .sort((a, b) => (b.seats || 0) - (a.seats || 0))
+                    .slice().sort((a, b) => (b.seats || 0) - (a.seats || 0))
                     .map(s => `${s.party_name || 'Unknown'}: ${s.seats}`)
                     .join(', ');
                 await supabase.rpc('fire_system_event', {
