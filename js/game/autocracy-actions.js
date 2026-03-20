@@ -298,6 +298,10 @@ export async function dispatchAutocracyAction(supabase, params) {
             trackerDelta,
             strongmanPillar,
         });
+        // If execute returned an error, propagate it (AP was already spent)
+        if (actionResult?.error) {
+            return { error: actionResult.error, apSpent: apCost, newAp: apResult.newAp };
+        }
     }
 
     return {
