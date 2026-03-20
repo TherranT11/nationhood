@@ -46,7 +46,7 @@
 html { overflow-y: scroll !important; height: auto !important; }
         body { overflow-y: auto !important; height: auto !important; min-height: 100vh; }
         .bill-page { display: grid; grid-template-columns: 1fr 420px; gap: 24px; padding: 24px; max-width: 1600px; margin: 0 auto; min-height: calc(100vh - 80px); }
-        @media (max-width: 900px) { .bill-page { grid-template-columns: 1fr; } .bill-sidebar { position: static; max-height: none; } }
+        @media (max-width: 900px) { .bill-page { grid-template-columns: 1fr; gap: 16px; padding: 12px; } .bill-sidebar { position: static; max-height: none; } }
         .back-link { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); text-decoration: none; font-size: 0.9rem; margin-bottom: 16px; transition: color 0.2s; font-family: var(--font-ui); }
         .back-link:hover { color: var(--text-bright); }
         .bill-main-wrapper { min-width: 0; overflow: visible; }
@@ -507,4 +507,93 @@ html { overflow-y: scroll !important; height: auto !important; }
     font-size: 0.7rem;
     font-style: normal;
     font-family: var(--font-mono);
+}
+
+/* ==================== MOBILE RESPONSIVE ==================== */
+
+@media (max-width: 600px) {
+    /* Layout */
+    .bill-page { padding: 8px; gap: 12px; }
+    .back-link { font-size: 0.8rem; margin-bottom: 10px; }
+
+    /* Header */
+    .bill-header { padding: 14px; }
+    .bill-title { font-size: 1.15rem; }
+    .bill-sponsor { font-size: 0.8rem; }
+    .bill-voting-ends { font-size: 0.8rem; }
+
+    /* Articles */
+    .bill-articles { padding: 12px; }
+    .article { padding: 12px; margin-bottom: 10px; }
+    .article-title { font-size: 0.92rem; }
+    .article-description { font-size: 0.82rem; }
+    .article-costs { flex-direction: column; gap: 8px; }
+    .policy-type-badge { position: static; display: inline-block; margin-top: 8px; }
+
+    /* Totals */
+    .bill-totals { flex-direction: column; gap: 12px; padding: 14px; margin: 0 12px 12px; }
+    .total-value { font-size: 1.2rem; }
+
+    /* Sponsor actions */
+    .sponsor-actions { flex-direction: column; padding: 14px; gap: 8px; }
+    .sponsor-btn { padding: 12px 20px; font-size: 0.8rem; width: 100%; }
+    .sponsor-article-toolbar { flex-direction: column; padding: 10px 12px; gap: 6px; }
+    .sponsor-tool-btn { padding: 10px 14px; width: 100%; text-align: center; }
+
+    /* Ideology warning */
+    .ideology-warning { margin: 0 12px; padding: 10px 12px; font-size: 0.8rem; }
+
+    /* Sidebar */
+    .bill-sidebar { gap: 12px; }
+    .support-box-content { padding: 10px; }
+    .support-item { padding: 8px; flex-wrap: wrap; gap: 6px; }
+    .support-party { font-size: 0.8rem; }
+
+    /* Voting section */
+    .voting-section { padding: 12px; }
+    .voting-buttons { flex-direction: column; gap: 8px; }
+    .vote-btn { padding: 14px 10px; font-size: 0.8rem; min-height: 48px; }
+
+    /* Chat */
+    .chat-messages { max-height: 200px; padding: 10px; }
+    .chat-input-wrapper { flex-direction: column; gap: 6px; }
+    .chat-input { font-size: 16px; /* prevents iOS zoom */ }
+    .chat-send-btn { padding: 12px; width: 100%; }
+
+    /* Amendments */
+    .amendment-request { padding: 10px; }
+    .amendment-actions { flex-direction: column; gap: 6px; }
+    .amendment-btn { width: 100%; text-align: center; padding: 10px 12px; }
+    .add-amendment-section { flex-direction: column; gap: 6px; padding: 10px; }
+    .add-amendment-btn, .add-text-amendment-btn { padding: 12px; }
+    .stance-buttons { flex-direction: column; gap: 6px; }
+    .stance-btn { padding: 10px; }
+
+    /* Article sponsor actions */
+    .article-sponsor-actions { flex-direction: column; gap: 6px; }
+    .article-action-btn { width: 100%; text-align: center; padding: 10px; }
+
+    /* Vote tally */
+    .vote-tally-content { padding: 10px; }
+    .party-vote-item { flex-wrap: wrap; gap: 4px; padding: 8px; }
+    .party-votes-list { padding: 0 10px 10px; }
+
+    /* Vote progress */
+    .vote-progress-bar { height: 18px; }
+    .vote-progress-marker { height: 22px; }
+
+    /* Modals */
+    .modal-content { padding: 16px; width: 95%; max-height: 90vh; }
+    .modal-footer { flex-direction: column; gap: 8px; }
+    .modal-footer .btn-cancel, .modal-footer .btn-submit { width: 100%; text-align: center; }
+
+    /* Ratification */
+    .ratification-section { padding: 12px; }
+    .counterparty-row { flex-wrap: wrap; gap: 6px; font-size: 0.82rem; }
+
+    /* Vote status badge */
+    .vote-status-badge { margin-right: 8px; padding: 6px 12px; font-size: 0.65rem; }
+
+    /* Early resolution */
+    .bill-early-resolution { padding: 10px 12px; font-size: 0.78rem; }
 }
