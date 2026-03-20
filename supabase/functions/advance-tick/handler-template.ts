@@ -1468,6 +1468,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Autocracy pillar tick failed for ${nation.name} (non-fatal):`, pillarErr);
         }
 
+        // Autocracy V5: timed effects (Rally/Agitate/Patronage buffs), deploy decay, congress resolution
+        try {
+            if (isAutocracy(nation)) {
+                await processAutocracyTimedEffects(supabase, nation, newTick);
+                await processDeployEscalationDecay(supabase, nation.id, newTick);
+                await resolvePartyCongressPending(supabase, nation.id, newTick);
+            }
+        } catch (timedErr) {
+            console.error(`[advanceTick] Autocracy timed effects failed for ${nation.name} (non-fatal):`, timedErr);
+        }
+
         // Seat rebalancing: if factions were disbanded and seats are vacant,
         // proportionally redistribute the empty seats across remaining factions.
         try {
