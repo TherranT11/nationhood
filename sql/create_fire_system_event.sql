@@ -11,6 +11,9 @@ CREATE INDEX IF NOT EXISTS idx_event_log_trigger_key
 ON event_log (trigger_key)
 WHERE trigger_key IS NOT NULL;
 
+-- Drop first in case the return type changed from a previous version
+DROP FUNCTION IF EXISTS fire_system_event(uuid, text, integer, jsonb);
+
 CREATE OR REPLACE FUNCTION fire_system_event(
     p_nation_id    UUID,
     p_trigger_key  TEXT,
