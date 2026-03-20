@@ -2,7 +2,7 @@ import { _supabase } from './supabase-client.js';
 import { initPage } from './common.js';
 import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
-import { tickToDate, escapeHtml as utilEscapeHtml } from './utils.js';
+import { tickToDate } from './utils.js';
 
 import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
@@ -102,7 +102,7 @@ initPage('politics', async (state) => {
     if (isAutoNation) {
         const [fpsRes, trackerRes] = await Promise.all([
             _supabase.from('faction_pillar_state').select('*').eq('nation_id', nation.id),
-            _supabase.from('autocracy_tracker').select('*').eq('nation_id', nation.id).single(),
+            _supabase.from('autocracy_tracker').select('*').eq('nation_id', nation.id).maybeSingle(),
         ]);
         pillarStates = fpsRes.data || [];
         autocracyTracker = trackerRes.data;
@@ -630,7 +630,7 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
                     <div class="pol-party-name">${escapeHtml(f.faction_name)}</div>
                     <div class="pol-meta-row">
                         <span class="pol-role-badge ${roleCls}">${escapeHtml(roleLabel.toUpperCase())}</span>
-                        <span style="font-size:10px;color:${PILLAR_COLORS[myPillar] || 'var(--dtext-3)'};font-weight:600;text-transform:uppercase">${PILLAR_LABELS[myPillar] || myPillar} Pillar</span>
+                        <span style="font-size:10px;color:${PILLAR_COLORS[myPillar] || 'var(--dtext-3)'};font-weight:600;text-transform:uppercase">${escapeHtml(PILLAR_LABELS[myPillar] || myPillar)} Pillar</span>
                     </div>
                 </div>
             </div>
@@ -680,41 +680,6 @@ function getTrackerWordLabel(trackerValue) {
     if (trackerValue <= 60) return 'RESTLESS';
     if (trackerValue <= 80) return 'VOLATILE';
     return 'CRITICAL';
-}
-
-function renderModifiersBox(f) {
-    const hasLeader = f.leader_first_name && f.leader_last_name;
-    const ideo1 = f.ideology_value_1 || null;
-    const modCount = (hasLeader && ideo1) ? 1 : 0;
-
-    let bodyHtml;
-    if (hasLeader && ideo1) {
-        const leaderFull = escapeHtml(f.leader_first_name + ' ' + f.leader_last_name);
-        const ideoLabel = ideo1.charAt(0).toUpperCase() + ideo1.slice(1).toLowerCase();
-        bodyHtml = `
-            <div class="pol-mod-card">
-                <div class="pol-mod-card-header">
-                    <span class="pol-mod-icon">★</span>
-                    <span class="pol-mod-label">${leaderFull} — ${escapeHtml(ideoLabel)}</span>
-                </div>
-                <div class="pol-mod-effect">+5 Voter Preference with ${escapeHtml(ideoLabel)} voter blocs</div>
-                <div class="pol-mod-footer">
-                    <span class="pol-mod-source">Leader Ideology</span>
-                    <span class="pol-mod-expires">While leader</span>
-                </div>
-            </div>`;
-    } else {
-        bodyHtml = `<div class="pol-mod-empty">No active modifiers.</div>`;
-    }
-
-    return `
-        <div class="pol-modifiers-box">
-            <div class="pol-mod-header">
-                <span class="pol-mod-title">Party Modifiers</span>
-                <span class="pol-mod-count">${modCount} active</span>
-            </div>
-            ${bodyHtml}
-        </div>`;
 }
 
 function miniLogo(color, acronym, name) {
@@ -4226,8 +4191,6 @@ let _autoActionTarget = null;
 let _autoNation = null;
 let _autoFaction = null;
 let _autoShard = null;
-let _autoPillarStates = [];
-let _autoTracker = null;
 let _autoAllParties = [];
 
 async function renderAutocracyActionsTab(nation, faction, shard, pillarStates, autocracyTracker, allParties) {
@@ -4237,8 +4200,6 @@ async function renderAutocracyActionsTab(nation, faction, shard, pillarStates, a
     _autoNation = nation;
     _autoFaction = faction;
     _autoShard = shard;
-    _autoPillarStates = pillarStates;
-    _autoTracker = autocracyTracker;
     _autoAllParties = allParties;
 
     const tick = shard?.current_tick || 0;
@@ -4247,7 +4208,7 @@ async function renderAutocracyActionsTab(nation, faction, shard, pillarStates, a
 
     // Refresh faction AP
     const { data: freshF } = await _supabase.from('factions')
-        .select('action_points').eq('id', f.id).single();
+        .select('action_points').eq('id', f.id).maybeSingle();
     if (freshF) f.action_points = freshF.action_points;
     const ap = f.action_points ?? 0;
 
@@ -4356,6 +4317,8 @@ async function renderAutocracyActionsTab(nation, faction, shard, pillarStates, a
         el.addEventListener('click', () => {
             const actionKey = el.getAttribute('data-action');
             _autoSelectedAction = actionKey;
+            _autoActionMode = 'regime'; // reset mode on action switch
+            _autoActionTarget = null;   // reset target on action switch
             renderAutoActionDetail(actionKey, ap, tick, myFps, isStrongman, pillarStates);
             // Highlight selected
             container.querySelectorAll('.auto-action-item').forEach(e => {
@@ -4403,7 +4366,7 @@ function renderAutoActionDetail(actionKey, ap, tick, myFps, isStrongman, pillarS
             const party = (_autoAllParties || []).find(p => p.id === fps.faction_id);
             const pName = party?.faction_name || 'Unknown';
             const sel = _autoActionTarget === fps.faction_id ? 'selected' : '';
-            targetOptions += `<option value="${fps.faction_id}" ${sel}>${escapeHtml(pName)} (${fps.pillar})</option>`;
+            targetOptions += `<option value="${fps.faction_id}" ${sel}>${escapeHtml(pName)} (${escapeHtml(fps.pillar || '?')})</option>`;
         }
         targetHtml = `
         <div style="margin:8px 0">
