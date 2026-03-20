@@ -1518,6 +1518,32 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Pyrrhic window processing failed for ${nation.name} (non-fatal):`, pyrrhicErr);
         }
 
+        // Autocracy V5: silent coup resolution (deal/vote phase)
+        try {
+            if (isAutocracy(nation)) {
+                const silentResult = await processSilentCoupResolution(supabase, nation, newTick);
+                if (silentResult) {
+                    summary.autocracySilentCoup = summary.autocracySilentCoup || [];
+                    summary.autocracySilentCoup.push({ nation: nation.name, result: silentResult });
+                }
+            }
+        } catch (silentErr) {
+            console.error(`[advanceTick] Silent coup resolution failed for ${nation.name} (non-fatal):`, silentErr);
+        }
+
+        // Autocracy V5: pillar leader aging (+1 year per 12 ticks, death at death_age)
+        try {
+            if (isAutocracy(nation)) {
+                const pillarAgingResult = await processAutocracyLeaderAging(supabase, nation, newTick);
+                if (pillarAgingResult) {
+                    summary.autocracyLeaderAging = summary.autocracyLeaderAging || [];
+                    summary.autocracyLeaderAging.push({ nation: nation.name, results: pillarAgingResult });
+                }
+            }
+        } catch (pillarAgingErr) {
+            console.error(`[advanceTick] Autocracy pillar leader aging failed for ${nation.name} (non-fatal):`, pillarAgingErr);
+        }
+
         // Seat rebalancing: if factions were disbanded and seats are vacant,
         // proportionally redistribute the empty seats across remaining factions.
         try {
@@ -1680,18 +1706,46 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // ── Succession helper: updates HOS, syncs nation object, logs action ──
-        // (Simplified — steward/loyalty/successor systems removed in Phase 0)
+        // Autocracies use V5 resolveSuccession (designated successor or auto-coup).
+        // Non-autocracies use random replacement (legacy behavior).
         async function handleStrongmanSuccession(
             supabase: any, nation: any, hosName: string, hosAge: number, newTick: number
         ) {
+            // V5 succession for autocracies
+            if (isAutocracy(nation)) {
+                await supabase.from('campaign_actions').insert({
+                    party_id: nation.ruling_faction_id, nation_id: nation.id,
+                    action_type: 'strongman_death', tick_performed: newTick,
+                    result: { deceased_name: hosName, deceased_age: hosAge, cause: 'natural_causes' },
+                });
+
+                const successionResult = await resolveSuccession(supabase, nation, newTick);
+
+                // Generate new HOS identity for the new regime
+                const FIRST = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
+                const LAST = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
+                const newFirst = FIRST[Math.floor(Math.random() * FIRST.length)];
+                const newLast = LAST[Math.floor(Math.random() * LAST.length)];
+                const newAge = 45 + Math.floor(Math.random() * 16);
+
+                await supabase.from('nations').update({
+                    head_of_state_first_name: newFirst, head_of_state_last_name: newLast,
+                    head_of_state_age: newAge,
+                    designated_successor_faction_id: null,
+                }).eq('id', nation.id);
+                nation.head_of_state_first_name = newFirst;
+                nation.head_of_state_last_name = newLast;
+                nation.head_of_state_age = newAge;
+
+                return { type: 'strongman_death', deceased: hosName, deceasedAge: hosAge,
+                    successor: `${newFirst} ${newLast}`, successorAge: newAge, ...successionResult };
+            }
+
+            // Legacy random replacement for non-autocracies
             const FIRST = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
             const LAST = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
-            const randFirst = () => FIRST[Math.floor(Math.random() * FIRST.length)];
-            const randLast = () => LAST[Math.floor(Math.random() * LAST.length)];
-
-            // Random replacement — no successor/steward system
-            const newFirst = randFirst();
-            const newLast = randLast();
+            const newFirst = FIRST[Math.floor(Math.random() * FIRST.length)];
+            const newLast = LAST[Math.floor(Math.random() * LAST.length)];
             const newAge = 45 + Math.floor(Math.random() * 16);
             const newName = `${newFirst} ${newLast}`;
 
