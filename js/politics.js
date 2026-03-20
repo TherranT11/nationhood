@@ -2173,6 +2173,16 @@ function renderEditIdentityBox(f, currentTick) {
         </div>
         <div class="pol-id-divider"></div>
 
+        <!-- Abbreviation -->
+        <div style="margin-bottom:14px">
+            <span class="pol-id-section-label">Abbreviation</span>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+                <input class="pol-id-rename-input" id="pol-id-abbr-input" value="${escapeHtml(f.abbreviation || '')}" maxlength="4" style="text-transform:uppercase;font-family:var(--dfont-mono);font-weight:700;letter-spacing:0.1em;width:80px">
+                <span class="pol-id-char-count" id="pol-id-abbr-count" style="font-size:10px">${(f.abbreviation || '').length}/4</span>
+            </div>
+        </div>
+        <div class="pol-id-divider"></div>
+
         <!-- Description -->
         <div style="margin-bottom:14px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -2249,6 +2259,8 @@ function initEditIdentityBox(f) {
     const renameConfirm = document.getElementById('pol-id-rename-confirm');
     const renameCancel = document.getElementById('pol-id-rename-cancel');
     const renameError  = document.getElementById('pol-id-rename-error');
+    const abbrInput    = document.getElementById('pol-id-abbr-input');
+    const abbrCount    = document.getElementById('pol-id-abbr-count');
     const nameDisplay  = document.getElementById('pol-id-current-name');
     const apDisplay    = document.getElementById('pol-id-ap-display');
     const apAvailable  = document.getElementById('pol-id-ap-available');
@@ -2411,6 +2423,14 @@ function initEditIdentityBox(f) {
         });
     }
 
+    // Abbreviation input
+    if (abbrInput && abbrCount) {
+        abbrInput.addEventListener('input', () => {
+            abbrInput.value = abbrInput.value.toUpperCase();
+            abbrCount.textContent = abbrInput.value.length + '/4';
+        });
+    }
+
     // Rename flow
     if (renameBtn && renameForm) {
         renameBtn.addEventListener('click', () => {
@@ -2507,11 +2527,21 @@ function initEditIdentityBox(f) {
                 uploadedFile = null; // Clear so we don't re-upload
             }
 
+            // Validate abbreviation
+            const newAbbr = abbrInput ? abbrInput.value.trim().toUpperCase() : '';
+            if (newAbbr.length < 2 || newAbbr.length > 4) {
+                saveBtn.textContent = '⚠ Abbreviation must be 2–4 letters';
+                saveBtn.disabled = false;
+                setTimeout(() => { saveBtn.textContent = 'Save Changes'; }, 2000);
+                return;
+            }
+
             const updateData = {
                 party_color: getColor(),
                 party_logo: useCustomImage ? null : getIcon(),
                 custom_logo_url: useCustomImage ? customLogoUrl : null,
-                party_description: descArea ? descArea.value.slice(0, MAX_DESC) : ''
+                party_description: descArea ? descArea.value.slice(0, MAX_DESC) : '',
+                abbreviation: newAbbr
             };
             await _supabase.from('factions').update(updateData).eq('id', f.id);
             saveBtn.textContent = '✓ Saved';
