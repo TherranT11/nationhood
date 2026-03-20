@@ -1440,6 +1440,19 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Purge decay failed for ${nation.name} (non-fatal):`, purgeErr);
         }
 
+        // Autocracy V5: pillar passive drift, wildcard decay, neglect, longevity
+        try {
+            if (isAutocracy(nation)) {
+                const pillarResult = await processAutocracyPillarTick(supabase, nation, newTick);
+                if (pillarResult) {
+                    summary.autocracyPillars = summary.autocracyPillars || [];
+                    summary.autocracyPillars.push(pillarResult);
+                }
+            }
+        } catch (pillarErr) {
+            console.error(`[advanceTick] Autocracy pillar tick failed for ${nation.name} (non-fatal):`, pillarErr);
+        }
+
         // Seat rebalancing: if factions were disbanded and seats are vacant,
         // proportionally redistribute the empty seats across remaining factions.
         try {
