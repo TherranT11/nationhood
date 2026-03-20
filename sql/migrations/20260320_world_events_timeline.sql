@@ -43,6 +43,8 @@ BEGIN
             WHEN 'presidential_election'    THEN 'Presidential Election'
             WHEN 'formation_snap_election'  THEN 'Snap Election Called'
             WHEN 'emergency_minority_government' THEN 'Minority Government Formed'
+            WHEN 'minority_government_formed'    THEN 'Minority Government Formed'
+            WHEN 'coalition_formation_started'    THEN 'Coalition Formation Underway'
             WHEN 'pm_appointed'             THEN 'Prime Minister Appointed'
             WHEN 'vonc_passed'              THEN 'No Confidence — Government Falls'
             WHEN 'vonc_failed'              THEN 'No Confidence — Motion Fails'
@@ -81,6 +83,7 @@ BEGIN
                 'formation_snap_election', 'emergency_minority_government', 'pm_appointed',
                 'vonc_passed', 'vonc_failed', 'snap_election_called', 'coup_attempt',
                 'minister_resigned', 'minister_purged', 'party_leader_replaced',
+                'minority_government_formed', 'coalition_formation_started',
                 'incumbent_lockin', 'bill_passed', 'bill_failed', 'quorum_failed') THEN 'government'
             WHEN p_trigger_key IN ('ministry_ability_used') THEN 'executive_order'
             WHEN p_trigger_key IN ('trade_agreement_proposed', 'trade_agreement_accepted',
