@@ -12206,7 +12206,7 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
             .from('electorate_profile')
             .select('*')
             .eq('nation_id', nation.id)
-            .single();
+            .maybeSingle();
         profile = data;
     }
 
@@ -12389,7 +12389,7 @@ async function tickElectorate(supabase, nation, currentTick) {
         .from('electorate_profile')
         .select('*')
         .eq('nation_id', nation.id)
-        .single();
+        .maybeSingle();
     if (!profile) {
         console.warn(`[Electorate] No electorate_profile for ${nation.name}, running genesis`);
         await genesisElectorate(supabase, nation, factions, currentTick);
@@ -13153,7 +13153,7 @@ async function boostVisibility(supabase, factionId, nationId, boost) {
         .select('id, visibility')
         .eq('faction_id', factionId)
         .eq('nation_id', nationId)
-        .single();
+        .maybeSingle();
     if (!standing) return;
 
     const old = Number(standing.visibility ?? 30);
@@ -13182,7 +13182,7 @@ async function nudgeApproval(supabase, factionId, nationId, delta) {
         .select('id, party_approval')
         .eq('faction_id', factionId)
         .eq('nation_id', nationId)
-        .single();
+        .maybeSingle();
     if (!standing) return;
 
     const old = Number(standing.party_approval ?? 50);
@@ -13213,7 +13213,7 @@ async function adjustCredibility(supabase, factionId, nationId, delta, suspendRe
         .select('id, credibility_modifier, credibility_recovery_suspended_until')
         .eq('faction_id', factionId)
         .eq('nation_id', nationId)
-        .single();
+        .maybeSingle();
     if (!standing) return;
 
     const old = Number(standing.credibility_modifier ?? 1.0);
