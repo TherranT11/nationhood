@@ -1239,7 +1239,9 @@ async function loadDashEvents(nationId, currentTick, parties) {
     const rows = events.map(ev => {
       const dateStr = tickToDate(ev.fired_at_tick);
       const desc = ev.description_chosen || ev.description_used || '';
-      const eventName = ev.event_name || '';
+      // Strip internal prefixes like "CRISIS_STARTED: ", "REVOLUTION_WARNING", etc.
+      const rawName = ev.event_name || '';
+      const eventName = rawName.replace(/^[A-Z_]+:\s*/, '');
       const cat = EVENT_CATEGORY_STYLES[ev.category] || EVENT_CATEGORY_DEFAULT;
 
       // Show bold event name as headline, colorized description below
@@ -1323,7 +1325,8 @@ async function loadWorldEvents(excludeNationId, currentTick) {
     const rows = events.map(ev => {
       const dateStr = tickToDate(ev.fired_at_tick);
       const desc = ev.description_chosen || ev.description_used || '';
-      const eventName = ev.event_name || '';
+      const rawName = ev.event_name || '';
+      const eventName = rawName.replace(/^[A-Z_]+:\s*/, '');
       const cat = EVENT_CATEGORY_STYLES[ev.category] || EVENT_CATEGORY_DEFAULT;
       const nationName = ev.nations?.name || 'Unknown';
       const np = ev.nations?.nation_profiles;
