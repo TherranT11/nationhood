@@ -2223,6 +2223,17 @@ async function formGovernment() {
         if (formError) throw formError;
         if (!formResult.success) { alert(formResult.message); return; }
 
+        // If HoS method is 'appointed', clear the HoS so formation auto-generates a new one
+        // If 'hereditary', skip — monarch is permanent
+        const { data: preNation } = await _supabase.from('nations').select('hos_election_method').eq('id', currentNation.id).single();
+        if (preNation?.hos_election_method === 'appointed') {
+            await _supabase.from('nations').update({
+                head_of_state_first_name: null,
+                head_of_state_last_name: null,
+                head_of_state_age: null
+            }).eq('id', currentNation.id);
+        }
+
         // Compute ministry baselines from current nation state
         const { data: freshNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
         const ministryBaselines = {};
@@ -2320,14 +2331,17 @@ async function formGovernmentFallback(ministryBaselines) {
         }
     }
 
-    // Auto-generate Head of State if missing
+    // If HoS method is 'appointed', always generate a new HoS; if 'hereditary', keep existing monarch
+    const fallbackHosMethod = currentNation.hos_election_method || null;
+    const forceNewHos = fallbackHosMethod === 'appointed';
+    // Auto-generate Head of State if missing (or forced by appointed method)
     const hasValidHosAge = Number.isFinite(Number(currentNation.head_of_state_age)) && Number(currentNation.head_of_state_age) > 0;
-    if (!currentNation.head_of_state_first_name || !currentNation.head_of_state_last_name || !hasValidHosAge) {
+    if (fallbackHosMethod !== 'hereditary' && (forceNewHos || !currentNation.head_of_state_first_name || !currentNation.head_of_state_last_name || !hasValidHosAge)) {
         const HOS_FIRST = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
         const HOS_LAST = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
-        const hosFirst = currentNation.head_of_state_first_name || HOS_FIRST[Math.floor(Math.random() * HOS_FIRST.length)];
-        const hosLast = currentNation.head_of_state_last_name || HOS_LAST[Math.floor(Math.random() * HOS_LAST.length)];
-        const hosAge = hasValidHosAge ? Number(currentNation.head_of_state_age) : (45 + Math.floor(Math.random() * 25));
+        const hosFirst = forceNewHos ? HOS_FIRST[Math.floor(Math.random() * HOS_FIRST.length)] : (currentNation.head_of_state_first_name || HOS_FIRST[Math.floor(Math.random() * HOS_FIRST.length)]);
+        const hosLast = forceNewHos ? HOS_LAST[Math.floor(Math.random() * HOS_LAST.length)] : (currentNation.head_of_state_last_name || HOS_LAST[Math.floor(Math.random() * HOS_LAST.length)]);
+        const hosAge = forceNewHos ? (45 + Math.floor(Math.random() * 25)) : (hasValidHosAge ? Number(currentNation.head_of_state_age) : (45 + Math.floor(Math.random() * 25)));
         try {
             await _supabase.from('nations').update({
                 head_of_state_first_name: hosFirst, head_of_state_last_name: hosLast, head_of_state_age: hosAge
