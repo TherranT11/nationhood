@@ -448,5 +448,17 @@ export async function processAutocracyTrackerDecay(supabase, nation, currentTick
     }
 
     console.log(`[trackerDecay] ${nation.name}: ${oldValue} → ${newValue}`);
+
+    // 1d3 roll: on a 3, sync public_tracker_value to actual tracker_value
+    const roll = Math.floor(Math.random() * 3) + 1; // 1, 2, or 3
+    if (roll === 3) {
+        await supabase.from('autocracy_tracker').update({
+            public_tracker_value: newValue,
+        }).eq('nation_id', nation.id);
+        console.log(`[trackerDecay] ${nation.name}: public tracker synced → ${newValue} (rolled ${roll})`);
+    } else {
+        console.log(`[trackerDecay] ${nation.name}: public tracker unchanged (rolled ${roll})`);
+    }
+
     return { nation: nation.name, tick: currentTick, oldTracker: oldValue, newTracker: newValue };
 }

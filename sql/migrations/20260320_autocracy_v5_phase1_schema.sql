@@ -16,6 +16,10 @@ CREATE TABLE IF NOT EXISTS autocracy_tracker (
     wildcard_pillar TEXT CHECK (wildcard_pillar IS NULL OR wildcard_pillar IN ('military', 'party', 'oligarchs', 'media', 'security')),
     wildcard_backing NUMERIC(5,2) NOT NULL DEFAULT 20.00 CHECK (wildcard_backing >= 0 AND wildcard_backing <= 20),
     wildcard_neglect_ticks INTEGER NOT NULL DEFAULT 0,
+
+    -- Public-facing tracker (updated ~1/3 of ticks via 1d3 roll)
+    public_tracker_value INTEGER NOT NULL DEFAULT 30 CHECK (public_tracker_value >= 0 AND public_tracker_value <= 100),
+
     created_at      TIMESTAMPTZ DEFAULT now(),
     UNIQUE(nation_id)
 );
@@ -272,6 +276,9 @@ ALTER TABLE nations ADD COLUMN IF NOT EXISTS designated_successor_faction_id UUI
 
 -- pillar_confirmed: whether the player explicitly chose their pillar (false = auto-assigned)
 ALTER TABLE faction_pillar_state ADD COLUMN IF NOT EXISTS pillar_confirmed BOOLEAN NOT NULL DEFAULT false;
+
+-- Public-facing tracker: delayed visibility via 1d3 roll per tick. Starts at 30.
+ALTER TABLE autocracy_tracker ADD COLUMN IF NOT EXISTS public_tracker_value INTEGER NOT NULL DEFAULT 30;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 11. SEED: Initialize autocracy_tracker for existing autocracy nations
