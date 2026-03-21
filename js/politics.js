@@ -424,10 +424,19 @@ async function renderPartyTab(f, nation, data) {
     </div>`;
     }
 
+    const otherPartiesTabBtn = isAutoNation ? '' : '<button class="pol-page-tab" data-page-tab="other-parties">Other Parties</button>';
+    const otherPartiesContent = isAutoNation ? '' : `
+    <div class="pol-page-content" data-page-content="other-parties">
+        <div id="other-parties-container" class="op-page" style="min-height:300px;">
+            <div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;">Loading rival parties...</div>
+        </div>
+    </div>`;
+
     const html = `
     <div class="pol-page-tabs">
         <button class="pol-page-tab active" data-page-tab="politics">Politics</button>
         <button class="pol-page-tab" data-page-tab="actions">Actions</button>
+        ${otherPartiesTabBtn}
     </div>
     <div class="pol-page-content active" data-page-content="politics">
     ${politicsTabContent}
@@ -437,11 +446,13 @@ async function renderPartyTab(f, nation, data) {
             <div class="pol-section-label">Actions</div>
             <div id="actions-container"></div>
         </div>
-    </div>`;
+    </div>
+    ${otherPartiesContent}`;
 
     document.getElementById('content-area').innerHTML = html;
 
-    // Wire up page-level sub-tabs (Politics / Actions)
+    // Wire up page-level sub-tabs (Politics / Actions / Other Parties)
+    let otherPartiesLoaded = false;
     document.querySelectorAll('.pol-page-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('.pol-page-tab').forEach(t => t.classList.remove('active'));
@@ -450,6 +461,11 @@ async function renderPartyTab(f, nation, data) {
             const target = tab.getAttribute('data-page-tab');
             const content = document.querySelector(`.pol-page-content[data-page-content="${target}"]`);
             if (content) content.classList.add('active');
+            // Lazy-load Other Parties tab on first click
+            if (target === 'other-parties' && !otherPartiesLoaded) {
+                otherPartiesLoaded = true;
+                renderOtherPartiesTab(f, nation, allParties, allPartyIdeologies, coalition, totalSeats, voterBlocs, currentTick);
+            }
         });
     });
 
@@ -4622,5 +4638,304 @@ function renderAutoActionDetail(actionKey, ap, tick, myFps, isStrongman, pillarS
             }
         });
     }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   OTHER PARTIES TAB — Rival party intelligence cards
+   ═══════════════════════════════════════════════════════════════════ */
+
+// Fixed issue order for stance display
+const OP_ISSUE_ORDER = [
+    'Corruption', 'Unemployment', 'Cost of Living', 'Infrastructure',
+    'Healthcare', 'Immigration', 'Education', 'Climate / Energy'
+];
+
+// Ideology axes in the spec's display order
+const OP_AXES = [
+    { key: 'security_freedom',           leftLabel: 'Security',    rightLabel: 'Freedom' },
+    { key: 'tradition_progress',         leftLabel: 'Tradition',   rightLabel: 'Progress' },
+    { key: 'liberty_equality',           leftLabel: 'Liberty',     rightLabel: 'Equality' },
+    { key: 'globalism_nationalism',      leftLabel: 'Globalism',   rightLabel: 'Nationalism' },
+    { key: 'individualism_collectivism', leftLabel: 'Individual',  rightLabel: 'Collectivism' },
+];
+
+async function renderOtherPartiesTab(playerFaction, nation, allParties, allPartyIdeologies, coalition, totalSeats, voterBlocs, currentTick) {
+    const container = document.getElementById('other-parties-container');
+    if (!container) return;
+
+    // Filter out player's own party
+    const rivals = (allParties || []).filter(p => p.id !== playerFaction.id);
+    if (rivals.length === 0) {
+        container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:20px;text-align:center;">No rival parties found.</div>';
+        return;
+    }
+
+    // Build ideology lookup
+    const ideoMap = {};
+    for (const row of (allPartyIdeologies || [])) {
+        ideoMap[row.faction_id] = row;
+    }
+
+    // Fetch approval data for all rival parties (average preference_score across blocs)
+    const rivalIds = rivals.map(p => p.id);
+    const { data: rivalApprovals } = rivalIds.length > 0
+        ? await _supabase.from('faction_bloc_approval')
+            .select('faction_id, preference_score')
+            .in('faction_id', rivalIds)
+        : { data: [] };
+
+    // Compute average approval per party
+    const approvalMap = {};
+    const approvalCounts = {};
+    for (const row of (rivalApprovals || [])) {
+        const fid = row.faction_id;
+        approvalMap[fid] = (approvalMap[fid] || 0) + Number(row.preference_score ?? 40);
+        approvalCounts[fid] = (approvalCounts[fid] || 0) + 1;
+    }
+    for (const fid of Object.keys(approvalMap)) {
+        approvalMap[fid] = Math.round(approvalMap[fid] / approvalCounts[fid]);
+    }
+
+    // Fetch leader data for each rival (factions table has leader columns)
+    const { data: rivalFactionData } = await _supabase
+        .from('factions')
+        .select('id, leader_first_name, leader_last_name, leader_age, founded_tick, ideology_value_1, ideology_value_2')
+        .in('id', rivalIds);
+    const factionDataMap = {};
+    for (const rd of (rivalFactionData || [])) {
+        factionDataMap[rd.id] = rd;
+    }
+
+    // Determine coalition membership
+    const coalitionPartyIds = (coalition && coalition.party_ids) ? coalition.party_ids : [];
+    const coalitionLeadId = coalition ? coalition.lead_party_id : null;
+
+    // Build enriched party objects
+    const partyCards = rivals.map(p => {
+        const fd = factionDataMap[p.id] || {};
+        const ideo = ideoMap[p.id] || {};
+        const leaderName = (fd.leader_first_name && fd.leader_last_name)
+            ? fd.leader_first_name + ' ' + fd.leader_last_name
+            : 'Vacant';
+        const leaderAge = fd.leader_age || null;
+        const approval = approvalMap[p.id] ?? 40;
+        const voteShare = Number(p.national_vote_share || 0);
+
+        let status = 'opposition';
+        if (coalitionPartyIds.includes(p.id)) {
+            status = p.id === coalitionLeadId ? 'governing_head' : 'governing_junior';
+        }
+
+        return {
+            id: p.id,
+            name: p.faction_name || 'Unknown',
+            abbreviation: p.abbreviation || '??',
+            color: p.party_color || '#888',
+            status,
+            foundedTick: fd.founded_tick,
+            leaderName,
+            leaderAge,
+            seats: p.seats || 0,
+            totalSeats,
+            voteShare,
+            approval,
+            ideology: {
+                security_freedom: ideo.security_freedom ?? 0,
+                tradition_progress: ideo.tradition_progress ?? 0,
+                liberty_equality: ideo.liberty_equality ?? 0,
+                globalism_nationalism: ideo.globalism_nationalism ?? 0,
+                individualism_collectivism: ideo.individualism_collectivism ?? 0,
+            },
+            stances: [], // Stance system not yet implemented — shows "No stance" for all issues
+        };
+    });
+
+    // Default sort by seats descending
+    let currentSort = 'seats';
+    const sortFns = {
+        seats:      (a, b) => b.seats - a.seats,
+        vote_share: (a, b) => b.voteShare - a.voteShare,
+        approval:   (a, b) => b.approval - a.approval,
+        alignment:  (a, b) => {
+            const aStrength = Object.values(a.ideology).reduce((s, v) => s + Math.abs(v), 0);
+            const bStrength = Object.values(b.ideology).reduce((s, v) => s + Math.abs(v), 0);
+            return bStrength - aStrength;
+        },
+    };
+
+    function renderGrid() {
+        const sorted = [...partyCards].sort(sortFns[currentSort]);
+        const gridHtml = sorted.map(p => renderPartyCard(p, nation)).join('');
+
+        container.innerHTML = `
+        <div class="op-top">
+            <div class="op-top-left">
+                <div class="op-title">Rival Parties — ${escapeHtml(nation.name)}</div>
+                <div class="op-note">Stance data based on observable actions. Ideology positions may be estimated.</div>
+            </div>
+            <div class="op-sort-row">
+                <span class="op-sort-label">Sort by</span>
+                <button class="op-sort-btn${currentSort === 'seats' ? ' active' : ''}" data-op-sort="seats">Seats</button>
+                <button class="op-sort-btn${currentSort === 'vote_share' ? ' active' : ''}" data-op-sort="vote_share">Vote Share</button>
+                <button class="op-sort-btn${currentSort === 'approval' ? ' active' : ''}" data-op-sort="approval">Approval</button>
+                <button class="op-sort-btn${currentSort === 'alignment' ? ' active' : ''}" data-op-sort="alignment">Alignment</button>
+            </div>
+        </div>
+        <div class="op-grid">${gridHtml}</div>`;
+
+        // Wire sort buttons
+        container.querySelectorAll('.op-sort-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentSort = btn.getAttribute('data-op-sort');
+                renderGrid();
+            });
+        });
+    }
+
+    renderGrid();
+}
+
+function renderPartyCard(party, nation) {
+    const c = party.color;
+    const cFaint = hexToRgba(c, 0.09);
+    const cBorder = hexToRgba(c, 0.22);
+    const cHalf = hexToRgba(c, 0.5);
+    const cLight = hexToRgba(c, 0.2);
+
+    // Status badge
+    let statusLabel, statusCls;
+    if (party.status === 'governing_head') { statusLabel = 'GOVERNING — HEAD'; statusCls = 'op-badge-green'; }
+    else if (party.status === 'governing_junior') { statusLabel = 'GOVERNING — JUNIOR'; statusCls = 'op-badge-green'; }
+    else { statusLabel = 'OPPOSITION'; statusCls = 'op-badge-red'; }
+
+    // Founded
+    const founded = party.foundedTick != null ? tickToDate(party.foundedTick) : null;
+    const foundedBadge = founded ? `<span class="op-badge op-badge-neutral">Est. ${escapeHtml(founded)}</span>` : '';
+
+    // Leader badge
+    const leaderBadge = `<span class="op-badge op-badge-neutral">Leader: ${escapeHtml(party.leaderName)}${party.leaderAge ? ' (' + party.leaderAge + ')' : ''}</span>`;
+
+    // Approval color
+    const apColor = party.approval > 50 ? 'var(--dgreen)' : party.approval >= 35 ? 'var(--damber)' : 'var(--dred)';
+
+    // Ideology axes HTML
+    let axesHtml = '';
+    for (const ax of OP_AXES) {
+        const score = party.ideology[ax.key] ?? 0;
+        const normalized = (score + 100) / 2; // 0-100
+        const absScore = Math.abs(score);
+
+        let fillStyle;
+        if (score > 0) {
+            fillStyle = `left:50%;width:${score / 2}%;background:${cHalf}`;
+        } else if (score < 0) {
+            fillStyle = `right:50%;width:${Math.abs(score) / 2}%;background:${cHalf}`;
+        } else {
+            fillStyle = `left:50%;width:0%;background:${cHalf}`;
+        }
+
+        axesHtml += `
+        <div class="op-axis">
+            <div class="op-axis-poles"><span>${ax.leftLabel}</span><span>${ax.rightLabel}</span></div>
+            <div class="op-axis-track">
+                <div class="op-axis-center"></div>
+                <div class="op-axis-fill" style="${fillStyle}"></div>
+                <div class="op-axis-dot" style="left:${normalized}%;background:${cLight};border-color:${c}"></div>
+            </div>
+        </div>`;
+    }
+
+    // Ideology insight
+    const strongPositions = Object.values(party.ideology).filter(v => Math.abs(v) >= 50).length;
+    let insightColor, insightLabel, insightBody;
+    if (strongPositions >= 4) {
+        insightColor = 'var(--dgreen)';
+        insightLabel = 'Strong Conviction';
+        insightBody = `${strongPositions} strong positions. Consistent ideological identity across axes.`;
+    } else if (strongPositions <= 1) {
+        insightColor = 'var(--dred)';
+        insightLabel = 'Weak Conviction';
+        insightBody = `Only ${strongPositions} strong position${strongPositions === 1 ? '' : 's'}. Centrist on most axes — voters may not trust their platform.`;
+    } else {
+        insightColor = 'var(--dteal)';
+        insightLabel = 'Established Party';
+        insightBody = `${strongPositions} strong positions. Moderate ideological clarity.`;
+    }
+
+    // Stances — currently no stance system, all show "No stance"
+    let stancesHtml = '';
+    for (const issue of OP_ISSUE_ORDER) {
+        stancesHtml += `
+        <div class="op-stance-row">
+            <div class="op-stance-issue">${escapeHtml(issue)}</div>
+            <span class="op-no-stance">No stance</span>
+            <div class="op-bar-wrap"></div>
+            <div class="op-stance-score" style="color:var(--dtxt-dim)">—</div>
+        </div>`;
+    }
+
+    // Stance insight — placeholder since no stances exist yet
+    const stanceInsight = party.status.startsWith('governing')
+        ? `<div class="op-insight" style="border-left-color:var(--dteal)">
+            <div class="op-insight-label" style="color:var(--dteal)">No Active Stances</div>
+            <div class="op-insight-body">${escapeHtml(party.abbreviation)} has not taken any public issue stances yet. Watch for campaign actions.</div>
+           </div>`
+        : `<div class="op-insight" style="border-left-color:var(--dteal)">
+            <div class="op-insight-label" style="color:var(--dteal)">No Active Stances</div>
+            <div class="op-insight-body">${escapeHtml(party.abbreviation)} has not declared any positions. Issue stance system not yet active.</div>
+           </div>`;
+
+    return `
+    <div class="op-card">
+        <div class="op-card-hdr">
+            <div class="op-emblem" style="background:${cFaint};color:${c};border:1px solid ${cBorder}">${escapeHtml(party.abbreviation)}</div>
+            <div class="op-hdr-info">
+                <div class="op-name">${escapeHtml(party.name)}</div>
+                <div class="op-meta">
+                    <span class="op-badge ${statusCls}">${statusLabel}</span>
+                    ${foundedBadge}
+                    ${leaderBadge}
+                </div>
+            </div>
+        </div>
+        <div class="op-body">
+            <div class="op-col-left">
+                <div class="op-sec-label">Party Stats</div>
+                <div class="op-stat-row">
+                    <span class="op-sr-label">Seats</span>
+                    <span class="op-sr-val" style="color:${c}">${party.seats} <span style="color:var(--dtext-3);font-size:9px;font-weight:400">/ ${party.totalSeats}</span></span>
+                </div>
+                <div class="op-stat-row">
+                    <span class="op-sr-label">Vote Share</span>
+                    <span class="op-sr-val">${(party.voteShare * 100).toFixed(1)}%</span>
+                </div>
+                <div class="op-stat-row">
+                    <span class="op-sr-label">Approval</span>
+                    <span class="op-sr-val" style="color:${apColor}">${party.approval}%</span>
+                </div>
+                <div class="op-rule"></div>
+                <div class="op-sec-label">Ideology Axes</div>
+                ${axesHtml}
+                <div class="op-insight" style="border-left-color:${insightColor}">
+                    <div class="op-insight-label" style="color:${insightColor}">${insightLabel}</div>
+                    <div class="op-insight-body">${insightBody}</div>
+                </div>
+            </div>
+            <div class="op-col-right">
+                <div class="op-sec-label">Active Issue Stances</div>
+                ${stancesHtml}
+                ${stanceInsight}
+            </div>
+        </div>
+    </div>`;
+}
+
+/** Convert hex color to rgba string */
+function hexToRgba(hex, alpha) {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.substring(0, 2), 16) || 0;
+    const g = parseInt(h.substring(2, 4), 16) || 0;
+    const b = parseInt(h.substring(4, 6), 16) || 0;
+    return `rgba(${r},${g},${b},${alpha})`;
 }
 

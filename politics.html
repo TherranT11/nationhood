@@ -3541,6 +3541,78 @@ body.light-mode .pol-blocs-box {
     .protest-crisis-card { padding: 12px; }
     .protest-crisis-card__actions { gap: 4px; }
 }
+
+/* ═══════════════════════════════════════
+   OTHER PARTIES TAB
+   ═══════════════════════════════════════ */
+.op-page { padding: 16px 20px 48px; }
+.op-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.op-top-left { display: flex; flex-direction: column; gap: 3px; }
+.op-title { font-family: var(--dfont-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dtext-3); }
+.op-note { font-size: 10px; color: var(--dtext-3); font-style: italic; }
+.op-sort-row { display: flex; align-items: center; gap: 6px; }
+.op-sort-label { font-family: var(--dfont-mono); font-size: 8px; color: var(--dtxt-dim); text-transform: uppercase; letter-spacing: 0.08em; }
+.op-sort-btn {
+    font-family: var(--dfont-mono); font-size: 8px; font-weight: 600;
+    padding: 3px 9px; border-radius: 3px; border: 1px solid var(--dborder-1);
+    background: transparent; color: var(--dtext-3); cursor: pointer;
+    transition: all 0.12s; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.op-sort-btn.active { background: rgba(155,126,200,0.09); border-color: rgba(155,126,200,0.22); color: #9b7ec8; }
+.op-sort-btn:hover:not(.active) { border-color: var(--dborder-2); color: var(--dtext-2); }
+.op-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+/* Card */
+.op-card { background: var(--dbg-1); border: 1px solid var(--dborder-0); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+.op-card-hdr { background: var(--dbg-3); border-bottom: 1px solid var(--dborder-hair); padding: 14px 16px; display: flex; align-items: center; gap: 14px; }
+.op-emblem { width: 48px; height: 48px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-family: var(--dfont-mono); font-size: 16px; font-weight: 800; flex-shrink: 0; }
+.op-hdr-info { flex: 1; min-width: 0; }
+.op-name { font-size: 13px; font-weight: 700; color: var(--dtext-0); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.op-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.op-badge { font-family: var(--dfont-mono); font-size: 7.5px; font-weight: 700; padding: 2px 6px; border-radius: 3px; border: 1px solid; letter-spacing: 0.04em; text-transform: uppercase; }
+.op-badge-green  { background: var(--dgreen-faint);  color: var(--dgreen);  border-color: var(--dgreen-border); }
+.op-badge-red    { background: var(--dred-faint);    color: var(--dred);    border-color: var(--dred-border); }
+.op-badge-amber  { background: var(--damber-faint);  color: var(--damber);  border-color: var(--damber-border); }
+.op-badge-teal   { background: rgba(90,175,165,0.08); color: var(--dteal); border-color: rgba(90,175,165,0.18); }
+.op-badge-neutral{ background: rgba(255,255,255,0.04); color: var(--dtext-3); border-color: var(--dborder-1); }
+/* Body two-column */
+.op-body { display: grid; grid-template-columns: 200px 1fr; flex: 1; }
+.op-col-left { padding: 14px 16px; border-right: 1px solid var(--dborder-hair); display: flex; flex-direction: column; }
+.op-col-right { padding: 14px 16px; display: flex; flex-direction: column; }
+.op-sec-label { font-family: var(--dfont-mono); font-size: 7.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dtxt-dim); margin-bottom: 8px; }
+/* Stat rows */
+.op-stat-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--dborder-hair); }
+.op-stat-row:last-of-type { border-bottom: none; }
+.op-sr-label { font-family: var(--dfont-mono); font-size: 8px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dtext-3); }
+.op-sr-val { font-family: var(--dfont-mono); font-size: 11px; font-weight: 700; color: var(--dtext-0); }
+.op-rule { height: 1px; background: var(--dborder-hair); margin: 10px 0; }
+/* Ideology axes */
+.op-axis { margin-bottom: 8px; }
+.op-axis:last-of-type { margin-bottom: 0; }
+.op-axis-poles { display: flex; justify-content: space-between; font-family: var(--dfont-mono); font-size: 7px; color: var(--dtxt-dim); font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 2px; }
+.op-axis-track { height: 6px; background: var(--dbg-hover); position: relative; }
+.op-axis-center { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.08); transform: translateX(-50%); }
+.op-axis-fill { position: absolute; top: 0; height: 100%; }
+.op-axis-dot { position: absolute; top: 50%; width: 8px; height: 8px; border-radius: 50%; transform: translate(-50%, -50%); border: 1.5px solid; z-index: 2; }
+/* Stance rows */
+.op-stance-row { display: flex; align-items: center; gap: 7px; padding: 5px 0; border-bottom: 1px solid var(--dborder-hair); }
+.op-stance-row:last-of-type { border-bottom: none; }
+.op-stance-issue { font-size: 10px; font-weight: 600; color: var(--dtext-1); flex: 1; }
+.op-stance-badges { display: flex; gap: 3px; flex-shrink: 0; }
+.op-bar-wrap { width: 52px; height: 3px; background: var(--dbg-hover); border-radius: 1px; position: relative; flex-shrink: 0; }
+.op-bar-fill { height: 100%; border-radius: 1px; position: absolute; left: 0; top: 0; }
+.op-stance-score { font-family: var(--dfont-mono); font-size: 9px; font-weight: 700; width: 20px; text-align: right; flex-shrink: 0; }
+.op-no-stance { font-family: var(--dfont-mono); font-size: 8px; color: var(--dtxt-dim); font-style: italic; }
+/* Insight callout */
+.op-insight { background: var(--dbg-3); border: 1px solid var(--dborder-0); border-left: 3px solid; border-radius: 3px; padding: 6px 10px; margin-top: 8px; }
+.op-insight-label { font-family: var(--dfont-mono); font-size: 7px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 2px; }
+.op-insight-body { font-size: 8.5px; color: var(--dtext-3); line-height: 1.4; }
+/* Responsive */
+@media (max-width: 1200px) { .op-grid { grid-template-columns: 1fr; } }
+@media (max-width: 860px) {
+    .op-page { padding: 12px 8px 32px; }
+    .op-body { grid-template-columns: 1fr; }
+    .op-col-left { border-right: none; border-bottom: 1px solid var(--dborder-hair); }
+}
 </style>
 </head>
 <body>
