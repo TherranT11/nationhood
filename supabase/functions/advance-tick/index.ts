@@ -13918,6 +13918,7 @@ async function processAutocracyTrackerDecay(supabase, nation, currentTick) {
     if (roll === 3) {
         await supabase.from('autocracy_tracker').update({
             public_tracker_value: newValue,
+            public_tracker_last_tick: currentTick,
         }).eq('nation_id', nation.id);
         console.log(`[trackerDecay] ${nation.name}: public tracker synced → ${newValue} (rolled ${roll})`);
     } else {
@@ -15735,7 +15736,7 @@ async function resolveStandardCoup(supabase, opts) {
             wildcard_pillar: factionPillar,
             wildcard_backing: Math.max(0, Number(pCtx.pillarStates.find(p => p.pillar === factionPillar)?.backing || 0)),
             wildcard_neglect_ticks: 0,
-            tracker_value: 10, public_tracker_value: 30,
+            tracker_value: 10, public_tracker_value: 30, public_tracker_last_tick: currentTick,
             last_updated_tick: currentTick,
         }).eq('nation_id', nationId);
 
@@ -15801,7 +15802,7 @@ async function resolveStandardCoup(supabase, opts) {
         }).eq('id', nationId);
 
         await supabase.from('autocracy_tracker').update({
-            tracker_value: 30, public_tracker_value: 30, last_updated_tick: currentTick,
+            tracker_value: 30, public_tracker_value: 30, public_tracker_last_tick: currentTick, last_updated_tick: currentTick,
         }).eq('nation_id', nationId);
 
         // Open pyrrhic window
@@ -15831,7 +15832,7 @@ async function resolveStandardCoup(supabase, opts) {
         await supabase.from('nations').update({ legitimacy: 35 }).eq('id', nationId);
 
         await supabase.from('autocracy_tracker').update({
-            tracker_value: 30, public_tracker_value: 30, last_updated_tick: currentTick,
+            tracker_value: 30, public_tracker_value: 30, public_tracker_last_tick: currentTick, last_updated_tick: currentTick,
         }).eq('nation_id', nationId);
 
         const stabLoss = roll(1, 6);
@@ -15853,7 +15854,7 @@ async function resolveStandardCoup(supabase, opts) {
         await supabase.from('nations').update({ legitimacy: 50 }).eq('id', nationId);
 
         await supabase.from('autocracy_tracker').update({
-            tracker_value: 30, public_tracker_value: 30, last_updated_tick: currentTick,
+            tracker_value: 30, public_tracker_value: 30, public_tracker_last_tick: currentTick, last_updated_tick: currentTick,
         }).eq('nation_id', nationId);
 
         const stabLoss = roll(1, 6);
@@ -16689,7 +16690,7 @@ async function processSilentCoupResolution(supabase, nation, currentTick) {
 
         // Reset tracker to 30
         await supabase.from('autocracy_tracker').update({
-            tracker_value: 30, public_tracker_value: 30, last_updated_tick: currentTick,
+            tracker_value: 30, public_tracker_value: 30, public_tracker_last_tick: currentTick, last_updated_tick: currentTick,
         }).eq('nation_id', nation.id);
 
         // Honor accepted offers with minister positions

@@ -498,6 +498,54 @@ async function renderPartyTab(f, nation, data) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// REGIME SUPPORT ESTIMATE — public-facing tracker box
+// ═══════════════════════════════════════════════════════════
+function getRegimeSupportLabel(value) {
+    if (value <= 20) return { label: 'Regime', color: '#5cb85c' };
+    if (value <= 40) return { label: 'Regime', color: '#5b9bd5' };
+    if (value <= 60) return { label: 'Contested', color: '#c8a64e' };
+    if (value <= 80) return { label: 'Opposition', color: '#d48a3c' };
+    return { label: 'Opposition', color: '#d9534f' };
+}
+
+function renderRegimeSupportBox(autocracyTracker, currentTick) {
+    const pubValue = autocracyTracker?.public_tracker_value ?? 30;
+    const lastTick = autocracyTracker?.public_tracker_last_tick;
+    const { label, color } = getRegimeSupportLabel(pubValue);
+    const lastUpdated = lastTick != null ? tickToDate(lastTick) : '—';
+
+    // Bar: 0 = full regime, 100 = full opposition
+    // Left side = Regime (green), Right side = Opposition (red)
+    const regimePct = 100 - pubValue;
+    const oppositionPct = pubValue;
+
+    return `
+    <div style="background:var(--dbg-2);border:1px solid var(--dborder-0);border-radius:3px;padding:14px 16px;margin-top:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="font-size:11px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:1px">Regime Support</div>
+            <div style="font-size:10px;color:var(--dtext-3)">Estimate</div>
+        </div>
+        <div style="font-size:10px;color:var(--dtext-3);margin-bottom:10px;font-style:italic">Public perception of regime strength.</div>
+
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <div style="font-size:20px;font-weight:800;color:${color};font-family:var(--dfont-mono)">${pubValue}+</div>
+            <div style="font-size:13px;font-weight:700;color:${color};text-transform:uppercase">${label}</div>
+        </div>
+
+        <div style="display:flex;height:10px;border-radius:3px;overflow:hidden;background:var(--dbg-3);margin-bottom:8px">
+            <div style="width:${regimePct}%;background:#5cb85c;opacity:0.7;transition:width 0.5s"></div>
+            <div style="width:${oppositionPct}%;background:#d9534f;opacity:0.7;transition:width 0.5s"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--dtext-3);margin-bottom:10px">
+            <span>Regime</span>
+            <span>Opposition</span>
+        </div>
+
+        <div style="font-size:10px;color:var(--dtext-3)">Last Updated: <span style="color:var(--dtext-1)">${lastUpdated}</span></div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
 // AUTOCRACY POLITICS TAB — Regime display for autocracy players
 // ═══════════════════════════════════════════════════════════
 function renderAutocracyPoliticsContent(f, nation, opts) {
@@ -655,6 +703,9 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
         </div>
 
         </div>
+
+        <!-- Regime Support Estimate -->
+        ${renderRegimeSupportBox(autocracyTracker, currentTick)}
 
         <!-- Five Pillars -->
         <div style="background:var(--dbg-2);border:1px solid var(--dborder-0);border-radius:3px;padding:14px 16px;margin-top:16px">

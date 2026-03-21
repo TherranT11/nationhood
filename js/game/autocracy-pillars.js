@@ -454,6 +454,7 @@ export async function processAutocracyTrackerDecay(supabase, nation, currentTick
     if (roll === 3) {
         await supabase.from('autocracy_tracker').update({
             public_tracker_value: newValue,
+            public_tracker_last_tick: currentTick,
         }).eq('nation_id', nation.id);
         console.log(`[trackerDecay] ${nation.name}: public tracker synced → ${newValue} (rolled ${roll})`);
     } else {
