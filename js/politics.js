@@ -4,7 +4,7 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
 
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
@@ -222,6 +222,13 @@ initPage('politics', async (state) => {
         .eq('party_id', f.id)
         .eq('is_active', true);
 
+    // Fetch player's current endorsement preference
+    const { data: currentEndorsement } = await _supabase
+        .from('faction_endorsements')
+        .select('endorsed_faction_id')
+        .eq('faction_id', f.id)
+        .maybeSingle();
+
     renderPartyTab(f, nation, {
         shard,
         totalSeats,
@@ -248,6 +255,7 @@ initPage('politics', async (state) => {
         voterBlocs,
         playerBlocApprovals,
         caucusFactions,
+        currentEndorsement,
         pillarStates,
         autocracyTracker,
         autocracyActionLog,
@@ -289,7 +297,7 @@ async function renderPartyTab(f, nation, data) {
         lastParliamentary, lastPresidential, scheduledElections,
         president, administration,
         voterBlocs, playerBlocApprovals,
-        caucusFactions,
+        caucusFactions, currentEndorsement,
         pillarStates, autocracyTracker, autocracyActionLog,
     } = data;
     const faction = f; // alias for compatibility with sub-renderers
@@ -419,7 +427,7 @@ async function renderPartyTab(f, nation, data) {
         </div>
 
         <div class="pol-row-3">
-        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, { scheduledElections, currentTick, nation, mySeats })}
+        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, { scheduledElections, currentTick, nation, mySeats, faction, currentEndorsement })}
         ${renderBlocVotingBox(lastParliamentary, lastPresidential, allParties)}
         </div>
         <div class="pol-row-4" style="margin-top:24px;text-align:center">
@@ -2415,7 +2423,7 @@ function initEditIdentityBox(f) {
     }
 }
 
-function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, { scheduledElections, currentTick, nation, mySeats } = {}) {
+function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, { scheduledElections, currentTick, nation, mySeats, faction, currentEndorsement } = {}) {
     // Build a color map from allParties
     const colorMap = {};
     (allParties || []).forEach(p => { colorMap[p.id] = p.party_color || '#888'; });
@@ -2531,12 +2539,41 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         endorseHint = `<div style="font-size:10px;color:var(--dgreen);text-align:right;margin-top:2px">${endorseState.ticksUntilElection} tick${endorseState.ticksUntilElection !== 1 ? 's' : ''} until election</div>`;
     }
 
-    return `<div class="pol-election-box">
+    // Build endorsement candidate list (other parties with seats)
+    const currentEndorsedId = currentEndorsement?.endorsed_faction_id || null;
+    const otherParties = (allParties || []).filter(p => p.id !== faction?.id && (p.seats || 0) > 0);
+    const endorseCandidatesHtml = otherParties.map(p => {
+        const color = p.party_color || '#888';
+        const leaderName = [p.leader_first_name, p.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
+        const isCurrentlyEndorsed = p.id === currentEndorsedId;
+        return `<div class="pol-endorse-candidate${isCurrentlyEndorsed ? ' selected' : ''}" data-faction-id="${p.id}">
+            <span class="pol-el-color-dot" style="background:${color}"></span>
+            <span class="pol-endorse-candidate-name">${escapeHtml(p.faction_name || p.abbreviation)}</span>
+            <span class="pol-endorse-candidate-leader">${escapeHtml(leaderName)}</span>
+            <span class="pol-endorse-candidate-seats">${p.seats || 0} seats</span>
+            ${isCurrentlyEndorsed ? '<span style="font-family:var(--dfont-mono);font-size:8px;color:var(--dgreen)">ENDORSED</span>' : ''}
+        </div>`;
+    }).join('');
+
+    return `<div class="pol-election-box"
+        data-faction-id="${faction?.id || ''}"
+        data-nation-id="${nation?.id || ''}"
+        data-current-tick="${currentTick || 0}">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <div class="pol-section-label" style="margin-bottom:0">ELECTION RESULTS</div>
             <div>
                 <button class="pol-endorse-btn" ${endorseState.disabled ? 'disabled' : ''}>Endorse Candidate</button>
                 ${endorseHint}
+            </div>
+        </div>
+        <div class="pol-endorse-panel" style="display:none">
+            <div class="pol-endorse-panel-header">
+                <span class="pol-section-label" style="margin-bottom:0;font-size:9px">ENDORSE A CANDIDATE</span>
+                <button class="pol-endorse-panel-close">&times;</button>
+            </div>
+            <div class="pol-endorse-panel-desc">Select a party's candidate to endorse for the presidential election. First endorsement is free; switching costs 1 AP.</div>
+            <div class="pol-endorse-candidate-list">
+                ${endorseCandidatesHtml || '<div class="pol-el-empty">No eligible parties to endorse.</div>'}
             </div>
         </div>
         <div class="pol-el-tabs">
@@ -2563,6 +2600,57 @@ function initElectionResultsBox() {
             if (content) content.classList.add('active');
         });
     });
+
+    // Endorsement panel toggle
+    const endorseBtn = box.querySelector('.pol-endorse-btn');
+    const endorsePanel = box.querySelector('.pol-endorse-panel');
+    const endorseClose = box.querySelector('.pol-endorse-panel-close');
+    if (endorseBtn && endorsePanel) {
+        endorseBtn.addEventListener('click', () => {
+            const isOpen = endorsePanel.style.display !== 'none';
+            endorsePanel.style.display = isOpen ? 'none' : 'block';
+        });
+        if (endorseClose) {
+            endorseClose.addEventListener('click', () => {
+                endorsePanel.style.display = 'none';
+            });
+        }
+
+        // Candidate selection
+        endorsePanel.querySelectorAll('.pol-endorse-candidate').forEach(el => {
+            el.addEventListener('click', async () => {
+                const targetFactionId = el.getAttribute('data-faction-id');
+                const factionId = box.getAttribute('data-faction-id');
+                const nationId = box.getAttribute('data-nation-id');
+                const currentTick = Number(box.getAttribute('data-current-tick') || 0);
+                const partyName = el.querySelector('.pol-endorse-candidate-name')?.textContent || 'this party';
+
+                if (!confirm(`Endorse ${partyName}'s candidate for president? First endorsement is free; switching costs 1 AP.`)) return;
+
+                el.style.opacity = '0.5';
+                el.style.pointerEvents = 'none';
+                try {
+                    const result = await executeEndorsementPreference(_supabase, factionId, nationId, targetFactionId, currentTick);
+                    if (!result.success) {
+                        alert(result.error || 'Endorsement failed.');
+                        return;
+                    }
+                    // Mark selected candidate
+                    endorsePanel.querySelectorAll('.pol-endorse-candidate').forEach(c => c.classList.remove('selected'));
+                    el.classList.add('selected');
+                    const msg = result.alreadySelected ? `Already endorsing ${partyName}.` :
+                        result.apCharged ? `Endorsed ${partyName}! (1 AP spent)` : `Endorsed ${partyName}!`;
+                    alert(msg);
+                    endorsePanel.style.display = 'none';
+                } catch (err) {
+                    alert('Endorsement failed: ' + (err.message || 'Unknown error'));
+                } finally {
+                    el.style.opacity = '';
+                    el.style.pointerEvents = '';
+                }
+            });
+        });
+    }
 }
 
 function initBlocAlignment() {
