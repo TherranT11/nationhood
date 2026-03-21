@@ -2071,10 +2071,11 @@ export async function executePollNow(supabase, factionId, nationId, currentTick)
 
 export const IDEO_SHIFT_CONFIG = {
     THINK_TANK: {
-        AP_COST: 3,
+        AP_COST: 1,             // 1 AP per tick for duration
         COOLDOWN_WINDOW: 5,     // ticks between launches
         MAX_ACTIVE: 1,          // only 1 active think tank per faction
-        DRIFT_RATE: 0.3,        // ideo mean shift per tick
+        DRIFT_MIN: 0.1,         // 1d3: random 0.1, 0.2, or 0.3 per tick
+        DRIFT_MAX: 0.3,
         DURATION: 50,           // runs for 50 ticks then auto-completes
         VISIBILITY_BOOST: 4,
     },
@@ -2140,7 +2141,7 @@ export async function executeFundThinkTank(supabase, factionId, nationId, target
         faction_id: factionId, nation_id: nationId,
         action_type: 'think_tank',
         target_axis: targetAxis, target_direction: targetDirection,
-        drift_rate: cfg.DRIFT_RATE,
+        drift_rate: cfg.DRIFT_MAX,
         status: 'active', created_tick: currentTick, last_active_tick: currentTick,
     }).select().single();
     if (error) {
@@ -2169,7 +2170,8 @@ export async function executeFundThinkTank(supabase, factionId, nationId, target
         effects: [
             { label: 'Axis', value: `${axisDef?.leftLabel} ↔ ${axisDef?.rightLabel}` },
             { label: 'Direction', value: sideLabel },
-            { label: 'Drift', value: `${cfg.DRIFT_RATE}/tick for ${cfg.DURATION} ticks` },
+            { label: 'Drift', value: `1d3 (${cfg.DRIFT_MIN}–${cfg.DRIFT_MAX})/tick for ${cfg.DURATION} ticks` },
+            { label: 'Cost', value: `${cfg.AP_COST} AP/tick` },
             { label: 'Visibility', value: `+${cfg.VISIBILITY_BOOST}` },
         ],
         newAp: apResult.newAp,
@@ -2390,11 +2392,18 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
         }
 
         if (act.action_type === 'think_tank') {
-            // Drift ideo_mean on target axis
+            // 1 AP per tick cost
+            const apCheck = await deductAP(supabase, act.faction_id, IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST);
+            if (!apCheck.success) {
+                toSuspend.push(act.id);
+                continue;
+            }
+            // 1d3 drift: randomly 0.1, 0.2, or 0.3
             const col = 'ideo_mean_' + act.target_axis;
             const old = Number(profile[col] ?? 50);
             const direction = act.target_direction === 'left' ? -1 : 1;
-            const drift = direction * Math.abs(Number(act.drift_rate || 0.3));
+            const roll = [0.1, 0.2, 0.3][Math.floor(Math.random() * 3)];
+            const drift = direction * roll;
             const newVal = round2(clamp(old + drift, 5, 95));
             if (newVal !== old) {
                 profileUpdates[col] = newVal;
