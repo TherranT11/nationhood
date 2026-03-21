@@ -1198,6 +1198,57 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
             }
         }
 
+        // ── Unmet import demand consequences ──
+        // When a nation needs imports but can't get them, critical sectors suffer.
+        // Penalty scales with the unmet ratio: (demand - actual) / demand
+        // Self-sufficient nations (demand = 0) are never penalized.
+        for (var si3 = 0; si3 < sectors.length; si3++) {
+            var sKey3 = sectors[si3].key;
+            var demand3 = nationFlows[n.id][sKey3].importDemand;
+            var actual3 = actualImports[n.id][sKey3] || 0;
+            if (demand3 <= 0) continue;
+            var unmetRatio = Math.max(0, (demand3 - actual3) / demand3);
+            if (unmetRatio < 0.05) continue;
+
+            var severity = unmetRatio * unmetRatio;
+
+            if (sKey3 === 'fuel_energy') {
+                var fuelEnergyPen = severity * 1.5;
+                var fuelManufPen = severity * 1.0;
+                var fuelInflation = severity * 1.0;
+                var fuelCol = severity * 0.8;
+                nationUpdates.energy_generation = Math.round(Math.max(0, (Number(n.energy_generation) || 50) - fuelEnergyPen) * 10) / 10;
+                nationUpdates.manufacturing_output = Math.round(Math.max(0, (Number(n.manufacturing_output) || 50) - fuelManufPen) * 10) / 10;
+                nationUpdates.inflation = Math.round(Math.min(100, (nationUpdates.inflation != null ? nationUpdates.inflation : (Number(n.inflation) || 50)) + fuelInflation) * 10) / 10;
+                nationUpdates.cost_of_living = Math.round(Math.min(100, (Number(n.cost_of_living) || 50) + fuelCol) * 10) / 10;
+            } else if (sKey3 === 'food_agriculture') {
+                var foodHappiness = severity * 1.2;
+                var foodUnrest = severity * 1.5;
+                var foodHealth = severity * 0.8;
+                nationUpdates.happiness = Math.round(Math.max(0, (Number(n.happiness) || 50) - foodHappiness) * 10) / 10;
+                nationUpdates.civil_unrest = Math.round(Math.min(100, (Number(n.civil_unrest) || 0) + foodUnrest) * 10) / 10;
+                nationUpdates.healthcare_quality = Math.round(Math.max(0, (Number(n.healthcare_quality) || 50) - foodHealth) * 10) / 10;
+            } else if (sKey3 === 'minerals') {
+                var minManuf = severity * 1.0;
+                var minInfra = severity * 0.7;
+                nationUpdates.manufacturing_output = Math.round(Math.max(0, (nationUpdates.manufacturing_output != null ? nationUpdates.manufacturing_output : (Number(n.manufacturing_output) || 50)) - minManuf) * 10) / 10;
+                nationUpdates.infrastructure = Math.round(Math.max(0, (Number(n.infrastructure) || 50) - minInfra) * 10) / 10;
+            } else if (sKey3 === 'manufactured_goods') {
+                var mfgSol = severity * 1.0;
+                var mfgCol = severity * 0.8;
+                nationUpdates.standard_of_living = Math.round(Math.max(0, (Number(n.standard_of_living) || 50) - mfgSol) * 10) / 10;
+                nationUpdates.cost_of_living = Math.round(Math.min(100, (nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living) || 50)) + mfgCol) * 10) / 10;
+            } else if (sKey3 === 'technology') {
+                var techDigi = severity * 0.8;
+                var techInnov = severity * 0.8;
+                nationUpdates.digital_infrastructure = Math.round(Math.max(0, (Number(n.digital_infrastructure) || 50) - techDigi) * 10) / 10;
+                nationUpdates.innovation_index = Math.round(Math.max(0, (Number(n.innovation_index) || 50) - techInnov) * 10) / 10;
+            } else if (sKey3 === 'arms') {
+                var armsMil = severity * 1.0;
+                nationUpdates.military_strength = Math.round(Math.max(0, (Number(n.military_strength) || 50) - armsMil) * 10) / 10;
+            }
+        }
+
         await supabase.from('nations')
             .update(nationUpdates)
             .eq('id', n.id);
