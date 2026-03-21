@@ -1615,11 +1615,18 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Gov approval calc failed for ${nation.name} (non-fatal):`, govAppErr);
         }
 
-        // Three-pillar voter preference recalculation
+        // Three-pillar voter preference recalculation (legacy)
         try {
             await calculateThreePillarPreferences(supabase, nation, newTick);
         } catch (pillarErr) {
             console.error(`[advanceTick] Three-pillar prefs failed for ${nation.name} (non-fatal):`, pillarErr);
+        }
+
+        // Electorate engine (new system — runs in parallel with legacy for now)
+        try {
+            await tickElectorate(supabase, nation, newTick);
+        } catch (electorateErr) {
+            console.error(`[advanceTick] Electorate engine failed for ${nation.name} (non-fatal):`, electorateErr);
         }
 
         // (Autocracy action systems removed — Phase 0. Actions will be added in Phase 4+.)
