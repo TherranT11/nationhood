@@ -2461,7 +2461,7 @@ const CA_ACTIONS = [
     { id: 'poll_now', name: 'Poll Now', ap: POLL_CONFIG.AP_COST, color: '#22d3ee', icon: '📊',
       desc: 'Snapshot your current electorate standing. See your pillars, vote share, and limiters frozen in time.' },
     { id: 'fund_think_tank', name: 'Fund Think Tank', ap: IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST, color: '#14b8a6', icon: '🏛',
-      desc: 'Drift the electorate\'s ideological mean on a chosen axis. Costs 1 AP/tick for 50 ticks. Drift: 1d3 (0.1–0.3).' },
+      desc: 'Drift the electorate\'s ideological mean on a chosen axis. 4 AP upfront + 1 AP/tick for 50 ticks. Drift: 1d3 (0.1–0.3).' },
     { id: 'media_campaign', name: 'Media Campaign', ap: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.AP_COST, color: '#8b5cf6', icon: '📡',
       desc: 'Expand or narrow electorate ideological variance on a chosen axis. Runs every tick for 50 ticks.' },
     { id: 'grassroots_movement', name: 'Grassroots Movement', ap: IDEO_SHIFT_CONFIG.GRASSROOTS.AP_COST, color: '#10b981', icon: '🌱',
@@ -2903,7 +2903,7 @@ function renderPollNowConfig() {
 // ── THINK TANK CONFIG ──
 
 function renderThinkTankConfig() {
-    let html = `<div class="ca-info-box">Launch a think tank to gradually drift the electorate's ideological mean on a chosen axis. Costs ${IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST} AP every tick for ${IDEO_SHIFT_CONFIG.THINK_TANK.DURATION} ticks. Drift: 1d3 (0.1–0.3) per tick.</div>`;
+    let html = `<div class="ca-info-box">Launch a think tank to gradually drift the electorate's ideological mean on a chosen axis. ${IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST} AP upfront + ${IDEO_SHIFT_CONFIG.THINK_TANK.TICK_AP_COST} AP/tick for ${IDEO_SHIFT_CONFIG.THINK_TANK.DURATION} ticks. Drift: 1d3 (0.1–0.3) per tick.</div>`;
     html += renderAxisSelector();
     if (_caTargetAxis) {
         const axisDef = IDEOLOGY_AXES.find(a => a.key === _caTargetAxis);

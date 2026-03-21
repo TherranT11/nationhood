@@ -2071,7 +2071,8 @@ export async function executePollNow(supabase, factionId, nationId, currentTick)
 
 export const IDEO_SHIFT_CONFIG = {
     THINK_TANK: {
-        AP_COST: 1,             // 1 AP per tick for duration
+        AP_COST: 4,             // upfront launch cost
+        TICK_AP_COST: 1,        // 1 AP per tick while running
         COOLDOWN_WINDOW: 5,     // ticks between launches
         MAX_ACTIVE: 1,          // only 1 active think tank per faction
         DRIFT_MIN: 0.1,         // 1d3: random 0.1, 0.2, or 0.3 per tick
@@ -2171,7 +2172,7 @@ export async function executeFundThinkTank(supabase, factionId, nationId, target
             { label: 'Axis', value: `${axisDef?.leftLabel} ↔ ${axisDef?.rightLabel}` },
             { label: 'Direction', value: sideLabel },
             { label: 'Drift', value: `1d3 (${cfg.DRIFT_MIN}–${cfg.DRIFT_MAX})/tick for ${cfg.DURATION} ticks` },
-            { label: 'Cost', value: `${cfg.AP_COST} AP/tick` },
+            { label: 'Ongoing', value: `${cfg.TICK_AP_COST} AP/tick` },
             { label: 'Visibility', value: `+${cfg.VISIBILITY_BOOST}` },
         ],
         newAp: apResult.newAp,
@@ -2392,12 +2393,8 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
         }
 
         if (act.action_type === 'think_tank') {
-            // 1 AP per tick cost
-            const apCheck = await deductAP(supabase, act.faction_id, IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST);
-            if (!apCheck.success) {
-                toSuspend.push(act.id);
-                continue;
-            }
+            // 1 AP per tick cost — always deducts (players gain 5 AP/turn)
+            await deductAP(supabase, act.faction_id, IDEO_SHIFT_CONFIG.THINK_TANK.TICK_AP_COST);
             // 1d3 drift: randomly 0.1, 0.2, or 0.3
             const col = 'ideo_mean_' + act.target_axis;
             const old = Number(profile[col] ?? 50);
