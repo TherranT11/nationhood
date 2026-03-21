@@ -329,7 +329,7 @@ export function calculatePriceModifier(totalSupply, totalDemand) {
  * @param {Object} nationB   – nation row
  * @param {Object} relation  – diplomatic_relations row { relation_score, active_treaties }
  * @param {Object} [opts]    – { has_trade_agreement, has_fta, has_pta, has_rsc, has_embargo, same_region }
- * @returns {number} affinity score 0-100
+ * @returns {number} affinity score (0 floor, no upper cap)
  */
 export function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var base = 50;
@@ -376,7 +376,7 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var reputationBonus = ((avgRep - 50) / 50) * 10;
 
     var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + autocracyPenalty + fdiBonus + reputationBonus;
-    return Math.round(Math.max(0, Math.min(100, affinity)));
+    return Math.round(Math.max(0, affinity));
 }
 
 /**
