@@ -2446,22 +2446,98 @@
     font-size: 9px;
     font-weight: 600;
     letter-spacing: 0.04em;
-    color: var(--dtext-3);
-    background: rgba(255,255,255,0.03);
-    border: 1px solid var(--dborder-0);
+    color: var(--dtext-1);
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--dborder-1);
     border-radius: 3px;
     padding: 4px 12px;
-    cursor: not-allowed;
-    opacity: 0.5;
+    cursor: pointer;
+    opacity: 1;
+    transition: background 0.15s, border-color 0.15s;
+}
+.pol-endorse-btn:hover:not(:disabled) {
+    background: rgba(255,255,255,0.1);
+    border-color: var(--dtext-3);
 }
 .pol-endorse-btn:disabled {
     pointer-events: none;
-}
-.pol-endorse-btn--disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
     color: var(--dtext-3);
+    background: rgba(255,255,255,0.03);
+    border-color: var(--dborder-0);
+}
+
+/* Endorsement panel */
+.pol-endorse-panel {
+    background: var(--dbg-1);
+    border: 1px solid var(--dborder-1);
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+.pol-endorse-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.pol-endorse-panel-close {
+    background: none;
+    border: none;
+    color: var(--dtext-3);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+}
+.pol-endorse-panel-close:hover { color: var(--dtext-1); }
+.pol-endorse-panel-desc {
+    font-family: var(--dfont-ui);
+    font-size: 11px;
+    color: var(--dtext-2);
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+.pol-endorse-candidate-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.pol-endorse-candidate {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid var(--dborder-0);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+}
+.pol-endorse-candidate:hover {
+    background: rgba(255,255,255,0.04);
     border-color: var(--dborder-1);
-    background: rgba(255,255,255,0.02);
-    opacity: 0.55;
+}
+.pol-endorse-candidate.selected {
+    border-color: var(--dgreen);
+    background: rgba(74,222,128,0.06);
+}
+.pol-endorse-candidate-name {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--dtext-1);
+    flex: 1;
+}
+.pol-endorse-candidate-leader {
+    font-family: var(--dfont-ui);
+    font-size: 10px;
+    color: var(--dtext-2);
+}
+.pol-endorse-candidate-seats {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
 }
 .pol-endorse-helper {
     margin-top: 6px;
