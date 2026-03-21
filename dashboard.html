@@ -1189,6 +1189,7 @@ const EVENT_CATEGORY_STYLES = {
   Diplomatic:       { icon: '\uD83C\uDF10', color: '#9b59b6', bg: 'rgba(155,89,182,0.12)', label: 'DIPLOMATIC' },
   bill:             { icon: '\uD83D\uDCDC', color: '#3498db', bg: 'rgba(52,152,219,0.10)', label: 'BILL' },
   new_party:        { icon: '\uD83C\uDFF3', color: '#9b59b6', bg: 'rgba(155,89,182,0.10)', label: 'NEW PARTY' },
+  protest:          { icon: '\u270A', color: '#e67e22', bg: 'rgba(230,126,34,0.10)', label: 'PROTEST' },
 };
 const EVENT_CATEGORY_DEFAULT = { icon: '\u2022', color: '#888', bg: 'rgba(136,136,136,0.08)', label: '' };
 
@@ -1224,7 +1225,7 @@ async function loadDashEvents(nationId, currentTick, parties) {
 
   try {
     // Fetch from event_log — covers crises, bills, government events, trade, diplomatic
-    const [evResult, billResult, factionResult] = await Promise.all([
+    const [evResult, billResult, factionResult, protestResult] = await Promise.all([
       _supabase.from('event_log').select('*')
         .eq('nation_id', nationId)
         .order('fired_at_tick', { ascending: false })
@@ -1242,12 +1243,20 @@ async function loadDashEvents(nationId, currentTick, parties) {
         .eq('nation_id', nationId)
         .order('created_at', { ascending: false })
         .limit(20),
+      // Resolved protests
+      _supabase.from('protest_log')
+        .select('id, tick_called, tick_resolved, tier, status, grievance_type, demand_label, faction_id, factions(faction_name, party_color)')
+        .eq('nation_id', nationId)
+        .in('status', ['resolved', 'crisis_active'])
+        .order('tick_called', { ascending: false })
+        .limit(20),
     ]);
 
     if (evResult.error) throw evResult.error;
     const events = evResult.data || [];
     const bills = billResult.data || [];
     const factions = factionResult.data || [];
+    const protests = protestResult.data || [];
 
     // Convert bills to event-like objects
     const billEvents = bills.map(b => {
@@ -1310,11 +1319,36 @@ async function loadDashEvents(nationId, currentTick, parties) {
       };
     });
 
+    // Convert protests to event-like objects
+    const TIER_LABELS = { 1:'Embarrassing Fizzle', 2:'Modest Showing', 3:'Respectable Turnout', 4:'Strong Protest', 5:'Mass Demonstration', 6:'Historic Protest', 7:'Nationwide Protest' };
+    const protestEvents = protests.map(p => {
+      const partyName = p.factions?.faction_name || 'Unknown';
+      const partyColor = p.factions?.party_color || '';
+      const partyHtml = partyColor
+        ? `<span style="color:${partyColor.replace(/[^a-zA-Z0-9#(),.\s%]/g, '')};font-weight:600">${esc(partyName)}</span>`
+        : `<strong>${esc(partyName)}</strong>`;
+      const tierLabel = TIER_LABELS[p.tier] || `Tier ${p.tier}`;
+      const demandPart = p.demand_label ? ` demanding "${esc(p.demand_label)}"` : '';
+      const isCrisis = p.status === 'crisis_active';
+      const tierColor = (p.tier >= 6) ? 'var(--red, #e74c3c)' : (p.tier >= 4) ? 'var(--orange, #f39c12)' : '';
+      const tierHtml = tierColor
+        ? `<span style="color:${tierColor};font-weight:600">${esc(tierLabel)}</span>`
+        : `<strong>${esc(tierLabel)}</strong>`;
+      return {
+        fired_at_tick: p.tick_resolved || p.tick_called,
+        event_name: tierLabel,
+        _desc_html: `${partyHtml} organised a protest${demandPart} — ${tierHtml}${isCrisis ? ' <span style="color:var(--red, #e74c3c);font-weight:700;">(CRISIS)</span>' : ''}`,
+        category: 'protest',
+        _synthetic: true
+      };
+    });
+
     // Merge all events, sort by tick (desc), then by created_at for ties
     const merged = [
       ...events.map(ev => ({ ...ev, _synthetic: false })),
       ...billEvents,
-      ...factionEvents
+      ...factionEvents,
+      ...protestEvents
     ].sort((a, b) => {
       const tickDiff = (b.fired_at_tick || 0) - (a.fired_at_tick || 0);
       if (tickDiff !== 0) return tickDiff;
@@ -1387,7 +1421,7 @@ async function loadWorldEvents(excludeNationId, currentTick) {
   container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.75rem;text-align:center;">Loading world events\u2026</div>';
 
   try {
-    const [evResult, billResult, factionResult] = await Promise.all([
+    const [evResult, billResult, factionResult, protestResult] = await Promise.all([
       _supabase.from('event_log')
         .select('*, nations!inner(name, nation_profiles(flag_url))')
         .neq('nation_id', excludeNationId)
@@ -1406,12 +1440,20 @@ async function loadWorldEvents(excludeNationId, currentTick) {
         .neq('nation_id', excludeNationId)
         .order('created_at', { ascending: false })
         .limit(20),
+      // World protests (other nations)
+      _supabase.from('protest_log')
+        .select('id, tick_called, tick_resolved, tier, status, grievance_type, demand_label, faction_id, nation_id, factions(faction_name, party_color), nations!inner(name, nation_profiles(flag_url))')
+        .neq('nation_id', excludeNationId)
+        .in('status', ['resolved', 'crisis_active'])
+        .order('tick_called', { ascending: false })
+        .limit(20),
     ]);
 
     if (evResult.error) throw evResult.error;
     const events = evResult.data || [];
     const bills = billResult.data || [];
     const factions = factionResult.data || [];
+    const protests = protestResult.data || [];
 
     // Ideology summary helper
     const W_AXES = [
@@ -1474,11 +1516,37 @@ async function loadWorldEvents(excludeNationId, currentTick) {
       };
     });
 
+    // Convert protests to event-like objects
+    const W_TIER_LABELS = { 1:'Embarrassing Fizzle', 2:'Modest Showing', 3:'Respectable Turnout', 4:'Strong Protest', 5:'Mass Demonstration', 6:'Historic Protest', 7:'Nationwide Protest' };
+    const protestEvents = protests.map(p => {
+      const partyName = p.factions?.faction_name || 'Unknown';
+      const partyColor = p.factions?.party_color || '';
+      const partyHtml = partyColor
+        ? `<span style="color:${partyColor.replace(/[^a-zA-Z0-9#(),.\s%]/g, '')};font-weight:600">${esc(partyName)}</span>`
+        : `<strong>${esc(partyName)}</strong>`;
+      const tierLabel = W_TIER_LABELS[p.tier] || `Tier ${p.tier}`;
+      const demandPart = p.demand_label ? ` demanding "${esc(p.demand_label)}"` : '';
+      const isCrisis = p.status === 'crisis_active';
+      const tierColor = (p.tier >= 6) ? 'var(--red, #e74c3c)' : (p.tier >= 4) ? 'var(--orange, #f39c12)' : '';
+      const tierHtml = tierColor
+        ? `<span style="color:${tierColor};font-weight:600">${esc(tierLabel)}</span>`
+        : `<strong>${esc(tierLabel)}</strong>`;
+      return {
+        fired_at_tick: p.tick_resolved || p.tick_called,
+        event_name: tierLabel,
+        _desc_html: `${partyHtml} organised a protest${demandPart} — ${tierHtml}${isCrisis ? ' <span style="color:var(--red, #e74c3c);font-weight:700;">(CRISIS)</span>' : ''}`,
+        category: 'protest',
+        _synthetic: true,
+        nations: p.nations
+      };
+    });
+
     // Merge and sort
     const merged = [
       ...events.map(ev => ({ ...ev, _synthetic: false })),
       ...billEvents,
-      ...factionEvents
+      ...factionEvents,
+      ...protestEvents
     ].sort((a, b) => {
       const tickDiff = (b.fired_at_tick || 0) - (a.fired_at_tick || 0);
       if (tickDiff !== 0) return tickDiff;
