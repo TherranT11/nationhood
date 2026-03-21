@@ -558,14 +558,27 @@ function calculateImportDemand(nation, sector, opts) {
     var rawDemand = 0;
 
     // ── FUEL & ENERGY ──
-    // Import fuel if you don't produce enough domestically.
-    // Driven by inverse of (oil_and_gas + energy_generation).
+    // Two-component demand model:
+    // 1. Deficiency: import what you can't produce domestically (threshold 20)
+    // 2. Industrial baseline: manufacturing, urbanization, cost of living,
+    //    and poor rail networks all drive fuel consumption regardless of reserves
     if (sector.key === 'fuel_energy') {
         var oilGas = (Number(nation.oil_and_gas) || 0) / SN;
         var energyGen = (Number(nation.energy_generation) || 0) / SN;
         var domesticEnergy = (oilGas + energyGen) / 2;
-        var deficiency = Math.max(0, 15 - domesticEnergy);
-        rawDemand = deficiency * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+        var deficiency = Math.max(0, 20 - domesticEnergy);
+
+        // Industrial/urban energy consumption baseline
+        var manufNorm = (Number(nation.manufacturing_output) || 0) / SN;
+        var urbanNorm = (Number(nation.urbanization) || 0) / SN;
+        var colNorm = (Number(nation.cost_of_living) || 0) / SN;
+        var railNorm = (Number(nation.rail_network) || 0) / SN;
+        // Low rail → more fuel for transport (inverted: 20 - rail score)
+        var transportFuelNeed = Math.max(0, 12 - railNorm);
+        // Industrial demand: factories + cities + high living standards + poor transit
+        var industrialDemand = (manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportFuelNeed * 0.15);
+
+        rawDemand = (deficiency + industrialDemand) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
     }
 
     // ── MINERALS & RAW MATERIALS ──
@@ -1284,6 +1297,12 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 if (remainingDem <= 0) continue;
 
                 var aff = affinityMap[exporter.id + '|' + importer.id] || 0;
+                // Strategic necessity: fuel & energy trades even through poor relations
+                // Floor scales with exporter capacity — major producers always find buyers
+                if (sector.key === 'fuel_energy' && !(pairFlags && pairFlags.has_embargo)) {
+                    var strategicFloor = Math.min(15, Math.round(nationFlows[exporter.id][sector.key].exportCapacity / 6));
+                    if (aff < strategicFloor) aff = strategicFloor;
+                }
                 if (aff <= 0) continue;
 
                 // Gravity-model weight: supply × demand × affinity
