@@ -5159,10 +5159,19 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
                 'moderate-right': 'rgba(251,191,36,0.45)',
                 'radical-right':  'rgba(239,68,68,0.50)',
             };
+            // Remap zone positions from track-absolute to variance-relative coordinates
+            const varRight = varLeft + varWidth;
             for (const z of zones) {
                 if (z.width < 1) continue; // skip negligible zones
-                const showLabel = z.width > 8; // only show label if zone is wide enough
-                zonesHtml += `<div class="es-zone" style="left:${z.left}%;width:${z.width}%;background:${zoneColors[z.id]};border-left:1px solid ${zoneBorders[z.id]};border-right:1px solid ${zoneBorders[z.id]}">
+                // Clip zone to variance band boundaries
+                const zLeft = Math.max(z.left, varLeft);
+                const zRight = Math.min(z.left + z.width, varRight);
+                if (zRight <= zLeft) continue; // zone entirely outside variance band
+                // Convert to percentage within variance band
+                const relLeft = ((zLeft - varLeft) / varWidth) * 100;
+                const relWidth = ((zRight - zLeft) / varWidth) * 100;
+                const showLabel = relWidth > 8; // only show label if zone is wide enough
+                zonesHtml += `<div class="es-zone" style="left:${relLeft}%;width:${relWidth}%;background:${zoneColors[z.id]};border-left:1px solid ${zoneBorders[z.id]};border-right:1px solid ${zoneBorders[z.id]}">
                     ${showLabel ? `<span class="es-zone-label" style="color:${zoneLabelColors[z.id]}">${z.label}</span>` : ''}
                 </div>`;
             }
@@ -5192,9 +5201,8 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
                         <span class="es-pole">${escapeHtml(ax.rightLabel)}</span>
                     </div>
                     <div class="es-track">
-                        ${zonesHtml}
                         <div class="es-center"><div class="es-center-label">Center</div></div>
-                        <div class="es-variance" style="left:${varLeft}%;width:${varWidth}%"></div>
+                        <div class="es-variance" style="left:${varLeft}%;width:${varWidth}%">${zonesHtml}</div>
                         <div class="es-emean" style="left:${eMean}%"><div class="es-emean-label">Electorate</div></div>
                         ${gapHtml}
                         ${markersHtml}

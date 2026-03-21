@@ -2860,8 +2860,8 @@ body.light-mode .pol-blocs-box {
 }
 
 /* ════════════════════════ CAMPAIGN ACTION PANELS ════════════════════════ */
-.ca-wrap { display: flex; gap: 16px; }
-.ca-list { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; }
+.ca-wrap { display: flex; gap: 16px; align-items: flex-start; }
+.ca-list { width: 520px; flex-shrink: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .ca-item {
     border: 1px solid var(--dborder-1); border-left: 3px solid transparent;
     border-radius: 4px; padding: 10px 12px; cursor: pointer; transition: all 0.12s;
@@ -3004,10 +3004,13 @@ body.light-mode .pol-blocs-box {
 }
 .ca-friction-name { font-family: var(--dfont-mono); font-size: 10px; color: var(--dtext-2); }
 .ca-friction-val { font-family: var(--dfont-mono); font-size: 10px; color: #ef4444; font-weight: 700; }
-@media (max-width: 860px) {
+@media (max-width: 1000px) {
     .ca-wrap { flex-direction: column; }
     .ca-list { width: 100%; }
     .ca-portfolios { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 600px) {
+    .ca-list { grid-template-columns: 1fr; }
 }
 /* ════════════════════════ AUTOCRACY ACTION PANELS ════════════════════════ */
 .pol-actions-grid {
@@ -4211,6 +4214,7 @@ body.light-mode .pol-blocs-box {
 
 /* ── Public Address Row (pinned in Actions panel) ── */
 .ca-item--public-address {
+    grid-column: 1 / -1;
     border-left: 3px solid #5b9bd5;
     background: rgba(91,155,213,0.06);
 }
@@ -4349,6 +4353,7 @@ body.light-mode .pol-blocs-box {
 
 /* ── Pyrrhic Victory Banner ── */
 .protest-pyrrhic-banner {
+    grid-column: 1 / -1;
     padding: 6px 12px;
     margin-bottom: 6px;
     font-family: 'JetBrains Mono', monospace;
@@ -4482,14 +4487,14 @@ body.light-mode .pol-blocs-box {
 .es-pole { font-family: var(--dfont-mono); font-size: 8px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dtxt-dim); }
 .es-track { position: relative; height: 36px; background: var(--dbg-0); border: 1px solid var(--dborder-hair); border-radius: 3px; overflow: visible; }
 /* Ideology zones (centrist/moderate/radical) */
-.es-zone { position: absolute; top: 0; bottom: 0; pointer-events: none; z-index: 0; }
+.es-zone { position: absolute; top: 0; bottom: 0; pointer-events: none; z-index: 2; }
 .es-zone-label { position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%); font-family: var(--dfont-mono); font-size: 7px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
 .es-zone-badge { font-family: var(--dfont-mono); font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.3px; }
 .es-zone-badge[data-zone="centrist"] { color: #4ade80; background: rgba(74,222,128,0.12); border: 1px solid rgba(74,222,128,0.25); }
 .es-zone-badge[data-zone="moderate-left"], .es-zone-badge[data-zone="moderate-right"] { color: #fbbf24; background: rgba(251,191,36,0.12); border: 1px solid rgba(251,191,36,0.25); }
 .es-zone-badge[data-zone="radical-left"], .es-zone-badge[data-zone="radical-right"] { color: #ef4444; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.25); }
 /* Variance blob */
-.es-variance { position: absolute; top: 0; bottom: 0; border-radius: 2px; pointer-events: none; background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.08); z-index: 1; }
+.es-variance { position: absolute; top: 0; bottom: 0; border-radius: 2px; pointer-events: none; background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.08); z-index: 1; overflow: visible; }
 /* Center rule */
 .es-center { position: absolute; left: 50%; top: -5px; bottom: -5px; width: 1px; background: rgba(255,255,255,0.09); transform: translateX(-50%); }
 .es-center-label { position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); font-family: var(--dfont-mono); font-size: 7px; color: var(--dtxt-dim); white-space: nowrap; }
