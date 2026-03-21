@@ -639,7 +639,9 @@ function renderAutocracyEventsBox(actionLog, allParties, pillarStates, currentTi
             const faction = (allParties || []).find(p => p.id === entry.faction_id);
             const fName = faction?.faction_name || 'Unknown';
             const fColor = faction?.party_color || '#888';
-            const actionName = ACTION_DISPLAY_NAMES[entry.action_type] || entry.action_type;
+            // Strip _buff/_debuff suffixes and look up display name from base action
+            const baseActionType = entry.action_type.replace(/_(buff|debuff)$/, '');
+            const actionName = ACTION_DISPLAY_NAMES[entry.action_type] || ACTION_DISPLAY_NAMES[baseActionType] || baseActionType;
             const date = tickToDate(entry.tick);
 
             // For arrest/execute/release, show the target leader and faction
@@ -850,6 +852,11 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
             <div style="display:flex;flex-direction:column;gap:6px">
                 ${factionCardsHtml}
             </div>
+        </div>
+
+        <div class="pol-row-4" style="margin-top:24px;text-align:center">
+            <button class="pol-disband-btn" id="pol-disband-party-btn" style="background:transparent;color:#d9534f;border:1px solid #d9534f;padding:8px 20px;border-radius:4px;cursor:pointer;font-size:0.75rem;opacity:0.6;transition:opacity 0.2s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">Disband Party</button>
+            <div style="font-size:0.65rem;color:var(--dtext-3);margin-top:4px">Permanently disband your party and leave the game.</div>
         </div>
 
     </div>`;
@@ -4442,7 +4449,8 @@ async function renderAutocracyActionsTab(nation, faction, shard, pillarStates, a
     }
 
     // 5. Claim wildcard (if no leader)
-    if (!myFps?.leader_name && AUTOCRACY_ACTIONS['claim_wildcard']) {
+    const leaderExecuted = myFps && !myFps.leader_name;
+    if (leaderExecuted && AUTOCRACY_ACTIONS['claim_wildcard']) {
         availableActions.push('claim_wildcard');
     }
 
@@ -4451,12 +4459,40 @@ async function renderAutocracyActionsTab(nation, faction, shard, pillarStates, a
     let listHtml = `<div style="font-size:10px;color:var(--dtext-3);margin-bottom:12px">
         AP: <span style="color:var(--dtext-0);font-weight:700;font-family:var(--dfont-mono)">${ap}</span>
         &nbsp;|&nbsp; Pillar: <span style="color:var(--dtext-0);font-weight:600">${myPillar ? myPillar.charAt(0).toUpperCase() + myPillar.slice(1) : '—'}</span>
-        ${!pillarConfirmed && myFps ? '&nbsp;<span style="color:#d48a3c;font-size:9px">(auto-assigned)</span>' : ''}
+        ${leaderExecuted ? '&nbsp;<span style="color:#d9534f;font-size:9px;font-weight:600">(NO LEADER)</span>' : ''}
+        ${!leaderExecuted && !pillarConfirmed && myFps ? '&nbsp;<span style="color:#d48a3c;font-size:9px">(auto-assigned)</span>' : ''}
         ${isStrongman ? '&nbsp;|&nbsp; <span style="color:#d9534f;font-weight:700">STRONGMAN</span>' : ''}
     </div>`;
 
+    // Leader executed banner — prompt to claim wildcard pillar
+    if (leaderExecuted) {
+        const wildcardPillar = autocracyTracker?.wildcard_pillar;
+        const wildcardBacking = autocracyTracker?.wildcard_backing ?? 0;
+        const PILLAR_LABELS = { military: 'Military', party: 'The Party', oligarchs: 'Oligarchs', media: 'Media', security: 'Security' };
+        const wildcardLabel = wildcardPillar ? (PILLAR_LABELS[wildcardPillar] || wildcardPillar) : null;
+
+        listHtml += `
+        <div style="background:#d9534f11;border:1px solid #d9534f44;border-radius:4px;padding:12px;margin-bottom:12px">
+            <div style="font-size:11px;font-weight:700;color:#d9534f;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">LEADER EXECUTED</div>
+            <div style="font-size:11px;color:var(--dtext-2);margin-bottom:10px">Your faction leader has been eliminated. You must claim a new pillar to appoint a successor and resume operations.</div>
+            ${wildcardPillar ? `
+                <div style="display:flex;align-items:center;gap:10px;background:var(--dbg-3);border:1px solid var(--dborder-1);border-radius:3px;padding:10px;margin-bottom:10px">
+                    <div style="flex:1">
+                        <div style="font-size:10px;color:var(--dtext-3);text-transform:uppercase;letter-spacing:0.5px">Available Wildcard Pillar</div>
+                        <div style="font-size:14px;color:var(--dtext-0);font-weight:700;margin-top:2px">${escapeHtml(wildcardLabel)}</div>
+                        <div style="font-size:10px;color:var(--dtext-3);margin-top:2px">Backing: ${wildcardBacking}</div>
+                    </div>
+                    <button id="claim-wildcard-btn" style="padding:8px 16px;background:#d9534f22;border:1px solid #d9534f66;color:#d9534f;border-radius:3px;cursor:pointer;font-size:12px;font-weight:700;white-space:nowrap">Claim Pillar</button>
+                </div>
+            ` : `
+                <div style="font-size:11px;color:var(--dtext-3);font-style:italic">No wildcard pillar is currently available to claim.</div>
+            `}
+            <div id="claim-wildcard-result" style="font-size:11px"></div>
+        </div>`;
+    }
+
     // Pillar selection banner (shown when pillar not yet confirmed)
-    if (myFps && !pillarConfirmed) {
+    if (myFps && !pillarConfirmed && !leaderExecuted) {
         const PILLAR_INFO = {
             military: { label: 'Military', icon: '⚔', color: '#5b9bd5', desc: 'Deploy forces, military exercises, stand down' },
             party: { label: 'The Party', icon: '◎', color: '#c8a64e', desc: 'Rallies, agitation, party congress' },
@@ -4607,6 +4643,44 @@ async function renderAutocracyActionsTab(nation, faction, shard, pillarStates, a
             }
         });
     });
+
+    // Wire up claim wildcard banner button
+    const claimBtn = container.querySelector('#claim-wildcard-btn');
+    if (claimBtn) {
+        claimBtn.addEventListener('click', async () => {
+            claimBtn.disabled = true;
+            claimBtn.textContent = 'Claiming...';
+            const resultDiv = document.getElementById('claim-wildcard-result');
+            try {
+                const result = await dispatchAutocracyAction(_supabase, {
+                    factionId: _autoFaction.id,
+                    nationId: _autoNation.id,
+                    actionType: 'claim_wildcard',
+                    mode: 'self',
+                    currentTick: tick,
+                    extra: {},
+                });
+                if (result.success) {
+                    const effects = result.result?.effects || {};
+                    if (resultDiv) resultDiv.innerHTML = `<div style="color:#5cb85c;font-weight:600">Claimed ${escapeHtml(effects.claimed_pillar || 'pillar')}. New leader: ${escapeHtml(effects.new_leader || 'Unknown')}</div>`;
+                    // Refresh the tab
+                    try {
+                        const { data: refreshedFps } = await _supabase.from('faction_pillar_state').select('*').eq('nation_id', _autoNation.id);
+                        const { data: refreshedTracker } = await _supabase.from('autocracy_tracker').select('*').eq('nation_id', _autoNation.id).maybeSingle();
+                        await renderAutocracyActionsTab(_autoNation, _autoFaction, _autoShard, refreshedFps || [], refreshedTracker, _autoAllParties);
+                    } catch (e) { console.warn('[ClaimWildcard] Refresh failed:', e); }
+                } else {
+                    if (resultDiv) resultDiv.innerHTML = `<div style="color:#d9534f">${escapeHtml(result.error || 'Claim failed')}</div>`;
+                    claimBtn.disabled = false;
+                    claimBtn.textContent = 'Claim Pillar';
+                }
+            } catch (err) {
+                if (resultDiv) resultDiv.innerHTML = `<div style="color:#d9534f">${escapeHtml(err.message)}</div>`;
+                claimBtn.disabled = false;
+                claimBtn.textContent = 'Claim Pillar';
+            }
+        });
+    }
 }
 
 function renderAutoActionDetail(actionKey, ap, tick, myFps, isStrongman, pillarStates) {
