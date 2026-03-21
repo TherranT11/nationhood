@@ -1841,7 +1841,7 @@ function renderEditIdentityBox(f, currentTick) {
         <div style="margin-bottom:14px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <span class="pol-id-section-label">Party Name</span>
-                <span class="pol-id-ap-badge">AP: <span id="pol-id-ap-display" style="color:${apColor}">${ap}</span></span>
+                <span class="pol-id-ap-badge">AP: <span id="pol-id-ap-display">${ap}</span></span>
             </div>
             <div class="pol-id-name-display">
                 <span id="pol-id-current-name">${escapeHtml(f.faction_name)}</span>
