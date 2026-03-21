@@ -4310,7 +4310,7 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
     }
 
     if (!result || !result.success) {
-        _showToast(result?.error || 'Action failed.');
+        _showToast(result?.message || result?.error || 'Action failed.');
         if (btn) { btn.classList.remove('disabled'); btn.textContent = `Confirm — ${cost} AP`; }
         return;
     }
