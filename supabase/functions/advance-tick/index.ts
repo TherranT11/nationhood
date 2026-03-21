@@ -576,7 +576,10 @@ function calculateImportDemand(nation, sector, opts) {
         // Low rail → more fuel for transport (inverted: 20 - rail score)
         var transportFuelNeed = Math.max(0, 12 - railNorm);
         // Industrial demand: factories + cities + high living standards + poor transit
-        var industrialDemand = (manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportFuelNeed * 0.15);
+        // Offset by domestic energy — nations that produce enough fuel domestically
+        // don't need to import for industrial use either
+        var grossIndustrialDemand = (manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportFuelNeed * 0.15);
+        var industrialDemand = Math.max(0, grossIndustrialDemand - domesticEnergy * 0.5);
 
         rawDemand = (deficiency + industrialDemand) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
     }
