@@ -244,6 +244,8 @@ initPage('politics', async (state) => {
         voterBlocs,
         playerBlocApprovals,
         caucusFactions,
+        pillarStates,
+        autocracyTracker,
     });
 });
 
@@ -282,7 +284,8 @@ async function renderPartyTab(f, nation, data) {
         lastParliamentary, lastPresidential, scheduledElections,
         president, administration,
         voterBlocs, playerBlocApprovals,
-        caucusFactions
+        caucusFactions,
+        pillarStates, autocracyTracker,
     } = data;
     const faction = f; // alias for compatibility with sub-renderers
 
