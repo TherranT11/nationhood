@@ -2456,6 +2456,8 @@ const CA_ACTIONS = [
       desc: 'Attack a rival\'s record. Stronger with evidence. Can backfire.' },
     { id: 'promise', name: 'Make a Promise', ap: MAKE_PROMISE_CONFIG.AP_COST, color: '#a78bfa', icon: '◆',
       desc: 'Commit to improving a stat or resolving a crisis. Immediate approval boost, but penalties if broken.' },
+    { id: 'take_stance', name: 'Take a Stance', ap: STANCE_CONFIG.AP_COST, color: '#38bdf8', icon: '⚑',
+      desc: 'Declare your position on an issue. Builds platform appeal. Stances decay over time — reinforce to sustain.' },
     { id: 'poll_now', name: 'Poll Now', ap: POLL_CONFIG.AP_COST, color: '#22d3ee', icon: '📊',
       desc: 'Snapshot your current electorate standing. See your pillars, vote share, and limiters frozen in time.' },
     { id: 'fund_think_tank', name: 'Fund Think Tank', ap: IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST, color: '#14b8a6', icon: '🏛',
@@ -2471,6 +2473,12 @@ let _caTargetAxis = null;
 let _caTargetDirection = null;
 let _caTargetDemographic = null;
 let _caTargetBand = null;
+// State for Take Stance action
+let _caStanceIssue = null;
+let _caStanceAxis = null;
+let _caStanceSide = null;
+let _caStanceIntensity = 'moderate';
+let _caStanceIssueStates = null; // cached issue states for stance config
 
 function caReset() {
     _caRival = null; _caVector = null;
@@ -2481,6 +2489,8 @@ function caReset() {
     _protestLoading = false;
     _caTargetAxis = null; _caTargetDirection = null;
     _caTargetDemographic = null; _caTargetBand = null;
+    _caStanceIssue = null; _caStanceAxis = null;
+    _caStanceSide = null; _caStanceIntensity = 'moderate';
 }
 
 function caIsReady() {
@@ -2492,6 +2502,7 @@ function caIsReady() {
         return false;
     }
     if (_caSelected === 'protest') return !!_protestTarget;
+    if (_caSelected === 'take_stance') return !!_caStanceIssue && !!_caStanceAxis && !!_caStanceSide && !!_caStanceIntensity;
     if (_caSelected === 'poll_now') return true;
     if (_caSelected === 'fund_think_tank') return !!_caTargetAxis && !!_caTargetDirection;
     if (_caSelected === 'media_campaign') return !!_caTargetAxis && !!_caTargetDirection;
@@ -2794,6 +2805,7 @@ function renderActionConfig(sel, otherParties, factionIdeo, nation, ap, tick) {
     if (sel.id === 'attack') return renderAttackConfig(otherParties);
     if (sel.id === 'promise') return renderPromiseConfig(nation);
     if (sel.id === 'protest') return renderProtestConfig(nation, tick);
+    if (sel.id === 'take_stance') return renderTakeStanceConfig(nation);
     if (sel.id === 'poll_now') return renderPollNowConfig();
     if (sel.id === 'fund_think_tank') return renderThinkTankConfig();
     if (sel.id === 'media_campaign') return renderMediaCampaignConfig();
@@ -2805,6 +2817,80 @@ function renderActionConfig(sel, otherParties, factionIdeo, nation, ap, tick) {
 
 function renderRallyConfig() {
     return `<div class="ca-info-box">Hold a rally to energize your base. Random outcome — can boost or backfire.</div>`;
+}
+
+// ── TAKE STANCE CONFIG ──
+
+function renderTakeStanceConfig(nation) {
+    let html = `<div class="ca-info-box">Declare your party's position on an issue. Stances build platform appeal but decay over time.</div>`;
+
+    // Issue selector
+    html += `<div class="ca-subtitle" style="margin-top:10px">Select Issue</div><div style="display:flex;flex-direction:column;gap:3px">`;
+    const issueEntries = Object.entries(ISSUE_DEFS);
+    // Sort by salience if we have issue states
+    const sortedIssues = _caStanceIssueStates
+        ? issueEntries.sort((a, b) => {
+            const sa = _caStanceIssueStates.find(is => is.issue_id === a[0])?.salience ?? 0;
+            const sb = _caStanceIssueStates.find(is => is.issue_id === b[0])?.salience ?? 0;
+            return sb - sa;
+        })
+        : issueEntries;
+
+    for (const [issueId, def] of sortedIssues) {
+        const isSel = _caStanceIssue === issueId;
+        const issState = _caStanceIssueStates?.find(is => is.issue_id === issueId);
+        const salience = issState ? Number(issState.salience).toFixed(0) : '—';
+        html += `<div class="ca-option-chip${isSel ? ' selected' : ''}" data-stance-issue-id="${issueId}" style="padding:6px 10px;display:flex;justify-content:space-between;align-items:center;${isSel ? 'border-color:#38bdf8;color:var(--dtext-0);background:rgba(56,189,248,0.06)' : ''}">
+            <span style="font-weight:600">${escapeHtml(def.label)}</span>
+            <span style="font-size:10px;color:var(--dtext-3)">Salience: ${salience}</span>
+        </div>`;
+    }
+    html += `</div>`;
+
+    // Axis selector (if issue selected)
+    if (_caStanceIssue) {
+        const issueDef = ISSUE_DEFS[_caStanceIssue];
+        if (issueDef && issueDef.axes.length > 0) {
+            html += `<div class="ca-subtitle" style="margin-top:12px">Choose Axis</div><div style="display:flex;flex-direction:column;gap:3px">`;
+            for (const ak of issueDef.axes) {
+                const ax = IDEOLOGY_AXES.find(a => a.key === ak);
+                if (!ax) continue;
+                const isSel = _caStanceAxis === ak;
+                html += `<div class="ca-option-chip${isSel ? ' selected' : ''}" data-stance-axis-key="${ak}" style="padding:6px 10px;${isSel ? 'border-color:#38bdf8;color:var(--dtext-0);background:rgba(56,189,248,0.06)' : ''}">
+                    <span style="color:${ax.leftColor}">${ax.leftLabel}</span> <span style="color:var(--dtext-3)">↔</span> <span style="color:${ax.rightColor}">${ax.rightLabel}</span>
+                </div>`;
+            }
+            html += `</div>`;
+        }
+    }
+
+    // Side selector (if axis selected)
+    if (_caStanceAxis) {
+        const ax = IDEOLOGY_AXES.find(a => a.key === _caStanceAxis);
+        if (ax) {
+            html += `<div class="ca-subtitle" style="margin-top:12px">Choose Side</div><div style="display:flex;gap:8px">`;
+            const isLeft = _caStanceSide === 'left';
+            const isRight = _caStanceSide === 'right';
+            html += `<div class="ca-option-chip${isLeft ? ' selected' : ''}" data-stance-side-val="left" style="flex:1;text-align:center;padding:8px;${isLeft ? `border-color:${ax.leftColor};color:${ax.leftColor};background:rgba(56,189,248,0.06)` : ''}"><span style="font-weight:700">${ax.leftLabel}</span></div>`;
+            html += `<div class="ca-option-chip${isRight ? ' selected' : ''}" data-stance-side-val="right" style="flex:1;text-align:center;padding:8px;${isRight ? `border-color:${ax.rightColor};color:${ax.rightColor};background:rgba(56,189,248,0.06)` : ''}"><span style="font-weight:700">${ax.rightLabel}</span></div>`;
+            html += `</div>`;
+        }
+    }
+
+    // Intensity selector (if side selected)
+    if (_caStanceSide) {
+        html += `<div class="ca-subtitle" style="margin-top:12px">Intensity</div><div style="display:flex;gap:6px">`;
+        for (const [key, cfg] of Object.entries(STANCE_CONFIG.INTENSITY)) {
+            const isSel = _caStanceIntensity === key;
+            html += `<div class="ca-option-chip${isSel ? ' selected' : ''}" data-stance-int-val="${key}" style="flex:1;text-align:center;padding:6px 4px;${isSel ? 'border-color:#38bdf8;color:var(--dtext-0);background:rgba(56,189,248,0.06)' : ''}">
+                <div style="font-weight:600;font-size:11px">${key}</div>
+                <div style="font-size:9px;color:var(--dtext-3);margin-top:2px">Str ${cfg.strength} · -${cfg.decay_rate}/t</div>
+            </div>`;
+        }
+        html += `</div>`;
+    }
+
+    return html;
 }
 
 // ── POLL NOW CONFIG ──
@@ -3687,6 +3773,54 @@ function wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick
         });
     });
 
+    // Stance issue selection
+    container.querySelectorAll('[data-stance-issue-id]').forEach(el => {
+        el.addEventListener('click', () => {
+            const id = el.dataset.stanceIssueId;
+            if (_caStanceIssue === id) { _caStanceIssue = null; } else { _caStanceIssue = id; }
+            _caStanceAxis = null; _caStanceSide = null; _caStanceIntensity = 'moderate';
+            // Auto-select axis if issue only has one
+            const issueDef = ISSUE_DEFS[_caStanceIssue];
+            if (issueDef && issueDef.axes.length === 1) _caStanceAxis = issueDef.axes[0];
+            rerender();
+        });
+    });
+
+    // Stance axis selection
+    container.querySelectorAll('[data-stance-axis-key]').forEach(el => {
+        el.addEventListener('click', () => {
+            const ak = el.dataset.stanceAxisKey;
+            _caStanceAxis = _caStanceAxis === ak ? null : ak;
+            _caStanceSide = null;
+            rerender();
+        });
+    });
+
+    // Stance side selection
+    container.querySelectorAll('[data-stance-side-val]').forEach(el => {
+        el.addEventListener('click', () => {
+            const s = el.dataset.stanceSideVal;
+            _caStanceSide = _caStanceSide === s ? null : s;
+            rerender();
+        });
+    });
+
+    // Stance intensity selection
+    container.querySelectorAll('[data-stance-int-val]').forEach(el => {
+        el.addEventListener('click', () => {
+            _caStanceIntensity = el.dataset.stanceIntVal;
+            rerender();
+        });
+    });
+
+    // Load issue states for stance config if needed
+    if (_caSelected === 'take_stance' && !_caStanceIssueStates && !_caResult) {
+        _supabase.from('issue_state').select('issue_id, salience').eq('nation_id', n.id).then(({ data }) => {
+            _caStanceIssueStates = data || [];
+            rerender();
+        });
+    }
+
     // Axis selection (think tank, media, grassroots)
     container.querySelectorAll('[data-axis-key]').forEach(el => {
         el.addEventListener('click', () => {
@@ -3863,6 +3997,8 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
             const grievanceData = _protestTarget.grievanceData || {};
             const demandLabel = _protestTarget.demandLabel || '';
             result = await executeProtest(_supabase, f.id, n.id, _protestTarget.type, grievanceData, demandLabel, tick);
+        } else if (sel.id === 'take_stance') {
+            result = await executeTakeStance(_supabase, f.id, n.id, _caStanceIssue, _caStanceAxis, _caStanceSide, _caStanceIntensity, tick);
         } else if (sel.id === 'poll_now') {
             result = await executePollNow(_supabase, f.id, n.id, tick);
         } else if (sel.id === 'fund_think_tank') {
@@ -3896,6 +4032,16 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
     // Update topbar AP display
     const apEl = document.getElementById('topbar-ap');
     if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + (f.action_points ?? 0) + ' AP</span>';
+    // Refresh stance summary on main tab after stance actions
+    if (sel.id === 'take_stance') {
+        _renderStanceSummaryStrip(f.id, n.id);
+        // Refresh portfolio in electorate tab if loaded
+        const esContainer = document.getElementById('electorate-spread-container');
+        if (esContainer) {
+            esContainer.querySelector('.sp-card')?.remove();
+            _renderStancePortfolio(esContainer, f, n);
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
