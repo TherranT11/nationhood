@@ -139,7 +139,7 @@ html { overflow-y: scroll !important; height: auto !important; }
         .sponsor-btn.retract:hover { opacity: 0.85; }
         .sponsor-btn.enact-decree { background: var(--red); color: white; font-size: 0.9rem; }
         .sponsor-btn.enact-decree:hover { opacity: 0.85; }
-        .bill-sidebar { display: flex; flex-direction: column; gap: 16px; max-height: calc(100vh - 120px); position: sticky; top: 80px; align-self: start; }
+        .bill-sidebar { display: flex; flex-direction: column; gap: 16px; max-height: calc(100vh - 120px); position: sticky; top: 80px; align-self: start; overflow-y: auto; }
         .support-box { background: var(--bg-panel); border-radius: 3px; overflow: hidden; border: 1px solid var(--border-main); }
         .support-box-header { padding: 14px; background: var(--bg-card); border-bottom: 1px solid var(--border-light); }
         .support-box-title { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; font-family: var(--font-mono); }
