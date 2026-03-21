@@ -267,9 +267,9 @@ export const IDEO_STAT_MAP = {
 
 export const IDEO_VARIANCE_STAT_MAP = {
     _global: [
-        { stat: 'polarization',  weight: 0.5, direction: 1 },
-        { stat: 'stability',     weight: 0.3, direction: -1 },
-        { stat: 'ethnic_diversity', weight: 0.2, direction: 1 },
+        { stat: 'polarization',  weight: 0.55, direction: 1 },
+        { stat: 'stability',     weight: 0.45, direction: -1 },
+        { stat: 'ethnic_diversity', weight: 0.15, direction: 1 },
     ],
 };
 
@@ -312,7 +312,7 @@ export const ELECTORATE_CONFIG = {
     // -- Ideology derivation --
     IDEO_STAT_SENSITIVITY: 0.25,   // how strongly stats shift ideo means from center (50)
     IDEO_VARIANCE_BASE: 20,        // base variance when all stats are neutral
-    IDEO_VARIANCE_SENSITIVITY: 0.3,
+    IDEO_VARIANCE_SENSITIVITY: 0.7,
 
     // -- Salience --
     SALIENCE_STAT_SENSITIVITY: 0.5, // how strongly stat badness drives salience up
@@ -373,7 +373,7 @@ export const ELECTORATE_CONFIG = {
 
     // ── Phase 2C: Electorate profile drift ──
     PROFILE_IDEO_DRIFT_SPEED: 0.5,    // max ideo mean drift per tick
-    PROFILE_VAR_DRIFT_SPEED: 0.3,     // max variance drift per tick
+    PROFILE_VAR_DRIFT_SPEED: 0.5,     // max variance drift per tick
 
     // ── Phase 2C: Platform appeal ──
     APPEAL_IDEOLOGY_BASELINE_WEIGHT: 0.3,  // how much alignment contributes to appeal floor
