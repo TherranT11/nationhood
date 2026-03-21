@@ -4,7 +4,7 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
 
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
@@ -519,6 +519,11 @@ async function renderPartyTab(f, nation, data) {
         initBlocAlignment();
     }
     initIdeologyToggle();
+
+    // Load stance summary strip into the Ideology box
+    if (!isAutoNation) {
+        _renderStanceSummaryStrip(f.id, nation.id);
+    }
 
     // Disband Party handler
     const disbandBtn = document.getElementById('pol-disband-party-btn');
@@ -1156,6 +1161,7 @@ function renderIdeologyBox(allParties, allPartyIdeologies, playerFactionId) {
             <div class="pol-ideo-axes">${axesHtml}</div>
             ${summariesHtml ? `<div class="pol-ideo-summaries">${summariesHtml}</div>` : ''}
             ${decayHtml}
+            <div id="stance-summary-strip"></div>
         </div>`;
 }
 
@@ -5239,6 +5245,418 @@ async function _renderPillarCards(container, playerFaction, nation) {
     </div>`;
 
     container.insertAdjacentHTML('beforeend', cardsHtml);
+
+    // Also render stance portfolio in the Electorate tab
+    _renderStancePortfolio(container, playerFaction, nation);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PHASE 7: STANCE PORTFOLIO + TAKE STANCE UI
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Load the player's active stances + issue salience and render the
+ * Active Stance Portfolio card in the Electorate tab.
+ */
+async function _renderStancePortfolio(container, faction, nation) {
+    // Load stances, issue states, and shard tick in parallel
+    const [stancesRes, issueStatesRes, shardRes] = await Promise.all([
+        _supabase.from('faction_issue_stance')
+            .select('*')
+            .eq('faction_id', faction.id)
+            .eq('nation_id', nation.id),
+        _supabase.from('issue_state')
+            .select('issue_id, salience, owned_by, pioneer_faction_id')
+            .eq('nation_id', nation.id),
+        _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+    ]);
+
+    const stances = stancesRes.data || [];
+    const issueStates = issueStatesRes.data || [];
+    const currentTick = shardRes.data?.current_tick || 0;
+
+    // Build issue state lookup
+    const issueStateMap = {};
+    for (const is of issueStates) issueStateMap[is.issue_id] = is;
+
+    const maxStances = STANCE_CONFIG.MAX_STANCES;
+    const atCap = stances.length >= maxStances;
+
+    // Build stance rows
+    let stanceRowsHtml = '';
+    if (stances.length === 0) {
+        stanceRowsHtml = '<div class="sp-empty">No active stances. Take a stance on an issue to build platform appeal.</div>';
+    } else {
+        for (const s of stances) {
+            const issueDef = ISSUE_DEFS[s.issue_id];
+            if (!issueDef) continue;
+            const axisInfo = IDEOLOGY_AXES.find(a => a.key === s.axis);
+            const sideLabel = s.side === 'left' ? axisInfo?.leftLabel : axisInfo?.rightLabel;
+            const sideColor = s.side === 'left' ? axisInfo?.leftColor : axisInfo?.rightColor;
+            const strength = Number(s.strength ?? 0);
+            const decayRate = Number(s.decay_rate ?? 0);
+            const ticksHeld = Number(s.ticks_held ?? 0);
+
+            // Strength thresholds for visual feedback
+            const isFading = strength <= 40;
+            const isWeak = strength <= 20;
+            const strengthColor = isWeak ? 'var(--dred)' : isFading ? 'var(--damber)' : 'var(--dgreen)';
+
+            // Issue salience
+            const issueState = issueStateMap[s.issue_id];
+            const salience = Number(issueState?.salience ?? 30);
+
+            // Consistency badge
+            const consistencyBadge = s.ideologically_consistent
+                ? ''
+                : '<span class="sp-badge sp-badge--warn">INCONSISTENT</span>';
+            const pioneerBadge = s.is_pioneer
+                ? '<span class="sp-badge sp-badge--good">PIONEER</span>'
+                : '';
+            const fadingBadge = isFading
+                ? `<span class="sp-badge sp-badge--fade">${isWeak ? 'EXPIRING' : 'FADING'}</span>`
+                : '';
+
+            stanceRowsHtml += `
+            <div class="sp-row" data-stance-issue="${s.issue_id}">
+                <div class="sp-row-top">
+                    <div class="sp-row-left">
+                        <span class="sp-issue-name">${escapeHtml(issueDef.label)}</span>
+                        <span class="sp-side-pill" style="color:${sideColor};border-color:${sideColor}">${s.intensity} ${sideLabel}</span>
+                        ${pioneerBadge}${consistencyBadge}${fadingBadge}
+                    </div>
+                    <div class="sp-row-right">
+                        <span class="sp-salience" title="Issue salience">Salience: ${salience.toFixed(0)}</span>
+                        <span class="sp-ticks">Held ${ticksHeld} ticks</span>
+                    </div>
+                </div>
+                <div class="sp-bar-row">
+                    <div class="sp-bar-track">
+                        <div class="sp-bar-fill" style="width:${strength}%;background:${strengthColor}"></div>
+                    </div>
+                    <span class="sp-str-val" style="color:${strengthColor}">${strength.toFixed(0)}</span>
+                    <span class="sp-decay" style="color:var(--dred)">-${decayRate}/tick</span>
+                </div>
+                <div class="sp-row-actions">
+                    <button class="sp-btn sp-btn--reinforce" data-stance-action="reinforce" data-stance-issue="${s.issue_id}" data-stance-axis="${s.axis}" data-stance-side="${s.side}" data-stance-intensity="${s.intensity}">Reinforce</button>
+                    <button class="sp-btn sp-btn--modify" data-stance-action="modify" data-stance-issue="${s.issue_id}">Modify</button>
+                </div>
+            </div>`;
+        }
+    }
+
+    const portfolioHtml = `
+    <div class="sp-card" style="margin-top:20px;max-width:780px;">
+        <div class="sp-card-header">
+            <div class="sp-card-title">Active Stance Portfolio</div>
+            <div class="sp-card-count">${stances.length} / ${maxStances}</div>
+        </div>
+        <div class="sp-stances">${stanceRowsHtml}</div>
+        <div class="sp-footer">
+            <button class="sp-btn sp-btn--new${atCap ? ' sp-btn--disabled' : ''}" id="sp-new-stance-btn" ${atCap ? 'disabled title="Maximum stances reached (5/5)"' : ''}>
+                + New Stance${atCap ? ' (5/5)' : ''}
+            </button>
+            <span class="sp-footer-hint">${STANCE_CONFIG.AP_COST} AP · ${STANCE_CONFIG.COOLDOWN_WINDOW}-tick cooldown</span>
+        </div>
+    </div>`;
+
+    container.insertAdjacentHTML('beforeend', portfolioHtml);
+
+    // Wire button handlers
+    container.querySelectorAll('[data-stance-action="reinforce"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const issueId = btn.dataset.stanceIssue;
+            const axis = btn.dataset.stanceAxis;
+            const side = btn.dataset.stanceSide;
+            const intensity = btn.dataset.stanceIntensity;
+            btn.disabled = true;
+            btn.textContent = 'Reinforcing...';
+            const result = await executeTakeStance(_supabase, faction.id, nation.id, issueId, axis, side, intensity, currentTick);
+            if (result.success) {
+                // Re-render the portfolio
+                container.querySelector('.sp-card')?.remove();
+                await _renderStancePortfolio(container, faction, nation);
+                _renderStanceSummaryStrip(faction.id, nation.id);
+            } else {
+                alert(result.message || 'Failed to reinforce stance.');
+                btn.disabled = false;
+                btn.textContent = 'Reinforce';
+            }
+        });
+    });
+
+    container.querySelectorAll('[data-stance-action="modify"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _openTakeStanceModal(faction, nation, currentTick, issueStateMap, stances, btn.dataset.stanceIssue);
+        });
+    });
+
+    const newBtn = document.getElementById('sp-new-stance-btn');
+    if (newBtn && !atCap) {
+        newBtn.addEventListener('click', () => {
+            _openTakeStanceModal(faction, nation, currentTick, issueStateMap, stances, null);
+        });
+    }
+}
+
+/**
+ * Open the Take Stance modal. Pre-selects an issue if modifying an existing stance.
+ */
+function _openTakeStanceModal(faction, nation, currentTick, issueStateMap, existingStances, preselectedIssue) {
+    // Remove any existing modal
+    document.getElementById('stance-modal-overlay')?.remove();
+
+    const existingIssueIds = new Set(existingStances.map(s => s.issue_id));
+    const atCap = existingStances.length >= STANCE_CONFIG.MAX_STANCES;
+
+    // Build issue options sorted by salience (descending)
+    const issueOptions = ISSUE_IDS
+        .map(id => ({
+            id,
+            def: ISSUE_DEFS[id],
+            salience: Number(issueStateMap[id]?.salience ?? 30),
+            hasStance: existingIssueIds.has(id),
+        }))
+        .sort((a, b) => b.salience - a.salience);
+
+    let issueListHtml = '';
+    for (const opt of issueOptions) {
+        const disabled = !opt.hasStance && atCap;
+        const selected = opt.id === preselectedIssue;
+        const salienceColor = opt.salience >= 60 ? 'var(--dred)' : opt.salience >= 40 ? 'var(--damber)' : 'var(--dtext-3)';
+        const axisLabels = opt.def.axes.map(ak => {
+            const ax = IDEOLOGY_AXES.find(a => a.key === ak);
+            return ax ? `${ax.leftLabel}/${ax.rightLabel}` : ak;
+        }).join(', ');
+
+        issueListHtml += `
+        <div class="sm-issue${selected ? ' sm-issue--selected' : ''}${disabled ? ' sm-issue--disabled' : ''}"
+             data-sm-issue="${opt.id}" ${disabled ? '' : 'role="button" tabindex="0"'}>
+            <div class="sm-issue-top">
+                <span class="sm-issue-name">${escapeHtml(opt.def.label)}</span>
+                ${opt.hasStance ? '<span class="sm-issue-badge">HAS STANCE</span>' : ''}
+            </div>
+            <div class="sm-issue-meta">
+                <span class="sm-issue-salience" style="color:${salienceColor}">Salience: ${opt.salience.toFixed(0)}</span>
+                <span class="sm-issue-axes">${axisLabels}</span>
+            </div>
+        </div>`;
+    }
+
+    const modalHtml = `
+    <div class="modal-overlay active" id="stance-modal-overlay">
+        <div class="sm-modal">
+            <div class="sm-header">
+                <span class="sm-title">Take a Stance</span>
+                <button class="sm-close" id="sm-close-btn">&times;</button>
+            </div>
+            <div class="sm-body">
+                <div class="sm-section-label">Select Issue</div>
+                <div class="sm-issue-list">${issueListHtml}</div>
+                <div id="sm-config-area"></div>
+            </div>
+            <div class="sm-footer" id="sm-footer" style="display:none">
+                <button class="sp-btn sp-btn--new" id="sm-confirm-btn" disabled>Confirm Stance (${STANCE_CONFIG.AP_COST} AP)</button>
+            </div>
+        </div>
+    </div>`;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // State
+    let selectedIssue = preselectedIssue;
+    let selectedAxis = null;
+    let selectedSide = null;
+    let selectedIntensity = 'moderate';
+
+    function updateConfigArea() {
+        const area = document.getElementById('sm-config-area');
+        const footer = document.getElementById('sm-footer');
+        if (!area || !selectedIssue) {
+            if (area) area.innerHTML = '';
+            if (footer) footer.style.display = 'none';
+            return;
+        }
+
+        const issueDef = ISSUE_DEFS[selectedIssue];
+        if (!issueDef) return;
+
+        // Auto-select axis if issue only has one
+        if (issueDef.axes.length === 1 && !selectedAxis) {
+            selectedAxis = issueDef.axes[0];
+        }
+
+        // Axis selector
+        let axisHtml = '<div class="sm-section-label" style="margin-top:14px;">Choose Axis</div><div class="sm-axis-list">';
+        for (const ak of issueDef.axes) {
+            const ax = IDEOLOGY_AXES.find(a => a.key === ak);
+            if (!ax) continue;
+            const sel = ak === selectedAxis;
+            axisHtml += `<div class="sm-axis-opt${sel ? ' sm-axis-opt--selected' : ''}" data-sm-axis="${ak}">
+                <span style="color:${ax.leftColor}">${ax.leftLabel}</span> / <span style="color:${ax.rightColor}">${ax.rightLabel}</span>
+            </div>`;
+        }
+        axisHtml += '</div>';
+
+        // Side selector (only if axis selected)
+        let sideHtml = '';
+        if (selectedAxis) {
+            const ax = IDEOLOGY_AXES.find(a => a.key === selectedAxis);
+            sideHtml = `<div class="sm-section-label" style="margin-top:14px;">Choose Side</div><div class="sm-side-list">
+                <div class="sm-side-opt${selectedSide === 'left' ? ' sm-side-opt--selected' : ''}" data-sm-side="left" style="border-color:${ax.leftColor}">
+                    <span style="color:${ax.leftColor};font-weight:700">${ax.leftLabel}</span>
+                </div>
+                <div class="sm-side-opt${selectedSide === 'right' ? ' sm-side-opt--selected' : ''}" data-sm-side="right" style="border-color:${ax.rightColor}">
+                    <span style="color:${ax.rightColor};font-weight:700">${ax.rightLabel}</span>
+                </div>
+            </div>`;
+        }
+
+        // Intensity selector (only if side selected)
+        let intensityHtml = '';
+        if (selectedSide) {
+            intensityHtml = `<div class="sm-section-label" style="margin-top:14px;">Intensity</div><div class="sm-intensity-list">`;
+            for (const [key, cfg] of Object.entries(STANCE_CONFIG.INTENSITY)) {
+                const sel = key === selectedIntensity;
+                intensityHtml += `<div class="sm-int-opt${sel ? ' sm-int-opt--selected' : ''}" data-sm-intensity="${key}">
+                    <span class="sm-int-name">${key}</span>
+                    <span class="sm-int-meta">Strength ${cfg.strength} · Decay ${cfg.decay_rate}/tick</span>
+                </div>`;
+            }
+            intensityHtml += '</div>';
+        }
+
+        area.innerHTML = axisHtml + sideHtml + intensityHtml;
+
+        // Show footer if all selections made
+        const allSelected = selectedIssue && selectedAxis && selectedSide && selectedIntensity;
+        footer.style.display = allSelected ? 'flex' : 'none';
+        const confirmBtn = document.getElementById('sm-confirm-btn');
+        if (confirmBtn) confirmBtn.disabled = !allSelected;
+
+        // Wire axis clicks
+        area.querySelectorAll('[data-sm-axis]').forEach(el => {
+            el.addEventListener('click', () => {
+                selectedAxis = el.dataset.smAxis;
+                selectedSide = null; // reset downstream
+                updateConfigArea();
+            });
+        });
+
+        // Wire side clicks
+        area.querySelectorAll('[data-sm-side]').forEach(el => {
+            el.addEventListener('click', () => {
+                selectedSide = el.dataset.smSide;
+                updateConfigArea();
+            });
+        });
+
+        // Wire intensity clicks
+        area.querySelectorAll('[data-sm-intensity]').forEach(el => {
+            el.addEventListener('click', () => {
+                selectedIntensity = el.dataset.smIntensity;
+                updateConfigArea();
+            });
+        });
+    }
+
+    // Wire issue clicks
+    document.querySelectorAll('[data-sm-issue]').forEach(el => {
+        if (el.classList.contains('sm-issue--disabled')) return;
+        el.addEventListener('click', () => {
+            document.querySelectorAll('.sm-issue').forEach(i => i.classList.remove('sm-issue--selected'));
+            el.classList.add('sm-issue--selected');
+            selectedIssue = el.dataset.smIssue;
+            selectedAxis = null;
+            selectedSide = null;
+            updateConfigArea();
+        });
+    });
+
+    // Wire close
+    document.getElementById('sm-close-btn')?.addEventListener('click', () => {
+        document.getElementById('stance-modal-overlay')?.remove();
+    });
+    document.getElementById('stance-modal-overlay')?.addEventListener('click', (e) => {
+        if (e.target.id === 'stance-modal-overlay') {
+            document.getElementById('stance-modal-overlay')?.remove();
+        }
+    });
+
+    // Wire confirm
+    document.getElementById('sm-confirm-btn')?.addEventListener('click', async () => {
+        const btn = document.getElementById('sm-confirm-btn');
+        if (!btn || btn.disabled) return;
+        btn.disabled = true;
+        btn.textContent = 'Taking stance...';
+
+        const result = await executeTakeStance(_supabase, faction.id, nation.id, selectedIssue, selectedAxis, selectedSide, selectedIntensity, currentTick);
+
+        if (result.success) {
+            document.getElementById('stance-modal-overlay')?.remove();
+            // Re-render portfolio
+            const esContainer = document.getElementById('electorate-spread-container');
+            if (esContainer) {
+                esContainer.querySelector('.sp-card')?.remove();
+                await _renderStancePortfolio(esContainer, faction, nation);
+            }
+            _renderStanceSummaryStrip(faction.id, nation.id);
+        } else {
+            alert(result.message || 'Failed to take stance.');
+            btn.disabled = false;
+            btn.textContent = `Confirm Stance (${STANCE_CONFIG.AP_COST} AP)`;
+        }
+    });
+
+    // Auto-show config if pre-selected
+    if (preselectedIssue) {
+        updateConfigArea();
+    }
+}
+
+/**
+ * Render a slim stance summary strip inside the Ideology box on the Politics tab.
+ * Shows compact pills for each active stance.
+ */
+async function _renderStanceSummaryStrip(factionId, nationId) {
+    const strip = document.getElementById('stance-summary-strip');
+    if (!strip) return;
+
+    const { data: stances } = await _supabase
+        .from('faction_issue_stance')
+        .select('issue_id, axis, side, intensity, strength')
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId);
+
+    if (!stances || stances.length === 0) {
+        strip.innerHTML = `<div class="ss-strip">
+            <span class="ss-label">Stances</span>
+            <span class="ss-none">None — take stances in the Electorate tab</span>
+        </div>`;
+        return;
+    }
+
+    let pillsHtml = '';
+    for (const s of stances) {
+        const issueDef = ISSUE_DEFS[s.issue_id];
+        if (!issueDef) continue;
+        const axisInfo = IDEOLOGY_AXES.find(a => a.key === s.axis);
+        const sideLabel = s.side === 'left' ? axisInfo?.leftLabel : axisInfo?.rightLabel;
+        const sideColor = s.side === 'left' ? axisInfo?.leftColor : axisInfo?.rightColor;
+        const strength = Number(s.strength ?? 0);
+        const isFading = strength <= 40;
+
+        pillsHtml += `<span class="ss-pill${isFading ? ' ss-pill--fading' : ''}" style="border-color:${sideColor}">
+            <span class="ss-pill-issue">${escapeHtml(issueDef.label)}</span>
+            <span class="ss-pill-side" style="color:${sideColor}">${sideLabel}</span>
+            <span class="ss-pill-str">${strength.toFixed(0)}</span>
+        </span>`;
+    }
+
+    strip.innerHTML = `<div class="ss-strip">
+        <span class="ss-label">Stances ${stances.length}/${STANCE_CONFIG.MAX_STANCES}</span>
+        <div class="ss-pills">${pillsHtml}</div>
+    </div>`;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
