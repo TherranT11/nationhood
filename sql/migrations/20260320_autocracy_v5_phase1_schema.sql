@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS autocracy_tracker (
 
     -- Public-facing tracker (updated ~1/3 of ticks via 1d3 roll)
     public_tracker_value INTEGER NOT NULL DEFAULT 30 CHECK (public_tracker_value >= 0 AND public_tracker_value <= 100),
+    public_tracker_last_tick INTEGER,
 
     created_at      TIMESTAMPTZ DEFAULT now(),
     UNIQUE(nation_id)

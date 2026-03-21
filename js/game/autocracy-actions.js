@@ -250,6 +250,15 @@ export async function dispatchAutocracyAction(supabase, params) {
                 .from('autocracy_tracker')
                 .update({ tracker_value: newTracker, last_updated_tick: currentTick })
                 .eq('nation_id', nationId);
+
+            // 1d3 roll: on a 3, sync public_tracker_value so players see updated estimate
+            const pubRoll = Math.floor(Math.random() * 3) + 1;
+            if (pubRoll === 3) {
+                await supabase.from('autocracy_tracker').update({
+                    public_tracker_value: newTracker,
+                    public_tracker_last_tick: currentTick,
+                }).eq('nation_id', nationId);
+            }
         }
     }
 
