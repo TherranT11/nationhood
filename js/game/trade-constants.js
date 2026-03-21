@@ -322,6 +322,8 @@ export function calculatePriceModifier(totalSupply, totalDemand) {
  *   embargo_penalty       -40 if active embargo/sanctions between nations
  *   proximity_bonus       +10 if same region (future)
  *   autocracy_penalty     -10 per autocratic nation in the pair
+ *   fdi_bonus             avg foreign_investment → -15 to +15 (high FDI = attractive market)
+ *   reputation_bonus      avg int'l reputation   → -10 to +10 (good standing = trustworthy partner)
  *
  * @param {Object} nationA   – nation row
  * @param {Object} nationB   – nation row
@@ -359,7 +361,21 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
     if (isAutocracy(nationA)) autocracyPenalty -= 10;
     if (isAutocracy(nationB)) autocracyPenalty -= 10;
 
-    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + autocracyPenalty;
+    // Foreign investment: high-FDI nations are integrated into global capital flows
+    // Average of both nations' FDI: 50 (neutral) = +0, 80 = +9, 20 = -9
+    var fdiA = Number(nationA.foreign_investment ?? 50);
+    var fdiB = Number(nationB.foreign_investment ?? 50);
+    var avgFdi = (fdiA + fdiB) / 2;
+    var fdiBonus = ((avgFdi - 50) / 50) * 15;
+
+    // International reputation: nations with good standing are trusted trade partners
+    // Average of both nations' reputation: 50 (neutral) = +0, 80 = +6, 20 = -6
+    var repA = Number(nationA.international_reputation ?? 50);
+    var repB = Number(nationB.international_reputation ?? 50);
+    var avgRep = (repA + repB) / 2;
+    var reputationBonus = ((avgRep - 50) / 50) * 10;
+
+    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + autocracyPenalty + fdiBonus + reputationBonus;
     return Math.round(Math.max(0, Math.min(100, affinity)));
 }
 
