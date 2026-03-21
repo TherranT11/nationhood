@@ -2683,21 +2683,29 @@ let _caTopIssueStats = null; // Stats from top 7 issues by salience (for Make Pr
 
 const CA_ACTIONS = [
     { id: 'rally', name: 'Hold a Rally', ap: RALLY_CONFIG.AP_COST, color: '#f97316', icon: '★',
-      desc: 'Random outcome — can boost or backfire. Generates headlines visible to rivals.' },
-{ id: 'attack', name: 'Campaign Attack', ap: ATTACK_CONFIG.AP_COST, color: '#ef4444', icon: '✦',
-      desc: 'Attack a rival\'s record. Stronger with evidence. Can backfire.' },
+      affects: 'Enthusiasm',
+      desc: 'Rally your supporters in a public show of strength. Outcomes range from rousing success to embarrassing gaffe — results are random and generate headlines your rivals can see.' },
+    { id: 'attack', name: 'Campaign Attack', ap: ATTACK_CONFIG.AP_COST, color: '#ef4444', icon: '✦',
+      affects: 'Approval',
+      desc: 'Target a rival party\'s record or leadership. More effective when backed by evidence. Risky — a poorly aimed attack can damage your own credibility.' },
     { id: 'promise', name: 'Make a Promise', ap: MAKE_PROMISE_CONFIG.AP_COST, color: '#a78bfa', icon: '◆',
-      desc: 'Commit to improving a stat or resolving a crisis. Immediate approval boost, but penalties if broken.' },
+      affects: 'Approval',
+      desc: 'Publicly commit to improving a national stat or resolving a crisis. Gives an immediate approval boost with affected voter blocs, but you\'ll face mounting penalties each tick if you fail to deliver.' },
     { id: 'take_stance', name: 'Take a Stance', ap: STANCE_CONFIG.AP_COST, color: '#38bdf8', icon: '⚑',
-      desc: 'Declare your position on an issue. Builds platform appeal. Stances decay over time — reinforce to sustain.' },
+      affects: 'Appeal',
+      desc: 'Declare your party\'s official position on a national issue. Builds platform appeal with aligned voters. Stances lose strength each tick — reinforce them before they fade, or let them expire.' },
     { id: 'poll_now', name: 'Poll Now', ap: POLL_CONFIG.AP_COST, color: '#22d3ee', icon: '📊',
-      desc: 'Snapshot your current electorate standing. See your pillars, vote share, and limiters frozen in time.' },
+      affects: 'Informational',
+      desc: 'Commission a snapshot of your current electoral standing. See your vote share, pillar scores, and limiting factors frozen at this moment — useful for tracking the impact of your actions.' },
     { id: 'fund_think_tank', name: 'Fund Think Tank', ap: IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST, color: '#14b8a6', icon: '🏛',
-      desc: 'Drift the electorate\'s ideological mean on a chosen axis. 8 AP upfront + 1 AP/tick for 50 ticks. Drift: 1d3 (0.1–0.3).' },
+      affects: 'Ideology',
+      desc: 'Fund an ideological think tank to gradually shift the electorate\'s beliefs on a chosen axis. Expensive long-term investment: 8 AP upfront + 1 AP/tick for 50 ticks, but reshapes the political landscape.' },
     { id: 'media_campaign', name: 'Media Campaign', ap: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.AP_COST, color: '#8b5cf6', icon: '📡',
-      desc: 'Expand or narrow electorate variance on a chosen axis. 1d5 variance shift for 5 ticks, then 1d3 visibility for 5 ticks.' },
+      affects: 'Ideology',
+      desc: 'Launch a media blitz to polarize or consolidate public opinion on a chosen axis. Shifts how spread out voters are ideologically, then boosts your party\'s visibility.' },
     { id: 'grassroots_movement', name: 'Grassroots Movement', ap: IDEO_SHIFT_CONFIG.GRASSROOTS.AP_COST, color: '#10b981', icon: '🌱',
-      desc: 'Slow burn ideology shift. 3 AP upfront + 1 AP/tick for 100 ticks. 1d2 drift, +1 visibility every 10t.' },
+      affects: 'Ideology',
+      desc: 'Build a slow-burning grassroots campaign to shift public ideology over time. Cheap to start but runs for 100 ticks. Gradually drifts opinion and builds party visibility.' },
 ];
 
 // State for new electorate actions
@@ -2894,7 +2902,8 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         allActions.push({
             id: 'protest', name: 'Organise a Protest', ap: protestApCost || 2,
             color: '#d9534f', icon: '!',
-            desc: 'Turnout is probabilistic. A fizzle hands the government a free headline. Choose your moment.',
+            affects: 'Approval',
+            desc: 'Mobilize citizens against the government. Turnout is probabilistic — a strong showing forces a crisis, but a fizzle hands the ruling party a free headline. Choose your moment carefully.',
         });
     }
 
@@ -2949,6 +2958,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         const bgStyle = isSel ? `background:${act.color}08;` : '';
         const borderStyle = isSel ? `border-color:${act.color}33;` : '';
         const nameColor = isSel ? act.color : 'var(--dtext-0)';
+        const affectsColor = act.affects === 'Enthusiasm' ? '#f97316' : act.affects === 'Approval' ? '#4ade80' : act.affects === 'Appeal' ? '#38bdf8' : act.affects === 'Ideology' ? '#a78bfa' : '#6b7280';
         listHtml += `<div class="ca-item${isSel ? ' selected' : ''}${!ok ? ' disabled' : ''}" data-action-id="${act.id}" style="border-left-color:${borderColor};${bgStyle}${borderStyle}${!ok ? 'opacity:0.35;' : ''}">
             <div class="ca-item-head">
                 <div style="display:flex;align-items:center;gap:6px">
@@ -2957,7 +2967,8 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
                 </div>
                 <span class="ca-item-ap">${act.ap} AP</span>
             </div>
-            ${isSel ? `<div class="ca-item-desc">${escapeHtml(act.desc)}</div>` : ''}
+            <div class="ca-item-desc">${escapeHtml(act.desc)}</div>
+            <div class="ca-item-affects" style="color:${affectsColor}">This action affects ${act.affects}</div>
         </div>`;
     }
 
@@ -2987,10 +2998,18 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
     }
 
     container.innerHTML = `<div class="ca-wrap"><div class="ca-list">${listHtml}</div>${panelHtml}</div>
+    <div class="ca-portfolios" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
+        <div id="ca-stances-container"><div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px">Loading stances...</div></div>
+        <div id="ca-promises-container"><div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px">Loading promises...</div></div>
+    </div>
     <div class="pe-container">
         <div class="pe-header"><span class="pol-mod-title">Party Events</span></div>
         <div id="party-events-feed" class="pe-feed"><div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px">Loading events...</div></div>
     </div>`;
+
+    // Load stances and promises portfolios on the actions page
+    _renderActionsStancePortfolio(f, n);
+    _renderActionsPromisesPanel(f, n, tick);
 
     // Load party events feed
     _loadPartyEventsFeed(n.id, f.id);
@@ -3035,6 +3054,126 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
 
     // Wire up config interactions
     wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost);
+}
+
+// ── Stances portfolio on the Actions page ──
+
+async function _renderActionsStancePortfolio(faction, nation) {
+    const container = document.getElementById('ca-stances-container');
+    if (!container) return;
+
+    const [stancesRes, issueStatesRes, shardRes] = await Promise.all([
+        _supabase.from('faction_issue_stance')
+            .select('*').eq('faction_id', faction.id).eq('nation_id', nation.id),
+        _supabase.from('issue_state')
+            .select('issue_id, salience, owned_by, pioneer_faction_id').eq('nation_id', nation.id),
+        _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+    ]);
+
+    const stances = stancesRes.data || [];
+    const issueStates = issueStatesRes.data || [];
+    const currentTick = shardRes.data?.current_tick || 0;
+    const issueStateMap = {};
+    for (const is of issueStates) issueStateMap[is.issue_id] = is;
+
+    const maxStances = STANCE_CONFIG.MAX_STANCES;
+    let rowsHtml = '';
+    if (stances.length === 0) {
+        rowsHtml = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px 0">No active stances.</div>';
+    } else {
+        for (const s of stances) {
+            const issueDef = ISSUE_DEFS[s.issue_id];
+            if (!issueDef) continue;
+            const axisInfo = IDEOLOGY_AXES.find(a => a.key === s.axis);
+            const sideLabel = s.side === 'left' ? axisInfo?.leftLabel : axisInfo?.rightLabel;
+            const sideColor = s.side === 'left' ? axisInfo?.leftColor : axisInfo?.rightColor;
+            const strength = Number(s.strength ?? 0);
+            const decayRate = Number(s.decay_rate ?? 0);
+            const isFading = strength <= 40;
+            const isWeak = strength <= 20;
+            const strengthColor = isWeak ? 'var(--dred)' : isFading ? 'var(--damber)' : 'var(--dgreen)';
+
+            rowsHtml += `
+            <div style="padding:6px 0;border-bottom:1px solid var(--dborder-1)">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                        <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0)">${escapeHtml(issueDef.label)}</span>
+                        <span style="font-family:var(--dfont-mono);font-size:10px;color:${sideColor};margin-left:6px">${s.intensity} ${sideLabel}</span>
+                    </div>
+                    <span style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3)">Held ${s.ticks_held || 0}t</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+                    <div style="flex:1;height:4px;background:var(--dborder-1);border-radius:2px;overflow:hidden">
+                        <div style="width:${strength}%;height:100%;background:${strengthColor}"></div>
+                    </div>
+                    <span style="font-family:var(--dfont-mono);font-size:10px;color:${strengthColor}">${strength.toFixed(0)}</span>
+                    <span style="font-family:var(--dfont-mono);font-size:10px;color:var(--dred)">-${decayRate}/t</span>
+                </div>
+            </div>`;
+        }
+    }
+
+    container.innerHTML = `
+    <div style="border:1px solid var(--dborder-1);border-radius:6px;padding:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-family:var(--dfont-ui);font-size:13px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:0.5px">Active Stances</span>
+            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${stances.length} / ${maxStances}</span>
+        </div>
+        ${rowsHtml}
+    </div>`;
+}
+
+// ── Promises panel on the Actions page ──
+
+async function _renderActionsPromisesPanel(faction, nation, tick) {
+    const container = document.getElementById('ca-promises-container');
+    if (!container) return;
+
+    const { data: promises } = await _supabase
+        .from('fundraiser_promises')
+        .select('*')
+        .eq('party_id', faction.id)
+        .eq('nation_id', nation.id)
+        .eq('status', 'active');
+
+    const activePromises = promises || [];
+
+    let rowsHtml = '';
+    if (activePromises.length === 0) {
+        rowsHtml = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px 0">No active promises.</div>';
+    } else {
+        for (const p of activePromises) {
+            const ticksLeft = Math.max(0, (p.deadline_tick || 0) - tick);
+            const isUrgent = ticksLeft <= 3;
+            const isCritical = ticksLeft <= 1;
+            const tickColor = isCritical ? 'var(--dred)' : isUrgent ? 'var(--damber)' : 'var(--dgreen)';
+            const label = p.promise_type === 'crisis'
+                ? (p.crisis_label || 'Resolve crisis')
+                : (p.stat_key || 'Improve stat').replace(/_/g, ' ');
+            const direction = p.promise_type === 'stat' ? (p.target_direction === 'increase' ? '↑' : '↓') : '✓';
+
+            rowsHtml += `
+            <div style="padding:6px 0;border-bottom:1px solid var(--dborder-1)">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                        <span style="font-family:var(--dfont-mono);font-size:12px;color:var(--dtext-0)">${direction}</span>
+                        <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0);margin-left:4px;text-transform:capitalize">${escapeHtml(label)}</span>
+                    </div>
+                    <span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${tickColor}">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} left</span>
+                </div>
+                ${p.target_value != null ? `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:2px">Target: ${p.target_value}</div>` : ''}
+            </div>`;
+        }
+    }
+
+    container.innerHTML = `
+    <div style="border:1px solid var(--dborder-1);border-radius:6px;padding:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-family:var(--dfont-ui);font-size:13px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:0.5px">Active Promises</span>
+            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${activePromises.length} / ${MAKE_PROMISE_CONFIG.MAX_ACTIVE}</span>
+        </div>
+        ${rowsHtml}
+    </div>`;
 }
 
 // ── Render config body for each action ──

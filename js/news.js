@@ -1,6 +1,5 @@
 // js/news.js — The Cruceran newspaper page
 
-import { adjustMomentumAll } from './game/momentum.js';
 import { tickToDate } from './utils.js';
 
 // Module-level references set during init
@@ -13,6 +12,7 @@ let _articleReaderHandler = null; // stored ref to prevent listener accumulation
 let _archiveBackContext = null; // navigation context for article reader back button
 let _editingArticleId = null; // null = create mode, UUID string = edit mode
 let _removeExistingImage = false; // flag: user wants to drop the current image on edit
+let _isAutocracyNation = false; // detected during init for reward display
 
 // Season key for quarterly issue grouping
 // Spring: Feb(1), Mar(2), Apr(3)  Summer: May(4), Jun(5), Jul(6)
@@ -32,6 +32,19 @@ export async function initNewspaper(supabase, state) {
     _shardNationIds = null; // reset cache on reinit
     _categoryFilter = 'all'; // reset filter on reinit
     _archiveBackContext = null; // reset: article reader "Back" goes to front page
+
+    // Detect autocracy for article reward display
+    _isAutocracyNation = false;
+    if (state.nation?.id) {
+        const { data: admin } = await supabase
+            .from('administrations')
+            .select('government_type')
+            .eq('nation_id', state.nation.id)
+            .order('started_at_tick', { ascending: false })
+            .limit(1).maybeSingle();
+        if (admin?.government_type === 'autocracy') _isAutocracyNation = true;
+    }
+
     const root = document.getElementById('newspaper-root');
     if (!root) return;
 
@@ -298,7 +311,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-modal">
                 <div class="nws-modal-header">
                     <h3>Write Article</h3>
-                    <span class="nws-ap-badge">+2 Momentum (4000+) · +4 Momentum (8000+)</span>
+                    <span class="nws-ap-badge" id="nws-reward-badge">+1 Enthusiasm (4000+) · +2 Enthusiasm (8000+)</span>
                 </div>
                 <button class="nws-modal-close" id="nws-modal-close">&times;</button>
                 <div class="nws-modal-body">
@@ -367,8 +380,49 @@ export async function initNewspaper(supabase, state) {
     bindArchivesNav(root);
     bindCategoryNav(root);
 
+    // Update reward badge text based on government type
+    const rewardBadge = document.getElementById('nws-reward-badge');
+    if (rewardBadge) {
+        rewardBadge.textContent = _isAutocracyNation
+            ? '+1 Backing (4000+)'
+            : '+1 Enthusiasm (4000+) · +2 Enthusiasm (8000+)';
+    }
+
     // === LOAD & DISPLAY ARTICLES ===
     await loadAndDisplayArticles();
+}
+
+/** Award enthusiasm to a democratic faction for writing an article */
+async function _applyArticleEnthusiasmReward(factionId, nationId, amount) {
+    const { data: standing } = await _supabase
+        .from('faction_electoral_standing')
+        .select('enthusiasm')
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId)
+        .maybeSingle();
+    const current = Number(standing?.enthusiasm ?? 50);
+    const newVal = Math.min(100, current + amount);
+    await _supabase
+        .from('faction_electoral_standing')
+        .update({ enthusiasm: newVal })
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId);
+}
+
+/** Award backing to an autocracy faction for writing an article */
+async function _applyArticleBackingReward(factionId) {
+    const { data: fps } = await _supabase
+        .from('faction_pillar_state')
+        .select('pillar, backing')
+        .eq('faction_id', factionId)
+        .maybeSingle();
+    if (!fps) return;
+    const current = Number(fps.backing ?? 0);
+    const newVal = Math.min(20, current + 1);
+    await _supabase
+        .from('faction_pillar_state')
+        .update({ backing: newVal })
+        .eq('faction_id', factionId);
 }
 
 function bindModalEvents() {
@@ -421,14 +475,19 @@ function bindModalEvents() {
         });
     }
 
-    // Character counter with AP threshold indicator
+    // Character counter with reward threshold indicator
     if (bodyInput && charCount) {
         bodyInput.addEventListener('input', () => {
             const len = bodyInput.value.length;
+            const rewardLabel = _isAutocracyNation ? 'Backing' : 'Enthusiasm';
             let tag;
-            if (len >= 8000) tag = ' · +4 Momentum';
-            else if (len >= 4000) tag = ` · +2 Momentum · ${8000 - len} more for +4`;
-            else tag = ` · ${4000 - len} more for momentum`;
+            if (_isAutocracyNation) {
+                tag = len >= 4000 ? ' · +1 Backing' : ` · ${4000 - len} more for +1 Backing`;
+            } else {
+                if (len >= 8000) tag = ' · +2 Enthusiasm';
+                else if (len >= 4000) tag = ` · +1 Enthusiasm · ${8000 - len} more for +2`;
+                else tag = ` · ${4000 - len} more for enthusiasm`;
+            }
             charCount.textContent = `${len} / 12000${tag}`;
             charCount.classList.toggle('nws-near-limit', len >= 11500);
             charCount.classList.toggle('nws-ap-qualified', len >= 4000 && len < 11500);
@@ -544,7 +603,6 @@ function bindSubmitHandler() {
                     imageUrl = await uploadArticleImage(nation.id, file);
                 }
 
-                const momentumReward = body.length >= 8000 ? 4 : body.length >= 4000 ? 2 : 0;
                 const { error } = await _supabase
                     .from('player_articles')
                     .insert({
@@ -562,12 +620,24 @@ function bindSubmitHandler() {
                 if (error) throw error;
 
                 let successMsg = 'Article published!';
-                if (momentumReward > 0) {
-                    adjustMomentumAll(_supabase, nation.id, faction.id, momentumReward, 'article:published')
-                        .catch(err => console.error('[News] Momentum adjustment failed:', err));
-                    successMsg = `Article published! +${momentumReward} Momentum.`;
+                if (_isAutocracyNation) {
+                    // Autocracy: +1 Backing for any article >= 4000 chars
+                    const backingReward = body.length >= 4000 ? 1 : 0;
+                    if (backingReward > 0) {
+                        _applyArticleBackingReward(faction.id).catch(err => console.error('[News] Backing reward failed:', err));
+                        successMsg = `Article published! +${backingReward} Backing.`;
+                    } else {
+                        successMsg = `Article published! (${body.length}/4000 chars — no backing reward)`;
+                    }
                 } else {
-                    successMsg = `Article published! (${body.length}/4000 chars — no momentum reward)`;
+                    // Democracy: +1 Enthusiasm (4000+), +2 Enthusiasm (8000+)
+                    const enthusiasmReward = body.length >= 8000 ? 2 : body.length >= 4000 ? 1 : 0;
+                    if (enthusiasmReward > 0) {
+                        _applyArticleEnthusiasmReward(faction.id, nation.id, enthusiasmReward).catch(err => console.error('[News] Enthusiasm reward failed:', err));
+                        successMsg = `Article published! +${enthusiasmReward} Enthusiasm.`;
+                    } else {
+                        successMsg = `Article published! (${body.length}/4000 chars — no enthusiasm reward)`;
+                    }
                 }
                 showFormSuccess(successMsg);
             }
@@ -691,9 +761,13 @@ function openEditModal(article) {
     const charCount = document.getElementById('nws-char-count');
     if (charCount) {
         let tag;
-        if (bodyLen >= 8000) tag = ' · +4 Momentum';
-        else if (bodyLen >= 4000) tag = ` · +2 Momentum · ${8000 - bodyLen} more for +4`;
-        else tag = ` · ${4000 - bodyLen} more for momentum`;
+        if (_isAutocracyNation) {
+            tag = bodyLen >= 4000 ? ' · +1 Backing' : ` · ${4000 - bodyLen} more for +1 Backing`;
+        } else {
+            if (bodyLen >= 8000) tag = ' · +2 Enthusiasm';
+            else if (bodyLen >= 4000) tag = ` · +1 Enthusiasm · ${8000 - bodyLen} more for +2`;
+            else tag = ` · ${4000 - bodyLen} more for enthusiasm`;
+        }
         charCount.textContent = `${bodyLen} / 12000${tag}`;
         charCount.classList.toggle('nws-near-limit', bodyLen >= 11500);
         charCount.classList.toggle('nws-ap-qualified', bodyLen >= 4000 && bodyLen < 11500);
