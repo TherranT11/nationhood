@@ -40,6 +40,7 @@ DECLARE
         ARRAY['bill_comments',               $$DELETE FROM bill_comments WHERE faction_id = '%s'$$],
         ARRAY['bill_amendment_requests',     $$DELETE FROM bill_amendment_requests WHERE faction_id = '%s'$$],
         ARRAY['bill_support',                 $$DELETE FROM bill_support WHERE faction_id = '%s'$$],
+        ARRAY['active_laws.proposed_by',      $$UPDATE active_laws SET proposed_by = NULL WHERE proposed_by = '%s'$$],
         ARRAY['bills',                        $$DELETE FROM bills WHERE proposed_by = '%s'$$],
         ARRAY['campaign_actions',             $$DELETE FROM campaign_actions WHERE party_id = '%s'$$],
         ARRAY['impeachment_proceedings',     $$DELETE FROM impeachment_proceedings WHERE initiated_by_faction_id = '%s'$$],
