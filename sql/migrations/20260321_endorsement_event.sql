@@ -1,19 +1,6 @@
--- World Events Timeline: ensure indexes support the world events query,
--- update fire_system_event RPC with proper event name/category mapping,
--- and add trigger_key to existing event_log inserts that were missing it.
+-- Add party_endorsement trigger_key to fire_system_event RPC.
+-- Re-creates the function with the new mapping entry.
 
--- Composite index for world events feed (all nations, ordered by tick, filtered by trigger_key NOT NULL)
-CREATE INDEX IF NOT EXISTS idx_event_log_world_feed
-ON event_log (fired_at_tick DESC)
-WHERE trigger_key IS NOT NULL;
-
--- Ensure nation_id index exists for the join
-CREATE INDEX IF NOT EXISTS idx_event_log_nation_id
-ON event_log (nation_id);
-
--- Update fire_system_event RPC with proper event name & category mapping
--- (See sql/create_fire_system_event.sql for the full function definition)
--- Drop first: the old version may have a different return type which blocks CREATE OR REPLACE
 DROP FUNCTION IF EXISTS fire_system_event(uuid, text, integer, jsonb);
 
 CREATE OR REPLACE FUNCTION fire_system_event(
@@ -78,7 +65,7 @@ BEGIN
             WHEN 'aid_resumed'              THEN 'Economic Aid Resumed'
             WHEN 'snap_election_called'     THEN 'Snap Election Called'
             WHEN 'incumbent_lockin'         THEN 'Incumbent Re-elected'
-            WHEN 'party_endorsement'       THEN 'Presidential Endorsement'
+            WHEN 'party_endorsement'        THEN 'Presidential Endorsement'
             ELSE REPLACE(p_trigger_key, '_', ' ')
         END,
         CASE

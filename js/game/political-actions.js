@@ -877,6 +877,35 @@ export async function executeEndorsementPreference(supabase, factionId, nationId
         }
     });
 
+    // Fire event_log entry for new or changed endorsements
+    if (existingTarget !== endorsedFactionId) {
+        try {
+            const { data: names } = await supabase
+                .from('factions')
+                .select('id, faction_name')
+                .in('id', [factionId, endorsedFactionId]);
+            const endorsingName = names?.find(n => n.id === factionId)?.faction_name || 'Unknown';
+            const endorsedName = names?.find(n => n.id === endorsedFactionId)?.faction_name || 'Unknown';
+            const desc = existingTarget
+                ? `${endorsingName} has switched their presidential endorsement to ${endorsedName}.`
+                : `${endorsingName} has endorsed ${endorsedName}'s candidate for president.`;
+            await supabase.from('event_log').insert({
+                nation_id: nationId,
+                event_name: 'Presidential Endorsement',
+                trigger_key: 'party_endorsement',
+                category: 'government',
+                description_chosen: desc,
+                effects_applied: {
+                    endorsing_party: endorsingName,
+                    endorsed_party: endorsedName,
+                    endorsing_faction_id: factionId,
+                    endorsed_faction_id: endorsedFactionId
+                },
+                fired_at_tick: currentTick
+            });
+        } catch (_) { /* non-blocking */ }
+    }
+
     return {
         success: true,
         newAp,
