@@ -716,18 +716,19 @@ initPage('home', async (state) => {
     .limit(1);
   const profile = (profiles && profiles.length > 0) ? profiles[0] : {};
 
-  // ── Flag (same source as top bar: nation.flag_url) ──
+  // ── Flag (same source as top bar: nation.flag_url, fallback to assets/flags/{name}.png) ──
   const flagBox = document.getElementById('nation-flag-box');
-  if (nation.flag_url) {
-    const img = document.createElement('img');
-    img.src = nation.flag_url;
-    img.alt = nation.name + ' flag';
-    flagBox.innerHTML = '';
-    flagBox.appendChild(img);
-  } else {
+  const flagUrl = nation.flag_url || `assets/flags/${nation.name}.png`;
+  const flagImg = document.createElement('img');
+  flagImg.src = flagUrl;
+  flagImg.alt = nation.name + ' flag';
+  flagImg.onerror = () => {
+    flagImg.remove();
     document.getElementById('nation-abbr').textContent =
       nation.name.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3);
-  }
+  };
+  flagBox.innerHTML = '';
+  flagBox.appendChild(flagImg);
 
   // ── Name & Motto ──
   document.getElementById('nation-name').textContent = nation.name;

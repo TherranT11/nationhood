@@ -384,8 +384,11 @@ async function loadPage() {
 
 // ---------- Render ----------
 function render(factions, parties, relations, ambFrom, ambTo, latestElection) {
-    // Flag from profile
-    if (profile.flag_url) document.getElementById('nation-flag').src = profile.flag_url;
+    // Flag from profile, fallback to assets/flags/{name}.png
+    const flagEl = document.getElementById('nation-flag');
+    const flagSrc = profile.flag_url || `assets/flags/${nation.name}.png`;
+    flagEl.src = flagSrc;
+    flagEl.onerror = () => { flagEl.style.display = 'none'; };
 
     // Motto
     document.getElementById('motto-view').textContent = profile.motto || '';
