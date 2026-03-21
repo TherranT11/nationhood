@@ -250,6 +250,7 @@ initPage('politics', async (state) => {
         caucusFactions,
         pillarStates,
         autocracyTracker,
+        autocracyActionLog,
     });
 });
 
@@ -289,7 +290,7 @@ async function renderPartyTab(f, nation, data) {
         president, administration,
         voterBlocs, playerBlocApprovals,
         caucusFactions,
-        pillarStates, autocracyTracker,
+        pillarStates, autocracyTracker, autocracyActionLog,
     } = data;
     const faction = f; // alias for compatibility with sub-renderers
 
