@@ -30,7 +30,7 @@ initPage('politics', async (state) => {
     // Fetch total seats from all parties
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick')
+        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -696,7 +696,9 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
         const pLabel = PILLAR_LABELS[pillar] || pillar;
         const pColorPillar = PILLAR_COLORS[pillar] || '#888';
         const backing = Number(fps.backing).toFixed(1);
-        const lName = fps.leader_name || '—';
+        const lName = (party?.leader_first_name && party?.leader_last_name)
+            ? `${party.leader_first_name} ${party.leader_last_name}`
+            : (fps.leader_name || '—');
         const lAge = fps.leader_age || '?';
         const isMe = fps.faction_id === f.id;
         const isSM = fps.is_strongman;
