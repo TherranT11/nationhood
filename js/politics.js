@@ -440,12 +440,21 @@ async function renderPartyTab(f, nation, data) {
         </div>
     </div>`;
 
+    const votersTabBtn = isAutoNation ? '' : '<button class="pol-page-tab" data-page-tab="voters">Voters</button>';
+    const votersContent = isAutoNation ? '' : `
+    <div class="pol-page-content" data-page-content="voters">
+        <div id="voters-container" class="vc-page" style="min-height:300px;">
+            <div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;">Loading vote composition...</div>
+        </div>
+    </div>`;
+
     const html = `
     <div class="pol-page-tabs">
         <button class="pol-page-tab active" data-page-tab="politics">Politics</button>
         <button class="pol-page-tab" data-page-tab="actions">Actions</button>
         ${electorateTabBtn}
         ${otherPartiesTabBtn}
+        ${votersTabBtn}
     </div>
     <div class="pol-page-content active" data-page-content="politics">
     ${politicsTabContent}
@@ -457,13 +466,15 @@ async function renderPartyTab(f, nation, data) {
         </div>
     </div>
     ${electorateContent}
-    ${otherPartiesContent}`;
+    ${otherPartiesContent}
+    ${votersContent}`;
 
     document.getElementById('content-area').innerHTML = html;
 
-    // Wire up page-level sub-tabs (Politics / Actions / Electorate / Other Parties)
+    // Wire up page-level sub-tabs (Politics / Actions / Electorate / Other Parties / Voters)
     let otherPartiesLoaded = false;
     let electorateSpreadLoaded = false;
+    let votersLoaded = false;
     document.querySelectorAll('.pol-page-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('.pol-page-tab').forEach(t => t.classList.remove('active'));
@@ -481,6 +492,11 @@ async function renderPartyTab(f, nation, data) {
             if (target === 'other-parties' && !otherPartiesLoaded) {
                 otherPartiesLoaded = true;
                 renderOtherPartiesTab(f, nation, allParties, allPartyIdeologies, coalition, totalSeats, voterBlocs, currentTick);
+            }
+            // Lazy-load Voters tab on first click
+            if (target === 'voters' && !votersLoaded) {
+                votersLoaded = true;
+                renderVotersTab(f, nation, allParties, allPartyIdeologies, voterBlocs, currentTick, voteSharePct, totalSeats, mySeats);
             }
         });
     });
@@ -4947,6 +4963,248 @@ function renderElectorateSpreadTab(playerFaction, nation, allParties, allPartyId
     }
 
     render();
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   VOTERS (VOTE COMPOSITION) TAB
+   ═══════════════════════════════════════════════════════════════════ */
+
+// Three-pillar colors
+const VC_IDEO_COLOR = '#7ec8c0';
+const VC_PERF_COLOR = '#c8a44e';
+const VC_MOM_COLOR  = '#7ec87e';
+
+async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeologies, voterBlocs, currentTick, voteSharePct, totalSeats, mySeats) {
+    const container = document.getElementById('voters-container');
+    if (!container) return;
+
+    const partyColor = playerFaction.party_color || '#9b7ec8';
+    const partyAbbr = playerFaction.abbreviation || '??';
+    const blocs = (voterBlocs || []).filter(b => b.is_active !== false);
+
+    // Fetch full three-pillar data for the player's party
+    const { data: playerApprovals } = await _supabase
+        .from('faction_bloc_approval')
+        .select('bloc_id, ideology_alignment, performance_perception, momentum, preference_score, vote_share')
+        .eq('faction_id', playerFaction.id);
+
+    const approvalByBloc = {};
+    for (const row of (playerApprovals || [])) {
+        approvalByBloc[row.bloc_id] = row;
+    }
+
+    // Compute weighted averages across blocs
+    const totalWeight = blocs.reduce((s, b) => s + (b.population_weight || 0), 0) || 1;
+    let wIdeo = 0, wPerf = 0, wMom = 0, wPref = 0, wVote = 0;
+    for (const b of blocs) {
+        const a = approvalByBloc[b.id];
+        if (!a) continue;
+        const w = b.population_weight || 0;
+        wIdeo += (a.ideology_alignment ?? 50) * w;
+        wPerf += (a.performance_perception ?? 50) * w;
+        wMom  += (a.momentum ?? 0) * w;
+        wPref += (a.preference_score ?? 40) * w;
+        wVote += (a.vote_share ?? 0) * w;
+    }
+    const avgIdeo = Math.round(wIdeo / totalWeight);
+    const avgPerf = Math.round(wPerf / totalWeight);
+    const avgMom  = (wMom / totalWeight).toFixed(1);
+    const avgPref = Math.round(wPref / totalWeight);
+
+    // Vote share
+    const vsNum = voteSharePct;
+    const seatsText = `${mySeats} / ${totalSeats} seats`;
+
+    // Rank among parties
+    const sortedByVote = [...(allParties || [])].sort((a, b) => (b.national_vote_share || 0) - (a.national_vote_share || 0));
+    const rank = sortedByVote.findIndex(p => p.id === playerFaction.id) + 1;
+    const ordinal = rank === 1 ? '1st' : rank === 2 ? '2nd' : rank === 3 ? '3rd' : rank + 'th';
+
+    // Build bloc cards sorted by vote_share descending
+    const blocCards = blocs.map(b => {
+        const a = approvalByBloc[b.id] || {};
+        const ideo = a.ideology_alignment ?? 50;
+        const perf = a.performance_perception ?? 50;
+        const mom  = a.momentum ?? 0;
+        const pref = a.preference_score ?? 40;
+        const vs   = a.vote_share ?? 0;
+        const momMapped = Math.max(0, Math.min(100, 35 + mom * 1.3));
+        // Pillar contributions (raw weighted)
+        const ideoW = 0.40, perfW = 0.25, momW = 0.35;
+        const totalPillar = ideo * ideoW + perf * perfW + momMapped * momW;
+        const ideoPct = totalPillar > 0 ? Math.round((ideo * ideoW / totalPillar) * 100) : 33;
+        const perfPct = totalPillar > 0 ? Math.round((perf * perfW / totalPillar) * 100) : 33;
+        const momPct  = Math.max(0, 100 - ideoPct - perfPct);
+        return {
+            id: b.id,
+            name: b.bloc_name || 'Unknown Bloc',
+            popWeight: b.population_weight || 0,
+            ideo, perf, mom, pref, vs,
+            ideoPct, perfPct, momPct,
+            priorityIssues: b.priority_issues || [],
+        };
+    }).sort((a, b) => b.vs - a.vs);
+
+    // Split into "voting for you" (vs > threshold) and "not voting for you"
+    const votingFor = blocCards.filter(b => b.vs >= 0.15);
+    const notVoting = blocCards.filter(b => b.vs < 0.15);
+
+    // Pillar contribution summary
+    const ideoContrib = Math.round(avgIdeo * 0.40);
+    const perfContrib = Math.round(avgPerf * 0.25);
+    const momMappedAvg = Math.max(0, Math.min(100, 35 + parseFloat(avgMom) * 1.3));
+    const momContrib = Math.round(momMappedAvg * 0.35);
+
+    function renderBlocCard(b, isLost) {
+        const prefColor = b.pref >= 60 ? 'var(--dgreen)' : b.pref >= 40 ? 'var(--damber)' : 'var(--dred)';
+        const vsDisplay = (b.vs * 100).toFixed(1);
+        const popDisplay = (b.popWeight * 100).toFixed(0);
+
+        if (isLost) {
+            return `
+            <div class="vc-lost-seg">
+                <div class="vc-ls-top">
+                    <div class="vc-ls-name">${escapeHtml(b.name)}</div>
+                    <div class="vc-ls-pct">${vsDisplay}%</div>
+                </div>
+                <div class="vc-ls-reason">
+                    Preference score: ${b.pref}. Ideology alignment: ${b.ideo}. Performance: ${b.perf}. Momentum: ${b.mom > 0 ? '+' : ''}${b.mom.toFixed(1)}.
+                    <br>This bloc represents ~${popDisplay}% of the electorate.
+                </div>
+            </div>`;
+        }
+
+        return `
+        <div class="vc-voter-seg" style="border-left-color:${prefColor};">
+            <div class="vc-vs-top">
+                <div>
+                    <div class="vc-vs-name">${escapeHtml(b.name)}</div>
+                    <div class="vc-vs-pct">~${popDisplay}% of electorate</div>
+                </div>
+                <div style="text-align:right;">
+                    <div class="vc-vs-share" style="color:${prefColor};">${vsDisplay}%</div>
+                    <div style="font-family:var(--dfont-mono);font-size:7px;color:var(--dtxt-dim);">vote share</div>
+                </div>
+            </div>
+            <div class="vc-vs-bar">
+                <div class="vc-vs-bar-seg" style="width:${b.ideoPct}%;background:${VC_IDEO_COLOR};"></div>
+                <div class="vc-vs-bar-seg" style="width:${b.perfPct}%;background:${VC_PERF_COLOR};"></div>
+                <div class="vc-vs-bar-seg" style="flex:1;background:${VC_MOM_COLOR};"></div>
+            </div>
+            <div class="vc-vs-labels">
+                <div class="vc-vs-lbl"><div class="vc-vs-lbl-dot" style="background:${VC_IDEO_COLOR}"></div>Ideology ${b.ideo}</div>
+                <div class="vc-vs-lbl"><div class="vc-vs-lbl-dot" style="background:${VC_PERF_COLOR}"></div>Performance ${b.perf}</div>
+                <div class="vc-vs-lbl"><div class="vc-vs-lbl-dot" style="background:${VC_MOM_COLOR}"></div>Momentum ${b.mom > 0 ? '+' : ''}${b.mom.toFixed(1)}</div>
+            </div>
+        </div>`;
+    }
+
+    const votingForHtml = votingFor.length > 0
+        ? votingFor.map(b => renderBlocCard(b, false)).join('')
+        : '<div style="color:var(--dtext-3);font-size:9px;padding:10px;">No blocs with significant vote share.</div>';
+
+    const notVotingHtml = notVoting.length > 0
+        ? notVoting.map(b => renderBlocCard(b, true)).join('')
+        : '<div style="color:var(--dtext-3);font-size:9px;padding:10px;">No blocs in this category.</div>';
+
+    const votingForTotal = votingFor.reduce((s, b) => s + b.vs, 0);
+    const notVotingTotal = notVoting.reduce((s, b) => s + b.vs, 0);
+
+    container.innerHTML = `
+    <div class="vc-page-hdr">
+        <span class="vc-ph-title">Vote Composition</span>
+        <span style="color:var(--dtxt-dim);font-family:var(--dfont-mono);">—</span>
+        <span class="vc-ph-nation">${escapeHtml(nation.name)}</span>
+    </div>
+    <div class="vc-card">
+        <div class="vc-card-hdr">
+            <div class="vc-ch-left">
+                <div class="vc-ch-dot" style="background:${partyColor}"></div>
+                <span class="vc-ch-title">Who Voted For You — and Why</span>
+            </div>
+            <div class="vc-ch-right">
+                <span class="vc-ch-badge" style="color:${partyColor};background:${hexToRgba(partyColor, 0.09)};border-color:${hexToRgba(partyColor, 0.22)}">${escapeHtml(partyAbbr)}</span>
+            </div>
+        </div>
+        <!-- Headline numbers -->
+        <div class="vc-headline-row">
+            <div class="vc-headline-cell">
+                <div class="vc-hc-label">Vote Share</div>
+                <div class="vc-hc-num" style="color:${partyColor}">${vsNum}%</div>
+                <div class="vc-hc-sub">${ordinal} place. ${seatsText}.</div>
+            </div>
+            <div class="vc-headline-cell">
+                <div class="vc-hc-label">Avg Preference Score</div>
+                <div class="vc-hc-num" style="color:${avgPref >= 55 ? 'var(--dgreen)' : avgPref >= 40 ? 'var(--damber)' : 'var(--dred)'}">${avgPref}</div>
+                <div class="vc-hc-sub">Population-weighted average across all voter blocs.</div>
+            </div>
+            <div class="vc-headline-cell">
+                <div class="vc-hc-label">Average Momentum</div>
+                <div style="display:flex;align-items:baseline;gap:6px;">
+                    <div class="vc-hc-num" style="color:${parseFloat(avgMom) > 0 ? 'var(--dgreen)' : parseFloat(avgMom) < -5 ? 'var(--dred)' : 'var(--damber)'}">${avgMom > 0 ? '+' : ''}${avgMom}</div>
+                </div>
+                <div class="vc-hc-sub">Positive = gaining support. Negative = losing ground.</div>
+            </div>
+        </div>
+        <!-- Pillar contributions -->
+        <div class="vc-pillar-section">
+            <div class="vc-sec-label" style="margin-bottom:12px;">Three-pillar breakdown (population-weighted averages)</div>
+            <div class="vc-pillar-grid">
+                <div class="vc-pillar-card" style="border-top-color:${VC_IDEO_COLOR};">
+                    <div class="vc-pc-label">Ideology Alignment</div>
+                    <div style="display:flex;align-items:baseline;gap:4px;">
+                        <div class="vc-pc-num" style="color:${VC_IDEO_COLOR};">${avgIdeo}</div>
+                        <div class="vc-pc-unit">/ 100</div>
+                    </div>
+                    <div class="vc-pc-bar"><div class="vc-pc-fill" style="width:${avgIdeo}%;background:${VC_IDEO_COLOR};"></div></div>
+                    <div class="vc-pc-breakdown">
+                        Weight: <strong>40%</strong> of preference score. Contribution: <strong>${ideoContrib}</strong> points.
+                    </div>
+                </div>
+                <div class="vc-pillar-card" style="border-top-color:${VC_PERF_COLOR};">
+                    <div class="vc-pc-label">Performance Perception</div>
+                    <div style="display:flex;align-items:baseline;gap:4px;">
+                        <div class="vc-pc-num" style="color:${VC_PERF_COLOR};">${avgPerf}</div>
+                        <div class="vc-pc-unit">/ 100</div>
+                    </div>
+                    <div class="vc-pc-bar"><div class="vc-pc-fill" style="width:${avgPerf}%;background:${VC_PERF_COLOR};"></div></div>
+                    <div class="vc-pc-breakdown">
+                        Weight: <strong>25%</strong> of preference score. Contribution: <strong>${perfContrib}</strong> points.
+                    </div>
+                </div>
+                <div class="vc-pillar-card" style="border-top-color:${VC_MOM_COLOR};">
+                    <div class="vc-pc-label">Momentum</div>
+                    <div style="display:flex;align-items:baseline;gap:4px;">
+                        <div class="vc-pc-num" style="color:${VC_MOM_COLOR};">${avgMom > 0 ? '+' : ''}${avgMom}</div>
+                        <div class="vc-pc-unit">raw</div>
+                    </div>
+                    <div class="vc-pc-bar"><div class="vc-pc-fill" style="width:${Math.max(0, momMappedAvg)}%;background:${VC_MOM_COLOR};"></div></div>
+                    <div class="vc-pc-breakdown">
+                        Weight: <strong>35%</strong> of preference score. Mapped: <strong>${Math.round(momMappedAvg)}</strong>/100. Contribution: <strong>${momContrib}</strong> points.
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Voter bloc segments -->
+        <div class="vc-segments">
+            <div class="vc-seg-col">
+                <div class="vc-seg-col-hdr">
+                    <span style="font-size:14px;">✓</span>
+                    <span class="vc-seg-col-title">Blocs voting for you</span>
+                    <span class="vc-seg-col-sub">${(votingForTotal * 100).toFixed(1)}% share</span>
+                </div>
+                ${votingForHtml}
+            </div>
+            <div class="vc-seg-col">
+                <div class="vc-seg-col-hdr">
+                    <span style="font-size:14px;color:var(--dred);">✗</span>
+                    <span class="vc-seg-col-title" style="color:var(--dtext-2);">Low-support blocs</span>
+                    <span class="vc-seg-col-sub">${(notVotingTotal * 100).toFixed(1)}% share</span>
+                </div>
+                ${notVotingHtml}
+            </div>
+        </div>
+    </div>`;
 }
 
 /* ═══════════════════════════════════════════════════════════════════

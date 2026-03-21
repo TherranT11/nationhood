@@ -3689,6 +3689,82 @@ body.light-mode .pol-blocs-box {
     .es-legend-bar { gap: 8px; }
     .es-legend { flex-wrap: wrap; gap: 3px; }
 }
+
+/* ═══════════════════════════════════════
+   VOTERS (VOTE COMPOSITION) TAB
+   ═══════════════════════════════════════ */
+.vc-page { padding: 16px 20px 48px; display: flex; flex-direction: column; gap: 14px; }
+.vc-page-hdr { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.vc-ph-title { font-family: var(--dfont-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dtext-3); }
+.vc-ph-nation { font-family: var(--dfont-mono); font-size: 9px; font-weight: 700; color: var(--dteal); letter-spacing: 0.08em; }
+/* Card */
+.vc-card { background: var(--dbg-1); border: 1px solid var(--dborder-0); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+.vc-card-hdr { background: var(--dbg-3); border-bottom: 1px solid var(--dborder-hair); height: 38px; min-height: 38px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; flex-shrink: 0; }
+.vc-ch-left { display: flex; align-items: center; gap: 7px; }
+.vc-ch-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.vc-ch-title { font-family: var(--dfont-mono); font-size: 8.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dtext-3); }
+.vc-ch-right { display: flex; align-items: center; gap: 7px; }
+.vc-ch-badge { font-family: var(--dfont-mono); font-size: 7.5px; font-weight: 700; padding: 2px 7px; border-radius: 3px; border: 1px solid; letter-spacing: 0.04em; }
+/* Section label */
+.vc-sec-label { font-family: var(--dfont-mono); font-size: 7.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dtxt-dim); margin-bottom: 8px; }
+/* Headline row */
+.vc-headline-row { display: grid; grid-template-columns: 1fr 1fr 1fr; border-bottom: 1px solid var(--dborder-hair); }
+.vc-headline-cell { padding: 16px 18px; border-right: 1px solid var(--dborder-hair); display: flex; flex-direction: column; gap: 4px; }
+.vc-headline-cell:last-child { border-right: none; }
+.vc-hc-label { font-family: var(--dfont-mono); font-size: 7.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dtext-3); margin-bottom: 2px; }
+.vc-hc-num { font-family: var(--dfont-mono); font-size: 36px; font-weight: 800; line-height: 1; }
+.vc-hc-sub { font-size: 9px; color: var(--dtext-3); line-height: 1.4; }
+/* Pillar contribution cards */
+.vc-pillar-section { padding: 14px 18px; border-bottom: 1px solid var(--dborder-hair); }
+.vc-pillar-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.vc-pillar-card { background: var(--dbg-3); border-radius: 4px; border: 1px solid var(--dborder-0); border-top: 3px solid; padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; }
+.vc-pc-label { font-family: var(--dfont-mono); font-size: 7.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dtext-3); }
+.vc-pc-num { font-family: var(--dfont-mono); font-size: 22px; font-weight: 800; line-height: 1; }
+.vc-pc-unit { font-family: var(--dfont-mono); font-size: 12px; font-weight: 600; color: var(--dtext-3); }
+.vc-pc-bar { height: 3px; background: var(--dbg-hover); border-radius: 1px; position: relative; }
+.vc-pc-fill { height: 100%; border-radius: 1px; position: absolute; left: 0; top: 0; }
+.vc-pc-breakdown { font-size: 8.5px; color: var(--dtext-3); line-height: 1.4; }
+.vc-pc-breakdown strong { color: var(--dtext-2); font-weight: 600; }
+/* Voter bloc segments */
+.vc-segments { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--dborder-hair); }
+.vc-seg-col { padding: 14px 18px; }
+.vc-seg-col:first-child { border-right: 1px solid var(--dborder-hair); }
+.vc-seg-col-hdr { display: flex; align-items: center; gap: 7px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--dborder-hair); }
+.vc-seg-col-title { font-size: 11px; font-weight: 700; color: var(--dtext-0); }
+.vc-seg-col-sub { font-size: 9px; color: var(--dtext-3); margin-left: auto; font-family: var(--dfont-mono); }
+/* Individual voter segment card */
+.vc-voter-seg { padding: 9px 10px; background: var(--dbg-3); border-radius: 4px; border: 1px solid var(--dborder-0); border-left: 3px solid; margin-bottom: 6px; }
+.vc-voter-seg:last-child { margin-bottom: 0; }
+.vc-vs-top { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.vc-vs-name { font-size: 10.5px; font-weight: 700; color: var(--dtext-0); flex: 1; }
+.vc-vs-pct { font-family: var(--dfont-mono); font-size: 8px; color: var(--dtext-3); flex-shrink: 0; }
+.vc-vs-share { font-family: var(--dfont-mono); font-size: 11px; font-weight: 800; flex-shrink: 0; }
+/* Three-pillar bar inside voter segment */
+.vc-vs-bar { height: 5px; display: flex; gap: 1px; border-radius: 2px; overflow: hidden; margin-bottom: 5px; }
+.vc-vs-bar-seg { height: 100%; }
+.vc-vs-labels { display: flex; gap: 8px; flex-wrap: wrap; }
+.vc-vs-lbl { display: flex; align-items: center; gap: 3px; font-family: var(--dfont-mono); font-size: 7.5px; color: var(--dtext-3); }
+.vc-vs-lbl-dot { width: 6px; height: 6px; border-radius: 1px; flex-shrink: 0; }
+/* Lost voter segments */
+.vc-lost-seg { padding: 9px 10px; background: rgba(217,83,79,0.04); border-radius: 4px; border: 1px solid var(--dred-border); border-left: 3px solid var(--dred); margin-bottom: 6px; }
+.vc-lost-seg:last-child { margin-bottom: 0; }
+.vc-ls-top { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.vc-ls-name { font-size: 10.5px; font-weight: 700; color: var(--dtext-1); flex: 1; }
+.vc-ls-pct { font-family: var(--dfont-mono); font-size: 11px; font-weight: 800; color: var(--dred); flex-shrink: 0; }
+.vc-ls-reason { font-size: 9px; color: var(--dtext-3); line-height: 1.45; }
+/* Pillar colors */
+.vc-ideology-color { color: #7ec8c0; }
+.vc-perf-color { color: #c8a44e; }
+.vc-momentum-color { color: #7ec87e; }
+/* Responsive */
+@media (max-width: 860px) {
+    .vc-page { padding: 12px 8px 32px; }
+    .vc-headline-row { grid-template-columns: 1fr; }
+    .vc-headline-cell { border-right: none; border-bottom: 1px solid var(--dborder-hair); }
+    .vc-pillar-grid { grid-template-columns: 1fr; }
+    .vc-segments { grid-template-columns: 1fr; }
+    .vc-seg-col:first-child { border-right: none; border-bottom: 1px solid var(--dborder-hair); }
+}
 </style>
 </head>
 <body>
