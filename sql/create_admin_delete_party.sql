@@ -62,7 +62,11 @@ DECLARE
         ARRAY['ministry_requests',            $$DELETE FROM ministry_requests WHERE faction_id = '%s'$$],
         ARRAY['momentum_log',                $$DELETE FROM momentum_log WHERE faction_id = '%s'$$],
         ARRAY['fundraiser_promises',         $$DELETE FROM fundraiser_promises WHERE party_id = '%s'$$],
-        ARRAY['donor_trust',                 $$DELETE FROM donor_trust WHERE party_id = '%s'$$]
+        ARRAY['donor_trust',                 $$DELETE FROM donor_trust WHERE party_id = '%s'$$],
+        ARRAY['wiki_pages.created_by',       $$UPDATE wiki_pages SET created_by = NULL WHERE created_by = '%s'$$],
+        ARRAY['wiki_pages.updated_by',       $$UPDATE wiki_pages SET updated_by = NULL WHERE updated_by = '%s'$$],
+        ARRAY['wiki_pages.locked_by',        $$UPDATE wiki_pages SET locked_by = NULL WHERE locked_by = '%s'$$],
+        ARRAY['faction_coalitions(proposer)', $$UPDATE faction_coalitions SET proposed_by_faction_id = NULL WHERE proposed_by_faction_id = '%s'$$]
     ];
     i INT;
 BEGIN
