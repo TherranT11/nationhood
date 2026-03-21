@@ -21,6 +21,7 @@ import { IDEOLOGY_AXES } from './ideology.js';
 import { statDirectionSign, ISSUE_CATEGORY_STATS } from './stats.js';
 import { isAutocracy } from './government-types.js';
 import { fetchActiveCoalition } from './government-structure.js';
+import { deductAP } from './config.js';
 
 // ============================================================================
 // ISSUE DEFINITIONS
@@ -1678,6 +1679,12 @@ export async function executeTakeStance(supabase, factionId, nationId, issueId, 
         return { success: false, message: `Stance cooldown: wait ${STANCE_CONFIG.COOLDOWN_WINDOW} ticks between stances` };
     }
 
+    // ── Deduct AP ──
+    const apResult = await deductAP(supabase, factionId, STANCE_CONFIG.AP_COST);
+    if (!apResult.success) {
+        return { success: false, message: apResult.error || 'Insufficient AP' };
+    }
+
     // ── Max stances check ──
     const { data: existingStances } = await supabase
         .from('faction_issue_stance')
@@ -1798,6 +1805,7 @@ export async function executeTakeStance(supabase, factionId, nationId, issueId, 
         message: `Took ${intensity} ${sideLabel} stance on ${issueDef.label}`,
         stance,
         effects,
+        newAp: apResult.newAp,
     };
 }
 
@@ -1962,3 +1970,11 @@ export async function logActivity(supabase, factionId, nationId, actionType, act
         console.error(`[Electorate] Failed to log activity (${actionType}):`, error.message);
     }
 }
+
+// KNOWN ISSUES:
+// - activity_log and campaign_actions rows accumulate forever. No periodic pruning exists.
+//   TODO: Add a tick-based cleanup (e.g., delete rows older than 100 ticks) or a DB cron job.
+// - Rally/Attack/Make Promise deduct AP after effects are applied. The early AP check prevents
+//   the common case, and the atomic RPC prevents DB over-spending, but a race condition could
+//   let effects apply without AP deduction if two requests pass the early check simultaneously.
+//   Acceptable for alpha; fix by moving deductAP before effects in a future refactor.

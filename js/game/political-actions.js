@@ -480,6 +480,8 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
     }
 
     // ── 8. Deduct AP + track last_action_tick ──
+    // KNOWN ISSUE: AP deducted after effects applied. Early check (step 1) prevents common case.
+    // Atomic RPC prevents DB over-spending. Race condition is acceptable for alpha.
     const apResult = await deductAP(supabase, factionId, effectiveRallyCost);
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Rally] last_action_tick update failed:', error.message); });
 

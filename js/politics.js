@@ -542,6 +542,10 @@ function _feedTickLabel(tick) {
     return `${_MONTHS[tick % 12]} ${2000 + Math.floor(tick / 12)}`;
 }
 
+// KNOWN ISSUE: Activity Feed loads once and does not auto-update.
+// No realtime subscriptions exist for any electorate tables.
+// Other players' actions won't appear until page reload.
+// TODO: Add Supabase realtime channel on activity_log for live updates.
 async function _loadActivityFeed(factionId, nationId) {
     const scrollEl = document.getElementById('pol-feed-scroll');
     if (!scrollEl) return;
@@ -4932,6 +4936,13 @@ async function _renderStancePortfolio(container, faction, nation) {
             btn.textContent = 'Reinforcing...';
             const result = await executeTakeStance(_supabase, faction.id, nation.id, issueId, axis, side, intensity, currentTick);
             if (result.success) {
+                // Update client AP
+                if (result.newAp != null) {
+                    faction.action_points = result.newAp;
+                    if (_currentFaction) _currentFaction.action_points = result.newAp;
+                    const apEl = document.getElementById('topbar-ap');
+                    if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + result.newAp + ' AP</span>';
+                }
                 // Re-render the portfolio
                 container.querySelector('.sp-card')?.remove();
                 await _renderStancePortfolio(container, faction, nation);
@@ -5152,6 +5163,13 @@ function _openTakeStanceModal(faction, nation, currentTick, issueStateMap, exist
         const result = await executeTakeStance(_supabase, faction.id, nation.id, selectedIssue, selectedAxis, selectedSide, selectedIntensity, currentTick);
 
         if (result.success) {
+            // Update client AP
+            if (result.newAp != null) {
+                faction.action_points = result.newAp;
+                if (_currentFaction) _currentFaction.action_points = result.newAp;
+                const apEl = document.getElementById('topbar-ap');
+                if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + result.newAp + ' AP</span>';
+            }
             document.getElementById('stance-modal-overlay')?.remove();
             // Re-render portfolio
             const esContainer = document.getElementById('electorate-spread-container');
