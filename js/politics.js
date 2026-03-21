@@ -5011,6 +5011,61 @@ const ES_AXES = [
 const ES_ALIGNED_THRESHOLD = 15;
 const ES_PARTIAL_THRESHOLD = 25;
 
+/**
+ * Calculate centrist/moderate/radical zone boundaries for an axis.
+ * Asymmetric: radical zone grows on the side the mean leans toward + with polarization.
+ *
+ * @param {number} mean - Electorate mean (0-100)
+ * @param {number} variance - Electorate variance (5-45)
+ * @returns {{ zones: Array<{id:string, left:number, width:number, label:string}>, zoneForPos: function }}
+ */
+function calculateIdeologyZones(mean, variance) {
+    // Polarization proxy: higher variance = more polarized
+    const polarization = Math.min(100, Math.max(0, (variance - 5) / 35 * 100));
+
+    // Centrist zone: centered at 50, width shrinks with polarization
+    const centristHalf = Math.max(5, 15 - polarization * 0.10);
+    const centristLeft = 50 - centristHalf;
+    const centristRight = 50 + centristHalf;
+
+    // Moderate/radical split: on each side, radical takes more space with higher polarization
+    // and on the side the mean leans toward
+    const meanBias = (mean - 50) / 50; // -1 (full left) to +1 (full right)
+    const radicalFraction = 0.15 + polarization * 0.004; // 0.15–0.55 of non-centrist space
+
+    // Left side: 0 to centristLeft
+    const leftSpace = centristLeft;
+    const leftRadicalBias = Math.max(0, -meanBias); // bigger when mean leans left
+    const leftRadicalFrac = Math.min(0.85, radicalFraction + leftRadicalBias * 0.3);
+    const leftRadicalWidth = leftSpace * leftRadicalFrac;
+    const leftModerateWidth = leftSpace - leftRadicalWidth;
+
+    // Right side: centristRight to 100
+    const rightSpace = 100 - centristRight;
+    const rightRadicalBias = Math.max(0, meanBias);
+    const rightRadicalFrac = Math.min(0.85, radicalFraction + rightRadicalBias * 0.3);
+    const rightRadicalWidth = rightSpace * rightRadicalFrac;
+    const rightModerateWidth = rightSpace - rightRadicalWidth;
+
+    const zones = [
+        { id: 'radical-left',    left: 0,                                       width: leftRadicalWidth,  label: 'Radical' },
+        { id: 'moderate-left',   left: leftRadicalWidth,                         width: leftModerateWidth, label: 'Moderate' },
+        { id: 'centrist',        left: centristLeft,                              width: centristRight - centristLeft, label: 'Centrist' },
+        { id: 'moderate-right',  left: centristRight,                             width: rightModerateWidth, label: 'Moderate' },
+        { id: 'radical-right',   left: centristRight + rightModerateWidth,        width: rightRadicalWidth, label: 'Radical' },
+    ];
+
+    function zoneForPos(pos) {
+        if (pos < leftRadicalWidth) return 'radical-left';
+        if (pos < centristLeft) return 'moderate-left';
+        if (pos < centristRight) return 'centrist';
+        if (pos < centristRight + rightModerateWidth) return 'moderate-right';
+        return 'radical-right';
+    }
+
+    return { zones, zoneForPos };
+}
+
 async function renderElectorateSpreadTab(playerFaction, nation, allParties, allPartyIdeologies, currentTick) {
     const container = document.getElementById('electorate-spread-container');
     if (!container) return;
@@ -5155,6 +5210,43 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
                 </div>`;
             }
 
+            // Zone overlays (centrist/moderate/radical)
+            const { zones, zoneForPos } = calculateIdeologyZones(eMean, eStd);
+            let zonesHtml = '';
+            const zoneColors = {
+                'radical-left':   'rgba(239,68,68,0.10)',
+                'moderate-left':  'rgba(251,191,36,0.07)',
+                'centrist':       'rgba(74,222,128,0.08)',
+                'moderate-right': 'rgba(251,191,36,0.07)',
+                'radical-right':  'rgba(239,68,68,0.10)',
+            };
+            const zoneBorders = {
+                'radical-left':   'rgba(239,68,68,0.25)',
+                'moderate-left':  'rgba(251,191,36,0.18)',
+                'centrist':       'rgba(74,222,128,0.22)',
+                'moderate-right': 'rgba(251,191,36,0.18)',
+                'radical-right':  'rgba(239,68,68,0.25)',
+            };
+            const zoneLabelColors = {
+                'radical-left':   'rgba(239,68,68,0.50)',
+                'moderate-left':  'rgba(251,191,36,0.45)',
+                'centrist':       'rgba(74,222,128,0.50)',
+                'moderate-right': 'rgba(251,191,36,0.45)',
+                'radical-right':  'rgba(239,68,68,0.50)',
+            };
+            for (const z of zones) {
+                if (z.width < 1) continue; // skip negligible zones
+                const showLabel = z.width > 8; // only show label if zone is wide enough
+                zonesHtml += `<div class="es-zone" style="left:${z.left}%;width:${z.width}%;background:${zoneColors[z.id]};border-left:1px solid ${zoneBorders[z.id]};border-right:1px solid ${zoneBorders[z.id]}">
+                    ${showLabel ? `<span class="es-zone-label" style="color:${zoneLabelColors[z.id]}">${z.label}</span>` : ''}
+                </div>`;
+            }
+
+            // Determine player zone
+            const playerNormPos = (Number(playerIdeo[ax.key] ?? 0) + 100) / 2;
+            const playerZone = zoneForPos(playerNormPos);
+            const playerZoneLabel = zones.find(z => z.id === playerZone)?.label || '';
+
             const isLast = i === ES_AXES.length - 1;
 
             axesHtml += `
@@ -5164,7 +5256,10 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
                         <div class="es-axis-name">${escapeHtml(ax.leftLabel)} / ${escapeHtml(ax.rightLabel)}</div>
                         <div class="es-axis-read">${leanText}</div>
                     </div>
-                    <div class="es-match ${match.cls}">${match.label}</div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span class="es-zone-badge" data-zone="${playerZone}">${playerZoneLabel}</span>
+                        <div class="es-match ${match.cls}">${match.label}</div>
+                    </div>
                 </div>
                 <div class="es-spectrum">
                     <div class="es-pole-row">
@@ -5172,6 +5267,7 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
                         <span class="es-pole">${escapeHtml(ax.rightLabel)}</span>
                     </div>
                     <div class="es-track">
+                        ${zonesHtml}
                         <div class="es-center"><div class="es-center-label">Center</div></div>
                         <div class="es-variance" style="left:${varLeft}%;width:${varWidth}%"></div>
                         <div class="es-emean" style="left:${eMean}%"><div class="es-emean-label">Electorate</div></div>
