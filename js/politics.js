@@ -591,7 +591,9 @@ function renderAutocracyEventsBox(actionLog, allParties, pillarStates, currentTi
             const faction = (allParties || []).find(p => p.id === entry.faction_id);
             const fName = faction?.faction_name || 'Unknown';
             const fColor = faction?.party_color || '#888';
-            const actionName = ACTION_DISPLAY_NAMES[entry.action_type] || entry.action_type;
+            // Strip _buff/_debuff suffixes and look up display name from base action
+            const baseActionType = entry.action_type.replace(/_(buff|debuff)$/, '');
+            const actionName = ACTION_DISPLAY_NAMES[entry.action_type] || ACTION_DISPLAY_NAMES[baseActionType] || baseActionType;
             const date = tickToDate(entry.tick);
 
             // For arrest/execute/release, show the target leader and faction
@@ -802,6 +804,11 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
             <div style="display:flex;flex-direction:column;gap:6px">
                 ${factionCardsHtml}
             </div>
+        </div>
+
+        <div class="pol-row-4" style="margin-top:24px;text-align:center">
+            <button class="pol-disband-btn" id="pol-disband-party-btn" style="background:transparent;color:#d9534f;border:1px solid #d9534f;padding:8px 20px;border-radius:4px;cursor:pointer;font-size:0.75rem;opacity:0.6;transition:opacity 0.2s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">Disband Party</button>
+            <div style="font-size:0.65rem;color:var(--dtext-3);margin-top:4px">Permanently disband your party and leave the game.</div>
         </div>
 
     </div>`;
