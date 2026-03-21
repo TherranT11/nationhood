@@ -75,7 +75,7 @@ export async function resolveStandardCoup(supabase, opts) {
             wildcard_pillar: factionPillar,
             wildcard_backing: Math.max(0, Number(pCtx.pillarStates.find(p => p.pillar === factionPillar)?.backing || 0)),
             wildcard_neglect_ticks: 0,
-            tracker_value: 10,
+            tracker_value: 10, public_tracker_value: 30,
             last_updated_tick: currentTick,
         }).eq('nation_id', nationId);
 
@@ -141,7 +141,7 @@ export async function resolveStandardCoup(supabase, opts) {
         }).eq('id', nationId);
 
         await supabase.from('autocracy_tracker').update({
-            tracker_value: 30, last_updated_tick: currentTick,
+            tracker_value: 30, public_tracker_value: 30, last_updated_tick: currentTick,
         }).eq('nation_id', nationId);
 
         // Open pyrrhic window
@@ -171,7 +171,7 @@ export async function resolveStandardCoup(supabase, opts) {
         await supabase.from('nations').update({ legitimacy: 35 }).eq('id', nationId);
 
         await supabase.from('autocracy_tracker').update({
-            tracker_value: 30, last_updated_tick: currentTick,
+            tracker_value: 30, public_tracker_value: 30, last_updated_tick: currentTick,
         }).eq('nation_id', nationId);
 
         const stabLoss = roll(1, 6);
@@ -193,7 +193,7 @@ export async function resolveStandardCoup(supabase, opts) {
         await supabase.from('nations').update({ legitimacy: 50 }).eq('id', nationId);
 
         await supabase.from('autocracy_tracker').update({
-            tracker_value: 30, last_updated_tick: currentTick,
+            tracker_value: 30, public_tracker_value: 30, last_updated_tick: currentTick,
         }).eq('nation_id', nationId);
 
         const stabLoss = roll(1, 6);

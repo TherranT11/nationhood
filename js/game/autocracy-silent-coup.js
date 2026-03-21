@@ -303,7 +303,7 @@ export async function processSilentCoupResolution(supabase, nation, currentTick)
 
         // Reset tracker to 30
         await supabase.from('autocracy_tracker').update({
-            tracker_value: 30, last_updated_tick: currentTick,
+            tracker_value: 30, public_tracker_value: 30, last_updated_tick: currentTick,
         }).eq('nation_id', nation.id);
 
         // Honor accepted offers with minister positions

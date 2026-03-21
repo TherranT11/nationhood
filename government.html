@@ -343,6 +343,29 @@ async function renderAutocracyGovPanels() {
 
     let html = '';
 
+    // ── Support Track — public-facing regime support indicator ──
+    if (tracker) {
+        const pubVal = tracker.public_tracker_value ?? 30;
+        // 0 = full regime, 100 = full coup. Clamp for safety.
+        const pct = Math.max(0, Math.min(100, pubVal));
+        // Color transitions: green (regime) → amber → red (coup)
+        const dotColor = pct <= 30 ? '#5cb85c' : pct <= 50 ? '#c8a64e' : pct <= 70 ? '#d48a3c' : '#d9534f';
+
+        html += `
+        <div class="info-block" style="margin-bottom:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">Support</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:9px;color:#5cb85c;font-weight:700;white-space:nowrap">REGIME</span>
+                <div style="flex:1;position:relative;height:12px;background:var(--bg-depth-2);border:1px solid var(--border-dim);border-radius:6px;overflow:visible">
+                    <div style="position:absolute;left:${pct}%;top:50%;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:50%;background:${dotColor};border:2px solid var(--bg-surface);box-shadow:0 0 4px ${dotColor}88;transition:left 0.5s ease"></div>
+                </div>
+                <span style="font-size:9px;color:#d9534f;font-weight:700;white-space:nowrap">COUP</span>
+            </div>
+        </div>`;
+    }
+
     // ── Putsch banner (martial law active) ──
     if (putsch) {
         const smResponseNeeded = isStrongmanPlayer && !putsch.strongman_response;

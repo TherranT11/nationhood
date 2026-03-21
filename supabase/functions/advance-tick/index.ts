@@ -9595,17 +9595,25 @@ async function createAdministration(supabase, nationId, nation, coalition, allPa
         // Fire timeline event for government formed
         try {
             const partyNames = coalitionParties.map(p => p.party_name).join(', ');
-            await supabase.rpc('fire_system_event', {
-                p_trigger_key: 'government_formed',
-                p_nation_id: nationId,
-                p_tick: currentTick,
-                p_placeholders: {
+            const seatDetail = coalitionParties
+                .slice().sort((a, b) => (b.seats || 0) - (a.seats || 0))
+                .map(p => `${p.party_name} (${p.seats || 0})`)
+                .join(', ');
+            const coalitionDesc = `${pmName || 'Unknown'} of ${pmPartyName} forms a coalition government with ${partyNames}. Seat breakdown: ${seatDetail}.`;
+            await supabase.from('event_log').insert({
+                nation_id: nationId,
+                event_name: 'Coalition Formed',
+                trigger_key: 'government_formed',
+                category: 'government',
+                description_chosen: coalitionDesc,
+                effects_applied: {
                     admin_name: adminName,
                     pm: pmName || 'Unknown',
                     pm_party: pmPartyName,
                     coalition_parties: partyNames,
                     total_seats: String(totalSeats)
-                }
+                },
+                fired_at_tick: currentTick
             });
         } catch (e) { /* non-blocking */ }
 
@@ -10755,7 +10763,6 @@ async function processElections(supabase, nation, currentTick) {
 
         // Use candidate-based voting for presidential elections, party-based for parliamentary
         let data, error;
-        try {
         if (electionType === 'presidential') {
             const { error: snapshotErr } = await supabase.rpc('snapshot_presidential_endorsements', {
                 p_nation_id: nation.id,
@@ -10799,12 +10806,6 @@ async function processElections(supabase, nation, currentTick) {
             }
             console.log(`Election RPC succeeded on retry for ${nation.name}`);
         }
-        } finally {
-            // Always restore electability after electoral wound penalty, even if election RPC throws
-            for (const wr of woundRestorations) {
-                await supabase.from('factions').update({ electability: wr.originalElectability }).eq('id', wr.factionId);
-            }
-        }
 
         // Mark the scheduled election record as completed with full results
         await supabase.from('elections')
@@ -10826,15 +10827,21 @@ async function processElections(supabase, nation, currentTick) {
 
             // Fire election result timeline event with seat breakdown
             try {
-                const seatSummary = completedElection.results.seats
-                    .slice().sort((a, b) => (b.seats || 0) - (a.seats || 0))
+                const sortedSeats = completedElection.results.seats
+                    .slice().sort((a, b) => (b.seats || 0) - (a.seats || 0));
+                const seatSummary = sortedSeats
                     .map(s => `${s.party_name || 'Unknown'}: ${s.seats}`)
                     .join(', ');
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'election_held',
-                    p_nation_id: nation.id,
-                    p_tick: currentTick,
-                    p_placeholders: { election_type: electionType || 'parliamentary', seats: seatSummary }
+                const elType = electionType || 'parliamentary';
+                const electionDesc = `${elType.charAt(0).toUpperCase() + elType.slice(1)} election held. Results: ${seatSummary}.`;
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: 'Election Held',
+                    trigger_key: 'election_held',
+                    category: 'government',
+                    description_chosen: electionDesc,
+                    effects_applied: { election_type: elType, seats: seatSummary },
+                    fired_at_tick: currentTick
                 });
             } catch (e) { /* non-blocking */ }
         }
@@ -13905,6 +13912,18 @@ async function processAutocracyTrackerDecay(supabase, nation, currentTick) {
     }
 
     console.log(`[trackerDecay] ${nation.name}: ${oldValue} → ${newValue}`);
+
+    // 1d3 roll: on a 3, sync public_tracker_value to actual tracker_value
+    const roll = Math.floor(Math.random() * 3) + 1; // 1, 2, or 3
+    if (roll === 3) {
+        await supabase.from('autocracy_tracker').update({
+            public_tracker_value: newValue,
+        }).eq('nation_id', nation.id);
+        console.log(`[trackerDecay] ${nation.name}: public tracker synced → ${newValue} (rolled ${roll})`);
+    } else {
+        console.log(`[trackerDecay] ${nation.name}: public tracker unchanged (rolled ${roll})`);
+    }
+
     return { nation: nation.name, tick: currentTick, oldTracker: oldValue, newTracker: newValue };
 }
 
@@ -15716,7 +15735,7 @@ async function resolveStandardCoup(supabase, opts) {
             wildcard_pillar: factionPillar,
             wildcard_backing: Math.max(0, Number(pCtx.pillarStates.find(p => p.pillar === factionPillar)?.backing || 0)),
             wildcard_neglect_ticks: 0,
-            tracker_value: 10,
+            tracker_value: 10, public_tracker_value: 30,
             last_updated_tick: currentTick,
         }).eq('nation_id', nationId);
 
@@ -15782,7 +15801,7 @@ async function resolveStandardCoup(supabase, opts) {
         }).eq('id', nationId);
 
         await supabase.from('autocracy_tracker').update({
-            tracker_value: 30, last_updated_tick: currentTick,
+            tracker_value: 30, public_tracker_value: 30, last_updated_tick: currentTick,
         }).eq('nation_id', nationId);
 
         // Open pyrrhic window
@@ -15812,7 +15831,7 @@ async function resolveStandardCoup(supabase, opts) {
         await supabase.from('nations').update({ legitimacy: 35 }).eq('id', nationId);
 
         await supabase.from('autocracy_tracker').update({
-            tracker_value: 30, last_updated_tick: currentTick,
+            tracker_value: 30, public_tracker_value: 30, last_updated_tick: currentTick,
         }).eq('nation_id', nationId);
 
         const stabLoss = roll(1, 6);
@@ -15834,7 +15853,7 @@ async function resolveStandardCoup(supabase, opts) {
         await supabase.from('nations').update({ legitimacy: 50 }).eq('id', nationId);
 
         await supabase.from('autocracy_tracker').update({
-            tracker_value: 30, last_updated_tick: currentTick,
+            tracker_value: 30, public_tracker_value: 30, last_updated_tick: currentTick,
         }).eq('nation_id', nationId);
 
         const stabLoss = roll(1, 6);
@@ -16670,7 +16689,7 @@ async function processSilentCoupResolution(supabase, nation, currentTick) {
 
         // Reset tracker to 30
         await supabase.from('autocracy_tracker').update({
-            tracker_value: 30, last_updated_tick: currentTick,
+            tracker_value: 30, public_tracker_value: 30, last_updated_tick: currentTick,
         }).eq('nation_id', nation.id);
 
         // Honor accepted offers with minister positions
@@ -23547,853 +23566,6 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
         debtAfter: newDebt,
         debtDelta
     };
-}
-
-// ==================== PROTEST TICK PROCESSING ====================
-
-const PROTEST_TIER6_CRISIS_ID = '00000000-0000-0000-0000-000000000020';
-const PROTEST_TIER7_CRISIS_ID = '00000000-0000-0000-0000-000000000021';
-const PROTEST_CALLING_COOLDOWN = 12;
-const PROTEST_ENDORSING_COOLDOWN = 6;
-const PROTEST_USE_DECAY_INTERVAL = 12;
-const PROTEST_FATIGUE_LOOKBACK = 6;
-const PROTEST_FATIGUE_PER_PROTEST = 10;
-const PROTEST_TIER6_DURATION = 6;
-const PROTEST_TIER7_DURATION = 6;
-const PROTEST_TIER7_DEMAND_MIN = 6;
-const PROTEST_JOINT_BONUS_PER = 15;
-const PROTEST_JOINT_BONUS_CAP = 30;
-const PROTEST_FIZZLE_BLOCS = ['centrist', 'business', 'academic'];
-
-const PROTEST_TIER_LABELS: Record<number, string> = {
-    1: 'Embarrassing Fizzle', 2: 'Modest Showing', 3: 'Respectable Turnout',
-    4: 'Strong Protest', 5: 'Mass Demonstration', 6: 'Historic Protest', 7: 'Nationwide Protest',
-};
-
-// Inline headline templates for protest articles (subset of valdorian-templates.js)
-const PROTEST_HEADLINES: Record<string, string[]> = {
-    protest_fizzle: [
-        "{party} Protest Fizzles — Sparse Turnout Embarrasses Opposition",
-        "Opposition Rally Draws Modest Crowd; Government Approval Holds Steady",
-        "{party}'s Protest Over {grievance} Fails to Gain Traction",
-    ],
-    protest_respectable: [
-        "Thousands March Against {grievance} in {nation}",
-        "{party} Draws Respectable Turnout for {grievance} Protest",
-    ],
-    protest_strong: [
-        "Large Crowds Rally Against Government — {party} Leads Protest Over {grievance}",
-        "Tens of Thousands Take to Streets Demanding Action on {grievance}",
-    ],
-    protest_mass: [
-        "Mass Demonstration Rocks {nation} — Unrest Rises as Protesters Demand Change",
-        "Unprecedented Turnout: {party} Leads Massive Protest Over {grievance}",
-    ],
-    protest_crisis_started: [
-        "Historic Protest Erupts — {nation} Plunged Into Crisis",
-        "Nationwide Protest Paralyzes {nation} — Government Faces Existential Crisis",
-    ],
-    protest_crisis_tick: [
-        "Protest Crisis Enters Day {ticks_active} — No Resolution in Sight",
-        "{nation} Protest Continues: Government Approval Slides Further",
-    ],
-    protest_crisis_ended: [
-        "Protest Crisis Ends in {nation} — Protesters Disperse",
-        "Protesters Claim Victory as Government Meets Demands",
-        "Government Weathers Protest Storm — Crisis Declared Over",
-    ],
-    protest_epo_resolved: [
-        "Government Crackdown Ends Protest Crisis — Interior Ministry Deploys Forces",
-    ],
-    protest_epo_escalated: [
-        "Crackdown Backfires Spectacularly — Protest Escalates to Nationwide Crisis",
-        "Police Action Inflames Protesters — {nation} Faces Nationwide Uprising",
-    ],
-    protest_emergency: [
-        "National Emergency Declared — Government Ends Protest Crisis at Severe Cost",
-        "{nation} Under Emergency Rule as Government Crushes Protest Movement",
-    ],
-    protest_called_off: [
-        "{party} Calls Off Protest — Moderates Breathe Sigh of Relief",
-    ],
-    protest_public_address: [
-        "Government Issues Public Address Amid Ongoing Protest Crisis",
-    ],
-};
-
-function pickProtestHeadline(eventType: string, vars: Record<string, string>): string {
-    const pool = PROTEST_HEADLINES[eventType] || ['Protest Update'];
-    const template = pool[Math.floor(Math.random() * pool.length)];
-    return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] || '');
-}
-
-function protestArticleTier(protestTier: number): number {
-    if (protestTier >= 6) return 1;
-    if (protestTier >= 4) return 2;
-    return 3;
-}
-
-function getProtestEventType(tier: number, crisisCreated: boolean): string {
-    if (crisisCreated) return 'protest_crisis_started';
-    if (tier <= 2) return 'protest_fizzle';
-    if (tier === 3) return 'protest_respectable';
-    if (tier === 4) return 'protest_strong';
-    if (tier === 5) return 'protest_mass';
-    return 'protest_crisis_started';
-}
-
-async function dispatchProtestArticle(
-    supabase: any,
-    nationId: string,
-    eventType: string,
-    headline: string,
-    lede: string,
-    articleTier: number,
-    tick: number,
-    sourceId?: string
-) {
-    try {
-        await supabase.from('valdorian_articles').insert({
-            nation_id: nationId,
-            event_type: eventType,
-            tier: articleTier,
-            section: 'politics',
-            headline,
-            lede,
-            body_paragraphs: [],
-            quotes: [],
-            byline_reporter: ['Maren Solis', 'Davi Cortes', 'Elena Brandt'][Math.floor(Math.random() * 3)],
-            topic_tags: ['protest'],
-            source_event_id: sourceId || null,
-            tick,
-        });
-    } catch (err: any) {
-        console.warn(`[Protest] Article dispatch failed (non-fatal): ${err.message}`);
-    }
-}
-
-async function fireProtestEvent(
-    supabase: any,
-    nationId: string,
-    triggerKey: string,
-    tick: number,
-    placeholders: Record<string, any>
-) {
-    try {
-        await supabase.rpc('fire_system_event', {
-            p_nation_id: nationId,
-            p_trigger_key: triggerKey,
-            p_tick: tick,
-            p_placeholders: placeholders,
-        });
-    } catch (err: any) {
-        console.warn(`[Protest] fire_system_event failed (non-fatal): ${err.message}`);
-    }
-}
-
-const PROTEST_HIGHER_IS_BAD = new Set([
-    'civil_unrest', 'terrorism', 'political_violence', 'crime_rate',
-    'corruption', 'pollution', 'carbon_emissions', 'poverty_rate',
-    'income_inequality', 'inflation', 'unemployment', 'drug_use',
-    'illegal_immigration', 'emigration', 'fuel_prices', 'incarceration_rate',
-    'debt', 'debt_growth', 'cost_of_living',
-]);
-
-const PROTEST_TIER7_ELIGIBLE = new Set([
-    'gdp_growth', 'inflation', 'unemployment', 'crime_rate',
-    'healthcare_quality', 'healthcare_accessibility', 'literacy',
-    'higher_education', 'happiness', 'standard_of_living',
-    'poverty_rate', 'income_inequality', 'fuel_prices', 'pollution',
-    'digital_infrastructure', 'physical_infrastructure', 'energy_generation',
-]);
-
-/**
- * Process all protest-related tick logic for a single nation:
- *  1. Resolve 1-tick-old "resolving" protests (roll turnout, apply effects)
- *  2. Apply per-tick crisis effects for active Tier 6/7 protests
- *  3. Handle crisis expiry and call-off wind-down
- *  4. Clear lockouts when crises end
- *  5. Decay use counters for all factions
- */
-async function processProtests(supabase, nation, currentTick) {
-    const results = [];
-
-    // ── 0. Election-ends-protest: if an election completed this tick, expire all active protests ──
-    const { data: electionsThisTick } = await supabase
-        .from('elections')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('status', 'completed')
-        .eq('election_tick', currentTick)
-        .limit(1);
-    if (electionsThisTick && electionsThisTick.length > 0) {
-        const { data: activeProtests } = await supabase
-            .from('protest_log')
-            .select('id, faction_id, tier')
-            .eq('nation_id', nation.id)
-            .in('status', ['resolving', 'crisis_active']);
-        for (const ap of (activeProtests || [])) {
-            await supabase.from('protest_log').update({
-                status: 'election_ended', tick_resolved: currentTick,
-            }).eq('id', ap.id);
-            // Clear crisis if any
-            if (ap.tier >= 6) {
-                const cId = ap.tier === 7 ? PROTEST_TIER7_CRISIS_ID : PROTEST_TIER6_CRISIS_ID;
-                await supabase.from('active_crises').delete()
-                    .eq('nation_id', nation.id).eq('crisis_id', cId);
-            }
-            // Clear lockouts
-            await supabase.from('factions')
-                .update({ protest_locked_by: null })
-                .eq('protest_locked_by', ap.id);
-            console.log(`[Protest] Election ended — protest ${ap.id} expired`);
-        }
-        if ((activeProtests || []).length > 0) {
-            results.push({ type: 'election_ended', count: activeProtests.length });
-        }
-    }
-
-    // ── 1. Resolve "resolving" protests (called previous tick) ──
-    const { data: resolvingProtests } = await supabase
-        .from('protest_log')
-        .select('*')
-        .eq('nation_id', nation.id)
-        .eq('status', 'resolving')
-        .lt('tick_called', currentTick);   // called before this tick → 1-tick delay passed
-
-    for (const protest of (resolvingProtests || [])) {
-        try {
-            const result = await resolveProtestTick(supabase, nation, protest, currentTick);
-            results.push({ type: 'resolved', protestId: protest.id, ...result });
-        } catch (err) {
-            console.error(`[Protest] Failed to resolve protest ${protest.id}: ${err.message}`);
-        }
-    }
-
-    // ── 2. Process active protest crises ──
-    const { data: activeProtestCrises } = await supabase
-        .from('protest_log')
-        .select('*')
-        .eq('nation_id', nation.id)
-        .eq('status', 'crisis_active');
-
-    for (const crisis of (activeProtestCrises || [])) {
-        try {
-            const result = await processProtestCrisisTick(supabase, nation, crisis, currentTick);
-            results.push({ type: 'crisis_tick', protestId: crisis.id, ...result });
-        } catch (err) {
-            console.error(`[Protest] Failed to process crisis tick for ${crisis.id}: ${err.message}`);
-        }
-    }
-
-    // ── 3. Handle called-off protests (wind-down complete) ──
-    const { data: calledOffProtests } = await supabase
-        .from('protest_log')
-        .select('id, faction_id, crisis_ended_tick')
-        .eq('nation_id', nation.id)
-        .eq('status', 'called_off')
-        .lte('crisis_ended_tick', currentTick);
-
-    for (const co of (calledOffProtests || [])) {
-        await finalizeProtestEnd(supabase, nation.id, co, currentTick);
-        results.push({ type: 'call_off_complete', protestId: co.id });
-    }
-
-    // ── 4. Decay use counters for factions (best-effort, non-blocking) ──
-    try {
-        await decayProtestUseCounters(supabase, nation.id, currentTick);
-    } catch (decayErr) {
-        console.error(`[Protest] Use counter decay failed for ${nation.name} (non-fatal):`, decayErr);
-    }
-
-    return results;
-}
-
-/**
- * Resolve a single protest: roll turnout, apply tier effects, set cooldowns.
- */
-async function resolveProtestTick(supabase, nation, protest, currentTick) {
-    const factionId = protest.faction_id;
-    const nationId = nation.id;
-
-    // Fetch global protest history
-    const { data: protestHistory } = await supabase
-        .from('protest_log')
-        .select('tick_called, tier, turnout_score')
-        .eq('nation_id', nationId)
-        .eq('status', 'resolved')
-        .gte('tick_called', currentTick - 8);
-    const historyForFatigue = (protestHistory || []).map(p => ({ tick: p.tick_called }));
-    const historyForEscalation = (protestHistory || []).map(p => ({
-        tick: p.tick_called, tier: p.tier, score: p.turnout_score,
-    }));
-
-    // Fetch ministry actions for crackdown detection
-    const { data: ministryActions } = await supabase
-        .from('ministry_action_log')
-        .select('action_key, applied_at_tick')
-        .eq('nation_id', nationId)
-        .gte('applied_at_tick', currentTick - 4);
-    const hasCrackdown = (ministryActions || []).some(a =>
-        ['enforcePublicOrder', 'surveillanceExpansion'].includes(a.action_key) &&
-        a.applied_at_tick >= currentTick - 4
-    );
-
-    // Fetch endorsements
-    const { data: endorsements } = await supabase
-        .from('protest_endorsements')
-        .select('id, faction_id')
-        .eq('protest_id', protest.id);
-    const endorsementCount = (endorsements || []).length;
-
-    // Calculate condition score
-    let conditionScore = 50;
-    const breakdown = { base: 50 };
-
-    const unrestBonus = ((nation.civil_unrest || 0) / 100) * 30;
-    conditionScore += unrestBonus;
-    breakdown.civil_unrest = +unrestBonus.toFixed(1);
-
-    const unhappyBonus = ((100 - (nation.happiness || 50)) / 100) * 25;
-    conditionScore += unhappyBonus;
-    breakdown.happiness = +unhappyBonus.toFixed(1);
-
-    const polBonus = ((nation.polarization || 0) / 100) * 20;
-    conditionScore += polBonus;
-    breakdown.polarization = +polBonus.toFixed(1);
-
-    const violencePenalty = ((nation.political_violence || 0) / 100) * 15;
-    conditionScore -= violencePenalty;
-    breakdown.political_violence = +(-violencePenalty).toFixed(1);
-
-    // Protest fatigue (global)
-    const cutoff = currentTick - PROTEST_FATIGUE_LOOKBACK;
-    const recentCount = historyForFatigue.filter(p => p.tick >= cutoff).length;
-    const fatiguePenalty = recentCount * PROTEST_FATIGUE_PER_PROTEST;
-    conditionScore -= fatiguePenalty;
-    breakdown.protest_fatigue = -fatiguePenalty;
-
-    // Hidden crackdown bonus
-    if (hasCrackdown) {
-        conditionScore += 12;
-        breakdown.crackdown_bonus = 12;
-    }
-
-    // Grievance unpopularity bonus
-    const gd = protest.grievance_data || {};
-    let grievanceBonus = 0;
-    if (protest.grievance_type === 'minister') {
-        grievanceBonus = Math.max(0, (60 - (gd.approval || 50)) / 4);
-    } else if (protest.grievance_type === 'activePolicy') {
-        grievanceBonus = Math.max(0, (60 - (gd.publicApproval || 50)) / 4);
-    } else if (protest.grievance_type === 'statFailure') {
-        grievanceBonus = Math.min(15, (gd.failureScore || 0) / 2);
-    }
-    conditionScore += grievanceBonus;
-    breakdown.grievance_bonus = +grievanceBonus.toFixed(1);
-
-    conditionScore = Math.max(0, Math.min(100, conditionScore));
-
-    // Joint protest bonus
-    const jointBonus = Math.min(PROTEST_JOINT_BONUS_CAP, endorsementCount * PROTEST_JOINT_BONUS_PER);
-    const adjustedCondition = Math.min(100, conditionScore + jointBonus);
-
-    // Roll turnout
-    const distFromCenter = Math.abs(adjustedCondition - 50);
-    const variance = Math.max(8, 25 - (distFromCenter * 0.34));
-    const swing = (Math.random() * 2 - 1) * variance;
-    let turnoutScore = Math.max(0, Math.min(100, adjustedCondition + swing));
-
-    // Map to tier
-    let tier;
-    if (turnoutScore < 15) tier = 1;
-    else if (turnoutScore < 30) tier = 2;
-    else if (turnoutScore < 45) tier = 3;
-    else if (turnoutScore < 60) tier = 4;
-    else if (turnoutScore < 75) tier = 5;
-    else if (turnoutScore < 90) tier = 6;
-    else tier = 7;
-
-    // Escalation path: two strong T5+ in 8 ticks → T7
-    if (tier >= 5 && turnoutScore >= 70) {
-        const recentHigh = historyForEscalation.filter(p =>
-            p.tier >= 5 && p.score >= 65 && p.tick >= currentTick - 8
-        );
-        if (recentHigh.length >= 1) tier = 7;
-    }
-
-    // Apply tier effects
-    const appliedEffects = [];
-
-    if (tier <= 2) {
-        // Fizzle: -2 momentum with centrist/business/academic blocs
-        const { data: allBlocs } = await supabase
-            .from('voter_blocs')
-            .select('id, bloc_name')
-            .eq('nation_id', nationId)
-            .eq('is_active', true);
-        for (const blocKeyword of PROTEST_FIZZLE_BLOCS) {
-            const matchBloc = (allBlocs || []).find(b => b.bloc_name.toLowerCase().includes(blocKeyword));
-            if (matchBloc) {
-                await adjustMomentum(supabase, nationId, factionId, matchBloc.id, -2, `protest:fizzle:tier${tier}`);
-                appliedEffects.push({ stat: `momentum:${matchBloc.bloc_name}`, delta: -2 });
-            }
-        }
-        // Free gov boost if gov approval >= 45
-        if ((nation.gov_approval || 0) >= 45) {
-            const boost = Math.ceil(Math.random() * 3); // 1d3
-            await adjustGovernmentApprovalEvent(supabase, nationId, boost, `protest:fizzle:tier${tier}`);
-            appliedEffects.push({ stat: 'gov_approval_events', delta: boost, note: 'fizzle_boost' });
-        }
-    }
-
-    if (tier === 3) {
-        await adjustGovernmentApprovalEvent(supabase, nationId, -1, 'protest:tier3');
-        appliedEffects.push({ stat: 'gov_approval_events', delta: -1 });
-    }
-
-    if (tier === 4) {
-        await adjustGovernmentApprovalEvent(supabase, nationId, -3, 'protest:tier4');
-        appliedEffects.push({ stat: 'gov_approval_events', delta: -3 });
-
-        // +2 with ideologically aligned blocs
-        try {
-            const { data: factionIdeo } = await supabase
-                .from('faction_ideology').select('*').eq('faction_id', factionId).single();
-            if (factionIdeo) {
-                const { data: allBlocs } = await supabase
-                    .from('voter_blocs')
-                    .select('id, bloc_name, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-                    .eq('nation_id', nationId).eq('is_active', true);
-                for (const bloc of (allBlocs || [])) {
-                    const alignment = computeIdeologyAlignment(factionIdeo, bloc);
-                    if (alignment >= 0.6) {
-                        await adjustMomentum(supabase, nationId, factionId, bloc.id, 2, 'protest:tier4:aligned');
-                        appliedEffects.push({ stat: `momentum:${bloc.bloc_name}`, delta: 2, note: 'aligned' });
-                    }
-                }
-            }
-        } catch (ideoErr) {
-            console.warn(`[Protest] Tier 4 ideology alignment failed (non-fatal):`, ideoErr);
-        }
-    }
-
-    if (tier === 5) {
-        await adjustGovernmentApprovalEvent(supabase, nationId, -6, 'protest:tier5');
-        const newUnrest = Math.min(100, (nation.civil_unrest || 0) + 2);
-        await supabase.from('nations').update({ civil_unrest: newUnrest }).eq('id', nationId);
-        appliedEffects.push({ stat: 'gov_approval_events', delta: -6 });
-        appliedEffects.push({ stat: 'civil_unrest', delta: 2 });
-    }
-
-    // Tier 6/7: create crisis
-    let crisisCreated = false;
-    if (tier >= 6) {
-        const crisisId = tier === 6 ? PROTEST_TIER6_CRISIS_ID : PROTEST_TIER7_CRISIS_ID;
-        const duration = tier === 6 ? PROTEST_TIER6_DURATION : PROTEST_TIER7_DURATION;
-
-        await supabase.from('active_crises').insert({
-            crisis_id: crisisId,
-            nation_id: nationId,
-            started_at_tick: currentTick,
-            effects_applied_log: [],
-        });
-
-        await supabase.from('protest_log').update({
-            status: 'crisis_active',
-            crisis_started_tick: currentTick,
-            crisis_duration: duration,
-            condition_score: conditionScore,
-            turnout_score: turnoutScore,
-            tier,
-            roll_breakdown: { ...breakdown, joint_bonus: jointBonus, endorsements: endorsementCount },
-            effects_applied: appliedEffects,
-        }).eq('id', protest.id);
-
-        // Lock all other opposition parties
-        const coalition = await fetchActiveCoalition(supabase, nationId);
-        const coalitionIds = new Set(coalition?.party_ids || []);
-        const { data: allFactions } = await supabase
-            .from('factions').select('id').eq('nation_id', nationId).neq('id', factionId);
-        const oppoFactions = (allFactions || []).filter(f =>
-            !coalitionIds.has(f.id) && f.id !== nation.ruling_faction_id
-        );
-        if (oppoFactions.length > 0) {
-            await supabase.from('factions')
-                .update({ protest_locked_by: protest.id })
-                .in('id', oppoFactions.map(f => f.id));
-        }
-
-        // Generate Tier 7 demand
-        if (tier === 7) {
-            const demand = await generateTier7DemandTick(supabase, nation, currentTick);
-            await supabase.from('protest_log').update({ tier7_demand: demand }).eq('id', protest.id);
-        }
-
-        crisisCreated = true;
-        console.log(`[Protest] Tier ${tier} crisis created for nation ${nation.name}, protest ${protest.id}`);
-    }
-
-    // Non-crisis tiers: update protest_log + set cooldowns
-    if (!crisisCreated) {
-        await supabase.from('protest_log').update({
-            status: 'resolved',
-            tick_resolved: currentTick,
-            condition_score: conditionScore,
-            turnout_score: turnoutScore,
-            tier,
-            roll_breakdown: { ...breakdown, joint_bonus: jointBonus, endorsements: endorsementCount },
-            effects_applied: appliedEffects,
-        }).eq('id', protest.id);
-
-        // Calling party cooldown
-        await supabase.from('factions').update({
-            protest_cooldown_until_tick: currentTick + PROTEST_CALLING_COOLDOWN,
-        }).eq('id', factionId);
-
-        // Endorsing party cooldown
-        if (endorsements && endorsements.length > 0) {
-            await supabase.from('factions')
-                .update({ protest_cooldown_until_tick: currentTick + PROTEST_ENDORSING_COOLDOWN })
-                .in('id', endorsements.map(e => e.faction_id));
-        }
-    }
-
-    console.log(`[Protest] Resolved ${protest.id}: Tier ${tier} (${PROTEST_TIER_LABELS[tier]}), score ${turnoutScore.toFixed(1)}, condition ${conditionScore.toFixed(1)}`);
-
-    // ── Dispatch news article + system event ──
-    try {
-        const { data: callingFaction } = await supabase
-            .from('factions').select('faction_name').eq('id', factionId).single();
-        const partyName = callingFaction?.faction_name || 'Opposition';
-        const grievanceLabel = protest.demand_label || protest.grievance_data?.label || protest.grievance_type || 'government policy';
-        const demandLabel = protest.tier7_demand?.label || grievanceLabel;
-        const eventType = getProtestEventType(tier, crisisCreated);
-        const vars = { party: partyName, nation: nation.name || '', grievance: grievanceLabel, demand: demandLabel, ticks_active: '1' };
-        const headline = pickProtestHeadline(eventType, vars);
-        const lede = `${partyName} organised a protest in ${nation.name || 'the nation'} over ${grievanceLabel}. ` +
-            `The turnout was rated as ${PROTEST_TIER_LABELS[tier] || 'Tier ' + tier} (score: ${turnoutScore.toFixed(0)}).` +
-            (crisisCreated ? ` The protest has triggered a national crisis.` : '');
-
-        await dispatchProtestArticle(supabase, nationId, eventType, headline, lede, protestArticleTier(tier), currentTick, protest.id);
-        await fireProtestEvent(supabase, nationId, `protest:resolved:tier${tier}`, currentTick, {
-            party: partyName, tier, score: Math.round(turnoutScore), grievance: grievanceLabel, crisis: crisisCreated,
-        });
-    } catch (artErr) {
-        console.warn(`[Protest] Article/event dispatch failed (non-fatal):`, artErr);
-    }
-
-    return { tier, turnoutScore, conditionScore, crisisCreated, effects: appliedEffects };
-}
-
-/**
- * Process one tick of an active Tier 6 or 7 protest crisis.
- */
-async function processProtestCrisisTick(supabase, nation, protest, currentTick) {
-    const ticksActive = currentTick - (protest.crisis_started_tick || currentTick);
-    const duration = protest.crisis_duration || PROTEST_TIER6_DURATION;
-    const isTier7 = protest.tier === 7;
-    const nationId = nation.id;
-
-    // Check if Public Address was used this tick
-    const publicAddressThisTick = protest.public_address_last_tick === currentTick;
-
-    // Apply per-tick stat effects
-    // KNOWN ISSUE: reads from pre-tick `nation` snapshot — if earlier processors in
-    // this tick already modified these stats, this write overwrites their changes.
-    // Safe for now because protest-affected stats (civil_unrest, happiness, etc.)
-    // are not modified by other processors in the same tick cycle.
-    const updates = {};
-    if (isTier7) {
-        // Tier 7: gov approval -3, civil unrest +3, gdp_growth -0.2, foreign_investment -2, political_violence +1
-        updates.civil_unrest = Math.min(100, (nation.civil_unrest || 0) + (publicAddressThisTick ? 2 : 3));
-        updates.gdp_growth = Math.max(-10, (nation.gdp_growth || 0) - 0.2);
-        updates.foreign_investment = Math.max(0, (nation.foreign_investment || 0) - 2);
-        updates.political_violence = Math.min(100, (nation.political_violence || 0) + 1);
-        await adjustGovernmentApprovalEvent(supabase, nationId, -3, 'protest:tier7:per_tick');
-    } else {
-        // Tier 6: gov approval -2, civil unrest +2, happiness -1, political violence +1 after tick 3
-        updates.civil_unrest = Math.min(100, (nation.civil_unrest || 0) + (publicAddressThisTick ? 1 : 2));
-        updates.happiness = Math.max(0, (nation.happiness || 0) - 1);
-        if (ticksActive > 3) {
-            updates.political_violence = Math.min(100, (nation.political_violence || 0) + 1);
-        }
-        await adjustGovernmentApprovalEvent(supabase, nationId, -2, 'protest:tier6:per_tick');
-    }
-
-    // Public Address moderate bloc bonus
-    if (publicAddressThisTick) {
-        const { data: moderateBlocs } = await supabase
-            .from('voter_blocs')
-            .select('id, bloc_name')
-            .eq('nation_id', nationId).eq('is_active', true)
-            .or('bloc_name.ilike.%centrist%,bloc_name.ilike.%moderate%');
-        for (const bloc of (moderateBlocs || [])) {
-            // +1 moderate bloc approval for calling faction
-            await adjustMomentum(supabase, nationId, protest.faction_id, bloc.id, 1, 'protest:public_address');
-        }
-    }
-
-    if (Object.keys(updates).length > 0) {
-        await supabase.from('nations').update(updates).eq('id', nationId);
-    }
-
-    // Check Tier 7 demand met
-    if (isTier7 && protest.tier7_demand && !protest.tier7_demand_met) {
-        const demandMet = await checkTier7DemandMet(supabase, nation, protest.tier7_demand, currentTick, protest.crisis_started_tick);
-        if (demandMet) {
-            await supabase.from('protest_log').update({ tier7_demand_met: true }).eq('id', protest.id);
-            // Crisis ends 2 ticks after demand met for minister, immediately for stat
-            const endTick = protest.tier7_demand.type === 'minister'
-                ? currentTick + 2
-                : currentTick;
-            await supabase.from('protest_log').update({ crisis_ended_tick: endTick }).eq('id', protest.id);
-            console.log(`[Protest] Tier 7 demand met for protest ${protest.id}, ending at tick ${endTick}`);
-        }
-    }
-
-    // Check crisis expiry (natural or forced)
-    const expired = (protest.crisis_ended_tick && currentTick >= protest.crisis_ended_tick) ||
-                    (ticksActive >= duration);
-
-    if (expired) {
-        await finalizeProtestEnd(supabase, nationId, protest, currentTick);
-
-        // Tier 7 unmet demand: leave electoral wound
-        if (isTier7 && !protest.tier7_demand_met) {
-            console.log(`[Protest] Tier 7 demand unmet for ${protest.id} — electoral wound created`);
-            // Store as unresolved grievance on the protest_log for election display
-            await supabase.from('protest_log').update({
-                effects_applied: [
-                    ...(protest.effects_applied || []),
-                    { stat: 'electoral_wound', note: 'unresolved_tier7_demand', demand: protest.tier7_demand }
-                ]
-            }).eq('id', protest.id);
-        }
-
-        // Dispatch crisis-ended article
-        try {
-            const { data: cf } = await supabase.from('factions').select('faction_name').eq('id', protest.faction_id).single();
-            const pName = cf?.faction_name || 'Opposition';
-            const demandMet = !!(isTier7 && protest.tier7_demand_met);
-            const vars = { party: pName, nation: nation.name || '', ticks_active: String(ticksActive) };
-            const headline = pickProtestHeadline(demandMet ? 'protest_crisis_ended' : 'protest_crisis_ended', vars);
-            const lede = demandMet
-                ? `The protest crisis in ${nation.name} has ended after the government met the demonstrators' demand. ${pName}'s supporters are dispersing after ${ticksActive} ticks of unrest.`
-                : `After ${ticksActive} ticks of sustained unrest, the protest crisis in ${nation.name} has come to an end. The ${PROTEST_TIER_LABELS[protest.tier] || 'protest'} organised by ${pName} has left its mark on the nation.`;
-            await dispatchProtestArticle(supabase, nationId, 'protest_crisis_ended', headline, lede, 2, currentTick, protest.id);
-            await fireProtestEvent(supabase, nationId, 'protest:crisis_ended', currentTick, {
-                party: pName, tier: protest.tier, ticks_active: ticksActive, demand_met: demandMet,
-            });
-        } catch (artErr) { console.warn('[Protest] Crisis-ended article dispatch failed:', artErr); }
-
-        return { expired: true, ticksActive };
-    }
-
-    // Dispatch ongoing crisis article every 2 ticks
-    if (ticksActive > 0 && ticksActive % 2 === 0) {
-        try {
-            const { data: cf } = await supabase.from('factions').select('faction_name').eq('id', protest.faction_id).single();
-            const pName = cf?.faction_name || 'Opposition';
-            const vars = { party: pName, nation: nation.name || '', ticks_active: String(ticksActive) };
-            const headline = pickProtestHeadline('protest_crisis_tick', vars);
-            const lede = `The protest crisis in ${nation.name} continues for its ${ticksActive}th tick. ${PROTEST_TIER_LABELS[protest.tier] || 'The protest'} shows no sign of abating.`;
-            await dispatchProtestArticle(supabase, nationId, 'protest_crisis_tick', headline, lede, 2, currentTick, protest.id);
-        } catch (artErr) { console.warn('[Protest] Crisis-tick article dispatch failed:', artErr); }
-    }
-
-    return { expired: false, ticksActive, updates };
-}
-
-/**
- * Finalize protest end: remove crisis, clear lockouts, set cooldowns.
- */
-async function finalizeProtestEnd(supabase, nationId, protest, currentTick) {
-    // Remove crisis from active_crises
-    const crisisId = protest.tier === 7 ? PROTEST_TIER7_CRISIS_ID : PROTEST_TIER6_CRISIS_ID;
-    await supabase.from('active_crises')
-        .delete()
-        .eq('nation_id', nationId)
-        .eq('crisis_id', crisisId);
-
-    // Mark protest as resolved/expired
-    if (protest.status === 'called_off') {
-        // Already marked called_off, just ensure it's finalized
-        await supabase.from('protest_log').update({
-            tick_resolved: currentTick,
-        }).eq('id', protest.id).is('tick_resolved', null);
-    } else {
-        await supabase.from('protest_log').update({
-            status: 'expired',
-            tick_resolved: currentTick,
-        }).eq('id', protest.id);
-    }
-
-    // Clear lockouts on all factions
-    await supabase.from('factions')
-        .update({ protest_locked_by: null })
-        .eq('protest_locked_by', protest.id);
-
-    // Set cooldowns from this moment
-    await supabase.from('factions').update({
-        protest_cooldown_until_tick: currentTick + PROTEST_CALLING_COOLDOWN,
-    }).eq('id', protest.faction_id);
-
-    // Endorsing parties cooldown
-    const { data: endorsements } = await supabase
-        .from('protest_endorsements')
-        .select('faction_id')
-        .eq('protest_id', protest.id);
-    if (endorsements && endorsements.length > 0) {
-        await supabase.from('factions')
-            .update({ protest_cooldown_until_tick: currentTick + PROTEST_ENDORSING_COOLDOWN })
-            .in('id', endorsements.map(e => e.faction_id));
-    }
-
-    console.log(`[Protest] Finalized end of protest ${protest.id} (tier ${protest.tier}) in nation ${nationId}`);
-}
-
-/**
- * Generate a Tier 7 demand based on worst-performing eligible stat.
- */
-async function generateTier7DemandTick(supabase, nation, currentTick) {
-    const nationId = nation.id;
-
-    const { data: statRows } = await supabase
-        .from('stat_history')
-        .select('stat_name, value, tick')
-        .eq('nation_id', nationId)
-        .gte('tick', currentTick - 6)
-        .order('tick', { ascending: true });
-
-    const statMap = {};
-    for (const row of (statRows || [])) {
-        if (!statMap[row.stat_name]) statMap[row.stat_name] = [];
-        statMap[row.stat_name].push({ tick: row.tick, value: row.value });
-    }
-
-    const failingStats = [];
-    for (const [key, history] of Object.entries(statMap)) {
-        if (!PROTEST_TIER7_ELIGIBLE.has(key)) continue;
-        const sorted = history.sort((a, b) => a.tick - b.tick);
-        const current = nation[key] ?? sorted[sorted.length - 1]?.value ?? 0;
-        const sixAgo = sorted[0]?.value ?? current;
-        const delta = current - sixAgo;
-        const failureScore = PROTEST_HIGHER_IS_BAD.has(key) ? delta : -delta;
-        if (failureScore > 0) {
-            const changes = sorted.slice(1).map((h, i) => Math.abs(h.value - sorted[i].value));
-            const avgChange = changes.length > 0 ? changes.reduce((s, v) => s + v, 0) / changes.length : 1;
-            failingStats.push({ key, failureScore, avgChange, displayName: key.replace(/_/g, ' ') });
-        }
-    }
-
-    failingStats.sort((a, b) => b.failureScore - a.failureScore);
-
-    if (failingStats.length > 0) {
-        const worst = failingStats[0];
-        const rawDemand = Math.round(worst.avgChange * 6 * 1.5);
-        const magnitude = Math.max(PROTEST_TIER7_DEMAND_MIN, rawDemand);
-        const direction = PROTEST_HIGHER_IS_BAD.has(worst.key) ? 'reduce' : 'raise';
-        return {
-            type: 'stat',
-            stat: worst.key,
-            magnitude,
-            direction,
-            label: `${direction === 'reduce' ? 'Reduce' : 'Raise'} ${worst.displayName} by ${magnitude}`,
-        };
-    }
-
-    // Fallback: most unpopular minister
-    const { data: ministers } = await supabase
-        .from('ministries')
-        .select('ministry_key, minister_first_name, minister_last_name, minister_approval, party_id')
-        .eq('nation_id', nationId)
-        .not('party_id', 'is', null)
-        .order('minister_approval', { ascending: true })
-        .limit(1);
-
-    if (ministers && ministers.length > 0) {
-        const worst = ministers[0];
-        const name = `${worst.minister_first_name || ''} ${worst.minister_last_name || ''}`.trim() || worst.ministry_key;
-        return {
-            type: 'minister',
-            target: worst.ministry_key,
-            targetName: name,
-            label: `${name} must resign.`,
-        };
-    }
-
-    return {
-        type: 'stat', stat: 'happiness', magnitude: PROTEST_TIER7_DEMAND_MIN,
-        direction: 'raise', label: `Raise happiness by ${PROTEST_TIER7_DEMAND_MIN}`,
-    };
-}
-
-/**
- * Check if a Tier 7 demand has been met.
- */
-async function checkTier7DemandMet(supabase, nation, demand, currentTick, crisisStartTick) {
-    if (!demand) return false;
-
-    if (demand.type === 'minister') {
-        // Check if the demanded minister has been fired
-        const { data: ministry } = await supabase
-            .from('ministries')
-            .select('party_id')
-            .eq('nation_id', nation.id)
-            .eq('ministry_key', demand.target)
-            .single();
-        return ministry != null && ministry.party_id == null;
-    }
-
-    if (demand.type === 'stat') {
-        // Check if stat moved by the demanded magnitude since crisis start
-        const { data: historyRows } = await supabase
-            .from('stat_history')
-            .select('value')
-            .eq('nation_id', nation.id)
-            .eq('stat_name', demand.stat)
-            .lte('tick', crisisStartTick || currentTick)
-            .order('tick', { ascending: false })
-            .limit(1);
-
-        const startVal = historyRows?.[0]?.value;
-        const currentVal = nation[demand.stat];
-        if (startVal == null || currentVal == null) return false;
-
-        const moved = demand.direction === 'reduce'
-            ? (startVal - currentVal)
-            : (currentVal - startVal);
-        return moved >= demand.magnitude;
-    }
-
-    return false;
-}
-
-/**
- * Decay protest use counters for all factions in a nation.
- * Decrements by 1 per PROTEST_USE_DECAY_INTERVAL ticks of non-use.
- */
-async function decayProtestUseCounters(supabase, nationId, currentTick) {
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id, protest_use_count, protest_last_use_tick')
-        .eq('nation_id', nationId)
-        .gt('protest_use_count', 0);
-
-    for (const f of (factions || [])) {
-        if (f.protest_last_use_tick == null) continue;
-        const elapsed = currentTick - f.protest_last_use_tick;
-        const decay = Math.floor(elapsed / PROTEST_USE_DECAY_INTERVAL);
-        if (decay > 0) {
-            const newCount = Math.max(0, (f.protest_use_count || 0) - decay);
-            if (newCount !== f.protest_use_count) {
-                await supabase.from('factions')
-                    .update({ protest_use_count: newCount })
-                    .eq('id', f.id);
-            }
-        }
-    }
 }
 
 // ==================== ADVANCE TICK ====================
