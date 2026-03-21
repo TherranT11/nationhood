@@ -673,7 +673,6 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
             </div>
         </div>
 
-        ${renderNationalMoodBox(nation, activeCrises, currentTick)}
     </div>`;
 }
 
