@@ -195,10 +195,6 @@ BEGIN
     result := result || jsonb_build_object('faction_disbanded', true);
 
     -- ---- 9. Clean up child records ----
-    DELETE FROM faction_bloc_approval WHERE faction_id = p_faction_id;
-    GET DIAGNOSTICS cnt = ROW_COUNT;
-    IF cnt > 0 THEN result := result || jsonb_build_object('faction_bloc_approval', cnt); END IF;
-
     DELETE FROM faction_ideology WHERE faction_id = p_faction_id;
     GET DIAGNOSTICS cnt = ROW_COUNT;
     IF cnt > 0 THEN result := result || jsonb_build_object('faction_ideology', cnt); END IF;
@@ -224,13 +220,6 @@ BEGIN
     IF cnt > 0 THEN result := result || jsonb_build_object('campaign_actions', cnt); END IF;
 
     -- These tables may not exist in all deployments, so wrap in exception handlers
-    BEGIN
-        EXECUTE format('DELETE FROM momentum_log WHERE faction_id = %L', p_faction_id);
-        GET DIAGNOSTICS cnt = ROW_COUNT;
-        IF cnt > 0 THEN result := result || jsonb_build_object('momentum_log', cnt); END IF;
-    EXCEPTION WHEN undefined_table THEN NULL;
-    END;
-
     BEGIN
         EXECUTE format('DELETE FROM fundraiser_promises WHERE party_id = %L', p_faction_id);
         GET DIAGNOSTICS cnt = ROW_COUNT;

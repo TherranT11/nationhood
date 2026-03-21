@@ -20,7 +20,6 @@ DECLARE
         'bill_amendment_requests',
         'campaign_actions',
         'bill_support',
-        'faction_bloc_approval',
         'faction_ideology',
         'ministry_action_log',
         'government_formation_chat',
@@ -69,7 +68,6 @@ DECLARE
         -- History & logs
         'nations_history',
         'ideology_history',
-        'momentum_log',
         'gov_approval_log',
         'stat_history',
         -- Content

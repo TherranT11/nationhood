@@ -1131,35 +1131,10 @@ export async function processPartialElection(supabase, nation, election, current
     const deltaSeats = election.partial_seats;
     console.log(`Processing partial election for ${nation.name}: +${deltaSeats} new seats`);
 
-    // 1. Load voter blocs
-    const { data: blocs } = await supabase
-        .from('voter_blocs').select('*')
-        .eq('nation_id', nation.id).eq('is_active', true);
+    // voter_blocs table removed — pass empty array to simulation
+    const blocs = [];
 
-    if (!blocs || blocs.length === 0) {
-        console.warn('No voter blocs found for partial election');
-        await supabase.from('elections').update({ status: 'completed', results: { partial: true, error: 'no_blocs', bloc_details: [] } }).eq('id', election.id);
-        return;
-    }
-
-    // 2. Scale bloc voter_counts to eligible_voters (same pattern as runElectionPreview)
-    const eligibleVoters = nation.eligible_voters || 0;
-    const totalBlocVoters = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
-    if (totalBlocVoters > 0 && eligibleVoters > 0) {
-        const scale = eligibleVoters / totalBlocVoters;
-        let scaledSum = 0;
-        for (const b of blocs) {
-            b.voter_count = Math.round((b.voter_count || 0) * scale);
-            scaledSum += b.voter_count;
-        }
-        const diff = eligibleVoters - scaledSum;
-        if (diff !== 0) {
-            const largest = blocs.reduce((a, b) => (b.voter_count > a.voter_count ? b : a), blocs[0]);
-            largest.voter_count += diff;
-        }
-    }
-
-    // 3. Load parties with ideology axes
+    // 1. Load parties with ideology axes
     const { data: factions } = await supabase
         .from('factions').select('id, faction_name, seats, electability')
         .eq('nation_id', nation.id).eq('faction_type', 'party');
@@ -1185,27 +1160,17 @@ export async function processPartialElection(supabase, nation, election, current
         }
     }));
 
-    // 3b. Load per-bloc preference data
-    const { data: fbaRows } = await supabase
-        .from('faction_bloc_approval').select('faction_id, bloc_id, preference_score')
-        .in('faction_id', factionIds);
-    const allBlocApprovals = {};
-    for (const row of (fbaRows || [])) {
-        if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? 40;
-    }
+    // 2. Run election simulation for ONLY the delta seats
+    const result = runElectionSimulation(blocs, parties, deltaSeats, null);
 
-    // 4. Run election simulation for ONLY the delta seats
-    const result = runElectionSimulation(blocs, parties, deltaSeats, allBlocApprovals);
-
-    // 5. ADD delta seats to each party's existing seats
+    // 3. ADD delta seats to each party's existing seats
     for (const faction of factions) {
         const deltaForParty = result.seats[faction.id] || 0;
         const newTotal = (faction.seats || 0) + deltaForParty;
         await supabase.from('factions').update({ seats: newTotal }).eq('id', faction.id);
     }
 
-    // 6. Build results and mark election as completed
+    // 4. Build results and mark election as completed
     const seatResults = factions.map(f => ({
         party_id: f.id,
         party_name: f.faction_name,

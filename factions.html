@@ -59,13 +59,8 @@ initPage('factions', async (state) => {
 
 async function renderFactionsPage() {
     // Fetch counts for header stats
-    const [blocsRes, demandsRes] = await Promise.all([
-        _supabase.from('voter_blocs').select('id', { count: 'exact' }).eq('nation_id', currentNation.id).eq('is_active', true),
-        _supabase.from('voter_bloc_demands').select('id', { count: 'exact' }).eq('nation_id', currentNation.id).eq('status', 'active')
-    ]);
-    
-    const totalBlocs = blocsRes.count || 0;
-    const activeDemands = demandsRes.count || 0;
+    const totalBlocs = 0;
+    const activeDemands = 0;
     
     const html = `
         <div class="panel-padding">
@@ -146,7 +141,7 @@ async function loadActiveDemands() {
     try {
         const { data: demands, error } = await _supabase
             .from('voter_bloc_demands')
-            .select('*, voter_blocs(voter_count, ideology_1, ideology_2, ideology_3, ideology_4, ideology_5)')
+            .select('*')
             .eq('nation_id', currentNation.id)
             .eq('status', 'active')
             .order('deadline_tick', { ascending: true });
@@ -184,8 +179,6 @@ async function loadActiveDemands() {
             const targetText = demand.desired_range === 'high' ? '70-100' :
                               demand.desired_range === 'low' ? '0-30' : '31-69';
             
-            const voterCount = demand.voter_blocs?.voter_count || 0;
-            
             const isMovingRight = (demand.desired_range === 'high' && currentVal > demand.current_value) ||
                                   (demand.desired_range === 'low' && currentVal < demand.current_value) ||
                                   (demand.desired_range === 'moderate' && Math.abs(currentVal - 50) < Math.abs(demand.current_value - 50));
@@ -195,7 +188,7 @@ async function loadActiveDemands() {
                     <div class="demand-header">
                         <div>
                             <div class="demand-bloc-name">${escapeHtml(demand.bloc_name)}</div>
-                            <div class="demand-bloc-voters">${voterCount.toLocaleString()} voters in this bloc</div>
+                            <div class="demand-bloc-voters">${escapeHtml(demand.bloc_name)}</div>
                         </div>
                         <div class="demand-deadline">
                             <div class="demand-deadline-label">Deadline</div>
@@ -234,14 +227,10 @@ async function loadActiveDemands() {
 
 async function loadVoterBlocs() {
     const container = document.getElementById('blocs-list');
-    
+
     try {
-        const { data: blocs, error } = await _supabase
-            .from('voter_blocs')
-            .select('*')
-            .eq('nation_id', currentNation.id)
-            .eq('is_active', true)
-            .order('voter_count', { ascending: false });
+        const blocs = [];
+        const error = null;
         
         if (error) throw error;
         

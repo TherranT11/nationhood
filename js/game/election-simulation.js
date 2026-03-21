@@ -28,7 +28,7 @@ export function getPartyAlignment(partyAxes, tag) {
 /**
  * Distribute a voter bloc's votes among ALL parties using the Weighted Competition Model.
  *
- * weight = bloc_approval × ideology_multiplier
+ * weight = approval × ideology_multiplier
  * ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
  *
  * No cascade steps. No leakage. All parties compete simultaneously.
@@ -191,13 +191,16 @@ export function allocateSeatsByVotes(voteTotals, totalSeats = GAME_CONFIG.TOTAL_
  * Run a full election simulation using the Weighted Competition Model.
  *
  * All parties compete simultaneously for each bloc's voters:
- *   weight = bloc_approval × ideology_multiplier
+ *   weight = approval × ideology_multiplier
  *   ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
  *
- * @param {object[]} blocs    - Rows from voter_blocs: { id, bloc_name, voter_count, ideology_1..5, is_active }
+ * NOTE: The blocs parameter is a legacy holdover; the electorate engine now
+ * supplies voter data externally, so callers pass an empty array.
+ *
+ * @param {object[]} blocs    - Electorate bloc objects (legacy, pass [])
  * @param {object[]} parties  - Array of { id, faction_name, axes: { liberty_equality, ... } }
  * @param {number}   [totalSeats=120]
- * @param {object}   [allBlocApprovals] - { blocId: { partyId: approval } } from faction_bloc_approval
+ * @param {object}   [allBlocApprovals] - Unused legacy parameter (pass null)
  * @returns {{ votes: object, seats: object, totalAbstentions: number, totalVotesCast: number, details: object[] }}
  */
 export function runElectionSimulation(blocs, parties, totalSeats = GAME_CONFIG.TOTAL_SEATS, allBlocApprovals = null) {
@@ -287,31 +290,8 @@ export async function runElectionPreview(supabase, nationId) {
 
     const totalSeats = nation.total_seats || 120;
 
-    // 2. Load voter blocs
-    const { data: blocs } = await supabase
-        .from('voter_blocs')
-        .select('*')
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
-    if (!blocs || blocs.length === 0) throw new Error('No voter blocs found for this nation');
-
-    // 2b. Scale bloc voter_counts so total matches eligible_voters (blocs are generated from population)
-    const eligibleVoters = nation.eligible_voters || 0;
-    const totalBlocVoters = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
-    if (totalBlocVoters > 0 && eligibleVoters > 0) {
-        const scale = eligibleVoters / totalBlocVoters;
-        let scaledSum = 0;
-        for (const b of blocs) {
-            b.voter_count = Math.round((b.voter_count || 0) * scale);
-            scaledSum += b.voter_count;
-        }
-        // Fix rounding drift on the largest bloc
-        const diff = eligibleVoters - scaledSum;
-        if (diff !== 0) {
-            const largest = blocs.reduce((a, b) => (b.voter_count > a.voter_count ? b : a), blocs[0]);
-            largest.voter_count += diff;
-        }
-    }
+    // 2. Voter blocs — now supplied by the electorate engine; empty placeholder here
+    const blocs = [];
 
     // 3. Load parties + their ideology axes (exclude inactive ≥12 ticks)
     const { data: shard } = await supabase
@@ -348,39 +328,15 @@ export async function runElectionPreview(supabase, nationId) {
         }
     }));
 
-    // 3b. Load per-bloc preference data from faction_bloc_approval (Three-Pillar system)
-    const { data: fbaRows } = await supabase
-        .from('faction_bloc_approval')
-        .select('faction_id, bloc_id, preference_score')
-        .in('faction_id', factionIds);
+    // 4. Run simulation
+    const result = runElectionSimulation(blocs, parties, totalSeats);
 
-    // Build allBlocApprovals map: { blocId: { partyId: preference_score } }
-    const allBlocApprovals = {};
-    for (const row of (fbaRows || [])) {
-        if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? 40;
-    }
-
-    // 4. Run simulation with per-bloc approvals
-    const result = runElectionSimulation(blocs, parties, totalSeats, allBlocApprovals);
-
-    // 5. Build friendly results with weighted average approval per party
-    const totalBlocWeight = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
+    // 5. Build friendly results
     const partyResults = parties.map(p => {
-        let weightedApproval = 40;
-        if (totalBlocWeight > 0) {
-            let wSum = 0;
-            for (const bloc of blocs) {
-                const ba = allBlocApprovals[bloc.id];
-                const approval = (ba && ba[p.id] != null) ? ba[p.id] : 40;
-                wSum += approval * (bloc.voter_count || 0);
-            }
-            weightedApproval = Math.round(wSum / totalBlocWeight * 100) / 100;
-        }
         return {
             party_id: p.id,
             party_name: p.faction_name,
-            approval: weightedApproval,
+            approval: 40,
             votes: result.votes[p.id] || 0,
             vote_percentage: result.totalVotesCast > 0
                 ? Math.round(((result.votes[p.id] || 0) / result.totalVotesCast) * 10000) / 100
@@ -423,31 +379,9 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
         .single();
     if (!nation) throw new Error('Nation not found');
 
-    // 2. Load voter blocs
-    const { data: blocs } = await supabase
-        .from('voter_blocs')
-        .select('*')
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
-    if (!blocs || blocs.length === 0) throw new Error('No voter blocs found for this nation');
-
-    // Scale bloc voter_counts so total matches actual eligible voter count
-    // eligible_voters is a raw count (same as parliamentary preview)
+    // 2. Voter blocs — now supplied by the electorate engine; empty placeholder here
+    const blocs = [];
     const eligibleVoters = nation.eligible_voters || 0;
-    const totalBlocVoters = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
-    if (totalBlocVoters > 0 && eligibleVoters > 0) {
-        const scale = eligibleVoters / totalBlocVoters;
-        let scaledSum = 0;
-        for (const b of blocs) {
-            b.voter_count = Math.round((b.voter_count || 0) * scale);
-            scaledSum += b.voter_count;
-        }
-        const diff = eligibleVoters - scaledSum;
-        if (diff !== 0) {
-            const largest = blocs.reduce((a, b) => (b.voter_count > a.voter_count ? b : a), blocs[0]);
-            largest.voter_count += diff;
-        }
-    }
 
     // 3. Load selected presidential candidates
     const { data: candidates } = await supabase
@@ -513,39 +447,12 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
     }
     const allCandidateParties = eligibleCandidates.map(buildCandidateParty);
 
-    // 6. Load per-bloc approval data (keyed by faction, same as parliamentary)
-    const { data: fbaRows } = await supabase
-        .from('faction_bloc_approval')
-        .select('faction_id, bloc_id, preference_score')
-        .in('faction_id', factionIds);
-    const allBlocApprovals = {};
-    for (const row of (fbaRows || [])) {
-        if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        // Map faction approval to candidate id (candidate inherits faction approval)
-        for (const cand of eligibleCandidates) {
-            if (cand.faction_id === row.faction_id) {
-                allBlocApprovals[row.bloc_id][cand.id] = row.preference_score ?? 40;
-            }
-        }
-    }
-
-    // 7. Run Round 1 simulation (use totalSeats=0 — we only care about votes)
-    const round1 = runElectionSimulation(blocs, allCandidateParties, 0, allBlocApprovals);
+    // 6. Run Round 1 simulation (use totalSeats=0 — we only care about votes)
+    const round1 = runElectionSimulation(blocs, allCandidateParties, 0);
 
     // Build Round 1 candidate results
-    const totalBlocWeight = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
     function buildCandidateResults(parties, simResult) {
         return parties.map(p => {
-            let weightedApproval = 40;
-            if (totalBlocWeight > 0) {
-                let wSum = 0;
-                for (const bloc of blocs) {
-                    const ba = allBlocApprovals[bloc.id];
-                    const approval = (ba && ba[p.id] != null) ? ba[p.id] : 40;
-                    wSum += approval * (bloc.voter_count || 0);
-                }
-                weightedApproval = Math.round(wSum / totalBlocWeight * 100) / 100;
-            }
             return {
                 candidate_id: p.id,
                 candidate_name: p.faction_name,
@@ -553,7 +460,7 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
                 faction_id: p.faction_id,
                 ideology: p.ideology,
                 trait_key: p.trait_key,
-                approval: weightedApproval,
+                approval: 40,
                 votes: simResult.votes[p.id] || 0,
                 vote_percentage: simResult.totalVotesCast > 0
                     ? Math.round(((simResult.votes[p.id] || 0) / simResult.totalVotesCast) * 10000) / 100
@@ -581,16 +488,7 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
         const top2Ids = new Set([round1Results[0].candidate_id, round1Results[1].candidate_id]);
         const runoffParties = allCandidateParties.filter(p => top2Ids.has(p.id));
 
-        // Build runoff-specific bloc approvals (only top 2 candidates)
-        const runoffBlocApprovals = {};
-        for (const [blocId, approvals] of Object.entries(allBlocApprovals)) {
-            runoffBlocApprovals[blocId] = {};
-            for (const p of runoffParties) {
-                runoffBlocApprovals[blocId][p.id] = approvals[p.id] ?? 40;
-            }
-        }
-
-        const round2 = runElectionSimulation(blocs, runoffParties, 0, runoffBlocApprovals);
+        const round2 = runElectionSimulation(blocs, runoffParties, 0);
         runoffResults = buildCandidateResults(runoffParties, round2);
         round2Details = round2.details;
         winner = runoffResults[0];

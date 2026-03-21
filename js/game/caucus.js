@@ -137,25 +137,8 @@ export async function evaluateCaucusActivation(supabase, nationId, totalSeats) {
  * @param {Set<string>} [existingAxes] - Axes already assigned (skip these)
  */
 export async function assignCaucusFactions(supabase, party, nationId, totalFactionCount, existingAxes = new Set()) {
-    // Load voter blocs with ideology axes
-    const { data: blocs } = await supabase
-        .from('voter_blocs')
-        .select('id, bloc_name, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
-
-    if (!blocs || blocs.length === 0) return;
-
-    // Load this party's approval per bloc (for weighting)
-    const { data: approvalRows } = await supabase
-        .from('faction_bloc_approval')
-        .select('bloc_id, preference_score')
-        .eq('faction_id', party.id);
-
-    const approvalMap = {};
-    for (const row of (approvalRows || [])) {
-        approvalMap[row.bloc_id] = row.preference_score ?? 50;
-    }
+    // voter_blocs table removed — use empty array for spread calculation
+    const blocs = [];
 
     // Calculate spread per axis, weighted by bloc preference for this party
     const axisKeys = IDEOLOGY_AXES.map(a => a.key);
@@ -171,7 +154,7 @@ export async function assignCaucusFactions(supabase, party, nationId, totalFacti
 
         for (const bloc of blocs) {
             const score = bloc[colName] ?? 50;
-            const weight = (approvalMap[bloc.id] ?? 30) * (bloc.population_weight || 1);
+            const weight = 30 * (bloc.population_weight || 1);
             if (weight <= 0) continue;
 
             totalWeight += weight;

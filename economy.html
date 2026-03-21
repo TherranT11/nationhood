@@ -1171,14 +1171,7 @@ async function loadTaxConnections() {
 }
 
 async function loadTaxVoterBlocs(nationId) {
-    var cacheKey = 'tax_voter_blocs_' + nationId;
-    var cached = qCache(cacheKey);
-    if (cached) { taxVoterBlocs = cached; return; }
-    var { data } = await _supabase.from('voter_blocs')
-        .select('bloc_name, priority_issues')
-        .eq('nation_id', nationId);
-    taxVoterBlocs = data || [];
-    qCacheSet(cacheKey, taxVoterBlocs, 5 * 60 * 1000);
+    taxVoterBlocs = [];
 }
 
 async function loadTaxAdminFunding(nation) {

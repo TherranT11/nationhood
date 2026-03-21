@@ -4,12 +4,24 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
 
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
 import { getElectabilityTier } from './game/party-leadership.js';
 import { AUTOCRACY_ACTIONS, dispatchAutocracyAction, getEscalatingCost, checkCooldown } from './game/autocracy-actions.js';
+
+// Lightweight toast notification (replaces alert() calls)
+function _showToast(msg, isError = true) {
+    const existing = document.getElementById('pol-toast');
+    if (existing) existing.remove();
+    const el = document.createElement('div');
+    el.id = 'pol-toast';
+    el.style.cssText = `position:fixed;top:20px;right:20px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:13px;font-family:var(--dfont-mono);max-width:400px;box-shadow:0 4px 12px rgba(0,0,0,0.3);transition:opacity 0.3s;${isError ? 'background:#2d1517;color:#f87171;border:1px solid #7f1d1d;' : 'background:#1a2e1a;color:#86efac;border:1px solid #14532d;'}`;
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 4000);
+}
 
 initPage('politics', async (state) => {
     const { nation, faction, shard } = state;
@@ -30,7 +42,7 @@ initPage('politics', async (state) => {
     // Fetch total seats from all parties
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name')
+        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name, custom_logo_url, party_logo, party_description')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -128,14 +140,6 @@ initPage('politics', async (state) => {
         .limit(1)
         .maybeSingle();
 
-    // Fetch per-party momentum (average across blocs)
-    const { data: blocApprovals } = partyIds.length > 0
-        ? await _supabase
-            .from('faction_bloc_approval')
-            .select('faction_id, momentum')
-            .in('faction_id', partyIds)
-        : { data: [] };
-
     // Use DB columns for whip if available, otherwise generate deterministically
     const generatedNames = generateOfficerNames(f.id, nation.name);
     const officerNames = {
@@ -202,19 +206,6 @@ initPage('politics', async (state) => {
         .eq('status', 'scheduled')
         .order('election_tick', { ascending: true });
 
-    // Fetch voter blocs for coalition overview
-    const { data: voterBlocs } = await _supabase
-        .from('voter_blocs')
-        .select('id, bloc_name, population_weight, is_active, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism, priority_issues, ideology_1, ideology_2, ideology_3, ideology_4, ideology_5')
-        .eq('nation_id', nation.id)
-        .eq('is_active', true);
-
-    // Fetch player's faction_bloc_approval rows (preference_score per bloc)
-    const { data: playerBlocApprovals } = await _supabase
-        .from('faction_bloc_approval')
-        .select('bloc_id, preference_score, performance_perception')
-        .eq('faction_id', f.id);
-
     // Fetch active caucus factions for player's party
     const { data: caucusFactions } = await _supabase
         .from('caucus_factions')
@@ -222,12 +213,8 @@ initPage('politics', async (state) => {
         .eq('party_id', f.id)
         .eq('is_active', true);
 
-    // Fetch player's current endorsement preference
-    const { data: currentEndorsement } = await _supabase
-        .from('faction_endorsements')
-        .select('endorsed_faction_id')
-        .eq('faction_id', f.id)
-        .maybeSingle();
+    // Endorsement preference (faction_endorsements table removed — default to null)
+    const currentEndorsement = null;
 
     renderPartyTab(f, nation, {
         shard,
@@ -245,15 +232,12 @@ initPage('politics', async (state) => {
         allPartyIdeologies,
         activeCrises,
         nextElection,
-        blocApprovals,
         prevApproval,
         lastParliamentary,
         lastPresidential,
         scheduledElections,
         president,
         administration,
-        voterBlocs,
-        playerBlocApprovals,
         caucusFactions,
         currentEndorsement,
         pillarStates,
@@ -293,9 +277,11 @@ async function renderPartyTab(f, nation, data) {
     const {
         shard, totalSeats, mySeats, voteSharePct, lastElectionDate,
         seatDelta, role, isAutoNation, officerNames, allParties, allPartyIdeologies, coalition, activeCrises, currentTick,
-        nextElection, blocApprovals, prevApproval,
+        nextElection, prevApproval,
         lastParliamentary, lastPresidential, scheduledElections,
         president, administration,
+        caucusFactions,
+        pillarStates, autocracyTracker,
         voterBlocs, playerBlocApprovals,
         caucusFactions, currentEndorsement,
         pillarStates, autocracyTracker, autocracyActionLog,
@@ -416,13 +402,15 @@ async function renderPartyTab(f, nation, data) {
         ${renderCaucusSection(caucusFactions, mySeats)}
         </div>
         ${renderParliamentBox(allParties, coalition, nation, f.id)}
-        ${renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, f.id)}
+        ${renderForecastBox(allParties, totalSeats, currentTick, nextElection, null, f.id)}
         </div>
 
         <div class="pol-row-2">
-        ${renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIdeologies, f.id, f.party_color)}
         ${renderNationalMoodBox(nation, activeCrises, currentTick)}
-        ${renderIdeologyBox(allParties, allPartyIdeologies, f.id)}
+        <div class="pol-ideology-box" id="stance-summary-container">
+            <div class="pol-ideo-header"><span class="pol-mod-title">Stances</span></div>
+            <div id="stance-summary-strip"></div>
+        </div>
         ${renderEditIdentityBox(f, currentTick)}
         </div>
 
@@ -464,25 +452,31 @@ async function renderPartyTab(f, nation, data) {
     const html = `
     <div class="pol-page-tabs">
         <button class="pol-page-tab active" data-page-tab="politics">Politics</button>
-        <button class="pol-page-tab" data-page-tab="actions">Actions</button>
         ${electorateTabBtn}
         ${otherPartiesTabBtn}
         ${votersTabBtn}
     </div>
-    <div class="pol-page-content active" data-page-content="politics">
-    ${politicsTabContent}
-    </div>
-    <div class="pol-page-content" data-page-content="actions">
-        <div class="pol-page" style="min-height:300px;">
-            <div class="pol-section-label">Actions</div>
-            <div id="actions-container"></div>
+    <div class="pol-grid-wrapper">
+        <div class="pol-grid-main">
+            <div class="pol-page-content active" data-page-content="politics">
+            ${politicsTabContent}
+            </div>
+            ${electorateContent}
+            ${otherPartiesContent}
+            ${votersContent}
         </div>
-    </div>
-    ${electorateContent}
-    ${otherPartiesContent}
-    ${votersContent}`;
+        <div class="pol-activity-feed">
+            <div class="pol-feed-header">Activity Feed</div>
+            <div class="pol-feed-scroll" id="pol-feed-scroll">
+                <div class="pol-feed-empty">Loading activity...</div>
+            </div>
+        </div>
+    </div>`;
 
     document.getElementById('content-area').innerHTML = html;
+
+    // Load and render Activity Feed
+    _loadActivityFeed(faction.id, nation.id);
 
     // Wire up page-level sub-tabs (Politics / Actions / Electorate / Other Parties / Voters)
     let otherPartiesLoaded = false;
@@ -499,17 +493,17 @@ async function renderPartyTab(f, nation, data) {
             // Lazy-load Electorate Spread tab on first click
             if (target === 'electorate-spread' && !electorateSpreadLoaded) {
                 electorateSpreadLoaded = true;
-                renderElectorateSpreadTab(f, nation, allParties, allPartyIdeologies, voterBlocs, currentTick);
+                renderElectorateSpreadTab(f, nation, allParties, allPartyIdeologies, currentTick);
             }
             // Lazy-load Other Parties tab on first click
             if (target === 'other-parties' && !otherPartiesLoaded) {
                 otherPartiesLoaded = true;
-                renderOtherPartiesTab(f, nation, allParties, allPartyIdeologies, coalition, totalSeats, voterBlocs, currentTick);
+                renderOtherPartiesTab(f, nation, allParties, allPartyIdeologies, coalition, totalSeats, currentTick);
             }
             // Lazy-load Voters tab on first click
             if (target === 'voters' && !votersLoaded) {
                 votersLoaded = true;
-                renderVotersTab(f, nation, allParties, allPartyIdeologies, voterBlocs, currentTick, voteSharePct, totalSeats, mySeats);
+                renderVotersTab(f, nation, allParties, allPartyIdeologies, currentTick, voteSharePct, totalSeats, mySeats);
             }
         });
     });
@@ -525,7 +519,12 @@ async function renderPartyTab(f, nation, data) {
         initElectionResultsBox();
         initBlocAlignment();
     }
-    initIdeologyToggle();
+    // Load stance summary into the stance container
+    if (!isAutoNation) {
+        _renderStanceSummaryStrip(f.id, nation.id);
+        // Load party events into the GovCard
+        _loadGovCardPartyEvents(nation.id, f.id);
+    }
 
     // Disband Party handler
     const disbandBtn = document.getElementById('pol-disband-party-btn');
@@ -541,21 +540,196 @@ async function renderPartyTab(f, nation, data) {
                 await _supabase.auth.signOut();
                 window.location.href = 'index.html';
             } catch (err) {
-                alert(err.message || 'Failed to disband party.');
+                _showToast(err.message || 'Failed to disband party.');
                 disbandBtn.disabled = false;
                 disbandBtn.textContent = 'Disband Party';
             }
         });
     }
 
-    // ═══════════════════════════════════════
-    // ACTIONS TAB — Democracy Campaign Actions
-    // ═══════════════════════════════════════
-    if (!isAutoNation) {
-        await renderDemocracyActions(nation, faction, shard, allParties);
-    } else {
-        await renderAutocracyActionsTab(nation, faction, shard, pillarStates, autocracyTracker, allParties);
+}
+
+// ═══════════════════════════════════════════════════════════
+// ACTIVITY FEED — Persistent sidebar reading from activity_log
+// ═══════════════════════════════════════════════════════════
+
+const _MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function _feedTickLabel(tick) {
+    return `${_MONTHS[tick % 12]} ${2000 + Math.floor(tick / 12)}`;
+}
+
+// KNOWN ISSUE: Activity Feed loads once and does not auto-update.
+// No realtime subscriptions exist for any electorate tables.
+// Other players' actions won't appear until page reload.
+// TODO: Add Supabase realtime channel on activity_log for live updates.
+async function _loadActivityFeed(factionId, nationId) {
+    const scrollEl = document.getElementById('pol-feed-scroll');
+    if (!scrollEl) return;
+
+    // Fetch last 50 activity_log entries for this nation, ordered newest-first
+    const { data: entries, error } = await _supabase
+        .from('activity_log')
+        .select('id, faction_id, action_type, action_label, description, outcome, ap_spent, tick, created_at')
+        .eq('nation_id', nationId)
+        .order('tick', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+    if (error || !entries || entries.length === 0) {
+        scrollEl.innerHTML = '<div class="pol-feed-empty">No activity yet.</div>';
+        return;
     }
+
+    // Need faction names for labelling entries from other parties
+    const factionIds = [...new Set(entries.map(e => e.faction_id))];
+    const { data: factions } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, party_color')
+        .in('id', factionIds);
+    const factionMap = {};
+    for (const f of (factions || [])) factionMap[f.id] = f;
+
+    let html = '';
+    let lastTick = null;
+
+    for (const entry of entries) {
+        // Tick separator
+        if (entry.tick !== lastTick) {
+            lastTick = entry.tick;
+            html += `<div style="padding:6px 16px 2px;font-family:var(--dfont-mono);font-size:10px;font-weight:600;color:var(--dtext-3);letter-spacing:0.06em;text-transform:uppercase;border-top:1px solid var(--dborder-0);margin-top:4px;">${_feedTickLabel(entry.tick)}</div>`;
+        }
+
+        const faction = factionMap[entry.faction_id];
+        const isPlayer = entry.faction_id === factionId;
+        const factionLabel = isPlayer ? 'You' : (faction?.abbreviation || faction?.faction_name || '???');
+        const factionColor = faction?.party_color || 'var(--dtext-2)';
+
+        const typeClass = `pol-feed-item-type--${entry.action_type}`;
+        const outcomeClass = entry.outcome ? `pol-feed-item-outcome--${entry.outcome}` : '';
+
+        html += `
+        <div class="pol-feed-item">
+            <div class="pol-feed-item-header">
+                <span class="pol-feed-item-type ${typeClass}">${escapeHtml((entry.action_label || entry.action_type).replace(/_/g, ' '))}</span>
+                <span style="font-family:var(--dfont-mono);font-size:10px;color:${factionColor};font-weight:600;">${factionLabel}</span>
+                ${entry.ap_spent ? `<span style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3);">${entry.ap_spent} AP</span>` : ''}
+            </div>
+            ${entry.description ? `<div class="pol-feed-item-desc">${escapeHtml(entry.description)}</div>` : ''}
+            ${entry.outcome ? `<span class="pol-feed-item-outcome ${outcomeClass}">${escapeHtml(entry.outcome)}</span>` : ''}
+        </div>`;
+    }
+
+    scrollEl.innerHTML = html;
+}
+
+async function _loadPartyEventsFeed(nationId, playerFactionId) {
+    const feedEl = document.getElementById('party-events-feed');
+    if (!feedEl) return;
+
+    const { data: entries, error } = await _supabase
+        .from('activity_log')
+        .select('id, faction_id, action_type, action_label, description, outcome, ap_spent, tick, created_at')
+        .eq('nation_id', nationId)
+        .order('tick', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(80);
+
+    if (error || !entries || entries.length === 0) {
+        feedEl.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-ui);font-size:12px;padding:12px">No party events yet.</div>';
+        return;
+    }
+
+    const factionIds = [...new Set(entries.map(e => e.faction_id))];
+    const { data: factions } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, party_color')
+        .in('id', factionIds);
+    const factionMap = {};
+    for (const f of (factions || [])) factionMap[f.id] = f;
+
+    let html = '';
+    let lastTick = null;
+
+    for (const entry of entries) {
+        if (entry.tick !== lastTick) {
+            lastTick = entry.tick;
+            html += `<div class="pe-tick-sep">${_feedTickLabel(entry.tick)}</div>`;
+        }
+
+        const faction = factionMap[entry.faction_id];
+        const isPlayer = entry.faction_id === playerFactionId;
+        const fLabel = isPlayer ? 'You' : (faction?.abbreviation || '???');
+        const fColor = faction?.party_color || 'var(--dtext-2)';
+        const outcomeColor = entry.outcome === 'success' ? 'var(--dgreen)'
+            : entry.outcome === 'backfire' ? 'var(--dred)'
+            : entry.outcome === 'failure' ? 'var(--damber)' : 'var(--dtext-3)';
+
+        html += `<div class="pe-item${isPlayer ? ' pe-item--you' : ''}">
+            <div class="pe-item-row">
+                <span class="pe-item-party" style="color:${fColor}">${escapeHtml(fLabel)}</span>
+                <span class="pe-item-label">${escapeHtml((entry.action_label || entry.action_type).replace(/_/g, ' '))}</span>
+                ${entry.ap_spent ? `<span class="pe-item-ap">${entry.ap_spent} AP</span>` : ''}
+                ${entry.outcome ? `<span class="pe-item-outcome" style="color:${outcomeColor}">${escapeHtml(entry.outcome)}</span>` : ''}
+            </div>
+            ${entry.description ? `<div class="pe-item-desc">${escapeHtml(entry.description)}</div>` : ''}
+        </div>`;
+    }
+
+    feedEl.innerHTML = html;
+}
+
+async function _loadGovCardPartyEvents(nationId, playerFactionId) {
+    const feedEl = document.getElementById('gov-card-party-events');
+    if (!feedEl) return;
+
+    const { data: entries, error } = await _supabase
+        .from('activity_log')
+        .select('id, faction_id, action_type, action_label, description, outcome, ap_spent, tick, created_at')
+        .eq('nation_id', nationId)
+        .order('tick', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(40);
+
+    if (error || !entries || entries.length === 0) {
+        feedEl.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-ui);font-size:11px">No party events yet.</div>';
+        return;
+    }
+
+    const factionIds = [...new Set(entries.map(e => e.faction_id))];
+    const { data: factions } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, party_color')
+        .in('id', factionIds);
+    const factionMap = {};
+    for (const f of (factions || [])) factionMap[f.id] = f;
+
+    let html = '';
+    let lastTick = null;
+
+    for (const entry of entries) {
+        if (entry.tick !== lastTick) {
+            lastTick = entry.tick;
+            html += `<div class="pe-tick-sep">${_feedTickLabel(entry.tick)}</div>`;
+        }
+
+        const faction = factionMap[entry.faction_id];
+        const isPlayer = entry.faction_id === playerFactionId;
+        const fLabel = isPlayer ? 'You' : (faction?.abbreviation || '???');
+        const fColor = faction?.party_color || 'var(--dtext-2)';
+        const outcomeColor = entry.outcome === 'success' ? 'var(--dgreen)'
+            : entry.outcome === 'backfire' ? 'var(--dred)'
+            : entry.outcome === 'failure' ? 'var(--damber)' : 'var(--dtext-3)';
+
+        html += `<div class="pe-item${isPlayer ? ' pe-item--you' : ''}">
+            <div class="pe-item-row">
+                <span class="pe-item-party" style="color:${fColor}">${escapeHtml(fLabel)}</span>
+                <span class="pe-item-label">${escapeHtml((entry.action_label || entry.action_type).replace(/_/g, ' '))}</span>
+                ${entry.outcome ? `<span class="pe-item-outcome" style="color:${outcomeColor}">${escapeHtml(entry.outcome)}</span>` : ''}
+            </div>
+        </div>`;
+    }
+
+    feedEl.innerHTML = html;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1072,137 +1246,7 @@ function importanceColor(pct) {
     return 'var(--dgreen)';
 }
 
-function renderIdeologyBox(allParties, allPartyIdeologies, playerFactionId) {
-    const parties = allParties || [];
-    const ideoMap = {};
-    for (const row of (allPartyIdeologies || [])) {
-        ideoMap[row.faction_id] = row;
-    }
-
-    // Build party data with ideology positions
-    const partyData = parties.map(p => ({
-        id: p.id,
-        name: p.faction_name || 'Unknown',
-        abbr: p.abbreviation || (p.faction_name || '??').substring(0, 2).toUpperCase(),
-        color: p.party_color || '#888',
-        isPlayer: p.id === playerFactionId,
-        ideo: ideoMap[p.id] || {}
-    }));
-
-    // Party legend (clickable to toggle visibility)
-    const legendHtml = partyData.map(p =>
-        `<div class="pol-ideo-legend-item" data-ideo-party="${p.id}" title="Click to toggle">
-            <div class="pol-ideo-legend-dot" style="background:${p.color}"></div>
-            <span class="pol-ideo-legend-abbr" style="color:${p.color}">${escapeHtml(p.abbr)}</span>
-            ${p.isPlayer ? '<span class="pol-ideo-legend-you">YOU</span>' : ''}
-        </div>`
-    ).join('');
-
-    // Zone legend
-    const zoneLegendHtml = `
-        <div class="pol-ideo-zone-legend">
-            <div class="pol-ideo-zone-item">
-                <div class="pol-ideo-zone-line" style="background:rgba(250,204,21,0.33)"></div>
-                <span class="pol-ideo-zone-label">Centrist / Moderate</span>
-            </div>
-            <div class="pol-ideo-zone-item">
-                <div class="pol-ideo-zone-line" style="background:rgba(239,68,68,0.33)"></div>
-                <span class="pol-ideo-zone-label">Moderate / Radical</span>
-            </div>
-        </div>`;
-
-    // Axis tracks
-    const axesHtml = IDEOLOGY_AXES.map(ax => {
-        // Party markers on this axis
-        const markersHtml = partyData.map(p => {
-            const rawVal = Number(p.ideo[ax.key] ?? 0); // -100 to +100
-            const pos = (rawVal + 100) / 2; // normalize to 0–100
-            return `<div class="pol-ideo-marker" data-ideo-party="${p.id}" style="left:${pos}%;width:10px;height:10px;background:${p.color}"></div>`;
-        }).join('');
-
-        return `<div>
-            <div class="pol-ideo-axis-labels">
-                <span class="pol-ideo-axis-label">${escapeHtml(ax.leftLabel)}</span>
-                <span class="pol-ideo-axis-label">${escapeHtml(ax.rightLabel)}</span>
-            </div>
-            <div class="pol-ideo-track">
-                <div class="pol-ideo-zone-line-v" style="left:15%;background:rgba(239,68,68,0.2)"></div>
-                <div class="pol-ideo-zone-line-v" style="left:85%;background:rgba(239,68,68,0.2)"></div>
-                <div class="pol-ideo-zone-line-v" style="left:35%;background:rgba(250,204,21,0.2)"></div>
-                <div class="pol-ideo-zone-line-v" style="left:65%;background:rgba(250,204,21,0.2)"></div>
-                <div class="pol-ideo-center-line"></div>
-                ${markersHtml}
-            </div>
-        </div>`;
-    }).join('');
-
-    // Party stance summaries
-    const summariesHtml = partyData.map(p => {
-        const stances = [];
-        for (const ax of IDEOLOGY_AXES) {
-            const raw = Number(p.ideo[ax.key] ?? 0);
-            const pos = (raw + 100) / 2; // 0-100
-            if (pos >= 35 && pos <= 65) continue; // centrist — skip
-            const side = pos < 50 ? ax.leftLabel : ax.rightLabel;
-            const zone = (pos <= 15 || pos >= 85) ? 'Radical' : 'Moderate';
-            const zoneColor = zone === 'Radical' ? 'var(--dred)' : 'var(--damber)';
-            stances.push(`<span style="color:${zoneColor}">${zone}</span> ${escapeHtml(side)}`);
-        }
-        if (stances.length === 0) return '';
-        return `<div class="pol-ideo-summary-row" data-ideo-party="${p.id}">
-            <span class="pol-ideo-summary-abbr" style="color:${p.color}">${escapeHtml(p.abbr)}:</span>
-            <span class="pol-ideo-summary-stances">${stances.join(', ')}</span>
-        </div>`;
-    }).filter(Boolean).join('');
-
-    // Decay rates for player's party
-    const playerParty = partyData.find(p => p.isPlayer);
-    let decayHtml = '';
-    if (playerParty) {
-        const decayItems = [];
-        for (const ax of IDEOLOGY_AXES) {
-            const score = Number(playerParty.ideo[ax.key] ?? 0);
-            if (Math.abs(score) <= 10) continue; // dead zone
-            const decayMagnitude = Math.max(1, Math.round(Math.abs(score) / 50));
-            const side = score > 0 ? ax.rightLabel : ax.leftLabel;
-            decayItems.push(`<span style="color:var(--dtxt-muted)">${escapeHtml(side)}</span> <span style="color:var(--dred)">-${decayMagnitude}/tick</span>`);
-        }
-        if (decayItems.length > 0) {
-            decayHtml = `<div class="pol-ideo-decay" style="padding:6px 10px;font-size:11px;color:var(--dtxt-muted);border-top:1px solid var(--dborder)">
-                <span style="opacity:0.7">Drift toward center:</span> ${decayItems.join(' &middot; ')}
-            </div>`;
-        }
-    }
-
-    return `
-        <div class="pol-ideology-box">
-            <div class="pol-ideo-header">
-                <span class="pol-mod-title">Ideology — All Parties</span>
-            </div>
-            <div class="pol-ideo-legend">${legendHtml}</div>
-            ${zoneLegendHtml}
-            <div class="pol-ideo-axes">${axesHtml}</div>
-            ${summariesHtml ? `<div class="pol-ideo-summaries">${summariesHtml}</div>` : ''}
-            ${decayHtml}
-        </div>`;
-}
-
-function initIdeologyToggle() {
-    const box = document.querySelector('.pol-ideology-box');
-    if (!box) return;
-    box.querySelectorAll('.pol-ideo-legend-item[data-ideo-party]').forEach(item => {
-        item.addEventListener('click', () => {
-            const pid = item.getAttribute('data-ideo-party');
-            const hidden = item.classList.toggle('ideo-hidden');
-            box.querySelectorAll(`.pol-ideo-marker[data-ideo-party="${pid}"]`).forEach(m => {
-                m.style.display = hidden ? 'none' : '';
-            });
-            box.querySelectorAll(`.pol-ideo-summary-row[data-ideo-party="${pid}"]`).forEach(s => {
-                s.style.display = hidden ? 'none' : '';
-            });
-        });
-    });
-}
+// Ideology box removed — replaced by stance summary container in pol-row-2
 
 function renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, playerFactionId) {
     const FORECAST_START = 12;
@@ -1468,250 +1512,6 @@ function getRepresentativeStat(nation, statKeys) {
     return worst;
 }
 
-function renderCoalitionOverviewBox(voterBlocs, playerBlocApprovals, allPartyIdeologies, playerFactionId, playerPartyColor) {
-    const blocs = voterBlocs || [];
-    const approvalMap = {};
-    const perfMap = {};
-    for (const row of (playerBlocApprovals || [])) {
-        approvalMap[row.bloc_id] = Number(row.preference_score ?? 40);
-        perfMap[row.bloc_id] = Number(row.performance_perception ?? 50);
-    }
-
-    // Classify blocs into tiers based on preference_score
-    // BASE: >= 55, LEAN: 42-54, SWING: 30-41, SKEPTICAL: 18-29, HOSTILE: < 18
-    const TIER_DEFS = [
-        { key: 'BASE', label: 'BASE', min: 55, color: 'var(--dgreen)', dimColor: 'rgba(74,222,128,0.08)' },
-        { key: 'LEAN', label: 'LEAN', min: 42, color: '#22d3ee', dimColor: 'rgba(34,211,238,0.08)' },
-        { key: 'SWING', label: 'SWING', min: 30, color: 'var(--damber)', dimColor: 'rgba(250,204,21,0.08)' },
-        { key: 'SKEPTICAL', label: 'SKEPTICAL', min: 18, color: '#f97316', dimColor: 'rgba(249,115,22,0.08)' },
-        { key: 'HOSTILE', label: 'HOSTILE', min: 0, color: 'var(--dred)', dimColor: 'rgba(239,68,68,0.08)' },
-    ];
-
-    // Map axis keys from IDEOLOGY_AXES to voter_bloc column names
-    const AXIS_COL_MAP = {
-        liberty_equality: 'axis_liberty_equality',
-        tradition_progress: 'axis_tradition_progress',
-        security_freedom: 'axis_security_freedom',
-        globalism_nationalism: 'axis_globalism_nationalism',
-        individualism_collectivism: 'axis_individualism_collectivism',
-    };
-
-    // Assign each bloc to a tier and compute enriched data
-    const tierData = TIER_DEFS.map(t => ({ ...t, blocs: 0, weight: 0 }));
-    const totalWeight = blocs.reduce((s, b) => s + Number(b.population_weight || 0), 0);
-
-    const enrichedBlocs = [];
-    for (const bloc of blocs) {
-        const pref = approvalMap[bloc.id] ?? 40;
-        const w = Number(bloc.population_weight || 0);
-        let tierKey = 'HOSTILE';
-        for (const tier of tierData) {
-            if (pref >= tier.min) {
-                tier.blocs++;
-                tier.weight += w;
-                tierKey = tier.key;
-                break;
-            }
-        }
-        const pct = totalWeight > 0 ? Math.round((w / totalWeight) * 100) : 0;
-
-        // Compute ideology strengths from ideology tags
-        const tags = [bloc.ideology_1, bloc.ideology_2, bloc.ideology_3, bloc.ideology_4, bloc.ideology_5]
-            .filter(t => t && t !== 'Unaligned').map(t => t.toUpperCase());
-        const strengths = {};
-        for (const ax of IDEOLOGY_AXES) {
-            const col = AXIS_COL_MAP[ax.key];
-            const val = Number(bloc[col] ?? 50);
-            const hasTag = tags.includes(ax.left) || tags.includes(ax.right);
-            const extreme = val <= 20 || val >= 80;
-            strengths[ax.key] = hasTag ? 3 : extreme ? 2 : (val <= 30 || val >= 70) ? 1 : 0.5;
-        }
-
-        // Collect top issues from priority_issues or ideology tags
-        let issues = [];
-        if (bloc.priority_issues && Array.isArray(bloc.priority_issues)) {
-            issues = bloc.priority_issues.slice(0, 3);
-        } else if (tags.length > 0) {
-            issues = tags.slice(0, 3).map(t => t.charAt(0) + t.slice(1).toLowerCase());
-        }
-
-        const perf = perfMap[bloc.id] ?? 50;
-        enrichedBlocs.push({ ...bloc, pref, pct, tierKey, strengths, issues, tags, perf });
-    }
-
-    // Convert weights to percentages
-    for (const tier of tierData) {
-        tier.pct = totalWeight > 0 ? Math.round((tier.weight / totalWeight) * 100) : 0;
-    }
-
-    const basePct = tierData[0].pct;
-    const leanPct = tierData[1].pct;
-    const swingPct = tierData[2].pct;
-    const solidPct = basePct + leanPct;
-    const reachable = solidPct + swingPct;
-    const conceded = 100 - reachable;
-
-    // Tier cards
-    const tierCardsHtml = tierData.map(t =>
-        `<div class="pol-co-tier-card" style="border-top:3px solid ${t.color}">
-            <div class="pol-co-tier-header">
-                <span class="pol-co-tier-label" style="color:${t.color}">${t.label}</span>
-                <span class="pol-co-tier-count">${t.blocs}</span>
-            </div>
-            <div class="pol-co-tier-pct" style="color:${t.color}">${t.pct}%</div>
-        </div>`
-    ).join('');
-
-    // Electorate bar
-    const ebarHtml = tierData.filter(t => t.pct > 0).map(t => {
-        const showLabel = t.pct >= 10;
-        return `<div class="pol-co-ebar-seg" style="width:${t.pct}%;background:${t.color}22;border-bottom:3px solid ${t.color}">
-            <span style="color:${t.color}">${showLabel ? `${t.label} ${t.pct}%` : t.pct}</span>
-        </div>`;
-    }).join('');
-
-    // Key numbers
-    const keyRowHtml = `
-        <div class="pol-co-key-row">
-            <div class="pol-co-key-block">
-                <div class="pol-co-key-value" style="color:var(--dgreen)">${solidPct}%</div>
-                <div class="pol-co-key-label">SOLID</div>
-            </div>
-            <div class="pol-co-key-block">
-                <div class="pol-co-key-value" style="color:var(--damber)">${reachable}%</div>
-                <div class="pol-co-key-label">REACHABLE</div>
-            </div>
-            <div class="pol-co-key-block">
-                <div class="pol-co-key-value" style="color:var(--dred)">${conceded}%</div>
-                <div class="pol-co-key-label">CONCEDED</div>
-            </div>
-        </div>`;
-
-    // Get player party ideology (convert -100..+100 to 0..100)
-    const ideoMap = {};
-    for (const row of (allPartyIdeologies || [])) ideoMap[row.faction_id] = row;
-    const playerIdeo = ideoMap[playerFactionId] || {};
-    const partyColor = playerPartyColor || '#60a5fa';
-
-    // Pre-compute party positions on 0-100 scale
-    const partyPositions = {};
-    for (const ax of IDEOLOGY_AXES) {
-        partyPositions[ax.key] = Math.round((Number(playerIdeo[ax.key] ?? 0) + 100) / 2);
-    }
-
-    // Bloc dropdown options — sorted by preference descending
-    const sortedBlocs = [...enrichedBlocs].sort((a, b) => b.pref - a.pref);
-    const defaultBloc = sortedBlocs[0];
-
-    // Encode enriched bloc data as JSON for the interactivity script
-    const blocDataJson = JSON.stringify(sortedBlocs.map(b => ({
-        id: b.id,
-        name: b.bloc_name,
-        pref: b.pref,
-        perf: b.perf,
-        pct: b.pct,
-        tier: b.tierKey,
-        axes: Object.fromEntries(IDEOLOGY_AXES.map(ax => [ax.key, Number(b[AXIS_COL_MAP[ax.key]] ?? 50)])),
-        strengths: b.strengths,
-        issues: b.issues,
-    }))).replace(/</g, '\\u003c');
-
-    const partyPosJson = JSON.stringify(partyPositions);
-
-    // Dropdown items HTML
-    const dropdownItemsHtml = sortedBlocs.map(b => {
-        const bt = TIER_DEFS.find(t => t.key === b.tierKey) || TIER_DEFS[4];
-        return `<div class="pol-ba-drop-item" data-bloc-id="${b.id}">
-            <div class="pol-ba-drop-dot" style="background:${bt.color}"></div>
-            <span class="pol-ba-drop-name">${escapeHtml(b.bloc_name)}</span>
-            <span class="pol-ba-drop-tier" style="color:${bt.color}">${bt.label}</span>
-            <span class="pol-ba-drop-pct">${b.pct}%</span>
-            <span class="pol-ba-drop-score" style="color:${bt.color}">${b.pref}</span>
-        </div>`;
-    }).join('');
-
-    return `<div class="pol-coalition-box">
-        <span class="pol-co-section-label">Coalition Overview</span>
-
-        <div class="pol-co-tier-row">${tierCardsHtml}</div>
-
-        <div style="margin-bottom:4px">
-            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-                <span class="pol-co-sub-label">Electorate by Tier</span>
-                <span style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-2)">Reachable: <span style="color:var(--dgreen);font-weight:700">${reachable}%</span></span>
-            </div>
-            <div class="pol-co-ebar">${ebarHtml}</div>
-        </div>
-
-        <div class="pol-sc-divider"></div>
-        ${keyRowHtml}
-        <div class="pol-sc-divider"></div>
-
-        <!-- BLOC ALIGNMENT -->
-        <span class="pol-co-section-label">Bloc Alignment</span>
-
-        <div class="pol-ba-selector" id="pol-ba-selector">
-            <div class="pol-ba-selected" id="pol-ba-selected">
-                <div class="pol-ba-sel-left">
-                    <div class="pol-ba-sel-dot" id="pol-ba-sel-dot"></div>
-                    <span class="pol-ba-sel-name" id="pol-ba-sel-name"></span>
-                    <span class="pol-ba-sel-badge" id="pol-ba-sel-badge"></span>
-                    <span class="pol-ba-sel-pct" id="pol-ba-sel-pct"></span>
-                </div>
-                <span class="pol-ba-sel-arrow" id="pol-ba-sel-arrow">▼</span>
-            </div>
-            <div class="pol-ba-dropdown" id="pol-ba-dropdown">
-                ${dropdownItemsHtml}
-            </div>
-        </div>
-
-        <!-- Stats row -->
-        <div class="pol-co-key-row" id="pol-ba-stats" style="margin-top:10px">
-            <div class="pol-co-key-block">
-                <div class="pol-co-key-value" id="pol-ba-alignment">—</div>
-                <div class="pol-co-key-label">ALIGNMENT</div>
-            </div>
-            <div class="pol-co-key-block">
-                <div class="pol-co-key-value" id="pol-ba-performance">—</div>
-                <div class="pol-co-key-label">PERFORMANCE</div>
-            </div>
-            <div class="pol-co-key-block">
-                <div class="pol-co-key-value" id="pol-ba-approval">—</div>
-                <div class="pol-co-key-label">APPROVAL</div>
-            </div>
-            <div class="pol-co-key-block">
-                <div class="pol-co-key-value" id="pol-ba-headroom">—</div>
-                <div class="pol-co-key-label">HEADROOM</div>
-            </div>
-        </div>
-
-        <!-- Legend -->
-        <div class="pol-ba-legend" style="margin-top:10px">
-            <div class="pol-ba-legend-item">
-                <div class="pol-ba-legend-dot" style="background:${partyColor}"></div>
-                <span style="color:${partyColor}">You</span>
-            </div>
-            <div class="pol-ba-legend-item">
-                <div class="pol-ba-legend-dot" id="pol-ba-legend-bloc-dot"></div>
-                <span id="pol-ba-legend-bloc-name"></span>
-            </div>
-            <span class="pol-ba-legend-hint">● = importance</span>
-        </div>
-
-        <!-- Axes -->
-        <div id="pol-ba-axes" style="margin-top:6px"></div>
-
-        <!-- Summary -->
-        <div class="pol-ba-summary" id="pol-ba-summary" style="margin-top:4px"></div>
-
-        <!-- Issues -->
-        <div class="pol-ba-issues" id="pol-ba-issues" style="margin-top:6px"></div>
-
-        <div hidden id="pol-ba-bloc-data">${blocDataJson}</div>
-        <div hidden id="pol-ba-party-pos">${partyPosJson}</div>
-        <div hidden id="pol-ba-party-color">"${partyColor}"</div>
-    </div>`;
-}
 
 function renderGovCard(nation, coalition, allParties, currentTick, prevApproval, president, administration) {
     const isPres = isPresidentialRepublic(nation);
@@ -1856,19 +1656,18 @@ function renderGovCard(nation, coalition, allParties, currentTick, prevApproval,
 
         <div style="height:1px;background:var(--dborder-0);margin:14px 0"></div>
 
-        <div style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--dtext-2);margin-bottom:8px">Governing Coalition</div>
-        <div style="display:flex;height:10px;border-radius:3px;overflow:hidden;background:rgba(255,255,255,0.04);margin-bottom:10px">${barHtml}</div>
-        ${partyRowsHtml}
-        <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);text-align:right;margin-top:4px">${govSeats} seats combined</div>
+        <div style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--dtext-2);margin-bottom:8px">Approval</div>
+        <div style="font-family:var(--dfont-mono);font-size:28px;font-weight:700;line-height:1;color:${ac}">${approval}%</div>
+        <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:4px;display:flex;align-items:center;gap:8px">
+            <span style="text-transform:uppercase;font-weight:600">${escapeHtml(govLabel)}</span>
+            <span style="font-weight:400">${escapeHtml(footerDetail)}</span>
+        </div>
 
         <div style="height:1px;background:var(--dborder-0);margin:14px 0"></div>
 
-        <div style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--dtext-2);margin-bottom:8px">Approval</div>
-        <div style="font-family:var(--dfont-mono);font-size:28px;font-weight:700;line-height:1;color:${ac}">${approval}%</div>
-
-        <div style="background:var(--dbg-4);border-top:1px solid var(--dborder-0);margin:16px -20px -16px;padding:10px 20px;font-family:var(--dfont-mono);font-size:10px;font-weight:600;color:var(--dtext-2);letter-spacing:0.04em;display:flex;align-items:center;gap:8px;border-radius:0 0 4px 4px">
-            <span style="text-transform:uppercase">${escapeHtml(govLabel)}</span>
-            <span style="color:var(--dtext-3);font-weight:400">${escapeHtml(footerDetail)}</span>
+        <div style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--dtext-2);margin-bottom:8px">Party Events</div>
+        <div id="gov-card-party-events" class="pe-feed" style="max-height:200px;overflow-y:auto;font-size:11px">
+            <div style="color:var(--dtext-3);font-family:var(--dfont-ui);font-size:11px">Loading events...</div>
         </div>
     </div>`;
 }
@@ -2905,84 +2704,6 @@ function renderUpcomingElectionsBox(scheduledElections, currentTick) {
     </div>`;
 }
 
-function renderBlocVotingBox(lastParliamentary, lastPresidential, allParties) {
-    const colorMap = {};
-    const nameMap = {};
-    (allParties || []).forEach(p => {
-        colorMap[p.id] = p.party_color || '#888';
-        nameMap[p.id] = p.abbreviation || p.faction_name || '?';
-    });
-
-    // Pick the most recent election that has bloc_details
-    const parlHasBlocs = lastParliamentary?.results?.bloc_details?.length > 0;
-    const presHasBlocs = lastPresidential?.results?.bloc_details?.length > 0;
-    let sourceElection = null;
-    if (parlHasBlocs && presHasBlocs) {
-        sourceElection = (lastPresidential.election_tick > lastParliamentary.election_tick) ? lastPresidential : lastParliamentary;
-    } else if (presHasBlocs) {
-        sourceElection = lastPresidential;
-    } else if (parlHasBlocs) {
-        sourceElection = lastParliamentary;
-    }
-
-    if (!sourceElection) {
-        return `<div class="pol-blocs-box">
-            <div class="pol-section-label" style="margin-bottom:12px">HOW BLOCS VOTED</div>
-            <div class="pol-el-empty">No bloc voting data available.</div>
-        </div>`;
-    }
-
-    const blocs = sourceElection.results.bloc_details;
-    const date = tickToDate(sourceElection.election_tick);
-
-    let rows = blocs.map(bloc => {
-        // Tags
-        const tags = (bloc.tags || []).map(t => `<span class="pol-bloc-tag">${escapeHtml(t)}</span>`).join('');
-
-        // Sort party_votes by votes descending
-        const pv = [...(bloc.party_votes || [])].sort((a, b) => (b.votes || 0) - (a.votes || 0));
-        const totalBlocVotes = pv.reduce((s, v) => s + (v.votes || 0), 0) || 1;
-
-        // Find top party
-        const topParty = pv.length > 0 ? pv[0] : null;
-        const topPartyName = topParty ? (nameMap[topParty.party_id] || escapeHtml(topParty.party_name)) : '—';
-        const topPartyColor = topParty ? (colorMap[topParty.party_id] || '#888') : '#888';
-
-        // Vote split — show top 3 parties as mini bars
-        const top3 = pv.slice(0, 3);
-        const voteBars = top3.map(v => {
-            const pct = ((v.votes || 0) / totalBlocVotes * 100).toFixed(1);
-            const color = colorMap[v.party_id] || '#888';
-            const name = nameMap[v.party_id] || escapeHtml(v.party_name);
-            return `<div class="pol-bloc-vote-row">
-                <div class="pol-bloc-vote-bar" style="width:${Math.max(pct * 0.8, 2)}px;background:${color}"></div>
-                <span class="pol-bloc-vote-name">${name}</span>
-                <span class="pol-bloc-vote-pct">${pct}%</span>
-            </div>`;
-        }).join('');
-
-        return `<tr>
-            <td>${escapeHtml(bloc.bloc_name)}</td>
-            <td><div class="pol-bloc-tags">${tags || '—'}</div></td>
-            <td>${(bloc.voter_count || 0).toLocaleString()}</td>
-            <td><span class="pol-bloc-top-party"><span class="pol-el-color-dot" style="background:${topPartyColor}"></span>${topPartyName}</span></td>
-            <td><div class="pol-bloc-votes">${voteBars}</div></td>
-            <td>${(bloc.abstentions || 0).toLocaleString()}</td>
-        </tr>`;
-    }).join('');
-
-    const totalAbstentions = blocs.reduce((s, b) => s + (b.abstentions || 0), 0);
-
-    return `<div class="pol-blocs-box">
-        <div class="pol-section-label" style="margin-bottom:12px">HOW BLOCS VOTED</div>
-        <div class="pol-el-date">${date}</div>
-        <table class="pol-blocs-table">
-            <thead><tr><th>Bloc</th><th>Tags</th><th>Voters</th><th>Top Party</th><th>Vote Split</th><th>Abstain</th></tr></thead>
-            <tbody>${rows}</tbody>
-        </table>
-        <div class="pol-el-summary" style="margin-top:8px">Total abstentions: ${totalAbstentions.toLocaleString()}</div>
-    </div>`;
-}
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -2990,12 +2711,11 @@ function escapeHtml(str) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// DEMOCRACY CAMPAIGN ACTIONS TAB (Rally, Outreach, Attack, Promise)
+// DEMOCRACY CAMPAIGN ACTIONS TAB (Rally, Attack, Promise)
 // ═══════════════════════════════════════════════════════════════════
 
 // Campaign action state
-let _caSelected = null;   // 'rally' | 'outreach' | 'attack' | 'promise' | 'protest'
-let _caBloc = null;       // selected bloc id
+let _caSelected = null;   // 'rally' | 'attack' | 'promise' | 'protest'
 let _caRival = null;      // selected rival faction id
 let _caVector = null;     // attack vector id
 let _caPromiseType = null; // 'stat' | 'crisis'
@@ -3021,30 +2741,54 @@ let _govProtestCrisis = null;       // active protest crisis for governing party
 // Store references for re-rendering
 let _currentNation = null, _currentFaction = null, _currentShard = null, _currentAllParties = null;
 let _caIsGoverning = false;
+let _caTopIssueStats = null; // Stats from top 7 issues by salience (for Make Promise filtering)
 
 const CA_ACTIONS = [
     { id: 'rally', name: 'Hold a Rally', ap: RALLY_CONFIG.AP_COST, color: '#f97316', icon: '★',
       desc: 'Random outcome — can boost or backfire. Generates headlines visible to rivals.' },
-    { id: 'outreach', name: 'Voter Outreach', ap: OUTREACH_CONFIG.AP_COST, color: '#4ade80', icon: '●',
-      desc: 'Guaranteed result based on ideology alignment. Diminishing returns with repeated use.' },
-    { id: 'attack', name: 'Campaign Attack', ap: ATTACK_CONFIG.AP_COST, color: '#ef4444', icon: '✦',
+{ id: 'attack', name: 'Campaign Attack', ap: ATTACK_CONFIG.AP_COST, color: '#ef4444', icon: '✦',
       desc: 'Attack a rival\'s record. Stronger with evidence. Can backfire.' },
     { id: 'promise', name: 'Make a Promise', ap: MAKE_PROMISE_CONFIG.AP_COST, color: '#a78bfa', icon: '◆',
       desc: 'Commit to improving a stat or resolving a crisis. Immediate approval boost, but penalties if broken.' },
+    { id: 'take_stance', name: 'Take a Stance', ap: STANCE_CONFIG.AP_COST, color: '#38bdf8', icon: '⚑',
+      desc: 'Declare your position on an issue. Builds platform appeal. Stances decay over time — reinforce to sustain.' },
+    { id: 'poll_now', name: 'Poll Now', ap: POLL_CONFIG.AP_COST, color: '#22d3ee', icon: '📊',
+      desc: 'Snapshot your current electorate standing. See your pillars, vote share, and limiters frozen in time.' },
+    { id: 'fund_think_tank', name: 'Fund Think Tank', ap: IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST, color: '#14b8a6', icon: '🏛',
+      desc: 'Drift the electorate\'s ideological mean on a chosen axis. 8 AP upfront + 1 AP/tick for 50 ticks. Drift: 1d3 (0.1–0.3).' },
+    { id: 'media_campaign', name: 'Media Campaign', ap: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.AP_COST, color: '#8b5cf6', icon: '📡',
+      desc: 'Expand or narrow electorate variance on a chosen axis. 1d5 variance shift for 5 ticks, then 1d3 visibility for 5 ticks.' },
+    { id: 'grassroots_movement', name: 'Grassroots Movement', ap: IDEO_SHIFT_CONFIG.GRASSROOTS.AP_COST, color: '#10b981', icon: '🌱',
+      desc: 'Slow burn ideology shift. 3 AP upfront + 1 AP/tick for 100 ticks. 1d2 drift, +1 visibility every 10t.' },
 ];
 
+// State for new electorate actions
+let _caTargetAxis = null;
+let _caTargetDirection = null;
+let _caTargetDemographic = null;
+let _caTargetBand = null;
+// State for Take Stance action
+let _caStanceIssue = null;
+let _caStanceAxis = null;
+let _caStanceSide = null;
+let _caStanceIntensity = 'moderate';
+let _caStanceIssueStates = null; // cached issue states for stance config
+
 function caReset() {
-    _caBloc = null; _caRival = null; _caVector = null;
+    _caRival = null; _caVector = null;
     _caPromiseType = null; _caStatKey = null; _caCrisisId = null;
     _caAttackEvidence = null; _caAttackVectors = null;
     _protestTab = 'minister'; _protestTarget = null;
     _protestCachedMinisters = null; _protestCachedPolicies = null; _protestCachedStats = null;
     _protestLoading = false;
+    _caTargetAxis = null; _caTargetDirection = null;
+    _caTargetDemographic = null; _caTargetBand = null;
+    _caStanceIssue = null; _caStanceAxis = null;
+    _caStanceSide = null; _caStanceIntensity = 'moderate';
 }
 
 function caIsReady() {
-    if (_caSelected === 'rally') return !!_caBloc;
-    if (_caSelected === 'outreach') return !!_caBloc;
+    if (_caSelected === 'rally') return true;
     if (_caSelected === 'attack') return !!_caRival && !!_caVector;
     if (_caSelected === 'promise') {
         if (_caPromiseType === 'stat') return !!_caStatKey;
@@ -3052,6 +2796,11 @@ function caIsReady() {
         return false;
     }
     if (_caSelected === 'protest') return !!_protestTarget;
+    if (_caSelected === 'take_stance') return !!_caStanceIssue && !!_caStanceAxis && !!_caStanceSide && !!_caStanceIntensity;
+    if (_caSelected === 'poll_now') return true;
+    if (_caSelected === 'fund_think_tank') return !!_caTargetAxis && !!_caTargetDirection;
+    if (_caSelected === 'media_campaign') return !!_caTargetAxis && !!_caTargetDirection;
+    if (_caSelected === 'grassroots_movement') return !!_caTargetAxis && !!_caTargetDirection;
     return false;
 }
 
@@ -3093,17 +2842,6 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     const coalitionIds = new Set(coalition?.party_ids || []);
     _caIsGoverning = f.id === n.ruling_faction_id || coalitionIds.has(f.id);
 
-    // Fetch voter blocs
-    const { data: voterBlocs } = await _supabase
-        .from('voter_blocs').select('*').eq('nation_id', n.id).eq('is_active', true);
-
-    // Fetch bloc approvals
-    const { data: blocApprovals } = await _supabase
-        .from('faction_bloc_approval')
-        .select('bloc_id, preference_score, momentum, ideology_alignment')
-        .eq('faction_id', f.id);
-    const approvalByBloc = {};
-    for (const ba of (blocApprovals || [])) approvalByBloc[ba.bloc_id] = ba;
 
     // Fetch faction ideology
     const { data: factionIdeo } = await _supabase
@@ -3113,12 +2851,19 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     // Fetch other parties
     const otherParties = (allParties || []).filter(p => p.id !== f.id);
 
-    // Build blocs with approval info
-    const blocs = (voterBlocs || []).map(b => {
-        const ba = approvalByBloc[b.id];
-        const pref = ba?.preference_score ?? 40;
-        return { ...b, approval: Math.round(pref), momentum: ba?.momentum ?? 0 };
-    });
+    // Fetch top 7 issues by salience for Make Promise filtering
+    const { data: topIssues } = await _supabase
+        .from('issue_state')
+        .select('issue_id, salience')
+        .eq('nation_id', n.id)
+        .order('salience', { ascending: false })
+        .limit(7);
+    const allowedStats = new Set();
+    for (const iss of (topIssues || [])) {
+        const def = ISSUE_DEFS[iss.issue_id];
+        if (def) for (const s of def.stats) allowedStats.add(s);
+    }
+    _caTopIssueStats = allowedStats;
 
     // Fetch protest state for the action row
     let protestCheck = { allowed: false, reason: '' };
@@ -3200,10 +2945,10 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
         _govProtestCrisis = govCrisis;
     }
 
-    renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo, approvalByBloc, tick, protestCheck, protestApCost);
+    renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost);
 }
 
-function renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo, approvalByBloc, tick, protestCheck, protestApCost) {
+function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost) {
     const allActions = [...CA_ACTIONS];
 
     // Add protest action for opposition only
@@ -3293,7 +3038,7 @@ function renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo,
         } else if (sel.id === 'protest' && _protestState === 'resolving') {
             panelHtml += renderProtestResolvingPanel();
         } else {
-            panelHtml += renderActionConfig(sel, blocs, otherParties, factionIdeo, n, ap, tick);
+            panelHtml += renderActionConfig(sel, otherParties, factionIdeo, n, ap, tick);
             // Confirm button
             const cost = caGetCost();
             const ready = caIsReady();
@@ -3303,7 +3048,14 @@ function renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo,
         panelHtml += `</div>`;
     }
 
-    container.innerHTML = `<div class="ca-wrap"><div class="ca-list">${listHtml}</div>${panelHtml}</div>`;
+    container.innerHTML = `<div class="ca-wrap"><div class="ca-list">${listHtml}</div>${panelHtml}</div>
+    <div class="pe-container">
+        <div class="pe-header"><span class="pol-mod-title">Party Events</span></div>
+        <div id="party-events-feed" class="pe-feed"><div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px">Loading events...</div></div>
+    </div>`;
+
+    // Load party events feed
+    _loadPartyEventsFeed(n.id, f.id);
 
     // Wire up action selection
     container.querySelectorAll('.ca-item').forEach(el => {
@@ -3313,6 +3065,8 @@ function renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo,
             // Public Address — execute immediately, no config
             if (id === 'public_address' && _govProtestCrisis) {
                 if (el.classList.contains('disabled')) return;
+                if (el.dataset.executing) return; // double-fire guard
+                el.dataset.executing = 'true';
                 el.style.opacity = '0.4';
                 try {
                     const result = await executePublicAddress(_supabase, f.id, n.id, _govProtestCrisis.id, tick);
@@ -3320,12 +3074,14 @@ function renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo,
                         f.action_points = result.newAp;
                         await renderDemocracyActions(n, f, _currentShard, _currentAllParties);
                     } else {
-                        alert(result.error || 'Public Address failed.');
+                        _showToast(result.error || 'Public Address failed.');
                         el.style.opacity = '';
+                        delete el.dataset.executing;
                     }
                 } catch (e) {
-                    alert('Error: ' + (e.message || 'Unknown'));
+                    _showToast('Error: ' + (e.message || 'Unknown'));
                     el.style.opacity = '';
+                    delete el.dataset.executing;
                 }
                 return;
             }
@@ -3335,119 +3091,181 @@ function renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo,
             if (_caSelected === id) { _caSelected = null; } else { _caSelected = id; }
             caReset();
             _caResult = null;
-            renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo, approvalByBloc, tick);
+            renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost);
         });
     });
 
     // Wire up config interactions
-    wireCampaignConfig(container, f, n, ap, blocs, otherParties, factionIdeo, approvalByBloc, tick);
+    wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost);
 }
 
 // ── Render config body for each action ──
 
-function renderActionConfig(sel, blocs, otherParties, factionIdeo, nation, ap, tick) {
-    if (sel.id === 'rally') return renderRallyConfig(blocs, factionIdeo, nation);
-    if (sel.id === 'outreach') return renderOutreachConfig(blocs, factionIdeo);
+function renderActionConfig(sel, otherParties, factionIdeo, nation, ap, tick) {
+    if (sel.id === 'rally') return renderRallyConfig();
     if (sel.id === 'attack') return renderAttackConfig(otherParties);
     if (sel.id === 'promise') return renderPromiseConfig(nation);
     if (sel.id === 'protest') return renderProtestConfig(nation, tick);
+    if (sel.id === 'take_stance') return renderTakeStanceConfig(nation);
+    if (sel.id === 'poll_now') return renderPollNowConfig();
+    if (sel.id === 'fund_think_tank') return renderThinkTankConfig();
+    if (sel.id === 'media_campaign') return renderMediaCampaignConfig();
+    if (sel.id === 'grassroots_movement') return renderGrassrootsConfig();
     return '';
 }
 
 // ── RALLY CONFIG ──
 
-function renderRallyConfig(blocs, factionIdeo, nation) {
-    const nationState = {
-        crisisCount: 0,
-        polarization: nation.polarization ?? 0,
-        civilUnrest: nation.civil_unrest ?? 0,
-    };
+function renderRallyConfig() {
+    return `<div class="ca-info-box">Hold a rally to energize your base. Random outcome — can boost or backfire.</div>`;
+}
 
-    let html = `<div class="ca-subtitle">Select target bloc</div>`;
-    html += `<div class="ca-info-box">Random outcome based on bloc approval. Higher approval = better odds.</div>`;
-    html += `<div class="ca-bloc-list">`;
-    for (const b of blocs) {
-        const isSel = _caBloc === b.id;
-        const approvalColor = b.approval >= 55 ? '#4ade80' : b.approval >= 35 ? '#facc15' : '#ef4444';
-        html += `<div class="ca-bloc-card${isSel ? ' selected' : ''}" data-bloc-id="${b.id}" style="border-left-color:${isSel ? '#f97316' : approvalColor};${isSel ? 'border-color:rgba(249,115,22,0.2);background:rgba(249,115,22,0.03)' : ''}">
-            <div class="ca-bloc-head">
-                <span class="ca-bloc-name">${escapeHtml(b.bloc_name)}</span>
-                <div style="display:flex;align-items:center;gap:10px">
-                    <span class="ca-bloc-meta">${Math.round(b.population_weight || 0)}% pop</span>
-                    <span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${approvalColor}">${b.approval}</span>
-                </div>
-            </div>`;
+// ── TAKE STANCE CONFIG ──
 
-        // Show outcome odds when selected
-        if (isSel) {
-            const weights = getRallyOutcomeWeights(b.approval, 0, nationState);
-            const risk = getRallyRiskLevel(weights);
-            const riskColors = { dangerous: '#ef4444', risky: '#f97316', moderate: '#facc15', safe: '#4ade80' };
-            const maxPct = Math.max(...Object.values(weights));
+function renderTakeStanceConfig(nation) {
+    let html = `<div class="ca-info-box">Declare your party's position on an issue. Stances build platform appeal but decay over time.</div>`;
 
-            html += `<div class="ca-bloc-detail">`;
-            html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                <span style="font-family:var(--dfont-mono);font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--dtext-3)">Outcome Odds</span>
-                <span class="ca-pill" style="color:${riskColors[risk] || '#facc15'};background:${riskColors[risk] || '#facc15'}15;border:1px solid ${riskColors[risk] || '#facc15'}33">${risk.toUpperCase()}</span>
-            </div>`;
-            for (const o of RALLY_OUTCOMES) {
-                const pct = weights[o.id] || 0;
-                const barW = maxPct > 0 ? (pct / maxPct) * 100 : 0;
-                const oColor = o.id === 'rousing' ? '#4ade80' : o.id === 'solid' ? '#2dd4bf' : o.id === 'low' ? '#facc15' : o.id === 'gaffe' ? '#f97316' : o.id === 'divisive' ? '#a78bfa' : '#ef4444';
-                html += `<div class="ca-outcome-bar">
-                    <span class="ca-outcome-name">${escapeHtml(o.name)}</span>
-                    <div class="ca-outcome-track"><div class="ca-outcome-fill" style="width:${barW}%;background:${oColor}"></div></div>
-                    <span class="ca-outcome-pct" style="color:${oColor}">${pct}%</span>
+    // Issue selector
+    html += `<div class="ca-subtitle" style="margin-top:10px">Select Issue</div><div style="display:flex;flex-direction:column;gap:3px">`;
+    const issueEntries = Object.entries(ISSUE_DEFS);
+    // Sort by salience if we have issue states
+    const sortedIssues = _caStanceIssueStates
+        ? issueEntries.sort((a, b) => {
+            const sa = _caStanceIssueStates.find(is => is.issue_id === a[0])?.salience ?? 0;
+            const sb = _caStanceIssueStates.find(is => is.issue_id === b[0])?.salience ?? 0;
+            return sb - sa;
+        })
+        : issueEntries;
+
+    for (const [issueId, def] of sortedIssues) {
+        const isSel = _caStanceIssue === issueId;
+        const issState = _caStanceIssueStates?.find(is => is.issue_id === issueId);
+        const salience = issState ? Number(issState.salience).toFixed(0) : '—';
+        html += `<div class="ca-option-chip${isSel ? ' selected' : ''}" data-stance-issue-id="${issueId}" style="padding:6px 10px;display:flex;justify-content:space-between;align-items:center;${isSel ? 'border-color:#38bdf8;color:var(--dtext-0);background:rgba(56,189,248,0.06)' : ''}">
+            <span style="font-weight:600">${escapeHtml(def.label)}</span>
+            <span style="font-size:10px;color:var(--dtext-3)">Salience: ${salience}</span>
+        </div>`;
+    }
+    html += `</div>`;
+
+    // Axis selector (if issue selected)
+    if (_caStanceIssue) {
+        const issueDef = ISSUE_DEFS[_caStanceIssue];
+        if (issueDef && issueDef.axes.length > 0) {
+            html += `<div class="ca-subtitle" style="margin-top:12px">Choose Axis</div><div style="display:flex;flex-direction:column;gap:3px">`;
+            for (const ak of issueDef.axes) {
+                const ax = IDEOLOGY_AXES.find(a => a.key === ak);
+                if (!ax) continue;
+                const isSel = _caStanceAxis === ak;
+                html += `<div class="ca-option-chip${isSel ? ' selected' : ''}" data-stance-axis-key="${ak}" style="padding:6px 10px;${isSel ? 'border-color:#38bdf8;color:var(--dtext-0);background:rgba(56,189,248,0.06)' : ''}">
+                    <span style="color:${ax.leftColor}">${ax.leftLabel}</span> <span style="color:var(--dtext-3)">↔</span> <span style="color:${ax.rightColor}">${ax.rightLabel}</span>
                 </div>`;
             }
             html += `</div>`;
         }
+    }
+
+    // Side selector (if axis selected)
+    if (_caStanceAxis) {
+        const ax = IDEOLOGY_AXES.find(a => a.key === _caStanceAxis);
+        if (ax) {
+            html += `<div class="ca-subtitle" style="margin-top:12px">Choose Side</div><div style="display:flex;gap:8px">`;
+            const isLeft = _caStanceSide === 'left';
+            const isRight = _caStanceSide === 'right';
+            html += `<div class="ca-option-chip${isLeft ? ' selected' : ''}" data-stance-side-val="left" style="flex:1;text-align:center;padding:8px;${isLeft ? `border-color:${ax.leftColor};color:${ax.leftColor};background:rgba(56,189,248,0.06)` : ''}"><span style="font-weight:700">${ax.leftLabel}</span></div>`;
+            html += `<div class="ca-option-chip${isRight ? ' selected' : ''}" data-stance-side-val="right" style="flex:1;text-align:center;padding:8px;${isRight ? `border-color:${ax.rightColor};color:${ax.rightColor};background:rgba(56,189,248,0.06)` : ''}"><span style="font-weight:700">${ax.rightLabel}</span></div>`;
+            html += `</div>`;
+        }
+    }
+
+    // Intensity selector (if side selected)
+    if (_caStanceSide) {
+        html += `<div class="ca-subtitle" style="margin-top:12px">Intensity</div><div style="display:flex;gap:6px">`;
+        for (const [key, cfg] of Object.entries(STANCE_CONFIG.INTENSITY)) {
+            const isSel = _caStanceIntensity === key;
+            html += `<div class="ca-option-chip${isSel ? ' selected' : ''}" data-stance-int-val="${key}" style="flex:1;text-align:center;padding:6px 4px;${isSel ? 'border-color:#38bdf8;color:var(--dtext-0);background:rgba(56,189,248,0.06)' : ''}">
+                <div style="font-weight:600;font-size:11px">${key}</div>
+                <div style="font-size:9px;color:var(--dtext-3);margin-top:2px">Str ${cfg.strength} · -${cfg.decay_rate}/t</div>
+            </div>`;
+        }
         html += `</div>`;
+    }
+
+    return html;
+}
+
+// ── POLL NOW CONFIG ──
+
+function renderPollNowConfig() {
+    return `<div class="ca-info-box">Take a snapshot of your current electorate standing. Your polled pillars, vote share, and limiters will be frozen so you can compare before/after future actions.</div>
+    <div class="ca-info-box" style="margin-top:8px;color:var(--dtext-3);font-size:0.8em">Cooldown: ${POLL_CONFIG.COOLDOWN_WINDOW} ticks between polls.</div>`;
+}
+
+// ── THINK TANK CONFIG ──
+
+function renderThinkTankConfig() {
+    let html = `<div class="ca-info-box">Launch a think tank to gradually drift the electorate's ideological mean on a chosen axis. ${IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST} AP upfront + ${IDEO_SHIFT_CONFIG.THINK_TANK.TICK_AP_COST} AP/tick for ${IDEO_SHIFT_CONFIG.THINK_TANK.DURATION} ticks. Drift: 1d3 (0.1–0.3) per tick.</div>`;
+    html += renderAxisSelector();
+    if (_caTargetAxis) {
+        const axisDef = IDEOLOGY_AXES.find(a => a.key === _caTargetAxis);
+        if (axisDef) {
+            html += `<div class="ca-subtitle" style="margin-top:12px">Drift direction</div>`;
+            html += renderDirectionSelector(axisDef.leftLabel, axisDef.rightLabel, 'left', 'right');
+        }
+    }
+    return html;
+}
+
+// ── MEDIA CAMPAIGN CONFIG ──
+
+function renderMediaCampaignConfig() {
+    const mc = IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN;
+    let html = `<div class="ca-info-box">Launch a media campaign to expand or narrow electorate ideological variance on a chosen axis. Phase 1: 1d5 (0.1–0.5) variance shift/tick for ${mc.DURATION} ticks. Phase 2: 1d3 (1–3) visibility/tick for ${mc.VISIBILITY_TICKS} ticks.</div>`;
+    html += renderAxisSelector();
+    if (_caTargetAxis) {
+        html += `<div class="ca-subtitle" style="margin-top:12px">Variance direction</div>`;
+        html += renderDirectionSelector('Expand (polarize)', 'Narrow (centralize)', 'expand', 'narrow');
+    }
+    return html;
+}
+
+// ── GRASSROOTS CONFIG ──
+
+function renderGrassrootsConfig() {
+    const gr = IDEO_SHIFT_CONFIG.GRASSROOTS;
+    let html = `<div class="ca-info-box">Launch a grassroots movement to slowly shift the electorate on a chosen axis. ${gr.AP_COST} AP upfront + ${gr.TICK_AP_COST} AP/tick for ${gr.DURATION} ticks. Drift: 1d2 (${gr.DRIFT_MIN}–${gr.DRIFT_MAX})/tick. +1 visibility every ${gr.VISIBILITY_INTERVAL} ticks.</div>`;
+    html += renderAxisSelector();
+    if (_caTargetAxis) {
+        const axisDef = IDEOLOGY_AXES.find(a => a.key === _caTargetAxis);
+        if (axisDef) {
+            html += `<div class="ca-subtitle" style="margin-top:12px">Drift direction</div>`;
+            html += renderDirectionSelector(axisDef.leftLabel, axisDef.rightLabel, 'left', 'right');
+        }
+    }
+    return html;
+}
+
+// ── Shared config helpers ──
+
+function renderAxisSelector() {
+    let html = `<div class="ca-subtitle" style="margin-top:10px">Target axis</div><div style="display:flex;flex-direction:column;gap:4px">`;
+    for (const axis of IDEOLOGY_AXES) {
+        const isSel = _caTargetAxis === axis.key;
+        html += `<div class="ca-option-chip${isSel ? ' selected' : ''}" data-axis-key="${axis.key}" style="padding:6px 10px;${isSel ? 'border-color:var(--dtext-0);color:var(--dtext-0);background:rgba(255,255,255,0.04)' : ''}">
+            <span style="font-weight:600">${axis.leftLabel}</span> <span style="color:var(--dtext-3)">↔</span> <span style="font-weight:600">${axis.rightLabel}</span>
+            <span style="font-size:0.75em;color:var(--dtext-3);margin-left:6px">${axis.description}</span>
+        </div>`;
     }
     html += `</div>`;
     return html;
 }
 
-// ── OUTREACH CONFIG ──
-
-function renderOutreachConfig(blocs, factionIdeo) {
-    let html = `<div class="ca-subtitle">Select target bloc</div>`;
-    html += `<div class="ca-info-box">Guaranteed result. Effect based on ideology alignment. No randomness, no headlines.</div>`;
-    html += `<div class="ca-bloc-list">`;
-    for (const b of blocs) {
-        const isSel = _caBloc === b.id;
-        const alignment = factionIdeo ? computeOutreachAlignment(factionIdeo, b) : 50;
-        const effect = calcOutreachEffect(alignment, 0);
-        const alignColor = alignment >= 70 ? '#4ade80' : alignment >= 50 ? '#22d3ee' : alignment >= 35 ? '#facc15' : '#ef4444';
-        html += `<div class="ca-bloc-card${isSel ? ' selected' : ''}" data-bloc-id="${b.id}" style="border-left-color:${isSel ? '#4ade80' : alignColor};${isSel ? 'border-color:rgba(74,222,128,0.2);background:rgba(74,222,128,0.03)' : ''}">
-            <div class="ca-bloc-head">
-                <span class="ca-bloc-name">${escapeHtml(b.bloc_name)}</span>
-                <div style="display:flex;align-items:center;gap:10px">
-                    <span style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3)">align</span>
-                    <span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${alignColor}">${alignment.toFixed(1)}</span>
-                    <span style="font-family:var(--dfont-mono);font-size:10px;color:#4ade80;font-weight:700">+${effect.base}</span>
-                </div>
-            </div>`;
-
-        if (isSel) {
-            const frictions = calcOutreachFriction(b, blocs, factionIdeo);
-            html += `<div class="ca-bloc-detail">`;
-            html += `<div style="margin-bottom:4px"><span style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3)">Expected effect: </span><span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:#4ade80">+${effect.base} approval</span></div>`;
-            if (frictions.length > 0) {
-                html += `<div style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3);margin:6px 0 4px">Friction — opposed blocs lose approval:</div>`;
-                for (const fr of frictions) {
-                    html += `<div class="ca-friction-row">
-                        <span class="ca-friction-name">${escapeHtml(fr.blocName)}</span>
-                        <span class="ca-friction-val">${fr.penalty}</span>
-                    </div>`;
-                }
-            } else {
-                html += `<div style="font-family:var(--dfont-mono);font-size:10px;color:#4ade80;margin-top:4px">No friction — no opposed blocs affected</div>`;
-            }
-            html += `</div>`;
-        }
-        html += `</div>`;
-    }
+function renderDirectionSelector(leftLabel, rightLabel, leftValue, rightValue) {
+    let html = `<div style="display:flex;gap:8px">`;
+    const isLeft = _caTargetDirection === leftValue;
+    const isRight = _caTargetDirection === rightValue;
+    html += `<div class="ca-option-chip${isLeft ? ' selected' : ''}" data-direction-value="${leftValue}" style="flex:1;text-align:center;padding:8px;${isLeft ? 'border-color:var(--dtext-0);color:var(--dtext-0);background:rgba(255,255,255,0.04)' : ''}">${leftLabel}</div>`;
+    html += `<div class="ca-option-chip${isRight ? ' selected' : ''}" data-direction-value="${rightValue}" style="flex:1;text-align:center;padding:8px;${isRight ? 'border-color:var(--dtext-0);color:var(--dtext-0);background:rgba(255,255,255,0.04)' : ''}">${rightLabel}</div>`;
     html += `</div>`;
     return html;
 }
@@ -3530,7 +3348,11 @@ function renderPromiseConfig(nation) {
 
     if (_caPromiseType === 'stat') {
         const statDelta = _caIsGoverning ? MAKE_PROMISE_CONFIG.STAT_DELTA_GOVERNING : MAKE_PROMISE_CONFIG.STAT_DELTA;
-        const stats = getPromiseableStats(nation, _caIsGoverning);
+        const allStats = getPromiseableStats(nation, _caIsGoverning);
+        // Filter to stats from top 7 electorate issues by salience
+        const stats = _caTopIssueStats && _caTopIssueStats.size > 0
+            ? allStats.filter(s => _caTopIssueStats.has(s.statKey))
+            : allStats;
         if (stats.length === 0) {
             html += `<div class="ca-info-box">No stats available to promise on — they may all be at their limit.</div>`;
         } else {
@@ -4142,16 +3964,8 @@ function renderProtestResolvingPanel() {
 
 // ── Wire up config panel interactions ──
 
-function wireCampaignConfig(container, f, n, ap, blocs, otherParties, factionIdeo, approvalByBloc, tick) {
-    const rerender = () => renderCampaignUI(container, f, n, ap, blocs, otherParties, factionIdeo, approvalByBloc, tick);
-
-    // Bloc selection (rally, outreach)
-    container.querySelectorAll('[data-bloc-id]').forEach(el => {
-        el.addEventListener('click', () => {
-            _caBloc = _caBloc === el.dataset.blocId ? null : el.dataset.blocId;
-            rerender();
-        });
-    });
+function wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost) {
+    const rerender = () => renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost);
 
     // Rival selection (attack)
     container.querySelectorAll('[data-rival-id]').forEach(el => {
@@ -4240,6 +4054,94 @@ function wireCampaignConfig(container, f, n, ap, blocs, otherParties, factionIde
         });
     });
 
+    // Stance issue selection
+    container.querySelectorAll('[data-stance-issue-id]').forEach(el => {
+        el.addEventListener('click', () => {
+            const id = el.dataset.stanceIssueId;
+            if (_caStanceIssue === id) { _caStanceIssue = null; } else { _caStanceIssue = id; }
+            _caStanceAxis = null; _caStanceSide = null; _caStanceIntensity = 'moderate';
+            // Auto-select axis if issue only has one
+            const issueDef = ISSUE_DEFS[_caStanceIssue];
+            if (issueDef && issueDef.axes.length === 1) _caStanceAxis = issueDef.axes[0];
+            rerender();
+        });
+    });
+
+    // Stance axis selection
+    container.querySelectorAll('[data-stance-axis-key]').forEach(el => {
+        el.addEventListener('click', () => {
+            const ak = el.dataset.stanceAxisKey;
+            _caStanceAxis = _caStanceAxis === ak ? null : ak;
+            _caStanceSide = null;
+            rerender();
+        });
+    });
+
+    // Stance side selection
+    container.querySelectorAll('[data-stance-side-val]').forEach(el => {
+        el.addEventListener('click', () => {
+            const s = el.dataset.stanceSideVal;
+            _caStanceSide = _caStanceSide === s ? null : s;
+            rerender();
+        });
+    });
+
+    // Stance intensity selection
+    container.querySelectorAll('[data-stance-int-val]').forEach(el => {
+        el.addEventListener('click', () => {
+            _caStanceIntensity = el.dataset.stanceIntVal;
+            rerender();
+        });
+    });
+
+    // Load issue states for stance config if needed
+    if (_caSelected === 'take_stance' && !_caStanceIssueStates && !_caResult) {
+        _supabase.from('issue_state').select('issue_id, salience').eq('nation_id', n.id).then(({ data }) => {
+            _caStanceIssueStates = data || [];
+            rerender();
+        });
+    }
+
+    // Axis selection (think tank, media, grassroots)
+    container.querySelectorAll('[data-axis-key]').forEach(el => {
+        el.addEventListener('click', () => {
+            const key = el.dataset.axisKey;
+            if (_caTargetAxis === key) { _caTargetAxis = null; } else { _caTargetAxis = key; }
+            _caTargetDirection = null;
+            _caTargetDemographic = null;
+            _caTargetBand = null;
+            rerender();
+        });
+    });
+
+    // Direction selection (think tank, media, grassroots)
+    container.querySelectorAll('[data-direction-value]').forEach(el => {
+        el.addEventListener('click', () => {
+            const val = el.dataset.directionValue;
+            _caTargetDirection = _caTargetDirection === val ? null : val;
+            rerender();
+        });
+    });
+
+    // Demographic selection (grassroots)
+    container.querySelectorAll('[data-grassroots-demo]').forEach(el => {
+        el.addEventListener('click', () => {
+            const d = el.dataset.grassrootsDemo;
+            if (_caTargetDemographic === d) { _caTargetDemographic = null; } else { _caTargetDemographic = d; }
+            _caTargetBand = null;
+            rerender();
+        });
+    });
+
+    // Band selection (grassroots)
+    container.querySelectorAll('[data-grassroots-band]').forEach(el => {
+        el.addEventListener('click', () => {
+            const b = el.dataset.grassrootsBand;
+            _caTargetBand = _caTargetBand === b ? null : b;
+            rerender();
+        });
+    });
+
     // Dismiss result
     const dismissBtn = container.querySelector('#ca-dismiss-result');
     if (dismissBtn) {
@@ -4294,7 +4196,7 @@ function wireCampaignConfig(container, f, n, ap, blocs, otherParties, factionIde
         confirmBtn.addEventListener('click', () => {
             if (confirmBtn.classList.contains('disabled')) return;
             confirmBtn.classList.add('disabled');
-            handleCampaignConfirm(container, f, n, ap, blocs, otherParties, factionIdeo, approvalByBloc, tick);
+            handleCampaignConfirm(container, f, n, ap, otherParties, factionIdeo, tick);
         });
     }
 }
@@ -4310,7 +4212,7 @@ window._protestEndorse = async function() {
     try {
         const result = await endorseProtest(_supabase, _currentFaction.id, _currentNation.id, _endorseableProtest.id, _currentShard.current_tick);
         if (!result.success) {
-            alert(result.error || 'Endorsement failed.');
+            _showToast(result.error || 'Endorsement failed.');
             return;
         }
         _alreadyEndorsed = true;
@@ -4320,7 +4222,7 @@ window._protestEndorse = async function() {
         await renderDemocracyActions(_currentNation, _currentFaction, _currentShard, _currentAllParties);
     } catch (err) {
         console.error('[Protest] Endorse failed:', err);
-        alert('Endorsement failed: ' + err.message);
+        _showToast('Endorsement failed: ' + err.message);
     } finally {
         _protestEndorseLock = false;
     }
@@ -4330,13 +4232,13 @@ let _protestCallOffLock = false;
 window._protestCallOff = async function() {
     if (_protestCallOffLock) return;
     if (!_protestActiveData) return;
-    if (_protestActiveData.tier === 7) { alert('Tier 7 protests cannot be called off.'); return; }
+    if (_protestActiveData.tier === 7) { _showToast('Tier 7 protests cannot be called off.'); return; }
     if (!confirm('Call off this protest? Costs ' + PROTEST_CONFIG.CALL_OFF_AP + ' AP. A small approval boost from moderate blocs will be applied.')) return;
     _protestCallOffLock = true;
     try {
         const result = await callOffProtest(_supabase, _currentFaction.id, _protestActiveData.id, _currentShard.current_tick);
         if (!result.success) {
-            alert(result.error || 'Call-off failed.');
+            _showToast(result.error || 'Call-off failed.');
             return;
         }
         _currentFaction.action_points = Math.max(0, (_currentFaction.action_points || 0) - PROTEST_CONFIG.CALL_OFF_AP);
@@ -4345,7 +4247,7 @@ window._protestCallOff = async function() {
         await renderDemocracyActions(_currentNation, _currentFaction, _currentShard, _currentAllParties);
     } catch (err) {
         console.error('[Protest] Call-off failed:', err);
-        alert('Call-off failed: ' + err.message);
+        _showToast('Call-off failed: ' + err.message);
     } finally {
         _protestCallOffLock = false;
     }
@@ -4353,7 +4255,7 @@ window._protestCallOff = async function() {
 
 // ── Confirm handler ──
 
-async function handleCampaignConfirm(container, f, n, ap, blocs, otherParties, factionIdeo, approvalByBloc, tick) {
+async function handleCampaignConfirm(container, f, n, ap, otherParties, factionIdeo, tick) {
     const sel = CA_ACTIONS.find(a => a.id === _caSelected);
     if (!sel) return;
     const cost = caGetCost();
@@ -4365,9 +4267,7 @@ async function handleCampaignConfirm(container, f, n, ap, blocs, otherParties, f
     let result;
     try {
         if (sel.id === 'rally') {
-            result = await executeRally(_supabase, f.id, n.id, _caBloc, tick);
-        } else if (sel.id === 'outreach') {
-            result = await executeOutreach(_supabase, f.id, n.id, _caBloc, tick);
+            result = await executeRally(_supabase, f.id, n.id, null, tick);
         } else if (sel.id === 'attack') {
             result = await executeAttack(_supabase, f.id, n.id, _caRival, _caVector, tick);
         } else if (sel.id === 'promise') {
@@ -4378,16 +4278,26 @@ async function handleCampaignConfirm(container, f, n, ap, blocs, otherParties, f
             const grievanceData = _protestTarget.grievanceData || {};
             const demandLabel = _protestTarget.demandLabel || '';
             result = await executeProtest(_supabase, f.id, n.id, _protestTarget.type, grievanceData, demandLabel, tick);
+        } else if (sel.id === 'take_stance') {
+            result = await executeTakeStance(_supabase, f.id, n.id, _caStanceIssue, _caStanceAxis, _caStanceSide, _caStanceIntensity, tick);
+        } else if (sel.id === 'poll_now') {
+            result = await executePollNow(_supabase, f.id, n.id, tick);
+        } else if (sel.id === 'fund_think_tank') {
+            result = await executeFundThinkTank(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
+        } else if (sel.id === 'media_campaign') {
+            result = await executeMediaCampaign(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
+        } else if (sel.id === 'grassroots_movement') {
+            result = await executeGrassrootsMovement(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
         }
     } catch (err) {
         console.error('Campaign action error:', err);
-        alert('Action failed: ' + err.message);
+        _showToast('Action failed: ' + err.message);
         if (btn) { btn.classList.remove('disabled'); btn.textContent = `Confirm — ${cost} AP`; }
         return;
     }
 
     if (!result || !result.success) {
-        alert(result?.error || 'Action failed.');
+        _showToast(result?.error || 'Action failed.');
         if (btn) { btn.classList.remove('disabled'); btn.textContent = `Confirm — ${cost} AP`; }
         return;
     }
@@ -4403,6 +4313,16 @@ async function handleCampaignConfirm(container, f, n, ap, blocs, otherParties, f
     // Update topbar AP display
     const apEl = document.getElementById('topbar-ap');
     if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + (f.action_points ?? 0) + ' AP</span>';
+    // Refresh stance summary on main tab after stance actions
+    if (sel.id === 'take_stance') {
+        _renderStanceSummaryStrip(f.id, n.id);
+        // Refresh portfolio in electorate tab if loaded
+        const esContainer = document.getElementById('electorate-spread-container');
+        if (esContainer) {
+            esContainer.querySelector('.sp-card')?.remove();
+            _renderStancePortfolio(esContainer, f, n);
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -4939,13 +4859,18 @@ const ES_AXES = [
 const ES_ALIGNED_THRESHOLD = 15;
 const ES_PARTIAL_THRESHOLD = 25;
 
-function renderElectorateSpreadTab(playerFaction, nation, allParties, allPartyIdeologies, voterBlocs, currentTick) {
+async function renderElectorateSpreadTab(playerFaction, nation, allParties, allPartyIdeologies, currentTick) {
     const container = document.getElementById('electorate-spread-container');
     if (!container) return;
 
-    const blocs = (voterBlocs || []).filter(b => b.is_active !== false);
-    if (blocs.length === 0) {
-        container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:20px;text-align:center;">No voter bloc data available.</div>';
+    const { data: profile } = await _supabase
+        .from('electorate_profile')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .single();
+
+    if (!profile) {
+        container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:20px;text-align:center;">No electorate data available.</div>';
         return;
     }
 
@@ -4955,28 +4880,12 @@ function renderElectorateSpreadTab(playerFaction, nation, allParties, allPartyId
         ideoMap[row.faction_id] = row;
     }
 
-    // Compute total population weight for normalization
-    const totalWeight = blocs.reduce((s, b) => s + (b.population_weight || 0), 0) || 1;
-
-    // Compute electorate mean and standard deviation per axis
+    // Compute electorate mean and standard deviation per axis from electorate_profile
     const electorateStats = {};
     for (const ax of ES_AXES) {
-        let weightedSum = 0;
-        for (const b of blocs) {
-            const norm = Number(b[ax.blocKey] ?? 50); // already 0-100 (50 = neutral)
-            weightedSum += norm * (b.population_weight || 0);
-        }
-        const mean = weightedSum / totalWeight;
-
-        // Weighted standard deviation
-        let varianceSum = 0;
-        for (const b of blocs) {
-            const norm = Number(b[ax.blocKey] ?? 50);
-            varianceSum += (b.population_weight || 0) * Math.pow(norm - mean, 2);
-        }
-        const stdDev = Math.sqrt(varianceSum / totalWeight);
-
-        electorateStats[ax.key] = { mean, stdDev };
+        const mean = Number(profile['ideo_mean_' + ax.key] ?? 50);
+        const variance = Number(profile['ideo_var_' + ax.key] ?? 20);
+        electorateStats[ax.key] = { mean, stdDev: variance };
     }
 
     // Build party data (all parties including player)
@@ -5213,6 +5122,667 @@ function renderElectorateSpreadTab(playerFaction, nation, allParties, allPartyId
     }
 
     render();
+
+    // ── Phase 6: Pillar Contribution + Vote Left on Table cards ──
+    _renderPillarCards(container, playerFaction, nation);
+}
+
+/**
+ * Phase 6: Render "How You Got X%" and "Vote Left on Table" cards below the
+ * Electorate Spread visualization. Reads polled values from faction_electoral_standing.
+ */
+async function _renderPillarCards(container, playerFaction, nation) {
+    const { data: standing } = await _supabase
+        .from('faction_electoral_standing')
+        .select('*')
+        .eq('faction_id', playerFaction.id)
+        .eq('nation_id', nation.id)
+        .single();
+
+    if (!standing) {
+        container.insertAdjacentHTML('beforeend',
+            '<div class="pc-empty">Electorate standing not yet computed. Advance a tick to generate data.</div>');
+        return;
+    }
+
+    // Use polled values if available, fall back to live values
+    const hasPolled = standing.polled_vote_share != null;
+    const src = hasPolled ? 'polled' : 'live';
+
+    const alignment    = Number((hasPolled ? standing.polled_alignment : standing.ideological_alignment) ?? 50);
+    const appeal       = Number((hasPolled ? standing.polled_platform_appeal : standing.platform_appeal) ?? 50);
+    const approval     = Number((hasPolled ? standing.polled_party_approval : standing.party_approval) ?? 50);
+    const visibility   = Number((hasPolled ? standing.polled_visibility : standing.visibility) ?? 30);
+    const credibility  = Number((hasPolled ? standing.polled_credibility : standing.credibility_modifier) ?? 1.0);
+    const voteShare    = Number((hasPolled ? standing.polled_vote_share : standing.realized_vote_share) ?? 0);
+
+    const alignContrib  = Number((hasPolled ? standing.polled_alignment_contribution : standing.alignment_contribution) ?? 0);
+    const appealContrib = Number((hasPolled ? standing.polled_appeal_contribution : standing.appeal_contribution) ?? 0);
+    const approvalContrib = Number((hasPolled ? standing.polled_approval_contribution : standing.approval_contribution) ?? 0);
+    const voteLeft      = Number((hasPolled ? standing.polled_vote_left_on_table : standing.vote_left_on_table) ?? 0);
+
+    const contested = Number(standing.contested_vote_share ?? 0);
+    const votePct = (voteShare * 100).toFixed(1);
+
+    // ── Pillar weights (must match electorate.js CFG) ──
+    const W_ALIGN = 0.40, W_APPEAL = 0.25, W_APPROVAL = 0.35;
+    const rawSum = alignment * W_ALIGN + appeal * W_APPEAL + approval * W_APPROVAL;
+    const rawAppeal = rawSum * credibility;
+
+    // Pillar contribution percentages (how much each pillar contributes to total)
+    const totalContrib = alignContrib + appealContrib + approvalContrib;
+    const alignPct = totalContrib > 0 ? (alignContrib / totalContrib * 100).toFixed(0) : '40';
+    const appealPct = totalContrib > 0 ? (appealContrib / totalContrib * 100).toFixed(0) : '25';
+    const approvalPct = totalContrib > 0 ? (approvalContrib / totalContrib * 100).toFixed(0) : '35';
+
+    // Color scale for pillar values (0-100)
+    function pillarColor(v) {
+        if (v >= 65) return 'var(--dgreen)';
+        if (v >= 45) return 'var(--damber)';
+        return 'var(--dred)';
+    }
+    function credColor(c) {
+        if (c >= 0.9) return 'var(--dgreen)';
+        if (c >= 0.7) return 'var(--damber)';
+        return 'var(--dred)';
+    }
+
+    // ── Bar helper: horizontal bar with value label ──
+    function pillarBar(label, value, weight, color, contribution) {
+        const barWidth = Math.max(2, value);
+        return `
+        <div class="pc-pillar-row">
+            <div class="pc-pillar-label">${label} <span class="pc-pillar-weight">${(weight * 100).toFixed(0)}%</span></div>
+            <div class="pc-pillar-bar-track">
+                <div class="pc-pillar-bar-fill" style="width:${barWidth}%;background:${color}"></div>
+            </div>
+            <div class="pc-pillar-val" style="color:${color}">${value.toFixed(1)}</div>
+        </div>`;
+    }
+
+    // ── Vote Left on Table: identify biggest limiters ──
+    const limiters = [];
+
+    // Visibility limiter: low visibility reduces turnout
+    if (visibility < 50) {
+        const visImpact = ((50 - visibility) * 0.002 * contested * 100);
+        limiters.push({
+            label: 'Low Visibility',
+            detail: `Visibility at ${visibility.toFixed(0)} (below 50 baseline). Rally boosts visibility.`,
+            impact: visImpact,
+            color: '#f97316',
+        });
+    }
+
+    // Credibility limiter: multiplies raw appeal
+    if (credibility < 0.9) {
+        const credImpact = ((1.0 - credibility) * rawSum / 100 * 100);
+        limiters.push({
+            label: 'Credibility Damage',
+            detail: `Credibility at ${(credibility * 100).toFixed(0)}% — reducing your appeal by ${((1.0 - credibility) * 100).toFixed(0)}%. Recovers over time.`,
+            impact: credImpact,
+            color: '#ef4444',
+        });
+    }
+
+    // Platform appeal limiter: low stance coverage
+    if (appeal < 40) {
+        limiters.push({
+            label: 'Weak Platform',
+            detail: `Platform appeal at ${appeal.toFixed(0)}. Take stances on salient issues to increase.`,
+            impact: (50 - appeal) * W_APPEAL,
+            color: '#60a5fa',
+        });
+    }
+
+    // Alignment limiter: ideological mismatch
+    if (alignment < 40) {
+        limiters.push({
+            label: 'Ideological Mismatch',
+            detail: `Alignment at ${alignment.toFixed(0)}. Your party ideology doesn't match the electorate's centre.`,
+            impact: (50 - alignment) * W_ALIGN,
+            color: '#a78bfa',
+        });
+    }
+
+    // Approval limiter
+    if (approval < 40) {
+        limiters.push({
+            label: 'Low Approval',
+            detail: `Party approval at ${approval.toFixed(0)}. Governance performance and momentum drive this.`,
+            impact: (50 - approval) * W_APPROVAL,
+            color: '#c8a64e',
+        });
+    }
+
+    // Sort by impact descending
+    limiters.sort((a, b) => b.impact - a.impact);
+
+    const voteLeftPct = (voteLeft * 100).toFixed(2);
+    const hasVoteLeft = voteLeft > 0.001;
+
+    const limiterHtml = limiters.length === 0
+        ? '<div class="pc-no-limiters">No major limiters detected. Your turnout efficiency is strong.</div>'
+        : limiters.map(l => `
+            <div class="pc-limiter">
+                <div class="pc-limiter-header">
+                    <span class="pc-limiter-dot" style="background:${l.color}"></span>
+                    <span class="pc-limiter-label">${l.label}</span>
+                </div>
+                <div class="pc-limiter-detail">${l.detail}</div>
+            </div>`).join('');
+
+    const dataLabel = hasPolled
+        ? `<span class="pc-data-src">Polled tick ${standing.last_polled_tick}</span>`
+        : `<span class="pc-data-src">Live (tick ${standing.last_updated_tick})</span>`;
+
+    const cardsHtml = `
+    <div class="pc-cards-row">
+        <div class="pc-card">
+            <div class="pc-card-header">
+                <div class="pc-card-title">How You Got ${votePct}%</div>
+                ${dataLabel}
+            </div>
+            <div class="pc-vote-pct">${votePct}<span class="pc-vote-pct-unit">%</span></div>
+            <div class="pc-pillar-section">
+                ${pillarBar('Ideological Alignment', alignment, W_ALIGN, pillarColor(alignment), alignContrib)}
+                ${pillarBar('Platform Appeal', appeal, W_APPEAL, pillarColor(appeal), appealContrib)}
+                ${pillarBar('Party Approval', approval, W_APPROVAL, pillarColor(approval), approvalContrib)}
+            </div>
+            <div class="pc-divider"></div>
+            <div class="pc-meta-row">
+                <div class="pc-meta-item">
+                    <span class="pc-meta-label">Credibility</span>
+                    <span class="pc-meta-val" style="color:${credColor(credibility)}">${(credibility * 100).toFixed(0)}%</span>
+                </div>
+                <div class="pc-meta-item">
+                    <span class="pc-meta-label">Visibility</span>
+                    <span class="pc-meta-val" style="color:${visibility >= 50 ? 'var(--dgreen)' : visibility >= 30 ? 'var(--damber)' : 'var(--dred)'}">${visibility.toFixed(0)}</span>
+                </div>
+                <div class="pc-meta-item">
+                    <span class="pc-meta-label">Raw Appeal</span>
+                    <span class="pc-meta-val">${rawAppeal.toFixed(1)}</span>
+                </div>
+            </div>
+            <div class="pc-contrib-bar">
+                <div class="pc-contrib-seg" style="flex:${alignPct};background:var(--dteal);opacity:0.7" title="Alignment ${alignPct}%"></div>
+                <div class="pc-contrib-seg" style="flex:${appealPct};background:#60a5fa;opacity:0.7" title="Appeal ${appealPct}%"></div>
+                <div class="pc-contrib-seg" style="flex:${approvalPct};background:var(--damber);opacity:0.7" title="Approval ${approvalPct}%"></div>
+            </div>
+            <div class="pc-contrib-legend">
+                <span style="color:var(--dteal)">Alignment ${alignPct}%</span>
+                <span style="color:#60a5fa">Appeal ${appealPct}%</span>
+                <span style="color:var(--damber)">Approval ${approvalPct}%</span>
+            </div>
+        </div>
+        <div class="pc-card">
+            <div class="pc-card-header">
+                <div class="pc-card-title">Vote Left on Table</div>
+            </div>
+            ${hasVoteLeft ? `<div class="pc-vote-left">${voteLeftPct}<span class="pc-vote-left-unit">%</span></div>` : '<div class="pc-vote-left pc-vote-left--none">0<span class="pc-vote-left-unit">%</span></div>'}
+            <div class="pc-vote-left-explain">${hasVoteLeft
+                ? 'These voters prefer you but didn\'t turn out. Boost visibility and enthusiasm to capture them.'
+                : 'Your turnout efficiency is maximized — nearly all your supporters are voting.'
+            }</div>
+            <div class="pc-divider"></div>
+            <div class="pc-limiters-header">Biggest Limiters</div>
+            ${limiterHtml}
+        </div>
+    </div>`;
+
+    container.insertAdjacentHTML('beforeend', cardsHtml);
+
+    // Also render stance portfolio in the Electorate tab
+    _renderStancePortfolio(container, playerFaction, nation);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PHASE 7: STANCE PORTFOLIO + TAKE STANCE UI
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Load the player's active stances + issue salience and render the
+ * Active Stance Portfolio card in the Electorate tab.
+ */
+async function _renderStancePortfolio(container, faction, nation) {
+    // Load stances, issue states, and shard tick in parallel
+    const [stancesRes, issueStatesRes, shardRes] = await Promise.all([
+        _supabase.from('faction_issue_stance')
+            .select('*')
+            .eq('faction_id', faction.id)
+            .eq('nation_id', nation.id),
+        _supabase.from('issue_state')
+            .select('issue_id, salience, owned_by, pioneer_faction_id')
+            .eq('nation_id', nation.id),
+        _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+    ]);
+
+    if (stancesRes.error) console.error('[Politics] Failed to load stances:', stancesRes.error.message);
+    if (issueStatesRes.error) console.error('[Politics] Failed to load issue states:', issueStatesRes.error.message);
+    const stances = stancesRes.data || [];
+    const issueStates = issueStatesRes.data || [];
+    const currentTick = shardRes.data?.current_tick || 0;
+
+    // Build issue state lookup
+    const issueStateMap = {};
+    for (const is of issueStates) issueStateMap[is.issue_id] = is;
+
+    const maxStances = STANCE_CONFIG.MAX_STANCES;
+    const atCap = stances.length >= maxStances;
+
+    // Build stance rows
+    let stanceRowsHtml = '';
+    if (stances.length === 0) {
+        stanceRowsHtml = '<div class="sp-empty">No active stances. Take a stance on an issue to build platform appeal.</div>';
+    } else {
+        for (const s of stances) {
+            const issueDef = ISSUE_DEFS[s.issue_id];
+            if (!issueDef) continue;
+            const axisInfo = IDEOLOGY_AXES.find(a => a.key === s.axis);
+            const sideLabel = s.side === 'left' ? axisInfo?.leftLabel : axisInfo?.rightLabel;
+            const sideColor = s.side === 'left' ? axisInfo?.leftColor : axisInfo?.rightColor;
+            const strength = Number(s.strength ?? 0);
+            const decayRate = Number(s.decay_rate ?? 0);
+            const ticksHeld = Number(s.ticks_held ?? 0);
+
+            // Strength thresholds for visual feedback
+            const isFading = strength <= 40;
+            const isWeak = strength <= 20;
+            const strengthColor = isWeak ? 'var(--dred)' : isFading ? 'var(--damber)' : 'var(--dgreen)';
+
+            // Issue salience
+            const issueState = issueStateMap[s.issue_id];
+            const salience = Number(issueState?.salience ?? 30);
+
+            // Consistency badge
+            const consistencyBadge = s.ideologically_consistent
+                ? ''
+                : '<span class="sp-badge sp-badge--warn">INCONSISTENT</span>';
+            const pioneerBadge = s.is_pioneer
+                ? '<span class="sp-badge sp-badge--good">PIONEER</span>'
+                : '';
+            const fadingBadge = isFading
+                ? `<span class="sp-badge sp-badge--fade">${isWeak ? 'EXPIRING' : 'FADING'}</span>`
+                : '';
+
+            stanceRowsHtml += `
+            <div class="sp-row" data-stance-issue="${s.issue_id}">
+                <div class="sp-row-top">
+                    <div class="sp-row-left">
+                        <span class="sp-issue-name">${escapeHtml(issueDef.label)}</span>
+                        <span class="sp-side-pill" style="color:${sideColor};border-color:${sideColor}">${s.intensity} ${sideLabel}</span>
+                        ${pioneerBadge}${consistencyBadge}${fadingBadge}
+                    </div>
+                    <div class="sp-row-right">
+                        <span class="sp-salience" title="Issue salience">Salience: ${salience.toFixed(0)}</span>
+                        <span class="sp-ticks">Held ${ticksHeld} ticks</span>
+                    </div>
+                </div>
+                <div class="sp-bar-row">
+                    <div class="sp-bar-track">
+                        <div class="sp-bar-fill" style="width:${strength}%;background:${strengthColor}"></div>
+                    </div>
+                    <span class="sp-str-val" style="color:${strengthColor}">${strength.toFixed(0)}</span>
+                    <span class="sp-decay" style="color:var(--dred)">-${decayRate}/tick</span>
+                </div>
+                <div class="sp-row-actions">
+                    <button class="sp-btn sp-btn--reinforce" data-stance-action="reinforce" data-stance-issue="${s.issue_id}" data-stance-axis="${s.axis}" data-stance-side="${s.side}" data-stance-intensity="${s.intensity}">Reinforce</button>
+                    <button class="sp-btn sp-btn--modify" data-stance-action="modify" data-stance-issue="${s.issue_id}">Modify</button>
+                </div>
+            </div>`;
+        }
+    }
+
+    const portfolioHtml = `
+    <div class="sp-card" style="margin-top:20px;max-width:780px;">
+        <div class="sp-card-header">
+            <div class="sp-card-title">Active Stance Portfolio</div>
+            <div class="sp-card-count">${stances.length} / ${maxStances}</div>
+        </div>
+        <div class="sp-stances">${stanceRowsHtml}</div>
+        <div class="sp-footer">
+            <button class="sp-btn sp-btn--new${atCap ? ' sp-btn--disabled' : ''}" id="sp-new-stance-btn" ${atCap ? 'disabled title="Maximum stances reached (5/5)"' : ''}>
+                + New Stance${atCap ? ' (5/5)' : ''}
+            </button>
+            <span class="sp-footer-hint">${STANCE_CONFIG.AP_COST} AP · ${STANCE_CONFIG.COOLDOWN_WINDOW}-tick cooldown</span>
+        </div>
+    </div>`;
+
+    container.insertAdjacentHTML('beforeend', portfolioHtml);
+
+    // Wire button handlers
+    container.querySelectorAll('[data-stance-action="reinforce"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const issueId = btn.dataset.stanceIssue;
+            const axis = btn.dataset.stanceAxis;
+            const side = btn.dataset.stanceSide;
+            const intensity = btn.dataset.stanceIntensity;
+            btn.disabled = true;
+            btn.textContent = 'Reinforcing...';
+            const result = await executeTakeStance(_supabase, faction.id, nation.id, issueId, axis, side, intensity, currentTick);
+            if (result.success) {
+                // Update client AP
+                if (result.newAp != null) {
+                    faction.action_points = result.newAp;
+                    if (_currentFaction) _currentFaction.action_points = result.newAp;
+                    const apEl = document.getElementById('topbar-ap');
+                    if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + result.newAp + ' AP</span>';
+                }
+                // Re-render the portfolio
+                container.querySelector('.sp-card')?.remove();
+                await _renderStancePortfolio(container, faction, nation);
+                _renderStanceSummaryStrip(faction.id, nation.id);
+            } else {
+                _showToast(result.message || 'Failed to reinforce stance.');
+                btn.disabled = false;
+                btn.textContent = 'Reinforce';
+            }
+        });
+    });
+
+    container.querySelectorAll('[data-stance-action="modify"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _openTakeStanceModal(faction, nation, currentTick, issueStateMap, stances, btn.dataset.stanceIssue);
+        });
+    });
+
+    const newBtn = document.getElementById('sp-new-stance-btn');
+    if (newBtn && !atCap) {
+        newBtn.addEventListener('click', () => {
+            _openTakeStanceModal(faction, nation, currentTick, issueStateMap, stances, null);
+        });
+    }
+}
+
+/**
+ * Open the Take Stance modal. Pre-selects an issue if modifying an existing stance.
+ */
+function _openTakeStanceModal(faction, nation, currentTick, issueStateMap, existingStances, preselectedIssue) {
+    // Remove any existing modal
+    document.getElementById('stance-modal-overlay')?.remove();
+
+    const existingIssueIds = new Set(existingStances.map(s => s.issue_id));
+    const atCap = existingStances.length >= STANCE_CONFIG.MAX_STANCES;
+
+    // Build issue options sorted by salience (descending)
+    const issueOptions = ISSUE_IDS
+        .map(id => ({
+            id,
+            def: ISSUE_DEFS[id],
+            salience: Number(issueStateMap[id]?.salience ?? 30),
+            hasStance: existingIssueIds.has(id),
+        }))
+        .sort((a, b) => b.salience - a.salience);
+
+    let issueListHtml = '';
+    for (const opt of issueOptions) {
+        const disabled = !opt.hasStance && atCap;
+        const selected = opt.id === preselectedIssue;
+        const salienceColor = opt.salience >= 60 ? 'var(--dred)' : opt.salience >= 40 ? 'var(--damber)' : 'var(--dtext-3)';
+        const axisLabels = opt.def.axes.map(ak => {
+            const ax = IDEOLOGY_AXES.find(a => a.key === ak);
+            return ax ? `${ax.leftLabel}/${ax.rightLabel}` : ak;
+        }).join(', ');
+
+        issueListHtml += `
+        <div class="sm-issue${selected ? ' sm-issue--selected' : ''}${disabled ? ' sm-issue--disabled' : ''}"
+             data-sm-issue="${opt.id}" ${disabled ? '' : 'role="button" tabindex="0"'}>
+            <div class="sm-issue-top">
+                <span class="sm-issue-name">${escapeHtml(opt.def.label)}</span>
+                ${opt.hasStance ? '<span class="sm-issue-badge">HAS STANCE</span>' : ''}
+            </div>
+            <div class="sm-issue-meta">
+                <span class="sm-issue-salience" style="color:${salienceColor}">Salience: ${opt.salience.toFixed(0)}</span>
+                <span class="sm-issue-axes">${axisLabels}</span>
+            </div>
+        </div>`;
+    }
+
+    const modalHtml = `
+    <div class="modal-overlay active" id="stance-modal-overlay">
+        <div class="sm-modal">
+            <div class="sm-header">
+                <span class="sm-title">Take a Stance</span>
+                <button class="sm-close" id="sm-close-btn">&times;</button>
+            </div>
+            <div class="sm-body">
+                <div class="sm-section-label">Select Issue</div>
+                <div class="sm-issue-list">${issueListHtml}</div>
+                <div id="sm-config-area"></div>
+            </div>
+            <div class="sm-footer" id="sm-footer" style="display:none">
+                <button class="sp-btn sp-btn--new" id="sm-confirm-btn" disabled>Confirm Stance (${STANCE_CONFIG.AP_COST} AP)</button>
+            </div>
+        </div>
+    </div>`;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // State
+    let selectedIssue = preselectedIssue;
+    let selectedAxis = null;
+    let selectedSide = null;
+    let selectedIntensity = 'moderate';
+
+    function updateConfigArea() {
+        const area = document.getElementById('sm-config-area');
+        const footer = document.getElementById('sm-footer');
+        if (!area || !selectedIssue) {
+            if (area) area.innerHTML = '';
+            if (footer) footer.style.display = 'none';
+            return;
+        }
+
+        const issueDef = ISSUE_DEFS[selectedIssue];
+        if (!issueDef) return;
+
+        // Auto-select axis if issue only has one
+        if (issueDef.axes.length === 1 && !selectedAxis) {
+            selectedAxis = issueDef.axes[0];
+        }
+
+        // Axis selector
+        let axisHtml = '<div class="sm-section-label" style="margin-top:14px;">Choose Axis</div><div class="sm-axis-list">';
+        for (const ak of issueDef.axes) {
+            const ax = IDEOLOGY_AXES.find(a => a.key === ak);
+            if (!ax) continue;
+            const sel = ak === selectedAxis;
+            axisHtml += `<div class="sm-axis-opt${sel ? ' sm-axis-opt--selected' : ''}" data-sm-axis="${ak}">
+                <span style="color:${ax.leftColor}">${ax.leftLabel}</span> / <span style="color:${ax.rightColor}">${ax.rightLabel}</span>
+            </div>`;
+        }
+        axisHtml += '</div>';
+
+        // Side selector (only if axis selected)
+        let sideHtml = '';
+        if (selectedAxis) {
+            const ax = IDEOLOGY_AXES.find(a => a.key === selectedAxis);
+            sideHtml = `<div class="sm-section-label" style="margin-top:14px;">Choose Side</div><div class="sm-side-list">
+                <div class="sm-side-opt${selectedSide === 'left' ? ' sm-side-opt--selected' : ''}" data-sm-side="left" style="border-color:${ax.leftColor}">
+                    <span style="color:${ax.leftColor};font-weight:700">${ax.leftLabel}</span>
+                </div>
+                <div class="sm-side-opt${selectedSide === 'right' ? ' sm-side-opt--selected' : ''}" data-sm-side="right" style="border-color:${ax.rightColor}">
+                    <span style="color:${ax.rightColor};font-weight:700">${ax.rightLabel}</span>
+                </div>
+            </div>`;
+        }
+
+        // Intensity selector (only if side selected)
+        let intensityHtml = '';
+        if (selectedSide) {
+            intensityHtml = `<div class="sm-section-label" style="margin-top:14px;">Intensity</div><div class="sm-intensity-list">`;
+            for (const [key, cfg] of Object.entries(STANCE_CONFIG.INTENSITY)) {
+                const sel = key === selectedIntensity;
+                intensityHtml += `<div class="sm-int-opt${sel ? ' sm-int-opt--selected' : ''}" data-sm-intensity="${key}">
+                    <span class="sm-int-name">${key}</span>
+                    <span class="sm-int-meta">Strength ${cfg.strength} · Decay ${cfg.decay_rate}/tick</span>
+                </div>`;
+            }
+            intensityHtml += '</div>';
+        }
+
+        area.innerHTML = axisHtml + sideHtml + intensityHtml;
+
+        // Show footer if all selections made
+        const allSelected = selectedIssue && selectedAxis && selectedSide && selectedIntensity;
+        footer.style.display = allSelected ? 'flex' : 'none';
+        const confirmBtn = document.getElementById('sm-confirm-btn');
+        if (confirmBtn) confirmBtn.disabled = !allSelected;
+
+        // Wire axis clicks
+        area.querySelectorAll('[data-sm-axis]').forEach(el => {
+            el.addEventListener('click', () => {
+                selectedAxis = el.dataset.smAxis;
+                selectedSide = null; // reset downstream
+                updateConfigArea();
+            });
+        });
+
+        // Wire side clicks
+        area.querySelectorAll('[data-sm-side]').forEach(el => {
+            el.addEventListener('click', () => {
+                selectedSide = el.dataset.smSide;
+                updateConfigArea();
+            });
+        });
+
+        // Wire intensity clicks
+        area.querySelectorAll('[data-sm-intensity]').forEach(el => {
+            el.addEventListener('click', () => {
+                selectedIntensity = el.dataset.smIntensity;
+                updateConfigArea();
+            });
+        });
+    }
+
+    // Wire issue clicks
+    document.querySelectorAll('[data-sm-issue]').forEach(el => {
+        if (el.classList.contains('sm-issue--disabled')) return;
+        el.addEventListener('click', () => {
+            document.querySelectorAll('.sm-issue').forEach(i => i.classList.remove('sm-issue--selected'));
+            el.classList.add('sm-issue--selected');
+            selectedIssue = el.dataset.smIssue;
+            selectedAxis = null;
+            selectedSide = null;
+            updateConfigArea();
+        });
+    });
+
+    // Wire close
+    document.getElementById('sm-close-btn')?.addEventListener('click', () => {
+        document.getElementById('stance-modal-overlay')?.remove();
+    });
+    document.getElementById('stance-modal-overlay')?.addEventListener('click', (e) => {
+        if (e.target.id === 'stance-modal-overlay') {
+            document.getElementById('stance-modal-overlay')?.remove();
+        }
+    });
+
+    // Wire confirm
+    document.getElementById('sm-confirm-btn')?.addEventListener('click', async () => {
+        const btn = document.getElementById('sm-confirm-btn');
+        if (!btn || btn.disabled) return;
+        btn.disabled = true;
+        btn.textContent = 'Taking stance...';
+
+        const result = await executeTakeStance(_supabase, faction.id, nation.id, selectedIssue, selectedAxis, selectedSide, selectedIntensity, currentTick);
+
+        if (result.success) {
+            // Update client AP
+            if (result.newAp != null) {
+                faction.action_points = result.newAp;
+                if (_currentFaction) _currentFaction.action_points = result.newAp;
+                const apEl = document.getElementById('topbar-ap');
+                if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + result.newAp + ' AP</span>';
+            }
+            document.getElementById('stance-modal-overlay')?.remove();
+            // Re-render portfolio
+            const esContainer = document.getElementById('electorate-spread-container');
+            if (esContainer) {
+                esContainer.querySelector('.sp-card')?.remove();
+                await _renderStancePortfolio(esContainer, faction, nation);
+            }
+            _renderStanceSummaryStrip(faction.id, nation.id);
+        } else {
+            _showToast(result.message || 'Failed to take stance.');
+            btn.disabled = false;
+            btn.textContent = `Confirm Stance (${STANCE_CONFIG.AP_COST} AP)`;
+        }
+    });
+
+    // Auto-show config if pre-selected
+    if (preselectedIssue) {
+        updateConfigArea();
+    }
+}
+
+/**
+ * Render a slim stance summary strip inside the Ideology box on the Politics tab.
+ * Shows compact pills for each active stance.
+ */
+async function _renderStanceSummaryStrip(factionId, nationId) {
+    const strip = document.getElementById('stance-summary-strip');
+    if (!strip) return;
+
+    const { data: stances } = await _supabase
+        .from('faction_issue_stance')
+        .select('issue_id, axis, side, intensity, strength, decay_rate, ticks_held, is_pioneer, ideologically_consistent')
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId);
+
+    const maxStances = STANCE_CONFIG.MAX_STANCES;
+
+    if (!stances || stances.length === 0) {
+        strip.innerHTML = `<div style="color:var(--dtext-3);font-size:12px;font-family:var(--dfont-ui);padding:4px 0;">
+            No active stances. Take a stance in the <span style="color:var(--dtext-0);font-weight:600">Electorate</span> tab.
+        </div>`;
+        return;
+    }
+
+    let rowsHtml = '';
+    for (const s of stances) {
+        const issueDef = ISSUE_DEFS[s.issue_id];
+        if (!issueDef) continue;
+        const axisInfo = IDEOLOGY_AXES.find(a => a.key === s.axis);
+        const sideLabel = s.side === 'left' ? axisInfo?.leftLabel : axisInfo?.rightLabel;
+        const sideColor = s.side === 'left' ? axisInfo?.leftColor : axisInfo?.rightColor;
+        const strength = Number(s.strength ?? 0);
+        const decayRate = Number(s.decay_rate ?? 0);
+        const ticksHeld = Number(s.ticks_held ?? 0);
+        const isWeak = strength <= 20;
+        const isFading = strength <= 40;
+        const strengthColor = isWeak ? 'var(--dred)' : isFading ? 'var(--damber)' : 'var(--dgreen)';
+
+        const pioneerBadge = s.is_pioneer ? '<span style="font-size:9px;color:#4ade80;font-weight:700;margin-left:4px">PIONEER</span>' : '';
+        const consistBadge = s.ideologically_consistent === false ? '<span style="font-size:9px;color:#f97316;font-weight:700;margin-left:4px">INCONSISTENT</span>' : '';
+        const fadeBadge = isFading ? `<span style="font-size:9px;color:${strengthColor};font-weight:700;margin-left:4px">${isWeak ? 'EXPIRING' : 'FADING'}</span>` : '';
+
+        rowsHtml += `
+        <div style="padding:6px 0;${rowsHtml ? 'border-top:1px solid var(--dborder-0);' : ''}">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+                <div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px">
+                    <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0)">${escapeHtml(issueDef.label)}</span>
+                    <span style="font-size:10px;padding:1px 5px;border:1px solid ${sideColor};border-radius:3px;color:${sideColor};margin-left:4px">${s.intensity} ${sideLabel}</span>
+                    ${pioneerBadge}${consistBadge}${fadeBadge}
+                </div>
+                <span style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3)">Held ${ticksHeld}t</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+                <div style="flex:1;height:6px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden">
+                    <div style="width:${strength}%;height:100%;background:${strengthColor};border-radius:2px"></div>
+                </div>
+                <span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${strengthColor};width:28px;text-align:right">${strength.toFixed(0)}</span>
+                <span style="font-family:var(--dfont-mono);font-size:10px;color:var(--dred);width:40px;text-align:right">-${decayRate}/t</span>
+            </div>
+        </div>`;
+    }
+
+    strip.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${stances.length} / ${maxStances}</span>
+        </div>
+        ${rowsHtml}
+        <div style="margin-top:8px;font-size:10px;color:var(--dtext-3);font-family:var(--dfont-ui)">Manage stances in the <span style="color:var(--dtext-0);font-weight:600">Electorate</span> tab</div>`;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -5224,145 +5794,167 @@ const VC_IDEO_COLOR = '#7ec8c0';
 const VC_PERF_COLOR = '#c8a44e';
 const VC_MOM_COLOR  = '#7ec87e';
 
-async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeologies, voterBlocs, currentTick, voteSharePct, totalSeats, mySeats) {
+async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeologies, currentTick, voteSharePct, totalSeats, mySeats) {
     const container = document.getElementById('voters-container');
     if (!container) return;
 
     const partyColor = playerFaction.party_color || '#9b7ec8';
     const partyAbbr = playerFaction.abbreviation || '??';
-    const blocs = (voterBlocs || []).filter(b => b.is_active !== false);
 
-    // Fetch full three-pillar data for the player's party
-    const { data: playerApprovals } = await _supabase
-        .from('faction_bloc_approval')
-        .select('bloc_id, ideology_alignment, performance_perception, momentum, preference_score, vote_share')
-        .eq('faction_id', playerFaction.id);
+    // Fetch faction_electoral_standing for ALL parties + issue_state for Issue Landscape
+    const partyIds = (allParties || []).map(p => p.id);
+    const [standingsRes, issueStatesRes] = await Promise.all([
+        _supabase.from('faction_electoral_standing')
+            .select('faction_id, ideological_alignment, platform_appeal, party_approval, visibility, credibility_modifier, contested_vote_share, realized_vote_share, turnout_rate, alignment_contribution, appeal_contribution, approval_contribution, vote_left_on_table, raw_appeal')
+            .eq('nation_id', nation.id)
+            .in('faction_id', partyIds),
+        _supabase.from('issue_state')
+            .select('issue_id, salience, salience_target, owned_by, pioneer_faction_id')
+            .eq('nation_id', nation.id),
+    ]);
 
-    const approvalByBloc = {};
-    for (const row of (playerApprovals || [])) {
-        approvalByBloc[row.bloc_id] = row;
+    if (standingsRes.error) console.error('[Politics] Failed to load standings:', standingsRes.error.message);
+    if (issueStatesRes.error) console.error('[Politics] Failed to load issue states:', issueStatesRes.error.message);
+    const standings = standingsRes.data || [];
+    const issueStates = issueStatesRes.data || [];
+
+    // Build standings lookup
+    const standingMap = {};
+    for (const s of standings) standingMap[s.faction_id] = s;
+
+    const playerStanding = standingMap[playerFaction.id];
+
+    // Build party lookup
+    const partyMap = {};
+    for (const p of (allParties || [])) partyMap[p.id] = p;
+
+    // If no standings data, show fallback
+    if (!playerStanding) {
+        container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:20px;text-align:center;">Electorate standing not yet computed. Advance a tick to generate data.</div>';
+        return;
     }
 
-    // Compute weighted averages across blocs
-    const totalWeight = blocs.reduce((s, b) => s + (b.population_weight || 0), 0) || 1;
-    let wIdeo = 0, wPerf = 0, wMom = 0, wPref = 0, wVote = 0;
-    for (const b of blocs) {
-        const a = approvalByBloc[b.id];
-        if (!a) continue;
-        const w = b.population_weight || 0;
-        wIdeo += (a.ideology_alignment ?? 50) * w;
-        wPerf += (a.performance_perception ?? 50) * w;
-        wMom  += (a.momentum ?? 0) * w;
-        wPref += (a.preference_score ?? 40) * w;
-        wVote += (a.vote_share ?? 0) * w;
-    }
-    const avgIdeo = Math.round(wIdeo / totalWeight);
-    const avgPerf = Math.round(wPerf / totalWeight);
-    const avgMom  = (wMom / totalWeight).toFixed(1);
-    const avgPref = Math.round(wPref / totalWeight);
+    // Player values
+    const alignment = Number(playerStanding.ideological_alignment ?? 50);
+    const appeal = Number(playerStanding.platform_appeal ?? 50);
+    const approval = Number(playerStanding.party_approval ?? 50);
+    const visibility = Number(playerStanding.visibility ?? 30);
+    const credibility = Number(playerStanding.credibility_modifier ?? 1.0);
+    const voteShare = Number(playerStanding.realized_vote_share ?? 0);
+    const contestedShare = Number(playerStanding.contested_vote_share ?? 0);
+    const turnout = Number(playerStanding.turnout_rate ?? 0.65);
+    const voteLeft = Number(playerStanding.vote_left_on_table ?? 0);
+    const rawAppeal = Number(playerStanding.raw_appeal ?? 0);
 
-    // Vote share
-    const vsNum = voteSharePct;
+    const vsNum = (voteShare * 100).toFixed(1);
     const seatsText = `${mySeats} / ${totalSeats} seats`;
 
-    // Rank among parties
-    const sortedByVote = [...(allParties || [])].sort((a, b) => (b.national_vote_share || 0) - (a.national_vote_share || 0));
-    const rank = sortedByVote.findIndex(p => p.id === playerFaction.id) + 1;
+    // Rank
+    const sortedByVote = [...standings].sort((a, b) => (Number(b.realized_vote_share) || 0) - (Number(a.realized_vote_share) || 0));
+    const rank = sortedByVote.findIndex(s => s.faction_id === playerFaction.id) + 1;
     const ordinal = rank === 1 ? '1st' : rank === 2 ? '2nd' : rank === 3 ? '3rd' : rank + 'th';
 
-    // Build bloc cards sorted by vote_share descending
-    const blocCards = blocs.map(b => {
-        const a = approvalByBloc[b.id] || {};
-        const ideo = a.ideology_alignment ?? 50;
-        const perf = a.performance_perception ?? 50;
-        const mom  = a.momentum ?? 0;
-        const pref = a.preference_score ?? 40;
-        const vs   = a.vote_share ?? 0;
-        const momMapped = Math.max(0, Math.min(100, 35 + mom * 1.3));
-        // Pillar contributions (raw weighted)
-        const ideoW = 0.40, perfW = 0.25, momW = 0.35;
-        const totalPillar = ideo * ideoW + perf * perfW + momMapped * momW;
-        const ideoPct = totalPillar > 0 ? Math.round((ideo * ideoW / totalPillar) * 100) : 33;
-        const perfPct = totalPillar > 0 ? Math.round((perf * perfW / totalPillar) * 100) : 33;
-        const momPct  = Math.max(0, 100 - ideoPct - perfPct);
-        return {
-            id: b.id,
-            name: b.bloc_name || 'Unknown Bloc',
-            popWeight: b.population_weight || 0,
-            ideo, perf, mom, pref, vs,
-            ideoPct, perfPct, momPct,
-            priorityIssues: b.priority_issues || [],
-        };
-    }).sort((a, b) => b.vs - a.vs);
+    // Pillar contribution percentages
+    const alignContrib = Number(playerStanding.alignment_contribution ?? 0);
+    const appealContrib = Number(playerStanding.appeal_contribution ?? 0);
+    const approvalContrib = Number(playerStanding.approval_contribution ?? 0);
 
-    // Split into "voting for you" (vs > threshold) and "not voting for you"
-    const votingFor = blocCards.filter(b => b.vs >= 0.15);
-    const notVoting = blocCards.filter(b => b.vs < 0.15);
+    // Build all-party comparison rows (sorted by realized_vote_share desc)
+    const sortedParties = [...standings]
+        .sort((a, b) => (Number(b.realized_vote_share) || 0) - (Number(a.realized_vote_share) || 0));
 
-    // Pillar contribution summary
-    const ideoContrib = Math.round(avgIdeo * 0.40);
-    const perfContrib = Math.round(avgPerf * 0.25);
-    const momMappedAvg = Math.max(0, Math.min(100, 35 + parseFloat(avgMom) * 1.3));
-    const momContrib = Math.round(momMappedAvg * 0.35);
+    let partyRowsHtml = '';
+    for (const s of sortedParties) {
+        const p = partyMap[s.faction_id];
+        if (!p) continue;
+        const isPlayer = s.faction_id === playerFaction.id;
+        const pColor = p.party_color || '#888';
+        const pAbbr = p.abbreviation || '??';
+        const sAlign = Number(s.ideological_alignment ?? 50);
+        const sAppeal = Number(s.platform_appeal ?? 50);
+        const sApproval = Number(s.party_approval ?? 50);
+        const sVote = (Number(s.realized_vote_share ?? 0) * 100).toFixed(1);
+        const sVis = Number(s.visibility ?? 30);
+        const sCred = Number(s.credibility_modifier ?? 1.0);
+        const sTurnout = (Number(s.turnout_rate ?? 0.65) * 100).toFixed(0);
+        const sVoteLeft = (Number(s.vote_left_on_table ?? 0) * 100).toFixed(1);
 
-    function renderBlocCard(b, isLost) {
-        const prefColor = b.pref >= 60 ? 'var(--dgreen)' : b.pref >= 40 ? 'var(--damber)' : 'var(--dred)';
-        const vsDisplay = (b.vs * 100).toFixed(1);
-        const popDisplay = (b.popWeight * 100).toFixed(0);
+        // Pillar color helper
+        function pc(v) { return v >= 65 ? 'var(--dgreen)' : v >= 45 ? 'var(--damber)' : 'var(--dred)'; }
 
-        if (isLost) {
-            return `
-            <div class="vc-lost-seg">
-                <div class="vc-ls-top">
-                    <div class="vc-ls-name">${escapeHtml(b.name)}</div>
-                    <div class="vc-ls-pct">${vsDisplay}%</div>
-                </div>
-                <div class="vc-ls-reason">
-                    Preference score: ${b.pref}. Ideology alignment: ${b.ideo}. Performance: ${b.perf}. Momentum: ${b.mom > 0 ? '+' : ''}${b.mom.toFixed(1)}.
-                    <br>This bloc represents ~${popDisplay}% of the electorate.
-                </div>
-            </div>`;
-        }
-
-        return `
-        <div class="vc-voter-seg" style="border-left-color:${prefColor};">
+        partyRowsHtml += `
+        <div class="vc-voter-seg" style="border-left-color:${pColor};${isPlayer ? 'background:rgba(255,255,255,0.02);' : ''}">
             <div class="vc-vs-top">
                 <div>
-                    <div class="vc-vs-name">${escapeHtml(b.name)}</div>
-                    <div class="vc-vs-pct">~${popDisplay}% of electorate</div>
+                    <div class="vc-vs-name">${escapeHtml(p.faction_name || pAbbr)}${isPlayer ? ' <span style="font-size:8px;color:var(--dteal);">(YOU)</span>' : ''}</div>
                 </div>
                 <div style="text-align:right;">
-                    <div class="vc-vs-share" style="color:${prefColor};">${vsDisplay}%</div>
+                    <div class="vc-vs-share" style="color:${pColor};">${sVote}%</div>
                     <div style="font-family:var(--dfont-mono);font-size:7px;color:var(--dtxt-dim);">vote share</div>
                 </div>
             </div>
             <div class="vc-vs-bar">
-                <div class="vc-vs-bar-seg" style="width:${b.ideoPct}%;background:${VC_IDEO_COLOR};"></div>
-                <div class="vc-vs-bar-seg" style="width:${b.perfPct}%;background:${VC_PERF_COLOR};"></div>
+                <div class="vc-vs-bar-seg" style="width:${Math.round(sAlign)}%;background:${VC_IDEO_COLOR};"></div>
+                <div class="vc-vs-bar-seg" style="width:${Math.round(sAppeal)}%;background:${VC_PERF_COLOR};"></div>
                 <div class="vc-vs-bar-seg" style="flex:1;background:${VC_MOM_COLOR};"></div>
             </div>
             <div class="vc-vs-labels">
-                <div class="vc-vs-lbl"><div class="vc-vs-lbl-dot" style="background:${VC_IDEO_COLOR}"></div>Ideology ${b.ideo}</div>
-                <div class="vc-vs-lbl"><div class="vc-vs-lbl-dot" style="background:${VC_PERF_COLOR}"></div>Performance ${b.perf}</div>
-                <div class="vc-vs-lbl"><div class="vc-vs-lbl-dot" style="background:${VC_MOM_COLOR}"></div>Momentum ${b.mom > 0 ? '+' : ''}${b.mom.toFixed(1)}</div>
+                <div class="vc-vs-lbl"><div class="vc-vs-lbl-dot" style="background:${VC_IDEO_COLOR}"></div>Alignment <span style="color:${pc(sAlign)}">${sAlign.toFixed(0)}</span></div>
+                <div class="vc-vs-lbl"><div class="vc-vs-lbl-dot" style="background:${VC_PERF_COLOR}"></div>Appeal <span style="color:${pc(sAppeal)}">${sAppeal.toFixed(0)}</span></div>
+                <div class="vc-vs-lbl"><div class="vc-vs-lbl-dot" style="background:${VC_MOM_COLOR}"></div>Approval <span style="color:${pc(sApproval)}">${sApproval.toFixed(0)}</span></div>
+                <div class="vc-vs-lbl">Vis ${sVis.toFixed(0)}</div>
+                <div class="vc-vs-lbl">Cred ${(sCred * 100).toFixed(0)}%</div>
+                <div class="vc-vs-lbl">Turnout ${sTurnout}%</div>
+                ${Number(sVoteLeft) > 0.01 ? `<div class="vc-vs-lbl" style="color:var(--dred);">Left ${sVoteLeft}%</div>` : ''}
             </div>
         </div>`;
     }
 
-    const votingForHtml = votingFor.length > 0
-        ? votingFor.map(b => renderBlocCard(b, false)).join('')
-        : '<div style="color:var(--dtext-3);font-size:9px;padding:10px;">No blocs with significant vote share.</div>';
+    // Issue Landscape section
+    let issueLandscapeHtml = '';
+    if (issueStates.length > 0) {
+        const sortedIssues = [...issueStates].sort((a, b) => Number(b.salience) - Number(a.salience));
+        let issueRowsHtml = '';
+        for (const is of sortedIssues) {
+            const def = ISSUE_DEFS[is.issue_id];
+            if (!def) continue;
+            const salience = Number(is.salience ?? 30);
+            const target = Number(is.salience_target ?? 30);
+            const salienceColor = salience >= 60 ? 'var(--dred)' : salience >= 40 ? 'var(--damber)' : 'var(--dtext-3)';
+            const ownerParty = is.owned_by ? partyMap[is.owned_by] : null;
+            const pioneerParty = is.pioneer_faction_id ? partyMap[is.pioneer_faction_id] : null;
+            const trending = target > salience + 5 ? 'rising' : target < salience - 5 ? 'falling' : 'stable';
+            const trendIcon = trending === 'rising' ? '<span style="color:var(--dred);">&#9650;</span>' : trending === 'falling' ? '<span style="color:var(--dgreen);">&#9660;</span>' : '<span style="color:var(--dtext-3);">&#8212;</span>';
 
-    const notVotingHtml = notVoting.length > 0
-        ? notVoting.map(b => renderBlocCard(b, true)).join('')
-        : '<div style="color:var(--dtext-3);font-size:9px;padding:10px;">No blocs in this category.</div>';
+            issueRowsHtml += `
+            <div class="vc-issue-row">
+                <div class="vc-issue-name">${escapeHtml(def.label)}</div>
+                <div class="vc-issue-bar-track">
+                    <div class="vc-issue-bar-fill" style="width:${salience}%;background:${salienceColor}"></div>
+                </div>
+                <div class="vc-issue-salience" style="color:${salienceColor}">${salience.toFixed(0)}</div>
+                <div class="vc-issue-trend">${trendIcon}</div>
+                <div class="vc-issue-owner">${ownerParty ? `<span style="color:${ownerParty.party_color || '#888'}">${escapeHtml(ownerParty.abbreviation || '??')}</span>` : '<span style="color:var(--dtext-3);">—</span>'}</div>
+            </div>`;
+        }
 
-    const votingForTotal = votingFor.reduce((s, b) => s + b.vs, 0);
-    const notVotingTotal = notVoting.reduce((s, b) => s + b.vs, 0);
+        issueLandscapeHtml = `
+        <div class="vc-pillar-section">
+            <div class="vc-sec-label" style="margin-bottom:8px;">Issue Landscape — Salience &amp; Ownership</div>
+            <div class="vc-issue-header">
+                <span class="vc-issue-col-label" style="flex:1;">Issue</span>
+                <span class="vc-issue-col-label" style="flex:2;">Salience</span>
+                <span class="vc-issue-col-label" style="width:36px;text-align:right;"></span>
+                <span class="vc-issue-col-label" style="width:28px;text-align:center;">Trend</span>
+                <span class="vc-issue-col-label" style="width:40px;text-align:center;">Owner</span>
+            </div>
+            ${issueRowsHtml}
+        </div>`;
+    }
 
     container.innerHTML = `
     <div class="vc-page-hdr">
-        <span class="vc-ph-title">Vote Composition</span>
+        <span class="vc-ph-title">Electorate Standing</span>
         <span style="color:var(--dtxt-dim);font-family:var(--dfont-mono);">—</span>
         <span class="vc-ph-nation">${escapeHtml(nation.name)}</span>
     </div>
@@ -5370,7 +5962,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         <div class="vc-card-hdr">
             <div class="vc-ch-left">
                 <div class="vc-ch-dot" style="background:${partyColor}"></div>
-                <span class="vc-ch-title">Who Voted For You — and Why</span>
+                <span class="vc-ch-title">Your Standing — Three Pillars</span>
             </div>
             <div class="vc-ch-right">
                 <span class="vc-ch-badge" style="color:${partyColor};background:${hexToRgba(partyColor, 0.09)};border-color:${hexToRgba(partyColor, 0.22)}">${escapeHtml(partyAbbr)}</span>
@@ -5384,75 +5976,75 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
                 <div class="vc-hc-sub">${ordinal} place. ${seatsText}.</div>
             </div>
             <div class="vc-headline-cell">
-                <div class="vc-hc-label">Avg Preference Score</div>
-                <div class="vc-hc-num" style="color:${avgPref >= 55 ? 'var(--dgreen)' : avgPref >= 40 ? 'var(--damber)' : 'var(--dred)'}">${avgPref}</div>
-                <div class="vc-hc-sub">Population-weighted average across all voter blocs.</div>
+                <div class="vc-hc-label">Raw Appeal</div>
+                <div class="vc-hc-num" style="color:${rawAppeal >= 40 ? 'var(--dgreen)' : rawAppeal >= 25 ? 'var(--damber)' : 'var(--dred)'}">${rawAppeal.toFixed(1)}</div>
+                <div class="vc-hc-sub">Weighted pillar sum × credibility.</div>
             </div>
             <div class="vc-headline-cell">
-                <div class="vc-hc-label">Average Momentum</div>
-                <div style="display:flex;align-items:baseline;gap:6px;">
-                    <div class="vc-hc-num" style="color:${parseFloat(avgMom) > 0 ? 'var(--dgreen)' : parseFloat(avgMom) < -5 ? 'var(--dred)' : 'var(--damber)'}">${avgMom > 0 ? '+' : ''}${avgMom}</div>
-                </div>
-                <div class="vc-hc-sub">Positive = gaining support. Negative = losing ground.</div>
+                <div class="vc-hc-label">Turnout Rate</div>
+                <div class="vc-hc-num" style="color:${turnout >= 0.7 ? 'var(--dgreen)' : turnout >= 0.55 ? 'var(--damber)' : 'var(--dred)'}">${(turnout * 100).toFixed(0)}%</div>
+                <div class="vc-hc-sub">Voter turnout for your supporters. Boost visibility to increase.</div>
             </div>
         </div>
-        <!-- Pillar contributions -->
+        <!-- Three-pillar breakdown -->
         <div class="vc-pillar-section">
-            <div class="vc-sec-label" style="margin-bottom:12px;">Three-pillar breakdown (population-weighted averages)</div>
+            <div class="vc-sec-label" style="margin-bottom:12px;">Three-pillar breakdown</div>
             <div class="vc-pillar-grid">
                 <div class="vc-pillar-card" style="border-top-color:${VC_IDEO_COLOR};">
-                    <div class="vc-pc-label">Ideology Alignment</div>
+                    <div class="vc-pc-label">Ideological Alignment</div>
                     <div style="display:flex;align-items:baseline;gap:4px;">
-                        <div class="vc-pc-num" style="color:${VC_IDEO_COLOR};">${avgIdeo}</div>
+                        <div class="vc-pc-num" style="color:${VC_IDEO_COLOR};">${alignment.toFixed(0)}</div>
                         <div class="vc-pc-unit">/ 100</div>
                     </div>
-                    <div class="vc-pc-bar"><div class="vc-pc-fill" style="width:${avgIdeo}%;background:${VC_IDEO_COLOR};"></div></div>
+                    <div class="vc-pc-bar"><div class="vc-pc-fill" style="width:${alignment}%;background:${VC_IDEO_COLOR};"></div></div>
                     <div class="vc-pc-breakdown">
-                        Weight: <strong>40%</strong> of preference score. Contribution: <strong>${ideoContrib}</strong> points.
+                        Weight: <strong>40%</strong>. Contribution: <strong>${alignContrib.toFixed(2)}</strong>.
                     </div>
                 </div>
                 <div class="vc-pillar-card" style="border-top-color:${VC_PERF_COLOR};">
-                    <div class="vc-pc-label">Performance Perception</div>
+                    <div class="vc-pc-label">Platform Appeal</div>
                     <div style="display:flex;align-items:baseline;gap:4px;">
-                        <div class="vc-pc-num" style="color:${VC_PERF_COLOR};">${avgPerf}</div>
+                        <div class="vc-pc-num" style="color:${VC_PERF_COLOR};">${appeal.toFixed(0)}</div>
                         <div class="vc-pc-unit">/ 100</div>
                     </div>
-                    <div class="vc-pc-bar"><div class="vc-pc-fill" style="width:${avgPerf}%;background:${VC_PERF_COLOR};"></div></div>
+                    <div class="vc-pc-bar"><div class="vc-pc-fill" style="width:${appeal}%;background:${VC_PERF_COLOR};"></div></div>
                     <div class="vc-pc-breakdown">
-                        Weight: <strong>25%</strong> of preference score. Contribution: <strong>${perfContrib}</strong> points.
+                        Weight: <strong>25%</strong>. Contribution: <strong>${appealContrib.toFixed(2)}</strong>. Take stances to increase.
                     </div>
                 </div>
                 <div class="vc-pillar-card" style="border-top-color:${VC_MOM_COLOR};">
-                    <div class="vc-pc-label">Momentum</div>
+                    <div class="vc-pc-label">Party Approval</div>
                     <div style="display:flex;align-items:baseline;gap:4px;">
-                        <div class="vc-pc-num" style="color:${VC_MOM_COLOR};">${avgMom > 0 ? '+' : ''}${avgMom}</div>
-                        <div class="vc-pc-unit">raw</div>
+                        <div class="vc-pc-num" style="color:${VC_MOM_COLOR};">${approval.toFixed(0)}</div>
+                        <div class="vc-pc-unit">/ 100</div>
                     </div>
-                    <div class="vc-pc-bar"><div class="vc-pc-fill" style="width:${Math.max(0, momMappedAvg)}%;background:${VC_MOM_COLOR};"></div></div>
+                    <div class="vc-pc-bar"><div class="vc-pc-fill" style="width:${approval}%;background:${VC_MOM_COLOR};"></div></div>
                     <div class="vc-pc-breakdown">
-                        Weight: <strong>35%</strong> of preference score. Mapped: <strong>${Math.round(momMappedAvg)}</strong>/100. Contribution: <strong>${momContrib}</strong> points.
+                        Weight: <strong>35%</strong>. Contribution: <strong>${approvalContrib.toFixed(2)}</strong>. Governance drives this.
                     </div>
                 </div>
             </div>
         </div>
-        <!-- Voter bloc segments -->
-        <div class="vc-segments">
-            <div class="vc-seg-col">
-                <div class="vc-seg-col-hdr">
-                    <span style="font-size:14px;">✓</span>
-                    <span class="vc-seg-col-title">Blocs voting for you</span>
-                    <span class="vc-seg-col-sub">${(votingForTotal * 100).toFixed(1)}% share</span>
-                </div>
-                ${votingForHtml}
+        <!-- Visibility / Credibility / Vote Left strip -->
+        <div class="vc-pillar-section" style="display:flex;gap:24px;flex-wrap:wrap;">
+            <div>
+                <div class="vc-pc-label">Visibility</div>
+                <div class="vc-pc-num" style="color:${visibility >= 50 ? 'var(--dgreen)' : visibility >= 30 ? 'var(--damber)' : 'var(--dred)'}; font-size:18px;">${visibility.toFixed(0)}</div>
             </div>
-            <div class="vc-seg-col">
-                <div class="vc-seg-col-hdr">
-                    <span style="font-size:14px;color:var(--dred);">✗</span>
-                    <span class="vc-seg-col-title" style="color:var(--dtext-2);">Low-support blocs</span>
-                    <span class="vc-seg-col-sub">${(notVotingTotal * 100).toFixed(1)}% share</span>
-                </div>
-                ${notVotingHtml}
+            <div>
+                <div class="vc-pc-label">Credibility</div>
+                <div class="vc-pc-num" style="color:${credibility >= 0.9 ? 'var(--dgreen)' : credibility >= 0.7 ? 'var(--damber)' : 'var(--dred)'}; font-size:18px;">${(credibility * 100).toFixed(0)}%</div>
             </div>
+            <div>
+                <div class="vc-pc-label">Vote Left on Table</div>
+                <div class="vc-pc-num" style="color:${voteLeft > 0.005 ? 'var(--dred)' : 'var(--dgreen)'}; font-size:18px;">${(voteLeft * 100).toFixed(2)}%</div>
+            </div>
+        </div>
+        ${issueLandscapeHtml}
+        <!-- All-party comparison -->
+        <div class="vc-pillar-section">
+            <div class="vc-sec-label" style="margin-bottom:12px;">All-party comparison</div>
+            ${partyRowsHtml}
         </div>
     </div>`;
 }
@@ -5476,7 +6068,7 @@ const OP_AXES = [
     { key: 'individualism_collectivism', leftLabel: 'Individual',  rightLabel: 'Collectivism' },
 ];
 
-async function renderOtherPartiesTab(playerFaction, nation, allParties, allPartyIdeologies, coalition, totalSeats, voterBlocs, currentTick) {
+async function renderOtherPartiesTab(playerFaction, nation, allParties, allPartyIdeologies, coalition, totalSeats, currentTick) {
     const container = document.getElementById('other-parties-container');
     if (!container) return;
 
@@ -5493,24 +6085,17 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
         ideoMap[row.faction_id] = row;
     }
 
-    // Fetch approval data for all rival parties (average preference_score across blocs)
+    // Approval data from faction_electoral_standing
     const rivalIds = rivals.map(p => p.id);
-    const { data: rivalApprovals } = rivalIds.length > 0
-        ? await _supabase.from('faction_bloc_approval')
-            .select('faction_id, preference_score')
+    const { data: rivalStandings } = rivalIds.length > 0
+        ? await _supabase.from('faction_electoral_standing')
+            .select('faction_id, party_approval')
             .in('faction_id', rivalIds)
         : { data: [] };
 
-    // Compute average approval per party
     const approvalMap = {};
-    const approvalCounts = {};
-    for (const row of (rivalApprovals || [])) {
-        const fid = row.faction_id;
-        approvalMap[fid] = (approvalMap[fid] || 0) + Number(row.preference_score ?? 40);
-        approvalCounts[fid] = (approvalCounts[fid] || 0) + 1;
-    }
-    for (const fid of Object.keys(approvalMap)) {
-        approvalMap[fid] = Math.round(approvalMap[fid] / approvalCounts[fid]);
+    for (const row of (rivalStandings || [])) {
+        approvalMap[row.faction_id] = Math.round(row.party_approval ?? 40);
     }
 
     // Fetch leader data for each rival (factions table has leader columns)
@@ -5548,6 +6133,9 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
             name: p.faction_name || 'Unknown',
             abbreviation: p.abbreviation || '??',
             color: p.party_color || '#888',
+            customLogoUrl: p.custom_logo_url || null,
+            partyLogo: p.party_logo || null,
+            description: p.party_description || '',
             status,
             foundedTick: fd.founded_tick,
             leaderName,
@@ -5563,7 +6151,7 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
                 globalism_nationalism: ideo.globalism_nationalism ?? 0,
                 individualism_collectivism: ideo.individualism_collectivism ?? 0,
             },
-            stances: [], // Stance system not yet implemented — shows "No stance" for all issues
+            stances: [],
         };
     });
 
@@ -5614,10 +6202,14 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
 
 function renderPartyCard(party, nation) {
     const c = party.color;
-    const cFaint = hexToRgba(c, 0.09);
-    const cBorder = hexToRgba(c, 0.22);
+    const cFaint = hexToRgba(c, 0.12);
+    const cBorder = hexToRgba(c, 0.35);
     const cHalf = hexToRgba(c, 0.5);
     const cLight = hexToRgba(c, 0.2);
+    const cGlow = hexToRgba(c, 0.06);
+
+    // Party logo (custom image or icon SVG)
+    const logoHtml = getPartyLogoHTML({ customLogoUrl: party.customLogoUrl, iconKey: party.partyLogo, size: 32, color: c });
 
     // Status badge
     let statusLabel, statusCls;
@@ -5631,6 +6223,11 @@ function renderPartyCard(party, nation) {
 
     // Leader badge
     const leaderBadge = `<span class="op-badge op-badge-neutral">Leader: ${escapeHtml(party.leaderName)}${party.leaderAge ? ' (' + party.leaderAge + ')' : ''}</span>`;
+
+    // Party description
+    const descHtml = party.description
+        ? `<div class="op-desc">${escapeHtml(party.description)}</div>`
+        : '';
 
     // Approval color
     const apColor = party.approval > 50 ? 'var(--dgreen)' : party.approval >= 35 ? 'var(--damber)' : 'var(--dred)';
@@ -5703,11 +6300,11 @@ function renderPartyCard(party, nation) {
            </div>`;
 
     return `
-    <div class="op-card">
-        <div class="op-card-hdr">
-            <div class="op-emblem" style="background:${cFaint};color:${c};border:1px solid ${cBorder}">${escapeHtml(party.abbreviation)}</div>
+    <div class="op-card" style="background:linear-gradient(135deg, ${cGlow} 0%, var(--dbg-2) 40%);border-color:${cBorder}">
+        <div class="op-card-hdr" style="border-bottom-color:${cBorder}">
+            <div class="op-logo-wrap" style="background:${cFaint};border:1px solid ${cBorder};border-radius:6px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden">${logoHtml}</div>
             <div class="op-hdr-info">
-                <div class="op-name">${escapeHtml(party.name)}</div>
+                <div class="op-name" style="color:${c}">${escapeHtml(party.name)}</div>
                 <div class="op-meta">
                     <span class="op-badge ${statusCls}">${statusLabel}</span>
                     ${foundedBadge}
@@ -5715,6 +6312,7 @@ function renderPartyCard(party, nation) {
                 </div>
             </div>
         </div>
+        ${descHtml}
         <div class="op-body">
             <div class="op-col-left">
                 <div class="op-sec-label">Party Stats</div>

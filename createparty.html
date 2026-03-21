@@ -499,7 +499,6 @@ textarea {
 import { _supabase } from './js/supabase-client.js';
 import { PARTY_ICONS, PARTY_COLOR_PALETTE, DEFAULT_PARTY_ICON, getPartyIconSVG, getDefaultPartyColor } from './js/party-icons.js';
 import { escapeHtml } from './js/utils.js';
-import { ideologyOppositionMultiplier } from './js/game/ideology.js';
 
 const urlParams = new URLSearchParams(window.location.search);
 const ideology1 = urlParams.get('ideology1');
@@ -803,33 +802,7 @@ async function proceed() {
       }
     }
 
-    // Seed bloc approvals
-    try {
-      const { data: blocs } = await _supabase
-        .from('voter_blocs')
-        .select('id, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-        .eq('nation_id', nationData.id)
-        .eq('is_active', true);
-
-      if (blocs && blocs.length > 0) {
-        const { data: ideo } = await _supabase.from('faction_ideology')
-          .select('liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-          .eq('faction_id', currentUser.id)
-          .maybeSingle();
-
-        const rows = blocs.map(bloc => {
-          const mult = ideo ? ideologyOppositionMultiplier(ideo, bloc) : 1.0;
-          return {
-            faction_id: currentUser.id,
-            bloc_id: bloc.id,
-            preference_score: Math.round(40 * mult * 100) / 100
-          };
-        });
-
-        await _supabase.from('faction_bloc_approval')
-          .upsert(rows, { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true });
-      }
-    } catch (e) { console.warn('Bloc approval seeding non-blocking:', e); }
+    // Bloc approval seeding removed — electorate engine handles vote share now
 
     // Pre-cache state so dashboard loads instantly without a re-query
     // (avoids race where the faction isn't found on a fresh DB read)
