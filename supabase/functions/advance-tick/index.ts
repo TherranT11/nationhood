@@ -1421,7 +1421,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         var tradeGdpNudge = Math.max(-0.2, Math.min(0.2, (tradeVolumeRatio - 0.5) * 0.4));
         if (Math.abs(tradeGdpNudge) >= 0.01) {
             var currentGdpGrowth = Number(n.gdp_growth) || 50;
-            nationUpdates.gdp_growth = Math.round(Math.max(0, Math.min(100, currentGdpGrowth + tradeGdpNudge)) * 10) / 10;
+            nationUpdates.gdp_growth = Math.round(Math.max(0, Math.min(100, currentGdpGrowth + tradeGdpNudge)) * 100) / 100;
         }
 
         // Currency strength: trade surplus strengthens currency, deficit weakens it
@@ -1429,7 +1429,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         var currentCurrency = Number(n.currency_strength) || 50;
         var currencyNudge = (tradeBalanceIdx - 50) / 100;
         if (Math.abs(currencyNudge) >= 0.01) {
-            nationUpdates.currency_strength = Math.round(Math.max(0, Math.min(100, currentCurrency + currencyNudge)) * 10) / 10;
+            nationUpdates.currency_strength = Math.round(Math.max(0, Math.min(100, currentCurrency + currencyNudge)) * 100) / 100;
         }
 
         // Inflation from import prices: weighted average price modifier of imports
@@ -1449,7 +1449,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         var currentInflation = Number(n.inflation) || 50;
         var inflationNudge = (avgImportPrice - 1.0) * 1.0; // price 1.5 → +0.5 nudge, price 0.7 → -0.3
         if (Math.abs(inflationNudge) >= 0.01) {
-            nationUpdates.inflation = Math.round(Math.max(0, Math.min(100, currentInflation + inflationNudge)) * 10) / 10;
+            nationUpdates.inflation = Math.round(Math.max(0, Math.min(100, currentInflation + inflationNudge)) * 100) / 100;
         }
 
         // Unemployment from trade displacement: net imports in job-heavy sectors (manufacturing + services)
@@ -1463,7 +1463,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             var unemploymentNudge = Math.max(-0.5, Math.min(0.5, displacementRatio * 100));
             if (Math.abs(unemploymentNudge) >= 0.01) {
                 var currentUnemployment = Number(n.unemployment) || 50;
-                nationUpdates.unemployment = Math.round(Math.max(0, Math.min(100, currentUnemployment + unemploymentNudge)) * 10) / 10;
+                nationUpdates.unemployment = Math.round(Math.max(0, Math.min(100, currentUnemployment + unemploymentNudge)) * 100) / 100;
             }
         }
 
@@ -14367,10 +14367,10 @@ async function persistBackingChanges(supabase, nationId, pillarStates, wildcardS
 }
 
 /**
- * Clamp a stat value between 0 and 100 with one decimal precision.
+ * Clamp a stat value between 0 and 100 with two decimal precision.
  */
 function clampStat(val) {
-    return Math.max(0, Math.min(100, Math.round(val * 10) / 10));
+    return Math.max(0, Math.min(100, Math.round(val * 100) / 100));
 }
 
 /**
@@ -17481,14 +17481,14 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
             newVal = Math.min(target, currentVal + speed);
         }
 
-        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 100) / 100;
 
-        if (newVal !== Math.round(currentVal * 10) / 10) {
+        if (newVal !== Math.round(currentVal * 100) / 100) {
             nationUpdates[statKey] = newVal;
             appliedDecay.push({
                 stat: statKey,
                 type: config.type,
-                previousValue: Math.round(currentVal * 10) / 10,
+                previousValue: Math.round(currentVal * 100) / 100,
                 newValue: newVal,
                 target,
                 speed,
@@ -17587,10 +17587,10 @@ async function processStatConnections(supabase, nation, currentTick, connections
         if (RAW_SCALING_DIVISORS[conn.target_stat]) {
             newVal = Math.max(0, newVal);
         } else {
-            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 100) / 100;
         }
 
-        if (newVal !== Math.round(targetVal * 10) / 10) {
+        if (newVal !== Math.round(targetVal * 100) / 100) {
             // Accumulate — multiple connections can affect the same target
             if (nationUpdates[conn.target_stat] !== undefined) {
                 // Add delta on top of already-accumulated value
@@ -17599,7 +17599,7 @@ async function processStatConnections(supabase, nation, currentTick, connections
                 const accumulated = targetVal + prevDelta + thisDelta;
                 nationUpdates[conn.target_stat] = RAW_SCALING_DIVISORS[conn.target_stat]
                     ? Math.max(0, accumulated)
-                    : Math.round(Math.max(0, Math.min(100, accumulated)) * 10) / 10;
+                    : Math.round(Math.max(0, Math.min(100, accumulated)) * 100) / 100;
             } else {
                 nationUpdates[conn.target_stat] = newVal;
             }
@@ -17610,7 +17610,7 @@ async function processStatConnections(supabase, nation, currentTick, connections
                 threshold: Number(conn.threshold),
                 target: conn.target_stat,
                 direction: conn.target_dir,
-                previousValue: Math.round(targetVal * 10) / 10,
+                previousValue: Math.round(targetVal * 100) / 100,
                 newValue: nationUpdates[conn.target_stat],
                 magnitude: Number(conn.magnitude),
                 effectiveMagnitude: Math.round(effectiveMag * 1000) / 1000,
@@ -19653,7 +19653,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                     if (RAW_SCALING_DIVISORS[statKey]) {
                         newVal = Math.max(0, newVal);
                     } else {
-                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 100) / 100;
                     }
                     nationUpdates[statKey] = newVal;
                     anyEffectApplied = true;
@@ -19799,7 +19799,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
                         }
                         currentVal = ministerUpdates[mKey];
                         newVal = eff.direction === 'up' ? currentVal + rate : currentVal - rate;
-                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 100) / 100;
                         ministerUpdates[mKey] = newVal;
                     } else if (target === 'faction') {
                         const fKey = action.faction_id;
@@ -19814,7 +19814,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
                         }
                         currentVal = factionUpdates[fKey];
                         newVal = eff.direction === 'up' ? currentVal + rate : currentVal - rate;
-                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 100) / 100;
                         factionUpdates[fKey] = newVal;
                     } else {
                         // Default: nation stat
@@ -19829,7 +19829,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
                         if (RAW_SCALING_DIVISORS[statKey]) {
                             newVal = Math.max(0, newVal);
                         } else {
-                            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 100) / 100;
                         }
                         nationUpdates[statKey] = newVal;
                     }
@@ -20559,10 +20559,10 @@ async function processCrises(supabase, nation, currentTick) {
             const floorVal = hasFloor ? Number(effect.stat_floor) : null;
 
             // Helper: clamp value respecting the per-effect floor/ceiling (for non-nation targets)
-            // Round to 1dp to match processStatEffects and prevent floating-point drift.
+            // Round to 2dp to match processStatEffects and prevent floating-point drift.
             function clampWithFloor(current, raw) {
                 if (isNaN(raw) || isNaN(current)) return current ?? 50;
-                let v = Math.round(Math.max(0, Math.min(100, raw)) * 10) / 10;
+                let v = Math.round(Math.max(0, Math.min(100, raw)) * 100) / 100;
                 if (hasFloor) {
                     if (changePT < 0) v = Math.max(floorVal, v);   // floor
                     else if (changePT > 0) v = Math.min(floorVal, v); // ceiling
@@ -20592,7 +20592,7 @@ async function processCrises(supabase, nation, currentTick) {
                     const scaledCrisisChange = changePT * RAW_SCALING_DIVISORS[statKey];
                     newVal = Math.max(0, currentVal + scaledCrisisChange);
                 } else {
-                    newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
+                    newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 100) / 100;
                 }
                 nationUpdates[statKey] = newVal;
                 nation[statKey] = newVal;
@@ -20818,7 +20818,7 @@ async function processCrises(supabase, nation, currentTick) {
         if (val === undefined) continue;
         if (bounds.floor !== undefined) val = Math.max(bounds.floor, val);
         if (bounds.ceiling !== undefined) val = Math.min(bounds.ceiling, val);
-        val = Math.round(val * 10) / 10;
+        val = Math.round(val * 100) / 100;
         nationUpdates[stat] = val;
         nation[stat] = val;
     }
@@ -20910,9 +20910,9 @@ async function processRevolution(supabase, nation, currentTick) {
     }
 
     // Apply per-tick effects (stability -1, civil_unrest +1, intl_reputation -1)
-    const newStability = Math.max(0, Math.round((Number(nation.stability) - 1) * 10) / 10);
-    const newUnrest = Math.min(100, Math.round((Number(nation.civil_unrest) + 1) * 10) / 10);
-    const newReputation = Math.max(0, Math.round((Number(nation.international_reputation) - 1) * 10) / 10);
+    const newStability = Math.max(0, Math.round((Number(nation.stability) - 1) * 100) / 100);
+    const newUnrest = Math.min(100, Math.round((Number(nation.civil_unrest) + 1) * 100) / 100);
+    const newReputation = Math.max(0, Math.round((Number(nation.international_reputation) - 1) * 100) / 100);
 
     await supabase.from('nations').update({
         stability: newStability,
@@ -20965,8 +20965,8 @@ async function processRevolution(supabase, nation, currentTick) {
     }
 
     // 3. Update nation stats
-    const newFreedomIndex = Math.min(100, Math.round((Number(nation.freedom_index) + 15) * 10) / 10);
-    const newIntlRep = Math.min(100, Math.round((Number(nation.international_reputation) + 5) * 10) / 10);
+    const newFreedomIndex = Math.min(100, Math.round((Number(nation.freedom_index) + 15) * 100) / 100);
+    const newIntlRep = Math.min(100, Math.round((Number(nation.international_reputation) + 5) * 100) / 100);
     const nationUpdates = {
         government_type: newGovType,
         ruling_faction_id: null,
@@ -21382,7 +21382,7 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
                     // Raw-value stats (population): scale rate and don't clamp to 0-100
                     updates[stat] = Math.max(0, Number(currentVal) + delta * RAW_SCALING_DIVISORS[stat]);
                 } else {
-                    updates[stat] = Math.round(Math.max(0, Math.min(100, Number(currentVal) + delta)) * 10) / 10;
+                    updates[stat] = Math.round(Math.max(0, Math.min(100, Number(currentVal) + delta)) * 100) / 100;
                 }
             }
         }
@@ -22713,7 +22713,7 @@ function previewDefaultConsequences(nation, defaultType, repaymentRate, austerit
     // Apply discount to eligible penalties (credit, intl_rep, foreign_inv)
     const discountedMultiplier = multiplier * (1 - discount);
 
-    const clamp = (current, delta) => Math.max(0, Math.min(100, Math.round((current + delta) * 10) / 10));
+    const clamp = (current, delta) => Math.max(0, Math.min(100, Math.round((current + delta) * 100) / 100));
 
     const statChanges = {
         debt: { before: currentDebt, after: debtAfter, change: debtAfter - currentDebt },
@@ -22842,7 +22842,7 @@ function formatDebtToGDP(ratio) {
 async function processPopulationGrowth(supabase: any, nation: any) {
     // population_growth is now standalone — just use the current value directly
     const currentPG = Number(nation.population_growth ?? 50);
-    const finalPG = Math.round(Math.max(0, Math.min(100, currentPG)) * 10) / 10;
+    const finalPG = Math.round(Math.max(0, Math.min(100, currentPG)) * 100) / 100;
 
     // Population change: linear mapping from 0-100 to -1%..+1% per tick
     const population = Number(nation.population ?? 0);
@@ -22917,10 +22917,10 @@ async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
     if (nationStats) {
         const updates = {};
         if ((nationStats.stability || 0) >= 60) {
-            updates.happiness = Math.max(0, Math.min(100, Math.round(((nationStats.happiness || 50) + 1) * 10) / 10));
+            updates.happiness = Math.max(0, Math.min(100, Math.round(((nationStats.happiness || 50) + 1) * 100) / 100));
         }
         if ((nationStats.happiness || 0) >= 60) {
-            updates.stability = Math.max(0, Math.min(100, Math.round(((nationStats.stability || 50) + 1) * 10) / 10));
+            updates.stability = Math.max(0, Math.min(100, Math.round(((nationStats.stability || 50) + 1) * 100) / 100));
         }
         if (Object.keys(updates).length > 0) {
             await supabase.from('nations').update(updates).eq('id', nation.id);
@@ -23179,7 +23179,7 @@ async function processSovereignDebtMechanics(supabase, nation, currentTick) {
 
     // 2. Apply credit deterioration (per-tick penalty from high debt)
     if (creditDeterioration > 0 && currentCredit > 0) {
-        const newCredit = Math.max(0, Math.round((currentCredit - creditDeterioration) * 10) / 10);
+        const newCredit = Math.max(0, Math.round((currentCredit - creditDeterioration) * 100) / 100);
         updates.credit = newCredit;
         results.creditDeterioration = creditDeterioration;
         results.creditBefore = currentCredit;
@@ -23283,7 +23283,7 @@ async function enactSovereignDefault(supabase, bill, currentTick) {
         : Math.round(currentDebt * (resolution.repayment_rate || 0.5));
 
     // 5. Apply immediate stat penalties
-    const clamp = (val, delta) => Math.max(0, Math.min(100, Math.round((val + delta) * 10) / 10));
+    const clamp = (val, delta) => Math.max(0, Math.min(100, Math.round((val + delta) * 100) / 100));
 
     const nationUpdates: any = {
         debt: debtAfter,
@@ -23446,7 +23446,7 @@ async function handleFailedDefaultResolution(supabase, bill, currentTick) {
 
     // 3. Apply failure consequences: partial market recovery from filing shock,
     //    but PM takes an approval hit for the failed political gambit
-    const clamp = (val, delta) => Math.max(0, Math.min(100, Math.round((val + delta) * 10) / 10));
+    const clamp = (val, delta) => Math.max(0, Math.min(100, Math.round((val + delta) * 100) / 100));
 
     const updates: any = {
         currency_strength: clamp(Number(nation.currency_strength ?? 50), cfg.FAILURE_CURRENCY_RECOVERY),
@@ -23521,7 +23521,7 @@ async function processAusterityCommitments(supabase, nation, currentTick) {
             if (!resolvedKey || !NATION_STAT_COLUMN_SET.has(resolvedKey)) continue;
 
             const currentVal = Number(nation[resolvedKey] ?? 50);
-            const newVal = Math.max(0, Math.round((currentVal - perTickReduction) * 10) / 10);
+            const newVal = Math.max(0, Math.round((currentVal - perTickReduction) * 100) / 100);
 
             if (newVal !== currentVal) {
                 nationUpdates[resolvedKey] = newVal;
