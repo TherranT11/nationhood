@@ -212,8 +212,9 @@
                 </div>
 
                 <!-- Save Axes -->
-                <div style="display:flex; gap:12px; align-items:center; margin-bottom:30px;">
-                    <button class="btn btn-primary" onclick="saveAxes()">Save Axes & Eligible Voters</button>
+                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:30px;">
+                    <button class="btn btn-primary" onclick="saveAxes()">Save All</button>
+                    <button class="btn btn-secondary" onclick="autoFillAllVars()">Auto-fill Variance from Polarization</button>
                     <button class="btn btn-secondary" onclick="resetAxesToSaved()">Reset</button>
                     <span id="axes-save-status" style="font-weight:bold;"></span>
                 </div>
@@ -1423,23 +1424,52 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     // ================================================================
 
     const VOTER_AXES = [
-        { column: 'liberty_voters',       left: 'Liberty',       right: 'Equality' },
-        { column: 'individualism_voters', left: 'Individualism', right: 'Collectivism' },
-        { column: 'tradition_voters',     left: 'Tradition',     right: 'Progress' },
-        { column: 'security_voters',      left: 'Security',      right: 'Freedom' },
-        { column: 'globalism_voters',     left: 'Globalism',     right: 'Nationalism' }
+        { column: 'liberty_voters',       left: 'Liberty',       right: 'Equality',      meanCol: 'ideo_mean_liberty_equality',           varCol: 'ideo_var_liberty_equality' },
+        { column: 'individualism_voters', left: 'Individualism', right: 'Collectivism',   meanCol: 'ideo_mean_individualism_collectivism', varCol: 'ideo_var_individualism_collectivism' },
+        { column: 'tradition_voters',     left: 'Tradition',     right: 'Progress',       meanCol: 'ideo_mean_tradition_progress',         varCol: 'ideo_var_tradition_progress' },
+        { column: 'security_voters',      left: 'Security',      right: 'Freedom',        meanCol: 'ideo_mean_security_freedom',           varCol: 'ideo_var_security_freedom' },
+        { column: 'globalism_voters',     left: 'Globalism',     right: 'Nationalism',    meanCol: 'ideo_mean_globalism_nationalism',      varCol: 'ideo_var_globalism_nationalism' }
     ];
 
     let savedAxes = {};
     let currentAxes = {};
+    let currentMeans = {};
+    let savedMeans = {};
+    let currentVars = {};
+    let savedVars = {};
+    let _electorateProfileId = null;
+
+    /**
+     * Calculate ideological variance from polarization stat.
+     * Polarization 0 = very tight (var ~8), 100 = very spread (var ~35).
+     */
+    function polarizationToVariance(polarization) {
+        const p = Math.max(0, Math.min(100, polarization || 0));
+        return 8 + (p / 100) * 27; // range 8–35
+    }
 
     function renderIdeologySliders() {
         const container = document.getElementById('ideology-sliders-container');
-        container.innerHTML = VOTER_AXES.map((axis, i) => {
+        const pol = voterNationData?.polarization ?? 50;
+        const autoVar = polarizationToVariance(pol).toFixed(1);
+
+        container.innerHTML = `
+            <div style="margin-bottom:16px;padding:10px;border:1px solid #444;border-radius:6px;background:rgba(255,255,255,0.02)">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                    <span style="font-family:monospace;font-size:12px;color:#CE93D8">POLARIZATION: ${pol}</span>
+                    <span style="font-family:monospace;font-size:12px;color:#888">Auto-variance: ${autoVar}</span>
+                </div>
+                <div style="height:4px;background:#333;border-radius:2px;overflow:hidden">
+                    <div style="width:${pol}%;height:100%;background:linear-gradient(90deg,#4ade80,#f59e0b,#ef4444);border-radius:2px"></div>
+                </div>
+            </div>
+        ` + VOTER_AXES.map((axis, i) => {
             const val = currentAxes[axis.column] ?? 50;
             const rightVal = 100 - val;
+            const mean = currentMeans[axis.meanCol] ?? 50;
+            const variance = currentVars[axis.varCol] ?? autoVar;
             return `
-                <div class="axis-slider-row">
+                <div class="axis-slider-row" style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #333">
                     <div class="axis-label-left" style="color:${val >= 50 ? '#CE93D8' : '#888'};">
                         ${axis.left}
                         <span class="axis-pct">${val}%</span>
@@ -1453,6 +1483,21 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                         <span class="axis-pct">${rightVal}%</span>
                     </div>
                 </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:-8px;margin-bottom:12px;padding:0 4px">
+                    <div>
+                        <label style="font-family:monospace;font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px">Midpoint (0–100)</label>
+                        <input type="number" min="0" max="100" value="${mean}" class="eligible-input" style="width:80px;margin-top:2px"
+                            oninput="onMeanChange(${i}, this.value)">
+                        <span style="font-family:monospace;font-size:10px;color:#666;margin-left:4px">${mean < 40 ? axis.left + '-leaning' : mean > 60 ? axis.right + '-leaning' : 'Centrist'}</span>
+                    </div>
+                    <div>
+                        <label style="font-family:monospace;font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px">Variance</label>
+                        <input type="number" min="1" max="50" step="0.1" value="${parseFloat(variance).toFixed(1)}" class="eligible-input" style="width:80px;margin-top:2px"
+                            oninput="onVarChange(${i}, this.value)">
+                        <button style="font-family:monospace;font-size:10px;color:#CE93D8;background:none;border:1px solid #CE93D8;border-radius:3px;padding:1px 6px;margin-left:4px;cursor:pointer"
+                            onclick="autoFillVar(${i})">Auto</button>
+                    </div>
+                </div>
             `;
         }).join('');
     }
@@ -1460,11 +1505,48 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     function onAxisSliderChange(axisIndex, value) {
         const col = VOTER_AXES[axisIndex].column;
         currentAxes[col] = parseInt(value);
+        // Sync mean to match slider
+        const meanCol = VOTER_AXES[axisIndex].meanCol;
+        currentMeans[meanCol] = parseInt(value);
         renderIdeologySliders();
     }
 
+    function onMeanChange(axisIndex, value) {
+        const meanCol = VOTER_AXES[axisIndex].meanCol;
+        const col = VOTER_AXES[axisIndex].column;
+        currentMeans[meanCol] = parseInt(value) || 50;
+        // Sync nation slider to match mean
+        currentAxes[col] = parseInt(value) || 50;
+        renderIdeologySliders();
+    }
+
+    function onVarChange(axisIndex, value) {
+        const varCol = VOTER_AXES[axisIndex].varCol;
+        currentVars[varCol] = parseFloat(value) || 20;
+    }
+
+    function autoFillVar(axisIndex) {
+        const varCol = VOTER_AXES[axisIndex].varCol;
+        const pol = voterNationData?.polarization ?? 50;
+        currentVars[varCol] = polarizationToVariance(pol);
+        renderIdeologySliders();
+    }
+
+    function autoFillAllVars() {
+        const pol = voterNationData?.polarization ?? 50;
+        const v = polarizationToVariance(pol);
+        VOTER_AXES.forEach(a => { currentVars[a.varCol] = v; });
+        renderIdeologySliders();
+        document.getElementById('axes-save-status').textContent = 'All variances set from polarization';
+        document.getElementById('axes-save-status').style.color = '#CE93D8';
+    }
+
     function resetAxesToSaved() {
-        VOTER_AXES.forEach(a => { currentAxes[a.column] = savedAxes[a.column]; });
+        VOTER_AXES.forEach(a => {
+            currentAxes[a.column] = savedAxes[a.column];
+            currentMeans[a.meanCol] = savedMeans[a.meanCol];
+            currentVars[a.varCol] = savedVars[a.varCol];
+        });
         renderIdeologySliders();
         document.getElementById('axes-save-status').textContent = 'Reset to saved values';
         document.getElementById('axes-save-status').style.color = '#888';
@@ -1473,16 +1555,41 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     async function saveAxes() {
         if (!voterNationData) return;
         const statusEl = document.getElementById('axes-save-status');
-        const updateObj = {};
-        VOTER_AXES.forEach(a => { updateObj[a.column] = currentAxes[a.column]; });
-        updateObj.eligible_voters = parseInt(document.getElementById('voter-eligible-input').value) || 0;
+
+        // Nation-level axis sliders + eligible voters
+        const nationUpdate = {};
+        VOTER_AXES.forEach(a => { nationUpdate[a.column] = currentAxes[a.column]; });
+        nationUpdate.eligible_voters = parseInt(document.getElementById('voter-eligible-input').value) || 0;
+
+        // Electorate profile: ideo means + vars
+        const profileUpdate = {};
+        VOTER_AXES.forEach(a => {
+            profileUpdate[a.meanCol] = currentMeans[a.meanCol] ?? 50;
+            profileUpdate[a.varCol] = currentVars[a.varCol] ?? 20;
+        });
 
         try {
-            const { error } = await _supabase.from('nations').update(updateObj).eq('id', voterNationData.id);
-            if (error) throw error;
-            VOTER_AXES.forEach(a => { savedAxes[a.column] = currentAxes[a.column]; });
-            voterNationData.eligible_voters = updateObj.eligible_voters;
-            statusEl.textContent = '✅ Saved!';
+            const { error: nErr } = await _supabase.from('nations').update(nationUpdate).eq('id', voterNationData.id);
+            if (nErr) throw nErr;
+
+            // Upsert electorate profile
+            if (_electorateProfileId) {
+                const { error: pErr } = await _supabase.from('electorate_profile').update(profileUpdate).eq('nation_id', voterNationData.id);
+                if (pErr) throw pErr;
+            } else {
+                profileUpdate.nation_id = voterNationData.id;
+                const { error: pErr } = await _supabase.from('electorate_profile').upsert(profileUpdate, { onConflict: 'nation_id' });
+                if (pErr) throw pErr;
+            }
+
+            // Snapshot saved state
+            VOTER_AXES.forEach(a => {
+                savedAxes[a.column] = currentAxes[a.column];
+                savedMeans[a.meanCol] = currentMeans[a.meanCol];
+                savedVars[a.varCol] = currentVars[a.varCol];
+            });
+            voterNationData.eligible_voters = nationUpdate.eligible_voters;
+            statusEl.textContent = '✅ Saved axes, means, and variances!';
             statusEl.style.color = '#5cb85c';
             setTimeout(() => { statusEl.textContent = ''; }, 3000);
         } catch (error) {
@@ -1539,13 +1646,28 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         const { data: nation } = await _supabase.from('nations').select('*').eq('id', nationId).single();
         voterNationData = nation;
 
-        // Snapshot saved axes
+        // Load electorate profile for ideo means/vars
+        const { data: profile } = await _supabase.from('electorate_profile')
+            .select('*').eq('nation_id', nationId).maybeSingle();
+        _electorateProfileId = profile?.id || null;
+
+        // Snapshot saved axes + means + vars
         savedAxes = {};
         currentAxes = {};
+        savedMeans = {};
+        currentMeans = {};
+        savedVars = {};
+        currentVars = {};
         VOTER_AXES.forEach(a => {
             const val = nation[a.column] ?? 50;
             savedAxes[a.column] = val;
             currentAxes[a.column] = val;
+            const mean = profile ? (profile[a.meanCol] ?? val) : val;
+            savedMeans[a.meanCol] = mean;
+            currentMeans[a.meanCol] = mean;
+            const variance = profile ? (profile[a.varCol] ?? 20) : 20;
+            savedVars[a.varCol] = variance;
+            currentVars[a.varCol] = variance;
         });
 
         document.getElementById('voter-pop-display').textContent = (nation.population || 0).toLocaleString();

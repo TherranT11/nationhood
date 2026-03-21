@@ -6413,6 +6413,34 @@ async function resolveExpiredVotes(supabase, nationId) {
             console.error(`[CaucusVote] Failed for bill ${bill.id} (non-fatal):`, caucusErr);
         }
 
+        // Leader trait: Arm Twister (+15% passage rate) / Poor Whip (-15%)
+        // Fetch sponsor faction's leader traits to adjust votes
+        if (bill.proposed_by) {
+            try {
+                const { data: sponsorFaction } = await supabase
+                    .from('factions')
+                    .select('leader_positive_traits, leader_negative_traits')
+                    .eq('id', bill.proposed_by)
+                    .maybeSingle();
+                if (sponsorFaction) {
+                    const sPos = sponsorFaction.leader_positive_traits || [];
+                    const sNeg = sponsorFaction.leader_negative_traits || [];
+                    if (sPos.includes('arm_twister')) {
+                        const bonus = Math.ceil(effectiveVotesFor * 0.15);
+                        effectiveVotesFor += bonus;
+                        console.log(`[ArmTwister] ${bill.bill_name}: +${bonus} effective YES votes (arm_twister trait)`);
+                    }
+                    if (sNeg.includes('poor_whip')) {
+                        const penalty = Math.ceil(effectiveVotesFor * 0.15);
+                        effectiveVotesFor = Math.max(0, effectiveVotesFor - penalty);
+                        console.log(`[PoorWhip] ${bill.bill_name}: -${penalty} effective YES votes (poor_whip trait)`);
+                    }
+                }
+            } catch (traitErr) {
+                console.error(`[BillTraits] Failed to check sponsor traits for bill ${bill.id} (non-fatal):`, traitErr);
+            }
+        }
+
         // Determine pass/fail using new quorum + majority system
         // Build a bill-like object with effective votes for the resolve function
         const resolveBill = {
@@ -21464,7 +21492,24 @@ async function processRevolution(supabase, nation, currentTick) {
 
     // START new crisis (no per-tick effects on the starting tick)
     if (!crisisActive) {
-        const duration = Math.floor(Math.random() * 10) + 13; // 13-22 ticks
+        let duration = Math.floor(Math.random() * 10) + 13; // 13-22 ticks
+
+        // Leader trait: Crisis Manager (-2 ticks) / Panic Under Pressure (+2 ticks)
+        if (nation.ruling_faction_id) {
+            try {
+                const { data: rulerFaction } = await supabase
+                    .from('factions')
+                    .select('leader_positive_traits, leader_negative_traits')
+                    .eq('id', nation.ruling_faction_id)
+                    .maybeSingle();
+                if (rulerFaction) {
+                    const rPos = rulerFaction.leader_positive_traits || [];
+                    const rNeg = rulerFaction.leader_negative_traits || [];
+                    if (rPos.includes('crisis_manager')) { duration = Math.max(5, duration - 2); console.log(`[Revolution] crisis_manager: duration -2 → ${duration}`); }
+                    if (rNeg.includes('panic_under_pressure')) { duration += 2; console.log(`[Revolution] panic_under_pressure: duration +2 → ${duration}`); }
+                }
+            } catch (_) { /* non-fatal */ }
+        }
         await supabase.from('nations').update({
             revolution_started_tick: currentTick,
             revolution_duration: duration
@@ -24142,7 +24187,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
       try {
         const { data: factions } = await supabase
             .from('factions')
-            .select('id, approval_rating, faction_type')
+            .select('id, approval_rating, faction_type, leader_positive_traits, leader_negative_traits')
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party');
 
@@ -24151,9 +24196,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Autocracy V5: +5 AP per tick, capped at 20. No coalition bonus.
         if (isAutocracy(nation)) {
             for (const faction of factions) {
-                const result = await accumulateAP(supabase, faction.id, 5, GAME_CONFIG.MAX_AP);
+                let apGain = 5;
+                // Leader trait: Tireless Campaigner (+1 AP/tick), Indecisive (-1 AP/tick)
+                const pos = faction.leader_positive_traits || [];
+                const neg = faction.leader_negative_traits || [];
+                if (pos.includes('tireless_campaigner')) apGain += 1;
+                if (neg.includes('indecisive')) apGain = Math.max(1, apGain - 1);
+                const result = await accumulateAP(supabase, faction.id, apGain, GAME_CONFIG.MAX_AP);
                 if (result.success) {
-                    console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+5, autocracy)`);
+                    console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+${apGain}, autocracy)`);
                     apDistributed++;
                 } else {
                     console.error(`[advanceTick] Autocracy AP FAILED for faction ${faction.id}: ${result.error}`);
@@ -24173,6 +24224,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             const isInGovernment = governmentPartyIds.has(faction.id);
             let apGain = 5;
             if (isInGovernment) apGain += 2;
+
+            // Leader trait: Tireless Campaigner (+1 AP/tick), Indecisive (-1 AP/tick)
+            const pos = faction.leader_positive_traits || [];
+            const neg = faction.leader_negative_traits || [];
+            if (pos.includes('tireless_campaigner')) apGain += 1;
+            if (neg.includes('indecisive')) apGain = Math.max(1, apGain - 1);
 
             // Family member successor penalty: ruling faction loses 1 AP/tick
             if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) {

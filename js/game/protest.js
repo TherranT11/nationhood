@@ -1438,7 +1438,22 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
     let crisisCreated = false;
     if (effects.isCrisis) {
         const crisisId = tier === 6 ? PROTEST_CONFIG.TIER6_CRISIS_ID : PROTEST_CONFIG.TIER7_CRISIS_ID;
-        const duration = tier === 6 ? PROTEST_CONFIG.TIER6_DURATION : PROTEST_CONFIG.TIER7_DURATION;
+        let duration = tier === 6 ? PROTEST_CONFIG.TIER6_DURATION : PROTEST_CONFIG.TIER7_DURATION;
+
+        // Leader trait: Crisis Manager (-2 ticks) / Panic Under Pressure (+2 ticks)
+        // Applied to the ruling faction's leader (the one enduring the crisis)
+        try {
+            const { data: nationData } = await supabase.from('nations').select('ruling_faction_id').eq('id', nationId).maybeSingle();
+            if (nationData?.ruling_faction_id) {
+                const { data: rulerF } = await supabase.from('factions').select('leader_positive_traits, leader_negative_traits').eq('id', nationData.ruling_faction_id).maybeSingle();
+                if (rulerF) {
+                    const rp = rulerF.leader_positive_traits || [];
+                    const rn = rulerF.leader_negative_traits || [];
+                    if (rp.includes('crisis_manager')) duration = Math.max(2, duration - 2);
+                    if (rn.includes('panic_under_pressure')) duration += 2;
+                }
+            }
+        } catch (_) { /* non-fatal */ }
 
         await supabase.from('active_crises').insert({
             crisis_id: crisisId,
