@@ -42,7 +42,7 @@ initPage('politics', async (state) => {
     // Fetch total seats from all parties
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name')
+        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name, custom_logo_url, party_logo, party_description')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -415,7 +415,6 @@ async function renderPartyTab(f, nation, data) {
         </div>
 
         <div class="pol-row-3">
-        ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, { scheduledElections, currentTick, nation, mySeats })}
         ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, { scheduledElections, currentTick, nation, mySeats, faction, currentEndorsement })}
         ${renderBlocVotingBox(lastParliamentary, lastPresidential, allParties)}
         </div>
@@ -523,6 +522,8 @@ async function renderPartyTab(f, nation, data) {
     // Load stance summary into the stance container
     if (!isAutoNation) {
         _renderStanceSummaryStrip(f.id, nation.id);
+        // Load party events into the GovCard
+        _loadGovCardPartyEvents(nation.id, f.id);
     }
 
     // Disband Party handler
@@ -671,6 +672,60 @@ async function _loadPartyEventsFeed(nationId, playerFactionId) {
                 ${entry.outcome ? `<span class="pe-item-outcome" style="color:${outcomeColor}">${escapeHtml(entry.outcome)}</span>` : ''}
             </div>
             ${entry.description ? `<div class="pe-item-desc">${escapeHtml(entry.description)}</div>` : ''}
+        </div>`;
+    }
+
+    feedEl.innerHTML = html;
+}
+
+async function _loadGovCardPartyEvents(nationId, playerFactionId) {
+    const feedEl = document.getElementById('gov-card-party-events');
+    if (!feedEl) return;
+
+    const { data: entries, error } = await _supabase
+        .from('activity_log')
+        .select('id, faction_id, action_type, action_label, description, outcome, ap_spent, tick, created_at')
+        .eq('nation_id', nationId)
+        .order('tick', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(40);
+
+    if (error || !entries || entries.length === 0) {
+        feedEl.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-ui);font-size:11px">No party events yet.</div>';
+        return;
+    }
+
+    const factionIds = [...new Set(entries.map(e => e.faction_id))];
+    const { data: factions } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, party_color')
+        .in('id', factionIds);
+    const factionMap = {};
+    for (const f of (factions || [])) factionMap[f.id] = f;
+
+    let html = '';
+    let lastTick = null;
+
+    for (const entry of entries) {
+        if (entry.tick !== lastTick) {
+            lastTick = entry.tick;
+            html += `<div class="pe-tick-sep">${_feedTickLabel(entry.tick)}</div>`;
+        }
+
+        const faction = factionMap[entry.faction_id];
+        const isPlayer = entry.faction_id === playerFactionId;
+        const fLabel = isPlayer ? 'You' : (faction?.abbreviation || '???');
+        const fColor = faction?.party_color || 'var(--dtext-2)';
+        const outcomeColor = entry.outcome === 'success' ? 'var(--dgreen)'
+            : entry.outcome === 'backfire' ? 'var(--dred)'
+            : entry.outcome === 'failure' ? 'var(--damber)' : 'var(--dtext-3)';
+
+        html += `<div class="pe-item${isPlayer ? ' pe-item--you' : ''}">
+            <div class="pe-item-row">
+                <span class="pe-item-party" style="color:${fColor}">${escapeHtml(fLabel)}</span>
+                <span class="pe-item-label">${escapeHtml((entry.action_label || entry.action_type).replace(/_/g, ' '))}</span>
+                ${entry.outcome ? `<span class="pe-item-outcome" style="color:${outcomeColor}">${escapeHtml(entry.outcome)}</span>` : ''}
+            </div>
         </div>`;
     }
 
@@ -1601,19 +1656,18 @@ function renderGovCard(nation, coalition, allParties, currentTick, prevApproval,
 
         <div style="height:1px;background:var(--dborder-0);margin:14px 0"></div>
 
-        <div style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--dtext-2);margin-bottom:8px">Governing Coalition</div>
-        <div style="display:flex;height:10px;border-radius:3px;overflow:hidden;background:rgba(255,255,255,0.04);margin-bottom:10px">${barHtml}</div>
-        ${partyRowsHtml}
-        <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);text-align:right;margin-top:4px">${govSeats} seats combined</div>
+        <div style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--dtext-2);margin-bottom:8px">Approval</div>
+        <div style="font-family:var(--dfont-mono);font-size:28px;font-weight:700;line-height:1;color:${ac}">${approval}%</div>
+        <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:4px;display:flex;align-items:center;gap:8px">
+            <span style="text-transform:uppercase;font-weight:600">${escapeHtml(govLabel)}</span>
+            <span style="font-weight:400">${escapeHtml(footerDetail)}</span>
+        </div>
 
         <div style="height:1px;background:var(--dborder-0);margin:14px 0"></div>
 
-        <div style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--dtext-2);margin-bottom:8px">Approval</div>
-        <div style="font-family:var(--dfont-mono);font-size:28px;font-weight:700;line-height:1;color:${ac}">${approval}%</div>
-
-        <div style="background:var(--dbg-4);border-top:1px solid var(--dborder-0);margin:16px -20px -16px;padding:10px 20px;font-family:var(--dfont-mono);font-size:10px;font-weight:600;color:var(--dtext-2);letter-spacing:0.04em;display:flex;align-items:center;gap:8px;border-radius:0 0 4px 4px">
-            <span style="text-transform:uppercase">${escapeHtml(govLabel)}</span>
-            <span style="color:var(--dtext-3);font-weight:400">${escapeHtml(footerDetail)}</span>
+        <div style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--dtext-2);margin-bottom:8px">Party Events</div>
+        <div id="gov-card-party-events" class="pe-feed" style="max-height:200px;overflow-y:auto;font-size:11px">
+            <div style="color:var(--dtext-3);font-family:var(--dfont-ui);font-size:11px">Loading events...</div>
         </div>
     </div>`;
 }
@@ -6071,6 +6125,9 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
             name: p.faction_name || 'Unknown',
             abbreviation: p.abbreviation || '??',
             color: p.party_color || '#888',
+            customLogoUrl: p.custom_logo_url || null,
+            partyLogo: p.party_logo || null,
+            description: p.party_description || '',
             status,
             foundedTick: fd.founded_tick,
             leaderName,
@@ -6086,7 +6143,7 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
                 globalism_nationalism: ideo.globalism_nationalism ?? 0,
                 individualism_collectivism: ideo.individualism_collectivism ?? 0,
             },
-            stances: [], // Stance system not yet implemented — shows "No stance" for all issues
+            stances: [],
         };
     });
 
@@ -6137,10 +6194,14 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
 
 function renderPartyCard(party, nation) {
     const c = party.color;
-    const cFaint = hexToRgba(c, 0.09);
-    const cBorder = hexToRgba(c, 0.22);
+    const cFaint = hexToRgba(c, 0.12);
+    const cBorder = hexToRgba(c, 0.35);
     const cHalf = hexToRgba(c, 0.5);
     const cLight = hexToRgba(c, 0.2);
+    const cGlow = hexToRgba(c, 0.06);
+
+    // Party logo (custom image or icon SVG)
+    const logoHtml = getPartyLogoHTML({ customLogoUrl: party.customLogoUrl, iconKey: party.partyLogo, size: 32, color: c });
 
     // Status badge
     let statusLabel, statusCls;
@@ -6154,6 +6215,11 @@ function renderPartyCard(party, nation) {
 
     // Leader badge
     const leaderBadge = `<span class="op-badge op-badge-neutral">Leader: ${escapeHtml(party.leaderName)}${party.leaderAge ? ' (' + party.leaderAge + ')' : ''}</span>`;
+
+    // Party description
+    const descHtml = party.description
+        ? `<div class="op-desc">${escapeHtml(party.description)}</div>`
+        : '';
 
     // Approval color
     const apColor = party.approval > 50 ? 'var(--dgreen)' : party.approval >= 35 ? 'var(--damber)' : 'var(--dred)';
@@ -6226,11 +6292,11 @@ function renderPartyCard(party, nation) {
            </div>`;
 
     return `
-    <div class="op-card">
-        <div class="op-card-hdr">
-            <div class="op-emblem" style="background:${cFaint};color:${c};border:1px solid ${cBorder}">${escapeHtml(party.abbreviation)}</div>
+    <div class="op-card" style="background:linear-gradient(135deg, ${cGlow} 0%, var(--dbg-2) 40%);border-color:${cBorder}">
+        <div class="op-card-hdr" style="border-bottom-color:${cBorder}">
+            <div class="op-logo-wrap" style="background:${cFaint};border:1px solid ${cBorder};border-radius:6px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden">${logoHtml}</div>
             <div class="op-hdr-info">
-                <div class="op-name">${escapeHtml(party.name)}</div>
+                <div class="op-name" style="color:${c}">${escapeHtml(party.name)}</div>
                 <div class="op-meta">
                     <span class="op-badge ${statusCls}">${statusLabel}</span>
                     ${foundedBadge}
@@ -6238,6 +6304,7 @@ function renderPartyCard(party, nation) {
                 </div>
             </div>
         </div>
+        ${descHtml}
         <div class="op-body">
             <div class="op-col-left">
                 <div class="op-sec-label">Party Stats</div>
