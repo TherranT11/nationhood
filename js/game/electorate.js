@@ -84,6 +84,88 @@ export const ISSUE_IDS = Object.keys(ISSUE_DEFS);
 export const AXIS_KEYS = IDEOLOGY_AXES.map(a => a.key);
 
 // ============================================================================
+// IDEOLOGY ZONE SYSTEM (centrist / moderate / radical)
+// ============================================================================
+
+/**
+ * Zone IDs in order from left to right on the 0-100 axis.
+ */
+export const ZONE_IDS = ['radical-left', 'moderate-left', 'centrist', 'moderate-right', 'radical-right'];
+
+/**
+ * Calculate zone boundaries for an axis based on electorate mean and variance.
+ * Asymmetric: radical zone grows on the side the mean leans toward + with variance.
+ *
+ * @param {number} mean - Electorate mean position (0-100)
+ * @param {number} variance - Electorate variance (5-45)
+ * @returns {{ zones: object[], zoneForPos: function(number): string }}
+ */
+export function calculateIdeologyZones(mean, variance) {
+    const polarization = Math.min(100, Math.max(0, (variance - 5) / 35 * 100));
+
+    // Centrist zone centered at 50, width shrinks with polarization
+    const centristHalf = Math.max(5, 15 - polarization * 0.10);
+    const centristLeft = 50 - centristHalf;
+    const centristRight = 50 + centristHalf;
+
+    // Radical fraction grows with polarization + mean lean
+    const meanBias = (mean - 50) / 50; // -1 to +1
+    const radicalFraction = 0.15 + polarization * 0.004;
+
+    // Left side: 0 → centristLeft
+    const leftSpace = centristLeft;
+    const leftRadicalBias = Math.max(0, -meanBias);
+    const leftRadicalFrac = Math.min(0.85, radicalFraction + leftRadicalBias * 0.3);
+    const leftRadicalWidth = leftSpace * leftRadicalFrac;
+    const leftModerateWidth = leftSpace - leftRadicalWidth;
+
+    // Right side: centristRight → 100
+    const rightSpace = 100 - centristRight;
+    const rightRadicalBias = Math.max(0, meanBias);
+    const rightRadicalFrac = Math.min(0.85, radicalFraction + rightRadicalBias * 0.3);
+    const rightRadicalWidth = rightSpace * rightRadicalFrac;
+    const rightModerateWidth = rightSpace - rightRadicalWidth;
+
+    const zones = [
+        { id: 'radical-left',   left: 0,                                width: leftRadicalWidth,  label: 'Radical' },
+        { id: 'moderate-left',  left: leftRadicalWidth,                  width: leftModerateWidth, label: 'Moderate' },
+        { id: 'centrist',       left: centristLeft,                       width: centristRight - centristLeft, label: 'Centrist' },
+        { id: 'moderate-right', left: centristRight,                      width: rightModerateWidth, label: 'Moderate' },
+        { id: 'radical-right',  left: centristRight + rightModerateWidth, width: rightRadicalWidth,  label: 'Radical' },
+    ];
+
+    function zoneForPos(pos) {
+        if (pos < leftRadicalWidth) return 'radical-left';
+        if (pos < centristLeft) return 'moderate-left';
+        if (pos < centristRight) return 'centrist';
+        if (pos < centristRight + rightModerateWidth) return 'moderate-right';
+        return 'radical-right';
+    }
+
+    return { zones, zoneForPos };
+}
+
+/**
+ * Get zone-based alignment bonus for voter targeting.
+ * Parties competing for voters in their own zone get a bonus.
+ * Adjacent zones get a smaller bonus. Non-adjacent zones get a penalty.
+ *
+ * @param {string} partyZone - Zone ID where the party sits
+ * @param {string} voterZone - Zone ID where the voter cluster is
+ * @returns {number} Multiplier (0.6 to 1.2)
+ */
+export function getZoneCompetitionMultiplier(partyZone, voterZone) {
+    const zoneIdx = ZONE_IDS.indexOf(partyZone);
+    const voterIdx = ZONE_IDS.indexOf(voterZone);
+    if (zoneIdx < 0 || voterIdx < 0) return 1.0;
+    const dist = Math.abs(zoneIdx - voterIdx);
+    if (dist === 0) return 1.2;  // Same zone: +20% effectiveness
+    if (dist === 1) return 1.0;  // Adjacent zone: normal
+    if (dist === 2) return 0.8;  // 2 zones away: -20%
+    return 0.6;                  // Opposite extreme: -40%
+}
+
+// ============================================================================
 // DEMOGRAPHIC ← STAT MAPPING
 // ============================================================================
 // Each demographic dimension is derived from nation stats at genesis.
@@ -1101,7 +1183,14 @@ function computeTickAlignment(ideo, profile, axisSalienceWeights) {
         const sigma = Math.max(5, elecVar);
         const alignment = Math.exp(-(distance * distance) / (2 * sigma * sigma));
 
-        weightedAlignment += alignment * weight;
+        // Zone competition: parties in same zone as electorate mean get a bonus,
+        // distant zones get a penalty. This doesn't lock out voters — it weights them.
+        const { zoneForPos } = calculateIdeologyZones(elecMean, elecVar);
+        const partyZone = zoneForPos(partyNorm);
+        const voterZone = zoneForPos(elecMean);
+        const zoneMult = getZoneCompetitionMultiplier(partyZone, voterZone);
+
+        weightedAlignment += alignment * weight * zoneMult;
         totalWeight += weight;
     }
 
