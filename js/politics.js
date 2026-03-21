@@ -2461,11 +2461,11 @@ const CA_ACTIONS = [
     { id: 'poll_now', name: 'Poll Now', ap: POLL_CONFIG.AP_COST, color: '#22d3ee', icon: '📊',
       desc: 'Snapshot your current electorate standing. See your pillars, vote share, and limiters frozen in time.' },
     { id: 'fund_think_tank', name: 'Fund Think Tank', ap: IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST, color: '#14b8a6', icon: '🏛',
-      desc: 'Drift the electorate\'s ideological mean on a chosen axis. Sustained action — costs 1 AP per 10 ticks.' },
+      desc: 'Drift the electorate\'s ideological mean on a chosen axis. Runs every tick for 50 ticks.' },
     { id: 'media_campaign', name: 'Media Campaign', ap: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.AP_COST, color: '#8b5cf6', icon: '📡',
-      desc: 'Expand or narrow electorate ideological variance on a chosen axis. Sustained — 1 AP per 10 ticks.' },
+      desc: 'Expand or narrow electorate ideological variance on a chosen axis. Runs every tick for 50 ticks.' },
     { id: 'grassroots_movement', name: 'Grassroots Movement', ap: IDEO_SHIFT_CONFIG.GRASSROOTS.AP_COST, color: '#10b981', icon: '🌱',
-      desc: 'Target a demographic band to shift their ideology. Sustained — 1 AP per 10 ticks, auto-completes at cap.' },
+      desc: 'Target a demographic band to shift their ideology. Runs for 50 ticks, auto-completes early at shift cap.' },
 ];
 
 // State for new electorate actions
@@ -2903,7 +2903,7 @@ function renderPollNowConfig() {
 // ── THINK TANK CONFIG ──
 
 function renderThinkTankConfig() {
-    let html = `<div class="ca-info-box">Launch a think tank to gradually drift the electorate's ideological mean on a chosen axis. Sustained action — costs ${IDEO_SHIFT_CONFIG.SUSTAIN_AP_COST} AP every ${IDEO_SHIFT_CONFIG.SUSTAIN_INTERVAL} ticks.</div>`;
+    let html = `<div class="ca-info-box">Launch a think tank to gradually drift the electorate's ideological mean on a chosen axis. Runs every tick for ${IDEO_SHIFT_CONFIG.THINK_TANK.DURATION} ticks.</div>`;
     html += renderAxisSelector();
     if (_caTargetAxis) {
         const axisDef = IDEOLOGY_AXES.find(a => a.key === _caTargetAxis);
@@ -2918,7 +2918,7 @@ function renderThinkTankConfig() {
 // ── MEDIA CAMPAIGN CONFIG ──
 
 function renderMediaCampaignConfig() {
-    let html = `<div class="ca-info-box">Launch a media campaign to expand or narrow electorate ideological variance on a chosen axis. Sustained — ${IDEO_SHIFT_CONFIG.SUSTAIN_AP_COST} AP every ${IDEO_SHIFT_CONFIG.SUSTAIN_INTERVAL} ticks.</div>`;
+    let html = `<div class="ca-info-box">Launch a media campaign to expand or narrow electorate ideological variance on a chosen axis. Runs every tick for ${IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.DURATION} ticks.</div>`;
     html += renderAxisSelector();
     if (_caTargetAxis) {
         html += `<div class="ca-subtitle" style="margin-top:12px">Variance direction</div>`;
@@ -2930,7 +2930,7 @@ function renderMediaCampaignConfig() {
 // ── GRASSROOTS CONFIG ──
 
 function renderGrassrootsConfig() {
-    let html = `<div class="ca-info-box">Target a demographic band to shift their ideology. Sustained — ${IDEO_SHIFT_CONFIG.SUSTAIN_AP_COST} AP every ${IDEO_SHIFT_CONFIG.SUSTAIN_INTERVAL} ticks. Auto-completes at ${IDEO_SHIFT_CONFIG.GRASSROOTS.BAND_SHIFT_MAX} cumulative shift.</div>`;
+    let html = `<div class="ca-info-box">Target a demographic band to shift their ideology. Runs every tick for ${IDEO_SHIFT_CONFIG.GRASSROOTS.DURATION} ticks. Auto-completes early at ${IDEO_SHIFT_CONFIG.GRASSROOTS.BAND_SHIFT_MAX} cumulative shift.</div>`;
     html += renderAxisSelector();
     if (_caTargetAxis) {
         const axisDef = IDEOLOGY_AXES.find(a => a.key === _caTargetAxis);

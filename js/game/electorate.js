@@ -2075,6 +2075,7 @@ export const IDEO_SHIFT_CONFIG = {
         COOLDOWN_WINDOW: 5,     // ticks between launches
         MAX_ACTIVE: 1,          // only 1 active think tank per faction
         DRIFT_RATE: 0.3,        // ideo mean shift per tick
+        DURATION: 50,           // runs for 50 ticks then auto-completes
         VISIBILITY_BOOST: 4,
     },
     MEDIA_CAMPAIGN: {
@@ -2082,6 +2083,7 @@ export const IDEO_SHIFT_CONFIG = {
         COOLDOWN_WINDOW: 5,
         MAX_ACTIVE: 1,
         VARIANCE_SHIFT: 0.5,    // ideo variance shift per tick
+        DURATION: 50,
         VISIBILITY_BOOST: 5,
     },
     GRASSROOTS: {
@@ -2089,12 +2091,10 @@ export const IDEO_SHIFT_CONFIG = {
         COOLDOWN_WINDOW: 5,
         MAX_ACTIVE: 1,
         BAND_DRIFT_RATE: 0.5,   // demographic band shift per tick
-        BAND_SHIFT_MAX: 15,     // max cumulative shift
+        BAND_SHIFT_MAX: 15,     // max cumulative shift (auto-completes early if hit)
+        DURATION: 50,
         VISIBILITY_BOOST: 6,
     },
-    // Ongoing cost: 1 AP per 10 ticks to sustain
-    SUSTAIN_INTERVAL: 10,
-    SUSTAIN_AP_COST: 1,
 };
 
 /**
@@ -2142,7 +2142,6 @@ export async function executeFundThinkTank(supabase, factionId, nationId, target
         target_axis: targetAxis, target_direction: targetDirection,
         drift_rate: cfg.DRIFT_RATE,
         status: 'active', created_tick: currentTick, last_active_tick: currentTick,
-        ap_cost_per_10_ticks: IDEO_SHIFT_CONFIG.SUSTAIN_AP_COST,
     }).select().single();
     if (error) {
         console.error('[Electorate] Think tank insert failed:', error.message);
@@ -2170,7 +2169,7 @@ export async function executeFundThinkTank(supabase, factionId, nationId, target
         effects: [
             { label: 'Axis', value: `${axisDef?.leftLabel} ↔ ${axisDef?.rightLabel}` },
             { label: 'Direction', value: sideLabel },
-            { label: 'Drift', value: `${cfg.DRIFT_RATE}/tick` },
+            { label: 'Drift', value: `${cfg.DRIFT_RATE}/tick for ${cfg.DURATION} ticks` },
             { label: 'Visibility', value: `+${cfg.VISIBILITY_BOOST}` },
         ],
         newAp: apResult.newAp,
@@ -2220,7 +2219,6 @@ export async function executeMediaCampaign(supabase, factionId, nationId, target
         target_axis: targetAxis, target_direction: targetDirection,
         drift_rate: cfg.VARIANCE_SHIFT * varianceSign,
         status: 'active', created_tick: currentTick, last_active_tick: currentTick,
-        ap_cost_per_10_ticks: IDEO_SHIFT_CONFIG.SUSTAIN_AP_COST,
     }).select().single();
     if (error) {
         console.error('[Electorate] Media campaign insert failed:', error.message);
@@ -2249,7 +2247,7 @@ export async function executeMediaCampaign(supabase, factionId, nationId, target
         effects: [
             { label: 'Axis', value: `${axisDef?.leftLabel} ↔ ${axisDef?.rightLabel}` },
             { label: 'Effect', value: dirLabel },
-            { label: 'Rate', value: `${cfg.VARIANCE_SHIFT}/tick` },
+            { label: 'Rate', value: `${cfg.VARIANCE_SHIFT}/tick for ${cfg.DURATION} ticks` },
             { label: 'Visibility', value: `+${cfg.VISIBILITY_BOOST}` },
         ],
         newAp: apResult.newAp,
@@ -2314,7 +2312,6 @@ export async function executeGrassrootsMovement(supabase, factionId, nationId, t
         band_drift_rate: cfg.BAND_DRIFT_RATE,
         band_shift_total: 0, band_shift_max: cfg.BAND_SHIFT_MAX,
         status: 'active', created_tick: currentTick, last_active_tick: currentTick,
-        ap_cost_per_10_ticks: IDEO_SHIFT_CONFIG.SUSTAIN_AP_COST,
     }).select().single();
     if (error) {
         console.error('[Electorate] Grassroots insert failed:', error.message);
@@ -2344,7 +2341,7 @@ export async function executeGrassrootsMovement(supabase, factionId, nationId, t
         effects: [
             { label: 'Target', value: `${demoLabel} — ${bandLabel}` },
             { label: 'Direction', value: sideLabel },
-            { label: 'Drift', value: `${cfg.BAND_DRIFT_RATE}/tick (max ${cfg.BAND_SHIFT_MAX})` },
+            { label: 'Drift', value: `${cfg.BAND_DRIFT_RATE}/tick for ${cfg.DURATION} ticks (max ${cfg.BAND_SHIFT_MAX})` },
             { label: 'Visibility', value: `+${cfg.VISIBILITY_BOOST}` },
         ],
         newAp: apResult.newAp,
@@ -2382,14 +2379,14 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
     const toSuspend = [];
 
     for (const act of actions) {
-        // ── Sustain cost check ──
+        // ── Duration check — auto-complete after DURATION ticks ──
         const ticksActive = currentTick - (act.created_tick || 0);
-        if (ticksActive > 0 && ticksActive % IDEO_SHIFT_CONFIG.SUSTAIN_INTERVAL === 0) {
-            const apCheck = await deductAP(supabase, act.faction_id, act.ap_cost_per_10_ticks || 1);
-            if (!apCheck.success) {
-                toSuspend.push(act.id);
-                continue;
-            }
+        const cfgKey = act.action_type === 'think_tank' ? 'THINK_TANK'
+            : act.action_type === 'media_campaign' ? 'MEDIA_CAMPAIGN' : 'GRASSROOTS';
+        const duration = IDEO_SHIFT_CONFIG[cfgKey]?.DURATION || 50;
+        if (ticksActive >= duration) {
+            toSuspend.push(act.id);
+            continue;
         }
 
         if (act.action_type === 'think_tank') {
