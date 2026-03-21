@@ -4,7 +4,7 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
 
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
@@ -2586,7 +2586,21 @@ const CA_ACTIONS = [
       desc: 'Attack a rival\'s record. Stronger with evidence. Can backfire.' },
     { id: 'promise', name: 'Make a Promise', ap: MAKE_PROMISE_CONFIG.AP_COST, color: '#a78bfa', icon: '◆',
       desc: 'Commit to improving a stat or resolving a crisis. Immediate approval boost, but penalties if broken.' },
+    { id: 'poll_now', name: 'Poll Now', ap: POLL_CONFIG.AP_COST, color: '#22d3ee', icon: '📊',
+      desc: 'Snapshot your current electorate standing. See your pillars, vote share, and limiters frozen in time.' },
+    { id: 'fund_think_tank', name: 'Fund Think Tank', ap: IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST, color: '#14b8a6', icon: '🏛',
+      desc: 'Drift the electorate\'s ideological mean on a chosen axis. Sustained action — costs 1 AP per 10 ticks.' },
+    { id: 'media_campaign', name: 'Media Campaign', ap: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.AP_COST, color: '#8b5cf6', icon: '📡',
+      desc: 'Expand or narrow electorate ideological variance on a chosen axis. Sustained — 1 AP per 10 ticks.' },
+    { id: 'grassroots_movement', name: 'Grassroots Movement', ap: IDEO_SHIFT_CONFIG.GRASSROOTS.AP_COST, color: '#10b981', icon: '🌱',
+      desc: 'Target a demographic band to shift their ideology. Sustained — 1 AP per 10 ticks, auto-completes at cap.' },
 ];
+
+// State for new electorate actions
+let _caTargetAxis = null;
+let _caTargetDirection = null;
+let _caTargetDemographic = null;
+let _caTargetBand = null;
 
 function caReset() {
     _caRival = null; _caVector = null;
@@ -2595,6 +2609,8 @@ function caReset() {
     _protestTab = 'minister'; _protestTarget = null;
     _protestCachedMinisters = null; _protestCachedPolicies = null; _protestCachedStats = null;
     _protestLoading = false;
+    _caTargetAxis = null; _caTargetDirection = null;
+    _caTargetDemographic = null; _caTargetBand = null;
 }
 
 function caIsReady() {
@@ -2606,6 +2622,10 @@ function caIsReady() {
         return false;
     }
     if (_caSelected === 'protest') return !!_protestTarget;
+    if (_caSelected === 'poll_now') return true;
+    if (_caSelected === 'fund_think_tank') return !!_caTargetAxis && !!_caTargetDirection;
+    if (_caSelected === 'media_campaign') return !!_caTargetAxis && !!_caTargetDirection;
+    if (_caSelected === 'grassroots_movement') return !!_caTargetAxis && !!_caTargetDirection && !!_caTargetDemographic && !!_caTargetBand;
     return false;
 }
 
@@ -2904,6 +2924,10 @@ function renderActionConfig(sel, otherParties, factionIdeo, nation, ap, tick) {
     if (sel.id === 'attack') return renderAttackConfig(otherParties);
     if (sel.id === 'promise') return renderPromiseConfig(nation);
     if (sel.id === 'protest') return renderProtestConfig(nation, tick);
+    if (sel.id === 'poll_now') return renderPollNowConfig();
+    if (sel.id === 'fund_think_tank') return renderThinkTankConfig();
+    if (sel.id === 'media_campaign') return renderMediaCampaignConfig();
+    if (sel.id === 'grassroots_movement') return renderGrassrootsConfig();
     return '';
 }
 
@@ -2911,6 +2935,102 @@ function renderActionConfig(sel, otherParties, factionIdeo, nation, ap, tick) {
 
 function renderRallyConfig() {
     return `<div class="ca-info-box">Hold a rally to energize your base. Random outcome — can boost or backfire.</div>`;
+}
+
+// ── POLL NOW CONFIG ──
+
+function renderPollNowConfig() {
+    return `<div class="ca-info-box">Take a snapshot of your current electorate standing. Your polled pillars, vote share, and limiters will be frozen so you can compare before/after future actions.</div>
+    <div class="ca-info-box" style="margin-top:8px;color:var(--dtext-3);font-size:0.8em">Cooldown: ${POLL_CONFIG.COOLDOWN_WINDOW} ticks between polls.</div>`;
+}
+
+// ── THINK TANK CONFIG ──
+
+function renderThinkTankConfig() {
+    let html = `<div class="ca-info-box">Launch a think tank to gradually drift the electorate's ideological mean on a chosen axis. Sustained action — costs ${IDEO_SHIFT_CONFIG.SUSTAIN_AP_COST} AP every ${IDEO_SHIFT_CONFIG.SUSTAIN_INTERVAL} ticks.</div>`;
+    html += renderAxisSelector();
+    if (_caTargetAxis) {
+        const axisDef = IDEOLOGY_AXES.find(a => a.key === _caTargetAxis);
+        if (axisDef) {
+            html += `<div class="ca-subtitle" style="margin-top:12px">Drift direction</div>`;
+            html += renderDirectionSelector(axisDef.leftLabel, axisDef.rightLabel, 'left', 'right');
+        }
+    }
+    return html;
+}
+
+// ── MEDIA CAMPAIGN CONFIG ──
+
+function renderMediaCampaignConfig() {
+    let html = `<div class="ca-info-box">Launch a media campaign to expand or narrow electorate ideological variance on a chosen axis. Sustained — ${IDEO_SHIFT_CONFIG.SUSTAIN_AP_COST} AP every ${IDEO_SHIFT_CONFIG.SUSTAIN_INTERVAL} ticks.</div>`;
+    html += renderAxisSelector();
+    if (_caTargetAxis) {
+        html += `<div class="ca-subtitle" style="margin-top:12px">Variance direction</div>`;
+        html += renderDirectionSelector('Expand (polarize)', 'Narrow (centralize)', 'expand', 'narrow');
+    }
+    return html;
+}
+
+// ── GRASSROOTS CONFIG ──
+
+function renderGrassrootsConfig() {
+    let html = `<div class="ca-info-box">Target a demographic band to shift their ideology. Sustained — ${IDEO_SHIFT_CONFIG.SUSTAIN_AP_COST} AP every ${IDEO_SHIFT_CONFIG.SUSTAIN_INTERVAL} ticks. Auto-completes at ${IDEO_SHIFT_CONFIG.GRASSROOTS.BAND_SHIFT_MAX} cumulative shift.</div>`;
+    html += renderAxisSelector();
+    if (_caTargetAxis) {
+        const axisDef = IDEOLOGY_AXES.find(a => a.key === _caTargetAxis);
+        if (axisDef) {
+            html += `<div class="ca-subtitle" style="margin-top:12px">Drift direction</div>`;
+            html += renderDirectionSelector(axisDef.leftLabel, axisDef.rightLabel, 'left', 'right');
+        }
+    }
+    if (_caTargetAxis && _caTargetDirection) {
+        html += `<div class="ca-subtitle" style="margin-top:12px">Target demographic</div>`;
+        const demographics = ['age', 'income', 'education', 'urbanization'];
+        html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">`;
+        for (const d of demographics) {
+            const isSel = _caTargetDemographic === d;
+            html += `<div class="ca-option-chip${isSel ? ' selected' : ''}" data-grassroots-demo="${d}" style="${isSel ? 'border-color:#10b981;color:#10b981;background:rgba(16,185,129,0.06)' : ''}">${d.charAt(0).toUpperCase() + d.slice(1)}</div>`;
+        }
+        html += `</div>`;
+
+        if (_caTargetDemographic) {
+            html += `<div class="ca-subtitle" style="margin-top:8px">Target band</div>`;
+            const bands = { age: ['young', 'middle', 'old'], income: ['low', 'middle', 'high'], education: ['low', 'medium', 'high'], urbanization: ['rural', 'suburban', 'urban'] };
+            const bandOptions = bands[_caTargetDemographic] || ['low', 'medium', 'high'];
+            html += `<div style="display:flex;gap:6px;flex-wrap:wrap">`;
+            for (const b of bandOptions) {
+                const isSel = _caTargetBand === b;
+                html += `<div class="ca-option-chip${isSel ? ' selected' : ''}" data-grassroots-band="${b}" style="${isSel ? 'border-color:#10b981;color:#10b981;background:rgba(16,185,129,0.06)' : ''}">${b.charAt(0).toUpperCase() + b.slice(1)}</div>`;
+            }
+            html += `</div>`;
+        }
+    }
+    return html;
+}
+
+// ── Shared config helpers ──
+
+function renderAxisSelector() {
+    let html = `<div class="ca-subtitle" style="margin-top:10px">Target axis</div><div style="display:flex;flex-direction:column;gap:4px">`;
+    for (const axis of IDEOLOGY_AXES) {
+        const isSel = _caTargetAxis === axis.key;
+        html += `<div class="ca-option-chip${isSel ? ' selected' : ''}" data-axis-key="${axis.key}" style="padding:6px 10px;${isSel ? 'border-color:var(--dtext-0);color:var(--dtext-0);background:rgba(255,255,255,0.04)' : ''}">
+            <span style="font-weight:600">${axis.leftLabel}</span> <span style="color:var(--dtext-3)">↔</span> <span style="font-weight:600">${axis.rightLabel}</span>
+            <span style="font-size:0.75em;color:var(--dtext-3);margin-left:6px">${axis.description}</span>
+        </div>`;
+    }
+    html += `</div>`;
+    return html;
+}
+
+function renderDirectionSelector(leftLabel, rightLabel, leftValue, rightValue) {
+    let html = `<div style="display:flex;gap:8px">`;
+    const isLeft = _caTargetDirection === leftValue;
+    const isRight = _caTargetDirection === rightValue;
+    html += `<div class="ca-option-chip${isLeft ? ' selected' : ''}" data-direction-value="${leftValue}" style="flex:1;text-align:center;padding:8px;${isLeft ? 'border-color:var(--dtext-0);color:var(--dtext-0);background:rgba(255,255,255,0.04)' : ''}">${leftLabel}</div>`;
+    html += `<div class="ca-option-chip${isRight ? ' selected' : ''}" data-direction-value="${rightValue}" style="flex:1;text-align:center;padding:8px;${isRight ? 'border-color:var(--dtext-0);color:var(--dtext-0);background:rgba(255,255,255,0.04)' : ''}">${rightLabel}</div>`;
+    html += `</div>`;
+    return html;
 }
 
 // ── ATTACK CONFIG ──
@@ -3697,6 +3817,46 @@ function wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick
         });
     });
 
+    // Axis selection (think tank, media, grassroots)
+    container.querySelectorAll('[data-axis-key]').forEach(el => {
+        el.addEventListener('click', () => {
+            const key = el.dataset.axisKey;
+            if (_caTargetAxis === key) { _caTargetAxis = null; } else { _caTargetAxis = key; }
+            _caTargetDirection = null;
+            _caTargetDemographic = null;
+            _caTargetBand = null;
+            rerender();
+        });
+    });
+
+    // Direction selection (think tank, media, grassroots)
+    container.querySelectorAll('[data-direction-value]').forEach(el => {
+        el.addEventListener('click', () => {
+            const val = el.dataset.directionValue;
+            _caTargetDirection = _caTargetDirection === val ? null : val;
+            rerender();
+        });
+    });
+
+    // Demographic selection (grassroots)
+    container.querySelectorAll('[data-grassroots-demo]').forEach(el => {
+        el.addEventListener('click', () => {
+            const d = el.dataset.grassrootsDemo;
+            if (_caTargetDemographic === d) { _caTargetDemographic = null; } else { _caTargetDemographic = d; }
+            _caTargetBand = null;
+            rerender();
+        });
+    });
+
+    // Band selection (grassroots)
+    container.querySelectorAll('[data-grassroots-band]').forEach(el => {
+        el.addEventListener('click', () => {
+            const b = el.dataset.grassrootsBand;
+            _caTargetBand = _caTargetBand === b ? null : b;
+            rerender();
+        });
+    });
+
     // Dismiss result
     const dismissBtn = container.querySelector('#ca-dismiss-result');
     if (dismissBtn) {
@@ -3833,6 +3993,14 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
             const grievanceData = _protestTarget.grievanceData || {};
             const demandLabel = _protestTarget.demandLabel || '';
             result = await executeProtest(_supabase, f.id, n.id, _protestTarget.type, grievanceData, demandLabel, tick);
+        } else if (sel.id === 'poll_now') {
+            result = await executePollNow(_supabase, f.id, n.id, tick);
+        } else if (sel.id === 'fund_think_tank') {
+            result = await executeFundThinkTank(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
+        } else if (sel.id === 'media_campaign') {
+            result = await executeMediaCampaign(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
+        } else if (sel.id === 'grassroots_movement') {
+            result = await executeGrassrootsMovement(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, _caTargetDemographic, _caTargetBand, tick);
         }
     } catch (err) {
         console.error('Campaign action error:', err);

@@ -2866,6 +2866,13 @@ body.light-mode .pol-blocs-box {
 .ca-outcome-track { flex: 1; height: 8px; background: rgba(255,255,255,0.03); border-radius: 2px; overflow: hidden; }
 .ca-outcome-fill { height: 100%; border-radius: 2px; opacity: 0.4; }
 .ca-outcome-pct { font-family: var(--dfont-mono); font-size: 11px; font-weight: 700; width: 32px; text-align: right; flex-shrink: 0; }
+.ca-option-chip {
+    border: 1px solid var(--dborder-1); border-radius: 4px; padding: 4px 10px;
+    cursor: pointer; transition: all 0.1s; font-family: var(--dfont-ui); font-size: 12px;
+    color: var(--dtext-2);
+}
+.ca-option-chip:hover { border-color: var(--dborder-2); }
+.ca-option-chip.selected { background: rgba(255,255,255,0.04); border-color: var(--dtext-0); color: var(--dtext-0); }
 .ca-confirm-row { display: flex; justify-content: flex-end; margin-top: 16px; }
 .ca-confirm-btn {
     font-family: var(--dfont-mono); font-size: 12px; font-weight: 700;

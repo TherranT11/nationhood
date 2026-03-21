@@ -864,6 +864,9 @@ export async function tickElectorate(supabase, nation, currentTick) {
     // ── 13. Phase 2C: Decay stance strength ──
     await tickStanceDecay(supabase, allStances || [], currentTick);
 
+    // ── 13b. Phase 2D: Apply ideology shift actions (think tank, media, grassroots) ──
+    await tickIdeologyShiftActions(supabase, nation.id, activeProfile, currentTick);
+
     // ── 14. Calculate pillars for each faction ──
     const updates = [];
 
@@ -1970,6 +1973,498 @@ export async function logActivity(supabase, factionId, nationId, actionType, act
         console.error(`[Electorate] Failed to log activity (${actionType}):`, error.message);
     }
 }
+
+// ============================================================================
+// PHASE 4: POLL NOW
+// ============================================================================
+
+export const POLL_CONFIG = {
+    AP_COST: 2,
+    COOLDOWN_WINDOW: 2,   // ticks between polls
+    VISIBILITY_BOOST: 3,
+};
+
+/**
+ * Execute "Poll Now" — snapshot current electorate standings into polled_* columns.
+ * Gives the player a frozen reading of their pillars, vote share, and limiters
+ * so they can compare before/after campaign actions.
+ */
+export async function executePollNow(supabase, factionId, nationId, currentTick) {
+    // ── Cooldown check ──
+    const { data: recentPolls } = await supabase
+        .from('campaign_actions')
+        .select('id')
+        .eq('party_id', factionId)
+        .eq('action_type', 'poll_now')
+        .gte('tick_performed', currentTick - POLL_CONFIG.COOLDOWN_WINDOW);
+    if (recentPolls && recentPolls.length > 0) {
+        return { success: false, message: `Poll cooldown: wait ${POLL_CONFIG.COOLDOWN_WINDOW} ticks between polls` };
+    }
+
+    // ── Deduct AP ──
+    const apResult = await deductAP(supabase, factionId, POLL_CONFIG.AP_COST);
+    if (!apResult.success) {
+        return { success: false, message: apResult.error || 'Insufficient AP' };
+    }
+
+    // ── Load current standing ──
+    const { data: standing } = await supabase
+        .from('faction_electoral_standing')
+        .select('*')
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId)
+        .single();
+    if (!standing) {
+        return { success: false, message: 'No electorate standing found. Advance a tick first.' };
+    }
+
+    // ── Snapshot to polled columns ──
+    const { error: updErr } = await supabase.from('faction_electoral_standing')
+        .update({
+            last_polled_tick: currentTick,
+            polled_alignment: standing.ideological_alignment,
+            polled_platform_appeal: standing.platform_appeal,
+            polled_party_approval: standing.party_approval,
+            polled_visibility: standing.visibility,
+            polled_credibility: standing.credibility_modifier,
+            polled_vote_share: standing.realized_vote_share,
+            polled_alignment_contribution: standing.alignment_contribution,
+            polled_appeal_contribution: standing.appeal_contribution,
+            polled_approval_contribution: standing.approval_contribution,
+            polled_vote_left_on_table: standing.vote_left_on_table,
+        })
+        .eq('id', standing.id);
+    if (updErr) console.error('[Electorate] Poll snapshot failed:', updErr.message);
+
+    // ── Visibility + logs ──
+    await boostVisibility(supabase, factionId, nationId, POLL_CONFIG.VISIBILITY_BOOST);
+
+    const { error: insErr } = await supabase.from('campaign_actions').insert({
+        party_id: factionId, nation_id: nationId,
+        action_type: 'poll_now', ap_cost: POLL_CONFIG.AP_COST,
+        money_cost: 0, tick_performed: currentTick,
+        result: { polledTick: currentTick },
+    });
+    if (insErr) console.error('[Electorate] campaign_actions insert failed:', insErr.message);
+
+    await logActivity(supabase, factionId, nationId, 'poll_now',
+        'Poll Now', 'Commissioned a public opinion poll', 'success',
+        POLL_CONFIG.AP_COST, currentTick);
+
+    const voteSharePct = round2((standing.realized_vote_share || 0) * 100);
+    return {
+        success: true,
+        message: `Poll complete — you're polling at ${voteSharePct}%`,
+        effects: [
+            { label: 'Vote share', value: `${voteSharePct}%` },
+            { label: 'Approval', value: `${round2(standing.party_approval || 50)}` },
+            { label: 'Visibility', value: `+${POLL_CONFIG.VISIBILITY_BOOST}` },
+        ],
+        newAp: apResult.newAp,
+    };
+}
+
+
+// ============================================================================
+// PHASE 4: IDEOLOGY SHIFT ACTIONS (Think Tank, Media Campaign, Grassroots)
+// ============================================================================
+
+export const IDEO_SHIFT_CONFIG = {
+    THINK_TANK: {
+        AP_COST: 3,
+        COOLDOWN_WINDOW: 5,     // ticks between launches
+        MAX_ACTIVE: 1,          // only 1 active think tank per faction
+        DRIFT_RATE: 0.3,        // ideo mean shift per tick
+        VISIBILITY_BOOST: 4,
+    },
+    MEDIA_CAMPAIGN: {
+        AP_COST: 3,
+        COOLDOWN_WINDOW: 5,
+        MAX_ACTIVE: 1,
+        VARIANCE_SHIFT: 0.5,    // ideo variance shift per tick
+        VISIBILITY_BOOST: 5,
+    },
+    GRASSROOTS: {
+        AP_COST: 4,
+        COOLDOWN_WINDOW: 5,
+        MAX_ACTIVE: 1,
+        BAND_DRIFT_RATE: 0.5,   // demographic band shift per tick
+        BAND_SHIFT_MAX: 15,     // max cumulative shift
+        VISIBILITY_BOOST: 6,
+    },
+    // Ongoing cost: 1 AP per 10 ticks to sustain
+    SUSTAIN_INTERVAL: 10,
+    SUSTAIN_AP_COST: 1,
+};
+
+/**
+ * Launch a Think Tank — drifts electorate ideological mean on a target axis.
+ */
+export async function executeFundThinkTank(supabase, factionId, nationId, targetAxis, targetDirection, currentTick) {
+    const cfg = IDEO_SHIFT_CONFIG.THINK_TANK;
+
+    // ── Validate ──
+    if (!AXIS_KEYS.includes(targetAxis)) {
+        return { success: false, message: `Unknown axis: ${targetAxis}` };
+    }
+    if (!['left', 'right'].includes(targetDirection)) {
+        return { success: false, message: `Direction must be 'left' or 'right'` };
+    }
+
+    // ── Cooldown ──
+    const { data: recent } = await supabase.from('campaign_actions')
+        .select('id').eq('party_id', factionId).eq('action_type', 'fund_think_tank')
+        .gte('tick_performed', currentTick - cfg.COOLDOWN_WINDOW);
+    if (recent && recent.length > 0) {
+        return { success: false, message: `Think tank cooldown: wait ${cfg.COOLDOWN_WINDOW} ticks` };
+    }
+
+    // ── Max active check ──
+    const { data: active } = await supabase.from('ideology_shift_actions')
+        .select('id').eq('faction_id', factionId).eq('action_type', 'think_tank').eq('status', 'active');
+    if ((active || []).length >= cfg.MAX_ACTIVE) {
+        return { success: false, message: 'You already have an active think tank. Wait for it to complete or suspend it.' };
+    }
+
+    // ── Deduct AP ──
+    const apResult = await deductAP(supabase, factionId, cfg.AP_COST);
+    if (!apResult.success) {
+        return { success: false, message: apResult.error || 'Insufficient AP' };
+    }
+
+    // ── Create ideology_shift_actions row ──
+    const axisDef = IDEOLOGY_AXES.find(a => a.key === targetAxis);
+    const sideLabel = targetDirection === 'left' ? axisDef?.leftLabel : axisDef?.rightLabel;
+
+    const { data: row, error } = await supabase.from('ideology_shift_actions').insert({
+        faction_id: factionId, nation_id: nationId,
+        action_type: 'think_tank',
+        target_axis: targetAxis, target_direction: targetDirection,
+        drift_rate: cfg.DRIFT_RATE,
+        status: 'active', created_tick: currentTick, last_active_tick: currentTick,
+        ap_cost_per_10_ticks: IDEO_SHIFT_CONFIG.SUSTAIN_AP_COST,
+    }).select().single();
+    if (error) {
+        console.error('[Electorate] Think tank insert failed:', error.message);
+        return { success: false, message: 'Database error creating think tank' };
+    }
+
+    await boostVisibility(supabase, factionId, nationId, cfg.VISIBILITY_BOOST);
+
+    const { error: insErr } = await supabase.from('campaign_actions').insert({
+        party_id: factionId, nation_id: nationId,
+        action_type: 'fund_think_tank', ap_cost: cfg.AP_COST,
+        money_cost: 0, tick_performed: currentTick,
+        result: { actionId: row.id, targetAxis, targetDirection, sideLabel, driftRate: cfg.DRIFT_RATE },
+    });
+    if (insErr) console.error('[Electorate] campaign_actions insert failed:', insErr.message);
+
+    await logActivity(supabase, factionId, nationId, 'fund_think_tank',
+        'Fund Think Tank',
+        `Launched think tank pushing ${sideLabel} on ${axisDef?.key || targetAxis}`,
+        'success', cfg.AP_COST, currentTick);
+
+    return {
+        success: true,
+        message: `Think tank launched — pushing electorate toward ${sideLabel}`,
+        effects: [
+            { label: 'Axis', value: `${axisDef?.leftLabel} ↔ ${axisDef?.rightLabel}` },
+            { label: 'Direction', value: sideLabel },
+            { label: 'Drift', value: `${cfg.DRIFT_RATE}/tick` },
+            { label: 'Visibility', value: `+${cfg.VISIBILITY_BOOST}` },
+        ],
+        newAp: apResult.newAp,
+    };
+}
+
+/**
+ * Launch a Media Campaign — shifts electorate ideological variance on a target axis.
+ * 'expand' increases variance (makes electorate more polarized),
+ * 'narrow' decreases variance (makes electorate more centrist).
+ */
+export async function executeMediaCampaign(supabase, factionId, nationId, targetAxis, targetDirection, currentTick) {
+    const cfg = IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN;
+
+    if (!AXIS_KEYS.includes(targetAxis)) {
+        return { success: false, message: `Unknown axis: ${targetAxis}` };
+    }
+    if (!['expand', 'narrow'].includes(targetDirection)) {
+        return { success: false, message: `Direction must be 'expand' or 'narrow'` };
+    }
+
+    const { data: recent } = await supabase.from('campaign_actions')
+        .select('id').eq('party_id', factionId).eq('action_type', 'media_campaign')
+        .gte('tick_performed', currentTick - cfg.COOLDOWN_WINDOW);
+    if (recent && recent.length > 0) {
+        return { success: false, message: `Media campaign cooldown: wait ${cfg.COOLDOWN_WINDOW} ticks` };
+    }
+
+    const { data: active } = await supabase.from('ideology_shift_actions')
+        .select('id').eq('faction_id', factionId).eq('action_type', 'media_campaign').eq('status', 'active');
+    if ((active || []).length >= cfg.MAX_ACTIVE) {
+        return { success: false, message: 'You already have an active media campaign.' };
+    }
+
+    const apResult = await deductAP(supabase, factionId, cfg.AP_COST);
+    if (!apResult.success) {
+        return { success: false, message: apResult.error || 'Insufficient AP' };
+    }
+
+    const axisDef = IDEOLOGY_AXES.find(a => a.key === targetAxis);
+    // For media campaigns, direction maps to variance shift sign
+    const varianceSign = targetDirection === 'expand' ? 1 : -1;
+
+    const { data: row, error } = await supabase.from('ideology_shift_actions').insert({
+        faction_id: factionId, nation_id: nationId,
+        action_type: 'media_campaign',
+        target_axis: targetAxis, target_direction: targetDirection,
+        drift_rate: cfg.VARIANCE_SHIFT * varianceSign,
+        status: 'active', created_tick: currentTick, last_active_tick: currentTick,
+        ap_cost_per_10_ticks: IDEO_SHIFT_CONFIG.SUSTAIN_AP_COST,
+    }).select().single();
+    if (error) {
+        console.error('[Electorate] Media campaign insert failed:', error.message);
+        return { success: false, message: 'Database error creating media campaign' };
+    }
+
+    await boostVisibility(supabase, factionId, nationId, cfg.VISIBILITY_BOOST);
+
+    const { error: insErr } = await supabase.from('campaign_actions').insert({
+        party_id: factionId, nation_id: nationId,
+        action_type: 'media_campaign', ap_cost: cfg.AP_COST,
+        money_cost: 0, tick_performed: currentTick,
+        result: { actionId: row.id, targetAxis, targetDirection, varianceShift: cfg.VARIANCE_SHIFT },
+    });
+    if (insErr) console.error('[Electorate] campaign_actions insert failed:', insErr.message);
+
+    const dirLabel = targetDirection === 'expand' ? 'Polarizing' : 'Moderating';
+    await logActivity(supabase, factionId, nationId, 'media_campaign',
+        'Media Campaign',
+        `${dirLabel} media campaign on ${axisDef?.leftLabel}/${axisDef?.rightLabel} axis`,
+        'success', cfg.AP_COST, currentTick);
+
+    return {
+        success: true,
+        message: `Media campaign launched — ${dirLabel.toLowerCase()} electorate on ${axisDef?.leftLabel}/${axisDef?.rightLabel}`,
+        effects: [
+            { label: 'Axis', value: `${axisDef?.leftLabel} ↔ ${axisDef?.rightLabel}` },
+            { label: 'Effect', value: dirLabel },
+            { label: 'Rate', value: `${cfg.VARIANCE_SHIFT}/tick` },
+            { label: 'Visibility', value: `+${cfg.VISIBILITY_BOOST}` },
+        ],
+        newAp: apResult.newAp,
+    };
+}
+
+/**
+ * Launch a Grassroots Movement — shifts a demographic band's ideology.
+ * Targets a specific demographic dimension (age, income, etc.) and band.
+ */
+export async function executeGrassrootsMovement(supabase, factionId, nationId, targetAxis, targetDirection, targetDemographic, targetBand, currentTick) {
+    const cfg = IDEO_SHIFT_CONFIG.GRASSROOTS;
+
+    if (!AXIS_KEYS.includes(targetAxis)) {
+        return { success: false, message: `Unknown axis: ${targetAxis}` };
+    }
+    if (!['left', 'right'].includes(targetDirection)) {
+        return { success: false, message: `Direction must be 'left' or 'right'` };
+    }
+
+    const VALID_DEMOGRAPHICS = {
+        age: ['18_29', '30_44', '45_64', '65plus'],
+        income: ['low', 'middle', 'upper', 'high'],
+        education: ['nodegree', 'undergrad', 'postgrad'],
+        urbanization: ['rural', 'smalltown', 'suburban', 'urban'],
+        religion: ['secular', 'moderate', 'devout'],
+    };
+
+    if (!VALID_DEMOGRAPHICS[targetDemographic]) {
+        return { success: false, message: `Unknown demographic: ${targetDemographic}` };
+    }
+    if (!VALID_DEMOGRAPHICS[targetDemographic].includes(targetBand)) {
+        return { success: false, message: `Unknown band '${targetBand}' for ${targetDemographic}` };
+    }
+
+    const { data: recent } = await supabase.from('campaign_actions')
+        .select('id').eq('party_id', factionId).eq('action_type', 'grassroots_movement')
+        .gte('tick_performed', currentTick - cfg.COOLDOWN_WINDOW);
+    if (recent && recent.length > 0) {
+        return { success: false, message: `Grassroots cooldown: wait ${cfg.COOLDOWN_WINDOW} ticks` };
+    }
+
+    const { data: active } = await supabase.from('ideology_shift_actions')
+        .select('id').eq('faction_id', factionId).eq('action_type', 'grassroots_movement').eq('status', 'active');
+    if ((active || []).length >= cfg.MAX_ACTIVE) {
+        return { success: false, message: 'You already have an active grassroots movement.' };
+    }
+
+    const apResult = await deductAP(supabase, factionId, cfg.AP_COST);
+    if (!apResult.success) {
+        return { success: false, message: apResult.error || 'Insufficient AP' };
+    }
+
+    const axisDef = IDEOLOGY_AXES.find(a => a.key === targetAxis);
+    const sideLabel = targetDirection === 'left' ? axisDef?.leftLabel : axisDef?.rightLabel;
+
+    const { data: row, error } = await supabase.from('ideology_shift_actions').insert({
+        faction_id: factionId, nation_id: nationId,
+        action_type: 'grassroots_movement',
+        target_axis: targetAxis, target_direction: targetDirection,
+        target_demographic: targetDemographic, target_band: targetBand,
+        band_drift_rate: cfg.BAND_DRIFT_RATE,
+        band_shift_total: 0, band_shift_max: cfg.BAND_SHIFT_MAX,
+        status: 'active', created_tick: currentTick, last_active_tick: currentTick,
+        ap_cost_per_10_ticks: IDEO_SHIFT_CONFIG.SUSTAIN_AP_COST,
+    }).select().single();
+    if (error) {
+        console.error('[Electorate] Grassroots insert failed:', error.message);
+        return { success: false, message: 'Database error creating grassroots movement' };
+    }
+
+    await boostVisibility(supabase, factionId, nationId, cfg.VISIBILITY_BOOST);
+
+    const { error: insErr } = await supabase.from('campaign_actions').insert({
+        party_id: factionId, nation_id: nationId,
+        action_type: 'grassroots_movement', ap_cost: cfg.AP_COST,
+        money_cost: 0, tick_performed: currentTick,
+        result: { actionId: row.id, targetAxis, targetDirection, sideLabel, targetDemographic, targetBand },
+    });
+    if (insErr) console.error('[Electorate] campaign_actions insert failed:', insErr.message);
+
+    const bandLabel = targetBand.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    const demoLabel = targetDemographic.replace(/\b\w/g, l => l.toUpperCase());
+    await logActivity(supabase, factionId, nationId, 'grassroots_movement',
+        'Grassroots Movement',
+        `Grassroots push for ${sideLabel} among ${demoLabel} — ${bandLabel}`,
+        'success', cfg.AP_COST, currentTick);
+
+    return {
+        success: true,
+        message: `Grassroots movement launched — targeting ${demoLabel} ${bandLabel} toward ${sideLabel}`,
+        effects: [
+            { label: 'Target', value: `${demoLabel} — ${bandLabel}` },
+            { label: 'Direction', value: sideLabel },
+            { label: 'Drift', value: `${cfg.BAND_DRIFT_RATE}/tick (max ${cfg.BAND_SHIFT_MAX})` },
+            { label: 'Visibility', value: `+${cfg.VISIBILITY_BOOST}` },
+        ],
+        newAp: apResult.newAp,
+    };
+}
+
+
+// ============================================================================
+// PHASE 4: IDEOLOGY SHIFT TICK PROCESSING
+// ============================================================================
+
+/**
+ * Process active ideology_shift_actions each tick.
+ * - Think Tank: drifts electorate ideo_mean on target axis
+ * - Media Campaign: drifts electorate ideo_var on target axis
+ * - Grassroots: this shifts a conceptual band — we apply it as a small ideo_mean
+ *   nudge weighted by the targeted demographic band's share
+ *
+ * Also handles sustain cost: every SUSTAIN_INTERVAL ticks, checks if faction
+ * has AP. If not, suspends the action.
+ *
+ * Called from tickElectorate after stance decay, before pillar computation.
+ */
+export async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick) {
+    const { data: actions } = await supabase
+        .from('ideology_shift_actions')
+        .select('*')
+        .eq('nation_id', nationId)
+        .eq('status', 'active');
+
+    if (!actions || actions.length === 0) return profile;
+
+    const profileUpdates = {};
+    const toUpdate = [];
+    const toSuspend = [];
+
+    for (const act of actions) {
+        // ── Sustain cost check ──
+        const ticksActive = currentTick - (act.created_tick || 0);
+        if (ticksActive > 0 && ticksActive % IDEO_SHIFT_CONFIG.SUSTAIN_INTERVAL === 0) {
+            const apCheck = await deductAP(supabase, act.faction_id, act.ap_cost_per_10_ticks || 1);
+            if (!apCheck.success) {
+                toSuspend.push(act.id);
+                continue;
+            }
+        }
+
+        if (act.action_type === 'think_tank') {
+            // Drift ideo_mean on target axis
+            const col = 'ideo_mean_' + act.target_axis;
+            const old = Number(profile[col] ?? 50);
+            const direction = act.target_direction === 'left' ? -1 : 1;
+            const drift = direction * Math.abs(Number(act.drift_rate || 0.3));
+            const newVal = round2(clamp(old + drift, 5, 95));
+            if (newVal !== old) {
+                profileUpdates[col] = newVal;
+                profile[col] = newVal;
+            }
+        } else if (act.action_type === 'media_campaign') {
+            // Drift ideo_var on target axis
+            const col = 'ideo_var_' + act.target_axis;
+            const old = Number(profile[col] ?? 20);
+            const drift = Number(act.drift_rate || 0.5); // signed: positive = expand, negative = narrow
+            const newVal = round2(clamp(old + drift, 5, 45));
+            if (newVal !== old) {
+                profileUpdates[col] = newVal;
+                profile[col] = newVal;
+            }
+        } else if (act.action_type === 'grassroots_movement') {
+            // Small ideo_mean nudge weighted by demographic band share
+            const col = 'ideo_mean_' + act.target_axis;
+            const old = Number(profile[col] ?? 50);
+            const direction = act.target_direction === 'left' ? -1 : 1;
+            // Grassroots is weaker than think tank but accumulates
+            const bandDrift = Number(act.band_drift_rate || 0.5) * 0.4; // 40% effectiveness on mean
+            const drift = direction * bandDrift;
+            const newVal = round2(clamp(old + drift, 5, 95));
+            if (newVal !== old) {
+                profileUpdates[col] = newVal;
+                profile[col] = newVal;
+            }
+            // Track cumulative shift
+            const totalShift = Number(act.band_shift_total || 0) + Math.abs(bandDrift);
+            if (totalShift >= Number(act.band_shift_max || 15)) {
+                toSuspend.push(act.id); // Max shift reached — auto-complete
+            } else {
+                toUpdate.push({ id: act.id, band_shift_total: round2(totalShift), last_active_tick: currentTick });
+            }
+            continue; // skip the generic update below
+        }
+
+        toUpdate.push({ id: act.id, last_active_tick: currentTick });
+    }
+
+    // ── Batch write profile changes ──
+    if (Object.keys(profileUpdates).length > 0) {
+        profileUpdates.last_updated_tick = currentTick;
+        const { error } = await supabase.from('electorate_profile')
+            .update(profileUpdates).eq('id', profile.id);
+        if (error) console.error('[Electorate] ideology shift profile update failed:', error.message);
+    }
+
+    // ── Update active actions ──
+    for (const u of toUpdate) {
+        const { id, ...fields } = u;
+        const { error } = await supabase.from('ideology_shift_actions')
+            .update(fields).eq('id', id);
+        if (error) console.error('[Electorate] ideology shift action update failed:', error.message);
+    }
+
+    // ── Suspend/complete actions ──
+    for (const id of toSuspend) {
+        const { error } = await supabase.from('ideology_shift_actions')
+            .update({ status: 'completed', last_active_tick: currentTick }).eq('id', id);
+        if (error) console.error('[Electorate] ideology shift suspend failed:', error.message);
+    }
+
+    return profile;
+}
+
 
 // KNOWN ISSUES:
 // - activity_log and campaign_actions rows accumulate forever. No periodic pruning exists.
