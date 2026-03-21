@@ -313,6 +313,114 @@ initPage('government', async (state) => {
     await renderGovernmentPage();
 });
 
+// ═══════════════════════════════════════════════════════
+// V5 AUTOCRACY GOVERNMENT PANELS
+// ═══════════════════════════════════════════════════════
+
+async function renderAutocracyGovPanels() {
+    if (!currentNation || !isAutocracy) return '';
+
+    const nationId = currentNation.id;
+    const myFactionId = currentFaction?.id;
+
+    // Fetch V5 data
+    const [fpsRes, trackerRes, putschRes, coupOffersRes, successorRes] = await Promise.all([
+        _supabase.from('faction_pillar_state').select('*').eq('nation_id', nationId),
+        _supabase.from('autocracy_tracker').select('*').eq('nation_id', nationId).single(),
+        _supabase.from('putsch_state').select('*').eq('nation_id', nationId).eq('resolved', false).maybeSingle(),
+        _supabase.from('silent_coup_offers').select('*').eq('nation_id', nationId).eq('voided', false),
+        _supabase.from('nations').select('designated_successor_faction_id').eq('id', nationId).single(),
+    ]);
+
+    const allFps = fpsRes.data || [];
+    const tracker = trackerRes.data;
+    const putsch = putschRes.data;
+    const coupOffers = coupOffersRes.data || [];
+    const successorFactionId = successorRes.data?.designated_successor_faction_id;
+
+    const myFps = allFps.find(fps => fps.faction_id === myFactionId);
+    const isStrongmanPlayer = myFps?.is_strongman;
+
+    let html = '';
+
+    // ── Putsch banner (martial law active) ──
+    if (putsch) {
+        const smResponseNeeded = isStrongmanPlayer && !putsch.strongman_response;
+        html += `
+        <div class="info-block" style="border-left:3px solid var(--red);margin-bottom:16px">
+            <div style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">PUTSCH — MARTIAL LAW</div>
+            <div style="font-size:12px;color:var(--text-secondary)">The Military has declared martial law. Normal governance is suspended.</div>
+            ${smResponseNeeded ? `
+            <div style="margin-top:12px;font-size:11px;color:var(--text-muted)">Use the Actions tab on the Politics page to respond.</div>
+            ` : `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">Awaiting Strongman response...</div>`}
+        </div>`;
+    }
+
+    // ── Silent Coup phase banner ──
+    const pendingOffers = coupOffers.filter(o => !o.accepted);
+    const myOffer = pendingOffers.find(o => o.to_faction_id === myFactionId);
+    if (pendingOffers.length > 0 && !isStrongmanPlayer) {
+        if (myOffer) {
+            html += `
+            <div class="info-block" style="border-left:3px solid var(--red);margin-bottom:16px">
+                <div style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">SECRET — SILENT COUP PROPOSAL</div>
+                <div style="font-size:12px;color:var(--text-secondary)">The Security Services have approached you with a proposal to remove the Strongman from power. Your vote is requested.</div>
+                <div style="margin-top:12px;font-size:11px;color:var(--text-muted)">Use the Actions tab on the Politics page to cast your vote.</div>
+            </div>`;
+        } else {
+            // Security Services player sees deal phase status
+            const secFps = allFps.find(fps => fps.pillar === 'security');
+            if (secFps && secFps.faction_id === myFactionId) {
+                const accepted = coupOffers.filter(o => o.accepted).length;
+                html += `
+                <div class="info-block" style="border-left:3px solid var(--red);margin-bottom:16px">
+                    <div style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">SILENT COUP — DEAL PHASE</div>
+                    <div style="font-size:12px;color:var(--text-secondary)">Offers sent. ${accepted} of ${coupOffers.length} factions have accepted.</div>
+                </div>`;
+            }
+        }
+    }
+
+    // ── Arrested leader panel ──
+    const arrestedFps = allFps.filter(fps => fps.arrested_leader);
+    if (arrestedFps.length > 0) {
+        let arrestedHtml = '';
+        for (const afps of arrestedFps) {
+            const { data: party } = await _supabase.from('factions').select('faction_name').eq('id', afps.faction_id).single();
+            const pName = party?.faction_name || 'Unknown';
+            arrestedHtml += `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-hair)">
+                <div>
+                    <span style="font-size:12px;color:var(--text-primary);font-weight:600">${escapeHtml(afps.leader_name || 'Unknown')}</span>
+                    <span style="font-size:11px;color:var(--text-secondary)"> — ${escapeHtml(pName)} (${escapeHtml(afps.pillar || '?')})</span>
+                </div>
+                ${isStrongmanPlayer ? `<div style="font-size:10px;color:var(--text-muted)">Use Actions tab to Execute or Release</div>` : ''}
+            </div>`;
+        }
+        html += `
+        <div class="info-block" style="border-left:3px solid var(--red);margin-bottom:16px">
+            <div style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">DETAINED LEADERS</div>
+            ${arrestedHtml}
+        </div>`;
+    }
+
+    // ── Successor panel (Strongman only) ──
+    if (isStrongmanPlayer) {
+        const { data: successorParty } = successorFactionId
+            ? await _supabase.from('factions').select('faction_name').eq('id', successorFactionId).single()
+            : { data: null };
+        html += `
+        <div class="info-block" style="margin-bottom:16px">
+            <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">SUCCESSION</div>
+            ${successorFactionId
+                ? `<div style="font-size:12px;color:var(--text-secondary)">Designated successor: <strong style="color:var(--text-primary)">${escapeHtml(successorParty?.faction_name || 'Unknown')}</strong></div>`
+                : '<div style="font-size:12px;color:var(--text-muted)">No successor designated. If the Strongman dies, the highest-Backing faction will attempt an automatic coup.</div>'}
+        </div>`;
+    }
+
+    return html;
+}
+
 async function renderRevolutionBannerGov() {
     var nation = currentNation;
     if (!nation) return '';
@@ -569,12 +677,14 @@ async function renderGovernmentPage() {
         const revolutionBannerHtml = await renderRevolutionBannerGov();
         const administrationBoxHtml = await renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress, allPartySeats);
         const protestCrisisCardHtml = renderProtestCrisisCard();
+        const autocracyPanelsHtml = isAutocracy ? await renderAutocracyGovPanels() : '';
 
         document.getElementById('content-area').innerHTML = `
             <div class="panel-padding">
                 ${revolutionBannerHtml}
                 ${protestCrisisCardHtml}
                 ${administrationBoxHtml}
+                ${autocracyPanelsHtml}
 
                 <div class="section-header">Government Structure</div>
                 <div class="info-block">

@@ -3025,9 +3025,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
                 legitimacy: newLegitimacy,
                 civil_unrest: newUnrest
             };
-            if (isAutocratic) {
-                updates.regime_health = Math.max(0, (nation?.regime_health || 50) - 5);
-            }
+            // (regime_health effect removed — Phase 0)
             const { error: removeErr } = await supabase.from('nations').update(updates).eq('id', bill.nation_id);
             if (removeErr) console.error(`[enactFoundationalBill] Failed to update stats for term limit removal:`, removeErr.message);
 
