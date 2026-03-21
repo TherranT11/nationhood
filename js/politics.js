@@ -4864,7 +4864,7 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
         .from('electorate_profile')
         .select('*')
         .eq('nation_id', nation.id)
-        .single();
+        .maybeSingle();
 
     if (!profile) {
         container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:20px;text-align:center;">No electorate data available.</div>';
