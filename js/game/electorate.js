@@ -573,7 +573,7 @@ export async function seedFactionElectoralStanding(supabase, nation, factions, p
             .from('electorate_profile')
             .select('*')
             .eq('nation_id', nation.id)
-            .single();
+            .maybeSingle();
         profile = data;
     }
 
@@ -757,7 +757,7 @@ export async function tickElectorate(supabase, nation, currentTick) {
         .from('electorate_profile')
         .select('*')
         .eq('nation_id', nation.id)
-        .single();
+        .maybeSingle();
     if (!profile) {
         console.warn(`[Electorate] No electorate_profile for ${nation.name}, running genesis`);
         await genesisElectorate(supabase, nation, factions, currentTick);
