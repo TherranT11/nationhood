@@ -146,16 +146,8 @@ export async function assignCaucusFactions(supabase, party, nationId, totalFacti
 
     if (!blocs || blocs.length === 0) return;
 
-    // Load this party's approval per bloc (for weighting)
-    const { data: approvalRows } = await supabase
-        .from('faction_bloc_approval')
-        .select('bloc_id, preference_score')
-        .eq('faction_id', party.id);
-
+    // Legacy faction_bloc_approval removed — use uniform weighting
     const approvalMap = {};
-    for (const row of (approvalRows || [])) {
-        approvalMap[row.bloc_id] = row.preference_score ?? 50;
-    }
 
     // Calculate spread per axis, weighted by bloc preference for this party
     const axisKeys = IDEOLOGY_AXES.map(a => a.key);

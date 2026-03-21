@@ -19,7 +19,6 @@ export * from './game/caucus.js';
 export * from './game/bills.js';
 export * from './game/elections.js';
 export * from './game/presidential.js';
-export * from './game/three-pillar.js';
 export * from './game/autocracy-pillars.js';
 export * from './game/autocracy-actions.js';
 export * from './game/autocracy-actions-military-party-oligarch.js';

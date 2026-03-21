@@ -8,7 +8,7 @@
 
 import { fetchActiveCoalition } from './government-structure.js';
 import { adjustMomentum, adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
-import { computeIdeologyAlignment, loadFactionIdeology } from './ideology.js';
+import { loadFactionIdeology } from './ideology.js';
 
 // ==================== PROTEST LOG UPDATE RPC ====================
 // All protest_log writes from client code must go through this RPC
@@ -932,22 +932,8 @@ export async function callOffProtest(supabase, factionId, protestId, currentTick
         status: 'called_off',
     });
 
-    // ── 5. Small approval boost from moderate blocs ──
+    // Moderate bloc approval boost removed — electorate engine handles this now
     const nationId = protest.nation_id;
-    const { data: moderateBlocs } = await supabase
-        .from('voter_blocs')
-        .select('id, bloc_name')
-        .eq('nation_id', nationId)
-        .eq('is_active', true)
-        .or('bloc_name.ilike.%centrist%,bloc_name.ilike.%moderate%,bloc_name.ilike.%business%');
-
-    for (const bloc of (moderateBlocs || [])) {
-        try {
-            await adjustMomentum(supabase, nationId, factionId, bloc.id, 1, 'protest:called_off');
-        } catch (momErr) {
-            console.error('[Protest] Momentum adjust failed for bloc', bloc.id, momErr.message);
-        }
-    }
 
 
     // Dispatch article + event
@@ -1440,48 +1426,13 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
         appliedEffects.push({ stat: 'civil_unrest', delta: effects.civilUnrestDelta });
     }
 
-    // Fizzle effects (Tier 1-2): bloc penalties + gov boost
-    if (effects.blocPenalties.length > 0) {
-        const { data: allBlocs } = await supabase
-            .from('voter_blocs')
-            .select('id, bloc_name')
-            .eq('nation_id', nationId)
-            .eq('is_active', true);
-
-        for (const penalty of effects.blocPenalties) {
-            const matchingBloc = (allBlocs || []).find(b =>
-                b.bloc_name.toLowerCase().includes(penalty.blocName.replace('_', ' '))
-            );
-            if (matchingBloc) {
-                await adjustMomentum(supabase, nationId, factionId, matchingBloc.id, penalty.delta, `protest:fizzle:tier${tier}`);
-                appliedEffects.push({ stat: `momentum:${matchingBloc.bloc_name}`, delta: penalty.delta });
-            }
-        }
-    }
+    // Fizzle bloc penalties removed — electorate engine handles this now
     if (effects.fizzleGovBoost > 0) {
         await adjustGovernmentApprovalEvent(supabase, nationId, effects.fizzleGovBoost, `protest:fizzle:tier${tier}`);
         appliedEffects.push({ stat: 'gov_approval_events', delta: effects.fizzleGovBoost, note: 'fizzle_boost' });
     }
 
-    // Tier 4: +2 approval with ideologically aligned blocs
-    if (tier === 4) {
-        const factionIdeo = await loadFactionIdeology(supabase, factionId);
-        if (factionIdeo) {
-            const { data: allBlocs } = await supabase
-                .from('voter_blocs')
-                .select('id, bloc_name, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-                .eq('nation_id', nationId)
-                .eq('is_active', true);
-
-            for (const bloc of (allBlocs || [])) {
-                const alignment = computeIdeologyAlignment(factionIdeo, bloc);
-                if (alignment >= 0.6) {
-                    await adjustMomentum(supabase, nationId, factionId, bloc.id, 2, 'protest:tier4:aligned');
-                    appliedEffects.push({ stat: `momentum:${bloc.bloc_name}`, delta: 2, note: 'aligned_bloc' });
-                }
-            }
-        }
-    }
+    // Tier 4: aligned bloc momentum removed — electorate engine handles this now
 
     // ── 9. Tier 6/7: create crisis ──
     let crisisCreated = false;

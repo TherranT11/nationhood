@@ -348,20 +348,10 @@ export async function runElectionPreview(supabase, nationId) {
         }
     }));
 
-    // 3b. Load per-bloc preference data from faction_bloc_approval (Three-Pillar system)
-    const { data: fbaRows } = await supabase
-        .from('faction_bloc_approval')
-        .select('faction_id, bloc_id, preference_score')
-        .in('faction_id', factionIds);
+    // 3b. Legacy faction_bloc_approval removed — simulation uses ideology-only weights now
+    const allBlocApprovals = null;
 
-    // Build allBlocApprovals map: { blocId: { partyId: preference_score } }
-    const allBlocApprovals = {};
-    for (const row of (fbaRows || [])) {
-        if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? 40;
-    }
-
-    // 4. Run simulation with per-bloc approvals
+    // 4. Run simulation
     const result = runElectionSimulation(blocs, parties, totalSeats, allBlocApprovals);
 
     // 5. Build friendly results with weighted average approval per party
@@ -513,21 +503,8 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
     }
     const allCandidateParties = eligibleCandidates.map(buildCandidateParty);
 
-    // 6. Load per-bloc approval data (keyed by faction, same as parliamentary)
-    const { data: fbaRows } = await supabase
-        .from('faction_bloc_approval')
-        .select('faction_id, bloc_id, preference_score')
-        .in('faction_id', factionIds);
-    const allBlocApprovals = {};
-    for (const row of (fbaRows || [])) {
-        if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        // Map faction approval to candidate id (candidate inherits faction approval)
-        for (const cand of eligibleCandidates) {
-            if (cand.faction_id === row.faction_id) {
-                allBlocApprovals[row.bloc_id][cand.id] = row.preference_score ?? 40;
-            }
-        }
-    }
+    // 6. Legacy faction_bloc_approval removed — simulation uses ideology-only weights now
+    const allBlocApprovals = null;
 
     // 7. Run Round 1 simulation (use totalSeats=0 — we only care about votes)
     const round1 = runElectionSimulation(blocs, allCandidateParties, 0, allBlocApprovals);

@@ -237,9 +237,7 @@
 
                 <!-- Action Buttons -->
                 <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px;">
-                    <button class="btn btn-success" onclick="generateDefaultBlocs()">Generate Default Blocs</button>
                     <button class="btn btn-primary" onclick="showAddBlocForm()">+ Add Bloc</button>
-                    <button class="btn btn-secondary" onclick="initializeBlocApprovals()">Initialize Party Approvals</button>
                 </div>
 
                 <div id="bloc-action-status" style="margin-bottom:16px;"></div>
@@ -488,7 +486,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName, STAT_DECAY_CONFIG, normalizeNationStatKey, SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS, generateArticle, generateTickArticles, ideologyOppositionMultiplier, buildFundingPctMap, getInstFundingPct } from './js/game-common.js';
+import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName, STAT_DECAY_CONFIG, normalizeNationStatKey, SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS, generateArticle, generateTickArticles, buildFundingPctMap, getInstFundingPct } from './js/game-common.js';
 
     const ADMIN_PW_HASH = 'dd5e5d55d1f108d2d4706f35672acf7eef98156c70101dd07279c1aa436de3b4';
     async function hashPassword(pw) {
@@ -1513,88 +1511,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         'Immigration', 'Infrastructure', 'International', 'Labor', 'Military', 'Social'
     ];
 
-    // Default bloc templates (axes & issues are fixed; weights are computed from nation stats)
-    const DEFAULT_BLOC_TEMPLATES = [
-        { name: 'Rural Traditionalists',     axes: [35, 15, 60, 50, 30], issues: ['Agriculture', 'Social'] },
-        { name: 'Religious Conservatives',   axes: [30, 10, 70, 50, 25], issues: ['Social', 'Governance'] },
-        { name: 'Nationalist Bloc',          axes: [35, 25, 85, 85, 40], issues: ['Military', 'Immigration'] },
-        { name: 'Business Owners',           axes: [20, 50, 45, 50, 15], issues: ['Economics', 'Labor'] },
-        { name: 'Urban Workers',             axes: [75, 55, 50, 50, 65], issues: ['Labor', 'Economics'] },
-        { name: 'Urban Progressives',        axes: [80, 90, 30, 50, 70], issues: ['Social', 'Education'] },
-        { name: 'Academics & Professionals', axes: [60, 85, 35, 50, 55], issues: ['Education', 'International'] },
-        { name: 'Military & Security',       axes: [25, 30, 10, 50, 30], issues: ['Military', 'Governance'] },
-        { name: 'Ethnic Minorities',         axes: [85, 60, 40, 50, 60], issues: ['Social', 'Immigration'] }
-    ];
 
-    /**
-     * Compute voter bloc population weights from nation stats.
-     * Each bloc gets a raw score from primary + secondary stats, then all are
-     * normalized so they sum to 100.  Every bloc has a floor of 3% so no group
-     * completely vanishes.
-     *
-     * Returns array of { name, weight, rawScore, formula } matching template order.
-     */
-    function computeBlocWeights(nation) {
-        const s = (key, fallback = 50) => parseFloat(nation[key]) || fallback;
-        const inv = (v) => 100 - v;
-
-        // GDP per capita (0-100 scale): log-scale normalize, $500 → ~0, $80k → ~100
-        const gdppc = (s('gdp', 1000000000) / Math.max(s('population', 1000000), 1));
-        const gdppcScore = Math.min(100, Math.max(0, (Math.log10(Math.max(gdppc, 500)) - Math.log10(500)) / (Math.log10(80000) - Math.log10(500)) * 100));
-
-        // Raw score formulas: primary stat weighted 70%, secondary 30%
-        // Single-stat blocs use 100% of that stat
-        const formulas = [
-            { // Rural Traditionalists: low urbanization + high arable land
-                primary: 'urbanization (inv)', secondary: 'arable_land',
-                raw: inv(s('urbanization')) * 0.7 + s('arable_land') * 0.3
-            },
-            { // Religious Conservatives: religiosity (1:1)
-                primary: 'religiosity', secondary: '—',
-                raw: s('religiosity')
-            },
-            { // Nationalist Bloc: high polarization + low ethnic diversity
-                primary: 'polarization', secondary: 'ethnic_diversity (inv)',
-                raw: s('polarization') * 0.7 + inv(s('ethnic_diversity')) * 0.3
-            },
-            { // Business Owners: GDP per capita + low corporate tax
-                primary: 'GDP per capita', secondary: 'corporate_tax (inv)',
-                raw: gdppcScore * 0.7 + inv(s('corporate_tax')) * 0.3
-            },
-            { // Urban Workers: urbanization + union strength
-                primary: 'urbanization', secondary: 'union_strength',
-                raw: s('urbanization') * 0.7 + s('union_strength') * 0.3
-            },
-            { // Urban Progressives: higher education + urbanization (need both)
-                primary: 'higher_education', secondary: 'urbanization',
-                raw: Math.min(s('higher_education'), s('urbanization')) * 0.6 + Math.max(s('higher_education'), s('urbanization')) * 0.4
-            },
-            { // Academics & Professionals: higher education + academic immigration
-                primary: 'higher_education', secondary: 'academic_immigration',
-                raw: s('higher_education') * 0.7 + s('academic_immigration') * 0.3
-            },
-            { // Military & Security: terrorism threat
-                primary: 'terrorism', secondary: '—',
-                raw: s('terrorism')
-            },
-            { // Ethnic Minorities: ethnic diversity (1:1)
-                primary: 'ethnic_diversity', secondary: '—',
-                raw: s('ethnic_diversity')
-            }
-        ];
-
-        // Apply floor of 3 to every raw score so no bloc vanishes entirely
-        const FLOOR = 3;
-        const rawScores = formulas.map(f => Math.max(FLOOR, f.raw));
-        const totalRaw = rawScores.reduce((a, b) => a + b, 0);
-
-        return DEFAULT_BLOC_TEMPLATES.map((tmpl, i) => ({
-            name: tmpl.name,
-            weight: Math.round(rawScores[i] / totalRaw * 100),
-            rawScore: Math.round(rawScores[i] * 10) / 10,
-            formula: formulas[i].primary + (formulas[i].secondary !== '—' ? ' + ' + formulas[i].secondary : '')
-        }));
-    }
 
     // State
     let voterNationData = null;
@@ -1685,7 +1602,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             updateWeightValidator();
 
             if (voterBlocsCache.length === 0) {
-                container.innerHTML = '<div class="no-players">No voter blocs for this nation. Click "Generate Default Blocs" to create the standard set.</div>';
+                container.innerHTML = '<div class="no-players">No voter blocs for this nation. Click "+ Add Bloc" to create one.</div>';
                 return;
             }
 
@@ -1889,8 +1806,6 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
             cancelBlocForm();
             await loadExistingBlocsDisplay(voterNationData.id);
-            // Auto-initialize faction_bloc_approval rows for the new bloc
-            await initializeBlocApprovals();
         } catch (error) {
             statusEl.innerHTML = '<span style="color:#d9534f;font-weight:bold;">❌ Error: ' + error.message + '</span>';
         }
@@ -1911,169 +1826,6 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         }
     }
 
-    // ---- Generate default blocs ----
-    async function generateDefaultBlocs() {
-        if (!voterNationData) return;
-        if (voterBlocsCache.length > 0) {
-            if (!confirm('This will DELETE all existing voter blocs for ' + voterNationData.name + ' and create the 9 default demographic blocs seeded from nation stats.\n\nProceed?')) return;
-        }
-
-        const statusEl = document.getElementById('bloc-action-status');
-        statusEl.innerHTML = '<span style="color:#5b9bd5;font-weight:bold;">Generating stat-seeded blocs...</span>';
-
-        try {
-            // Delete existing blocs (and cascade deletes faction_bloc_approval rows)
-            await _supabase.from('voter_blocs').delete().eq('nation_id', voterNationData.id);
-
-            // eligible_voters is a 0-100 stat (% of population eligible to vote)
-            // Derive actual voter count from population × (eligible_voters / 100)
-            const pop = voterNationData.population || 0;
-            const eligPct = voterNationData.eligible_voters || 65;
-            const eligible = pop > 0 ? Math.round(pop * eligPct / 100) : 0;
-
-            // Compute weights from nation stats
-            const computed = computeBlocWeights(voterNationData);
-
-            // Normalize so weights sum exactly to 100
-            let weightSum = computed.reduce((a, b) => a + b.weight, 0);
-            if (weightSum !== 100 && weightSum > 0) {
-                // Distribute rounding remainder to the largest bloc
-                const diff = 100 - weightSum;
-                const largest = computed.reduce((best, c, i) => c.weight > computed[best].weight ? i : best, 0);
-                computed[largest].weight += diff;
-            }
-
-            const inserts = DEFAULT_BLOC_TEMPLATES.map((def, idx) => {
-                const tags = [];
-                BLOC_AXES.forEach((a, i) => {
-                    const val = def.axes[i];
-                    if (val < 35) tags.push(a.left);
-                    else if (val > 65) tags.push(a.right);
-                });
-
-                const w = computed[idx].weight;
-                return {
-                    nation_id: voterNationData.id,
-                    bloc_name: def.name,
-                    description: 'Default demographic voter bloc',
-                    population_weight: w,
-                    voter_count: Math.round(eligible * w / 100),
-                    axis_liberty_equality: def.axes[0],
-                    axis_tradition_progress: def.axes[1],
-                    axis_security_freedom: def.axes[2],
-                    axis_globalism_nationalism: def.axes[3],
-                    axis_individualism_collectivism: def.axes[4],
-                    priority_issues: def.issues,
-                    ideology_1: tags[0] || null,
-                    ideology_2: tags[1] || null,
-                    ideology_3: tags[2] || null,
-                    ideology_4: tags[3] || null,
-                    ideology_5: tags[4] || null,
-                    is_active: true
-                };
-            });
-
-            const { error } = await _supabase.from('voter_blocs').insert(inserts);
-            if (error) throw error;
-
-            // Reload blocs cache so initializeBlocApprovals sees them
-            await loadExistingBlocsDisplay(voterNationData.id);
-
-            // Auto-initialize faction_bloc_approval rows for all parties × blocs
-            await initializeBlocApprovals();
-
-            // Show stat breakdown
-            showBlocSeedBreakdown(computed);
-        } catch (error) {
-            console.error(error);
-            statusEl.innerHTML = '<span style="color:#d9534f;font-weight:bold;">❌ Error: ' + error.message + '</span>';
-        }
-    }
-
-    /** Show a breakdown of how nation stats seeded each bloc's weight */
-    function showBlocSeedBreakdown(computed) {
-        const statusEl = document.getElementById('bloc-action-status');
-        let html = '<div style="background:#1a2a1a; border:1px solid #5cb85c; border-radius:8px; padding:12px; margin-top:8px;">';
-        html += '<div style="color:#5cb85c; font-weight:bold; margin-bottom:8px;">✅ Generated ' + computed.length + ' blocs from nation stats</div>';
-        html += '<table style="width:100%; font-size:0.82rem; border-collapse:collapse;">';
-        html += '<tr style="color:#aaa; border-bottom:1px solid #333;"><th style="text-align:left; padding:4px;">Bloc</th><th style="text-align:right; padding:4px;">Weight</th><th style="text-align:left; padding:4px 4px 4px 12px;">Seeded From</th><th style="text-align:right; padding:4px;">Raw</th></tr>';
-        for (const c of computed) {
-            html += `<tr style="border-bottom:1px solid #222;">`;
-            html += `<td style="padding:4px; color:#e0e0e0;">${c.name}</td>`;
-            html += `<td style="padding:4px; text-align:right; color:#fff; font-weight:bold;">${c.weight}%</td>`;
-            html += `<td style="padding:4px 4px 4px 12px; color:#888;">${c.formula}</td>`;
-            html += `<td style="padding:4px; text-align:right; color:#666;">${c.rawScore}</td>`;
-            html += `</tr>`;
-        }
-        html += '</table></div>';
-        statusEl.innerHTML = html;
-    }
-
-    // ---- Initialize party approvals for all blocs ----
-    async function initializeBlocApprovals() {
-        if (!voterNationData) return;
-        if (voterBlocsCache.length === 0) {
-            alert('No voter blocs exist. Generate or add blocs first.');
-            return;
-        }
-
-        const statusEl = document.getElementById('bloc-action-status');
-        statusEl.innerHTML = '<span style="color:#5b9bd5;font-weight:bold;">Initializing approvals...</span>';
-
-        try {
-            // Get all parties for this nation
-            const { data: parties, error: pErr } = await _supabase.from('factions')
-                .select('id, faction_name')
-                .eq('nation_id', voterNationData.id)
-                .eq('faction_type', 'party');
-            if (pErr) throw pErr;
-            if (!parties || parties.length === 0) {
-                statusEl.innerHTML = '<span style="color:#d48a3c;font-weight:bold;">No parties found for this nation.</span>';
-                return;
-            }
-
-            // Load faction ideologies for opposition penalty
-            const partyIds = parties.map(p => p.id);
-            const { data: ideoRows } = await _supabase.from('faction_ideology')
-                .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-                .in('faction_id', partyIds);
-            const ideoMap = {};
-            for (const row of (ideoRows || [])) ideoMap[row.faction_id] = row;
-
-            // Build upsert rows: one per party x bloc combination
-            // Randomize initial approval ±10 around baseline 40, then apply ideology opposition penalty
-            const rows = [];
-            for (const party of parties) {
-                const ideo = ideoMap[party.id];
-                for (const bloc of voterBlocsCache) {
-                    const jitter = Math.floor(Math.random() * 21) - 10; // -10 to +10
-                    const base = Math.max(0, Math.min(100, 40 + jitter));
-                    const mult = ideo ? ideologyOppositionMultiplier(ideo, bloc) : 1.0;
-                    rows.push({
-                        faction_id: party.id,
-                        bloc_id: bloc.id,
-                        preference_score: Math.round(base * mult * 100) / 100
-                    });
-                }
-            }
-
-            const { error } = await _supabase.from('faction_bloc_approval')
-                .upsert(rows, { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true });
-            if (error) throw error;
-
-            // Recalculate derived approval_rating for each party from the randomized per-bloc values
-            for (const party of parties) {
-                const partyRows = rows.filter(r => r.faction_id === party.id);
-                await recalcDerivedApproval(_supabase, party.id, partyRows.map(r => ({ bloc_id: r.bloc_id, preference_score: r.preference_score })));
-            }
-
-            statusEl.innerHTML = `<span style="color:#5cb85c;font-weight:bold;">✅ Initialized approval for ${parties.length} parties × ${voterBlocsCache.length} blocs (${rows.length} records, ideology-adjusted)</span>`;
-            setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
-        } catch (error) {
-            console.error(error);
-            statusEl.innerHTML = '<span style="color:#d9534f;font-weight:bold;">❌ Error: ' + error.message + '</span>';
-        }
-    }
 
 
     // ==================== INSPECTOR TAB ====================
@@ -2585,9 +2337,7 @@ window.snapshotSeedStats = snapshotSeedStats;
 window.onVoterNationSelect = onVoterNationSelect;
 window.saveAxes = saveAxes;
 window.resetAxesToSaved = resetAxesToSaved;
-window.generateDefaultBlocs = generateDefaultBlocs;
 window.showAddBlocForm = showAddBlocForm;
-window.initializeBlocApprovals = initializeBlocApprovals;
 window.loadInspector = loadInspector;
 window.openInspectorNewTab = openInspectorNewTab;
 window.reloadInspector = reloadInspector;

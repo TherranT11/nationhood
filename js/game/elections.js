@@ -1185,15 +1185,8 @@ export async function processPartialElection(supabase, nation, election, current
         }
     }));
 
-    // 3b. Load per-bloc preference data
-    const { data: fbaRows } = await supabase
-        .from('faction_bloc_approval').select('faction_id, bloc_id, preference_score')
-        .in('faction_id', factionIds);
-    const allBlocApprovals = {};
-    for (const row of (fbaRows || [])) {
-        if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? 40;
-    }
+    // 3b. Legacy faction_bloc_approval removed — simulation uses ideology-only weights now
+    const allBlocApprovals = null;
 
     // 4. Run election simulation for ONLY the delta seats
     const result = runElectionSimulation(blocs, parties, deltaSeats, allBlocApprovals);

@@ -6,11 +6,10 @@
 import { deductAP, GAME_CONFIG } from './config.js';
 import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic } from './government-types.js';
 import { RAW_SCALING_DIVISORS, STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
-import { IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, loadFactionIdeology, computeIdeologyAlignment } from './ideology.js';
+import { IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, loadFactionIdeology } from './ideology.js';
 import { MINISTER_APPROVAL_CONFIG, ISSUE_CATEGORY_STATS, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, STAT_TO_MINISTRY, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, statDirectionSign, buildFundingPctMap, getInstFundingPct } from './stats.js';
 import { adjustGovernmentApprovalEvent, adjustMomentum, adjustMomentumAll } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
-import { recalcDerivedApproval } from './bills.js';
 import { closeAdministration, createAdministration, dissolveCoalition } from './elections.js';
 import { getTraitAPModifier, applyRallyTraitModifiers, getTraitApprovalMultiplier, getEffectiveBlocDisposition } from './party-leadership.js';
 import { onRally, onOutreach, onAttack } from './electorate.js';
@@ -424,32 +423,26 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
     // Count how many times this specific bloc was rallied recently
     const ralliedRecently = (recentRallies || []).filter(r => r.result?.blocId === blocId).length;
 
-    // ── 3. Load target bloc + nation stats ──
-    const { data: targetBloc } = await supabase
-        .from('voter_blocs')
-        .select('id, bloc_name, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-        .eq('id', blocId).single();
-    if (!targetBloc) return { success: false, error: 'Voter bloc not found.' };
+    // ── 3. Load target bloc (optional) + nation stats ──
+    let targetBloc = null;
+    if (blocId) {
+        const { data: bloc } = await supabase
+            .from('voter_blocs')
+            .select('id, bloc_name, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
+            .eq('id', blocId).single();
+        targetBloc = bloc;
+    }
+    if (!targetBloc) {
+        targetBloc = { id: null, bloc_name: 'General Public', population_weight: 100 };
+    }
 
     const { data: nation } = await supabase
         .from('nations').select('polarization, civil_unrest, stability').eq('id', nationId).single();
     const { count: crisisCount } = await supabase
         .from('active_crises').select('id', { count: 'exact', head: true }).eq('nation_id', nationId);
 
-    // ── 4. Load all blocs + approval rows ──
-    const { data: allBlocs } = await supabase
-        .from('voter_blocs')
-        .select('id, bloc_name, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-        .eq('nation_id', nationId).eq('is_active', true);
-
-    const { data: approvalRows } = await supabase
-        .from('faction_bloc_approval')
-        .select('id, bloc_id, preference_score, momentum')
-        .eq('faction_id', factionId);
-    const approvalByBloc = {};
-    for (const row of (approvalRows || [])) approvalByBloc[row.bloc_id] = row;
-
-    const targetApproval = approvalByBloc[blocId]?.preference_score || 50;
+    // ── 4. Target approval (legacy bloc-approval removed; default to 50) ──
+    const targetApproval = 50;
 
     // ── 5. Compute weights and roll outcome ──
     const nationState = {
@@ -476,59 +469,8 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
         targetDelta = Math.round(targetDelta * mult);
     }
 
-    // ── 7. Apply effects ──
-    // ── 7. Apply effects (momentum only — preference_score recalculated by three-pillar calc) ──
+    // ── 7. Apply effects (legacy bloc-approval writes removed; electorate hook handles approval now) ──
     const effects = [];
-    const targetRow = approvalByBloc[blocId];
-    if (targetRow) {
-        const oldMom = Number(targetRow.momentum || 0);
-        const newMom = Math.max(-50, Math.min(50, Math.round((oldMom + targetDelta) * 100) / 100));
-        await supabase.from('faction_bloc_approval')
-            .update({ momentum: newMom }).eq('id', targetRow.id);
-        effects.push({ bloc: targetBloc.bloc_name, blocId, value: targetDelta, oldMom, newMom });
-    }
-
-    // Spillover effects
-    if (outcome.spillover !== 0 && outcome.spilloverScope !== 'none') {
-        const otherBlocs = (allBlocs || []).filter(b => b.id !== blocId);
-
-        let spillTargets = [];
-        if (outcome.spilloverScope === 'all_others' || outcome.spilloverScope === 'all') {
-            spillTargets = outcome.spilloverScope === 'all'
-                ? (allBlocs || [])  // includes target bloc for counter-protest
-                : otherBlocs;
-        } else if (outcome.spilloverScope === 'adjacent' || outcome.spilloverScope === 'random_adjacent') {
-            // "Adjacent" = blocs sharing at least one strong ideology axis with the target
-            const targetAxes = [];
-            for (const key of ['axis_liberty_equality', 'axis_tradition_progress', 'axis_security_freedom', 'axis_globalism_nationalism', 'axis_individualism_collectivism']) {
-                if (Math.abs((targetBloc[key] ?? 50) - 50) >= 10) targetAxes.push(key);
-            }
-            const adjacent = otherBlocs.filter(b => {
-                return targetAxes.some(key => {
-                    const bVal = b[key] ?? 50;
-                    const tVal = targetBloc[key] ?? 50;
-                    return Math.abs(bVal - 50) >= 10 && ((bVal < 50) === (tVal < 50));
-                });
-            });
-            if (outcome.spilloverScope === 'random_adjacent' && adjacent.length > 0) {
-                spillTargets = [adjacent[Math.floor(Math.random() * adjacent.length)]];
-            } else {
-                spillTargets = adjacent;
-            }
-        }
-
-        for (const sb of spillTargets) {
-            const row = approvalByBloc[sb.id];
-            if (!row) continue;
-            // For non-'all' scopes, skip target bloc (already handled above)
-            if (sb.id === blocId && outcome.spilloverScope !== 'all') continue;
-            const oldMom = Number(row.momentum || 0);
-            const newMom = Math.max(-50, Math.min(50, Math.round((oldMom + outcome.spillover) * 100) / 100));
-            await supabase.from('faction_bloc_approval')
-                .update({ momentum: newMom }).eq('id', row.id);
-            effects.push({ bloc: sb.bloc_name, blocId: sb.id, value: outcome.spillover, oldMom, newMom });
-        }
-    }
 
     // Polarization effect
     if (outcome.polarization > 0 && nation) {
@@ -608,10 +550,10 @@ const OUTREACH_AXIS_KEYS = [
 
 /**
  * Compute ideology alignment between a faction and a voter bloc (0-100).
- * Delegates to the canonical computeIdeologyAlignment in ideology.js.
+ * Legacy stub — returns 50 (neutral) since bloc-targeting was removed.
  */
 export function computeOutreachAlignment(factionIdeology, bloc) {
-    return computeIdeologyAlignment(factionIdeology, bloc);
+    return 50;
 }
 
 /**
@@ -717,55 +659,21 @@ export async function executeOutreach(supabase, factionId, nationId, blocId, cur
     const targetBloc = (allBlocs || []).find(b => b.id === blocId);
     if (!targetBloc) return { success: false, error: 'Voter bloc not found.' };
 
-    // ── 5. Load approval rows ──
-    const { data: approvalRows } = await supabase
-        .from('faction_bloc_approval')
-        .select('id, bloc_id, preference_score, momentum')
-        .eq('faction_id', factionId);
-    const approvalByBloc = {};
-    for (const row of (approvalRows || [])) approvalByBloc[row.bloc_id] = row;
-
-    // ── 6. Compute alignment and effect ──
+    // ── 5. Compute alignment and effect ──
     const alignment = factionIdeo ? computeOutreachAlignment(factionIdeo, targetBloc) : 50;
     let { diminished } = calcOutreachEffect(alignment, recentToBloc);
 
     // Apply leader trait multipliers: telegenic (+30%), divisive_figure (halved for non-BASE)
-    const targetPrefScore = approvalByBloc[blocId]?.preference_score || 0;
-    const blocDisp = targetPrefScore >= 55 ? 'BASE' : targetPrefScore >= 42 ? 'LEAN' : targetPrefScore >= 30 ? 'SWING' : targetPrefScore >= 18 ? 'SKEPTICAL' : 'HOSTILE';
+    // Default to SWING disposition now that legacy faction_bloc_approval is removed
+    const blocDisp = 'SWING';
     const effectiveDisp = getEffectiveBlocDisposition(blocDisp, faction);
-    // Use effective disposition for trait modifiers (populist_touch makes SKEPTICAL act as SWING)
     let outreachMult = getTraitApprovalMultiplier(faction, 'outreach', effectiveDisp);
-    // populist_touch/elitist: disposition reclassification affects outreach effectiveness
-    if (effectiveDisp !== blocDisp) {
-        if (effectiveDisp === 'SWING' && blocDisp === 'SKEPTICAL') outreachMult *= 1.25; // easier to reach
-        if (effectiveDisp === 'HOSTILE' && blocDisp === 'SKEPTICAL') outreachMult *= 0.5;  // harder to reach
-    }
     if (outreachMult !== 1.0) {
         diminished = Math.max(1, Math.round(diminished * outreachMult));
     }
 
-    // ── 7. Apply target bloc effect (momentum only — preference_score recalculated by three-pillar calc) ──
+    // ── 6. Effects (legacy bloc-approval writes removed; electorate hook handles approval now) ──
     const effects = [];
-    const targetRow = approvalByBloc[blocId];
-    if (targetRow) {
-        const oldMom = Number(targetRow.momentum || 0);
-        const newMom = Math.max(-50, Math.min(50, Math.round((oldMom + diminished) * 100) / 100));
-        await supabase.from('faction_bloc_approval')
-            .update({ momentum: newMom }).eq('id', targetRow.id);
-        effects.push({ bloc: targetBloc.bloc_name, blocId, value: diminished, oldMom, newMom });
-    }
-
-    // ── 8. Apply friction to opposed blocs ──
-    const frictions = calcOutreachFriction(targetBloc, allBlocs || [], factionIdeo);
-    for (const fri of frictions) {
-        const row = approvalByBloc[fri.blocId];
-        if (!row) continue;
-        const oldMom = Number(row.momentum || 0);
-        const newMom = Math.max(-50, Math.min(50, Math.round((oldMom + fri.penalty) * 100) / 100));
-        await supabase.from('faction_bloc_approval')
-            .update({ momentum: newMom }).eq('id', row.id);
-        effects.push({ bloc: fri.blocName, blocId: fri.blocId, value: fri.penalty, oldMom, newMom });
-    }
 
     // ── 9. Deduct AP + track last_action_tick ──
     const apResult = await deductAP(supabase, factionId, effectiveOutreachCost);
@@ -1391,13 +1299,6 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
         .from('voter_blocs')
         .select('id, bloc_name, population_weight, priority_issues')
         .eq('nation_id', nationId).eq('is_active', true);
-
-    const { data: approvalRows } = await supabase
-        .from('faction_bloc_approval')
-        .select('id, bloc_id, preference_score')
-        .eq('faction_id', factionId);
-    const approvalByBloc = {};
-    for (const row of (approvalRows || [])) approvalByBloc[row.bloc_id] = row;
 
     // ── 4. Roll deadline: 1D12 + 12 ──
     const deadlineRoll = Math.floor(Math.random() * cfg.DEADLINE_DICE) + 1;
@@ -3653,21 +3554,7 @@ export async function processRevolution(supabase, nation, currentTick) {
         console.warn(`[Revolution] V5 cleanup: ${cleanupFailures.length} of ${cleanupResults.length} failed (non-fatal)`);
     }
 
-    // 4. Reset all faction bloc approvals to 50
-    const { data: allFactions } = await supabase
-        .from('factions')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'party');
-
-    if (allFactions && allFactions.length > 0) {
-        for (const faction of allFactions) {
-            await supabase.from('faction_bloc_approval')
-                .update({ momentum: 0 })
-                .eq('faction_id', faction.id);
-            await recalcDerivedApproval(supabase, faction.id);
-        }
-    }
+    // 4. (Legacy faction_bloc_approval reset removed — electorate system handles approval now)
 
     // 4b. Reset all faction loyalty to 50 and flag for rebuild
     await supabase.from('factions')
@@ -4392,7 +4279,6 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     if (logErr) console.warn('disbandParty: could not log action:', logErr);
 
     // 10. Clean up all faction-related data from the old nation
-    await supabase.from('faction_bloc_approval').delete().eq('faction_id', factionId);
     await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
     await supabase.from('ideology_history').delete().eq('faction_id', factionId);
     await supabase.from('momentum_log').delete().eq('faction_id', factionId);
