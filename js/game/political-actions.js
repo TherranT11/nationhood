@@ -12,7 +12,7 @@ import { adjustGovernmentApprovalEvent, adjustMomentum, adjustMomentumAll } from
 import { fetchActiveCoalition } from './government-structure.js';
 import { closeAdministration, createAdministration, dissolveCoalition } from './elections.js';
 import { getTraitAPModifier, applyRallyTraitModifiers, getTraitApprovalMultiplier, getEffectiveBlocDisposition } from './party-leadership.js';
-import { onRally, onOutreach, onAttack } from './electorate.js';
+import { onRally, onOutreach, onAttack, nudgeEnthusiasm, ELECTORATE_CONFIG as E_CFG } from './electorate.js';
 
 const _MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
@@ -1395,6 +1395,9 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
             headline,
         }
     });
+
+    // Boost nation-wide enthusiasm
+    await nudgeEnthusiasm(supabase, nationId, E_CFG.ENTHUSIASM_PROMISE_BOOST);
 
     return {
         success: true,

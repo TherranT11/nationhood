@@ -306,6 +306,22 @@ export const ELECTORATE_CONFIG = {
     // ── Phase 2C: Stance decay ──
     STANCE_REMOVAL_THRESHOLD: 5,      // strength below this → remove the stance
     MAX_STANCES_PER_FACTION: 5,       // max active stances
+
+    // ── Enthusiasm config ──
+    ENTHUSIASM_NATURAL_DECAY: 1,          // -1/tick passive decay
+    ENTHUSIASM_RESTING: 35,               // natural resting point
+    ENTHUSIASM_DRIFT_SPEED: 3,            // max drift per tick toward target
+    ENTHUSIASM_INACTIVE_PENALTY: 3,       // per inactive party per tick
+    ENTHUSIASM_CRISIS_BONUS: 4,           // per active crisis
+    ENTHUSIASM_POLARIZATION_SCALE: 0.2,   // bonus per polarization point above 50
+    ENTHUSIASM_ELECTION_PROXIMITY: 10,    // max bonus when election is imminent
+    ENTHUSIASM_ELECTION_WINDOW: 20,       // ticks before election when bonus ramps up
+    ENTHUSIASM_GOV_EXTREME_SCALE: 0.15,   // bonus per |gov_approval - 50| point
+    ENTHUSIASM_PROMISE_BOOST: 2,          // +2 on Make a Promise
+    ENTHUSIASM_STANCE_BOOST_MIN: 1,       // Take a Stance: 1d3 (min)
+    ENTHUSIASM_STANCE_BOOST_MAX: 3,       // Take a Stance: 1d3 (max)
+    ENTHUSIASM_MIN: 10,
+    ENTHUSIASM_MAX: 95,
 };
 
 const CFG = ELECTORATE_CONFIG;
@@ -838,8 +854,28 @@ export async function tickElectorate(supabase, nation, currentTick) {
     // ── 9. Phase 2C: Drift issue salience toward stat-driven targets ──
     const updatedIssueStates = await tickIssueSalience(supabase, nation, issueStates || [], currentTick);
 
-    // ── 10. Phase 2C: Drift electorate profile toward stat-driven targets ──
-    const updatedProfile = await tickElectorateProfile(supabase, nation, profile, currentTick);
+    // ── 10. Phase 2C: Drift electorate profile + enthusiasm toward stat-driven targets ──
+    // Fetch data needed for enthusiasm calculation
+    const { data: scheduledElections } = await supabase
+        .from('scheduled_elections')
+        .select('election_tick')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .order('election_tick', { ascending: true })
+        .limit(1);
+    const nextElectionTick = scheduledElections?.[0]?.election_tick ?? null;
+
+    const { data: activeCrises } = await supabase
+        .from('national_crises')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('status', 'active');
+    const crisisCount = activeCrises?.length ?? 0;
+
+    const inactiveCount = inactiveFactions.length;
+    const enthusiasmContext = { nextElectionTick, crisisCount, inactiveCount };
+
+    const updatedProfile = await tickElectorateProfile(supabase, nation, profile, currentTick, enthusiasmContext);
     const activeProfile = updatedProfile || profile;
 
     // ── 11. Build salience-weighted axis weights from (updated) issue states ──
@@ -1302,7 +1338,7 @@ async function tickIssueSalience(supabase, nation, issueStates, currentTick) {
  * @param {number} currentTick
  * @returns {object} Updated profile (in-memory, also written to DB)
  */
-async function tickElectorateProfile(supabase, nation, profile, currentTick) {
+async function tickElectorateProfile(supabase, nation, profile, currentTick, enthusiasmContext = {}) {
     const changes = {};
     let anyChange = false;
 
@@ -1350,6 +1386,53 @@ async function tickElectorateProfile(supabase, nation, profile, currentTick) {
             profile[col] = newVal;
             anyChange = true;
         }
+    }
+
+    // ── Drift enthusiasm ──
+    const oldEnthusiasm = Number(profile.enthusiasm ?? CFG.DEFAULT_ENTHUSIASM);
+    const { nextElectionTick, crisisCount, inactiveCount } = enthusiasmContext;
+
+    // 1. Natural decay toward resting point
+    let enthusiasmDelta = -CFG.ENTHUSIASM_NATURAL_DECAY;
+
+    // 2. Inactive parties drag enthusiasm down
+    if (inactiveCount > 0) {
+        enthusiasmDelta -= inactiveCount * CFG.ENTHUSIASM_INACTIVE_PENALTY;
+    }
+
+    // 3. Active crises raise urgency
+    if (crisisCount > 0) {
+        enthusiasmDelta += crisisCount * CFG.ENTHUSIASM_CRISIS_BONUS;
+    }
+
+    // 4. High polarization energizes voters
+    const polarization = Number(nation.polarization ?? 50);
+    if (polarization > 50) {
+        enthusiasmDelta += (polarization - 50) * CFG.ENTHUSIASM_POLARIZATION_SCALE;
+    }
+
+    // 5. Election proximity ramps up enthusiasm
+    if (nextElectionTick != null) {
+        const ticksUntil = nextElectionTick - currentTick;
+        if (ticksUntil > 0 && ticksUntil <= CFG.ENTHUSIASM_ELECTION_WINDOW) {
+            const proximity = 1 - (ticksUntil / CFG.ENTHUSIASM_ELECTION_WINDOW);
+            enthusiasmDelta += proximity * CFG.ENTHUSIASM_ELECTION_PROXIMITY;
+        }
+    }
+
+    // 6. Very good or very bad governance drives engagement
+    const govApproval = Number(nation.gov_approval ?? 50);
+    const govExtreme = Math.abs(govApproval - 50);
+    enthusiasmDelta += govExtreme * CFG.ENTHUSIASM_GOV_EXTREME_SCALE;
+
+    // Apply delta with drift speed cap
+    const clampedDelta = clamp(enthusiasmDelta, -CFG.ENTHUSIASM_DRIFT_SPEED, CFG.ENTHUSIASM_DRIFT_SPEED);
+    const newEnthusiasm = round2(clamp(oldEnthusiasm + clampedDelta, CFG.ENTHUSIASM_MIN, CFG.ENTHUSIASM_MAX));
+
+    if (newEnthusiasm !== oldEnthusiasm) {
+        changes.enthusiasm = newEnthusiasm;
+        profile.enthusiasm = newEnthusiasm;
+        anyChange = true;
     }
 
     // ── Update axis salience weights from current issue salience ──
@@ -1570,6 +1653,32 @@ export async function nudgeApproval(supabase, factionId, nationId, delta) {
         .update({ party_approval: newApproval })
         .eq('id', standing.id);
     if (appErr) console.error('[Electorate] approval update failed:', appErr.message);
+}
+
+/**
+ * Nudge the nation-wide enthusiasm on electorate_profile.
+ *
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {number} delta - Signed enthusiasm change (e.g., +2, -3)
+ */
+export async function nudgeEnthusiasm(supabase, nationId, delta) {
+    if (!delta || delta === 0) return;
+
+    const { data: profile } = await supabase
+        .from('electorate_profile')
+        .select('id, enthusiasm')
+        .eq('nation_id', nationId)
+        .maybeSingle();
+    if (!profile) return;
+
+    const old = Number(profile.enthusiasm ?? CFG.DEFAULT_ENTHUSIASM);
+    const newEnthusiasm = round2(clamp(old + delta, CFG.ENTHUSIASM_MIN, CFG.ENTHUSIASM_MAX));
+
+    const { error } = await supabase.from('electorate_profile')
+        .update({ enthusiasm: newEnthusiasm })
+        .eq('id', profile.id);
+    if (error) console.error('[Electorate] enthusiasm update failed:', error.message);
 }
 
 /**
@@ -1797,17 +1906,23 @@ export async function executeTakeStance(supabase, factionId, nationId, issueId, 
         'success', STANCE_CONFIG.AP_COST, currentTick
     );
 
+    // ── Boost enthusiasm (1d3) ──
+    const enthusiasmRoll = Math.floor(Math.random() * (CFG.ENTHUSIASM_STANCE_BOOST_MAX - CFG.ENTHUSIASM_STANCE_BOOST_MIN + 1)) + CFG.ENTHUSIASM_STANCE_BOOST_MIN;
+    await nudgeEnthusiasm(supabase, nationId, enthusiasmRoll);
+
     const effects = [];
     effects.push({ label: 'Stance', value: `${intensity} ${sideLabel}` });
     if (isPioneer) effects.push({ label: 'Pioneer bonus', value: '+5 appeal' });
     if (!ideologicallyConsistent) effects.push({ label: 'Inconsistent', value: '-5 appeal' });
     effects.push({ label: 'Visibility', value: `+${STANCE_CONFIG.VISIBILITY_BOOST}` });
+    effects.push({ label: 'Enthusiasm', value: `+${enthusiasmRoll}` });
 
     return {
         success: true,
         message: `Took ${intensity} ${sideLabel} stance on ${issueDef.label}`,
         stance,
         effects,
+        enthusiasmRoll,
         newAp: apResult.newAp,
     };
 }
