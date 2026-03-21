@@ -2577,6 +2577,7 @@ let _govProtestCrisis = null;       // active protest crisis for governing party
 // Store references for re-rendering
 let _currentNation = null, _currentFaction = null, _currentShard = null, _currentAllParties = null;
 let _caIsGoverning = false;
+let _caTopIssueStats = null; // Stats from top 7 issues by salience (for Make Promise filtering)
 
 const CA_ACTIONS = [
     { id: 'rally', name: 'Hold a Rally', ap: RALLY_CONFIG.AP_COST, color: '#f97316', icon: '★',
@@ -2655,6 +2656,19 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     // Fetch other parties
     const otherParties = (allParties || []).filter(p => p.id !== f.id);
 
+    // Fetch top 7 issues by salience for Make Promise filtering
+    const { data: topIssues } = await _supabase
+        .from('issue_state')
+        .select('issue_id, salience')
+        .eq('nation_id', n.id)
+        .order('salience', { ascending: false })
+        .limit(7);
+    const allowedStats = new Set();
+    for (const iss of (topIssues || [])) {
+        const def = ISSUE_DEFS[iss.issue_id];
+        if (def) for (const s of def.stats) allowedStats.add(s);
+    }
+    _caTopIssueStats = allowedStats;
 
     // Fetch protest state for the action row
     let protestCheck = { allowed: false, reason: '' };
@@ -2977,7 +2991,11 @@ function renderPromiseConfig(nation) {
 
     if (_caPromiseType === 'stat') {
         const statDelta = _caIsGoverning ? MAKE_PROMISE_CONFIG.STAT_DELTA_GOVERNING : MAKE_PROMISE_CONFIG.STAT_DELTA;
-        const stats = getPromiseableStats(nation, _caIsGoverning);
+        const allStats = getPromiseableStats(nation, _caIsGoverning);
+        // Filter to stats from top 7 electorate issues by salience
+        const stats = _caTopIssueStats && _caTopIssueStats.size > 0
+            ? allStats.filter(s => _caTopIssueStats.has(s.statKey))
+            : allStats;
         if (stats.length === 0) {
             html += `<div class="ca-info-box">No stats available to promise on — they may all be at their limit.</div>`;
         } else {
