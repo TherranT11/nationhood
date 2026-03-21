@@ -18825,13 +18825,7 @@ async function executeOutreach(supabase, factionId, nationId, blocId, currentTic
 }
 
 /**
- * Set or change a party endorsement preference.
- *
- * Rules:
- * - First endorsement preference for a faction is free.
- * - Changing to a different endorsed faction costs 1 AP (atomic deduct_ap RPC).
- * - Re-selecting the same endorsed faction is a no-op (no AP cost).
- * - Always writes a campaign_actions audit row with a reason string.
+ * @deprecated Endorsements are not available (faction_endorsements table removed).
  */
 async function executeEndorsementPreference(supabase, factionId, nationId, endorsedFactionId, currentTick, reason = 'endorsement_preference_update') {
     return { success: false, error: 'Endorsements are not available.' };
