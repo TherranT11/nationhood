@@ -200,14 +200,30 @@ export function calculateImportDemand(nation, sector, opts) {
     var rawDemand = 0;
 
     // ── FUEL & ENERGY ──
-    // Import fuel if you don't produce enough domestically.
-    // Driven by inverse of (oil_and_gas + energy_generation).
+    // Two-component demand model:
+    // 1. Deficiency: import what you can't produce domestically (threshold 20)
+    // 2. Industrial baseline: manufacturing, urbanization, cost of living,
+    //    and poor rail networks all drive fuel consumption regardless of reserves
     if (sector.key === 'fuel_energy') {
         var oilGas = (Number(nation.oil_and_gas) || 0) / SN;
         var energyGen = (Number(nation.energy_generation) || 0) / SN;
         var domesticEnergy = (oilGas + energyGen) / 2;
-        var deficiency = Math.max(0, 15 - domesticEnergy);
-        rawDemand = deficiency * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+        var deficiency = Math.max(0, 20 - domesticEnergy);
+
+        // Industrial/urban energy consumption baseline
+        var manufNorm = (Number(nation.manufacturing_output) || 0) / SN;
+        var urbanNorm = (Number(nation.urbanization) || 0) / SN;
+        var colNorm = (Number(nation.cost_of_living) || 0) / SN;
+        var railNorm = (Number(nation.rail_network) || 0) / SN;
+        // Low rail → more fuel for transport (inverted: 20 - rail score)
+        var transportFuelNeed = Math.max(0, 12 - railNorm);
+        // Industrial demand: factories + cities + high living standards + poor transit
+        // Offset by domestic energy — nations that produce enough fuel domestically
+        // don't need to import for industrial use either
+        var grossIndustrialDemand = (manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportFuelNeed * 0.15);
+        var industrialDemand = Math.max(0, grossIndustrialDemand - domesticEnergy * 0.5);
+
+        rawDemand = (deficiency + industrialDemand) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
     }
 
     // ── MINERALS & RAW MATERIALS ──
@@ -942,6 +958,12 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                 if (remainingDem <= 0) continue;
 
                 var aff = affinityMap[exporter.id + '|' + importer.id] || 0;
+                // Strategic necessity: fuel & energy trades even through poor relations
+                // Floor scales with exporter capacity — major producers always find buyers
+                if (sector.key === 'fuel_energy' && !(pairFlags && pairFlags.has_embargo)) {
+                    var strategicFloor = Math.min(15, Math.round(nationFlows[exporter.id][sector.key].exportCapacity / 6));
+                    if (aff < strategicFloor) aff = strategicFloor;
+                }
                 if (aff <= 0) continue;
 
                 // Gravity-model weight: supply × demand × affinity
@@ -1176,6 +1198,57 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
             if (Math.abs(unemploymentNudge) >= 0.01) {
                 var currentUnemployment = Number(n.unemployment) || 50;
                 nationUpdates.unemployment = Math.round(Math.max(0, Math.min(100, currentUnemployment + unemploymentNudge)) * 10) / 10;
+            }
+        }
+
+        // ── Unmet import demand consequences ──
+        // When a nation needs imports but can't get them, critical sectors suffer.
+        // Penalty scales with the unmet ratio: (demand - actual) / demand
+        // Self-sufficient nations (demand = 0) are never penalized.
+        for (var si3 = 0; si3 < sectors.length; si3++) {
+            var sKey3 = sectors[si3].key;
+            var demand3 = nationFlows[n.id][sKey3].importDemand;
+            var actual3 = actualImports[n.id][sKey3] || 0;
+            if (demand3 <= 0) continue;
+            var unmetRatio = Math.max(0, (demand3 - actual3) / demand3);
+            if (unmetRatio < 0.05) continue;
+
+            var severity = unmetRatio * unmetRatio;
+
+            if (sKey3 === 'fuel_energy') {
+                var fuelEnergyPen = severity * 1.5;
+                var fuelManufPen = severity * 1.0;
+                var fuelInflation = severity * 1.0;
+                var fuelCol = severity * 0.8;
+                nationUpdates.energy_generation = Math.round(Math.max(0, (Number(n.energy_generation) || 50) - fuelEnergyPen) * 10) / 10;
+                nationUpdates.manufacturing_output = Math.round(Math.max(0, (Number(n.manufacturing_output) || 50) - fuelManufPen) * 10) / 10;
+                nationUpdates.inflation = Math.round(Math.min(100, (nationUpdates.inflation != null ? nationUpdates.inflation : (Number(n.inflation) || 50)) + fuelInflation) * 10) / 10;
+                nationUpdates.cost_of_living = Math.round(Math.min(100, (Number(n.cost_of_living) || 50) + fuelCol) * 10) / 10;
+            } else if (sKey3 === 'food_agriculture') {
+                var foodHappiness = severity * 1.2;
+                var foodUnrest = severity * 1.5;
+                var foodHealth = severity * 0.8;
+                nationUpdates.happiness = Math.round(Math.max(0, (Number(n.happiness) || 50) - foodHappiness) * 10) / 10;
+                nationUpdates.civil_unrest = Math.round(Math.min(100, (Number(n.civil_unrest) || 0) + foodUnrest) * 10) / 10;
+                nationUpdates.healthcare_quality = Math.round(Math.max(0, (Number(n.healthcare_quality) || 50) - foodHealth) * 10) / 10;
+            } else if (sKey3 === 'minerals') {
+                var minManuf = severity * 1.0;
+                var minInfra = severity * 0.7;
+                nationUpdates.manufacturing_output = Math.round(Math.max(0, (nationUpdates.manufacturing_output != null ? nationUpdates.manufacturing_output : (Number(n.manufacturing_output) || 50)) - minManuf) * 10) / 10;
+                nationUpdates.infrastructure = Math.round(Math.max(0, (Number(n.infrastructure) || 50) - minInfra) * 10) / 10;
+            } else if (sKey3 === 'manufactured_goods') {
+                var mfgSol = severity * 1.0;
+                var mfgCol = severity * 0.8;
+                nationUpdates.standard_of_living = Math.round(Math.max(0, (Number(n.standard_of_living) || 50) - mfgSol) * 10) / 10;
+                nationUpdates.cost_of_living = Math.round(Math.min(100, (nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living) || 50)) + mfgCol) * 10) / 10;
+            } else if (sKey3 === 'technology') {
+                var techDigi = severity * 0.8;
+                var techInnov = severity * 0.8;
+                nationUpdates.digital_infrastructure = Math.round(Math.max(0, (Number(n.digital_infrastructure) || 50) - techDigi) * 10) / 10;
+                nationUpdates.innovation_index = Math.round(Math.max(0, (Number(n.innovation_index) || 50) - techInnov) * 10) / 10;
+            } else if (sKey3 === 'arms') {
+                var armsMil = severity * 1.0;
+                nationUpdates.military_strength = Math.round(Math.max(0, (Number(n.military_strength) || 50) - armsMil) * 10) / 10;
             }
         }
 
