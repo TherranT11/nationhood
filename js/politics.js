@@ -617,9 +617,9 @@ function renderAutocracyEventsBox(actionLog, allParties, pillarStates, currentTi
     }
 
     return `
-    <div class="pol-party-card">
+    <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
         <div style="font-size:11px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Autocracy Events</div>
-        <div style="max-height:350px;overflow-y:auto">
+        <div style="flex:1;overflow-y:auto">
             ${eventsHtml}
         </div>
     </div>`;
@@ -751,7 +751,7 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
         ${renderCombinedRegimeCard(hosTitle, hosName, hosAge, rulingId, allParties, isStrongman, trackerColor, trackerWord, autocracyTracker, currentTick)}
 
         <!-- Your Party Card -->
-        <div class="pol-party-card">
+        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px">
             <div class="pol-header">
                 <div class="pol-logo">${logoSvg}</div>
                 <div class="pol-header-info">
