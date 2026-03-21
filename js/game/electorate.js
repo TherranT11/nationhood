@@ -2078,7 +2078,7 @@ export const IDEO_SHIFT_CONFIG = {
         DRIFT_MIN: 0.1,         // 1d3: random 0.1, 0.2, or 0.3 per tick
         DRIFT_MAX: 0.3,
         DURATION: 50,           // runs for 50 ticks then auto-completes
-        VISIBILITY_BOOST: 4,
+        VISIBILITY_BOOST: 0,    // behind the scenes — no visibility
     },
     MEDIA_CAMPAIGN: {
         AP_COST: 6,
@@ -2177,7 +2177,6 @@ export async function executeFundThinkTank(supabase, factionId, nationId, target
             { label: 'Direction', value: sideLabel },
             { label: 'Drift', value: `1d3 (${cfg.DRIFT_MIN}–${cfg.DRIFT_MAX})/tick for ${cfg.DURATION} ticks` },
             { label: 'Ongoing', value: `${cfg.TICK_AP_COST} AP/tick` },
-            { label: 'Visibility', value: `+${cfg.VISIBILITY_BOOST}` },
         ],
         newAp: apResult.newAp,
     };
