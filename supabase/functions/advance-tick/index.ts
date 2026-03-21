@@ -15337,6 +15337,43 @@ registerAutocracyAction('blackout', {
 // STRONGMAN EXCLUSIVE ACTIONS
 // ═════════════════════════════════════════════════════════════════════════════
 
+// ── Diplomatic consequences helper ──────────────────────────────────────────
+// Adjusts relation_score with ALL other nations by `delta`.
+// If `govApprovalDelta` is non-zero, also hits gov approval for the ruling
+// party of every nation that has an active trade agreement with this nation.
+async function applyDiplomaticConsequences(supabase: any, nationId: string, relationDelta: number, govApprovalDelta: number, source: string) {
+    // 1. Adjust relations with all other nations
+    const { data: relations } = await supabase.from('diplomatic_relations')
+        .select('id, relation_score, nation_a_id, nation_b_id')
+        .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`);
+
+    if (relations && relations.length > 0) {
+        for (const rel of relations) {
+            const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + relationDelta));
+            await supabase.from('diplomatic_relations')
+                .update({ relation_score: newScore, updated_at: new Date().toISOString() })
+                .eq('id', rel.id);
+        }
+    }
+
+    // 2. Gov approval hit for nations with active trade agreements
+    if (govApprovalDelta !== 0) {
+        const { data: agreements } = await supabase.from('trade_agreements')
+            .select('nation_a_id, nation_b_id')
+            .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+            .eq('status', 'active');
+
+        if (agreements && agreements.length > 0) {
+            const partnerNationIds = new Set(
+                agreements.map((a: any) => a.nation_a_id === nationId ? a.nation_b_id : a.nation_a_id)
+            );
+            for (const partnerNationId of partnerNationIds) {
+                await adjustGovernmentApprovalEvent(supabase, partnerNationId as string, govApprovalDelta, source);
+            }
+        }
+    }
+}
+
 // ── Arrest Leader ────────────────────────────────────────────────────────────
 // 2 AP. Roll 1d20 + modifiers vs target Backing.
 // Success: arrest, pillar → wildcard, tracker -5.
@@ -15419,6 +15456,10 @@ registerAutocracyAction('arrest_leader', {
                 polarization: clampStat(Number(n.polarization || 0) + 3),
             }).eq('id', nation.id);
         }
+
+        // Diplomatic consequences: -3 relations with all nations,
+        // -3 gov approval for trade partner ruling parties
+        await applyDiplomaticConsequences(supabase, nation.id, -3, -3, 'autocracy:arrest_leader');
 
         return {
             effects: {
@@ -15532,6 +15573,10 @@ registerAutocracyAction('execute_leader', {
             }).eq('id', nation.id);
         }
 
+        // Diplomatic consequences: -5 relations with all nations,
+        // -7 gov approval for trade partner ruling parties
+        await applyDiplomaticConsequences(supabase, nation.id, -5, -7, 'autocracy:execute_leader');
+
         return { effects: { d10_roll: d10, target_faction_id: targetFactionId, executed: true } };
     },
 });
@@ -15601,6 +15646,9 @@ registerAutocracyAction('release_leader', {
                 polarization: clampStat(Number(n.polarization || 0) - 2),
             }).eq('id', nation.id);
         }
+
+        // Diplomatic consequences: +1 relations with all nations (no gov approval effect)
+        await applyDiplomaticConsequences(supabase, nation.id, +1, 0, 'autocracy:release_leader');
 
         return { effects: { released: true, tracker_add: trackerAdd, target_faction_id: targetFactionId } };
     },
