@@ -1193,6 +1193,39 @@ const EVENT_CATEGORY_STYLES = {
 };
 const EVENT_CATEGORY_DEFAULT = { icon: '\u2022', color: '#888', bg: 'rgba(136,136,136,0.08)', label: '' };
 
+// ── Shared helpers for Nation + World event feeds ──
+
+const IDEOLOGY_AXES_DISPLAY = [
+  { key: 'liberty_equality', left: 'Liberty', right: 'Equality' },
+  { key: 'tradition_progress', left: 'Tradition', right: 'Progress' },
+  { key: 'security_freedom', left: 'Security', right: 'Freedom' },
+  { key: 'globalism_nationalism', left: 'Globalism', right: 'Nationalism' },
+  { key: 'individualism_collectivism', left: 'Individualism', right: 'Collectivism' },
+];
+
+const PROTEST_TIER_LABELS = { 1:'Embarrassing Fizzle', 2:'Modest Showing', 3:'Respectable Turnout', 4:'Strong Protest', 5:'Mass Demonstration', 6:'Historic Protest', 7:'Nationwide Protest' };
+
+function ideologySummary(idRow) {
+  if (!idRow) return '';
+  const tags = [];
+  for (const axis of IDEOLOGY_AXES_DISPLAY) {
+    const score = idRow[axis.key] || 0;
+    const abs = Math.abs(score);
+    if (abs <= 10) continue;
+    const intensity = abs <= 30 ? 'Leaning' : abs <= 60 ? 'Strong' : 'Radical';
+    const side = score < 0 ? axis.left : axis.right;
+    tags.push(`${intensity} ${side}`);
+  }
+  return tags.length > 0 ? tags.join(', ') : 'Centrist';
+}
+
+function partyHtml(name, color) {
+  const safeName = esc(name || 'Unknown');
+  if (!color) return `<strong>${safeName}</strong>`;
+  const safeColor = color.replace(/[^a-zA-Z0-9#(),.\s%]/g, '');
+  return `<span style="color:${safeColor};font-weight:600">${safeName}</span>`;
+}
+
 async function loadDashEvents(nationId, currentTick, parties) {
   const container = document.getElementById('dash-events-list');
   if (!container) return;
@@ -1224,7 +1257,6 @@ async function loadDashEvents(nationId, currentTick, parties) {
   }
 
   try {
-    // Fetch from event_log — covers crises, bills, government events, trade, diplomatic
     const [evResult, billResult, factionResult, protestResult] = await Promise.all([
       _supabase.from('event_log').select('*')
         .eq('nation_id', nationId)
@@ -1259,60 +1291,26 @@ async function loadDashEvents(nationId, currentTick, parties) {
     const protests = protestResult.data || [];
 
     // Convert bills to event-like objects
-    const billEvents = bills.map(b => {
-      const sponsor = b.factions?.faction_name || 'Unknown';
-      const sponsorColor = b.factions?.party_color || '';
-      const sponsorHtml = sponsorColor
-        ? `<span style="color:${sponsorColor.replace(/[^a-zA-Z0-9#(),.\s%]/g, '')};font-weight:600">${esc(sponsor)}</span>`
-        : `<strong>${esc(sponsor)}</strong>`;
-      return {
-        fired_at_tick: b.proposed_tick,
-        event_name: b.bill_name,
-        _desc_html: `${sponsorHtml} proposed "${esc(b.bill_name)}"`,
-        category: 'bill',
-        _synthetic: true
-      };
-    });
+    const billEvents = bills.map(b => ({
+      fired_at_tick: b.proposed_tick,
+      event_name: b.bill_name,
+      _desc_html: `${partyHtml(b.factions?.faction_name, b.factions?.party_color)} proposed "${esc(b.bill_name)}"`,
+      category: 'bill',
+      _synthetic: true
+    }));
 
     // Convert factions to event-like objects with ideology summary
-    const AXES = [
-      { key: 'liberty_equality', left: 'Liberty', right: 'Equality' },
-      { key: 'tradition_progress', left: 'Tradition', right: 'Progress' },
-      { key: 'security_freedom', left: 'Security', right: 'Freedom' },
-      { key: 'globalism_nationalism', left: 'Globalism', right: 'Nationalism' },
-      { key: 'individualism_collectivism', left: 'Individualism', right: 'Collectivism' },
-    ];
-    function ideologySummary(idRow) {
-      if (!idRow) return '';
-      const tags = [];
-      for (const axis of AXES) {
-        const score = idRow[axis.key] || 0;
-        const abs = Math.abs(score);
-        if (abs <= 10) continue;
-        const intensity = abs <= 30 ? 'Leaning' : abs <= 60 ? 'Strong' : 'Radical';
-        const side = score < 0 ? axis.left : axis.right;
-        tags.push(`${intensity} ${side}`);
-      }
-      return tags.length > 0 ? tags.join(', ') : 'Centrist';
-    }
-
     const factionEvents = factions.map(f => {
       const leaderName = (f.leader_first_name && f.leader_last_name)
         ? `${f.leader_first_name} ${f.leader_last_name}` : null;
       const idRow = Array.isArray(f.faction_ideology) ? f.faction_ideology[0] : f.faction_ideology;
       const ideology = ideologySummary(idRow);
-      const nameColor = f.party_color
-        ? `<span style="color:${f.party_color.replace(/[^a-zA-Z0-9#(),.\s%]/g, '')};font-weight:600">${esc(f.faction_name)}</span>`
-        : `<strong>${esc(f.faction_name)}</strong>`;
       const leaderPart = leaderName ? ` led by <strong>${esc(leaderName)}</strong>` : '';
       const ideologyPart = ideology ? ` — <em>${esc(ideology)}</em>` : '';
-      // Approximate tick from created_at timestamp (fallback: use earliest known tick)
-      const createdDate = f.created_at ? new Date(f.created_at) : null;
-      // We can't perfectly map timestamp→tick, so place these at the beginning
       return {
         fired_at_tick: 0,
         event_name: f.faction_name,
-        _desc_html: `${nameColor} founded${leaderPart}${ideologyPart}`,
+        _desc_html: `${partyHtml(f.faction_name, f.party_color)} founded${leaderPart}${ideologyPart}`,
         category: 'new_party',
         _synthetic: true,
         _created_at: f.created_at
@@ -1320,14 +1318,8 @@ async function loadDashEvents(nationId, currentTick, parties) {
     });
 
     // Convert protests to event-like objects
-    const TIER_LABELS = { 1:'Embarrassing Fizzle', 2:'Modest Showing', 3:'Respectable Turnout', 4:'Strong Protest', 5:'Mass Demonstration', 6:'Historic Protest', 7:'Nationwide Protest' };
     const protestEvents = protests.map(p => {
-      const partyName = p.factions?.faction_name || 'Unknown';
-      const partyColor = p.factions?.party_color || '';
-      const partyHtml = partyColor
-        ? `<span style="color:${partyColor.replace(/[^a-zA-Z0-9#(),.\s%]/g, '')};font-weight:600">${esc(partyName)}</span>`
-        : `<strong>${esc(partyName)}</strong>`;
-      const tierLabel = TIER_LABELS[p.tier] || `Tier ${p.tier}`;
+      const tierLabel = PROTEST_TIER_LABELS[p.tier] || `Tier ${p.tier}`;
       const demandPart = p.demand_label ? ` demanding "${esc(p.demand_label)}"` : '';
       const isCrisis = p.status === 'crisis_active';
       const tierColor = (p.tier >= 6) ? 'var(--red, #e74c3c)' : (p.tier >= 4) ? 'var(--orange, #f39c12)' : '';
@@ -1337,7 +1329,7 @@ async function loadDashEvents(nationId, currentTick, parties) {
       return {
         fired_at_tick: p.tick_resolved || p.tick_called,
         event_name: tierLabel,
-        _desc_html: `${partyHtml} organised a protest${demandPart} — ${tierHtml}${isCrisis ? ' <span style="color:var(--red, #e74c3c);font-weight:700;">(CRISIS)</span>' : ''}`,
+        _desc_html: `${partyHtml(p.factions?.faction_name, p.factions?.party_color)} organised a protest${demandPart} — ${tierHtml}${isCrisis ? ' <span style="color:var(--red, #e74c3c);font-weight:700;">(CRISIS)</span>' : ''}`,
         category: 'protest',
         _synthetic: true
       };
@@ -1455,60 +1447,28 @@ async function loadWorldEvents(excludeNationId, currentTick) {
     const factions = factionResult.data || [];
     const protests = protestResult.data || [];
 
-    // Ideology summary helper
-    const W_AXES = [
-      { key: 'liberty_equality', left: 'Liberty', right: 'Equality' },
-      { key: 'tradition_progress', left: 'Tradition', right: 'Progress' },
-      { key: 'security_freedom', left: 'Security', right: 'Freedom' },
-      { key: 'globalism_nationalism', left: 'Globalism', right: 'Nationalism' },
-      { key: 'individualism_collectivism', left: 'Individualism', right: 'Collectivism' },
-    ];
-    function wIdeologySummary(idRow) {
-      if (!idRow) return '';
-      const tags = [];
-      for (const axis of W_AXES) {
-        const score = idRow[axis.key] || 0;
-        const abs = Math.abs(score);
-        if (abs <= 10) continue;
-        const intensity = abs <= 30 ? 'Leaning' : abs <= 60 ? 'Strong' : 'Radical';
-        const side = score < 0 ? axis.left : axis.right;
-        tags.push(`${intensity} ${side}`);
-      }
-      return tags.length > 0 ? tags.join(', ') : 'Centrist';
-    }
-
     // Convert bills to event-like objects
-    const billEvents = bills.map(b => {
-      const sponsor = b.factions?.faction_name || 'Unknown';
-      const sponsorColor = b.factions?.party_color || '';
-      const sponsorHtml = sponsorColor
-        ? `<span style="color:${sponsorColor.replace(/[^a-zA-Z0-9#(),.\s%]/g, '')};font-weight:600">${esc(sponsor)}</span>`
-        : `<strong>${esc(sponsor)}</strong>`;
-      return {
-        fired_at_tick: b.proposed_tick,
-        event_name: b.bill_name,
-        _desc_html: `${sponsorHtml} proposed "${esc(b.bill_name)}"`,
-        category: 'bill',
-        _synthetic: true,
-        nations: b.nations
-      };
-    });
+    const billEvents = bills.map(b => ({
+      fired_at_tick: b.proposed_tick,
+      event_name: b.bill_name,
+      _desc_html: `${partyHtml(b.factions?.faction_name, b.factions?.party_color)} proposed "${esc(b.bill_name)}"`,
+      category: 'bill',
+      _synthetic: true,
+      nations: b.nations
+    }));
 
     // Convert factions to event-like objects
     const factionEvents = factions.map(f => {
       const leaderName = (f.leader_first_name && f.leader_last_name)
         ? `${f.leader_first_name} ${f.leader_last_name}` : null;
       const idRow = Array.isArray(f.faction_ideology) ? f.faction_ideology[0] : f.faction_ideology;
-      const ideology = wIdeologySummary(idRow);
-      const nameColor = f.party_color
-        ? `<span style="color:${f.party_color.replace(/[^a-zA-Z0-9#(),.\s%]/g, '')};font-weight:600">${esc(f.faction_name)}</span>`
-        : `<strong>${esc(f.faction_name)}</strong>`;
+      const ideology = ideologySummary(idRow);
       const leaderPart = leaderName ? ` led by <strong>${esc(leaderName)}</strong>` : '';
       const ideologyPart = ideology ? ` — <em>${esc(ideology)}</em>` : '';
       return {
         fired_at_tick: 0,
         event_name: f.faction_name,
-        _desc_html: `${nameColor} founded${leaderPart}${ideologyPart}`,
+        _desc_html: `${partyHtml(f.faction_name, f.party_color)} founded${leaderPart}${ideologyPart}`,
         category: 'new_party',
         _synthetic: true,
         _created_at: f.created_at,
@@ -1517,14 +1477,8 @@ async function loadWorldEvents(excludeNationId, currentTick) {
     });
 
     // Convert protests to event-like objects
-    const W_TIER_LABELS = { 1:'Embarrassing Fizzle', 2:'Modest Showing', 3:'Respectable Turnout', 4:'Strong Protest', 5:'Mass Demonstration', 6:'Historic Protest', 7:'Nationwide Protest' };
     const protestEvents = protests.map(p => {
-      const partyName = p.factions?.faction_name || 'Unknown';
-      const partyColor = p.factions?.party_color || '';
-      const partyHtml = partyColor
-        ? `<span style="color:${partyColor.replace(/[^a-zA-Z0-9#(),.\s%]/g, '')};font-weight:600">${esc(partyName)}</span>`
-        : `<strong>${esc(partyName)}</strong>`;
-      const tierLabel = W_TIER_LABELS[p.tier] || `Tier ${p.tier}`;
+      const tierLabel = PROTEST_TIER_LABELS[p.tier] || `Tier ${p.tier}`;
       const demandPart = p.demand_label ? ` demanding "${esc(p.demand_label)}"` : '';
       const isCrisis = p.status === 'crisis_active';
       const tierColor = (p.tier >= 6) ? 'var(--red, #e74c3c)' : (p.tier >= 4) ? 'var(--orange, #f39c12)' : '';
@@ -1534,7 +1488,7 @@ async function loadWorldEvents(excludeNationId, currentTick) {
       return {
         fired_at_tick: p.tick_resolved || p.tick_called,
         event_name: tierLabel,
-        _desc_html: `${partyHtml} organised a protest${demandPart} — ${tierHtml}${isCrisis ? ' <span style="color:var(--red, #e74c3c);font-weight:700;">(CRISIS)</span>' : ''}`,
+        _desc_html: `${partyHtml(p.factions?.faction_name, p.factions?.party_color)} organised a protest${demandPart} — ${tierHtml}${isCrisis ? ' <span style="color:var(--red, #e74c3c);font-weight:700;">(CRISIS)</span>' : ''}`,
         category: 'protest',
         _synthetic: true,
         nations: p.nations
