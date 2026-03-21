@@ -4697,8 +4697,7 @@ function renderElectorateSpreadTab(playerFaction, nation, allParties, allPartyId
     for (const ax of ES_AXES) {
         let weightedSum = 0;
         for (const b of blocs) {
-            const raw = Number(b[ax.blocKey] ?? 0); // -100 to +100
-            const norm = (raw + 100) / 2; // 0-100
+            const norm = Number(b[ax.blocKey] ?? 50); // already 0-100 (50 = neutral)
             weightedSum += norm * (b.population_weight || 0);
         }
         const mean = weightedSum / totalWeight;
@@ -4706,8 +4705,7 @@ function renderElectorateSpreadTab(playerFaction, nation, allParties, allPartyId
         // Weighted standard deviation
         let varianceSum = 0;
         for (const b of blocs) {
-            const raw = Number(b[ax.blocKey] ?? 0);
-            const norm = (raw + 100) / 2;
+            const norm = Number(b[ax.blocKey] ?? 50);
             varianceSum += (b.population_weight || 0) * Math.pow(norm - mean, 2);
         }
         const stdDev = Math.sqrt(varianceSum / totalWeight);
