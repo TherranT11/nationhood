@@ -6,13 +6,13 @@
  *
  * V5 Autocracy System — Phase 6
  *
- * NOTE: Helpers loadPillarContext, persistBackingChanges, clampStat, roll
- * are declared in autocracy-actions-military-party-oligarch.js and available
- * in the same scope after bundle concatenation.
+ * Helpers loadPillarContext, persistBackingChanges, clampStat, roll
+ * are imported from autocracy-actions-military-party-oligarch.js.
  */
 
 import { registerAutocracyAction, resetLeaderEscalations } from './autocracy-actions.js';
 import { applyBackingDelta } from './autocracy-pillars.js';
+import { roll, loadPillarContext, persistBackingChanges, clampStat } from './autocracy-actions-military-party-oligarch.js';
 
 // ═════════════════════════════════════════════════════════════════════════════
 // SECURITY SERVICES ACTIONS
