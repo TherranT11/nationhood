@@ -21209,6 +21209,31 @@ async function processCrises(supabase, nation, currentTick) {
         });
 
         console.log(`Crisis activated: "${template.name}" in ${nation.name} (tick ${currentTick})`);
+
+        // Enthusiasm shock: governing parties lose, opposition gains
+        try {
+            const { data: allParties } = await supabase
+                .from('factions')
+                .select('id, faction_type')
+                .eq('nation_id', nation.id)
+                .eq('faction_type', 'party');
+            const coalition = await fetchActiveCoalition(supabase, nation.id);
+            const coalitionIds = new Set(coalition?.party_ids || []);
+            const isGov = (fId) => fId === nation.ruling_faction_id || coalitionIds.has(fId);
+
+            for (const p of (allParties || [])) {
+                if (isGov(p.id)) {
+                    await nudgeApproval(supabase, p.id, nation.id, -10);
+                } else {
+                    await nudgeApproval(supabase, p.id, nation.id, 5);
+                }
+            }
+            // Nation-wide enthusiasm spike from crisis
+            await nudgeEnthusiasm(supabase, nation.id, CFG.ENTHUSIASM_CRISIS_BONUS);
+            console.log(`[Crisis] Enthusiasm shock applied for ${nation.name}: gov -10 approval, opp +5 approval`);
+        } catch (enthErr) {
+            console.error(`[Crisis] Enthusiasm shock failed for ${nation.name}:`, enthErr.message);
+        }
     }
 
     // 4. Process active crises: apply effects first, then check end triggers
