@@ -395,7 +395,10 @@ async function renderPartyTab(f, nation, data) {
 
         <div class="pol-row-2">
         ${renderNationalMoodBox(nation, activeCrises, currentTick)}
-        ${renderIdeologyBox(allParties, allPartyIdeologies, f.id)}
+        <div class="pol-ideology-box" id="stance-summary-container">
+            <div class="pol-ideo-header"><span class="pol-mod-title">Stances</span></div>
+            <div id="stance-summary-strip"></div>
+        </div>
         ${renderEditIdentityBox(f, currentTick)}
         </div>
 
@@ -503,9 +506,7 @@ async function renderPartyTab(f, nation, data) {
         initElectionResultsBox();
         initBlocAlignment();
     }
-    initIdeologyToggle();
-
-    // Load stance summary strip into the Ideology box
+    // Load stance summary into the stance container
     if (!isAutoNation) {
         _renderStanceSummaryStrip(f.id, nation.id);
     }
@@ -1038,138 +1039,7 @@ function importanceColor(pct) {
     return 'var(--dgreen)';
 }
 
-function renderIdeologyBox(allParties, allPartyIdeologies, playerFactionId) {
-    const parties = allParties || [];
-    const ideoMap = {};
-    for (const row of (allPartyIdeologies || [])) {
-        ideoMap[row.faction_id] = row;
-    }
-
-    // Build party data with ideology positions
-    const partyData = parties.map(p => ({
-        id: p.id,
-        name: p.faction_name || 'Unknown',
-        abbr: p.abbreviation || (p.faction_name || '??').substring(0, 2).toUpperCase(),
-        color: p.party_color || '#888',
-        isPlayer: p.id === playerFactionId,
-        ideo: ideoMap[p.id] || {}
-    }));
-
-    // Party legend (clickable to toggle visibility)
-    const legendHtml = partyData.map(p =>
-        `<div class="pol-ideo-legend-item" data-ideo-party="${p.id}" title="Click to toggle">
-            <div class="pol-ideo-legend-dot" style="background:${p.color}"></div>
-            <span class="pol-ideo-legend-abbr" style="color:${p.color}">${escapeHtml(p.abbr)}</span>
-            ${p.isPlayer ? '<span class="pol-ideo-legend-you">YOU</span>' : ''}
-        </div>`
-    ).join('');
-
-    // Zone legend
-    const zoneLegendHtml = `
-        <div class="pol-ideo-zone-legend">
-            <div class="pol-ideo-zone-item">
-                <div class="pol-ideo-zone-line" style="background:rgba(250,204,21,0.33)"></div>
-                <span class="pol-ideo-zone-label">Centrist / Moderate</span>
-            </div>
-            <div class="pol-ideo-zone-item">
-                <div class="pol-ideo-zone-line" style="background:rgba(239,68,68,0.33)"></div>
-                <span class="pol-ideo-zone-label">Moderate / Radical</span>
-            </div>
-        </div>`;
-
-    // Axis tracks
-    const axesHtml = IDEOLOGY_AXES.map(ax => {
-        // Party markers on this axis
-        const markersHtml = partyData.map(p => {
-            const rawVal = Number(p.ideo[ax.key] ?? 0); // -100 to +100
-            const pos = (rawVal + 100) / 2; // normalize to 0–100
-            return `<div class="pol-ideo-marker" data-ideo-party="${p.id}" style="left:${pos}%;width:10px;height:10px;background:${p.color}"></div>`;
-        }).join('');
-
-        return `<div>
-            <div class="pol-ideo-axis-labels">
-                <span class="pol-ideo-axis-label">${escapeHtml(ax.leftLabel)}</span>
-                <span class="pol-ideo-axis-label">${escapeHtml(ax.rightLabel)}</span>
-            </div>
-            <div class="pol-ideo-track">
-                <div class="pol-ideo-zone-line-v" style="left:15%;background:rgba(239,68,68,0.2)"></div>
-                <div class="pol-ideo-zone-line-v" style="left:85%;background:rgba(239,68,68,0.2)"></div>
-                <div class="pol-ideo-zone-line-v" style="left:35%;background:rgba(250,204,21,0.2)"></div>
-                <div class="pol-ideo-zone-line-v" style="left:65%;background:rgba(250,204,21,0.2)"></div>
-                <div class="pol-ideo-center-line"></div>
-                ${markersHtml}
-            </div>
-        </div>`;
-    }).join('');
-
-    // Party stance summaries
-    const summariesHtml = partyData.map(p => {
-        const stances = [];
-        for (const ax of IDEOLOGY_AXES) {
-            const raw = Number(p.ideo[ax.key] ?? 0);
-            const pos = (raw + 100) / 2; // 0-100
-            if (pos >= 35 && pos <= 65) continue; // centrist — skip
-            const side = pos < 50 ? ax.leftLabel : ax.rightLabel;
-            const zone = (pos <= 15 || pos >= 85) ? 'Radical' : 'Moderate';
-            const zoneColor = zone === 'Radical' ? 'var(--dred)' : 'var(--damber)';
-            stances.push(`<span style="color:${zoneColor}">${zone}</span> ${escapeHtml(side)}`);
-        }
-        if (stances.length === 0) return '';
-        return `<div class="pol-ideo-summary-row" data-ideo-party="${p.id}">
-            <span class="pol-ideo-summary-abbr" style="color:${p.color}">${escapeHtml(p.abbr)}:</span>
-            <span class="pol-ideo-summary-stances">${stances.join(', ')}</span>
-        </div>`;
-    }).filter(Boolean).join('');
-
-    // Decay rates for player's party
-    const playerParty = partyData.find(p => p.isPlayer);
-    let decayHtml = '';
-    if (playerParty) {
-        const decayItems = [];
-        for (const ax of IDEOLOGY_AXES) {
-            const score = Number(playerParty.ideo[ax.key] ?? 0);
-            if (Math.abs(score) <= 10) continue; // dead zone
-            const decayMagnitude = Math.max(1, Math.round(Math.abs(score) / 50));
-            const side = score > 0 ? ax.rightLabel : ax.leftLabel;
-            decayItems.push(`<span style="color:var(--dtxt-muted)">${escapeHtml(side)}</span> <span style="color:var(--dred)">-${decayMagnitude}/tick</span>`);
-        }
-        if (decayItems.length > 0) {
-            decayHtml = `<div class="pol-ideo-decay" style="padding:6px 10px;font-size:11px;color:var(--dtxt-muted);border-top:1px solid var(--dborder)">
-                <span style="opacity:0.7">Drift toward center:</span> ${decayItems.join(' &middot; ')}
-            </div>`;
-        }
-    }
-
-    return `
-        <div class="pol-ideology-box">
-            <div class="pol-ideo-header">
-                <span class="pol-mod-title">Ideology — All Parties</span>
-            </div>
-            <div class="pol-ideo-legend">${legendHtml}</div>
-            ${zoneLegendHtml}
-            <div class="pol-ideo-axes">${axesHtml}</div>
-            ${summariesHtml ? `<div class="pol-ideo-summaries">${summariesHtml}</div>` : ''}
-            ${decayHtml}
-            <div id="stance-summary-strip"></div>
-        </div>`;
-}
-
-function initIdeologyToggle() {
-    const box = document.querySelector('.pol-ideology-box');
-    if (!box) return;
-    box.querySelectorAll('.pol-ideo-legend-item[data-ideo-party]').forEach(item => {
-        item.addEventListener('click', () => {
-            const pid = item.getAttribute('data-ideo-party');
-            const hidden = item.classList.toggle('ideo-hidden');
-            box.querySelectorAll(`.pol-ideo-marker[data-ideo-party="${pid}"]`).forEach(m => {
-                m.style.display = hidden ? 'none' : '';
-            });
-            box.querySelectorAll(`.pol-ideo-summary-row[data-ideo-party="${pid}"]`).forEach(s => {
-                s.style.display = hidden ? 'none' : '';
-            });
-        });
-    });
-}
+// Ideology box removed — replaced by stance summary container in pol-row-2
 
 function renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, playerFactionId) {
     const FORECAST_START = 12;
@@ -5387,19 +5257,20 @@ async function _renderStanceSummaryStrip(factionId, nationId) {
 
     const { data: stances } = await _supabase
         .from('faction_issue_stance')
-        .select('issue_id, axis, side, intensity, strength')
+        .select('issue_id, axis, side, intensity, strength, decay_rate, ticks_held, is_pioneer, ideologically_consistent')
         .eq('faction_id', factionId)
         .eq('nation_id', nationId);
 
+    const maxStances = STANCE_CONFIG.MAX_STANCES;
+
     if (!stances || stances.length === 0) {
-        strip.innerHTML = `<div class="ss-strip">
-            <span class="ss-label">Stances</span>
-            <span class="ss-none">None — take stances in the Electorate tab</span>
+        strip.innerHTML = `<div style="color:var(--dtext-3);font-size:12px;font-family:var(--dfont-ui);padding:4px 0;">
+            No active stances. Take a stance in the <span style="color:var(--dtext-0);font-weight:600">Electorate</span> tab.
         </div>`;
         return;
     }
 
-    let pillsHtml = '';
+    let rowsHtml = '';
     for (const s of stances) {
         const issueDef = ISSUE_DEFS[s.issue_id];
         if (!issueDef) continue;
@@ -5407,19 +5278,42 @@ async function _renderStanceSummaryStrip(factionId, nationId) {
         const sideLabel = s.side === 'left' ? axisInfo?.leftLabel : axisInfo?.rightLabel;
         const sideColor = s.side === 'left' ? axisInfo?.leftColor : axisInfo?.rightColor;
         const strength = Number(s.strength ?? 0);
+        const decayRate = Number(s.decay_rate ?? 0);
+        const ticksHeld = Number(s.ticks_held ?? 0);
+        const isWeak = strength <= 20;
         const isFading = strength <= 40;
+        const strengthColor = isWeak ? 'var(--dred)' : isFading ? 'var(--damber)' : 'var(--dgreen)';
 
-        pillsHtml += `<span class="ss-pill${isFading ? ' ss-pill--fading' : ''}" style="border-color:${sideColor}">
-            <span class="ss-pill-issue">${escapeHtml(issueDef.label)}</span>
-            <span class="ss-pill-side" style="color:${sideColor}">${sideLabel}</span>
-            <span class="ss-pill-str">${strength.toFixed(0)}</span>
-        </span>`;
+        const pioneerBadge = s.is_pioneer ? '<span style="font-size:9px;color:#4ade80;font-weight:700;margin-left:4px">PIONEER</span>' : '';
+        const consistBadge = s.ideologically_consistent === false ? '<span style="font-size:9px;color:#f97316;font-weight:700;margin-left:4px">INCONSISTENT</span>' : '';
+        const fadeBadge = isFading ? `<span style="font-size:9px;color:${strengthColor};font-weight:700;margin-left:4px">${isWeak ? 'EXPIRING' : 'FADING'}</span>` : '';
+
+        rowsHtml += `
+        <div style="padding:6px 0;${rowsHtml ? 'border-top:1px solid var(--dborder-0);' : ''}">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+                <div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px">
+                    <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0)">${escapeHtml(issueDef.label)}</span>
+                    <span style="font-size:10px;padding:1px 5px;border:1px solid ${sideColor};border-radius:3px;color:${sideColor};margin-left:4px">${s.intensity} ${sideLabel}</span>
+                    ${pioneerBadge}${consistBadge}${fadeBadge}
+                </div>
+                <span style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3)">Held ${ticksHeld}t</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+                <div style="flex:1;height:6px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden">
+                    <div style="width:${strength}%;height:100%;background:${strengthColor};border-radius:2px"></div>
+                </div>
+                <span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${strengthColor};width:28px;text-align:right">${strength.toFixed(0)}</span>
+                <span style="font-family:var(--dfont-mono);font-size:10px;color:var(--dred);width:40px;text-align:right">-${decayRate}/t</span>
+            </div>
+        </div>`;
     }
 
-    strip.innerHTML = `<div class="ss-strip">
-        <span class="ss-label">Stances ${stances.length}/${STANCE_CONFIG.MAX_STANCES}</span>
-        <div class="ss-pills">${pillsHtml}</div>
-    </div>`;
+    strip.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${stances.length} / ${maxStances}</span>
+        </div>
+        ${rowsHtml}
+        <div style="margin-top:8px;font-size:10px;color:var(--dtext-3);font-family:var(--dfont-ui)">Manage stances in the <span style="color:var(--dtext-0);font-weight:600">Electorate</span> tab</div>`;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
