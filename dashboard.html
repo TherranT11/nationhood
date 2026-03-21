@@ -1187,6 +1187,8 @@ const EVENT_CATEGORY_STYLES = {
   POLITICAL:        { icon: '\u2605', color: '#3498db', bg: 'rgba(52,152,219,0.12)', label: 'POLITICAL' },
   Trade:            { icon: '\u2693', color: '#2ecc71', bg: 'rgba(46,204,113,0.12)', label: 'TRADE' },
   Diplomatic:       { icon: '\uD83C\uDF10', color: '#9b59b6', bg: 'rgba(155,89,182,0.12)', label: 'DIPLOMATIC' },
+  bill:             { icon: '\uD83D\uDCDC', color: '#3498db', bg: 'rgba(52,152,219,0.10)', label: 'BILL' },
+  new_party:        { icon: '\uD83C\uDFF3', color: '#9b59b6', bg: 'rgba(155,89,182,0.10)', label: 'NEW PARTY' },
 };
 const EVENT_CATEGORY_DEFAULT = { icon: '\u2022', color: '#888', bg: 'rgba(136,136,136,0.08)', label: '' };
 
@@ -1222,32 +1224,126 @@ async function loadDashEvents(nationId, currentTick, parties) {
 
   try {
     // Fetch from event_log — covers crises, bills, government events, trade, diplomatic
-    const { data: events, error } = await _supabase
-      .from('event_log')
-      .select('*')
-      .eq('nation_id', nationId)
-      .order('fired_at_tick', { ascending: false })
-      .limit(50);
+    const [evResult, billResult, factionResult] = await Promise.all([
+      _supabase.from('event_log').select('*')
+        .eq('nation_id', nationId)
+        .order('fired_at_tick', { ascending: false })
+        .limit(50),
+      // Recent bill proposals
+      _supabase.from('bills')
+        .select('id, bill_name, proposed_tick, proposed_by, bill_type, factions!proposed_by(faction_name, party_color)')
+        .eq('nation_id', nationId)
+        .not('bill_type', 'in', '("no_confidence","confirmation","minister_confirmation","veto_override","impeachment_conviction")')
+        .order('proposed_tick', { ascending: false })
+        .limit(30),
+      // New parties (factions created recently)
+      _supabase.from('factions')
+        .select('id, faction_name, party_color, leader_first_name, leader_last_name, created_at, faction_ideology(liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism)')
+        .eq('nation_id', nationId)
+        .order('created_at', { ascending: false })
+        .limit(20),
+    ]);
 
-    if (error) throw error;
+    if (evResult.error) throw evResult.error;
+    const events = evResult.data || [];
+    const bills = billResult.data || [];
+    const factions = factionResult.data || [];
 
-    if (!events || events.length === 0) {
+    // Convert bills to event-like objects
+    const billEvents = bills.map(b => {
+      const sponsor = b.factions?.faction_name || 'Unknown';
+      const sponsorColor = b.factions?.party_color || '';
+      const sponsorHtml = sponsorColor
+        ? `<span style="color:${sponsorColor.replace(/[^a-zA-Z0-9#(),.\s%]/g, '')};font-weight:600">${esc(sponsor)}</span>`
+        : `<strong>${esc(sponsor)}</strong>`;
+      return {
+        fired_at_tick: b.proposed_tick,
+        event_name: b.bill_name,
+        _desc_html: `${sponsorHtml} proposed "${esc(b.bill_name)}"`,
+        category: 'bill',
+        _synthetic: true
+      };
+    });
+
+    // Convert factions to event-like objects with ideology summary
+    const AXES = [
+      { key: 'liberty_equality', left: 'Liberty', right: 'Equality' },
+      { key: 'tradition_progress', left: 'Tradition', right: 'Progress' },
+      { key: 'security_freedom', left: 'Security', right: 'Freedom' },
+      { key: 'globalism_nationalism', left: 'Globalism', right: 'Nationalism' },
+      { key: 'individualism_collectivism', left: 'Individualism', right: 'Collectivism' },
+    ];
+    function ideologySummary(idRow) {
+      if (!idRow) return '';
+      const tags = [];
+      for (const axis of AXES) {
+        const score = idRow[axis.key] || 0;
+        const abs = Math.abs(score);
+        if (abs <= 10) continue;
+        const intensity = abs <= 30 ? 'Leaning' : abs <= 60 ? 'Strong' : 'Radical';
+        const side = score < 0 ? axis.left : axis.right;
+        tags.push(`${intensity} ${side}`);
+      }
+      return tags.length > 0 ? tags.join(', ') : 'Centrist';
+    }
+
+    const factionEvents = factions.map(f => {
+      const leaderName = (f.leader_first_name && f.leader_last_name)
+        ? `${f.leader_first_name} ${f.leader_last_name}` : null;
+      const idRow = Array.isArray(f.faction_ideology) ? f.faction_ideology[0] : f.faction_ideology;
+      const ideology = ideologySummary(idRow);
+      const nameColor = f.party_color
+        ? `<span style="color:${f.party_color.replace(/[^a-zA-Z0-9#(),.\s%]/g, '')};font-weight:600">${esc(f.faction_name)}</span>`
+        : `<strong>${esc(f.faction_name)}</strong>`;
+      const leaderPart = leaderName ? ` led by <strong>${esc(leaderName)}</strong>` : '';
+      const ideologyPart = ideology ? ` — <em>${esc(ideology)}</em>` : '';
+      // Approximate tick from created_at timestamp (fallback: use earliest known tick)
+      const createdDate = f.created_at ? new Date(f.created_at) : null;
+      // We can't perfectly map timestamp→tick, so place these at the beginning
+      return {
+        fired_at_tick: 0,
+        event_name: f.faction_name,
+        _desc_html: `${nameColor} founded${leaderPart}${ideologyPart}`,
+        category: 'new_party',
+        _synthetic: true,
+        _created_at: f.created_at
+      };
+    });
+
+    // Merge all events, sort by tick (desc), then by created_at for ties
+    const merged = [
+      ...events.map(ev => ({ ...ev, _synthetic: false })),
+      ...billEvents,
+      ...factionEvents
+    ].sort((a, b) => {
+      const tickDiff = (b.fired_at_tick || 0) - (a.fired_at_tick || 0);
+      if (tickDiff !== 0) return tickDiff;
+      // For same tick, sort by created_at if available
+      const aTime = a._created_at || a.created_at || '';
+      const bTime = b._created_at || b.created_at || '';
+      return bTime > aTime ? 1 : bTime < aTime ? -1 : 0;
+    }).slice(0, 60);
+
+    if (merged.length === 0) {
       container.innerHTML = '<div style="color:var(--text-secondary);padding:24px;font-size:0.75rem;text-align:center;font-style:italic;">No events recorded yet.</div>';
       return;
     }
 
-    const rows = events.map(ev => {
+    const rows = merged.map(ev => {
       const dateStr = tickToDate(ev.fired_at_tick);
-      const desc = ev.description_chosen || ev.description_used || '';
-      // Strip internal prefixes like "CRISIS_STARTED: ", "REVOLUTION_WARNING", etc.
-      const rawName = ev.event_name || '';
-      const eventName = rawName.replace(/^[A-Z_]+:\s*/, '');
       const cat = EVENT_CATEGORY_STYLES[ev.category] || EVENT_CATEGORY_DEFAULT;
 
-      // Show bold event name as headline, colorized description below
-      const headline = eventName ? `<strong>${esc(eventName)}</strong>` : '';
-      const body = desc ? colorizeText(desc, eventName) : '';
-      const displayText = headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
+      let displayText;
+      if (ev._synthetic && ev._desc_html) {
+        displayText = ev._desc_html;
+      } else {
+        const desc = ev.description_chosen || ev.description_used || '';
+        const rawName = ev.event_name || '';
+        const eventName = rawName.replace(/^[A-Z_]+:\s*/, '');
+        const headline = eventName ? `<strong>${esc(eventName)}</strong>` : '';
+        const body = desc ? colorizeText(desc, eventName) : '';
+        displayText = headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
+      }
 
       return `<div class="dash-event-row">
         <span class="dash-event-date">${esc(dateStr)}</span>
@@ -1291,16 +1387,107 @@ async function loadWorldEvents(excludeNationId, currentTick) {
   container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.75rem;text-align:center;">Loading world events\u2026</div>';
 
   try {
-    const { data: events, error } = await _supabase
-      .from('event_log')
-      .select('*, nations!inner(name, nation_profiles(flag_url))')
-      .neq('nation_id', excludeNationId)
-      .order('fired_at_tick', { ascending: false })
-      .limit(80);
+    const [evResult, billResult, factionResult] = await Promise.all([
+      _supabase.from('event_log')
+        .select('*, nations!inner(name, nation_profiles(flag_url))')
+        .neq('nation_id', excludeNationId)
+        .order('fired_at_tick', { ascending: false })
+        .limit(80),
+      // World bill proposals (other nations)
+      _supabase.from('bills')
+        .select('id, bill_name, proposed_tick, nation_id, proposed_by, bill_type, factions!proposed_by(faction_name, party_color), nations!inner(name, nation_profiles(flag_url))')
+        .neq('nation_id', excludeNationId)
+        .not('bill_type', 'in', '("no_confidence","confirmation","minister_confirmation","veto_override","impeachment_conviction")')
+        .order('proposed_tick', { ascending: false })
+        .limit(30),
+      // World new parties (other nations)
+      _supabase.from('factions')
+        .select('id, faction_name, party_color, leader_first_name, leader_last_name, nation_id, created_at, faction_ideology(liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism), nations!inner(name, nation_profiles(flag_url))')
+        .neq('nation_id', excludeNationId)
+        .order('created_at', { ascending: false })
+        .limit(20),
+    ]);
 
-    if (error) throw error;
+    if (evResult.error) throw evResult.error;
+    const events = evResult.data || [];
+    const bills = billResult.data || [];
+    const factions = factionResult.data || [];
 
-    if (!events || events.length === 0) {
+    // Ideology summary helper
+    const W_AXES = [
+      { key: 'liberty_equality', left: 'Liberty', right: 'Equality' },
+      { key: 'tradition_progress', left: 'Tradition', right: 'Progress' },
+      { key: 'security_freedom', left: 'Security', right: 'Freedom' },
+      { key: 'globalism_nationalism', left: 'Globalism', right: 'Nationalism' },
+      { key: 'individualism_collectivism', left: 'Individualism', right: 'Collectivism' },
+    ];
+    function wIdeologySummary(idRow) {
+      if (!idRow) return '';
+      const tags = [];
+      for (const axis of W_AXES) {
+        const score = idRow[axis.key] || 0;
+        const abs = Math.abs(score);
+        if (abs <= 10) continue;
+        const intensity = abs <= 30 ? 'Leaning' : abs <= 60 ? 'Strong' : 'Radical';
+        const side = score < 0 ? axis.left : axis.right;
+        tags.push(`${intensity} ${side}`);
+      }
+      return tags.length > 0 ? tags.join(', ') : 'Centrist';
+    }
+
+    // Convert bills to event-like objects
+    const billEvents = bills.map(b => {
+      const sponsor = b.factions?.faction_name || 'Unknown';
+      const sponsorColor = b.factions?.party_color || '';
+      const sponsorHtml = sponsorColor
+        ? `<span style="color:${sponsorColor.replace(/[^a-zA-Z0-9#(),.\s%]/g, '')};font-weight:600">${esc(sponsor)}</span>`
+        : `<strong>${esc(sponsor)}</strong>`;
+      return {
+        fired_at_tick: b.proposed_tick,
+        event_name: b.bill_name,
+        _desc_html: `${sponsorHtml} proposed "${esc(b.bill_name)}"`,
+        category: 'bill',
+        _synthetic: true,
+        nations: b.nations
+      };
+    });
+
+    // Convert factions to event-like objects
+    const factionEvents = factions.map(f => {
+      const leaderName = (f.leader_first_name && f.leader_last_name)
+        ? `${f.leader_first_name} ${f.leader_last_name}` : null;
+      const idRow = Array.isArray(f.faction_ideology) ? f.faction_ideology[0] : f.faction_ideology;
+      const ideology = wIdeologySummary(idRow);
+      const nameColor = f.party_color
+        ? `<span style="color:${f.party_color.replace(/[^a-zA-Z0-9#(),.\s%]/g, '')};font-weight:600">${esc(f.faction_name)}</span>`
+        : `<strong>${esc(f.faction_name)}</strong>`;
+      const leaderPart = leaderName ? ` led by <strong>${esc(leaderName)}</strong>` : '';
+      const ideologyPart = ideology ? ` — <em>${esc(ideology)}</em>` : '';
+      return {
+        fired_at_tick: 0,
+        event_name: f.faction_name,
+        _desc_html: `${nameColor} founded${leaderPart}${ideologyPart}`,
+        category: 'new_party',
+        _synthetic: true,
+        _created_at: f.created_at,
+        nations: f.nations
+      };
+    });
+
+    // Merge and sort
+    const merged = [
+      ...events.map(ev => ({ ...ev, _synthetic: false })),
+      ...billEvents,
+      ...factionEvents
+    ].sort((a, b) => {
+      const tickDiff = (b.fired_at_tick || 0) - (a.fired_at_tick || 0);
+      if (tickDiff !== 0) return tickDiff;
+      const aTime = a._created_at || a.created_at || '';
+      const bTime = b._created_at || b.created_at || '';
+      return bTime > aTime ? 1 : bTime < aTime ? -1 : 0;
+    }).slice(0, 80);
+
+    if (merged.length === 0) {
       container.innerHTML = '<div style="color:var(--text-secondary);padding:24px;font-size:0.75rem;text-align:center;font-style:italic;">No world events recorded yet.</div>';
       return;
     }
@@ -1322,20 +1509,25 @@ async function loadWorldEvents(excludeNationId, currentTick) {
       return NATION_COLORS[Math.abs(h) % NATION_COLORS.length];
     }
 
-    const rows = events.map(ev => {
+    const rows = merged.map(ev => {
       const dateStr = tickToDate(ev.fired_at_tick);
-      const desc = ev.description_chosen || ev.description_used || '';
-      const rawName = ev.event_name || '';
-      const eventName = rawName.replace(/^[A-Z_]+:\s*/, '');
       const cat = EVENT_CATEGORY_STYLES[ev.category] || EVENT_CATEGORY_DEFAULT;
       const nationName = ev.nations?.name || 'Unknown';
       const np = ev.nations?.nation_profiles;
       const flagUrl = Array.isArray(np) ? np[0]?.flag_url : np?.flag_url;
       const nc = nationColor(nationName);
 
-      const headline = eventName ? `<strong>${esc(eventName)}</strong>` : '';
-      const body = desc ? esc(desc) : '';
-      const displayText = headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
+      let displayText;
+      if (ev._synthetic && ev._desc_html) {
+        displayText = ev._desc_html;
+      } else {
+        const desc = ev.description_chosen || ev.description_used || '';
+        const rawName = ev.event_name || '';
+        const eventName = rawName.replace(/^[A-Z_]+:\s*/, '');
+        const headline = eventName ? `<strong>${esc(eventName)}</strong>` : '';
+        const body = desc ? esc(desc) : '';
+        displayText = headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
+      }
 
       const flagHtml = flagUrl
         ? `<img src="${esc(flagUrl)}" alt="">`
