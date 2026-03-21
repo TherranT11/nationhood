@@ -556,91 +556,115 @@ const guideContent = {
 </ul>
 </div></details>
 
-<details><summary>Autocratic System</summary><div>
+<details><summary>Autocratic System &mdash; Five Pillars</summary><div>
 <h3>How It Works</h3>
-<p>Autocracy is a fundamentally different game. You are not courting voters or negotiating coalitions. You are managing power &mdash; the loyalty of the factions that keep you in place, and the slow erosion of the Regime Health bar that is always ticking downward. The question is never &ldquo;will I win the election.&rdquo; The question is &ldquo;how long can I hold this together.&rdquo;</p>
+<p>Autocracy replaces elections with internal power struggles. A <strong>Strongman</strong> leads the regime, and four factions each control one of the <strong>Five Pillars of Power</strong>. The fifth pillar &mdash; the Wildcard &mdash; is always unclaimed and decays over time.</p>
 
-<h3>Regime Health</h3>
-<p>The core resource. Starts at <strong>80</strong> and decays at <strong>0.5 per tick</strong> regardless of what you do. If it hits zero, the regime collapses.</p>
+<h3>The Five Pillars</h3>
 <table>
-<tr><th>Range</th><th>Label</th><th>Effect</th></tr>
-<tr><td>80&ndash;100</td><td>Consolidated</td><td>Full action set. No penalties.</td></tr>
-<tr><td>60&ndash;79</td><td>Stable</td><td>Normal operation.</td></tr>
-<tr><td>40&ndash;59</td><td>Strained</td><td>Opposition events more frequent. Coup risk begins.</td></tr>
-<tr><td>20&ndash;39</td><td>Fragile</td><td>International scrutiny. AP costs increase. Loyalty harder to maintain.</td></tr>
-<tr><td>0&ndash;19</td><td>Collapse</td><td>Coup mechanic activates. Regime collapse imminent.</td></tr>
-</table>
-<p><strong>How to raise Regime Health:</strong> Successful Strongman actions, high faction loyalty, low civil unrest and political violence, strong economic performance, successful propaganda.</p>
-
-<h3>The Faction System</h3>
-<p>Instead of voter blocs, you manage internal factions &mdash; military, oligarchs, party apparatus, security services, regional governors. Each faction has three public stats and one private resource:</p>
-<table>
-<tr><th>Stat</th><th>Description</th></tr>
-<tr><td><strong>Loyalty (0&ndash;100)</strong></td><td>How committed to the regime. Falls if ignored or actions they oppose are taken.</td></tr>
-<tr><td><strong>Standing (0&ndash;100)</strong></td><td>How much power they hold. Higher = more influence and more danger if they turn.</td></tr>
-<tr><td><strong>Seats</strong></td><td>Representation in the rubber-stamp parliament. Matters for legitimacy optics.</td></tr>
-<tr><td><strong>Embezzled Funds (hidden)</strong></td><td>Independent power base. High embezzlement = faction is planning something.</td></tr>
+<tr><th>Pillar</th><th>Actions</th><th>Passive Drift Triggers</th></tr>
+<tr><td><strong>Military</strong></td><td>Deploy, Stand Down, Military Exercises</td><td>Civil Unrest &le; 20, Crime Rate &le; 20</td></tr>
+<tr><td><strong>Party</strong></td><td>Rally, Agitate, Party Congress</td><td>Stability &ge; 70, Polarization &ge; 70</td></tr>
+<tr><td><strong>Oligarchs</strong></td><td>Patronage, Capital Flight, Bribe</td><td>GDP Growth &ge; 70, Corruption &ge; 70</td></tr>
+<tr><td><strong>Media</strong></td><td>Broadcast, Smear, Blackout</td><td>Press Freedom &le; 20, Legitimacy &ge; 70</td></tr>
+<tr><td><strong>Security</strong></td><td>Surveillance, Blackmail, Disappear</td><td>Crime Rate &le; 20, Freedom Index &le; 20</td></tr>
 </table>
 
-<h3>Faction Actions</h3>
-<table>
-<tr><th>Action</th><th>Effect</th></tr>
-<tr><td><strong>Reward Faction</strong></td><td>Loyalty +8, Standing +4. Costs treasury. Other factions &minus;2 loyalty.</td></tr>
-<tr><td><strong>Purge Leadership</strong></td><td>Standing &minus;10, Embezzled Funds reset. Loyalty &minus;15. Regime Health +3.</td></tr>
-<tr><td><strong>Promote Faction</strong></td><td>Standing +8 (4 AP). Rival factions &minus;3 Standing.</td></tr>
-<tr><td><strong>Investigate Faction</strong></td><td>Reveals Embezzled Funds. Loyalty &minus;5 (they know you're watching).</td></tr>
-<tr><td><strong>Co-opt Faction</strong></td><td>Loyalty +12 but Standing +8 &mdash; they grow more powerful.</td></tr>
-<tr><td><strong>Isolate Faction</strong></td><td>Standing &minus;6, Loyalty &minus;8 &mdash; weakened but radicalized.</td></tr>
-</table>
-
-<h3>Strongman Actions</h3>
-<p>High-impact, high-cost actions that bypass faction mechanics and directly affect the nation and Regime Health. Visible to all players.</p>
-<table>
-<tr><th>Action</th><th>AP</th><th>Effect</th></tr>
-<tr><td><strong>State of Emergency</strong></td><td>10</td><td>Suspends politics for 3 ticks. Regime Health +8, civil_unrest +6 on expiry.</td></tr>
-<tr><td><strong>Press Suppression</strong></td><td>5</td><td>press_freedom &minus;8, polarization +4, Regime Health +3 for 2 ticks.</td></tr>
-<tr><td><strong>Political Imprisonment</strong></td><td>6</td><td>Removes a rival faction leader. Their faction: loyalty &minus;15, standing &minus;10.</td></tr>
-<tr><td><strong>Nationalization Decree</strong></td><td>8</td><td>Seizes a sector. gdp_growth &minus;2, Regime Health +5, business faction loyalty &minus;12.</td></tr>
-</table>
-<p class="guide-tip">Each Strongman action raises a hidden Repression Score. High repression triggers sanctions, legitimacy penalties, and accelerates civil unrest. Constant repression burns Regime Health faster than it restores it.</p>
-
-<h3>The Rubber-Stamp Parliament</h3>
-<p>Most autocratic nations retain a nominal legislature. It doesn't function as a real check on power. It serves three purposes:</p>
+<h3>Backing (0&ndash;20)</h3>
+<p>Each pillar has a Backing value (0&ndash;20). Backing is <strong>zero-sum</strong>: gaining Backing on one pillar reduces all others proportionally. Sources of Backing change:</p>
 <ul>
-<li>Provides political cover for regime decisions</li>
-<li>Gives lower-tier faction members seats and patronage, maintaining loyalty</li>
-<li>Provides international legitimacy if maintained credibly</li>
-</ul>
-<p>If the regime controls more than 60% of seats, bills pass automatically. The interest is in what bills <em>signal</em>, not in passing them.</p>
-
-<h3>The Coup Mechanic</h3>
-<p>When Regime Health drops below 40 and at least one faction has Loyalty below 25, the coup probability mechanic activates. Each tick a hidden roll determines whether a coup fires.</p>
-<table>
-<tr><th>Condition</th><th>Probability</th></tr>
-<tr><td>Health 30&ndash;40, one disloyal faction</td><td>~5% per tick</td></tr>
-<tr><td>Health 20&ndash;30, two disloyal factions</td><td>~15% per tick</td></tr>
-<tr><td>Health &lt;20, military faction disloyal</td><td>~30% per tick</td></tr>
-</table>
-<table>
-<tr><th>Result</th><th>Effect</th></tr>
-<tr><td><strong>Coup succeeds</strong></td><td>Regime collapses. Coup faction takes control. Previous leader enters opposition.</td></tr>
-<tr><td><strong>Coup fails</strong></td><td>Coup faction: Standing &minus;20, Loyalty &minus;10. Regime Health +5.</td></tr>
-</table>
-<p class="guide-tip">The Military faction is the most dangerous to let become disloyal. They have the direct capability to execute a coup. Keep Military Loyalty above 50 at all times. Everything else can be negotiated around.</p>
-
-<h3>International Standing</h3>
-<p>Autocratic nations face ongoing pressure from the international community. The legitimacy stat is harder to maintain, and certain events trigger automatic international scrutiny.</p>
-<p>Strategies for managing international standing:</p>
-<ul>
-<li>Maintain at least nominal democratic institutions (rubber-stamp elections, token press freedom)</li>
-<li>Prioritize economic performance &mdash; prosperous autocracies face less scrutiny</li>
-<li>Use international organizations strategically for cover</li>
-<li>Build bilateral relationships with players incentivized to ignore your domestic politics</li>
+<li><strong>Actions</strong> &mdash; Most actions increase your pillar&rsquo;s Backing</li>
+<li><strong>Passive Drift</strong> &mdash; National stats can trigger +1 Backing per tick</li>
+<li><strong>Neglect</strong> &mdash; Pillar Backing &le; 3 for 5+ consecutive ticks: extra -1 decay</li>
+<li><strong>Wildcard Decay</strong> &mdash; The unclaimed pillar loses &minus;0.1 per tick (floor 0)</li>
 </ul>
 
-<h3>Transitioning Away from Autocracy</h3>
-<p>An autocratic government can liberalize, but it is deliberate and costly. Requires passing constitutional reform bills through the rubber-stamp parliament while managing faction resistance. Also requires Regime Health above 60 &mdash; you cannot liberalize from weakness.</p>
-<p class="guide-tip">A successful democratic transition is one of the highest-legitimacy actions in the game. It resets negative modifier stacks and opens the full democratic toolkit. But the factions that lose power become potential opposition with existing Standing and accumulated resources.</p>
+<h3>Dual Mode Actions</h3>
+<p>Most actions can be used in two modes:</p>
+<table>
+<tr><th>Mode</th><th>Effect on Tracker</th></tr>
+<tr><td><strong>FOR REGIME</strong></td><td>Tracker decreases (stabilizes regime)</td></tr>
+<tr><td><strong>FOR YOURSELF</strong></td><td>Tracker increases (destabilizes regime)</td></tr>
+</table>
+<p><strong>Stand Down</strong> is always FOR YOURSELF. <strong>Agitate</strong> and <strong>Capital Flight</strong> contribute at half power in regime mode.</p>
+
+<h3>The Tracker (0&ndash;100)</h3>
+<p>The regime stability tracker. Only the Strongman sees the exact word:</p>
+<table>
+<tr><th>Range</th><th>Word</th><th>Meaning</th></tr>
+<tr><td>0&ndash;20</td><td>IRON</td><td>Regime is rock solid</td></tr>
+<tr><td>21&ndash;40</td><td>FIRM</td><td>Stable but watchful</td></tr>
+<tr><td>41&ndash;60</td><td>RESTLESS</td><td>Discontent growing</td></tr>
+<tr><td>61&ndash;80</td><td>VOLATILE</td><td>Regime is fragile</td></tr>
+<tr><td>81&ndash;100</td><td>CRITICAL</td><td>Coup is imminent</td></tr>
+</table>
+<p>The tracker naturally decays toward 30 each tick (+1 or &minus;1).</p>
+
+<h3>Power Level (1&ndash;5)</h3>
+<p>Each faction has a hidden Power level that determines the magnitude of tracker contributions:</p>
+<p><code>base = CEIL(backing / 4) + FLOOR(ministers / 2) + (is_pm ? 1 : 0) + (longevity &ge; 36 ticks ? 1 : 0)</code></p>
+<table>
+<tr><th>Power</th><th>Tracker &Delta;</th></tr>
+<tr><td>1</td><td>&pm;2</td></tr>
+<tr><td>2</td><td>&pm;3</td></tr>
+<tr><td>3</td><td>&pm;4</td></tr>
+<tr><td>4</td><td>&pm;5</td></tr>
+<tr><td>5</td><td>&pm;7</td></tr>
+</table>
+
+<h3>Strongman Exclusives</h3>
+<p>Only the Strongman (ruling faction) can use:</p>
+<ul>
+<li><strong>Arrest Leader</strong> &mdash; Detain a faction leader. Costs 3 AP.</li>
+<li><strong>Execute Leader</strong> &mdash; Kill an arrested leader. Permanent. Pillar becomes Wildcard.</li>
+<li><strong>Release Leader</strong> &mdash; Free a detained leader.</li>
+<li><strong>Favor</strong> &mdash; Grant favour to a faction (+Backing, +Loyalty).</li>
+<li><strong>Emergency Decree</strong> &mdash; Issue decree for immediate stat effects.</li>
+<li><strong>Appoint/Revoke Successor</strong> &mdash; Designate an heir for succession.</li>
+</ul>
+<p>The Strongman can only use their own foundation pillar actions (no tracker movement).</p>
+
+<h3>Coup Types</h3>
+<table>
+<tr><th>Type</th><th>Who</th><th>How</th></tr>
+<tr><td><strong>Standard Coup</strong></td><td>Any non-Strongman</td><td>Roll + Backing bonus vs threshold. Success = seize power.</td></tr>
+<tr><td><strong>Putsch</strong></td><td>Military pillar only</td><td>Declare martial law. Strongman must respond (decree or appeal to security).</td></tr>
+<tr><td><strong>Silent Coup</strong></td><td>Security pillar only</td><td>Multi-phase. Security approaches other factions with offers. If enough accept, vote resolves the coup.</td></tr>
+</table>
+
+<h3>Coup Outcomes</h3>
+<table>
+<tr><th>Result</th><th>Tracker Reset</th><th>Effect</th></tr>
+<tr><td>Dominant</td><td>&rarr; 30</td><td>+5 Stability, -5 Unrest. Strongman purged.</td></tr>
+<tr><td>Clean</td><td>&rarr; 30</td><td>Normal transfer of power.</td></tr>
+<tr><td>Pyrrhic</td><td>&rarr; 30</td><td>Win but weakened. Other factions can counter-coup for 3 ticks.</td></tr>
+<tr><td>Failure</td><td>&rarr; 10</td><td>Faction Backing zeroed. Leader may be arrested.</td></tr>
+<tr><td>Catastrophic</td><td>&rarr; 10</td><td>Backing zeroed, leader arrested, pillar becomes Wildcard.</td></tr>
+</table>
+
+<h3>Succession</h3>
+<p>When the Strongman dies:</p>
+<ul>
+<li><strong>With designated successor</strong> &mdash; Successor takes power immediately.</li>
+<li><strong>Without successor</strong> &mdash; Highest-Backing faction auto-coups at +20 bonus. If that fails, Democratic Revolution triggers immediately.</li>
+</ul>
+
+<h3>Leader Lifecycle</h3>
+<ul>
+<li>Leaders age +1 year every 12 ticks</li>
+<li>Death age: randomized 75&ndash;85 at leader creation</li>
+<li>When a leader dies: their pillar becomes the Wildcard, a new leader is auto-generated who claims the old Wildcard pillar</li>
+</ul>
+
+<h3>Democratic Revolution</h3>
+<p>Triggered when <strong>Stability &lt; 20 AND Civil Unrest &gt; 50</strong> (autocracies only).</p>
+<ol>
+<li><strong>WARNING</strong> &mdash; Random 13&ndash;22 tick timer starts. No stat effects on first tick.</li>
+<li><strong>ESCALATION</strong> &mdash; Each tick: stability &minus;1, civil unrest +1, international reputation &minus;1.</li>
+<li><strong>AVERTABLE</strong> &mdash; Break either condition to cancel the revolution.</li>
+<li><strong>REVOLUTION FIRES</strong> &mdash; Government converts to Democracy (50% Parliamentary, 50% Presidential). Emergency election in 3 ticks.</li>
+</ol>
+<p class="guide-tip">Revolution is the endgame for a mismanaged autocracy. Watch stability and unrest closely &mdash; once the timer starts, you have limited time to act.</p>
 </div></details>
 `
     },

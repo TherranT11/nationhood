@@ -102,89 +102,7 @@ const GAME_CONFIG = {
     IMPEACHMENT_INCOMPETENCE_TICKS: 6,        // consecutive ticks below threshold
     IMPEACHMENT_VETO_ABUSE_COUNT: 2,          // vetoed bills with >66% support
 
-    // ── Autocracy v2 Faction Actions ──
-    PLEDGE_ALLEGIANCE_AP: 2,
-    PLEDGE_ALLEGIANCE_LOYALTY: 8,
-    PLEDGE_ALLEGIANCE_STANDING: -2,
-    PLEDGE_ALLEGIANCE_COMPLY_LOYALTY: 13,     // when under Demand Loyalty order
-    PLEDGE_ALLEGIANCE_COMPLY_STANDING: -3,
-    PLEDGE_ALLEGIANCE_STANDING_FLOOR: 5,      // standing cannot drop below this from pledging
-
-    CONSOLIDATE_POWER_AP: 2,
-    CONSOLIDATE_POWER_STANDING: 6,
-    CONSOLIDATE_POWER_LOYALTY: -3,
-
-    DEMONSTRATE_COMPETENCE_AP: 3,
-    DEMONSTRATE_COMPETENCE_STANDING: 4,
-    DEMONSTRATE_COMPETENCE_LOYALTY: 3,
-    DEMONSTRATE_COMPETENCE_COST: 2,           // $2M from embezzled funds
-    DEMONSTRATE_COMPETENCE_NATION_STAT: 0.3,
-    DEMONSTRATE_COMPETENCE_REDUCED_STANDING: 2, // when can't afford cost
-
-    EMBEZZLE_FUNDS_AP: 1,
-    EMBEZZLE_FUNDS_LOYALTY: -5,
-    EMBEZZLE_FUNDS_BASE_INCOME: 5,            // $5M base
-    EMBEZZLE_FUNDS_INCOME_FLOOR: 3,           // $3M minimum
-    EMBEZZLE_FUNDS_BASE_DETECTION: 0.10,      // 10% base
-    EMBEZZLE_FUNDS_CONSECUTIVE_BONUS: 0.05,   // +5% per consecutive tick
-    EMBEZZLE_FUNDS_DETECTION_FLOOR: 0.03,     // 3% minimum
-    EMBEZZLE_FUNDS_DETECTION_CAP: 0.50,       // 50% maximum
-    EMBEZZLE_FUNDS_DETECTED_LOYALTY: -15,
-    EMBEZZLE_FUNDS_DETECTED_STANDING: -10,
-    EMBEZZLE_FUNDS_DETECTED_FUNDS_SEIZURE: 0.30, // 30% seized
-
-    BUY_INFLUENCE_AP: 3,
-    BUY_INFLUENCE_STANDING: -1,
-    BUY_INFLUENCE_BASE_COST: 3,               // $3M per seat base
-    BUY_INFLUENCE_UNALIGNED_COST: 2,          // $2M per seat from unaligned pool
-    BUY_INFLUENCE_VULNERABILITY_DISCOUNT: 0.20, // 20% cheaper vs demonstrating faction
-    BUY_INFLUENCE_STRONGMAN_BASE_COST: 5,      // $5M per seat base when targeting ruling faction
-    BUY_INFLUENCE_STRONGMAN_HEALTH_SCALE: 0.02, // multiplier per regime_health point (0-100)
-
-    INTIMIDATE_AP: 2,
-    INTIMIDATE_COST: 1,                        // $1M flat
-    INTIMIDATE_LOYALTY: -4,
-    INTIMIDATE_STANDING: 2,
-    INTIMIDATE_STABILITY: -0.2,
-    INTIMIDATE_BASE_EFFECTIVENESS: 4,
-    INTIMIDATE_MIN_SEATS: 5,
-    INTIMIDATE_VULNERABILITY_BONUS: 0.25,      // 25% more effective vs demonstrating
-    INTIMIDATE_FAIL_STANDING: -3,
-    INTIMIDATE_REPORT_LOYALTY: -8,
-    INTIMIDATE_REPORT_STANDING: -3,
-    INTIMIDATE_REPORTER_LOYALTY: 3,
-    INTIMIDATE_RETALIATE_COST: 1,              // $1M
-    INTIMIDATE_RETALIATE_STANDING: -2,
-    INTIMIDATE_RETALIATE_SEATS: -2,
-    INTIMIDATE_RETALIATOR_LOYALTY: -2,
-
-    PURGE_AP: 3,
-    PURGE_LOYALTY_THRESHOLD: 20,
-    PURGE_TARGET_STANDING: -20,
-    PURGE_TARGET_SEAT_LOSS: 0.30,             // 30% lost
-    PURGE_TARGET_NEW_LOYALTY: 50,
-    PURGE_OTHERS_LOYALTY: 5,
-    PURGE_REGIME_HEALTH: -3,
-    PURGE_STABILITY: -1,
-    PURGE_COUP_LOCKOUT_TICKS: 6,
-
-    REDISTRIBUTE_SEATS_AP: 2,
-    REDISTRIBUTE_SEATS_COOLDOWN: 4,
-    REDISTRIBUTE_SEATS_MAX_RATIO: 0.30,       // max 30% of loser's seats
-    REDISTRIBUTE_SEATS_LOSER_STANDING: -3,
-    REDISTRIBUTE_SEATS_LOSER_LOYALTY: -5,
-    REDISTRIBUTE_SEATS_GAINER_LOYALTY: 5,
-
-    COUP_MIN_STANDING: 15,
-    COUP_MIN_SEAT_RATIO: 0.10,               // 10% of legislature
-    COUP_FUNDS_THRESHOLD: 30,                  // $30M
-    COUP_LOCKOUT_TICKS: 6,
-
-    STANDING_CAP: 90,
-    LOYALTY_CAP: 95,
-    STANDING_RELEVANCE_DECAY_TICKS: 3,
-    UNALIGNED_POOL_REGEN_TICKS: 4,            // +1 seat per 4 ticks
-    UNALIGNED_POOL_MAX_RATIO: 0.10,           // max 10% of legislature
+    // (Autocracy v2 action constants removed — Phase 0)
     NEW_FACTION_MIN_SEATS: 8,
 
     // ── Head of State Title (Foundational) ──
@@ -3679,7 +3597,7 @@ const STAT_DECAY_CONFIG = {
     civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
     polarization:        { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
     terrorism:           { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
-    // political_violence: handled by protest-aware decay override (see PV Decay block)
+    political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
     happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
@@ -4851,6 +4769,7 @@ async function activateEconomicCollapse(supabase, nation, currentTick) {
         await supabase.from('event_log').insert({
             nation_id: nation.id,
             event_name: 'CRISIS_STARTED: Economic Collapse',
+            trigger_key: 'crisis_started',
             description_used: `${nation.name}'s economy has collapsed. GDP has fallen to critical levels. Emergency economic restructuring is underway.`,
             category: 'crisis',
             effects_applied: [],
@@ -7698,6 +7617,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                     await supabase.from('event_log').insert({
                         nation_id: targetId,
                         event_name: 'Retaliatory Tariff Enacted',
+                        trigger_key: 'sanctions_imposed',
                         category: 'Trade',
                         description_chosen: imposerName + ' has enacted a retaliatory tariff on your exports. Relations have decreased by ' + relPenalty + '.',
                         fired_at_tick: currentTick
@@ -7762,6 +7682,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                     await supabase.from('event_log').insert({
                         nation_id: targetId,
                         event_name: 'Embargo Enacted',
+                        trigger_key: 'sanctions_imposed',
                         category: 'Trade',
                         description_chosen: imposerName + ' has imposed an embargo on your trade. Relations have decreased by ' + relPenalty + '.',
                         fired_at_tick: currentTick
@@ -8874,9 +8795,7 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
                 legitimacy: newLegitimacy,
                 civil_unrest: newUnrest
             };
-            if (isAutocratic) {
-                updates.regime_health = Math.max(0, (nation?.regime_health || 50) - 5);
-            }
+            // (regime_health effect removed — Phase 0)
             const { error: removeErr } = await supabase.from('nations').update(updates).eq('id', bill.nation_id);
             if (removeErr) console.error(`[enactFoundationalBill] Failed to update stats for term limit removal:`, removeErr.message);
 
@@ -9275,6 +9194,7 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
                 await supabase.from('event_log').insert({
                     nation_id: amb.target_nation_id,
                     event_name: 'Diplomatic Negotiations Lapsed',
+                    trigger_key: 'diplomatic_initiative_rejected',
                     category: 'Diplomatic',
                     description_chosen: `${nation.name}'s ambassador has retired. ${lapsedProposals.length} pending negotiation(s) have lapsed. The new ambassador may re-propose if desired.`,
                     fired_at_tick: currentTick
@@ -9672,6 +9592,31 @@ async function createAdministration(supabase, nationId, nation, coalition, allPa
             });
         if (insertErr) throw insertErr;
 
+        // Fire timeline event for government formed
+        try {
+            const partyNames = coalitionParties.map(p => p.party_name).join(', ');
+            const seatDetail = coalitionParties
+                .slice().sort((a, b) => (b.seats || 0) - (a.seats || 0))
+                .map(p => `${p.party_name} (${p.seats || 0})`)
+                .join(', ');
+            const coalitionDesc = `${pmName || 'Unknown'} of ${pmPartyName} forms a coalition government with ${partyNames}. Seat breakdown: ${seatDetail}.`;
+            await supabase.from('event_log').insert({
+                nation_id: nationId,
+                event_name: 'Coalition Formed',
+                trigger_key: 'government_formed',
+                category: 'government',
+                description_chosen: coalitionDesc,
+                effects_applied: {
+                    admin_name: adminName,
+                    pm: pmName || 'Unknown',
+                    pm_party: pmPartyName,
+                    coalition_parties: partyNames,
+                    total_seats: String(totalSeats)
+                },
+                fired_at_tick: currentTick
+            });
+        } catch (e) { /* non-blocking */ }
+
         console.log(`Administration created: "${adminName}" at tick ${currentTick}`);
     } catch (err) {
         console.error('createAdministration error:', err);
@@ -9903,6 +9848,7 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
             await supabase.from('event_log').insert({
                 nation_id: nationId,
                 event_name: 'No Confidence — Government Falls',
+                trigger_key: 'vonc_passed',
                 fired_at_tick: currentTick,
                 category: 'government',
                 description_chosen: `The ${pmLastName} Government has fallen. A motion of no confidence passed ${votesFor} to ${votesAgainst}. Snap elections scheduled.`,
@@ -9932,6 +9878,7 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
         await supabase.from('event_log').insert({
             nation_id: nationId,
             event_name: 'No Confidence — Motion Fails',
+            trigger_key: 'vonc_failed',
             fired_at_tick: currentTick,
             category: 'government',
             description_chosen: `Motion of no confidence against the ${pmLastName} Government failed ${votesFor} to ${votesAgainst}.`,
@@ -10058,6 +10005,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
     await supabase.from('event_log').insert({
         nation_id: nationId,
         event_name: 'Legislature Dissolved — Early Elections Called',
+        trigger_key: 'snap_election_called',
         fired_at_tick: currentTick,
         category: 'government',
         description_chosen: `Prime Minister ${pmName} has dissolved the Legislature. Caretaker government in place until elections.`,
@@ -10192,6 +10140,7 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         await supabase.from('event_log').insert({
             nation_id: nation.id,
             event_name: 'FORMATION_WINDOW_START',
+            trigger_key: 'coalition_formation_started',
             description_used: `Coalition formation underway in ${nation.name}. Parties have ${FORMATION_DEADLINE_TICKS} ticks to form a government.`,
             category: 'POLITICAL',
             effects_applied: { ticks_remaining: FORMATION_DEADLINE_TICKS, ongoing_penalty: -2 },
@@ -10308,6 +10257,7 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         await supabase.from('event_log').insert({
             nation_id: nation.id,
             event_name: 'FORMATION_SNAP_ELECTION',
+            trigger_key: 'formation_snap_election',
             description_used: `Snap election called in ${nation.name} after coalition formation failed. Parties had ${FORMATION_DEADLINE_TICKS} ticks to negotiate.`,
             category: 'POLITICAL',
             effects_applied: {
@@ -10322,21 +10272,6 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         }).then(({ error }) => {
             if (error) console.warn('Formation snap election event log failed:', error.message);
         });
-
-        // Fire system notification
-        try {
-            await supabase.rpc('fire_system_event', {
-                p_trigger_key: 'formation_snap_election',
-                p_nation_id: nation.id,
-                p_tick: currentTick,
-                p_placeholders: {
-                    nation: nation.name,
-                    ticks: String(ticksElapsed)
-                }
-            });
-        } catch (e) {
-            console.warn('fire_system_event (formation_snap_election) failed:', e.message);
-        }
 
         result.snapElection = true;
         result.snapTick = currentTick + 1;
@@ -10420,6 +10355,7 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
     await supabase.from('event_log').insert({
         nation_id: nation.id,
         event_name: 'EMERGENCY_MINORITY_GOVERNMENT',
+        trigger_key: 'minority_government_formed',
         description_used: `${largestParty.faction_name} installed as emergency minority government in ${nation.name} after two failed formation windows. Legislative effectiveness reduced by 20%.`,
         category: 'POLITICAL',
         effects_applied: {
@@ -10433,21 +10369,6 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
     }).then(({ error }) => {
         if (error) console.warn('Emergency minority government event log failed:', error.message);
     });
-
-    // Fire system notification
-    try {
-        await supabase.rpc('fire_system_event', {
-            p_trigger_key: 'emergency_minority_government',
-            p_nation_id: nation.id,
-            p_tick: currentTick,
-            p_placeholders: {
-                nation: nation.name,
-                party: largestParty.faction_name
-            }
-        });
-    } catch (e) {
-        console.warn('fire_system_event (emergency_minority_government) failed:', e.message);
-    }
 
     result.emergencyMinority = true;
     result.rulingParty = largestParty.faction_name;
@@ -10840,65 +10761,8 @@ async function processElections(supabase, nation, currentTick) {
             await autoSelectPresidentialCandidates(supabase, nation, currentTick);
         }
 
-        // Apply electoral wound penalties from unresolved T7 protest demands
-        // Temporarily reduce governing faction's electability by 5 for the election
-        const woundRestorations = [];
-        try {
-            const { data: woundRows } = await supabase
-                .from('protest_log')
-                .select('id, effects_applied')
-                .eq('nation_id', nation.id)
-                .eq('status', 'resolved');
-            const woundsToApply = [];
-            for (const row of (woundRows || [])) {
-                const effects = row.effects_applied || [];
-                for (const e of effects) {
-                    if (e.stat === 'electoral_wound' && !e.applied_in_election) {
-                        woundsToApply.push(row.id);
-                        break;
-                    }
-                }
-            }
-            if (woundsToApply.length > 0) {
-                // Find the governing coalition's lead party
-                const { data: govFormation } = await supabase
-                    .from('government_formations')
-                    .select('lead_faction_id')
-                    .eq('nation_id', nation.id)
-                    .eq('status', 'formed')
-                    .maybeSingle();
-                const leadFactionId = govFormation?.lead_faction_id;
-                if (leadFactionId) {
-                    const { data: fRow } = await supabase
-                        .from('factions')
-                        .select('electability')
-                        .eq('id', leadFactionId)
-                        .single();
-                    const origElect = fRow?.electability ?? 50;
-                    const penaltyTotal = Math.min(woundsToApply.length * 5, 25); // cap at -25
-                    const newElect = Math.max(0, origElect - penaltyTotal);
-                    await supabase.from('factions').update({ electability: newElect }).eq('id', leadFactionId);
-                    woundRestorations.push({ factionId: leadFactionId, originalElectability: origElect });
-                    console.log(`[Electoral Wound] Applied -${penaltyTotal} electability to governing party for ${nation.name} (${woundsToApply.length} wound(s))`);
-                    // Mark wounds as applied so they only count once
-                    for (const wId of woundsToApply) {
-                        const wRow = (woundRows || []).find(r => r.id === wId);
-                        if (wRow) {
-                            const updatedEffects = (wRow.effects_applied || []).map(e =>
-                                e.stat === 'electoral_wound' ? { ...e, applied_in_election: true } : e
-                            );
-                            await supabase.from('protest_log').update({ effects_applied: updatedEffects }).eq('id', wId);
-                        }
-                    }
-                }
-            }
-        } catch (woundErr) {
-            console.error(`[Electoral Wound] Failed to apply wound penalty for ${nation.name} (non-fatal):`, woundErr);
-        }
-
         // Use candidate-based voting for presidential elections, party-based for parliamentary
         let data, error;
-        try {
         if (electionType === 'presidential') {
             const { error: snapshotErr } = await supabase.rpc('snapshot_presidential_endorsements', {
                 p_nation_id: nation.id,
@@ -10942,12 +10806,6 @@ async function processElections(supabase, nation, currentTick) {
             }
             console.log(`Election RPC succeeded on retry for ${nation.name}`);
         }
-        } finally {
-            // Always restore electability after electoral wound penalty, even if election RPC throws
-            for (const wr of woundRestorations) {
-                await supabase.from('factions').update({ electability: wr.originalElectability }).eq('id', wr.factionId);
-            }
-        }
 
         // Mark the scheduled election record as completed with full results
         await supabase.from('elections')
@@ -10967,40 +10825,25 @@ async function processElections(supabase, nation, currentTick) {
             }
             console.log(`Seats synced to factions for ${nation.name}`);
 
-            // Pyrrhic Victory: if a protest crisis was active during this election,
-            // and the protest-calling faction won the most seats, mark them with a
-            // 12-tick commitment flag (reduced effectiveness of some actions)
+            // Fire election result timeline event with seat breakdown
             try {
-                const { data: crisisAtElection } = await supabase
-                    .from('protest_log')
-                    .select('id, faction_id')
-                    .eq('nation_id', nation.id)
-                    .eq('status', 'crisis_active')
-                    .limit(1)
-                    .maybeSingle();
-                if (crisisAtElection) {
-                    const seats = completedElection.results.seats || [];
-                    const sorted = [...seats].sort((a, b) => (b.seats || 0) - (a.seats || 0));
-                    if (sorted.length > 0 && sorted[0].party_id === crisisAtElection.faction_id) {
-                        const pyrrhicUntil = currentTick + 12;
-                        await supabase.from('factions')
-                            .update({ pyrrhic_victory_until_tick: pyrrhicUntil })
-                            .eq('id', crisisAtElection.faction_id);
-                        console.log(`[Pyrrhic Victory] Protest-calling faction ${crisisAtElection.faction_id} won election — commitment until tick ${pyrrhicUntil}`);
-                        // Log event
-                        await supabase.from('event_log').insert({
-                            nation_id: nation.id,
-                            event_name: 'PYRRHIC_VICTORY',
-                            description_used: `The party that organised the protest crisis has won the election, but faces a 12-tick commitment period with reduced political capital.`,
-                            category: 'POLITICAL',
-                            effects_applied: { faction_id: crisisAtElection.faction_id, until_tick: pyrrhicUntil },
-                            fired_at_tick: currentTick,
-                        });
-                    }
-                }
-            } catch (pyrErr) {
-                console.error(`[Pyrrhic Victory] Detection failed for ${nation.name} (non-fatal):`, pyrErr);
-            }
+                const sortedSeats = completedElection.results.seats
+                    .slice().sort((a, b) => (b.seats || 0) - (a.seats || 0));
+                const seatSummary = sortedSeats
+                    .map(s => `${s.party_name || 'Unknown'}: ${s.seats}`)
+                    .join(', ');
+                const elType = electionType || 'parliamentary';
+                const electionDesc = `${elType.charAt(0).toUpperCase() + elType.slice(1)} election held. Results: ${seatSummary}.`;
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: 'Election Held',
+                    trigger_key: 'election_held',
+                    category: 'government',
+                    description_chosen: electionDesc,
+                    effects_applied: { election_type: elType, seats: seatSummary },
+                    fired_at_tick: currentTick
+                });
+            } catch (e) { /* non-blocking */ }
         }
 
         // Dissolve legislature — fail all pending bills (new parliament must re-propose)
@@ -11384,6 +11227,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
                 await supabase.from('event_log').insert({
                     nation_id: nation.id,
                     event_name: 'President Retires (Term Limited)',
+                    trigger_key: 'party_leader_replaced',
                     description_chosen: `${outgoingName}, having served the maximum ${effectiveTermLimit} term${effectiveTermLimit !== 1 ? 's' : ''} as president, has retired from party leadership. ${factionData?.faction_name || 'The party'} must appoint a new leader.`,
                     category: 'POLITICAL',
                     fired_at_tick: currentTick,
@@ -13609,6 +13453,7 @@ async function executeLeaderStepDown(supabase, nationId, factionId, currentTick,
     const { error: eventErr } = await supabase.from('event_log').insert({
         nation_id: nationId,
         event_name: 'Party Leader Steps Down',
+        trigger_key: 'party_leader_replaced',
         description_chosen: reason,
         category: 'POLITICAL',
         fired_at_tick: currentTick,
@@ -13616,6 +13461,3871 @@ async function executeLeaderStepDown(supabase, nationId, factionId, currentTick,
 
     if (eventErr) throw new Error('Failed to log step-down event: ' + eventErr.message);
 }
+
+// ────────── autocracy-pillars ──────────
+
+/**
+ * autocracy-pillars.js — Five Pillars system: Backing, zero-sum enforcement,
+ * passive drift, wildcard decay, longevity tracking, Power calculation,
+ * tracker contributions, and tracker natural decay.
+ *
+ * V5 Autocracy System — Phases 2 & 3
+ */
+
+// ─── Pillar definitions ──────────────────────────────────────────────────────
+
+const PILLAR_KEYS = ['military', 'party', 'oligarchs', 'media', 'security'];
+
+/**
+ * Passive drift conditions: each pillar checks two national stats.
+ * If the condition is met, that pillar gains +1 Backing.
+ * Thresholds: LOW = ≤ 20, HIGH = ≥ 70.
+ */
+const PASSIVE_DRIFT_CONDITIONS = {
+    military: [
+        { stat: 'civil_unrest', op: '<=', threshold: 20 },
+        { stat: 'crime_rate',   op: '<=', threshold: 20 },
+    ],
+    oligarchs: [
+        { stat: 'gdp_growth',  op: '>=', threshold: 70 },
+        { stat: 'corruption',  op: '>=', threshold: 70 },
+    ],
+    party: [
+        { stat: 'stability',    op: '>=', threshold: 70 },
+        { stat: 'polarization', op: '>=', threshold: 70 },
+    ],
+    media: [
+        { stat: 'press_freedom', op: '<=', threshold: 20 },
+        { stat: 'legitimacy',    op: '>=', threshold: 70 },
+    ],
+    security: [
+        { stat: 'crime_rate',    op: '<=', threshold: 20 },
+        { stat: 'freedom_index', op: '<=', threshold: 20 },
+    ],
+};
+
+const WILDCARD_DECAY_RATE = 0.1;
+const NEGLECT_THRESHOLD = 3;      // backing ≤ 3
+const NEGLECT_TICKS_REQUIRED = 5; // consecutive ticks before extra decay
+const NEGLECT_EXTRA_DECAY = 1;    // additional backing lost per tick once neglected
+
+// ─── Zero-sum enforcement ────────────────────────────────────────────────────
+
+/**
+ * Apply a backing delta to a single pillar, then redistribute the inverse
+ * proportionally across all other non-wildcard pillars.
+ *
+ * @param {Object[]} pillarStates - array of { pillar, backing } for all 4 claimed pillars
+ * @param {Object} wildcardState  - { backing } for the wildcard pillar
+ * @param {string} targetPillar   - pillar key receiving the delta
+ * @param {number} delta          - positive or negative change
+ * @param {boolean} isWildcard    - true if target is the wildcard pillar
+ * @returns {{ pillarStates: Object[], wildcardState: Object }} — mutated in place and returned
+ */
+function applyBackingDelta(pillarStates, wildcardState, targetPillar, delta, isWildcard = false) {
+    if (delta === 0) return { pillarStates, wildcardState };
+
+    if (isWildcard) {
+        // Direct wildcard change — no redistribution needed for decay
+        const oldBacking = wildcardState.backing;
+        wildcardState.backing = clampBacking(oldBacking + delta);
+        return { pillarStates, wildcardState };
+    }
+
+    // Find the target pillar
+    const target = pillarStates.find(p => p.pillar === targetPillar);
+    if (!target) return { pillarStates, wildcardState };
+
+    // Apply delta to target
+    const oldTarget = target.backing;
+    target.backing = clampBacking(oldTarget + delta);
+    const actualDelta = target.backing - oldTarget;
+
+    if (actualDelta === 0) return { pillarStates, wildcardState };
+
+    // Distribute inverse delta proportionally across other claimed pillars
+    const others = pillarStates.filter(p => p.pillar !== targetPillar);
+    const totalOtherBacking = others.reduce((sum, p) => sum + p.backing, 0);
+
+    if (totalOtherBacking > 0) {
+        const inverseDelta = -actualDelta;
+        let remaining = inverseDelta;
+
+        for (let i = 0; i < others.length; i++) {
+            const p = others[i];
+            if (i === others.length - 1) {
+                // Last one absorbs rounding remainder
+                const oldVal = p.backing;
+                p.backing = clampBacking(oldVal + remaining);
+                remaining -= (p.backing - oldVal);
+            } else {
+                const share = (p.backing / totalOtherBacking) * inverseDelta;
+                const rounded = Math.round(share * 100) / 100;
+                const oldVal = p.backing;
+                p.backing = clampBacking(oldVal + rounded);
+                remaining -= (p.backing - oldVal);
+            }
+        }
+    }
+
+    return { pillarStates, wildcardState };
+}
+
+function clampBacking(val) {
+    return Math.max(0, Math.min(20, Math.round(val * 100) / 100));
+}
+
+// ─── Passive drift ───────────────────────────────────────────────────────────
+
+/**
+ * Compute which pillars gain +1 backing from national stat conditions.
+ * Returns an array of pillar keys that should receive +1.
+ */
+function computePassiveDrift(nation) {
+    const drifts = [];
+
+    for (const [pillar, conditions] of Object.entries(PASSIVE_DRIFT_CONDITIONS)) {
+        for (const cond of conditions) {
+            const statVal = Number(nation[cond.stat] ?? 50);
+            const met = cond.op === '<=' ? statVal <= cond.threshold : statVal >= cond.threshold;
+            if (met) {
+                drifts.push(pillar);
+            }
+        }
+    }
+
+    return drifts;
+}
+
+// ─── Main tick processor ─────────────────────────────────────────────────────
+
+/**
+ * Process autocracy pillar/backing for a single nation each tick.
+ * Tick order step 1: Passive drift → Wildcard decay → Neglect check.
+ *
+ * @param {Object} supabase - Supabase client
+ * @param {Object} nation   - nation row (must have stat columns)
+ * @param {number} currentTick
+ * @returns {Object|null} summary of changes, or null if no autocracy state
+ */
+async function processAutocracyPillarTick(supabase, nation, currentTick) {
+    if (!isAutocracy(nation)) return null;
+
+    // ── Load state ──────────────────────────────────────────────────────
+    const { data: tracker, error: trackerErr } = await supabase
+        .from('autocracy_tracker')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .single();
+
+    if (trackerErr || !tracker) {
+        console.warn(`[pillarTick] No autocracy_tracker for ${nation.name}, skipping.`);
+        return null;
+    }
+
+    const { data: factionStates, error: fpsErr } = await supabase
+        .from('faction_pillar_state')
+        .select('*')
+        .eq('nation_id', nation.id);
+
+    if (fpsErr || !factionStates || factionStates.length === 0) {
+        console.warn(`[pillarTick] No faction_pillar_state for ${nation.name}, skipping.`);
+        return null;
+    }
+
+    // Build working copies (numeric backing)
+    const pillarStates = factionStates.map(fps => ({
+        id: fps.id,
+        faction_id: fps.faction_id,
+        pillar: fps.pillar,
+        backing: Number(fps.backing),
+        is_strongman: fps.is_strongman,
+        neglect_ticks: fps.neglect_ticks || 0,
+        longevity_ticks: fps.longevity_ticks || 0,
+    }));
+
+    const wildcardState = {
+        pillar: tracker.wildcard_pillar,
+        backing: Number(tracker.wildcard_backing),
+        neglect_ticks: tracker.wildcard_neglect_ticks || 0,
+    };
+
+    const changes = [];
+
+    // ── Step 1a: Passive drift ──────────────────────────────────────────
+    const drifts = computePassiveDrift(nation);
+    for (const driftPillar of drifts) {
+        const isWildcard = driftPillar === wildcardState.pillar;
+        applyBackingDelta(pillarStates, wildcardState, driftPillar, 1, isWildcard);
+        changes.push({ type: 'drift', pillar: driftPillar, delta: 1 });
+    }
+
+    // ── Step 1b: Wildcard decay (-0.1 per tick, floor 0) ────────────────
+    if (wildcardState.pillar && wildcardState.backing > 0) {
+        const oldWc = wildcardState.backing;
+        wildcardState.backing = Math.max(0, Math.round((oldWc - WILDCARD_DECAY_RATE) * 100) / 100);
+        if (wildcardState.backing !== oldWc) {
+            changes.push({ type: 'wildcard_decay', pillar: wildcardState.pillar, oldBacking: oldWc, newBacking: wildcardState.backing });
+        }
+    }
+
+    // ── Step 1c: Neglect check (backing ≤ 3 for 5+ consecutive ticks) ──
+    for (const ps of pillarStates) {
+        if (ps.backing <= NEGLECT_THRESHOLD) {
+            ps.neglect_ticks += 1;
+            if (ps.neglect_ticks >= NEGLECT_TICKS_REQUIRED) {
+                applyBackingDelta(pillarStates, wildcardState, ps.pillar, -NEGLECT_EXTRA_DECAY, false);
+                changes.push({ type: 'neglect', pillar: ps.pillar, neglect_ticks: ps.neglect_ticks });
+            }
+        } else {
+            ps.neglect_ticks = 0;
+        }
+    }
+
+    // Wildcard neglect
+    if (wildcardState.backing <= NEGLECT_THRESHOLD) {
+        wildcardState.neglect_ticks += 1;
+        if (wildcardState.neglect_ticks >= NEGLECT_TICKS_REQUIRED) {
+            wildcardState.backing = Math.max(0, Math.round((wildcardState.backing - NEGLECT_EXTRA_DECAY) * 100) / 100);
+            changes.push({ type: 'neglect', pillar: wildcardState.pillar, neglect_ticks: wildcardState.neglect_ticks });
+        }
+    } else {
+        wildcardState.neglect_ticks = 0;
+    }
+
+    // ── Step 1d: Longevity increment ────────────────────────────────────
+    for (const ps of pillarStates) {
+        ps.longevity_ticks += 1;
+    }
+
+    // ── Persist ─────────────────────────────────────────────────────────
+
+    // Update each faction_pillar_state row
+    for (const ps of pillarStates) {
+        const { error: updateErr } = await supabase
+            .from('faction_pillar_state')
+            .update({
+                backing: ps.backing,
+                neglect_ticks: ps.neglect_ticks,
+                longevity_ticks: ps.longevity_ticks,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', ps.id);
+
+        if (updateErr) {
+            console.error(`[pillarTick] Failed to update faction_pillar_state ${ps.id}:`, updateErr.message);
+        }
+    }
+
+    // Update autocracy_tracker (wildcard + tick)
+    const { error: trackerUpdateErr } = await supabase
+        .from('autocracy_tracker')
+        .update({
+            wildcard_backing: wildcardState.backing,
+            wildcard_neglect_ticks: wildcardState.neglect_ticks,
+            last_updated_tick: currentTick,
+        })
+        .eq('nation_id', nation.id);
+
+    if (trackerUpdateErr) {
+        console.error(`[pillarTick] Failed to update autocracy_tracker for ${nation.name}:`, trackerUpdateErr.message);
+    }
+
+    if (changes.length > 0) {
+        console.log(`[pillarTick] ${nation.name}: ${changes.length} changes — ${JSON.stringify(changes)}`);
+    }
+
+    return changes.length > 0 ? { nation: nation.name, tick: currentTick, changes } : null;
+}
+
+// ─── Power calculation (server-side only) ────────────────────────────────────
+
+/**
+ * Power → Tracker delta magnitude map.
+ * Power 1 → ±2, Power 2 → ±3, Power 3 → ±4, Power 4 → ±5, Power 5 → ±7.
+ */
+const POWER_DELTA_MAP = { 1: 2, 2: 3, 3: 4, 4: 5, 5: 7 };
+
+/**
+ * Compute a faction's Power level (1–5). Never exposed to client.
+ *
+ * Formula:
+ *   base = CEIL(backing / 4)
+ *   if is_prime_minister: base += 1
+ *   base += FLOOR(minister_count / 2)
+ *   if longevity_ticks >= 36: base += 1
+ *   power = CLAMP(base, 1, 5)
+ *
+ * @param {Object} factionState - faction_pillar_state row (or working copy)
+ * @returns {number} power level 1–5
+ */
+function computeFactionPower(factionState) {
+    let base = Math.ceil(Number(factionState.backing) / 4);
+    if (factionState.is_prime_minister) base += 1;
+    base += Math.floor((factionState.minister_count || 0) / 2);
+    if ((factionState.longevity_ticks || 0) >= 36) base += 1;
+    return Math.max(1, Math.min(5, base));
+}
+
+/**
+ * Get the tracker delta magnitude for a given power level.
+ * @param {number} power - 1 to 5
+ * @returns {number} delta magnitude
+ */
+function getPowerDelta(power) {
+    return POWER_DELTA_MAP[power] || 0;
+}
+
+// ─── Tracker contributions ───────────────────────────────────────────────────
+
+/**
+ * Actions that contribute at half power when used FOR_REGIME.
+ */
+const HALF_POWER_ACTIONS = ['agitate', 'capital_flight'];
+
+/**
+ * Apply a tracker contribution from a faction action.
+ *
+ * Rules:
+ *   - Strongman using foundation pillar actions: skip entirely (no tracker movement)
+ *   - FOR_REGIME: tracker -= delta
+ *   - FOR_YOURSELF: tracker += delta
+ *   - AGITATE / CAPITAL_FLIGHT in FOR_REGIME mode: delta = floor(delta / 2)
+ *   - Stand Down: always FOR_YOURSELF (no mode toggle)
+ *
+ * @param {number} currentTracker - current tracker_value (0–100)
+ * @param {Object} factionState   - faction_pillar_state row
+ * @param {string} actionType     - action key (e.g. 'deploy', 'rally')
+ * @param {string} mode           - 'regime' or 'self'
+ * @param {string|null} strongmanPillar - the strongman's foundation pillar (to detect no-op)
+ * @returns {number} new tracker value (clamped 0–100)
+ */
+function applyTrackerContribution(currentTracker, factionState, actionType, mode, strongmanPillar) {
+    // Strongman using their own foundation pillar actions → no tracker movement
+    if (factionState.is_strongman && factionState.pillar === strongmanPillar) {
+        return currentTracker;
+    }
+
+    const power = computeFactionPower(factionState);
+    let delta = getPowerDelta(power);
+
+    // Half power for specific actions in FOR_REGIME mode
+    if (mode === 'regime' && HALF_POWER_ACTIONS.includes(actionType)) {
+        delta = Math.floor(delta / 2);
+    }
+
+    // Apply direction
+    if (mode === 'regime') {
+        currentTracker -= delta;
+    } else {
+        // 'self' — includes stand_down which is always for yourself
+        currentTracker += delta;
+    }
+
+    return Math.max(0, Math.min(100, currentTracker));
+}
+
+// ─── Tracker natural decay ───────────────────────────────────────────────────
+
+/**
+ * Apply natural tracker decay toward 30.
+ * Runs after all actions resolve each tick.
+ *
+ *   if tracker > 30: tracker -= 1 (floor 30)
+ *   if tracker < 30: tracker += 1 (ceiling 30)
+ *
+ * @param {number} trackerValue - current tracker (0–100)
+ * @returns {number} decayed tracker value
+ */
+function applyTrackerDecay(trackerValue) {
+    if (trackerValue > 30) return Math.max(30, trackerValue - 1);
+    if (trackerValue < 30) return Math.min(30, trackerValue + 1);
+    return 30;
+}
+
+// ─── Tracker word (Strongman-only display) ───────────────────────────────────
+
+/**
+ * Map tracker value to the word the Strongman sees.
+ *   0–20  → IRON
+ *   21–40 → FIRM
+ *   41–60 → RESTLESS
+ *   61–80 → VOLATILE
+ *   81–100→ CRITICAL
+ *
+ * @param {number} trackerValue
+ * @returns {string}
+ */
+function getTrackerWord(trackerValue) {
+    if (trackerValue <= 20) return 'IRON';
+    if (trackerValue <= 40) return 'FIRM';
+    if (trackerValue <= 60) return 'RESTLESS';
+    if (trackerValue <= 80) return 'VOLATILE';
+    return 'CRITICAL';
+}
+
+// ─── Tracker reset values ────────────────────────────────────────────────────
+
+const TRACKER_RESET = Object.freeze({
+    AFTER_FAILED_COUP: 10,     // catastrophic or failure
+    AFTER_SUCCESSFUL_COUP: 30, // pyrrhic, clean, or dominant
+});
+
+// ─── Tracker tick processor ──────────────────────────────────────────────────
+
+/**
+ * Process tracker natural decay for a single autocracy nation.
+ * Tick order step 3: runs after all actions resolve.
+ *
+ * @param {Object} supabase
+ * @param {Object} nation
+ * @param {number} currentTick
+ * @returns {Object|null} change summary or null
+ */
+async function processAutocracyTrackerDecay(supabase, nation, currentTick) {
+    if (!isAutocracy(nation)) return null;
+
+    const { data: tracker, error: trackerErr } = await supabase
+        .from('autocracy_tracker')
+        .select('tracker_value, nation_id')
+        .eq('nation_id', nation.id)
+        .single();
+
+    if (trackerErr || !tracker) return null;
+
+    const oldValue = tracker.tracker_value;
+    const newValue = applyTrackerDecay(oldValue);
+
+    if (newValue === oldValue) return null;
+
+    const { error: updateErr } = await supabase
+        .from('autocracy_tracker')
+        .update({
+            tracker_value: newValue,
+            last_updated_tick: currentTick,
+        })
+        .eq('nation_id', nation.id);
+
+    if (updateErr) {
+        console.error(`[trackerDecay] Failed to update tracker for ${nation.name}:`, updateErr.message);
+        return null;
+    }
+
+    console.log(`[trackerDecay] ${nation.name}: ${oldValue} → ${newValue}`);
+
+    // 1d3 roll: on a 3, sync public_tracker_value to actual tracker_value
+    const roll = Math.floor(Math.random() * 3) + 1; // 1, 2, or 3
+    if (roll === 3) {
+        await supabase.from('autocracy_tracker').update({
+            public_tracker_value: newValue,
+            public_tracker_last_tick: currentTick,
+        }).eq('nation_id', nation.id);
+        console.log(`[trackerDecay] ${nation.name}: public tracker synced → ${newValue} (rolled ${roll})`);
+    } else {
+        console.log(`[trackerDecay] ${nation.name}: public tracker unchanged (rolled ${roll})`);
+    }
+
+    return { nation: nation.name, tick: currentTick, oldTracker: oldValue, newTracker: newValue };
+}
+
+// ────────── autocracy-actions ──────────
+
+/**
+ * autocracy-actions.js — V5 Autocracy action dispatch framework.
+ * Generic validation, dual-mode (FOR REGIME / FOR YOURSELF), AP costs,
+ * escalating costs, cooldowns, action logging, and leader death resets.
+ *
+ * V5 Autocracy System — Phase 4
+ */
+
+// ─── Action definitions registry ─────────────────────────────────────────────
+
+/**
+ * Master action registry. Each action defines its properties.
+ * Specific action implementations (Phase 5/6) register here.
+ *
+ * Shape: {
+ *   pillar: string,           // 'military'|'party'|'oligarchs'|'media'|'security'|'strongman'
+ *   baseCost: number,         // base AP cost
+ *   escalatingCostField: string|null,  // faction_pillar_state column for escalation (null = no escalation)
+ *   escalationSteps: number[]|null,    // AP cost sequence, e.g. [2,4,6]
+ *   cooldownField: string|null,        // faction_pillar_state column for cooldown tracking
+ *   cooldownTicks: number|null,        // minimum ticks between uses
+ *   hasDualMode: boolean,     // true = FOR REGIME / FOR YOURSELF toggle
+ *   halfPowerForRegime: boolean, // true = delta halved in FOR_REGIME mode
+ *   isStrongmanExclusive: boolean, // true = only Strongman can use
+ *   mutualExclusions: string[], // action types that block this one same tick
+ *   execute: async function,   // implementation (added in Phase 5/6)
+ * }
+ */
+const AUTOCRACY_ACTIONS = {};
+
+/**
+ * Register an action in the registry.
+ */
+function registerAutocracyAction(actionType, definition) {
+    AUTOCRACY_ACTIONS[actionType] = definition;
+}
+
+// ─── Escalating cost helpers ─────────────────────────────────────────────────
+
+/**
+ * Get the current AP cost for an escalating action.
+ * @param {Object} factionState - faction_pillar_state row
+ * @param {Object} actionDef - action definition from registry
+ * @returns {number} current AP cost
+ */
+function getEscalatingCost(factionState, actionDef) {
+    if (!actionDef.escalatingCostField || !actionDef.escalationSteps) {
+        return actionDef.baseCost;
+    }
+    const currentLevel = factionState[actionDef.escalatingCostField] || actionDef.escalationSteps[0];
+    return currentLevel;
+}
+
+/**
+ * Get the next escalation level after using an action.
+ * @param {Object} factionState
+ * @param {Object} actionDef
+ * @returns {number} next cost level
+ */
+function getNextEscalationLevel(factionState, actionDef) {
+    if (!actionDef.escalatingCostField || !actionDef.escalationSteps) return null;
+    const current = factionState[actionDef.escalatingCostField] || actionDef.escalationSteps[0];
+    const idx = actionDef.escalationSteps.indexOf(current);
+    if (idx === -1 || idx >= actionDef.escalationSteps.length - 1) {
+        return actionDef.escalationSteps[actionDef.escalationSteps.length - 1]; // cap at max
+    }
+    return actionDef.escalationSteps[idx + 1];
+}
+
+// ─── Cooldown helpers ────────────────────────────────────────────────────────
+
+/**
+ * Check if an action is on cooldown.
+ * @param {Object} factionState
+ * @param {Object} actionDef
+ * @param {number} currentTick
+ * @returns {{ onCooldown: boolean, remainingTicks: number }}
+ */
+function checkCooldown(factionState, actionDef, currentTick) {
+    if (!actionDef.cooldownField || !actionDef.cooldownTicks) {
+        return { onCooldown: false, remainingTicks: 0 };
+    }
+    const lastUseTick = factionState[actionDef.cooldownField] || 0;
+    const elapsed = currentTick - lastUseTick;
+    if (elapsed < actionDef.cooldownTicks) {
+        return { onCooldown: true, remainingTicks: actionDef.cooldownTicks - elapsed };
+    }
+    return { onCooldown: false, remainingTicks: 0 };
+}
+
+// ─── Mutual exclusion check ─────────────────────────────────────────────────
+
+/**
+ * Check if any mutually exclusive action was used this tick.
+ * @param {Object} supabase
+ * @param {string} factionId
+ * @param {string} nationId
+ * @param {number} currentTick
+ * @param {string[]} exclusions - action types to check
+ * @returns {Promise<string|null>} conflicting action type, or null
+ */
+async function checkMutualExclusion(supabase, factionId, nationId, currentTick, exclusions) {
+    if (!exclusions || exclusions.length === 0) return null;
+
+    const { data: logs } = await supabase
+        .from('autocracy_action_log')
+        .select('action_type')
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId)
+        .eq('tick', currentTick)
+        .in('action_type', exclusions);
+
+    if (logs && logs.length > 0) return logs[0].action_type;
+    return null;
+}
+
+// ─── Action dispatch ─────────────────────────────────────────────────────────
+
+/**
+ * Dispatch an autocracy action. This is the single entry point for all actions.
+ *
+ * Validates: government type, action existence, pillar access, AP cost,
+ * cooldown, mutual exclusion, then deducts AP, applies tracker contribution,
+ * logs the action, and calls the action's execute function.
+ *
+ * @param {Object} supabase
+ * @param {Object} params
+ * @param {string} params.factionId
+ * @param {string} params.nationId
+ * @param {string} params.actionType - key in AUTOCRACY_ACTIONS
+ * @param {string} params.mode - 'regime' or 'self' (ignored for stand_down)
+ * @param {number} params.currentTick
+ * @param {Object} params.extra - action-specific parameters (e.g. targetFactionId)
+ * @returns {Promise<Object>} { success, error?, result?, newAp? }
+ */
+async function dispatchAutocracyAction(supabase, params) {
+    const { factionId, nationId, actionType, mode, currentTick, extra = {} } = params;
+
+    // ── Validate action exists ──────────────────────────────────────────
+    const actionDef = AUTOCRACY_ACTIONS[actionType];
+    if (!actionDef) {
+        return { success: false, error: `Unknown action: ${actionType}` };
+    }
+
+    // ── Load nation ─────────────────────────────────────────────────────
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('id, name, government_type')
+        .eq('id', nationId)
+        .single();
+
+    if (!nation || !isAutocracy(nation)) {
+        return { success: false, error: 'Not an autocracy nation' };
+    }
+
+    // ── Load faction pillar state ───────────────────────────────────────
+    const { data: factionState } = await supabase
+        .from('faction_pillar_state')
+        .select('*')
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId)
+        .single();
+
+    if (!factionState) {
+        return { success: false, error: 'No pillar state for this faction' };
+    }
+
+    // ── Validate pillar access ──────────────────────────────────────────
+    if (actionDef.isStrongmanExclusive) {
+        if (!factionState.is_strongman) {
+            return { success: false, error: 'Only the Strongman can use this action' };
+        }
+    } else if (actionDef.pillar !== 'any') {
+        // Non-strongman factions can only use their own pillar actions
+        // Strongman can use their foundation pillar actions (governance only, no tracker)
+        if (factionState.pillar !== actionDef.pillar && !factionState.is_strongman) {
+            return { success: false, error: `This action requires the ${actionDef.pillar} pillar` };
+        }
+        if (factionState.is_strongman && factionState.pillar !== actionDef.pillar) {
+            return { success: false, error: 'Strongman can only use their foundation pillar actions' };
+        }
+    }
+
+    // ── Validate mode ───────────────────────────────────────────────────
+    const effectiveMode = actionDef.hasDualMode === false ? 'self' : (mode || 'regime');
+    if (actionDef.hasDualMode && !['regime', 'self'].includes(effectiveMode)) {
+        return { success: false, error: 'Mode must be "regime" or "self"' };
+    }
+
+    // ── Check cooldown ──────────────────────────────────────────────────
+    const { onCooldown, remainingTicks } = checkCooldown(factionState, actionDef, currentTick);
+    if (onCooldown) {
+        return { success: false, error: `Action on cooldown (${remainingTicks} ticks remaining)` };
+    }
+
+    // ── Check mutual exclusions ─────────────────────────────────────────
+    if (actionDef.mutualExclusions && actionDef.mutualExclusions.length > 0) {
+        const conflict = await checkMutualExclusion(supabase, factionId, nationId, currentTick, actionDef.mutualExclusions);
+        if (conflict) {
+            return { success: false, error: `Cannot use with ${conflict} in the same tick` };
+        }
+    }
+
+    // ── Check arrested ──────────────────────────────────────────────────
+    if (factionState.arrested_leader && !actionDef.isStrongmanExclusive) {
+        return { success: false, error: 'Your leader is arrested and cannot act' };
+    }
+
+    // ── Compute AP cost ─────────────────────────────────────────────────
+    const apCost = getEscalatingCost(factionState, actionDef);
+
+    // ── Deduct AP ───────────────────────────────────────────────────────
+    const apResult = await deductAP(supabase, factionId, apCost);
+    if (!apResult.success) {
+        return { success: false, error: apResult.error || 'Insufficient AP', currentAp: apResult.currentAp };
+    }
+
+    // ── Apply tracker contribution ──────────────────────────────────────
+    let trackerDelta = null;
+    // Load strongman's foundation pillar for the skip check
+    const { data: strongmanState } = await supabase
+        .from('faction_pillar_state')
+        .select('pillar')
+        .eq('nation_id', nationId)
+        .eq('is_strongman', true)
+        .single();
+
+    const strongmanPillar = strongmanState?.pillar || null;
+
+    // Load current tracker
+    const { data: tracker } = await supabase
+        .from('autocracy_tracker')
+        .select('tracker_value')
+        .eq('nation_id', nationId)
+        .single();
+
+    if (tracker) {
+        const oldTracker = tracker.tracker_value;
+        const newTracker = applyTrackerContribution(
+            oldTracker, factionState, actionType, effectiveMode, strongmanPillar
+        );
+        trackerDelta = newTracker - oldTracker;
+
+        if (trackerDelta !== 0) {
+            await supabase
+                .from('autocracy_tracker')
+                .update({ tracker_value: newTracker, last_updated_tick: currentTick })
+                .eq('nation_id', nationId);
+        }
+    }
+
+    // ── Update escalation level ─────────────────────────────────────────
+    const nextLevel = getNextEscalationLevel(factionState, actionDef);
+    const escalationUpdate = {};
+    if (nextLevel !== null && actionDef.escalatingCostField) {
+        escalationUpdate[actionDef.escalatingCostField] = nextLevel;
+    }
+
+    // ── Update cooldown ─────────────────────────────────────────────────
+    if (actionDef.cooldownField) {
+        escalationUpdate[actionDef.cooldownField] = currentTick;
+    }
+
+    if (Object.keys(escalationUpdate).length > 0) {
+        escalationUpdate.updated_at = new Date().toISOString();
+        await supabase
+            .from('faction_pillar_state')
+            .update(escalationUpdate)
+            .eq('id', factionState.id);
+    }
+
+    // ── Log the action ──────────────────────────────────────────────────
+    await supabase.from('autocracy_action_log').insert({
+        nation_id: nationId,
+        faction_id: factionId,
+        tick: currentTick,
+        action_type: actionType,
+        action_mode: actionDef.hasDualMode === false ? null : effectiveMode,
+        ap_spent: apCost,
+        details: { ...extra, tracker_delta: trackerDelta },
+    });
+
+    // ── Execute action-specific logic ───────────────────────────────────
+    let actionResult = null;
+    if (actionDef.execute) {
+        actionResult = await actionDef.execute(supabase, {
+            nation,
+            factionState,
+            actionType,
+            mode: effectiveMode,
+            currentTick,
+            extra,
+            apCost,
+            trackerDelta,
+            strongmanPillar,
+        });
+        // If execute returned an error, propagate it (AP was already spent)
+        if (actionResult?.error) {
+            return { error: actionResult.error, apSpent: apCost, newAp: apResult.newAp };
+        }
+    }
+
+    return {
+        success: true,
+        newAp: apResult.newAp,
+        trackerDelta,
+        apCost,
+        result: actionResult,
+    };
+}
+
+// ─── Leader death reset ──────────────────────────────────────────────────────
+
+/**
+ * Reset all escalating costs and cooldowns when a faction leader dies.
+ * Called from succession / aging / execution / coup logic.
+ *
+ * @param {Object} supabase
+ * @param {string} factionId
+ * @returns {Promise<boolean>} true if updated
+ */
+async function resetLeaderEscalations(supabase, factionId) {
+    const { error } = await supabase
+        .from('faction_pillar_state')
+        .update({
+            deploy_ap_level: 2,
+            bribe_ap_level: 2,
+            blackmail_ap_level: 1,
+            party_congress_last_tick: 0,
+            favor_last_tick: 0,
+            blackout_last_tick: 0,
+            longevity_ticks: 0,
+            surveillance_targets: '[]',
+            updated_at: new Date().toISOString(),
+        })
+        .eq('faction_id', factionId);
+
+    if (error) {
+        console.error(`[resetLeaderEscalations] Failed for faction ${factionId}:`, error.message);
+        return false;
+    }
+    console.log(`[resetLeaderEscalations] Reset escalations for faction ${factionId}`);
+    return true;
+}
+
+// ─── Available actions query ─────────────────────────────────────────────────
+
+/**
+ * Get the list of actions available to a faction, with current costs and cooldowns.
+ * Used by the UI to render the action panel.
+ *
+ * @param {Object} factionState - faction_pillar_state row
+ * @param {number} currentTick
+ * @returns {Object[]} array of { actionType, pillar, apCost, onCooldown, remainingTicks, hasDualMode }
+ */
+function getAvailableActions(factionState, currentTick) {
+    const actions = [];
+
+    for (const [actionType, def] of Object.entries(AUTOCRACY_ACTIONS)) {
+        // Skip strongman-exclusive actions for non-strongman
+        if (def.isStrongmanExclusive && !factionState.is_strongman) continue;
+
+        // Strongman can only use their foundation pillar + exclusive actions
+        if (factionState.is_strongman) {
+            if (!def.isStrongmanExclusive && def.pillar !== factionState.pillar && def.pillar !== 'any') continue;
+        } else {
+            // Non-strongman: only their claimed pillar actions
+            if (def.pillar !== factionState.pillar && def.pillar !== 'any') continue;
+        }
+
+        const apCost = getEscalatingCost(factionState, def);
+        const { onCooldown, remainingTicks } = checkCooldown(factionState, def, currentTick);
+
+        actions.push({
+            actionType,
+            pillar: def.pillar,
+            apCost,
+            onCooldown,
+            remainingTicks,
+            hasDualMode: def.hasDualMode !== false,
+            isStrongmanExclusive: !!def.isStrongmanExclusive,
+        });
+    }
+
+    return actions;
+}
+
+// ────────── autocracy-actions-military-party-oligarch ──────────
+
+/**
+ * autocracy-actions-military-party-oligarch.js — Phase 5 action implementations.
+ * Military (Deploy, Stand Down, Military Exercises),
+ * Party (Rally, Agitate, Party Congress),
+ * Oligarch (Patronage, Capital Flight, Bribe).
+ *
+ * V5 Autocracy System — Phase 5
+ */
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Load all faction_pillar_state rows + wildcard state for a nation.
+ * Returns { pillarStates, wildcardState, tracker } or null.
+ */
+async function loadPillarContext(supabase, nationId) {
+    const [{ data: fpsRows }, { data: tracker }] = await Promise.all([
+        supabase.from('faction_pillar_state').select('*').eq('nation_id', nationId),
+        supabase.from('autocracy_tracker').select('*').eq('nation_id', nationId).single(),
+    ]);
+    if (!fpsRows || !tracker) return null;
+
+    const pillarStates = fpsRows.map(r => ({
+        id: r.id, faction_id: r.faction_id, pillar: r.pillar,
+        backing: Number(r.backing), is_strongman: r.is_strongman,
+    }));
+    const wildcardState = {
+        pillar: tracker.wildcard_pillar,
+        backing: Number(tracker.wildcard_backing),
+    };
+    return { pillarStates, wildcardState, tracker, fpsRows };
+}
+
+/**
+ * Persist backing changes for all pillar states + wildcard.
+ */
+async function persistBackingChanges(supabase, nationId, pillarStates, wildcardState) {
+    for (const ps of pillarStates) {
+        await supabase.from('faction_pillar_state')
+            .update({ backing: ps.backing, updated_at: new Date().toISOString() })
+            .eq('id', ps.id);
+    }
+    await supabase.from('autocracy_tracker')
+        .update({ wildcard_backing: wildcardState.backing })
+        .eq('nation_id', nationId);
+}
+
+/**
+ * Clamp a stat value between 0 and 100 with one decimal precision.
+ */
+function clampStat(val) {
+    return Math.max(0, Math.min(100, Math.round(val * 10) / 10));
+}
+
+/**
+ * Roll a dice: random integer from min to max inclusive.
+ */
+function roll(min, max) {
+    return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MILITARY ACTIONS
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Deploy ───────────────────────────────────────────────────────────────────
+// 2/4/6 AP (escalating). Reduces Civil Unrest and Political Violence. -1 Legitimacy.
+// Cannot use if Military Exercises used this tick.
+// Escalation resets -1 AP per tick unused (floor 2) — handled in tick processor.
+
+registerAutocracyAction('deploy', {
+    pillar: 'military',
+    baseCost: 2,
+    escalatingCostField: 'deploy_ap_level',
+    escalationSteps: [2, 4, 6],
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: true,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: ['military_exercises'],
+    async execute(supabase, ctx) {
+        const { nation, currentTick } = ctx;
+
+        // Fetch current stats
+        const { data: n } = await supabase.from('nations')
+            .select('civil_unrest, political_violence, legitimacy')
+            .eq('id', nation.id).single();
+        if (!n) return { error: 'Failed to load nation stats' };
+
+        const newUnrest = clampStat(Number(n.civil_unrest || 0) - roll(3, 6));
+        const newViolence = clampStat(Number(n.political_violence || 0) - roll(2, 4));
+        const newLegitimacy = clampStat(Number(n.legitimacy || 50) - 1);
+
+        await supabase.from('nations').update({
+            civil_unrest: newUnrest,
+            political_violence: newViolence,
+            legitimacy: newLegitimacy,
+        }).eq('id', nation.id);
+
+        return {
+            effects: { civil_unrest: newUnrest, political_violence: newViolence, legitimacy: newLegitimacy },
+        };
+    },
+});
+
+// ── Stand Down ───────────────────────────────────────────────────────────────
+// 1 AP. Civil Unrest and Political Violence drift upward.
+// NO dual mode — always For Yourself (+coup tracker).
+// Cannot use if Deployed this tick.
+
+registerAutocracyAction('stand_down', {
+    pillar: 'military',
+    baseCost: 1,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,  // always FOR_YOURSELF
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: ['deploy'],
+    async execute(supabase, ctx) {
+        const { nation } = ctx;
+
+        const { data: n } = await supabase.from('nations')
+            .select('civil_unrest, political_violence')
+            .eq('id', nation.id).single();
+        if (!n) return { error: 'Failed to load nation stats' };
+
+        // Passive upward drift
+        const newUnrest = clampStat(Number(n.civil_unrest || 0) + roll(1, 3));
+        const newViolence = clampStat(Number(n.political_violence || 0) + roll(1, 2));
+
+        await supabase.from('nations').update({
+            civil_unrest: newUnrest,
+            political_violence: newViolence,
+        }).eq('id', nation.id);
+
+        return {
+            effects: { civil_unrest: newUnrest, political_violence: newViolence },
+        };
+    },
+});
+
+// ── Military Exercises ───────────────────────────────────────────────────────
+// 2 AP. +1d3 Backing. Cannot use if Deployed this tick.
+
+registerAutocracyAction('military_exercises', {
+    pillar: 'military',
+    baseCost: 2,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: true,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: ['deploy'],
+    async execute(supabase, ctx) {
+        const { factionState, nation } = ctx;
+
+        const backingGain = roll(1, 3);
+        const pCtx = await loadPillarContext(supabase, nation.id);
+        if (!pCtx) return { error: 'No pillar context' };
+
+        applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, factionState.pillar, backingGain, false);
+        await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+
+        return { effects: { backing_gain: backingGain } };
+    },
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PARTY ACTIONS
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Rally ────────────────────────────────────────────────────────────────────
+// 2 AP. +0.3 Legitimacy for 5 ticks. -1 Polarization. +1 Backing.
+
+registerAutocracyAction('rally', {
+    pillar: 'party',
+    baseCost: 2,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: true,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { factionState, nation, currentTick } = ctx;
+
+        const { data: n } = await supabase.from('nations')
+            .select('polarization, legitimacy')
+            .eq('id', nation.id).single();
+        if (!n) return { error: 'Failed to load nation stats' };
+
+        const newPolarization = clampStat(Number(n.polarization || 0) - 1);
+
+        // Legitimacy buff: +0.3 for 5 ticks stored as a timed effect
+        // For simplicity, apply +0.3 immediately; ongoing effect tracked via action log
+        const newLegitimacy = clampStat(Number(n.legitimacy || 50) + 0.3);
+
+        await supabase.from('nations').update({
+            polarization: newPolarization,
+            legitimacy: newLegitimacy,
+        }).eq('id', nation.id);
+
+        // +1 Backing
+        const pCtx = await loadPillarContext(supabase, nation.id);
+        if (pCtx) {
+            applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, factionState.pillar, 1, false);
+            await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+        }
+
+        // Store timed legitimacy buff (remaining ticks tracked for tick processor)
+        await supabase.from('autocracy_action_log').insert({
+            nation_id: nation.id,
+            faction_id: factionState.faction_id,
+            tick: currentTick,
+            action_type: 'rally_buff',
+            action_mode: null,
+            ap_spent: 0,
+            details: { stat: 'legitimacy', delta: 0.3, remaining_ticks: 4 },  // 4 more after this tick
+        });
+
+        return { effects: { polarization: newPolarization, legitimacy: newLegitimacy, backing_gain: 1 } };
+    },
+});
+
+// ── Agitate ──────────────────────────────────────────────────────────────────
+// 2 AP. -0.3 Legitimacy for 5 ticks. +1 Polarization.
+// FOR_REGIME: half power tracker contribution.
+
+registerAutocracyAction('agitate', {
+    pillar: 'party',
+    baseCost: 2,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: true,
+    halfPowerForRegime: true,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { factionState, nation, currentTick } = ctx;
+
+        const { data: n } = await supabase.from('nations')
+            .select('polarization, legitimacy')
+            .eq('id', nation.id).single();
+        if (!n) return { error: 'Failed to load nation stats' };
+
+        const newPolarization = clampStat(Number(n.polarization || 0) + 1);
+        const newLegitimacy = clampStat(Number(n.legitimacy || 50) - 0.3);
+
+        await supabase.from('nations').update({
+            polarization: newPolarization,
+            legitimacy: newLegitimacy,
+        }).eq('id', nation.id);
+
+        // Store timed legitimacy debuff
+        await supabase.from('autocracy_action_log').insert({
+            nation_id: nation.id,
+            faction_id: factionState.faction_id,
+            tick: currentTick,
+            action_type: 'agitate_debuff',
+            action_mode: null,
+            ap_spent: 0,
+            details: { stat: 'legitimacy', delta: -0.3, remaining_ticks: 4 },
+        });
+
+        return { effects: { polarization: newPolarization, legitimacy: newLegitimacy } };
+    },
+});
+
+// ── Party Congress ───────────────────────────────────────────────────────────
+// 2 AP. Forces Strongman to attend (+1 Legitimacy, costs Strongman 1 AP)
+// or refuse (-1 Legitimacy, +2 Polarization automatically).
+// 4-tick cooldown. Resets on leader death.
+
+registerAutocracyAction('party_congress', {
+    pillar: 'party',
+    baseCost: 2,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: 'party_congress_last_tick',
+    cooldownTicks: 4,
+    hasDualMode: true,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, currentTick } = ctx;
+
+        // Create a pending congress event for the Strongman to respond to.
+        // The Strongman will have until end of tick to attend (1 AP) or refuse.
+        // If no response by next tick, auto-refuse.
+        await supabase.from('autocracy_action_log').insert({
+            nation_id: nation.id,
+            faction_id: factionState.faction_id,
+            tick: currentTick,
+            action_type: 'party_congress_pending',
+            action_mode: null,
+            ap_spent: 0,
+            details: { status: 'pending', called_by: factionState.faction_id },
+        });
+
+        return { effects: { congress_called: true } };
+    },
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// OLIGARCH ACTIONS
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Patronage ────────────────────────────────────────────────────────────────
+// 2 AP. -0.3 Cost of Living for 5 ticks. +0.1 Standard of Living for 5 ticks.
+// No GDP effect.
+
+registerAutocracyAction('patronage', {
+    pillar: 'oligarchs',
+    baseCost: 2,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: true,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, currentTick } = ctx;
+
+        const { data: n } = await supabase.from('nations')
+            .select('cost_of_living, standard_of_living')
+            .eq('id', nation.id).single();
+        if (!n) return { error: 'Failed to load nation stats' };
+
+        const newCoL = clampStat(Number(n.cost_of_living || 50) - 0.3);
+        const newSoL = clampStat(Number(n.standard_of_living || 50) + 0.1);
+
+        await supabase.from('nations').update({
+            cost_of_living: newCoL,
+            standard_of_living: newSoL,
+        }).eq('id', nation.id);
+
+        // Store timed effects (4 more ticks)
+        await supabase.from('autocracy_action_log').insert({
+            nation_id: nation.id,
+            faction_id: factionState.faction_id,
+            tick: currentTick,
+            action_type: 'patronage_buff',
+            action_mode: null,
+            ap_spent: 0,
+            details: {
+                effects: [
+                    { stat: 'cost_of_living', delta: -0.3, remaining_ticks: 4 },
+                    { stat: 'standard_of_living', delta: 0.1, remaining_ticks: 4 },
+                ],
+            },
+        });
+
+        return { effects: { cost_of_living: newCoL, standard_of_living: newSoL } };
+    },
+});
+
+// ── Capital Flight ───────────────────────────────────────────────────────────
+// 2 AP. GDP Growth drops. Corruption increases.
+// FOR_REGIME: half power tracker contribution.
+
+registerAutocracyAction('capital_flight', {
+    pillar: 'oligarchs',
+    baseCost: 2,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: true,
+    halfPowerForRegime: true,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation } = ctx;
+
+        const { data: n } = await supabase.from('nations')
+            .select('gdp_growth, corruption')
+            .eq('id', nation.id).single();
+        if (!n) return { error: 'Failed to load nation stats' };
+
+        const newGdp = clampStat(Number(n.gdp_growth || 50) - roll(2, 5));
+        const newCorruption = clampStat(Number(n.corruption || 50) + roll(1, 3));
+
+        await supabase.from('nations').update({
+            gdp_growth: newGdp,
+            corruption: newCorruption,
+        }).eq('id', nation.id);
+
+        return { effects: { gdp_growth: newGdp, corruption: newCorruption } };
+    },
+});
+
+// ── Bribe ────────────────────────────────────────────────────────────────────
+// 2/3/4/5 AP (escalating). +2 Backing to target faction.
+// Visible only to recipient. Cannot target self or Strongman.
+
+registerAutocracyAction('bribe', {
+    pillar: 'oligarchs',
+    baseCost: 2,
+    escalatingCostField: 'bribe_ap_level',
+    escalationSteps: [2, 3, 4, 5],
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: true,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, extra } = ctx;
+        const targetFactionId = extra?.targetFactionId;
+
+        if (!targetFactionId) {
+            return { error: 'Must specify targetFactionId' };
+        }
+        if (targetFactionId === factionState.faction_id) {
+            return { error: 'Cannot bribe yourself' };
+        }
+
+        // Check target is not Strongman
+        const { data: targetState } = await supabase.from('faction_pillar_state')
+            .select('pillar, is_strongman')
+            .eq('faction_id', targetFactionId)
+            .eq('nation_id', nation.id)
+            .single();
+
+        if (!targetState) return { error: 'Target faction not found' };
+        if (targetState.is_strongman) return { error: 'Cannot bribe the Strongman' };
+
+        // +2 Backing to target
+        const pCtx = await loadPillarContext(supabase, nation.id);
+        if (!pCtx) return { error: 'No pillar context' };
+
+        applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, targetState.pillar, 2, false);
+        await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+
+        return { effects: { target_backing_gain: 2, target_faction_id: targetFactionId } };
+    },
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TIMED EFFECTS PROCESSOR
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Process timed effects from Rally, Agitate, Patronage buffs/debuffs.
+ * Called each tick to apply ongoing stat changes and decrement remaining ticks.
+ *
+ * @param {Object} supabase
+ * @param {Object} nation
+ * @param {number} currentTick
+ * @returns {Object[]} applied effects
+ */
+async function processAutocracyTimedEffects(supabase, nation, currentTick) {
+    const timedActionTypes = ['rally_buff', 'agitate_debuff', 'patronage_buff'];
+
+    const { data: buffRows } = await supabase
+        .from('autocracy_action_log')
+        .select('id, action_type, details')
+        .eq('nation_id', nation.id)
+        .in('action_type', timedActionTypes);
+
+    if (!buffRows || buffRows.length === 0) return [];
+
+    const applied = [];
+    const toDelete = [];
+    const nationUpdates = {};
+
+    // Load current nation stats
+    const { data: n } = await supabase.from('nations')
+        .select('legitimacy, cost_of_living, standard_of_living')
+        .eq('id', nation.id).single();
+    if (!n) return [];
+
+    for (const row of buffRows) {
+        const details = row.details || {};
+        const remaining = details.remaining_ticks;
+
+        if (remaining == null || remaining <= 0) {
+            toDelete.push(row.id);
+            continue;
+        }
+
+        // Apply the stat effect(s)
+        if (row.action_type === 'rally_buff' || row.action_type === 'agitate_debuff') {
+            const stat = details.stat;
+            const delta = details.delta;
+            if (stat && delta != null) {
+                const current = Number(nationUpdates[stat] ?? n[stat] ?? 50);
+                nationUpdates[stat] = clampStat(current + delta);
+                applied.push({ type: row.action_type, stat, delta });
+            }
+        } else if (row.action_type === 'patronage_buff' && Array.isArray(details.effects)) {
+            for (const eff of details.effects) {
+                const current = Number(nationUpdates[eff.stat] ?? n[eff.stat] ?? 50);
+                nationUpdates[eff.stat] = clampStat(current + eff.delta);
+                applied.push({ type: row.action_type, stat: eff.stat, delta: eff.delta });
+            }
+        }
+
+        // Decrement remaining ticks
+        const newRemaining = remaining - 1;
+        if (newRemaining <= 0) {
+            toDelete.push(row.id);
+        } else {
+            const updatedDetails = { ...details, remaining_ticks: newRemaining };
+            if (row.action_type === 'patronage_buff' && Array.isArray(details.effects)) {
+                updatedDetails.effects = details.effects.map(e => ({ ...e, remaining_ticks: newRemaining }));
+            }
+            await supabase.from('autocracy_action_log')
+                .update({ details: updatedDetails })
+                .eq('id', row.id);
+        }
+    }
+
+    // Apply accumulated stat changes
+    if (Object.keys(nationUpdates).length > 0) {
+        await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+    }
+
+    // Clean up expired buffs
+    for (const id of toDelete) {
+        await supabase.from('autocracy_action_log').delete().eq('id', id);
+    }
+
+    return applied;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// DEPLOY ESCALATION DECAY
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Deploy AP cost resets -1 per tick unused (floor 2).
+ * Called each tick for military pillar factions.
+ *
+ * @param {Object} supabase
+ * @param {string} nationId
+ * @param {number} currentTick
+ */
+async function processDeployEscalationDecay(supabase, nationId, currentTick) {
+    // Find military pillar factions
+    const { data: militaryFactions } = await supabase
+        .from('faction_pillar_state')
+        .select('id, faction_id, deploy_ap_level')
+        .eq('nation_id', nationId)
+        .eq('pillar', 'military');
+
+    if (!militaryFactions) return;
+
+    for (const fps of militaryFactions) {
+        const currentLevel = fps.deploy_ap_level || 2;
+        if (currentLevel <= 2) continue; // already at minimum
+
+        // Check if deploy was used this tick
+        const { data: usedThisTick } = await supabase
+            .from('autocracy_action_log')
+            .select('id')
+            .eq('faction_id', fps.faction_id)
+            .eq('nation_id', nationId)
+            .eq('tick', currentTick)
+            .eq('action_type', 'deploy')
+            .limit(1);
+
+        if (usedThisTick && usedThisTick.length > 0) continue; // used this tick, no decay
+
+        // Decay by the escalation step size (2→4→6 means step = 2)
+        const newLevel = Math.max(2, currentLevel - 2);
+        if (newLevel !== currentLevel) {
+            await supabase.from('faction_pillar_state')
+                .update({ deploy_ap_level: newLevel, updated_at: new Date().toISOString() })
+                .eq('id', fps.id);
+        }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PARTY CONGRESS RESOLUTION
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Auto-resolve any pending Party Congress that the Strongman hasn't responded to.
+ * If Strongman didn't attend, auto-refuse: -1 Legitimacy, +2 Polarization.
+ *
+ * @param {Object} supabase
+ * @param {string} nationId
+ * @param {number} currentTick
+ */
+async function resolvePartyCongressPending(supabase, nationId, currentTick) {
+    // Find pending congress from previous tick
+    const { data: pendingRows } = await supabase
+        .from('autocracy_action_log')
+        .select('id, tick, details')
+        .eq('nation_id', nationId)
+        .eq('action_type', 'party_congress_pending')
+        .lt('tick', currentTick);
+
+    if (!pendingRows || pendingRows.length === 0) return;
+
+    for (const row of pendingRows) {
+        const details = row.details || {};
+        if (details.status !== 'pending') continue;
+
+        // Auto-refuse: -1 Legitimacy, +2 Polarization
+        const { data: n } = await supabase.from('nations')
+            .select('legitimacy, polarization')
+            .eq('id', nationId).single();
+
+        if (n) {
+            await supabase.from('nations').update({
+                legitimacy: clampStat(Number(n.legitimacy || 50) - 1),
+                polarization: clampStat(Number(n.polarization || 0) + 2),
+            }).eq('id', nationId);
+        }
+
+        // Mark as resolved (refused)
+        await supabase.from('autocracy_action_log')
+            .update({ details: { ...details, status: 'refused' } })
+            .eq('id', row.id);
+    }
+}
+
+/**
+ * Strongman attends Party Congress (player action).
+ * +1 Legitimacy, costs 1 AP.
+ *
+ * @param {Object} supabase
+ * @param {string} strongmanFactionId
+ * @param {string} nationId
+ * @param {number} currentTick
+ */
+async function attendPartyCongress(supabase, strongmanFactionId, nationId, currentTick) {
+    // Find pending congress for this tick
+    const { data: pendingRows } = await supabase
+        .from('autocracy_action_log')
+        .select('id, details')
+        .eq('nation_id', nationId)
+        .eq('action_type', 'party_congress_pending')
+        .eq('tick', currentTick);
+
+    if (!pendingRows || pendingRows.length === 0) {
+        return { success: false, error: 'No pending Party Congress to attend' };
+    }
+
+    // Deduct 1 AP from Strongman
+    const { data: faction } = await supabase.from('factions')
+        .select('action_points')
+        .eq('id', strongmanFactionId).single();
+
+    if (!faction || faction.action_points < 1) {
+        return { success: false, error: 'Insufficient AP to attend' };
+    }
+
+    await supabase.from('factions')
+        .update({ action_points: faction.action_points - 1 })
+        .eq('id', strongmanFactionId);
+
+    // +1 Legitimacy
+    const { data: n } = await supabase.from('nations')
+        .select('legitimacy')
+        .eq('id', nationId).single();
+
+    if (n) {
+        await supabase.from('nations').update({
+            legitimacy: clampStat(Number(n.legitimacy || 50) + 1),
+        }).eq('id', nationId);
+    }
+
+    // Mark as attended
+    const row = pendingRows[0];
+    await supabase.from('autocracy_action_log')
+        .update({ details: { ...row.details, status: 'attended' } })
+        .eq('id', row.id);
+
+    return { success: true, effects: { legitimacy_gain: 1, ap_cost: 1 } };
+}
+
+// ────────── autocracy-actions-security-media-strongman ──────────
+
+/**
+ * autocracy-actions-security-media-strongman.js — Phase 6 action implementations.
+ * Security Services (Surveillance, Blackmail, Disappear),
+ * State Media (Broadcast, Smear, Blackout),
+ * Strongman Exclusives (Arrest Leader, Execute Leader, Release Leader, Favor).
+ *
+ * V5 Autocracy System — Phase 6
+ *
+ * NOTE: Helpers loadPillarContext, persistBackingChanges, clampStat, roll
+ * are declared in autocracy-actions-military-party-oligarch.js and available
+ * in the same scope after bundle concatenation.
+ */
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SECURITY SERVICES ACTIONS
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Surveillance ─────────────────────────────────────────────────────────────
+// 2 AP. Reveals target's Backing, AP, and last action.
+// Tracks surveilled targets in JSON array. Required for Silent Coup.
+
+registerAutocracyAction('surveillance', {
+    pillar: 'security',
+    baseCost: 2,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: true,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, extra } = ctx;
+        const targetFactionId = extra?.targetFactionId;
+        if (!targetFactionId) return { error: 'Must specify targetFactionId' };
+        if (targetFactionId === factionState.faction_id) return { error: 'Cannot surveil yourself' };
+
+        // Load target info
+        const { data: targetFps } = await supabase.from('faction_pillar_state')
+            .select('pillar, backing')
+            .eq('faction_id', targetFactionId).eq('nation_id', nation.id).single();
+        const { data: targetFaction } = await supabase.from('factions')
+            .select('action_points')
+            .eq('id', targetFactionId).single();
+
+        if (!targetFps || !targetFaction) return { error: 'Target faction not found' };
+
+        // Get target's last action
+        const { data: lastAction } = await supabase.from('autocracy_action_log')
+            .select('action_type, tick')
+            .eq('faction_id', targetFactionId).eq('nation_id', nation.id)
+            .order('tick', { ascending: false }).limit(1);
+
+        // Update surveillance_targets: add target if not already tracked, count occurrences
+        const currentTargets = Array.isArray(factionState.surveillance_targets)
+            ? factionState.surveillance_targets
+            : JSON.parse(factionState.surveillance_targets || '[]');
+        const updatedTargets = [...currentTargets, targetFactionId];
+
+        await supabase.from('faction_pillar_state')
+            .update({ surveillance_targets: JSON.stringify(updatedTargets), updated_at: new Date().toISOString() })
+            .eq('id', factionState.id);
+
+        return {
+            effects: {
+                revealed: {
+                    target_faction_id: targetFactionId,
+                    backing: Number(targetFps.backing),
+                    ap: targetFaction.action_points,
+                    last_action: lastAction?.[0]?.action_type || null,
+                },
+            },
+        };
+    },
+});
+
+// ── Blackmail ────────────────────────────────────────────────────────────────
+// 1/2/3 AP (escalating). Target loses 1d3 Backing OR 2 AP (their choice).
+// Requires Surveillance on target at least twice. Respects Blackmail Immunity.
+
+registerAutocracyAction('blackmail', {
+    pillar: 'security',
+    baseCost: 1,
+    escalatingCostField: 'blackmail_ap_level',
+    escalationSteps: [1, 2, 3],
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: true,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, extra, currentTick } = ctx;
+        const targetFactionId = extra?.targetFactionId;
+        if (!targetFactionId) return { error: 'Must specify targetFactionId' };
+
+        // Check surveillance count on target (need >= 2)
+        const targets = Array.isArray(factionState.surveillance_targets)
+            ? factionState.surveillance_targets
+            : JSON.parse(factionState.surveillance_targets || '[]');
+        const survCount = targets.filter(t => t === targetFactionId).length;
+        if (survCount < 2) {
+            return { error: 'Requires Surveillance on target at least twice' };
+        }
+
+        // Check blackmail immunity
+        const { data: targetFps } = await supabase.from('faction_pillar_state')
+            .select('blackmail_immune_until, pillar, backing')
+            .eq('faction_id', targetFactionId).eq('nation_id', nation.id).single();
+        if (!targetFps) return { error: 'Target not found' };
+        if (targetFps.blackmail_immune_until && currentTick < targetFps.blackmail_immune_until) {
+            return { error: 'Target has Blackmail Immunity' };
+        }
+
+        // Target choice: lose 1d3 Backing OR 2 AP
+        // For now, server auto-resolves: if target has >= 2 AP, lose AP; else lose Backing
+        const { data: targetFaction } = await supabase.from('factions')
+            .select('action_points')
+            .eq('id', targetFactionId).single();
+
+        let outcome;
+        if (targetFaction && targetFaction.action_points >= 2) {
+            // Lose 2 AP
+            await supabase.from('factions')
+                .update({ action_points: targetFaction.action_points - 2 })
+                .eq('id', targetFactionId);
+            outcome = { type: 'ap_loss', amount: 2 };
+        } else {
+            // Lose 1d3 Backing
+            const backingLoss = roll(1, 3);
+            const pCtx = await loadPillarContext(supabase, nation.id);
+            if (pCtx) {
+                applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, targetFps.pillar, -backingLoss, false);
+                await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+            }
+            outcome = { type: 'backing_loss', amount: backingLoss };
+        }
+
+        return { effects: { target_faction_id: targetFactionId, outcome } };
+    },
+});
+
+// ── Disappear ────────────────────────────────────────────────────────────────
+// 3 AP. Target -1 Backing. Untraceable.
+// Against Strongman: -2 Backing to foundation, -1 Legitimacy.
+
+registerAutocracyAction('disappear', {
+    pillar: 'security',
+    baseCost: 3,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: true,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, extra } = ctx;
+        const targetFactionId = extra?.targetFactionId;
+        if (!targetFactionId) return { error: 'Must specify targetFactionId' };
+        if (targetFactionId === factionState.faction_id) return { error: 'Cannot disappear yourself' };
+
+        const { data: targetFps } = await supabase.from('faction_pillar_state')
+            .select('pillar, is_strongman')
+            .eq('faction_id', targetFactionId).eq('nation_id', nation.id).single();
+        if (!targetFps) return { error: 'Target not found' };
+
+        const pCtx = await loadPillarContext(supabase, nation.id);
+        if (!pCtx) return { error: 'No pillar context' };
+
+        if (targetFps.is_strongman) {
+            // Against Strongman: -2 Backing to foundation, -1 Legitimacy
+            applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, targetFps.pillar, -2, false);
+            await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+
+            const { data: n } = await supabase.from('nations')
+                .select('legitimacy').eq('id', nation.id).single();
+            if (n) {
+                await supabase.from('nations').update({
+                    legitimacy: clampStat(Number(n.legitimacy || 50) - 1),
+                }).eq('id', nation.id);
+            }
+            return { effects: { target_strongman: true, backing_loss: 2, legitimacy_loss: 1 } };
+        } else {
+            // Normal: -1 Backing
+            applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, targetFps.pillar, -1, false);
+            await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+            return { effects: { target_faction_id: targetFactionId, backing_loss: 1 } };
+        }
+    },
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// STATE MEDIA ACTIONS
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Broadcast ────────────────────────────────────────────────────────────────
+// 2 AP. +0.3 Legitimacy for 5 ticks. -1 Polarization. -0.1 Press Freedom. +1 Backing.
+
+registerAutocracyAction('broadcast', {
+    pillar: 'media',
+    baseCost: 2,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: true,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, currentTick } = ctx;
+
+        const { data: n } = await supabase.from('nations')
+            .select('polarization, press_freedom, legitimacy')
+            .eq('id', nation.id).single();
+        if (!n) return { error: 'Failed to load nation stats' };
+
+        const newPolarization = clampStat(Number(n.polarization || 0) - 1);
+        const newPressFreedom = clampStat(Number(n.press_freedom || 50) - 0.1);
+        const newLegitimacy = clampStat(Number(n.legitimacy || 50) + 0.3);
+
+        await supabase.from('nations').update({
+            polarization: newPolarization,
+            press_freedom: newPressFreedom,
+            legitimacy: newLegitimacy,
+        }).eq('id', nation.id);
+
+        // +1 Backing
+        const pCtx = await loadPillarContext(supabase, nation.id);
+        if (pCtx) {
+            applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, factionState.pillar, 1, false);
+            await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+        }
+
+        // Timed legitimacy buff (4 more ticks)
+        await supabase.from('autocracy_action_log').insert({
+            nation_id: nation.id, faction_id: factionState.faction_id,
+            tick: currentTick, action_type: 'rally_buff', action_mode: null, ap_spent: 0,
+            details: { stat: 'legitimacy', delta: 0.3, remaining_ticks: 4 },
+        });
+
+        return { effects: { polarization: newPolarization, press_freedom: newPressFreedom, legitimacy: newLegitimacy, backing_gain: 1 } };
+    },
+});
+
+// ── Smear ────────────────────────────────────────────────────────────────────
+// 2 AP. Target -2 Backing. +1 Polarization. -0.1 Press Freedom. Can target Strongman.
+
+registerAutocracyAction('smear', {
+    pillar: 'media',
+    baseCost: 2,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: true,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, extra } = ctx;
+        const targetFactionId = extra?.targetFactionId;
+        if (!targetFactionId) return { error: 'Must specify targetFactionId' };
+        if (targetFactionId === factionState.faction_id) return { error: 'Cannot smear yourself' };
+
+        const { data: targetFps } = await supabase.from('faction_pillar_state')
+            .select('pillar')
+            .eq('faction_id', targetFactionId).eq('nation_id', nation.id).single();
+        if (!targetFps) return { error: 'Target not found' };
+
+        // -2 Backing to target
+        const pCtx = await loadPillarContext(supabase, nation.id);
+        if (pCtx) {
+            applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, targetFps.pillar, -2, false);
+            await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+        }
+
+        // +1 Polarization, -0.1 Press Freedom
+        const { data: n } = await supabase.from('nations')
+            .select('polarization, press_freedom')
+            .eq('id', nation.id).single();
+        if (n) {
+            await supabase.from('nations').update({
+                polarization: clampStat(Number(n.polarization || 0) + 1),
+                press_freedom: clampStat(Number(n.press_freedom || 50) - 0.1),
+            }).eq('id', nation.id);
+        }
+
+        return { effects: { target_backing_loss: 2, polarization: 1, press_freedom: -0.1 } };
+    },
+});
+
+// ── Blackout ─────────────────────────────────────────────────────────────────
+// 1 AP. Freezes Legitimacy and Polarization for one tick. 5-tick cooldown.
+
+registerAutocracyAction('blackout', {
+    pillar: 'media',
+    baseCost: 1,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: 'blackout_last_tick',
+    cooldownTicks: 5,
+    hasDualMode: true,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, currentTick } = ctx;
+
+        // Store a blackout marker — the tick processor will check for this
+        // and skip legitimacy/polarization changes this tick.
+        await supabase.from('autocracy_action_log').insert({
+            nation_id: nation.id, faction_id: ctx.factionState.faction_id,
+            tick: currentTick, action_type: 'blackout_active', action_mode: null, ap_spent: 0,
+            details: { freeze_stats: ['legitimacy', 'polarization'] },
+        });
+
+        return { effects: { blackout: true, frozen: ['legitimacy', 'polarization'] } };
+    },
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// STRONGMAN EXCLUSIVE ACTIONS
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Arrest Leader ────────────────────────────────────────────────────────────
+// 2 AP. Roll 1d20 + modifiers vs target Backing.
+// Success: arrest, pillar → wildcard, tracker -5.
+// Tie: flee, -3 Backing. Fail: Strongman foundation -2 Backing.
+// All outcomes: -3 Legitimacy, +3 Polarization.
+
+registerAutocracyAction('arrest_leader', {
+    pillar: 'any',
+    baseCost: 2,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,  // Strongman action — no dual mode, specific tracker effects
+    halfPowerForRegime: false,
+    isStrongmanExclusive: true,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, extra, currentTick } = ctx;
+        const targetFactionId = extra?.targetFactionId;
+        if (!targetFactionId) return { error: 'Must specify targetFactionId' };
+
+        // Load target
+        const { data: targetFps } = await supabase.from('faction_pillar_state')
+            .select('*')
+            .eq('faction_id', targetFactionId).eq('nation_id', nation.id).single();
+        if (!targetFps) return { error: 'Target not found' };
+        if (targetFps.is_strongman) return { error: 'Cannot arrest yourself' };
+        if (targetFps.arrested_leader) return { error: 'Target already arrested' };
+
+        // Roll 1d20 + modifiers
+        let rollVal = roll(1, 20);
+        // Modifiers
+        if (factionState.pillar === 'security') rollVal += 10;
+        if (factionState.pillar === 'military') rollVal += 5;
+        if (Number(targetFps.backing) <= 5) rollVal += 5;
+        // Arrest bonus from previous Release
+        rollVal += (targetFps.arrest_bonus || 0);
+
+        const targetBacking = Math.round(Number(targetFps.backing));
+        let outcome;
+
+        const pCtx = await loadPillarContext(supabase, nation.id);
+        if (!pCtx) return { error: 'No pillar context' };
+
+        if (rollVal > targetBacking) {
+            // SUCCESS — arrest, pillar becomes wildcard
+            outcome = 'success';
+            await supabase.from('faction_pillar_state')
+                .update({ arrested_leader: true, updated_at: new Date().toISOString() })
+                .eq('id', targetFps.id);
+
+            // Tracker -5
+            const { data: tracker } = await supabase.from('autocracy_tracker')
+                .select('tracker_value').eq('nation_id', nation.id).single();
+            if (tracker) {
+                await supabase.from('autocracy_tracker').update({
+                    tracker_value: Math.max(0, tracker.tracker_value - 5),
+                    last_updated_tick: currentTick,
+                }).eq('nation_id', nation.id);
+            }
+        } else if (rollVal === targetBacking) {
+            // TIE — leader flees, -3 Backing
+            outcome = 'tie';
+            applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, targetFps.pillar, -3, false);
+            await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+        } else {
+            // FAIL — Strongman foundation -2 Backing
+            outcome = 'fail';
+            applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, factionState.pillar, -2, false);
+            await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+        }
+
+        // All outcomes: -3 Legitimacy, +3 Polarization
+        const { data: n } = await supabase.from('nations')
+            .select('legitimacy, polarization').eq('id', nation.id).single();
+        if (n) {
+            await supabase.from('nations').update({
+                legitimacy: clampStat(Number(n.legitimacy || 50) - 3),
+                polarization: clampStat(Number(n.polarization || 0) + 3),
+            }).eq('id', nation.id);
+        }
+
+        return {
+            effects: {
+                outcome,
+                roll: rollVal,
+                target_backing: targetBacking,
+                target_faction_id: targetFactionId,
+            },
+        };
+    },
+});
+
+// ── Execute Leader ───────────────────────────────────────────────────────────
+// Only after successful Arrest. Permanently removes leader.
+// Roll 1d10: 1-5 → regime tracker, 6-10 → coup tracker.
+// -5 Legitimacy. +5 Polarization. +5 Backing to Strongman. All others -1 Backing.
+
+registerAutocracyAction('execute_leader', {
+    pillar: 'any',
+    baseCost: 0,  // no AP cost
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: true,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, extra, currentTick } = ctx;
+        const targetFactionId = extra?.targetFactionId;
+        if (!targetFactionId) return { error: 'Must specify targetFactionId' };
+
+        // Verify target is arrested
+        const { data: targetFps } = await supabase.from('faction_pillar_state')
+            .select('*')
+            .eq('faction_id', targetFactionId).eq('nation_id', nation.id).single();
+        if (!targetFps) return { error: 'Target not found' };
+        if (!targetFps.arrested_leader) return { error: 'Target leader is not arrested' };
+
+        // Roll 1d10 for tracker effect
+        const d10 = roll(1, 10);
+        const { data: tracker } = await supabase.from('autocracy_tracker')
+            .select('tracker_value').eq('nation_id', nation.id).single();
+
+        if (tracker) {
+            let trackerDelta;
+            if (d10 <= 5) {
+                // Regime tracker: values map 1→+5, 2→+4, 3→+3, 4→+2, 5→+1
+                trackerDelta = 6 - d10;  // regime = stabilizing, but V5 says "+N Regime tracker"
+                // V5: "1→+5 Regime tracker" means tracker goes UP by 5 (destabilizing from regime perspective)
+                // Wait — re-reading: "Regime tracker" going up means more instability
+                // Actually 1-5 push tracker UP (bad for regime), 6-10 also push UP (coup)
+                // The distinction is narrative, not mechanical — both add to tracker
+                trackerDelta = 6 - d10;  // 1→5, 2→4, 3→3, 4→2, 5→1
+            } else {
+                // Coup tracker: 6→+1, 7→+2, 8→+3, 9→+4, 10→+5
+                trackerDelta = d10 - 5;
+            }
+            const newTracker = Math.max(0, Math.min(100, tracker.tracker_value + trackerDelta));
+            await supabase.from('autocracy_tracker').update({
+                tracker_value: newTracker,
+                last_updated_tick: currentTick,
+            }).eq('nation_id', nation.id);
+        }
+
+        // Make the arrested leader's pillar the new wildcard
+        const oldWildcard = (await supabase.from('autocracy_tracker')
+            .select('wildcard_pillar, wildcard_backing')
+            .eq('nation_id', nation.id).single()).data;
+
+        await supabase.from('autocracy_tracker').update({
+            wildcard_pillar: targetFps.pillar,
+            wildcard_backing: Number(targetFps.backing),
+            wildcard_neglect_ticks: 0,
+        }).eq('nation_id', nation.id);
+
+        // Remove the faction's pillar state (leader executed)
+        // Reset their escalations and mark as no longer having a leader
+        await supabase.from('faction_pillar_state')
+            .update({
+                arrested_leader: false,
+                leader_name: null,
+                leader_age: null,
+                death_age: null,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', targetFps.id);
+
+        await resetLeaderEscalations(supabase, targetFactionId);
+
+        // +5 Backing to Strongman, -1 Backing to all other factions
+        const pCtx = await loadPillarContext(supabase, nation.id);
+        if (pCtx) {
+            applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, factionState.pillar, 5, false);
+            for (const ps of pCtx.pillarStates) {
+                if (ps.faction_id !== factionState.faction_id && ps.faction_id !== targetFactionId) {
+                    applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, ps.pillar, -1, false);
+                }
+            }
+            await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+        }
+
+        // -5 Legitimacy, +5 Polarization
+        const { data: n } = await supabase.from('nations')
+            .select('legitimacy, polarization').eq('id', nation.id).single();
+        if (n) {
+            await supabase.from('nations').update({
+                legitimacy: clampStat(Number(n.legitimacy || 50) - 5),
+                polarization: clampStat(Number(n.polarization || 0) + 5),
+            }).eq('id', nation.id);
+        }
+
+        return { effects: { d10_roll: d10, target_faction_id: targetFactionId, executed: true } };
+    },
+});
+
+// ── Release Leader ───────────────────────────────────────────────────────────
+// Only after successful Arrest. Returns leader humiliated.
+// +1d6 Regime tracker. +3 Legitimacy. -2 Polarization.
+// Target Backing halved. Future Arrest rolls against this leader: +5.
+
+registerAutocracyAction('release_leader', {
+    pillar: 'any',
+    baseCost: 0,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: true,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, extra, currentTick } = ctx;
+        const targetFactionId = extra?.targetFactionId;
+        if (!targetFactionId) return { error: 'Must specify targetFactionId' };
+
+        const { data: targetFps } = await supabase.from('faction_pillar_state')
+            .select('*')
+            .eq('faction_id', targetFactionId).eq('nation_id', nation.id).single();
+        if (!targetFps) return { error: 'Target not found' };
+        if (!targetFps.arrested_leader) return { error: 'Target leader is not arrested' };
+
+        // Release: un-arrest
+        await supabase.from('faction_pillar_state').update({
+            arrested_leader: false,
+            arrest_bonus: (targetFps.arrest_bonus || 0) + 5,  // future arrests easier
+            updated_at: new Date().toISOString(),
+        }).eq('id', targetFps.id);
+
+        // +1d6 Regime tracker
+        const trackerAdd = roll(1, 6);
+        const { data: tracker } = await supabase.from('autocracy_tracker')
+            .select('tracker_value').eq('nation_id', nation.id).single();
+        if (tracker) {
+            await supabase.from('autocracy_tracker').update({
+                tracker_value: Math.min(100, tracker.tracker_value + trackerAdd),
+                last_updated_tick: currentTick,
+            }).eq('nation_id', nation.id);
+        }
+
+        // Target Backing halved
+        const pCtx = await loadPillarContext(supabase, nation.id);
+        if (pCtx) {
+            const targetPs = pCtx.pillarStates.find(p => p.faction_id === targetFactionId);
+            if (targetPs) {
+                const halfLoss = -(Math.floor(targetPs.backing / 2 * 100) / 100);
+                applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, targetPs.pillar, halfLoss, false);
+                await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+            }
+        }
+
+        // +3 Legitimacy, -2 Polarization
+        const { data: n } = await supabase.from('nations')
+            .select('legitimacy, polarization').eq('id', nation.id).single();
+        if (n) {
+            await supabase.from('nations').update({
+                legitimacy: clampStat(Number(n.legitimacy || 50) + 3),
+                polarization: clampStat(Number(n.polarization || 0) - 2),
+            }).eq('id', nation.id);
+        }
+
+        return { effects: { released: true, tracker_add: trackerAdd, target_faction_id: targetFactionId } };
+    },
+});
+
+// ── Favor ────────────────────────────────────────────────────────────────────
+// 2 AP. Choose two factions. Favored: +4 Backing. Disfavored: -4 Backing.
+// Visible to all. 3-tick cooldown.
+
+registerAutocracyAction('favor', {
+    pillar: 'any',
+    baseCost: 2,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: 'favor_last_tick',
+    cooldownTicks: 3,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: true,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, extra } = ctx;
+        const favoredId = extra?.favoredFactionId;
+        const disfavoredId = extra?.disfavoredFactionId;
+
+        if (!favoredId || !disfavoredId) return { error: 'Must specify favoredFactionId and disfavoredFactionId' };
+        if (favoredId === disfavoredId) return { error: 'Favored and disfavored must be different' };
+        if (favoredId === factionState.faction_id || disfavoredId === factionState.faction_id) {
+            return { error: 'Cannot favor/disfavor yourself' };
+        }
+
+        // Get target pillars
+        const { data: targets } = await supabase.from('faction_pillar_state')
+            .select('faction_id, pillar')
+            .eq('nation_id', nation.id)
+            .in('faction_id', [favoredId, disfavoredId]);
+
+        if (!targets || targets.length < 2) return { error: 'Target factions not found' };
+
+        const favored = targets.find(t => t.faction_id === favoredId);
+        const disfavored = targets.find(t => t.faction_id === disfavoredId);
+        if (!favored || !disfavored) return { error: 'Target factions not found' };
+
+        const pCtx = await loadPillarContext(supabase, nation.id);
+        if (!pCtx) return { error: 'No pillar context' };
+
+        applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, favored.pillar, 4, false);
+        applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, disfavored.pillar, -4, false);
+        await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+
+        return {
+            effects: {
+                favored: { faction_id: favoredId, backing_change: 4 },
+                disfavored: { faction_id: disfavoredId, backing_change: -4 },
+            },
+        };
+    },
+});
+
+// ────────── autocracy-coups ──────────
+
+/**
+ * autocracy-coups.js — Phase 7: Standard Coup + Putsch
+ * Implements coup formula, outcome resolution, vulnerability windows,
+ * pyrrhic windows, and the Military Putsch two-stage system.
+ *
+ * V5 Autocracy System — Phase 7
+ *
+ * NOTE: Helpers loadPillarContext, persistBackingChanges, clampStat, roll
+ * are declared in autocracy-actions-military-party-oligarch.js and available
+ * in the same scope after bundle concatenation.
+ */
+
+// ═════════════════════════════════════════════════════════════════════════════
+// COUP FORMULA & RESOLUTION
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Core coup resolution. Rolls 1d100 + (tracker - 50), applies outcome.
+ *
+ * @param {object} supabase
+ * @param {object} opts
+ * @param {string} opts.nationId
+ * @param {string} opts.factionId       - Faction attempting the coup
+ * @param {string} opts.factionPillar   - Pillar of the attempting faction
+ * @param {number} opts.currentTick
+ * @param {number} opts.rollBonus       - Flat bonus to roll (e.g. +20 for vulnerability/pyrrhic)
+ * @param {string} opts.coupType        - 'standard' | 'putsch' | 'silent' | 'auto'
+ * @returns {object} { outcome, roll, trackerAtAttempt, effects }
+ */
+async function resolveStandardCoup(supabase, opts) {
+    const { nationId, factionId, factionPillar, currentTick, rollBonus = 0, coupType = 'standard' } = opts;
+
+    // Load tracker
+    const { data: tracker } = await supabase.from('autocracy_tracker')
+        .select('*').eq('nation_id', nationId).single();
+    if (!tracker) return { error: 'No autocracy tracker' };
+
+    const trackerAtAttempt = tracker.tracker_value;
+
+    // Roll = 1d100 + (tracker - 50) + bonus
+    const diceRoll = roll(1, 100);
+    const finalRoll = diceRoll + (trackerAtAttempt - 50) + rollBonus;
+
+    // Determine outcome
+    let outcome;
+    if (finalRoll < 0) outcome = 'catastrophic';
+    else if (finalRoll <= 39) outcome = 'failure';
+    else if (finalRoll <= 69) outcome = 'pyrrhic';
+    else if (finalRoll <= 99) outcome = 'clean';
+    else outcome = 'dominant';
+
+    // Load nation stats
+    const { data: nation } = await supabase.from('nations')
+        .select('id, stability, civil_unrest, legitimacy, polarization')
+        .eq('id', nationId).single();
+    if (!nation) return { error: 'Nation not found' };
+
+    const pCtx = await loadPillarContext(supabase, nationId);
+    if (!pCtx) return { error: 'No pillar context' };
+
+    const effects = { outcome, diceRoll, finalRoll, trackerAtAttempt, rollBonus, coupType };
+
+    // ── Apply outcome consequences ──
+    if (outcome === 'catastrophic') {
+        // Leader executed, pillar → wildcard, backing -5, tracker → 10
+        // -1d3 Stability, +1d3 Civil Unrest
+        applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, factionPillar, -5, false);
+        await persistBackingChanges(supabase, nationId, pCtx.pillarStates, pCtx.wildcardState);
+
+        // Pillar becomes wildcard
+        await supabase.from('autocracy_tracker').update({
+            wildcard_pillar: factionPillar,
+            wildcard_backing: Math.max(0, Number(pCtx.pillarStates.find(p => p.pillar === factionPillar)?.backing || 0)),
+            wildcard_neglect_ticks: 0,
+            tracker_value: 10, public_tracker_value: 30, public_tracker_last_tick: currentTick,
+            last_updated_tick: currentTick,
+        }).eq('nation_id', nationId);
+
+        // Mark leader as dead — reset escalations
+        const fpsRow = pCtx.fpsRows.find(r => r.pillar === factionPillar);
+        if (fpsRow) {
+            await supabase.from('faction_pillar_state').update({
+                leader_name: null, leader_age: null, death_age: null,
+                arrested_leader: false, updated_at: new Date().toISOString(),
+            }).eq('id', fpsRow.id);
+        }
+        await resetLeaderEscalations(supabase, factionId);
+
+        const stabLoss = roll(1, 3);
+        const cuLoss = roll(1, 3);
+        await supabase.from('nations').update({
+            stability: clampStat(Number(nation.stability || 50) - stabLoss),
+            civil_unrest: clampStat(Number(nation.civil_unrest || 0) + cuLoss),
+        }).eq('id', nationId);
+
+        effects.stability_loss = stabLoss;
+        effects.civil_unrest_gain = cuLoss;
+        effects.leader_executed = true;
+
+    } else if (outcome === 'failure') {
+        // Leader arrested, backing -5, tracker → 10
+        // -1d3 Stability, +1d3 Civil Unrest
+        applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, factionPillar, -5, false);
+        await persistBackingChanges(supabase, nationId, pCtx.pillarStates, pCtx.wildcardState);
+
+        const fpsRow = pCtx.fpsRows.find(r => r.pillar === factionPillar);
+        if (fpsRow) {
+            await supabase.from('faction_pillar_state').update({
+                arrested_leader: true, updated_at: new Date().toISOString(),
+            }).eq('id', fpsRow.id);
+        }
+
+        await supabase.from('autocracy_tracker').update({
+            tracker_value: 10, last_updated_tick: currentTick,
+        }).eq('nation_id', nationId);
+
+        const stabLoss = roll(1, 3);
+        const cuLoss = roll(1, 3);
+        await supabase.from('nations').update({
+            stability: clampStat(Number(nation.stability || 50) - stabLoss),
+            civil_unrest: clampStat(Number(nation.civil_unrest || 0) + cuLoss),
+        }).eq('id', nationId);
+
+        effects.stability_loss = stabLoss;
+        effects.civil_unrest_gain = cuLoss;
+        effects.leader_arrested = true;
+
+    } else if (outcome === 'pyrrhic') {
+        // New strongman but structurally unsound
+        // Legitimacy → 15, Polarization +20, tracker → 30
+        // -1d6 Stability, +1d6 Civil Unrest
+        // 3-tick pyrrhic window for other factions
+        await transferPower(supabase, nationId, factionId, factionPillar, pCtx, currentTick);
+
+        await supabase.from('nations').update({
+            legitimacy: 15,
+            polarization: clampStat(Number(nation.polarization || 0) + 20),
+        }).eq('id', nationId);
+
+        await supabase.from('autocracy_tracker').update({
+            tracker_value: 30, public_tracker_value: 30, public_tracker_last_tick: currentTick, last_updated_tick: currentTick,
+        }).eq('nation_id', nationId);
+
+        // Open pyrrhic window
+        await supabase.from('pyrrhic_window').insert({
+            nation_id: nationId,
+            start_tick: currentTick,
+            end_tick: currentTick + 3,
+            new_strongman_id: factionId,
+        });
+
+        const stabLoss = roll(1, 6);
+        const cuLoss = roll(1, 6);
+        await supabase.from('nations').update({
+            stability: clampStat(Number(nation.stability || 50) - stabLoss),
+            civil_unrest: clampStat(Number(nation.civil_unrest || 0) + cuLoss),
+        }).eq('id', nationId);
+
+        effects.stability_loss = stabLoss;
+        effects.civil_unrest_gain = cuLoss;
+        effects.pyrrhic_window = { start: currentTick, end: currentTick + 3 };
+
+    } else if (outcome === 'clean') {
+        // In power. Legitimacy → 35, tracker → 30
+        // -1d6 Stability, +1d6 Civil Unrest
+        await transferPower(supabase, nationId, factionId, factionPillar, pCtx, currentTick);
+
+        await supabase.from('nations').update({ legitimacy: 35 }).eq('id', nationId);
+
+        await supabase.from('autocracy_tracker').update({
+            tracker_value: 30, public_tracker_value: 30, public_tracker_last_tick: currentTick, last_updated_tick: currentTick,
+        }).eq('nation_id', nationId);
+
+        const stabLoss = roll(1, 6);
+        const cuLoss = roll(1, 6);
+        await supabase.from('nations').update({
+            stability: clampStat(Number(nation.stability || 50) - stabLoss),
+            civil_unrest: clampStat(Number(nation.civil_unrest || 0) + cuLoss),
+        }).eq('id', nationId);
+
+        effects.stability_loss = stabLoss;
+        effects.civil_unrest_gain = cuLoss;
+
+    } else {
+        // dominant (100+)
+        // In power. Legitimacy → 50, tracker → 30
+        // -1d6 Stability, +1d6 Civil Unrest
+        await transferPower(supabase, nationId, factionId, factionPillar, pCtx, currentTick);
+
+        await supabase.from('nations').update({ legitimacy: 50 }).eq('id', nationId);
+
+        await supabase.from('autocracy_tracker').update({
+            tracker_value: 30, public_tracker_value: 30, public_tracker_last_tick: currentTick, last_updated_tick: currentTick,
+        }).eq('nation_id', nationId);
+
+        const stabLoss = roll(1, 6);
+        const cuLoss = roll(1, 6);
+        await supabase.from('nations').update({
+            stability: clampStat(Number(nation.stability || 50) - stabLoss),
+            civil_unrest: clampStat(Number(nation.civil_unrest || 0) + cuLoss),
+        }).eq('id', nationId);
+
+        effects.stability_loss = stabLoss;
+        effects.civil_unrest_gain = cuLoss;
+    }
+
+    // Log the attempt
+    await supabase.from('coup_attempt_log').insert({
+        nation_id: nationId,
+        faction_id: factionId,
+        tick: currentTick,
+        tracker_at_attempt: trackerAtAttempt,
+        roll_result: finalRoll,
+        outcome,
+        coup_type: coupType,
+        details: effects,
+    });
+
+    // Log to event_log for visibility
+    const outcomeLabels = {
+        catastrophic: 'Catastrophic Failure',
+        failure: 'Failed Coup',
+        pyrrhic: 'Pyrrhic Victory',
+        clean: 'Successful Coup',
+        dominant: 'Dominant Takeover',
+    };
+    await supabase.from('event_log').insert({
+        nation_id: nationId,
+        event_name: outcomeLabels[outcome] || 'Coup Attempt',
+        description_chosen: `A ${coupType} coup attempt resulted in: ${outcomeLabels[outcome]}.`,
+        category: 'POLITICAL',
+        fired_at_tick: currentTick,
+    });
+
+    return effects;
+}
+
+/**
+ * Transfer Strongman status to the coup leader.
+ * Old Strongman becomes a regular faction; new Strongman claims their pillar as foundation.
+ */
+async function transferPower(supabase, nationId, newStrongmanFactionId, newStrongmanPillar, pCtx, currentTick) {
+    // Find old strongman
+    const oldStrongman = pCtx.fpsRows.find(r => r.is_strongman);
+    if (oldStrongman) {
+        await supabase.from('faction_pillar_state').update({
+            is_strongman: false, updated_at: new Date().toISOString(),
+        }).eq('id', oldStrongman.id);
+    }
+
+    // Set new strongman
+    const newStrongman = pCtx.fpsRows.find(r => r.faction_id === newStrongmanFactionId);
+    if (newStrongman) {
+        await supabase.from('faction_pillar_state').update({
+            is_strongman: true, updated_at: new Date().toISOString(),
+        }).eq('id', newStrongman.id);
+    }
+
+    // Update nation's ruling faction
+    await supabase.from('nations').update({
+        ruling_faction_id: newStrongmanFactionId,
+    }).eq('id', nationId);
+
+    // Log the power transfer
+    await supabase.from('campaign_actions').insert({
+        party_id: newStrongmanFactionId, nation_id: nationId,
+        action_type: 'coup_power_transfer', tick_performed: currentTick,
+        result: {
+            old_strongman_faction_id: oldStrongman?.faction_id,
+            new_strongman_faction_id: newStrongmanFactionId,
+            new_strongman_pillar: newStrongmanPillar,
+        },
+    });
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// COUP ACTIONS
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Standard Coup Attempt ────────────────────────────────────────────────────
+// 2 AP. Any non-Strongman faction. Uses standard coup formula.
+// Gets +20 bonus during vulnerability or pyrrhic windows.
+
+registerAutocracyAction('coup_attempt', {
+    pillar: 'any',
+    baseCost: 2,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, currentTick } = ctx;
+
+        if (factionState.is_strongman) return { error: 'Strongman cannot attempt a coup' };
+
+        // Check for active vulnerability window (+20 bonus)
+        const { data: vulnWindow } = await supabase.from('vulnerability_window')
+            .select('*').eq('nation_id', nation.id).eq('resolved', false)
+            .lte('start_tick', currentTick).gte('end_tick', currentTick)
+            .maybeSingle();
+
+        // Check for active pyrrhic window (+20 bonus)
+        const { data: pyrrhicWindow } = await supabase.from('pyrrhic_window')
+            .select('*').eq('nation_id', nation.id).eq('resolved', false)
+            .lte('start_tick', currentTick).gte('end_tick', currentTick)
+            .maybeSingle();
+
+        let rollBonus = 0;
+        if (vulnWindow) rollBonus += 20;
+        if (pyrrhicWindow) rollBonus += 20;
+
+        const result = await resolveStandardCoup(supabase, {
+            nationId: nation.id,
+            factionId: factionState.faction_id,
+            factionPillar: factionState.pillar,
+            currentTick,
+            rollBonus,
+            coupType: 'standard',
+        });
+
+        return { effects: result };
+    },
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PUTSCH — MILITARY SPECIAL COUP
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Declare Putsch (Military only) ───────────────────────────────────────────
+// 2 AP. Declares martial law. Strongman gets 1 tick to respond.
+
+registerAutocracyAction('declare_putsch', {
+    pillar: 'military',
+    baseCost: 2,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, currentTick } = ctx;
+
+        if (factionState.is_strongman) return { error: 'Strongman cannot declare a putsch' };
+        if (factionState.pillar !== 'military') return { error: 'Only the Military faction can declare a putsch' };
+
+        // Check for existing unresolved putsch
+        const { data: existing } = await supabase.from('putsch_state')
+            .select('id').eq('nation_id', nation.id).eq('resolved', false)
+            .maybeSingle();
+        if (existing) return { error: 'A putsch is already in progress' };
+
+        // Create putsch state — Strongman has 1 tick to respond
+        await supabase.from('putsch_state').insert({
+            nation_id: nation.id,
+            military_faction_id: factionState.faction_id,
+            declared_tick: currentTick,
+        });
+
+        // Log event
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'Military Putsch Declared',
+            description_chosen: 'The Military has declared martial law. The regime must respond.',
+            category: 'POLITICAL',
+            fired_at_tick: currentTick,
+        });
+
+        return { effects: { putsch_declared: true, response_deadline: currentTick + 1 } };
+    },
+});
+
+// ── Emergency Decree (Strongman response to Putsch) ──────────────────────────
+// 3 AP. Subtracts 1d6×3 from tracker (stabilizes regime before putsch roll).
+
+registerAutocracyAction('emergency_decree', {
+    pillar: 'any',
+    baseCost: 3,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: true,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, currentTick } = ctx;
+
+        // Must have an active putsch awaiting response
+        const { data: putsch } = await supabase.from('putsch_state')
+            .select('*').eq('nation_id', nation.id).eq('resolved', false)
+            .is('strongman_response', null).maybeSingle();
+        if (!putsch) return { error: 'No active putsch awaiting response' };
+
+        // Must respond on the tick after declaration
+        if (currentTick !== putsch.declared_tick + 1) {
+            return { error: 'Response window has passed' };
+        }
+
+        // 1d6 × 3 subtracted from tracker (helps regime)
+        const d6 = roll(1, 6);
+        const trackerReduction = d6 * 3;
+
+        const { data: tracker } = await supabase.from('autocracy_tracker')
+            .select('tracker_value').eq('nation_id', nation.id).single();
+        if (tracker) {
+            await supabase.from('autocracy_tracker').update({
+                tracker_value: Math.max(0, tracker.tracker_value - trackerReduction),
+                last_updated_tick: currentTick,
+            }).eq('nation_id', nation.id);
+        }
+
+        // Record response
+        await supabase.from('putsch_state').update({
+            strongman_response: 'emergency_decree',
+        }).eq('id', putsch.id);
+
+        return { effects: { d6_roll: d6, tracker_reduction: trackerReduction } };
+    },
+});
+
+// ── Appeal to Security Services (Strongman response to Putsch) ───────────────
+// 0 AP. Security Services secretly chooses regime or self.
+
+registerAutocracyAction('appeal_security', {
+    pillar: 'any',
+    baseCost: 0,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: true,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, currentTick } = ctx;
+
+        // Must have an active putsch awaiting response
+        const { data: putsch } = await supabase.from('putsch_state')
+            .select('*').eq('nation_id', nation.id).eq('resolved', false)
+            .is('strongman_response', null).maybeSingle();
+        if (!putsch) return { error: 'No active putsch awaiting response' };
+
+        if (currentTick !== putsch.declared_tick + 1) {
+            return { error: 'Response window has passed' };
+        }
+
+        // Security Services must be an active separate faction (not Strongman's foundation)
+        const { data: ssFps } = await supabase.from('faction_pillar_state')
+            .select('faction_id, is_strongman')
+            .eq('nation_id', nation.id).eq('pillar', 'security').maybeSingle();
+        if (!ssFps) return { error: 'No Security Services faction exists' };
+        if (ssFps.is_strongman) return { error: 'Cannot appeal to yourself' };
+
+        // Record response — SS choice is pending
+        await supabase.from('putsch_state').update({
+            strongman_response: 'appeal_security',
+        }).eq('id', putsch.id);
+
+        return { effects: { appeal_sent: true, security_faction_id: ssFps.faction_id } };
+    },
+});
+
+// ── Security Services responds to appeal ─────────────────────────────────────
+// SS faction chooses regime or self. 0 AP.
+
+registerAutocracyAction('security_putsch_response', {
+    pillar: 'security',
+    baseCost: 0,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, extra, currentTick } = ctx;
+
+        if (factionState.pillar !== 'security') return { error: 'Only Security Services can respond' };
+
+        const choice = extra?.choice; // 'regime' or 'yourself'
+        if (!choice || (choice !== 'regime' && choice !== 'yourself')) {
+            return { error: 'Must specify choice: regime or yourself' };
+        }
+
+        // Must have active putsch with appeal_security response pending SS choice
+        const { data: putsch } = await supabase.from('putsch_state')
+            .select('*').eq('nation_id', nation.id).eq('resolved', false)
+            .eq('strongman_response', 'appeal_security')
+            .is('security_response', null).maybeSingle();
+        if (!putsch) return { error: 'No active putsch awaiting Security Services response' };
+
+        await supabase.from('putsch_state').update({
+            security_response: choice,
+        }).eq('id', putsch.id);
+
+        if (choice === 'regime') {
+            // Helps regime: 1d6 × 2 subtracted from tracker, SS +3 Backing
+            const d6 = roll(1, 6);
+            const trackerReduction = d6 * 2;
+
+            const { data: tracker } = await supabase.from('autocracy_tracker')
+                .select('tracker_value').eq('nation_id', nation.id).single();
+            if (tracker) {
+                await supabase.from('autocracy_tracker').update({
+                    tracker_value: Math.max(0, tracker.tracker_value - trackerReduction),
+                    last_updated_tick: currentTick,
+                }).eq('nation_id', nation.id);
+            }
+
+            // SS +3 Backing
+            const pCtx = await loadPillarContext(supabase, nation.id);
+            if (pCtx) {
+                applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, 'security', 3, false);
+                await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+            }
+
+            return { effects: { choice: 'regime', d6_roll: d6, tracker_reduction: trackerReduction, backing_gain: 3 } };
+        } else {
+            // Does nothing — putsch proceeds unimpeded
+            return { effects: { choice: 'yourself', did_nothing: true } };
+        }
+    },
+});
+
+// ── Putsch Do Nothing (Strongman explicit non-response) ──────────────────────
+// 0 AP. Strongman explicitly chooses not to respond.
+
+registerAutocracyAction('putsch_do_nothing', {
+    pillar: 'any',
+    baseCost: 0,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: true,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, currentTick } = ctx;
+
+        const { data: putsch } = await supabase.from('putsch_state')
+            .select('*').eq('nation_id', nation.id).eq('resolved', false)
+            .is('strongman_response', null).maybeSingle();
+        if (!putsch) return { error: 'No active putsch awaiting response' };
+
+        if (currentTick !== putsch.declared_tick + 1) {
+            return { error: 'Response window has passed' };
+        }
+
+        await supabase.from('putsch_state').update({
+            strongman_response: 'do_nothing',
+        }).eq('id', putsch.id);
+
+        return { effects: { did_nothing: true } };
+    },
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TICK PROCESSORS
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Check if Strongman's foundation backing has hit 0.
+ * If so, open a 3-tick vulnerability window.
+ * If an active window expired and no coup occurred, reset backing to 5.
+ */
+async function processVulnerabilityWindows(supabase, nation, currentTick) {
+    const { data: fpsRows } = await supabase.from('faction_pillar_state')
+        .select('*').eq('nation_id', nation.id);
+    if (!fpsRows) return null;
+
+    const strongman = fpsRows.find(r => r.is_strongman);
+    if (!strongman) return null;
+
+    // Check for expired windows — resolve them
+    const { data: activeWindows } = await supabase.from('vulnerability_window')
+        .select('*').eq('nation_id', nation.id).eq('resolved', false);
+
+    const results = [];
+
+    if (activeWindows) {
+        for (const win of activeWindows) {
+            if (currentTick > win.end_tick) {
+                // Window expired — Strongman survived, reset backing to 5
+                await supabase.from('vulnerability_window').update({
+                    resolved: true,
+                }).eq('id', win.id);
+
+                const pCtx = await loadPillarContext(supabase, nation.id);
+                if (pCtx) {
+                    const smPs = pCtx.pillarStates.find(p => p.pillar === strongman.pillar);
+                    if (smPs && smPs.backing < 5) {
+                        applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, strongman.pillar, 5 - smPs.backing, false);
+                        await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+                    }
+                }
+
+                results.push({ type: 'vulnerability_survived', window_id: win.id });
+            }
+        }
+    }
+
+    // Check if Strongman backing is 0 and no active window exists
+    const hasActiveWindow = activeWindows && activeWindows.some(w => !w.resolved && currentTick <= w.end_tick);
+    if (Number(strongman.backing) <= 0 && !hasActiveWindow) {
+        // Open new vulnerability window
+        await supabase.from('vulnerability_window').insert({
+            nation_id: nation.id,
+            start_tick: currentTick,
+            end_tick: currentTick + 3,
+        });
+
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'Regime Vulnerability',
+            description_chosen: 'The Strongman\'s power base has collapsed. The regime is vulnerable to a coup.',
+            category: 'POLITICAL',
+            fired_at_tick: currentTick,
+        });
+
+        results.push({ type: 'vulnerability_opened', start: currentTick, end: currentTick + 3 });
+    }
+
+    return results.length > 0 ? results : null;
+}
+
+/**
+ * Resolve expired pyrrhic windows.
+ * If 3 ticks pass with no successful challenger, the new regime stabilizes.
+ */
+async function processPyrrhicWindows(supabase, nation, currentTick) {
+    const { data: activeWindows } = await supabase.from('pyrrhic_window')
+        .select('*').eq('nation_id', nation.id).eq('resolved', false);
+
+    if (!activeWindows || activeWindows.length === 0) return null;
+
+    const results = [];
+    for (const win of activeWindows) {
+        if (currentTick > win.end_tick) {
+            await supabase.from('pyrrhic_window').update({
+                resolved: true,
+            }).eq('id', win.id);
+
+            results.push({ type: 'pyrrhic_window_closed', new_strongman_id: win.new_strongman_id });
+        }
+    }
+
+    return results.length > 0 ? results : null;
+}
+
+/**
+ * Resolve putsch events after the response window.
+ * Called each tick. If a putsch was declared last tick and is unresolved, resolve it.
+ *
+ * Flow:
+ * - If Strongman responded with emergency_decree → tracker already modified, resolve via formula
+ * - If Strongman responded with appeal_security and SS hasn't responded → SS defaults to 'yourself'
+ * - If Strongman responded with appeal_security and SS responded → apply SS choice, resolve via formula
+ * - If Strongman did nothing or didn't respond → resolve via formula unmodified
+ */
+async function processPutschResolution(supabase, nation, currentTick) {
+    const { data: putsch } = await supabase.from('putsch_state')
+        .select('*').eq('nation_id', nation.id).eq('resolved', false)
+        .maybeSingle();
+    if (!putsch) return null;
+
+    // Only resolve if response window has passed (declared_tick + 1 < currentTick)
+    // i.e., at least 1 full tick after declaration for response
+    if (currentTick <= putsch.declared_tick + 1) return null;
+
+    // If appeal_security with no SS response yet, SS defaults to 'yourself' (did nothing)
+    if (putsch.strongman_response === 'appeal_security' && !putsch.security_response) {
+        await supabase.from('putsch_state').update({
+            security_response: 'yourself',
+        }).eq('id', putsch.id);
+    }
+
+    // If Strongman never responded, treat as do_nothing
+    if (!putsch.strongman_response) {
+        await supabase.from('putsch_state').update({
+            strongman_response: 'do_nothing',
+        }).eq('id', putsch.id);
+    }
+
+    // Load military faction info for coup resolution
+    const { data: milFps } = await supabase.from('faction_pillar_state')
+        .select('*').eq('faction_id', putsch.military_faction_id)
+        .eq('nation_id', nation.id).single();
+    if (!milFps) {
+        // Military faction gone — cancel putsch
+        await supabase.from('putsch_state').update({ resolved: true, outcome: 'cancelled' }).eq('id', putsch.id);
+        return { type: 'putsch_cancelled' };
+    }
+
+    // Resolve via standard coup formula
+    const result = await resolveStandardCoup(supabase, {
+        nationId: nation.id,
+        factionId: putsch.military_faction_id,
+        factionPillar: milFps.pillar,
+        currentTick,
+        rollBonus: 0,
+        coupType: 'putsch',
+    });
+
+    // Mark putsch as resolved
+    await supabase.from('putsch_state').update({
+        resolved: true,
+        outcome: result.outcome || 'resolved',
+    }).eq('id', putsch.id);
+
+    return { type: 'putsch_resolved', ...result };
+}
+
+// ────────── autocracy-silent-coup ──────────
+
+/**
+ * autocracy-silent-coup.js — Phase 8: Silent Coup + Succession
+ * Security Services Silent Coup (Path A: deal/vote, Path B: direct),
+ * Appoint/Revoke Successor actions, and V5 succession resolution.
+ *
+ * V5 Autocracy System — Phase 8
+ *
+ * NOTE: Helpers loadPillarContext, persistBackingChanges, clampStat, roll
+ * are declared in autocracy-actions-military-party-oligarch.js and available
+ * in the same scope after bundle concatenation.
+ * resolveStandardCoup and transferPower are from autocracy-coups.js.
+ */
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SILENT COUP — SECURITY SERVICES SPECIAL CASE
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Check if Security Services faction has surveilled every other faction
+ * at least once. Required for both Silent Coup paths.
+ */
+function hasSurveilledAll(factionState, allFpsRows) {
+    const targets = Array.isArray(factionState.surveillance_targets)
+        ? factionState.surveillance_targets
+        : JSON.parse(factionState.surveillance_targets || '[]');
+
+    const otherFactionIds = allFpsRows
+        .filter(r => r.faction_id !== factionState.faction_id)
+        .map(r => r.faction_id);
+
+    return otherFactionIds.every(id => targets.includes(id));
+}
+
+// ── Initiate Silent Coup (Security Services only) ────────────────────────────
+// 2 AP. Path depends on tracker value at time of initiation.
+// Path A (tracker 25–39): Deal phase → vote next tick.
+// Path B (tracker ≥ 40): Direct coup via standard formula.
+
+registerAutocracyAction('silent_coup', {
+    pillar: 'security',
+    baseCost: 2,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, currentTick, extra } = ctx;
+
+        if (factionState.is_strongman) return { error: 'Strongman cannot initiate a silent coup' };
+        if (factionState.pillar !== 'security') return { error: 'Only Security Services can initiate a silent coup' };
+
+        // Load all faction pillar states
+        const { data: allFps } = await supabase.from('faction_pillar_state')
+            .select('*').eq('nation_id', nation.id);
+        if (!allFps) return { error: 'No faction pillar states' };
+
+        // Check surveillance requirement
+        if (!hasSurveilledAll(factionState, allFps)) {
+            return { error: 'Must surveil every faction at least once before initiating Silent Coup' };
+        }
+
+        // Load tracker
+        const { data: tracker } = await supabase.from('autocracy_tracker')
+            .select('tracker_value').eq('nation_id', nation.id).single();
+        if (!tracker) return { error: 'No tracker' };
+
+        const trackerVal = tracker.tracker_value;
+
+        if (trackerVal < 25) {
+            return { error: 'Tracker too low for Silent Coup (minimum 25)' };
+        }
+
+        if (trackerVal >= 40) {
+            // ── PATH B: Direct coup via standard formula ──
+            const result = await resolveStandardCoup(supabase, {
+                nationId: nation.id,
+                factionId: factionState.faction_id,
+                factionPillar: factionState.pillar,
+                currentTick,
+                rollBonus: 0,
+                coupType: 'silent',
+            });
+            return { effects: { path: 'B', ...result } };
+        }
+
+        // ── PATH A: Deal phase (tracker 25–39) ──
+        // Check no existing active silent coup
+        const { data: existingOffers } = await supabase.from('silent_coup_offers')
+            .select('id').eq('nation_id', nation.id).eq('voided', false)
+            .is('accepted', null);
+        if (existingOffers && existingOffers.length > 0) {
+            return { error: 'A silent coup deal phase is already active' };
+        }
+
+        // SS sends offers to each non-Strongman, non-SS faction
+        // Offers provided via extra: { offers: { factionId: 'minister'|'backing'|'immunity' } }
+        const offers = extra?.offers;
+        if (!offers || typeof offers !== 'object') {
+            return { error: 'Must specify offers: { factionId: "minister"|"backing"|"immunity" }' };
+        }
+
+        const nonSSFactions = allFps.filter(r =>
+            r.faction_id !== factionState.faction_id && !r.is_strongman
+        );
+
+        const insertedOffers = [];
+        for (const targetFps of nonSSFactions) {
+            const offerType = offers[targetFps.faction_id];
+            if (!offerType || !['minister', 'backing', 'immunity'].includes(offerType)) {
+                return { error: `Invalid or missing offer for faction ${targetFps.faction_id}. Must be minister, backing, or immunity.` };
+            }
+
+            insertedOffers.push({
+                nation_id: nation.id,
+                from_faction_id: factionState.faction_id,
+                to_faction_id: targetFps.faction_id,
+                offer_type: offerType,
+                tick_offered: currentTick,
+            });
+        }
+
+        await supabase.from('silent_coup_offers').insert(insertedOffers);
+
+        return {
+            effects: {
+                path: 'A',
+                deal_phase: true,
+                offers_sent: insertedOffers.length,
+                vote_tick: currentTick + 1,
+            },
+        };
+    },
+});
+
+// ── Silent Coup Vote (non-Strongman factions) ────────────────────────────────
+// 0 AP. Each faction privately chooses 'strongman' or 'coup'.
+
+registerAutocracyAction('silent_coup_vote', {
+    pillar: 'any',
+    baseCost: 0,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, extra, currentTick } = ctx;
+
+        if (factionState.is_strongman) return { error: 'Strongman cannot vote in a silent coup' };
+
+        const choice = extra?.choice;
+        if (!choice || (choice !== 'strongman' && choice !== 'coup')) {
+            return { error: 'Must specify choice: strongman or coup' };
+        }
+
+        // Check there are active offers for this tick window
+        const { data: offers } = await supabase.from('silent_coup_offers')
+            .select('*').eq('nation_id', nation.id).eq('voided', false)
+            .is('accepted', null);
+        if (!offers || offers.length === 0) {
+            return { error: 'No active silent coup to vote on' };
+        }
+
+        // Verify this faction was offered (SS or a target)
+        const myOffer = offers.find(o => o.to_faction_id === factionState.faction_id);
+        // SS faction itself also votes (implicitly 'coup')
+        const isSS = offers.some(o => o.from_faction_id === factionState.faction_id);
+
+        if (!myOffer && !isSS) {
+            return { error: 'You are not part of this silent coup vote' };
+        }
+
+        // Check not already voted
+        const { data: existingVote } = await supabase.from('silent_coup_votes')
+            .select('id').eq('nation_id', nation.id).eq('faction_id', factionState.faction_id)
+            .eq('tick', currentTick).maybeSingle();
+        if (existingVote) return { error: 'Already voted this tick' };
+
+        await supabase.from('silent_coup_votes').insert({
+            nation_id: nation.id,
+            faction_id: factionState.faction_id,
+            tick: currentTick,
+            choice,
+        });
+
+        // Mark offer as accepted/rejected based on vote
+        if (myOffer) {
+            await supabase.from('silent_coup_offers').update({
+                accepted: choice === 'coup',
+            }).eq('id', myOffer.id);
+        }
+
+        return { effects: { voted: choice } };
+    },
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SILENT COUP TICK RESOLUTION
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Resolve silent coup vote phase. Called each tick.
+ * If offers exist from last tick and all votes are in (or tick window expired),
+ * resolve the outcome.
+ */
+async function processSilentCoupResolution(supabase, nation, currentTick) {
+    // Find unresolved offers
+    const { data: offers } = await supabase.from('silent_coup_offers')
+        .select('*').eq('nation_id', nation.id).eq('voided', false);
+
+    if (!offers || offers.length === 0) return null;
+
+    // Group by tick_offered — take the most recent batch
+    const latestTick = Math.max(...offers.map(o => o.tick_offered));
+    const batchOffers = offers.filter(o => o.tick_offered === latestTick);
+
+    // Only resolve if we're past the vote tick (offer_tick + 1)
+    if (currentTick <= latestTick + 1) return null;
+
+    // Check if tracker dropped below 25 — cancel if so
+    const { data: tracker } = await supabase.from('autocracy_tracker')
+        .select('tracker_value').eq('nation_id', nation.id).single();
+    if (tracker && tracker.tracker_value < 25) {
+        // Void all offers
+        for (const offer of batchOffers) {
+            await supabase.from('silent_coup_offers').update({ voided: true }).eq('id', offer.id);
+        }
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'Silent Coup Cancelled',
+            description_chosen: 'The regime has stabilized. Silent coup plans have been abandoned.',
+            category: 'POLITICAL',
+            fired_at_tick: currentTick,
+        });
+        return { type: 'silent_coup_cancelled', reason: 'tracker_below_25' };
+    }
+
+    // Gather votes from the vote tick
+    const voteTick = latestTick + 1;
+    const { data: votes } = await supabase.from('silent_coup_votes')
+        .select('*').eq('nation_id', nation.id).eq('tick', voteTick);
+
+    const ssFactionId = batchOffers[0].from_faction_id;
+
+    // Count votes (SS always votes 'coup' implicitly)
+    let coupVotes = 1; // SS
+    let strongmanVotes = 0;
+
+    if (votes) {
+        for (const v of votes) {
+            if (v.faction_id === ssFactionId) continue; // SS already counted
+            if (v.choice === 'coup') coupVotes++;
+            else strongmanVotes++;
+        }
+    }
+
+    // Non-voters who had offers default to 'strongman' (abstention = no support)
+    const votedFactionIds = new Set(votes?.map(v => v.faction_id) || []);
+    for (const offer of batchOffers) {
+        if (!votedFactionIds.has(offer.to_faction_id) && offer.to_faction_id !== ssFactionId) {
+            strongmanVotes++;
+        }
+    }
+
+    // Mark all offers as resolved (accepted based on vote outcome)
+    const coupSucceeds = coupVotes > strongmanVotes;
+
+    if (coupSucceeds) {
+        // Silent coup succeeds — no roll needed
+        // SS becomes new Strongman
+        const pCtx = await loadPillarContext(supabase, nation.id);
+        if (!pCtx) return { error: 'No pillar context' };
+
+        // Transfer power
+        const oldStrongman = pCtx.fpsRows.find(r => r.is_strongman);
+        if (oldStrongman) {
+            await supabase.from('faction_pillar_state').update({
+                is_strongman: false, updated_at: new Date().toISOString(),
+            }).eq('id', oldStrongman.id);
+        }
+
+        const ssFps = pCtx.fpsRows.find(r => r.faction_id === ssFactionId);
+        if (ssFps) {
+            await supabase.from('faction_pillar_state').update({
+                is_strongman: true, updated_at: new Date().toISOString(),
+            }).eq('id', ssFps.id);
+        }
+
+        await supabase.from('nations').update({
+            ruling_faction_id: ssFactionId,
+        }).eq('id', nation.id);
+
+        // Reset tracker to 30
+        await supabase.from('autocracy_tracker').update({
+            tracker_value: 30, public_tracker_value: 30, public_tracker_last_tick: currentTick, last_updated_tick: currentTick,
+        }).eq('nation_id', nation.id);
+
+        // Honor accepted offers with minister positions
+        const acceptedOffers = batchOffers.filter(o => o.accepted === true);
+        for (const offer of acceptedOffers) {
+            if (offer.offer_type === 'minister') {
+                // Auto-appoint: increment minister_count, mark 10-tick lock
+                await supabase.from('faction_pillar_state').update({
+                    minister_count: (await supabase.from('faction_pillar_state')
+                        .select('minister_count').eq('faction_id', offer.to_faction_id)
+                        .eq('nation_id', nation.id).single()).data?.minister_count + 1 || 1,
+                    updated_at: new Date().toISOString(),
+                }).eq('faction_id', offer.to_faction_id).eq('nation_id', nation.id);
+            } else if (offer.offer_type === 'backing') {
+                // +3 Backing immediately
+                const freshCtx = await loadPillarContext(supabase, nation.id);
+                if (freshCtx) {
+                    const targetPs = freshCtx.fpsRows.find(r => r.faction_id === offer.to_faction_id);
+                    if (targetPs) {
+                        applyBackingDelta(freshCtx.pillarStates, freshCtx.wildcardState, targetPs.pillar, 3, false);
+                        await persistBackingChanges(supabase, nation.id, freshCtx.pillarStates, freshCtx.wildcardState);
+                    }
+                }
+            } else if (offer.offer_type === 'immunity') {
+                // Blackmail immunity for 10 ticks
+                await supabase.from('faction_pillar_state').update({
+                    blackmail_immune_until: currentTick + 10,
+                    updated_at: new Date().toISOString(),
+                }).eq('faction_id', offer.to_faction_id).eq('nation_id', nation.id);
+            }
+        }
+
+        // Stat effects: -1d6 Stability, +1d6 Civil Unrest (successful coup)
+        const { data: n } = await supabase.from('nations')
+            .select('stability, civil_unrest').eq('id', nation.id).single();
+        if (n) {
+            const stabLoss = roll(1, 6);
+            const cuGain = roll(1, 6);
+            await supabase.from('nations').update({
+                stability: clampStat(Number(n.stability || 50) - stabLoss),
+                civil_unrest: clampStat(Number(n.civil_unrest || 0) + cuGain),
+            }).eq('id', nation.id);
+        }
+
+        // Log coup
+        await supabase.from('coup_attempt_log').insert({
+            nation_id: nation.id,
+            faction_id: ssFactionId,
+            tick: currentTick,
+            tracker_at_attempt: tracker.tracker_value,
+            roll_result: 0, // No roll for Path A
+            outcome: 'clean', // Auto-success
+            coup_type: 'silent',
+            details: { path: 'A', votes: { coup: coupVotes, strongman: strongmanVotes }, offers_honored: acceptedOffers.length },
+        });
+
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'Silent Coup',
+            description_chosen: 'The Security Services have quietly seized power. A new Strongman emerges.',
+            category: 'POLITICAL',
+            fired_at_tick: currentTick,
+        });
+
+        // Void the offers (resolved)
+        for (const offer of batchOffers) {
+            await supabase.from('silent_coup_offers').update({ voided: true }).eq('id', offer.id);
+        }
+
+        return {
+            type: 'silent_coup_success',
+            path: 'A',
+            votes: { coup: coupVotes, strongman: strongmanVotes },
+            new_strongman: ssFactionId,
+            offers_honored: acceptedOffers.length,
+        };
+    } else {
+        // Failed — SS Backing → 0, leader eligible for Arrest
+        const pCtx = await loadPillarContext(supabase, nation.id);
+        if (pCtx) {
+            const ssFps = pCtx.pillarStates.find(p => p.faction_id === ssFactionId);
+            if (ssFps) {
+                const backingLoss = -ssFps.backing;
+                applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, 'security', backingLoss, false);
+                await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
+            }
+        }
+
+        // Void offers
+        for (const offer of batchOffers) {
+            await supabase.from('silent_coup_offers').update({ voided: true }).eq('id', offer.id);
+        }
+
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'Silent Coup Failed',
+            description_chosen: 'The Security Services\' bid for power has been rejected. Their influence collapses.',
+            category: 'POLITICAL',
+            fired_at_tick: currentTick,
+        });
+
+        return {
+            type: 'silent_coup_failed',
+            path: 'A',
+            votes: { coup: coupVotes, strongman: strongmanVotes },
+            ss_backing_zeroed: true,
+        };
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SUCCESSION
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Appoint Successor ────────────────────────────────────────────────────────
+// Strongman designates a faction as successor. 0 AP. Can change at any time.
+
+registerAutocracyAction('appoint_successor', {
+    pillar: 'any',
+    baseCost: 0,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: true,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, extra } = ctx;
+        const successorFactionId = extra?.successorFactionId;
+        if (!successorFactionId) return { error: 'Must specify successorFactionId' };
+        if (successorFactionId === factionState.faction_id) {
+            return { error: 'Cannot designate yourself as successor' };
+        }
+
+        // Verify target is a valid faction in this nation
+        const { data: targetFps } = await supabase.from('faction_pillar_state')
+            .select('faction_id, pillar')
+            .eq('faction_id', successorFactionId).eq('nation_id', nation.id).single();
+        if (!targetFps) return { error: 'Target faction not found' };
+
+        // Update nation-level designation
+        await supabase.from('nations').update({
+            designated_successor_faction_id: successorFactionId,
+        }).eq('id', nation.id);
+
+        // Also update on strongman's faction_pillar_state
+        await supabase.from('faction_pillar_state').update({
+            designated_successor_id: successorFactionId,
+            updated_at: new Date().toISOString(),
+        }).eq('id', factionState.id);
+
+        return { effects: { successor_designated: successorFactionId } };
+    },
+});
+
+// ── Revoke Successor ─────────────────────────────────────────────────────────
+// Strongman removes the designated successor. 0 AP.
+
+registerAutocracyAction('revoke_successor', {
+    pillar: 'any',
+    baseCost: 0,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: true,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState } = ctx;
+
+        await supabase.from('nations').update({
+            designated_successor_faction_id: null,
+        }).eq('id', nation.id);
+
+        await supabase.from('faction_pillar_state').update({
+            designated_successor_id: null,
+            updated_at: new Date().toISOString(),
+        }).eq('id', factionState.id);
+
+        return { effects: { successor_revoked: true } };
+    },
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SUCCESSION RESOLUTION (called from handler-template on strongman death)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Resolve Strongman death with V5 succession rules.
+ *
+ * WITH designated successor → successor takes power immediately.
+ * WITHOUT successor → highest Backing faction auto-coup at +20 bonus.
+ *   If that fails → Democratic Revolution check fires immediately.
+ *
+ * @returns {object} Result for summary logging.
+ */
+async function resolveSuccession(supabase, nation, currentTick) {
+    const nationId = nation.id;
+
+    // Load pillar states
+    const { data: allFps } = await supabase.from('faction_pillar_state')
+        .select('*').eq('nation_id', nationId);
+    if (!allFps || allFps.length === 0) return { type: 'succession_error', reason: 'no_factions' };
+
+    const strongmanFps = allFps.find(r => r.is_strongman);
+    const designatedSuccessorId = nation.designated_successor_faction_id;
+
+    if (designatedSuccessorId) {
+        // ── Successor takes power ──
+        const successorFps = allFps.find(r => r.faction_id === designatedSuccessorId);
+        if (!successorFps) {
+            // Successor faction no longer exists — fall through to auto-coup
+            return await resolveAutoCoup(supabase, nation, allFps, strongmanFps, currentTick);
+        }
+
+        // Transfer power
+        if (strongmanFps) {
+            await supabase.from('faction_pillar_state').update({
+                is_strongman: false, updated_at: new Date().toISOString(),
+            }).eq('id', strongmanFps.id);
+        }
+        await supabase.from('faction_pillar_state').update({
+            is_strongman: true, updated_at: new Date().toISOString(),
+        }).eq('id', successorFps.id);
+
+        await supabase.from('nations').update({
+            ruling_faction_id: designatedSuccessorId,
+            designated_successor_faction_id: null,
+        }).eq('id', nationId);
+
+        await supabase.from('event_log').insert({
+            nation_id: nationId,
+            event_name: 'Succession — Designated Heir',
+            description_chosen: 'The Strongman has died. The designated successor takes power.',
+            category: 'POLITICAL',
+            fired_at_tick: currentTick,
+        });
+
+        // Reset all leaders' escalations (new era)
+        for (const fps of allFps) {
+            await resetLeaderEscalations(supabase, fps.faction_id);
+        }
+
+        return {
+            type: 'succession_designated',
+            new_strongman_faction_id: designatedSuccessorId,
+            new_strongman_pillar: successorFps.pillar,
+        };
+    }
+
+    // ── No successor — auto-coup ──
+    return await resolveAutoCoup(supabase, nation, allFps, strongmanFps, currentTick);
+}
+
+/**
+ * Highest Backing non-Strongman faction attempts auto-coup at +20 bonus.
+ * If fails → force Democratic Revolution check.
+ */
+async function resolveAutoCoup(supabase, nation, allFps, strongmanFps, currentTick) {
+    const nationId = nation.id;
+
+    // Find highest backing non-Strongman faction
+    const candidates = allFps
+        .filter(r => !r.is_strongman)
+        .sort((a, b) => Number(b.backing) - Number(a.backing));
+
+    if (candidates.length === 0) {
+        return { type: 'succession_error', reason: 'no_candidates' };
+    }
+
+    const topCandidate = candidates[0];
+
+    await supabase.from('event_log').insert({
+        nation_id: nationId,
+        event_name: 'Succession Crisis',
+        description_chosen: 'The Strongman has died without a successor. The highest-ranking faction attempts to seize power.',
+        category: 'POLITICAL',
+        fired_at_tick: currentTick,
+    });
+
+    // Auto-coup with +20 bonus
+    const result = await resolveStandardCoup(supabase, {
+        nationId,
+        factionId: topCandidate.faction_id,
+        factionPillar: topCandidate.pillar,
+        currentTick,
+        rollBonus: 20,
+        coupType: 'auto',
+    });
+
+    if (result.outcome === 'catastrophic' || result.outcome === 'failure') {
+        // Auto-coup failed → force Democratic Revolution check
+        // Set stats to trigger revolution immediately
+        await supabase.from('nations').update({
+            stability: Math.min(Number(nation.stability || 50), 15),
+            civil_unrest: Math.max(Number(nation.civil_unrest || 0), 55),
+        }).eq('id', nationId);
+
+        await supabase.from('event_log').insert({
+            nation_id: nationId,
+            event_name: 'Power Vacuum',
+            description_chosen: 'The succession has failed. The nation teeters on the brink of democratic revolution.',
+            category: 'POLITICAL',
+            fired_at_tick: currentTick,
+        });
+
+        return {
+            type: 'succession_auto_coup_failed',
+            coup_outcome: result.outcome,
+            revolution_conditions_forced: true,
+        };
+    }
+
+    return {
+        type: 'succession_auto_coup_success',
+        coup_outcome: result.outcome,
+        new_strongman_faction_id: topCandidate.faction_id,
+    };
+}
+
+// ── Leader name generation ────────────────────────────────────────────────────
+
+const LEADER_FIRST_NAMES = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
+const LEADER_LAST_NAMES = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
+
+function generateLeaderName() {
+    const first = LEADER_FIRST_NAMES[Math.floor(Math.random() * LEADER_FIRST_NAMES.length)];
+    const last = LEADER_LAST_NAMES[Math.floor(Math.random() * LEADER_LAST_NAMES.length)];
+    return `${first} ${last}`;
+}
+
+/**
+ * Process pillar leader aging for autocracy factions.
+ * Each pillar leader ages +1 year per 12 ticks.
+ * Leaders who reach their death_age die — their old pillar becomes the new
+ * wildcard, and the faction auto-generates a new leader who claims the
+ * previous wildcard pillar. This maintains exactly 1 wildcard at all times.
+ */
+async function processAutocracyLeaderAging(supabase, nation, currentTick) {
+    if (currentTick % 12 !== 0) return null;
+
+    const { data: allFps } = await supabase.from('faction_pillar_state')
+        .select('*').eq('nation_id', nation.id);
+    if (!allFps || allFps.length === 0) return null;
+
+    const results = [];
+
+    for (const fps of allFps) {
+        if (!fps.leader_age || fps.is_strongman) continue; // Strongman ages via HOS system
+
+        const newAge = fps.leader_age + 1;
+        const { error: ageErr } = await supabase.from('faction_pillar_state').update({
+            leader_age: newAge,
+            updated_at: new Date().toISOString(),
+        }).eq('id', fps.id);
+        if (ageErr) { console.error(`[leaderAging] age update failed for ${fps.id}:`, ageErr.message); continue; }
+
+        // Check if leader has reached death age
+        if (fps.death_age && newAge >= fps.death_age) {
+            const { data: tracker } = await supabase.from('autocracy_tracker')
+                .select('*').eq('nation_id', nation.id).single();
+
+            // If no tracker exists, we can't do the wildcard swap — just null the leader
+            if (!tracker || !tracker.wildcard_pillar) {
+                await supabase.from('faction_pillar_state').update({
+                    leader_name: null, leader_age: null, death_age: null,
+                    arrested_leader: false,
+                    updated_at: new Date().toISOString(),
+                }).eq('id', fps.id);
+                await resetLeaderEscalations(supabase, fps.faction_id);
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: 'Pillar Leader Death',
+                    description_chosen: `${fps.leader_name || 'A faction leader'} has died at age ${newAge}. Their pillar is now unclaimed.`,
+                    category: 'POLITICAL',
+                    fired_at_tick: currentTick,
+                });
+                results.push({ type: 'pillar_leader_death', faction_id: fps.faction_id, old_pillar: fps.pillar, leader_name: fps.leader_name, age: newAge });
+                continue;
+            }
+
+            const oldWildcardPillar = tracker.wildcard_pillar;
+            const oldWildcardBacking = Number(tracker.wildcard_backing ?? 0);
+            const deadPillar = fps.pillar;
+            const deadPillarBacking = Number(fps.backing ?? 0);
+
+            // Dead leader's pillar becomes the new wildcard
+            const { error: trackerErr } = await supabase.from('autocracy_tracker').update({
+                wildcard_pillar: deadPillar,
+                wildcard_backing: deadPillarBacking,
+                wildcard_neglect_ticks: 0,
+            }).eq('nation_id', nation.id);
+            if (trackerErr) { console.error(`[leaderAging] tracker update failed:`, trackerErr.message); continue; }
+
+            // Generate new leader and assign them the old wildcard pillar
+            const newLeaderName = generateLeaderName();
+            const newLeaderAge = 40 + Math.floor(Math.random() * 16); // 40-55
+            const newDeathAge = 75 + Math.floor(Math.random() * 11); // 75-85
+
+            const { error: fpsErr } = await supabase.from('faction_pillar_state').update({
+                pillar: oldWildcardPillar,
+                leader_name: newLeaderName,
+                leader_age: newLeaderAge,
+                leader_birth_tick: currentTick - (newLeaderAge * 12),
+                death_age: newDeathAge,
+                backing: oldWildcardBacking,
+                arrested_leader: false,
+                longevity_ticks: 0,
+                neglect_ticks: 0,
+                updated_at: new Date().toISOString(),
+            }).eq('id', fps.id);
+            if (fpsErr) { console.error(`[leaderAging] fps update failed:`, fpsErr.message); }
+
+            await resetLeaderEscalations(supabase, fps.faction_id);
+
+            await supabase.from('event_log').insert({
+                nation_id: nation.id,
+                event_name: 'Pillar Leader Death',
+                description_chosen: `${fps.leader_name || 'A faction leader'} has died at age ${newAge}. ${newLeaderName} rises to lead the faction, claiming the ${oldWildcardPillar} pillar.`,
+                category: 'POLITICAL',
+                fired_at_tick: currentTick,
+            });
+
+            results.push({
+                type: 'pillar_leader_death',
+                faction_id: fps.faction_id,
+                old_pillar: deadPillar,
+                new_pillar: oldWildcardPillar,
+                leader_name: fps.leader_name,
+                new_leader_name: newLeaderName,
+                age: newAge,
+            });
+        } else {
+            results.push({
+                type: 'pillar_leader_aged',
+                faction_id: fps.faction_id,
+                new_age: newAge,
+            });
+        }
+    }
+
+    return results.length > 0 ? results : null;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CLAIM WILDCARD PILLAR
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Claim Wildcard ───────────────────────────────────────────────────────────
+// 0 AP. A faction whose leader was removed (pillar became wildcard via Execute
+// or Catastrophic coup) can generate a new leader and claim the current wildcard
+// pillar. Only usable if the faction has no active leader.
+
+registerAutocracyAction('claim_wildcard', {
+    pillar: 'any',
+    baseCost: 0,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, currentTick } = ctx;
+
+        // Must not have an active leader
+        if (factionState.leader_name) {
+            return { error: 'Faction already has a leader' };
+        }
+
+        // Must be a wildcard pillar available
+        const { data: tracker } = await supabase.from('autocracy_tracker')
+            .select('*').eq('nation_id', nation.id).single();
+        if (!tracker || !tracker.wildcard_pillar) {
+            return { error: 'No wildcard pillar available to claim' };
+        }
+
+        const claimedPillar = tracker.wildcard_pillar;
+        const claimedBacking = Number(tracker.wildcard_backing ?? 0);
+
+        // Generate new leader
+        const newLeaderName = generateLeaderName();
+        const newLeaderAge = 40 + Math.floor(Math.random() * 16);
+        const newDeathAge = 75 + Math.floor(Math.random() * 11);
+
+        // Old pillar of this faction (if any) becomes new wildcard
+        const oldPillar = factionState.pillar;
+        const oldBacking = Number(factionState.backing ?? 0);
+
+        // Update faction to claim wildcard pillar
+        const { error: claimErr } = await supabase.from('faction_pillar_state').update({
+            pillar: claimedPillar,
+            backing: claimedBacking,
+            leader_name: newLeaderName,
+            leader_age: newLeaderAge,
+            leader_birth_tick: currentTick - (newLeaderAge * 12),
+            death_age: newDeathAge,
+            arrested_leader: false,
+            longevity_ticks: 0,
+            neglect_ticks: 0,
+            updated_at: new Date().toISOString(),
+        }).eq('id', factionState.id);
+        if (claimErr) return { error: 'Failed to update faction: ' + claimErr.message };
+
+        // Set old pillar as new wildcard (or clear if faction had no pillar)
+        const newWildcard = oldPillar && oldPillar !== claimedPillar ? oldPillar : null;
+        const { error: trackErr } = await supabase.from('autocracy_tracker').update({
+            wildcard_pillar: newWildcard,
+            wildcard_backing: newWildcard ? oldBacking : 0,
+            wildcard_neglect_ticks: 0,
+        }).eq('nation_id', nation.id);
+        if (trackErr) return { error: 'Failed to update tracker: ' + trackErr.message };
+
+        await resetLeaderEscalations(supabase, factionState.faction_id);
+
+        return {
+            effects: {
+                claimed_pillar: claimedPillar,
+                new_leader: newLeaderName,
+                new_leader_age: newLeaderAge,
+            },
+        };
+    },
+});
+
+// ── Select Pillar — one-time initial pillar choice ───────────────────────────
+// 0 AP. Available only when pillar_confirmed = false.
+// Player picks any pillar not already confirmed by another faction.
+// Swaps with the unconfirmed holder or takes the wildcard.
+
+registerAutocracyAction('select_pillar', {
+    pillar: 'any',
+    baseCost: 0,
+    escalatingCostField: null,
+    escalationSteps: null,
+    cooldownField: null,
+    cooldownTicks: null,
+    hasDualMode: false,
+    halfPowerForRegime: false,
+    isStrongmanExclusive: false,
+    mutualExclusions: [],
+    async execute(supabase, ctx) {
+        const { nation, factionState, extra, currentTick } = ctx;
+
+        // Must not have already confirmed
+        if (factionState.pillar_confirmed) {
+            return { error: 'You have already selected your pillar' };
+        }
+
+        const desiredPillar = extra?.pillar;
+        const VALID_PILLARS = ['military', 'party', 'oligarchs', 'media', 'security'];
+        if (!desiredPillar || !VALID_PILLARS.includes(desiredPillar)) {
+            return { error: 'Invalid pillar selection' };
+        }
+
+        // If we already have the desired pillar, just confirm
+        if (factionState.pillar === desiredPillar) {
+            await supabase.from('faction_pillar_state').update({
+                pillar_confirmed: true,
+                updated_at: new Date().toISOString(),
+            }).eq('id', factionState.id);
+            return { effects: { confirmed_pillar: desiredPillar, swapped: false } };
+        }
+
+        // Load all pillar states for this nation
+        const { data: allFps } = await supabase.from('faction_pillar_state')
+            .select('*').eq('nation_id', nation.id);
+        const { data: tracker } = await supabase.from('autocracy_tracker')
+            .select('*').eq('nation_id', nation.id).single();
+
+        // Check if desired pillar is the wildcard
+        if (tracker && tracker.wildcard_pillar === desiredPillar) {
+            // Take wildcard, give our old pillar to wildcard
+            const oldPillar = factionState.pillar;
+            const oldBacking = Number(factionState.backing ?? 0);
+            const wildcardBacking = Number(tracker.wildcard_backing ?? 0);
+
+            await supabase.from('faction_pillar_state').update({
+                pillar: desiredPillar,
+                backing: wildcardBacking,
+                pillar_confirmed: true,
+                updated_at: new Date().toISOString(),
+            }).eq('id', factionState.id);
+
+            await supabase.from('autocracy_tracker').update({
+                wildcard_pillar: oldPillar,
+                wildcard_backing: oldBacking,
+                wildcard_neglect_ticks: 0,
+            }).eq('nation_id', nation.id);
+
+            return { effects: { confirmed_pillar: desiredPillar, swapped: true, gave_up: oldPillar } };
+        }
+
+        // Check if another faction holds the desired pillar
+        const holder = (allFps || []).find(fps => fps.pillar === desiredPillar && fps.faction_id !== factionState.faction_id);
+        if (!holder) {
+            return { error: 'Pillar not available' };
+        }
+
+        // Cannot take a pillar from a faction that already confirmed
+        if (holder.pillar_confirmed) {
+            return { error: 'That pillar is already claimed by another faction' };
+        }
+
+        // Swap pillars: we get theirs, they get ours
+        const myOldPillar = factionState.pillar;
+        const myOldBacking = Number(factionState.backing ?? 0);
+        const theirBacking = Number(holder.backing ?? 0);
+
+        // Update our faction: take desired pillar + their backing
+        const { error: err1 } = await supabase.from('faction_pillar_state').update({
+            pillar: desiredPillar,
+            backing: theirBacking,
+            pillar_confirmed: true,
+            updated_at: new Date().toISOString(),
+        }).eq('id', factionState.id);
+        if (err1) return { error: 'Failed to update your pillar: ' + err1.message };
+
+        // Update their faction: give them our old pillar + our backing
+        const { error: err2 } = await supabase.from('faction_pillar_state').update({
+            pillar: myOldPillar,
+            backing: myOldBacking,
+            updated_at: new Date().toISOString(),
+        }).eq('id', holder.id);
+        if (err2) return { error: 'Failed to swap pillar: ' + err2.message };
+
+        return { effects: { confirmed_pillar: desiredPillar, swapped: true, gave_up: myOldPillar } };
+    },
+});
 
 // ────────── political-actions ──────────
 
@@ -15233,176 +18943,7 @@ function getPromiseableStats(nation, isGoverning = false) {
 
 
 
-// ==================== MOBILIZE (PARTY CHAIRMAN) ====================
-
-const SUCCESSOR_CONFIG = {
-    AP_COST: 9,
-    COOLDOWN_TICKS: 60,
-    PILLAR_BOOST: 30,
-    STABILITY_BOOST: 7,
-    OTHER_COUP_READINESS: 5,
-    OTHER_LOYALTY_DROP: 10,
-    REVOKE_STABILITY_DROP: 5,
-    REVOKE_COUP_READINESS: 3,
-    REVOKE_LOYALTY_DROP: 20,
-    POST_SUCCESSION_FORMER_LOYALTY: -15,
-    POST_SUCCESSION_OTHER_LOYALTY: -5,
-    DYNASTY_AP_COST: 1,
-    DYNASTY_SHADOW_SUCCESSION_STRENGTH: 3,
-    DYNASTY_CULTIVATE_LEGITIMACY: 1,
-    DYNASTY_CULTIVATE_SUCCESSION_STRENGTH: 5,
-    DYNASTY_CULTIVATE_STANDING_PENALTY: 1,
-    DYNASTY_PREPARE_SUCCESSION_STRENGTH: 8,
-    DYNASTY_PREPARE_EXIT_READINESS: 10,
-    DYNASTY_PREPARE_DETECTION_CHANCE: 0.10,
-    // Family member successor (appointing own faction)
-    FAMILY_STABILITY_BOOST: 1,
-    FAMILY_COUP_READINESS: 7,
-    FAMILY_PILLAR_PENALTY: 5,
-    FAMILY_AP_PENALTY: 1,  // -1 AP/tick while active
-};
-
-const MOBILIZE_CONFIG = {
-    AP_COST: 3,
-    MODES: {
-        rally_regime: {
-            name: 'Rally for the Regime',
-            description: 'Organize demonstrations of public support. Flags, banners, crowds chanting the Strongman\'s name.',
-            legitimacy_boost: 3,
-            standing_boost: 3,
-        },
-        rally_self: {
-            name: 'Rally for Yourself',
-            description: 'The crowds are still there, but your portrait is getting bigger. Provincial committees start seeing you as the future.',
-            coup_readiness_boost: 5,
-            party_pillar_penalty: 2,
-            detection_chance: 0.15,
-            standing_penalty_if_detected: 10,
-        },
-    },
-};
-
-/**
- * Execute Mobilize: Party Chairman only, non-ruling faction only.
- * Two modes:
- *  - "rally_regime": +3 legitimacy, +3 standing
- *  - "rally_self": +5 coup readiness, -2 party pillar support, 15% detection → -10 standing
- */
-async function executeMobilize(supabase, factionId, nationId, mode, currentTick) {
-    const modeConfig = MOBILIZE_CONFIG.MODES[mode];
-    if (!modeConfig) return { success: false, error: 'Invalid mobilize mode.' };
-
-    // ── 1. Validate faction + AP ──
-    const { data: faction } = await supabase
-        .from('factions').select('action_points, faction_name')
-        .eq('id', factionId).single();
-    if (!faction) return { success: false, error: 'Faction not found.' };
-    if ((faction.action_points || 0) < MOBILIZE_CONFIG.AP_COST)
-        return { success: false, error: `Not enough AP. Need ${MOBILIZE_CONFIG.AP_COST}.` };
-
-    // ── 2. Validate steward is party_chairman ──
-    const { data: steward } = await supabase
-        .from('stewards')
-        .select('id, steward_type, standing, coup_readiness, first_name, last_name')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId)
-        .eq('is_alive', true)
-        .single();
-    if (!steward || steward.steward_type !== 'party_chairman')
-        return { success: false, error: 'Only the Party Chairman can mobilize.' };
-
-    // ── 3. Validate non-ruling faction ──
-    const { data: nation } = await supabase
-        .from('nations').select('ruling_faction_id, legitimacy')
-        .eq('id', nationId).single();
-    if (!nation) return { success: false, error: 'Nation not found.' };
-    if (nation.ruling_faction_id === factionId)
-        return { success: false, error: 'The ruling faction cannot mobilize.' };
-
-    // ── 4. Deduct AP ──
-    const apResult = await deductAP(supabase, factionId, MOBILIZE_CONFIG.AP_COST);
-    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
-
-    const result = {
-        success: true,
-        mode,
-        modeName: modeConfig.name,
-        steward_name: `${steward.first_name} ${steward.last_name}`,
-        newAp: apResult.newAp,
-        detected: false,
-    };
-
-    if (mode === 'rally_regime') {
-        // +3 legitimacy (nation stat)
-        const newLegitimacy = Math.min(100, Number(nation.legitimacy ?? 50) + modeConfig.legitimacy_boost);
-        await supabase.from('nations').update({ legitimacy: newLegitimacy }).eq('id', nationId);
-
-        // +3 standing (steward stat)
-        const newStanding = Math.min(100, (steward.standing ?? 50) + modeConfig.standing_boost);
-        await supabase.from('stewards').update({ standing: newStanding }).eq('id', steward.id);
-
-        result.legitimacy_change = modeConfig.legitimacy_boost;
-        result.standing_change = modeConfig.standing_boost;
-        result.newLegitimacy = newLegitimacy;
-        result.newStanding = newStanding;
-
-    } else if (mode === 'rally_self') {
-        // +5 coup readiness
-        const newCR = Math.min(100, (steward.coup_readiness ?? 0) + modeConfig.coup_readiness_boost);
-        await supabase.from('stewards').update({ coup_readiness: newCR }).eq('id', steward.id);
-
-        // -2 party pillar support (Grip on Power erosion)
-        const { data: partyPillar } = await supabase
-            .from('regime_pillars')
-            .select('id, support')
-            .eq('nation_id', nationId)
-            .eq('pillar_key', 'party')
-            .single();
-        if (partyPillar) {
-            const newSupport = Math.max(0, (partyPillar.support ?? 50) - modeConfig.party_pillar_penalty);
-            await supabase.from('regime_pillars')
-                .update({ support: newSupport, updated_at: new Date().toISOString() })
-                .eq('id', partyPillar.id);
-            result.party_pillar_change = -modeConfig.party_pillar_penalty;
-        }
-
-        result.coup_readiness_change = modeConfig.coup_readiness_boost;
-        result.newCoupReadiness = newCR;
-
-        // 15% detection chance
-        const detected = Math.random() < modeConfig.detection_chance;
-        result.detected = detected;
-        if (detected) {
-            const newStanding = Math.max(0, (steward.standing ?? 50) - modeConfig.standing_penalty_if_detected);
-            await supabase.from('stewards').update({ standing: newStanding }).eq('id', steward.id);
-            result.standing_penalty = -modeConfig.standing_penalty_if_detected;
-            result.newStanding = newStanding;
-
-            // Log detection event separately
-            await supabase.from('campaign_actions').insert({
-                party_id: factionId, nation_id: nationId,
-                action_type: 'steward_detected_mobilize',
-                tick_performed: currentTick,
-                result: {
-                    steward_name: result.steward_name,
-                    faction_name: faction.faction_name,
-                    standing_penalty: -modeConfig.standing_penalty_if_detected,
-                }
-            });
-        }
-    }
-
-    // ── 5. Log action ──
-    await supabase.from('campaign_actions').insert({
-        party_id: factionId, nation_id: nationId,
-        action_type: 'steward_mobilize',
-        tick_performed: currentTick,
-        result,
-    });
-
-    return result;
-}
-
+// (Mobilize, Successor Config removed — Phase 0: autocracy actions dismantled)
 
 // ==================== PROMISE TICK PROCESSING ====================
 
@@ -15802,9 +19343,6 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
  * election-simulation.js) with existing seat counts as weights.
  */
 async function rebalanceVacantSeats(supabase, nation) {
-    // Autocracies never auto-redistribute seats — factions must earn them.
-    if (isAutocracy(nation)) return null;
-
     const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
 
     const { data: factions, error } = await supabase
@@ -15815,6 +19353,27 @@ async function rebalanceVacantSeats(supabase, nation) {
 
     if (error || !factions || factions.length === 0) return null;
 
+    // Autocracies: equal seat allocation — every faction gets the same share
+    if (isAutocracy(nation)) {
+        const perParty = Math.floor(totalSeats / factions.length);
+        let remainder = totalSeats - perParty * factions.length;
+        const updates = [];
+        for (const f of factions) {
+            const newSeats = perParty + (remainder > 0 ? 1 : 0);
+            if (remainder > 0) remainder--;
+            if (newSeats !== (f.seats || 0)) {
+                updates.push({ id: f.id, name: f.faction_name, oldSeats: f.seats || 0, newSeats });
+                await supabase.from('factions').update({ seats: newSeats }).eq('id', f.id);
+            }
+        }
+        if (updates.length > 0) {
+            console.log(`[rebalanceVacantSeats] ${nation.name} (autocracy): Equal seats:`,
+                updates.map(u => `${u.name}: ${u.oldSeats}→${u.newSeats}`).join(', '));
+        }
+        return updates.length > 0 ? { nation: nation.name, vacantSeats: 0, updates } : null;
+    }
+
+    // Democracies: proportional redistribution of vacant seats
     const currentSum = factions.reduce((s, f) => s + (f.seats || 0), 0);
     const vacantSeats = totalSeats - currentSum;
 
@@ -15822,10 +19381,8 @@ async function rebalanceVacantSeats(supabase, nation) {
 
     console.log(`[rebalanceVacantSeats] ${nation.name}: ${vacantSeats} vacant seat(s) detected (${currentSum}/${totalSeats}). Redistributing.`);
 
-    // Proportional redistribution using Largest Remainder (Hamilton) method
-    // Weight = each faction's current seats
+    // All factions at 0 seats — distribute evenly
     if (currentSum === 0) {
-        // Edge case: all factions at 0 seats — distribute evenly
         const perParty = Math.floor(totalSeats / factions.length);
         let remainder = totalSeats - perParty * factions.length;
         const updates = [];
@@ -15841,7 +19398,7 @@ async function rebalanceVacantSeats(supabase, nation) {
     }
 
     // Standard Largest Remainder: allocate totalSeats proportionally by current seat share
-    const quota = currentSum / totalSeats; // votes-per-seat equivalent
+    const quota = currentSum / totalSeats;
     const fractionals = [];
     const newSeats = {};
     let allocated = 0;
@@ -15877,1621 +19434,9 @@ async function rebalanceVacantSeats(supabase, nation) {
     return { nation: nation.name, vacantSeats, updates };
 }
 
-// ==================== LOYALTY TICK PROCESSING ====================
+// (Loyalty tick, Standing tick, Regime pillars tick removed — Phase 0)
 
-/**
- * Determine autocracy loyalty decay rate based on Regime Health thresholds.
- * HEALTHY (60-100): -2/tick
- * WEAKENING (40-59): -2.5/tick
- * DECLINING (20-39): -3/tick
- * CRITICAL (1-19): -4/tick
- */
-function getAutocracyLoyaltyDecay(regimeHealth) {
-    if (regimeHealth >= 60) return -2;
-    if (regimeHealth >= 40) return -2.5;
-    if (regimeHealth >= 20) return -3;
-    if (regimeHealth >= 1) return -4;
-    return -5; // COLLAPSED tier — matches getRegimeHealthTier
-}
-
-async function processLoyaltyTick(supabase, nation) {
-    const rulingId = nation.ruling_faction_id;
-    if (!rulingId) return;
-
-    const nationIsAutocracy = isAutocracy(nation);
-
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id, loyalty, seats')
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'party');
-
-    if (!factions || factions.length === 0) return;
-
-    const { data: ministries } = await supabase
-        .from('ministries')
-        .select('party_id')
-        .eq('nation_id', nation.id)
-        .not('party_id', 'is', null);
-
-    const ministryCounts = {};
-    if (ministries) {
-        for (const m of ministries) {
-            ministryCounts[m.party_id] = (ministryCounts[m.party_id] || 0) + 1;
-        }
-    }
-
-    for (const faction of factions) {
-        let loyalty = faction.loyalty ?? 50;
-        let seats = faction.seats || 0;
-
-        if (faction.id === rulingId) {
-            if (nationIsAutocracy) {
-                // Autocracy ruling faction (Strongman): loyalty drifts toward 80
-                const ministryCount = ministryCounts[faction.id] || 0;
-                if (loyalty > 80) loyalty -= 1;
-                else if (loyalty < 80) loyalty += 1;
-                loyalty += ministryCount * 0.5;
-                loyalty = Math.max(0, Math.min(100, Math.round(loyalty * 10) / 10));
-                await supabase.from('factions')
-                    .update({ loyalty })
-                    .eq('id', faction.id);
-            } else {
-                if (loyalty !== 100) {
-                    await supabase.from('factions')
-                        .update({ loyalty: 100 })
-                        .eq('id', faction.id);
-                }
-            }
-            continue;
-        }
-
-        if (nationIsAutocracy) {
-            // ── v2 Autocracy Loyalty Decay ──
-            // Flat decay based on Regime Health thresholds. No ministry bonus.
-            // Loyalty cap: 95 (inherent paranoia of autocratic rule).
-            const regimeHealth = Number(nation.regime_health ?? 80);
-            const decayRate = getAutocracyLoyaltyDecay(regimeHealth);
-            loyalty += decayRate;
-            loyalty = Math.max(0, Math.min(GAME_CONFIG.LOYALTY_CAP, Math.round(loyalty * 10) / 10));
-
-            await supabase.from('factions')
-                .update({ loyalty })
-                .eq('id', faction.id);
-        } else {
-            // ── Democracy/Presidential loyalty ──
-            const ministryCount = ministryCounts[faction.id] || 0;
-
-            if (ministryCount > 0) {
-                loyalty += ministryCount * 0.5;
-            } else {
-                loyalty -= 2;
-            }
-
-            if (loyalty > 50) {
-                loyalty -= 1;
-            } else if (loyalty < 50) {
-                loyalty += 1;
-            }
-
-            loyalty = Math.max(0, Math.min(100, Math.round(loyalty * 10) / 10));
-
-            await supabase.from('factions')
-                .update({ loyalty, seats })
-                .eq('id', faction.id);
-        }
-    }
-}
-
-// ==================== STANDING TICK PROCESSING (v2) ====================
-
-/**
- * Process faction standing relevance decay for autocracy nations.
- * Standing has no natural decay, BUT if a faction takes no standing-building
- * action (Consolidate Power or Demonstrate Competence) for 3+ consecutive ticks,
- * standing decays at -1/tick until a standing-building action is taken.
- * Standing cap: 90.
- */
-/**
- * Expire pending loyalty demands past their deadline (server-side).
- * Treats expiry as a refusal: reveals true loyalty, standing -10.
- */
-async function processLoyaltyDemandExpiry(supabase, nation, currentTick) {
-    if (!isAutocracy(nation)) return;
-
-    const { data: expired } = await supabase
-        .from('loyalty_demands')
-        .select('id, target_faction_id, strongman_faction_id')
-        .eq('nation_id', nation.id)
-        .eq('status', 'pending')
-        .lte('deadline_tick', currentTick);
-
-    if (!expired || expired.length === 0) return;
-
-    for (const d of expired) {
-        await supabase.from('loyalty_demands').update({
-            status: 'expired', resolved_at_tick: currentTick,
-        }).eq('id', d.id);
-
-        // Standing penalty for refusal
-        const { data: targetFaction } = await supabase
-            .from('factions').select('id, standing, faction_name')
-            .eq('id', d.target_faction_id).single();
-        if (targetFaction) {
-            await supabase.from('factions').update({
-                standing: Math.max(0, (targetFaction.standing ?? 30) - 10),
-            }).eq('id', d.target_faction_id);
-        }
-
-        await supabase.from('campaign_actions').insert({
-            party_id: d.target_faction_id, nation_id: nation.id,
-            action_type: 'loyalty_demand_expired',
-            tick_performed: currentTick,
-            result: { faction_name: targetFaction?.faction_name || 'Unknown' },
-        });
-    }
-}
-
-async function processStandingTick(supabase, nation, currentTick) {
-    if (!isAutocracy(nation)) return;
-
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id, standing, last_standing_action_tick')
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'party');
-
-    if (!factions || factions.length === 0) return;
-
-    for (const faction of factions) {
-        let standing = faction.standing ?? 30;
-        const lastStandingTick = faction.last_standing_action_tick;
-
-        // Relevance decay: if 3+ ticks since last standing-building action
-        if (lastStandingTick != null && (currentTick - lastStandingTick) >= 3) {
-            standing -= 1;
-        } else if (lastStandingTick == null && currentTick >= 3) {
-            // Never taken a standing action — decay after tick 3
-            standing -= 1;
-        }
-
-        // Clamp to [0, 90]
-        standing = Math.max(0, Math.min(90, standing));
-
-        if (standing !== (faction.standing ?? 30)) {
-            await supabase.from('factions')
-                .update({ standing })
-                .eq('id', faction.id);
-        }
-    }
-}
-
-
-// ==================== REGIME PILLARS TICK ====================
-
-/**
- * The six pillars of an autocratic regime. Each pillar decays by 1d2 per tick
- * and receives a 1d2 bonus per satisfied "want" condition.
- * The average of all pillar support values = Grip on Power.
- */
-const REGIME_PILLAR_DEFS = [
-    { key: 'military',    name: 'The Military',      wants: [
-        { stat: 'stability', threshold: 50, direction: 'above' },
-        { stat: '_armed_forces_funding', threshold: 90, direction: 'above' },
-    ]},
-    { key: 'security',    name: 'Security Services',  wants: [
-        { stat: 'crime_rate', threshold: 40, direction: 'below' },
-        { stat: 'corruption', threshold: 50, direction: 'above' },
-    ]},
-    { key: 'party',       name: 'The Party',          wants: [
-        { stat: 'legitimacy', threshold: 50, direction: 'above' },
-        { stat: 'standard_of_living', threshold: 50, direction: 'above' },
-    ]},
-    { key: 'oligarchs',   name: 'Oligarchs',          wants: [
-        { stat: 'gdp_growth', threshold: 50, direction: 'above' },
-        { stat: 'corporate_tax', threshold: 30, direction: 'below' },
-    ]},
-    { key: 'bureaucracy', name: 'Bureaucracy',        wants: [
-        { stat: 'efficiency', threshold: 50, direction: 'above' },
-        { stat: '_debt_ratio', threshold: 50, direction: 'below' },
-    ]},
-    { key: 'media',       name: 'State Media',        wants: [
-        { stat: 'freedom_index', threshold: 40, direction: 'below' },
-        { stat: 'legitimacy', threshold: 50, direction: 'above' },
-    ]},
-    { key: 'foreign_patrons', name: 'Foreign Patrons',  wants: [
-        { stat: 'international_reputation', threshold: 50, direction: 'above' },
-        { stat: 'foreign_investment', threshold: 50, direction: 'above' },
-    ]},
-    { key: 'religious',  name: 'Religious Establishment', wants: [
-        { stat: 'religiosity', threshold: 50, direction: 'above' },
-        { stat: 'freedom_index', threshold: 40, direction: 'below' },
-    ]},
-];
-
-function d2() { return 1 + Math.floor(Math.random() * 2); } // 1 or 2
-
-async function processRegimePillars(supabase, nation) {
-    if (!isAutocracy(nation)) return;
-
-    // Fetch existing pillars
-    const { data: pillars } = await supabase
-        .from('regime_pillars')
-        .select('id, pillar_key, support')
-        .eq('nation_id', nation.id);
-
-    // If no pillars yet (new autocracy), seed them
-    if (!pillars || pillars.length === 0) {
-        const rows = REGIME_PILLAR_DEFS.map(def => ({
-            nation_id: nation.id,
-            pillar_key: def.key,
-            pillar_name: def.name,
-            support: 55 + Math.floor(Math.random() * 31), // 55-85
-        }));
-        await supabase.from('regime_pillars').insert(rows);
-        return;
-    }
-
-    // Build a lookup of pillar_key → row
-    const pillarMap = {};
-    for (const p of pillars) pillarMap[p.pillar_key] = p;
-
-    // _armed_forces_funding: auto-funded at 100% (no budget bill system)
-    let armedForcesFunding = 100;
-
-    // _debt_ratio: simple 0-100 where lower is better
-    // Use debt relative to GDP: debt/gdp * 100, clamped 0-100
-    const gdp = Number(nation.gdp || 1);
-    const debt = Number(nation.debt || 0);
-    const debtRatio = Math.min(100, Math.max(0, Math.round((debt / Math.max(gdp, 1)) * 100)));
-
-    const syntheticStats = {
-        _armed_forces_funding: armedForcesFunding,
-        _debt_ratio: debtRatio,
-    };
-
-    // Process each pillar
-    for (const def of REGIME_PILLAR_DEFS) {
-        const row = pillarMap[def.key];
-        if (!row) continue;
-
-        let support = row.support;
-
-        // Natural decay: -1d2 per tick
-        support -= d2();
-
-        // Check each want: if satisfied, +1d2 bonus
-        for (const want of def.wants) {
-            const val = want.stat.startsWith('_')
-                ? (syntheticStats[want.stat] ?? 0)
-                : Number(nation[want.stat] ?? 50);
-
-            const satisfied = want.direction === 'above'
-                ? val >= want.threshold
-                : val <= want.threshold;
-
-            if (satisfied) {
-                support += d2();
-            }
-        }
-
-        support = Math.max(0, Math.min(100, support));
-
-        await supabase.from('regime_pillars')
-            .update({ support, updated_at: new Date().toISOString() })
-            .eq('id', row.id);
-    }
-}
-
-// ==================== STEWARD TICK ====================
-
-/**
- * Map pillar_key → steward archetype.
- */
-const PILLAR_TO_STEWARD_TYPE = {
-    bureaucracy:     'technocrat',
-    military:        'general',
-    party:           'party_chairman',
-    oligarchs:       'oligarch',
-    security:        'security_chief',
-    media:           'propaganda_chief',
-    foreign_patrons: 'intelligence_director',
-    religious:       'religious_authority',
-};
-
-/** Adjust coup_readiness for all living stewards in a nation by a delta. */
-async function adjustStewardsCoupReadiness(supabase, nationId, delta) {
-    const { data: stewards } = await supabase
-        .from('stewards').select('id, coup_readiness')
-        .eq('nation_id', nationId).eq('is_alive', true);
-    for (const s of (stewards || [])) {
-        const newCR = Math.min(100, Math.max(0, (s.coup_readiness ?? 0) + delta));
-        await supabase.from('stewards').update({ coup_readiness: newCR }).eq('id', s.id);
-    }
-}
-
-// ==================== AUTOCRACY v2 FACTION ACTIONS ====================
-
-/**
- * Pledge Allegiance: publicly reaffirm loyalty. Groveling is free.
- * Loyalty +8, Standing -2. If under Demand Loyalty: Loyalty +13, Standing -3.
- * Standing cannot drop below 5 from this action.
- * AP Cost: 2
- */
-async function executePledgeAllegiance(supabase, factionId, nationId, currentTick) {
-    // 1. Validate faction + AP
-    const { data: faction } = await supabase
-        .from('factions').select('id, action_points, loyalty, standing, faction_name')
-        .eq('id', factionId).single();
-    if (!faction) return { success: false, error: 'Faction not found.' };
-    if ((faction.action_points || 0) < GAME_CONFIG.PLEDGE_ALLEGIANCE_AP)
-        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.PLEDGE_ALLEGIANCE_AP}.` };
-
-    // 2. Check for active Demand Loyalty order
-    const { data: pendingDemand } = await supabase
-        .from('loyalty_demands')
-        .select('id, strongman_faction_id')
-        .eq('nation_id', nationId)
-        .eq('target_faction_id', factionId)
-        .eq('status', 'pending')
-        .maybeSingle();
-
-    const isComplying = !!pendingDemand;
-
-    // 3. Deduct AP
-    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.PLEDGE_ALLEGIANCE_AP);
-    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
-
-    // 4. Apply effects
-    const loyaltyGain = isComplying ? GAME_CONFIG.PLEDGE_ALLEGIANCE_COMPLY_LOYALTY : GAME_CONFIG.PLEDGE_ALLEGIANCE_LOYALTY;
-    const standingPenalty = isComplying ? GAME_CONFIG.PLEDGE_ALLEGIANCE_COMPLY_STANDING : GAME_CONFIG.PLEDGE_ALLEGIANCE_STANDING;
-
-    let newLoyalty = Math.min(GAME_CONFIG.LOYALTY_CAP, (faction.loyalty ?? 50) + loyaltyGain);
-    let newStanding = Math.max(GAME_CONFIG.PLEDGE_ALLEGIANCE_STANDING_FLOOR, (faction.standing ?? 30) + standingPenalty);
-    newStanding = Math.min(GAME_CONFIG.STANDING_CAP, newStanding);
-
-    await supabase.from('factions').update({
-        loyalty: newLoyalty,
-        standing: newStanding,
-        last_action_type: 'pledge_allegiance',
-        consecutive_embezzle_ticks: 0,
-    }).eq('id', factionId);
-
-    // 5. Resolve demand if complying
-    if (isComplying) {
-        await supabase.from('loyalty_demands').update({
-            status: 'complied', resolved_at_tick: currentTick
-        }).eq('id', pendingDemand.id);
-    }
-
-    // 6. Log action
-    await supabase.from('campaign_actions').insert({
-        party_id: factionId, nation_id: nationId,
-        action_type: 'faction_pledge_allegiance',
-        tick_performed: currentTick,
-        result: {
-            loyalty_change: loyaltyGain, standing_change: standingPenalty,
-            new_loyalty: newLoyalty, new_standing: newStanding,
-            complied_with_demand: isComplying,
-            faction_name: faction.faction_name,
-        }
-    });
-
-    return {
-        success: true,
-        newAp: apResult.newAp,
-        loyaltyChange: loyaltyGain,
-        standingChange: standingPenalty,
-        newLoyalty, newStanding,
-        compliedWithDemand: isComplying,
-    };
-}
-
-/**
- * Consolidate Power: build institutional influence. Quiet power accumulation.
- * Standing +6, Loyalty -3. Resets relevance decay counter.
- * AP Cost: 2
- */
-async function executeConsolidatePower(supabase, factionId, nationId, currentTick) {
-    // 1. Validate faction + AP
-    const { data: faction } = await supabase
-        .from('factions').select('id, action_points, loyalty, standing, faction_name')
-        .eq('id', factionId).single();
-    if (!faction) return { success: false, error: 'Faction not found.' };
-    if ((faction.action_points || 0) < GAME_CONFIG.CONSOLIDATE_POWER_AP)
-        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.CONSOLIDATE_POWER_AP}.` };
-
-    // 2. Deduct AP
-    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.CONSOLIDATE_POWER_AP);
-    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
-
-    // 3. Apply effects
-    let newStanding = Math.min(GAME_CONFIG.STANDING_CAP, (faction.standing ?? 30) + GAME_CONFIG.CONSOLIDATE_POWER_STANDING);
-    let newLoyalty = Math.max(0, (faction.loyalty ?? 50) + GAME_CONFIG.CONSOLIDATE_POWER_LOYALTY);
-    newLoyalty = Math.min(GAME_CONFIG.LOYALTY_CAP, newLoyalty);
-
-    await supabase.from('factions').update({
-        loyalty: newLoyalty,
-        standing: newStanding,
-        last_action_type: 'consolidate_power',
-        last_standing_action_tick: currentTick,
-        consecutive_embezzle_ticks: 0,
-    }).eq('id', factionId);
-
-    // 4. Log action
-    await supabase.from('campaign_actions').insert({
-        party_id: factionId, nation_id: nationId,
-        action_type: 'faction_consolidate_power',
-        tick_performed: currentTick,
-        result: {
-            standing_change: GAME_CONFIG.CONSOLIDATE_POWER_STANDING,
-            loyalty_change: GAME_CONFIG.CONSOLIDATE_POWER_LOYALTY,
-            new_standing: newStanding, new_loyalty: newLoyalty,
-            faction_name: faction.faction_name,
-        }
-    });
-
-    return {
-        success: true,
-        newAp: apResult.newAp,
-        standingChange: GAME_CONFIG.CONSOLIDATE_POWER_STANDING,
-        loyaltyChange: GAME_CONFIG.CONSOLIDATE_POWER_LOYALTY,
-        newStanding, newLoyalty,
-    };
-}
-
-/**
- * Demonstrate Competence: actually govern. Produce visible policy outcomes.
- * Standing +4, Loyalty +3, Nation stat +0.3. Costs $2M from embezzled funds.
- * If can't afford: Standing +2 (reduced), no nation stat effect.
- * Sets vulnerability window (other factions can poach seats cheaper).
- * AP Cost: 3
- */
-async function executeDemonstrateCompetence(supabase, factionId, nationId, currentTick) {
-    // 1. Validate faction + AP
-    const { data: faction } = await supabase
-        .from('factions').select('id, action_points, loyalty, standing, embezzled_funds, faction_name')
-        .eq('id', factionId).single();
-    if (!faction) return { success: false, error: 'Faction not found.' };
-    if ((faction.action_points || 0) < GAME_CONFIG.DEMONSTRATE_COMPETENCE_AP)
-        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.DEMONSTRATE_COMPETENCE_AP}.` };
-
-    // 2. Deduct AP
-    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.DEMONSTRATE_COMPETENCE_AP);
-    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
-
-    // 3. Check if faction can afford the cost
-    const funds = Number(faction.embezzled_funds ?? 0);
-    const canAfford = funds >= GAME_CONFIG.DEMONSTRATE_COMPETENCE_COST;
-
-    const standingGain = canAfford ? GAME_CONFIG.DEMONSTRATE_COMPETENCE_STANDING : GAME_CONFIG.DEMONSTRATE_COMPETENCE_REDUCED_STANDING;
-    const loyaltyGain = GAME_CONFIG.DEMONSTRATE_COMPETENCE_LOYALTY;
-
-    let newStanding = Math.min(GAME_CONFIG.STANDING_CAP, (faction.standing ?? 30) + standingGain);
-    let newLoyalty = Math.min(GAME_CONFIG.LOYALTY_CAP, (faction.loyalty ?? 50) + loyaltyGain);
-    let newFunds = canAfford ? funds - GAME_CONFIG.DEMONSTRATE_COMPETENCE_COST : funds;
-
-    await supabase.from('factions').update({
-        loyalty: newLoyalty,
-        standing: newStanding,
-        embezzled_funds: newFunds,
-        last_action_type: 'demonstrate_competence',
-        last_standing_action_tick: currentTick,
-        consecutive_embezzle_ticks: 0,
-    }).eq('id', factionId);
-
-    // 4. Apply nation stat bonus if funded
-    let nationStatChange = null;
-    if (canAfford) {
-        // Determine which nation stat to boost based on faction's steward type / pillar
-        const { data: steward } = await supabase
-            .from('stewards').select('pillar_key, steward_type')
-            .eq('faction_id', factionId).eq('nation_id', nationId).eq('is_alive', true)
-            .maybeSingle();
-
-        const pillarStatMap = {
-            military: 'stability', security: 'stability', bureaucracy: 'government_efficiency',
-            party: 'legitimacy', oligarchs: 'gdp_growth', media: 'press_freedom',
-            foreign_patrons: 'international_reputation', religious: 'legitimacy',
-        };
-        const statKey = pillarStatMap[steward?.pillar_key] || 'stability';
-
-        const { data: nation } = await supabase.from('nations').select(statKey).eq('id', nationId).single();
-        if (nation) {
-            const current = Number(nation[statKey] ?? 50);
-            const newVal = Math.min(100, current + GAME_CONFIG.DEMONSTRATE_COMPETENCE_NATION_STAT);
-            await supabase.from('nations').update({ [statKey]: newVal }).eq('id', nationId);
-            nationStatChange = { stat: statKey, change: GAME_CONFIG.DEMONSTRATE_COMPETENCE_NATION_STAT };
-        }
-    }
-
-    // 5. Log action
-    await supabase.from('campaign_actions').insert({
-        party_id: factionId, nation_id: nationId,
-        action_type: 'faction_demonstrate_competence',
-        tick_performed: currentTick,
-        result: {
-            standing_change: standingGain, loyalty_change: loyaltyGain,
-            new_standing: newStanding, new_loyalty: newLoyalty,
-            funds_spent: canAfford ? GAME_CONFIG.DEMONSTRATE_COMPETENCE_COST : 0,
-            nation_stat_change: nationStatChange,
-            could_afford: canAfford,
-            faction_name: faction.faction_name,
-        }
-    });
-
-    return {
-        success: true,
-        newAp: apResult.newAp,
-        standingChange: standingGain,
-        loyaltyChange: loyaltyGain,
-        newStanding, newLoyalty,
-        fundsSpent: canAfford ? GAME_CONFIG.DEMONSTRATE_COMPETENCE_COST : 0,
-        nationStatChange,
-        couldAfford: canAfford,
-    };
-}
-
-/**
- * Embezzle Funds: divert state resources into hidden war chest.
- * Loyalty -5, Funds +$X (formula-based), Detection risk.
- * Income formula: base × (1 + standing/100) × (1 + seats/legislature_max)
- * Base: $5M, Floor: $3M.
- * Detection: 10% base + 5% per consecutive tick + corruption modifier.
- * AP Cost: 1
- */
-async function executeEmbezzleFunds(supabase, factionId, nationId, currentTick) {
-    // 1. Validate faction + AP
-    const { data: faction } = await supabase
-        .from('factions').select('id, action_points, loyalty, standing, seats, embezzled_funds, consecutive_embezzle_ticks, faction_name')
-        .eq('id', factionId).single();
-    if (!faction) return { success: false, error: 'Faction not found.' };
-    if ((faction.action_points || 0) < GAME_CONFIG.EMBEZZLE_FUNDS_AP)
-        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.EMBEZZLE_FUNDS_AP}.` };
-
-    // 2. Fetch nation for corruption and legislature size
-    const { data: nation } = await supabase
-        .from('nations').select('corruption, total_seats, ruling_faction_id, regime_health')
-        .eq('id', nationId).single();
-    if (!nation) return { success: false, error: 'Nation not found.' };
-
-    const legislatureMax = nation.total_seats || 120;
-
-    // 3. Deduct AP
-    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.EMBEZZLE_FUNDS_AP);
-    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
-
-    // 4. Calculate income
-    const standing = faction.standing ?? 30;
-    const seats = faction.seats || 0;
-    let income = GAME_CONFIG.EMBEZZLE_FUNDS_BASE_INCOME * (1 + standing / 100) * (1 + seats / legislatureMax);
-    income = Math.max(GAME_CONFIG.EMBEZZLE_FUNDS_INCOME_FLOOR, Math.round(income * 100) / 100);
-
-    // 5. Calculate detection probability
-    const consecutiveTicks = (faction.consecutive_embezzle_ticks ?? 0);
-    const corruption = Number(nation.corruption ?? 50);
-    const corruptionMod = (corruption - 50) * -0.005; // -0.5% per point above 50, +0.5% below
-
-    // Security faction detection bonus
-    let securityBonus = 0;
-    const { data: secFactions } = await supabase
-        .from('factions').select('id, seats')
-        .eq('nation_id', nationId)
-        .eq('faction_type', 'party')
-        .neq('id', factionId);
-    // We'd need to identify the "security" faction — for now use steward type
-    const { data: secStewards } = await supabase
-        .from('stewards').select('faction_id')
-        .eq('nation_id', nationId)
-        .eq('steward_type', 'security_chief')
-        .eq('is_alive', true);
-    if (secStewards && secStewards.length > 0) {
-        for (const ss of secStewards) {
-            const secFaction = (secFactions || []).find(f => f.id === ss.faction_id);
-            if (secFaction) {
-                securityBonus += ((secFaction.seats || 0) / legislatureMax) * 0.10;
-            }
-        }
-    }
-
-    let detectionProb = GAME_CONFIG.EMBEZZLE_FUNDS_BASE_DETECTION
-        + consecutiveTicks * GAME_CONFIG.EMBEZZLE_FUNDS_CONSECUTIVE_BONUS
-        + corruptionMod
-        + securityBonus;
-    detectionProb = Math.max(GAME_CONFIG.EMBEZZLE_FUNDS_DETECTION_FLOOR,
-        Math.min(GAME_CONFIG.EMBEZZLE_FUNDS_DETECTION_CAP, detectionProb));
-
-    // 6. Roll for detection
-    const detected = Math.random() < detectionProb;
-
-    // 7. Apply effects
-    let newLoyalty = Math.max(0, (faction.loyalty ?? 50) + GAME_CONFIG.EMBEZZLE_FUNDS_LOYALTY);
-    let newFunds = Number(faction.embezzled_funds ?? 0) + income;
-    let newStanding = faction.standing ?? 30;
-    let fundsSeized = 0;
-
-    if (detected) {
-        newLoyalty = Math.max(0, newLoyalty + GAME_CONFIG.EMBEZZLE_FUNDS_DETECTED_LOYALTY);
-        newStanding = Math.max(0, newStanding + GAME_CONFIG.EMBEZZLE_FUNDS_DETECTED_STANDING);
-        fundsSeized = Math.round(newFunds * GAME_CONFIG.EMBEZZLE_FUNDS_DETECTED_FUNDS_SEIZURE * 100) / 100;
-        newFunds -= fundsSeized;
-
-        // Regime health -1 for detected embezzlement
-        const newRegimeHealth = Math.max(0, Number(nation.regime_health ?? 80) - 1);
-        await supabase.from('nations').update({ regime_health: newRegimeHealth }).eq('id', nationId);
-    }
-
-    newLoyalty = Math.min(GAME_CONFIG.LOYALTY_CAP, newLoyalty);
-    newStanding = Math.min(GAME_CONFIG.STANDING_CAP, newStanding);
-
-    await supabase.from('factions').update({
-        loyalty: newLoyalty,
-        standing: newStanding,
-        embezzled_funds: Math.max(0, newFunds),
-        consecutive_embezzle_ticks: consecutiveTicks + 1,
-        last_action_type: 'embezzle_funds',
-    }).eq('id', factionId);
-
-    // 8. Log action
-    await supabase.from('campaign_actions').insert({
-        party_id: factionId, nation_id: nationId,
-        action_type: detected ? 'faction_embezzle_detected' : 'faction_embezzle',
-        tick_performed: currentTick,
-        result: {
-            income, detected, funds_seized: fundsSeized,
-            detection_probability: Math.round(detectionProb * 100),
-            loyalty_change: GAME_CONFIG.EMBEZZLE_FUNDS_LOYALTY + (detected ? GAME_CONFIG.EMBEZZLE_FUNDS_DETECTED_LOYALTY : 0),
-            standing_change: detected ? GAME_CONFIG.EMBEZZLE_FUNDS_DETECTED_STANDING : 0,
-            faction_name: faction.faction_name,
-        }
-    });
-
-    // 9. Detection risk label
-    const riskLabel = detectionProb <= 0.12 ? 'LOW' : detectionProb <= 0.25 ? 'MODERATE' : detectionProb <= 0.35 ? 'ELEVATED' : 'HIGH';
-
-    return {
-        success: true,
-        newAp: apResult.newAp,
-        income, detected, fundsSeized,
-        detectionProbability: Math.round(detectionProb * 100),
-        riskLabel,
-        newLoyalty, newStanding,
-        newFunds: Math.max(0, newFunds),
-        loyaltyChange: GAME_CONFIG.EMBEZZLE_FUNDS_LOYALTY + (detected ? GAME_CONFIG.EMBEZZLE_FUNDS_DETECTED_LOYALTY : 0),
-        standingChange: detected ? GAME_CONFIG.EMBEZZLE_FUNDS_DETECTED_STANDING : 0,
-    };
-}
-
-/**
- * Get qualitative detection risk label for embezzlement.
- */
-/**
- * Buy Influence: spend embezzled funds to recruit members from other factions or unaligned pool.
- * Standing -1, Seats +X based on funds spent.
- * Cost per seat: $3M × (target_standing / max(your_standing, 1)) × (1 + target_seats / legislature_max)
- * Unaligned pool: $2M flat per seat.
- * AP Cost: 3
- */
-async function executeBuyInfluence(supabase, factionId, nationId, targetId, fundsToSpend, currentTick) {
-    // targetId can be a faction ID or 'unaligned' for the unaligned pool
-    const isUnaligned = targetId === 'unaligned';
-
-    // 1. Validate faction + AP
-    const { data: faction } = await supabase
-        .from('factions').select('id, action_points, standing, seats, embezzled_funds, faction_name, last_action_type')
-        .eq('id', factionId).single();
-    if (!faction) return { success: false, error: 'Faction not found.' };
-    if ((faction.action_points || 0) < GAME_CONFIG.BUY_INFLUENCE_AP)
-        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.BUY_INFLUENCE_AP}.` };
-
-    const funds = Number(faction.embezzled_funds ?? 0);
-    if (fundsToSpend > funds) return { success: false, error: 'Not enough funds.' };
-    if (fundsToSpend <= 0) return { success: false, error: 'Must spend some funds.' };
-
-    const { data: nation } = await supabase
-        .from('nations').select('total_seats, unaligned_seats, regime_health, ruling_faction_id')
-        .eq('id', nationId).single();
-    if (!nation) return { success: false, error: 'Nation not found.' };
-    const legislatureMax = nation.total_seats || 120;
-
-    let seatsGained = 0;
-    let targetName = 'Unaligned Pool';
-    let costPerSeat;
-    let actualCost;
-
-    if (isUnaligned) {
-        // Buy from unaligned pool — $2M flat per seat
-        costPerSeat = GAME_CONFIG.BUY_INFLUENCE_UNALIGNED_COST;
-        seatsGained = Math.min(
-            Math.floor(fundsToSpend / costPerSeat),
-            nation.unaligned_seats || 0
-        );
-        if (seatsGained <= 0) {
-            const reason = (nation.unaligned_seats || 0) <= 0 ? 'Unaligned pool is empty.' : `Need at least $${costPerSeat}M to buy 1 seat.`;
-            return { success: false, error: reason };
-        }
-        actualCost = seatsGained * costPerSeat;
-    } else {
-        // 3. Buy from rival faction
-        const { data: target } = await supabase
-            .from('factions').select('id, standing, seats, faction_name, last_action_type')
-            .eq('id', targetId).single();
-        if (!target) return { success: false, error: 'Target faction not found.' };
-        if (target.id === factionId) return { success: false, error: 'Cannot target yourself.' };
-        targetName = target.faction_name;
-
-        // Cost per seat formula
-        const yourStanding = Math.max(1, faction.standing ?? 30);
-        const targetStanding = target.standing ?? 30;
-        const targetSeats = target.seats || 0;
-        const isTargetingStrongman = targetId === nation.ruling_faction_id;
-
-        if (isTargetingStrongman) {
-            const rh = Math.max(0, Math.min(100, Number(nation.regime_health ?? 80)));
-            costPerSeat = GAME_CONFIG.BUY_INFLUENCE_STRONGMAN_BASE_COST * (1 + rh * GAME_CONFIG.BUY_INFLUENCE_STRONGMAN_HEALTH_SCALE);
-        } else {
-            costPerSeat = GAME_CONFIG.BUY_INFLUENCE_BASE_COST * (targetStanding / yourStanding) * (1 + targetSeats / legislatureMax);
-        }
-
-        // Vulnerability discount: if target is demonstrating competence this tick
-        if (target.last_action_type === 'demonstrate_competence') {
-            costPerSeat *= (1 - GAME_CONFIG.BUY_INFLUENCE_VULNERABILITY_DISCOUNT);
-        }
-
-        seatsGained = Math.min(
-            Math.floor(fundsToSpend / costPerSeat),
-            targetSeats
-        );
-        if (seatsGained <= 0) {
-            const reason = targetSeats <= 0 ? `${targetName} has no seats.` : `Need at least $${Math.ceil(costPerSeat)}M to buy 1 seat from ${targetName}.`;
-            return { success: false, error: reason };
-        }
-        actualCost = Math.round(seatsGained * costPerSeat * 100) / 100;
-    }
-
-    // 2. Deduct AP only after confirming seats can be gained
-    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.BUY_INFLUENCE_AP);
-    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
-
-    if (isUnaligned) {
-        await supabase.from('factions').update({
-            seats: (faction.seats || 0) + seatsGained,
-            embezzled_funds: funds - actualCost,
-            standing: Math.max(0, (faction.standing ?? 30) + GAME_CONFIG.BUY_INFLUENCE_STANDING),
-            last_action_type: 'buy_influence',
-            consecutive_embezzle_ticks: 0,
-        }).eq('id', factionId);
-
-        await supabase.from('nations').update({
-            unaligned_seats: Math.max(0, (nation.unaligned_seats || 0) - seatsGained)
-        }).eq('id', nationId);
-
-        await supabase.from('campaign_actions').insert({
-            party_id: factionId, nation_id: nationId,
-            action_type: 'buy_influence',
-            tick_performed: currentTick,
-            result: { seats_gained: seatsGained, funds_spent: actualCost, target: 'unaligned', faction_name: faction.faction_name }
-        });
-
-        return { success: true, newAp: apResult.newAp, seatsGained, fundsSpent: actualCost, targetName };
-    }
-
-    // Rival faction — re-fetch target for seat transfer
-    const { data: target } = await supabase
-        .from('factions').select('id, seats')
-        .eq('id', targetId).single();
-    const targetSeats = target?.seats || 0;
-
-    await supabase.from('factions').update({
-        seats: (faction.seats || 0) + seatsGained,
-        embezzled_funds: funds - actualCost,
-        standing: Math.max(0, (faction.standing ?? 30) + GAME_CONFIG.BUY_INFLUENCE_STANDING),
-        last_action_type: 'buy_influence',
-        consecutive_embezzle_ticks: 0,
-    }).eq('id', factionId);
-
-    await supabase.from('factions').update({
-        seats: Math.max(0, targetSeats - seatsGained)
-    }).eq('id', targetId);
-
-    await supabase.from('campaign_actions').insert({
-        party_id: factionId, nation_id: nationId,
-        action_type: 'buy_influence',
-        tick_performed: currentTick,
-        result: {
-            seats_gained: seatsGained, funds_spent: actualCost,
-            target_faction_id: targetId, target_name: targetName,
-            cost_per_seat: Math.round(costPerSeat * 100) / 100,
-            faction_name: faction.faction_name,
-        }
-    });
-
-    return { success: true, newAp: apResult.newAp, seatsGained, fundsSpent: actualCost, targetName, costPerSeat: Math.round(costPerSeat * 100) / 100 };
-}
-
-/**
- * Intimidate: use fear/threats to force members of other factions to switch.
- * Loyalty -4, Standing +2, Stability -0.2. $1M cost.
- * Seats gained = 4 × (your_standing / max(target_standing, 1)) × (your_seats / 20)
- * Requires 5+ seats.
- * Failed intimidation (0 seats): Standing -3, Target standing +1.
- * AP Cost: 2
- */
-async function executeIntimidate(supabase, factionId, nationId, targetId, currentTick) {
-    // 1. Validate faction + AP + seats
-    const { data: faction } = await supabase
-        .from('factions').select('id, action_points, loyalty, standing, seats, embezzled_funds, faction_name')
-        .eq('id', factionId).single();
-    if (!faction) return { success: false, error: 'Faction not found.' };
-    if ((faction.action_points || 0) < GAME_CONFIG.INTIMIDATE_AP)
-        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.INTIMIDATE_AP}.` };
-    if ((faction.seats || 0) < GAME_CONFIG.INTIMIDATE_MIN_SEATS)
-        return { success: false, error: `Need at least ${GAME_CONFIG.INTIMIDATE_MIN_SEATS} seats to intimidate.` };
-
-    const funds = Number(faction.embezzled_funds ?? 0);
-    if (funds < GAME_CONFIG.INTIMIDATE_COST)
-        return { success: false, error: `Need $${GAME_CONFIG.INTIMIDATE_COST}M for intimidation.` };
-
-    // 2. Validate target
-    const { data: target } = await supabase
-        .from('factions').select('id, standing, seats, faction_name, last_action_type')
-        .eq('id', targetId).single();
-    if (!target) return { success: false, error: 'Target faction not found.' };
-    if (target.id === factionId) return { success: false, error: 'Cannot target yourself.' };
-
-    // 3. Deduct AP
-    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.INTIMIDATE_AP);
-    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
-
-    // 4. Calculate seats gained
-    const yourStanding = Math.max(1, faction.standing ?? 30);
-    const targetStanding = Math.max(1, target.standing ?? 30);
-    const yourSeats = faction.seats || 0;
-    let effectiveness = GAME_CONFIG.INTIMIDATE_BASE_EFFECTIVENESS * (yourStanding / targetStanding) * (yourSeats / 20);
-
-    // Vulnerability bonus
-    if (target.last_action_type === 'demonstrate_competence') {
-        effectiveness *= (1 + GAME_CONFIG.INTIMIDATE_VULNERABILITY_BONUS);
-    }
-
-    let seatsGained = Math.min(Math.floor(effectiveness), target.seats || 0);
-    const failed = seatsGained <= 0;
-
-    // 5. Apply effects
-    let newLoyalty = Math.max(0, (faction.loyalty ?? 50) + GAME_CONFIG.INTIMIDATE_LOYALTY);
-    let newStanding = faction.standing ?? 30;
-    let newFunds = funds - GAME_CONFIG.INTIMIDATE_COST;
-
-    if (failed) {
-        // Failed intimidation — humiliation
-        newStanding = Math.max(0, newStanding + GAME_CONFIG.INTIMIDATE_FAIL_STANDING);
-        await supabase.from('factions').update({
-            standing: Math.min(GAME_CONFIG.STANDING_CAP, (target.standing ?? 30) + 1)
-        }).eq('id', targetId);
-    } else {
-        // Successful intimidation
-        newStanding = Math.min(GAME_CONFIG.STANDING_CAP, newStanding + GAME_CONFIG.INTIMIDATE_STANDING);
-
-        // Transfer seats
-        await supabase.from('factions').update({
-            seats: Math.max(0, (target.seats || 0) - seatsGained)
-        }).eq('id', targetId);
-    }
-
-    newLoyalty = Math.min(GAME_CONFIG.LOYALTY_CAP, newLoyalty);
-
-    await supabase.from('factions').update({
-        loyalty: newLoyalty,
-        standing: newStanding,
-        seats: (faction.seats || 0) + seatsGained,
-        embezzled_funds: Math.max(0, newFunds),
-        last_action_type: 'intimidate',
-        consecutive_embezzle_ticks: 0,
-    }).eq('id', factionId);
-
-    // Nation stability hit
-    const { data: nationData } = await supabase
-        .from('nations').select('stability').eq('id', nationId).single();
-    if (nationData) {
-        const newStability = Math.max(0, Number(nationData.stability ?? 50) + GAME_CONFIG.INTIMIDATE_STABILITY);
-        await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
-    }
-
-    // 6. Log action + create intimidation event for retaliation
-    const eventId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    await supabase.from('campaign_actions').insert({
-        party_id: factionId, nation_id: nationId,
-        action_type: failed ? 'intimidate_failed' : 'intimidate',
-        tick_performed: currentTick,
-        result: {
-            seats_gained: seatsGained, failed,
-            target_faction_id: targetId, target_name: target.faction_name,
-            loyalty_change: GAME_CONFIG.INTIMIDATE_LOYALTY,
-            standing_change: failed ? GAME_CONFIG.INTIMIDATE_FAIL_STANDING : GAME_CONFIG.INTIMIDATE_STANDING,
-            target_standing_change: failed ? 1 : 0,
-            event_id: eventId,
-            faction_name: faction.faction_name,
-        }
-    });
-
-    // Create a pending intimidation event for the target to respond to
-    if (!failed) {
-        await supabase.from('campaign_actions').insert({
-            party_id: targetId, nation_id: nationId,
-            action_type: 'intimidation_pending',
-            tick_performed: currentTick,
-            result: {
-                event_id: eventId,
-                intimidator_faction_id: factionId,
-                intimidator_name: faction.faction_name,
-                seats_lost: seatsGained,
-                status: 'pending',
-            }
-        });
-    }
-
-    return {
-        success: true,
-        newAp: apResult.newAp,
-        seatsGained, failed,
-        targetName: target.faction_name,
-        loyaltyChange: GAME_CONFIG.INTIMIDATE_LOYALTY,
-        standingChange: failed ? GAME_CONFIG.INTIMIDATE_FAIL_STANDING : GAME_CONFIG.INTIMIDATE_STANDING,
-        newLoyalty, newStanding,
-        eventId: failed ? null : eventId,
-    };
-}
-
-/**
- * Respond to an intimidation event (Accept / Report / Retaliate).
- */
-async function executeIntimidationResponse(supabase, factionId, nationId, eventId, response, currentTick) {
-    // Find the pending intimidation event
-    const { data: events } = await supabase
-        .from('campaign_actions')
-        .select('id, result')
-        .eq('party_id', factionId)
-        .eq('nation_id', nationId)
-        .eq('action_type', 'intimidation_pending');
-
-    const event = (events || []).find(e => e.result?.event_id === eventId && e.result?.status === 'pending');
-    if (!event) return { success: false, error: 'Intimidation event not found or already resolved.' };
-
-    const intimidatorId = event.result.intimidator_faction_id;
-
-    // Mark event as resolved
-    const updatedResult = { ...event.result, status: response, resolved_at_tick: currentTick };
-    await supabase.from('campaign_actions').update({ result: updatedResult }).eq('id', event.id);
-
-    if (response === 'accept') {
-        return { success: true, response: 'accept', message: 'Losses accepted.' };
-    }
-
-    if (response === 'report') {
-        // Intimidator: loyalty -8, standing -3
-        const { data: intimidator } = await supabase
-            .from('factions').select('id, loyalty, standing').eq('id', intimidatorId).single();
-        if (intimidator) {
-            await supabase.from('factions').update({
-                loyalty: Math.max(0, (intimidator.loyalty ?? 50) + GAME_CONFIG.INTIMIDATE_REPORT_LOYALTY),
-                standing: Math.max(0, (intimidator.standing ?? 30) + GAME_CONFIG.INTIMIDATE_REPORT_STANDING),
-            }).eq('id', intimidatorId);
-        }
-        // Reporter: loyalty +3
-        const { data: reporter } = await supabase
-            .from('factions').select('id, loyalty').eq('id', factionId).single();
-        if (reporter) {
-            await supabase.from('factions').update({
-                loyalty: Math.min(GAME_CONFIG.LOYALTY_CAP, (reporter.loyalty ?? 50) + GAME_CONFIG.INTIMIDATE_REPORTER_LOYALTY),
-            }).eq('id', factionId);
-        }
-
-        await supabase.from('campaign_actions').insert({
-            party_id: factionId, nation_id: nationId,
-            action_type: 'intimidation_reported',
-            tick_performed: currentTick,
-            result: { event_id: eventId, intimidator_id: intimidatorId }
-        });
-
-        return { success: true, response: 'report', message: 'Reported to the Strongman.' };
-    }
-
-    if (response === 'retaliate') {
-        // Check funds
-        const { data: retaliator } = await supabase
-            .from('factions').select('id, loyalty, seats, embezzled_funds').eq('id', factionId).single();
-        if (!retaliator || Number(retaliator.embezzled_funds ?? 0) < GAME_CONFIG.INTIMIDATE_RETALIATE_COST)
-            return { success: false, error: `Need $${GAME_CONFIG.INTIMIDATE_RETALIATE_COST}M to retaliate.` };
-
-        // Retaliator: loyalty -2, funds -$1M
-        await supabase.from('factions').update({
-            loyalty: Math.max(0, (retaliator.loyalty ?? 50) + GAME_CONFIG.INTIMIDATE_RETALIATOR_LOYALTY),
-            embezzled_funds: Math.max(0, Number(retaliator.embezzled_funds ?? 0) - GAME_CONFIG.INTIMIDATE_RETALIATE_COST),
-        }).eq('id', factionId);
-
-        // Intimidator: standing -2, seats -2 (transferred to retaliator)
-        const { data: intimidator } = await supabase
-            .from('factions').select('id, standing, seats').eq('id', intimidatorId).single();
-        if (intimidator) {
-            const seatLoss = Math.min(intimidator.seats || 0, Math.abs(GAME_CONFIG.INTIMIDATE_RETALIATE_SEATS));
-            await supabase.from('factions').update({
-                standing: Math.max(0, (intimidator.standing ?? 30) + GAME_CONFIG.INTIMIDATE_RETALIATE_STANDING),
-                seats: Math.max(0, (intimidator.seats || 0) - seatLoss),
-            }).eq('id', intimidatorId);
-            if (seatLoss > 0) {
-                await supabase.from('factions').update({
-                    seats: (retaliator.seats || 0) + seatLoss,
-                }).eq('id', factionId);
-            }
-        }
-
-        await supabase.from('campaign_actions').insert({
-            party_id: factionId, nation_id: nationId,
-            action_type: 'intimidation_retaliated',
-            tick_performed: currentTick,
-            result: { event_id: eventId, intimidator_id: intimidatorId }
-        });
-
-        return { success: true, response: 'retaliate', message: 'Retaliation successful.' };
-    }
-
-    return { success: false, error: 'Invalid response.' };
-}
-
-/**
- * Purge: Strongman removes a faction's steward. Nuclear option.
- * Requires target loyalty < 20.
- * Target: steward removed, loyalty reset 50, standing -20, seats -30%, funds seized.
- * Others: loyalty +5. Nation: stability -1. Regime Health -3.
- * AP Cost: 3
- */
-async function executePurge(supabase, factionId, nationId, targetFactionId, currentTick) {
-    // 1. Validate caller is Strongman
-    const { data: nation } = await supabase
-        .from('nations').select('id, ruling_faction_id, stability, civil_unrest, regime_health, international_reputation, total_seats, successor_is_family_member')
-        .eq('id', nationId).single();
-    if (!nation) return { success: false, error: 'Nation not found.' };
-    if (nation.ruling_faction_id !== factionId) return { success: false, error: 'Only the Strongman can purge.' };
-
-    // 2. Validate target (must belong to same nation)
-    const { data: target } = await supabase
-        .from('factions').select('id, loyalty, standing, seats, embezzled_funds, faction_name')
-        .eq('id', targetFactionId).eq('nation_id', nationId).single();
-    if (!target) return { success: false, error: 'Target faction not found.' };
-    if ((target.loyalty ?? 50) >= GAME_CONFIG.PURGE_LOYALTY_THRESHOLD)
-        return { success: false, error: `Target loyalty must be below ${GAME_CONFIG.PURGE_LOYALTY_THRESHOLD}. Current: ${target.loyalty ?? 50}.` };
-
-    // 3. Validate AP
-    const { data: strongman } = await supabase
-        .from('factions').select('action_points').eq('id', factionId).single();
-    if ((strongman?.action_points || 0) < GAME_CONFIG.PURGE_AP)
-        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.PURGE_AP}.` };
-
-    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.PURGE_AP);
-    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
-
-    // 4. Remove steward
-    const { data: targetSteward } = await supabase
-        .from('stewards').select('id, first_name, last_name, is_chosen_successor')
-        .eq('faction_id', targetFactionId).eq('nation_id', nationId).eq('is_alive', true)
-        .maybeSingle();
-
-    if (targetSteward) {
-        await supabase.from('stewards').update({
-            is_alive: false, died_at_tick: currentTick,
-            is_chosen_successor: false,
-        }).eq('id', targetSteward.id);
-
-        // If the purged steward was chosen successor, clear the family flag to restore AP generation
-        if (targetSteward.is_chosen_successor && nation.successor_is_family_member) {
-            await supabase.from('nations').update({ successor_is_family_member: false }).eq('id', nationId);
-        }
-    }
-
-    // 5. Create new steward (weaker stats)
-    const firstNames = ['Viktor', 'Andrei', 'Dmitri', 'Sergei', 'Nikolai', 'Alexei', 'Pavel', 'Oleg', 'Yuri', 'Ivan'];
-    const lastNames = ['Petrov', 'Volkov', 'Novikov', 'Kozlov', 'Morozov', 'Popov', 'Lebedev', 'Sokolov', 'Kuznetsov', 'Pavlov'];
-    const newFirst = firstNames[Math.floor(Math.random() * firstNames.length)];
-    const newLast = lastNames[Math.floor(Math.random() * lastNames.length)];
-
-    const { data: oldSteward } = await supabase
-        .from('stewards').select('pillar_key, steward_type')
-        .eq('faction_id', targetFactionId).eq('nation_id', nationId)
-        .order('created_at', { ascending: false }).limit(1).maybeSingle();
-
-    await supabase.from('stewards').insert({
-        nation_id: nationId,
-        faction_id: targetFactionId,
-        pillar_key: oldSteward?.pillar_key || 'party',
-        steward_type: oldSteward?.steward_type || 'technocrat',
-        first_name: newFirst,
-        last_name: newLast,
-        age: 35 + Math.floor(Math.random() * 20),
-        standing: 15,
-        power_base: 10,
-        true_loyalty: 50,
-        estimated_loyalty: 50,
-        personal_wealth: 0,
-        exit_readiness: 0,
-        coup_readiness: 0,
-        is_alive: true,
-        is_chosen_successor: false,
-        created_at_tick: currentTick,
-    });
-
-    // 6. Apply target faction effects
-    const seatsLost = Math.ceil((target.seats || 0) * GAME_CONFIG.PURGE_TARGET_SEAT_LOSS);
-    const newTargetSeats = Math.max(0, (target.seats || 0) - seatsLost);
-
-    await supabase.from('factions').update({
-        loyalty: GAME_CONFIG.PURGE_TARGET_NEW_LOYALTY,
-        standing: Math.max(0, (target.standing ?? 30) + GAME_CONFIG.PURGE_TARGET_STANDING),
-        seats: newTargetSeats,
-        embezzled_funds: 0,
-        coup_lockout_until_tick: currentTick + GAME_CONFIG.PURGE_COUP_LOCKOUT_TICKS,
-    }).eq('id', targetFactionId);
-
-    // 7. Scatter lost seats proportionally to other factions
-    const { data: otherFactions } = await supabase
-        .from('factions').select('id, seats')
-        .eq('nation_id', nationId).eq('faction_type', 'party')
-        .neq('id', targetFactionId);
-
-    if (otherFactions && otherFactions.length > 0 && seatsLost > 0) {
-        const totalOtherSeats = otherFactions.reduce((s, f) => s + (f.seats || 0), 0) || 1;
-        let remaining = seatsLost;
-        for (const of2 of otherFactions) {
-            const share = Math.round(seatsLost * ((of2.seats || 0) / totalOtherSeats));
-            const give = Math.min(share, remaining);
-            if (give > 0) {
-                await supabase.from('factions').update({ seats: (of2.seats || 0) + give }).eq('id', of2.id);
-                remaining -= give;
-            }
-        }
-        // Give remainder to largest faction
-        if (remaining > 0) {
-            const largest = otherFactions.sort((a, b) => (b.seats || 0) - (a.seats || 0))[0];
-            await supabase.from('factions').update({ seats: (largest.seats || 0) + remaining }).eq('id', largest.id);
-        }
-    }
-
-    // 8. All other non-ruling factions: loyalty +5
-    const { data: allFactions } = await supabase
-        .from('factions').select('id, loyalty')
-        .eq('nation_id', nationId).eq('faction_type', 'party')
-        .neq('id', targetFactionId).neq('id', factionId);
-    for (const af of (allFactions || [])) {
-        await supabase.from('factions').update({
-            loyalty: Math.min(GAME_CONFIG.LOYALTY_CAP, (af.loyalty ?? 50) + GAME_CONFIG.PURGE_OTHERS_LOYALTY)
-        }).eq('id', af.id);
-    }
-
-    // 9. Nation effects
-    const newStability = Math.max(0, Number(nation.stability ?? 50) + GAME_CONFIG.PURGE_STABILITY);
-    const newRegimeHealth = Math.max(0, Number(nation.regime_health ?? 80) + GAME_CONFIG.PURGE_REGIME_HEALTH);
-    const nationUpdates = { stability: newStability, regime_health: newRegimeHealth };
-
-    // Extra penalties for purging powerful factions
-    if ((target.standing ?? 30) > 50) {
-        nationUpdates.civil_unrest = Math.min(100, Number(nation.civil_unrest ?? 30) + 0.5);
-    }
-    if ((target.seats || 0) > 40) {
-        nationUpdates.civil_unrest = Math.min(100, Number(nationUpdates.civil_unrest ?? nation.civil_unrest ?? 30) + 0.5);
-    }
-    nationUpdates.international_reputation = Math.max(0, Number(nation.international_reputation ?? 50) - 0.5);
-
-    await supabase.from('nations').update(nationUpdates).eq('id', nationId);
-
-    // 10. Log action
-    await supabase.from('campaign_actions').insert({
-        party_id: factionId, nation_id: nationId,
-        action_type: 'purge',
-        tick_performed: currentTick,
-        result: {
-            target_faction_id: targetFactionId,
-            target_name: target.faction_name,
-            purged_steward: targetSteward ? `${targetSteward.first_name} ${targetSteward.last_name}` : 'Unknown',
-            new_steward: `${newFirst} ${newLast}`,
-            seats_lost: seatsLost,
-            funds_seized: Number(target.embezzled_funds ?? 0),
-        }
-    });
-
-    return {
-        success: true,
-        newAp: apResult.newAp,
-        targetName: target.faction_name,
-        purgedSteward: targetSteward ? `${targetSteward.first_name} ${targetSteward.last_name}` : 'Unknown',
-        newSteward: `${newFirst} ${newLast}`,
-        seatsLost,
-        fundsSeized: Number(target.embezzled_funds ?? 0),
-    };
-}
-
-/**
- * Redistribute Seats: Strongman transfers seats between factions.
- * Loser: standing -3, loyalty -5. Gainer: loyalty +5.
- * Max 30% of loser's seats. 4-tick cooldown.
- * AP Cost: 2
- */
-async function executeRedistributeSeats(supabase, factionId, nationId, loserId, gainerId, seatCount, currentTick) {
-    // 1. Validate caller is Strongman
-    const { data: nation } = await supabase
-        .from('nations').select('id, ruling_faction_id, last_redistribute_tick')
-        .eq('id', nationId).single();
-    if (!nation) return { success: false, error: 'Nation not found.' };
-    if (nation.ruling_faction_id !== factionId) return { success: false, error: 'Only the Strongman can redistribute seats.' };
-
-    // 2. Check cooldown
-    if (nation.last_redistribute_tick != null && (currentTick - nation.last_redistribute_tick) < GAME_CONFIG.REDISTRIBUTE_SEATS_COOLDOWN)
-        return { success: false, error: `Cooldown: ${GAME_CONFIG.REDISTRIBUTE_SEATS_COOLDOWN - (currentTick - nation.last_redistribute_tick)} ticks remaining.` };
-
-    // 3. Validate AP
-    const { data: strongman } = await supabase
-        .from('factions').select('action_points').eq('id', factionId).single();
-    if ((strongman?.action_points || 0) < GAME_CONFIG.REDISTRIBUTE_SEATS_AP)
-        return { success: false, error: `Not enough AP. Need ${GAME_CONFIG.REDISTRIBUTE_SEATS_AP}.` };
-
-    // 4. Validate loser and gainer (must belong to same nation)
-    const { data: loser } = await supabase
-        .from('factions').select('id, seats, standing, loyalty, faction_name')
-        .eq('id', loserId).eq('nation_id', nationId).single();
-    const { data: gainer } = await supabase
-        .from('factions').select('id, seats, loyalty, faction_name')
-        .eq('id', gainerId).eq('nation_id', nationId).single();
-    if (!loser || !gainer) return { success: false, error: 'Faction not found.' };
-    if (loserId === gainerId) return { success: false, error: 'Loser and gainer must be different.' };
-
-    const maxSeats = Math.ceil((loser.seats || 0) * GAME_CONFIG.REDISTRIBUTE_SEATS_MAX_RATIO);
-    if (seatCount > maxSeats) return { success: false, error: `Max ${maxSeats} seats (30% of ${loser.seats || 0}).` };
-    if (seatCount <= 0) return { success: false, error: 'Must transfer at least 1 seat.' };
-    if (seatCount > (loser.seats || 0)) return { success: false, error: 'Loser doesn\'t have enough seats.' };
-
-    // 5. Deduct AP
-    const apResult = await deductAP(supabase, factionId, GAME_CONFIG.REDISTRIBUTE_SEATS_AP);
-    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
-
-    // 6. Apply transfer
-    await supabase.from('factions').update({
-        seats: (loser.seats || 0) - seatCount,
-        standing: Math.max(0, (loser.standing ?? 30) + GAME_CONFIG.REDISTRIBUTE_SEATS_LOSER_STANDING),
-        loyalty: Math.max(0, (loser.loyalty ?? 50) + GAME_CONFIG.REDISTRIBUTE_SEATS_LOSER_LOYALTY),
-    }).eq('id', loserId);
-
-    await supabase.from('factions').update({
-        seats: (gainer.seats || 0) + seatCount,
-        loyalty: Math.min(GAME_CONFIG.LOYALTY_CAP, (gainer.loyalty ?? 50) + GAME_CONFIG.REDISTRIBUTE_SEATS_GAINER_LOYALTY),
-    }).eq('id', gainerId);
-
-    // 7. Update cooldown
-    await supabase.from('nations').update({ last_redistribute_tick: currentTick }).eq('id', nationId);
-
-    // 8. Log
-    await supabase.from('campaign_actions').insert({
-        party_id: factionId, nation_id: nationId,
-        action_type: 'redistribute_seats',
-        tick_performed: currentTick,
-        result: {
-            loser_id: loserId, loser_name: loser.faction_name,
-            gainer_id: gainerId, gainer_name: gainer.faction_name,
-            seats_transferred: seatCount,
-        }
-    });
-
-    return {
-        success: true,
-        newAp: apResult.newAp,
-        loserName: loser.faction_name,
-        gainerName: gainer.faction_name,
-        seatsTransferred: seatCount,
-    };
-}
-
-function getEmbezzleRiskLabel(faction, nation) {
-    const consecutiveTicks = (faction.consecutive_embezzle_ticks ?? 0);
-    const corruption = Number(nation?.corruption ?? 50);
-    const corruptionMod = (corruption - 50) * -0.005;
-    let prob = GAME_CONFIG.EMBEZZLE_FUNDS_BASE_DETECTION
-        + consecutiveTicks * GAME_CONFIG.EMBEZZLE_FUNDS_CONSECUTIVE_BONUS
-        + corruptionMod;
-    prob = Math.max(GAME_CONFIG.EMBEZZLE_FUNDS_DETECTION_FLOOR,
-        Math.min(GAME_CONFIG.EMBEZZLE_FUNDS_DETECTION_CAP, prob));
-    if (prob <= 0.12) return 'LOW';
-    if (prob <= 0.25) return 'MODERATE';
-    if (prob <= 0.35) return 'ELEVATED';
-    return 'HIGH';
-}
-
-const STEWARD_TYPE_LABELS = {
-    technocrat:           'Technocrat',
-    general:              'General',
-    party_chairman:       'Party Chairman',
-    oligarch:             'Oligarch',
-    security_chief:       'Security Chief',
-    propaganda_chief:     'Propaganda Chief',
-    intelligence_director:'Intelligence Director',
-    religious_authority:  'Religious Authority',
-};
-
-const STEWARD_TYPE_DESCRIPTIONS = {
-    technocrat:           'Administrative machinery of the state',
-    general:              'Armed forces and national defense',
-    party_chairman:       'Civilian party apparatus and regime legitimacy',
-    oligarch:             'Private capital and economic leverage',
-    security_chief:       'Internal security and surveillance apparatus',
-    propaganda_chief:     'State media and narrative control',
-    intelligence_director:'Foreign intelligence and covert operations',
-    religious_authority:  'Religious authority and moral legitimacy',
-};
-
-/**
- * Process steward stats each tick for all living stewards in an autocracy nation.
- *
- * Standing: political influence within the regime
- * Power Base: institutional support and resources
- * True Loyalty: actual allegiance (hidden from strongman) — decays at -2/tick naturally
- * Estimated Loyalty: the Strongman's imperfect read — drifts toward true loyalty
- * Personal Wealth: embezzled funds ($M)
- * Exit Readiness: preparedness to flee (0-100)
- * Coup Readiness: preparedness to seize power (only grows when conditions align)
- */
-async function processStewardTick(supabase, nation) {
-    if (!isAutocracy(nation)) return;
-
-    const { data: stewards } = await supabase
-        .from('stewards')
-        .select('id, faction_id, pillar_key, steward_type, standing, power_base, true_loyalty, estimated_loyalty, personal_wealth, exit_readiness, coup_readiness, is_chosen_successor')
-        .eq('nation_id', nation.id)
-        .eq('is_alive', true);
-
-    if (!stewards || stewards.length === 0) return;
-
-    // Fetch faction data for loyalty + seats
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id, loyalty, seats')
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'party');
-
-    const factionMap = {};
-    let totalSeats = 0;
-    for (const f of (factions || [])) {
-        factionMap[f.id] = f;
-        totalSeats += (f.seats || 0);
-    }
-    const avgSeats = factions && factions.length > 0 ? totalSeats / factions.length : 0;
-
-    // Fetch ministry counts per faction
-    const { data: ministries } = await supabase
-        .from('ministries')
-        .select('party_id')
-        .eq('nation_id', nation.id)
-        .not('party_id', 'is', null);
-
-    const ministryCounts = {};
-    for (const m of (ministries || [])) {
-        ministryCounts[m.party_id] = (ministryCounts[m.party_id] || 0) + 1;
-    }
-
-    // Fetch pillar support values
-    const { data: pillars } = await supabase
-        .from('regime_pillars')
-        .select('pillar_key, support')
-        .eq('nation_id', nation.id);
-
-    const pillarSupportMap = {};
-    for (const p of (pillars || [])) {
-        pillarSupportMap[p.pillar_key] = p.support ?? 50;
-    }
-
-    // Check if any pillar is below 20 (regime weakness signal)
-    const anyPillarBelow20 = Object.values(pillarSupportMap).some(v => v < 20);
-
-    for (const steward of stewards) {
-        const faction = factionMap[steward.faction_id];
-        if (!faction) continue;
-
-        const factionLoyalty = faction.loyalty ?? 50;
-        const factionSeats = faction.seats || 0;
-        const ministryCount = ministryCounts[steward.faction_id] || 0;
-        const pillarSupport = pillarSupportMap[steward.pillar_key] ?? 50;
-
-        // ── Standing ──
-        let standing = steward.standing;
-        // Drift toward 50
-        if (standing > 50) standing -= 1;
-        else if (standing < 50) standing += 1;
-        // Pillar backing
-        if (pillarSupport > 50) standing += d2();
-        // Ministry influence
-        standing += ministryCount;
-        // Disloyal factions lose influence
-        if (factionLoyalty < 30) standing -= 2;
-
-        // ── Power Base ──
-        let powerBase = steward.power_base;
-        // Natural decay
-        powerBase -= d2();
-        // Institutional backing
-        if (pillarSupport > 60) powerBase += d2();
-        // Ministry presence
-        powerBase += ministryCount;
-        // Legislative power
-        if (factionSeats > avgSeats) powerBase += 1;
-
-        // ── True Loyalty ──
-        let trueLoyalty = steward.true_loyalty;
-        // Natural decay: -2/tick (loyalty erodes without active maintenance)
-        // Chosen Successor has halved decay (-1/tick)
-        trueLoyalty -= steward.is_chosen_successor ? 1 : 2;
-        // Regime crumbling → steward may turn disloyal faster
-        if (pillarSupport < 35) trueLoyalty -= d2();
-
-        // ── Estimated Loyalty (Strongman's imperfect view) ──
-        let estimatedLoyalty = steward.estimated_loyalty ?? 55;
-        // 80% chance of drifting toward true loyalty each tick
-        if (Math.random() < 0.8) {
-            if (estimatedLoyalty > trueLoyalty) estimatedLoyalty -= 1;
-            else if (estimatedLoyalty < trueLoyalty) estimatedLoyalty += 1;
-        }
-
-        // ── Personal Wealth (embezzlement) ──
-        let personalWealth = Number(steward.personal_wealth) || 0;
-        // Ministry holders can embezzle
-        if (ministryCount > 0) {
-            personalWealth += 1 + Math.floor(Math.random() * 5); // +$1M-5M/tick
-        }
-        // Oligarchs have business income
-        if (steward.steward_type === 'oligarch') {
-            personalWealth += 5 + Math.floor(Math.random() * 11); // +$5M-15M/tick
-        }
-
-        // ── Exit Readiness ──
-        let exitReadiness = steward.exit_readiness ?? 0;
-        // Grows when steward has means and motive to flee
-        if (trueLoyalty < 30 && personalWealth > 50) exitReadiness += 1;
-        // Planning contingencies alongside coup
-        if (steward.coup_readiness > 30) exitReadiness += 1;
-        // Loyal stewards don't plan exits
-        if (trueLoyalty > 60 && exitReadiness > 0) exitReadiness -= 1;
-
-        // ── Coup Readiness ──
-        let coupReadiness = steward.coup_readiness;
-        let coupGrowing = false;
-        // Only grows when the steward is strong, resourced, and disloyal
-        if (standing > 60 && powerBase > 50 && trueLoyalty < 30) {
-            coupReadiness += 1;
-            coupGrowing = true;
-        }
-        // Regime weakness accelerates
-        if (anyPillarBelow20) {
-            coupReadiness += 1;
-            coupGrowing = true;
-        }
-        // Decays when conditions aren't met
-        if (!coupGrowing && coupReadiness > 0) {
-            coupReadiness -= 1;
-        }
-
-        // Clamp all values
-        standing = Math.max(0, Math.min(100, standing));
-        powerBase = Math.max(0, Math.min(100, powerBase));
-        trueLoyalty = Math.max(0, Math.min(100, trueLoyalty));
-        estimatedLoyalty = Math.max(0, Math.min(100, estimatedLoyalty));
-        exitReadiness = Math.max(0, Math.min(100, exitReadiness));
-        coupReadiness = Math.max(0, Math.min(100, coupReadiness));
-
-        await supabase.from('stewards')
-            .update({
-                standing,
-                power_base: powerBase,
-                true_loyalty: trueLoyalty,
-                estimated_loyalty: estimatedLoyalty,
-                personal_wealth: personalWealth,
-                exit_readiness: exitReadiness,
-                coup_readiness: coupReadiness,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', steward.id);
-
-        // Sync steward standing → faction standing (v2: standing is faction-level)
-        await supabase.from('factions')
-            .update({ standing: Math.max(0, Math.min(90, standing)) })
-            .eq('id', steward.faction_id);
-    }
-}
-
-// ==================== COALITION DETECTION ====================
-
-/**
- * Process secret coalition detection each tick.
- * Each active secret coalition has a 5% passive chance of being discovered.
- * When detected, status changes to 'detected' and a campaign_actions entry is logged.
- */
-async function processCoalitionDetection(supabase, nation, currentTick) {
-    if (!isAutocracy(nation)) return;
-
-    const { data: secretCoalitions } = await supabase
-        .from('faction_coalitions')
-        .select('id, faction_a_id, faction_b_id')
-        .eq('nation_id', nation.id)
-        .eq('coalition_type', 'secret')
-        .eq('status', 'active');
-
-    if (!secretCoalitions || secretCoalitions.length === 0) return;
-
-    // Fetch faction names for logging
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id, faction_name')
-        .eq('nation_id', nation.id);
-
-    const nameMap = {};
-    for (const fc of (factions || [])) nameMap[fc.id] = fc.faction_name;
-
-    for (const coalition of secretCoalitions) {
-        // 5% passive detection
-        if (Math.random() < 0.05) {
-            await supabase.from('faction_coalitions').update({
-                status: 'detected',
-                detected_at_tick: currentTick
-            }).eq('id', coalition.id);
-
-            // Log detection for the Strongman to see in regime log
-            await supabase.from('campaign_actions').insert({
-                party_id: nation.ruling_faction_id,
-                nation_id: nation.id,
-                action_type: 'coalition_detected',
-                tick_performed: currentTick,
-                result: {
-                    coalition_id: coalition.id,
-                    faction_a_name: nameMap[coalition.faction_a_id] || '???',
-                    faction_b_name: nameMap[coalition.faction_b_id] || '???',
-                    faction_a_id: coalition.faction_a_id,
-                    faction_b_id: coalition.faction_b_id
-                }
-            });
-        }
-    }
-}
-
-// ==================== SHAKEUP AUTO-RESOLVE ====================
-
-async function autoResolveStaleShakeups(supabase, nationId, currentTick) {
-    const { data: votingShakeups } = await supabase
-        .from('shakeups')
-        .select('id, created_at, created_tick')
-        .eq('nation_id', nationId)
-        .eq('status', 'voting');
-
-    if (!votingShakeups || votingShakeups.length === 0) return;
-
-    const AUTO_RESOLVE_TICKS = 2;
-
-    for (const shakeup of votingShakeups) {
-        let tickAge = AUTO_RESOLVE_TICKS;
-
-        if (shakeup.created_tick != null) {
-            tickAge = currentTick - shakeup.created_tick;
-        } else if (shakeup.created_at) {
-            const ageMs = Date.now() - new Date(shakeup.created_at).getTime();
-            const ageDays = ageMs / (1000 * 60 * 60 * 24);
-            tickAge = ageDays >= 1 ? AUTO_RESOLVE_TICKS : 0;
-        }
-
-        if (tickAge >= AUTO_RESOLVE_TICKS) {
-            console.log(`Auto-resolving stale shakeup ${shakeup.id} (age: ${tickAge} ticks, now tick ${currentTick})`);
-            try {
-                const { data, error } = await supabase.rpc('resolve_shakeup', { p_shakeup_id: shakeup.id });
-                if (error) console.error('Auto-resolve shakeup error:', error);
-                else console.log('Auto-resolve result:', data);
-            } catch (e) {
-                console.error('Auto-resolve shakeup exception:', e);
-            }
-        }
-    }
-}
-
+// (Steward tick, Autocracy v2 faction actions, Coalition detection, Shakeup auto-resolve removed — Phase 0)
 
 // ==================== STAT EFFECTS PROCESSING ====================
 
@@ -18521,6 +20466,7 @@ async function processCrises(supabase, nation, currentTick) {
         await supabase.from('event_log').insert({
             nation_id: nation.id,
             event_name: 'CRISIS_STARTED: ' + template.name,
+            trigger_key: 'crisis_started',
             description_used: template.description || template.name,
             category: 'crisis',
             effects_applied: [],
@@ -18800,6 +20746,7 @@ async function processCrises(supabase, nation, currentTick) {
             await supabase.from('event_log').insert({
                 nation_id: nation.id,
                 event_name: 'CRISIS_RESOLVED: ' + template.name,
+                trigger_key: 'crisis_ended',
                 description_used: 'The crisis "' + template.name + '" has been resolved.',
                 category: 'crisis',
                 effects_applied: [],
@@ -18878,6 +20825,7 @@ async function processRevolution(supabase, nation, currentTick) {
             await supabase.from('event_log').insert({
                 nation_id: nation.id,
                 event_name: 'REVOLUTION_AVERTED',
+                trigger_key: 'crisis_ended',
                 description_used: 'The revolutionary movement has lost momentum. The regime has stabilized — for now.',
                 category: 'crisis',
                 effects_applied: [],
@@ -18903,6 +20851,7 @@ async function processRevolution(supabase, nation, currentTick) {
         await supabase.from('event_log').insert({
             nation_id: nation.id,
             event_name: 'REVOLUTION_WARNING',
+            trigger_key: 'crisis_started',
             description_used: 'Pro-democracy demonstrations have erupted across multiple cities. Opposition groups are calling for free elections. The regime must act to restore order — or face revolution.',
             category: 'crisis',
             effects_applied: [],
@@ -18986,6 +20935,24 @@ async function processRevolution(supabase, nation, currentTick) {
     // 3b. Clear all active crises — revolution resets the political landscape
     await supabase.from('active_crises').delete().eq('nation_id', nation.id);
 
+    // 3c. V5 Autocracy cleanup — remove all autocracy-specific state
+    // Use allSettled so each cleanup runs even if others fail (Supabase client
+    // returns { error } rather than throwing, but guard against both patterns)
+    const cleanupResults = await Promise.allSettled([
+        supabase.from('faction_pillar_state').delete().eq('nation_id', nation.id),
+        supabase.from('autocracy_tracker').delete().eq('nation_id', nation.id),
+        supabase.from('putsch_state').delete().eq('nation_id', nation.id),
+        supabase.from('vulnerability_window').delete().eq('nation_id', nation.id),
+        supabase.from('pyrrhic_window').delete().eq('nation_id', nation.id),
+        supabase.from('silent_coup_offers').delete().eq('nation_id', nation.id),
+        supabase.from('silent_coup_votes').delete().eq('nation_id', nation.id),
+        supabase.from('nations').update({ designated_successor_faction_id: null }).eq('id', nation.id),
+    ]);
+    const cleanupFailures = cleanupResults.filter(r => r.status === 'rejected' || r.value?.error);
+    if (cleanupFailures.length > 0) {
+        console.warn(`[Revolution] V5 cleanup: ${cleanupFailures.length} of ${cleanupResults.length} failed (non-fatal)`);
+    }
+
     // 4. Reset all faction bloc approvals to 50
     const { data: allFactions } = await supabase
         .from('factions')
@@ -19039,6 +21006,7 @@ async function processRevolution(supabase, nation, currentTick) {
     await supabase.from('event_log').insert({
         nation_id: nation.id,
         event_name: 'DEMOCRATIC_REVOLUTION',
+        trigger_key: 'crisis_ended',
         description_used: `The people have risen. The autocratic regime has fallen. A ${govLabel} has been established — emergency elections will determine the first freely elected government.`,
         category: 'crisis',
         effects_applied: [
@@ -19504,6 +21472,16 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
 
     console.log(`  Scheduled immediate election for tick ${currentTick}`);
 
+    // Fire timeline event
+    try {
+        await supabase.rpc('fire_system_event', {
+            p_trigger_key: 'minister_resigned',
+            p_nation_id: nationId,
+            p_tick: currentTick,
+            p_placeholders: { role: 'Prime Minister', name: `${hog.first_name} ${hog.last_name}` }
+        });
+    } catch (e) { /* non-blocking */ }
+
     return { result: 'election_called', reason: hog.trait_key === 'iron_will' ? 'iron_will' : 'pm_resignation' };
 }
 
@@ -19526,7 +21504,7 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
     // 2. Fetch nation for autocracy/ruling checks + seat redistribution
     const { data: nation } = await supabase
         .from('nations')
-        .select('id, name, ruling_faction_id, government_type, total_seats')
+        .select('id, name, ruling_faction_id, government_type, total_seats, designated_successor_faction_id')
         .eq('id', nationId)
         .single();
 
@@ -19564,6 +21542,17 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
             .update({ steward_faction_id: null })
             .eq('nation_id', nationId)
             .eq('steward_faction_id', factionId);
+
+        // 2d. V5 Autocracy: clean up faction_pillar_state, offers, votes for departing faction
+        await Promise.allSettled([
+            supabase.from('faction_pillar_state').delete().eq('faction_id', factionId).eq('nation_id', nationId),
+            supabase.from('silent_coup_offers').delete().eq('to_faction_id', factionId).eq('nation_id', nationId),
+            supabase.from('silent_coup_votes').delete().eq('faction_id', factionId).eq('nation_id', nationId),
+        ]);
+        // If this faction was designated successor, clear it
+        if (nation.designated_successor_faction_id === factionId) {
+            await supabase.from('nations').update({ designated_successor_faction_id: null }).eq('id', nationId);
+        }
     }
 
     // 3. PM check — if this faction is the active PM, resign first
@@ -19720,1094 +21709,7 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
 }
 
 
-// ==================== APPOINT SUCCESSOR ====================
-
-/**
- * Appoint a successor. Strongman-only, 9 AP.
- *
- * Two modes:
- *  - targetFactionId !== strongmanFactionId: Appoint a steward as Chosen Successor.
- *    Effects: target pillar +30, stability +7, rivals loyalty -10 / coup_readiness +5.
- *  - targetFactionId === strongmanFactionId: Appoint a Close Family Member.
- *    Effects: stability +1, all stewards coup_readiness +7, all pillars -5, -1 AP/tick ongoing.
- *
- * Both modes set a 60-tick cooldown on further appointments.
- */
-async function executeAppointSuccessor(supabase, nationId, strongmanFactionId, targetFactionId, currentTick) {
-    // 1. Validate: caller is ruling faction
-    const { data: nation, error: nationErr } = await supabase
-        .from('nations').select('*')
-        .eq('id', nationId).single();
-    if (nationErr || !nation) return { success: false, error: nationErr?.message || 'Nation not found.' };
-    if (nation.ruling_faction_id !== strongmanFactionId) return { success: false, error: 'Only the Strongman can appoint a successor.' };
-
-    // 2. Check cooldown
-    if (nation.successor_cooldown_end_tick && currentTick < nation.successor_cooldown_end_tick) {
-        return { success: false, error: `Appointment on cooldown. ${nation.successor_cooldown_end_tick - currentTick} ticks remaining.` };
-    }
-
-    const isFamilyMember = targetFactionId === strongmanFactionId;
-
-    // 3. For steward appointment: validate target has a living steward
-    let targetSteward = null;
-    if (!isFamilyMember) {
-        const { data: ts } = await supabase
-            .from('stewards')
-            .select('id, first_name, last_name, pillar_key, steward_type, is_chosen_successor')
-            .eq('faction_id', targetFactionId)
-            .eq('nation_id', nationId)
-            .eq('is_alive', true)
-            .single();
-        if (!ts) return { success: false, error: 'Target faction has no living steward.' };
-        targetSteward = ts;
-    }
-
-    // 4. Deduct AP
-    const apResult = await deductAP(supabase, strongmanFactionId, SUCCESSOR_CONFIG.AP_COST);
-    if (!apResult.success) return { success: false, error: 'Not enough AP.' };
-
-    // 5. Clear any existing successor (steward-based)
-    await supabase.from('stewards').update({
-        is_chosen_successor: false,
-        succession_strength: 0,
-        successor_appointed_tick: null,
-    }).eq('nation_id', nationId).eq('is_chosen_successor', true);
-
-    if (isFamilyMember) {
-        // === FAMILY MEMBER PATH ===
-        // 6a. Set nation flags
-        const newStability = Math.min(100, Number(nation.stability ?? 50) + SUCCESSOR_CONFIG.FAMILY_STABILITY_BOOST);
-        await supabase.from('nations').update({
-            stability: newStability,
-            successor_cooldown_end_tick: currentTick + SUCCESSOR_CONFIG.COOLDOWN_TICKS,
-            successor_is_family_member: true,
-        }).eq('id', nationId);
-
-        // 7a. All stewards: coup_readiness +7
-        await adjustStewardsCoupReadiness(supabase, nationId, SUCCESSOR_CONFIG.FAMILY_COUP_READINESS);
-
-        // 8a. All regime pillars: -5 support
-        const { data: pillars } = await supabase
-            .from('regime_pillars').select('id, support')
-            .eq('nation_id', nationId);
-        for (const p of (pillars || [])) {
-            const newSupport = Math.max(0, (p.support ?? 50) - SUCCESSOR_CONFIG.FAMILY_PILLAR_PENALTY);
-            await supabase.from('regime_pillars').update({ support: newSupport }).eq('id', p.id);
-        }
-
-        // 9a. Log
-        await supabase.from('campaign_actions').insert({
-            party_id: strongmanFactionId,
-            nation_id: nationId,
-            action_type: 'appoint_successor',
-            tick_performed: currentTick,
-            result: {
-                successor_name: 'Close Family Member',
-                is_family_member: true,
-                stability_gain: SUCCESSOR_CONFIG.FAMILY_STABILITY_BOOST,
-                pillar_penalty: SUCCESSOR_CONFIG.FAMILY_PILLAR_PENALTY,
-                coup_readiness_gain: SUCCESSOR_CONFIG.FAMILY_COUP_READINESS,
-            },
-        });
-
-        return { success: true, newAp: apResult.newAp, successorName: 'Close Family Member', isFamilyMember: true };
-    }
-
-    // === STEWARD PATH ===
-    // 6b. Set target steward as chosen successor
-    await supabase.from('stewards').update({
-        is_chosen_successor: true,
-        successor_appointed_tick: currentTick,
-        succession_strength: 0,
-    }).eq('id', targetSteward.id);
-
-    // Clear family member flag if it was set
-    await supabase.from('nations').update({ successor_is_family_member: false }).eq('id', nationId);
-
-    // 7b. Boost target's pillar support +30 (capped at 100)
-    const { data: targetPillar } = await supabase
-        .from('regime_pillars')
-        .select('id, support')
-        .eq('nation_id', nationId)
-        .eq('pillar_key', targetSteward.pillar_key)
-        .single();
-    if (targetPillar) {
-        const newSupport = Math.min(100, (targetPillar.support ?? 50) + SUCCESSOR_CONFIG.PILLAR_BOOST);
-        await supabase.from('regime_pillars').update({ support: newSupport }).eq('id', targetPillar.id);
-    }
-
-    // 8b. Stability +7 (capped at 100)
-    const newStability = Math.min(100, Number(nation.stability ?? 50) + SUCCESSOR_CONFIG.STABILITY_BOOST);
-    await supabase.from('nations').update({
-        stability: newStability,
-        successor_cooldown_end_tick: currentTick + SUCCESSOR_CONFIG.COOLDOWN_TICKS,
-    }).eq('id', nationId);
-
-    // 9b. All OTHER factions (not target, not strongman): loyalty -10, steward coup_readiness +5
-    const { data: otherFactions } = await supabase
-        .from('factions')
-        .select('id, loyalty')
-        .eq('nation_id', nationId)
-        .eq('faction_type', 'party')
-        .neq('id', strongmanFactionId)
-        .neq('id', targetFactionId);
-
-    for (const f of (otherFactions || [])) {
-        const newLoy = Math.max(0, (f.loyalty ?? 50) - SUCCESSOR_CONFIG.OTHER_LOYALTY_DROP);
-        await supabase.from('factions').update({ loyalty: newLoy }).eq('id', f.id);
-
-        // Boost their steward's coup_readiness
-        const { data: otherSteward } = await supabase
-            .from('stewards').select('id, coup_readiness')
-            .eq('faction_id', f.id).eq('nation_id', nationId).eq('is_alive', true).single();
-        if (otherSteward) {
-            const newCR = Math.min(100, (otherSteward.coup_readiness ?? 0) + SUCCESSOR_CONFIG.OTHER_COUP_READINESS);
-            await supabase.from('stewards').update({ coup_readiness: newCR }).eq('id', otherSteward.id);
-        }
-    }
-
-    // 10b. Log
-    const successorName = `${targetSteward.first_name} ${targetSteward.last_name}`;
-    await supabase.from('campaign_actions').insert({
-        party_id: strongmanFactionId,
-        nation_id: nationId,
-        action_type: 'appoint_successor',
-        tick_performed: currentTick,
-        result: {
-            successor_name: successorName,
-            successor_steward_id: targetSteward.id,
-            successor_faction_id: targetFactionId,
-            stability_gain: SUCCESSOR_CONFIG.STABILITY_BOOST,
-            pillar_boost: SUCCESSOR_CONFIG.PILLAR_BOOST,
-        },
-    });
-
-    return { success: true, newAp: apResult.newAp, successorName };
-}
-
-/**
- * Revoke the current Chosen Successor (steward or family member). Strongman-only, free (no AP cost).
- * Effects: stability -5, former successor faction loyalty -20, all stewards coup_readiness +3.
- * For family member: just stability -5, coup_readiness +3, and clears the flag (restores AP).
- * Cooldown from original appointment persists.
- */
-async function executeRevokeSuccessor(supabase, nationId, strongmanFactionId, currentTick) {
-    const { data: nation, error: nationErr } = await supabase
-        .from('nations').select('*')
-        .eq('id', nationId).single();
-    if (nationErr || !nation) return { success: false, error: nationErr?.message || 'Nation not found.' };
-    if (nation.ruling_faction_id !== strongmanFactionId) return { success: false, error: 'Only the Strongman can revoke.' };
-
-    const isFamilyRevoke = nation.successor_is_family_member;
-
-    if (!isFamilyRevoke) {
-        // Find the current steward successor
-        const { data: currentSuccessor } = await supabase
-            .from('stewards')
-            .select('id, faction_id, first_name, last_name')
-            .eq('nation_id', nationId)
-            .eq('is_chosen_successor', true)
-            .eq('is_alive', true)
-            .maybeSingle();
-        if (!currentSuccessor) return { success: false, error: 'No successor to revoke.' };
-
-        // Clear successor tag
-        await supabase.from('stewards').update({
-            is_chosen_successor: false,
-            succession_strength: 0,
-            successor_appointed_tick: null,
-        }).eq('id', currentSuccessor.id);
-
-        // Former successor's faction: loyalty -20
-        const { data: formerFaction } = await supabase.from('factions').select('id, loyalty').eq('id', currentSuccessor.faction_id).single();
-        if (formerFaction) {
-            const newLoy = Math.max(0, (formerFaction.loyalty ?? 50) - SUCCESSOR_CONFIG.REVOKE_LOYALTY_DROP);
-            await supabase.from('factions').update({ loyalty: newLoy }).eq('id', formerFaction.id);
-        }
-
-        // Log
-        const revokedName = `${currentSuccessor.first_name} ${currentSuccessor.last_name}`;
-        await supabase.from('campaign_actions').insert({
-            party_id: strongmanFactionId,
-            nation_id: nationId,
-            action_type: 'revoke_successor',
-            tick_performed: currentTick,
-            result: {
-                revoked_name: revokedName,
-                revoked_faction_id: currentSuccessor.faction_id,
-            },
-        });
-    } else {
-        // Family member revocation — clear the flag (this also restores AP generation)
-        await supabase.from('nations').update({ successor_is_family_member: false }).eq('id', nationId);
-
-        await supabase.from('campaign_actions').insert({
-            party_id: strongmanFactionId,
-            nation_id: nationId,
-            action_type: 'revoke_successor',
-            tick_performed: currentTick,
-            result: {
-                revoked_name: 'Close Family Member',
-                is_family_member: true,
-            },
-        });
-    }
-
-    // Stability -5
-    const newStability = Math.max(0, Number(nation.stability ?? 50) - SUCCESSOR_CONFIG.REVOKE_STABILITY_DROP);
-    await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
-
-    // All stewards: coup_readiness +3
-    await adjustStewardsCoupReadiness(supabase, nationId, SUCCESSOR_CONFIG.REVOKE_COUP_READINESS);
-
-    return { success: true, revokedName: isFamilyRevoke ? 'Close Family Member' : undefined };
-}
-
-// ==================== DYNASTY ACTIONS ====================
-
-/**
- * Execute a Dynasty action. Available only to factions whose steward is the Chosen Successor.
- * Three modes: 'shadow', 'cultivate_image', 'prepare_succession'. Each costs 1 AP.
- */
-async function executeDynastyAction(supabase, nationId, factionId, mode, targetFactionId, currentTick) {
-    // 1. Validate: caller's steward is the chosen successor
-    const { data: mySteward } = await supabase
-        .from('stewards')
-        .select('id, first_name, last_name, is_chosen_successor, succession_strength, exit_readiness, standing')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId)
-        .eq('is_alive', true)
-        .single();
-    if (!mySteward || !mySteward.is_chosen_successor) {
-        return { success: false, error: 'Only the Chosen Successor can use Dynasty actions.' };
-    }
-
-    // 2. Validate mode
-    if (!['shadow', 'cultivate_image', 'prepare_succession'].includes(mode)) {
-        return { success: false, error: 'Invalid dynasty mode.' };
-    }
-
-    // 3. Deduct AP
-    const apResult = await deductAP(supabase, factionId, SUCCESSOR_CONFIG.DYNASTY_AP_COST);
-    if (!apResult.success) return { success: false, error: 'Not enough AP.' };
-
-    const result = { mode, newAp: apResult.newAp };
-
-    if (mode === 'shadow') {
-        // Requires a target faction
-        if (!targetFactionId) return { success: false, error: 'Shadow requires a target faction.' };
-
-        const { data: targetSteward } = await supabase
-            .from('stewards')
-            .select('id, first_name, last_name, true_loyalty, faction_id')
-            .eq('faction_id', targetFactionId)
-            .eq('nation_id', nationId)
-            .eq('is_alive', true)
-            .single();
-        if (!targetSteward) return { success: false, error: 'Target faction has no living steward.' };
-
-        // Reveal true loyalty
-        result.targetName = `${targetSteward.first_name} ${targetSteward.last_name}`;
-        result.trueLoyalty = targetSteward.true_loyalty;
-
-        // Succession strength +3
-        const newSS = (mySteward.succession_strength ?? 0) + SUCCESSOR_CONFIG.DYNASTY_SHADOW_SUCCESSION_STRENGTH;
-        await supabase.from('stewards').update({ succession_strength: newSS }).eq('id', mySteward.id);
-        result.successionStrengthGain = SUCCESSOR_CONFIG.DYNASTY_SHADOW_SUCCESSION_STRENGTH;
-
-        await supabase.from('campaign_actions').insert({
-            party_id: factionId,
-            nation_id: nationId,
-            action_type: 'dynasty_shadow',
-            tick_performed: currentTick,
-            result: {
-                target_faction_id: targetFactionId,
-                target_name: result.targetName,
-                true_loyalty: result.trueLoyalty,
-                succession_strength_gain: SUCCESSOR_CONFIG.DYNASTY_SHADOW_SUCCESSION_STRENGTH,
-            },
-        });
-
-    } else if (mode === 'cultivate_image') {
-        // Nation legitimacy +1
-        const { data: nationRow } = await supabase.from('nations').select('legitimacy').eq('id', nationId).single();
-        const newLeg = Math.min(100, Number(nationRow?.legitimacy ?? 50) + SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_LEGITIMACY);
-        await supabase.from('nations').update({ legitimacy: newLeg }).eq('id', nationId);
-
-        // Succession strength +5
-        const newSS = (mySteward.succession_strength ?? 0) + SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_SUCCESSION_STRENGTH;
-        await supabase.from('stewards').update({ succession_strength: newSS }).eq('id', mySteward.id);
-
-        // All OTHER stewards: standing -1
-        const { data: otherStewards } = await supabase
-            .from('stewards')
-            .select('id, standing')
-            .eq('nation_id', nationId)
-            .eq('is_alive', true)
-            .neq('id', mySteward.id);
-        for (const s of (otherStewards || [])) {
-            const newStanding = Math.max(0, (s.standing ?? 50) - SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_STANDING_PENALTY);
-            await supabase.from('stewards').update({ standing: newStanding }).eq('id', s.id);
-        }
-
-        result.legitimacyGain = SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_LEGITIMACY;
-        result.successionStrengthGain = SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_SUCCESSION_STRENGTH;
-
-        await supabase.from('campaign_actions').insert({
-            party_id: factionId,
-            nation_id: nationId,
-            action_type: 'dynasty_cultivate',
-            tick_performed: currentTick,
-            result: {
-                legitimacy_gain: SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_LEGITIMACY,
-                succession_strength_gain: SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_SUCCESSION_STRENGTH,
-                standing_penalty: SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_STANDING_PENALTY,
-            },
-        });
-
-    } else if (mode === 'prepare_succession') {
-        // Succession strength +8, exit_readiness +10
-        const newSS = (mySteward.succession_strength ?? 0) + SUCCESSOR_CONFIG.DYNASTY_PREPARE_SUCCESSION_STRENGTH;
-        const newER = Math.min(100, (mySteward.exit_readiness ?? 0) + SUCCESSOR_CONFIG.DYNASTY_PREPARE_EXIT_READINESS);
-        await supabase.from('stewards').update({
-            succession_strength: newSS,
-            exit_readiness: newER,
-        }).eq('id', mySteward.id);
-
-        // 10% detection chance
-        const detected = Math.random() < SUCCESSOR_CONFIG.DYNASTY_PREPARE_DETECTION_CHANCE;
-        result.successionStrengthGain = SUCCESSOR_CONFIG.DYNASTY_PREPARE_SUCCESSION_STRENGTH;
-        result.exitReadinessGain = SUCCESSOR_CONFIG.DYNASTY_PREPARE_EXIT_READINESS;
-        result.detected = detected;
-
-        if (detected) {
-            // Log a detection entry visible to the strongman (ruling faction)
-            const { data: nationRow } = await supabase.from('nations').select('ruling_faction_id').eq('id', nationId).single();
-            await supabase.from('campaign_actions').insert({
-                party_id: nationRow?.ruling_faction_id || factionId,
-                nation_id: nationId,
-                action_type: 'dynasty_detected_prepare',
-                tick_performed: currentTick,
-                result: {
-                    steward_name: `${mySteward.first_name} ${mySteward.last_name}`,
-                    faction_id: factionId,
-                },
-            });
-        }
-
-        // Log the prepare action to the acting faction
-        await supabase.from('campaign_actions').insert({
-            party_id: factionId,
-            nation_id: nationId,
-            action_type: 'dynasty_prepare',
-            tick_performed: currentTick,
-            result: {
-                succession_strength_gain: SUCCESSOR_CONFIG.DYNASTY_PREPARE_SUCCESSION_STRENGTH,
-                exit_readiness_gain: SUCCESSOR_CONFIG.DYNASTY_PREPARE_EXIT_READINESS,
-                detected,
-            },
-        });
-    }
-
-    return { success: true, ...result };
-}
-
-// ==================== PHASE 8: COUP OVERHAUL & REGIME HEALTH ====================
-
-/**
- * Get regime health threshold label and effects.
- */
-function getRegimeHealthTier(regimeHealth) {
-    if (regimeHealth >= 60) return { label: 'HEALTHY', color: '#5cb85c', coupBonus: 0, loyaltyDecay: -2 };
-    if (regimeHealth >= 40) return { label: 'WEAKENING', color: '#FFC107', coupBonus: 5, loyaltyDecay: -2.5 };
-    if (regimeHealth >= 20) return { label: 'DECLINING', color: '#FF9800', coupBonus: 10, loyaltyDecay: -3 };
-    if (regimeHealth >= 1) return { label: 'CRITICAL', color: '#F44336', coupBonus: 20, loyaltyDecay: -4 };
-    return { label: 'COLLAPSED', color: '#B71C1C', coupBonus: 30, loyaltyDecay: -5 };
-}
-
-/**
- * Process regime health tick: natural decay, modifiers, recovery.
- * Called once per tick for each autocracy nation.
- */
-async function processRegimeHealthTick(supabase, nation, currentTick) {
-    if (!isAutocracy(nation)) return;
-
-    let rh = Number(nation.regime_health ?? 80);
-    const startingRH = 80; // recovery cap
-
-    // Natural decay: -0.5/tick
-    rh -= 0.5;
-
-    // Fetch factions for modifier calculations
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id, loyalty, standing, seats')
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'party');
-
-    if (factions && factions.length > 0) {
-        // Recovery: high average loyalty across non-ruling factions
-        const nonRuling = factions.filter(f => f.id !== nation.ruling_faction_id);
-        if (nonRuling.length > 0) {
-            const avgLoyalty = nonRuling.reduce((s, f) => s + (f.loyalty ?? 50), 0) / nonRuling.length;
-            if (avgLoyalty >= 60) rh += 0.3;
-        }
-    }
-
-    // Recovery: high stability
-    if ((nation.stability ?? 50) >= 60) rh += 0.3;
-
-    // Recovery: has a chosen successor
-    const { data: successorCheck } = await supabase
-        .from('stewards')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('is_chosen_successor', true)
-        .eq('is_alive', true)
-        .limit(1);
-    if (successorCheck && successorCheck.length > 0) rh += 0.1;
-
-    // Recovery: no active crises (check for recent negative events)
-    // Simple heuristic: if stability > 50 and no recent purges/coups, small bonus
-    const { data: recentBadEvents } = await supabase
-        .from('campaign_actions')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .in('action_type', ['purge', 'coup_failed', 'faction_intimidate'])
-        .gte('tick_performed', currentTick - 3)
-        .limit(1);
-    if (!recentBadEvents || recentBadEvents.length === 0) rh += 0.5;
-
-    // Cap: never exceeds starting value
-    rh = Math.min(startingRH, Math.max(0, rh));
-
-    // Update nation
-    await supabase.from('nations').update({ regime_health: rh }).eq('id', nation.id);
-
-    // Check for collapse (rh === 0)
-    if (rh <= 0) {
-        await handleRegimeCollapse(supabase, nation, currentTick);
-    }
-
-    return rh;
-}
-
-/**
- * Handle regime collapse when regime_health reaches 0.
- * If successor exists, they take over. Otherwise, power vacuum.
- */
-async function handleRegimeCollapse(supabase, nation, currentTick) {
-    const currentDate = _tickToDate(currentTick);
-
-    // Close the outgoing administration before transferring power
-    try {
-        await closeAdministration(supabase, nation.id, nation, 'regime_collapse', currentTick, currentDate, null);
-    } catch (err) {
-        console.warn('handleRegimeCollapse: could not close administration:', err);
-    }
-
-    // Check for chosen successor
-    const { data: successor } = await supabase
-        .from('stewards')
-        .select('id, faction_id, first_name, last_name')
-        .eq('nation_id', nation.id)
-        .eq('is_chosen_successor', true)
-        .eq('is_alive', true)
-        .limit(1)
-        .maybeSingle();
-
-    if (successor) {
-        // Successor takes over
-        await supabase.from('nations').update({
-            ruling_faction_id: successor.faction_id,
-            regime_health: 40, // partial recovery on succession
-            successor_cooldown_end_tick: null,
-            successor_is_family_member: false,
-        }).eq('id', nation.id);
-
-        // Clear successor status
-        await supabase.from('stewards').update({
-            is_chosen_successor: false,
-            succession_strength: 0,
-            successor_appointed_tick: null,
-        }).eq('nation_id', nation.id);
-
-        // Reset all loyalties to 40
-        await supabase.from('factions').update({ loyalty: 40 })
-            .eq('nation_id', nation.id)
-            .neq('id', successor.faction_id);
-
-        await supabase.from('campaign_actions').insert({
-            party_id: successor.faction_id,
-            nation_id: nation.id,
-            action_type: 'regime_succession',
-            tick_performed: currentTick,
-            result: {
-                successor_name: `${successor.first_name} ${successor.last_name}`,
-                faction_id: successor.faction_id,
-                reason: 'regime_collapse',
-            },
-        });
-
-        // Create new administration for the successor
-        try {
-            const { data: newFaction } = await supabase
-                .from('factions').select('id, faction_name, seats')
-                .eq('id', successor.faction_id).single();
-            if (newFaction) {
-                const syntheticCoalition = { party_ids: [newFaction.id], lead_party_id: newFaction.id };
-                await createAdministration(supabase, nation.id, nation, syntheticCoalition, [newFaction], currentTick, currentDate, null);
-            }
-        } catch (err) {
-            console.warn('handleRegimeCollapse: could not create successor administration:', err);
-        }
-    } else {
-        // Power vacuum — highest standing faction takes over with penalties
-        const { data: factions } = await supabase
-            .from('factions')
-            .select('id, standing, faction_name, seats')
-            .eq('nation_id', nation.id)
-            .eq('faction_type', 'party')
-            .neq('id', nation.ruling_faction_id)
-            .order('standing', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-        if (factions) {
-            await supabase.from('nations').update({
-                ruling_faction_id: factions.id,
-                regime_health: 30, // low recovery on power vacuum
-                stability: Math.max(0, (nation.stability ?? 50) - 10),
-            }).eq('id', nation.id);
-
-            // All loyalties reset to 30 (chaotic transition)
-            await supabase.from('factions').update({ loyalty: 30 })
-                .eq('nation_id', nation.id)
-                .neq('id', factions.id);
-
-            await supabase.from('campaign_actions').insert({
-                party_id: factions.id,
-                nation_id: nation.id,
-                action_type: 'power_vacuum',
-                tick_performed: currentTick,
-                result: {
-                    new_ruler: factions.faction_name,
-                    faction_id: factions.id,
-                    reason: 'regime_collapse',
-                },
-            });
-
-            // Create new administration for the power vacuum winner
-            try {
-                const syntheticCoalition = { party_ids: [factions.id], lead_party_id: factions.id };
-                await createAdministration(supabase, nation.id, nation, syntheticCoalition, [factions], currentTick, currentDate, null);
-            } catch (err) {
-                console.warn('handleRegimeCollapse: could not create power vacuum administration:', err);
-            }
-        }
-    }
-}
-
-/**
- * Process unaligned seat pool regeneration: +1 seat per 4 ticks.
- * Draws proportionally from largest factions.
- */
-async function processUnalignedPoolTick(supabase, nation, currentTick) {
-    if (!isAutocracy(nation)) return;
-    if (currentTick % GAME_CONFIG.UNALIGNED_POOL_REGEN_TICKS !== 0) return;
-
-    const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
-    const maxPool = Math.floor(totalSeats * GAME_CONFIG.UNALIGNED_POOL_MAX_RATIO);
-    const currentPool = nation.unaligned_seats || 0;
-
-    if (currentPool >= maxPool) return;
-
-    // Find the largest faction to draw from
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id, seats')
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'party')
-        .order('seats', { ascending: false })
-        .limit(1);
-
-    if (!factions || factions.length === 0 || factions[0].seats <= GAME_CONFIG.NEW_FACTION_MIN_SEATS) return;
-
-    // Draw 1 seat from largest faction
-    await supabase.from('factions').update({ seats: factions[0].seats - 1 }).eq('id', factions[0].id);
-    await supabase.from('nations').update({ unaligned_seats: currentPool + 1 }).eq('id', nation.id);
-}
-
-/**
- * Calculate coup success probability.
- * Based on standing, seats, funds, regime health, and allies.
- */
-function calculateCoupProbability(faction, nation, allies = []) {
-    const standing = faction.standing ?? 30;
-    const seats = faction.seats ?? 0;
-    const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
-    const funds = Number(faction.embezzled_funds ?? 0);
-    const rh = Number(nation.regime_health ?? 80);
-
-    // Base probability from standing (0-30%)
-    const standingComponent = (standing / 90) * 30;
-
-    // Seat ratio component (0-25%)
-    const seatRatio = seats / totalSeats;
-    const seatComponent = Math.min(25, seatRatio * 100);
-
-    // Funds component (0-20%)
-    const fundsComponent = Math.min(20, (funds / 100) * 20);
-
-    // Regime health weakness bonus (0-20%)
-    const tier = getRegimeHealthTier(rh);
-    const rhComponent = tier.coupBonus;
-
-    // Ally bonus (up to 15%)
-    let allyBonus = 0;
-    for (const ally of allies) {
-        allyBonus += ((ally.seats ?? 0) / totalSeats) * 15;
-    }
-    allyBonus = Math.min(15, allyBonus);
-
-    const raw = standingComponent + seatComponent + fundsComponent + rhComponent + allyBonus;
-    return Math.max(5, Math.min(95, Math.round(raw)));
-}
-
-/**
- * Get qualitative coup estimate with noise for player display.
- */
-function getCoupEstimate(faction, nation, allies = []) {
-    const trueProbability = calculateCoupProbability(faction, nation, allies);
-
-    // Apply noise: ±((100 - standing) / 100 × 15%)
-    const standing = faction.standing ?? 30;
-    const noiseRange = ((100 - standing) / 100) * 15;
-    const noise = (Math.random() * 2 - 1) * noiseRange;
-    const displayed = Math.max(5, Math.min(95, Math.round(trueProbability + noise)));
-
-    // Map to tier
-    let tier, color;
-    if (displayed < 25) { tier = 'DESPERATE'; color = '#F44336'; }
-    else if (displayed < 40) { tier = 'RISKY'; color = '#FF9800'; }
-    else if (displayed < 55) { tier = 'UNCERTAIN'; color = '#FFC107'; }
-    else if (displayed < 70) { tier = 'FAVORABLE'; color = '#8BC34A'; }
-    else { tier = 'STRONG'; color = '#5cb85c'; }
-
-    return { tier, color, displayed, trueProbability };
-}
-
-/**
- * Check if a faction meets the new v2 coup requirements.
- */
-function canAttemptCoup(faction, nation, currentTick) {
-    const standing = faction.standing ?? 30;
-    const seats = faction.seats ?? 0;
-    const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
-    const funds = Number(faction.embezzled_funds ?? 0);
-    const lockoutUntil = faction.coup_lockout_until_tick;
-
-    const reasons = [];
-    if (standing < GAME_CONFIG.COUP_MIN_STANDING) {
-        reasons.push(`Standing ${standing} < ${GAME_CONFIG.COUP_MIN_STANDING}`);
-    }
-    if (seats / totalSeats < GAME_CONFIG.COUP_MIN_SEAT_RATIO) {
-        reasons.push(`Seats ${seats} < ${Math.ceil(totalSeats * GAME_CONFIG.COUP_MIN_SEAT_RATIO)} (${Math.round(GAME_CONFIG.COUP_MIN_SEAT_RATIO * 100)}%)`);
-    }
-    if (funds < GAME_CONFIG.COUP_FUNDS_THRESHOLD) {
-        reasons.push(`Funds $${Math.round(funds)}M < $${GAME_CONFIG.COUP_FUNDS_THRESHOLD}M`);
-    }
-    if (lockoutUntil && currentTick < lockoutUntil) {
-        reasons.push(`Lockout until tick ${lockoutUntil} (${lockoutUntil - currentTick} ticks)`);
-    }
-    // Check if faction is the ruling faction
-    if (faction.id === nation.ruling_faction_id) {
-        reasons.push('Cannot coup yourself');
-    }
-
-    return { canCoup: reasons.length === 0, reasons };
-}
-
-/**
- * Send a coup invitation to another faction.
- * Stores as a campaign_action with status 'pending_coup_invite'.
- */
-async function sendCoupInvitation(supabase, factionId, nationId, targetFactionId, currentTick) {
-    // Validate sender meets coup requirements
-    const { data: faction } = await supabase
-        .from('factions')
-        .select('id, standing, seats, embezzled_funds, coup_lockout_until_tick, faction_name')
-        .eq('id', factionId)
-        .single();
-    if (!faction) return { success: false, error: 'Faction not found' };
-
-    const { data: nation } = await supabase
-        .from('nations')
-        .select('id, ruling_faction_id, total_seats, regime_health')
-        .eq('id', nationId)
-        .single();
-    if (!nation) return { success: false, error: 'Nation not found' };
-
-    const eligibility = canAttemptCoup(faction, nation, currentTick);
-    if (!eligibility.canCoup) return { success: false, error: `Not eligible: ${eligibility.reasons.join(', ')}` };
-
-    // Check if already invited this faction
-    const { data: existing } = await supabase
-        .from('campaign_actions')
-        .select('id')
-        .eq('party_id', factionId)
-        .eq('nation_id', nationId)
-        .eq('action_type', 'coup_invitation')
-        .gte('tick_performed', currentTick - 2)
-        .limit(1);
-    if (existing && existing.length > 0) return { success: false, error: 'Already sent an invitation recently' };
-
-    // Check max 2 invitations
-    const { data: allInvites } = await supabase
-        .from('campaign_actions')
-        .select('id')
-        .eq('party_id', factionId)
-        .eq('nation_id', nationId)
-        .eq('action_type', 'coup_invitation')
-        .gte('tick_performed', currentTick - 2);
-    if (allInvites && allInvites.length >= 2) return { success: false, error: 'Maximum 2 invitations per coup attempt' };
-
-    // Get estimate for display to invitee
-    const estimate = getCoupEstimate(faction, nation);
-
-    await supabase.from('campaign_actions').insert({
-        party_id: factionId,
-        nation_id: nationId,
-        action_type: 'coup_invitation',
-        tick_performed: currentTick,
-        result: {
-            target_faction_id: targetFactionId,
-            inviter_name: faction.faction_name,
-            estimate_tier: estimate.tier,
-            status: 'pending',
-        },
-    });
-
-    return { success: true, estimateTier: estimate.tier };
-}
-
-/**
- * Respond to a coup invitation.
- * Options: 'accept', 'decline', 'report'
- */
-async function respondToCoupInvitation(supabase, factionId, nationId, invitationId, response, currentTick) {
-    // Load the invitation
-    const { data: invite } = await supabase
-        .from('campaign_actions')
-        .select('id, party_id, result')
-        .eq('id', invitationId)
-        .single();
-    if (!invite) return { success: false, error: 'Invitation not found' };
-    if (invite.result?.target_faction_id !== factionId) return { success: false, error: 'Not your invitation' };
-    if (invite.result?.status !== 'pending') return { success: false, error: 'Already responded' };
-
-    const inviterId = invite.party_id;
-    const updatedResult = { ...invite.result, status: response, responded_tick: currentTick };
-
-    await supabase.from('campaign_actions')
-        .update({ result: updatedResult })
-        .eq('id', invitationId);
-
-    if (response === 'report') {
-        // Reporter: loyalty +15
-        const { data: reporter } = await supabase
-            .from('factions').select('id, loyalty').eq('id', factionId).single();
-        if (reporter) {
-            const newLoyalty = Math.min(GAME_CONFIG.LOYALTY_CAP, (reporter.loyalty ?? 50) + 15);
-            await supabase.from('factions').update({ loyalty: newLoyalty }).eq('id', factionId);
-        }
-
-        // Plotter: loyalty -20, standing -5
-        const { data: plotter } = await supabase
-            .from('factions').select('id, loyalty, standing').eq('id', inviterId).single();
-        if (plotter) {
-            const newLoyalty = Math.max(0, (plotter.loyalty ?? 50) - 20);
-            const newStanding = Math.max(0, (plotter.standing ?? 30) - 5);
-            await supabase.from('factions').update({ loyalty: newLoyalty, standing: newStanding }).eq('id', inviterId);
-        }
-
-        // Notify strongman
-        const { data: nation } = await supabase.from('nations').select('ruling_faction_id').eq('id', nationId).single();
-        await supabase.from('campaign_actions').insert({
-            party_id: nation?.ruling_faction_id || factionId,
-            nation_id: nationId,
-            action_type: 'coup_plot_reported',
-            tick_performed: currentTick,
-            result: {
-                reporter_faction_id: factionId,
-                plotter_faction_id: inviterId,
-            },
-        });
-    }
-
-    return { success: true, response };
-}
-
-/**
- * Execute a coup attempt (v2 overhaul).
- * New requirements: standing >= 15, seats >= 10%, funds >= $30M.
- */
-async function executeCoupAttempt(supabase, factionId, nationId, fundsCommitted, currentTick, nationName = '') {
-    // Load faction data
-    const { data: faction } = await supabase
-        .from('factions')
-        .select('id, standing, seats, embezzled_funds, coup_lockout_until_tick, faction_name, loyalty')
-        .eq('id', factionId)
-        .single();
-    if (!faction) return { success: false, error: 'Faction not found' };
-
-    const { data: nation } = await supabase
-        .from('nations')
-        .select('id, ruling_faction_id, total_seats, regime_health, stability')
-        .eq('id', nationId)
-        .single();
-    if (!nation) return { success: false, error: 'Nation not found' };
-
-    // Validate requirements
-    const eligibility = canAttemptCoup(faction, nation, currentTick);
-    if (!eligibility.canCoup) return { success: false, error: `Not eligible: ${eligibility.reasons.join(', ')}` };
-
-    // Validate funds commitment (must commit at least $30M, can't exceed holdings)
-    const funds = Number(faction.embezzled_funds ?? 0);
-    const committed = Math.min(funds, fundsCommitted);
-    if (committed < GAME_CONFIG.COUP_FUNDS_THRESHOLD) {
-        return { success: false, error: `Must commit at least $${GAME_CONFIG.COUP_FUNDS_THRESHOLD}M` };
-    }
-
-    // Find accepted allies
-    const { data: acceptedInvites } = await supabase
-        .from('campaign_actions')
-        .select('id, result')
-        .eq('party_id', factionId)
-        .eq('nation_id', nationId)
-        .eq('action_type', 'coup_invitation')
-        .gte('tick_performed', currentTick - 2);
-
-    const allyIds = [];
-    if (acceptedInvites) {
-        for (const inv of acceptedInvites) {
-            if (inv.result?.status === 'accepted') {
-                allyIds.push(inv.result.target_faction_id);
-            }
-        }
-    }
-
-    // Load ally data
-    let allies = [];
-    if (allyIds.length > 0) {
-        const { data: allyData } = await supabase
-            .from('factions')
-            .select('id, standing, seats, faction_name')
-            .in('id', allyIds);
-        allies = allyData || [];
-    }
-
-    // Calculate true probability
-    const trueProbability = calculateCoupProbability(faction, nation, allies);
-    const success = Math.random() * 100 < trueProbability;
-
-    // Deduct committed funds regardless
-    await supabase.from('factions').update({
-        embezzled_funds: Math.max(0, funds - committed),
-    }).eq('id', factionId);
-
-    const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
-
-    if (success) {
-        // === COUP SUCCESS ===
-        // Old strongman's faction: reset
-        const oldRulingId = nation.ruling_faction_id;
-
-        // New ruler
-        await supabase.from('nations').update({
-            ruling_faction_id: factionId,
-            regime_health: Math.max(20, Number(nation.regime_health ?? 80) - 10),
-            stability: Math.max(0, (nation.stability ?? 50) - 5),
-            successor_cooldown_end_tick: null,
-            successor_is_family_member: false,
-        }).eq('id', nationId);
-
-        // Clear any chosen successors
-        await supabase.from('stewards').update({
-            is_chosen_successor: false, succession_strength: 0, successor_appointed_tick: null,
-        }).eq('nation_id', nationId).eq('is_chosen_successor', true);
-
-        // Coup leader: standing +10, loyalty set to 70
-        await supabase.from('factions').update({
-            standing: Math.min(GAME_CONFIG.STANDING_CAP, (faction.standing ?? 30) + 10),
-            loyalty: 70,
-            coup_lockout_until_tick: null,
-        }).eq('id', factionId);
-
-        // Allies: standing +10, loyalty set to 70
-        for (const ally of allies) {
-            await supabase.from('factions').update({
-                standing: Math.min(GAME_CONFIG.STANDING_CAP, (ally.standing ?? 30) + 10),
-                loyalty: 70,
-            }).eq('id', ally.id);
-        }
-
-        // Non-involved factions: loyalty reset to 40
-        const involvedIds = [factionId, ...allyIds, oldRulingId].filter(Boolean);
-        await supabase.from('factions').update({ loyalty: 40 })
-            .eq('nation_id', nationId)
-            .eq('faction_type', 'party')
-            .not('id', 'in', `(${involvedIds.join(',')})`);
-
-        await supabase.from('campaign_actions').insert({
-            party_id: factionId,
-            nation_id: nationId,
-            action_type: 'coup_success',
-            tick_performed: currentTick,
-            result: {
-                faction_name: faction.faction_name,
-                allies: allies.map(a => a.faction_name),
-                probability: trueProbability,
-                funds_committed: committed,
-            },
-        });
-
-        // Close the old administration and create a new one for the coup leader
-        try {
-            const currentDate = _tickToDate(currentTick);
-            const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
-            if (fullNation) {
-                await closeAdministration(supabase, nationId, fullNation, 'coup', currentTick, currentDate, null);
-                const syntheticCoalition = { party_ids: [factionId], lead_party_id: factionId };
-                await createAdministration(supabase, nationId, fullNation, syntheticCoalition, [faction], currentTick, currentDate, null);
-            }
-        } catch (err) {
-            console.warn('executeCoupAttempt: could not rollover administration:', err);
-        }
-
-        return {
-            success: true,
-            coupSuccess: true,
-            probability: trueProbability,
-            allies: allies.map(a => a.faction_name),
-        };
-    } else {
-        // === COUP FAILURE ===
-        // Leader: steward dies, standing -25, loyalty 10, lose 40% seats, 6-tick lockout
-        const { data: leaderSteward } = await supabase
-            .from('stewards')
-            .select('id, first_name, last_name, steward_type, pillar_key')
-            .eq('faction_id', factionId)
-            .eq('nation_id', nationId)
-            .eq('is_alive', true)
-            .limit(1)
-            .maybeSingle();
-
-        if (leaderSteward) {
-            await supabase.from('stewards').update({ is_alive: false }).eq('id', leaderSteward.id);
-
-            // Generate new steward
-            const { firstNames: coupFirstPool, lastNames: coupLastPool } = getNationNames(nationName);
-            const newFirstName = coupFirstPool[Math.floor(Math.random() * coupFirstPool.length)];
-            const newLastName = coupLastPool[Math.floor(Math.random() * coupLastPool.length)];
-            await supabase.from('stewards').insert({
-                faction_id: factionId,
-                nation_id: nationId,
-                first_name: newFirstName,
-                last_name: newLastName,
-                age: 35 + Math.floor(Math.random() * 20),
-                steward_type: leaderSteward.steward_type || 'party_chairman',
-                pillar_key: leaderSteward.pillar_key,
-                standing: 10,
-                power_base: 15,
-                true_loyalty: 50,
-                estimated_loyalty: 50,
-                personal_wealth: 0,
-                exit_readiness: 0,
-                coup_readiness: 0,
-                is_alive: true,
-            });
-        }
-
-        // Leader faction penalties
-        const seatLoss = Math.floor((faction.seats ?? 0) * 0.40);
-        await supabase.from('factions').update({
-            standing: Math.max(0, (faction.standing ?? 30) - 25),
-            loyalty: 10,
-            embezzled_funds: 0,
-            seats: Math.max(1, (faction.seats ?? 0) - seatLoss),
-            coup_lockout_until_tick: currentTick + GAME_CONFIG.COUP_LOCKOUT_TICKS,
-        }).eq('id', factionId);
-
-        // Distribute lost seats to ruling faction
-        if (seatLoss > 0 && nation.ruling_faction_id) {
-            const { data: ruler } = await supabase
-                .from('factions').select('id, seats').eq('id', nation.ruling_faction_id).single();
-            if (ruler) {
-                await supabase.from('factions').update({
-                    seats: (ruler.seats ?? 0) + seatLoss,
-                }).eq('id', ruler.id);
-            }
-        }
-
-        // Allies: standing -15, loyalty -20, lose 20% seats (transferred to ruling faction)
-        let totalAllySeatLoss = 0;
-        for (const ally of allies) {
-            const allySeatLoss = Math.floor((ally.seats ?? 0) * 0.20);
-            const { data: allyFaction } = await supabase
-                .from('factions').select('id, loyalty, standing, seats')
-                .eq('id', ally.id).single();
-            if (allyFaction) {
-                const actualLoss = Math.min(allySeatLoss, (allyFaction.seats ?? 0) - 1); // keep at least 1
-                await supabase.from('factions').update({
-                    standing: Math.max(0, (allyFaction.standing ?? 30) - 15),
-                    loyalty: Math.max(0, (allyFaction.loyalty ?? 50) - 20),
-                    seats: (allyFaction.seats ?? 0) - actualLoss,
-                }).eq('id', ally.id);
-                totalAllySeatLoss += actualLoss;
-            }
-        }
-        // Transfer ally lost seats to ruling faction
-        if (totalAllySeatLoss > 0 && nation.ruling_faction_id) {
-            const { data: ruler2 } = await supabase
-                .from('factions').select('id, seats').eq('id', nation.ruling_faction_id).single();
-            if (ruler2) {
-                await supabase.from('factions').update({
-                    seats: (ruler2.seats ?? 0) + totalAllySeatLoss,
-                }).eq('id', ruler2.id);
-            }
-        }
-
-        // Regime health penalty
-        await supabase.from('nations').update({
-            regime_health: Math.max(0, Number(nation.regime_health ?? 80) - 5),
-            stability: Math.max(0, (nation.stability ?? 50) - 3),
-        }).eq('id', nationId);
-
-        await supabase.from('campaign_actions').insert({
-            party_id: factionId,
-            nation_id: nationId,
-            action_type: 'coup_failed',
-            tick_performed: currentTick,
-            result: {
-                faction_name: faction.faction_name,
-                steward_name: leaderSteward ? `${leaderSteward.first_name} ${leaderSteward.last_name}` : 'Unknown',
-                allies: allies.map(a => a.faction_name),
-                probability: trueProbability,
-                funds_committed: committed,
-                seats_lost: seatLoss,
-            },
-        });
-
-        return {
-            success: true,
-            coupSuccess: false,
-            probability: trueProbability,
-            seatsLost: seatLoss,
-            stewardDied: !!leaderSteward,
-        };
-    }
-}
+// (Appoint successor, Dynasty actions, Coup/Regime health systems removed — Phase 0)
 
 // ────────── election-simulation ──────────
 
@@ -21607,104 +22509,6 @@ function calculateCreditDeterioration(nation) {
     if (ratio <= 2.0) return 0.7;
     if (ratio <= 2.5) return 1.2;
     return 2.0;
-}
-
-// ==================== DEBT PRESSURE SYSTEM ====================
-// Graduated per-tick stat effects based on debt-to-GDP ratio.
-// These apply independently of (and in addition to) credit deterioration.
-// Credit deterioration only hits the credit stat; debt pressure hits
-// interest_rates, foreign_investment, and currency_strength.
-//
-// Tiers are cumulative with the bracket the nation falls into.
-// Effects are mild at first and escalate as debt grows unchecked.
-
-const DEBT_PRESSURE_TIERS = [
-    // { maxRatio, interest_rates, foreign_investment, currency_strength }
-    // interest_rates pushed UP (positive), others pushed DOWN (negative)
-    { maxRatio: 0.60, interest_rates: 0,    foreign_investment: 0,    currency_strength: 0    }, // Healthy
-    { maxRatio: 0.80, interest_rates: 0.05, foreign_investment: 0,    currency_strength: 0    }, // Elevated
-    { maxRatio: 1.00, interest_rates: 0.1,  foreign_investment: -0.1, currency_strength: -0.05 }, // Concerning
-    { maxRatio: 1.50, interest_rates: 0.2,  foreign_investment: -0.2, currency_strength: -0.15 }, // Dangerous
-    { maxRatio: 2.00, interest_rates: 0.4,  foreign_investment: -0.4, currency_strength: -0.3  }, // Severe
-    { maxRatio: Infinity, interest_rates: 0.7, foreign_investment: -0.7, currency_strength: -0.5 }, // Crisis
-];
-
-const DEBT_PRESSURE_LABELS = ['Healthy', 'Elevated', 'Concerning', 'Dangerous', 'Severe', 'Crisis'];
-
-function getDebtPressureTier(ratio) {
-    for (let i = 0; i < DEBT_PRESSURE_TIERS.length; i++) {
-        if (ratio <= DEBT_PRESSURE_TIERS[i].maxRatio) return i;
-    }
-    return DEBT_PRESSURE_TIERS.length - 1;
-}
-
-/**
- * Apply graduated debt pressure effects to interest_rates, foreign_investment,
- * and currency_strength based on current debt-to-GDP ratio.
- *
- * Returns the updates applied (empty if no pressure), or null on error.
- */
-async function processDebtPressure(supabase, nation) {
-    const ratio = getDebtToGDP(nation);
-    if (!isFinite(ratio)) return null;
-
-    const tierIdx = getDebtPressureTier(ratio);
-    const tier = DEBT_PRESSURE_TIERS[tierIdx];
-
-    // Healthy tier = no pressure
-    if (tier.interest_rates === 0 && tier.foreign_investment === 0 && tier.currency_strength === 0) {
-        return { tierIdx, tierLabel: DEBT_PRESSURE_LABELS[tierIdx], ratio, applied: false };
-    }
-
-    const updates: any = {};
-    const details: any = {};
-
-    // Interest rates: push UP (higher debt = higher rates)
-    if (tier.interest_rates !== 0) {
-        const curr = Number(nation.interest_rates ?? 50);
-        const next = Math.round(Math.min(100, Math.max(0, curr + tier.interest_rates)) * 10) / 10;
-        if (next !== curr) {
-            updates.interest_rates = next;
-            details.interest_rates = { before: curr, after: next, delta: tier.interest_rates };
-        }
-    }
-
-    // Foreign investment: push DOWN
-    if (tier.foreign_investment !== 0) {
-        const curr = Number(nation.foreign_investment ?? 50);
-        const next = Math.round(Math.min(100, Math.max(0, curr + tier.foreign_investment)) * 10) / 10;
-        if (next !== curr) {
-            updates.foreign_investment = next;
-            details.foreign_investment = { before: curr, after: next, delta: tier.foreign_investment };
-        }
-    }
-
-    // Currency strength: push DOWN
-    if (tier.currency_strength !== 0) {
-        const curr = Number(nation.currency_strength ?? 50);
-        const next = Math.round(Math.min(100, Math.max(0, curr + tier.currency_strength)) * 10) / 10;
-        if (next !== curr) {
-            updates.currency_strength = next;
-            details.currency_strength = { before: curr, after: next, delta: tier.currency_strength };
-        }
-    }
-
-    if (Object.keys(updates).length > 0) {
-        const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
-        if (error) {
-            console.error(`[DebtPressure] Update failed for ${nation.name}:`, error.message);
-            return null;
-        }
-        Object.assign(nation, updates);
-    }
-
-    return {
-        tierIdx,
-        tierLabel: DEBT_PRESSURE_LABELS[tierIdx],
-        ratio,
-        applied: Object.keys(updates).length > 0,
-        details,
-    };
 }
 
 /**
@@ -22765,853 +23569,6 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
     };
 }
 
-// ==================== PROTEST TICK PROCESSING ====================
-
-const PROTEST_TIER6_CRISIS_ID = '00000000-0000-0000-0000-000000000020';
-const PROTEST_TIER7_CRISIS_ID = '00000000-0000-0000-0000-000000000021';
-const PROTEST_CALLING_COOLDOWN = 12;
-const PROTEST_ENDORSING_COOLDOWN = 6;
-const PROTEST_USE_DECAY_INTERVAL = 12;
-const PROTEST_FATIGUE_LOOKBACK = 6;
-const PROTEST_FATIGUE_PER_PROTEST = 10;
-const PROTEST_TIER6_DURATION = 6;
-const PROTEST_TIER7_DURATION = 6;
-const PROTEST_TIER7_DEMAND_MIN = 6;
-const PROTEST_JOINT_BONUS_PER = 15;
-const PROTEST_JOINT_BONUS_CAP = 30;
-const PROTEST_FIZZLE_BLOCS = ['centrist', 'business', 'academic'];
-
-const PROTEST_TIER_LABELS: Record<number, string> = {
-    1: 'Embarrassing Fizzle', 2: 'Modest Showing', 3: 'Respectable Turnout',
-    4: 'Strong Protest', 5: 'Mass Demonstration', 6: 'Historic Protest', 7: 'Nationwide Protest',
-};
-
-// Inline headline templates for protest articles (subset of valdorian-templates.js)
-const PROTEST_HEADLINES: Record<string, string[]> = {
-    protest_fizzle: [
-        "{party} Protest Fizzles — Sparse Turnout Embarrasses Opposition",
-        "Opposition Rally Draws Modest Crowd; Government Approval Holds Steady",
-        "{party}'s Protest Over {grievance} Fails to Gain Traction",
-    ],
-    protest_respectable: [
-        "Thousands March Against {grievance} in {nation}",
-        "{party} Draws Respectable Turnout for {grievance} Protest",
-    ],
-    protest_strong: [
-        "Large Crowds Rally Against Government — {party} Leads Protest Over {grievance}",
-        "Tens of Thousands Take to Streets Demanding Action on {grievance}",
-    ],
-    protest_mass: [
-        "Mass Demonstration Rocks {nation} — Unrest Rises as Protesters Demand Change",
-        "Unprecedented Turnout: {party} Leads Massive Protest Over {grievance}",
-    ],
-    protest_crisis_started: [
-        "Historic Protest Erupts — {nation} Plunged Into Crisis",
-        "Nationwide Protest Paralyzes {nation} — Government Faces Existential Crisis",
-    ],
-    protest_crisis_tick: [
-        "Protest Crisis Enters Day {ticks_active} — No Resolution in Sight",
-        "{nation} Protest Continues: Government Approval Slides Further",
-    ],
-    protest_crisis_ended: [
-        "Protest Crisis Ends in {nation} — Protesters Disperse",
-        "Protesters Claim Victory as Government Meets Demands",
-        "Government Weathers Protest Storm — Crisis Declared Over",
-    ],
-    protest_epo_resolved: [
-        "Government Crackdown Ends Protest Crisis — Interior Ministry Deploys Forces",
-    ],
-    protest_epo_escalated: [
-        "Crackdown Backfires Spectacularly — Protest Escalates to Nationwide Crisis",
-        "Police Action Inflames Protesters — {nation} Faces Nationwide Uprising",
-    ],
-    protest_emergency: [
-        "National Emergency Declared — Government Ends Protest Crisis at Severe Cost",
-        "{nation} Under Emergency Rule as Government Crushes Protest Movement",
-    ],
-    protest_called_off: [
-        "{party} Calls Off Protest — Moderates Breathe Sigh of Relief",
-    ],
-    protest_public_address: [
-        "Government Issues Public Address Amid Ongoing Protest Crisis",
-    ],
-};
-
-function pickProtestHeadline(eventType: string, vars: Record<string, string>): string {
-    const pool = PROTEST_HEADLINES[eventType] || ['Protest Update'];
-    const template = pool[Math.floor(Math.random() * pool.length)];
-    return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] || '');
-}
-
-function protestArticleTier(protestTier: number): number {
-    if (protestTier >= 6) return 1;
-    if (protestTier >= 4) return 2;
-    return 3;
-}
-
-function getProtestEventType(tier: number, crisisCreated: boolean): string {
-    if (crisisCreated) return 'protest_crisis_started';
-    if (tier <= 2) return 'protest_fizzle';
-    if (tier === 3) return 'protest_respectable';
-    if (tier === 4) return 'protest_strong';
-    if (tier === 5) return 'protest_mass';
-    return 'protest_crisis_started';
-}
-
-async function dispatchProtestArticle(
-    supabase: any,
-    nationId: string,
-    eventType: string,
-    headline: string,
-    lede: string,
-    articleTier: number,
-    tick: number,
-    sourceId?: string
-) {
-    try {
-        await supabase.from('valdorian_articles').insert({
-            nation_id: nationId,
-            event_type: eventType,
-            tier: articleTier,
-            section: 'politics',
-            headline,
-            lede,
-            body_paragraphs: [],
-            quotes: [],
-            byline_reporter: ['Maren Solis', 'Davi Cortes', 'Elena Brandt'][Math.floor(Math.random() * 3)],
-            topic_tags: ['protest'],
-            source_event_id: sourceId || null,
-            tick,
-        });
-    } catch (err: any) {
-        console.warn(`[Protest] Article dispatch failed (non-fatal): ${err.message}`);
-    }
-}
-
-async function fireProtestEvent(
-    supabase: any,
-    nationId: string,
-    triggerKey: string,
-    tick: number,
-    placeholders: Record<string, any>
-) {
-    try {
-        await supabase.rpc('fire_system_event', {
-            p_nation_id: nationId,
-            p_trigger_key: triggerKey,
-            p_tick: tick,
-            p_placeholders: placeholders,
-        });
-    } catch (err: any) {
-        console.warn(`[Protest] fire_system_event failed (non-fatal): ${err.message}`);
-    }
-}
-
-const PROTEST_HIGHER_IS_BAD = new Set([
-    'civil_unrest', 'terrorism', 'political_violence', 'crime_rate',
-    'corruption', 'pollution', 'carbon_emissions', 'poverty_rate',
-    'income_inequality', 'inflation', 'unemployment', 'drug_use',
-    'illegal_immigration', 'emigration', 'fuel_prices', 'incarceration_rate',
-    'debt', 'debt_growth', 'cost_of_living',
-]);
-
-const PROTEST_TIER7_ELIGIBLE = new Set([
-    'gdp_growth', 'inflation', 'unemployment', 'crime_rate',
-    'healthcare_quality', 'healthcare_accessibility', 'literacy',
-    'higher_education', 'happiness', 'standard_of_living',
-    'poverty_rate', 'income_inequality', 'fuel_prices', 'pollution',
-    'digital_infrastructure', 'physical_infrastructure', 'energy_generation',
-]);
-
-/**
- * Process all protest-related tick logic for a single nation:
- *  1. Resolve 1-tick-old "resolving" protests (roll turnout, apply effects)
- *  2. Apply per-tick crisis effects for active Tier 6/7 protests
- *  3. Handle crisis expiry and call-off wind-down
- *  4. Clear lockouts when crises end
- *  5. Decay use counters for all factions
- */
-async function processProtests(supabase, nation, currentTick) {
-    const results = [];
-
-    // ── 0. Election-ends-protest: if an election completed this tick, expire all active protests ──
-    const { data: electionsThisTick } = await supabase
-        .from('elections')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('status', 'completed')
-        .eq('election_tick', currentTick)
-        .limit(1);
-    if (electionsThisTick && electionsThisTick.length > 0) {
-        const { data: activeProtests } = await supabase
-            .from('protest_log')
-            .select('id, faction_id, tier')
-            .eq('nation_id', nation.id)
-            .in('status', ['resolving', 'crisis_active']);
-        for (const ap of (activeProtests || [])) {
-            await supabase.from('protest_log').update({
-                status: 'election_ended', tick_resolved: currentTick,
-            }).eq('id', ap.id);
-            // Clear crisis if any
-            if (ap.tier >= 6) {
-                const cId = ap.tier === 7 ? PROTEST_TIER7_CRISIS_ID : PROTEST_TIER6_CRISIS_ID;
-                await supabase.from('active_crises').delete()
-                    .eq('nation_id', nation.id).eq('crisis_id', cId);
-            }
-            // Clear lockouts
-            await supabase.from('factions')
-                .update({ protest_locked_by: null })
-                .eq('protest_locked_by', ap.id);
-            console.log(`[Protest] Election ended — protest ${ap.id} expired`);
-        }
-        if ((activeProtests || []).length > 0) {
-            results.push({ type: 'election_ended', count: activeProtests.length });
-        }
-    }
-
-    // ── 1. Resolve "resolving" protests (called previous tick) ──
-    const { data: resolvingProtests } = await supabase
-        .from('protest_log')
-        .select('*')
-        .eq('nation_id', nation.id)
-        .eq('status', 'resolving')
-        .lt('tick_called', currentTick);   // called before this tick → 1-tick delay passed
-
-    for (const protest of (resolvingProtests || [])) {
-        try {
-            const result = await resolveProtestTick(supabase, nation, protest, currentTick);
-            results.push({ type: 'resolved', protestId: protest.id, ...result });
-        } catch (err) {
-            console.error(`[Protest] Failed to resolve protest ${protest.id}: ${err.message}`);
-        }
-    }
-
-    // ── 2. Process active protest crises ──
-    const { data: activeProtestCrises } = await supabase
-        .from('protest_log')
-        .select('*')
-        .eq('nation_id', nation.id)
-        .eq('status', 'crisis_active');
-
-    for (const crisis of (activeProtestCrises || [])) {
-        try {
-            const result = await processProtestCrisisTick(supabase, nation, crisis, currentTick);
-            results.push({ type: 'crisis_tick', protestId: crisis.id, ...result });
-        } catch (err) {
-            console.error(`[Protest] Failed to process crisis tick for ${crisis.id}: ${err.message}`);
-        }
-    }
-
-    // ── 3. Handle called-off protests (wind-down complete) ──
-    const { data: calledOffProtests } = await supabase
-        .from('protest_log')
-        .select('id, faction_id, crisis_ended_tick')
-        .eq('nation_id', nation.id)
-        .eq('status', 'called_off')
-        .lte('crisis_ended_tick', currentTick);
-
-    for (const co of (calledOffProtests || [])) {
-        await finalizeProtestEnd(supabase, nation.id, co, currentTick);
-        results.push({ type: 'call_off_complete', protestId: co.id });
-    }
-
-    // ── 4. Decay use counters for factions (best-effort, non-blocking) ──
-    try {
-        await decayProtestUseCounters(supabase, nation.id, currentTick);
-    } catch (decayErr) {
-        console.error(`[Protest] Use counter decay failed for ${nation.name} (non-fatal):`, decayErr);
-    }
-
-    return results;
-}
-
-/**
- * Resolve a single protest: roll turnout, apply tier effects, set cooldowns.
- */
-async function resolveProtestTick(supabase, nation, protest, currentTick) {
-    const factionId = protest.faction_id;
-    const nationId = nation.id;
-
-    // Fetch global protest history
-    const { data: protestHistory } = await supabase
-        .from('protest_log')
-        .select('tick_called, tier, turnout_score')
-        .eq('nation_id', nationId)
-        .eq('status', 'resolved')
-        .gte('tick_called', currentTick - 8);
-    const historyForFatigue = (protestHistory || []).map(p => ({ tick: p.tick_called }));
-    const historyForEscalation = (protestHistory || []).map(p => ({
-        tick: p.tick_called, tier: p.tier, score: p.turnout_score,
-    }));
-
-    // Fetch ministry actions for crackdown detection
-    const { data: ministryActions } = await supabase
-        .from('ministry_action_log')
-        .select('action_key, applied_at_tick')
-        .eq('nation_id', nationId)
-        .gte('applied_at_tick', currentTick - 4);
-    const hasCrackdown = (ministryActions || []).some(a =>
-        ['enforcePublicOrder', 'surveillanceExpansion'].includes(a.action_key) &&
-        a.applied_at_tick >= currentTick - 4
-    );
-
-    // Fetch endorsements
-    const { data: endorsements } = await supabase
-        .from('protest_endorsements')
-        .select('id, faction_id')
-        .eq('protest_id', protest.id);
-    const endorsementCount = (endorsements || []).length;
-
-    // Calculate condition score
-    let conditionScore = 50;
-    const breakdown = { base: 50 };
-
-    const unrestBonus = ((nation.civil_unrest || 0) / 100) * 30;
-    conditionScore += unrestBonus;
-    breakdown.civil_unrest = +unrestBonus.toFixed(1);
-
-    const unhappyBonus = ((100 - (nation.happiness || 50)) / 100) * 25;
-    conditionScore += unhappyBonus;
-    breakdown.happiness = +unhappyBonus.toFixed(1);
-
-    const polBonus = ((nation.polarization || 0) / 100) * 20;
-    conditionScore += polBonus;
-    breakdown.polarization = +polBonus.toFixed(1);
-
-    const violencePenalty = ((nation.political_violence || 0) / 100) * 15;
-    conditionScore -= violencePenalty;
-    breakdown.political_violence = +(-violencePenalty).toFixed(1);
-
-    // Protest fatigue (global)
-    const cutoff = currentTick - PROTEST_FATIGUE_LOOKBACK;
-    const recentCount = historyForFatigue.filter(p => p.tick >= cutoff).length;
-    const fatiguePenalty = recentCount * PROTEST_FATIGUE_PER_PROTEST;
-    conditionScore -= fatiguePenalty;
-    breakdown.protest_fatigue = -fatiguePenalty;
-
-    // Hidden crackdown bonus
-    if (hasCrackdown) {
-        conditionScore += 12;
-        breakdown.crackdown_bonus = 12;
-    }
-
-    // Grievance unpopularity bonus
-    const gd = protest.grievance_data || {};
-    let grievanceBonus = 0;
-    if (protest.grievance_type === 'minister') {
-        grievanceBonus = Math.max(0, (60 - (gd.approval || 50)) / 4);
-    } else if (protest.grievance_type === 'activePolicy') {
-        grievanceBonus = Math.max(0, (60 - (gd.publicApproval || 50)) / 4);
-    } else if (protest.grievance_type === 'statFailure') {
-        grievanceBonus = Math.min(15, (gd.failureScore || 0) / 2);
-    }
-    conditionScore += grievanceBonus;
-    breakdown.grievance_bonus = +grievanceBonus.toFixed(1);
-
-    conditionScore = Math.max(0, Math.min(100, conditionScore));
-
-    // Joint protest bonus
-    const jointBonus = Math.min(PROTEST_JOINT_BONUS_CAP, endorsementCount * PROTEST_JOINT_BONUS_PER);
-    const adjustedCondition = Math.min(100, conditionScore + jointBonus);
-
-    // Roll turnout
-    const distFromCenter = Math.abs(adjustedCondition - 50);
-    const variance = Math.max(8, 25 - (distFromCenter * 0.34));
-    const swing = (Math.random() * 2 - 1) * variance;
-    let turnoutScore = Math.max(0, Math.min(100, adjustedCondition + swing));
-
-    // Map to tier
-    let tier;
-    if (turnoutScore < 15) tier = 1;
-    else if (turnoutScore < 30) tier = 2;
-    else if (turnoutScore < 45) tier = 3;
-    else if (turnoutScore < 60) tier = 4;
-    else if (turnoutScore < 75) tier = 5;
-    else if (turnoutScore < 90) tier = 6;
-    else tier = 7;
-
-    // Escalation path: two strong T5+ in 8 ticks → T7
-    if (tier >= 5 && turnoutScore >= 70) {
-        const recentHigh = historyForEscalation.filter(p =>
-            p.tier >= 5 && p.score >= 65 && p.tick >= currentTick - 8
-        );
-        if (recentHigh.length >= 1) tier = 7;
-    }
-
-    // Apply tier effects
-    const appliedEffects = [];
-
-    if (tier <= 2) {
-        // Fizzle: -2 momentum with centrist/business/academic blocs
-        const { data: allBlocs } = await supabase
-            .from('voter_blocs')
-            .select('id, bloc_name')
-            .eq('nation_id', nationId)
-            .eq('is_active', true);
-        for (const blocKeyword of PROTEST_FIZZLE_BLOCS) {
-            const matchBloc = (allBlocs || []).find(b => b.bloc_name.toLowerCase().includes(blocKeyword));
-            if (matchBloc) {
-                await adjustMomentum(supabase, nationId, factionId, matchBloc.id, -2, `protest:fizzle:tier${tier}`);
-                appliedEffects.push({ stat: `momentum:${matchBloc.bloc_name}`, delta: -2 });
-            }
-        }
-        // Free gov boost if gov approval >= 45
-        if ((nation.gov_approval || 0) >= 45) {
-            const boost = Math.ceil(Math.random() * 3); // 1d3
-            await adjustGovernmentApprovalEvent(supabase, nationId, boost, `protest:fizzle:tier${tier}`);
-            appliedEffects.push({ stat: 'gov_approval_events', delta: boost, note: 'fizzle_boost' });
-        }
-    }
-
-    if (tier === 3) {
-        await adjustGovernmentApprovalEvent(supabase, nationId, -1, 'protest:tier3');
-        appliedEffects.push({ stat: 'gov_approval_events', delta: -1 });
-    }
-
-    if (tier === 4) {
-        await adjustGovernmentApprovalEvent(supabase, nationId, -3, 'protest:tier4');
-        appliedEffects.push({ stat: 'gov_approval_events', delta: -3 });
-
-        // +2 with ideologically aligned blocs
-        try {
-            const { data: factionIdeo } = await supabase
-                .from('faction_ideology').select('*').eq('faction_id', factionId).single();
-            if (factionIdeo) {
-                const { data: allBlocs } = await supabase
-                    .from('voter_blocs')
-                    .select('id, bloc_name, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-                    .eq('nation_id', nationId).eq('is_active', true);
-                for (const bloc of (allBlocs || [])) {
-                    const alignment = computeIdeologyAlignment(factionIdeo, bloc);
-                    if (alignment >= 0.6) {
-                        await adjustMomentum(supabase, nationId, factionId, bloc.id, 2, 'protest:tier4:aligned');
-                        appliedEffects.push({ stat: `momentum:${bloc.bloc_name}`, delta: 2, note: 'aligned' });
-                    }
-                }
-            }
-        } catch (ideoErr) {
-            console.warn(`[Protest] Tier 4 ideology alignment failed (non-fatal):`, ideoErr);
-        }
-    }
-
-    if (tier === 5) {
-        await adjustGovernmentApprovalEvent(supabase, nationId, -6, 'protest:tier5');
-        const newUnrest = Math.min(100, (nation.civil_unrest || 0) + 2);
-        await supabase.from('nations').update({ civil_unrest: newUnrest }).eq('id', nationId);
-        appliedEffects.push({ stat: 'gov_approval_events', delta: -6 });
-        appliedEffects.push({ stat: 'civil_unrest', delta: 2 });
-    }
-
-    // Tier 6/7: create crisis
-    let crisisCreated = false;
-    if (tier >= 6) {
-        const crisisId = tier === 6 ? PROTEST_TIER6_CRISIS_ID : PROTEST_TIER7_CRISIS_ID;
-        const duration = tier === 6 ? PROTEST_TIER6_DURATION : PROTEST_TIER7_DURATION;
-
-        await supabase.from('active_crises').insert({
-            crisis_id: crisisId,
-            nation_id: nationId,
-            started_at_tick: currentTick,
-            effects_applied_log: [],
-        });
-
-        await supabase.from('protest_log').update({
-            status: 'crisis_active',
-            crisis_started_tick: currentTick,
-            crisis_duration: duration,
-            condition_score: conditionScore,
-            turnout_score: turnoutScore,
-            tier,
-            roll_breakdown: { ...breakdown, joint_bonus: jointBonus, endorsements: endorsementCount },
-            effects_applied: appliedEffects,
-        }).eq('id', protest.id);
-
-        // Lock all other opposition parties
-        const coalition = await fetchActiveCoalition(supabase, nationId);
-        const coalitionIds = new Set(coalition?.party_ids || []);
-        const { data: allFactions } = await supabase
-            .from('factions').select('id').eq('nation_id', nationId).neq('id', factionId);
-        const oppoFactions = (allFactions || []).filter(f =>
-            !coalitionIds.has(f.id) && f.id !== nation.ruling_faction_id
-        );
-        if (oppoFactions.length > 0) {
-            await supabase.from('factions')
-                .update({ protest_locked_by: protest.id })
-                .in('id', oppoFactions.map(f => f.id));
-        }
-
-        // Generate Tier 7 demand
-        if (tier === 7) {
-            const demand = await generateTier7DemandTick(supabase, nation, currentTick);
-            await supabase.from('protest_log').update({ tier7_demand: demand }).eq('id', protest.id);
-        }
-
-        crisisCreated = true;
-        console.log(`[Protest] Tier ${tier} crisis created for nation ${nation.name}, protest ${protest.id}`);
-    }
-
-    // Non-crisis tiers: update protest_log + set cooldowns
-    if (!crisisCreated) {
-        await supabase.from('protest_log').update({
-            status: 'resolved',
-            tick_resolved: currentTick,
-            condition_score: conditionScore,
-            turnout_score: turnoutScore,
-            tier,
-            roll_breakdown: { ...breakdown, joint_bonus: jointBonus, endorsements: endorsementCount },
-            effects_applied: appliedEffects,
-        }).eq('id', protest.id);
-
-        // Calling party cooldown
-        await supabase.from('factions').update({
-            protest_cooldown_until_tick: currentTick + PROTEST_CALLING_COOLDOWN,
-        }).eq('id', factionId);
-
-        // Endorsing party cooldown
-        if (endorsements && endorsements.length > 0) {
-            await supabase.from('factions')
-                .update({ protest_cooldown_until_tick: currentTick + PROTEST_ENDORSING_COOLDOWN })
-                .in('id', endorsements.map(e => e.faction_id));
-        }
-    }
-
-    console.log(`[Protest] Resolved ${protest.id}: Tier ${tier} (${PROTEST_TIER_LABELS[tier]}), score ${turnoutScore.toFixed(1)}, condition ${conditionScore.toFixed(1)}`);
-
-    // ── Dispatch news article + system event ──
-    try {
-        const { data: callingFaction } = await supabase
-            .from('factions').select('faction_name').eq('id', factionId).single();
-        const partyName = callingFaction?.faction_name || 'Opposition';
-        const grievanceLabel = protest.demand_label || protest.grievance_data?.label || protest.grievance_type || 'government policy';
-        const demandLabel = protest.tier7_demand?.label || grievanceLabel;
-        const eventType = getProtestEventType(tier, crisisCreated);
-        const vars = { party: partyName, nation: nation.name || '', grievance: grievanceLabel, demand: demandLabel, ticks_active: '1' };
-        const headline = pickProtestHeadline(eventType, vars);
-        const lede = `${partyName} organised a protest in ${nation.name || 'the nation'} over ${grievanceLabel}. ` +
-            `The turnout was rated as ${PROTEST_TIER_LABELS[tier] || 'Tier ' + tier} (score: ${turnoutScore.toFixed(0)}).` +
-            (crisisCreated ? ` The protest has triggered a national crisis.` : '');
-
-        await dispatchProtestArticle(supabase, nationId, eventType, headline, lede, protestArticleTier(tier), currentTick, protest.id);
-        await fireProtestEvent(supabase, nationId, `protest:resolved:tier${tier}`, currentTick, {
-            party: partyName, tier, score: Math.round(turnoutScore), grievance: grievanceLabel, crisis: crisisCreated,
-        });
-    } catch (artErr) {
-        console.warn(`[Protest] Article/event dispatch failed (non-fatal):`, artErr);
-    }
-
-    return { tier, turnoutScore, conditionScore, crisisCreated, effects: appliedEffects };
-}
-
-/**
- * Process one tick of an active Tier 6 or 7 protest crisis.
- */
-async function processProtestCrisisTick(supabase, nation, protest, currentTick) {
-    const ticksActive = currentTick - (protest.crisis_started_tick || currentTick);
-    const duration = protest.crisis_duration || PROTEST_TIER6_DURATION;
-    const isTier7 = protest.tier === 7;
-    const nationId = nation.id;
-
-    // Check if Public Address was used this tick
-    const publicAddressThisTick = protest.public_address_last_tick === currentTick;
-
-    // Apply per-tick stat effects
-    // KNOWN ISSUE: reads from pre-tick `nation` snapshot — if earlier processors in
-    // this tick already modified these stats, this write overwrites their changes.
-    // Safe for now because protest-affected stats (civil_unrest, happiness, etc.)
-    // are not modified by other processors in the same tick cycle.
-    const updates = {};
-    if (isTier7) {
-        // Tier 7: gov approval -3, civil unrest +3, gdp_growth -0.2, foreign_investment -2, political_violence +1
-        updates.civil_unrest = Math.min(100, (nation.civil_unrest || 0) + (publicAddressThisTick ? 2 : 3));
-        updates.gdp_growth = Math.max(-10, (nation.gdp_growth || 0) - 0.2);
-        updates.foreign_investment = Math.max(0, (nation.foreign_investment || 0) - 2);
-        updates.political_violence = Math.min(100, (nation.political_violence || 0) + 1);
-        await adjustGovernmentApprovalEvent(supabase, nationId, -3, 'protest:tier7:per_tick');
-    } else {
-        // Tier 6: gov approval -2, civil unrest +2, happiness -1, political violence +1 after tick 3
-        updates.civil_unrest = Math.min(100, (nation.civil_unrest || 0) + (publicAddressThisTick ? 1 : 2));
-        updates.happiness = Math.max(0, (nation.happiness || 0) - 1);
-        if (ticksActive > 3) {
-            updates.political_violence = Math.min(100, (nation.political_violence || 0) + 1);
-        }
-        await adjustGovernmentApprovalEvent(supabase, nationId, -2, 'protest:tier6:per_tick');
-    }
-
-    // Public Address moderate bloc bonus
-    if (publicAddressThisTick) {
-        const { data: moderateBlocs } = await supabase
-            .from('voter_blocs')
-            .select('id, bloc_name')
-            .eq('nation_id', nationId).eq('is_active', true)
-            .or('bloc_name.ilike.%centrist%,bloc_name.ilike.%moderate%');
-        for (const bloc of (moderateBlocs || [])) {
-            // +1 moderate bloc approval for calling faction
-            await adjustMomentum(supabase, nationId, protest.faction_id, bloc.id, 1, 'protest:public_address');
-        }
-    }
-
-    if (Object.keys(updates).length > 0) {
-        await supabase.from('nations').update(updates).eq('id', nationId);
-    }
-
-    // Check Tier 7 demand met
-    if (isTier7 && protest.tier7_demand && !protest.tier7_demand_met) {
-        const demandMet = await checkTier7DemandMet(supabase, nation, protest.tier7_demand, currentTick, protest.crisis_started_tick);
-        if (demandMet) {
-            await supabase.from('protest_log').update({ tier7_demand_met: true }).eq('id', protest.id);
-            // Crisis ends 2 ticks after demand met for minister, immediately for stat
-            const endTick = protest.tier7_demand.type === 'minister'
-                ? currentTick + 2
-                : currentTick;
-            await supabase.from('protest_log').update({ crisis_ended_tick: endTick }).eq('id', protest.id);
-            console.log(`[Protest] Tier 7 demand met for protest ${protest.id}, ending at tick ${endTick}`);
-        }
-    }
-
-    // Check crisis expiry (natural or forced)
-    const expired = (protest.crisis_ended_tick && currentTick >= protest.crisis_ended_tick) ||
-                    (ticksActive >= duration);
-
-    if (expired) {
-        await finalizeProtestEnd(supabase, nationId, protest, currentTick);
-
-        // Tier 7 unmet demand: leave electoral wound
-        if (isTier7 && !protest.tier7_demand_met) {
-            console.log(`[Protest] Tier 7 demand unmet for ${protest.id} — electoral wound created`);
-            // Store as unresolved grievance on the protest_log for election display
-            await supabase.from('protest_log').update({
-                effects_applied: [
-                    ...(protest.effects_applied || []),
-                    { stat: 'electoral_wound', note: 'unresolved_tier7_demand', demand: protest.tier7_demand }
-                ]
-            }).eq('id', protest.id);
-        }
-
-        // Dispatch crisis-ended article
-        try {
-            const { data: cf } = await supabase.from('factions').select('faction_name').eq('id', protest.faction_id).single();
-            const pName = cf?.faction_name || 'Opposition';
-            const demandMet = !!(isTier7 && protest.tier7_demand_met);
-            const vars = { party: pName, nation: nation.name || '', ticks_active: String(ticksActive) };
-            const headline = pickProtestHeadline(demandMet ? 'protest_crisis_ended' : 'protest_crisis_ended', vars);
-            const lede = demandMet
-                ? `The protest crisis in ${nation.name} has ended after the government met the demonstrators' demand. ${pName}'s supporters are dispersing after ${ticksActive} ticks of unrest.`
-                : `After ${ticksActive} ticks of sustained unrest, the protest crisis in ${nation.name} has come to an end. The ${PROTEST_TIER_LABELS[protest.tier] || 'protest'} organised by ${pName} has left its mark on the nation.`;
-            await dispatchProtestArticle(supabase, nationId, 'protest_crisis_ended', headline, lede, 2, currentTick, protest.id);
-            await fireProtestEvent(supabase, nationId, 'protest:crisis_ended', currentTick, {
-                party: pName, tier: protest.tier, ticks_active: ticksActive, demand_met: demandMet,
-            });
-        } catch (artErr) { console.warn('[Protest] Crisis-ended article dispatch failed:', artErr); }
-
-        return { expired: true, ticksActive };
-    }
-
-    // Dispatch ongoing crisis article every 2 ticks
-    if (ticksActive > 0 && ticksActive % 2 === 0) {
-        try {
-            const { data: cf } = await supabase.from('factions').select('faction_name').eq('id', protest.faction_id).single();
-            const pName = cf?.faction_name || 'Opposition';
-            const vars = { party: pName, nation: nation.name || '', ticks_active: String(ticksActive) };
-            const headline = pickProtestHeadline('protest_crisis_tick', vars);
-            const lede = `The protest crisis in ${nation.name} continues for its ${ticksActive}th tick. ${PROTEST_TIER_LABELS[protest.tier] || 'The protest'} shows no sign of abating.`;
-            await dispatchProtestArticle(supabase, nationId, 'protest_crisis_tick', headline, lede, 2, currentTick, protest.id);
-        } catch (artErr) { console.warn('[Protest] Crisis-tick article dispatch failed:', artErr); }
-    }
-
-    return { expired: false, ticksActive, updates };
-}
-
-/**
- * Finalize protest end: remove crisis, clear lockouts, set cooldowns.
- */
-async function finalizeProtestEnd(supabase, nationId, protest, currentTick) {
-    // Remove crisis from active_crises
-    const crisisId = protest.tier === 7 ? PROTEST_TIER7_CRISIS_ID : PROTEST_TIER6_CRISIS_ID;
-    await supabase.from('active_crises')
-        .delete()
-        .eq('nation_id', nationId)
-        .eq('crisis_id', crisisId);
-
-    // Mark protest as resolved/expired
-    if (protest.status === 'called_off') {
-        // Already marked called_off, just ensure it's finalized
-        await supabase.from('protest_log').update({
-            tick_resolved: currentTick,
-        }).eq('id', protest.id).is('tick_resolved', null);
-    } else {
-        await supabase.from('protest_log').update({
-            status: 'expired',
-            tick_resolved: currentTick,
-        }).eq('id', protest.id);
-    }
-
-    // Clear lockouts on all factions
-    await supabase.from('factions')
-        .update({ protest_locked_by: null })
-        .eq('protest_locked_by', protest.id);
-
-    // Set cooldowns from this moment
-    await supabase.from('factions').update({
-        protest_cooldown_until_tick: currentTick + PROTEST_CALLING_COOLDOWN,
-    }).eq('id', protest.faction_id);
-
-    // Endorsing parties cooldown
-    const { data: endorsements } = await supabase
-        .from('protest_endorsements')
-        .select('faction_id')
-        .eq('protest_id', protest.id);
-    if (endorsements && endorsements.length > 0) {
-        await supabase.from('factions')
-            .update({ protest_cooldown_until_tick: currentTick + PROTEST_ENDORSING_COOLDOWN })
-            .in('id', endorsements.map(e => e.faction_id));
-    }
-
-    console.log(`[Protest] Finalized end of protest ${protest.id} (tier ${protest.tier}) in nation ${nationId}`);
-}
-
-/**
- * Generate a Tier 7 demand based on worst-performing eligible stat.
- */
-async function generateTier7DemandTick(supabase, nation, currentTick) {
-    const nationId = nation.id;
-
-    const { data: statRows } = await supabase
-        .from('stat_history')
-        .select('stat_name, value, tick')
-        .eq('nation_id', nationId)
-        .gte('tick', currentTick - 6)
-        .order('tick', { ascending: true });
-
-    const statMap = {};
-    for (const row of (statRows || [])) {
-        if (!statMap[row.stat_name]) statMap[row.stat_name] = [];
-        statMap[row.stat_name].push({ tick: row.tick, value: row.value });
-    }
-
-    const failingStats = [];
-    for (const [key, history] of Object.entries(statMap)) {
-        if (!PROTEST_TIER7_ELIGIBLE.has(key)) continue;
-        const sorted = history.sort((a, b) => a.tick - b.tick);
-        const current = nation[key] ?? sorted[sorted.length - 1]?.value ?? 0;
-        const sixAgo = sorted[0]?.value ?? current;
-        const delta = current - sixAgo;
-        const failureScore = PROTEST_HIGHER_IS_BAD.has(key) ? delta : -delta;
-        if (failureScore > 0) {
-            const changes = sorted.slice(1).map((h, i) => Math.abs(h.value - sorted[i].value));
-            const avgChange = changes.length > 0 ? changes.reduce((s, v) => s + v, 0) / changes.length : 1;
-            failingStats.push({ key, failureScore, avgChange, displayName: key.replace(/_/g, ' ') });
-        }
-    }
-
-    failingStats.sort((a, b) => b.failureScore - a.failureScore);
-
-    if (failingStats.length > 0) {
-        const worst = failingStats[0];
-        const rawDemand = Math.round(worst.avgChange * 6 * 1.5);
-        const magnitude = Math.max(PROTEST_TIER7_DEMAND_MIN, rawDemand);
-        const direction = PROTEST_HIGHER_IS_BAD.has(worst.key) ? 'reduce' : 'raise';
-        return {
-            type: 'stat',
-            stat: worst.key,
-            magnitude,
-            direction,
-            label: `${direction === 'reduce' ? 'Reduce' : 'Raise'} ${worst.displayName} by ${magnitude}`,
-        };
-    }
-
-    // Fallback: most unpopular minister
-    const { data: ministers } = await supabase
-        .from('ministries')
-        .select('ministry_key, minister_first_name, minister_last_name, minister_approval, party_id')
-        .eq('nation_id', nationId)
-        .not('party_id', 'is', null)
-        .order('minister_approval', { ascending: true })
-        .limit(1);
-
-    if (ministers && ministers.length > 0) {
-        const worst = ministers[0];
-        const name = `${worst.minister_first_name || ''} ${worst.minister_last_name || ''}`.trim() || worst.ministry_key;
-        return {
-            type: 'minister',
-            target: worst.ministry_key,
-            targetName: name,
-            label: `${name} must resign.`,
-        };
-    }
-
-    return {
-        type: 'stat', stat: 'happiness', magnitude: PROTEST_TIER7_DEMAND_MIN,
-        direction: 'raise', label: `Raise happiness by ${PROTEST_TIER7_DEMAND_MIN}`,
-    };
-}
-
-/**
- * Check if a Tier 7 demand has been met.
- */
-async function checkTier7DemandMet(supabase, nation, demand, currentTick, crisisStartTick) {
-    if (!demand) return false;
-
-    if (demand.type === 'minister') {
-        // Check if the demanded minister has been fired
-        const { data: ministry } = await supabase
-            .from('ministries')
-            .select('party_id')
-            .eq('nation_id', nation.id)
-            .eq('ministry_key', demand.target)
-            .single();
-        return ministry != null && ministry.party_id == null;
-    }
-
-    if (demand.type === 'stat') {
-        // Check if stat moved by the demanded magnitude since crisis start
-        const { data: historyRows } = await supabase
-            .from('stat_history')
-            .select('value')
-            .eq('nation_id', nation.id)
-            .eq('stat_name', demand.stat)
-            .lte('tick', crisisStartTick || currentTick)
-            .order('tick', { ascending: false })
-            .limit(1);
-
-        const startVal = historyRows?.[0]?.value;
-        const currentVal = nation[demand.stat];
-        if (startVal == null || currentVal == null) return false;
-
-        const moved = demand.direction === 'reduce'
-            ? (startVal - currentVal)
-            : (currentVal - startVal);
-        return moved >= demand.magnitude;
-    }
-
-    return false;
-}
-
-/**
- * Decay protest use counters for all factions in a nation.
- * Decrements by 1 per PROTEST_USE_DECAY_INTERVAL ticks of non-use.
- */
-async function decayProtestUseCounters(supabase, nationId, currentTick) {
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id, protest_use_count, protest_last_use_tick')
-        .eq('nation_id', nationId)
-        .gt('protest_use_count', 0);
-
-    for (const f of (factions || [])) {
-        if (f.protest_last_use_tick == null) continue;
-        const elapsed = currentTick - f.protest_last_use_tick;
-        const decay = Math.floor(elapsed / PROTEST_USE_DECAY_INTERVAL);
-        if (decay > 0) {
-            const newCount = Math.max(0, (f.protest_use_count || 0) - decay);
-            if (newCount !== f.protest_use_count) {
-                await supabase.from('factions')
-                    .update({ protest_use_count: newCount })
-                    .eq('id', f.id);
-            }
-        }
-    }
-}
-
 // ==================== ADVANCE TICK ====================
 
 async function advanceTick(supabase, { force = false, reprocess = false } = {}) {
@@ -23671,11 +23628,26 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
       try {
         const { data: factions } = await supabase
             .from('factions')
-            .select('id, approval_rating, faction_type, pyrrhic_victory_until_tick')
+            .select('id, approval_rating, faction_type')
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party');
 
         if (!factions || factions.length === 0) continue;
+
+        // Autocracy V5: +5 AP per tick, capped at 20. No coalition bonus.
+        if (isAutocracy(nation)) {
+            for (const faction of factions) {
+                const result = await accumulateAP(supabase, faction.id, 5, GAME_CONFIG.MAX_AP);
+                if (result.success) {
+                    console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+5, autocracy)`);
+                    apDistributed++;
+                } else {
+                    console.error(`[advanceTick] Autocracy AP FAILED for faction ${faction.id}: ${result.error}`);
+                    apFailed++;
+                }
+            }
+            continue;  // skip democracy AP logic
+        }
 
         const coalition = await fetchActiveCoalition(supabase, nation.id);
         const governmentPartyIds = new Set([
@@ -23691,11 +23663,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             // Family member successor penalty: ruling faction loses 1 AP/tick
             if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) {
                 apGain = Math.max(1, apGain - 1);
-            }
-
-            // Pyrrhic Victory penalty: -2 AP/tick during commitment period
-            if (faction.pyrrhic_victory_until_tick && faction.pyrrhic_victory_until_tick > newTick) {
-                apGain = Math.max(1, apGain - 2);
             }
 
             const result = await accumulateAP(supabase, faction.id, apGain);
@@ -23810,35 +23777,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Set correct seat count for this nation (affects supermajority thresholds, etc.)
         initGameConfigForNation(nation);
 
-        // Auto-disband parties inactive for 15+ ticks
-        const AUTO_DISBAND_TICKS = 15;
-        try {
-            const { data: allFactions } = await supabase
-                .from('factions')
-                .select('id, faction_name, last_seen_tick, faction_type')
-                .eq('nation_id', nation.id)
-                .eq('faction_type', 'party');
-
-            const inactiveFactions = (allFactions || []).filter(f => {
-                if (f.last_seen_tick == null) return false; // new parties that haven't loaded yet — don't punish
-                return (newTick - f.last_seen_tick) >= AUTO_DISBAND_TICKS;
-            });
-
-            for (const inactive of inactiveFactions) {
-                try {
-                    console.log(`[advanceTick] Auto-disbanding "${inactive.faction_name}" (${inactive.id}) — inactive for ${newTick - inactive.last_seen_tick} ticks in ${nation.name}`);
-                    await disbandParty(supabase, nation.id, inactive.id, newTick);
-                    summary.autoDisbands = summary.autoDisbands || [];
-                    summary.autoDisbands.push({ nation: nation.name, faction: inactive.faction_name, inactiveTicks: newTick - inactive.last_seen_tick });
-                } catch (disbandErr) {
-                    // Non-fatal: e.g. Survivor PM blocks disband — log and continue
-                    console.warn(`[advanceTick] Auto-disband failed for "${inactive.faction_name}" in ${nation.name}:`, disbandErr.message || disbandErr);
-                }
-            }
-        } catch (inactErr) {
-            console.error(`[advanceTick] Inactivity check failed for ${nation.name} (non-fatal):`, inactErr);
-        }
-
         // Stat effects (from passed bills/active laws)
         try {
             const effectResults = await processStatEffects(supabase, nation, newTick);
@@ -23887,48 +23825,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Stat decay failed for ${nation.name} (non-fatal):`, decayErr);
         }
 
-        // Political Violence decay override — protest-aware with dynamic floor
-        try {
-            const pvCurrent = Number(nation.political_violence ?? 0);
-            const incomeIneq = Number(nation.income_inequality ?? 0);
-            const povertyRate = Number(nation.poverty_rate ?? 0);
-
-            // Check if a protest crisis is active for this nation
-            const { data: pvCrisisRows } = await supabase
-                .from('protest_log')
-                .select('id')
-                .eq('nation_id', nation.id)
-                .eq('status', 'crisis_active')
-                .limit(1);
-            const pvCrisisActive = (pvCrisisRows || []).length > 0;
-
-            // Check if EPO ministry action is active (last 4 ticks)
-            const { data: pvEpoRows } = await supabase
-                .from('ministry_action_log')
-                .select('id')
-                .eq('nation_id', nation.id)
-                .eq('action_key', 'enforcePublicOrder')
-                .gte('applied_at_tick', newTick - 4)
-                .limit(1);
-            const pvEpoActive = (pvEpoRows || []).length > 0;
-
-            // Compute protest-aware decay
-            if (!pvCrisisActive) {
-                const pvFloor = (incomeIneq / 100) * 20 + (povertyRate / 100) * 15;
-                const pvDecayRate = pvEpoActive ? 1.5 : 0.5;
-                const pvNew = Math.round(Math.max(pvFloor, pvCurrent - pvDecayRate) * 10) / 10;
-                if (pvNew !== Math.round(pvCurrent * 10) / 10) {
-                    await supabase.from('nations').update({ political_violence: pvNew }).eq('id', nation.id);
-                    nation.political_violence = pvNew;
-                    console.log(`[PV Decay] ${nation.name}: ${pvCurrent} → ${pvNew} (floor=${pvFloor.toFixed(1)}, epo=${pvEpoActive})`);
-                }
-            } else {
-                console.log(`[PV Decay] ${nation.name}: paused (crisis active)`);
-            }
-        } catch (pvErr) {
-            console.error(`[advanceTick] PV decay override failed for ${nation.name} (non-fatal):`, pvErr);
-        }
-
         // Stat connections (threshold-triggered ripple effects)
         try {
             if (!_statConnections) {
@@ -23972,17 +23868,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (debtErr) {
             console.error(`[advanceTick] Sovereign debt mechanics failed for ${nation.name} (non-fatal):`, debtErr);
-        }
-
-        // Debt pressure: graduated stat effects from debt-to-GDP ratio
-        try {
-            const pressureResult = await processDebtPressure(supabase, nation);
-            if (pressureResult && pressureResult.applied) {
-                summary.debtPressure = summary.debtPressure || [];
-                summary.debtPressure.push({ nation: nation.name, ...pressureResult });
-            }
-        } catch (pressureErr) {
-            console.error(`[advanceTick] Debt pressure failed for ${nation.name} (non-fatal):`, pressureErr);
         }
 
         // Austerity commitments from enacted sovereign defaults
@@ -24290,6 +24175,95 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Purge decay failed for ${nation.name} (non-fatal):`, purgeErr);
         }
 
+        // Autocracy V5: pillar passive drift, wildcard decay, neglect, longevity
+        try {
+            if (isAutocracy(nation)) {
+                const pillarResult = await processAutocracyPillarTick(supabase, nation, newTick);
+                if (pillarResult) {
+                    summary.autocracyPillars = summary.autocracyPillars || [];
+                    summary.autocracyPillars.push(pillarResult);
+                }
+            }
+        } catch (pillarErr) {
+            console.error(`[advanceTick] Autocracy pillar tick failed for ${nation.name} (non-fatal):`, pillarErr);
+        }
+
+        // Autocracy V5: timed effects (Rally/Agitate/Patronage buffs), deploy decay, congress resolution
+        try {
+            if (isAutocracy(nation)) {
+                await processAutocracyTimedEffects(supabase, nation, newTick);
+                await processDeployEscalationDecay(supabase, nation.id, newTick);
+                await resolvePartyCongressPending(supabase, nation.id, newTick);
+            }
+        } catch (timedErr) {
+            console.error(`[advanceTick] Autocracy timed effects failed for ${nation.name} (non-fatal):`, timedErr);
+        }
+
+        // Autocracy V5: vulnerability windows (Strongman backing = 0 → 3-tick window)
+        try {
+            if (isAutocracy(nation)) {
+                const vulnResult = await processVulnerabilityWindows(supabase, nation, newTick);
+                if (vulnResult) {
+                    summary.autocracyVulnerability = summary.autocracyVulnerability || [];
+                    summary.autocracyVulnerability.push({ nation: nation.name, events: vulnResult });
+                }
+            }
+        } catch (vulnErr) {
+            console.error(`[advanceTick] Vulnerability window processing failed for ${nation.name} (non-fatal):`, vulnErr);
+        }
+
+        // Autocracy V5: putsch resolution (after response window expires)
+        try {
+            if (isAutocracy(nation)) {
+                const putschResult = await processPutschResolution(supabase, nation, newTick);
+                if (putschResult) {
+                    summary.autocracyPutsch = summary.autocracyPutsch || [];
+                    summary.autocracyPutsch.push({ nation: nation.name, result: putschResult });
+                }
+            }
+        } catch (putschErr) {
+            console.error(`[advanceTick] Putsch resolution failed for ${nation.name} (non-fatal):`, putschErr);
+        }
+
+        // Autocracy V5: pyrrhic window expiry (3-tick window closes, regime stabilizes)
+        try {
+            if (isAutocracy(nation)) {
+                const pyrrhicResult = await processPyrrhicWindows(supabase, nation, newTick);
+                if (pyrrhicResult) {
+                    summary.autocracyPyrrhic = summary.autocracyPyrrhic || [];
+                    summary.autocracyPyrrhic.push({ nation: nation.name, events: pyrrhicResult });
+                }
+            }
+        } catch (pyrrhicErr) {
+            console.error(`[advanceTick] Pyrrhic window processing failed for ${nation.name} (non-fatal):`, pyrrhicErr);
+        }
+
+        // Autocracy V5: silent coup resolution (deal/vote phase)
+        try {
+            if (isAutocracy(nation)) {
+                const silentResult = await processSilentCoupResolution(supabase, nation, newTick);
+                if (silentResult) {
+                    summary.autocracySilentCoup = summary.autocracySilentCoup || [];
+                    summary.autocracySilentCoup.push({ nation: nation.name, result: silentResult });
+                }
+            }
+        } catch (silentErr) {
+            console.error(`[advanceTick] Silent coup resolution failed for ${nation.name} (non-fatal):`, silentErr);
+        }
+
+        // Autocracy V5: pillar leader aging (+1 year per 12 ticks, death at death_age)
+        try {
+            if (isAutocracy(nation)) {
+                const pillarAgingResult = await processAutocracyLeaderAging(supabase, nation, newTick);
+                if (pillarAgingResult) {
+                    summary.autocracyLeaderAging = summary.autocracyLeaderAging || [];
+                    summary.autocracyLeaderAging.push({ nation: nation.name, results: pillarAgingResult });
+                }
+            }
+        } catch (pillarAgingErr) {
+            console.error(`[advanceTick] Autocracy pillar leader aging failed for ${nation.name} (non-fatal):`, pillarAgingErr);
+        }
+
         // Seat rebalancing: if factions were disbanded and seats are vacant,
         // proportionally redistribute the empty seats across remaining factions.
         try {
@@ -24312,17 +24286,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (crisisErr) {
             console.error(`[advanceTick] Crisis processing failed for ${nation.name} (non-fatal):`, crisisErr);
-        }
-
-        // Protest system: resolve pending protests, process active crises, handle expiry/cooldowns
-        try {
-            const protestResults = await processProtests(supabase, nation, newTick);
-            if (protestResults.length > 0) {
-                summary.protests = summary.protests || [];
-                summary.protests.push({ nation: nation.name, protests: protestResults });
-            }
-        } catch (protestErr) {
-            console.error(`[advanceTick] Protest processing failed for ${nation.name} (non-fatal):`, protestErr);
         }
 
         // Population growth: apply population change based on current population_growth stat.
@@ -24379,48 +24342,19 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Three-pillar prefs failed for ${nation.name} (non-fatal):`, pillarErr);
         }
 
-        // Autocracy-specific per-tick processing (loyalty, pillars, stewards, standing, regime health, etc.)
-        if (isAutocracy(nation)) {
-            // Expire pending loyalty demands
-            try { await processLoyaltyDemandExpiry(supabase, nation, newTick); }
-            catch (e) { console.error(`[advanceTick] Loyalty demand expiry failed for ${nation.name} (non-fatal):`, e); }
+        // (Autocracy action systems removed — Phase 0. Actions will be added in Phase 4+.)
 
-            // Faction loyalty
-            try { await processLoyaltyTick(supabase, nation); }
-            catch (e) { console.error(`[advanceTick] Loyalty tick failed for ${nation.name} (non-fatal):`, e); }
-
-            // Regime pillars decay & bonus
-            try { await processRegimePillars(supabase, nation); }
-            catch (e) { console.error(`[advanceTick] Regime pillars failed for ${nation.name} (non-fatal):`, e); }
-
-            // Steward stats tick
-            try { await processStewardTick(supabase, nation); }
-            catch (e) { console.error(`[advanceTick] Steward tick failed for ${nation.name} (non-fatal):`, e); }
-
-            // Standing relevance decay
-            try { await processStandingTick(supabase, nation, newTick); }
-            catch (e) { console.error(`[advanceTick] Standing tick failed for ${nation.name} (non-fatal):`, e); }
-
-            // Regime health tick
-            try { await processRegimeHealthTick(supabase, nation, newTick); }
-            catch (e) { console.error(`[advanceTick] Regime health failed for ${nation.name} (non-fatal):`, e); }
-
-            // Unaligned seat pool regeneration
-            try { await processUnalignedPoolTick(supabase, nation, newTick); }
-            catch (e) { console.error(`[advanceTick] Unaligned pool failed for ${nation.name} (non-fatal):`, e); }
-
-            // Secret coalition detection
-            try { await processCoalitionDetection(supabase, nation, newTick); }
-            catch (e) { console.error(`[advanceTick] Coalition detection failed for ${nation.name} (non-fatal):`, e); }
-        }
-
-        // Auto-resolve shakeups that are 1+ ticks old
+        // Autocracy V5: tracker natural decay toward 30 (runs after actions resolve)
         try {
             if (isAutocracy(nation)) {
-                await autoResolveStaleShakeups(supabase, nation.id, newTick);
+                const trackerDecayResult = await processAutocracyTrackerDecay(supabase, nation, newTick);
+                if (trackerDecayResult) {
+                    summary.autocracyTrackerDecay = summary.autocracyTrackerDecay || [];
+                    summary.autocracyTrackerDecay.push(trackerDecayResult);
+                }
             }
-        } catch (shakeupErr) {
-            console.error(`[advanceTick] Shakeup auto-resolve failed for ${nation.name} (non-fatal):`, shakeupErr);
+        } catch (trackerDecayErr) {
+            console.error(`[advanceTick] Autocracy tracker decay failed for ${nation.name} (non-fatal):`, trackerDecayErr);
         }
 
         // Re-fetch nation with post-effect values for remaining processors
@@ -24492,144 +24426,70 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // ── Succession helper: updates HOS, syncs nation object, logs action ──
+        // Autocracies use V5 resolveSuccession (designated successor or auto-coup).
+        // Non-autocracies use random replacement (legacy behavior).
         async function handleStrongmanSuccession(
             supabase: any, nation: any, hosName: string, hosAge: number, newTick: number
         ) {
-            const FIRST = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
-            const LAST = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
-            const randFirst = () => FIRST[Math.floor(Math.random() * FIRST.length)];
-            const randLast = () => LAST[Math.floor(Math.random() * LAST.length)];
-
-            // Check for chosen successor
-            const { data: chosenSuccessor } = await supabase.from('stewards')
-                .select('id, faction_id, first_name, last_name, age, pillar_key, steward_type, succession_strength')
-                .eq('nation_id', nation.id).eq('is_chosen_successor', true).eq('is_alive', true)
-                .maybeSingle();
-
-            if (chosenSuccessor) {
-                // === CLEAN SUCCESSION ===
-                const successorName = `${chosenSuccessor.first_name} ${chosenSuccessor.last_name}`;
-                console.log(`[LeaderAging] Clean succession: ${successorName} takes power`);
-
-                await supabase.from('nations').update({
-                    head_of_state_first_name: chosenSuccessor.first_name,
-                    head_of_state_last_name: chosenSuccessor.last_name,
-                    head_of_state_age: chosenSuccessor.age,
-                    ruling_faction_id: chosenSuccessor.faction_id,
-                    successor_cooldown_end_tick: null, successor_is_family_member: false,
-                }).eq('id', nation.id);
-                nation.head_of_state_first_name = chosenSuccessor.first_name;
-                nation.head_of_state_last_name = chosenSuccessor.last_name;
-                nation.head_of_state_age = chosenSuccessor.age;
-                nation.ruling_faction_id = chosenSuccessor.faction_id;
-
-                // Retire old steward, reset coup readiness
-                await supabase.from('stewards').update({
-                    is_chosen_successor: false, succession_strength: 0,
-                    successor_appointed_tick: null, is_alive: false, died_at_tick: newTick,
-                }).eq('id', chosenSuccessor.id);
-                await supabase.from('stewards').update({ coup_readiness: 0 })
-                    .eq('nation_id', nation.id).eq('is_alive', true);
-
-                // Loyalty: new ruler -5, others -15
-                const { data: factions } = await supabase.from('factions')
-                    .select('id, loyalty').eq('nation_id', nation.id).eq('faction_type', 'party');
-                for (const fac of (factions || [])) {
-                    const drop = fac.id === chosenSuccessor.faction_id ? 5 : 15;
-                    await supabase.from('factions').update({
-                        loyalty: Math.max(0, (fac.loyalty ?? 50) - drop)
-                    }).eq('id', fac.id);
-                }
-
-                // Generate replacement steward
-                const stewardType = PILLAR_TO_STEWARD_TYPE[chosenSuccessor.pillar_key] || 'technocrat';
-                await supabase.from('stewards').insert({
-                    nation_id: nation.id, faction_id: chosenSuccessor.faction_id,
-                    pillar_key: chosenSuccessor.pillar_key, steward_type: stewardType,
-                    first_name: randFirst(), last_name: randLast(),
-                    age: 40 + Math.floor(Math.random() * 16),
-                    standing: 40, power_base: 30, true_loyalty: 50, estimated_loyalty: 55,
-                    personal_wealth: 0, exit_readiness: 0, coup_readiness: 0,
-                    is_alive: true, is_chosen_successor: false, succession_strength: 0,
-                    created_at_tick: newTick,
-                });
-
-                await supabase.from('campaign_actions').insert({
-                    party_id: chosenSuccessor.faction_id, nation_id: nation.id,
-                    action_type: 'clean_succession', tick_performed: newTick,
-                    result: { deceased_name: hosName, deceased_age: hosAge,
-                        successor_name: successorName, successor_faction_id: chosenSuccessor.faction_id,
-                        succession_strength: chosenSuccessor.succession_strength ?? 0, cause: 'natural_causes' },
-                });
-                return { type: 'clean_succession', deceased: hosName, deceasedAge: hosAge,
-                    successor: successorName, successorAge: chosenSuccessor.age };
-
-            } else if (nation.successor_is_family_member) {
-                // === FAMILY MEMBER SUCCESSION ===
-                console.log(`[LeaderAging] Family succession in ${nation.name}`);
-                const famFirst = randFirst();
-                const famLast = nation.head_of_state_last_name || 'Unknown';
-                const famAge = 30 + Math.floor(Math.random() * 16);
-                const famName = `${famFirst} ${famLast}`;
-
-                await supabase.from('nations').update({
-                    head_of_state_first_name: famFirst, head_of_state_last_name: famLast,
-                    head_of_state_age: famAge,
-                    successor_cooldown_end_tick: null, successor_is_family_member: false,
-                }).eq('id', nation.id);
-                nation.head_of_state_first_name = famFirst;
-                nation.head_of_state_last_name = famLast;
-                nation.head_of_state_age = famAge;
-
-                await supabase.from('stewards').update({ coup_readiness: 0 })
-                    .eq('nation_id', nation.id).eq('is_alive', true);
-
-                const { data: factions } = await supabase.from('factions')
-                    .select('id, loyalty').eq('nation_id', nation.id).eq('faction_type', 'party');
-                for (const fac of (factions || [])) {
-                    await supabase.from('factions').update({
-                        loyalty: Math.max(0, (fac.loyalty ?? 50) - 5)
-                    }).eq('id', fac.id);
-                }
-
+            // V5 succession for autocracies
+            if (isAutocracy(nation)) {
                 await supabase.from('campaign_actions').insert({
                     party_id: nation.ruling_faction_id, nation_id: nation.id,
-                    action_type: 'family_succession', tick_performed: newTick,
-                    result: { deceased_name: hosName, deceased_age: hosAge,
-                        successor_name: famName, is_family_member: true, cause: 'natural_causes' },
+                    action_type: 'strongman_death', tick_performed: newTick,
+                    result: { deceased_name: hosName, deceased_age: hosAge, cause: 'natural_causes' },
                 });
-                return { type: 'family_succession', deceased: hosName, deceasedAge: hosAge,
-                    successor: famName, successorAge: famAge };
 
-            } else {
-                // === NO SUCCESSOR — random replacement ===
-                const newFirst = randFirst();
-                const newLast = randLast();
+                const successionResult = await resolveSuccession(supabase, nation, newTick);
+
+                // Generate new HOS identity for the new regime
+                const FIRST = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
+                const LAST = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
+                const newFirst = FIRST[Math.floor(Math.random() * FIRST.length)];
+                const newLast = LAST[Math.floor(Math.random() * LAST.length)];
                 const newAge = 45 + Math.floor(Math.random() * 16);
-                const newName = `${newFirst} ${newLast}`;
 
                 await supabase.from('nations').update({
                     head_of_state_first_name: newFirst, head_of_state_last_name: newLast,
                     head_of_state_age: newAge,
-                    successor_cooldown_end_tick: null, successor_is_family_member: false,
+                    designated_successor_faction_id: null,
                 }).eq('id', nation.id);
                 nation.head_of_state_first_name = newFirst;
                 nation.head_of_state_last_name = newLast;
                 nation.head_of_state_age = newAge;
 
-                await supabase.from('campaign_actions').insert({
-                    party_id: nation.ruling_faction_id, nation_id: nation.id,
-                    action_type: 'strongman_death', tick_performed: newTick,
-                    result: { deceased_name: hosName, deceased_age: hosAge,
-                        successor_name: newName, successor_age: newAge, cause: 'natural_causes' },
-                });
                 return { type: 'strongman_death', deceased: hosName, deceasedAge: hosAge,
-                    successor: newName, successorAge: newAge };
+                    successor: `${newFirst} ${newLast}`, successorAge: newAge, ...successionResult };
             }
+
+            // Legacy random replacement for non-autocracies
+            const FIRST = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
+            const LAST = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
+            const newFirst = FIRST[Math.floor(Math.random() * FIRST.length)];
+            const newLast = LAST[Math.floor(Math.random() * LAST.length)];
+            const newAge = 45 + Math.floor(Math.random() * 16);
+            const newName = `${newFirst} ${newLast}`;
+
+            await supabase.from('nations').update({
+                head_of_state_first_name: newFirst, head_of_state_last_name: newLast,
+                head_of_state_age: newAge,
+                successor_cooldown_end_tick: null, successor_is_family_member: false,
+            }).eq('id', nation.id);
+            nation.head_of_state_first_name = newFirst;
+            nation.head_of_state_last_name = newLast;
+            nation.head_of_state_age = newAge;
+
+            await supabase.from('campaign_actions').insert({
+                party_id: nation.ruling_faction_id, nation_id: nation.id,
+                action_type: 'strongman_death', tick_performed: newTick,
+                result: { deceased_name: hosName, deceased_age: hosAge,
+                    successor_name: newName, successor_age: newAge, cause: 'natural_causes' },
+            });
+            return { type: 'strongman_death', deceased: hosName, deceasedAge: hosAge,
+                successor: newName, successorAge: newAge };
         }
 
         // ── Leader aging (every January — tick % 12 === 0) ──
-        // All party leaders, stewards, and the strongman age 1 year.
+        // All party leaders and the strongman age 1 year.
         // The strongman also rolls health checks starting at age 70.
         if (newTick % 12 === 0) {
             try {
@@ -24769,31 +24629,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     }
                 }
 
-                // 2. Age all living stewards +1 (autocracy)
+                // 2. Age the strongman (head of state) +1 and roll health checks (autocracy)
                 if (isAutocracy(nation)) {
-                    const { data: livingStews } = await supabase
-                        .from('stewards')
-                        .select('id, age, first_name, last_name, faction_id')
-                        .eq('nation_id', nation.id)
-                        .eq('is_alive', true);
-
-                    if (livingStews && livingStews.length > 0) {
-                        for (const s of livingStews) {
-                            const newAge = (s.age || 40) + 1;
-                            await supabase.from('stewards')
-                                .update({ age: newAge })
-                                .eq('id', s.id);
-                            agingResults.push({
-                                type: 'steward',
-                                name: `${s.first_name} ${s.last_name}`,
-                                stewardId: s.id,
-                                factionId: s.faction_id,
-                                newAge
-                            });
-                        }
-                    }
-
-                    // 3. Age the strongman (head of state) +1 and roll health checks
+                    // (Steward aging removed — Phase 0)
                     const hosAge = Number(nation.head_of_state_age ?? 0);
                     if (hosAge > 0) {
                         const newHosAge = hosAge + 1;
