@@ -283,6 +283,22 @@ export async function dispatchAutocracyAction(supabase, params) {
     }
 
     // ── Log the action ──────────────────────────────────────────────────
+    const logDetails = { ...extra, tracker_delta: trackerDelta };
+
+    // For leader-targeting actions, capture the target leader & faction name
+    const LEADER_TARGET_ACTIONS = ['arrest_leader', 'execute_leader', 'release_leader'];
+    if (LEADER_TARGET_ACTIONS.includes(actionType) && extra?.targetFactionId) {
+        const { data: targetParty } = await supabase.from('factions')
+            .select('faction_name, leader_first_name, leader_last_name')
+            .eq('id', extra.targetFactionId).single();
+        if (targetParty) {
+            logDetails.target_leader_name = (targetParty.leader_first_name && targetParty.leader_last_name)
+                ? `${targetParty.leader_first_name} ${targetParty.leader_last_name}`
+                : null;
+            logDetails.target_faction_name = targetParty.faction_name;
+        }
+    }
+
     await supabase.from('autocracy_action_log').insert({
         nation_id: nationId,
         faction_id: factionId,
@@ -290,7 +306,7 @@ export async function dispatchAutocracyAction(supabase, params) {
         action_type: actionType,
         action_mode: actionDef.hasDualMode === false ? null : effectiveMode,
         ap_spent: apCost,
-        details: { ...extra, tracker_delta: trackerDelta },
+        details: logDetails,
     });
 
     // ── Execute action-specific logic ───────────────────────────────────

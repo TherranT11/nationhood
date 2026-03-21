@@ -597,10 +597,14 @@ function renderAutocracyEventsBox(actionLog, allParties, pillarStates, currentTi
             // For arrest/execute/release, show the target leader and faction
             let targetInfo = '';
             if (LEADER_TARGET_ACTIONS.has(entry.action_type) && entry.details?.targetFactionId) {
-                const targetFps = pillarStates.find(ps => ps.faction_id === entry.details.targetFactionId);
                 const targetParty = (allParties || []).find(p => p.id === entry.details.targetFactionId);
-                const targetLeaderName = targetFps?.leader_name || 'Unknown';
-                const targetFactionName = targetParty?.faction_name || 'Unknown';
+                // Prefer logged name (survives execution), then current party leader, then pillar state
+                const targetLeaderName = entry.details.target_leader_name
+                    || (targetParty?.leader_first_name && targetParty?.leader_last_name
+                        ? `${targetParty.leader_first_name} ${targetParty.leader_last_name}` : null)
+                    || pillarStates.find(ps => ps.faction_id === entry.details.targetFactionId)?.leader_name
+                    || 'Unknown';
+                const targetFactionName = entry.details.target_faction_name || targetParty?.faction_name || 'Unknown';
                 targetInfo = `<div style="font-size:10px;color:var(--dtext-2);margin-top:1px">${escapeHtml(targetLeaderName)} of ${escapeHtml(targetFactionName)}</div>`;
             }
 
