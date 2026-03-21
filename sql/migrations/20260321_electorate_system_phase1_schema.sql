@@ -463,3 +463,24 @@ END $$;
 -- DONE — Phase 1 complete. 9 tables created, indexes added, RLS enabled.
 -- Old tables (voter_blocs, faction_bloc_approval) remain untouched.
 -- ============================================================================
+
+-- ============================================================================
+-- KNOWN ISSUE: RLS POLICIES ARE PERMISSIVE (USING (true))
+-- ============================================================================
+-- All 9 electorate tables currently use wide-open RLS policies. This means:
+--   - Any authenticated client can SELECT/INSERT/UPDATE/DELETE any row.
+--   - faction_issue_stance can be written by any client for any faction.
+--   - faction_electoral_standing approval/visibility can be manipulated.
+--
+-- This is acceptable for alpha because:
+--   1. All writes go through server-side Deno Edge Functions (trusted context).
+--   2. Frontend only reads; campaign actions route through the edge function.
+--   3. Alpha has a small, trusted player base.
+--
+-- Before beta/public launch, replace with ownership-based policies:
+--   - SELECT: USING (true) is fine (public data).
+--   - INSERT/UPDATE/DELETE on faction_issue_stance, faction_electoral_standing:
+--       USING (faction_id IN (SELECT id FROM factions WHERE user_id = auth.uid()))
+--   - INSERT on activity_log, campaign_actions:
+--       WITH CHECK (faction_id IN (SELECT id FROM factions WHERE user_id = auth.uid()))
+-- ============================================================================

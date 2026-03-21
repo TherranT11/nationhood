@@ -760,6 +760,7 @@ export async function tickElectorate(supabase, nation, currentTick) {
     if (!profile) {
         console.warn(`[Electorate] No electorate_profile for ${nation.name}, running genesis`);
         await genesisElectorate(supabase, nation, factions, currentTick);
+        // After genesis, skip tick processing — the next tick will pick up the seeded data
         return;
     }
 
@@ -1114,7 +1115,7 @@ function computeAxisSalienceWeights(issueStates) {
 function computeContestedVoteShares(updates) {
     if (updates.length === 0) return;
 
-    const k = CFG.SOFTMAX_TEMPERATURE;
+    const k = CFG.SOFTMAX_TEMPERATURE || 8; // guard against zero/undefined
     const appeals = updates.map(u => u.raw_appeal);
     const maxAppeal = Math.max(...appeals);
 
@@ -1195,16 +1196,18 @@ function round4(v) { return Math.round(v * 10000) / 10000; }
 async function updateNationalVoteShare(supabase, updates, inactiveFactions, nation) {
     for (const u of updates) {
         const pct = round2((u.realized_vote_share || 0) * 100);
-        await supabase.from('factions')
+        const { error } = await supabase.from('factions')
             .update({ national_vote_share: pct })
             .eq('id', u.faction_id);
+        if (error) { console.error('[Electorate] factions vote_share update failed:', error.message); continue; }
     }
 
     // Zero inactive
     for (const f of inactiveFactions) {
-        await supabase.from('factions')
+        const { error } = await supabase.from('factions')
             .update({ national_vote_share: 0 })
             .eq('id', f.id);
+        if (error) { console.error('[Electorate] factions zero vote_share update failed:', error.message); continue; }
     }
     if (inactiveFactions.length > 0) {
         console.log(`[Electorate] Zeroed national_vote_share for ${inactiveFactions.length} inactive parties in ${nation.name}`);
@@ -1267,9 +1270,10 @@ async function tickIssueSalience(supabase, nation, issueStates, currentTick) {
 
     // Batch write
     for (const u of updates) {
-        await supabase.from('issue_state')
+        const { error } = await supabase.from('issue_state')
             .update({ salience: u.salience, salience_target: u.salience_target, last_updated_tick: u.last_updated_tick })
             .eq('id', u.id);
+        if (error) { console.error('[Electorate] issue_state salience update failed:', error.message); continue; }
     }
 
     return issueStates;
@@ -1349,9 +1353,10 @@ async function tickElectorateProfile(supabase, nation, profile, currentTick) {
 
     if (anyChange) {
         changes.last_updated_tick = currentTick;
-        await supabase.from('electorate_profile')
+        const { error: profErr } = await supabase.from('electorate_profile')
             .update(changes)
             .eq('id', profile.id);
+        if (profErr) console.error('[Electorate] electorate_profile update failed:', profErr.message);
     }
 
     return profile;
@@ -1484,16 +1489,18 @@ async function tickStanceDecay(supabase, stances, currentTick) {
 
     // Batch update surviving stances
     for (const u of toUpdate) {
-        await supabase.from('faction_issue_stance')
+        const { error } = await supabase.from('faction_issue_stance')
             .update({ strength: u.strength, ticks_held: u.ticks_held, ticks_at_current_intensity: u.ticks_at_current_intensity })
             .eq('id', u.id);
+        if (error) { console.error('[Electorate] faction_issue_stance update failed:', error.message); continue; }
     }
 
     // Delete expired stances
     if (toDelete.length > 0) {
-        await supabase.from('faction_issue_stance')
+        const { error: delErr } = await supabase.from('faction_issue_stance')
             .delete()
             .in('id', toDelete);
+        if (delErr) console.error('[Electorate] faction_issue_stance delete failed:', delErr.message);
         console.log(`[Electorate] Removed ${toDelete.length} expired stances`);
     }
 }
@@ -1527,11 +1534,10 @@ export async function boostVisibility(supabase, factionId, nationId, boost) {
     const old = Number(standing.visibility ?? 30);
     const newVis = round2(clamp(old + boost, 0, 100));
 
-    await supabase.from('faction_electoral_standing')
+    const { error: visErr } = await supabase.from('faction_electoral_standing')
         .update({ visibility: newVis })
         .eq('id', standing.id);
-
-    console.log(`[Electorate] Visibility ${old} → ${newVis} for faction ${factionId} (+${boost})`);
+    if (visErr) console.error('[Electorate] visibility update failed:', visErr.message);
 }
 
 /**
@@ -1556,11 +1562,10 @@ export async function nudgeApproval(supabase, factionId, nationId, delta) {
     const old = Number(standing.party_approval ?? 50);
     const newApproval = round2(clamp(old + delta, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX));
 
-    await supabase.from('faction_electoral_standing')
+    const { error: appErr } = await supabase.from('faction_electoral_standing')
         .update({ party_approval: newApproval })
         .eq('id', standing.id);
-
-    console.log(`[Electorate] Approval ${old} → ${newApproval} for faction ${factionId} (${delta > 0 ? '+' : ''}${delta})`);
+    if (appErr) console.error('[Electorate] approval update failed:', appErr.message);
 }
 
 /**
@@ -1594,11 +1599,10 @@ export async function adjustCredibility(supabase, factionId, nationId, delta, su
         updateObj.credibility_recovery_suspended_until = Math.max(currentSuspend, suspendUntil);
     }
 
-    await supabase.from('faction_electoral_standing')
+    const { error: credErr } = await supabase.from('faction_electoral_standing')
         .update(updateObj)
         .eq('id', standing.id);
-
-    console.log(`[Electorate] Credibility ${old} → ${newCred} for faction ${factionId} (${delta > 0 ? '+' : ''}${delta})`);
+    if (credErr) console.error('[Electorate] credibility update failed:', credErr.message);
 }
 
 // ============================================================================
@@ -1751,7 +1755,7 @@ export async function executeTakeStance(supabase, factionId, nationId, issueId, 
     await boostVisibility(supabase, factionId, nationId, STANCE_CONFIG.VISIBILITY_BOOST);
 
     // ── Log to campaign_actions ──
-    await supabase.from('campaign_actions').insert({
+    const { error: insErr } = await supabase.from('campaign_actions').insert({
         party_id: factionId,
         nation_id: nationId,
         action_type: 'take_stance',
@@ -1770,11 +1774,13 @@ export async function executeTakeStance(supabase, factionId, nationId, issueId, 
             refreshed: alreadyHasStance,
         },
     });
+    if (insErr) console.error('[Electorate] campaign_actions insert failed:', insErr.message);
 
     // ── Log to activity_log ──
+    const axisInfo = IDEOLOGY_AXES.find(a => a.key === axis);
     const sideLabel = side === 'left'
-        ? IDEOLOGY_AXES.find(a => a.key === axis)?.leftLabel
-        : IDEOLOGY_AXES.find(a => a.key === axis)?.rightLabel;
+        ? (axisInfo?.leftLabel ?? 'Left')
+        : (axisInfo?.rightLabel ?? 'Right');
     await logActivity(supabase, factionId, nationId, 'take_stance',
         `Take a Stance: ${issueDef.label}`,
         `${intensity} ${sideLabel} stance on ${issueDef.label}${isPioneer ? ' (pioneer!)' : ''}${!ideologicallyConsistent ? ' (inconsistent)' : ''}`,
@@ -1786,8 +1792,6 @@ export async function executeTakeStance(supabase, factionId, nationId, issueId, 
     if (isPioneer) effects.push({ label: 'Pioneer bonus', value: '+5 appeal' });
     if (!ideologicallyConsistent) effects.push({ label: 'Inconsistent', value: '-5 appeal' });
     effects.push({ label: 'Visibility', value: `+${STANCE_CONFIG.VISIBILITY_BOOST}` });
-
-    console.log(`[Electorate] ${factionId} took ${intensity} ${sideLabel} stance on ${issueDef.label}${isPioneer ? ' (PIONEER)' : ''}`);
 
     return {
         success: true,

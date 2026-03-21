@@ -11,6 +11,18 @@ import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
 import { getElectabilityTier } from './game/party-leadership.js';
 import { AUTOCRACY_ACTIONS, dispatchAutocracyAction, getEscalatingCost, checkCooldown } from './game/autocracy-actions.js';
 
+// Lightweight toast notification (replaces alert() calls)
+function _showToast(msg, isError = true) {
+    const existing = document.getElementById('pol-toast');
+    if (existing) existing.remove();
+    const el = document.createElement('div');
+    el.id = 'pol-toast';
+    el.style.cssText = `position:fixed;top:20px;right:20px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:13px;font-family:var(--dfont-mono);max-width:400px;box-shadow:0 4px 12px rgba(0,0,0,0.3);transition:opacity 0.3s;${isError ? 'background:#2d1517;color:#f87171;border:1px solid #7f1d1d;' : 'background:#1a2e1a;color:#86efac;border:1px solid #14532d;'}`;
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+
 initPage('politics', async (state) => {
     const { nation, faction, shard } = state;
 
@@ -512,7 +524,7 @@ async function renderPartyTab(f, nation, data) {
                 await _supabase.auth.signOut();
                 window.location.href = 'index.html';
             } catch (err) {
-                alert(err.message || 'Failed to disband party.');
+                _showToast(err.message || 'Failed to disband party.');
                 disbandBtn.disabled = false;
                 disbandBtn.textContent = 'Disband Party';
             }
@@ -578,12 +590,12 @@ async function _loadActivityFeed(factionId, nationId) {
         html += `
         <div class="pol-feed-item">
             <div class="pol-feed-item-header">
-                <span class="pol-feed-item-type ${typeClass}">${(entry.action_label || entry.action_type).replace(/_/g, ' ')}</span>
+                <span class="pol-feed-item-type ${typeClass}">${escapeHtml((entry.action_label || entry.action_type).replace(/_/g, ' '))}</span>
                 <span style="font-family:var(--dfont-mono);font-size:10px;color:${factionColor};font-weight:600;">${factionLabel}</span>
                 ${entry.ap_spent ? `<span style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3);">${entry.ap_spent} AP</span>` : ''}
             </div>
-            ${entry.description ? `<div class="pol-feed-item-desc">${entry.description}</div>` : ''}
-            ${entry.outcome ? `<span class="pol-feed-item-outcome ${outcomeClass}">${entry.outcome}</span>` : ''}
+            ${entry.description ? `<div class="pol-feed-item-desc">${escapeHtml(entry.description)}</div>` : ''}
+            ${entry.outcome ? `<span class="pol-feed-item-outcome ${outcomeClass}">${escapeHtml(entry.outcome)}</span>` : ''}
         </div>`;
     }
 
@@ -2833,6 +2845,8 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             // Public Address — execute immediately, no config
             if (id === 'public_address' && _govProtestCrisis) {
                 if (el.classList.contains('disabled')) return;
+                if (el.dataset.executing) return; // double-fire guard
+                el.dataset.executing = 'true';
                 el.style.opacity = '0.4';
                 try {
                     const result = await executePublicAddress(_supabase, f.id, n.id, _govProtestCrisis.id, tick);
@@ -2840,12 +2854,14 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
                         f.action_points = result.newAp;
                         await renderDemocracyActions(n, f, _currentShard, _currentAllParties);
                     } else {
-                        alert(result.error || 'Public Address failed.');
+                        _showToast(result.error || 'Public Address failed.');
                         el.style.opacity = '';
+                        delete el.dataset.executing;
                     }
                 } catch (e) {
-                    alert('Error: ' + (e.message || 'Unknown'));
+                    _showToast('Error: ' + (e.message || 'Unknown'));
                     el.style.opacity = '';
+                    delete el.dataset.executing;
                 }
                 return;
             }
@@ -3729,7 +3745,7 @@ window._protestEndorse = async function() {
     try {
         const result = await endorseProtest(_supabase, _currentFaction.id, _currentNation.id, _endorseableProtest.id, _currentShard.current_tick);
         if (!result.success) {
-            alert(result.error || 'Endorsement failed.');
+            _showToast(result.error || 'Endorsement failed.');
             return;
         }
         _alreadyEndorsed = true;
@@ -3739,7 +3755,7 @@ window._protestEndorse = async function() {
         await renderDemocracyActions(_currentNation, _currentFaction, _currentShard, _currentAllParties);
     } catch (err) {
         console.error('[Protest] Endorse failed:', err);
-        alert('Endorsement failed: ' + err.message);
+        _showToast('Endorsement failed: ' + err.message);
     } finally {
         _protestEndorseLock = false;
     }
@@ -3749,13 +3765,13 @@ let _protestCallOffLock = false;
 window._protestCallOff = async function() {
     if (_protestCallOffLock) return;
     if (!_protestActiveData) return;
-    if (_protestActiveData.tier === 7) { alert('Tier 7 protests cannot be called off.'); return; }
+    if (_protestActiveData.tier === 7) { _showToast('Tier 7 protests cannot be called off.'); return; }
     if (!confirm('Call off this protest? Costs ' + PROTEST_CONFIG.CALL_OFF_AP + ' AP. A small approval boost from moderate blocs will be applied.')) return;
     _protestCallOffLock = true;
     try {
         const result = await callOffProtest(_supabase, _currentFaction.id, _protestActiveData.id, _currentShard.current_tick);
         if (!result.success) {
-            alert(result.error || 'Call-off failed.');
+            _showToast(result.error || 'Call-off failed.');
             return;
         }
         _currentFaction.action_points = Math.max(0, (_currentFaction.action_points || 0) - PROTEST_CONFIG.CALL_OFF_AP);
@@ -3764,7 +3780,7 @@ window._protestCallOff = async function() {
         await renderDemocracyActions(_currentNation, _currentFaction, _currentShard, _currentAllParties);
     } catch (err) {
         console.error('[Protest] Call-off failed:', err);
-        alert('Call-off failed: ' + err.message);
+        _showToast('Call-off failed: ' + err.message);
     } finally {
         _protestCallOffLock = false;
     }
@@ -3798,13 +3814,13 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
         }
     } catch (err) {
         console.error('Campaign action error:', err);
-        alert('Action failed: ' + err.message);
+        _showToast('Action failed: ' + err.message);
         if (btn) { btn.classList.remove('disabled'); btn.textContent = `Confirm — ${cost} AP`; }
         return;
     }
 
     if (!result || !result.success) {
-        alert(result?.error || 'Action failed.');
+        _showToast(result?.error || 'Action failed.');
         if (btn) { btn.classList.remove('disabled'); btn.textContent = `Confirm — ${cost} AP`; }
         return;
     }
@@ -4812,6 +4828,8 @@ async function _renderStancePortfolio(container, faction, nation) {
         _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
     ]);
 
+    if (stancesRes.error) console.error('[Politics] Failed to load stances:', stancesRes.error.message);
+    if (issueStatesRes.error) console.error('[Politics] Failed to load issue states:', issueStatesRes.error.message);
     const stances = stancesRes.data || [];
     const issueStates = issueStatesRes.data || [];
     const currentTick = shardRes.data?.current_tick || 0;
@@ -4919,7 +4937,7 @@ async function _renderStancePortfolio(container, faction, nation) {
                 await _renderStancePortfolio(container, faction, nation);
                 _renderStanceSummaryStrip(faction.id, nation.id);
             } else {
-                alert(result.message || 'Failed to reinforce stance.');
+                _showToast(result.message || 'Failed to reinforce stance.');
                 btn.disabled = false;
                 btn.textContent = 'Reinforce';
             }
@@ -5143,7 +5161,7 @@ function _openTakeStanceModal(faction, nation, currentTick, issueStateMap, exist
             }
             _renderStanceSummaryStrip(faction.id, nation.id);
         } else {
-            alert(result.message || 'Failed to take stance.');
+            _showToast(result.message || 'Failed to take stance.');
             btn.disabled = false;
             btn.textContent = `Confirm Stance (${STANCE_CONFIG.AP_COST} AP)`;
         }
@@ -5228,6 +5246,8 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             .eq('nation_id', nation.id),
     ]);
 
+    if (standingsRes.error) console.error('[Politics] Failed to load standings:', standingsRes.error.message);
+    if (issueStatesRes.error) console.error('[Politics] Failed to load issue states:', issueStatesRes.error.message);
     const standings = standingsRes.data || [];
     const issueStates = issueStatesRes.data || [];
 
