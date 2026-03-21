@@ -1515,7 +1515,6 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
 
     // State
     let voterNationData = null;
-    let voterBlocsCache = [];
     let editingBlocId = null;
 
     // ---- Load voter nations dropdown ----
@@ -1574,40 +1573,20 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
 
     // ---- Weight validator ----
     function updateWeightValidator() {
-        const total = voterBlocsCache.reduce((s, b) => s + parseFloat(b.population_weight || 0), 0);
-        const totalRounded = Math.round(total * 100) / 100;
-        document.getElementById('weight-total').textContent = totalRounded + '%';
+        const weightTotal = document.getElementById('weight-total');
         const statusEl = document.getElementById('weight-status');
-        if (Math.abs(totalRounded - 100) < 0.01) {
-            statusEl.textContent = '✅ Valid';
-            statusEl.style.color = '#5cb85c';
-        } else if (totalRounded > 100) {
-            statusEl.textContent = '⚠️ Over 100%';
-            statusEl.style.color = '#d9534f';
-        } else {
-            statusEl.textContent = '⚠️ Under 100% (' + (100 - totalRounded).toFixed(2) + '% remaining)';
-            statusEl.style.color = '#d48a3c';
+        if (weightTotal) weightTotal.textContent = '0%';
+        if (statusEl) {
+            statusEl.textContent = 'Voter blocs have been replaced by the electorate engine';
+            statusEl.style.color = '#888';
         }
     }
 
     // ---- Load & render blocs ----
     async function loadExistingBlocsDisplay(nationId) {
         const container = document.getElementById('existing-blocs-display');
-        try {
-            // voter_blocs table dropped — electorate engine replaces this system
-            voterBlocsCache = [];
-            updateWeightValidator();
-
-            if (voterBlocsCache.length === 0) {
-                container.innerHTML = '<div class="no-players">No voter blocs for this nation. Click "+ Add Bloc" to create one.</div>';
-                return;
-            }
-
-            container.innerHTML = voterBlocsCache.map(bloc => renderBlocCard(bloc)).join('');
-        } catch (error) {
-            console.error(error);
-            container.innerHTML = '<div class="no-players" style="color:#d9534f;">Error loading blocs: ' + error.message + '</div>';
-        }
+        container.innerHTML = '<div class="no-players">Voter blocs have been replaced by the electorate engine.</div>';
+        updateWeightValidator();
     }
 
     function renderBlocCard(bloc) {
@@ -1674,10 +1653,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     }
 
     function editBloc(blocId) {
-        const bloc = voterBlocsCache.find(b => b.id === blocId);
-        if (!bloc) return;
-        editingBlocId = blocId;
-        renderBlocForm(bloc);
+        alert('Voter blocs have been replaced by the electorate engine.');
     }
 
     function renderBlocForm(bloc) {
@@ -1751,59 +1727,13 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     }
 
     async function saveBlocForm() {
-        if (!voterNationData) return;
-        const name = document.getElementById('bloc-form-name').value.trim();
-        if (!name) { alert('Bloc name is required.'); return; }
-
-        const weight = parseFloat(document.getElementById('bloc-form-weight').value) || 0;
-        const desc = document.getElementById('bloc-form-desc').value.trim();
-        const issues = getFormIssues();
-
-        const blocData = {
-            bloc_name: name,
-            description: desc,
-            population_weight: weight,
-            priority_issues: issues,
-            is_active: true
-        };
-
-        // Gather axis values
-        BLOC_AXES.forEach(a => {
-            blocData[a.key] = parseInt(document.getElementById('bloc-form-' + a.key).value) || 50;
-        });
-
-        // Also compute voter_count from population_weight for backwards compatibility
-        const eligible = voterNationData.eligible_voters || voterNationData.population || 0;
-        blocData.voter_count = Math.round(eligible * weight / 100);
-
-        // Generate ideology_1..5 tags from axis values for backwards compatibility
-        const tags = [];
-        BLOC_AXES.forEach(a => {
-            const val = blocData[a.key];
-            if (val < 35) tags.push(a.left);
-            else if (val > 65) tags.push(a.right);
-        });
-        for (let i = 0; i < 5; i++) {
-            blocData['ideology_' + (i + 1)] = tags[i] || null;
-        }
-
-        const statusEl = document.getElementById('bloc-action-status');
-
-        try {
-            // voter_blocs table dropped — bloc management disabled
-            statusEl.innerHTML = '<span style="color:#d9534f;font-weight:bold;">Voter blocs system removed — use electorate engine instead.</span>';
-            setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
-            cancelBlocForm();
-            await loadExistingBlocsDisplay(voterNationData.id);
-        } catch (error) {
-            statusEl.innerHTML = '<span style="color:#d9534f;font-weight:bold;">❌ Error: ' + error.message + '</span>';
-        }
+        alert('Voter blocs have been replaced by the electorate engine.');
+        cancelBlocForm();
     }
 
     // ---- Delete bloc ----
     async function deleteVoterBloc(blocId, blocName) {
-        // voter_blocs table dropped — bloc management disabled
-        alert('Voter blocs system removed — use electorate engine instead.');
+        alert('Voter blocs have been replaced by the electorate engine.');
     }
 
 

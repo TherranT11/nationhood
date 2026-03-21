@@ -4,8 +4,7 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
 
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement } from './game-common.js';
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
@@ -214,12 +213,8 @@ initPage('politics', async (state) => {
         .eq('party_id', f.id)
         .eq('is_active', true);
 
-    // Fetch player's current endorsement preference
-    const { data: currentEndorsement } = await _supabase
-        .from('faction_endorsements')
-        .select('endorsed_faction_id')
-        .eq('faction_id', f.id)
-        .maybeSingle();
+    // Endorsement preference (faction_endorsements table removed — default to null)
+    const currentEndorsement = null;
 
     renderPartyTab(f, nation, {
         shard,
@@ -4806,17 +4801,13 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
     const container = document.getElementById('electorate-spread-container');
     if (!container) return;
 
-    // Prefer electorate_profile (new system), fall back to voter_blocs (legacy)
     const { data: profile } = await _supabase
         .from('electorate_profile')
         .select('*')
         .eq('nation_id', nation.id)
         .single();
 
-    const hasProfile = !!profile;
-    const blocs = []; // voter_blocs removed; legacy fallback below retained for safety
-
-    if (!hasProfile && blocs.length === 0) {
+    if (!profile) {
         container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:20px;text-align:center;">No electorate data available.</div>';
         return;
     }
@@ -4827,33 +4818,12 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
         ideoMap[row.faction_id] = row;
     }
 
-    // Compute electorate mean and standard deviation per axis
+    // Compute electorate mean and standard deviation per axis from electorate_profile
     const electorateStats = {};
-    if (hasProfile) {
-        // New system: read directly from electorate_profile
-        for (const ax of ES_AXES) {
-            const mean = Number(profile['ideo_mean_' + ax.key] ?? 50);
-            const variance = Number(profile['ideo_var_' + ax.key] ?? 20);
-            electorateStats[ax.key] = { mean, stdDev: variance };
-        }
-    } else {
-        // Legacy fallback: compute from voter_blocs
-        const totalWeight = blocs.reduce((s, b) => s + (b.population_weight || 0), 0) || 1;
-        for (const ax of ES_AXES) {
-            let weightedSum = 0;
-            for (const b of blocs) {
-                const norm = Number(b[ax.blocKey] ?? 50);
-                weightedSum += norm * (b.population_weight || 0);
-            }
-            const mean = weightedSum / totalWeight;
-            let varianceSum = 0;
-            for (const b of blocs) {
-                const norm = Number(b[ax.blocKey] ?? 50);
-                varianceSum += (b.population_weight || 0) * Math.pow(norm - mean, 2);
-            }
-            const stdDev = Math.sqrt(varianceSum / totalWeight);
-            electorateStats[ax.key] = { mean, stdDev };
-        }
+    for (const ax of ES_AXES) {
+        const mean = Number(profile['ideo_mean_' + ax.key] ?? 50);
+        const variance = Number(profile['ideo_var_' + ax.key] ?? 20);
+        electorateStats[ax.key] = { mean, stdDev: variance };
     }
 
     // Build party data (all parties including player)
@@ -6053,7 +6023,7 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
         ideoMap[row.faction_id] = row;
     }
 
-    // Approval data — legacy faction_bloc_approval removed; use faction_electoral_standing if available
+    // Approval data from faction_electoral_standing
     const rivalIds = rivals.map(p => p.id);
     const { data: rivalStandings } = rivalIds.length > 0
         ? await _supabase.from('faction_electoral_standing')

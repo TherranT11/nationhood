@@ -424,17 +424,8 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
     const ralliedRecently = (recentRallies || []).filter(r => r.result?.blocId === blocId).length;
 
     // ── 3. Load target bloc (optional) + nation stats ──
-    let targetBloc = null;
-    if (blocId) {
-        const { data: bloc } = await supabase
-            .from('voter_blocs')
-            .select('id, bloc_name, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-            .eq('id', blocId).single();
-        targetBloc = bloc;
-    }
-    if (!targetBloc) {
-        targetBloc = { id: null, bloc_name: 'General Public', population_weight: 100 };
-    }
+    // (voter_blocs table removed; default to General Public)
+    let targetBloc = { id: null, bloc_name: 'General Public', population_weight: 100 };
 
     const { data: nation } = await supabase
         .from('nations').select('polarization, civil_unrest, stability').eq('id', nationId).single();
@@ -652,13 +643,10 @@ export async function executeOutreach(supabase, factionId, nationId, blocId, cur
         .eq('faction_id', factionId)
         .maybeSingle();
 
-    // ── 4. Load all blocs ──
-    const { data: allBlocs } = await supabase
-        .from('voter_blocs')
-        .select('id, bloc_name, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-        .eq('nation_id', nationId).eq('is_active', true);
+    // ── 4. Load all blocs (voter_blocs table removed; default to empty) ──
+    const allBlocs = [];
 
-    const targetBloc = (allBlocs || []).find(b => b.id === blocId);
+    const targetBloc = allBlocs.find(b => b.id === blocId);
     if (!targetBloc) return { success: false, error: 'Voter bloc not found.' };
 
     // ── 5. Compute alignment and effect ──
@@ -666,7 +654,7 @@ export async function executeOutreach(supabase, factionId, nationId, blocId, cur
     let { diminished } = calcOutreachEffect(alignment, recentToBloc);
 
     // Apply leader trait multipliers: telegenic (+30%), divisive_figure (halved for non-BASE)
-    // Default to SWING disposition now that legacy faction_bloc_approval is removed
+    // Default to SWING disposition (electorate system handles approval now)
     const blocDisp = 'SWING';
     const effectiveDisp = getEffectiveBlocDisposition(blocDisp, faction);
     let outreachMult = getTraitApprovalMultiplier(faction, 'outreach', effectiveDisp);
@@ -722,89 +710,8 @@ export async function executeOutreach(supabase, factionId, nationId, blocId, cur
  * - Always writes a campaign_actions audit row with a reason string.
  */
 export async function executeEndorsementPreference(supabase, factionId, nationId, endorsedFactionId, currentTick, reason = 'endorsement_preference_update') {
-    if (!factionId || !nationId || !endorsedFactionId) {
-        return { success: false, error: 'Missing endorsement parameters.' };
-    }
-
-    const normalizedReason = String(reason || 'endorsement_preference_update').trim() || 'endorsement_preference_update';
-
-    const { data: existingPref, error: prefErr } = await supabase
-        .from('faction_endorsements')
-        .select('id, endorsed_faction_id')
-        .eq('faction_id', factionId)
-        .maybeSingle();
-    if (prefErr) {
-        return { success: false, error: prefErr.message || 'Failed to load endorsement preference.' };
-    }
-
-    let newAp = null;
-    let apCharged = 0;
-    const existingTarget = existingPref?.endorsed_faction_id || null;
-
-    // First preference: create for free
-    if (!existingPref) {
-        const { error: insertErr } = await supabase.from('faction_endorsements').insert({
-            faction_id: factionId,
-            nation_id: nationId,
-            endorsed_faction_id: endorsedFactionId,
-            updated_at_tick: currentTick
-        });
-        if (insertErr) {
-            return { success: false, error: insertErr.message || 'Failed to create endorsement preference.' };
-        }
-    }
-    // Same target: no AP charge, but refresh timestamp for history visibility
-    else if (existingTarget === endorsedFactionId) {
-        const { error: sameErr } = await supabase
-            .from('faction_endorsements')
-            .update({ updated_at_tick: currentTick })
-            .eq('id', existingPref.id);
-        if (sameErr) {
-            return { success: false, error: sameErr.message || 'Failed to keep endorsement preference.' };
-        }
-    }
-    // Preference change: charge 1 AP through atomic RPC
-    else {
-        const apResult = await deductAP(supabase, factionId, 1);
-        if (!apResult.success) {
-            return { success: false, error: apResult.error || 'Not enough AP to change endorsement.' };
-        }
-        newAp = apResult.newAp;
-        apCharged = 1;
-
-        const { error: updateErr } = await supabase
-            .from('faction_endorsements')
-            .update({
-                endorsed_faction_id: endorsedFactionId,
-                updated_at_tick: currentTick
-            })
-            .eq('id', existingPref.id);
-        if (updateErr) {
-            return { success: false, error: updateErr.message || 'Failed to update endorsement preference.' };
-        }
-    }
-
-    await supabase.from('campaign_actions').insert({
-        party_id: factionId,
-        nation_id: nationId,
-        action_type: 'endorsement_preference',
-        tick_performed: currentTick,
-        ap_cost: apCharged,
-        result: {
-            reason: normalizedReason,
-            previous_endorsed_faction_id: existingTarget,
-            endorsed_faction_id: endorsedFactionId,
-            ap_charged: apCharged
-        }
-    });
-
-    return {
-        success: true,
-        newAp,
-        apCharged,
-        changed: existingTarget !== endorsedFactionId,
-        alreadySelected: existingTarget === endorsedFactionId
-    };
+    // faction_endorsements table has been removed; endorsements are not currently available.
+    return { success: false, error: 'Endorsements are not available.' };
 }
 
 
@@ -1297,10 +1204,8 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
         .from('nations').select('*').eq('id', nationId).single();
     if (!nation) return { success: false, error: 'Nation not found.' };
 
-    const { data: allBlocs } = await supabase
-        .from('voter_blocs')
-        .select('id, bloc_name, population_weight, priority_issues')
-        .eq('nation_id', nationId).eq('is_active', true);
+    // voter_blocs table removed; default to empty array
+    const allBlocs = [];
 
     // ── 4. Roll deadline: 1D12 + 12 ──
     const deadlineRoll = Math.floor(Math.random() * cfg.DEADLINE_DICE) + 1;
@@ -3556,7 +3461,7 @@ export async function processRevolution(supabase, nation, currentTick) {
         console.warn(`[Revolution] V5 cleanup: ${cleanupFailures.length} of ${cleanupResults.length} failed (non-fatal)`);
     }
 
-    // 4. (Legacy faction_bloc_approval reset removed — electorate system handles approval now)
+    // 4. (Electorate system handles approval now)
 
     // 4b. Reset all faction loyalty to 50 and flag for rebuild
     await supabase.from('factions')

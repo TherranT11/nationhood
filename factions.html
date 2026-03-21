@@ -59,7 +59,6 @@ initPage('factions', async (state) => {
 
 async function renderFactionsPage() {
     // Fetch counts for header stats
-    // voter_blocs table removed — electorate engine replaces this system
     const totalBlocs = 0;
     const activeDemands = 0;
     
@@ -142,7 +141,7 @@ async function loadActiveDemands() {
     try {
         const { data: demands, error } = await _supabase
             .from('voter_bloc_demands')
-            .select('*, voter_blocs(voter_count, ideology_1, ideology_2, ideology_3, ideology_4, ideology_5)')
+            .select('*')
             .eq('nation_id', currentNation.id)
             .eq('status', 'active')
             .order('deadline_tick', { ascending: true });
@@ -180,8 +179,6 @@ async function loadActiveDemands() {
             const targetText = demand.desired_range === 'high' ? '70-100' :
                               demand.desired_range === 'low' ? '0-30' : '31-69';
             
-            const voterCount = demand.voter_blocs?.voter_count || 0;
-            
             const isMovingRight = (demand.desired_range === 'high' && currentVal > demand.current_value) ||
                                   (demand.desired_range === 'low' && currentVal < demand.current_value) ||
                                   (demand.desired_range === 'moderate' && Math.abs(currentVal - 50) < Math.abs(demand.current_value - 50));
@@ -191,7 +188,7 @@ async function loadActiveDemands() {
                     <div class="demand-header">
                         <div>
                             <div class="demand-bloc-name">${escapeHtml(demand.bloc_name)}</div>
-                            <div class="demand-bloc-voters">${voterCount.toLocaleString()} voters in this bloc</div>
+                            <div class="demand-bloc-voters">${escapeHtml(demand.bloc_name)}</div>
                         </div>
                         <div class="demand-deadline">
                             <div class="demand-deadline-label">Deadline</div>
@@ -232,7 +229,6 @@ async function loadVoterBlocs() {
     const container = document.getElementById('blocs-list');
 
     try {
-        // voter_blocs table removed — show empty state
         const blocs = [];
         const error = null;
         
