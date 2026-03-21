@@ -2873,6 +2873,26 @@ body.light-mode .pol-blocs-box {
 }
 .ca-option-chip:hover { border-color: var(--dborder-2); }
 .ca-option-chip.selected { background: rgba(255,255,255,0.04); border-color: var(--dtext-0); color: var(--dtext-0); }
+/* Party Events feed */
+.pe-container {
+    margin-top: 20px; background: var(--dbg-2); border: 1px solid var(--dborder-0);
+    border-radius: 4px; overflow: hidden;
+}
+.pe-header { padding: 12px 16px; border-bottom: 1px solid var(--dborder-0); }
+.pe-feed { max-height: 400px; overflow-y: auto; }
+.pe-tick-sep {
+    padding: 6px 16px 2px; font-family: var(--dfont-mono); font-size: 10px;
+    font-weight: 600; color: var(--dtext-3); letter-spacing: 0.06em;
+    text-transform: uppercase; border-top: 1px solid var(--dborder-0); margin-top: 2px;
+}
+.pe-item { padding: 5px 16px; border-bottom: 1px solid rgba(255,255,255,0.02); }
+.pe-item--you { background: rgba(255,255,255,0.015); }
+.pe-item-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pe-item-party { font-family: var(--dfont-mono); font-size: 11px; font-weight: 700; min-width: 36px; }
+.pe-item-label { font-family: var(--dfont-ui); font-size: 12px; color: var(--dtext-0); font-weight: 600; text-transform: capitalize; }
+.pe-item-ap { font-family: var(--dfont-mono); font-size: 9px; color: var(--dtext-3); }
+.pe-item-outcome { font-family: var(--dfont-mono); font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.pe-item-desc { font-family: var(--dfont-ui); font-size: 11px; color: var(--dtext-3); margin-top: 2px; padding-left: 44px; }
 .ca-confirm-row { display: flex; justify-content: flex-end; margin-top: 16px; }
 .ca-confirm-btn {
     font-family: var(--dfont-mono); font-size: 12px; font-weight: 700;

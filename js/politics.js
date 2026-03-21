@@ -607,6 +607,62 @@ async function _loadActivityFeed(factionId, nationId) {
     scrollEl.innerHTML = html;
 }
 
+async function _loadPartyEventsFeed(nationId, playerFactionId) {
+    const feedEl = document.getElementById('party-events-feed');
+    if (!feedEl) return;
+
+    const { data: entries, error } = await _supabase
+        .from('activity_log')
+        .select('id, faction_id, action_type, action_label, description, outcome, ap_spent, tick, created_at')
+        .eq('nation_id', nationId)
+        .order('tick', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(80);
+
+    if (error || !entries || entries.length === 0) {
+        feedEl.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-ui);font-size:12px;padding:12px">No party events yet.</div>';
+        return;
+    }
+
+    const factionIds = [...new Set(entries.map(e => e.faction_id))];
+    const { data: factions } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, party_color')
+        .in('id', factionIds);
+    const factionMap = {};
+    for (const f of (factions || [])) factionMap[f.id] = f;
+
+    let html = '';
+    let lastTick = null;
+
+    for (const entry of entries) {
+        if (entry.tick !== lastTick) {
+            lastTick = entry.tick;
+            html += `<div class="pe-tick-sep">${_feedTickLabel(entry.tick)}</div>`;
+        }
+
+        const faction = factionMap[entry.faction_id];
+        const isPlayer = entry.faction_id === playerFactionId;
+        const fLabel = isPlayer ? 'You' : (faction?.abbreviation || '???');
+        const fColor = faction?.party_color || 'var(--dtext-2)';
+        const outcomeColor = entry.outcome === 'success' ? 'var(--dgreen)'
+            : entry.outcome === 'backfire' ? 'var(--dred)'
+            : entry.outcome === 'failure' ? 'var(--damber)' : 'var(--dtext-3)';
+
+        html += `<div class="pe-item${isPlayer ? ' pe-item--you' : ''}">
+            <div class="pe-item-row">
+                <span class="pe-item-party" style="color:${fColor}">${escapeHtml(fLabel)}</span>
+                <span class="pe-item-label">${escapeHtml((entry.action_label || entry.action_type).replace(/_/g, ' '))}</span>
+                ${entry.ap_spent ? `<span class="pe-item-ap">${entry.ap_spent} AP</span>` : ''}
+                ${entry.outcome ? `<span class="pe-item-outcome" style="color:${outcomeColor}">${escapeHtml(entry.outcome)}</span>` : ''}
+            </div>
+            ${entry.description ? `<div class="pe-item-desc">${escapeHtml(entry.description)}</div>` : ''}
+        </div>`;
+    }
+
+    feedEl.innerHTML = html;
+}
+
 // ═══════════════════════════════════════════════════════════
 // REGIME SUPPORT ESTIMATE — public-facing tracker box
 // ═══════════════════════════════════════════════════════════
@@ -2754,7 +2810,14 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         panelHtml += `</div>`;
     }
 
-    container.innerHTML = `<div class="ca-wrap"><div class="ca-list">${listHtml}</div>${panelHtml}</div>`;
+    container.innerHTML = `<div class="ca-wrap"><div class="ca-list">${listHtml}</div>${panelHtml}</div>
+    <div class="pe-container">
+        <div class="pe-header"><span class="pol-mod-title">Party Events</span></div>
+        <div id="party-events-feed" class="pe-feed"><div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px">Loading events...</div></div>
+    </div>`;
+
+    // Load party events feed
+    _loadPartyEventsFeed(n.id, f.id);
 
     // Wire up action selection
     container.querySelectorAll('.ca-item').forEach(el => {
