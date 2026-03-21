@@ -13,6 +13,7 @@ import { fetchActiveCoalition } from './government-structure.js';
 import { recalcDerivedApproval } from './bills.js';
 import { closeAdministration, createAdministration, dissolveCoalition } from './elections.js';
 import { getTraitAPModifier, applyRallyTraitModifiers, getTraitApprovalMultiplier, getEffectiveBlocDisposition } from './party-leadership.js';
+import { onRally, onOutreach, onAttack } from './electorate.js';
 
 const _MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
@@ -558,6 +559,11 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
         }
     });
 
+    // Electorate engine: update visibility + activity log
+    try { await onRally(supabase, factionId, nationId, outcomeId, currentTick); } catch (e) {
+        console.error('[Rally] Electorate hook failed (non-fatal):', e.message);
+    }
+
     return {
         success: true,
         outcomeId,
@@ -781,6 +787,11 @@ export async function executeOutreach(supabase, factionId, nationId, blocId, cur
             tags: _deriveBlocTags(targetBloc),
         }
     });
+
+    // Electorate engine: update visibility + approval + activity log
+    try { await onOutreach(supabase, factionId, nationId, alignment, diminished, currentTick); } catch (e) {
+        console.error('[Outreach] Electorate hook failed (non-fatal):', e.message);
+    }
 
     return {
         success: true,
@@ -1289,6 +1300,11 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
             counterWindowEnd: opensCounter ? currentTick + ATTACK_CONFIG.COUNTER_ATTACK_WINDOW : null,
         }
     });
+
+    // Electorate engine: credibility damage + visibility + activity log
+    try { await onAttack(supabase, factionId, targetFactionId, nationId, outcomeId, vector.strength, currentTick); } catch (e) {
+        console.error('[Attack] Electorate hook failed (non-fatal):', e.message);
+    }
 
     return {
         success: true,

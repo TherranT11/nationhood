@@ -12854,6 +12854,7 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
  * Phase 2A: Constants, config, genesis seed functions
  * Phase 2B: Per-tick three-pillar calculations + vote share pipeline
  * Phase 2C: Issue salience drift, profile drift, platform appeal, stance decay
+ * Phase 4:  Campaign action integration (visibility, approval, credibility, stances, activity log)
  */
 
 // ============================================================================
@@ -14329,6 +14330,467 @@ async function tickStanceDecay(supabase, stances, currentTick) {
             .delete()
             .in('id', toDelete);
         console.log(`[Electorate] Removed ${toDelete.length} expired stances`);
+    }
+}
+
+// ============================================================================
+// PHASE 4: CAMPAIGN ACTION HELPERS
+// ============================================================================
+// These functions are called by the existing campaign action implementations
+// in political-actions.js to update the new electorate tables in parallel
+// with the legacy faction_bloc_approval writes.
+
+/**
+ * Boost a faction's visibility after a campaign action (Rally, Outreach, etc.)
+ *
+ * @param {object} supabase
+ * @param {string} factionId
+ * @param {string} nationId
+ * @param {number} boost - Positive visibility increment (e.g., 5-15)
+ */
+async function boostVisibility(supabase, factionId, nationId, boost) {
+    if (!boost || boost <= 0) return;
+
+    const { data: standing } = await supabase
+        .from('faction_electoral_standing')
+        .select('id, visibility')
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId)
+        .single();
+    if (!standing) return;
+
+    const old = Number(standing.visibility ?? 30);
+    const newVis = round2(clamp(old + boost, 0, 100));
+
+    await supabase.from('faction_electoral_standing')
+        .update({ visibility: newVis })
+        .eq('id', standing.id);
+
+    console.log(`[Electorate] Visibility ${old} → ${newVis} for faction ${factionId} (+${boost})`);
+}
+
+/**
+ * Nudge a faction's party_approval after a campaign action.
+ *
+ * @param {object} supabase
+ * @param {string} factionId
+ * @param {string} nationId
+ * @param {number} delta - Signed approval change (positive = boost, negative = damage)
+ */
+async function nudgeApproval(supabase, factionId, nationId, delta) {
+    if (!delta || delta === 0) return;
+
+    const { data: standing } = await supabase
+        .from('faction_electoral_standing')
+        .select('id, party_approval')
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId)
+        .single();
+    if (!standing) return;
+
+    const old = Number(standing.party_approval ?? 50);
+    const newApproval = round2(clamp(old + delta, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX));
+
+    await supabase.from('faction_electoral_standing')
+        .update({ party_approval: newApproval })
+        .eq('id', standing.id);
+
+    console.log(`[Electorate] Approval ${old} → ${newApproval} for faction ${factionId} (${delta > 0 ? '+' : ''}${delta})`);
+}
+
+/**
+ * Damage or boost a faction's credibility_modifier after an attack or scandal.
+ *
+ * @param {object} supabase
+ * @param {string} factionId
+ * @param {string} nationId
+ * @param {number} delta - Signed credibility change (e.g., -0.1 for damage, +0.05 for boost)
+ * @param {number} [suspendRecoveryTicks=0] - If > 0, suspend credibility recovery for this many ticks
+ * @param {number} [currentTick=0] - Current tick (needed for suspend calculation)
+ */
+async function adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0) {
+    if (!delta && !suspendRecoveryTicks) return;
+
+    const { data: standing } = await supabase
+        .from('faction_electoral_standing')
+        .select('id, credibility_modifier, credibility_recovery_suspended_until')
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId)
+        .single();
+    if (!standing) return;
+
+    const old = Number(standing.credibility_modifier ?? 1.0);
+    const newCred = round3(clamp(old + (delta || 0), CFG.CREDIBILITY_MIN, CFG.CREDIBILITY_MAX));
+
+    const updateObj = { credibility_modifier: newCred };
+    if (suspendRecoveryTicks > 0) {
+        const suspendUntil = currentTick + suspendRecoveryTicks;
+        const currentSuspend = Number(standing.credibility_recovery_suspended_until ?? 0);
+        updateObj.credibility_recovery_suspended_until = Math.max(currentSuspend, suspendUntil);
+    }
+
+    await supabase.from('faction_electoral_standing')
+        .update(updateObj)
+        .eq('id', standing.id);
+
+    console.log(`[Electorate] Credibility ${old} → ${newCred} for faction ${factionId} (${delta > 0 ? '+' : ''}${delta})`);
+}
+
+// ============================================================================
+// PHASE 4: TAKE A STANCE
+// ============================================================================
+
+/**
+ * Configuration for the Take a Stance campaign action.
+ */
+const STANCE_CONFIG = {
+    AP_COST: 4,
+    COOLDOWN_WINDOW: 3,        // ticks between stances
+    MAX_STANCES: 5,            // max concurrent stances per faction
+
+    // Intensity → strength & decay
+    INTENSITY: {
+        centrist:  { strength: 60,  decay_rate: 2 },
+        moderate:  { strength: 80,  decay_rate: 4 },
+        radical:   { strength: 100, decay_rate: 8 },
+    },
+
+    // Visibility boost when taking a stance
+    VISIBILITY_BOOST: 8,
+};
+
+/**
+ * Execute the "Take a Stance" campaign action.
+ *
+ * Creates or refreshes a faction_issue_stance row linking a faction to an
+ * issue on a specific axis+side. Checks ideological consistency, pioneer
+ * status, and enforces the max-stances cap.
+ *
+ * @param {object} supabase
+ * @param {string} factionId
+ * @param {string} nationId
+ * @param {string} issueId    - One of ISSUE_IDS (e.g., 'cost_of_living')
+ * @param {string} axis       - Ideology axis key (e.g., 'liberty_equality')
+ * @param {string} side       - 'left' or 'right'
+ * @param {string} intensity  - 'centrist', 'moderate', or 'radical'
+ * @param {number} currentTick
+ * @returns {{ success, message, stance?, effects? }}
+ */
+async function executeTakeStance(supabase, factionId, nationId, issueId, axis, side, intensity, currentTick) {
+    // ── Validate inputs ──
+    if (!ISSUE_DEFS[issueId]) {
+        return { success: false, message: `Unknown issue: ${issueId}` };
+    }
+    if (!AXIS_KEYS.includes(axis)) {
+        return { success: false, message: `Unknown axis: ${axis}` };
+    }
+    if (!['left', 'right'].includes(side)) {
+        return { success: false, message: `Side must be 'left' or 'right'` };
+    }
+    const intensityConfig = STANCE_CONFIG.INTENSITY[intensity];
+    if (!intensityConfig) {
+        return { success: false, message: `Intensity must be centrist, moderate, or radical` };
+    }
+
+    // ── Validate axis is relevant to this issue ──
+    const issueDef = ISSUE_DEFS[issueId];
+    if (!issueDef.axes.includes(axis)) {
+        return { success: false, message: `Axis ${axis} is not relevant to issue ${issueDef.label}` };
+    }
+
+    // ── Cooldown check ──
+    const { data: recentStances } = await supabase
+        .from('campaign_actions')
+        .select('id')
+        .eq('party_id', factionId)
+        .eq('action_type', 'take_stance')
+        .gte('tick_performed', currentTick - STANCE_CONFIG.COOLDOWN_WINDOW);
+    if (recentStances && recentStances.length > 0) {
+        return { success: false, message: `Stance cooldown: wait ${STANCE_CONFIG.COOLDOWN_WINDOW} ticks between stances` };
+    }
+
+    // ── Max stances check ──
+    const { data: existingStances } = await supabase
+        .from('faction_issue_stance')
+        .select('id, issue_id')
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId);
+    const activeCount = (existingStances || []).length;
+    const alreadyHasStance = (existingStances || []).some(s => s.issue_id === issueId);
+
+    if (!alreadyHasStance && activeCount >= STANCE_CONFIG.MAX_STANCES) {
+        return { success: false, message: `Maximum ${STANCE_CONFIG.MAX_STANCES} active stances reached` };
+    }
+
+    // ── Check ideological consistency ──
+    const { data: ideo } = await supabase
+        .from('faction_ideology')
+        .select('*')
+        .eq('faction_id', factionId)
+        .single();
+
+    let ideologicallyConsistent = true;
+    if (ideo) {
+        const partyScore = Number(ideo[axis] || 0); // -100 to +100
+        // Party leans left (negative) → consistent with side='left'
+        // Party leans right (positive) → consistent with side='right'
+        if (side === 'left' && partyScore > 20) ideologicallyConsistent = false;
+        if (side === 'right' && partyScore < -20) ideologicallyConsistent = false;
+    }
+
+    // ── Check pioneer status ──
+    const { data: existingOnIssue } = await supabase
+        .from('faction_issue_stance')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('issue_id', issueId)
+        .neq('faction_id', factionId)
+        .limit(1);
+    const isPioneer = !existingOnIssue || existingOnIssue.length === 0;
+
+    // ── Upsert the stance ──
+    const stanceRow = {
+        faction_id: factionId,
+        nation_id: nationId,
+        issue_id: issueId,
+        axis,
+        side,
+        intensity,
+        strength: intensityConfig.strength,
+        decay_rate: intensityConfig.decay_rate,
+        ticks_held: alreadyHasStance ? undefined : 0, // don't reset if refreshing
+        ticks_at_current_intensity: 0,
+        last_intensity_change_tick: currentTick,
+        ideologically_consistent: ideologicallyConsistent,
+        is_pioneer: isPioneer,
+        created_tick: alreadyHasStance ? undefined : currentTick,
+    };
+
+    // Remove undefined keys for upsert
+    for (const k of Object.keys(stanceRow)) {
+        if (stanceRow[k] === undefined) delete stanceRow[k];
+    }
+
+    const { data: stance, error } = await supabase
+        .from('faction_issue_stance')
+        .upsert(stanceRow, { onConflict: 'faction_id,nation_id,issue_id' })
+        .select()
+        .single();
+
+    if (error) {
+        console.error(`[Electorate] Failed to upsert stance:`, error.message);
+        return { success: false, message: 'Database error creating stance' };
+    }
+
+    // ── Boost visibility ──
+    await boostVisibility(supabase, factionId, nationId, STANCE_CONFIG.VISIBILITY_BOOST);
+
+    // ── Log to campaign_actions ──
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId,
+        nation_id: nationId,
+        action_type: 'take_stance',
+        ap_cost: STANCE_CONFIG.AP_COST,
+        money_cost: 0,
+        tick_performed: currentTick,
+        result: {
+            issueId,
+            issueLabel: issueDef.label,
+            axis,
+            side,
+            intensity,
+            strength: intensityConfig.strength,
+            isPioneer,
+            ideologicallyConsistent,
+            refreshed: alreadyHasStance,
+        },
+    });
+
+    // ── Log to activity_log ──
+    const sideLabel = side === 'left'
+        ? IDEOLOGY_AXES.find(a => a.key === axis)?.leftLabel
+        : IDEOLOGY_AXES.find(a => a.key === axis)?.rightLabel;
+    await logActivity(supabase, factionId, nationId, 'take_stance',
+        `Take a Stance: ${issueDef.label}`,
+        `${intensity} ${sideLabel} stance on ${issueDef.label}${isPioneer ? ' (pioneer!)' : ''}${!ideologicallyConsistent ? ' (inconsistent)' : ''}`,
+        'success', STANCE_CONFIG.AP_COST, currentTick
+    );
+
+    const effects = [];
+    effects.push({ label: 'Stance', value: `${intensity} ${sideLabel}` });
+    if (isPioneer) effects.push({ label: 'Pioneer bonus', value: '+5 appeal' });
+    if (!ideologicallyConsistent) effects.push({ label: 'Inconsistent', value: '-5 appeal' });
+    effects.push({ label: 'Visibility', value: `+${STANCE_CONFIG.VISIBILITY_BOOST}` });
+
+    console.log(`[Electorate] ${factionId} took ${intensity} ${sideLabel} stance on ${issueDef.label}${isPioneer ? ' (PIONEER)' : ''}`);
+
+    return {
+        success: true,
+        message: `Took ${intensity} ${sideLabel} stance on ${issueDef.label}`,
+        stance,
+        effects,
+    };
+}
+
+// ============================================================================
+// PHASE 4: CAMPAIGN ACTION ELECTORATE HOOKS
+// ============================================================================
+
+/**
+ * Hook called after executeRally() to update electorate tables.
+ *
+ * Rally boosts visibility. Outcome quality determines boost size.
+ * Rousing = big boost, gaffe/counter = no boost (or penalty).
+ *
+ * @param {object} supabase
+ * @param {string} factionId
+ * @param {string} nationId
+ * @param {string} outcomeId - Rally outcome (rousing, solid, low, gaffe, divisive, counter)
+ * @param {number} currentTick
+ */
+async function onRally(supabase, factionId, nationId, outcomeId, currentTick) {
+    const visBoost = {
+        rousing: 12,
+        solid: 8,
+        low: 4,
+        gaffe: 0,
+        divisive: 6,   // controversial but attention-getting
+        counter: 0,
+    }[outcomeId] ?? 5;
+
+    if (visBoost > 0) {
+        await boostVisibility(supabase, factionId, nationId, visBoost);
+    }
+
+    // Gaffe damages approval slightly
+    if (outcomeId === 'gaffe') {
+        await nudgeApproval(supabase, factionId, nationId, -2);
+    }
+
+    await logActivity(supabase, factionId, nationId, 'rally',
+        'Rally', `Rally — ${outcomeId}`,
+        outcomeId === 'gaffe' || outcomeId === 'counter' ? 'failure' : 'success',
+        3, currentTick
+    );
+}
+
+/**
+ * Hook called after executeOutreach() to update electorate tables.
+ *
+ * Outreach boosts both visibility and approval slightly.
+ *
+ * @param {object} supabase
+ * @param {string} factionId
+ * @param {string} nationId
+ * @param {number} alignmentScore - 0-100 alignment with target
+ * @param {number} diminishedEffect - Final effect after diminishing returns
+ * @param {number} currentTick
+ */
+async function onOutreach(supabase, factionId, nationId, alignmentScore, diminishedEffect, currentTick) {
+    // Visibility boost scales with alignment
+    const visBoost = Math.max(3, Math.round(diminishedEffect * 1.5));
+    await boostVisibility(supabase, factionId, nationId, visBoost);
+
+    // Approval nudge: small positive based on alignment
+    const approvalNudge = round2(Math.max(0.5, diminishedEffect * 0.3));
+    await nudgeApproval(supabase, factionId, nationId, approvalNudge);
+
+    await logActivity(supabase, factionId, nationId, 'outreach',
+        'Outreach', `Outreach — effect: ${diminishedEffect}, alignment: ${alignmentScore}`,
+        'success', 4, currentTick
+    );
+}
+
+/**
+ * Hook called after executeAttack() to update electorate tables.
+ *
+ * Attack damages target's credibility (on success) or attacker's (on backfire).
+ * Also boosts attacker's visibility (any publicity is publicity).
+ *
+ * @param {object} supabase
+ * @param {string} factionId - Attacker
+ * @param {string} targetFactionId - Target
+ * @param {string} nationId
+ * @param {string} outcomeId - Attack outcome
+ * @param {string} strength - 'strong', 'moderate', 'weak'
+ * @param {number} currentTick
+ */
+async function onAttack(supabase, factionId, targetFactionId, nationId, outcomeId, strength, currentTick) {
+    // Credibility damage to target (on success)
+    const targetCredDelta = {
+        devastating: -0.15,
+        effective: -0.08,
+        glancing: -0.03,
+        backfire: 0,       // target takes no credibility damage on backfire
+        mutual: -0.05,
+    }[outcomeId] ?? 0;
+
+    // Credibility damage to self (on backfire/mutual)
+    const selfCredDelta = {
+        devastating: 0,
+        effective: 0,
+        glancing: 0,
+        backfire: -0.10,
+        mutual: -0.05,
+    }[outcomeId] ?? 0;
+
+    // Suspend target recovery for a few ticks (strong evidence = longer)
+    const suspendTicks = strength === 'strong' ? 5 : strength === 'moderate' ? 3 : 1;
+
+    if (targetCredDelta !== 0) {
+        await adjustCredibility(supabase, targetFactionId, nationId, targetCredDelta, suspendTicks, currentTick);
+    }
+    if (selfCredDelta !== 0) {
+        await adjustCredibility(supabase, factionId, nationId, selfCredDelta, suspendTicks, currentTick);
+    }
+
+    // Attacker always gains some visibility (political theater)
+    await boostVisibility(supabase, factionId, nationId, 5);
+
+    // Target also gains involuntary visibility from being attacked
+    if (['devastating', 'effective'].includes(outcomeId)) {
+        await boostVisibility(supabase, targetFactionId, nationId, 3);
+    }
+
+    const outcome = outcomeId === 'backfire' ? 'backfire'
+        : outcomeId === 'mutual' ? 'neutral'
+        : 'success';
+    await logActivity(supabase, factionId, nationId, 'attack',
+        'Attack', `Attack (${strength}) — ${outcomeId}`,
+        outcome, 3, currentTick
+    );
+}
+
+// ============================================================================
+// PHASE 4: ACTIVITY LOG
+// ============================================================================
+
+/**
+ * Write a row to the activity_log table.
+ *
+ * @param {object} supabase
+ * @param {string} factionId
+ * @param {string} nationId
+ * @param {string} actionType - e.g., 'rally', 'outreach', 'attack', 'take_stance'
+ * @param {string} actionLabel - Short display label
+ * @param {string} description - Longer description
+ * @param {string} outcome - 'success', 'failure', 'backfire', 'neutral', 'pending'
+ * @param {number} apSpent
+ * @param {number} tick
+ */
+async function logActivity(supabase, factionId, nationId, actionType, actionLabel, description, outcome, apSpent, tick) {
+    const { error } = await supabase.from('activity_log').insert({
+        faction_id: factionId,
+        nation_id: nationId,
+        action_type: actionType,
+        action_label: actionLabel,
+        description,
+        outcome,
+        ap_spent: apSpent,
+        tick,
+    });
+    if (error) {
+        console.error(`[Electorate] Failed to log activity (${actionType}):`, error.message);
     }
 }
 
@@ -19379,6 +19841,11 @@ async function executeRally(supabase, factionId, nationId, blocId, currentTick) 
         }
     });
 
+    // Electorate engine: update visibility + activity log
+    try { await onRally(supabase, factionId, nationId, outcomeId, currentTick); } catch (e) {
+        console.error('[Rally] Electorate hook failed (non-fatal):', e.message);
+    }
+
     return {
         success: true,
         outcomeId,
@@ -19602,6 +20069,11 @@ async function executeOutreach(supabase, factionId, nationId, blocId, currentTic
             tags: _deriveBlocTags(targetBloc),
         }
     });
+
+    // Electorate engine: update visibility + approval + activity log
+    try { await onOutreach(supabase, factionId, nationId, alignment, diminished, currentTick); } catch (e) {
+        console.error('[Outreach] Electorate hook failed (non-fatal):', e.message);
+    }
 
     return {
         success: true,
@@ -20110,6 +20582,11 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
             counterWindowEnd: opensCounter ? currentTick + ATTACK_CONFIG.COUNTER_ATTACK_WINDOW : null,
         }
     });
+
+    // Electorate engine: credibility damage + visibility + activity log
+    try { await onAttack(supabase, factionId, targetFactionId, nationId, outcomeId, vector.strength, currentTick); } catch (e) {
+        console.error('[Attack] Electorate hook failed (non-fatal):', e.message);
+    }
 
     return {
         success: true,
