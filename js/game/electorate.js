@@ -1,5 +1,5 @@
 /**
- * electorate.js — Electorate engine (Phase 2A: constants, config, genesis)
+ * electorate.js — Electorate engine
  *
  * Replaces the old voter_blocs + faction_bloc_approval system with a
  * continuous electorate model. The electorate is represented by a single
@@ -11,15 +11,14 @@
  *   issue_state               — one row per (nation, issue)
  *   faction_electoral_standing — one row per (faction, nation)
  *
- * Phase 2A scope:
- *   - All constants and config knobs
- *   - seedElectorateProfile()   — derive demographics + ideology from nation stats
- *   - seedIssueStates()         — create 8 issue rows with stat-driven salience
- *   - seedFactionElectoralStanding() — create standing rows with initial values
+ * Phase 2A: Constants, config, genesis seed functions
+ * Phase 2B: Per-tick three-pillar calculations + vote share pipeline
  */
 
 import { IDEOLOGY_AXES } from './ideology.js';
 import { statDirectionSign, ISSUE_CATEGORY_STATS } from './stats.js';
+import { isAutocracy } from './government-types.js';
+import { fetchActiveCoalition } from './government-structure.js';
 
 // ============================================================================
 // ISSUE DEFINITIONS
@@ -244,6 +243,43 @@ export const ELECTORATE_CONFIG = {
     DEFAULT_PARTY_APPROVAL: 50,
     DEFAULT_VISIBILITY: 30,
     DEFAULT_CREDIBILITY: 1.0,
+
+    // ── Phase 2B: Per-tick pillar weights ──
+    PILLAR_WEIGHT_ALIGNMENT: 0.40,  // ideological alignment
+    PILLAR_WEIGHT_APPEAL: 0.25,     // platform appeal (stances, issue ownership)
+    PILLAR_WEIGHT_APPROVAL: 0.35,   // party approval (governance record, momentum)
+
+    // ── Alignment tick config ──
+    ALIGNMENT_DRIFT_SPEED: 2,       // max points per tick toward target alignment
+
+    // ── Party approval config ──
+    APPROVAL_GOV_NUDGE_DIVISOR: 2.5,  // (gov_approval - 50) / divisor = nudge
+    APPROVAL_GOV_NUDGE_CAP: 8,        // max ±nudge per tick
+    APPROVAL_COALITION_SHARE: 0.25,    // non-lead coalition parties get 25% of nudge
+    APPROVAL_OPPOSITION_TARGET: 45,    // inactive opposition drifts toward this
+    APPROVAL_DRIFT_SPEED: 3,           // max points per tick drift toward target
+    APPROVAL_MIN: 10,
+    APPROVAL_MAX: 90,
+
+    // ── Visibility config ──
+    VISIBILITY_DECAY: 0.92,          // 8% decay per tick
+    VISIBILITY_FLOOR: 10,
+    VISIBILITY_GOV_FLOOR: 25,        // governing parties stay more visible
+    VISIBILITY_INACTIVITY_THRESHOLD: 3, // ticks without action before decay kicks in
+
+    // ── Credibility config ──
+    CREDIBILITY_MIN: 0.5,
+    CREDIBILITY_MAX: 1.5,
+    CREDIBILITY_RECOVERY_RATE: 0.01,  // per tick toward 1.0
+
+    // ── Vote share config ──
+    SOFTMAX_TEMPERATURE: 8,           // softmax k (higher = more uniform distribution)
+    TURNOUT_BASE: 0.65,               // base turnout fraction
+    TURNOUT_ENTHUSIASM_SCALE: 0.003,  // per enthusiasm point above/below 50
+    TURNOUT_VISIBILITY_SCALE: 0.002,  // per visibility point above 50
+
+    // ── Inactivity ──
+    INACTIVITY_EXCLUSION_TICKS: 12,   // parties unseen for this many ticks are excluded
 };
 
 const CFG = ELECTORATE_CONFIG;
@@ -639,4 +675,477 @@ export async function genesisElectorate(supabase, nation, factions, currentTick 
 
     console.log(`[Electorate] Genesis complete for ${nation.name}: profile=${!!profile}, issues=${issues.length}, standings=${standings.length}`);
     return { profile, issues, standings };
+}
+
+// ============================================================================
+// PHASE 2B: PER-TICK THREE-PILLAR CALCULATIONS + VOTE SHARE PIPELINE
+// ============================================================================
+
+/**
+ * Master per-tick function. Recalculates all three pillars for every faction
+ * in a nation, then runs the vote share pipeline.
+ *
+ * Pipeline:
+ *   1. Load electorate_profile, issue_states, faction standings, ideologies
+ *   2. Recalculate Pillar 1: ideological alignment (Gaussian overlap)
+ *   3. Recalculate Pillar 2: platform appeal (issue-stance matching)
+ *   4. Recalculate Pillar 3: party approval (gov performance drift)
+ *   5. Update visibility (campaign action decay)
+ *   6. Update credibility (recovery toward 1.0)
+ *   7. Compute raw_appeal = weighted pillar sum × credibility
+ *   8. Softmax → contested_vote_share
+ *   9. Apply turnout → realized_vote_share
+ *  10. Write back to faction_electoral_standing + factions.national_vote_share
+ *
+ * @param {object} supabase - Supabase client
+ * @param {object} nation   - Full nation row
+ * @param {number} currentTick - The tick just committed
+ */
+export async function tickElectorate(supabase, nation, currentTick) {
+    if (isAutocracy(nation)) return;
+
+    // ── 1. Load active factions (exclude gone ≥12 ticks) ──
+    const { data: allFactions } = await supabase
+        .from('factions')
+        .select('id, seats, last_seen_tick, faction_type')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+    if (!allFactions || allFactions.length === 0) return;
+
+    const factions = allFactions.filter(f =>
+        f.last_seen_tick == null || (currentTick - f.last_seen_tick) < CFG.INACTIVITY_EXCLUSION_TICKS
+    );
+    const inactiveFactions = allFactions.filter(f =>
+        f.last_seen_tick != null && (currentTick - f.last_seen_tick) >= CFG.INACTIVITY_EXCLUSION_TICKS
+    );
+    if (factions.length === 0) return;
+    const factionIds = factions.map(f => f.id);
+
+    // ── 2. Load coalition info ──
+    const coalition = await fetchActiveCoalition(supabase, nation.id);
+    const coalitionPartyIds = new Set(coalition?.party_ids || []);
+    const leadPartyId = coalition?.lead_party_id || null;
+
+    // ── 3. Load electorate profile ──
+    const { data: profile } = await supabase
+        .from('electorate_profile')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .single();
+    if (!profile) {
+        console.warn(`[Electorate] No electorate_profile for ${nation.name}, running genesis`);
+        await genesisElectorate(supabase, nation, factions, currentTick);
+        return;
+    }
+
+    // ── 4. Load issue states ──
+    const { data: issueStates } = await supabase
+        .from('issue_state')
+        .select('*')
+        .eq('nation_id', nation.id);
+
+    // ── 5. Load faction ideologies ──
+    const { data: ideologies } = await supabase
+        .from('faction_ideology')
+        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+        .in('faction_id', factionIds);
+    const ideoMap = {};
+    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
+
+    // ── 6. Load existing standings ──
+    let { data: standings } = await supabase
+        .from('faction_electoral_standing')
+        .select('*')
+        .in('faction_id', factionIds)
+        .eq('nation_id', nation.id);
+    if (!standings || standings.length === 0) {
+        // Genesis if no standings exist
+        await seedFactionElectoralStanding(supabase, nation, factions, profile);
+        const { data: freshStandings } = await supabase
+            .from('faction_electoral_standing')
+            .select('*')
+            .in('faction_id', factionIds)
+            .eq('nation_id', nation.id);
+        standings = freshStandings || [];
+    }
+
+    // Ensure all factions have a standing row
+    const standingMap = {};
+    for (const s of standings) standingMap[s.faction_id] = s;
+    const missingFactions = factions.filter(f => !standingMap[f.id]);
+    if (missingFactions.length > 0) {
+        await seedFactionElectoralStanding(supabase, nation, missingFactions, profile);
+        const { data: newRows } = await supabase
+            .from('faction_electoral_standing')
+            .select('*')
+            .in('faction_id', missingFactions.map(f => f.id))
+            .eq('nation_id', nation.id);
+        for (const r of (newRows || [])) {
+            standings.push(r);
+            standingMap[r.faction_id] = r;
+        }
+    }
+
+    // ── 7. Load last campaign action tick per faction ──
+    const { data: lastActions } = await supabase
+        .from('campaign_actions')
+        .select('party_id, tick_performed')
+        .in('party_id', factionIds)
+        .order('tick_performed', { ascending: false })
+        .limit(factionIds.length * 2);
+    const lastActionTickMap = new Map();
+    for (const action of (lastActions || [])) {
+        if (!lastActionTickMap.has(action.party_id)) {
+            lastActionTickMap.set(action.party_id, action.tick_performed);
+        }
+    }
+
+    // ── 8. Compute governance momentum nudge ──
+    const govApproval = Number(nation.gov_approval ?? 40);
+    const govNudge = clamp(
+        round2((govApproval - 50) / CFG.APPROVAL_GOV_NUDGE_DIVISOR),
+        -CFG.APPROVAL_GOV_NUDGE_CAP,
+        CFG.APPROVAL_GOV_NUDGE_CAP
+    );
+
+    // ── 9. Build salience-weighted axis weights from issue states ──
+    const axisSalienceWeights = computeAxisSalienceWeights(issueStates || []);
+
+    // ── 10. Calculate pillars for each faction ──
+    const updates = [];
+
+    for (const standing of standings) {
+        const factionId = standing.faction_id;
+        const ideo = ideoMap[factionId];
+        const lastActionTick = lastActionTickMap.get(factionId) ?? -999;
+        const ticksSinceAction = currentTick - lastActionTick;
+        const isCoalition = coalitionPartyIds.has(factionId);
+        const isLead = factionId === leadPartyId;
+
+        // ─── PILLAR 1: Ideological Alignment (0-100) ───
+        const targetAlignment = ideo
+            ? computeTickAlignment(ideo, profile, axisSalienceWeights)
+            : CFG.DEFAULT_ALIGNMENT;
+
+        // Drift toward target
+        const oldAlignment = Number(standing.ideological_alignment ?? 50);
+        const alignDelta = clamp(targetAlignment - oldAlignment, -CFG.ALIGNMENT_DRIFT_SPEED, CFG.ALIGNMENT_DRIFT_SPEED);
+        const newAlignment = round2(clamp(oldAlignment + alignDelta, 0, 100));
+
+        // ─── PILLAR 2: Platform Appeal (0-100) ───
+        // For Phase 2B, platform appeal is held at its current value.
+        // Phase 2C will add stance-based platform appeal computation.
+        const newAppeal = Number(standing.platform_appeal ?? CFG.DEFAULT_PLATFORM_APPEAL);
+
+        // ─── PILLAR 3: Party Approval (0-100) ───
+        const oldApproval = Number(standing.party_approval ?? 50);
+        let approvalTarget;
+
+        if (isCoalition) {
+            // Governing parties: approval drifts based on gov_approval
+            approvalTarget = govApproval;
+        } else if (currentTick >= CFG.VISIBILITY_INACTIVITY_THRESHOLD &&
+                   ticksSinceAction >= CFG.VISIBILITY_INACTIVITY_THRESHOLD) {
+            // Inactive opposition: drift toward skepticism
+            approvalTarget = CFG.APPROVAL_OPPOSITION_TARGET;
+        } else {
+            // Active opposition: hold steady
+            approvalTarget = oldApproval;
+        }
+
+        // Lead party gets full gov nudge, coalition gets partial
+        let approvalNudge = 0;
+        if (isLead) {
+            approvalNudge = govNudge;
+        } else if (isCoalition) {
+            approvalNudge = round2(govNudge * CFG.APPROVAL_COALITION_SHARE);
+        }
+
+        const approvalDelta = clamp(approvalTarget - oldApproval, -CFG.APPROVAL_DRIFT_SPEED, CFG.APPROVAL_DRIFT_SPEED);
+        const newApproval = round2(clamp(oldApproval + approvalDelta + approvalNudge, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX));
+
+        // ─── VISIBILITY (turnout multiplier, not a pillar) ───
+        let newVisibility = Number(standing.visibility ?? CFG.DEFAULT_VISIBILITY);
+        if (currentTick >= CFG.VISIBILITY_INACTIVITY_THRESHOLD &&
+            ticksSinceAction >= CFG.VISIBILITY_INACTIVITY_THRESHOLD) {
+            newVisibility = round2(newVisibility * CFG.VISIBILITY_DECAY);
+        }
+        const visFloor = isCoalition ? CFG.VISIBILITY_GOV_FLOOR : CFG.VISIBILITY_FLOOR;
+        newVisibility = round2(clamp(newVisibility, visFloor, 100));
+
+        // ─── CREDIBILITY (recovery toward 1.0) ───
+        let newCredibility = Number(standing.credibility_modifier ?? 1.0);
+        if (newCredibility < 1.0) {
+            // Check if recovery is suspended
+            const suspendedUntil = Number(standing.credibility_recovery_suspended_until ?? 0);
+            if (currentTick >= suspendedUntil) {
+                newCredibility = round3(Math.min(1.0, newCredibility + CFG.CREDIBILITY_RECOVERY_RATE));
+            }
+        }
+        newCredibility = round3(clamp(newCredibility, CFG.CREDIBILITY_MIN, CFG.CREDIBILITY_MAX));
+
+        // ─── RAW APPEAL = weighted pillar sum × credibility ───
+        const rawAppeal = round2(
+            (newAlignment * CFG.PILLAR_WEIGHT_ALIGNMENT +
+             newAppeal * CFG.PILLAR_WEIGHT_APPEAL +
+             newApproval * CFG.PILLAR_WEIGHT_APPROVAL) * newCredibility
+        );
+
+        // ─── Per-pillar contribution (for diagnostics/display) ───
+        const alignContrib = round2(newAlignment * CFG.PILLAR_WEIGHT_ALIGNMENT);
+        const appealContrib = round2(newAppeal * CFG.PILLAR_WEIGHT_APPEAL);
+        const approvalContrib = round2(newApproval * CFG.PILLAR_WEIGHT_APPROVAL);
+
+        updates.push({
+            id: standing.id,
+            faction_id: factionId,
+            nation_id: nation.id,
+            ideological_alignment: newAlignment,
+            platform_appeal: newAppeal,
+            party_approval: newApproval,
+            visibility: newVisibility,
+            credibility_modifier: newCredibility,
+            raw_appeal: rawAppeal,
+            alignment_contribution: round2(alignContrib / 100),
+            appeal_contribution: round2(appealContrib / 100),
+            approval_contribution: round2(approvalContrib / 100),
+            last_updated_tick: currentTick,
+        });
+    }
+
+    // ── 11. Softmax → contested_vote_share ──
+    computeContestedVoteShares(updates);
+
+    // ── 12. Turnout → realized_vote_share ──
+    computeRealizedVoteShares(updates, profile);
+
+    // ── 13. Compute vote_left_on_table ──
+    for (const u of updates) {
+        u.vote_left_on_table = round2(Math.max(0,
+            (u.contested_vote_share || 0) - (u.realized_vote_share || 0)
+        ));
+    }
+
+    // ── 14. Batch-write standings ──
+    let failCount = 0;
+    for (const u of updates) {
+        const { error } = await supabase
+            .from('faction_electoral_standing')
+            .update({
+                ideological_alignment: u.ideological_alignment,
+                platform_appeal: u.platform_appeal,
+                party_approval: u.party_approval,
+                visibility: u.visibility,
+                credibility_modifier: u.credibility_modifier,
+                raw_appeal: u.raw_appeal,
+                contested_vote_share: u.contested_vote_share,
+                base_vote_share: u.base_vote_share,
+                realized_vote_share: u.realized_vote_share,
+                turnout_rate: u.turnout_rate,
+                alignment_contribution: u.alignment_contribution,
+                appeal_contribution: u.appeal_contribution,
+                approval_contribution: u.approval_contribution,
+                vote_left_on_table: u.vote_left_on_table,
+                last_updated_tick: u.last_updated_tick,
+            })
+            .eq('id', u.id);
+        if (error) {
+            console.error(`[Electorate] Failed to update standing for faction ${u.faction_id}:`, error.message);
+            failCount++;
+        }
+    }
+    if (failCount > 0) {
+        console.error(`[Electorate] ${failCount}/${updates.length} standing updates failed for ${nation.name}`);
+    }
+
+    // ── 15. Write national_vote_share to factions table ──
+    await updateNationalVoteShare(supabase, updates, inactiveFactions, nation);
+
+    console.log(`[Electorate] Tick ${currentTick}: updated ${updates.length} standings for ${nation.name}`);
+}
+
+// ============================================================================
+// PILLAR 1: Ideological Alignment (tick computation)
+// ============================================================================
+
+/**
+ * Compute alignment between a faction's ideology and the electorate profile,
+ * weighted by current axis salience.
+ *
+ * Uses Gaussian overlap: exp(-d² / 2σ²) per axis, weighted by salience.
+ * Same algorithm as genesis but with live salience weights.
+ *
+ * @param {object} ideo - faction_ideology row (-100 to +100 per axis)
+ * @param {object} profile - electorate_profile row
+ * @param {object} axisSalienceWeights - { axisKey: weight } from issue states
+ * @returns {number} 0-100 alignment
+ */
+function computeTickAlignment(ideo, profile, axisSalienceWeights) {
+    let weightedAlignment = 0;
+    let totalWeight = 0;
+
+    for (const axisKey of AXIS_KEYS) {
+        const partyScore = Number(ideo[axisKey] || 0);
+        const elecMean = Number(profile['ideo_mean_' + axisKey] ?? 50);
+        const elecVar = Number(profile['ideo_var_' + axisKey] ?? 20);
+
+        // Salience: blend profile default with issue-driven weights
+        const profileSalience = Number(profile['salience_' + axisKey] ?? 0.2);
+        const issueSalience = axisSalienceWeights[axisKey] ?? 0.2;
+        const weight = (profileSalience + issueSalience) / 2;
+
+        const partyNorm = (partyScore + 100) / 2;
+        const distance = Math.abs(partyNorm - elecMean);
+        const sigma = Math.max(5, elecVar);
+        const alignment = Math.exp(-(distance * distance) / (2 * sigma * sigma));
+
+        weightedAlignment += alignment * weight;
+        totalWeight += weight;
+    }
+
+    if (totalWeight <= 0) return 50;
+    return round2(clamp((weightedAlignment / totalWeight) * 100, 0, 100));
+}
+
+/**
+ * Compute axis salience weights from issue_state rows.
+ * Each issue's salience is distributed across its axes according to ISSUE_AXIS_SALIENCE.
+ * The result is normalized so weights sum to 1.0.
+ *
+ * @param {object[]} issueStates - Array of issue_state rows
+ * @returns {object} { axisKey: weight } normalized to sum to 1.0
+ */
+function computeAxisSalienceWeights(issueStates) {
+    const rawWeights = {};
+    for (const axisKey of AXIS_KEYS) rawWeights[axisKey] = 0;
+
+    for (const issue of issueStates) {
+        const salience = Number(issue.salience ?? 30);
+        const axisMap = ISSUE_AXIS_SALIENCE[issue.issue_id];
+        if (!axisMap) continue;
+
+        for (const [axisKey, axisWeight] of Object.entries(axisMap)) {
+            rawWeights[axisKey] += salience * axisWeight;
+        }
+    }
+
+    // Normalize to sum to 1.0
+    const total = Object.values(rawWeights).reduce((a, b) => a + b, 0);
+    const result = {};
+    for (const axisKey of AXIS_KEYS) {
+        result[axisKey] = total > 0 ? round3(rawWeights[axisKey] / total) : round3(1 / AXIS_KEYS.length);
+    }
+    return result;
+}
+
+// ============================================================================
+// VOTE SHARE PIPELINE
+// ============================================================================
+
+/**
+ * Softmax over raw_appeal → contested_vote_share.
+ *
+ * contested_vote_share represents how voters would split if everyone voted.
+ * Temperature controls how "winner-take-all" the distribution is.
+ *
+ * @param {object[]} updates - Array of standing update objects (mutated in place)
+ */
+function computeContestedVoteShares(updates) {
+    if (updates.length === 0) return;
+
+    const k = CFG.SOFTMAX_TEMPERATURE;
+    const appeals = updates.map(u => u.raw_appeal);
+    const maxAppeal = Math.max(...appeals);
+
+    // Softmax with numerical stability (subtract max)
+    const exps = appeals.map(a => Math.exp((a - maxAppeal) / k));
+    const sumExp = exps.reduce((a, b) => a + b, 0);
+
+    for (let i = 0; i < updates.length; i++) {
+        updates[i].contested_vote_share = sumExp > 0
+            ? round4(exps[i] / sumExp)
+            : round4(1 / updates.length);
+        // base_vote_share = contested (before turnout adjustment)
+        updates[i].base_vote_share = updates[i].contested_vote_share;
+    }
+}
+
+/**
+ * Apply turnout to convert contested_vote_share → realized_vote_share.
+ *
+ * Each faction has a turnout rate based on:
+ *   - Base turnout (65%)
+ *   - Enthusiasm bonus (from electorate profile)
+ *   - Visibility bonus (visible parties mobilize more supporters)
+ *
+ * realized_vote_share = contested_vote_share × turnout_rate (renormalized)
+ *
+ * @param {object[]} updates - Array of standing update objects (mutated in place)
+ * @param {object} profile - electorate_profile row
+ */
+function computeRealizedVoteShares(updates, profile) {
+    if (updates.length === 0) return;
+
+    const enthusiasm = Number(profile?.enthusiasm ?? 50);
+
+    // Compute per-faction turnout rate
+    for (const u of updates) {
+        const vis = Number(u.visibility ?? 30);
+        const enthBonus = (enthusiasm - 50) * CFG.TURNOUT_ENTHUSIASM_SCALE;
+        const visBonus = Math.max(0, (vis - 50)) * CFG.TURNOUT_VISIBILITY_SCALE;
+        u.turnout_rate = round3(clamp(CFG.TURNOUT_BASE + enthBonus + visBonus, 0.3, 0.95));
+    }
+
+    // realized = contested × turnout (then renormalize)
+    let totalRealized = 0;
+    for (const u of updates) {
+        u.realized_vote_share = u.contested_vote_share * u.turnout_rate;
+        totalRealized += u.realized_vote_share;
+    }
+
+    // Renormalize so realized shares sum to 1.0
+    if (totalRealized > 0) {
+        for (const u of updates) {
+            u.realized_vote_share = round4(u.realized_vote_share / totalRealized);
+        }
+    } else {
+        const even = round4(1 / updates.length);
+        for (const u of updates) {
+            u.realized_vote_share = even;
+        }
+    }
+}
+
+function round4(v) { return Math.round(v * 10000) / 10000; }
+
+// ============================================================================
+// NATIONAL VOTE SHARE AGGREGATION
+// ============================================================================
+
+/**
+ * Write realized_vote_share as a percentage to factions.national_vote_share.
+ * Zero out inactive factions so stale data doesn't persist.
+ *
+ * @param {object} supabase
+ * @param {object[]} updates - Standing update objects with realized_vote_share
+ * @param {object[]} inactiveFactions - Factions excluded from calculation
+ * @param {object} nation
+ */
+async function updateNationalVoteShare(supabase, updates, inactiveFactions, nation) {
+    for (const u of updates) {
+        const pct = round2((u.realized_vote_share || 0) * 100);
+        await supabase.from('factions')
+            .update({ national_vote_share: pct })
+            .eq('id', u.faction_id);
+    }
+
+    // Zero inactive
+    for (const f of inactiveFactions) {
+        await supabase.from('factions')
+            .update({ national_vote_share: 0 })
+            .eq('id', f.id);
+    }
+    if (inactiveFactions.length > 0) {
+        console.log(`[Electorate] Zeroed national_vote_share for ${inactiveFactions.length} inactive parties in ${nation.name}`);
+    }
 }
