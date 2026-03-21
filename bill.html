@@ -638,8 +638,9 @@ function renderBill() {
     // Unvoted warning for resolved bills
     const resolvedStatuses = ['passed', 'failed', 'enacted', 'vetoed'];
     if (resolvedStatuses.includes(bill.status) && currentFaction) {
+        const isSponsor = bill.proposed_by === currentFaction.id;
         const myVoteRecord = (bill.bill_support || []).find(s => s.faction_id === currentFaction.id);
-        if (!myVoteRecord) {
+        if (!myVoteRecord && !isSponsor) {
             const warnDiv = document.createElement('div');
             warnDiv.style.cssText = 'background:var(--orange-faint);border:2px solid var(--orange-border);border-radius:3px;padding:12px 16px;margin:16px 0;text-align:center;color:var(--orange);font-size:0.85rem;font-weight:bold;';
             warnDiv.textContent = `Your party did not vote on "${bill.bill_name}" before it resolved.`;
