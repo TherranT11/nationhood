@@ -645,10 +645,14 @@ function renderAutocracyEventsBox(actionLog, allParties, pillarStates, currentTi
             // For arrest/execute/release, show the target leader and faction
             let targetInfo = '';
             if (LEADER_TARGET_ACTIONS.has(entry.action_type) && entry.details?.targetFactionId) {
-                const targetFps = pillarStates.find(ps => ps.faction_id === entry.details.targetFactionId);
                 const targetParty = (allParties || []).find(p => p.id === entry.details.targetFactionId);
-                const targetLeaderName = targetFps?.leader_name || 'Unknown';
-                const targetFactionName = targetParty?.faction_name || 'Unknown';
+                // Prefer logged name (survives execution), then current party leader, then pillar state
+                const targetLeaderName = entry.details.target_leader_name
+                    || (targetParty?.leader_first_name && targetParty?.leader_last_name
+                        ? `${targetParty.leader_first_name} ${targetParty.leader_last_name}` : null)
+                    || pillarStates.find(ps => ps.faction_id === entry.details.targetFactionId)?.leader_name
+                    || 'Unknown';
+                const targetFactionName = entry.details.target_faction_name || targetParty?.faction_name || 'Unknown';
                 targetInfo = `<div style="font-size:10px;color:var(--dtext-2);margin-top:1px">${escapeHtml(targetLeaderName)} of ${escapeHtml(targetFactionName)}</div>`;
             }
 
@@ -665,9 +669,9 @@ function renderAutocracyEventsBox(actionLog, allParties, pillarStates, currentTi
     }
 
     return `
-    <div class="pol-party-card">
+    <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
         <div style="font-size:11px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Autocracy Events</div>
-        <div style="max-height:350px;overflow-y:auto">
+        <div style="flex:1;overflow-y:auto">
             ${eventsHtml}
         </div>
     </div>`;
@@ -799,7 +803,7 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
         ${renderCombinedRegimeCard(hosTitle, hosName, hosAge, rulingId, allParties, isStrongman, trackerColor, trackerWord, autocracyTracker, currentTick)}
 
         <!-- Your Party Card -->
-        <div class="pol-party-card">
+        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px">
             <div class="pol-header">
                 <div class="pol-logo">${logoSvg}</div>
                 <div class="pol-header-info">
