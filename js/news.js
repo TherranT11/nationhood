@@ -1017,12 +1017,12 @@ async function loadAndDisplayArticles() {
         // Separate news articles (opinions are handled separately via opinionArticles above)
         const newsArticles = filtered.filter(a => a.category !== 'opinion');
 
-        // Sort news by body length DESC — longest gets A1
+        // Sort news by published_tick DESC — most recent gets A1
         const sorted = [...newsArticles].sort((a, b) =>
-            (b.body || '').length - (a.body || '').length
+            (b.published_tick ?? 0) - (a.published_tick ?? 0)
         );
 
-        // A1 lead = longest article
+        // A1 lead = most recent article
         const lead = sorted[0];
         // Sidebar stories = next 3
         const sidebar = sorted.slice(1, 4);
