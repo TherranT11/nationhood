@@ -451,25 +451,31 @@ async function renderPartyTab(f, nation, data) {
     const html = `
     <div class="pol-page-tabs">
         <button class="pol-page-tab active" data-page-tab="politics">Politics</button>
-        <button class="pol-page-tab" data-page-tab="actions">Actions</button>
         ${electorateTabBtn}
         ${otherPartiesTabBtn}
         ${votersTabBtn}
     </div>
-    <div class="pol-page-content active" data-page-content="politics">
-    ${politicsTabContent}
-    </div>
-    <div class="pol-page-content" data-page-content="actions">
-        <div class="pol-page" style="min-height:300px;">
-            <div class="pol-section-label">Actions</div>
-            <div id="actions-container"></div>
+    <div class="pol-grid-wrapper">
+        <div class="pol-grid-main">
+            <div class="pol-page-content active" data-page-content="politics">
+            ${politicsTabContent}
+            </div>
+            ${electorateContent}
+            ${otherPartiesContent}
+            ${votersContent}
         </div>
-    </div>
-    ${electorateContent}
-    ${otherPartiesContent}
-    ${votersContent}`;
+        <div class="pol-activity-feed">
+            <div class="pol-feed-header">Activity Feed</div>
+            <div class="pol-feed-scroll" id="pol-feed-scroll">
+                <div class="pol-feed-empty">Loading activity...</div>
+            </div>
+        </div>
+    </div>`;
 
     document.getElementById('content-area').innerHTML = html;
+
+    // Load and render Activity Feed
+    _loadActivityFeed(faction.id, nation.id);
 
     // Wire up page-level sub-tabs (Politics / Actions / Electorate / Other Parties / Voters)
     let otherPartiesLoaded = false;
@@ -535,14 +541,75 @@ async function renderPartyTab(f, nation, data) {
         });
     }
 
-    // ═══════════════════════════════════════
-    // ACTIONS TAB — Democracy Campaign Actions
-    // ═══════════════════════════════════════
-    if (!isAutoNation) {
-        await renderDemocracyActions(nation, faction, shard, allParties);
-    } else {
-        await renderAutocracyActionsTab(nation, faction, shard, pillarStates, autocracyTracker, allParties);
+}
+
+// ═══════════════════════════════════════════════════════════
+// ACTIVITY FEED — Persistent sidebar reading from activity_log
+// ═══════════════════════════════════════════════════════════
+
+const _MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function _feedTickLabel(tick) {
+    return `${_MONTHS[tick % 12]} ${2000 + Math.floor(tick / 12)}`;
+}
+
+async function _loadActivityFeed(factionId, nationId) {
+    const scrollEl = document.getElementById('pol-feed-scroll');
+    if (!scrollEl) return;
+
+    // Fetch last 50 activity_log entries for this nation, ordered newest-first
+    const { data: entries, error } = await _supabase
+        .from('activity_log')
+        .select('id, faction_id, action_type, action_label, description, outcome, ap_spent, tick, created_at')
+        .eq('nation_id', nationId)
+        .order('tick', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+    if (error || !entries || entries.length === 0) {
+        scrollEl.innerHTML = '<div class="pol-feed-empty">No activity yet.</div>';
+        return;
     }
+
+    // Need faction names for labelling entries from other parties
+    const factionIds = [...new Set(entries.map(e => e.faction_id))];
+    const { data: factions } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, party_color')
+        .in('id', factionIds);
+    const factionMap = {};
+    for (const f of (factions || [])) factionMap[f.id] = f;
+
+    let html = '';
+    let lastTick = null;
+
+    for (const entry of entries) {
+        // Tick separator
+        if (entry.tick !== lastTick) {
+            lastTick = entry.tick;
+            html += `<div style="padding:6px 16px 2px;font-family:var(--dfont-mono);font-size:10px;font-weight:600;color:var(--dtext-3);letter-spacing:0.06em;text-transform:uppercase;border-top:1px solid var(--dborder-0);margin-top:4px;">${_feedTickLabel(entry.tick)}</div>`;
+        }
+
+        const faction = factionMap[entry.faction_id];
+        const isPlayer = entry.faction_id === factionId;
+        const factionLabel = isPlayer ? 'You' : (faction?.abbreviation || faction?.faction_name || '???');
+        const factionColor = faction?.party_color || 'var(--dtext-2)';
+
+        const typeClass = `pol-feed-item-type--${entry.action_type}`;
+        const outcomeClass = entry.outcome ? `pol-feed-item-outcome--${entry.outcome}` : '';
+
+        html += `
+        <div class="pol-feed-item">
+            <div class="pol-feed-item-header">
+                <span class="pol-feed-item-type ${typeClass}">${(entry.action_label || entry.action_type).replace(/_/g, ' ')}</span>
+                <span style="font-family:var(--dfont-mono);font-size:10px;color:${factionColor};font-weight:600;">${factionLabel}</span>
+                ${entry.ap_spent ? `<span style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3);">${entry.ap_spent} AP</span>` : ''}
+            </div>
+            ${entry.description ? `<div class="pol-feed-item-desc">${entry.description}</div>` : ''}
+            ${entry.outcome ? `<span class="pol-feed-item-outcome ${outcomeClass}">${entry.outcome}</span>` : ''}
+        </div>`;
+    }
+
+    scrollEl.innerHTML = html;
 }
 
 // ═══════════════════════════════════════════════════════════

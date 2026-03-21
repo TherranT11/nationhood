@@ -3024,6 +3024,116 @@ body.light-mode .pol-blocs-box {
 .pol-page-content { display: none; }
 .pol-page-content.active { display: block; }
 
+/* ════════════════════════ POLITICS GRID + ACTIVITY FEED ════════════════════════ */
+.pol-grid-wrapper {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 0;
+    min-height: 600px;
+}
+.pol-grid-main {
+    min-width: 0;
+    overflow-y: auto;
+}
+.pol-activity-feed {
+    border-left: 1px solid var(--dborder-0);
+    background: var(--dbg-1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.pol-feed-header {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dtext-2);
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--dborder-0);
+    flex-shrink: 0;
+}
+.pol-feed-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+}
+.pol-feed-item {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--dborder-0);
+    transition: background 0.12s;
+}
+.pol-feed-item:hover {
+    background: var(--dbg-2);
+}
+.pol-feed-item-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+.pol-feed-item-type {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: #fff;
+    flex-shrink: 0;
+}
+.pol-feed-item-type--rally { background: #f97316; }
+.pol-feed-item-type--outreach { background: #4ade80; color: #1a1a1a; }
+.pol-feed-item-type--attack { background: #ef4444; }
+.pol-feed-item-type--take_stance { background: #60a5fa; }
+.pol-feed-item-type--promise { background: #a78bfa; }
+.pol-feed-item-type--protest { background: #d9534f; }
+.pol-feed-item-type--endorsement { background: #c8a64e; color: #1a1a1a; }
+.pol-feed-item-tick {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-3);
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.pol-feed-item-label {
+    font-family: var(--dfont-ui);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--dtext-1);
+    margin-bottom: 2px;
+}
+.pol-feed-item-desc {
+    font-family: var(--dfont-ui);
+    font-size: 11px;
+    color: var(--dtext-3);
+    line-height: 1.4;
+}
+.pol-feed-item-outcome {
+    display: inline-block;
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-top: 4px;
+    padding: 1px 5px;
+    border-radius: 2px;
+}
+.pol-feed-item-outcome--success { background: rgba(74,222,128,0.15); color: #4ade80; }
+.pol-feed-item-outcome--failure { background: rgba(239,68,68,0.15); color: #ef4444; }
+.pol-feed-item-outcome--backfire { background: rgba(239,68,68,0.25); color: #f87171; }
+.pol-feed-item-outcome--neutral { background: rgba(200,166,78,0.15); color: #c8a64e; }
+.pol-feed-item-outcome--pending { background: rgba(160,160,160,0.15); color: var(--dtext-3); }
+.pol-feed-empty {
+    padding: 24px 16px;
+    text-align: center;
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    color: var(--dtext-3);
+}
+
 @media (max-width: 860px) {
     .pol-page-tabs {
         padding: 8px 8px 0;
@@ -3031,6 +3141,14 @@ body.light-mode .pol-blocs-box {
     .pol-page-tab {
         padding: 6px 12px;
         font-size: 10px;
+    }
+    .pol-grid-wrapper {
+        grid-template-columns: 1fr;
+    }
+    .pol-activity-feed {
+        border-left: none;
+        border-top: 1px solid var(--dborder-0);
+        max-height: 350px;
     }
 }
 
