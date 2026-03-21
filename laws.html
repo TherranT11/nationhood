@@ -215,6 +215,7 @@ let draftArticles = [], selectedPolicy = null;
 let committeeSelectedPolicy = null, currentCommitteeBillId = null;
 let pendingPolicyIds = new Set();
 let isSubmitting = false;
+let _actionLock = false;
 let termBill = 'Bill', termBills = 'Bills', termDraft = 'Draft Bill', termPropose = 'Propose Bill';
 let showingAllLaws = false;
 let factionIdeology = null; // Dynamic ideology scores for current player
@@ -223,7 +224,7 @@ let showingPassedLaws = false;
 const FALLBACK_COLORS = ['var(--red)','var(--green)','var(--blue)','var(--orange)','var(--purple)','var(--blue)','var(--red)','var(--amber)'];
 
 function _getCompatiblePolicies(sector) {
-    const _activePolicyIds = new Set(activeLaws.map(al => al.policy_id));
+    const _activePolicyIds = new Set(activeLaws.filter(al => !al.is_reversal).map(al => al.policy_id));
     return getCompatiblePolicies(sector, allPolicies, currentFaction, lawsIsAutocracy, draftArticles.map(a => a.policy?.id).filter(Boolean), _activePolicyIds);
 }
 
@@ -499,7 +500,7 @@ function filterAllLaws() {
     const sector = document.getElementById('law-filter-sector')?.value || '';
     const ideology = document.getElementById('law-filter-ideology')?.value || '';
 
-    const activePolicyIds = new Set(activeLaws.map(al => al.policy_id));
+    const activePolicyIds = new Set(activeLaws.filter(al => !al.is_reversal).map(al => al.policy_id));
 
     let filtered = allPolicies.filter(p => {
         if (search && !(p.policy_name || '').toLowerCase().includes(search) && !(p.description || '').toLowerCase().includes(search)) return false;
@@ -623,24 +624,28 @@ function renderPresidentDeskBills() {
 }
 
 async function signBill(billId) {
-    if (!isPresidentParty) return;
+    if (_actionLock || !isPresidentParty) return;
     if (!confirm('Sign this bill into law?')) return;
+    _actionLock = true;
     try {
         await signPresidentialBill(_supabase, billId, currentFaction.id);
         alert('Bill signed into law.');
         await loadLawsData(); renderLawsPage();
     } catch (error) { console.error('Sign error:', error); alert('Error: ' + error.message); }
+    finally { _actionLock = false; }
 }
 
 async function vetoBill(billId) {
-    if (!isPresidentParty) return;
+    if (_actionLock || !isPresidentParty) return;
     const overrideSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
     if (!confirm(`VETO this bill?\n\nA veto override bill will be automatically created requiring ${overrideSeats}/${GAME_CONFIG.TOTAL_SEATS} seats (2/3 supermajority).\n\nProceed?`)) return;
+    _actionLock = true;
     try {
         await vetoPresidentialBill(_supabase, billId, currentFaction.id);
         alert('Bill vetoed. A veto override bill has been sent to the floor.');
         await loadLawsData(); renderLawsPage();
     } catch (error) { console.error('Veto error:', error); alert('Error: ' + error.message); }
+    finally { _actionLock = false; }
 }
 
 // ==================== FLOOR BILLS ====================
@@ -743,8 +748,9 @@ function renderFloorBill(bill, isVetoed) {
 }
 
 async function vetoDecree(billId) {
-    if (!lawsIsAutocracy || !isHeadFaction) return;
+    if (_actionLock || !lawsIsAutocracy || !isHeadFaction) return;
     if (!confirm(`⛔ VETO this decree?\nYour faction loses -${GAME_CONFIG.VETO_APPROVAL_COST} Approval.\nProceed?`)) return;
+    _actionLock = true;
     try {
         const { error: vetoErr } = await _supabase.from('bills').update({ status: 'vetoed' }).eq('id', billId);
         if (vetoErr) throw vetoErr;
@@ -754,6 +760,7 @@ async function vetoDecree(billId) {
         await loadLawsData(); renderLawsPage();
         document.getElementById('content-area').scrollTop = 0;
     } catch (error) { console.error('Veto error:', error); alert('Error: ' + error.message); }
+    finally { _actionLock = false; }
 }
 
 // ==================== COMMITTEE BILLS ====================
@@ -1002,8 +1009,9 @@ function renderCommitteeBill(bill) {
 }
 
 async function enactDecree(billId) {
-    if (!lawsIsAutocracy || !isHeadFaction) return;
+    if (_actionLock || !lawsIsAutocracy || !isHeadFaction) return;
     if (!confirm('⚡ ENACT this decree?\nThis sends it directly to the floor for a vote.')) return;
+    _actionLock = true;
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const bill = committeeBills.find(b => b.id === billId);
@@ -1045,6 +1053,7 @@ async function enactDecree(billId) {
         // Scroll to the floor section so the enacted decree is visible
         document.getElementById('content-area').scrollTop = 0;
     } catch (error) { console.error('Enact error:', error); alert('Error: ' + error.message); }
+    finally { _actionLock = false; }
 }
 
 // ==================== ACTIVE LAWS (SECTORS) ====================
@@ -1084,8 +1093,10 @@ function toggleMajorSector(key) { document.getElementById('sector-'+key).classLi
 function toggleMinorSector(majorKey, minorKey) { document.getElementById('minor-'+majorKey+'-'+minorKey)?.classList.toggle('expanded'); }
 
 async function rescindLaw(activeLawId, policyName, policyId) {
+    if (_actionLock) return;
     if (currentSeats === 0) { alert('Your faction holds no seats and cannot propose bills.'); return; }
     if (!confirm('Propose a bill to rescind "' + policyName + '"?\n\nThis will create a repeal bill and send it to committee for a vote.')) return;
+    _actionLock = true;
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const currentTick = shard?.current_tick || 0;
@@ -1123,7 +1134,7 @@ async function rescindLaw(activeLawId, policyName, policyId) {
     } catch (e) {
         console.error(e);
         alert('Error creating repeal bill: ' + e.message);
-    }
+    } finally { _actionLock = false; }
 }
 
 // ==================== DRAFT MODAL ====================
@@ -2725,6 +2736,7 @@ async function setStance(billId, stance) {
 }
 
 async function retractBill(billId) {
+    if (_actionLock) return;
     // Verify bill is still in committee before allowing retraction
     const { data: check } = await _supabase.from('bills').select('status').eq('id', billId).single();
     if (check?.status !== 'committee') {
@@ -2732,6 +2744,7 @@ async function retractBill(billId) {
         return;
     }
     if (!confirm(`Retract this ${termBill.toLowerCase()}? This cannot be undone.`)) return;
+    _actionLock = true;
     try {
         // Load bill + articles before deletion so we can reverse ideology
         const { data: bill } = await _supabase.from('bills')
@@ -2772,6 +2785,7 @@ async function retractBill(billId) {
         await loadLawsData(); renderLawsPage();
         alert(termBill + ' retracted.');
     } catch (error) { console.error('Error retracting:', error); alert('Error retracting.'); }
+    finally { _actionLock = false; }
 }
 
 function openCommitteeAddModal(billId) {
@@ -2830,13 +2844,14 @@ function selectCommitteePolicy(policyId) {
 }
 
 async function submitCommitteeArticle() {
-    if (!committeeSelectedPolicy || !currentCommitteeBillId) return;
+    if (_actionLock || !committeeSelectedPolicy || !currentCommitteeBillId) return;
     // Only the bill sponsor can add articles
     const targetBill = committeeBills.find(b => b.id === currentCommitteeBillId);
     if (targetBill && targetBill.proposed_by && targetBill.proposed_by !== currentFaction?.id) {
         alert('Only the bill sponsor can add articles.');
         return;
     }
+    _actionLock = true;
     try {
         const { data: existingArticles } = await _supabase.from('bill_articles').select('article_number').eq('bill_id', currentCommitteeBillId).order('article_number', { ascending: false }).limit(1);
         const nextArticleNum = (existingArticles?.[0]?.article_number || 1) + 1;
@@ -2844,6 +2859,7 @@ async function submitCommitteeArticle() {
         await _supabase.from('bill_support').upsert({ bill_id: currentCommitteeBillId, faction_id: currentFaction.id, stance: 'accept', seat_count: currentSeats }, { onConflict: 'bill_id,faction_id' });
         closeCommitteeAddModal(); await loadLawsData(); renderLawsPage();
     } catch (error) { console.error('Error adding article:', error); alert('Error adding article.'); }
+    finally { _actionLock = false; }
 }
 
 // Expose handlers used by inline HTML attributes

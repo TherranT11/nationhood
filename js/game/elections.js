@@ -341,17 +341,25 @@ export async function createAdministration(supabase, nationId, nation, coalition
         // Fire timeline event for government formed
         try {
             const partyNames = coalitionParties.map(p => p.party_name).join(', ');
-            await supabase.rpc('fire_system_event', {
-                p_trigger_key: 'government_formed',
-                p_nation_id: nationId,
-                p_tick: currentTick,
-                p_placeholders: {
+            const seatDetail = coalitionParties
+                .slice().sort((a, b) => (b.seats || 0) - (a.seats || 0))
+                .map(p => `${p.party_name} (${p.seats || 0})`)
+                .join(', ');
+            const coalitionDesc = `${pmName || 'Unknown'} of ${pmPartyName} forms a coalition government with ${partyNames}. Seat breakdown: ${seatDetail}.`;
+            await supabase.from('event_log').insert({
+                nation_id: nationId,
+                event_name: 'Coalition Formed',
+                trigger_key: 'government_formed',
+                category: 'government',
+                description_chosen: coalitionDesc,
+                effects_applied: {
                     admin_name: adminName,
                     pm: pmName || 'Unknown',
                     pm_party: pmPartyName,
                     coalition_parties: partyNames,
                     total_seats: String(totalSeats)
-                }
+                },
+                fired_at_tick: currentTick
             });
         } catch (e) { /* non-blocking */ }
 
@@ -1565,15 +1573,21 @@ export async function processElections(supabase, nation, currentTick) {
 
             // Fire election result timeline event with seat breakdown
             try {
-                const seatSummary = completedElection.results.seats
-                    .slice().sort((a, b) => (b.seats || 0) - (a.seats || 0))
+                const sortedSeats = completedElection.results.seats
+                    .slice().sort((a, b) => (b.seats || 0) - (a.seats || 0));
+                const seatSummary = sortedSeats
                     .map(s => `${s.party_name || 'Unknown'}: ${s.seats}`)
                     .join(', ');
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'election_held',
-                    p_nation_id: nation.id,
-                    p_tick: currentTick,
-                    p_placeholders: { election_type: electionType || 'parliamentary', seats: seatSummary }
+                const elType = electionType || 'parliamentary';
+                const electionDesc = `${elType.charAt(0).toUpperCase() + elType.slice(1)} election held. Results: ${seatSummary}.`;
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: 'Election Held',
+                    trigger_key: 'election_held',
+                    category: 'government',
+                    description_chosen: electionDesc,
+                    effects_applied: { election_type: elType, seats: seatSummary },
+                    fired_at_tick: currentTick
                 });
             } catch (e) { /* non-blocking */ }
         }

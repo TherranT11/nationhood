@@ -162,6 +162,39 @@
     padding: 6px 20px 20px;
   }
 
+  /* ── World event date + nation column ── */
+  .dash-event-date-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+
+  /* ── World event nation badge ── */
+  .world-event-nation-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    border: 1px solid;
+    vertical-align: middle;
+  }
+  .world-event-nation-badge img {
+    width: 14px;
+    height: 10px;
+    object-fit: cover;
+    border-radius: 1px;
+  }
+
   /* ── Nation identity — serif name, serif motto ── */
   .nation-identity {
     display: flex;
@@ -1227,6 +1260,7 @@ async function loadDashEvents(nationId, currentTick, parties) {
 // ══════════════════════════════════════
 let _activeEventsTab = 'nation';
 
+window.switchEventsTab = switchEventsTab;
 function switchEventsTab(tab) {
   if (tab === _activeEventsTab) return;
   _activeEventsTab = tab;
@@ -1250,9 +1284,8 @@ async function loadWorldEvents(excludeNationId, currentTick) {
   try {
     const { data: events, error } = await _supabase
       .from('event_log')
-      .select('*, nations!inner(name, flag_url)')
+      .select('*, nations!inner(name, nation_profiles(flag_url))')
       .neq('nation_id', excludeNationId)
-      .not('trigger_key', 'is', null)
       .order('fired_at_tick', { ascending: false })
       .limit(80);
 
@@ -1263,27 +1296,47 @@ async function loadWorldEvents(excludeNationId, currentTick) {
       return;
     }
 
+    // Generate a consistent color for each nation name
+    const NATION_COLORS = [
+      { color: '#5b9bd5', bg: 'rgba(91,155,213,0.10)', border: 'rgba(91,155,213,0.3)' },
+      { color: '#5cb85c', bg: 'rgba(92,184,92,0.10)', border: 'rgba(92,184,92,0.3)' },
+      { color: '#d48a3c', bg: 'rgba(212,138,60,0.10)', border: 'rgba(212,138,60,0.3)' },
+      { color: '#8b7ec8', bg: 'rgba(139,126,200,0.10)', border: 'rgba(139,126,200,0.3)' },
+      { color: '#5aafa5', bg: 'rgba(90,175,165,0.10)', border: 'rgba(90,175,165,0.3)' },
+      { color: '#d9534f', bg: 'rgba(217,83,79,0.10)', border: 'rgba(217,83,79,0.3)' },
+      { color: '#c8a64e', bg: 'rgba(200,166,78,0.10)', border: 'rgba(200,166,78,0.3)' },
+      { color: '#e07baf', bg: 'rgba(224,123,175,0.10)', border: 'rgba(224,123,175,0.3)' },
+    ];
+    function nationColor(name) {
+      let h = 0;
+      for (let i = 0; i < name.length; i++) h = ((h << 5) - h + name.charCodeAt(i)) | 0;
+      return NATION_COLORS[Math.abs(h) % NATION_COLORS.length];
+    }
+
     const rows = events.map(ev => {
       const dateStr = tickToDate(ev.fired_at_tick);
       const desc = ev.description_chosen || ev.description_used || '';
       const eventName = ev.event_name || '';
       const cat = EVENT_CATEGORY_STYLES[ev.category] || EVENT_CATEGORY_DEFAULT;
       const nationName = ev.nations?.name || 'Unknown';
-      const flagUrl = ev.nations?.flag_url;
+      const np = ev.nations?.nation_profiles;
+      const flagUrl = Array.isArray(np) ? np[0]?.flag_url : np?.flag_url;
+      const nc = nationColor(nationName);
 
       const headline = eventName ? `<strong>${esc(eventName)}</strong>` : '';
       const body = desc ? esc(desc) : '';
       const displayText = headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
 
       const flagHtml = flagUrl
-        ? `<img src="${esc(flagUrl)}" alt="" style="width:14px;height:10px;object-fit:cover;border-radius:1px;vertical-align:middle;margin-right:3px;">`
+        ? `<img src="${esc(flagUrl)}" alt="">`
         : '';
 
       return `<div class="dash-event-row">
-        <span class="dash-event-date">${esc(dateStr)}</span>
-        <span class="dash-event-icon" style="color:${cat.color}">${cat.icon}</span>
+        <span class="dash-event-date-col">
+          <span class="dash-event-date">${esc(dateStr)}</span>
+          <span class="world-event-nation-badge" style="color:${nc.color};background:${nc.bg};border-color:${nc.border};">${flagHtml}${esc(nationName)}</span>
+        </span>
         <span class="dash-event-text">
-          <span class="world-event-nation" style="color:var(--text-secondary);font-size:0.7rem;font-weight:600;">${flagHtml}${esc(nationName)}</span>
           ${displayText}
         </span>
         ${cat.label ? `<span class="dash-event-category" style="color:${cat.color};background:${cat.bg}">${cat.label}</span>` : ''}

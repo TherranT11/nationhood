@@ -469,7 +469,6 @@ export function buildProtestResolvedEvent(opts) {
         demand_window: 6,
         turnout_score: Math.round(turnoutScore || 0),
         condition_score: Math.round(conditionScore || 0),
-        tier: articleTier,
         protest_tier: tierNum,
         tier_label: TIER_LABELS[tierNum] || 'Protest',
         endorsement_count: endorsementCount || 0,

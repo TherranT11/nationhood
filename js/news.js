@@ -14,6 +14,18 @@ let _archiveBackContext = null; // navigation context for article reader back bu
 let _editingArticleId = null; // null = create mode, UUID string = edit mode
 let _removeExistingImage = false; // flag: user wants to drop the current image on edit
 
+// Season key for quarterly issue grouping
+// Spring: Feb(1), Mar(2), Apr(3)  Summer: May(4), Jun(5), Jul(6)
+// Fall: Aug(7), Sep(8), Oct(9)    Winter: Nov(10), Dec(11), Jan(0)
+const _SEASON_NAMES = ['Winter', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer', 'Fall', 'Fall', 'Fall', 'Winter', 'Winter'];
+function _seasonKey(tick) {
+    const month = tick % 12;
+    const year = 2000 + Math.floor(tick / 12);
+    const season = _SEASON_NAMES[month];
+    const seasonYear = (month === 0) ? year - 1 : year;
+    return `${season} ${seasonYear}`;
+}
+
 export async function initNewspaper(supabase, state) {
     _supabase = supabase;
     _state = state;
@@ -938,22 +950,56 @@ async function loadAndDisplayArticles() {
 
         if (!articles || articles.length === 0) return;
 
-        // Filter out articles older than 3 ticks
+        // Quarterly issue logic: show all articles from the current season,
+        // plus the most recent articles from ANY past season for categories
+        // that have no new content yet — articles persist until replaced.
         const currentTick = _state.shard?.current_tick ?? 0;
-        const activeArticles = articles.filter(a => {
-            const tick = a.published_tick ?? 0;
-            return currentTick - tick < 3;
-        });
+        const currentSeason = _seasonKey(currentTick);
 
-        if (activeArticles.length === 0) return;
+        const currentSeasonArticles = articles.filter(a =>
+            _seasonKey(a.published_tick ?? 0) === currentSeason
+        );
+        const pastArticles = articles.filter(a =>
+            _seasonKey(a.published_tick ?? 0) !== currentSeason
+        );
+
+        // Categories that already have articles in the current season
+        const currentCategories = new Set(currentSeasonArticles.map(a => a.category));
+
+        // For each category with no current content, pull the most recent
+        // past articles (already sorted by created_at DESC from the query)
+        const fallbackArticles = [];
+        const fallbackCategories = new Set();
+        for (const a of pastArticles) {
+            if (a.category === 'opinion') continue;
+            if (currentCategories.has(a.category)) continue;
+            if (!fallbackCategories.has(a.category)) {
+                fallbackCategories.add(a.category);
+            }
+            fallbackArticles.push(a);
+        }
+
+        // Opinion articles persist until replaced — take the 4 most recent
+        // regardless of season so all slots stay filled
+        const opinionArticles = articles
+            .filter(a => a.category === 'opinion')
+            .slice(0, 4);
+
+        const mergedArticles = [
+            ...currentSeasonArticles.filter(a => a.category !== 'opinion'),
+            ...fallbackArticles,
+            ...opinionArticles
+        ];
+
+        if (mergedArticles.length === 0) return;
 
         // Cache for article reader lookup
-        _articles = activeArticles;
+        _articles = mergedArticles;
 
         // Apply category filter if set
         const filtered = _categoryFilter && _categoryFilter !== 'all'
-            ? activeArticles.filter(a => a.category === _categoryFilter)
-            : activeArticles;
+            ? mergedArticles.filter(a => a.category === _categoryFilter)
+            : mergedArticles;
 
         if (filtered.length === 0 && _categoryFilter !== 'all') {
             const emptyMsg = `<p class="nws-placeholder" style="text-align:center;padding:40px;grid-column:1/-1;">No ${categoryLabel(_categoryFilter)} articles in this edition.</p>`;
@@ -968,8 +1014,7 @@ async function loadAndDisplayArticles() {
             return;
         }
 
-        // Separate opinion articles from news articles
-        const opinionArticles = filtered.filter(a => a.category === 'opinion');
+        // Separate news articles (opinions are handled separately via opinionArticles above)
         const newsArticles = filtered.filter(a => a.category !== 'opinion');
 
         // Sort news by body length DESC — longest gets A1
@@ -984,7 +1029,7 @@ async function loadAndDisplayArticles() {
         // Secondary grid = next 3 after sidebar
         const secondary = sorted.slice(4, 7);
         // In Brief = 5 most recent articles (all categories, by recency)
-        const briefs = [...activeArticles]
+        const briefs = [...mergedArticles]
             .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
             .slice(0, 5);
 
@@ -1204,27 +1249,28 @@ async function renderArchivesListView(root) {
             return;
         }
 
-        // Group articles by their published tick (each tick = one month)
+        // Group articles by season (3-month windows) using shared _seasonKey
         const grouped = {};
         for (const a of (articles || [])) {
             const tick = a.published_tick ?? 0;
-            const dateLabel = tickToDate(tick);
-            if (!grouped[tick]) grouped[tick] = { dateLabel, tick, articles: [] };
-            grouped[tick].articles.push(a);
+            const key = _seasonKey(tick);
+            if (!grouped[key]) grouped[key] = { label: key, maxTick: tick, articles: [] };
+            grouped[key].articles.push(a);
+            if (tick > grouped[key].maxTick) grouped[key].maxTick = tick;
         }
 
-        // Sort by tick descending
-        const months = Object.values(grouped).sort((a, b) => b.tick - a.tick);
+        // Sort by max tick descending (newest seasons first)
+        const seasons = Object.values(grouped).sort((a, b) => b.maxTick - a.maxTick);
 
-        // Mark current edition ticks (within 3 ticks)
-        const isCurrentEdition = (tick) => currentTick - tick < 3;
+        // Mark current season
+        const currentSeasonKey = _seasonKey(currentTick);
 
-        const monthListHtml = months.length > 0
-            ? months.map(m => {
-                const current = isCurrentEdition(m.tick) ? ' <span class="nws-archive-current">Current</span>' : '';
-                return `<div class="nws-archive-month" data-archive-tick="${m.tick}">
-                    <div class="nws-archive-month-name">${escapeHtml(m.dateLabel)}${current}</div>
-                    <div class="nws-archive-month-count">${m.articles.length} article${m.articles.length !== 1 ? 's' : ''}</div>
+        const monthListHtml = seasons.length > 0
+            ? seasons.map(s => {
+                const current = s.label === currentSeasonKey ? ' <span class="nws-archive-current">Current</span>' : '';
+                return `<div class="nws-archive-month" data-archive-season="${escapeHtml(s.label)}">
+                    <div class="nws-archive-month-name">${escapeHtml(s.label)}${current}</div>
+                    <div class="nws-archive-month-count">${s.articles.length} article${s.articles.length !== 1 ? 's' : ''}</div>
                 </div>`;
             }).join('')
             : '<p class="nws-placeholder" style="text-align:center;padding:40px;">No articles have been published yet.</p>';
@@ -1255,7 +1301,7 @@ async function renderArchivesListView(root) {
             <div class="nws-main-content">
                 <div class="nws-archives">
                     <h2 class="nws-archives-title">Older Issues</h2>
-                    <p class="nws-archives-subtitle">Browse past editions of The Cruceran by month.</p>
+                    <p class="nws-archives-subtitle">Browse past editions of The Cruceran by season.</p>
                     <div class="nws-archive-list">
                         ${monthListHtml}
                     </div>
@@ -1272,12 +1318,12 @@ async function renderArchivesListView(root) {
         // Bind back button
         document.getElementById('nws-back-btn')?.addEventListener('click', () => initNewspaper(_supabase, _state));
 
-        // Bind month clicks
-        root.querySelectorAll('[data-archive-tick]').forEach(el => {
+        // Bind season clicks
+        root.querySelectorAll('[data-archive-season]').forEach(el => {
             el.addEventListener('click', () => {
-                const tick = parseInt(el.dataset.archiveTick, 10);
-                const monthData = grouped[tick];
-                if (monthData) renderArchivedEdition(root, monthData.articles, monthData.dateLabel);
+                const key = el.dataset.archiveSeason;
+                const seasonData = grouped[key];
+                if (seasonData) renderArchivedEdition(root, seasonData.articles, seasonData.label);
             });
         });
 

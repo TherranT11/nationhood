@@ -341,3 +341,83 @@
             display:flex; gap:16px; font-size:0.75rem; color:var(--text-secondary);
             padding-top:8px; border-top:1px solid var(--border-main);
         }
+
+/* ==================== MOBILE RESPONSIVE ==================== */
+
+@media (max-width: 600px) {
+    /* Header */
+    .laws-header { flex-direction: column; align-items: stretch; gap: 10px; }
+    .laws-header-buttons { flex-direction: column; gap: 8px; }
+    .draft-btn, .all-laws-btn, .passed-laws-btn, .default-resolution-btn { width: 100%; text-align: center; padding: 14px 16px; font-size: 0.78rem; min-height: 48px; }
+
+    /* Committee bills */
+    .committee-bill { padding: 14px; }
+    .committee-bill-header { flex-direction: column; gap: 8px; }
+    .committee-support { text-align: left; display: flex; align-items: center; gap: 8px; }
+    .support-percent { font-size: 1.1rem; }
+    .committee-bill-name { font-size: 0.95rem; }
+
+    /* Floor bills */
+    .floor-bill { padding: 14px; }
+    .floor-bill-name { font-size: 0.95rem; }
+    .floor-votes { gap: 12px; flex-wrap: wrap; }
+
+    /* Article items */
+    .bill-articles { padding: 10px; }
+    .bill-article-item { flex-direction: column; align-items: flex-start; gap: 4px; padding: 6px 0; }
+    .article-title { font-size: 0.88rem; }
+    .article-desc { font-size: 0.75rem; }
+    .article-ideology { margin-left: 0; margin-top: 4px; }
+
+    /* Party stances */
+    .party-stance-row { flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px 0; }
+    .stance-btn { width: 100%; text-align: center; padding: 10px; min-height: 44px; }
+
+    /* Decree actions */
+    .decree-actions { flex-direction: column; gap: 8px; }
+    .decree-action-btn { width: 100%; text-align: center; }
+
+    /* Veto banner */
+    .veto-banner { flex-direction: column; gap: 8px; align-items: stretch; }
+    .veto-banner button { width: 100%; min-height: 48px; }
+
+    /* Click hint */
+    .click-hint { text-align: center; font-size: 0.75rem; }
+
+    /* All Laws panel */
+    .all-laws-filters { flex-direction: column; }
+    .all-laws-filters input { min-width: 0; width: 100%; }
+    .law-card { padding: 12px; }
+    .law-card-header { flex-direction: column; gap: 6px; }
+    .law-card-meta { flex-direction: column; gap: 6px; }
+    .active-law-meta { flex-direction: column; gap: 6px; align-items: flex-start; }
+    .rescind-btn { margin-left: 0; margin-top: 6px; width: 100%; text-align: center; padding: 8px 10px; }
+
+    /* Sector accordion */
+    .major-sector-header { padding: 12px 14px; }
+    .major-sector-content { padding: 0 14px 12px; }
+    .minor-sector-header { padding: 10px 12px; }
+    .minor-sector-content { padding: 10px 12px; }
+
+    /* Archive */
+    .archive-summary { flex-direction: column; gap: 8px; }
+    .archive-bill { padding: 12px; }
+    .archive-bill-title { flex-direction: column; align-items: flex-start; gap: 6px; }
+    .archive-bill-meta { flex-direction: column; gap: 4px; }
+    .archive-party-breakdown { flex-direction: column; gap: 6px; }
+    .archive-bill-footer { flex-direction: column; gap: 6px; }
+
+    /* Draft bill modal */
+    .modal-content { padding: 14px; width: 95%; max-height: 90vh; }
+    .modal-header { margin-bottom: 14px; padding-bottom: 12px; }
+    .modal-footer { flex-direction: column; gap: 8px; }
+    .modal-footer .btn-cancel, .modal-footer .btn-submit, .modal-footer .btn-add { width: 100%; text-align: center; }
+    .draft-article-card { flex-direction: column; align-items: stretch; gap: 8px; }
+    .remove-article-btn { width: 100%; text-align: center; }
+    .policy-options { max-height: 250px; }
+
+    /* Default resolution preview */
+    .default-preview-grid { grid-template-columns: 1fr 1fr; }
+    .default-preview-footer { flex-direction: column; gap: 6px; }
+    .austerity-row { flex-direction: column; gap: 6px; }
+}
