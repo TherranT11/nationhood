@@ -16,7 +16,7 @@ import { applyBackingDelta } from './autocracy-pillars.js';
  * Load all faction_pillar_state rows + wildcard state for a nation.
  * Returns { pillarStates, wildcardState, tracker } or null.
  */
-async function loadPillarContext(supabase, nationId) {
+export async function loadPillarContext(supabase, nationId) {
     const [{ data: fpsRows }, { data: tracker }] = await Promise.all([
         supabase.from('faction_pillar_state').select('*').eq('nation_id', nationId),
         supabase.from('autocracy_tracker').select('*').eq('nation_id', nationId).single(),
@@ -37,7 +37,7 @@ async function loadPillarContext(supabase, nationId) {
 /**
  * Persist backing changes for all pillar states + wildcard.
  */
-async function persistBackingChanges(supabase, nationId, pillarStates, wildcardState) {
+export async function persistBackingChanges(supabase, nationId, pillarStates, wildcardState) {
     for (const ps of pillarStates) {
         await supabase.from('faction_pillar_state')
             .update({ backing: ps.backing, updated_at: new Date().toISOString() })
@@ -51,14 +51,14 @@ async function persistBackingChanges(supabase, nationId, pillarStates, wildcardS
 /**
  * Clamp a stat value between 0 and 100 with one decimal precision.
  */
-function clampStat(val) {
+export function clampStat(val) {
     return Math.max(0, Math.min(100, Math.round(val * 10) / 10));
 }
 
 /**
  * Roll a dice: random integer from min to max inclusive.
  */
-function roll(min, max) {
+export function roll(min, max) {
     return min + Math.floor(Math.random() * (max - min + 1));
 }
 
