@@ -13,8 +13,10 @@ export function computeEndorsementButtonState({
     let disabledReason = '';
     let ticksUntilElection = null;
     let ticksUntilWindow = null;
+    let hidden = false;
 
     if (!isPresidentialSystem) {
+        hidden = true;
         disabledReason = 'No presidential election is in the eligible window.';
     } else if (!nextPresidentialElection) {
         disabledReason = 'No presidential election is in the eligible window.';
@@ -35,6 +37,7 @@ export function computeEndorsementButtonState({
         disabled: Boolean(disabledReason),
         disabledReason,
         ticksUntilElection,
-        ticksUntilWindow
+        ticksUntilWindow,
+        hidden
     };
 }

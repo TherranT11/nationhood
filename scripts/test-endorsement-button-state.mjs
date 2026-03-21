@@ -40,6 +40,15 @@ function testDisabledStates() {
   });
   assert.equal(ineligible.disabled, true);
   assert.equal(ineligible.disabledReason, 'Your party is not eligible to endorse in this cycle.');
+
+  // Parliamentary system should hide the button entirely
+  const parlSystem = computeEndorsementButtonState({
+    isPresidentialSystem: false,
+    currentTick: 100,
+    playerSeats: 10,
+    scheduledElections: [{ election_type: 'presidential', election_tick: 104 }]
+  });
+  assert.equal(parlSystem.hidden, true, 'parliamentary system should hide endorsement button');
 }
 
 testEnabledState();

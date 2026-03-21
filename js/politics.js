@@ -2386,34 +2386,31 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         endorseHint = `<div style="font-size:10px;color:var(--dgreen);text-align:right;margin-top:2px">${endorseState.ticksUntilElection} tick${endorseState.ticksUntilElection !== 1 ? 's' : ''} until election</div>`;
     }
 
-    // Build endorsement candidate list (other parties with seats)
-    const currentEndorsedId = currentEndorsement?.endorsed_faction_id || null;
-    const otherParties = (allParties || []).filter(p => p.id !== faction?.id && (p.seats || 0) > 0);
-    const endorseCandidatesHtml = otherParties.map(p => {
-        const color = p.party_color || '#888';
-        const leaderName = [p.leader_first_name, p.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
-        const isCurrentlyEndorsed = p.id === currentEndorsedId;
-        return `<div class="pol-endorse-candidate${isCurrentlyEndorsed ? ' selected' : ''}" data-faction-id="${p.id}">
-            <span class="pol-el-color-dot" style="background:${color}"></span>
-            <span class="pol-endorse-candidate-name">${escapeHtml(p.faction_name || p.abbreviation)}</span>
-            <span class="pol-endorse-candidate-leader">${escapeHtml(leaderName)}</span>
-            <span class="pol-endorse-candidate-seats">${p.seats || 0} seats</span>
-            ${isCurrentlyEndorsed ? '<span style="font-family:var(--dfont-mono);font-size:8px;color:var(--dgreen)">ENDORSED</span>' : ''}
-        </div>`;
-    }).join('');
+    // Build endorsement button + panel HTML (hidden entirely for non-presidential systems)
+    let endorseButtonHtml = '';
+    let endorsePanelHtml = '';
+    if (!endorseState.hidden) {
+        const currentEndorsedId = currentEndorsement?.endorsed_faction_id || null;
+        const otherParties = (allParties || []).filter(p => p.id !== faction?.id && (p.seats || 0) > 0);
+        const endorseCandidatesHtml = otherParties.map(p => {
+            const color = p.party_color || '#888';
+            const leaderName = [p.leader_first_name, p.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
+            const isCurrentlyEndorsed = p.id === currentEndorsedId;
+            return `<div class="pol-endorse-candidate${isCurrentlyEndorsed ? ' selected' : ''}" data-faction-id="${p.id}">
+                <span class="pol-el-color-dot" style="background:${color}"></span>
+                <span class="pol-endorse-candidate-name">${escapeHtml(p.faction_name || p.abbreviation)}</span>
+                <span class="pol-endorse-candidate-leader">${escapeHtml(leaderName)}</span>
+                <span class="pol-endorse-candidate-seats">${p.seats || 0} seats</span>
+                ${isCurrentlyEndorsed ? '<span style="font-family:var(--dfont-mono);font-size:8px;color:var(--dgreen)">ENDORSED</span>' : ''}
+            </div>`;
+        }).join('');
 
-    return `<div class="pol-election-box"
-        data-faction-id="${faction?.id || ''}"
-        data-nation-id="${nation?.id || ''}"
-        data-current-tick="${currentTick || 0}">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-            <div class="pol-section-label" style="margin-bottom:0">ELECTION RESULTS</div>
-            <div>
-                <button class="pol-endorse-btn" ${endorseState.disabled ? 'disabled' : ''}>Endorse Candidate</button>
-                ${endorseHint}
-            </div>
-        </div>
-        <div class="pol-endorse-panel" style="display:none">
+        endorseButtonHtml = `<div>
+            <button class="pol-endorse-btn" ${endorseState.disabled ? 'disabled' : ''}>Endorse Candidate</button>
+            ${endorseHint}
+        </div>`;
+
+        endorsePanelHtml = `<div class="pol-endorse-panel" style="display:none">
             <div class="pol-endorse-panel-header">
                 <span class="pol-section-label" style="margin-bottom:0;font-size:9px">ENDORSE A CANDIDATE</span>
                 <button class="pol-endorse-panel-close">&times;</button>
@@ -2422,7 +2419,18 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
             <div class="pol-endorse-candidate-list">
                 ${endorseCandidatesHtml || '<div class="pol-el-empty">No eligible parties to endorse.</div>'}
             </div>
+        </div>`;
+    }
+
+    return `<div class="pol-election-box"
+        data-faction-id="${faction?.id || ''}"
+        data-nation-id="${nation?.id || ''}"
+        data-current-tick="${currentTick || 0}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div class="pol-section-label" style="margin-bottom:0">ELECTION RESULTS</div>
+            ${endorseButtonHtml}
         </div>
+        ${endorsePanelHtml}
         <div class="pol-el-tabs">
             <button class="pol-el-tab active" data-tab="parl">Parliamentary</button>
             ${presTabs}
