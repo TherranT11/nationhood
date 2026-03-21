@@ -2463,7 +2463,7 @@ const CA_ACTIONS = [
     { id: 'fund_think_tank', name: 'Fund Think Tank', ap: IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST, color: '#14b8a6', icon: '🏛',
       desc: 'Drift the electorate\'s ideological mean on a chosen axis. 4 AP upfront + 1 AP/tick for 50 ticks. Drift: 1d3 (0.1–0.3).' },
     { id: 'media_campaign', name: 'Media Campaign', ap: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.AP_COST, color: '#8b5cf6', icon: '📡',
-      desc: 'Expand or narrow electorate ideological variance on a chosen axis. Runs every tick for 50 ticks.' },
+      desc: 'Expand or narrow electorate variance on a chosen axis. 1d5 variance shift for 5 ticks, then 1d3 visibility for 5 ticks.' },
     { id: 'grassroots_movement', name: 'Grassroots Movement', ap: IDEO_SHIFT_CONFIG.GRASSROOTS.AP_COST, color: '#10b981', icon: '🌱',
       desc: 'Target a demographic band to shift their ideology. Runs for 50 ticks, auto-completes early at shift cap.' },
 ];
@@ -2918,7 +2918,8 @@ function renderThinkTankConfig() {
 // ── MEDIA CAMPAIGN CONFIG ──
 
 function renderMediaCampaignConfig() {
-    let html = `<div class="ca-info-box">Launch a media campaign to expand or narrow electorate ideological variance on a chosen axis. Runs every tick for ${IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.DURATION} ticks.</div>`;
+    const mc = IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN;
+    let html = `<div class="ca-info-box">Launch a media campaign to expand or narrow electorate ideological variance on a chosen axis. Phase 1: 1d5 (0.1–0.5) variance shift/tick for ${mc.DURATION} ticks. Phase 2: 1d3 (1–3) visibility/tick for ${mc.VISIBILITY_TICKS} ticks.</div>`;
     html += renderAxisSelector();
     if (_caTargetAxis) {
         html += `<div class="ca-subtitle" style="margin-top:12px">Variance direction</div>`;

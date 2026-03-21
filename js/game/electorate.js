@@ -2081,12 +2081,15 @@ export const IDEO_SHIFT_CONFIG = {
         VISIBILITY_BOOST: 4,
     },
     MEDIA_CAMPAIGN: {
-        AP_COST: 3,
+        AP_COST: 6,
         COOLDOWN_WINDOW: 5,
         MAX_ACTIVE: 1,
-        VARIANCE_SHIFT: 0.5,    // ideo variance shift per tick
-        DURATION: 50,
-        VISIBILITY_BOOST: 5,
+        VARIANCE_MIN: 0.1,      // 1d5: random 0.1–0.5 per tick
+        VARIANCE_MAX: 0.5,
+        DURATION: 5,            // variance shift for 5 ticks
+        VISIBILITY_TICKS: 5,    // then 1d3 visibility per tick for 5 more ticks
+        VISIBILITY_MIN: 1,
+        VISIBILITY_MAX: 3,
     },
     GRASSROOTS: {
         AP_COST: 4,
@@ -2228,8 +2231,6 @@ export async function executeMediaCampaign(supabase, factionId, nationId, target
         return { success: false, message: 'Database error creating media campaign' };
     }
 
-    await boostVisibility(supabase, factionId, nationId, cfg.VISIBILITY_BOOST);
-
     const { error: insErr } = await supabase.from('campaign_actions').insert({
         party_id: factionId, nation_id: nationId,
         action_type: 'media_campaign', ap_cost: cfg.AP_COST,
@@ -2250,8 +2251,8 @@ export async function executeMediaCampaign(supabase, factionId, nationId, target
         effects: [
             { label: 'Axis', value: `${axisDef?.leftLabel} ↔ ${axisDef?.rightLabel}` },
             { label: 'Effect', value: dirLabel },
-            { label: 'Rate', value: `${cfg.VARIANCE_SHIFT}/tick for ${cfg.DURATION} ticks` },
-            { label: 'Visibility', value: `+${cfg.VISIBILITY_BOOST}` },
+            { label: 'Variance', value: `1d5 (${cfg.VARIANCE_MIN}–${cfg.VARIANCE_MAX})/tick for ${cfg.DURATION} ticks` },
+            { label: 'Visibility', value: `1d3 (${cfg.VISIBILITY_MIN}–${cfg.VISIBILITY_MAX})/tick for ${cfg.VISIBILITY_TICKS} ticks` },
         ],
         newAp: apResult.newAp,
     };
@@ -2382,12 +2383,15 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
     const toSuspend = [];
 
     for (const act of actions) {
-        // ── Duration check — auto-complete after DURATION ticks ──
+        // ── Duration check — auto-complete after total ticks ──
         const ticksActive = currentTick - (act.created_tick || 0);
         const cfgKey = act.action_type === 'think_tank' ? 'THINK_TANK'
             : act.action_type === 'media_campaign' ? 'MEDIA_CAMPAIGN' : 'GRASSROOTS';
-        const duration = IDEO_SHIFT_CONFIG[cfgKey]?.DURATION || 50;
-        if (ticksActive >= duration) {
+        const cfg = IDEO_SHIFT_CONFIG[cfgKey];
+        const totalDuration = act.action_type === 'media_campaign'
+            ? (cfg?.DURATION || 5) + (cfg?.VISIBILITY_TICKS || 5)
+            : (cfg?.DURATION || 50);
+        if (ticksActive >= totalDuration) {
             toSuspend.push(act.id);
             continue;
         }
@@ -2407,14 +2411,23 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
                 profile[col] = newVal;
             }
         } else if (act.action_type === 'media_campaign') {
-            // Drift ideo_var on target axis
-            const col = 'ideo_var_' + act.target_axis;
-            const old = Number(profile[col] ?? 20);
-            const drift = Number(act.drift_rate || 0.5); // signed: positive = expand, negative = narrow
-            const newVal = round2(clamp(old + drift, 5, 45));
-            if (newVal !== old) {
-                profileUpdates[col] = newVal;
-                profile[col] = newVal;
+            const mcCfg = IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN;
+            if (ticksActive < mcCfg.DURATION) {
+                // Phase 1 (ticks 0–4): variance shift — 1d5 (0.1–0.5)
+                const col = 'ideo_var_' + act.target_axis;
+                const old = Number(profile[col] ?? 20);
+                const sign = act.target_direction === 'expand' ? 1 : -1;
+                const roll = [0.1, 0.2, 0.3, 0.4, 0.5][Math.floor(Math.random() * 5)];
+                const drift = sign * roll;
+                const newVal = round2(clamp(old + drift, 5, 45));
+                if (newVal !== old) {
+                    profileUpdates[col] = newVal;
+                    profile[col] = newVal;
+                }
+            } else if (ticksActive < mcCfg.DURATION + mcCfg.VISIBILITY_TICKS) {
+                // Phase 2 (ticks 5–9): visibility boost — 1d3 (1–3)
+                const visRoll = [1, 2, 3][Math.floor(Math.random() * 3)];
+                await boostVisibility(supabase, act.faction_id, nationId, visRoll);
             }
         } else if (act.action_type === 'grassroots_movement') {
             // Small ideo_mean nudge weighted by demographic band share
