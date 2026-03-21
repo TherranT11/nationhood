@@ -1154,9 +1154,16 @@ initPage('home', async (state) => {
       elBody.innerHTML = elections.map(e => {
         const year = 2000 + Math.floor(e.tick / 12);
         const month = MONTHS[e.tick % 12];
+        const ticksLeft = e.tick - currentTick;
+        const yrsLeft = Math.floor(ticksLeft / 12);
+        const mosLeft = ticksLeft % 12;
+        const parts = [];
+        if (yrsLeft > 0) parts.push(`${yrsLeft} year${yrsLeft !== 1 ? 's' : ''}`);
+        if (mosLeft > 0) parts.push(`${mosLeft} month${mosLeft !== 1 ? 's' : ''}`);
+        const countdown = parts.length > 0 ? ` (${parts.join(', ')})` : ' (now)';
         return `<div class="election-item ${e.css}">
           <div class="election-item-type">${e.type}</div>
-          <div class="election-item-date">${month}, ${year}</div>
+          <div class="election-item-date">${month}, ${year}<span style="color:var(--text-secondary);font-weight:400;">${countdown}</span></div>
         </div>`;
       }).join('');
     }
