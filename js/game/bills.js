@@ -3111,10 +3111,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             nationUpdate.head_of_state_last_name = dynastyLastName;
             nationUpdate.head_of_state_age = monarchAge;
             // Set King or Queen based on the generated monarch's name
-            const monarchTitle = isFemaleName(monarchFirstName) ? 'Queen' : 'King';
-            if (!nation?.head_of_state_title || nation.head_of_state_title === 'President' || nation.head_of_state_title === 'Vice President') {
-                nationUpdate.head_of_state_title = monarchTitle;
-            }
+            nationUpdate.head_of_state_title = isFemaleName(monarchFirstName) ? 'Queen' : 'King';
         }
 
         const { error: nationErr } = await supabase.from('nations').update(nationUpdate).eq('id', bill.nation_id);
