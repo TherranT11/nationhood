@@ -40,6 +40,183 @@ export const EO_CONFIG = {
     CENSURE_REPEAT_MOMENTUM: 16,
     OVERREACH_WINDOW: 8,
     EMERGENCY_ADVANCE_APPROVAL_COST: -6,
+    STIMULATE_ECONOMY_AP: 3,
+};
+
+// ─── Stimulate the Economy — Ideology-Flavored Executive Orders ───
+// Each ideology gets 2 realistic orders. Once used, cannot be reused in the same presidential term.
+// stat_increases/stat_decreases: { stat_key: magnitude }
+
+export const STIMULATE_ECONOMY_ORDERS = {
+    // === Axis: Individualism vs Collectivism ===
+    individualism_deregulation: {
+        key: 'individualism_deregulation',
+        ideology: 'INDIVIDUALISM',
+        name: 'Small Business Deregulation Order',
+        description: 'Strip federal red tape for businesses under 50 employees — expedited permits, waived compliance fees, simplified tax filing.',
+        stat_increases: { gdp_growth: 2, credit: 3, service_output: 2, foreign_investment: 1 },
+        stat_decreases: { pollution: 3, union_strength: 2, income_inequality: 2 },
+    },
+    individualism_capital_gains: {
+        key: 'individualism_capital_gains',
+        ideology: 'INDIVIDUALISM',
+        name: 'Capital Gains Tax Holiday',
+        description: 'Direct Treasury to defer capital gains tax collection for 12 months on domestic investments.',
+        stat_increases: { foreign_investment: 3, gdp_growth: 2, credit: 2, currency_strength: 1 },
+        stat_decreases: { income_inequality: 3, poverty_rate: 1, housing_affordability: 2, stability: 1 },
+    },
+    collectivism_jobs_program: {
+        key: 'collectivism_jobs_program',
+        ideology: 'COLLECTIVISM',
+        name: 'Federal Jobs Program Order',
+        description: 'Direct agencies to hire for infrastructure repair, conservation, and public services.',
+        stat_increases: { gdp_growth: 1, physical_infrastructure: 2, social_mobility: 1 },
+        stat_decreases: { unemployment: 3, poverty_rate: 2, debt_growth: 3, efficiency: 1 },
+    },
+    collectivism_wage_floor: {
+        key: 'collectivism_wage_floor',
+        ideology: 'COLLECTIVISM',
+        name: 'Wage Floor for Federal Contractors',
+        description: 'Mandate all federal contractors pay a living wage minimum, rippling through supply chains.',
+        stat_increases: { minimum_wage: 3, standard_of_living: 2, happiness: 1 },
+        stat_decreases: { poverty_rate: 2, manufacturing_output: 1, cost_of_living: 1, foreign_investment: 1, service_output: 1 },
+    },
+
+    // === Axis: Nationalism vs Globalism (Nationalism = "Buy Local") ===
+    nationalism_buy_local: {
+        key: 'nationalism_buy_local',
+        ideology: 'NATIONALISM',
+        name: 'Buy Local Procurement Order',
+        description: 'All federal purchases must source domestically — steel, tech, vehicles, materials.',
+        stat_increases: { manufacturing_output: 3, gdp_growth: 1, currency_strength: 1, trade_balance: 1 },
+        stat_decreases: { cost_of_living: 2, foreign_investment: 2, fuel_prices: 1 },
+    },
+    nationalism_export_controls: {
+        key: 'nationalism_export_controls',
+        ideology: 'NATIONALISM',
+        name: 'Export Control on Strategic Resources',
+        description: 'Restrict export of rare minerals, semiconductors, and energy tech to protect domestic industry.',
+        stat_increases: { rare_minerals: 2, manufacturing_output: 2, energy_generation: 1, stability: 1 },
+        stat_decreases: { trade_balance: 2, foreign_investment: 2, international_reputation: 2, gdp_growth: 1 },
+    },
+    globalism_investment_zones: {
+        key: 'globalism_investment_zones',
+        ideology: 'GLOBALISM',
+        name: 'Fast-Track Foreign Investment Zones',
+        description: 'Designate special economic zones with streamlined visa and permit processes for foreign firms.',
+        stat_increases: { foreign_investment: 4, gdp_growth: 2, immigration: 2, trade_balance: 1 },
+        stat_decreases: { housing_affordability: 2, income_inequality: 2, polarization: 1, manufacturing_output: 1 },
+    },
+    globalism_tariff_suspension: {
+        key: 'globalism_tariff_suspension',
+        ideology: 'GLOBALISM',
+        name: 'Tariff Suspension Order',
+        description: 'Suspend tariffs on key imports for 1 year to reduce costs and boost trade volume.',
+        stat_increases: { trade_balance: 2, gdp_growth: 1 },
+        stat_decreases: { cost_of_living: 2, fuel_prices: 1, manufacturing_output: 2, unemployment: 1, currency_strength: 1, stability: 1 },
+    },
+
+    // === Axis: Equality vs Liberty ===
+    equality_minority_lending: {
+        key: 'equality_minority_lending',
+        ideology: 'EQUALITY',
+        name: 'Minority Business Lending Directive',
+        description: 'Direct federal lending programs to prioritize underserved communities and women-owned businesses.',
+        stat_increases: { social_mobility: 2, gdp_growth: 1, credit: 1 },
+        stat_decreases: { income_inequality: 2, poverty_rate: 1, efficiency: 1, polarization: 1 },
+    },
+    equality_pay_transparency: {
+        key: 'equality_pay_transparency',
+        ideology: 'EQUALITY',
+        name: 'Pay Transparency for Federal Workforce',
+        description: 'Mandate all federal agencies and contractors publish salary bands by role to reduce wage gaps.',
+        stat_increases: { happiness: 1, legitimacy: 1, social_mobility: 1 },
+        stat_decreases: { income_inequality: 2, foreign_investment: 1, efficiency: 1, service_output: 1, polarization: 1 },
+    },
+    liberty_regulatory_moratorium: {
+        key: 'liberty_regulatory_moratorium',
+        ideology: 'LIBERTY',
+        name: 'Regulatory Moratorium',
+        description: 'Freeze all new federal regulations for 6 months — let the market breathe.',
+        stat_increases: { gdp_growth: 2, credit: 2, manufacturing_output: 2, foreign_investment: 1 },
+        stat_decreases: { pollution: 2, healthcare_quality: 1, income_inequality: 1 },
+    },
+    liberty_licensing_reform: {
+        key: 'liberty_licensing_reform',
+        ideology: 'LIBERTY',
+        name: 'Federal Licensing Reform Order',
+        description: 'Direct agencies to eliminate or reciprocate occupational licenses — let people work freely across regions.',
+        stat_increases: { labor_force_participation: 2, service_output: 2, social_mobility: 2 },
+        stat_decreases: { unemployment: 2, healthcare_quality: 1, efficiency: 1, crime_rate: 1, union_strength: 1 },
+    },
+
+    // === Axis: Progress vs Tradition ===
+    progress_green_infrastructure: {
+        key: 'progress_green_infrastructure',
+        ideology: 'PROGRESS',
+        name: 'Green Infrastructure Fast-Track',
+        description: 'Expedite permits for solar, wind, EV charging, and battery plants on federal land.',
+        stat_increases: { renewable_energy_percentage: 3, gdp_growth: 1, energy_generation: 2 },
+        stat_decreases: { carbon_emissions: 2, fuel_prices: 1, oil_and_gas: 1, cost_of_living: 1, unemployment: 1 },
+    },
+    progress_ai_workforce: {
+        key: 'progress_ai_workforce',
+        ideology: 'PROGRESS',
+        name: 'AI & Automation Workforce Initiative',
+        description: 'Redirect federal training funds to tech reskilling, open federal data for startups.',
+        stat_increases: { digital_infrastructure: 3, gdp_growth: 2, higher_education: 1, service_output: 2 },
+        stat_decreases: { unemployment: 2, income_inequality: 1, manufacturing_output: 1, religiosity: 1 },
+    },
+    tradition_energy_unleashing: {
+        key: 'tradition_energy_unleashing',
+        ideology: 'TRADITION',
+        name: 'Domestic Energy Unleashing Order',
+        description: 'Open federal lands for oil, gas, and coal extraction — fast-track drilling permits.',
+        stat_increases: { oil_and_gas: 3, manufacturing_output: 2, gdp_growth: 2 },
+        stat_decreases: { fuel_prices: 2, pollution: 3, carbon_emissions: 3, renewable_energy_percentage: 1, international_reputation: 1 },
+    },
+    tradition_manufacturing_revival: {
+        key: 'tradition_manufacturing_revival',
+        ideology: 'TRADITION',
+        name: 'Manufacturing Revival Order',
+        description: 'Tax incentives via executive directive for companies reshoring factories — focus on heavy industry, steel, auto.',
+        stat_increases: { manufacturing_output: 3, gdp_growth: 1, physical_infrastructure: 1 },
+        stat_decreases: { unemployment: 2, cost_of_living: 1, carbon_emissions: 1, service_output: 1, trade_balance: 1 },
+    },
+
+    // === Axis: Security vs Freedom ===
+    security_critical_infrastructure: {
+        key: 'security_critical_infrastructure',
+        ideology: 'SECURITY',
+        name: 'Critical Infrastructure Investment Order',
+        description: 'Direct defense funds toward hardening power grids, ports, and supply chains.',
+        stat_increases: { physical_infrastructure: 3, stability: 2, energy_generation: 1, gdp_growth: 1 },
+        stat_decreases: { freedom_index: 1, cost_of_living: 1, press_freedom: 1 },
+    },
+    security_anti_fraud: {
+        key: 'security_anti_fraud',
+        ideology: 'SECURITY',
+        name: 'Anti-Fraud & Black Market Crackdown',
+        description: 'Expand federal task forces targeting economic crime, counterfeiting, and tax evasion.',
+        stat_increases: { legitimacy: 2, gdp_growth: 1 },
+        stat_decreases: { corruption: 2, crime_rate: 1, freedom_index: 1, judicial_independence: 1, civil_unrest: 1, polarization: 1 },
+    },
+    freedom_fintech_deregulation: {
+        key: 'freedom_fintech_deregulation',
+        ideology: 'FREEDOM',
+        name: 'Crypto & Fintech Deregulation Order',
+        description: 'Classify digital assets as commodities, remove regulatory barriers — unleash financial innovation.',
+        stat_increases: { credit: 3, foreign_investment: 2, gdp_growth: 2, digital_infrastructure: 1 },
+        stat_decreases: { stability: 1, corruption: 1, income_inequality: 1, crime_rate: 1 },
+    },
+    freedom_enterprise_zones: {
+        key: 'freedom_enterprise_zones',
+        ideology: 'FREEDOM',
+        name: 'Permit-Free Enterprise Zones',
+        description: 'Designate urban zones where federal permits, inspections, and zoning restrictions are lifted for 2 years.',
+        stat_increases: { gdp_growth: 3, housing_affordability: 2, urbanization: 1 },
+        stat_decreases: { unemployment: 2, pollution: 2, crime_rate: 1, healthcare_quality: 1, stability: 1 },
+    },
 };
 
 // ─── Helpers ───
@@ -642,6 +819,136 @@ export async function advanceBillEmergency(supabase, nationId, factionId, billId
     return { success: true, advancedTo, billName: bill.bill_name };
 }
 
+// ─── Executive Order: Stimulate the Economy ───
+
+/**
+ * Get the tick when the current presidential term started.
+ * Uses the administrations table — the open administration's started_at_tick.
+ */
+async function getTermStartTick(supabase, nationId) {
+    const { data: admin } = await supabase
+        .from('administrations')
+        .select('started_at_tick')
+        .eq('nation_id', nationId)
+        .is('ended_at_tick', null)
+        .order('started_at_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    return admin?.started_at_tick ?? 0;
+}
+
+/**
+ * Check which stimulate_economy orders have already been used this term.
+ */
+export async function getUsedStimulusOrders(supabase, nationId) {
+    const termStart = await getTermStartTick(supabase, nationId);
+    const { data: orders } = await supabase
+        .from('executive_orders')
+        .select('payload')
+        .eq('nation_id', nationId)
+        .eq('order_type', 'stimulate_economy')
+        .gte('issued_tick', termStart);
+    return (orders || []).map(o => o.payload?.stimulus_key).filter(Boolean);
+}
+
+/**
+ * Issue a Stimulate the Economy executive order.
+ * @param {string} stimulusKey - Key from STIMULATE_ECONOMY_ORDERS (e.g. 'individualism_deregulation')
+ */
+export async function issueStimulusOrder(supabase, nationId, factionId, stimulusKey) {
+    const orderDef = STIMULATE_ECONOMY_ORDERS[stimulusKey];
+    if (!orderDef) {
+        return { success: false, error: 'Invalid stimulus order key.' };
+    }
+
+    const currentTick = await getCurrentTick(supabase);
+
+    // Check once-per-term: has this specific order been used this term?
+    const usedKeys = await getUsedStimulusOrders(supabase, nationId);
+    if (usedKeys.includes(stimulusKey)) {
+        return { success: false, error: `"${orderDef.name}" has already been used this term.` };
+    }
+
+    // Deduct AP (with leader trait modifier)
+    const eoMod = await getEOTraitAPModifier(supabase, factionId);
+    const apCost = Math.max(1, EO_CONFIG.STIMULATE_ECONOMY_AP + eoMod);
+    const apResult = await deductAP(supabase, factionId, apCost);
+    if (!apResult.success) return apResult;
+
+    // Apply stat changes to nation
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('*')
+        .eq('id', nationId)
+        .single();
+
+    if (!nation) return { success: false, error: 'Nation not found.' };
+
+    const statUpdates = {};
+    const effectsSummary = { increases: {}, decreases: {} };
+
+    // Apply increases
+    for (const [stat, magnitude] of Object.entries(orderDef.stat_increases)) {
+        const current = Number(nation[stat] ?? 50);
+        const newVal = Math.min(100, current + magnitude);
+        statUpdates[stat] = newVal;
+        effectsSummary.increases[stat] = magnitude;
+    }
+
+    // Apply decreases — note: for "lower is better" stats like unemployment, poverty_rate,
+    // a decrease in the stat value is actually good. The order definitions already account
+    // for this: stat_decreases means the stat value goes DOWN.
+    for (const [stat, magnitude] of Object.entries(orderDef.stat_decreases)) {
+        const current = Number(nation[stat] ?? 50);
+        const newVal = Math.max(0, current - magnitude);
+        statUpdates[stat] = newVal;
+        effectsSummary.decreases[stat] = magnitude;
+    }
+
+    // Write stat updates
+    if (Object.keys(statUpdates).length > 0) {
+        await supabase.from('nations').update(statUpdates).eq('id', nationId);
+    }
+
+    // Insert executive order record
+    const { error: insertErr } = await supabase.from('executive_orders').insert({
+        nation_id: nationId,
+        faction_id: factionId,
+        order_type: 'stimulate_economy',
+        payload: {
+            stimulus_key: stimulusKey,
+            ideology: orderDef.ideology,
+            name: orderDef.name,
+            effects: effectsSummary
+        },
+        issued_tick: currentTick,
+        is_active: false  // instant effect, no ongoing state
+    });
+    if (insertErr) return { success: false, error: insertErr.message };
+
+    // Update overreach
+    const overreach = await getOverreachCount(supabase, nationId, currentTick);
+    await supabase.from('nations').update({ overreach_count: overreach }).eq('id', nationId);
+
+    // Event log
+    const statUpList = Object.entries(orderDef.stat_increases).map(([s, m]) => `${s.replace(/_/g, ' ')} +${m}`).join(', ');
+    const statDownList = Object.entries(orderDef.stat_decreases).map(([s, m]) => `${s.replace(/_/g, ' ')} -${m}`).join(', ');
+    await insertEventLog(supabase, nationId,
+        `Executive Order: ${orderDef.name}`,
+        `The president has signed "${orderDef.name}" to stimulate the economy. Effects: ${statUpList}. Tradeoffs: ${statDownList}.`,
+        currentTick,
+        { order_type: 'stimulate_economy', stimulus_key: stimulusKey, ideology: orderDef.ideology, effects: effectsSummary }
+    );
+
+    return {
+        success: true,
+        newAp: apResult.newAp,
+        orderName: orderDef.name,
+        ideology: orderDef.ideology,
+        effects: effectsSummary
+    };
+}
+
 // ─── Fetch Active Orders (for UI) ───
 
 export async function fetchActiveOrders(supabase, nationId) {
@@ -738,12 +1045,28 @@ export async function checkOrderAvailability(supabase, nationId, factionId, curr
     const censureAvailable = currentAP >= EO_CONFIG.CENSURE_AP;
     const censureReason = currentAP < EO_CONFIG.CENSURE_AP ? 'Insufficient AP' : '';
 
+    // Stimulate Economy: check which orders are still available this term
+    const usedStimulusKeys = await getUsedStimulusOrders(supabase, nationId);
+    const stimulusAvailableOrders = {};
+    for (const [key, def] of Object.entries(STIMULATE_ECONOMY_ORDERS)) {
+        const used = usedStimulusKeys.includes(key);
+        stimulusAvailableOrders[key] = {
+            ...def,
+            available: !used && currentAP >= EO_CONFIG.STIMULATE_ECONOMY_AP,
+            reason: used ? 'Already used this term'
+                : currentAP < EO_CONFIG.STIMULATE_ECONOMY_AP ? 'Insufficient AP' : '',
+            used
+        };
+    }
+    const anyStimulusAvailable = Object.values(stimulusAvailableOrders).some(o => o.available);
+
     return {
         acting_minister: { available: actingAvailable, reason: actingReason, apCost: EO_CONFIG.ACTING_MINISTER_AP, currentCount: actingCount },
         tax_adjustment: { available: taxAvailable, reason: taxReason, apCost: EO_CONFIG.TAX_ADJUSTMENT_BASE_AP, cooldowns: taxCooldowns },
         price_controls: { available: pcAvailable, reason: pcReason, apCost: EO_CONFIG.PRICE_CONTROLS_AP, cooldowns: pcCooldowns, activeControls: activePC },
         national_emergency: { available: emergencyAvailable, reason: emergencyReason, apCost: EO_CONFIG.NATIONAL_EMERGENCY_AP, hasActive: hasActiveEmergency, cooldownUntil: nation?.emergency_cooldown_until },
         censure: { available: censureAvailable, reason: censureReason, apCost: EO_CONFIG.CENSURE_AP },
+        stimulate_economy: { available: anyStimulusAvailable, apCost: EO_CONFIG.STIMULATE_ECONOMY_AP, orders: stimulusAvailableOrders, usedThisTerm: usedStimulusKeys },
         currentTick,
         taxCooldowns,
         pcCooldowns

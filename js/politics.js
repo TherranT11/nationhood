@@ -1610,8 +1610,7 @@ function renderGovCard(nation, coalition, allParties, currentTick, prevApproval,
     </div>`;
 }
 
-const RENAME_AP_COST  = 3;
-const RENAME_COOLDOWN = 60;
+const RENAME_COOLDOWN = 360;
 const MAX_DESC        = 200;
 const MAX_FILE_KB     = 256;
 
@@ -1652,8 +1651,7 @@ function renderEditIdentityBox(f, currentTick) {
         iconsHtml += '</div>';
     }
 
-    // Rename / abbreviation section (shared cooldown)
-    const apColor = ap >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)';
+    // Rename / abbreviation section (shared cooldown, no AP cost)
     let renameHtml;
     let abbrHtml;
     if (onCooldown) {
@@ -1670,7 +1668,7 @@ function renderEditIdentityBox(f, currentTick) {
         renameHtml = `
             <button class="pol-id-rename-btn" id="pol-id-rename-btn">
                 <span>Rename Party</span>
-                <span class="pol-id-rename-cost">${RENAME_AP_COST} AP · ${RENAME_COOLDOWN}t cooldown</span>
+                <span class="pol-id-rename-cost">${RENAME_COOLDOWN}t cooldown</span>
             </button>
             <div class="pol-id-rename-form" id="pol-id-rename-form" style="display:none">
                 <div class="pol-id-rename-row">
@@ -1679,15 +1677,14 @@ function renderEditIdentityBox(f, currentTick) {
                     <button class="pol-id-rename-cancel" id="pol-id-rename-cancel">✕</button>
                 </div>
                 <div class="pol-id-rename-meta">
-                    <span>Costs <span style="color:var(--damber)">${RENAME_AP_COST} AP</span> · locks rename for <span style="color:var(--damber)">${RENAME_COOLDOWN} ticks</span></span>
-                    <span id="pol-id-ap-available" style="color:${apColor}">${ap} AP available</span>
+                    <span>Locks rename for <span style="color:var(--damber)">${RENAME_COOLDOWN} ticks</span></span>
                 </div>
                 <div class="pol-id-error" id="pol-id-rename-error" style="display:none"></div>
             </div>`;
         abbrHtml = `
             <button class="pol-id-rename-btn" id="pol-id-abbr-btn">
                 <span>Change Abbreviation</span>
-                <span class="pol-id-rename-cost">${RENAME_AP_COST} AP · ${RENAME_COOLDOWN}t cooldown</span>
+                <span class="pol-id-rename-cost">${RENAME_COOLDOWN}t cooldown</span>
             </button>
             <div class="pol-id-rename-form" id="pol-id-abbr-form" style="display:none">
                 <div class="pol-id-rename-row">
@@ -1696,8 +1693,7 @@ function renderEditIdentityBox(f, currentTick) {
                     <button class="pol-id-rename-cancel" id="pol-id-abbr-cancel">✕</button>
                 </div>
                 <div class="pol-id-rename-meta">
-                    <span>Costs <span style="color:var(--damber)">${RENAME_AP_COST} AP</span> · locks rename for <span style="color:var(--damber)">${RENAME_COOLDOWN} ticks</span></span>
-                    <span id="pol-id-abbr-ap-available" style="color:${apColor}">${ap} AP available</span>
+                    <span>Locks rename for <span style="color:var(--damber)">${RENAME_COOLDOWN} ticks</span></span>
                 </div>
                 <div class="pol-id-error" id="pol-id-abbr-error" style="display:none"></div>
             </div>`;
@@ -2029,14 +2025,6 @@ function initEditIdentityBox(f) {
                 return;
             }
             abbrConfirm.disabled = true;
-            // Deduct AP via RPC
-            const result = await deductAP(_supabase, f.id, RENAME_AP_COST);
-            if (!result.success) {
-                abbrError.textContent = '⚠ ' + (result.error || 'Insufficient AP');
-                abbrError.style.display = '';
-                abbrConfirm.disabled = false;
-                return;
-            }
             // Update abbreviation + last_rename_tick in DB
             const tick = parseInt(box.dataset.currentTick) || 0;
             const { error: abbrUpdateErr } = await _supabase.from('factions').update({
@@ -2052,16 +2040,6 @@ function initEditIdentityBox(f) {
 
             // Update UI
             abbrDisplay.textContent = trimmed;
-            apDisplay.textContent = result.newAp;
-            apDisplay.style.color = result.newAp >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)';
-            if (abbrApAvail) {
-                abbrApAvail.textContent = result.newAp + ' AP available';
-                abbrApAvail.style.color = result.newAp >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)';
-            }
-            if (apAvailable) {
-                apAvailable.textContent = result.newAp + ' AP available';
-                apAvailable.style.color = result.newAp >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)';
-            }
             abbrForm.style.display = 'none';
             abbrInput.value = '';
             // Replace abbr button with cooldown bar
@@ -2118,28 +2096,20 @@ function initEditIdentityBox(f) {
                 renameInput.classList.add('has-error');
                 return;
             }
-            // Deduct AP via RPC
-            const result = await deductAP(_supabase, f.id, RENAME_AP_COST);
-            if (!result.success) {
-                renameError.textContent = '⚠ ' + (result.error || 'Insufficient AP');
-                renameError.style.display = '';
-                return;
-            }
             // Update faction_name + last_rename_tick in DB
             const tick = parseInt(box.dataset.currentTick) || 0;
-            await _supabase.from('factions').update({
+            const { error: renameUpdateErr } = await _supabase.from('factions').update({
                 faction_name: trimmed,
                 last_rename_tick: tick
             }).eq('id', f.id);
+            if (renameUpdateErr) {
+                renameError.textContent = '⚠ Failed to save — try again.';
+                renameError.style.display = '';
+                return;
+            }
 
             // Update UI
             nameDisplay.textContent = trimmed;
-            apDisplay.textContent = result.newAp;
-            apDisplay.style.color = result.newAp >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)';
-            if (apAvailable) {
-                apAvailable.textContent = result.newAp + ' AP available';
-                apAvailable.style.color = result.newAp >= RENAME_AP_COST ? 'var(--dgreen)' : 'var(--dred)';
-            }
             renameForm.style.display = 'none';
             renameInput.value = '';
             // Replace rename button with cooldown bar

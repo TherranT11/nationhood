@@ -1,5 +1,5 @@
 -- Drop Progress, Collectivism, and Equality to 25 for:
---   Solar Union (SOL)
+--   Solar Union of Labour (SOL)
 --   Collective Essurance Party (CEP)
 --   Palveran Democratic People's Party
 
@@ -10,7 +10,7 @@ SET tradition_progress = 25,
 WHERE faction_id IN (
     SELECT id FROM factions
     WHERE faction_name IN (
-        'Solar Union',
+        'Solar Union of Labour',
         'Collective Essurance Party',
         E'Palveran Democratic People''s Party'
     )

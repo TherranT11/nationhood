@@ -2800,6 +2800,90 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         return true;
     }
 
+    // ── Head of State Election Method subtype ──
+    if (bill.proposed_hos_election_method) {
+        const newMethod = bill.proposed_hos_election_method;
+        const validMethods = ['direct_vote', 'appointed', 'hereditary'];
+        if (!validMethods.includes(newMethod)) {
+            console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_hos_election_method: ${newMethod}. Marking as failed.`);
+            await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+            return false;
+        }
+
+        // Mark bill as passed
+        const { error: billErr } = await supabase.from('bills').update({
+            status: 'passed',
+            passed_tick: currentTick
+        }).eq('id', bill.id);
+        if (billErr) {
+            console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
+            return false;
+        }
+
+        // Get current nation data
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+        // Update nation's hos_election_method and dynasty fields
+        const nationUpdate = { hos_election_method: newMethod };
+        if (newMethod === 'hereditary') {
+            nationUpdate.dynasty_name = bill.proposed_dynasty_name || 'Royal House';
+            if (bill.proposed_dynasty_crest_url) {
+                nationUpdate.dynasty_crest_url = bill.proposed_dynasty_crest_url;
+            }
+            // Generate a new monarch: random first name, dynasty last name, age 36-60
+            const { firstNames } = getNationNames(nation?.name);
+            const monarchFirstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+            const dynastyLastName = (bill.proposed_dynasty_name || 'Royal').split(/\s+/).pop(); // Use last word of dynasty name
+            const monarchAge = 36 + Math.floor(Math.random() * 25); // 36-60
+            nationUpdate.head_of_state_first_name = monarchFirstName;
+            nationUpdate.head_of_state_last_name = dynastyLastName;
+            nationUpdate.head_of_state_age = monarchAge;
+            // Default to King/Queen if no title set
+            if (!nation?.head_of_state_title || nation.head_of_state_title === 'President' || nation.head_of_state_title === 'Vice President') {
+                nationUpdate.head_of_state_title = 'King';
+            }
+        }
+
+        const { error: nationErr } = await supabase.from('nations').update(nationUpdate).eq('id', bill.nation_id);
+        if (nationErr) {
+            console.error(`[enactFoundationalBill] Failed to update hos_election_method for nation ${bill.nation_id}:`, nationErr.message);
+        }
+
+        // Apply mechanical effects based on method
+        if (newMethod === 'hereditary') {
+            // Constitutional monarchy: stability +5, national unity +5, legitimacy -5, freedom_index -3
+            const newStability = Math.min(100, (nation?.stability || 50) + 5);
+            const newUnity = Math.min(100, (nation?.national_unity || 50) + 5);
+            const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 5);
+            const newFreedom = Math.max(0, (nation?.freedom_index || 50) - 3);
+            const { error: statErr } = await supabase.from('nations').update({
+                stability: newStability,
+                national_unity: newUnity,
+                legitimacy: newLegitimacy,
+                freedom_index: newFreedom
+            }).eq('id', bill.nation_id);
+            if (statErr) console.error(`[enactFoundationalBill] Hereditary stat update failed:`, statErr.message);
+            else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, national_unity +5, legitimacy -5, freedom_index -3`);
+        } else if (newMethod === 'direct_vote') {
+            // Direct vote: legitimacy +3, political_engagement +3, polarization +2
+            const newLegitimacy = Math.min(100, (nation?.legitimacy || 50) + 3);
+            const newEngagement = Math.min(100, (nation?.political_engagement || 50) + 3);
+            const newPolarization = Math.min(100, (nation?.polarization || 0) + 2);
+            const { error: statErr } = await supabase.from('nations').update({
+                legitimacy: newLegitimacy,
+                political_engagement: newEngagement,
+                polarization: newPolarization
+            }).eq('id', bill.nation_id);
+            if (statErr) console.error(`[enactFoundationalBill] Direct vote stat update failed:`, statErr.message);
+            else console.log(`[enactFoundationalBill] Direct HoS vote established: legitimacy +3, political_engagement +3, polarization +2`);
+        }
+        // Appointed: no stat changes (it's the default low-friction option)
+
+        const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Constitutional Monarchy' };
+        console.log(`[enactFoundationalBill] Nation ${bill.nation_id} HoS election method set to "${methodLabels[newMethod]}".`);
+        return true;
+    }
+
     // ── Head of State Title subtype ──
     if (bill.proposed_hos_title) {
         const newTitle = bill.proposed_hos_title.trim();

@@ -815,6 +815,35 @@ function renderArticles() {
                             : 'Adding/tightening limits: legitimacy +5, press freedom +2, judicial independence +2.') +
                     '</div>' +
                 '</div>';
+        } else if (bill.proposed_hos_election_method) {
+            // HoS Election Method subtype
+            const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Constitutional Monarchy' };
+            const methodLabel = methodLabels[bill.proposed_hos_election_method] || bill.proposed_hos_election_method;
+            let effectsHTML = '';
+            if (bill.proposed_hos_election_method === 'hereditary') {
+                effectsHTML = 'Establishes constitutional monarchy. Stability +5, national unity +5, legitimacy -5, freedom index -3.<br>' +
+                    'Head of State becomes permanent and non-partisan.<br>' +
+                    (bill.proposed_dynasty_name ? 'Dynasty: <strong>' + escapeHtml(bill.proposed_dynasty_name) + '</strong><br>' : '');
+            } else if (bill.proposed_hos_election_method === 'direct_vote') {
+                effectsHTML = 'Head of State elected by popular vote. Legitimacy +3, political engagement +3, polarization +2.';
+            } else {
+                effectsHTML = 'Head of State appointed by ruling coalition on government formation. No stat changes.';
+            }
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--purple);">' +
+                    '<div class="article-number" style="color:var(--purple);">FOUNDATIONAL LAW</div>' +
+                    '<div class="article-title">Election of Head of State</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill proposes to change how the Head of State is selected.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--purple);">' +
+                    '<div class="repeal-notice-icon">🗳</div>' +
+                    '<div class="repeal-notice-text">Proposed Method: ' + escapeHtml(methodLabel) + '</div>' +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--purple);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                        effectsHTML +
+                        '360 tick cooldown between changes.' +
+                    '</div>' +
+                '</div>';
         } else if (bill.proposed_hos_title) {
             // HoS Title subtype
             foundationalHTML =

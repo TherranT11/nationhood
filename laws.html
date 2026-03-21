@@ -1621,11 +1621,52 @@ function renderFoundationalOptions() {
                 </select>
                 <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">Removing term limits costs legitimacy and triggers opposition momentum. Adding limits strengthens democratic institutions.</div>
             </div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'hos_election' ? ' selected' : ''}" style="${selectedFoundationalType === 'hos_election' ? 'border-color:var(--purple);' : ''}${isPresidential ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('hos_election')" data-foundational-type="hos_election">
+            <div class="policy-option-name">🗳 Election of Head of State <span class="article-ideology" style="background:var(--purple);color:#fff;">FOUNDATIONAL</span></div>
+            <div class="policy-option-desc">${isPresidential
+                ? 'Not available in Presidential systems — the Head of State is directly elected.'
+                : `Change how the Head of State is selected. Requires 2/3 supermajority (${required} seats) to pass. 360 tick cooldown.`}</div>
+            <div id="foundational-hos-election-config" style="margin-top:12px;${selectedFoundationalType === 'hos_election' ? '' : 'display:none;'}">
+                <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-bottom:6px;">Current method: <strong>${currentNation.hos_election_method === 'hereditary' ? 'Hereditary (Constitutional Monarchy)' : currentNation.hos_election_method === 'direct_vote' ? 'Direct Popular Vote' : 'Appointed by Parliament'}</strong></label>
+                <select id="foundational-hos-election-select" onchange="onHosElectionMethodChange()" style="background:var(--bg-card);border:1px solid var(--purple);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:280px;">
+                    <option value="direct_vote"${currentNation.hos_election_method === 'direct_vote' ? ' selected disabled' : ''}>Direct Popular Vote${currentNation.hos_election_method === 'direct_vote' ? ' (Current)' : ''}</option>
+                    <option value="appointed"${(!currentNation.hos_election_method || currentNation.hos_election_method === 'appointed') ? ' selected disabled' : ''}>Appointed by Parliament${(!currentNation.hos_election_method || currentNation.hos_election_method === 'appointed') ? ' (Current)' : ''}</option>
+                    <option value="hereditary"${currentNation.hos_election_method === 'hereditary' ? ' selected disabled' : ''}>Hereditary (Constitutional Monarchy)${currentNation.hos_election_method === 'hereditary' ? ' (Current)' : ''}</option>
+                </select>
+                <div id="hos-election-method-info" style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;"></div>
+                <div id="hos-election-dynasty-config" style="display:none;margin-top:12px;">
+                    <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-bottom:6px;">Dynasty Name:</label>
+                    <input type="text" id="foundational-dynasty-name" maxlength="40" placeholder="e.g. House of Velasco" style="background:var(--bg-card);border:1px solid var(--purple);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:280px;">
+                    <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:4px;">Choose a dynasty name. A monarch will be generated upon passage.</div>
+                    <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-top:12px;margin-bottom:6px;">Dynasty Crest (optional):</label>
+                    <input type="text" id="foundational-dynasty-crest" maxlength="200" placeholder="Image URL for crest/logo" style="background:var(--bg-card);border:1px solid var(--purple);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:280px;">
+                </div>
+            </div>
         </div>`;
     selectedFoundationalType = null;
     selectedPolicy = null;
     document.getElementById('add-article-btn').disabled = true;
 }
+
+function onHosElectionMethodChange() {
+    const method = document.getElementById('foundational-hos-election-select')?.value;
+    const dynastyConfig = document.getElementById('hos-election-dynasty-config');
+    const infoDiv = document.getElementById('hos-election-method-info');
+    if (dynastyConfig) dynastyConfig.style.display = method === 'hereditary' ? '' : 'none';
+    if (infoDiv) {
+        if (method === 'direct_vote') {
+            infoDiv.innerHTML = 'The Head of State will be elected by popular vote alongside parliamentary elections. Increases legitimacy and political engagement, but adds another electoral contest.';
+        } else if (method === 'appointed') {
+            infoDiv.innerHTML = 'The ruling coalition automatically appoints the Head of State when a new government forms. Low friction, ceremonial role.';
+        } else if (method === 'hereditary') {
+            infoDiv.innerHTML = 'Establishes a constitutional monarchy. The Head of State becomes a permanent, non-partisan institution. Increases stability and national unity, but reduces freedom index and legitimacy.';
+        } else {
+            infoDiv.innerHTML = '';
+        }
+    }
+}
+window.onHosElectionMethodChange = onHosElectionMethodChange;
 
 function selectFoundationalType(type) {
     selectedFoundationalType = type;
@@ -1638,10 +1679,12 @@ function selectFoundationalType(type) {
     const hosConfig = document.getElementById('foundational-hos-config');
     const termLengthConfig = document.getElementById('foundational-term-length-config');
     const termLimitConfig = document.getElementById('foundational-term-limit-config');
+    const hosElectionConfig = document.getElementById('foundational-hos-election-config');
     if (seatsConfig) seatsConfig.style.display = type === 'electoral_makeup' ? '' : 'none';
     if (hosConfig) hosConfig.style.display = type === 'hos_title' ? '' : 'none';
     if (termLengthConfig) termLengthConfig.style.display = type === 'term_length' ? '' : 'none';
     if (termLimitConfig) termLimitConfig.style.display = type === 'term_limit' ? '' : 'none';
+    if (hosElectionConfig) hosElectionConfig.style.display = type === 'hos_election' ? '' : 'none';
     document.getElementById('add-article-btn').disabled = false;
 }
 window.selectFoundationalType = selectFoundationalType;
@@ -1839,6 +1882,40 @@ function addArticle() {
             document.getElementById('submit-bill-btn').disabled = false;
             _hideAllArticleButtons();
             return;
+        } else if (selectedFoundationalType === 'hos_election') {
+            const methodSelect = document.getElementById('foundational-hos-election-select');
+            const newMethod = methodSelect?.value;
+            if (!newMethod) { alert('Please select an election method.'); return; }
+            const currentMethod = currentNation.hos_election_method || 'appointed';
+            if (newMethod === currentMethod) {
+                alert('The selected method is already the current Head of State election method.');
+                return;
+            }
+            let dynastyName = null;
+            let dynastyCrest = null;
+            if (newMethod === 'hereditary') {
+                dynastyName = document.getElementById('foundational-dynasty-name')?.value?.trim();
+                dynastyCrest = document.getElementById('foundational-dynasty-crest')?.value?.trim() || null;
+                if (!dynastyName) { alert('Please enter a dynasty name.'); return; }
+            }
+            const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Constitutional Monarchy' };
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'hos_election',
+                proposedHosElectionMethod: newMethod,
+                proposedDynastyName: dynastyName,
+                proposedDynastyCrest: dynastyCrest,
+                policy: null
+            });
+            const billLabel = newMethod === 'hereditary' ? `Constitutional Monarchy Act (${dynastyName})` : `Head of State Election Act (${methodLabels[newMethod]})`;
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = billLabel;
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
         } else {
             alert('Please select a foundational option first.');
             return;
@@ -1911,6 +1988,19 @@ function renderDraftArticles() {
                         <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--purple);">Foundational</span></div>
                         <div class="draft-article-name">🔒 Head of Government Term Limits</div>
                         <div class="draft-article-meta">Change limit: ${currentLabel} → ${newLabel} · Requires 2/3 supermajority · ${GAME_CONFIG.TERM_LIMIT_COOLDOWN_TICKS} tick cooldown</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'hos_election') {
+                const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Constitutional Monarchy' };
+                const methodLabel = methodLabels[art.proposedHosElectionMethod] || art.proposedHosElectionMethod;
+                const dynastyInfo = art.proposedDynastyName ? ` · Dynasty: ${escapeHtml(art.proposedDynastyName)}` : '';
+                return `<div class="draft-article-card" style="border-left:3px solid var(--purple);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--purple);">Foundational</span></div>
+                        <div class="draft-article-name">🗳 Election of Head of State</div>
+                        <div class="draft-article-meta">Change to: ${escapeHtml(methodLabel)}${dynastyInfo} · Requires 2/3 supermajority · 360 tick cooldown</div>
                     </div>
                     <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
                 </div>`;
@@ -2352,6 +2442,8 @@ async function submitToCommittee() {
                     ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the presidential term length in ${currentNation.name} to ${draftArticles.find(a => a.isFoundational).proposedTermLength / (GAME_CONFIG.TICKS_PER_YEAR || 12)} years. Requires a two-thirds supermajority to pass.`
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'term_limit'
                     ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to ${draftArticles.find(a => a.isFoundational).proposedTermLimit === 0 ? 'remove presidential term limits' : 'set presidential term limits to ' + draftArticles.find(a => a.isFoundational).proposedTermLimit + ' term' + (draftArticles.find(a => a.isFoundational).proposedTermLimit !== 1 ? 's' : '')} in ${currentNation.name}. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'hos_election'
+                    ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the Head of State election method in ${currentNation.name} to ${draftArticles.find(a => a.isFoundational).proposedHosElectionMethod === 'hereditary' ? 'hereditary succession (establishing the ' + draftArticles.find(a => a.isFoundational).proposedDynastyName + ' dynasty)' : draftArticles.find(a => a.isFoundational).proposedHosElectionMethod === 'direct_vote' ? 'direct popular vote' : 'parliamentary appointment'}. Requires a two-thirds supermajority to pass.`
                     : `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the number of legislative seats in ${currentNation.name} from ${GAME_CONFIG.TOTAL_SEATS} to ${draftArticles.find(a => a.isFoundational).proposedSeats}. Requires a two-thirds supermajority to pass.`)
                 : `This ${lawsIsAutocracy ? 'decree' : 'bill'}, put forth in the ${lawsIsAutocracy ? 'regime' : 'legislature'} of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`
         };
@@ -2365,6 +2457,10 @@ async function submitToCommittee() {
                 billInsert.proposed_term_length = fArt.proposedTermLength;
             } else if (fArt.foundationalSubtype === 'term_limit') {
                 billInsert.proposed_term_limit = fArt.proposedTermLimit;
+            } else if (fArt.foundationalSubtype === 'hos_election') {
+                billInsert.proposed_hos_election_method = fArt.proposedHosElectionMethod;
+                if (fArt.proposedDynastyName) billInsert.proposed_dynasty_name = fArt.proposedDynastyName;
+                if (fArt.proposedDynastyCrest) billInsert.proposed_dynasty_crest_url = fArt.proposedDynastyCrest;
             } else {
                 billInsert.proposed_seats = fArt.proposedSeats;
             }
