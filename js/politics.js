@@ -449,6 +449,7 @@ async function renderPartyTab(f, nation, data) {
     const html = `
     <div class="pol-page-tabs">
         <button class="pol-page-tab active" data-page-tab="politics">Politics</button>
+        <button class="pol-page-tab" data-page-tab="actions">Actions</button>
         ${electorateTabBtn}
         ${otherPartiesTabBtn}
         ${votersTabBtn}
@@ -457,6 +458,11 @@ async function renderPartyTab(f, nation, data) {
         <div class="pol-grid-main">
             <div class="pol-page-content active" data-page-content="politics">
             ${politicsTabContent}
+            </div>
+            <div class="pol-page-content" data-page-content="actions">
+                <div class="pol-page">
+                    <div id="actions-container"></div>
+                </div>
             </div>
             ${electorateContent}
             ${otherPartiesContent}
@@ -476,6 +482,7 @@ async function renderPartyTab(f, nation, data) {
     _loadActivityFeed(faction.id, nation.id);
 
     // Wire up page-level sub-tabs (Politics / Actions / Electorate / Other Parties / Voters)
+    let actionsLoaded = false;
     let otherPartiesLoaded = false;
     let electorateSpreadLoaded = false;
     let votersLoaded = false;
@@ -487,6 +494,15 @@ async function renderPartyTab(f, nation, data) {
             const target = tab.getAttribute('data-page-tab');
             const content = document.querySelector(`.pol-page-content[data-page-content="${target}"]`);
             if (content) content.classList.add('active');
+            // Lazy-load Actions tab on first click
+            if (target === 'actions' && !actionsLoaded) {
+                actionsLoaded = true;
+                if (isAutoNation) {
+                    renderAutocracyActionsTab(nation, f, shard, pillarStates, autocracyTracker, allParties);
+                } else {
+                    renderDemocracyActions(nation, f, shard, allParties);
+                }
+            }
             // Lazy-load Electorate Spread tab on first click
             if (target === 'electorate-spread' && !electorateSpreadLoaded) {
                 electorateSpreadLoaded = true;
