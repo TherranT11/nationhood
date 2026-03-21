@@ -99,13 +99,17 @@ initPage('politics', async (state) => {
     // V5 Autocracy data
     let pillarStates = [];
     let autocracyTracker = null;
+    let autocracyActionLog = [];
     if (isAutoNation) {
-        const [fpsRes, trackerRes] = await Promise.all([
+        const [fpsRes, trackerRes, logRes] = await Promise.all([
             _supabase.from('faction_pillar_state').select('*').eq('nation_id', nation.id),
             _supabase.from('autocracy_tracker').select('*').eq('nation_id', nation.id).maybeSingle(),
+            _supabase.from('autocracy_action_log').select('tick, action_type, faction_id')
+                .eq('nation_id', nation.id).order('created_at', { ascending: false }).limit(10),
         ]);
         pillarStates = fpsRes.data || [];
         autocracyTracker = trackerRes.data;
+        autocracyActionLog = logRes.data || [];
     }
 
     // Fetch active crises
@@ -349,7 +353,7 @@ async function renderPartyTab(f, nation, data) {
             currentTick, allParties, coalition, activeCrises,
             logoSvg, roleCls, roleLabel, leaderName, leaderAge, leaderIdeo,
             officerNames, ideo1, ideo2, deltaHtml, ideoTag,
-            pillarStates, autocracyTracker,
+            pillarStates, autocracyTracker, autocracyActionLog,
         });
     } else {
         politicsTabContent = `
@@ -520,7 +524,7 @@ function renderRegimeSupportBox(autocracyTracker, currentTick) {
     const oppositionPct = pubValue;
 
     return `
-    <div style="background:var(--dbg-2);border:1px solid var(--dborder-0);border-radius:3px;padding:14px 16px;margin-top:16px">
+    <div style="background:var(--dbg-2);border:1px solid var(--dborder-0);border-radius:3px;padding:14px 16px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
             <div style="font-size:11px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:1px">Regime Support</div>
             <div style="font-size:10px;color:var(--dtext-3)">Estimate</div>
@@ -546,6 +550,56 @@ function renderRegimeSupportBox(autocracyTracker, currentTick) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// AUTOCRACY EVENTS — recent action feed (mode hidden)
+// ═══════════════════════════════════════════════════════════
+const ACTION_DISPLAY_NAMES = {
+    deploy: 'Deploy', stand_down: 'Stand Down', military_exercises: 'Military Exercises',
+    rally: 'Rally', agitate: 'Agitate', party_congress: 'Party Congress',
+    patronage: 'Patronage', capital_flight: 'Capital Flight', bribe: 'Bribe',
+    surveillance: 'Surveillance', blackmail: 'Blackmail', disappear: 'Disappear',
+    broadcast: 'Broadcast', smear: 'Smear', blackout: 'Blackout',
+    arrest_leader: 'Arrest Leader', execute_leader: 'Execute Leader', release_leader: 'Release Leader',
+    favor: 'Favor', coup_attempt: 'Coup Attempt', declare_putsch: 'Declare Putsch',
+    emergency_decree: 'Emergency Decree', appeal_security: 'Appeal to Security',
+    putsch_do_nothing: 'Do Nothing', security_putsch_response: 'Security Response',
+    silent_coup: 'Silent Coup', silent_coup_vote: 'Silent Coup Vote',
+    appoint_successor: 'Appoint Successor', revoke_successor: 'Revoke Successor',
+    claim_wildcard: 'Claim Wildcard', select_pillar: 'Select Pillar',
+};
+
+function renderAutocracyEventsBox(actionLog, allParties, currentTick) {
+    let eventsHtml = '';
+    if (actionLog.length === 0) {
+        eventsHtml = '<div style="padding:12px 0;text-align:center;color:var(--dtext-3);font-size:11px">No recent events.</div>';
+    } else {
+        for (const entry of actionLog) {
+            const faction = (allParties || []).find(p => p.id === entry.faction_id);
+            const fName = faction?.faction_name || 'Unknown';
+            const fColor = faction?.party_color || '#888';
+            const actionName = ACTION_DISPLAY_NAMES[entry.action_type] || entry.action_type;
+            const date = tickToDate(entry.tick);
+
+            eventsHtml += `
+            <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--dborder-0)">
+                <div style="width:6px;height:6px;border-radius:50%;background:${fColor};margin-top:4px;flex-shrink:0"></div>
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:11px;color:var(--dtext-1)"><span style="font-weight:600">${escapeHtml(fName)}</span> used <span style="color:var(--damber);font-weight:600">${escapeHtml(actionName)}</span></div>
+                    <div style="font-size:9px;color:var(--dtext-3)">${date}</div>
+                </div>
+            </div>`;
+        }
+    }
+
+    return `
+    <div style="background:var(--dbg-2);border:1px solid var(--dborder-0);border-radius:3px;padding:14px 16px">
+        <div style="font-size:11px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Autocracy Events</div>
+        <div style="max-height:220px;overflow-y:auto">
+            ${eventsHtml}
+        </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
 // AUTOCRACY POLITICS TAB — Regime display for autocracy players
 // ═══════════════════════════════════════════════════════════
 function renderAutocracyPoliticsContent(f, nation, opts) {
@@ -554,7 +608,7 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
         totalSeats, mySeats, currentTick, allParties, coalition, activeCrises,
         logoSvg, roleCls, roleLabel, leaderName, leaderAge, leaderIdeo,
         officerNames, ideoTag, ideo1, ideo2, deltaHtml, voteSharePct, lastElectionDate,
-        pillarStates, autocracyTracker,
+        pillarStates, autocracyTracker, autocracyActionLog,
     } = opts;
 
     const rulingId = n.ruling_faction_id;
@@ -665,47 +719,50 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
         ${revolutionBanner}
         <div class="pol-columns">
 
-        <!-- Regime Card -->
-        <div class="pol-party-card" style="border-left:3px solid var(--damber)">
-            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--damber);margin-bottom:8px;font-weight:700">AUTOCRACY — ${escapeHtml(hosTitle)}</div>
-            <div style="font-size:14px;color:var(--dtext-1);font-weight:700">${escapeHtml(hosName)} <span style="font-size:11px;color:var(--dtext-3)">(${hosAge})</span></div>
-            <div style="font-size:10px;color:var(--dtext-3);margin-top:4px">Ruling faction: ${escapeHtml((allParties || []).find(p => p.id === rulingId)?.faction_name || 'None')}</div>
-            ${isStrongman ? `<div style="margin-top:10px;padding:6px 10px;background:${trackerColor}11;border:1px solid ${trackerColor}33;border-radius:2px;text-align:center">
-                <div style="font-size:9px;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px">Regime Stability</div>
-                <div style="font-size:16px;color:${trackerColor};font-weight:800;font-family:var(--dfont-mono);letter-spacing:2px;margin-top:2px">${trackerWord}</div>
-            </div>` : ''}
+        <!-- Left Column: Regime Card + Regime Support -->
+        <div style="display:flex;flex-direction:column;gap:12px;flex:0 1 380px;min-width:300px">
+            <div class="pol-party-card" style="border-left:3px solid var(--damber);width:auto;flex:none;min-width:0">
+                <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--damber);margin-bottom:8px;font-weight:700">AUTOCRACY — ${escapeHtml(hosTitle)}</div>
+                <div style="font-size:14px;color:var(--dtext-1);font-weight:700">${escapeHtml(hosName)} <span style="font-size:11px;color:var(--dtext-3)">(${hosAge})</span></div>
+                <div style="font-size:10px;color:var(--dtext-3);margin-top:4px">Ruling faction: ${escapeHtml((allParties || []).find(p => p.id === rulingId)?.faction_name || 'None')}</div>
+                ${isStrongman ? `<div style="margin-top:10px;padding:6px 10px;background:${trackerColor}11;border:1px solid ${trackerColor}33;border-radius:2px;text-align:center">
+                    <div style="font-size:9px;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px">Regime Stability</div>
+                    <div style="font-size:16px;color:${trackerColor};font-weight:800;font-family:var(--dfont-mono);letter-spacing:2px;margin-top:2px">${trackerWord}</div>
+                </div>` : ''}
+            </div>
+            ${renderRegimeSupportBox(autocracyTracker, currentTick)}
         </div>
 
-        <!-- Your Party Card -->
-        <div class="pol-party-card">
-            <div class="pol-header">
-                <div class="pol-logo">${logoSvg}</div>
-                <div class="pol-header-info">
-                    <div class="pol-party-name">${escapeHtml(f.faction_name)}</div>
-                    <div class="pol-meta-row">
-                        <span class="pol-role-badge ${roleCls}">${escapeHtml(roleLabel.toUpperCase())}</span>
-                        <span style="font-size:10px;color:${PILLAR_COLORS[myPillar] || 'var(--dtext-3)'};font-weight:600;text-transform:uppercase">${escapeHtml(PILLAR_LABELS[myPillar] || myPillar)} Pillar</span>
+        <!-- Right Column: Party Card + Autocracy Events -->
+        <div style="display:flex;flex-direction:column;gap:12px;flex:0 1 380px;min-width:300px">
+            <div class="pol-party-card" style="width:auto;flex:none;min-width:0">
+                <div class="pol-header">
+                    <div class="pol-logo">${logoSvg}</div>
+                    <div class="pol-header-info">
+                        <div class="pol-party-name">${escapeHtml(f.faction_name)}</div>
+                        <div class="pol-meta-row">
+                            <span class="pol-role-badge ${roleCls}">${escapeHtml(roleLabel.toUpperCase())}</span>
+                            <span style="font-size:10px;color:${PILLAR_COLORS[myPillar] || 'var(--dtext-3)'};font-weight:600;text-transform:uppercase">${escapeHtml(PILLAR_LABELS[myPillar] || myPillar)} Pillar</span>
+                        </div>
                     </div>
                 </div>
+                <div class="pol-ideo-row">${ideoTag(ideo1)}${ideoTag(ideo2)}</div>
+                <hr class="pol-divider">
+                <div class="pol-leader-section">
+                    <span class="pol-sub-label">Leader</span>
+                    <div class="pol-leader-name">${escapeHtml(leaderName)} <span class="pol-leader-age">${leaderAge}</span></div>
+                    ${leaderIdeo}
+                </div>
+                <div class="pol-stats-row">
+                    <div class="pol-stat"><div class="pol-stat-val">${mySeats}<span class="pol-stat-of">/${totalSeats}</span></div><div class="pol-stat-label">Seats ${deltaHtml}</div></div>
+                    <div class="pol-stat"><div class="pol-stat-val">${voteSharePct}%</div><div class="pol-stat-label">Vote Share</div></div>
+                    ${myFps ? `<div class="pol-stat"><div class="pol-stat-val" style="color:${PILLAR_COLORS[myPillar]}">${Number(myFps.backing).toFixed(1)}</div><div class="pol-stat-label">Backing</div></div>` : ''}
+                </div>
             </div>
-            <div class="pol-ideo-row">${ideoTag(ideo1)}${ideoTag(ideo2)}</div>
-            <hr class="pol-divider">
-            <div class="pol-leader-section">
-                <span class="pol-sub-label">Leader</span>
-                <div class="pol-leader-name">${escapeHtml(leaderName)} <span class="pol-leader-age">${leaderAge}</span></div>
-                ${leaderIdeo}
-            </div>
-            <div class="pol-stats-row">
-                <div class="pol-stat"><div class="pol-stat-val">${mySeats}<span class="pol-stat-of">/${totalSeats}</span></div><div class="pol-stat-label">Seats ${deltaHtml}</div></div>
-                <div class="pol-stat"><div class="pol-stat-val">${voteSharePct}%</div><div class="pol-stat-label">Vote Share</div></div>
-                ${myFps ? `<div class="pol-stat"><div class="pol-stat-val" style="color:${PILLAR_COLORS[myPillar]}">${Number(myFps.backing).toFixed(1)}</div><div class="pol-stat-label">Backing</div></div>` : ''}
-            </div>
+            ${renderAutocracyEventsBox(autocracyActionLog, allParties, currentTick)}
         </div>
 
         </div>
-
-        <!-- Regime Support Estimate -->
-        ${renderRegimeSupportBox(autocracyTracker, currentTick)}
 
         <!-- Five Pillars -->
         <div style="background:var(--dbg-2);border:1px solid var(--dborder-0);border-radius:3px;padding:14px 16px;margin-top:16px">
