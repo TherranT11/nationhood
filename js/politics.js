@@ -764,7 +764,7 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:6px;font-size:11px">
                 <div><span style="color:var(--dtext-3)">Backing</span> <span style="color:var(--dtext-1);font-weight:600;font-family:var(--dfont-mono)">${backing}</span></div>
-                <div><span style="color:var(--dtext-3)">Leader</span> <span style="color:var(--dtext-1)">${escapeHtml(lName)}</span> <span style="color:var(--dtext-3)">(${lAge})</span></div>
+                <div><span style="color:var(--dtext-3)">Leader</span> <span style="color:var(--dtext-1)">${escapeHtml(lName)}</span> <span style="color:var(--dtext-3)">(${lAge})</span>${fps.arrested_leader ? ' <span style="color:#d9534f;font-weight:700">[ARRESTED]</span>' : ''}</div>
                 ${ministerCount > 0 ? `<div><span style="color:var(--dtext-3)">Ministers</span> <span style="color:var(--dtext-1)">${ministerCount}</span></div>` : ''}
             </div>
             ${fps.arrested_leader ? '<div style="font-size:9px;color:#d9534f;margin-top:4px;font-weight:600">LEADER ARRESTED</div>' : ''}
@@ -825,15 +825,17 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
         <!-- Autocracy Events -->
         ${renderAutocracyEventsBox(autocracyActionLog, allParties, pillarStates, currentTick)}
 
-        </div>
-
         <!-- Five Pillars -->
-        <div style="background:var(--dbg-2);border:1px solid var(--dborder-0);border-radius:3px;padding:14px 16px;margin-top:16px">
+        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
                 <div style="font-size:11px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:1px">Five Pillars of Power</div>
                 <div style="font-size:10px;color:var(--dtext-3)">Scale: 0–20</div>
             </div>
-            ${pillarBarsHtml}
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
+                ${pillarBarsHtml}
+            </div>
+        </div>
+
         </div>
 
         <!-- Faction Cards -->
