@@ -606,10 +606,12 @@ export function updateTopBarInfo(faction, shard, nation) {
     
     if (nation) {
         if (nationName) nationName.textContent = nation.name || 'Unknown Nation';
-        if (nationFlag && nation.flag_url) {
-            nationFlag.src = nation.flag_url;
+        if (nationFlag) {
+            const flagSrc = nation.flag_url || `assets/flags/${nation.name}.png`;
+            nationFlag.src = flagSrc;
             nationFlag.alt = nation.name + ' flag';
             nationFlag.style.display = 'block';
+            nationFlag.onerror = () => { nationFlag.style.display = 'none'; };
         }
 
         // Rename tabs for autocracies
