@@ -8418,7 +8418,7 @@ async function renderStateVisitDraftPanel(body, statusEl) {
     const natB = currentNation.id < targetNationId ? targetNationId : currentNation.id;
 
     const [cooldownRes, pendingRes, tradeRes, pastVisitRes, ambRes, pendingTreatyRes] = await Promise.all([
-        _supabase.from('diplomatic_action_log').select('id, cooldown_until_tick').eq('target_nation_id', targetNationId).eq('action_type', 'state_visit').gt('cooldown_until_tick', currentTick).order('cooldown_until_tick', { ascending: false }).limit(1).maybeSingle(),
+        _supabase.from('diplomatic_action_log').select('id, cooldown_until_tick').eq('nation_id', currentNation.id).eq('target_nation_id', targetNationId).eq('action_type', 'state_visit').gt('cooldown_until_tick', currentTick).order('cooldown_until_tick', { ascending: false }).limit(1).maybeSingle(),
         _supabase.from('diplomatic_proposals').select('id').eq('proposing_nation_id', currentNation.id).eq('target_nation_id', targetNationId).eq('proposal_type', 'state_visit').eq('status', 'proposed').maybeSingle(),
         _supabase.from('trade_agreements').select('id').eq('status', 'active').eq('nation_a_id', natA).eq('nation_b_id', natB).limit(1),
         _supabase.from('diplomatic_action_log').select('id').eq('nation_id', currentNation.id).eq('target_nation_id', targetNationId).eq('action_type', 'state_visit').limit(1),
@@ -8535,7 +8535,7 @@ function renderStateVisitHTML(body) {
         { ok: ctx.relScore >= -50, text: 'Relations: ' + (ctx.relScore >= 0 ? 'Friendly' : 'Strained') + ' (' + (ctx.relScore >= 0 ? '+' : '') + ctx.relScore + ')' },
         { ok: ctx.noConflict, text: ctx.noConflict ? 'No active conflict' : 'Active conflict!' },
         { ok: hasEnoughAp, text: ap + ' AP available (' + DIPLOMACY_CONFIG.STATE_VISIT_AP + ' base + ' + dur.apCost + ' duration' + (vt.apMod ? ' ' + vt.apMod + ' type' : '') + ')' },
-        { ok: !ctx.cooldownActive, text: ctx.cooldownActive ? 'Visit cooldown: ' + ctx.cooldownTicks + ' ticks remaining' : 'No visit cooldown' },
+        { ok: !ctx.cooldownActive, text: ctx.cooldownActive ? 'Visit cooldown for ' + escapeHtml(ctx.targetNation.name) + ': ' + ctx.cooldownTicks + ' ticks remaining' : 'No visit cooldown for ' + escapeHtml(ctx.targetNation.name) },
         { ok: !ctx.alreadyPending, text: ctx.alreadyPending ? 'Visit already pending' : 'No pending visit' }
     ];
 
@@ -8715,7 +8715,7 @@ async function submitStateVisit() {
     // Validate
     if (!ctx.hasAmbassador) { _svSubmitLock = false; alert('No ambassador posted to ' + ctx.targetNation.name + '.'); return; }
     if (!ctx.noConflict) { _svSubmitLock = false; alert('Cannot visit during active conflict.'); return; }
-    if (ctx.cooldownActive) { _svSubmitLock = false; alert(ctx.targetNation.name + ' was recently visited. Cooldown: ' + ctx.cooldownTicks + ' tick(s) remaining.'); return; }
+    if (ctx.cooldownActive) { _svSubmitLock = false; alert('You recently visited ' + ctx.targetNation.name + '. Cooldown: ' + ctx.cooldownTicks + ' tick(s) remaining.'); return; }
     if (ctx.alreadyPending) { _svSubmitLock = false; alert('A State Visit invitation to ' + ctx.targetNation.name + ' is already pending.'); return; }
 
     const apResult = await deductAP(_supabase, currentFaction.id, computed.totalAp);
@@ -9127,7 +9127,7 @@ async function acceptStateVisit(proposalId) {
         resultMsg += '\nAll Bonuses:\n  ' + bonusSummary.join('\n  ') + '\n';
     }
 
-    resultMsg += '\n' + pd.host_nation + ' is now on a ' + DIPLOMACY_CONFIG.STATE_VISIT_COOLDOWN + '-tick visit cooldown.';
+    resultMsg += '\nVisits to ' + pd.host_nation + ' are on a ' + DIPLOMACY_CONFIG.STATE_VISIT_COOLDOWN + '-tick cooldown.';
 
     _svAcceptLock[proposalId] = false;
     alert(resultMsg);
