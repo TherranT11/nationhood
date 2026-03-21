@@ -157,8 +157,7 @@ export function calculateBillDynamicPenalty(factionIdeology, articles, basePenal
 
 
 // REMOVED: computeIdeologyAlignment, countIdeologyRelationship, ideologyOppositionMultiplier
-// (old three-pillar system functions — no longer needed)
-// NOTE: External callers that imported these functions will need to be updated.
+// (old voter bloc alignment functions — electorate engine replaces them)
 
 
 // ==================== IDEOLOGY DATABASE HELPERS ====================

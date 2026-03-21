@@ -50,7 +50,6 @@ DECLARE
         ARRAY['active_coalitions',            $$DELETE FROM active_coalitions WHERE lead_party_id = '%s'$$],
         ARRAY['coalition_proposals',          $$DELETE FROM coalition_proposals WHERE faction_id = '%s'$$],
         ARRAY['ideology_history',             $$DELETE FROM ideology_history WHERE faction_id = '%s'$$],
-        ARRAY['faction_bloc_approval',        $$DELETE FROM faction_bloc_approval WHERE faction_id = '%s'$$],
         ARRAY['faction_ideology',             $$DELETE FROM faction_ideology WHERE faction_id = '%s'$$],
         ARRAY['admin_chat',                   $$DELETE FROM admin_chat WHERE faction_id = '%s'$$],
         ARRAY['stewards',                     $$DELETE FROM stewards WHERE faction_id = '%s'$$],
@@ -59,7 +58,6 @@ DECLARE
         ARRAY['player_articles',              $$DELETE FROM player_articles WHERE author_faction_id = '%s'$$],
         ARRAY['op_eds(author)',               $$DELETE FROM op_eds WHERE author_faction_id = '%s'$$],
         ARRAY['ministry_requests',            $$DELETE FROM ministry_requests WHERE faction_id = '%s'$$],
-        ARRAY['momentum_log',                $$DELETE FROM momentum_log WHERE faction_id = '%s'$$],
         ARRAY['fundraiser_promises',         $$DELETE FROM fundraiser_promises WHERE party_id = '%s'$$],
         ARRAY['donor_trust',                 $$DELETE FROM donor_trust WHERE party_id = '%s'$$]
     ];

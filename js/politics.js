@@ -4,7 +4,7 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
 
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
@@ -2855,12 +2855,12 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             if (_caSelected === id) { _caSelected = null; } else { _caSelected = id; }
             caReset();
             _caResult = null;
-            renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick);
+            renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost);
         });
     });
 
     // Wire up config interactions
-    wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick);
+    wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost);
 }
 
 // ── Render config body for each action ──
@@ -3569,8 +3569,8 @@ function renderProtestResolvingPanel() {
 
 // ── Wire up config panel interactions ──
 
-function wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick) {
-    const rerender = () => renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick);
+function wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost) {
+    const rerender = () => renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost);
 
     // Rival selection (attack)
     container.querySelectorAll('[data-rival-id]').forEach(el => {
@@ -5498,24 +5498,17 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
         ideoMap[row.faction_id] = row;
     }
 
-    // Fetch approval data for all rival parties (average preference_score across blocs)
+    // Approval data — legacy faction_bloc_approval removed; use faction_electoral_standing if available
     const rivalIds = rivals.map(p => p.id);
-    const { data: rivalApprovals } = rivalIds.length > 0
-        ? await _supabase.from('faction_bloc_approval')
-            .select('faction_id, preference_score')
+    const { data: rivalStandings } = rivalIds.length > 0
+        ? await _supabase.from('faction_electoral_standing')
+            .select('faction_id, party_approval')
             .in('faction_id', rivalIds)
         : { data: [] };
 
-    // Compute average approval per party
     const approvalMap = {};
-    const approvalCounts = {};
-    for (const row of (rivalApprovals || [])) {
-        const fid = row.faction_id;
-        approvalMap[fid] = (approvalMap[fid] || 0) + Number(row.preference_score ?? 40);
-        approvalCounts[fid] = (approvalCounts[fid] || 0) + 1;
-    }
-    for (const fid of Object.keys(approvalMap)) {
-        approvalMap[fid] = Math.round(approvalMap[fid] / approvalCounts[fid]);
+    for (const row of (rivalStandings || [])) {
+        approvalMap[row.faction_id] = Math.round(row.party_approval ?? 40);
     }
 
     // Fetch leader data for each rival (factions table has leader columns)

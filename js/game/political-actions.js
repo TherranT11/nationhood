@@ -1417,7 +1417,7 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
         ? cfg.APPROVAL_ON_PROMISE_CRISIS
         : cfg.APPROVAL_ON_PROMISE_STAT;
 
-    // ── 6. Apply immediate momentum bump (preference_score recalculated by three-pillar calc) ──
+    // ── 6. Apply immediate momentum bump (vote share updated by electorate engine) ──
     const blocEffects = [];
     for (const blocId of affectedBlocIds) {
         await adjustMomentum(supabase, nationId, factionId, blocId, approvalBump, `promise:made_${promiseType}`);
@@ -1882,7 +1882,7 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
     const cfg = MAKE_PROMISE_CONFIG;
 
     if (resolution === 'fulfilled') {
-        // ── REWARDS (all via momentum — preference_score recalculated by three-pillar calc) ──
+        // ── REWARDS (all via momentum — vote share updated by electorate engine) ──
         if (promise.bloc_id) {
             await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, cfg.KEPT_PREF_BONUS, 'promise:kept_bloc');
         }
@@ -1899,7 +1899,7 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
             .eq('id', promise.id);
 
     } else if (resolution === 'broken') {
-        // ── PENALTIES (all via momentum — preference_score recalculated by three-pillar calc) ──
+        // ── PENALTIES (all via momentum — vote share updated by electorate engine) ──
         if (promise.bloc_id) {
             await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, cfg.BROKEN_DONOR_PREF, 'promise:broken_bloc');
         }
@@ -4281,7 +4281,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     // 10. Clean up all faction-related data from the old nation
     await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
     await supabase.from('ideology_history').delete().eq('faction_id', factionId);
-    await supabase.from('momentum_log').delete().eq('faction_id', factionId);
+    // momentum_log table dropped — no cleanup needed
     await supabase.from('fundraiser_promises').delete().eq('party_id', factionId);
     await supabase.from('donor_trust').delete().eq('party_id', factionId);
     await supabase.from('bill_support').delete().eq('faction_id', factionId);

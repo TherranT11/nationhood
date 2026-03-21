@@ -1594,11 +1594,8 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     async function loadExistingBlocsDisplay(nationId) {
         const container = document.getElementById('existing-blocs-display');
         try {
-            const { data, error } = await _supabase.from('voter_blocs').select('*')
-                .eq('nation_id', nationId).order('population_weight', { ascending: false });
-            if (error) throw error;
-
-            voterBlocsCache = data || [];
+            // voter_blocs table dropped — electorate engine replaces this system
+            voterBlocsCache = [];
             updateWeightValidator();
 
             if (voterBlocsCache.length === 0) {
@@ -1793,16 +1790,8 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         const statusEl = document.getElementById('bloc-action-status');
 
         try {
-            if (editingBlocId) {
-                const { error } = await _supabase.from('voter_blocs').update(blocData).eq('id', editingBlocId);
-                if (error) throw error;
-                statusEl.innerHTML = '<span style="color:#5cb85c;font-weight:bold;">✅ Bloc updated!</span>';
-            } else {
-                blocData.nation_id = voterNationData.id;
-                const { error } = await _supabase.from('voter_blocs').insert(blocData);
-                if (error) throw error;
-                statusEl.innerHTML = '<span style="color:#5cb85c;font-weight:bold;">✅ Bloc created!</span>';
-            }
+            // voter_blocs table dropped — bloc management disabled
+            statusEl.innerHTML = '<span style="color:#d9534f;font-weight:bold;">Voter blocs system removed — use electorate engine instead.</span>';
             setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
             cancelBlocForm();
             await loadExistingBlocsDisplay(voterNationData.id);
@@ -1813,17 +1802,8 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
 
     // ---- Delete bloc ----
     async function deleteVoterBloc(blocId, blocName) {
-        if (!confirm('Delete voter bloc "' + blocName + '"? This will also remove any party approval data for this bloc.')) return;
-        const statusEl = document.getElementById('bloc-action-status');
-        try {
-            const { error } = await _supabase.from('voter_blocs').delete().eq('id', blocId);
-            if (error) throw error;
-            statusEl.innerHTML = '<span style="color:#5cb85c;font-weight:bold;">✅ Bloc deleted.</span>';
-            setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
-            await loadExistingBlocsDisplay(voterNationData.id);
-        } catch (error) {
-            statusEl.innerHTML = '<span style="color:#d9534f;font-weight:bold;">❌ Error: ' + error.message + '</span>';
-        }
+        // voter_blocs table dropped — bloc management disabled
+        alert('Voter blocs system removed — use electorate engine instead.');
     }
 
 

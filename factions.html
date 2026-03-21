@@ -59,13 +59,9 @@ initPage('factions', async (state) => {
 
 async function renderFactionsPage() {
     // Fetch counts for header stats
-    const [blocsRes, demandsRes] = await Promise.all([
-        _supabase.from('voter_blocs').select('id', { count: 'exact' }).eq('nation_id', currentNation.id).eq('is_active', true),
-        _supabase.from('voter_bloc_demands').select('id', { count: 'exact' }).eq('nation_id', currentNation.id).eq('status', 'active')
-    ]);
-    
-    const totalBlocs = blocsRes.count || 0;
-    const activeDemands = demandsRes.count || 0;
+    // voter_blocs table removed — electorate engine replaces this system
+    const totalBlocs = 0;
+    const activeDemands = 0;
     
     const html = `
         <div class="panel-padding">
@@ -234,14 +230,11 @@ async function loadActiveDemands() {
 
 async function loadVoterBlocs() {
     const container = document.getElementById('blocs-list');
-    
+
     try {
-        const { data: blocs, error } = await _supabase
-            .from('voter_blocs')
-            .select('*')
-            .eq('nation_id', currentNation.id)
-            .eq('is_active', true)
-            .order('voter_count', { ascending: false });
+        // voter_blocs table removed — show empty state
+        const blocs = [];
+        const error = null;
         
         if (error) throw error;
         
