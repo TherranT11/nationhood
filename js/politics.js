@@ -280,9 +280,6 @@ async function renderPartyTab(f, nation, data) {
         nextElection, prevApproval,
         lastParliamentary, lastPresidential, scheduledElections,
         president, administration,
-        caucusFactions,
-        pillarStates, autocracyTracker,
-        voterBlocs, playerBlocApprovals,
         caucusFactions, currentEndorsement,
         pillarStates, autocracyTracker, autocracyActionLog,
     } = data;
