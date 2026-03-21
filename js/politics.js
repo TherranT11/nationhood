@@ -413,7 +413,7 @@ async function renderPartyTab(f, nation, data) {
 
         <div class="pol-row-3">
         ${renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, { scheduledElections, currentTick, nation, mySeats, faction, currentEndorsement })}
-        ${renderBlocVotingBox(lastParliamentary, lastPresidential, allParties)}
+
         </div>
         <div class="pol-row-4" style="margin-top:24px;text-align:center">
             <button class="pol-disband-btn" id="pol-disband-party-btn" style="background:transparent;color:#d9534f;border:1px solid #d9534f;padding:8px 20px;border-radius:4px;cursor:pointer;font-size:0.75rem;opacity:0.6;transition:opacity 0.2s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">Disband Party</button>
