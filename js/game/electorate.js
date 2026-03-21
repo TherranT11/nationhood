@@ -2071,7 +2071,7 @@ export async function executePollNow(supabase, factionId, nationId, currentTick)
 
 export const IDEO_SHIFT_CONFIG = {
     THINK_TANK: {
-        AP_COST: 4,             // upfront launch cost
+        AP_COST: 8,             // upfront launch cost
         TICK_AP_COST: 1,        // 1 AP per tick while running
         COOLDOWN_WINDOW: 5,     // ticks between launches
         MAX_ACTIVE: 1,          // only 1 active think tank per faction
@@ -2092,13 +2092,14 @@ export const IDEO_SHIFT_CONFIG = {
         VISIBILITY_MAX: 3,
     },
     GRASSROOTS: {
-        AP_COST: 4,
+        AP_COST: 3,             // upfront launch cost
+        TICK_AP_COST: 1,        // 1 AP per tick while running
         COOLDOWN_WINDOW: 5,
         MAX_ACTIVE: 1,
-        BAND_DRIFT_RATE: 0.5,   // demographic band shift per tick
-        BAND_SHIFT_MAX: 15,     // max cumulative shift (auto-completes early if hit)
-        DURATION: 50,
-        VISIBILITY_BOOST: 6,
+        DRIFT_MIN: 0.1,         // 1d2: random 0.1 or 0.2 per tick
+        DRIFT_MAX: 0.2,
+        DURATION: 100,          // runs for 100 ticks — slow burn
+        VISIBILITY_INTERVAL: 10, // +1 visibility every 10 ticks
     },
 };
 
@@ -2259,10 +2260,11 @@ export async function executeMediaCampaign(supabase, factionId, nationId, target
 }
 
 /**
- * Launch a Grassroots Movement — shifts a demographic band's ideology.
- * Targets a specific demographic dimension (age, income, etc.) and band.
+ * Launch a Grassroots Movement — slow burn ideology shift on a target axis.
+ * Cheaper to start than Think Tank but runs for 100 ticks with 1 AP/tick.
+ * Weaker per-tick (1d2) but more total drift (~15 vs ~10).
  */
-export async function executeGrassrootsMovement(supabase, factionId, nationId, targetAxis, targetDirection, targetDemographic, targetBand, currentTick) {
+export async function executeGrassrootsMovement(supabase, factionId, nationId, targetAxis, targetDirection, currentTick) {
     const cfg = IDEO_SHIFT_CONFIG.GRASSROOTS;
 
     if (!AXIS_KEYS.includes(targetAxis)) {
@@ -2270,21 +2272,6 @@ export async function executeGrassrootsMovement(supabase, factionId, nationId, t
     }
     if (!['left', 'right'].includes(targetDirection)) {
         return { success: false, message: `Direction must be 'left' or 'right'` };
-    }
-
-    const VALID_DEMOGRAPHICS = {
-        age: ['18_29', '30_44', '45_64', '65plus'],
-        income: ['low', 'middle', 'upper', 'high'],
-        education: ['nodegree', 'undergrad', 'postgrad'],
-        urbanization: ['rural', 'smalltown', 'suburban', 'urban'],
-        religion: ['secular', 'moderate', 'devout'],
-    };
-
-    if (!VALID_DEMOGRAPHICS[targetDemographic]) {
-        return { success: false, message: `Unknown demographic: ${targetDemographic}` };
-    }
-    if (!VALID_DEMOGRAPHICS[targetDemographic].includes(targetBand)) {
-        return { success: false, message: `Unknown band '${targetBand}' for ${targetDemographic}` };
     }
 
     const { data: recent } = await supabase.from('campaign_actions')
@@ -2312,9 +2299,7 @@ export async function executeGrassrootsMovement(supabase, factionId, nationId, t
         faction_id: factionId, nation_id: nationId,
         action_type: 'grassroots_movement',
         target_axis: targetAxis, target_direction: targetDirection,
-        target_demographic: targetDemographic, target_band: targetBand,
-        band_drift_rate: cfg.BAND_DRIFT_RATE,
-        band_shift_total: 0, band_shift_max: cfg.BAND_SHIFT_MAX,
+        drift_rate: cfg.DRIFT_MAX,
         status: 'active', created_tick: currentTick, last_active_tick: currentTick,
     }).select().single();
     if (error) {
@@ -2322,31 +2307,28 @@ export async function executeGrassrootsMovement(supabase, factionId, nationId, t
         return { success: false, message: 'Database error creating grassroots movement' };
     }
 
-    await boostVisibility(supabase, factionId, nationId, cfg.VISIBILITY_BOOST);
-
     const { error: insErr } = await supabase.from('campaign_actions').insert({
         party_id: factionId, nation_id: nationId,
         action_type: 'grassroots_movement', ap_cost: cfg.AP_COST,
         money_cost: 0, tick_performed: currentTick,
-        result: { actionId: row.id, targetAxis, targetDirection, sideLabel, targetDemographic, targetBand },
+        result: { actionId: row.id, targetAxis, targetDirection, sideLabel },
     });
     if (insErr) console.error('[Electorate] campaign_actions insert failed:', insErr.message);
 
-    const bandLabel = targetBand.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    const demoLabel = targetDemographic.replace(/\b\w/g, l => l.toUpperCase());
     await logActivity(supabase, factionId, nationId, 'grassroots_movement',
         'Grassroots Movement',
-        `Grassroots push for ${sideLabel} among ${demoLabel} — ${bandLabel}`,
+        `Grassroots push toward ${sideLabel} on ${axisDef?.key || targetAxis}`,
         'success', cfg.AP_COST, currentTick);
 
     return {
         success: true,
-        message: `Grassroots movement launched — targeting ${demoLabel} ${bandLabel} toward ${sideLabel}`,
+        message: `Grassroots movement launched — pushing electorate toward ${sideLabel}`,
         effects: [
-            { label: 'Target', value: `${demoLabel} — ${bandLabel}` },
+            { label: 'Axis', value: `${axisDef?.leftLabel} ↔ ${axisDef?.rightLabel}` },
             { label: 'Direction', value: sideLabel },
-            { label: 'Drift', value: `${cfg.BAND_DRIFT_RATE}/tick for ${cfg.DURATION} ticks (max ${cfg.BAND_SHIFT_MAX})` },
-            { label: 'Visibility', value: `+${cfg.VISIBILITY_BOOST}` },
+            { label: 'Drift', value: `1d2 (${cfg.DRIFT_MIN}–${cfg.DRIFT_MAX})/tick for ${cfg.DURATION} ticks` },
+            { label: 'Ongoing', value: `${cfg.TICK_AP_COST} AP/tick` },
+            { label: 'Visibility', value: `+1 every ${cfg.VISIBILITY_INTERVAL} ticks` },
         ],
         newAp: apResult.newAp,
     };
@@ -2430,26 +2412,24 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
                 await boostVisibility(supabase, act.faction_id, nationId, visRoll);
             }
         } else if (act.action_type === 'grassroots_movement') {
-            // Small ideo_mean nudge weighted by demographic band share
+            const grCfg = IDEO_SHIFT_CONFIG.GRASSROOTS;
+            // 1 AP per tick cost
+            await deductAP(supabase, act.faction_id, grCfg.TICK_AP_COST);
+            // 1d2 drift: randomly 0.1 or 0.2
             const col = 'ideo_mean_' + act.target_axis;
             const old = Number(profile[col] ?? 50);
             const direction = act.target_direction === 'left' ? -1 : 1;
-            // Grassroots is weaker than think tank but accumulates
-            const bandDrift = Number(act.band_drift_rate || 0.5) * 0.4; // 40% effectiveness on mean
-            const drift = direction * bandDrift;
+            const roll = [0.1, 0.2][Math.floor(Math.random() * 2)];
+            const drift = direction * roll;
             const newVal = round2(clamp(old + drift, 5, 95));
             if (newVal !== old) {
                 profileUpdates[col] = newVal;
                 profile[col] = newVal;
             }
-            // Track cumulative shift
-            const totalShift = Number(act.band_shift_total || 0) + Math.abs(bandDrift);
-            if (totalShift >= Number(act.band_shift_max || 15)) {
-                toSuspend.push(act.id); // Max shift reached — auto-complete
-            } else {
-                toUpdate.push({ id: act.id, band_shift_total: round2(totalShift), last_active_tick: currentTick });
+            // +1 visibility every 10 ticks
+            if (ticksActive > 0 && ticksActive % grCfg.VISIBILITY_INTERVAL === 0) {
+                await boostVisibility(supabase, act.faction_id, nationId, 1);
             }
-            continue; // skip the generic update below
         }
 
         toUpdate.push({ id: act.id, last_active_tick: currentTick });

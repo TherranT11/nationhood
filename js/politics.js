@@ -2461,11 +2461,11 @@ const CA_ACTIONS = [
     { id: 'poll_now', name: 'Poll Now', ap: POLL_CONFIG.AP_COST, color: '#22d3ee', icon: '📊',
       desc: 'Snapshot your current electorate standing. See your pillars, vote share, and limiters frozen in time.' },
     { id: 'fund_think_tank', name: 'Fund Think Tank', ap: IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST, color: '#14b8a6', icon: '🏛',
-      desc: 'Drift the electorate\'s ideological mean on a chosen axis. 4 AP upfront + 1 AP/tick for 50 ticks. Drift: 1d3 (0.1–0.3).' },
+      desc: 'Drift the electorate\'s ideological mean on a chosen axis. 8 AP upfront + 1 AP/tick for 50 ticks. Drift: 1d3 (0.1–0.3).' },
     { id: 'media_campaign', name: 'Media Campaign', ap: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.AP_COST, color: '#8b5cf6', icon: '📡',
       desc: 'Expand or narrow electorate variance on a chosen axis. 1d5 variance shift for 5 ticks, then 1d3 visibility for 5 ticks.' },
     { id: 'grassroots_movement', name: 'Grassroots Movement', ap: IDEO_SHIFT_CONFIG.GRASSROOTS.AP_COST, color: '#10b981', icon: '🌱',
-      desc: 'Target a demographic band to shift their ideology. Runs for 50 ticks, auto-completes early at shift cap.' },
+      desc: 'Slow burn ideology shift. 3 AP upfront + 1 AP/tick for 100 ticks. 1d2 drift, +1 visibility every 10t.' },
 ];
 
 // State for new electorate actions
@@ -2506,7 +2506,7 @@ function caIsReady() {
     if (_caSelected === 'poll_now') return true;
     if (_caSelected === 'fund_think_tank') return !!_caTargetAxis && !!_caTargetDirection;
     if (_caSelected === 'media_campaign') return !!_caTargetAxis && !!_caTargetDirection;
-    if (_caSelected === 'grassroots_movement') return !!_caTargetAxis && !!_caTargetDirection && !!_caTargetDemographic && !!_caTargetBand;
+    if (_caSelected === 'grassroots_movement') return !!_caTargetAxis && !!_caTargetDirection;
     return false;
 }
 
@@ -2931,35 +2931,14 @@ function renderMediaCampaignConfig() {
 // ── GRASSROOTS CONFIG ──
 
 function renderGrassrootsConfig() {
-    let html = `<div class="ca-info-box">Target a demographic band to shift their ideology. Runs every tick for ${IDEO_SHIFT_CONFIG.GRASSROOTS.DURATION} ticks. Auto-completes early at ${IDEO_SHIFT_CONFIG.GRASSROOTS.BAND_SHIFT_MAX} cumulative shift.</div>`;
+    const gr = IDEO_SHIFT_CONFIG.GRASSROOTS;
+    let html = `<div class="ca-info-box">Launch a grassroots movement to slowly shift the electorate on a chosen axis. ${gr.AP_COST} AP upfront + ${gr.TICK_AP_COST} AP/tick for ${gr.DURATION} ticks. Drift: 1d2 (${gr.DRIFT_MIN}–${gr.DRIFT_MAX})/tick. +1 visibility every ${gr.VISIBILITY_INTERVAL} ticks.</div>`;
     html += renderAxisSelector();
     if (_caTargetAxis) {
         const axisDef = IDEOLOGY_AXES.find(a => a.key === _caTargetAxis);
         if (axisDef) {
             html += `<div class="ca-subtitle" style="margin-top:12px">Drift direction</div>`;
             html += renderDirectionSelector(axisDef.leftLabel, axisDef.rightLabel, 'left', 'right');
-        }
-    }
-    if (_caTargetAxis && _caTargetDirection) {
-        html += `<div class="ca-subtitle" style="margin-top:12px">Target demographic</div>`;
-        const demographics = ['age', 'income', 'education', 'urbanization'];
-        html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">`;
-        for (const d of demographics) {
-            const isSel = _caTargetDemographic === d;
-            html += `<div class="ca-option-chip${isSel ? ' selected' : ''}" data-grassroots-demo="${d}" style="${isSel ? 'border-color:#10b981;color:#10b981;background:rgba(16,185,129,0.06)' : ''}">${d.charAt(0).toUpperCase() + d.slice(1)}</div>`;
-        }
-        html += `</div>`;
-
-        if (_caTargetDemographic) {
-            html += `<div class="ca-subtitle" style="margin-top:8px">Target band</div>`;
-            const bands = { age: ['young', 'middle', 'old'], income: ['low', 'middle', 'high'], education: ['low', 'medium', 'high'], urbanization: ['rural', 'suburban', 'urban'] };
-            const bandOptions = bands[_caTargetDemographic] || ['low', 'medium', 'high'];
-            html += `<div style="display:flex;gap:6px;flex-wrap:wrap">`;
-            for (const b of bandOptions) {
-                const isSel = _caTargetBand === b;
-                html += `<div class="ca-option-chip${isSel ? ' selected' : ''}" data-grassroots-band="${b}" style="${isSel ? 'border-color:#10b981;color:#10b981;background:rgba(16,185,129,0.06)' : ''}">${b.charAt(0).toUpperCase() + b.slice(1)}</div>`;
-            }
-            html += `</div>`;
         }
     }
     return html;
@@ -4007,7 +3986,7 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
         } else if (sel.id === 'media_campaign') {
             result = await executeMediaCampaign(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
         } else if (sel.id === 'grassroots_movement') {
-            result = await executeGrassrootsMovement(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, _caTargetDemographic, _caTargetBand, tick);
+            result = await executeGrassrootsMovement(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
         }
     } catch (err) {
         console.error('Campaign action error:', err);
