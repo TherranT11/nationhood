@@ -13,6 +13,7 @@
  *
  * Phase 2A: Constants, config, genesis seed functions
  * Phase 2B: Per-tick three-pillar calculations + vote share pipeline
+ * Phase 2C: Issue salience drift, profile drift, platform appeal, stance decay
  */
 
 import { IDEOLOGY_AXES } from './ideology.js';
@@ -280,6 +281,29 @@ export const ELECTORATE_CONFIG = {
 
     // ── Inactivity ──
     INACTIVITY_EXCLUSION_TICKS: 12,   // parties unseen for this many ticks are excluded
+
+    // ── Phase 2C: Issue salience drift ──
+    SALIENCE_DRIFT_SPEED: 2,          // max salience points per tick toward target
+    SALIENCE_OWNERSHIP_BONUS: 10,     // bonus salience when a faction "owns" an issue
+    SALIENCE_DECAY_TOWARD_FLOOR: 0.5, // per-tick drift toward floor when stats are good
+
+    // ── Phase 2C: Electorate profile drift ──
+    PROFILE_IDEO_DRIFT_SPEED: 0.5,    // max ideo mean drift per tick
+    PROFILE_VAR_DRIFT_SPEED: 0.3,     // max variance drift per tick
+
+    // ── Phase 2C: Platform appeal ──
+    APPEAL_IDEOLOGY_BASELINE_WEIGHT: 0.3,  // how much alignment contributes to appeal floor
+    APPEAL_STANCE_WEIGHT: 0.7,             // how much stances contribute to appeal
+    APPEAL_PIONEER_BONUS: 5,               // bonus for being the first faction on an issue
+    APPEAL_CONSISTENCY_BONUS: 3,           // bonus for ideologically consistent stances
+    APPEAL_INCONSISTENCY_PENALTY: 5,       // penalty for inconsistent stances
+    APPEAL_DRIFT_SPEED: 3,                 // max platform_appeal change per tick
+    APPEAL_MIN: 10,
+    APPEAL_MAX: 90,
+
+    // ── Phase 2C: Stance decay ──
+    STANCE_REMOVAL_THRESHOLD: 5,      // strength below this → remove the stance
+    MAX_STANCES_PER_FACTION: 5,       // max active stances
 };
 
 const CFG = ELECTORATE_CONFIG;
@@ -808,10 +832,36 @@ export async function tickElectorate(supabase, nation, currentTick) {
         CFG.APPROVAL_GOV_NUDGE_CAP
     );
 
-    // ── 9. Build salience-weighted axis weights from issue states ──
-    const axisSalienceWeights = computeAxisSalienceWeights(issueStates || []);
+    // ── 9. Phase 2C: Drift issue salience toward stat-driven targets ──
+    const updatedIssueStates = await tickIssueSalience(supabase, nation, issueStates || [], currentTick);
 
-    // ── 10. Calculate pillars for each faction ──
+    // ── 10. Phase 2C: Drift electorate profile toward stat-driven targets ──
+    const updatedProfile = await tickElectorateProfile(supabase, nation, profile, currentTick);
+    const activeProfile = updatedProfile || profile;
+
+    // ── 11. Build salience-weighted axis weights from (updated) issue states ──
+    const axisSalienceWeights = computeAxisSalienceWeights(updatedIssueStates);
+
+    // ── 12. Load faction stances for platform appeal ──
+    const { data: allStances } = await supabase
+        .from('faction_issue_stance')
+        .select('*')
+        .in('faction_id', factionIds)
+        .eq('nation_id', nation.id);
+    const stancesByFaction = {};
+    for (const s of (allStances || [])) {
+        if (!stancesByFaction[s.faction_id]) stancesByFaction[s.faction_id] = [];
+        stancesByFaction[s.faction_id].push(s);
+    }
+
+    // Build issue state lookup
+    const issueStateMap = {};
+    for (const is of updatedIssueStates) issueStateMap[is.issue_id] = is;
+
+    // ── 13. Phase 2C: Decay stance strength ──
+    await tickStanceDecay(supabase, allStances || [], currentTick);
+
+    // ── 14. Calculate pillars for each faction ──
     const updates = [];
 
     for (const standing of standings) {
@@ -824,7 +874,7 @@ export async function tickElectorate(supabase, nation, currentTick) {
 
         // ─── PILLAR 1: Ideological Alignment (0-100) ───
         const targetAlignment = ideo
-            ? computeTickAlignment(ideo, profile, axisSalienceWeights)
+            ? computeTickAlignment(ideo, activeProfile, axisSalienceWeights)
             : CFG.DEFAULT_ALIGNMENT;
 
         // Drift toward target
@@ -833,9 +883,13 @@ export async function tickElectorate(supabase, nation, currentTick) {
         const newAlignment = round2(clamp(oldAlignment + alignDelta, 0, 100));
 
         // ─── PILLAR 2: Platform Appeal (0-100) ───
-        // For Phase 2B, platform appeal is held at its current value.
-        // Phase 2C will add stance-based platform appeal computation.
-        const newAppeal = Number(standing.platform_appeal ?? CFG.DEFAULT_PLATFORM_APPEAL);
+        const factionStances = stancesByFaction[factionId] || [];
+        const appealResult = computePlatformAppeal(
+            factionStances, issueStateMap, ideo, newAlignment
+        );
+        const oldAppeal = Number(standing.platform_appeal ?? CFG.DEFAULT_PLATFORM_APPEAL);
+        const appealDelta = clamp(appealResult.appeal - oldAppeal, -CFG.APPEAL_DRIFT_SPEED, CFG.APPEAL_DRIFT_SPEED);
+        const newAppeal = round2(clamp(oldAppeal + appealDelta, CFG.APPEAL_MIN, CFG.APPEAL_MAX));
 
         // ─── PILLAR 3: Party Approval (0-100) ───
         const oldApproval = Number(standing.party_approval ?? 50);
@@ -903,6 +957,9 @@ export async function tickElectorate(supabase, nation, currentTick) {
             ideological_alignment: newAlignment,
             platform_appeal: newAppeal,
             party_approval: newApproval,
+            ideology_baseline: round2(appealResult.ideologyBaseline),
+            stance_contribution_total: round2(appealResult.stanceContribution),
+            platform_ceiling: round2(appealResult.ceiling),
             visibility: newVisibility,
             credibility_modifier: newCredibility,
             raw_appeal: rawAppeal,
@@ -935,6 +992,9 @@ export async function tickElectorate(supabase, nation, currentTick) {
                 ideological_alignment: u.ideological_alignment,
                 platform_appeal: u.platform_appeal,
                 party_approval: u.party_approval,
+                ideology_baseline: u.ideology_baseline,
+                stance_contribution_total: u.stance_contribution_total,
+                platform_ceiling: u.platform_ceiling,
                 visibility: u.visibility,
                 credibility_modifier: u.credibility_modifier,
                 raw_appeal: u.raw_appeal,
@@ -1147,5 +1207,292 @@ async function updateNationalVoteShare(supabase, updates, inactiveFactions, nati
     }
     if (inactiveFactions.length > 0) {
         console.log(`[Electorate] Zeroed national_vote_share for ${inactiveFactions.length} inactive parties in ${nation.name}`);
+    }
+}
+
+// ============================================================================
+// PHASE 2C: ISSUE SALIENCE DRIFT
+// ============================================================================
+
+/**
+ * Drift each issue's salience toward a stat-driven target.
+ *
+ * Target is recomputed each tick from nation stats (same formula as genesis).
+ * Salience drifts at SALIENCE_DRIFT_SPEED per tick, never below salience_floor.
+ * When stats are good (low badness), salience decays toward the floor.
+ *
+ * Also updates salience_target for display purposes.
+ *
+ * @param {object} supabase
+ * @param {object} nation - Full nation row
+ * @param {object[]} issueStates - Current issue_state rows
+ * @param {number} currentTick
+ * @returns {object[]} Updated issue state rows (in-memory, also written to DB)
+ */
+async function tickIssueSalience(supabase, nation, issueStates, currentTick) {
+    if (issueStates.length === 0) return issueStates;
+
+    const updates = [];
+
+    for (const issue of issueStates) {
+        const def = ISSUE_DEFS[issue.issue_id];
+        if (!def) continue;
+
+        // Recompute target from current stats
+        const target = computeIssueSalience(nation, def.stats);
+        const floor = Number(issue.salience_floor ?? CFG.DEFAULT_SALIENCE_FLOOR);
+        const old = Number(issue.salience ?? 30);
+
+        // Drift toward target
+        const delta = clamp(target - old, -CFG.SALIENCE_DRIFT_SPEED, CFG.SALIENCE_DRIFT_SPEED);
+        let newSalience = round2(clamp(old + delta, floor, CFG.SALIENCE_MAX));
+
+        // Extra decay toward floor when stats are healthy (target < floor + 10)
+        if (target < floor + 10 && newSalience > floor) {
+            newSalience = round2(Math.max(floor, newSalience - CFG.SALIENCE_DECAY_TOWARD_FLOOR));
+        }
+
+        // Update in-memory for downstream use
+        issue.salience = newSalience;
+        issue.salience_target = round2(target);
+
+        updates.push({
+            id: issue.id,
+            salience: newSalience,
+            salience_target: round2(target),
+            last_updated_tick: currentTick,
+        });
+    }
+
+    // Batch write
+    for (const u of updates) {
+        await supabase.from('issue_state')
+            .update({ salience: u.salience, salience_target: u.salience_target, last_updated_tick: u.last_updated_tick })
+            .eq('id', u.id);
+    }
+
+    return issueStates;
+}
+
+// ============================================================================
+// PHASE 2C: ELECTORATE PROFILE DRIFT
+// ============================================================================
+
+/**
+ * Drift electorate ideological means and variances toward stat-driven targets.
+ *
+ * Each tick, the target ideo means/vars are recomputed from current nation stats
+ * (same formulas as genesis). The profile drifts slowly toward those targets.
+ * This makes the electorate responsive to nation changes without sudden jumps.
+ *
+ * Demographics are NOT drifted per-tick (they change via events/elections only).
+ *
+ * @param {object} supabase
+ * @param {object} nation - Full nation row
+ * @param {object} profile - Current electorate_profile row
+ * @param {number} currentTick
+ * @returns {object} Updated profile (in-memory, also written to DB)
+ */
+async function tickElectorateProfile(supabase, nation, profile, currentTick) {
+    const changes = {};
+    let anyChange = false;
+
+    // ── Drift ideo means ──
+    for (const axisKey of AXIS_KEYS) {
+        const col = 'ideo_mean_' + axisKey;
+        const old = Number(profile[col] ?? 50);
+
+        // Recompute target from current stats
+        const influences = IDEO_STAT_MAP[axisKey] || [];
+        let shift = 0;
+        for (const inf of influences) {
+            const statVal = getStat(nation, inf.stat);
+            shift += ((statVal - 50) / 50) * inf.direction * inf.weight;
+        }
+        const target = clamp(50 + shift * CFG.IDEO_STAT_SENSITIVITY * 50, 5, 95);
+
+        const delta = clamp(target - old, -CFG.PROFILE_IDEO_DRIFT_SPEED, CFG.PROFILE_IDEO_DRIFT_SPEED);
+        const newVal = round2(clamp(old + delta, 5, 95));
+
+        if (newVal !== old) {
+            changes[col] = newVal;
+            profile[col] = newVal;
+            anyChange = true;
+        }
+    }
+
+    // ── Drift ideo variances ──
+    const globalInfluences = IDEO_VARIANCE_STAT_MAP._global || [];
+    let varianceShift = 0;
+    for (const inf of globalInfluences) {
+        const statVal = getStat(nation, inf.stat);
+        varianceShift += ((statVal - 50) / 50) * inf.direction * inf.weight;
+    }
+    const targetVar = clamp(CFG.IDEO_VARIANCE_BASE + varianceShift * CFG.IDEO_VARIANCE_SENSITIVITY * 50, 5, 45);
+
+    for (const axisKey of AXIS_KEYS) {
+        const col = 'ideo_var_' + axisKey;
+        const old = Number(profile[col] ?? 20);
+        const delta = clamp(targetVar - old, -CFG.PROFILE_VAR_DRIFT_SPEED, CFG.PROFILE_VAR_DRIFT_SPEED);
+        const newVal = round2(clamp(old + delta, 5, 45));
+
+        if (newVal !== old) {
+            changes[col] = newVal;
+            profile[col] = newVal;
+            anyChange = true;
+        }
+    }
+
+    // ── Update axis salience weights from current issue salience ──
+    // (will be recomputed fully in the main loop, but store for display)
+
+    if (anyChange) {
+        changes.last_updated_tick = currentTick;
+        await supabase.from('electorate_profile')
+            .update(changes)
+            .eq('id', profile.id);
+    }
+
+    return profile;
+}
+
+// ============================================================================
+// PHASE 2C: PLATFORM APPEAL COMPUTATION
+// ============================================================================
+
+/**
+ * Compute platform appeal for a faction based on its stances and issue salience.
+ *
+ * Formula:
+ *   appeal = ideology_baseline × BASELINE_WEIGHT
+ *          + stance_contribution × STANCE_WEIGHT
+ *
+ * ideology_baseline: derived from ideological alignment (floor for appeal)
+ * stance_contribution: sum of per-stance scores weighted by issue salience
+ *
+ * Per-stance score:
+ *   - Base: strength × (salience / 100)
+ *   - Pioneer bonus: +PIONEER_BONUS if is_pioneer
+ *   - Consistency bonus: +CONSISTENCY_BONUS if ideologically_consistent
+ *   - Inconsistency penalty: -INCONSISTENCY_PENALTY if !ideologically_consistent
+ *   - Scaled to 0-100
+ *
+ * @param {object[]} stances - faction_issue_stance rows for this faction
+ * @param {object} issueStateMap - { issue_id: issue_state row }
+ * @param {object} ideo - faction_ideology row (or null)
+ * @param {number} alignment - current ideological alignment (0-100)
+ * @returns {{ appeal, ideologyBaseline, stanceContribution, ceiling }}
+ */
+function computePlatformAppeal(stances, issueStateMap, ideo, alignment) {
+    // Ideology baseline: parties with better alignment have a higher floor
+    const ideologyBaseline = alignment * CFG.APPEAL_IDEOLOGY_BASELINE_WEIGHT;
+
+    if (!stances || stances.length === 0) {
+        // No stances → appeal is purely from ideology baseline
+        const appeal = round2(clamp(ideologyBaseline, CFG.APPEAL_MIN, CFG.APPEAL_MAX));
+        return { appeal, ideologyBaseline: round2(ideologyBaseline), stanceContribution: 0, ceiling: appeal };
+    }
+
+    // Compute stance contribution
+    let stanceScore = 0;
+    let maxPossibleScore = 0;
+
+    for (const stance of stances) {
+        const issueState = issueStateMap[stance.issue_id];
+        const salience = Number(issueState?.salience ?? 30);
+        const strength = Number(stance.strength ?? 50);
+
+        // Base contribution: strength scaled by salience
+        // At salience=100, strength=100 → 100 points
+        let contribution = (strength / 100) * (salience / 100) * 100;
+
+        // Pioneer bonus
+        if (stance.is_pioneer) {
+            contribution += CFG.APPEAL_PIONEER_BONUS;
+        }
+
+        // Consistency bonus/penalty
+        if (stance.ideologically_consistent) {
+            contribution += CFG.APPEAL_CONSISTENCY_BONUS;
+        } else {
+            contribution -= CFG.APPEAL_INCONSISTENCY_PENALTY;
+        }
+
+        stanceScore += Math.max(0, contribution);
+        maxPossibleScore += 100 + CFG.APPEAL_PIONEER_BONUS + CFG.APPEAL_CONSISTENCY_BONUS;
+    }
+
+    // Normalize stance score to 0-100
+    const normalizedStance = maxPossibleScore > 0
+        ? (stanceScore / maxPossibleScore) * 100
+        : 0;
+
+    const stanceContribution = normalizedStance * CFG.APPEAL_STANCE_WEIGHT;
+    const rawAppeal = ideologyBaseline + stanceContribution;
+    const ceiling = round2(clamp(rawAppeal, CFG.APPEAL_MIN, CFG.APPEAL_MAX));
+    const appeal = ceiling;
+
+    return {
+        appeal,
+        ideologyBaseline: round2(ideologyBaseline),
+        stanceContribution: round2(stanceContribution),
+        ceiling,
+    };
+}
+
+// ============================================================================
+// PHASE 2C: STANCE DECAY
+// ============================================================================
+
+/**
+ * Decay all faction stances each tick. Stances lose strength at their decay_rate
+ * per tick. When strength drops below STANCE_REMOVAL_THRESHOLD, the stance is
+ * deleted.
+ *
+ * Decay rates by intensity:
+ *   - centrist: 2/tick (lasts ~50 ticks)
+ *   - moderate: 4/tick (lasts ~25 ticks)
+ *   - radical:  8/tick (lasts ~12 ticks)
+ *
+ * @param {object} supabase
+ * @param {object[]} stances - All faction_issue_stance rows for this nation
+ * @param {number} currentTick
+ */
+async function tickStanceDecay(supabase, stances, currentTick) {
+    if (stances.length === 0) return;
+
+    const toUpdate = [];
+    const toDelete = [];
+
+    for (const stance of stances) {
+        const strength = Number(stance.strength ?? 100);
+        const decayRate = Number(stance.decay_rate ?? 4);
+        const newStrength = round2(strength - decayRate);
+
+        if (newStrength < CFG.STANCE_REMOVAL_THRESHOLD) {
+            toDelete.push(stance.id);
+        } else {
+            toUpdate.push({
+                id: stance.id,
+                strength: newStrength,
+                ticks_held: (Number(stance.ticks_held ?? 0)) + 1,
+                ticks_at_current_intensity: (Number(stance.ticks_at_current_intensity ?? 0)) + 1,
+            });
+        }
+    }
+
+    // Batch update surviving stances
+    for (const u of toUpdate) {
+        await supabase.from('faction_issue_stance')
+            .update({ strength: u.strength, ticks_held: u.ticks_held, ticks_at_current_intensity: u.ticks_at_current_intensity })
+            .eq('id', u.id);
+    }
+
+    // Delete expired stances
+    if (toDelete.length > 0) {
+        await supabase.from('faction_issue_stance')
+            .delete()
+            .in('id', toDelete);
+        console.log(`[Electorate] Removed ${toDelete.length} expired stances`);
     }
 }
