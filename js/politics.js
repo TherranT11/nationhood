@@ -424,6 +424,14 @@ async function renderPartyTab(f, nation, data) {
     </div>`;
     }
 
+    const electorateTabBtn = isAutoNation ? '' : '<button class="pol-page-tab" data-page-tab="electorate-spread">Electorate</button>';
+    const electorateContent = isAutoNation ? '' : `
+    <div class="pol-page-content" data-page-content="electorate-spread">
+        <div id="electorate-spread-container" class="es-page" style="min-height:300px;">
+            <div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;">Loading electorate data...</div>
+        </div>
+    </div>`;
+
     const otherPartiesTabBtn = isAutoNation ? '' : '<button class="pol-page-tab" data-page-tab="other-parties">Other Parties</button>';
     const otherPartiesContent = isAutoNation ? '' : `
     <div class="pol-page-content" data-page-content="other-parties">
@@ -436,6 +444,7 @@ async function renderPartyTab(f, nation, data) {
     <div class="pol-page-tabs">
         <button class="pol-page-tab active" data-page-tab="politics">Politics</button>
         <button class="pol-page-tab" data-page-tab="actions">Actions</button>
+        ${electorateTabBtn}
         ${otherPartiesTabBtn}
     </div>
     <div class="pol-page-content active" data-page-content="politics">
@@ -447,12 +456,14 @@ async function renderPartyTab(f, nation, data) {
             <div id="actions-container"></div>
         </div>
     </div>
+    ${electorateContent}
     ${otherPartiesContent}`;
 
     document.getElementById('content-area').innerHTML = html;
 
-    // Wire up page-level sub-tabs (Politics / Actions / Other Parties)
+    // Wire up page-level sub-tabs (Politics / Actions / Electorate / Other Parties)
     let otherPartiesLoaded = false;
+    let electorateSpreadLoaded = false;
     document.querySelectorAll('.pol-page-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('.pol-page-tab').forEach(t => t.classList.remove('active'));
@@ -461,6 +472,11 @@ async function renderPartyTab(f, nation, data) {
             const target = tab.getAttribute('data-page-tab');
             const content = document.querySelector(`.pol-page-content[data-page-content="${target}"]`);
             if (content) content.classList.add('active');
+            // Lazy-load Electorate Spread tab on first click
+            if (target === 'electorate-spread' && !electorateSpreadLoaded) {
+                electorateSpreadLoaded = true;
+                renderElectorateSpreadTab(f, nation, allParties, allPartyIdeologies, voterBlocs, currentTick);
+            }
             // Lazy-load Other Parties tab on first click
             if (target === 'other-parties' && !otherPartiesLoaded) {
                 otherPartiesLoaded = true;
@@ -4638,6 +4654,301 @@ function renderAutoActionDetail(actionKey, ap, tick, myFps, isStrongman, pillarS
             }
         });
     }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ELECTORATE IDEOLOGY SPREAD TAB
+   ═══════════════════════════════════════════════════════════════════ */
+
+// Axes in display order for the electorate spread
+const ES_AXES = [
+    { key: 'security_freedom',           blocKey: 'axis_security_freedom',           leftLabel: 'Security',      rightLabel: 'Freedom' },
+    { key: 'tradition_progress',         blocKey: 'axis_tradition_progress',         leftLabel: 'Tradition',     rightLabel: 'Progress' },
+    { key: 'individualism_collectivism', blocKey: 'axis_individualism_collectivism', leftLabel: 'Individualism', rightLabel: 'Collectivism' },
+    { key: 'globalism_nationalism',      blocKey: 'axis_globalism_nationalism',      leftLabel: 'Globalism',     rightLabel: 'Nationalism' },
+    { key: 'liberty_equality',           blocKey: 'axis_liberty_equality',           leftLabel: 'Liberty',       rightLabel: 'Equality' },
+];
+
+// Alignment thresholds (distance in 0-100 normalized space)
+const ES_ALIGNED_THRESHOLD = 15;
+const ES_PARTIAL_THRESHOLD = 25;
+
+function renderElectorateSpreadTab(playerFaction, nation, allParties, allPartyIdeologies, voterBlocs, currentTick) {
+    const container = document.getElementById('electorate-spread-container');
+    if (!container) return;
+
+    const blocs = (voterBlocs || []).filter(b => b.is_active !== false);
+    if (blocs.length === 0) {
+        container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:20px;text-align:center;">No voter bloc data available.</div>';
+        return;
+    }
+
+    // Build ideology lookup
+    const ideoMap = {};
+    for (const row of (allPartyIdeologies || [])) {
+        ideoMap[row.faction_id] = row;
+    }
+
+    // Compute total population weight for normalization
+    const totalWeight = blocs.reduce((s, b) => s + (b.population_weight || 0), 0) || 1;
+
+    // Compute electorate mean and standard deviation per axis
+    const electorateStats = {};
+    for (const ax of ES_AXES) {
+        let weightedSum = 0;
+        for (const b of blocs) {
+            const raw = Number(b[ax.blocKey] ?? 0); // -100 to +100
+            const norm = (raw + 100) / 2; // 0-100
+            weightedSum += norm * (b.population_weight || 0);
+        }
+        const mean = weightedSum / totalWeight;
+
+        // Weighted standard deviation
+        let varianceSum = 0;
+        for (const b of blocs) {
+            const raw = Number(b[ax.blocKey] ?? 0);
+            const norm = (raw + 100) / 2;
+            varianceSum += (b.population_weight || 0) * Math.pow(norm - mean, 2);
+        }
+        const stdDev = Math.sqrt(varianceSum / totalWeight);
+
+        electorateStats[ax.key] = { mean, stdDev };
+    }
+
+    // Build party data (all parties including player)
+    const parties = (allParties || []).map(p => {
+        const ideo = ideoMap[p.id] || {};
+        const isPlayer = p.id === playerFaction.id;
+        return {
+            id: p.id,
+            abbr: p.abbreviation || '??',
+            color: p.party_color || '#888',
+            isPlayer,
+            ideology: {
+                security_freedom: Number(ideo.security_freedom ?? 0),
+                tradition_progress: Number(ideo.tradition_progress ?? 0),
+                liberty_equality: Number(ideo.liberty_equality ?? 0),
+                globalism_nationalism: Number(ideo.globalism_nationalism ?? 0),
+                individualism_collectivism: Number(ideo.individualism_collectivism ?? 0),
+            }
+        };
+    });
+
+    // Player party ideology for alignment computation
+    const playerIdeo = ideoMap[playerFaction.id] || {};
+
+    // Toggle state for rival parties
+    const toggleState = {};
+    const rivals = parties.filter(p => !p.isPlayer);
+    for (const r of rivals) toggleState[r.id] = true;
+
+    // Compute alignment stats
+    let alignedCount = 0, partialCount = 0, misalignedCount = 0;
+    let totalAlignmentScore = 0;
+
+    function getMatchInfo(axisKey) {
+        const playerScore = Number(playerIdeo[axisKey] ?? 0);
+        const playerNorm = (playerScore + 100) / 2;
+        const eMean = electorateStats[axisKey].mean;
+        const gap = Math.abs(playerNorm - eMean);
+
+        if (gap <= ES_ALIGNED_THRESHOLD) return { cls: 'es-match-yes', label: '✓ Aligned', gap };
+        if (gap <= ES_PARTIAL_THRESHOLD) return { cls: 'es-match-part', label: '~ Partial', gap };
+        return { cls: 'es-match-no', label: '✗ Misaligned', gap };
+    }
+
+    for (const ax of ES_AXES) {
+        const m = getMatchInfo(ax.key);
+        if (m.cls === 'es-match-yes') alignedCount++;
+        else if (m.cls === 'es-match-part') partialCount++;
+        else misalignedCount++;
+        // Alignment score: 100 - gap, clamped 0-100
+        totalAlignmentScore += Math.max(0, 100 - m.gap);
+    }
+    const avgAlignment = Math.round(totalAlignmentScore / ES_AXES.length);
+    const alignColor = avgAlignment >= 65 ? 'var(--dgreen)' : avgAlignment >= 45 ? 'var(--damber)' : 'var(--dred)';
+
+    function render() {
+        // Build axis blocks
+        let axesHtml = '';
+        for (let i = 0; i < ES_AXES.length; i++) {
+            const ax = ES_AXES[i];
+            const stats = electorateStats[ax.key];
+            const match = getMatchInfo(ax.key);
+            const eMean = stats.mean;
+            const eStd = stats.stdDev;
+
+            // Variance band: mean ± 1 stddev, clamped to 0-100
+            const varLeft = Math.max(0, eMean - eStd);
+            const varWidth = Math.min(100, eMean + eStd) - varLeft;
+
+            // Electorate lean text
+            let leanText;
+            if (eMean < 45) {
+                leanText = `Electorate leans <strong>${escapeHtml(ax.leftLabel)}</strong> — mean ${Math.round(eMean)} / 100`;
+            } else if (eMean > 55) {
+                leanText = `Electorate leans <strong>${escapeHtml(ax.rightLabel)}</strong> — mean ${Math.round(eMean)} / 100`;
+            } else {
+                leanText = `Electorate is <strong>near centrist</strong> — mean ${Math.round(eMean)} / 100`;
+            }
+
+            // Party markers
+            let markersHtml = '';
+            for (let pi = 0; pi < parties.length; pi++) {
+                const p = parties[pi];
+                const rawScore = p.ideology[ax.key];
+                const normPos = (rawScore + 100) / 2;
+                const labelPos = pi % 2 === 0 ? '' : 'es-below';
+                const hiddenCls = (!p.isPlayer && !toggleState[p.id]) ? 'es-hidden' : '';
+
+                if (p.isPlayer) {
+                    markersHtml += `
+                    <div class="es-pm ${hiddenCls}" data-es-party="${p.id}" style="left:${normPos}%">
+                        <div class="es-pm-bar" style="background:${p.color}"></div>
+                        <div class="es-pm-ring" style="border-color:${p.color}"></div>
+                        <div class="es-pm-dot" style="background:${p.color}"></div>
+                        <div class="es-pm-label" style="color:${p.color}">${escapeHtml(p.abbr)}</div>
+                    </div>`;
+                } else {
+                    markersHtml += `
+                    <div class="es-pm ${hiddenCls}" data-es-party="${p.id}" style="left:${normPos}%">
+                        <div class="es-pm-bar" style="background:${p.color}"></div>
+                        <div class="es-pm-dot" style="background:${p.color}"></div>
+                        <div class="es-pm-label ${labelPos}" style="color:${p.color}">${escapeHtml(p.abbr)}</div>
+                    </div>`;
+                }
+            }
+
+            // Gap annotation for misaligned axes
+            let gapHtml = '';
+            if (match.cls === 'es-match-no') {
+                const playerNorm = (Number(playerIdeo[ax.key] ?? 0) + 100) / 2;
+                const gapLeft = Math.min(playerNorm, eMean);
+                const gapWidth = Math.abs(playerNorm - eMean);
+                gapHtml = `<div class="es-gap" style="left:${gapLeft}%;width:${gapWidth}%">
+                    <div class="es-gap-label">${Math.round(match.gap)}pt gap</div>
+                </div>`;
+            }
+
+            const isLast = i === ES_AXES.length - 1;
+
+            axesHtml += `
+            <div class="es-axis-block">
+                <div class="es-axis-header">
+                    <div class="es-axis-info">
+                        <div class="es-axis-name">${escapeHtml(ax.leftLabel)} / ${escapeHtml(ax.rightLabel)}</div>
+                        <div class="es-axis-read">${leanText}</div>
+                    </div>
+                    <div class="es-match ${match.cls}">${match.label}</div>
+                </div>
+                <div class="es-spectrum">
+                    <div class="es-pole-row">
+                        <span class="es-pole">${escapeHtml(ax.leftLabel)}</span>
+                        <span class="es-pole">${escapeHtml(ax.rightLabel)}</span>
+                    </div>
+                    <div class="es-track">
+                        <div class="es-center"><div class="es-center-label">Center</div></div>
+                        <div class="es-variance" style="left:${varLeft}%;width:${varWidth}%"></div>
+                        <div class="es-emean" style="left:${eMean}%"><div class="es-emean-label">Electorate</div></div>
+                        ${gapHtml}
+                        ${markersHtml}
+                    </div>
+                </div>
+            </div>
+            ${isLast ? '' : '<div class="es-div"></div>'}`;
+        }
+
+        // Legend pills
+        const playerParty = parties.find(p => p.isPlayer);
+        let legendHtml = '';
+        if (playerParty) {
+            const pFaint = hexToRgba(playerParty.color, 0.10);
+            const pBorder = hexToRgba(playerParty.color, 0.25);
+            legendHtml += `<div class="es-leg-pill" style="color:${playerParty.color};background:${pFaint};border-color:${pBorder}">
+                <div class="es-leg-dot" style="background:${playerParty.color}"></div>${escapeHtml(playerParty.abbr)} <span style="opacity:.55;font-size:7px">YOU</span>
+            </div>`;
+        }
+        for (const r of rivals) {
+            const rFaint = hexToRgba(r.color, 0.10);
+            const rBorder = hexToRgba(r.color, 0.25);
+            const dimCls = toggleState[r.id] ? '' : 'es-dimmed';
+            legendHtml += `<div class="es-leg-pill ${dimCls}" data-es-toggle="${r.id}" style="color:${r.color};background:${rFaint};border-color:${rBorder}">
+                <div class="es-leg-dot" style="background:${r.color}"></div>${escapeHtml(r.abbr)}
+            </div>`;
+        }
+
+        container.innerHTML = `
+        <div class="es-page-label">Electorate Ideology Spread — <span class="es-nation">${escapeHtml(nation.name)}</span> · Tick ${currentTick}</div>
+        <div class="es-outer">
+            <div class="es-hdr">
+                <div class="es-hdr-left">
+                    <div class="es-hdr-dot"></div>
+                    <span class="es-hdr-title">Electorate Ideology Spread</span>
+                </div>
+                <div class="es-legend" id="es-legend">${legendHtml}</div>
+            </div>
+            <div class="es-body">${axesHtml}</div>
+            <div class="es-summary">
+                <div class="es-sb-item">
+                    <div class="es-sb-label">Ideological Alignment</div>
+                    <div class="es-sb-val" style="color:${alignColor}">${avgAlignment}</div>
+                </div>
+                <div class="es-sb-div"></div>
+                <div class="es-sb-item">
+                    <div class="es-sb-label">Axes Aligned</div>
+                    <div class="es-sb-val" style="color:var(--dgreen)">${alignedCount}</div>
+                </div>
+                <div class="es-sb-div"></div>
+                <div class="es-sb-item">
+                    <div class="es-sb-label">Partial</div>
+                    <div class="es-sb-val" style="color:var(--damber)">${partialCount}</div>
+                </div>
+                <div class="es-sb-div"></div>
+                <div class="es-sb-item">
+                    <div class="es-sb-label">Misaligned</div>
+                    <div class="es-sb-val" style="color:var(--dred)">${misalignedCount}</div>
+                </div>
+            </div>
+            <div class="es-legend-bar">
+                <div class="es-lb-item">
+                    <svg width="16" height="16"><circle cx="8" cy="8" r="6" fill="rgba(255,255,255,0.85)"/></svg>
+                    <span class="es-lb-text">White dot = electorate mean</span>
+                </div>
+                <div class="es-lb-item">
+                    <svg width="36" height="16"><rect x="0" y="3" width="36" height="10" rx="2" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.10)" stroke-width="1"/></svg>
+                    <span class="es-lb-text">Shaded band = voter spread (wider = more polarized)</span>
+                </div>
+                <div class="es-lb-item">
+                    <svg width="16" height="16">
+                        <circle cx="8" cy="8" r="5" fill="${playerParty ? playerParty.color : '#9b7ec8'}"/>
+                        <circle cx="8" cy="8" r="8" fill="none" stroke="${playerParty ? playerParty.color : '#9b7ec8'}" stroke-width="1.5" opacity="0.55"/>
+                    </svg>
+                    <span class="es-lb-text">Ring = your party</span>
+                </div>
+                <div class="es-lb-item">
+                    <svg width="36" height="16"><line x1="0" y1="8" x2="36" y2="8" stroke="rgba(217,83,79,0.7)" stroke-width="2" stroke-dasharray="4,3"/></svg>
+                    <span class="es-lb-text">Dashed = alignment gap</span>
+                </div>
+                <div class="es-lb-item">
+                    <span class="es-lb-text" style="font-style:italic">Click party pills to show/hide</span>
+                </div>
+            </div>
+        </div>`;
+
+        // Wire toggle clicks
+        container.querySelectorAll('[data-es-toggle]').forEach(pill => {
+            pill.addEventListener('click', () => {
+                const pid = pill.getAttribute('data-es-toggle');
+                toggleState[pid] = !toggleState[pid];
+                pill.classList.toggle('es-dimmed', !toggleState[pid]);
+                container.querySelectorAll(`[data-es-party="${pid}"]`).forEach(m => {
+                    m.classList.toggle('es-hidden', !toggleState[pid]);
+                });
+            });
+        });
+    }
+
+    render();
 }
 
 /* ═══════════════════════════════════════════════════════════════════
