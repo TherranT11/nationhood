@@ -820,7 +820,7 @@ function renderArticles() {
             const methodLabel = methodLabels[bill.proposed_hos_election_method] || bill.proposed_hos_election_method;
             let effectsHTML = '';
             if (bill.proposed_hos_election_method === 'hereditary') {
-                effectsHTML = 'Establishes constitutional monarchy. Stability +5, national unity +5, legitimacy -5, freedom index -3.<br>' +
+                effectsHTML = 'Establishes constitutional monarchy. Stability +5, legitimacy -5.<br>' +
                     'Head of State becomes permanent and non-partisan.<br>' +
                     (bill.proposed_dynasty_name ? 'Dynasty: <strong>' + escapeHtml(bill.proposed_dynasty_name) + '</strong><br>' : '');
             } else if (bill.proposed_hos_election_method === 'direct_vote') {

@@ -939,12 +939,16 @@ initPage('home', async (state) => {
         </div>`;
     } else if (!isPres && !isAuto && hosFirst && hosLast) {
       const initials = (hosFirst[0] + hosLast[0]).toUpperCase();
+      const dashHosIsHereditary = nation.hos_election_method === 'hereditary';
+      const dashHosMeta = dashHosIsHereditary
+        ? `${esc(nation.dynasty_name || 'Royal')} dynasty`
+        : (nation.head_of_state_title || 'Head of State');
       leader2Html = `
         <div class="gov-leader-row">
           <div class="gov-initials">${esc(initials)}</div>
           <div>
             <div class="gov-leader-name">${esc(hosFirst + ' ' + hosLast)}</div>
-            <div class="gov-leader-meta">Head of State</div>
+            <div class="gov-leader-meta">${dashHosMeta}</div>
           </div>
         </div>`;
     }

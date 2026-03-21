@@ -12,7 +12,7 @@ import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
 import { fetchActiveCoalition } from './government-structure.js';
 import { resolveNoConfidence } from './elections.js';
-import { getNationNames } from './political-actions.js';
+import { getNationNames, isFemaleName } from './political-actions.js';
 import { allocateSeatsByVotes } from './election-simulation.js';
 import { repealActiveLaw } from './repeal-helper.js';
 import { fireBillEvent } from './event-helpers.js';
@@ -3098,6 +3098,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         const nationUpdate = { hos_election_method: newMethod };
         if (newMethod === 'hereditary') {
             nationUpdate.dynasty_name = bill.proposed_dynasty_name || 'Royal House';
+            nationUpdate.dynasty_established_tick = currentTick;
             if (bill.proposed_dynasty_crest_url) {
                 nationUpdate.dynasty_crest_url = bill.proposed_dynasty_crest_url;
             }
@@ -3109,9 +3110,10 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             nationUpdate.head_of_state_first_name = monarchFirstName;
             nationUpdate.head_of_state_last_name = dynastyLastName;
             nationUpdate.head_of_state_age = monarchAge;
-            // Default to King/Queen if no title set
+            // Set King or Queen based on the generated monarch's name
+            const monarchTitle = isFemaleName(monarchFirstName) ? 'Queen' : 'King';
             if (!nation?.head_of_state_title || nation.head_of_state_title === 'President' || nation.head_of_state_title === 'Vice President') {
-                nationUpdate.head_of_state_title = 'King';
+                nationUpdate.head_of_state_title = monarchTitle;
             }
         }
 
@@ -3122,19 +3124,15 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
         // Apply mechanical effects based on method
         if (newMethod === 'hereditary') {
-            // Constitutional monarchy: stability +5, national unity +5, legitimacy -5, freedom_index -3
+            // Constitutional monarchy: stability +5, legitimacy -5
             const newStability = Math.min(100, (nation?.stability || 50) + 5);
-            const newUnity = Math.min(100, (nation?.national_unity || 50) + 5);
             const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 5);
-            const newFreedom = Math.max(0, (nation?.freedom_index || 50) - 3);
             const { error: statErr } = await supabase.from('nations').update({
                 stability: newStability,
-                national_unity: newUnity,
-                legitimacy: newLegitimacy,
-                freedom_index: newFreedom
+                legitimacy: newLegitimacy
             }).eq('id', bill.nation_id);
             if (statErr) console.error(`[enactFoundationalBill] Hereditary stat update failed:`, statErr.message);
-            else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, national_unity +5, legitimacy -5, freedom_index -3`);
+            else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, legitimacy -5`);
         } else if (newMethod === 'direct_vote') {
             // Direct vote: legitimacy +3, political_engagement +3, polarization +2
             const newLegitimacy = Math.min(100, (nation?.legitimacy || 50) + 3);
