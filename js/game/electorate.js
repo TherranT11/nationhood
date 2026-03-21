@@ -1532,7 +1532,7 @@ export async function boostVisibility(supabase, factionId, nationId, boost) {
         .select('id, visibility')
         .eq('faction_id', factionId)
         .eq('nation_id', nationId)
-        .single();
+        .maybeSingle();
     if (!standing) return;
 
     const old = Number(standing.visibility ?? 30);
@@ -1560,7 +1560,7 @@ export async function nudgeApproval(supabase, factionId, nationId, delta) {
         .select('id, party_approval')
         .eq('faction_id', factionId)
         .eq('nation_id', nationId)
-        .single();
+        .maybeSingle();
     if (!standing) return;
 
     const old = Number(standing.party_approval ?? 50);
@@ -1590,7 +1590,7 @@ export async function adjustCredibility(supabase, factionId, nationId, delta, su
         .select('id, credibility_modifier, credibility_recovery_suspended_until')
         .eq('faction_id', factionId)
         .eq('nation_id', nationId)
-        .single();
+        .maybeSingle();
     if (!standing) return;
 
     const old = Number(standing.credibility_modifier ?? 1.0);
@@ -2013,7 +2013,7 @@ export async function executePollNow(supabase, factionId, nationId, currentTick)
         .select('*')
         .eq('faction_id', factionId)
         .eq('nation_id', nationId)
-        .single();
+        .maybeSingle();
     if (!standing) {
         return { success: false, message: 'No electorate standing found. Advance a tick first.' };
     }

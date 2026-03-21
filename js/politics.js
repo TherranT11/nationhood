@@ -5150,7 +5150,7 @@ async function _renderPillarCards(container, playerFaction, nation) {
         .select('*')
         .eq('faction_id', playerFaction.id)
         .eq('nation_id', nation.id)
-        .single();
+        .maybeSingle();
 
     if (!standing) {
         container.insertAdjacentHTML('beforeend',
