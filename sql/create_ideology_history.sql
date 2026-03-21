@@ -11,11 +11,11 @@ CREATE TABLE ideology_history (
     faction_id      UUID NOT NULL REFERENCES factions(id) ON DELETE CASCADE,
     nation_id       UUID NOT NULL REFERENCES nations(id) ON DELETE CASCADE,
     tick            INTEGER NOT NULL,
-    liberty_equality        INTEGER NOT NULL DEFAULT 0,
-    tradition_progress      INTEGER NOT NULL DEFAULT 0,
-    security_freedom        INTEGER NOT NULL DEFAULT 0,
-    globalism_nationalism   INTEGER NOT NULL DEFAULT 0,
-    individualism_collectivism INTEGER NOT NULL DEFAULT 0,
+    liberty_equality        NUMERIC NOT NULL DEFAULT 0,
+    tradition_progress      NUMERIC NOT NULL DEFAULT 0,
+    security_freedom        NUMERIC NOT NULL DEFAULT 0,
+    globalism_nationalism   NUMERIC NOT NULL DEFAULT 0,
+    individualism_collectivism NUMERIC NOT NULL DEFAULT 0,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

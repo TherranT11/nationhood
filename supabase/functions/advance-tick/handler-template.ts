@@ -1615,14 +1615,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Gov approval calc failed for ${nation.name} (non-fatal):`, govAppErr);
         }
 
-        // Three-pillar voter preference recalculation (legacy)
-        try {
-            await calculateThreePillarPreferences(supabase, nation, newTick);
-        } catch (pillarErr) {
-            console.error(`[advanceTick] Three-pillar prefs failed for ${nation.name} (non-fatal):`, pillarErr);
-        }
-
-        // Electorate engine (new system — runs in parallel with legacy for now)
+        // Electorate engine
         try {
             await tickElectorate(supabase, nation, newTick);
         } catch (electorateErr) {
