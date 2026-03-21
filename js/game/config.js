@@ -62,6 +62,9 @@ export const GAME_CONFIG = {
     // ── Presidential Term Limits (Foundational) ──
     TERM_LIMIT_OPTIONS: [0, 1, 2, 3, 4],  // 0 = no limits
     TERM_LIMIT_COOLDOWN_TICKS: 240,
+
+    // ── Head of State Election Method (Foundational) ──
+    HOS_ELECTION_COOLDOWN_TICKS: 360,
 };
 
 export const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;

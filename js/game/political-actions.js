@@ -3573,6 +3573,19 @@ export const AVELIA_LAST_NAMES = [
 
 const AVELIA_NATIONS = ['Avelia'];
 
+// Female first names from both name pools (used for gendered title selection)
+const FEMALE_NAMES = new Set([
+    // Crucera
+    'Camila', 'Valentina', 'Isabela', 'Mariana', 'Catalina', 'Renata',
+    // Avelia
+    'Luciana', 'Sofía', 'Elena', 'Rosario', 'Carolina', 'Paloma', 'Inés',
+    'Marisol', 'Florencia', 'Celeste'
+]);
+
+export function isFemaleName(firstName) {
+    return FEMALE_NAMES.has(firstName);
+}
+
 export function getNationNames(nationName) {
     if (AVELIA_NATIONS.includes(nationName)) {
         return { firstNames: AVELIA_FIRST_NAMES, lastNames: AVELIA_LAST_NAMES };

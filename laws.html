@@ -1660,7 +1660,7 @@ function onHosElectionMethodChange() {
         } else if (method === 'appointed') {
             infoDiv.innerHTML = 'The ruling coalition automatically appoints the Head of State when a new government forms. Low friction, ceremonial role.';
         } else if (method === 'hereditary') {
-            infoDiv.innerHTML = 'Establishes a constitutional monarchy. The Head of State becomes a permanent, non-partisan institution. Increases stability and national unity, but reduces freedom index and legitimacy.';
+            infoDiv.innerHTML = 'Establishes a constitutional monarchy. The Head of State becomes a permanent, non-partisan institution. Stability +5, legitimacy -5.';
         } else {
             infoDiv.innerHTML = '';
         }
@@ -2261,6 +2261,37 @@ async function submitToCommittee() {
                     const mo = remaining % GAME_CONFIG.TICKS_PER_YEAR;
                     const timeStr = years > 0 ? `${years} year${years !== 1 ? 's' : ''}${mo > 0 ? ', ' + mo + ' month' + (mo !== 1 ? 's' : '') : ''}` : `${mo} month${mo !== 1 ? 's' : ''}`;
                     alert(`Presidential term limits were changed recently. Cooldown: ${timeStr} remaining.`);
+                    isSubmitting = false;
+                    document.getElementById('submit-bill-btn').disabled = false;
+                    return;
+                }
+            }
+        }
+
+        // HoS election method cooldown check
+        if (foundationalArt.foundationalSubtype === 'hos_election') {
+            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            const nowTick = shard?.current_tick || 0;
+            const { data: lastHosElectionBill } = await _supabase
+                .from('bills')
+                .select('passed_tick')
+                .eq('nation_id', currentNation.id)
+                .eq('bill_type', 'foundational')
+                .eq('status', 'passed')
+                .not('proposed_hos_election_method', 'is', null)
+                .order('passed_tick', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (lastHosElectionBill && lastHosElectionBill.passed_tick != null) {
+                const ticksSince = nowTick - lastHosElectionBill.passed_tick;
+                const cooldown = GAME_CONFIG.HOS_ELECTION_COOLDOWN_TICKS;
+                if (ticksSince < cooldown) {
+                    const remaining = cooldown - ticksSince;
+                    const years = Math.floor(remaining / GAME_CONFIG.TICKS_PER_YEAR);
+                    const mo = remaining % GAME_CONFIG.TICKS_PER_YEAR;
+                    const timeStr = years > 0 ? `${years} year${years !== 1 ? 's' : ''}${mo > 0 ? ', ' + mo + ' month' + (mo !== 1 ? 's' : '') : ''}` : `${mo} month${mo !== 1 ? 's' : ''}`;
+                    alert(`Head of State election method was changed recently. Cooldown: ${timeStr} remaining.`);
                     isSubmitting = false;
                     document.getElementById('submit-bill-btn').disabled = false;
                     return;
