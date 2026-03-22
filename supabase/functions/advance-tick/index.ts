@@ -3250,55 +3250,6 @@ for (const axis of IDEOLOGY_AXES) {
 }
 
 
-/**
- * Return an alignment CSS class ('aligned', 'opposed', 'neutral') for
- * an ideology tag relative to a faction's ideology scores.
- */
-function getIdeologyChipClass(ideologyTag, factionIdeology) {
-    if (!factionIdeology) return 'neutral';
-    const tag = (ideologyTag || '').toUpperCase();
-    const mapping = IDEOLOGY_TO_AXIS[tag];
-    if (!mapping) return 'neutral';
-    const score = factionIdeology[mapping.axisKey] || 0;
-    const alignment = score * mapping.direction;
-    if (alignment > 10) return 'aligned';
-    if (alignment < -10) return 'opposed';
-    return 'neutral';
-}
-
-// ==================== IDEOLOGY LABELS ====================
-
-const IDEOLOGY_LABEL_THRESHOLDS = [
-    { min: 0,  max: 10,  label: 'Centrist' },
-    { min: 11, max: 30,  label: 'Leaning' },
-    { min: 31, max: 60,  label: 'Strong' },
-    { min: 61, max: 100, label: 'Radical' }
-];
-
-function getIdeologyLabel(score, axisDef) {
-    const abs = Math.abs(score);
-    const threshold = IDEOLOGY_LABEL_THRESHOLDS.find(t => abs >= t.min && abs <= t.max);
-    const intensityLabel = threshold ? threshold.label : 'Centrist';
-
-    if (intensityLabel === 'Centrist') return 'Centrist';
-
-    const sideName = score < 0 ? axisDef.leftLabel : axisDef.rightLabel;
-    return `${intensityLabel} ${sideName}`;
-}
-
-function getFullIdeologyProfile(ideologyRow) {
-    return IDEOLOGY_AXES.map(axis => {
-        const score = ideologyRow[axis.key] || 0;
-        return {
-            axisKey: axis.key,
-            axisDef: axis,
-            score: score,
-            label: getIdeologyLabel(score, axis)
-        };
-    });
-}
-
-
 // ==================== DYNAMIC OPPOSITION PENALTY ====================
 
 function calculateDynamicOppositionPenalty(factionIdeology, policyIdeologyTag, basePenalty = 2) {
@@ -4033,18 +3984,6 @@ function snapshotNationStats(nation) {
     return snapshot;
 }
 
-// ────────── momentum ──────────
-
-
-async function adjustMomentum(supabase, factionId, nationId, source, delta, reason) {
-    // Legacy momentum system removed — electorate engine handles vote share now
-    return;
-}
-
-async function adjustMomentumAll(supabase, nationId, source, delta, reason) {
-    // Legacy momentum system removed — electorate engine handles vote share now
-    return;
-}
 /**
  * Apply a one-time event modifier to the government approval event modifier.
  * The modifier decays 10% per tick, so transient shocks fade naturally.
@@ -4718,7 +4657,6 @@ async function activateEconomicCollapse(supabase, nation, currentTick) {
 
         const coalition = await fetchActiveCoalition(supabase, nation.id);
         for (const partyId of (coalition?.party_ids || [])) {
-            await adjustMomentumAll(supabase, nation.id, partyId, -20, 'crisis:economic_collapse');
         }
 
         // 4. Reset gdp_growth to neutral (stop the bleeding) — critical to prevent re-trigger loop
@@ -5803,7 +5741,6 @@ function calculateEnactmentApproval(articles, billSupport, sponsorId, factionIde
 async function applyEnactmentApproval(supabase, nationId, approvalDeltas) {
     for (const [factionId, delta] of Object.entries(approvalDeltas)) {
         if (delta === 0) continue;
-        await adjustMomentumAll(supabase, nationId, factionId, delta, 'bill:enactment');
     }
 }
 
@@ -5827,7 +5764,6 @@ async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
 
 /**
  * Penalize factions that did not cast any vote (YES/NO/ABSTAIN) on a bill.
- * - Momentum: lose [1d3+1] (2-4) via adjustMomentumAll.
  *
  * @param {object} supabase
  * @param {object} bill - Full bill row with bill_articles (with policies) and bill_support
@@ -5860,14 +5796,10 @@ async function applyNoVotePenalty(supabase, bill, nationId) {
     // 4. Apply penalties to each non-voter (momentum only)
     const penalized = [];
     for (const faction of nonVoters) {
-        // Momentum: lose 1d3+1 (2-4) — adjustMomentumAll is now a no-op
-        const momentumLoss = -(Math.floor(Math.random() * 3) + 2);
-        await adjustMomentumAll(supabase, nationId, faction.id, momentumLoss, 'penalty:no_vote');
-
         penalized.push({
             factionId: faction.id,
             factionName: faction.faction_name,
-            momentumLoss,
+            momentumLoss: 0,
             preferencePenalty: 0,
             affectedBlocCount: 0
         });
@@ -7364,7 +7296,6 @@ async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presidentRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proceedingData.president_id).single();
                     if (presidentRow) {
-                        await adjustMomentumAll(supabase, bill.nation_id, presidentRow.faction_id, -15, 'impeachment:impeached');
                     }
                 }
 
@@ -7414,7 +7345,6 @@ async function resolveExpiredVotes(supabase, nationId) {
                 }).eq('id', bill.nation_id);
 
                 // Filer takes -5 approval (partisan overreach)
-                await adjustMomentumAll(supabase, bill.nation_id, bill.proposed_by, -5, 'impeachment:failed_motion');
 
                 // President gets +3 approval (vindication)
                 const { data: proc } = await supabase.from('impeachment_proceedings')
@@ -7423,7 +7353,6 @@ async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
-                        await adjustMomentumAll(supabase, bill.nation_id, presRow.faction_id, 3, 'impeachment:vindicated');
                     }
                 }
 
@@ -7481,7 +7410,6 @@ async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
-                        await adjustMomentumAll(supabase, bill.nation_id, presRow.faction_id, 5, 'impeachment:acquitted');
                     }
                 }
 
@@ -7497,10 +7425,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                 const yesVoters = (bill.bill_support || []).filter(s => s.stance === 'yes' || s.stance === 'accept');
                 for (const v of yesVoters) {
                     if (v.faction_id !== bill.proposed_by) {
-                        await adjustMomentumAll(supabase, bill.nation_id, v.faction_id, -2, 'impeachment:overreach');
                     }
                 }
-                await adjustMomentumAll(supabase, bill.nation_id, bill.proposed_by, -2, 'impeachment:overreach');
 
                 try {
                     await supabase.from('event_log').insert({
@@ -8459,7 +8385,6 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
             if (allFactions) {
                 for (const faction of allFactions) {
-                    await adjustMomentumAll(supabase, bill.nation_id, faction.id, 8, 'term_limits_removed');
                 }
             }
 
@@ -9541,11 +9466,9 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
             await dissolveCoalition(supabase, nationId);
 
             // Calling party gets +3 momentum
-            await adjustMomentumAll(supabase, nationId, callingPartyId, 3, 'no_confidence:success');
 
             // All coalition parties get -5 momentum
             for (const partyId of coalitionPartyIds) {
-                await adjustMomentumAll(supabase, nationId, partyId, -5, 'no_confidence:coalition_falls');
             }
 
             // Schedule snap election (same pattern as early elections)
@@ -9578,11 +9501,9 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
 
     } else {
         // FAILED: calling party gets -5 momentum
-        await adjustMomentumAll(supabase, nationId, callingPartyId, -5, 'no_confidence:failed');
 
         // PM's party gets +3 momentum
         if (pmFactionId) {
-            await adjustMomentumAll(supabase, nationId, pmFactionId, 3, 'no_confidence:pm_survives');
         }
 
         // Record cooldown: store the tick when the no-confidence failed
@@ -9684,7 +9605,6 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
         const penalty = partyId === pmFactionId
             ? GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST
             : GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST;
-        await adjustMomentumAll(supabase, nationId, partyId, -penalty, 'early_election:penalty');
     }
 
     // Bust coalition cache after caretaker transition
@@ -9843,7 +9763,6 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         .order('seats', { ascending: false });
 
     for (const party of (allParties || [])) {
-        await adjustMomentumAll(supabase, nation.id, party.id, -2, 'government_vacancy:ongoing');
     }
 
     // -1 stability to nation
@@ -9895,12 +9814,10 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         // Top 2 parties: -6 momentum each
         if (allParties && allParties.length > 0) {
             const largest = allParties[0];
-            await adjustMomentumAll(supabase, nation.id, largest.id, -6, 'formation_failure:top_party');
             console.log(`  Snap penalty: ${largest.faction_name} -6 momentum`);
 
             if (allParties.length > 1) {
                 const second = allParties[1];
-                await adjustMomentumAll(supabase, nation.id, second.id, -6, 'formation_failure:top_party');
                 console.log(`  Snap penalty: ${second.faction_name} -6 momentum`);
             }
         }
@@ -9937,7 +9854,6 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
             // Penalize non-responsive invitees
             for (const pid of invitedPartyIds) {
                 if (!respondedPartyIds.has(pid)) {
-                    await adjustMomentumAll(supabase, nation.id, pid, -3, 'formation_failure:non_responsive');
                     const partyName = allParties?.find(p => p.id === pid)?.faction_name || pid;
                     console.log(`  Non-responsive penalty: ${partyName} -3 momentum`);
                 }
@@ -10921,11 +10837,8 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
 
         // Momentum effects: incumbent win boosts their faction, challenger win penalizes losing incumbent faction
         if (isIncumbentWin && incumbentFactionId) {
-            await adjustMomentumAll(supabase, nation.id, incumbentFactionId, 3, 'election:incumbent_win');
             console.log(`Incumbent re-elected: +3 momentum to ${winner.party_name}`);
         } else if (isChallengerWin && incumbentFactionId) {
-            await adjustMomentumAll(supabase, nation.id, incumbentFactionId, -5, 'election:incumbent_loss');
-            await adjustMomentumAll(supabase, nation.id, winner.faction_id, 3, 'election:challenger_win');
             console.log(`Challenger wins: -5 momentum to outgoing party, +3 to ${winner.party_name}`);
         }
     } catch (effectsErr) { console.warn('Could not apply winner/loser effects:', effectsErr); }
@@ -14164,121 +14077,6 @@ async function logActivity(supabase, factionId, nationId, actionType, actionLabe
     }
 }
 
-// ────────── party-leadership ──────────
-
-/**
- * party-leadership.js — Party Leadership: Leader
- * Trait-based candidate generation, electability, AP cost calculation
- */
-
-// ═══════════════════════════════════════
-//  Positive Traits (20)
-// ═══════════════════════════════════════
-const POSITIVE_TRAITS = [
-    // AP & Action Economy
-    { key: 'tireless_campaigner', name: 'Tireless Campaigner', cost: 4.0, category: 'AP', effect: '+1 AP generated per tick.' },
-    { key: 'efficient_operator', name: 'Efficient Operator', cost: 3.5, category: 'AP', effect: 'All campaign actions cost -1 AP (minimum 1).' },
-    { key: 'quick_study', name: 'Quick Study', cost: 1.5, category: 'AP', effect: 'First action each tick costs -1 AP (minimum 1).' },
-    { key: 'delegation', name: 'Delegation', cost: 1.0, category: 'AP', effect: 'Outreach and Rally actions cost -1 AP each.' },
-    // Electoral & Electability
-    { key: 'born_leader', name: 'Born Leader', cost: 3.5, category: 'Electoral', effect: 'Electability gains are doubled.' },
-    { key: 'comeback_kid', name: 'Comeback Kid', cost: 3.5, category: 'Electoral', effect: 'Electability losses are halved.' },
-    { key: 'crowd_pleaser', name: 'Crowd Pleaser', cost: 1.5, category: 'Electoral', effect: 'Rally turnout +8%. Mobilize campaign reaches +1 additional bloc.' },
-    { key: 'telegenic', name: 'Telegenic', cost: 1.5, category: 'Electoral', effect: 'Campaign: Message effectiveness +30%. Media coverage events favor your party.' },
-    // Legislative & Parliamentary
-    { key: 'arm_twister', name: 'Arm Twister', cost: 1.5, category: 'Legislative', effect: 'Bills your party sponsors have +15% passage rate.' },
-    { key: 'deal_maker', name: 'Deal Maker', cost: 1.5, category: 'Legislative', effect: 'Coalition negotiations complete 50% faster. Coalition partners demand 1 fewer ministry.' },
-    { key: 'policy_wonk', name: 'Policy Wonk', cost: 1.0, category: 'Legislative', effect: 'Bills you sponsor cost -1 AP to draft. Voters credit your party +5 approval for each enacted bill.' },
-    { key: 'constitutional_scholar', name: 'Constitutional Scholar', cost: 1.0, category: 'Legislative', effect: 'Impeachment and no-confidence attempts against your leader cost opponents +3 AP.' },
-    // Governance
-    { key: 'cabinet_builder', name: 'Cabinet Builder', cost: 3.5, category: 'Governance', effect: 'Your party gets +2 ministry slots in any coalition. Ministers you appoint start with +10 approval.' },
-    { key: 'executive_authority', name: 'Executive Authority', cost: 4.0, category: 'Governance', effect: 'Pres: Executive Orders cost -2 AP. PM: Governor-General actions cost -1 AP.' },
-    { key: 'crisis_manager', name: 'Crisis Manager', cost: 1.5, category: 'Governance', effect: 'Stability loss during crises halved. Crisis duration -2 ticks.' },
-    { key: 'economic_steward', name: 'Economic Steward', cost: 1.5, category: 'Governance', effect: 'GDP growth +0.5% while governing. Budget surplus generates +3 approval per tick.' },
-    // Diplomatic
-    { key: 'statesman', name: 'Statesman', cost: 3.5, category: 'Diplomatic', effect: 'State visits cost -2 AP and grant double relations boost.' },
-    { key: 'international_presence', name: 'International Presence', cost: 1.0, category: 'Diplomatic', effect: 'International reputation +5 while leader. Foreign leaders accept diplomatic proposals 1 tick faster.' },
-    // Voter Blocs
-    { key: 'populist_touch', name: 'Populist Touch', cost: 3.5, category: 'Voter Blocs', effect: 'SKEPTICAL blocs are treated as SWING for all action targeting.' },
-    { key: 'base_energizer', name: 'Base Energizer', cost: 1.5, category: 'Voter Blocs', effect: 'BASE bloc turnout permanently +5%. Champion demands arrive 1 tick later.' },
-];
-
-// ═══════════════════════════════════════
-//  Negative Traits (20)
-// ═══════════════════════════════════════
-const NEGATIVE_TRAITS = [
-    // AP & Action Economy
-    { key: 'indecisive', name: 'Indecisive', relief: 2.0, category: 'AP', effect: '-1 AP generated per tick.' },
-    { key: 'micromanager', name: 'Micromanager', relief: 1.5, category: 'AP', effect: 'All actions cost +1 AP.' },
-    { key: 'slow_to_act', name: 'Slow to Act', relief: 1.0, category: 'AP', effect: 'First action each tick costs +1 AP.' },
-    { key: 'high_maintenance', name: 'High Maintenance', relief: 0.5, category: 'AP', effect: 'Outreach and Rally actions cost +1 AP each.' },
-    // Electoral
-    { key: 'unelectable', name: 'Unelectable', relief: 1.5, category: 'Electoral', effect: 'Electability gains are halved.' },
-    { key: 'sore_loser', name: 'Sore Loser', relief: 1.5, category: 'Electoral', effect: 'Electability losses are doubled. Losing an election triggers -5 approval across all blocs.' },
-    { key: 'gaffe_prone', name: 'Gaffe Prone', relief: 1.0, category: 'Electoral', effect: '20% chance per tick of a gaffe event: -3 approval with a random bloc.' },
-    { key: 'wooden_speaker', name: 'Wooden Speaker', relief: 1.0, category: 'Electoral', effect: 'Campaign: Message effectiveness -30%. Rally turnout -5%.' },
-    // Legislative
-    { key: 'poor_whip', name: 'Poor Whip', relief: 1.0, category: 'Legislative', effect: 'Bills your party sponsors have -15% passage rate.' },
-    { key: 'stubborn_negotiator', name: 'Stubborn Negotiator', relief: 1.0, category: 'Legislative', effect: 'Coalition negotiations take +3 ticks. Partners demand 1 additional ministry.' },
-    { key: 'single_issue', name: 'Single-Issue', relief: 0.5, category: 'Legislative', effect: 'Bills outside leader\'s ideology axis cost +2 AP to sponsor.' },
-    { key: 'paper_thin_mandate', name: 'Paper Thin Mandate', relief: 0.5, category: 'Legislative', effect: 'Impeachment and no-confidence attempts against your leader cost opponents -2 AP.' },
-    // Governance
-    { key: 'cabinet_hog', name: 'Cabinet Hog', relief: 1.5, category: 'Governance', effect: 'Your party MUST take at least 4 ministries in any coalition. Refusing collapses the government.' },
-    { key: 'overreach', name: 'Overreach', relief: 2.0, category: 'Governance', effect: 'Pres: Executive Orders cost +2 AP. PM: All governance actions cost +1 AP.' },
-    { key: 'panic_under_pressure', name: 'Panic Under Pressure', relief: 1.0, category: 'Governance', effect: 'Stability loss during crises doubled. Crisis duration +2 ticks.' },
-    { key: 'economically_illiterate', name: 'Economically Illiterate', relief: 1.0, category: 'Governance', effect: 'GDP growth -0.3% while governing. Budget deficits cause double approval loss.' },
-    // Diplomatic
-    { key: 'isolationist', name: 'Isolationist', relief: 1.5, category: 'Diplomatic', effect: 'Cannot initiate state visits. Relations decay +50% faster with all nations.' },
-    { key: 'international_pariah', name: 'International Pariah', relief: 0.5, category: 'Diplomatic', effect: 'International reputation -5 while leader. Foreign proposals take +1 tick to process.' },
-    // Voter Blocs
-    { key: 'elitist', name: 'Elitist', relief: 1.5, category: 'Voter Blocs', effect: 'SKEPTICAL blocs are treated as HOSTILE for all action targeting.' },
-    { key: 'divisive_figure', name: 'Divisive Figure', relief: 1.0, category: 'Voter Blocs', effect: 'Outreach actions cost +1 AP. Outreach approval gains with non-BASE blocs halved.' },
-];
-
-// ═══════════════════════════════════════
-//  Contradiction Pairs
-// ═══════════════════════════════════════
-const CONTRADICTION_PAIRS = [
-    ['tireless_campaigner', 'indecisive'],
-    ['efficient_operator', 'micromanager'],
-    ['quick_study', 'slow_to_act'],
-    ['delegation', 'high_maintenance'],
-    ['born_leader', 'unelectable'],
-    ['comeback_kid', 'sore_loser'],
-    ['crowd_pleaser', 'wooden_speaker'],
-    ['telegenic', 'wooden_speaker'],
-    ['arm_twister', 'poor_whip'],
-    ['deal_maker', 'stubborn_negotiator'],
-    ['policy_wonk', 'single_issue'],
-    ['constitutional_scholar', 'paper_thin_mandate'],
-    ['cabinet_builder', 'cabinet_hog'],
-    ['executive_authority', 'overreach'],
-    ['crisis_manager', 'panic_under_pressure'],
-    ['economic_steward', 'economically_illiterate'],
-    ['statesman', 'isolationist'],
-    ['international_presence', 'international_pariah'],
-    ['populist_touch', 'elitist'],
-    ['base_energizer', 'divisive_figure'],
-];
-
-// Build lookup maps
-const POSITIVE_MAP = {};
-POSITIVE_TRAITS.forEach(t => { POSITIVE_MAP[t.key] = t; });
-
-const NEGATIVE_MAP = {};
-NEGATIVE_TRAITS.forEach(t => { NEGATIVE_MAP[t.key] = t; });
-
-// Build contradiction lookup (bidirectional)
-const CONTRADICTS = {};
-CONTRADICTION_PAIRS.forEach(([a, b]) => {
-    if (!CONTRADICTS[a]) CONTRADICTS[a] = new Set();
-    if (!CONTRADICTS[b]) CONTRADICTS[b] = new Set();
-    CONTRADICTS[a].add(b);
-    CONTRADICTS[b].add(a);
-});
-
-{ POSITIVE_MAP, NEGATIVE_MAP };
-
 // ═══════════════════════════════════════
 //  Trait Helper Functions
 // ═══════════════════════════════════════
@@ -14445,247 +14243,6 @@ const CATEGORY_COLORS = {
     'Voter Blocs': { color: '#d48a3c', bg: 'rgba(212,138,60,0.10)', border: 'rgba(212,138,60,0.25)' },
 };
 
-// ═══════════════════════════════════════
-//  Electability
-// ═══════════════════════════════════════
-const ELECTABILITY_TIERS = [
-    { min: 0, max: 20, label: 'Very Low', color: '#d9534f' },
-    { min: 21, max: 40, label: 'Low', color: '#d48a3c' },
-    { min: 41, max: 60, label: 'Moderate', color: '#c8a64e' },
-    { min: 61, max: 80, label: 'High', color: '#5aafa5' },
-    { min: 81, max: 100, label: 'Very High', color: '#5cb85c' },
-];
-
-function getElectabilityTier(score) {
-    for (const tier of ELECTABILITY_TIERS) {
-        if (score >= tier.min && score <= tier.max) return tier;
-    }
-    return ELECTABILITY_TIERS[0];
-}
-
-/**
- * Adjust electability based on election results.
- * @param {number} current - Current electability (0-100)
- * @param {'seat_gain'|'seat_loss'|'presidential_loss'|'denied_pm'|'vonc_loss'|'snap_election_loss'} type
- * @param {number} magnitude - Number of seats gained/lost (for seat events)
- * @param {object} positiveTraits - Array of positive trait keys on the leader
- * @param {object} negativeTraits - Array of negative trait keys on the leader
- * @returns {number} New electability value
- */
-function adjustElectability(current, type, magnitude = 0, positiveTraits = [], negativeTraits = []) {
-    let delta = 0;
-
-    switch (type) {
-        case 'seat_gain':
-            delta = 2 * magnitude;
-            // Born Leader: gains doubled
-            if (positiveTraits.includes('born_leader')) delta *= 2;
-            // Unelectable: gains halved
-            if (negativeTraits.includes('unelectable')) delta = Math.floor(delta / 2);
-            break;
-        case 'seat_loss':
-            delta = -3 * magnitude;
-            // Comeback Kid: losses halved
-            if (positiveTraits.includes('comeback_kid')) delta = Math.ceil(delta / 2);
-            // Sore Loser: losses doubled
-            if (negativeTraits.includes('sore_loser')) delta *= 2;
-            break;
-        case 'presidential_loss':
-            delta = -20;
-            if (positiveTraits.includes('comeback_kid')) delta = Math.ceil(delta / 2);
-            if (negativeTraits.includes('sore_loser')) delta *= 2;
-            break;
-        case 'denied_pm':
-            delta = -10;
-            if (positiveTraits.includes('comeback_kid')) delta = Math.ceil(delta / 2);
-            if (negativeTraits.includes('sore_loser')) delta *= 2;
-            break;
-        case 'vonc_loss':
-            delta = -25;
-            if (positiveTraits.includes('comeback_kid')) delta = Math.ceil(delta / 2);
-            if (negativeTraits.includes('sore_loser')) delta *= 2;
-            break;
-        case 'snap_election_loss':
-            delta = -15;
-            if (positiveTraits.includes('comeback_kid')) delta = Math.ceil(delta / 2);
-            if (negativeTraits.includes('sore_loser')) delta *= 2;
-            break;
-    }
-
-    return Math.max(0, Math.min(100, current + delta));
-}
-
-// ═══════════════════════════════════════
-//  AP Cost Calculation
-// ═══════════════════════════════════════
-function calculateAPCost(positiveTraitKeys, negativeTraitKeys) {
-    let posTotal = 0;
-    let negTotal = 0;
-
-    positiveTraitKeys.forEach(key => {
-        const t = POSITIVE_MAP[key];
-        if (t) posTotal += t.cost;
-    });
-
-    negativeTraitKeys.forEach(key => {
-        const t = NEGATIVE_MAP[key];
-        if (t) negTotal += t.relief;
-    });
-
-    const raw = posTotal - negTotal;
-    return {
-        positiveTotal: posTotal,
-        negativeTotal: negTotal,
-        rawCost: raw,
-        apCost: Math.max(0, Math.min(8, Math.round(raw)))
-    };
-}
-
-function getAPCostColor(ap) {
-    if (ap === 0) return '#5cb85c';
-    if (ap <= 3) return '#c8a64e';
-    if (ap <= 5) return '#d48a3c';
-    return '#d9534f';
-}
-
-function getAPCostLabel(ap) {
-    if (ap === 0) return 'FREE';
-    return ap + ' AP';
-}
-
-// ═══════════════════════════════════════
-//  Candidate Generation
-// ═══════════════════════════════════════
-
-/**
- * Generate a single candidate with traits per the design spec.
- * @param {string} nationName - For name pool selection
- * @param {Function} getNationNamesFn - The getNationNames function
- * @param {Set} usedFirstNames - Already used first names
- * @param {Set} usedLastNames - Already used last names
- * @param {'leader'} role - Role this candidate is for
- * @returns {object} Candidate data
- */
-function generateCandidate(nationName, getNationNamesFn, usedFirstNames = new Set(), usedLastNames = new Set(), role = 'leader') {
-    const { firstNames, lastNames } = getNationNamesFn(nationName);
-
-    // Pick unique name
-    let firstName, lastName;
-    let attempts = 0;
-    do {
-        firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
-        attempts++;
-    } while (usedFirstNames.has(firstName) && attempts < 50);
-    usedFirstNames.add(firstName);
-
-    attempts = 0;
-    do {
-        lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
-        attempts++;
-    } while (usedLastNames.has(lastName) && attempts < 50);
-    usedLastNames.add(lastName);
-
-    // Age: 28-65
-    const age = 28 + Math.floor(Math.random() * 38);
-
-    // Electability: 20-70 at generation
-    const electability = 20 + Math.floor(Math.random() * 51);
-
-    // Ideology: pick one of the 10
-    const ideologies = ['INDIVIDUALISM', 'COLLECTIVISM', 'GLOBALISM', 'NATIONALISM', 'PROGRESS', 'TRADITION', 'SECURITY', 'FREEDOM', 'LIBERTY', 'EQUALITY'];
-    const ideology = ideologies[Math.floor(Math.random() * ideologies.length)];
-
-    // Generate positive traits: 2-4, at least 2 categories
-    const numPositive = 2 + Math.floor(Math.random() * 3); // 2, 3, or 4
-    const positiveTraits = pickTraits(POSITIVE_TRAITS, numPositive, [], true);
-
-    // Generate negative traits: 1-3, no contradictions with positives
-    // Category diversity also enforced for negatives when 2+ traits
-    const numNegative = 1 + Math.floor(Math.random() * 3); // 1, 2, or 3
-    const positiveKeys = positiveTraits.map(t => t.key);
-    const negativeTraits = pickTraits(NEGATIVE_TRAITS, numNegative, positiveKeys, numNegative >= 2);
-
-    const positiveTraitKeys = positiveTraits.map(t => t.key);
-    const negativeTraitKeys = negativeTraits.map(t => t.key);
-    const costInfo = calculateAPCost(positiveTraitKeys, negativeTraitKeys);
-
-    const candidate = {
-        firstName,
-        lastName,
-        age,
-        ideology,
-        positiveTraits: positiveTraitKeys,
-        negativeTraits: negativeTraitKeys,
-        apCost: costInfo.apCost,
-        costBreakdown: costInfo,
-    };
-    candidate.electability = electability;
-    return candidate;
-}
-
-/**
- * Pick N traits from the given pool, respecting constraints.
- */
-function pickTraits(pool, count, existingKeys, requireCategoryDiversity) {
-    const shuffled = [...pool].sort(() => Math.random() - 0.5);
-    const picked = [];
-    const pickedKeys = new Set();
-    const pickedCategories = new Set();
-
-    for (const trait of shuffled) {
-        if (picked.length >= count) break;
-        if (pickedKeys.has(trait.key)) continue;
-
-        // Check contradictions with existing keys
-        const contradictions = CONTRADICTS[trait.key];
-        if (contradictions) {
-            let blocked = false;
-            for (const ek of existingKeys) {
-                if (contradictions.has(ek)) { blocked = true; break; }
-            }
-            if (blocked) continue;
-            for (const pk of pickedKeys) {
-                if (contradictions.has(pk)) { blocked = true; break; }
-            }
-            if (blocked) continue;
-        }
-
-        picked.push(trait);
-        pickedKeys.add(trait.key);
-        pickedCategories.add(trait.category);
-    }
-
-    // If we need category diversity and don't have it, swap last trait
-    if (requireCategoryDiversity && pickedCategories.size < 2 && picked.length >= 2) {
-        const currentCat = picked[0].category;
-        const diffCatTrait = shuffled.find(t =>
-            t.category !== currentCat &&
-            !pickedKeys.has(t.key) &&
-            !existingKeys.some(ek => CONTRADICTS[t.key]?.has(ek))
-        );
-        if (diffCatTrait) {
-            picked[picked.length - 1] = diffCatTrait;
-        }
-    }
-
-    return picked;
-}
-
-/**
- * Generate a set of leadership candidates (3 candidates for a role).
- * @param {'leader'} role - Role these candidates are for
- */
-function generateLeadershipCandidates(nationName, getNationNamesFn, count = 3, role = 'leader') {
-    const usedFirst = new Set();
-    const usedLast = new Set();
-    const candidates = [];
-
-    for (let i = 0; i < count; i++) {
-        candidates.push(generateCandidate(nationName, getNationNamesFn, usedFirst, usedLast, role));
-    }
-
-    return candidates;
-}
 
 // ═══════════════════════════════════════
 //  Leader Step-Down Rules
@@ -15610,48 +15167,6 @@ async function resetLeaderEscalations(supabase, factionId) {
     }
     console.log(`[resetLeaderEscalations] Reset escalations for faction ${factionId}`);
     return true;
-}
-
-// ─── Available actions query ─────────────────────────────────────────────────
-
-/**
- * Get the list of actions available to a faction, with current costs and cooldowns.
- * Used by the UI to render the action panel.
- *
- * @param {Object} factionState - faction_pillar_state row
- * @param {number} currentTick
- * @returns {Object[]} array of { actionType, pillar, apCost, onCooldown, remainingTicks, hasDualMode }
- */
-function getAvailableActions(factionState, currentTick) {
-    const actions = [];
-
-    for (const [actionType, def] of Object.entries(AUTOCRACY_ACTIONS)) {
-        // Skip strongman-exclusive actions for non-strongman
-        if (def.isStrongmanExclusive && !factionState.is_strongman) continue;
-
-        // Strongman can only use their foundation pillar + exclusive actions
-        if (factionState.is_strongman) {
-            if (!def.isStrongmanExclusive && def.pillar !== factionState.pillar && def.pillar !== 'any') continue;
-        } else {
-            // Non-strongman: only their claimed pillar actions
-            if (def.pillar !== factionState.pillar && def.pillar !== 'any') continue;
-        }
-
-        const apCost = getEscalatingCost(factionState, def);
-        const { onCooldown, remainingTicks } = checkCooldown(factionState, def, currentTick);
-
-        actions.push({
-            actionType,
-            pillar: def.pillar,
-            apCost,
-            onCooldown,
-            remainingTicks,
-            hasDualMode: def.hasDualMode !== false,
-            isStrongmanExclusive: !!def.isStrongmanExclusive,
-        });
-    }
-
-    return actions;
 }
 
 // ────────── autocracy-actions-military-party-oligarch ──────────
@@ -19753,14 +19268,12 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
 
     // Target party: apply momentum to all blocs
     if (targetDelta !== 0) {
-        await adjustMomentumAll(supabase, nationId, targetFactionId, targetDelta, 'campaign:attack_target');
         effects.push({ label: targetFaction.faction_name, value: targetDelta });
     }
 
     // Self: apply momentum to all blocs
     if (selfDelta !== 0) {
         const selfLabel = selfDelta > 0 ? 'Your party (credibility gain)' : 'Your party (credibility loss)';
-        await adjustMomentumAll(supabase, nationId, factionId, selfDelta, 'campaign:attack_self');
         effects.push({ label: selfLabel, value: selfDelta });
     }
 
@@ -20016,7 +19529,6 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
     // ── 6. Apply immediate momentum bump (vote share updated by electorate engine) ──
     const blocEffects = [];
     for (const blocId of affectedBlocIds) {
-        await adjustMomentum(supabase, nationId, factionId, blocId, approvalBump, `promise:made_${promiseType}`);
         const bloc = (allBlocs || []).find(b => b.id === blocId);
         blocEffects.push({ blocId, blocName: bloc?.bloc_name, delta: approvalBump });
     }
@@ -20463,7 +19975,6 @@ async function processPromiseTick(supabase, nation, currentTick) {
         // -1D3 momentum per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
         if (isGoverning && promise.bloc_id) {
             const penaltyAmount = -(Math.floor(Math.random() * (cfg.PENALTY_PER_TICK_MAX - cfg.PENALTY_PER_TICK_MIN + 1)) + cfg.PENALTY_PER_TICK_MIN);
-            await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, penaltyAmount, 'promise:unfulfilled_tick');
             results.push({ promise, resolution: 'tick_penalty', penaltyAmount });
         }
     }
@@ -20480,14 +19991,11 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
     if (resolution === 'fulfilled') {
         // ── REWARDS (all via momentum — vote share updated by electorate engine) ──
         if (promise.bloc_id) {
-            await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, cfg.KEPT_PREF_BONUS, 'promise:kept_bloc');
         }
 
         // +momentum with ALL blocs (APPROVAL_IF_KEPT — the main +12 reward)
-        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.APPROVAL_IF_KEPT, 'promise:kept');
 
         // +momentum (additional general boost)
-        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.KEPT_MOMENTUM, 'promise:kept_bonus');
 
         // Mark promise as fulfilled
         await supabase.from('fundraiser_promises')
@@ -20497,14 +20005,11 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
     } else if (resolution === 'broken') {
         // ── PENALTIES (all via momentum — vote share updated by electorate engine) ──
         if (promise.bloc_id) {
-            await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, cfg.BROKEN_DONOR_PREF, 'promise:broken_bloc');
         }
 
         // -momentum with ALL blocs
-        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.BROKEN_ALL_PREF, 'promise:broken');
 
         // -momentum (additional penalty)
-        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.BROKEN_MOMENTUM, 'promise:broken_penalty');
 
         // Nervous other promise holders: -1 momentum with each bloc
         const { data: otherPromises } = await supabase
@@ -20517,7 +20022,6 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
         if (otherPromises && otherPromises.length > 0) {
             const nervousBlocIds = [...new Set(otherPromises.map(p => p.bloc_id).filter(Boolean))];
             for (const nervousBlocId of nervousBlocIds) {
-                await adjustMomentum(supabase, promise.nation_id, promise.party_id, nervousBlocId, cfg.BROKEN_NERVOUS_PREF, 'promise:broken_nervous');
             }
         }
 
@@ -21173,7 +20677,6 @@ async function processMinistryActions(supabase, nation, currentTick) {
     for (const fKey of Object.keys(factionUpdates)) {
         const delta = Math.round((factionUpdates[fKey] - (factionBaseline[fKey] ?? 50)) * 10) / 10;
         if (delta !== 0) {
-            await adjustMomentumAll(supabase, nation.id, fKey, delta, 'event:cascade');
         }
     }
 
@@ -21924,7 +21427,6 @@ async function processCrises(supabase, nation, currentTick) {
                     const coalition = await fetchActiveCoalition(supabase, nation.id);
                     const partyIds = coalition?.party_ids || [];
                     for (const partyId of partyIds) {
-                        await adjustMomentumAll(supabase, nation.id, partyId, effectiveGovChange, 'crisis:' + template.name);
                         appliedEffects.push({
                             stat: 'momentum', change: effectiveGovChange,
                             target: effect.target, faction_id: partyId
@@ -21962,7 +21464,6 @@ async function processCrises(supabase, nation, currentTick) {
                     // Cascade PM approval loss to party momentum (2x multiplier)
                     if (changePT < 0 && pmMinistry.party_id) {
                         const cascadeDelta = -(Math.abs(changePT) * 2);
-                        await adjustMomentumAll(supabase, nation.id, pmMinistry.party_id, cascadeDelta, 'crisis:pm_cascade:' + template.name);
 
                         appliedEffects.push({
                             stat: 'momentum', change: cascadeDelta,
@@ -22002,7 +21503,6 @@ async function processCrises(supabase, nation, currentTick) {
                         const loss = Math.abs(changePT);
                         const multiplier = effect.minister_key === 'prime_minister' ? 2 : 1;
                         const cascadeDelta = -(loss * multiplier);
-                        await adjustMomentumAll(supabase, nation.id, ministry.party_id, cascadeDelta, 'crisis:minister_cascade:' + effect.minister_key);
 
                         appliedEffects.push({
                             stat: 'momentum', change: cascadeDelta,
@@ -22362,17 +21862,6 @@ async function processRevolution(supabase, nation, currentTick) {
     return { phase: 'revolution', nation: nation.name, tick: currentTick, newGovType: govLabel, electionTick: currentTick + 3 };
 }
 
-
-
-// ==================== UTILITY FORMATTERS ====================
-
-function formatStatName(stat) {
-    return stat.charAt(0).toUpperCase() + stat.slice(1).replace(/_/g, ' ');
-}
-
-function formatMinorSector(key) {
-    return key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-}
 
 
 // ==================== PM CANDIDATE SYSTEM ====================
@@ -22875,7 +22364,6 @@ async function processProtestResolution(supabase: any, nation: any, currentTick:
                     b.bloc_name.toLowerCase().includes(penalty.blocName.replace('_', ' '))
                 );
                 if (matchingBloc) {
-                    await adjustMomentum(supabase, nation.id, factionId, matchingBloc.id, penalty.delta, `protest:fizzle:tier${tier}`);
                     appliedEffects.push({ stat: `momentum:${matchingBloc.bloc_name}`, delta: penalty.delta });
                 }
             }
@@ -22897,7 +22385,6 @@ async function processProtestResolution(supabase: any, nation: any, currentTick:
                 for (const bloc of (allBlocs || [])) {
                     const alignment = computeIdeologyAlignment(factionIdeo, bloc);
                     if (alignment >= 0.6) {
-                        await adjustMomentum(supabase, nation.id, factionId, bloc.id, 2, 'protest:tier4:aligned');
                         appliedEffects.push({ stat: `momentum:${bloc.bloc_name}`, delta: 2, note: 'aligned_bloc' });
                     }
                 }
@@ -23055,7 +22542,6 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
     }
 
     if (effects.party_approval_per_tick) {
-        await adjustMomentumAll(supabase, nation.id, factionId, effects.party_approval_per_tick, 'pm_trait:party_approval');
     }
 
     if (effects.nation_stat_per_tick) {
@@ -23098,7 +22584,6 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
                 delta = effects.approval_above_60_penalty;
             }
             if (delta !== 0) {
-                await adjustMomentumAll(supabase, nation.id, factionId, delta, 'pm_trait:conditional');
             }
         }
     }
@@ -23112,7 +22597,6 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
             .neq('id', factionId);
 
         for (const opp of (oppParties || [])) {
-            await adjustMomentumAll(supabase, nation.id, opp.id, effects.opposition_approval_per_tick, 'pm_trait:opposition');
         }
     }
 
@@ -23126,7 +22610,6 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
             .eq('passed_tick', currentTick - 1);
 
         if (!count || count === 0) {
-            await adjustMomentumAll(supabase, nation.id, factionId, effects.no_bill_penalty_per_tick, 'pm_trait:no_bill_penalty');
         }
     }
 }
@@ -23156,7 +22639,6 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
         .eq('id', hog.id);
 
     // 2. Approval & stability penalties
-    await adjustMomentumAll(supabase, nationId, factionId, -5, 'pm:resignation');
 
     const { data: nation } = await supabase
         .from('nations')
@@ -24502,7 +23984,6 @@ async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
     const ticksToElection = upcomingElection.election_tick - currentTick;
     console.log(`Campaign bonuses for incumbent ${president.first_name} ${president.last_name} in ${nation.name} (${ticksToElection} ticks to election)`);
 
-    await adjustMomentumAll(supabase, nation.id, president.faction_id, 2, 'campaign:incumbent_bonus');
 
     const { data: nationStats } = await supabase
         .from('nations')
@@ -24739,7 +24220,6 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
         if (!result || !result.decay_ticks_remaining || result.decay_ticks_remaining <= 0) continue;
 
         const decayRate = result.decay_rate || 1;
-        await adjustMomentumAll(supabase, nationId, action.party_id, -decayRate, 'purge:decay');
 
         const newRemaining = result.decay_ticks_remaining - 1;
         await supabase.from('campaign_actions')
@@ -25767,7 +25247,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     }).eq('id', proc.president_id);
 
                     // President's party takes -10 approval
-                    await adjustMomentumAll(supabase, nation.id, president.faction_id, -10, 'impeachment:convicted');
 
                     // Stability -3, international_reputation -3
                     const newStab = Math.max(0, Math.round(Number(nation.stability || 50) - 3));
