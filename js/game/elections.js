@@ -754,7 +754,7 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
         trigger_key: 'snap_election_called',
         fired_at_tick: currentTick,
         category: 'government',
-        description_chosen: `Prime Minister ${pmName} has dissolved the Legislature. Caretaker government in place until elections.`,
+        description_used: `Prime Minister ${pmName} has dissolved the Legislature. Caretaker government in place until elections.`,
         effects_applied: {
             caretaker: true,
             election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
