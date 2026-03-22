@@ -1184,7 +1184,7 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
         dispatchProtestArticle(supabase, nationId, 'protest_epo_resolved', resolvedHeadline,
             'The Interior Ministry\'s enforcement action successfully ended the protest crisis.', 1, currentTick, protestId);
         fireProtestEvent(supabase, nationId, 'protest:epo_resolved', currentTick, { protest_id: protestId });
-        return { success: true, outcome: 'resolved', newAp, govApprovalBoost: epoResolveBoost };
+        return { success: true, outcome: 'resolved', newAp };
     } else {
         // Escalation: T6 → T7
         // Remove T6 crisis, create T7
