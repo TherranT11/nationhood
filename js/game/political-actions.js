@@ -710,13 +710,32 @@ export async function executeEndorsementPreference(supabase, factionId, nationId
 // ==================== ATTACK CAMPAIGN ====================
 
 export const ATTACK_CONFIG = {
-    AP_COST: 3,
+    AP_COST: 3,                 // base cost (used when polarization < 50)
     CREDIBILITY_COST: 20,       // credibility drops 20 per attack
     COOLDOWN_WINDOW: 6,         // look back 6 ticks for recent attacks
     COUNTER_ATTACK_WINDOW: 3,   // target can counter-attack within 3 ticks
     COUNTER_ATTACK_AP_COST: 1,  // counter-attack costs only 1 AP
     COUNTER_ATTACK_BONUS: 2,    // +2 effectiveness bonus for counter-attacks
+    // Escalating AP cost thresholds — attacks cost more when polarization is high
+    AP_TIERS: [
+        { minPol: 85, cost: 6 },
+        { minPol: 70, cost: 5 },
+        { minPol: 50, cost: 4 },
+        { minPol: 0,  cost: 3 },
+    ],
 };
+
+/**
+ * Get the AP cost for a Campaign Attack based on current polarization.
+ * Higher polarization → higher cost to discourage polarization farming.
+ */
+export function getAttackAPCost(polarization) {
+    const pol = polarization || 0;
+    for (const tier of ATTACK_CONFIG.AP_TIERS) {
+        if (pol >= tier.minPol) return tier.cost;
+    }
+    return ATTACK_CONFIG.AP_COST;
+}
 
 export const ATTACK_VECTORS = [
     {
@@ -1006,12 +1025,15 @@ export function buildAttackVectors(evidence) {
  * Returns { success, outcomeId, outcomeName, headline, effects, weights, opensCounter, newAp }
  */
 export async function executeAttack(supabase, factionId, nationId, targetFactionId, vectorId, currentTick) {
-    // ── 1. Validate AP (with leader trait modifiers) ──
+    // ── 1. Validate AP (with leader trait modifiers + polarization scaling) ──
     const { data: faction } = await supabase
         .from('factions').select('action_points, faction_name, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
+    const { data: nationForCost } = await supabase
+        .from('nations').select('polarization').eq('id', nationId).single();
+    const baseAttackCost = getAttackAPCost(nationForCost?.polarization);
     const attackApMod = getTraitAPModifier('attack', faction, currentTick);
-    const effectiveAttackCost = Math.max(1, ATTACK_CONFIG.AP_COST + attackApMod);
+    const effectiveAttackCost = Math.max(1, baseAttackCost + attackApMod);
     if ((faction.action_points || 0) < effectiveAttackCost)
         return { success: false, error: `Not enough AP. Need ${effectiveAttackCost}.` };
 
