@@ -1612,6 +1612,52 @@ body {
         .eo-btn-confirm:hover { background: var(--accent-hover); }
         .eo-btn-confirm:disabled { background: var(--bg-card); color: var(--text-dim); cursor: not-allowed; }
 
+        /* Stimulate Economy Sub-Panel */
+        .eo-stimulus-back {
+            font-family: var(--font-mono); font-size: 9px; text-transform: uppercase;
+            letter-spacing: 0.05em; color: var(--text-dim); cursor: pointer;
+            margin-bottom: 12px; padding: 4px 0;
+        }
+        .eo-stimulus-back:hover { color: var(--amber); }
+        .eo-stimulus-grid {
+            max-height: 420px; overflow-y: auto; padding-right: 4px;
+        }
+        .eo-stimulus-axis {
+            margin-bottom: 16px;
+        }
+        .eo-stimulus-axis-label {
+            font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.06em;
+            color: var(--text-dim); margin-bottom: 8px;
+            border-bottom: 1px solid var(--border-0); padding-bottom: 4px;
+        }
+        .eo-stimulus-axis-orders {
+            display: flex; flex-direction: column; gap: 6px;
+        }
+        .eo-stimulus-card {
+            background: var(--bg-card); border: 1px solid var(--border-0); border-radius: 3px;
+            padding: 12px 14px; cursor: pointer; transition: all 0.2s;
+        }
+        .eo-stimulus-card:hover { border-color: var(--amber-border); background: var(--bg-hover); }
+        .eo-stimulus-card.unavailable {
+            opacity: 0.45; cursor: not-allowed;
+        }
+        .eo-stimulus-card.unavailable:hover { border-color: var(--border-0); background: var(--bg-card); }
+        .eo-stimulus-card-header {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+        }
+        .eo-stimulus-ideology {
+            font-family: var(--font-mono); font-size: 8px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.06em;
+            color: var(--amber); background: var(--amber-faint);
+            padding: 2px 6px; border-radius: 2px;
+        }
+        .eo-stimulus-effects {
+            margin-top: 8px; font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.5;
+        }
+        .eo-stimulus-up { color: var(--green); }
+        .eo-stimulus-down { color: var(--red); }
+
         /* Emergency Banner */
         .emergency-banner {
             background: var(--red-faint);

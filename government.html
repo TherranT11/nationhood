@@ -56,7 +56,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game-common.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 (function () {
     'use strict';
@@ -4152,6 +4152,11 @@ async function openEOModal() {
             type: 'censure', name: 'Censure',
             desc: 'Censure a rival faction. -4 momentum to target (but they gain sympathy).',
             info: eoAvailability.censure
+        },
+        {
+            type: 'stimulate_economy', name: 'Stimulate the Economy',
+            desc: 'Issue ideology-flavored economic stimulus orders. Once per order per term.',
+            info: eoAvailability.stimulate_economy
         }
     ];
 
@@ -4197,6 +4202,8 @@ function selectEOType(type) {
         renderEmergencyConfirm(confirmPanel);
     } else if (type === 'censure') {
         renderCensureConfirm(confirmPanel);
+    } else if (type === 'stimulate_economy') {
+        renderStimulusPanel(confirmPanel);
     }
 }
 
@@ -4336,6 +4343,120 @@ function renderCensureConfirm(panel) {
         </select>`;
 }
 
+// ─── Stimulate the Economy Sub-Panel ───
+
+const STIMULUS_IDEOLOGY_AXES = [
+    { label: 'Individualism vs Collectivism', ideologies: ['INDIVIDUALISM', 'COLLECTIVISM'] },
+    { label: 'Nationalism vs Globalism', ideologies: ['NATIONALISM', 'GLOBALISM'] },
+    { label: 'Equality vs Liberty', ideologies: ['EQUALITY', 'LIBERTY'] },
+    { label: 'Progress vs Tradition', ideologies: ['PROGRESS', 'TRADITION'] },
+    { label: 'Security vs Freedom', ideologies: ['SECURITY', 'FREEDOM'] },
+];
+
+function renderStimulusPanel(panel) {
+    const stimData = eoAvailability?.stimulate_economy;
+    if (!stimData) {
+        panel.innerHTML = '<div class="eo-confirm-desc">Stimulus data unavailable.</div>';
+        return;
+    }
+
+    const allOrders = stimData.orders || {};
+    const confirmBtn = document.getElementById('eo-confirm-btn');
+    confirmBtn.style.display = 'none';
+
+    let html = `
+        <div class="eo-confirm-title">Stimulate the Economy</div>
+        <div class="eo-confirm-desc">
+            Issue ideology-flavored economic stimulus orders. Each costs ${EO_CONFIG.STIMULATE_ECONOMY_AP} AP.
+            Once used, an order cannot be reissued during the same presidential term.
+        </div>
+        <div class="eo-stimulus-back" onclick="backToEOList()">&#8592; Back to Executive Orders</div>
+        <div class="eo-stimulus-grid">`;
+
+    for (const axis of STIMULUS_IDEOLOGY_AXES) {
+        const axisOrders = Object.values(allOrders).filter(o => axis.ideologies.includes(o.ideology));
+        if (axisOrders.length === 0) continue;
+
+        html += `<div class="eo-stimulus-axis">
+            <div class="eo-stimulus-axis-label">${escapeHtml(axis.label)}</div>
+            <div class="eo-stimulus-axis-orders">`;
+
+        for (const o of axisOrders) {
+            const avail = o.available;
+            const used = o.used;
+            const statusLabel = used ? 'USED' : (avail ? 'AVAILABLE' : (o.reason || 'LOCKED'));
+            const statusClass = used ? 'cooldown' : (avail ? 'available' : 'locked');
+
+            const increases = o.stat_increases ? Object.entries(o.stat_increases).map(([k, v]) => `+${v} ${formatStatName(k)}`).join(', ') : '';
+            const decreases = o.stat_decreases ? Object.entries(o.stat_decreases).map(([k, v]) => `−${v} ${formatStatName(k)}`).join(', ') : '';
+
+            html += `
+                <div class="eo-stimulus-card ${avail ? '' : 'unavailable'}" onclick="${avail ? `selectStimulusOrder('${o.key}')` : ''}">
+                    <div class="eo-stimulus-card-header">
+                        <span class="eo-stimulus-ideology">${escapeHtml(o.ideology)}</span>
+                        <span class="eo-card-status ${statusClass}">${escapeHtml(statusLabel)}</span>
+                    </div>
+                    <div class="eo-card-name">${escapeHtml(o.name)}</div>
+                    <div class="eo-card-desc">${escapeHtml(o.description)}</div>
+                    <div class="eo-stimulus-effects">
+                        ${increases ? `<div class="eo-stimulus-up">&#9650; ${escapeHtml(increases)}</div>` : ''}
+                        ${decreases ? `<div class="eo-stimulus-down">&#9660; ${escapeHtml(decreases)}</div>` : ''}
+                    </div>
+                </div>`;
+        }
+
+        html += `</div></div>`;
+    }
+
+    html += '</div>';
+    panel.innerHTML = html;
+}
+
+function backToEOList() {
+    const listEl = document.getElementById('eo-order-list');
+    const confirmPanel = document.getElementById('eo-confirm-panel');
+    const confirmBtn = document.getElementById('eo-confirm-btn');
+    listEl.style.display = 'block';
+    confirmPanel.className = 'eo-confirm-panel';
+    confirmPanel.innerHTML = '';
+    confirmBtn.style.display = 'none';
+    confirmBtn.disabled = true;
+    eoSelectedType = null;
+    eoSelectedParams = {};
+}
+window.backToEOList = backToEOList;
+
+function selectStimulusOrder(stimulusKey) {
+    const orderDef = STIMULATE_ECONOMY_ORDERS[stimulusKey];
+    if (!orderDef) return;
+
+    eoSelectedType = 'stimulate_economy';
+    eoSelectedParams = { stimulusKey };
+
+    const confirmPanel = document.getElementById('eo-confirm-panel');
+    const confirmBtn = document.getElementById('eo-confirm-btn');
+
+    const increases = orderDef.stat_increases ? Object.entries(orderDef.stat_increases).map(([k, v]) => `<span class="eo-stimulus-up">+${v} ${formatStatName(k)}</span>`).join(', ') : '';
+    const decreases = orderDef.stat_decreases ? Object.entries(orderDef.stat_decreases).map(([k, v]) => `<span class="eo-stimulus-down">−${v} ${formatStatName(k)}</span>`).join(', ') : '';
+
+    confirmPanel.innerHTML = `
+        <div class="eo-stimulus-back" onclick="renderStimulusPanel(document.getElementById('eo-confirm-panel'))">&#8592; Back to Stimulus Orders</div>
+        <div class="eo-confirm-title">${escapeHtml(orderDef.name)}</div>
+        <div class="eo-confirm-desc">${escapeHtml(orderDef.description)}</div>
+        <div class="eo-preview">
+            <div style="margin-bottom:6px;"><strong>Effects:</strong></div>
+            ${increases ? `<div style="margin-bottom:4px;">Increases: ${increases}</div>` : ''}
+            ${decreases ? `<div>Decreases: ${decreases}</div>` : ''}
+        </div>
+        <div class="eo-confirm-desc" style="font-size:0.8rem;">
+            Cost: ${EO_CONFIG.STIMULATE_ECONOMY_AP} AP. This order cannot be reissued this term.
+        </div>`;
+    confirmBtn.style.display = 'inline-block';
+    confirmBtn.disabled = false;
+}
+window.selectStimulusOrder = selectStimulusOrder;
+window.renderStimulusPanel = renderStimulusPanel;
+
 // Parameter selection handlers
 function eoParamChanged() {
     const confirmBtn = document.getElementById('eo-confirm-btn');
@@ -4411,6 +4532,8 @@ async function confirmExecutiveOrder() {
             result = await issueNationalEmergency(_supabase, currentNation.id, currentFaction.id);
         } else if (eoSelectedType === 'censure') {
             result = await issueCensure(_supabase, currentNation.id, currentFaction.id, eoSelectedParams.targetFactionId);
+        } else if (eoSelectedType === 'stimulate_economy') {
+            result = await issueStimulusOrder(_supabase, currentNation.id, currentFaction.id, eoSelectedParams.stimulusKey);
         }
     } catch (e) {
         alert('Error: ' + e.message);
