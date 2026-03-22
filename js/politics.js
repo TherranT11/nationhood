@@ -2957,18 +2957,18 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
     }
 
     container.innerHTML = `<div class="ca-wrap"><div class="ca-list">${listHtml}</div>${panelHtml}</div>
-    <div class="ca-portfolios" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
-        <div id="ca-stances-container"><div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px">Loading stances...</div></div>
+    <div class="ca-portfolios" style="margin-top:16px;">
         <div id="ca-promises-container"><div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px">Loading promises...</div></div>
     </div>
     <div class="pe-container">
         <div class="pe-header"><span class="pol-mod-title">Party Events</span></div>
         <div id="party-events-feed" class="pe-feed"><div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px">Loading events...</div></div>
-    </div>`;
+    </div>
+    <div id="ca-stance-portfolio-container" style="margin-top:16px;"></div>`;
 
-    // Load stances and promises portfolios on the actions page
-    _renderActionsStancePortfolio(f, n);
+    // Load promises and stance portfolio on the actions page
     _renderActionsPromisesPanel(f, n, tick);
+    _renderStancePortfolio(document.getElementById('ca-stance-portfolio-container'), f, n);
 
     // Load party events feed
     _loadPartyEventsFeed(n.id, f.id);
@@ -4333,14 +4333,13 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
     // Update topbar AP display
     const apEl = document.getElementById('topbar-ap');
     if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + (f.action_points ?? 0) + ' AP</span>';
-    // Refresh stance summary on main tab after stance actions
+    // Refresh stance summary on main tab + portfolio on actions page after stance actions
     if (sel.id === 'take_stance') {
         _renderStanceSummaryStrip(f.id, n.id);
-        // Refresh portfolio in electorate tab if loaded
-        const esContainer = document.getElementById('electorate-spread-container');
-        if (esContainer) {
-            esContainer.querySelector('.sp-card')?.remove();
-            _renderStancePortfolio(esContainer, f, n);
+        const spContainer = document.getElementById('ca-stance-portfolio-container');
+        if (spContainer) {
+            spContainer.querySelector('.sp-card')?.remove();
+            _renderStancePortfolio(spContainer, f, n);
         }
     }
 }
@@ -5496,9 +5495,6 @@ async function _renderPillarCards(container, playerFaction, nation) {
     </div>`;
 
     container.insertAdjacentHTML('beforeend', cardsHtml);
-
-    // Also render stance portfolio in the Electorate tab
-    _renderStancePortfolio(container, playerFaction, nation);
 }
 
 // ═══════════════════════════════════════════════════════════════════
