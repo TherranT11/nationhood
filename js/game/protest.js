@@ -1176,11 +1176,15 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
             .eq('crisis_id', PROTEST_CONFIG.TIER6_CRISIS_ID);
         if (delErr) console.error('[Protest] Failed to delete T6 crisis:', delErr);
 
+        // 1d6 government approval boost for resolving crisis via EPO
+        const epoResolveBoost = Math.ceil(Math.random() * 6);
+        await adjustGovernmentApprovalEvent(supabase, nationId, epoResolveBoost, 'crisis:resolved:epo');
+
         const resolvedHeadline = pickHeadline('protest_epo_resolved');
         dispatchProtestArticle(supabase, nationId, 'protest_epo_resolved', resolvedHeadline,
             'The Interior Ministry\'s enforcement action successfully ended the protest crisis.', 1, currentTick, protestId);
         fireProtestEvent(supabase, nationId, 'protest:epo_resolved', currentTick, { protest_id: protestId });
-        return { success: true, outcome: 'resolved', newAp };
+        return { success: true, outcome: 'resolved', newAp, govApprovalBoost: epoResolveBoost };
     } else {
         // Escalation: T6 → T7
         // Remove T6 crisis, create T7
