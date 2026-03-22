@@ -397,18 +397,21 @@ window._appointLeader = async function() {
         const { error: updateErr } = await _supabase.from('factions').update(updateFields).eq('id', currentFaction.id);
         if (updateErr) throw new Error('Failed to update faction: ' + updateErr.message);
 
-        // Log event
+        // Log event via fire_system_event RPC (SECURITY DEFINER bypasses RLS)
         const oldLeader = currentLeaders.leader;
         const eventDescription = oldLeader
             ? `${candidate.firstName} ${candidate.lastName} replaces ${oldLeader.firstName} ${oldLeader.lastName} as Party Leader of ${currentFaction.faction_name}.`
             : `${candidate.firstName} ${candidate.lastName} appointed as Party Leader of ${currentFaction.faction_name}.`;
 
-        await _supabase.from('event_log').insert({
-            nation_id: currentNation.id,
-            event_name: 'New Party Leader',
-            description_chosen: eventDescription,
-            category: 'POLITICAL',
-            fired_at_tick: currentTick,
+        await _supabase.rpc('fire_system_event', {
+            p_trigger_key: 'party_leader_appointed',
+            p_nation_id: currentNation.id,
+            p_tick: currentTick,
+            p_placeholders: {
+                party: currentFaction.faction_name,
+                leader: `${candidate.firstName} ${candidate.lastName}`,
+                description: eventDescription,
+            },
         }).then(({ error }) => {
             if (error) console.warn('Event log insert failed (non-blocking):', error.message);
         });

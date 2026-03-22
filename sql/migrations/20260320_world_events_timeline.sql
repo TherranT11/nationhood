@@ -55,6 +55,7 @@ BEGIN
             WHEN 'minister_resigned'        THEN 'Minister Resigned'
             WHEN 'minister_purged'          THEN 'Minister Purged'
             WHEN 'party_leader_replaced'    THEN 'Party Leader Replaced'
+            WHEN 'party_leader_appointed'   THEN 'New Party Leader Appointed'
             WHEN 'crisis_started'           THEN 'Crisis Started'
             WHEN 'crisis_ended'             THEN 'Crisis Resolved'
             WHEN 'ministry_ability_used'    THEN 'Ministry Action'
@@ -87,7 +88,8 @@ BEGIN
                 'vonc_passed', 'vonc_failed', 'snap_election_called', 'coup_attempt',
                 'minister_resigned', 'minister_purged', 'party_leader_replaced',
                 'minority_government_formed', 'coalition_formation_started',
-                'incumbent_lockin', 'bill_passed', 'bill_failed', 'quorum_failed') THEN 'government'
+                'incumbent_lockin', 'bill_passed', 'bill_failed', 'quorum_failed',
+                'party_leader_appointed') THEN 'government'
             WHEN p_trigger_key IN ('ministry_ability_used') THEN 'executive_order'
             WHEN p_trigger_key IN ('trade_agreement_proposed', 'trade_agreement_accepted',
                 'trade_agreement_rejected', 'trade_agreement_expired', 'trade_negotiation_proposed',
