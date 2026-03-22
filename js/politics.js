@@ -4963,8 +4963,7 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
     const electorateStats = {};
     for (const ax of ES_AXES) {
         const mean = Number(profile['ideo_mean_' + ax.key] ?? 50);
-        const perAxisVar = Number(profile['ideo_var_' + ax.key] ?? 20);
-        electorateStats[ax.key] = { mean, stdDev: perAxisVar, zoneVariance };
+        electorateStats[ax.key] = { mean, zoneVariance };
     }
 
     // Build party data (all parties including player)
@@ -5028,11 +5027,11 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
             const stats = electorateStats[ax.key];
             const match = getMatchInfo(ax.key);
             const eMean = stats.mean;
-            const eStd = stats.stdDev;
+            const eSpread = stats.zoneVariance;
 
-            // Variance band: mean ± 1 stddev, clamped to 0-100
-            const varLeft = Math.max(0, eMean - eStd);
-            const varWidth = Math.min(100, eMean + eStd) - varLeft;
+            // Variance band: mean ± spread, clamped to 0-100 (driven by nation polarization)
+            const varLeft = Math.max(0, eMean - eSpread);
+            const varWidth = Math.min(100, eMean + eSpread) - varLeft;
 
             // Electorate lean text
             let leanText;
