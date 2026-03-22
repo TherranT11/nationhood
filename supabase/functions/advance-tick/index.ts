@@ -6451,7 +6451,10 @@ async function checkEarlyMajority(supabase, nationId) {
             await supabase.from('bills').update({
                 early_resolution_status: earlyStatus,
                 early_resolution_tick: currentTick,
-                voting_ends_tick: resolveAtTick
+                voting_ends_tick: resolveAtTick,
+                votes_for: yesSeats,
+                votes_against: noSeats,
+                votes_abstain: abstainSeats
             }).eq('id', bill.id);
 
             const resolveType = earlyStatus.startsWith('quorum') ? 'QUORUM' : 'MATH-LOCK';
@@ -6522,6 +6525,14 @@ async function resolveExpiredVotes(supabase, nationId) {
             else if (stance === 'no') votesAgainst += (s.seat_count || 0);
             else if (stance === 'abstain') votesAbstain += (s.seat_count || 0);
         });
+
+        // Sync vote tallies to bills table (client-side syncVoteTallies only
+        // runs on manual votes — tick processor must persist tallies too)
+        await supabase.from('bills').update({
+            votes_for: votesFor,
+            votes_against: votesAgainst,
+            votes_abstain: votesAbstain
+        }).eq('id', bill.id);
 
         // Emergency minority government penalty: -20% effective YES votes
         const activeCoalition = await fetchActiveCoalition(supabase, bill.nation_id);
@@ -7688,6 +7699,13 @@ async function resolveStuckFloorBills(supabase, nationId) {
             else if (stance === 'no') votesAgainst += (s.seat_count || 0);
             else if (stance === 'abstain') votesAbstain += (s.seat_count || 0);
         });
+
+        // Sync vote tallies to bills table
+        await supabase.from('bills').update({
+            votes_for: votesFor,
+            votes_against: votesAgainst,
+            votes_abstain: votesAbstain
+        }).eq('id', bill.id);
 
         const resolveBill = {
             ...bill,

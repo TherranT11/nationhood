@@ -3264,8 +3264,7 @@ export async function processCrises(supabase, nation, currentTick) {
                 type: 'crisis_resolved',
                 crisisName: template.name,
                 duration: currentTick - activeRecord.started_at_tick,
-                tick: currentTick,
-                govApprovalBoost: crisisResolveBoost
+                tick: currentTick
             });
 
             console.log(`Crisis resolved: "${template.name}" in ${nation.name} (tick ${currentTick}, duration: ${currentTick - activeRecord.started_at_tick} ticks, gov approval +${crisisResolveBoost})`);

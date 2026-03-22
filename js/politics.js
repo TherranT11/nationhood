@@ -4279,10 +4279,7 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
     // Protest is not in CA_ACTIONS (added dynamically for opposition only);
     // look it up separately so the confirm handler can reach the protest branch.
     const sel = CA_ACTIONS.find(a => a.id === _caSelected)
-        || (_caSelected === 'protest' ? { id: 'protest', name: 'Organise a Protest', ap: caGetCost() } : null);
-    // Protest is dynamically added to allActions, not in the static CA_ACTIONS array
-    const sel = CA_ACTIONS.find(a => a.id === _caSelected)
-        || (_caSelected === 'protest' ? { id: 'protest', color: '#d9534f' } : null);
+        || (_caSelected === 'protest' ? { id: 'protest', name: 'Organise a Protest', ap: caGetCost(), color: '#d9534f' } : null);
     if (!sel) return;
     const cost = caGetCost();
     if (ap < cost || !caIsReady()) return;
