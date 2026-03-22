@@ -1005,6 +1005,74 @@ const guideContent = {
 <h3>Frozen Bills</h3>
 <p>If the legislature is <strong>dissolved</strong> (e.g., during elections), all in-progress bills are <strong>frozen</strong>. Frozen bills cannot be voted on or amended. They are dismissed when the election resolves.</p>
 </div></details>
+
+<details><summary>Active Laws &amp; Repeals</summary><div>
+<h3>Active Laws</h3>
+<p>The bottom of the Bills page shows all <strong>active laws</strong> grouped by sector (Economics, Labor, Education, etc.). Expand a sector, then a sub-sector, to see which policies are currently in effect.</p>
+<p>Each active law displays:</p>
+<ul>
+<li>The policy name and description</li>
+<li>Stat effects (e.g., Stability ↑, Corruption ↓) &mdash; these apply every tick</li>
+<li>The tick it was passed</li>
+<li>A <strong>Rescind</strong> button</li>
+</ul>
+
+<h3>Rescinding (Repealing) a Law</h3>
+<p>Click <strong>&ldquo;Rescind&rdquo;</strong> on any active law to propose its repeal. This creates a <strong>repeal bill</strong> automatically and sends it to committee. The repeal bill follows the same committee &rarr; floor vote pipeline as any other bill. It passes with a simple majority.</p>
+<p>You can also add <strong>repeal articles</strong> to a regular bill while drafting. In the policy picker, already-enacted policies appear with a red <strong>&ldquo;Click to Repeal&rdquo;</strong> badge. Clicking one adds a repeal article to your draft. This lets you bundle new policies and repeals in a single bill.</p>
+<p class="guide-tip">When you repeal a law, its stat effects are reversed. If the law was costing money per tick, those costs stop immediately. Ideology chips on repeal articles are <em>inverted</em> &mdash; repealing an opposed policy shows as green (aligned) for you.</p>
+
+<h3>The All Laws Panel</h3>
+<p>Click <strong>&ldquo;All Laws&rdquo;</strong> at the top of the page to open a filterable catalogue of every policy in the game. Use it to:</p>
+<ul>
+<li><strong>Search by name</strong> &mdash; type in the search box to filter policies.</li>
+<li><strong>Filter by status</strong> &mdash; show only Active or Inactive policies.</li>
+<li><strong>Filter by sector</strong> &mdash; narrow to a specific sector.</li>
+<li><strong>Filter by ideology</strong> &mdash; find policies aligned to a particular ideology pole.</li>
+</ul>
+<p>Each policy card shows its stat effects, ideology chips, costs, and whether it is currently active. This is useful for planning which policies to target in your next bill.</p>
+
+<h3>Legislative Record</h3>
+<p>Click <strong>&ldquo;View full legislative record&rdquo;</strong> below the Recently Resolved section to see every bill that has ever been voted on, with pass/fail status, vote tallies, and party breakdowns. Use it to review the nation&rsquo;s legislative history and track which factions voted which way.</p>
+</div></details>
+
+<details><summary>Special Bill Types</summary><div>
+<h3>Foundational Bills</h3>
+<p>Foundational bills change the constitutional structure of the nation. They cost <strong>3 AP</strong> to draft (vs. 2 AP for standard bills) and require a <strong>two-thirds supermajority</strong> to pass. They also <em>must</em> have at least one co-sponsor to advance from committee.</p>
+
+<p>When drafting, select the <strong>Foundational</strong> sector in the policy picker. Available subtypes:</p>
+<table>
+<tr><th>Subtype</th><th>What It Changes</th></tr>
+<tr><td><strong>Electoral Makeup</strong></td><td>Changes the total number of parliamentary seats (50&ndash;500).</td></tr>
+<tr><td><strong>Head of State Title</strong></td><td>Renames the head of state (e.g., President, Chancellor, Supreme Leader).</td></tr>
+<tr><td><strong>Term Length</strong></td><td>Changes how many ticks a presidential term lasts. Shorter terms increase polarization; longer terms reduce legitimacy.</td></tr>
+<tr><td><strong>Term Limits</strong></td><td>Sets the maximum number of terms a president may serve, or removes term limits entirely.</td></tr>
+<tr><td><strong>HoS Election Method</strong></td><td>Changes how the head of state is chosen: direct popular vote, appointed by parliament, or constitutional monarchy (hereditary).</td></tr>
+</table>
+<p>Foundational bills contain exactly <strong>one article</strong> and cannot have policy, text, or funding articles added.</p>
+
+<h3>Repeal Bills</h3>
+<p>Repeal bills are created when you click <strong>Rescind</strong> on an active law. They target a single active law for removal and pass with a simple majority. The bill is pre-configured &mdash; you cannot add articles to it.</p>
+
+<h3>No Confidence Motions</h3>
+<p>A motion to dissolve the current government. Requires a <strong>simple majority</strong> (more YES than NO votes). If passed, the coalition is dissolved, the PM is removed, and all ministries are vacated. If it fails, the filer loses 5 approval and the PM gains 3, with a 6-tick cooldown before another motion can be filed.</p>
+
+<h3>Impeachment</h3>
+<p>Impeachment is a two-stage process in presidential systems:</p>
+<ol>
+<li><strong>Impeachment Motion</strong> &mdash; requires an <strong>absolute majority</strong> (61 of 120 seats) to pass. If successful, the president is impeached and proceeds to a conviction trial.</li>
+<li><strong>Impeachment Conviction</strong> &mdash; requires a <strong>two-thirds supermajority</strong> to convict and remove the president from office.</li>
+</ol>
+<p>If the motion fails, the filer loses 5 approval and the president gains 3.</p>
+
+<h3>Default Resolution</h3>
+<p>An extreme fiscal measure available when your nation&rsquo;s debt-to-GDP ratio exceeds <strong>150%</strong>. Filing costs <strong>6 AP</strong> and requires a two-thirds supermajority. There are two types:</p>
+<ul>
+<li><strong>Full Default</strong> &mdash; eliminates all debt but causes severe international consequences.</li>
+<li><strong>Partial Restructuring</strong> &mdash; negotiates a repayment rate (30&ndash;70%) with reduced penalties.</li>
+</ul>
+<p>You can optionally include <strong>austerity commitments</strong> (spending cuts) to soften the international backlash.</p>
+</div></details>
 `
     }
 };
