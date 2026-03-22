@@ -3129,7 +3129,7 @@ async function _renderActionsPromisesPanel(faction, nation, tick) {
     <div style="border:1px solid var(--dborder-1);border-radius:6px;padding:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
             <span style="font-family:var(--dfont-ui);font-size:13px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:0.5px">Active Promises</span>
-            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${activePromises.length} / ${MAKE_PROMISE_CONFIG.MAX_ACTIVE}</span>
+            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${activePromises.length} / ${MAKE_PROMISE_CONFIG.MAX_ACTIVE_PROMISES}</span>
         </div>
         ${rowsHtml}
     </div>`;
