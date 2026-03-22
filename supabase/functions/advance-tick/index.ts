@@ -13418,6 +13418,54 @@ async function tickElectorateProfile(supabase, nation, profile, currentTick, ent
         console.error('[Electorate] ideology_shift_actions processing failed (non-fatal):', shiftErr);
     }
 
+    // ── Auto-resume suspended ideology_shift_actions when faction can afford AP ──
+    try {
+        var { data: suspendedShifts } = await supabase.from('ideology_shift_actions')
+            .select('id, faction_id, created_tick, action_type')
+            .eq('nation_id', nation.id)
+            .eq('status', 'suspended');
+        if (suspendedShifts && suspendedShifts.length > 0) {
+            for (var ri = 0; ri < suspendedShifts.length; ri++) {
+                var suspended = suspendedShifts[ri];
+                // Check if action has expired while suspended
+                var suspTicksActive = currentTick - (suspended.created_tick || 0);
+                var suspMaxDur = suspended.action_type === 'think_tank' ? 50
+                    : suspended.action_type === 'media_campaign' ? 10
+                    : suspended.action_type === 'grassroots_movement' ? 100 : 50;
+                if (suspTicksActive >= suspMaxDur) {
+                    // Expired while suspended — mark completed
+                    await supabase.from('ideology_shift_actions')
+                        .update({ status: 'completed', last_active_tick: currentTick })
+                        .eq('id', suspended.id);
+                    continue;
+                }
+                // Resume if faction has enough AP (don't deduct — next tick will charge normally)
+                var { data: resumeRow } = await supabase.from('factions')
+                    .select('action_points').eq('id', suspended.faction_id).single();
+                if ((resumeRow?.action_points ?? 0) >= 1) {
+                    await supabase.from('ideology_shift_actions')
+                        .update({ status: 'active', last_active_tick: currentTick })
+                        .eq('id', suspended.id);
+                }
+                // If not enough AP, leave suspended — will retry next tick
+            }
+        }
+    } catch (resumeErr) {
+        console.error('[Electorate] ideology_shift_actions resume check failed (non-fatal):', resumeErr);
+    }
+
+    // ── Prune old completed ideology_shift_actions (keep last 50 ticks of history) ──
+    try {
+        var pruneCutoff = currentTick - 50;
+        await supabase.from('ideology_shift_actions')
+            .delete()
+            .eq('nation_id', nation.id)
+            .in('status', ['completed', 'suspended'])
+            .lt('last_active_tick', pruneCutoff);
+    } catch (pruneErr) {
+        console.error('[Electorate] ideology_shift_actions prune failed (non-fatal):', pruneErr);
+    }
+
     // ── Drift enthusiasm ──
     const oldEnthusiasm = Number(profile.enthusiasm ?? CFG.DEFAULT_ENTHUSIASM);
     const { nextElectionTick, crisisCount, inactiveCount } = enthusiasmContext;
