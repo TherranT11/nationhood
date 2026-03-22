@@ -29,7 +29,7 @@ export var TRADE_SECTORS = [
         key: 'fuel_energy',
         label: 'Fuel & Energy',
         export_only: false,
-        export_stat: 'oil_and_gas',
+        export_stats: ['oil_and_gas', 'energy_generation'],
         export_threshold: 15
     },
     {
