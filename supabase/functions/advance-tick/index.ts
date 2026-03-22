@@ -25304,35 +25304,60 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
     // 4. Build full budget (all values are ANNUAL raw dollars)
     const budgetData = buildBudgetData(nation, activeLaws || [], tradeTariffRevenue, institutionConfig, aidData);
 
-    // 4b. Ministry action budget impact (e.g., Finance stimulus/austerity)
-    //     Fetch active (unprocessed) ministry actions with budget_per_tick or budget_saves_per_tick
+    // 4b. Ministry action budget impact — deduct draws from ministry discretionary_balance
+    //     Savings (e.g., Austerity) credit back to the ministry pool.
     const { data: activeActions } = await supabase
         .from('ministry_action_log')
-        .select('action_data, applied_at_tick, stat_effects')
+        .select('ministry_key, action_data, applied_at_tick, stat_effects')
         .eq('nation_id', nation.id)
         .eq('processed', false);
 
-    let ministryActionBudgetImpact = 0; // positive = cost, negative = savings (per tick)
+    // Accumulate per-ministry balance changes: { finance: -3000000, ... }
+    const ministryBalanceDeltas: Record<string, number> = {};
     if (activeActions?.length) {
         for (const act of activeActions) {
             const ad = act.action_data;
             if (!ad) continue;
-            // Check if this action is within its active duration this tick
             const appliedTick = act.applied_at_tick || 0;
             const ticksSince = currentTick - appliedTick;
-            // Derive delay and duration from the longest nation-targeting effect (skip minister/faction overrides)
             const effects = Array.isArray(act.stat_effects) ? act.stat_effects : [];
             const nationEffects = effects.filter(e => !e.target || e.target === 'nation');
             const primaryEffect = nationEffects.length > 0 ? nationEffects[0] : (effects.length > 0 ? effects[0] : null);
             const delay = primaryEffect ? (Number(primaryEffect.delay_ticks) || 0) : 0;
             const duration = primaryEffect ? (Number(primaryEffect.duration_ticks) || 4) : (ad.is_resolution ? 4 : 4);
             if (ticksSince > delay && ticksSince <= delay + duration) {
+                const mKey = act.ministry_key;
+                if (!ministryBalanceDeltas[mKey]) ministryBalanceDeltas[mKey] = 0;
                 if (ad.budget_per_tick && ad.budget_per_tick > 0) {
-                    ministryActionBudgetImpact += ad.budget_per_tick;
+                    ministryBalanceDeltas[mKey] -= ad.budget_per_tick; // deduct from pool
                 }
                 if (ad.budget_saves_per_tick && ad.budget_saves_per_tick > 0) {
-                    ministryActionBudgetImpact -= ad.budget_saves_per_tick;
+                    ministryBalanceDeltas[mKey] += ad.budget_saves_per_tick; // credit to pool
                 }
+            }
+        }
+    }
+
+    // Apply deltas to each ministry's discretionary_balance
+    for (const [mKey, delta] of Object.entries(ministryBalanceDeltas)) {
+        if (delta === 0) continue;
+        const { data: mRow } = await supabase.from('ministries')
+            .select('discretionary_balance')
+            .eq('nation_id', nation.id)
+            .eq('ministry_key', mKey)
+            .eq('is_active', true)
+            .maybeSingle();
+        const curBal = Number(mRow?.discretionary_balance || 0);
+        const newBal = Math.max(0, curBal + delta);
+        if (newBal !== curBal) {
+            await supabase.from('ministries')
+                .update({ discretionary_balance: newBal })
+                .eq('nation_id', nation.id)
+                .eq('ministry_key', mKey)
+                .eq('is_active', true);
+            if (Math.abs(delta) > 0) {
+                const fmtD = (v: number) => `$${(v / 1_000_000).toFixed(1)}M`;
+                console.log(`[BudgetDeficit] ${nation.name} ${mKey}: discretionary ${fmtD(curBal)} → ${fmtD(newBal)} (${delta > 0 ? '+' : ''}${fmtD(delta)}/tick)`);
             }
         }
     }
@@ -25341,9 +25366,7 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
     //    grossRevenue already includes aidReceived.
     //    Mandatory costs (debtService + aidGiven) are already subtracted in 'available'.
     //    Discretionary costs: totalExpenditure (ministry policies + institutions).
-    //    ministryActionBudgetImpact is per-tick, so annualize it.
-    const actionAnnualImpact = ministryActionBudgetImpact * GAME_CONFIG.TICKS_PER_YEAR;
-    const annualBalance = budgetData.available - budgetData.totalExpenditure - actionAnnualImpact;
+    const annualBalance = budgetData.available - budgetData.totalExpenditure;
 
     // 6. Per-tick balance
     const perTickBalance = annualBalance / GAME_CONFIG.TICKS_PER_YEAR;
@@ -25375,7 +25398,7 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
     // 9. Log
     const fmtM = (v) => `$${(v / 1_000_000).toFixed(1)}M`;
     if (debtDelta !== 0) {
-        console.log(`[BudgetDeficit] ${nation.name}: revenue=${fmtM(budgetData.grossRevenue)}/yr expenditure=${fmtM(budgetData.totalExpenditure + budgetData.debtService + budgetData.aidGiven)}/yr${actionAnnualImpact !== 0 ? ' actions=' + fmtM(actionAnnualImpact) + '/yr' : ''} balance=${fmtM(annualBalance)}/yr (${fmtM(perTickBalance)}/tick) debt: ${fmtM(currentDebt)} → ${fmtM(newDebt)}`);
+        console.log(`[BudgetDeficit] ${nation.name}: revenue=${fmtM(budgetData.grossRevenue)}/yr expenditure=${fmtM(budgetData.totalExpenditure + budgetData.debtService + budgetData.aidGiven)}/yr balance=${fmtM(annualBalance)}/yr (${fmtM(perTickBalance)}/tick) debt: ${fmtM(currentDebt)} → ${fmtM(newDebt)}`);
     }
 
     return {

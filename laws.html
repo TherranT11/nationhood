@@ -87,9 +87,9 @@
                 <div id="funding-institutions"></div>
                 <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-main);">
                     <label class="form-label">Discretionary Funds ($M)</label>
-                    <!-- Stored as a one-time amount (in $M): shown in upfront/debt impact, never in recurring monthly totals. -->
-                    <input type="number" class="form-input" id="funding-discretionary" min="0" max="50000" value="0" placeholder="0">
-                    <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:4px;">One-time treasury expenditure added to national debt.</div>
+                    <div id="funding-discretionary-balance" style="font-size:0.7rem;margin-bottom:6px;"></div>
+                    <input type="number" class="form-input" id="funding-discretionary" min="-50000" max="50000" value="0" placeholder="0">
+                    <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:4px;">Positive = allocate funds (adds to debt). Negative = withdraw surplus funds (reduces debt).</div>
                 </div>
             </div>
             <div style="display:flex;gap:8px;margin-top:12px;">
@@ -1167,7 +1167,7 @@ function openDraftModal() {
     document.getElementById('draft-modal').classList.add('active');
     // Fetch data needed for funding articles
     Promise.all([
-        _supabase.from('ministries').select('ministry_key, funding_level').eq('nation_id', currentNation.id).eq('is_active', true),
+        _supabase.from('ministries').select('ministry_key, funding_level, discretionary_balance').eq('nation_id', currentNation.id).eq('is_active', true),
         _supabase.from('ministry_institution_config').select('*'),
         _supabase.from('budget_item_allocations').select('item_id, item_type, allocation_amount, needed_amount').eq('nation_id', currentNation.id).eq('item_type', 'institution').order('created_at', { ascending: true })
     ]).then(([ministries, instConfig, itemAllocs]) => {
@@ -1369,6 +1369,15 @@ function onFundingMinistryChange() {
     document.getElementById('funding-controls').style.display = 'block';
     document.getElementById('add-funding-btn').disabled = false;
     document.getElementById('funding-discretionary').value = 0;
+    // Show current discretionary balance
+    const mRow = (window._allMinistries || []).find(m => m.ministry_key === key);
+    const curBal = Number(mRow?.discretionary_balance || 0);
+    const balLabel = document.getElementById('funding-discretionary-balance');
+    if (balLabel) {
+        const fmtBal = curBal >= 1000000 ? '$' + (curBal / 1000000).toFixed(1) + 'M' : '$' + Math.round(curBal).toLocaleString();
+        const balColor = curBal > 0 ? 'var(--green, #5cb85c)' : 'var(--red, #d9534f)';
+        balLabel.innerHTML = `Current balance: <strong style="color:${balColor}">${fmtBal}</strong>`;
+    }
     // Render institution sliders
     const institutions = FUNDING_INSTITUTIONS[key] || [];
     const container = document.getElementById('funding-institutions');
@@ -1438,9 +1447,19 @@ function addFundingArticle() {
     }
 
     const discretionary = parseInt(document.getElementById('funding-discretionary').value) || 0;
-    if (!anyChange && discretionary <= 0) { alert('No funding changes made. Adjust at least one institution or add discretionary funds.'); return; }
+    if (!anyChange && discretionary === 0) { alert('No funding changes made. Adjust at least one institution or set discretionary funds.'); return; }
+    // Cap withdrawals at current balance
+    if (discretionary < 0) {
+        const mRow = (window._allMinistries || []).find(m => m.ministry_key === key);
+        const curBal = Number(mRow?.discretionary_balance || 0);
+        const maxWithdrawalM = Math.floor(curBal / 1000000);
+        if (Math.abs(discretionary) > maxWithdrawalM) {
+            alert(`Cannot withdraw more than the current balance ($${maxWithdrawalM}M available).`);
+            return;
+        }
+    }
 
-    const fundingSignature = JSON.stringify({ key, institutions: instLevels, discretionary: discretionary > 0 ? discretionary : null });
+    const fundingSignature = JSON.stringify({ key, institutions: instLevels, discretionary: discretionary !== 0 ? discretionary : null });
     const isDuplicateFunding = draftArticles.some(a => a.isFunding && JSON.stringify({
         key: a.fundingData?.ministry_key,
         institutions: a.fundingData?.institutions || [],
@@ -1459,7 +1478,7 @@ function addFundingArticle() {
             ministry_key: key,
             ministry_label: label,
             institutions: instLevels,
-            discretionary: discretionary > 0 ? discretionary : null
+            discretionary: discretionary !== 0 ? discretionary : null
         }
     });
     renderDraftArticles();
@@ -2033,7 +2052,7 @@ function renderDraftArticles() {
                 const arrow = i.proposed_pct > i.current_pct ? '↑' : '↓';
                 return `${i.name}: ${i.current_pct}% → ${i.proposed_pct}% ${arrow}`;
             });
-            if (fd.discretionary) summaryParts.push(`One-time: +$${fd.discretionary}M`);
+            if (fd.discretionary) summaryParts.push(fd.discretionary > 0 ? `Allocate: +$${fd.discretionary}M` : `Withdraw: -$${Math.abs(fd.discretionary)}M`);
             const hasIncrease = changes.some(i => i.proposed_pct > i.current_pct);
             const hasDecrease = changes.some(i => i.proposed_pct < i.current_pct);
             const borderColor = hasDecrease ? 'var(--red)' : hasIncrease ? 'var(--green)' : 'var(--blue)';
@@ -2353,7 +2372,7 @@ async function submitToCommittee() {
                 const fd = art.fundingData;
                 const changes = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
                 const textParts = changes.map(i => `${i.name}: ${i.current_pct}% → ${i.proposed_pct}%`);
-                if (fd.discretionary) textParts.push(`One-time: +$${fd.discretionary}M`);
+                if (fd.discretionary) textParts.push(fd.discretionary > 0 ? `Allocate: +$${fd.discretionary}M` : `Withdraw: -$${Math.abs(fd.discretionary)}M`);
                 const title = `${fd.ministry_label} Funding`;
                 const text = textParts.join('. ') + '.';
                 return {
@@ -2510,7 +2529,7 @@ async function submitToCommittee() {
                     const fd = art.fundingData;
                     const changes = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
                     const textParts = changes.map(i => `${i.name}: ${i.current_pct}% → ${i.proposed_pct}%`);
-                    if (fd.discretionary) textParts.push(`One-time: +$${fd.discretionary}M`);
+                    if (fd.discretionary) textParts.push(fd.discretionary > 0 ? `Allocate: +$${fd.discretionary}M` : `Withdraw: -$${Math.abs(fd.discretionary)}M`);
                     const title = `${fd.ministry_label} Funding`;
                     const text = textParts.join('. ') + '.';
                     return { bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id, article_title: title, article_text: text, funding_data: fd };

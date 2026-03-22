@@ -1051,7 +1051,10 @@ function renderArticles() {
                     '</div>';
                 }).join('');
                 if (fd.discretionary) {
-                    instHTML += '<div style="padding:4px 0;font-size:0.8rem;color:var(--blue);">One-time: +' + formatCurrency(Number(fd.discretionary || 0)).replace(/^[+-]/, '') + '</div>';
+                    var dAmt = Number(fd.discretionary || 0);
+                    var dLabel = dAmt > 0 ? 'Allocate: +' : 'Withdraw: -';
+                    var dColor = dAmt > 0 ? 'var(--blue)' : 'var(--green, #5cb85c)';
+                    instHTML += '<div style="padding:4px 0;font-size:0.8rem;color:' + dColor + ';">' + dLabel + formatCurrency(Math.abs(dAmt)).replace(/^[+-]/, '') + '</div>';
                 }
                 return '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
                     '<div class="article-number">Article ' + art.article_number + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + tagLabel + '</span></div>' +

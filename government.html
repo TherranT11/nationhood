@@ -2823,7 +2823,18 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
     const ap = currentFaction?.action_points || 0;
     const canUse = isMyMinistry === true;
 
-    let html = '<div class="ministry-card__actions-label">ACTIONS</div>';
+    // Discretionary balance for this ministry
+    const ministry = ministryData.find(m => m.ministry_key === ministryKey);
+    const discretionaryBalance = Number(ministry?.discretionary_balance || 0);
+    const balFmt = discretionaryBalance >= 1000000
+        ? '$' + (discretionaryBalance / 1000000).toFixed(1) + 'M'
+        : discretionaryBalance > 0 ? '$' + Math.round(discretionaryBalance).toLocaleString() : '$0';
+    const balCls = discretionaryBalance > 0 ? 'color:var(--green)' : 'color:var(--red)';
+
+    let html = `<div class="ministry-card__actions-label" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>ACTIONS</span>
+        <span style="font-size:7px;font-weight:600;${balCls};letter-spacing:0.03em;">FUNDS: ${balFmt}</span>
+    </div>`;
     config.actions.forEach(action => {
         const countKey = ministryKey + ':' + action.id;
         const useCount = ministryActionUseCounts[countKey] || 0;
@@ -2844,10 +2855,14 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
             budgetTagHtml = `<span class="tag tag--budget">${budgetDraw}/TICK</span>`;
         }
 
-        // Check Debt Restructuring blocking conditions
+        // Check blocking conditions
         let blockReason = '';
         if (action.id === 'debtRestructuring' && canUse && !isActive) {
             blockReason = getDebtRestructuringBlock();
+        }
+        // Block money-drawing actions when ministry has no discretionary funds
+        if (!blockReason && action.budgetPerCapita > 0 && discretionaryBalance <= 0 && canUse && !isActive) {
+            blockReason = 'No Discretionary Funds available.';
         }
 
         const isBlocked = !!blockReason;
@@ -3515,6 +3530,8 @@ function refreshMinistryActionStates(ministryKey) {
     if (!config?.actions) return;
     const ap = currentFaction?.action_points || 0;
     const canUse = isMyMinistryByKey(ministryKey);
+    const ministry = ministryData.find(m => m.ministry_key === ministryKey);
+    const discretionaryBalance = Number(ministry?.discretionary_balance || 0);
     config.actions.forEach(action => {
         const countKey = ministryKey + ':' + action.id;
         const useCount = ministryActionUseCounts[countKey] || 0;
@@ -3523,10 +3540,13 @@ function refreshMinistryActionStates(ministryKey) {
         const row = document.getElementById(actionId);
         if (!row || row.classList.contains('active')) return;
 
-        // Check Debt Restructuring blocking conditions
+        // Check blocking conditions
         let blockReason = '';
         if (action.id === 'debtRestructuring' && canUse) {
             blockReason = getDebtRestructuringBlock();
+        }
+        if (!blockReason && action.budgetPerCapita > 0 && discretionaryBalance <= 0 && canUse) {
+            blockReason = 'No Discretionary Funds available.';
         }
         const isBlocked = !!blockReason;
         const isDisabled = !canUse || ap < apCost || isBlocked;
@@ -3586,6 +3606,17 @@ async function ministryActionConfirm(actionId) {
     const useCount = ministryActionUseCounts[countKey] || 0;
     const apCost = action.apCosts[Math.min(useCount, 3)];
     const statEffects = buildStatEffects(action, useCount);
+
+    // Discretionary funds check for money-drawing actions
+    if (action.budgetPerCapita > 0) {
+        const mData = ministryData.find(m => m.ministry_key === ministryKey);
+        if (Number(mData?.discretionary_balance || 0) <= 0) {
+            _ministryActionConfirming = false;
+            alert('No Discretionary Funds available. Parliament must allocate funds via a funding bill.');
+            ministryActionDeselect(actionId);
+            return;
+        }
+    }
 
     // Debt Restructuring: final block check before confirm
     if (action.id === 'debtRestructuring') {

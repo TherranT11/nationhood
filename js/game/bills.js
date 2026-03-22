@@ -2471,24 +2471,54 @@ export async function enactBill(supabase, bill, currentTick) {
             });
         }
 
-        // Discretionary grant: add to national debt
-        const grantAmount = Number(fd.discretionary) || 0;
-        if (grantAmount > 0) {
-            const newDebt = (Number(nation.debt) || 0) + grantAmount;
-            console.log('[enactBill] stage=update_debt_for_grant attempt', {
-                ...logContext,
-                ministryKey: fd.ministry_key,
-                grantAmount,
-                newDebt
-            });
-            await supabase.from('nations').update({ debt: newDebt }).eq('id', bill.nation_id);
-            nation.debt = newDebt;
-            console.log('[enactBill] stage=update_debt_for_grant result=success', {
-                ...logContext,
-                ministryKey: fd.ministry_key,
-                grantAmount,
-                newDebt
-            });
+        // Discretionary funds: credit ministry balance and add cost to national debt
+        // fd.discretionary is in $M — convert to raw dollars for the balance column.
+        // Positive = parliament allocating funds. Negative = parliament withdrawing funds.
+        const grantAmountM = Number(fd.discretionary) || 0;
+        if (grantAmountM !== 0) {
+            const grantRaw = grantAmountM * 1_000_000;
+            // Credit (or debit) the ministry's discretionary_balance
+            const { data: curMinistry } = await supabase.from('ministries')
+                .select('discretionary_balance')
+                .eq('nation_id', bill.nation_id)
+                .eq('ministry_key', fd.ministry_key)
+                .eq('is_active', true)
+                .maybeSingle();
+            const curBalance = Number(curMinistry?.discretionary_balance || 0);
+            const newBalance = Math.max(0, curBalance + grantRaw);
+            await supabase.from('ministries')
+                .update({ discretionary_balance: newBalance })
+                .eq('nation_id', bill.nation_id)
+                .eq('ministry_key', fd.ministry_key)
+                .eq('is_active', true);
+            console.log(`[enactBill] discretionary: ${fd.ministry_key} balance ${curBalance} → ${newBalance} (${grantAmountM > 0 ? '+' : ''}${grantAmountM}M)`);
+
+            // Positive grants add to national debt (the money has to come from somewhere)
+            if (grantAmountM > 0) {
+                const newDebt = (Number(nation.debt) || 0) + grantAmountM;
+                console.log('[enactBill] stage=update_debt_for_grant attempt', {
+                    ...logContext,
+                    ministryKey: fd.ministry_key,
+                    grantAmount: grantAmountM,
+                    newDebt
+                });
+                await supabase.from('nations').update({ debt: newDebt }).eq('id', bill.nation_id);
+                nation.debt = newDebt;
+                console.log('[enactBill] stage=update_debt_for_grant result=success', {
+                    ...logContext,
+                    ministryKey: fd.ministry_key,
+                    grantAmount: grantAmountM,
+                    newDebt
+                });
+            }
+            // Negative grants (withdrawals) reduce debt if possible
+            if (grantAmountM < 0) {
+                const absAmount = Math.abs(grantAmountM);
+                const newDebt = Math.max(0, (Number(nation.debt) || 0) - absAmount);
+                await supabase.from('nations').update({ debt: newDebt }).eq('id', bill.nation_id);
+                nation.debt = newDebt;
+                console.log(`[enactBill] discretionary withdrawal: debt reduced by ${absAmount}M → ${newDebt}M`);
+            }
         }
     }
 
