@@ -12488,7 +12488,7 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
 
         // Compute initial alignment from ideology vs electorate profile
         const alignment = profile && ideo
-            ? computeGenesisAlignment(ideo, profile)
+            ? computeGenesisAlignment(ideo, profile, nation)
             : CFG.DEFAULT_ALIGNMENT;
 
         // Party approval: governing factions inherit gov_approval, opposition gets 50
@@ -12531,7 +12531,7 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
  *
  * Returns 0-100 alignment score.
  */
-function computeGenesisAlignment(factionIdeology, profile) {
+function computeGenesisAlignment(factionIdeology, profile, nation) {
     let weightedAlignment = 0;
     let totalWeight = 0;
 
@@ -12557,7 +12557,29 @@ function computeGenesisAlignment(factionIdeology, profile) {
     }
 
     if (totalWeight <= 0) return 50;
-    return round2(clamp((weightedAlignment / totalWeight) * 100, 0, 100));
+    var raw = (weightedAlignment / totalWeight) * 100;
+
+    // Bimodal centrist penalty (same as computeTickAlignment)
+    if (nation) {
+        var polarization = Number(nation.polarization ?? 50);
+        if (polarization > 40) {
+            var avgDistFromMean = 0;
+            var axisCount = 0;
+            for (var ak = 0; ak < AXIS_KEYS.length; ak++) {
+                var pNorm = (Number(factionIdeology[AXIS_KEYS[ak]] || 0) + 100) / 2;
+                var eMean = Number(profile['ideo_mean_' + AXIS_KEYS[ak]] ?? 50);
+                avgDistFromMean += Math.abs(pNorm - eMean);
+                axisCount++;
+            }
+            avgDistFromMean = axisCount > 0 ? avgDistFromMean / axisCount : 0;
+            var centristFactor = Math.max(0, 1 - avgDistFromMean / 25);
+            var polStrength = (polarization - 40) / 60;
+            var penalty = centristFactor * polStrength * 35;
+            raw = Math.max(0, raw - penalty);
+        }
+    }
+
+    return round2(clamp(raw, 0, 100));
 }
 
 // ============================================================================
@@ -12778,7 +12800,7 @@ async function tickElectorate(supabase, nation, currentTick) {
 
         // ─── PILLAR 1: Ideological Alignment (0-100) ───
         const targetAlignment = ideo
-            ? computeTickAlignment(ideo, activeProfile, axisSalienceWeights)
+            ? computeTickAlignment(ideo, activeProfile, axisSalienceWeights, nation)
             : CFG.DEFAULT_ALIGNMENT;
 
         // Drift toward target
@@ -12944,7 +12966,7 @@ async function tickElectorate(supabase, nation, currentTick) {
  * @param {object} axisSalienceWeights - { axisKey: weight } from issue states
  * @returns {number} 0-100 alignment
  */
-function computeTickAlignment(ideo, profile, axisSalienceWeights) {
+function computeTickAlignment(ideo, profile, axisSalienceWeights, nation) {
     let weightedAlignment = 0;
     let totalWeight = 0;
 
@@ -12968,7 +12990,38 @@ function computeTickAlignment(ideo, profile, axisSalienceWeights) {
     }
 
     if (totalWeight <= 0) return 50;
-    return round2(clamp((weightedAlignment / totalWeight) * 100, 0, 100));
+    var raw = (weightedAlignment / totalWeight) * 100;
+
+    // ── Bimodal centrist penalty ──
+    // When polarization is high, voters cluster at the fringes. Parties near
+    // the electorate center lose support because the "middle" is empty.
+    // Penalty scales with polarization (0 at pol<=40, max at pol=100) and
+    // proximity to center (strongest when party is AT the mean on all axes).
+    if (nation) {
+        var polarization = Number(nation.polarization ?? 50);
+        if (polarization > 40) {
+            // How centrist is this party? Measure avg distance from electorate mean.
+            var avgDistFromMean = 0;
+            var axisCount = 0;
+            for (var ak = 0; ak < AXIS_KEYS.length; ak++) {
+                var pNorm = (Number(ideo[AXIS_KEYS[ak]] || 0) + 100) / 2;
+                var eMean = Number(profile['ideo_mean_' + AXIS_KEYS[ak]] ?? 50);
+                avgDistFromMean += Math.abs(pNorm - eMean);
+                axisCount++;
+            }
+            avgDistFromMean = axisCount > 0 ? avgDistFromMean / axisCount : 0;
+
+            // Centrist penalty: max when avgDist=0, fades out by avgDist=25
+            var centristFactor = Math.max(0, 1 - avgDistFromMean / 25);
+            // Polarization strength: 0 at pol=40, 1.0 at pol=100
+            var polStrength = (polarization - 40) / 60;
+            // Max penalty: up to 35 alignment points at full polarization + perfectly centrist
+            var penalty = centristFactor * polStrength * 35;
+            raw = Math.max(0, raw - penalty);
+        }
+    }
+
+    return round2(clamp(raw, 0, 100));
 }
 
 /**
