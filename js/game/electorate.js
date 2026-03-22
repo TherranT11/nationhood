@@ -2099,6 +2099,8 @@ export async function onRally(supabase, factionId, nationId, outcomeId, currentT
         outcomeId === 'gaffe' || outcomeId === 'counter' ? 'failure' : 'success',
         3, currentTick
     );
+
+    return { visBoost };
 }
 
 /**

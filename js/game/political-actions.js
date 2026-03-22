@@ -286,37 +286,31 @@ export const RALLY_OUTCOMES = [
     {
         id: 'rousing', name: 'Rousing Success',
         targetMin: 6, targetMax: 8, spillover: 2, spilloverScope: 'adjacent',
-        polarization: 1,
         headline: bloc => `Massive turnout at ${bloc} rally — supporters overflow venue`,
     },
     {
         id: 'solid', name: 'Solid Turnout',
         targetMin: 3, targetMax: 5, spillover: 0, spilloverScope: 'none',
-        polarization: 0,
         headline: bloc => `Party rally draws steady crowd in ${bloc} district — a strong showing`,
     },
     {
         id: 'low', name: 'Low Turnout',
         targetMin: 1, targetMax: 2, spillover: 0, spilloverScope: 'none',
-        polarization: 0,
         headline: bloc => `Sparse attendance at ${bloc} rally raises questions about grassroots support`,
     },
     {
         id: 'gaffe', name: 'Gaffe',
         targetMin: -3, targetMax: -2, spillover: -1, spilloverScope: 'random_adjacent',
-        polarization: 1,
         headline: bloc => `Party leader's remarks draw swift backlash at ${bloc} event`,
     },
     {
         id: 'divisive', name: 'Divisive Speech',
         targetMin: 5, targetMax: 7, spillover: -2, spilloverScope: 'all_others',
-        polarization: 2,
         headline: bloc => `Fiery rally speech energizes ${bloc} base but draws condemnation from opposition`,
     },
     {
         id: 'counter', name: 'Counter-Protest',
         targetMin: -1, targetMax: -1, spillover: -2, spilloverScope: 'all',
-        polarization: 2,
         headline: bloc => `${bloc} rally disrupted by counter-protesters — police intervene as tensions escalate`,
     },
 ];
@@ -463,13 +457,6 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
     // ── 7. Apply effects (legacy bloc-approval writes removed; electorate hook handles approval now) ──
     const effects = [];
 
-    // Polarization effect
-    if (outcome.polarization > 0 && nation) {
-        const newPol = Math.min(100, (nation.polarization || 0) + outcome.polarization);
-        await supabase.from('nations').update({ polarization: newPol }).eq('id', nationId);
-        effects.push({ stat: 'Polarization', value: outcome.polarization });
-    }
-
     // ── 8. Deduct AP + track last_action_tick ──
     // KNOWN ISSUE: AP deducted after effects applied. Early check (step 1) prevents common case.
     // Atomic RPC prevents DB over-spending. Race condition is acceptable for alpha.
@@ -495,7 +482,12 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
     });
 
     // Electorate engine: update visibility + activity log
-    try { await onRally(supabase, factionId, nationId, outcomeId, currentTick); } catch (e) {
+    try {
+        const rallyResult = await onRally(supabase, factionId, nationId, outcomeId, currentTick);
+        if (rallyResult?.visBoost > 0) {
+            effects.push({ stat: 'Visibility', value: rallyResult.visBoost });
+        }
+    } catch (e) {
         console.error('[Rally] Electorate hook failed (non-fatal):', e.message);
     }
 
