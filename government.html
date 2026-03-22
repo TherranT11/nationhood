@@ -286,25 +286,28 @@ async function handleFinanceConflict(action, ministryKey) {
     const conflictActionId = 'finance-' + action.conflictsWith;
     if (!activeMinistryActions[conflictActionId]) return;
 
-    // Cancel the conflicting action — mark it as processed in the DB
     const conflictActId = action.conflictsWith;
-    const { data: conflictLogs } = await _supabase
-        .from('ministry_action_log')
-        .select('id')
-        .eq('nation_id', currentNation.id)
-        .eq('ministry_key', 'finance')
-        .eq('action_key', conflictActId)
-        .eq('processed', false);
 
-    if (conflictLogs?.length) {
-        for (const log of conflictLogs) {
-            await _supabase.from('ministry_action_log')
-                .update({ processed: true })
-                .eq('id', log.id);
+    // Cancel the conflicting action in DB (best-effort — don't block the new action)
+    try {
+        const { data: conflictLogs } = await _supabase
+            .from('ministry_action_log')
+            .select('id')
+            .eq('nation_id', currentNation.id)
+            .eq('ministry_key', 'finance')
+            .eq('action_key', conflictActId)
+            .eq('processed', false);
+
+        if (conflictLogs?.length) {
+            for (const log of conflictLogs) {
+                await _supabase.from('ministry_action_log')
+                    .update({ processed: true })
+                    .eq('id', log.id);
+            }
         }
-    }
+    } catch (_) { /* best-effort — conflict may linger until next tick cleanup */ }
 
-    // Update local UI state
+    // Update local UI state regardless of DB result
     delete activeMinistryActions[conflictActionId];
     const conflictRow = document.getElementById(conflictActionId);
     if (conflictRow) {
@@ -319,10 +322,9 @@ async function handleFinanceConflict(action, ministryKey) {
         }
     }
 
-    // Fire cancellation event
-    const cancelledName = action.conflictsWith === 'stimulusPackage' ? 'Stimulus Package' : 'Austerity Measures';
-    const newName = action.name;
+    // Fire cancellation event (best-effort)
     try {
+        const cancelledName = action.conflictsWith === 'stimulusPackage' ? 'Stimulus Package' : 'Austerity Measures';
         const cancelTrigger = action.conflictsWith === 'stimulusPackage'
             ? 'ministry_stimulus_cancelled_by_austerity'
             : 'ministry_austerity_cancelled_by_stimulus';
@@ -333,7 +335,7 @@ async function handleFinanceConflict(action, ministryKey) {
             p_placeholders: {
                 nation: currentNation.name || 'Unknown',
                 cancelled_action: cancelledName,
-                new_action: newName
+                new_action: action.name
             }
         });
     } catch (_) { /* best-effort */ }

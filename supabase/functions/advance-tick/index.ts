@@ -21036,6 +21036,14 @@ async function processMinistryActions(supabase, nation, currentTick) {
             const delayTicks = 3; // 3-tick negotiation period
             const resolutionTick = appliedTick + delayTicks;
 
+            // Helper: read current stat value from pending updates or nation row, clamped to 0-100
+            const getStat = (key) => nationUpdates[key] !== undefined
+                ? nationUpdates[key]
+                : (nation[key] !== undefined && nation[key] !== null ? Number(nation[key]) : 50);
+            const setStat = (key, delta) => {
+                nationUpdates[key] = Math.max(0, Math.min(100, getStat(key) + delta));
+            };
+
             // Not yet time to resolve
             if (currentTick < resolutionTick) {
                 trackingUpdates.push({ id: action.id, allEffectsComplete: false });
@@ -21050,11 +21058,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
                     trackingUpdates.push({ id: action.id, allEffectsComplete: true });
                 } else {
                     // Apply ongoing GDP growth penalty for failure
-                    const gdpKey = 'gdp_growth';
-                    const curGdp = nationUpdates[gdpKey] !== undefined
-                        ? nationUpdates[gdpKey]
-                        : (nation[gdpKey] !== undefined && nation[gdpKey] !== null ? Number(nation[gdpKey]) : 50);
-                    nationUpdates[gdpKey] = Math.max(0, Math.min(100, curGdp - 0.2));
+                    setStat('gdp_growth', -0.2);
                     trackingUpdates.push({ id: action.id, allEffectsComplete: currentTick >= failureEnd - 1 });
                 }
                 continue;
@@ -21081,31 +21085,17 @@ async function processMinistryActions(supabase, nation, currentTick) {
             const finPartyName = finMinistry?.factions?.faction_name || 'Unknown';
 
             if (success) {
-                // Interest Rates −1.5 (permanent via nation stat)
-                const irKey = 'interest_rates';
-                const curIR = nationUpdates[irKey] !== undefined
-                    ? nationUpdates[irKey]
-                    : (nation[irKey] !== undefined && nation[irKey] !== null ? Number(nation[irKey]) : 50);
-                nationUpdates[irKey] = Math.max(0, Math.min(100, curIR - 1.5));
+                setStat('interest_rates', -1.5);    // permanent
+                setStat('foreign_investment', +3);   // one-time
+                setStat('credit', -5);               // permanent
 
-                // Foreign Investment +3 (one-time)
-                const fiKey = 'foreign_investment';
-                const curFI = nationUpdates[fiKey] !== undefined
-                    ? nationUpdates[fiKey]
-                    : (nation[fiKey] !== undefined && nation[fiKey] !== null ? Number(nation[fiKey]) : 50);
-                nationUpdates[fiKey] = Math.max(0, Math.min(100, curFI + 3));
-
-                // Credit −5 (permanent)
-                const crKey = 'credit';
-                const curCR = nationUpdates[crKey] !== undefined
-                    ? nationUpdates[crKey]
-                    : (nation[crKey] !== undefined && nation[crKey] !== null ? Number(nation[crKey]) : 50);
-                nationUpdates[crKey] = Math.max(0, Math.min(100, curCR - 5));
-
-                // Store outcome
-                await supabase.from('ministry_action_log').update({
+                // Store outcome — critical to prevent double-roll on next tick
+                const { error: outcomeErr } = await supabase.from('ministry_action_log').update({
                     action_data: { ...ad, resolution_outcome: 'success', resolution_tick: currentTick }
                 }).eq('id', action.id);
+                if (outcomeErr) {
+                    console.error(`[DebtRestructuring] Failed to store success outcome for ${nation.name}:`, outcomeErr.message);
+                }
 
                 // Fire success event (nation + world)
                 try {
@@ -21119,26 +21109,9 @@ async function processMinistryActions(supabase, nation, currentTick) {
 
                 trackingUpdates.push({ id: action.id, allEffectsComplete: true });
             } else {
-                // Foreign Investment −5 (one-time)
-                const fiKey = 'foreign_investment';
-                const curFI = nationUpdates[fiKey] !== undefined
-                    ? nationUpdates[fiKey]
-                    : (nation[fiKey] !== undefined && nation[fiKey] !== null ? Number(nation[fiKey]) : 50);
-                nationUpdates[fiKey] = Math.max(0, Math.min(100, curFI - 5));
-
-                // Credit −8 (permanent)
-                const crKey = 'credit';
-                const curCR = nationUpdates[crKey] !== undefined
-                    ? nationUpdates[crKey]
-                    : (nation[crKey] !== undefined && nation[crKey] !== null ? Number(nation[crKey]) : 50);
-                nationUpdates[crKey] = Math.max(0, Math.min(100, curCR - 8));
-
-                // GDP Growth −0.2/tick for 4 ticks (first tick applied here)
-                const gdpKey = 'gdp_growth';
-                const curGdp = nationUpdates[gdpKey] !== undefined
-                    ? nationUpdates[gdpKey]
-                    : (nation[gdpKey] !== undefined && nation[gdpKey] !== null ? Number(nation[gdpKey]) : 50);
-                nationUpdates[gdpKey] = Math.max(0, Math.min(100, curGdp - 0.2));
+                setStat('foreign_investment', -5);   // one-time
+                setStat('credit', -8);               // permanent
+                setStat('gdp_growth', -0.2);         // first tick of 4-tick penalty
 
                 // Minister Approval −1
                 const mKey = action.ministry_key + ':' + action.faction_id;
@@ -21155,10 +21128,13 @@ async function processMinistryActions(supabase, nation, currentTick) {
                 }
                 ministerUpdates[mKey] = Math.max(0, Math.min(100, ministerUpdates[mKey] - 1));
 
-                // Store outcome
-                await supabase.from('ministry_action_log').update({
+                // Store outcome — critical to prevent double-roll on next tick
+                const { error: failOutcomeErr } = await supabase.from('ministry_action_log').update({
                     action_data: { ...ad, resolution_outcome: 'failure', resolution_tick: currentTick }
                 }).eq('id', action.id);
+                if (failOutcomeErr) {
+                    console.error(`[DebtRestructuring] Failed to store failure outcome for ${nation.name}:`, failOutcomeErr.message);
+                }
 
                 // Fire failure event (nation + world)
                 try {
@@ -25344,10 +25320,12 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
             // Check if this action is within its active duration this tick
             const appliedTick = act.applied_at_tick || 0;
             const ticksSince = currentTick - appliedTick;
-            // Derive delay and duration from stat_effects or action_data
-            const firstEffect = Array.isArray(act.stat_effects) && act.stat_effects.length > 0 ? act.stat_effects[0] : null;
-            const delay = firstEffect ? (Number(firstEffect.delay_ticks) || 0) : 0;
-            const duration = firstEffect ? (Number(firstEffect.duration_ticks) || 4) : (ad.is_resolution ? 4 : 4);
+            // Derive delay and duration from the longest nation-targeting effect (skip minister/faction overrides)
+            const effects = Array.isArray(act.stat_effects) ? act.stat_effects : [];
+            const nationEffects = effects.filter(e => !e.target || e.target === 'nation');
+            const primaryEffect = nationEffects.length > 0 ? nationEffects[0] : (effects.length > 0 ? effects[0] : null);
+            const delay = primaryEffect ? (Number(primaryEffect.delay_ticks) || 0) : 0;
+            const duration = primaryEffect ? (Number(primaryEffect.duration_ticks) || 4) : (ad.is_resolution ? 4 : 4);
             if (ticksSince > delay && ticksSince <= delay + duration) {
                 if (ad.budget_per_tick && ad.budget_per_tick > 0) {
                     ministryActionBudgetImpact += ad.budget_per_tick;
