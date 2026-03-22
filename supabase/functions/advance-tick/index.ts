@@ -12143,9 +12143,9 @@ const ELECTORATE_CONFIG = {
 
     // -- Standing defaults --
     DEFAULT_ALIGNMENT: 50,
-    DEFAULT_PLATFORM_APPEAL: 50,
-    DEFAULT_PARTY_APPROVAL: 50,
-    DEFAULT_VISIBILITY: 30,
+    DEFAULT_PLATFORM_APPEAL: 0,
+    DEFAULT_PARTY_APPROVAL: 25,
+    DEFAULT_VISIBILITY: 0,
     DEFAULT_CREDIBILITY: 1.0,
 
     // ── Phase 2B: Per-tick pillar weights ──
@@ -12469,10 +12469,10 @@ function computeIssueSalience(nation, statKeys) {
  *
  * Initial values:
  *   - ideological_alignment: computed from faction ideology vs electorate profile
- *   - platform_appeal: 50 (no stances yet)
+ *   - platform_appeal: 0 (must build via issue stances)
  *   - party_approval: derived from existing gov_approval for governing factions,
- *     50 for opposition
- *   - visibility: 30 (low, no campaign actions yet)
+ *     25 for new/opposition parties
+ *   - visibility: 0 (must earn via campaign actions)
  *   - credibility: 1.0 (clean slate)
  *
  * @param {object} supabase - Supabase client
@@ -12515,16 +12515,23 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
 
     const govApproval = Number(nation.gov_approval ?? 50);
 
+    // Compute spatial alignments at genesis (all parties compete from the start)
+    const defaultSalience = {};
+    for (const axisKey of AXIS_KEYS) defaultSalience[axisKey] = 0.2;
+    const genesisAlignments = profile
+        ? computeSpatialAlignments(ideoMap, profile, defaultSalience)
+        : {};
+
     const rows = [];
     for (const faction of factions) {
         const ideo = ideoMap[faction.id];
 
-        // Compute initial alignment from ideology vs electorate profile
-        const alignment = profile && ideo
-            ? computeGenesisAlignment(ideo, profile, nation)
+        // Compute initial alignment from ideology vs electorate profile (spatial competition)
+        const alignment = (genesisAlignments[faction.id] != null)
+            ? genesisAlignments[faction.id]
             : CFG.DEFAULT_ALIGNMENT;
 
-        // Party approval: governing factions inherit gov_approval, opposition gets 50
+        // Party approval: governing factions inherit gov_approval, new parties start low
         const approval = governingIds.has(faction.id) ? govApproval : CFG.DEFAULT_PARTY_APPROVAL;
 
         rows.push({
@@ -12556,15 +12563,86 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
 }
 
 /**
+ * Compute per-axis alignment using a bimodal mixture model.
+ * At low polarization: single Gaussian at the electorate mean.
+ * At high polarization: two Gaussian humps offset from the mean,
+ * rewarding parties near either pole instead of the empty center.
+ */
+function bimodalAxisAlignment(partyPos, elecMean, elecVar) {
+    var gauss = function(x, mu, sigma) { return Math.exp(-((x - mu) * (x - mu)) / (2 * sigma * sigma)); };
+
+    var sigma = Math.max(5, elecVar);
+
+    // Unimodal: single Gaussian at the mean
+    var unimodal = gauss(partyPos, elecMean, sigma);
+
+    // How bimodal is this electorate? 0 at var<=10, 1 at var>=40
+    var polWeight = Math.min(1, Math.max(0, (elecVar - 10) / 30));
+
+    if (polWeight <= 0) return unimodal;
+
+    // Bimodal: two narrower Gaussians offset from mean
+    var offset = elecVar * 0.67;
+    var humpSigma = Math.max(5, sigma * 0.5);
+
+    var leftHump = Math.min(100, Math.max(0, elecMean - offset));
+    var rightHump = Math.min(100, Math.max(0, elecMean + offset));
+
+    var bimodal = Math.max(gauss(partyPos, leftHump, humpSigma), gauss(partyPos, rightHump, humpSigma));
+
+    return (1 - polWeight) * unimodal + polWeight * bimodal;
+}
+
+/**
+ * Compute each party's share of voters on a single ideology axis using
+ * spatial competition. Parties near the same position split voters;
+ * a party alone on a flank captures it entirely.
+ *
+ * @param {Array<{factionId: string, partyNorm: number}>} parties
+ * @param {number} elecMean - Electorate mean (0-100)
+ * @param {number} elecVar - Electorate variance (5-45)
+ * @param {number} [temperature=4] - Softmax temperature
+ * @returns {Map<string, number>} factionId → share (0-1)
+ */
+function spatialAxisCompetition(parties, elecMean, elecVar, temperature) {
+    if (temperature === undefined) temperature = 4;
+    var result = new Map();
+    if (parties.length === 0) return result;
+    if (parties.length === 1) {
+        var align = bimodalAxisAlignment(parties[0].partyNorm, elecMean, elecVar);
+        result.set(parties[0].factionId, align);
+        return result;
+    }
+
+    var alignments = parties.map(function(p) {
+        return { factionId: p.factionId, alignment: bimodalAxisAlignment(p.partyNorm, elecMean, elecVar) };
+    });
+
+    var scores = alignments.map(function(a) { return a.alignment; });
+    var maxScore = Math.max.apply(null, scores);
+    var k = Math.max(0.5, temperature);
+    var exps = scores.map(function(s) { return Math.exp((s - maxScore) / k); });
+    var sumExp = exps.reduce(function(a, b) { return a + b; }, 0);
+
+    var poolQuality = maxScore;
+    for (var i = 0; i < alignments.length; i++) {
+        var share = sumExp > 0 ? (exps[i] / sumExp) : (1 / alignments.length);
+        result.set(alignments[i].factionId, round3(share * poolQuality));
+    }
+    return result;
+}
+
+/**
  * Compute initial ideological alignment between a faction and the electorate.
  *
- * Uses a simplified Gaussian overlap proxy: for each axis, measure the
- * distance between the faction's position and the electorate mean,
- * penalized by electorate variance (wider variance = more forgiving).
+ * Uses bimodal mixture model: at low polarization, a single Gaussian
+ * centered at the electorate mean. At high polarization, two Gaussian
+ * humps offset from the mean — rewarding parties that align with either
+ * pole rather than sitting in the empty center.
  *
  * Returns 0-100 alignment score.
  */
-function computeGenesisAlignment(factionIdeology, profile, nation) {
+function computeGenesisAlignment(factionIdeology, profile) {
     let weightedAlignment = 0;
     let totalWeight = 0;
 
@@ -12577,42 +12655,14 @@ function computeGenesisAlignment(factionIdeology, profile, nation) {
         // Convert party score to 0-100 scale
         const partyNorm = (partyScore + 100) / 2; // -100→0, 0→50, +100→100
 
-        // Distance from electorate mean
-        const distance = Math.abs(partyNorm - elecMean);
-
-        // Alignment: Gaussian-style falloff. Higher variance = more forgiving.
-        // σ = elecVar, alignment = exp(-distance² / (2σ²))
-        const sigma = Math.max(5, elecVar);
-        const alignment = Math.exp(-(distance * distance) / (2 * sigma * sigma));
+        const alignment = bimodalAxisAlignment(partyNorm, elecMean, elecVar);
 
         weightedAlignment += alignment * salienceWeight;
         totalWeight += salienceWeight;
     }
 
     if (totalWeight <= 0) return 50;
-    var raw = (weightedAlignment / totalWeight) * 100;
-
-    // Bimodal centrist penalty (same as computeTickAlignment)
-    if (nation) {
-        var polarization = Number(nation.polarization ?? 50);
-        if (polarization > 40) {
-            var avgDistFromMean = 0;
-            var axisCount = 0;
-            for (var ak = 0; ak < AXIS_KEYS.length; ak++) {
-                var pNorm = (Number(factionIdeology[AXIS_KEYS[ak]] || 0) + 100) / 2;
-                var eMean = Number(profile['ideo_mean_' + AXIS_KEYS[ak]] ?? 50);
-                avgDistFromMean += Math.abs(pNorm - eMean);
-                axisCount++;
-            }
-            avgDistFromMean = axisCount > 0 ? avgDistFromMean / axisCount : 0;
-            var centristFactor = Math.max(0, 1 - avgDistFromMean / 25);
-            var polStrength = (polarization - 40) / 60;
-            var penalty = centristFactor * polStrength * 35;
-            raw = Math.max(0, raw - penalty);
-        }
-    }
-
-    return round2(clamp(raw, 0, 100));
+    return round2(clamp((weightedAlignment / totalWeight) * 100, 0, 100));
 }
 
 // ============================================================================
@@ -12820,7 +12870,10 @@ async function tickElectorate(supabase, nation, currentTick) {
     // ── 13. Phase 2C: Decay stance strength ──
     await tickStanceDecay(supabase, allStances || [], currentTick);
 
-    // ── 14. Calculate pillars for each faction ──
+    // ── 14. Compute spatial alignments (all factions compete per-axis) ──
+    const spatialAlignments = computeSpatialAlignments(ideoMap, activeProfile, axisSalienceWeights);
+
+    // ── 15. Calculate pillars for each faction ──
     const updates = [];
 
     for (const standing of standings) {
@@ -12831,9 +12884,9 @@ async function tickElectorate(supabase, nation, currentTick) {
         const isCoalition = coalitionPartyIds.has(factionId);
         const isLead = factionId === leadPartyId;
 
-        // ─── PILLAR 1: Ideological Alignment (0-100) ───
-        var targetAlignment = ideo
-            ? computeTickAlignment(ideo, activeProfile, axisSalienceWeights, nation)
+        // ─── PILLAR 1: Ideological Alignment (0-100) — spatial competition ───
+        var targetAlignment = (spatialAlignments[factionId] != null)
+            ? spatialAlignments[factionId]
             : CFG.DEFAULT_ALIGNMENT;
 
         // Conviction bonus: parties that haven't pivoted in 20+ ticks get +3 alignment
@@ -12858,7 +12911,7 @@ async function tickElectorate(supabase, nation, currentTick) {
         const newAppeal = round2(clamp(oldAppeal + appealDelta, CFG.APPEAL_MIN, CFG.APPEAL_MAX));
 
         // ─── PILLAR 3: Party Approval (0-100) ───
-        const oldApproval = Number(standing.party_approval ?? 50);
+        const oldApproval = Number(standing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);
         let approvalTarget;
 
         if (isCoalition) {
@@ -12998,15 +13051,16 @@ async function tickElectorate(supabase, nation, currentTick) {
  * Compute alignment between a faction's ideology and the electorate profile,
  * weighted by current axis salience.
  *
- * Uses Gaussian overlap: exp(-d² / 2σ²) per axis, weighted by salience.
- * Same algorithm as genesis but with live salience weights.
+ * Uses bimodal mixture model: at low polarization, single Gaussian at mean.
+ * At high polarization, two humps offset from mean — centrist parties lose
+ * support because the middle is empty.
  *
  * @param {object} ideo - faction_ideology row (-100 to +100 per axis)
  * @param {object} profile - electorate_profile row
  * @param {object} axisSalienceWeights - { axisKey: weight } from issue states
  * @returns {number} 0-100 alignment
  */
-function computeTickAlignment(ideo, profile, axisSalienceWeights, nation) {
+function computeTickAlignment(ideo, profile, axisSalienceWeights) {
     let weightedAlignment = 0;
     let totalWeight = 0;
 
@@ -13021,47 +13075,77 @@ function computeTickAlignment(ideo, profile, axisSalienceWeights, nation) {
         const weight = (profileSalience + issueSalience) / 2;
 
         const partyNorm = (partyScore + 100) / 2;
-        const distance = Math.abs(partyNorm - elecMean);
-        const sigma = Math.max(5, elecVar);
-        const alignment = Math.exp(-(distance * distance) / (2 * sigma * sigma));
+        const alignment = bimodalAxisAlignment(partyNorm, elecMean, elecVar);
 
         weightedAlignment += alignment * weight;
         totalWeight += weight;
     }
 
     if (totalWeight <= 0) return 50;
-    var raw = (weightedAlignment / totalWeight) * 100;
+    return round2(clamp((weightedAlignment / totalWeight) * 100, 0, 100));
+}
 
-    // ── Bimodal centrist penalty ──
-    // When polarization is high, voters cluster at the fringes. Parties near
-    // the electorate center lose support because the "middle" is empty.
-    // Penalty scales with polarization (0 at pol<=40, max at pol=100) and
-    // proximity to center (strongest when party is AT the mean on all axes).
-    if (nation) {
-        var polarization = Number(nation.polarization ?? 50);
-        if (polarization > 40) {
-            // How centrist is this party? Measure avg distance from electorate mean.
-            var avgDistFromMean = 0;
-            var axisCount = 0;
-            for (var ak = 0; ak < AXIS_KEYS.length; ak++) {
-                var pNorm = (Number(ideo[AXIS_KEYS[ak]] || 0) + 100) / 2;
-                var eMean = Number(profile['ideo_mean_' + AXIS_KEYS[ak]] ?? 50);
-                avgDistFromMean += Math.abs(pNorm - eMean);
-                axisCount++;
-            }
-            avgDistFromMean = axisCount > 0 ? avgDistFromMean / axisCount : 0;
+/**
+ * Compute spatially-competitive alignment for ALL factions simultaneously.
+ * Parties near the same position split voters; differentiated parties capture flanks.
+ *
+ * @param {object} ideoMap - { factionId: faction_ideology row }
+ * @param {object} profile - electorate_profile row
+ * @param {object} axisSalienceWeights - { axisKey: weight }
+ * @returns {object} { factionId: spatialAlignment (0-100) }
+ */
+function computeSpatialAlignments(ideoMap, profile, axisSalienceWeights) {
+    var factionIds = Object.keys(ideoMap);
+    var result = {};
 
-            // Centrist penalty: max when avgDist=0, fades out by avgDist=25
-            var centristFactor = Math.max(0, 1 - avgDistFromMean / 25);
-            // Polarization strength: 0 at pol=40, 1.0 at pol=100
-            var polStrength = (polarization - 40) / 60;
-            // Max penalty: up to 35 alignment points at full polarization + perfectly centrist
-            var penalty = centristFactor * polStrength * 35;
-            raw = Math.max(0, raw - penalty);
-        }
+    if (factionIds.length === 0) return result;
+
+    if (factionIds.length === 1) {
+        var fid = factionIds[0];
+        result[fid] = computeTickAlignment(ideoMap[fid], profile, axisSalienceWeights);
+        return result;
     }
 
-    return round2(clamp(raw, 0, 100));
+    var factionWeightedShare = {};
+    for (var _f = 0; _f < factionIds.length; _f++) factionWeightedShare[factionIds[_f]] = 0;
+    var totalWeight = 0;
+
+    for (var _a = 0; _a < AXIS_KEYS.length; _a++) {
+        var axisKey = AXIS_KEYS[_a];
+        var elecMean = Number(profile['ideo_mean_' + axisKey] ?? 50);
+        var elecVar = Number(profile['ideo_var_' + axisKey] ?? 20);
+
+        var profileSalience = Number(profile['salience_' + axisKey] ?? 0.2);
+        var issueSalience = axisSalienceWeights[axisKey] ?? 0.2;
+        var weight = (profileSalience + issueSalience) / 2;
+
+        var parties = factionIds.map(function(fid) {
+            var ideo = ideoMap[fid];
+            var partyScore = Number(ideo[axisKey] || 0);
+            return { factionId: fid, partyNorm: (partyScore + 100) / 2 };
+        });
+
+        var axisShares = spatialAxisCompetition(parties, elecMean, elecVar);
+
+        for (var _ff = 0; _ff < factionIds.length; _ff++) {
+            var share = axisShares.get(factionIds[_ff]) ?? 0;
+            factionWeightedShare[factionIds[_ff]] += share * weight;
+        }
+        totalWeight += weight;
+    }
+
+    for (var _fi = 0; _fi < factionIds.length; _fi++) {
+        var fid2 = factionIds[_fi];
+        var raw = totalWeight > 0
+            ? factionWeightedShare[fid2] / totalWeight
+            : (1 / factionIds.length);
+        var fairShare = 1 / factionIds.length;
+        var relativeStrength = fairShare > 0 ? raw / fairShare : 1;
+        var scaled = clamp(relativeStrength * 50, 0, 100);
+        result[fid2] = round2(scaled);
+    }
+
+    return result;
 }
 
 /**
@@ -13147,7 +13231,7 @@ function computeRealizedVoteShares(updates, profile) {
 
     // Compute per-faction turnout rate
     for (const u of updates) {
-        const vis = Number(u.visibility ?? 30);
+        const vis = Number(u.visibility ?? CFG.DEFAULT_VISIBILITY);
         const enthBonus = (enthusiasm - 50) * CFG.TURNOUT_ENTHUSIASM_SCALE;
         const visBonus = Math.max(0, (vis - 50)) * CFG.TURNOUT_VISIBILITY_SCALE;
         u.turnout_rate = round3(clamp(CFG.TURNOUT_BASE + enthBonus + visBonus, 0.3, 0.95));
@@ -13725,7 +13809,7 @@ async function boostVisibility(supabase, factionId, nationId, boost) {
         .maybeSingle();
     if (!standing) return;
 
-    const old = Number(standing.visibility ?? 30);
+    const old = Number(standing.visibility ?? CFG.DEFAULT_VISIBILITY);
     const newVis = round2(clamp(old + boost, 0, 100));
 
     await supabase.from('faction_electoral_standing')
@@ -13754,7 +13838,7 @@ async function nudgeApproval(supabase, factionId, nationId, delta) {
         .maybeSingle();
     if (!standing) return;
 
-    const old = Number(standing.party_approval ?? 50);
+    const old = Number(standing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);
     const newApproval = round2(clamp(old + delta, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX));
 
     await supabase.from('faction_electoral_standing')
@@ -19426,13 +19510,32 @@ async function executeEndorsementPreference(supabase, factionId, nationId, endor
 // ==================== ATTACK CAMPAIGN ====================
 
 const ATTACK_CONFIG = {
-    AP_COST: 3,
+    AP_COST: 3,                 // base cost (used when polarization < 50)
     CREDIBILITY_COST: 20,       // credibility drops 20 per attack
     COOLDOWN_WINDOW: 6,         // look back 6 ticks for recent attacks
     COUNTER_ATTACK_WINDOW: 3,   // target can counter-attack within 3 ticks
     COUNTER_ATTACK_AP_COST: 1,  // counter-attack costs only 1 AP
     COUNTER_ATTACK_BONUS: 2,    // +2 effectiveness bonus for counter-attacks
+    // Escalating AP cost thresholds — attacks cost more when polarization is high
+    AP_TIERS: [
+        { minPol: 85, cost: 6 },
+        { minPol: 70, cost: 5 },
+        { minPol: 50, cost: 4 },
+        { minPol: 0,  cost: 3 },
+    ],
 };
+
+/**
+ * Get the AP cost for a Campaign Attack based on current polarization.
+ * Higher polarization → higher cost to discourage polarization farming.
+ */
+function getAttackAPCost(polarization) {
+    const pol = polarization || 0;
+    for (const tier of ATTACK_CONFIG.AP_TIERS) {
+        if (pol >= tier.minPol) return tier.cost;
+    }
+    return ATTACK_CONFIG.AP_COST;
+}
 
 const ATTACK_VECTORS = [
     {
@@ -19722,12 +19825,15 @@ function buildAttackVectors(evidence) {
  * Returns { success, outcomeId, outcomeName, headline, effects, weights, opensCounter, newAp }
  */
 async function executeAttack(supabase, factionId, nationId, targetFactionId, vectorId, currentTick) {
-    // ── 1. Validate AP (with leader trait modifiers) ──
+    // ── 1. Validate AP (with leader trait modifiers + polarization scaling) ──
     const { data: faction } = await supabase
         .from('factions').select('action_points, faction_name, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
+    const { data: nationForCost } = await supabase
+        .from('nations').select('polarization').eq('id', nationId).single();
+    const baseAttackCost = getAttackAPCost(nationForCost?.polarization);
     const attackApMod = getTraitAPModifier('attack', faction, currentTick);
-    const effectiveAttackCost = Math.max(1, ATTACK_CONFIG.AP_COST + attackApMod);
+    const effectiveAttackCost = Math.max(1, baseAttackCost + attackApMod);
     if ((faction.action_points || 0) < effectiveAttackCost)
         return { success: false, error: `Not enough AP. Need ${effectiveAttackCost}.` };
 
@@ -19839,7 +19945,7 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
         effects,
         weights,
         opensCounter,
-        newAp: apResult.newAp ?? ((faction.action_points || 0) - ATTACK_CONFIG.AP_COST),
+        newAp: apResult.newAp ?? ((faction.action_points || 0) - effectiveAttackCost),
     };
 }
 
@@ -21028,6 +21134,130 @@ async function processMinistryActions(supabase, nation, currentTick) {
     const trackingUpdates = [];
 
     for (const action of actions) {
+        // === DEBT RESTRUCTURING RESOLUTION ===
+        // This action has no per-tick stat_effects; instead it resolves probabilistically after its delay period.
+        const ad = action.action_data || {};
+        if (ad.is_resolution && action.action_key === 'debtRestructuring' && action.ministry_key === 'finance') {
+            const appliedTick = action.applied_at_tick || 0;
+            const delayTicks = 3; // 3-tick negotiation period
+            const resolutionTick = appliedTick + delayTicks;
+
+            // Helper: read current stat value from pending updates or nation row, clamped to 0-100
+            const getStat = (key) => nationUpdates[key] !== undefined
+                ? nationUpdates[key]
+                : (nation[key] !== undefined && nation[key] !== null ? Number(nation[key]) : 50);
+            const setStat = (key, delta) => {
+                nationUpdates[key] = Math.max(0, Math.min(100, getStat(key) + delta));
+            };
+
+            // Not yet time to resolve
+            if (currentTick < resolutionTick) {
+                trackingUpdates.push({ id: action.id, allEffectsComplete: false });
+                continue;
+            }
+
+            // Already resolved (effects_applied_through_tick >= resolutionTick)
+            if ((action.effects_applied_through_tick || 0) >= resolutionTick) {
+                // Check if GDP growth penalty duration has passed (failure case: 4 ticks post-resolution)
+                const failureEnd = resolutionTick + 4;
+                if (currentTick >= failureEnd || ad.resolution_outcome === 'success') {
+                    trackingUpdates.push({ id: action.id, allEffectsComplete: true });
+                } else {
+                    // Apply ongoing GDP growth penalty for failure
+                    setStat('gdp_growth', -0.2);
+                    trackingUpdates.push({ id: action.id, allEffectsComplete: currentTick >= failureEnd - 1 });
+                }
+                continue;
+            }
+
+            // === RESOLUTION ROLL ===
+            const credit = Number(ad.credit_at_action ?? nation.credit ?? 50);
+            const baseChance = credit / 100;
+            const roll = Math.random();
+            const success = roll <= baseChance;
+
+            console.log(`[DebtRestructuring] ${nation.name}: credit=${credit} chance=${(baseChance * 100).toFixed(0)}% roll=${roll.toFixed(3)} => ${success ? 'SUCCESS' : 'FAILURE'}`);
+
+            // Fetch minister info for events
+            const { data: finMinistry } = await supabase
+                .from('ministries')
+                .select('minister_first_name, minister_last_name, factions(faction_name)')
+                .eq('nation_id', nation.id)
+                .eq('ministry_key', 'finance')
+                .maybeSingle();
+            const finMinisterName = finMinistry
+                ? ((finMinistry.minister_first_name || '') + ' ' + (finMinistry.minister_last_name || '')).trim()
+                : 'Finance Minister';
+            const finPartyName = finMinistry?.factions?.faction_name || 'Unknown';
+
+            if (success) {
+                setStat('interest_rates', -1.5);    // permanent
+                setStat('foreign_investment', +3);   // one-time
+                setStat('credit', -5);               // permanent
+
+                // Store outcome — critical to prevent double-roll on next tick
+                const { error: outcomeErr } = await supabase.from('ministry_action_log').update({
+                    action_data: { ...ad, resolution_outcome: 'success', resolution_tick: currentTick }
+                }).eq('id', action.id);
+                if (outcomeErr) {
+                    console.error(`[DebtRestructuring] Failed to store success outcome for ${nation.name}:`, outcomeErr.message);
+                }
+
+                // Fire success event (nation + world)
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_nation_id: nation.id,
+                        p_trigger_key: 'ministry_debt_restructuring_success',
+                        p_tick: currentTick,
+                        p_placeholders: { minister_name: finMinisterName, party: finPartyName, nation: nation.name || 'Unknown' }
+                    });
+                } catch (_) {}
+
+                trackingUpdates.push({ id: action.id, allEffectsComplete: true });
+            } else {
+                setStat('foreign_investment', -5);   // one-time
+                setStat('credit', -8);               // permanent
+                setStat('gdp_growth', -0.2);         // first tick of 4-tick penalty
+
+                // Minister Approval −1
+                const mKey = action.ministry_key + ':' + action.faction_id;
+                if (ministerUpdates[mKey] === undefined) {
+                    const { data: mData } = await supabase
+                        .from('ministries')
+                        .select('minister_approval')
+                        .eq('nation_id', nation.id)
+                        .eq('ministry_key', action.ministry_key)
+                        .eq('party_id', action.faction_id)
+                        .single();
+                    ministerUpdates[mKey] = (mData?.minister_approval ?? 50);
+                    ministerBaseline[mKey] = ministerUpdates[mKey];
+                }
+                ministerUpdates[mKey] = Math.max(0, Math.min(100, ministerUpdates[mKey] - 1));
+
+                // Store outcome — critical to prevent double-roll on next tick
+                const { error: failOutcomeErr } = await supabase.from('ministry_action_log').update({
+                    action_data: { ...ad, resolution_outcome: 'failure', resolution_tick: currentTick }
+                }).eq('id', action.id);
+                if (failOutcomeErr) {
+                    console.error(`[DebtRestructuring] Failed to store failure outcome for ${nation.name}:`, failOutcomeErr.message);
+                }
+
+                // Fire failure event (nation + world)
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_nation_id: nation.id,
+                        p_trigger_key: 'ministry_debt_restructuring_failure',
+                        p_tick: currentTick,
+                        p_placeholders: { minister_name: finMinisterName, party: finPartyName, nation: nation.name || 'Unknown' }
+                    });
+                } catch (_) {}
+
+                // Not complete yet — GDP penalty runs for 3 more ticks
+                trackingUpdates.push({ id: action.id, allEffectsComplete: false });
+            }
+            continue;
+        }
+
         const effects = action.stat_effects;
         if (!effects || !Array.isArray(effects) || effects.length === 0) {
             // No effects — mark as processed
@@ -25179,6 +25409,67 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
 
     // 4. Build full budget (all values are ANNUAL raw dollars)
     const budgetData = buildBudgetData(nation, activeLaws || [], tradeTariffRevenue, institutionConfig, aidData);
+
+    // 4b. Ministry action budget impact — deduct draws from ministry discretionary_balance
+    //     Savings (e.g., Austerity) credit back to the ministry pool.
+    const { data: activeActions } = await supabase
+        .from('ministry_action_log')
+        .select('ministry_key, action_data, applied_at_tick, stat_effects')
+        .eq('nation_id', nation.id)
+        .eq('processed', false);
+
+    // Accumulate per-ministry balance changes: { finance: -3000000, ... }
+    const ministryBalanceDeltas: Record<string, number> = {};
+    if (activeActions?.length) {
+        for (const act of activeActions) {
+            const ad = act.action_data;
+            if (!ad) continue;
+            const appliedTick = act.applied_at_tick || 0;
+            const ticksSince = currentTick - appliedTick;
+            const effects = Array.isArray(act.stat_effects) ? act.stat_effects : [];
+            const nationEffects = effects.filter(e => !e.target || e.target === 'nation');
+            const primaryEffect = nationEffects.length > 0 ? nationEffects[0] : (effects.length > 0 ? effects[0] : null);
+            const delay = primaryEffect ? (Number(primaryEffect.delay_ticks) || 0) : 0;
+            const duration = primaryEffect ? (Number(primaryEffect.duration_ticks) || 4) : (ad.is_resolution ? 4 : 4);
+            if (ticksSince > delay && ticksSince <= delay + duration) {
+                const mKey = act.ministry_key;
+                if (!ministryBalanceDeltas[mKey]) ministryBalanceDeltas[mKey] = 0;
+                if (ad.budget_per_tick && ad.budget_per_tick > 0) {
+                    ministryBalanceDeltas[mKey] -= ad.budget_per_tick; // deduct from pool
+                }
+                if (ad.budget_saves_per_tick && ad.budget_saves_per_tick > 0) {
+                    ministryBalanceDeltas[mKey] += ad.budget_saves_per_tick; // credit to pool
+                }
+            }
+        }
+    }
+
+    // Apply deltas to each ministry's discretionary_balance.
+    // NOTE: Balance is clamped at 0 — an active action can overdraw the pool.
+    // The action still runs to completion (stat effects apply) but the pool cannot go negative.
+    // This is intentional: actions are pre-approved at activation time, not cancelled mid-run.
+    for (const [mKey, delta] of Object.entries(ministryBalanceDeltas)) {
+        if (delta === 0) continue;
+        const { data: mRow } = await supabase.from('ministries')
+            .select('discretionary_balance')
+            .eq('nation_id', nation.id)
+            .eq('ministry_key', mKey)
+            .eq('is_active', true)
+            .maybeSingle();
+        const curBal = Number(mRow?.discretionary_balance || 0);
+        const newBal = Math.max(0, curBal + delta);
+        if (newBal !== curBal) {
+            await supabase.from('ministries')
+                .update({ discretionary_balance: newBal })
+                .eq('nation_id', nation.id)
+                .eq('ministry_key', mKey)
+                .eq('is_active', true);
+            if (Math.abs(delta) > 0) {
+                const fmtD = (v: number) => `$${(v / 1_000_000).toFixed(1)}M`;
+                console.log(`[BudgetDeficit] ${nation.name} ${mKey}: discretionary ${fmtD(curBal)} → ${fmtD(newBal)} (${delta > 0 ? '+' : ''}${fmtD(delta)}/tick)`);
+            }
+        }
+    }
 
     // 5. Compute annual balance
     //    grossRevenue already includes aidReceived.

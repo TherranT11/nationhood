@@ -58,6 +58,13 @@ BEGIN
             WHEN 'crisis_started'           THEN 'Crisis Started'
             WHEN 'crisis_ended'             THEN 'Crisis Resolved'
             WHEN 'ministry_ability_used'    THEN 'Ministry Action'
+            WHEN 'ministry_stimulus_package'   THEN 'Stimulus Package Activated'
+            WHEN 'ministry_austerity_measures' THEN 'Austerity Measures Declared'
+            WHEN 'ministry_debt_restructuring' THEN 'Debt Restructuring Negotiations Opened'
+            WHEN 'ministry_debt_restructuring_success' THEN 'Debt Restructuring Successful'
+            WHEN 'ministry_debt_restructuring_failure' THEN 'Debt Restructuring Failed'
+            WHEN 'ministry_stimulus_cancelled_by_austerity' THEN 'Stimulus Cancelled by Austerity'
+            WHEN 'ministry_austerity_cancelled_by_stimulus' THEN 'Austerity Cancelled by Stimulus'
             WHEN 'bill_passed'              THEN 'Bill Passed'
             WHEN 'bill_failed'              THEN 'Bill Failed'
             WHEN 'quorum_failed'            THEN 'Quorum Failed'
@@ -89,6 +96,11 @@ BEGIN
                 'minority_government_formed', 'coalition_formation_started',
                 'incumbent_lockin', 'bill_passed', 'bill_failed', 'quorum_failed') THEN 'government'
             WHEN p_trigger_key IN ('ministry_ability_used') THEN 'executive_order'
+            WHEN p_trigger_key IN ('ministry_stimulus_package', 'ministry_austerity_measures',
+                'ministry_debt_restructuring', 'ministry_debt_restructuring_success',
+                'ministry_debt_restructuring_failure',
+                'ministry_stimulus_cancelled_by_austerity',
+                'ministry_austerity_cancelled_by_stimulus') THEN 'ECONOMY'
             WHEN p_trigger_key IN ('trade_agreement_proposed', 'trade_agreement_accepted',
                 'trade_agreement_rejected', 'trade_agreement_expired', 'trade_negotiation_proposed',
                 'sanctions_imposed', 'aid_terminated', 'aid_suspended', 'aid_resumed') THEN 'Trade'

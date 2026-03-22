@@ -177,6 +177,78 @@ const MINISTRY_ACTIONS = {
                 ]
             }
         ]
+    },
+    finance: {
+        actions: [
+            {
+                id: 'stimulusPackage',
+                triggerKey: 'ministry_stimulus_package',
+                name: 'Stimulus Package',
+                desc: 'Inject government spending into the economy to boost short-term growth and employment.',
+                apCosts: [2, 3, 5, 8],
+                budgetPerCapita: 1000000 / 8000000, // $1M per 8M pop per tick
+                delay: 1, duration: 6,
+                decayTicks: 4,
+                useResetInterval: 15,
+                conflictsWith: 'austerityMeasures',
+                tags: [
+                    { label: 'GDP +0.4', cls: 'positive' },
+                    { label: 'UNEMPLOYMENT −1', cls: 'positive' },
+                    { label: 'INFLATION +0.3', cls: 'negative' }
+                ],
+                baseEffects: [
+                    { stat_key: 'gdp_growth',    direction: 'up',   rate: 0.4, scalable: true },
+                    { stat_key: 'unemployment',   direction: 'down', rate: 1,   scalable: true },
+                    { stat_key: 'inflation',      direction: 'up',   rate: 0.3, scalable: false },
+                    { stat_key: 'minister_approval', direction: 'up', rate: 1, scalable: false, target: 'minister', delayOverride: 0, durationOverride: 1 }
+                ]
+            },
+            {
+                id: 'austerityMeasures',
+                triggerKey: 'ministry_austerity_measures',
+                name: 'Austerity Measures',
+                desc: 'Cut government expenditure to reduce deficit and stabilise long-term fiscal health.',
+                apCosts: [2, 3, 5, 8],
+                budgetPerCapita: 0, // saves money, not draws
+                budgetSavesPerCapita: 1000000 / 8000000, // $1M per 8M pop per tick
+                delay: 2, duration: 8,
+                decayTicks: 4,
+                useResetInterval: 15,
+                conflictsWith: 'stimulusPackage',
+                tags: [
+                    { label: 'INFLATION −0.2', cls: 'positive' },
+                    { label: 'GDP −0.3', cls: 'negative' },
+                    { label: 'HAPPINESS −2', cls: 'negative' },
+                    { label: 'POVERTY +1', cls: 'negative' }
+                ],
+                baseEffects: [
+                    { stat_key: 'inflation',      direction: 'down', rate: 0.2, scalable: true },
+                    { stat_key: 'gdp_growth',     direction: 'down', rate: 0.3, scalable: false },
+                    { stat_key: 'happiness',       direction: 'down', rate: 2,   scalable: false },
+                    { stat_key: 'poverty_rate',    direction: 'up',   rate: 1,   scalable: false },
+                    { stat_key: 'minister_approval', direction: 'down', rate: 2, scalable: false, target: 'minister', delayOverride: 0, durationOverride: 1 }
+                ]
+            },
+            {
+                id: 'debtRestructuring',
+                triggerKey: 'ministry_debt_restructuring',
+                name: 'Debt Restructuring',
+                desc: 'Renegotiate debt terms with international creditors. Outcome depends on Credit score.',
+                apCosts: [3, 5, 8, 12],
+                budgetPerCapita: 0, // no tick cost — one-time resolution
+                delay: 3, duration: 1, // 3-tick negotiation, then 1-tick resolution
+                decayTicks: 0,
+                useResetInterval: 20,
+                cooldownTicks: 20,
+                isResolution: true, // flags this as probabilistic one-time resolution
+                tags: [
+                    { label: 'INT RATES ↓', cls: 'positive' },
+                    { label: 'CREDIT ~', cls: 'neutral' },
+                    { label: 'NO TICK COST', cls: 'neutral' }
+                ],
+                baseEffects: [] // effects applied on resolution, not per-tick
+            }
+        ]
     }
 };
 
@@ -188,10 +260,85 @@ function buildStatEffects(action, useCount) {
         stat_key: eff.stat_key,
         direction: eff.direction,
         rate: Math.round((eff.scalable ? eff.rate * scale : eff.rate) * 100) / 100,
-        delay_ticks: action.delay,
-        duration_ticks: action.duration,
-        target: 'nation'
+        delay_ticks: eff.delayOverride !== undefined ? eff.delayOverride : action.delay,
+        duration_ticks: eff.durationOverride !== undefined ? eff.durationOverride : action.duration,
+        target: eff.target || 'nation'
     }));
+}
+
+// Finance ministry: check Debt Restructuring blocking conditions
+function getDebtRestructuringBlock() {
+    const credit = Number(currentNation?.credit ?? 50);
+    if (credit < 25) return 'Credit too low to negotiate. Creditors will not engage below 25.';
+    if (activeMinistryActions['finance-austerityMeasures']) return 'Austerity Measures active. Resolve before attempting restructuring.';
+    // Check for recent failed restructuring (stored in action_data)
+    const failKey = 'finance:debtRestructuring:lastFailTick';
+    const lastFailTick = Number(sessionStorage.getItem(failKey) || 0);
+    if (lastFailTick > 0 && currentTick - lastFailTick < 15) {
+        return `Creditors unavailable. Previous negotiation failed ${currentTick - lastFailTick} ticks ago.`;
+    }
+    return '';
+}
+
+// Finance ministry: handle Stimulus/Austerity mutual cancellation
+async function handleFinanceConflict(action, ministryKey) {
+    if (ministryKey !== 'finance' || !action.conflictsWith) return;
+    const conflictActionId = 'finance-' + action.conflictsWith;
+    if (!activeMinistryActions[conflictActionId]) return;
+
+    const conflictActId = action.conflictsWith;
+
+    // Cancel the conflicting action in DB (best-effort — don't block the new action)
+    try {
+        const { data: conflictLogs } = await _supabase
+            .from('ministry_action_log')
+            .select('id')
+            .eq('nation_id', currentNation.id)
+            .eq('ministry_key', 'finance')
+            .eq('action_key', conflictActId)
+            .eq('processed', false);
+
+        if (conflictLogs?.length) {
+            for (const log of conflictLogs) {
+                await _supabase.from('ministry_action_log')
+                    .update({ processed: true })
+                    .eq('id', log.id);
+            }
+        }
+    } catch (_) { /* best-effort — conflict may linger until next tick cleanup */ }
+
+    // Update local UI state regardless of DB result
+    delete activeMinistryActions[conflictActionId];
+    const conflictRow = document.getElementById(conflictActionId);
+    if (conflictRow) {
+        conflictRow.classList.remove('active');
+        const conflictBtns = document.getElementById(conflictActionId + '-btns');
+        const conflictConfig = MINISTRY_ACTIONS.finance.actions.find(a => a.id === conflictActId);
+        const conflictCountKey = 'finance:' + conflictActId;
+        const conflictUseCount = ministryActionUseCounts[conflictCountKey] || 0;
+        const conflictApCost = conflictConfig?.apCosts[Math.min(conflictUseCount, 3)] || 2;
+        if (conflictBtns) {
+            conflictBtns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${conflictActionId}')">▶ ${conflictApCost} AP</div>`;
+        }
+    }
+
+    // Fire cancellation event (best-effort)
+    try {
+        const cancelledName = action.conflictsWith === 'stimulusPackage' ? 'Stimulus Package' : 'Austerity Measures';
+        const cancelTrigger = action.conflictsWith === 'stimulusPackage'
+            ? 'ministry_stimulus_cancelled_by_austerity'
+            : 'ministry_austerity_cancelled_by_stimulus';
+        await _supabase.rpc('fire_system_event', {
+            p_trigger_key: cancelTrigger,
+            p_nation_id: currentNation.id,
+            p_tick: currentTick,
+            p_placeholders: {
+                nation: currentNation.name || 'Unknown',
+                cancelled_action: cancelledName,
+                new_action: action.name
+            }
+        });
+    } catch (_) { /* best-effort */ }
 }
 
 function formatBudgetDraw(budgetPerCapita, population) {
@@ -646,7 +793,7 @@ async function renderGovernmentPage() {
         try {
             const { data: actionLogs } = await _supabase
                 .from('ministry_action_log')
-                .select('ministry_key, action_key, processed, applied_at_tick')
+                .select('ministry_key, action_key, processed, applied_at_tick, action_data')
                 .eq('nation_id', currentNation.id)
                 .eq('faction_id', currentFaction?.id || '00000000-0000-0000-0000-000000000000');
             ministryActionUseCounts = {};
@@ -657,6 +804,11 @@ async function renderGovernmentPage() {
                     ministryActionUseCounts[countKey] = (ministryActionUseCounts[countKey] || 0) + 1;
                     if (!log.processed) {
                         activeMinistryActions[log.ministry_key + '-' + log.action_key] = true;
+                    }
+                    // Track last failed debt restructuring tick for blocking check
+                    if (log.action_key === 'debtRestructuring' && log.action_data?.resolution_outcome === 'failure') {
+                        const failTick = log.action_data.resolution_tick || log.applied_at_tick;
+                        sessionStorage.setItem('finance:debtRestructuring:lastFailTick', String(failTick));
                     }
                 }
             }
@@ -2671,25 +2823,66 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
     const ap = currentFaction?.action_points || 0;
     const canUse = isMyMinistry === true;
 
-    let html = '<div class="ministry-card__actions-label">ACTIONS</div>';
+    // Discretionary balance for this ministry
+    const ministry = ministryData.find(m => m.ministry_key === ministryKey);
+    const discretionaryBalance = Number(ministry?.discretionary_balance || 0);
+    const balFmt = discretionaryBalance >= 1000000000
+        ? '$' + (discretionaryBalance / 1000000000).toFixed(1) + 'B'
+        : discretionaryBalance >= 1000000
+        ? '$' + (discretionaryBalance / 1000000).toFixed(1) + 'M'
+        : discretionaryBalance > 0 ? '$' + Math.round(discretionaryBalance).toLocaleString() : '$0';
+    const balCls = discretionaryBalance > 0 ? 'color:var(--green)' : 'color:var(--red)';
+
+    let html = `<div class="ministry-card__actions-label" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>ACTIONS</span>
+        <span style="font-size:7px;font-weight:600;${balCls};letter-spacing:0.03em;">FUNDS: ${balFmt}</span>
+    </div>`;
     config.actions.forEach(action => {
         const countKey = ministryKey + ':' + action.id;
         const useCount = ministryActionUseCounts[countKey] || 0;
         const apCost = action.apCosts[Math.min(useCount, 3)];
-        const budgetDraw = formatBudgetDraw(action.budgetPerCapita, pop);
         const tagsHtml = action.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
         const actionId = ministryKey + '-' + action.id;
         const isActive = activeMinistryActions[actionId] || false;
-        const isDisabled = !canUse || (ap < apCost && !isActive);
+
+        // Budget tag: saves (green), no cost, or standard draw
+        let budgetTagHtml = '';
+        if (action.budgetSavesPerCapita) {
+            const saves = formatBudgetDraw(action.budgetSavesPerCapita, pop);
+            budgetTagHtml = `<span class="tag tag--positive">SAVES ${saves}/TICK</span>`;
+        } else if (action.budgetPerCapita === 0) {
+            budgetTagHtml = `<span class="tag tag--neutral">NO TICK COST</span>`;
+        } else {
+            const budgetDraw = formatBudgetDraw(action.budgetPerCapita, pop);
+            budgetTagHtml = `<span class="tag tag--budget">${budgetDraw}/TICK</span>`;
+        }
+
+        // Check blocking conditions
+        let blockReason = '';
+        if (action.id === 'debtRestructuring' && canUse && !isActive) {
+            blockReason = getDebtRestructuringBlock();
+        }
+        // Block money-drawing actions when ministry has no discretionary funds
+        if (!blockReason && action.budgetPerCapita > 0 && discretionaryBalance <= 0 && canUse && !isActive) {
+            blockReason = 'No Discretionary Funds available.';
+        }
+
+        const isBlocked = !!blockReason;
+        const isDisabled = !canUse || (ap < apCost && !isActive) || isBlocked;
 
         let stateClass = '';
         let btnHtml = '';
         if (isActive) {
             stateClass = ' active';
-            btnHtml = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+            btnHtml = action.isResolution
+                ? '<div class="ministry-action__active-indicator">● NEGOTIATING</div>'
+                : '<div class="ministry-action__active-indicator">● ACTIVE</div>';
         } else if (!canUse) {
             stateClass = ' disabled';
             btnHtml = '';
+        } else if (isBlocked) {
+            stateClass = ' disabled';
+            btnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="${escapeHtml(blockReason)}">🔒</div>`;
         } else if (isDisabled) {
             stateClass = ' disabled';
             btnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${apCost} AP">▶ ${apCost} AP</div>`;
@@ -2697,14 +2890,25 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
             btnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
         }
 
+        // For Debt Restructuring, show credit-based chance when not blocked
+        let extraInfoHtml = '';
+        if (action.id === 'debtRestructuring' && !isActive && !isBlocked) {
+            const credit = Number(currentNation?.credit ?? 50);
+            const chance = Math.min(100, Math.max(0, Math.round(credit)));
+            extraInfoHtml = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-muted);margin-top:2px;">Success chance: ${chance}% (Credit: ${credit})</div>`;
+        }
+        if (isBlocked) {
+            extraInfoHtml = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--red);margin-top:2px;">${escapeHtml(blockReason)}</div>`;
+        }
+
         html += `<div class="ministry-action${stateClass}" id="${actionId}" ${canUse && !isActive && !isDisabled ? `onclick="ministryActionSelect('${actionId}')"` : ''}>
             <div class="ministry-action__top">
                 <span class="ministry-action__name">${escapeHtml(action.name)}</span>
                 <span class="ministry-action__ap-cost">${apCost} AP${useCount > 0 ? ' (use ' + (useCount + 1) + ')' : ''}</span>
             </div>
-            <div class="ministry-action__desc">${escapeHtml(action.desc)}</div>
+            <div class="ministry-action__desc">${escapeHtml(action.desc)}${extraInfoHtml}</div>
             <div class="ministry-action__bottom">
-                <div class="ministry-action__tags">${tagsHtml}<span class="tag tag--budget">${budgetDraw}/TICK</span></div>
+                <div class="ministry-action__tags">${tagsHtml}${budgetTagHtml}</div>
                 <div id="${actionId}-btns">${btnHtml}</div>
             </div>
         </div>`;
@@ -3328,6 +3532,8 @@ function refreshMinistryActionStates(ministryKey) {
     if (!config?.actions) return;
     const ap = currentFaction?.action_points || 0;
     const canUse = isMyMinistryByKey(ministryKey);
+    const ministry = ministryData.find(m => m.ministry_key === ministryKey);
+    const discretionaryBalance = Number(ministry?.discretionary_balance || 0);
     config.actions.forEach(action => {
         const countKey = ministryKey + ':' + action.id;
         const useCount = ministryActionUseCounts[countKey] || 0;
@@ -3336,7 +3542,16 @@ function refreshMinistryActionStates(ministryKey) {
         const row = document.getElementById(actionId);
         if (!row || row.classList.contains('active')) return;
 
-        const isDisabled = !canUse || ap < apCost;
+        // Check blocking conditions
+        let blockReason = '';
+        if (action.id === 'debtRestructuring' && canUse) {
+            blockReason = getDebtRestructuringBlock();
+        }
+        if (!blockReason && action.budgetPerCapita > 0 && discretionaryBalance <= 0 && canUse) {
+            blockReason = 'No Discretionary Funds available.';
+        }
+        const isBlocked = !!blockReason;
+        const isDisabled = !canUse || ap < apCost || isBlocked;
         const btns = document.getElementById(actionId + '-btns');
         const apLabel = row.querySelector('.ministry-action__ap-cost');
         if (apLabel) apLabel.textContent = apCost + ' AP' + (useCount > 0 ? ' (use ' + (useCount + 1) + ')' : '');
@@ -3346,6 +3561,11 @@ function refreshMinistryActionStates(ministryKey) {
             row.classList.remove('selected');
             row.removeAttribute('onclick');
             if (btns) btns.innerHTML = '';
+        } else if (isBlocked) {
+            row.classList.add('disabled');
+            row.classList.remove('selected');
+            row.removeAttribute('onclick');
+            if (btns) btns.innerHTML = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="${escapeHtml(blockReason)}">🔒</div>`;
         } else if (isDisabled) {
             row.classList.add('disabled');
             row.classList.remove('selected');
@@ -3389,13 +3609,63 @@ async function ministryActionConfirm(actionId) {
     const apCost = action.apCosts[Math.min(useCount, 3)];
     const statEffects = buildStatEffects(action, useCount);
 
+    // Discretionary funds check for money-drawing actions
+    if (action.budgetPerCapita > 0) {
+        const mData = ministryData.find(m => m.ministry_key === ministryKey);
+        if (Number(mData?.discretionary_balance || 0) <= 0) {
+            _ministryActionConfirming = false;
+            alert('No Discretionary Funds available. Parliament must allocate funds via a funding bill.');
+            ministryActionDeselect(actionId);
+            return;
+        }
+    }
+
+    // Debt Restructuring: final block check before confirm
+    if (action.id === 'debtRestructuring') {
+        const blockMsg = getDebtRestructuringBlock();
+        if (blockMsg) {
+            _ministryActionConfirming = false;
+            alert(blockMsg);
+            ministryActionDeselect(actionId);
+            return;
+        }
+    }
+
+    // Finance conflict: warn player and cancel opposing action before activating
+    if (action.conflictsWith && activeMinistryActions[ministryKey + '-' + action.conflictsWith]) {
+        const opposingName = action.conflictsWith === 'stimulusPackage' ? 'Stimulus Package' : 'Austerity Measures';
+        if (!confirm(`This will immediately cancel your active ${opposingName} with no AP refund. Continue?`)) {
+            _ministryActionConfirming = false;
+            ministryActionDeselect(actionId);
+            return;
+        }
+        await handleFinanceConflict(action, ministryKey);
+    }
+
     // Optimistic UI update
     row.classList.remove('selected');
     row.classList.add('active');
     selectedMinistryAction = null;
     const btns = document.getElementById(actionId + '-btns');
     if (btns) {
-        btns.innerHTML = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+        btns.innerHTML = action.isResolution
+            ? '<div class="ministry-action__active-indicator">● NEGOTIATING</div>'
+            : '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+    }
+
+    // Build action_data with finance-specific fields
+    const pop = currentNation.population || 20000000;
+    const actionData = {
+        use_count: useCount,
+        scale: getUseCountScale(useCount),
+        budget_per_tick: Math.round((action.budgetPerCapita || 0) * pop)
+    };
+    if (action.budgetSavesPerCapita) {
+        actionData.budget_saves_per_tick = Math.round(action.budgetSavesPerCapita * pop);
+    }
+    if (action.isResolution) {
+        actionData.is_resolution = true;
+        actionData.credit_at_action = Number(currentNation?.credit ?? 50);
     }
 
     try {
@@ -3407,11 +3677,7 @@ async function ministryActionConfirm(actionId) {
             p_ap_cost: apCost,
             p_applied_at_tick: currentTick,
             p_stat_effects: statEffects,
-            p_action_data: {
-                use_count: useCount,
-                scale: getUseCountScale(useCount),
-                budget_per_tick: Math.round(action.budgetPerCapita * (currentNation.population || 20000000))
-            }
+            p_action_data: actionData
         });
 
         if (error) throw error;
@@ -3439,16 +3705,20 @@ async function ministryActionConfirm(actionId) {
                 ? (ministry.minister_first_name + ' ' + (ministry.minister_last_name || '')).trim()
                 : 'Unknown';
             const partyName = ministry?.factions?.faction_name || currentFaction?.faction_name || 'Unknown';
-            await _supabase.rpc('fire_system_event', {
-                p_trigger_key: effectiveTriggerKey,
-                p_nation_id: currentNation.id,
-                p_tick: currentTick,
-                p_placeholders: {
+            const placeholders = {
                     minister_name: ministerName,
                     party: partyName,
                     ministry: MINISTRY_NAMES[ministryKey] || ministryKey,
                     nation: currentNation.name || 'Unknown'
-                }
+                };
+            if (action.isResolution) {
+                placeholders.credit_chance = String(Math.min(100, Math.max(0, Math.round(Number(currentNation?.credit ?? 50)))));
+            }
+            await _supabase.rpc('fire_system_event', {
+                p_trigger_key: effectiveTriggerKey,
+                p_nation_id: currentNation.id,
+                p_tick: currentTick,
+                p_placeholders: placeholders
             });
         } catch (evtErr) { /* non-blocking — event display is best-effort */ }
 

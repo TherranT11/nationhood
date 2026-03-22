@@ -84,6 +84,114 @@ export const ISSUE_IDS = Object.keys(ISSUE_DEFS);
 export const AXIS_KEYS = IDEOLOGY_AXES.map(a => a.key);
 
 // ============================================================================
+// BIMODAL ALIGNMENT HELPER
+// ============================================================================
+// When polarization is low the electorate is a single bell curve at the mean.
+// When polarization is high the electorate splits into two humps offset from
+// the mean. This function blends between the two models based on variance.
+
+/**
+ * Compute per-axis alignment using a bimodal mixture model.
+ *
+ * @param {number} partyPos  - Party position on 0-100 scale
+ * @param {number} elecMean  - Electorate mean on 0-100 scale
+ * @param {number} elecVar   - Electorate variance (5-45, higher = more polarized)
+ * @returns {number} 0-1 alignment score for this axis
+ */
+export function bimodalAxisAlignment(partyPos, elecMean, elecVar) {
+    const gauss = (x, mu, sigma) => Math.exp(-((x - mu) * (x - mu)) / (2 * sigma * sigma));
+
+    const sigma = Math.max(5, elecVar);
+
+    // Unimodal: single Gaussian at the mean (classic model)
+    const unimodal = gauss(partyPos, elecMean, sigma);
+
+    // How bimodal is this electorate? 0 at var<=10, 1 at var>=40
+    const polWeight = Math.min(1, Math.max(0, (elecVar - 10) / 30));
+
+    if (polWeight <= 0) return unimodal;
+
+    // Bimodal: two narrower Gaussians offset from mean
+    // Offset grows with variance (at max var=45, offset=30 from mean)
+    const offset = elecVar * 0.67;
+    // Each hump is narrower than the overall spread — voters are clustered
+    const humpSigma = Math.max(5, sigma * 0.5);
+
+    const leftHump = Math.min(100, Math.max(0, elecMean - offset));
+    const rightHump = Math.min(100, Math.max(0, elecMean + offset));
+
+    // Party alignment = best overlap with either hump
+    const bimodal = Math.max(gauss(partyPos, leftHump, humpSigma), gauss(partyPos, rightHump, humpSigma));
+
+    // Blend: low polarization = unimodal, high polarization = bimodal
+    return (1 - polWeight) * unimodal + polWeight * bimodal;
+}
+
+// ============================================================================
+// SPATIAL COMPETITION — per-axis voter allocation
+// ============================================================================
+
+/**
+ * Compute each party's share of voters on a single ideology axis using
+ * spatial competition. Instead of each party getting an independent alignment
+ * score, parties compete for the same voters: if two parties occupy similar
+ * positions, they split that region's voters between them.
+ *
+ * Algorithm:
+ * 1. Each party has an alignment score from bimodalAxisAlignment (0-1).
+ *    This represents how well-positioned the party is on this axis.
+ * 2. We run a local softmax over alignment scores to get vote shares.
+ *    A party with alignment 1.0 competing alone gets nearly all the share.
+ *    Two parties with alignment 1.0 split that share roughly 50/50.
+ * 3. Result is normalized to sum to 1.0 across all parties.
+ *
+ * This replaces the old model where each party's alignment was independent —
+ * now being in a crowded part of the spectrum hurts your per-party share.
+ *
+ * @param {Array<{factionId: string, partyNorm: number}>} parties - Each party's normalized position (0-100)
+ * @param {number} elecMean - Electorate mean on 0-100 scale
+ * @param {number} elecVar - Electorate variance (5-45)
+ * @param {number} [temperature=4] - Softmax temperature (lower = more winner-take-all)
+ * @returns {Map<string, number>} factionId → share of this axis's voters (0-1, sums to 1)
+ */
+function spatialAxisCompetition(parties, elecMean, elecVar, temperature = 4) {
+    const result = new Map();
+    if (parties.length === 0) return result;
+    if (parties.length === 1) {
+        // Sole party: share = its alignment score (not auto-100%)
+        // A single party far from voters still shouldn't get full credit
+        const align = bimodalAxisAlignment(parties[0].partyNorm, elecMean, elecVar);
+        result.set(parties[0].factionId, align);
+        return result;
+    }
+
+    // Step 1: Get raw alignment per party
+    const alignments = parties.map(p => ({
+        factionId: p.factionId,
+        alignment: bimodalAxisAlignment(p.partyNorm, elecMean, elecVar),
+    }));
+
+    // Step 2: Softmax over alignment scores
+    const scores = alignments.map(a => a.alignment);
+    const maxScore = Math.max(...scores);
+    const k = Math.max(0.5, temperature);
+    const exps = scores.map(s => Math.exp((s - maxScore) / k));
+    const sumExp = exps.reduce((a, b) => a + b, 0);
+
+    // Step 3: Each party's share = their proportion of the softmax
+    // But scale by the best alignment — if ALL parties are far from voters,
+    // the total pool of voters is small (no free votes for being least-bad).
+    const poolQuality = maxScore; // 0-1: how well the best party serves this axis
+
+    for (let i = 0; i < alignments.length; i++) {
+        const share = sumExp > 0 ? (exps[i] / sumExp) : (1 / alignments.length);
+        result.set(alignments[i].factionId, round3(share * poolQuality));
+    }
+
+    return result;
+}
+
+// ============================================================================
 // IDEOLOGY ZONE SYSTEM (centrist / moderate / radical)
 // ============================================================================
 
@@ -145,25 +253,7 @@ export function calculateIdeologyZones(mean, variance) {
     return { zones, zoneForPos };
 }
 
-/**
- * Get zone-based alignment bonus for voter targeting.
- * Parties competing for voters in their own zone get a bonus.
- * Adjacent zones get a smaller bonus. Non-adjacent zones get a penalty.
- *
- * @param {string} partyZone - Zone ID where the party sits
- * @param {string} voterZone - Zone ID where the voter cluster is
- * @returns {number} Multiplier (0.6 to 1.2)
- */
-export function getZoneCompetitionMultiplier(partyZone, voterZone) {
-    const zoneIdx = ZONE_IDS.indexOf(partyZone);
-    const voterIdx = ZONE_IDS.indexOf(voterZone);
-    if (zoneIdx < 0 || voterIdx < 0) return 1.0;
-    const dist = Math.abs(zoneIdx - voterIdx);
-    if (dist === 0) return 1.2;  // Same zone: +20% effectiveness
-    if (dist === 1) return 1.0;  // Adjacent zone: normal
-    if (dist === 2) return 0.8;  // 2 zones away: -20%
-    return 0.6;                  // Opposite extreme: -40%
-}
+
 
 // ============================================================================
 // DEMOGRAPHIC ← STAT MAPPING
@@ -324,9 +414,9 @@ export const ELECTORATE_CONFIG = {
 
     // -- Standing defaults --
     DEFAULT_ALIGNMENT: 50,
-    DEFAULT_PLATFORM_APPEAL: 50,
-    DEFAULT_PARTY_APPROVAL: 50,
-    DEFAULT_VISIBILITY: 30,
+    DEFAULT_PLATFORM_APPEAL: 0,
+    DEFAULT_PARTY_APPROVAL: 25,
+    DEFAULT_VISIBILITY: 0,
     DEFAULT_CREDIBILITY: 1.0,
 
     // ── Phase 2B: Per-tick pillar weights ──
@@ -654,10 +744,10 @@ function computeIssueSalience(nation, statKeys) {
  *
  * Initial values:
  *   - ideological_alignment: computed from faction ideology vs electorate profile
- *   - platform_appeal: 50 (no stances yet)
+ *   - platform_appeal: 0 (must build via issue stances)
  *   - party_approval: derived from existing gov_approval for governing factions,
- *     50 for opposition
- *   - visibility: 30 (low, no campaign actions yet)
+ *     25 for new/opposition parties
+ *   - visibility: 0 (must earn via campaign actions)
  *   - credibility: 1.0 (clean slate)
  *
  * @param {object} supabase - Supabase client
@@ -700,16 +790,23 @@ export async function seedFactionElectoralStanding(supabase, nation, factions, p
 
     const govApproval = Number(nation.gov_approval ?? 50);
 
+    // Compute spatial alignments at genesis (all parties compete from the start)
+    const defaultSalience = {};
+    for (const axisKey of AXIS_KEYS) defaultSalience[axisKey] = 0.2;
+    const genesisAlignments = profile
+        ? computeSpatialAlignments(ideoMap, profile, defaultSalience)
+        : {};
+
     const rows = [];
     for (const faction of factions) {
         const ideo = ideoMap[faction.id];
 
-        // Compute initial alignment from ideology vs electorate profile
-        const alignment = profile && ideo
-            ? computeGenesisAlignment(ideo, profile)
+        // Compute initial alignment from ideology vs electorate profile (spatial competition)
+        const alignment = (genesisAlignments[faction.id] != null)
+            ? genesisAlignments[faction.id]
             : CFG.DEFAULT_ALIGNMENT;
 
-        // Party approval: governing factions inherit gov_approval, opposition gets 50
+        // Party approval: governing factions inherit gov_approval, new parties start low
         const approval = governingIds.has(faction.id) ? govApproval : CFG.DEFAULT_PARTY_APPROVAL;
 
         rows.push({
@@ -743,9 +840,10 @@ export async function seedFactionElectoralStanding(supabase, nation, factions, p
 /**
  * Compute initial ideological alignment between a faction and the electorate.
  *
- * Uses a simplified Gaussian overlap proxy: for each axis, measure the
- * distance between the faction's position and the electorate mean,
- * penalized by electorate variance (wider variance = more forgiving).
+ * Uses bimodal mixture model: at low polarization, a single Gaussian
+ * centered at the electorate mean. At high polarization, two Gaussian
+ * humps offset from the mean — rewarding parties that align with either
+ * pole rather than sitting in the empty center.
  *
  * Returns 0-100 alignment score.
  */
@@ -762,13 +860,7 @@ function computeGenesisAlignment(factionIdeology, profile) {
         // Convert party score to 0-100 scale
         const partyNorm = (partyScore + 100) / 2; // -100→0, 0→50, +100→100
 
-        // Distance from electorate mean
-        const distance = Math.abs(partyNorm - elecMean);
-
-        // Alignment: Gaussian-style falloff. Higher variance = more forgiving.
-        // σ = elecVar, alignment = exp(-distance² / (2σ²))
-        const sigma = Math.max(5, elecVar);
-        const alignment = Math.exp(-(distance * distance) / (2 * sigma * sigma));
+        const alignment = bimodalAxisAlignment(partyNorm, elecMean, elecVar);
 
         weightedAlignment += alignment * salienceWeight;
         totalWeight += salienceWeight;
@@ -996,7 +1088,10 @@ export async function tickElectorate(supabase, nation, currentTick) {
     // ── 13b. Phase 2D: Apply ideology shift actions (think tank, media, grassroots) ──
     await tickIdeologyShiftActions(supabase, nation.id, activeProfile, currentTick);
 
-    // ── 14. Calculate pillars for each faction ──
+    // ── 14. Compute spatial alignments (all factions compete per-axis) ──
+    const spatialAlignments = computeSpatialAlignments(ideoMap, activeProfile, axisSalienceWeights);
+
+    // ── 15. Calculate pillars for each faction ──
     const updates = [];
 
     for (const standing of standings) {
@@ -1007,9 +1102,9 @@ export async function tickElectorate(supabase, nation, currentTick) {
         const isCoalition = coalitionPartyIds.has(factionId);
         const isLead = factionId === leadPartyId;
 
-        // ─── PILLAR 1: Ideological Alignment (0-100) ───
-        const targetAlignment = ideo
-            ? computeTickAlignment(ideo, activeProfile, axisSalienceWeights)
+        // ─── PILLAR 1: Ideological Alignment (0-100) — spatial competition ───
+        const targetAlignment = (spatialAlignments[factionId] != null)
+            ? spatialAlignments[factionId]
             : CFG.DEFAULT_ALIGNMENT;
 
         // Drift toward target
@@ -1027,7 +1122,7 @@ export async function tickElectorate(supabase, nation, currentTick) {
         const newAppeal = round2(clamp(oldAppeal + appealDelta, CFG.APPEAL_MIN, CFG.APPEAL_MAX));
 
         // ─── PILLAR 3: Party Approval (0-100) ───
-        const oldApproval = Number(standing.party_approval ?? 50);
+        const oldApproval = Number(standing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);
         let approvalTarget;
 
         if (isCoalition) {
@@ -1190,23 +1285,88 @@ function computeTickAlignment(ideo, profile, axisSalienceWeights) {
         const weight = (profileSalience + issueSalience) / 2;
 
         const partyNorm = (partyScore + 100) / 2;
-        const distance = Math.abs(partyNorm - elecMean);
-        const sigma = Math.max(5, elecVar);
-        const alignment = Math.exp(-(distance * distance) / (2 * sigma * sigma));
+        const alignment = bimodalAxisAlignment(partyNorm, elecMean, elecVar);
 
-        // Zone competition: parties in same zone as electorate mean get a bonus,
-        // distant zones get a penalty. This doesn't lock out voters — it weights them.
-        const { zoneForPos } = calculateIdeologyZones(elecMean, elecVar);
-        const partyZone = zoneForPos(partyNorm);
-        const voterZone = zoneForPos(elecMean);
-        const zoneMult = getZoneCompetitionMultiplier(partyZone, voterZone);
-
-        weightedAlignment += alignment * weight * zoneMult;
+        weightedAlignment += alignment * weight;
         totalWeight += weight;
     }
 
     if (totalWeight <= 0) return 50;
     return round2(clamp((weightedAlignment / totalWeight) * 100, 0, 100));
+}
+
+/**
+ * Compute spatially-competitive alignment for ALL factions simultaneously.
+ *
+ * Instead of scoring each faction independently against the electorate,
+ * this runs per-axis spatial competition: parties near the same position
+ * split voters, while a party alone on a flank captures it entirely.
+ *
+ * @param {object} ideoMap - { factionId: faction_ideology row }
+ * @param {object} profile - electorate_profile row
+ * @param {object} axisSalienceWeights - { axisKey: weight }
+ * @returns {object} { factionId: spatialAlignment (0-100) }
+ */
+function computeSpatialAlignments(ideoMap, profile, axisSalienceWeights) {
+    const factionIds = Object.keys(ideoMap);
+    const result = {};
+
+    if (factionIds.length === 0) return result;
+
+    // Single faction: fall back to independent alignment (no competition)
+    if (factionIds.length === 1) {
+        const fid = factionIds[0];
+        result[fid] = computeTickAlignment(ideoMap[fid], profile, axisSalienceWeights);
+        return result;
+    }
+
+    // Accumulate per-faction weighted share across all axes
+    const factionWeightedShare = {};
+    for (const fid of factionIds) factionWeightedShare[fid] = 0;
+    let totalWeight = 0;
+
+    for (const axisKey of AXIS_KEYS) {
+        const elecMean = Number(profile['ideo_mean_' + axisKey] ?? 50);
+        const elecVar = Number(profile['ideo_var_' + axisKey] ?? 20);
+
+        // Salience weight for this axis
+        const profileSalience = Number(profile['salience_' + axisKey] ?? 0.2);
+        const issueSalience = axisSalienceWeights[axisKey] ?? 0.2;
+        const weight = (profileSalience + issueSalience) / 2;
+
+        // Build party list for this axis
+        const parties = factionIds.map(fid => {
+            const ideo = ideoMap[fid];
+            const partyScore = Number(ideo[axisKey] || 0);
+            return { factionId: fid, partyNorm: (partyScore + 100) / 2 };
+        });
+
+        // Spatial competition on this axis
+        const axisShares = spatialAxisCompetition(parties, elecMean, elecVar);
+
+        // Accumulate weighted by salience
+        for (const fid of factionIds) {
+            const share = axisShares.get(fid) ?? 0;
+            factionWeightedShare[fid] += share * weight;
+        }
+        totalWeight += weight;
+    }
+
+    // Normalize to 0-100 scale
+    for (const fid of factionIds) {
+        const raw = totalWeight > 0
+            ? factionWeightedShare[fid] / totalWeight
+            : (1 / factionIds.length);
+        // Scale relative to fair share so scores are comparable to old system.
+        // A party capturing its fair share (1/N) maps to 50 (average).
+        // A party capturing 2x fair share maps to 100 (dominant on this dimension).
+        const fairShare = 1 / factionIds.length;
+        const relativeStrength = fairShare > 0 ? raw / fairShare : 1;
+        const scaled = clamp(relativeStrength * 50, 0, 100);
+        result[fid] = round2(scaled);
+    }
+
+    return result;
 }
 
 /**
@@ -1292,7 +1452,7 @@ function computeRealizedVoteShares(updates, profile) {
 
     // Compute per-faction turnout rate
     for (const u of updates) {
-        const vis = Number(u.visibility ?? 30);
+        const vis = Number(u.visibility ?? CFG.DEFAULT_VISIBILITY);
         const enthBonus = (enthusiasm - 50) * CFG.TURNOUT_ENTHUSIASM_SCALE;
         const visBonus = Math.max(0, (vis - 50)) * CFG.TURNOUT_VISIBILITY_SCALE;
         u.turnout_rate = round3(clamp(CFG.TURNOUT_BASE + enthBonus + visBonus, 0.3, 0.95));
@@ -1739,7 +1899,7 @@ export async function boostVisibility(supabase, factionId, nationId, boost) {
     const multiplier = getDiminishingMultiplier(actionCount);
     const effectiveBoost = round2(boost * multiplier);
 
-    const old = Number(standing.visibility ?? 30);
+    const old = Number(standing.visibility ?? CFG.DEFAULT_VISIBILITY);
     const newVis = round2(clamp(old + effectiveBoost, 0, 100));
 
     const { error: visErr } = await supabase.from('faction_electoral_standing')
@@ -1775,7 +1935,7 @@ export async function nudgeApproval(supabase, factionId, nationId, delta) {
     const multiplier = getDiminishingMultiplier(actionCount);
     const effectiveDelta = round2(delta * multiplier);
 
-    const old = Number(standing.party_approval ?? 50);
+    const old = Number(standing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);
     const newApproval = round2(clamp(old + effectiveDelta, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX));
 
     const { error: appErr } = await supabase.from('faction_electoral_standing')
