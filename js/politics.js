@@ -5160,6 +5160,35 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
             const playerZone = zoneForPos(playerNormPos);
             const playerZoneLabel = zones.find(z => z.id === playerZone)?.label || '';
 
+            // Vote-splitting: find rival parties in the same zone on this axis
+            const sameZoneRivals = [];
+            for (const p of parties) {
+                if (p.isPlayer) continue;
+                const rivalNorm = (p.ideology[ax.key] + 100) / 2;
+                if (zoneForPos(rivalNorm) === playerZone) {
+                    sameZoneRivals.push(p);
+                }
+            }
+
+            // Build readable zone name with axis direction
+            // e.g. "moderate-right" on liberty/equality axis → "Moderate Equality"
+            let zoneDirectionLabel = playerZoneLabel; // "Centrist", "Moderate", "Radical"
+            if (playerZone.endsWith('-left')) {
+                zoneDirectionLabel += ' ' + ax.leftLabel;
+            } else if (playerZone.endsWith('-right')) {
+                zoneDirectionLabel += ' ' + ax.rightLabel;
+            }
+
+            let splitHtml = '';
+            if (sameZoneRivals.length > 0) {
+                const rivalNames = sameZoneRivals.map(r =>
+                    `<strong style="color:${r.color}">${escapeHtml(r.abbr)}</strong>`
+                ).join(' and ');
+                splitHtml = `<div class="es-split-note">You are <strong>${escapeHtml(zoneDirectionLabel)}</strong> and currently splitting votes with ${rivalNames}</div>`;
+            } else {
+                splitHtml = `<div class="es-split-note es-split-clear">You are <strong>${escapeHtml(zoneDirectionLabel)}</strong> — no parties competing in your zone</div>`;
+            }
+
             const isLast = i === ES_AXES.length - 1;
 
             axesHtml += `
@@ -5187,6 +5216,7 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
                         ${markersHtml}
                     </div>
                 </div>
+                ${splitHtml}
             </div>
             ${isLast ? '' : '<div class="es-div"></div>'}`;
         }
