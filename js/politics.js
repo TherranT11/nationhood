@@ -6270,7 +6270,7 @@ function renderPartyCard(party, nation) {
            </div>`;
 
     // Government type badge (larger, colorful)
-    const govLabel = getGovDisplayLabel(nation);
+    const govLabel = getGovDisplayLabel(nation) || 'Unknown';
     let govBadgeCls = 'op-badge-teal';
     if (govLabel === 'Autocratic State') govBadgeCls = 'op-badge-red';
     else if (govLabel === 'Presidential Republic') govBadgeCls = 'op-badge-amber';
@@ -6301,7 +6301,7 @@ function renderPartyCard(party, nation) {
                 </div>
                 <div class="op-stat-row">
                     <span class="op-sr-label">Vote Share</span>
-                    <span class="op-sr-val">${party.voteShare.toFixed(1)}%</span>
+                    <span class="op-sr-val">${(party.voteShare ?? 0).toFixed(1)}%</span>
                 </div>
                 <div class="op-stat-row">
                     <span class="op-sr-label">Approval</span>

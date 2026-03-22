@@ -13347,10 +13347,11 @@ async function tickElectorateProfile(supabase, nation, profile, currentTick, ent
                             .eq('id', action.id);
                         continue;
                     }
-                    // Deduct 1 AP per tick
-                    await supabase.from('factions')
+                    // Deduct 1 AP per tick — check error to avoid silent AP loss
+                    var { error: apErr } = await supabase.from('factions')
                         .update({ action_points: factionAp - 1 })
                         .eq('id', action.faction_id);
+                    if (apErr) console.error('[Electorate] ideology shift AP deduction failed:', apErr.message);
                 }
 
                 // ── Apply effect based on action type ──
