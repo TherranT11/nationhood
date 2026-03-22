@@ -4971,12 +4971,16 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
         ideoMap[row.faction_id] = row;
     }
 
-    // Compute electorate mean and standard deviation per axis from electorate_profile
+    // Compute electorate mean per axis from electorate_profile.
+    // Zone variance is driven by the nation's polarization stat (0-100 → 5-45)
+    // so that the spread visualization always matches the polarization indicator.
+    const nationPolarization = Number(nation.polarization ?? 50);
+    const zoneVariance = 5 + (nationPolarization / 100) * 40; // 0→5, 100→45
     const electorateStats = {};
     for (const ax of ES_AXES) {
         const mean = Number(profile['ideo_mean_' + ax.key] ?? 50);
-        const variance = Number(profile['ideo_var_' + ax.key] ?? 20);
-        electorateStats[ax.key] = { mean, stdDev: variance };
+        const perAxisVar = Number(profile['ideo_var_' + ax.key] ?? 20);
+        electorateStats[ax.key] = { mean, stdDev: perAxisVar, zoneVariance };
     }
 
     // Build party data (all parties including player)
@@ -5094,8 +5098,8 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
                 </div>`;
             }
 
-            // Zone overlays (centrist/moderate/radical)
-            const { zones, zoneForPos } = calculateIdeologyZones(eMean, eStd);
+            // Zone overlays (centrist/moderate/radical) — use nation polarization for zone width
+            const { zones, zoneForPos } = calculateIdeologyZones(eMean, stats.zoneVariance);
             let zonesHtml = '';
             const zoneColors = {
                 'radical-left':   'rgba(239,68,68,0.10)',
