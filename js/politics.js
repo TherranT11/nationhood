@@ -4956,16 +4956,19 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
     }
 
     // Compute electorate mean per axis from electorate_profile.
-    // Zone variance is driven by polarization (high → spread) and stability (low → spread).
-    // Matches backend IDEO_VARIANCE_STAT_MAP weights: polarization 0.5, stability -0.3, ethnic_diversity 0.2
+    // Zone variance driven by polarization (primary), stability (secondary), diversity (tertiary).
+    // Uses a direct 0-100 → 5-45 mapping so that pol=100 always gives max spread.
     const nationPolarization = Number(nation.polarization ?? 50);
     const nationStability = Number(nation.stability ?? 50);
     const nationDiversity = Number(nation.ethnic_diversity ?? 50);
-    const varianceShift =
-        ((nationPolarization - 50) / 50) * 0.5 +
-        ((nationStability - 50) / 50) * -0.3 +
-        ((nationDiversity - 50) / 50) * 0.2;
-    const zoneVariance = Math.max(5, Math.min(45, 20 + varianceShift * 0.3 * 50));
+    // Composite spread score: 0-100. Polarization is the primary driver.
+    // pol=100 alone → spreadScore ~90. Low stability and high diversity push it further.
+    const spreadScore = Math.min(100, Math.max(0,
+        nationPolarization * 0.9 +
+        (100 - nationStability) * 0.07 +
+        nationDiversity * 0.03
+    ));
+    const zoneVariance = 5 + (spreadScore / 100) * 40; // 0→5, 100→45
     const electorateStats = {};
     for (const ax of ES_AXES) {
         const mean = Number(profile['ideo_mean_' + ax.key] ?? 50);
