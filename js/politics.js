@@ -4275,7 +4275,9 @@ window._protestCallOff = async function() {
 // ── Confirm handler ──
 
 async function handleCampaignConfirm(container, f, n, ap, otherParties, factionIdeo, tick) {
-    const sel = CA_ACTIONS.find(a => a.id === _caSelected);
+    // Protest is dynamically added to allActions, not in the static CA_ACTIONS array
+    const sel = CA_ACTIONS.find(a => a.id === _caSelected)
+        || (_caSelected === 'protest' ? { id: 'protest', color: '#d9534f' } : null);
     if (!sel) return;
     const cost = caGetCost();
     if (ap < cost || !caIsReady()) return;
