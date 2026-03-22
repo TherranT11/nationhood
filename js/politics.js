@@ -7,7 +7,7 @@ import { tickToDate } from './utils.js';
 import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
-import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
+import { statDirectionSign } from './game/stats.js';
 import { getElectabilityTier } from './game/party-leadership.js';
 import { AUTOCRACY_ACTIONS, dispatchAutocracyAction, getEscalatingCost, checkCooldown } from './game/autocracy-actions.js';
 
@@ -130,6 +130,14 @@ initPage('politics', async (state) => {
         .select('id, started_at_tick, crisis_templates(name, description)')
         .eq('nation_id', nation.id);
 
+    // Fetch issue_state for electorate issues display
+    const { data: issueStatesInit } = await _supabase
+        .from('issue_state')
+        .select('issue_id, salience')
+        .eq('nation_id', nation.id);
+    const issueStateMapInit = {};
+    for (const is of (issueStatesInit || [])) issueStateMapInit[is.issue_id] = is;
+
     // Fetch next scheduled election
     const { data: nextElection } = await _supabase
         .from('elections')
@@ -243,6 +251,7 @@ initPage('politics', async (state) => {
         pillarStates,
         autocracyTracker,
         autocracyActionLog,
+        issueStateMapInit,
     });
 });
 
@@ -282,6 +291,7 @@ async function renderPartyTab(f, nation, data) {
         president, administration,
         caucusFactions, currentEndorsement,
         pillarStates, autocracyTracker, autocracyActionLog,
+        issueStateMapInit,
     } = data;
     const faction = f; // alias for compatibility with sub-renderers
 
@@ -403,7 +413,7 @@ async function renderPartyTab(f, nation, data) {
         </div>
 
         <div class="pol-row-2">
-        ${renderNationalMoodBox(nation, activeCrises, currentTick)}
+        ${renderNationalMoodBox(nation, activeCrises, currentTick, issueStateMapInit)}
         <div class="pol-ideology-box" id="stance-summary-container">
             <div class="pol-ideo-header"><span class="pol-mod-title">Stances</span></div>
             <div id="stance-summary-strip"></div>
@@ -1157,27 +1167,6 @@ function renderParliamentBox(allParties, coalition, nation, playerFactionId) {
         </div>`;
 }
 
-const ISSUE_DISPLAY_NAMES = {
-    Economics: 'Economy', Military: 'Security', Social: 'Quality of Life',
-    Governance: 'Governance', Healthcare: 'Healthcare', Education: 'Education',
-    Immigration: 'Immigration', Labor: 'Labor & Jobs', Infrastructure: 'Infrastructure',
-    International: 'Foreign Affairs', Agriculture: 'Agriculture'
-};
-
-function computeIssueImportance(nation, statKeys) {
-    let total = 0, count = 0;
-    for (const key of statKeys) {
-        const val = Number(nation[key] ?? 50);
-        const dir = statDirectionSign(key);
-        if (dir === 0) continue;
-        // Higher-is-better: badness = 100 - val. Lower-is-better: badness = val.
-        const badness = dir === 1 ? (100 - val) : val;
-        total += Math.max(0, Math.min(100, badness));
-        count++;
-    }
-    return count > 0 ? Math.round(total / count) : 0;
-}
-
 function importanceColor(pct) {
     if (pct >= 60) return 'var(--dred)';
     if (pct >= 40) return 'var(--damber)';
@@ -1350,7 +1339,7 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
         </div>`;
 }
 
-function renderNationalMoodBox(nation, activeCrises, currentTick) {
+function renderNationalMoodBox(nation, activeCrises, currentTick, issueStateMap) {
     const crises = activeCrises || [];
 
     // Crises section
@@ -1368,15 +1357,15 @@ function renderNationalMoodBox(nation, activeCrises, currentTick) {
         }).join('');
     }
 
-    // Issues section
-    const issues = Object.entries(ISSUE_CATEGORY_STATS).map(([key, statKeys]) => ({
-        name: ISSUE_DISPLAY_NAMES[key] || key,
-        importance: computeIssueImportance(nation, statKeys),
-        statKeys
-    })).sort((a, b) => b.importance - a.importance);
+    // Issues section — uses ISSUE_DEFS + salience from issue_state (same source as Take Stance modal)
+    const issues = ISSUE_IDS.map(id => {
+        const def = ISSUE_DEFS[id];
+        const salience = Number(issueStateMap?.[id]?.salience ?? 30);
+        return { id, name: def.label, salience, statKeys: def.stats };
+    }).sort((a, b) => b.salience - a.salience);
 
-    const issuesHtml = issues.map((iss, idx) => {
-        const color = importanceColor(iss.importance);
+    const issuesHtml = issues.map(iss => {
+        const color = importanceColor(iss.salience);
         const statsHtml = iss.statKeys.map(sk => {
             const val = Math.round(Number(nation[sk] ?? 0));
             const label = sk.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -1389,9 +1378,9 @@ function renderNationalMoodBox(nation, activeCrises, currentTick) {
             <div class="pol-mood-issue" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.pol-mood-chevron').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
                 <span class="pol-mood-issue-name">${escapeHtml(iss.name)}</span>
                 <div class="pol-mood-issue-bar-wrap">
-                    <div class="pol-mood-issue-bar" style="width:${iss.importance}%;background:${color}"></div>
+                    <div class="pol-mood-issue-bar" style="width:${iss.salience}%;background:${color}"></div>
                 </div>
-                <span class="pol-mood-issue-pct">${iss.importance}%</span>
+                <span class="pol-mood-issue-pct">${iss.salience}%</span>
                 <span class="pol-mood-chevron">▸</span>
             </div>
             <div class="pol-mood-stats">${statsHtml}</div>
