@@ -395,6 +395,7 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
     return Math.round(Math.max(0, affinity));
 }
 
+// #region server-exclude
 /**
  * Distribute an exporter's capacity among importing partners.
  *
@@ -509,6 +510,7 @@ export function calculateTariffRevenue(totalImports, tariffRate, collectionRate)
     var efficiency = (collectionRate != null) ? Number(collectionRate) : 0.7;
     return Math.round(totalImports * rate * efficiency);
 }
+// #endregion server-exclude
 
 /**
  * Main trade engine — runs once per tick for ALL nations simultaneously.

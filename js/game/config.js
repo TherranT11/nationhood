@@ -70,11 +70,13 @@ export const GAME_CONFIG = {
 export const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;
 export const ENDORSEMENT_SWITCH_WINDOW_ERROR = `Endorsements can only be changed in the last ${ENDORSEMENT_SWITCH_WINDOW_TICKS} ticks before a presidential election.`;
 
+// #region server-exclude
 export function isEndorsementSwitchWindowOpen(currentTick, nextPresidentialTick) {
     if (!Number.isFinite(currentTick) || !Number.isFinite(nextPresidentialTick)) return false;
     const ticksUntilElection = nextPresidentialTick - currentTick;
     return ticksUntilElection >= 1 && ticksUntilElection <= ENDORSEMENT_SWITCH_WINDOW_TICKS;
 }
+// #endregion server-exclude
 /**
  * Update GAME_CONFIG with nation-specific seat values.
  * Call after loading the nation on each page.
@@ -173,6 +175,7 @@ export async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFI
  *
  * Returns { success: true, newAp, endorsedPartyId } on success.
  */
+// #region server-exclude
 export async function switchPartyEndorsement(supabase, endorsingPartyId, newEndorsedPartyId, currentTick) {
     const { data, error } = await supabase.rpc('switch_party_endorsement', {
         endorsing_party_id: endorsingPartyId,
@@ -196,3 +199,4 @@ export async function switchPartyEndorsement(supabase, endorsingPartyId, newEndo
         endorsedPartyId: row?.endorsed_party_id
     };
 }
+// #endregion server-exclude

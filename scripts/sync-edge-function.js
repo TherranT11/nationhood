@@ -11,7 +11,18 @@
  * Each module is processed by:
  *   - Stripping `export ` keywords (Edge Functions run as a single Deno.serve() module)
  *   - Stripping `import { ... } from '...'` lines (all symbols are in the same scope)
+ *   - Removing regions marked with `// #region server-exclude` … `// #endregion server-exclude`
  *   - Adding a section comment header for readability
+ *
+ * Modules listed in CLIENT_ONLY_MODULES are skipped entirely — they contain
+ * functions used only by the browser client, not the server tick processor.
+ *
+ * To mark individual functions as client-only within an otherwise-needed module,
+ * wrap them with:
+ *
+ *   // #region server-exclude
+ *   export function myClientOnlyFn() { ... }
+ *   // #endregion server-exclude
  *
  * The domain modules under js/game/ are the single source of truth for game logic,
  * while the Edge Function gets the Deno.serve handler and integrity checks from
@@ -28,6 +39,13 @@ const GAME_DIR = path.join(ROOT, 'js', 'game');
 const TEMPLATE_PATH = path.join(ROOT, 'supabase', 'functions', 'advance-tick', 'handler-template.ts');
 const OUTPUT_PATH = path.join(ROOT, 'supabase', 'functions', 'advance-tick', 'index.ts');
 const MARKER = '// __GAME_COMMON_JS__';
+
+// Modules that are 100% client-only — skipped entirely during server bundle generation.
+// These contain functions used only by the browser client (player actions, UI helpers, etc.)
+// and are never called from the tick processor in handler-template.ts.
+const CLIENT_ONLY_MODULES = new Set([
+    'autocracy-actions-security-media-strongman.js',
+]);
 
 // Module concatenation order — dependencies before dependents
 const MODULE_FILES = [
@@ -62,8 +80,16 @@ const MODULE_FILES = [
 // Read and process each module
 let gameLogic = '';
 let totalModuleLines = 0;
+let skippedModules = [];
+let strippedRegions = 0;
 
 for (const file of MODULE_FILES) {
+    // Skip entirely client-only modules
+    if (CLIENT_ONLY_MODULES.has(file)) {
+        skippedModules.push(file);
+        continue;
+    }
+
     const filePath = path.join(GAME_DIR, file);
     let content = fs.readFileSync(filePath, 'utf8');
 
@@ -75,6 +101,12 @@ for (const file of MODULE_FILES) {
 
     // Strip the auto-generated module header comment (first 4 lines: /**, * name, * desc, */)
     content = content.replace(/^\/\*\*\n \* \S+\.js — [^\n]+\n \* Extracted from game-common\.js\n \*\/\n/, '');
+
+    // Strip regions marked as server-exclude (client-only functions within shared modules)
+    content = content.replace(
+        /\/\/ #region server-exclude\n[\s\S]*?\/\/ #endregion server-exclude\n?/g,
+        (match) => { strippedRegions++; return ''; }
+    );
 
     const lines = content.split('\n').length;
     totalModuleLines += lines;
@@ -112,8 +144,15 @@ const headerLines = header.split('\n').length;
 const footerLines = footer.split('\n').length;
 const totalLines = output.split('\n').length;
 
+const includedCount = MODULE_FILES.length - skippedModules.length;
 console.log(`Generated ${path.relative(ROOT, OUTPUT_PATH)} (${totalLines} lines)`);
 console.log(`  Header:      ${headerLines} lines from handler-template.ts`);
-console.log(`  Game logic:  ${totalModuleLines} lines from ${MODULE_FILES.length} modules`);
+console.log(`  Game logic:  ${totalModuleLines} lines from ${includedCount} modules`);
 console.log(`  Footer:      ${footerLines} lines from handler-template.ts`);
-console.log(`  Modules:     ${MODULE_FILES.join(', ')}`);
+console.log(`  Modules:     ${MODULE_FILES.filter(f => !CLIENT_ONLY_MODULES.has(f)).join(', ')}`);
+if (skippedModules.length > 0) {
+    console.log(`  Skipped:     ${skippedModules.join(', ')} (client-only)`);
+}
+if (strippedRegions > 0) {
+    console.log(`  Stripped:    ${strippedRegions} server-exclude region(s)`);
+}

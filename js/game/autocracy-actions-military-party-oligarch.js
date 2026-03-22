@@ -634,6 +634,7 @@ export async function resolvePartyCongressPending(supabase, nationId, currentTic
     }
 }
 
+// #region server-exclude
 /**
  * Strongman attends Party Congress (player action).
  * +1 Legitimacy, costs 1 AP.
@@ -688,3 +689,4 @@ export async function attendPartyCongress(supabase, strongmanFactionId, nationId
 
     return { success: true, effects: { legitimacy_gain: 1, ap_cost: 1 } };
 }
+// #endregion server-exclude

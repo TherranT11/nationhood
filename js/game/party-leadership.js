@@ -249,6 +249,7 @@ export function getEffectiveBlocDisposition(disposition, faction) {
     return disposition;
 }
 
+// #region server-exclude
 // ═══════════════════════════════════════
 //  Ideology Colors
 // ═══════════════════════════════════════
@@ -621,3 +622,4 @@ export async function executeLeaderStepDown(supabase, nationId, factionId, curre
 
     if (eventErr) throw new Error('Failed to log step-down event: ' + eventErr.message);
 }
+// #endregion server-exclude

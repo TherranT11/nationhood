@@ -370,6 +370,7 @@ export async function createAdministration(supabase, nationId, nation, coalition
     }
 }
 
+// #region server-exclude
 /**
  * Atomically close existing open administrations and create a new one.
  * Falls back to sequential close + create if RPC is unavailable.
@@ -448,6 +449,7 @@ export async function rolloverAdministration(supabase, nationId, nation, endReas
     await closeAdministration(supabase, nationId, nation, endReason, currentTick, currentDate, governmentApproval);
     await createAdministration(supabase, nationId, nation, coalition, allParties, currentTick, currentDate, governmentApproval);
 }
+// #endregion server-exclude
 
 
 // ==================== COALITION DISSOLUTION ====================
@@ -636,6 +638,7 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
 
 // ==================== EARLY ELECTIONS ====================
 
+// #region server-exclude
 /**
  * Call for early elections (PM action).
  * Transitions government to caretaker, freezes legislation, schedules election in 2 ticks.
@@ -766,6 +769,7 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
 
     return { success: true, electionTick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS };
 }
+// #endregion server-exclude
 
 
 // ==================== GOVERNMENT VACANCY & FORMATION ESCALATION ====================
@@ -1127,6 +1131,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
 
 // ==================== PARTIAL ELECTION (FOUNDATIONAL BILL) ====================
 
+// #region server-exclude
 export async function processPartialElection(supabase, nation, election, currentTick) {
     const deltaSeats = election.partial_seats;
     console.log(`Processing partial election for ${nation.name}: +${deltaSeats} new seats`);
@@ -1432,6 +1437,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
         seatResults
     };
 }
+// #endregion server-exclude
 
 export async function processElections(supabase, nation, currentTick) {
     if (isAutocracy(nation)) return [];
@@ -1714,6 +1720,7 @@ export async function processElections(supabase, nation, currentTick) {
     return results;
 }
 
+// #region server-exclude
 /**
  * Presidential election result: read candidate-level popular vote results
  * and inaugurate the winning candidate.
@@ -2283,3 +2290,4 @@ export async function scheduleNextPresidentialElections(supabase, nation, curren
         console.log(`Scheduled next presidential election for ${nation.name} at tick ${nextPres}`);
     }
 }
+// #endregion server-exclude

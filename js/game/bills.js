@@ -18,6 +18,7 @@ import { repealActiveLaw } from './repeal-helper.js';
 import { fireBillEvent } from './event-helpers.js';
 import { calculateCaucusDispositions, calculateCaucusVoteAdjustment, updateCaucusRelationships } from './caucus.js';
 
+// #region server-exclude
 // ==================== BILL SUPPORT ====================
 
 export function calculateBillSupport(billSupport, sponsorPartyId, allPartySeats) {
@@ -266,6 +267,7 @@ export async function ensureBlocApprovals(supabase, factionId, nationId) {
     // Legacy bloc approval seeding removed — electorate engine handles vote share now
     return null;
 }
+// #endregion server-exclude
 
 
 // ==================== IDEOLOGY SHIFT PROCESSOR ====================
@@ -470,6 +472,7 @@ export async function processIdeologyDecay(supabase, nationId, currentTick) {
     }
 }
 
+// #region server-exclude
 // ==================== BILL RESOLUTION ENGINE ====================
 
 /**
@@ -666,6 +669,7 @@ export async function expireCommitteeBills(supabase, nationId, currentTick) {
     }
     return results;
 }
+// #endregion server-exclude
 
 /**
  * Check all active floor bills for early majority (for or against).
@@ -2599,6 +2603,7 @@ export async function reversePolicy(supabase, nation, policy, passedTick, curren
     }
 }
 
+// #region server-exclude
 // ==================== FOUNDATIONAL BILL ENACTMENT ====================
 
 export async function enactFoundationalBill(supabase, bill, currentTick) {
@@ -3057,6 +3062,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
     return true;
 }
+// #endregion server-exclude
 
 export async function failBill(supabase, bill) {
     const { error } = await supabase.from('bills').update({

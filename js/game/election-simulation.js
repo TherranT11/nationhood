@@ -272,6 +272,7 @@ export function runElectionSimulation(blocs, parties, totalSeats = GAME_CONFIG.T
     return { votes: tally, seats, totalAbstentions, totalVotesCast, details };
 }
 
+// #region server-exclude
 /**
  * High-level helper: load all data from Supabase and run the election preview.
  *
@@ -516,3 +517,4 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
         candidateNames
     };
 }
+// #endregion server-exclude

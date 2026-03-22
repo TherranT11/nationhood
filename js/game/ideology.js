@@ -70,6 +70,7 @@ for (const axis of IDEOLOGY_AXES) {
 }
 
 
+// #region server-exclude
 /**
  * Return an alignment CSS class ('aligned', 'opposed', 'neutral') for
  * an ideology tag relative to a faction's ideology scores.
@@ -154,6 +155,7 @@ export function calculateBillDynamicPenalty(factionIdeology, articles, basePenal
 
     return totalPenalty;
 }
+// #endregion server-exclude
 
 
 // REMOVED: computeIdeologyAlignment, countIdeologyRelationship, ideologyOppositionMultiplier

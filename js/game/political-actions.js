@@ -315,6 +315,7 @@ export const RALLY_OUTCOMES = [
     },
 ];
 
+// #region server-exclude
 /**
  * Compute outcome weights for a rally targeting a voter bloc.
  * Weights shift based on approval, crises, polarization, civil unrest, and recent rallies.
@@ -519,6 +520,7 @@ function _deriveBlocTags(bloc) {
     }
     return tags;
 }
+// #endregion server-exclude
 
 
 // ==================== VOTER OUTREACH ====================
@@ -533,6 +535,7 @@ const OUTREACH_AXIS_KEYS = [
     'globalism_nationalism', 'individualism_collectivism'
 ];
 
+// #region server-exclude
 /**
  * Compute ideology alignment between a faction and a voter bloc (0-100).
  * Legacy stub — returns 50 (neutral) since bloc-targeting was removed.
@@ -705,6 +708,7 @@ export async function executeEndorsementPreference(supabase, factionId, nationId
     // faction_endorsements table has been removed; endorsements are not currently available.
     return { success: false, error: 'Endorsements are not available.' };
 }
+// #endregion server-exclude
 
 
 // ==================== ATTACK CAMPAIGN ====================
@@ -769,6 +773,7 @@ export const ATTACK_OUTCOMES = [
     { id: 'mutual', name: 'Mutual Destruction', icon: '\u2715', targetMin: -3, targetMax: -3, selfMin: -2, selfMax: -2, polarization: 0.25 },
 ];
 
+// #region server-exclude
 /**
  * Get outcome probability weights based on evidence strength.
  */
@@ -1126,6 +1131,7 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
         newAp: apResult.newAp ?? ((faction.action_points || 0) - ATTACK_CONFIG.AP_COST),
     };
 }
+// #endregion server-exclude
 
 
 // ==================== MAKE PROMISE ====================
@@ -1151,6 +1157,7 @@ export const MAKE_PROMISE_CONFIG = {
     BROKEN_NERVOUS_PREF: -1,          // other active promise holders get nervous
 };
 
+// #region server-exclude
 /**
  * Execute "Make Promise" — faction publicly commits to a stat target or crisis resolution.
  *
@@ -1670,6 +1677,7 @@ export function evaluatePromiseStatus(promise, nationStats, currentTick, ministr
             return { status: 'in_progress', progress };
     }
 }
+// #endregion server-exclude
 
 /**
  * Process all active promises for a nation during tick advancement.
@@ -3521,6 +3529,7 @@ export async function processRevolution(supabase, nation, currentTick) {
 
 // ==================== UTILITY FORMATTERS ====================
 
+// #region server-exclude
 export function formatStatName(stat) {
     return stat.charAt(0).toUpperCase() + stat.slice(1).replace(/_/g, ' ');
 }
@@ -3528,6 +3537,7 @@ export function formatStatName(stat) {
 export function formatMinorSector(key) {
     return key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
+// #endregion server-exclude
 
 
 // ==================== PM CANDIDATE SYSTEM ====================
@@ -3901,6 +3911,7 @@ export async function processPMTraitEffects(supabase, nation, currentTick) {
 
 // ==================== RESIGN PM ====================
 
+// #region server-exclude
 export async function resignPM(supabase, nationId, factionId, currentTick) {
     const { data: hog } = await supabase
         .from('head_of_government')
@@ -4213,6 +4224,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
 
     return { result: 'disbanded' };
 }
+// #endregion server-exclude
 
 
 // (Appoint successor, Dynasty actions, Coup/Regime health systems removed — Phase 0)

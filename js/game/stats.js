@@ -427,6 +427,7 @@ export function statDirectionSign(statKey) {
     return 0;
 }
 
+// #region server-exclude
 // ==================== INFLATION FORMATTING ====================
 
 /**
@@ -545,6 +546,7 @@ export async function statTrendBatch(supabase, nationId, statNames, lookback = 6
     }
     return trends;
 }
+// #endregion server-exclude
 
 // ==================== MINISTER & GOVERNMENT APPROVAL SYSTEM ====================
 // Simplified "Drift-to-Performance" model:

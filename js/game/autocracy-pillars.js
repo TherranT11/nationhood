@@ -392,6 +392,7 @@ export function applyTrackerDecay(trackerValue) {
  * @param {number} trackerValue
  * @returns {string}
  */
+// #region server-exclude
 export function getTrackerWord(trackerValue) {
     if (trackerValue <= 20) return 'IRON';
     if (trackerValue <= 40) return 'FIRM';
@@ -399,6 +400,7 @@ export function getTrackerWord(trackerValue) {
     if (trackerValue <= 80) return 'VOLATILE';
     return 'CRITICAL';
 }
+// #endregion server-exclude
 
 // ─── Tracker reset values ────────────────────────────────────────────────────
 

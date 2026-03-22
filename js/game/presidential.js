@@ -89,6 +89,7 @@ export async function registerPartyLeaderAsCandidate(supabase, nationId, faction
 
 // ==================== PRESIDENTIAL MINISTER NOMINATION ====================
 
+// #region server-exclude
 /**
  * President nominates a minister for a cabinet slot.
  * Writes pending data to the ministries table and creates a confirmation bill.
@@ -296,6 +297,7 @@ export async function vetoPresidentialBill(supabase, billId, presidentFactionId)
 
     return overrideBill;
 }
+// #endregion server-exclude
 
 /**
  * Auto-sign bills that have been on the president's desk past the deadline.
@@ -643,6 +645,7 @@ export async function processParliamentaryPMTimeout(supabase, nation, currentTic
 
 // ==================== NOMINEE SELF-REJECTION ====================
 
+// #region server-exclude
 /**
  * Called when the nominated party votes NO on their own minister confirmation bill.
  * Immediately ends the vote as failed, applies -2 gov approval to the president,
@@ -694,5 +697,6 @@ export async function rejectOwnNomination(supabase, billId, nomineePartyId) {
     console.log(`Nominee self-rejection: party ${nomineePartyId} declined nomination for ${mKey} (bill ${billId}). -2 gov approval applied.`);
     return { rejected: true, ministryKey: mKey };
 }
+// #endregion server-exclude
 
 // Tick lock and tick mutation are intentionally Edge Function only.

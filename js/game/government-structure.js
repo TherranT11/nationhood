@@ -6,6 +6,7 @@
 import { isAutocracy, isPresidentialRepublic } from './government-types.js';
 import { IDEOLOGY_OPPOSITES } from './ideology.js';
 
+// #region server-exclude
 // ==================== SEAT LOADING ====================
 
 export async function loadSeats(supabase, nationId, isAutocracy, allParties, currentFactionId) {
@@ -56,6 +57,7 @@ export async function detectHeadFaction(supabase, nationId, allParties, allParty
 
     return { headFactionId: null, isHeadFaction: false };
 }
+// #endregion server-exclude
 
 
 // ==================== COALITION FETCHING ====================
@@ -191,6 +193,7 @@ export async function fetchActiveCoalition(supabase, nationId) {
 }
 
 
+// #region server-exclude
 // ==================== POLICY COMPATIBILITY ====================
 
 export function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy, excludePolicyIds = [], activePolicyIds = null) {
@@ -229,3 +232,4 @@ export function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy,
             return { ...p, isOpposed, prerequisiteMissing, prerequisiteName, alreadyEnacted };
         });
 }
+// #endregion server-exclude

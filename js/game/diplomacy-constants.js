@@ -755,6 +755,7 @@ export const STUDENT_BASE_EFFECTS = {
     soft_power_per_year: 1
 };
 
+// #region server-exclude
 /**
  * Seats scaling for student exchange (diminishing returns above 200).
  */
@@ -1532,5 +1533,4 @@ export function checkSovereigntyConstraints(activeProposals, policySector) {
 
     return { blocked: false, message: null, initiative_name: null };
 }
-
-
+// #endregion server-exclude

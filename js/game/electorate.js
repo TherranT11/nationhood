@@ -92,6 +92,7 @@ export const AXIS_KEYS = IDEOLOGY_AXES.map(a => a.key);
  */
 export const ZONE_IDS = ['radical-left', 'moderate-left', 'centrist', 'moderate-right', 'radical-right'];
 
+// #region server-exclude
 /**
  * Calculate zone boundaries for an axis based on electorate mean and variance.
  * Asymmetric: radical zone grows on the side the mean leans toward + with variance.
@@ -164,6 +165,7 @@ export function getZoneCompetitionMultiplier(partyZone, voterZone) {
     if (dist === 2) return 0.8;  // 2 zones away: -20%
     return 0.6;                  // Opposite extreme: -40%
 }
+// #endregion server-exclude
 
 // ============================================================================
 // DEMOGRAPHIC ← STAT MAPPING
@@ -449,6 +451,7 @@ function getStat(nation, key) {
 // GENESIS: seedElectorateProfile
 // ============================================================================
 
+// #region server-exclude
 /**
  * Derive and upsert an electorate_profile row from a nation's current stats.
  *
@@ -548,6 +551,7 @@ export async function seedElectorateProfile(supabase, nation, currentTick = 0) {
     console.log(`[Electorate] Seeded electorate_profile for ${nation.name}`);
     return data;
 }
+// #endregion server-exclude
 
 /**
  * Returns the schema default values for each band in a demographic dimension.
@@ -568,6 +572,7 @@ function getDefaultsForDimension(dimension) {
 // GENESIS: seedIssueStates
 // ============================================================================
 
+// #region server-exclude
 /**
  * Seed issue_state rows for a nation. All 8 issues are created.
  *
@@ -612,6 +617,7 @@ export async function seedIssueStates(supabase, nation) {
     console.log(`[Electorate] Seeded ${data.length} issue_state rows for ${nation.name}`);
     return data;
 }
+// #endregion server-exclude
 
 /**
  * Compute initial salience for an issue based on how "bad" its stats are.
@@ -649,6 +655,7 @@ function computeIssueSalience(nation, statKeys) {
 // GENESIS: seedFactionElectoralStanding
 // ============================================================================
 
+// #region server-exclude
 /**
  * Seed faction_electoral_standing rows for all active factions in a nation.
  *
@@ -739,6 +746,7 @@ export async function seedFactionElectoralStanding(supabase, nation, factions, p
     console.log(`[Electorate] Seeded ${data.length} faction_electoral_standing rows for ${nation.name}`);
     return data;
 }
+// #endregion server-exclude
 
 /**
  * Compute initial ideological alignment between a faction and the electorate.
@@ -782,6 +790,7 @@ function computeGenesisAlignment(factionIdeology, profile) {
 // MASTER GENESIS FUNCTION
 // ============================================================================
 
+// #region server-exclude
 /**
  * Run full electorate genesis for a nation: profile + issues + standings.
  *
@@ -804,6 +813,7 @@ export async function genesisElectorate(supabase, nation, factions, currentTick 
     console.log(`[Electorate] Genesis complete for ${nation.name}: profile=${!!profile}, issues=${issues.length}, standings=${standings.length}`);
     return { profile, issues, standings };
 }
+// #endregion server-exclude
 
 // ============================================================================
 // PHASE 2B: PER-TICK THREE-PILLAR CALCULATIONS + VOTE SHARE PIPELINE
@@ -1715,6 +1725,7 @@ function getDiminishingMultiplier(currentCount) {
     return CFG.CAMPAIGN_ACTION_FLOOR;
 }
 
+// #region server-exclude
 /**
  * Boost a faction's visibility after a campaign action (Rally, Outreach, etc.)
  * Applies diminishing returns when multiple actions are taken in the same tick.
@@ -1786,6 +1797,7 @@ export async function nudgeApproval(supabase, factionId, nationId, delta) {
         .eq('id', standing.id);
     if (appErr) console.error('[Electorate] approval update failed:', appErr.message);
 }
+// #endregion server-exclude
 
 /**
  * Nudge the nation-wide enthusiasm on electorate_profile.
@@ -1813,6 +1825,7 @@ export async function nudgeEnthusiasm(supabase, nationId, delta) {
     if (error) console.error('[Electorate] enthusiasm update failed:', error.message);
 }
 
+// #region server-exclude
 /**
  * Damage or boost a faction's credibility_modifier after an attack or scandal.
  *
@@ -1849,6 +1862,7 @@ export async function adjustCredibility(supabase, factionId, nationId, delta, su
         .eq('id', standing.id);
     if (credErr) console.error('[Electorate] credibility update failed:', credErr.message);
 }
+// #endregion server-exclude
 
 // ============================================================================
 // PHASE 4: TAKE A STANCE
@@ -1873,6 +1887,7 @@ export const STANCE_CONFIG = {
     VISIBILITY_BOOST: 8,
 };
 
+// #region server-exclude
 /**
  * Execute the "Take a Stance" campaign action.
  *
@@ -2222,6 +2237,7 @@ export async function logActivity(supabase, factionId, nationId, actionType, act
         console.error(`[Electorate] Failed to log activity (${actionType}):`, error.message);
     }
 }
+// #endregion server-exclude
 
 // ============================================================================
 // PHASE 4: POLL NOW
@@ -2233,6 +2249,7 @@ export const POLL_CONFIG = {
     VISIBILITY_BOOST: 3,
 };
 
+// #region server-exclude
 /**
  * Execute "Poll Now" — snapshot current electorate standings into polled_* columns.
  * Gives the player a frozen reading of their pillars, vote share, and limiters
@@ -2312,6 +2329,7 @@ export async function executePollNow(supabase, factionId, nationId, currentTick)
         newAp: apResult.newAp,
     };
 }
+// #endregion server-exclude
 
 
 // ============================================================================
@@ -2352,6 +2370,7 @@ export const IDEO_SHIFT_CONFIG = {
     },
 };
 
+// #region server-exclude
 /**
  * Launch a Think Tank — drifts electorate ideological mean on a target axis.
  */
@@ -2581,12 +2600,14 @@ export async function executeGrassrootsMovement(supabase, factionId, nationId, t
         newAp: apResult.newAp,
     };
 }
+// #endregion server-exclude
 
 
 // ============================================================================
 // PHASE 4: IDEOLOGY SHIFT TICK PROCESSING
 // ============================================================================
 
+// #region server-exclude
 /**
  * Process active ideology_shift_actions each tick.
  * - Think Tank: drifts electorate ideo_mean on target axis
@@ -2708,6 +2729,7 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
 
     return profile;
 }
+// #endregion server-exclude
 
 
 // KNOWN ISSUES:
@@ -2732,6 +2754,7 @@ export const PIVOT_CONFIG = {
     REVERSE_CRED_SCALE: 0.05,        // extra cred penalty per point of current position strength
 };
 
+// #region server-exclude
 /**
  * Execute an Ideological Pivot — shift the party's ideology on a chosen axis.
  *
@@ -2889,3 +2912,4 @@ export async function executeIdeologicalPivot(supabase, factionId, nationId, tar
         outcomeName: isReversal ? 'Reversal — credibility hit applied' : 'Position shifted',
     };
 }
+// #endregion server-exclude

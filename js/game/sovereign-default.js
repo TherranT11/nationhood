@@ -219,6 +219,7 @@ export function calculateAusterityDiscount(austerityCommitments) {
     return Math.min(cfg.MAX_AUSTERITY_DISCOUNT, validCuts.length * cfg.AUSTERITY_DISCOUNT_PER_CUT);
 }
 
+// #region server-exclude
 /**
  * Validate austerity commitment entries against rules.
  *
@@ -444,3 +445,4 @@ export function formatDebtToGDP(ratio) {
     if (!isFinite(ratio)) return '∞';
     return Math.round(ratio * 100) + '%';
 }
+// #endregion server-exclude

@@ -408,6 +408,7 @@ export async function calculateCaucusVoteAdjustment(supabase, billId) {
 }
 
 
+// #region server-exclude
 // ==================== WHIP ACTION ====================
 
 /**
@@ -433,6 +434,7 @@ export async function executeWhipCaucus(supabase, factionId, caucusFactionId, bi
 
     return { success: true, apCost: data.ap_cost, newAp: data.new_ap };
 }
+// #endregion server-exclude
 
 
 // ==================== RELATIONSHIP UPDATES ====================

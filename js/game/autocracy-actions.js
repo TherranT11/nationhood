@@ -39,6 +39,7 @@ export function registerAutocracyAction(actionType, definition) {
     AUTOCRACY_ACTIONS[actionType] = definition;
 }
 
+// #region server-exclude
 // ─── Escalating cost helpers ─────────────────────────────────────────────────
 
 /**
@@ -117,7 +118,9 @@ async function checkMutualExclusion(supabase, factionId, nationId, currentTick, 
     if (logs && logs.length > 0) return logs[0].action_type;
     return null;
 }
+// #endregion server-exclude
 
+// #region server-exclude
 // ─── Action dispatch ─────────────────────────────────────────────────────────
 
 /**
@@ -337,6 +340,7 @@ export async function dispatchAutocracyAction(supabase, params) {
         result: actionResult,
     };
 }
+// #endregion server-exclude
 
 // ─── Leader death reset ──────────────────────────────────────────────────────
 
@@ -372,6 +376,7 @@ export async function resetLeaderEscalations(supabase, factionId) {
     return true;
 }
 
+// #region server-exclude
 // ─── Available actions query ─────────────────────────────────────────────────
 
 /**
@@ -413,3 +418,4 @@ export function getAvailableActions(factionState, currentTick) {
 
     return actions;
 }
+// #endregion server-exclude

@@ -40,6 +40,7 @@ export function isAutocracy(input) { return getCanonicalGovernmentType(input) ==
 export function isParliamentaryDemocracy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY; }
 export function isPresidentialRepublic(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC; }
 
+// #region server-exclude
 export function isGovernmentAutocracy(nation) { return isAutocracy(nation); }
 export function isGovernmentPresidential(nation) { return isPresidentialRepublic(nation); }
 
@@ -70,4 +71,5 @@ export function getGovDisplayLabel(nation) {
     if (nation?.hos_election_method === 'hereditary') return 'Constitutional Monarchy';
     return 'Parliamentary Democracy';
 }
+// #endregion server-exclude
 
