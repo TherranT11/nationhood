@@ -389,6 +389,10 @@ export const ELECTORATE_CONFIG = {
     STANCE_REMOVAL_THRESHOLD: 5,      // strength below this → remove the stance
     MAX_STANCES_PER_FACTION: 5,       // max active stances
 
+    // ── Diminishing returns on same-tick campaign actions ──
+    CAMPAIGN_ACTION_DIMINISHING: [1.0, 0.75, 0.50, 0.25],  // multiplier for 1st, 2nd, 3rd, 4th+ action
+    CAMPAIGN_ACTION_FLOOR: 0.25,                             // multiplier floor for 5th+ actions
+
     // ── Enthusiasm config ──
     ENTHUSIASM_NATURAL_DECAY: 1,          // -1/tick passive decay
     ENTHUSIASM_RESTING: 35,               // natural resting point
@@ -844,6 +848,13 @@ export async function tickElectorate(supabase, nation, currentTick) {
     );
     if (factions.length === 0) return;
     const factionIds = factions.map(f => f.id);
+
+    // ── 1b. Reset campaign action counter for diminishing returns ──
+    const { error: resetErr } = await supabase
+        .from('faction_electoral_standing')
+        .update({ campaign_actions_this_tick: 0 })
+        .eq('nation_id', nation.id);
+    if (resetErr) console.error('[Electorate] Failed to reset campaign action counters:', resetErr.message);
 
     // ── 2. Load coalition info ──
     const coalition = await fetchActiveCoalition(supabase, nation.id);
@@ -1689,7 +1700,24 @@ async function tickStanceDecay(supabase, stances, currentTick) {
 // with the legacy faction_bloc_approval writes.
 
 /**
+ * Get the diminishing-returns multiplier for the Nth campaign action this tick,
+ * then increment the counter. Prevents burst AP spending from being as effective
+ * as spreading actions across multiple ticks.
+ *
+ * @param {object} supabase
+ * @param {string} standingId - faction_electoral_standing row id
+ * @param {number} currentCount - current campaign_actions_this_tick value
+ * @returns {number} multiplier (1.0, 0.75, 0.50, 0.25, ...)
+ */
+function getDiminishingMultiplier(currentCount) {
+    const schedule = CFG.CAMPAIGN_ACTION_DIMINISHING;
+    if (currentCount < schedule.length) return schedule[currentCount];
+    return CFG.CAMPAIGN_ACTION_FLOOR;
+}
+
+/**
  * Boost a faction's visibility after a campaign action (Rally, Outreach, etc.)
+ * Applies diminishing returns when multiple actions are taken in the same tick.
  *
  * @param {object} supabase
  * @param {string} factionId
@@ -1701,23 +1729,31 @@ export async function boostVisibility(supabase, factionId, nationId, boost) {
 
     const { data: standing } = await supabase
         .from('faction_electoral_standing')
-        .select('id, visibility')
+        .select('id, visibility, campaign_actions_this_tick')
         .eq('faction_id', factionId)
         .eq('nation_id', nationId)
         .maybeSingle();
     if (!standing) return;
 
+    const actionCount = Number(standing.campaign_actions_this_tick ?? 0);
+    const multiplier = getDiminishingMultiplier(actionCount);
+    const effectiveBoost = round2(boost * multiplier);
+
     const old = Number(standing.visibility ?? 30);
-    const newVis = round2(clamp(old + boost, 0, 100));
+    const newVis = round2(clamp(old + effectiveBoost, 0, 100));
 
     const { error: visErr } = await supabase.from('faction_electoral_standing')
-        .update({ visibility: newVis })
+        .update({
+            visibility: newVis,
+            campaign_actions_this_tick: actionCount + 1,
+        })
         .eq('id', standing.id);
     if (visErr) console.error('[Electorate] visibility update failed:', visErr.message);
 }
 
 /**
  * Nudge a faction's party_approval after a campaign action.
+ * Applies diminishing returns when multiple actions are taken in the same tick.
  *
  * @param {object} supabase
  * @param {string} factionId
@@ -1729,17 +1765,24 @@ export async function nudgeApproval(supabase, factionId, nationId, delta) {
 
     const { data: standing } = await supabase
         .from('faction_electoral_standing')
-        .select('id, party_approval')
+        .select('id, party_approval, campaign_actions_this_tick')
         .eq('faction_id', factionId)
         .eq('nation_id', nationId)
         .maybeSingle();
     if (!standing) return;
 
+    const actionCount = Number(standing.campaign_actions_this_tick ?? 0);
+    const multiplier = getDiminishingMultiplier(actionCount);
+    const effectiveDelta = round2(delta * multiplier);
+
     const old = Number(standing.party_approval ?? 50);
-    const newApproval = round2(clamp(old + delta, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX));
+    const newApproval = round2(clamp(old + effectiveDelta, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX));
 
     const { error: appErr } = await supabase.from('faction_electoral_standing')
-        .update({ party_approval: newApproval })
+        .update({
+            party_approval: newApproval,
+            campaign_actions_this_tick: actionCount + 1,
+        })
         .eq('id', standing.id);
     if (appErr) console.error('[Electorate] approval update failed:', appErr.message);
 }
