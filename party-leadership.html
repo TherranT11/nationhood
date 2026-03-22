@@ -409,7 +409,7 @@ window._appointLeader = async function() {
             const pmFullName = `${candidate.firstName} ${candidate.lastName}`;
 
             // Update head_of_government record
-            await _supabase.from('head_of_government')
+            const { error: hogErr } = await _supabase.from('head_of_government')
                 .update({
                     first_name: candidate.firstName,
                     last_name: candidate.lastName,
@@ -419,9 +419,10 @@ window._appointLeader = async function() {
                 })
                 .eq('nation_id', currentNation.id)
                 .eq('active', true);
+            if (hogErr) console.warn('Failed to update head_of_government (non-blocking):', hogErr.message);
 
             // Update PM ministry row
-            await _supabase.from('ministries')
+            const { error: minErr } = await _supabase.from('ministries')
                 .update({
                     minister_first_name: candidate.firstName,
                     minister_last_name: candidate.lastName,
@@ -430,9 +431,10 @@ window._appointLeader = async function() {
                 .eq('nation_id', currentNation.id)
                 .eq('ministry_key', 'prime_minister')
                 .eq('is_active', true);
+            if (minErr) console.warn('Failed to update PM ministry (non-blocking):', minErr.message);
 
             // Update administration record
-            await _supabase.from('administrations')
+            const { error: admErr } = await _supabase.from('administrations')
                 .update({
                     prime_minister: pmFullName,
                     admin_name: `${candidate.lastName} Administration`,
@@ -440,6 +442,7 @@ window._appointLeader = async function() {
                 })
                 .eq('nation_id', currentNation.id)
                 .is('ended_at_tick', null);
+            if (admErr) console.warn('Failed to update administration (non-blocking):', admErr.message);
 
             console.log(`Ruling party leader change → PM updated: ${pmFullName} (trait: ${newTraitKey})`);
         }
