@@ -3824,7 +3824,7 @@ function renderActionResult(result) {
 
     if (result.effects && result.effects.length > 0) {
         for (const e of result.effects) {
-            const label = e.bloc || e.label || '';
+            const label = e.bloc || e.label || e.stat || '';
             const val = e.value ?? e.delta ?? 0;
             const vColor = val >= 0 ? '#4ade80' : '#ef4444';
             html += `<div class="ca-result-row">
