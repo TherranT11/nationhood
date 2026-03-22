@@ -13340,20 +13340,15 @@ async function tickElectorateProfile(supabase, nation, profile, currentTick, ent
 
                 // ── Ongoing AP cost for think_tank and grassroots_movement ──
                 if (actionType === 'think_tank' || actionType === 'grassroots_movement') {
-                    var { data: factionRow } = await supabase.from('factions')
-                        .select('action_points').eq('id', action.faction_id).single();
-                    var factionAp = factionRow?.action_points ?? 0;
-                    if (factionAp < 1) {
+                    // Use atomic RPC to prevent race conditions on AP deduction
+                    var apResult = await deductAP(supabase, action.faction_id, 1);
+                    if (!apResult.success) {
                         // Can't afford ongoing cost — suspend the action
                         await supabase.from('ideology_shift_actions')
                             .update({ status: 'suspended', last_active_tick: currentTick })
                             .eq('id', action.id);
                         continue;
                     }
-                    // Deduct 1 AP per tick
-                    await supabase.from('factions')
-                        .update({ action_points: factionAp - 1 })
-                        .eq('id', action.faction_id);
                 }
 
                 // ── Apply effect based on action type ──

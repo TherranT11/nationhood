@@ -4276,7 +4276,9 @@ window._protestCallOff = async function() {
 // ── Confirm handler ──
 
 async function handleCampaignConfirm(container, f, n, ap, otherParties, factionIdeo, tick) {
-    const sel = CA_ACTIONS.find(a => a.id === _caSelected);
+    // Protest is dynamically added to allActions, not in the static CA_ACTIONS array
+    const sel = CA_ACTIONS.find(a => a.id === _caSelected)
+        || (_caSelected === 'protest' ? { id: 'protest', color: '#d9534f' } : null);
     if (!sel) return;
     const cost = caGetCost();
     if (ap < cost || !caIsReady()) return;
@@ -6269,7 +6271,7 @@ function renderPartyCard(party, nation) {
            </div>`;
 
     // Government type badge (larger, colorful)
-    const govLabel = getGovDisplayLabel(nation);
+    const govLabel = getGovDisplayLabel(nation) || 'Unknown';
     let govBadgeCls = 'op-badge-teal';
     if (govLabel === 'Autocratic State') govBadgeCls = 'op-badge-red';
     else if (govLabel === 'Presidential Republic') govBadgeCls = 'op-badge-amber';
@@ -6300,7 +6302,7 @@ function renderPartyCard(party, nation) {
                 </div>
                 <div class="op-stat-row">
                     <span class="op-sr-label">Vote Share</span>
-                    <span class="op-sr-val">${party.voteShare.toFixed(1)}%</span>
+                    <span class="op-sr-val">${(party.voteShare ?? 0).toFixed(1)}%</span>
                 </div>
                 <div class="op-stat-row">
                     <span class="op-sr-label">Approval</span>

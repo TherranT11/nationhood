@@ -2775,7 +2775,6 @@ export async function executeIdeologicalPivot(supabase, factionId, nationId, tar
     }
 
     // Compute escalating pivot count (resets after 20 ticks of no pivots)
-    const cycleStart = faction.pivot_cycle_start_tick || 0;
     let pivotCount = faction.pivot_count || 0;
     if (currentTick - lastPivotTick >= cfg.ESCALATION_RESET) {
         pivotCount = 0; // reset cycle
@@ -2790,6 +2789,12 @@ export async function executeIdeologicalPivot(supabase, factionId, nationId, tar
     const shiftAmount = cfg.SHIFT_AMOUNT;
     const shiftSign = targetDirection === 'right' ? 1 : -1;
     const newPos = Math.max(-100, Math.min(100, currentPos + shiftAmount * shiftSign));
+
+    // Reject no-op pivots at boundary (don't charge AP for zero movement)
+    if (newPos === currentPos) {
+        const boundaryLabel = currentPos >= 100 ? 'maximum' : 'minimum';
+        return { success: false, message: `Already at ${boundaryLabel} on this axis.` };
+    }
 
     // Determine if this is a reversal (pivoting against current lean)
     const isReversal = (currentPos > 0 && shiftSign < 0) || (currentPos < 0 && shiftSign > 0);
@@ -2814,19 +2819,24 @@ export async function executeIdeologicalPivot(supabase, factionId, nationId, tar
     const apResult = await deductAP(supabase, factionId, apCost);
     if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP' };
 
-    // Update ideology
-    await supabase.from('faction_ideology')
+    // Update ideology — error means AP lost but position unchanged (logged, not fatal)
+    const { error: ideoErr } = await supabase.from('faction_ideology')
         .update({ [targetAxis]: newPos })
         .eq('faction_id', factionId);
+    if (ideoErr) {
+        console.error('[Pivot] ideology update failed:', ideoErr.message);
+        return { success: false, message: 'Failed to update ideology position.' };
+    }
 
     // Update pivot tracking
-    await supabase.from('factions')
+    const { error: pivotErr } = await supabase.from('factions')
         .update({
             pivot_count: pivotCount + 1,
             pivot_last_tick: currentTick,
             pivot_cycle_start_tick: pivotCount === 0 ? currentTick : (faction.pivot_cycle_start_tick || currentTick),
         })
         .eq('id', factionId);
+    if (pivotErr) console.error('[Pivot] pivot tracking update failed:', pivotErr.message);
 
     // Apply credibility penalty
     if (credPenalty > 0) {
@@ -2835,15 +2845,31 @@ export async function executeIdeologicalPivot(supabase, factionId, nationId, tar
             .eq('faction_id', factionId).eq('nation_id', nationId).maybeSingle();
         if (standing) {
             const newCred = Math.max(0.1, (Number(standing.credibility_modifier) || 1.0) - credPenalty * 0.01);
-            await supabase.from('faction_electoral_standing')
+            const { error: credErr } = await supabase.from('faction_electoral_standing')
                 .update({ credibility_modifier: newCred })
                 .eq('id', standing.id);
+            if (credErr) console.error('[Pivot] credibility update failed:', credErr.message);
         }
     }
 
     // Build result
     const axisDef = IDEOLOGY_AXES.find(a => a.key === targetAxis);
     const dirLabel = targetDirection === 'left' ? axisDef?.leftLabel : axisDef?.rightLabel;
+
+    // Log to campaign_actions + activity_log (consistent with other actions)
+    const { error: insErr } = await supabase.from('campaign_actions').insert({
+        party_id: factionId, nation_id: nationId,
+        action_type: 'ideological_pivot', ap_cost: apCost,
+        money_cost: 0, tick_performed: currentTick,
+        result: { targetAxis, targetDirection, from: currentPos, to: newPos, isReversal, credPenalty },
+    });
+    if (insErr) console.error('[Pivot] campaign_actions insert failed:', insErr.message);
+
+    await logActivity(supabase, factionId, nationId, 'ideological_pivot',
+        'Ideological Pivot',
+        `Pivoted toward ${dirLabel} on ${axisDef?.key || targetAxis} (${currentPos} → ${newPos})${isReversal ? ' [reversal]' : ''}`,
+        'success', apCost, currentTick);
+
     const effects = [
         { label: 'AP Spent', value: -apCost },
         { label: `${axisDef?.leftLabel} ↔ ${axisDef?.rightLabel}`, value: `${currentPos > 0 ? '+' : ''}${currentPos} → ${newPos > 0 ? '+' : ''}${newPos}` },
