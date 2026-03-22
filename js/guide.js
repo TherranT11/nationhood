@@ -417,7 +417,7 @@ const guideContent = {
 <p>The PM is formally confirmed when they demonstrate majority support in a <strong>confidence vote</strong>. Until that vote passes, they are a caretaker PM with a limited action set.</p>
 
 <h3>Confidence Votes</h3>
-<p>Any party holding at least <strong>15% of total seats</strong> can call a confidence vote at any time. It passes when more than 50% of <em>all seated MPs</em> vote in favor &mdash; not just a majority of votes cast.</p>
+<p>Any party can call a confidence vote for <strong>5 AP</strong>. It passes when more than 50% of <em>all seated MPs</em> vote in favor &mdash; not just a majority of votes cast. The voting window is 6 ticks, and there is a 6-tick cooldown between confidence votes.</p>
 <table>
 <tr><th>Result</th><th>Effect</th></tr>
 <tr><td><strong>Win</strong></td><td>Government stability +5, opposition loses 2 momentum</td></tr>
@@ -436,7 +436,7 @@ const guideContent = {
 <li>Bill sponsor submits to Committee (2 AP). All parties can add or remove articles.</li>
 <li>Sponsor sends the bill to the floor for a vote.</li>
 <li>Each party votes Yes, No, or Abstain. Votes weighted by seat count.</li>
-<li>Bill passes if more than 50% of seated votes are Yes. If not reached within 3 ticks, the bill fails.</li>
+<li>Bill passes if more than 50% of seated votes are Yes (quorum: 50% of seats must participate). If not reached within 6 ticks, the bill fails.</li>
 <li>Passed bills take effect at the start of the next tick.</li>
 </ol>
 <p class="guide-tip">There is no presidential veto in a parliamentary system. A bill that passes the floor becomes law.</p>
@@ -488,34 +488,49 @@ const guideContent = {
 <p>The President can appoint an Acting Minister by Executive Order if confirmation fails. Acting ministers work at <strong>50% effectiveness</strong> and cost &minus;5 Government Approval on appointment plus &minus;3 per tick. Maximum 3 at any time.</p>
 
 <h3>Signing and Vetoing Bills</h3>
-<p>All bills passed by the legislature go to the President's desk. The President has <strong>2 ticks</strong> to act:</p>
+<p>All bills passed by the legislature go to the President's desk. The President has <strong>6 ticks</strong> to act:</p>
 <table>
 <tr><th>Action</th><th>Effect</th></tr>
 <tr><td><strong>Sign</strong></td><td>Bill takes effect next tick</td></tr>
 <tr><td><strong>Veto</strong></td><td>Returned to parliament. Requires 2/3 supermajority to override.</td></tr>
-<tr><td><strong>Pocket (do nothing)</strong></td><td>Bill auto-signs after 2 ticks</td></tr>
+<tr><td><strong>Pocket (do nothing)</strong></td><td>Bill auto-signs after 6 ticks</td></tr>
 </table>
 <p class="guide-tip">A veto override requires 2/3 of all seated votes. If override fails, the bill is dead and cannot be resubmitted for 3 ticks.</p>
 
 <h3>Executive Orders</h3>
 <table>
-<tr><th>Order</th><th>AP Cost</th></tr>
-<tr><td>Acting Minister Appointment</td><td>8 AP</td></tr>
-<tr><td>Presidential Tax Adjustment (&plusmn;3% on one tax type)</td><td>6 AP</td></tr>
-<tr><td>Emergency Price Controls (freeze fuel/food for 3 ticks)</td><td>10 AP</td></tr>
-<tr><td>Declaration of National Emergency (extra AP, bypass one vote/tick, 4 ticks)</td><td>12 AP</td></tr>
-<tr><td>Executive Pardon (clear corruption crisis or scandal)</td><td>5 AP</td></tr>
-<tr><td>Infrastructure Directive (fast-track infrastructure outcome)</td><td>9 AP</td></tr>
-<tr><td>Presidential Censure (condemn rival party, &minus;5 their approval)</td><td>4 AP</td></tr>
+<tr><th>Order</th><th>AP Cost</th><th>Details</th></tr>
+<tr><td>Acting Minister Appointment</td><td>3 AP</td><td>Bypass senate confirmation (max 3 at a time)</td></tr>
+<tr><td>Presidential Tax Adjustment (&plusmn;3% on one tax type)</td><td>2&ndash;4 AP</td><td>3-tick cooldown per tax type</td></tr>
+<tr><td>Emergency Price Controls (freeze fuel prices for 3 ticks)</td><td>4 AP</td><td>4-tick cooldown between uses</td></tr>
+<tr><td>Declaration of National Emergency</td><td>4 AP</td><td>Emergency powers until manually ended; 8-tick cooldown</td></tr>
+<tr><td>Presidential Censure (condemn rival party)</td><td>1 AP</td><td>&minus;8 momentum (or &minus;16 if repeated within 5 ticks)</td></tr>
+<tr><td>Stimulate the Economy</td><td>3 AP</td><td>Ideology-flavored order; each usable once per presidential term</td></tr>
+</table>
+
+<h3>Stimulus Orders</h3>
+<p>Each ideology axis offers 2 unique economic orders. Once used, it cannot be reused during the same presidential term. Each order boosts some stats while reducing others, reflecting ideological trade-offs.</p>
+<table>
+<tr><th>Ideology</th><th>Orders</th></tr>
+<tr><td><strong>Individualism</strong></td><td>Small Business Deregulation, Capital Gains Tax Holiday</td></tr>
+<tr><td><strong>Collectivism</strong></td><td>Federal Jobs Program, Wage Floor for Federal Contractors</td></tr>
+<tr><td><strong>Nationalism</strong></td><td>Buy Local Procurement, Export Control on Strategic Resources</td></tr>
+<tr><td><strong>Globalism</strong></td><td>Fast-Track Foreign Investment Zones, Tariff Suspension</td></tr>
+<tr><td><strong>Equality</strong></td><td>Minority Business Lending Directive, Pay Transparency</td></tr>
+<tr><td><strong>Liberty</strong></td><td>Regulatory Moratorium, Federal Licensing Reform</td></tr>
+<tr><td><strong>Progress</strong></td><td>Green Infrastructure Fast-Track, AI &amp; Automation Workforce Initiative</td></tr>
+<tr><td><strong>Tradition</strong></td><td>Domestic Energy Unleashing, Manufacturing Revival</td></tr>
+<tr><td><strong>Security</strong></td><td>Critical Infrastructure Investment, Anti-Fraud &amp; Black Market Crackdown</td></tr>
+<tr><td><strong>Freedom</strong></td><td>Crypto &amp; Fintech Deregulation, Open Data &amp; Digital Commons</td></tr>
 </table>
 
 <h3>The Overreach Bar</h3>
-<p>Every executive order contributes to the Overreach Bar &mdash; a public counter tracking orders issued in the last 10 ticks.</p>
+<p>Every executive order contributes to the Overreach Bar &mdash; a public counter tracking orders issued in the last 8 ticks.</p>
 <table>
-<tr><th>Orders (10 ticks)</th><th>Effect</th></tr>
-<tr><td>0&ndash;2</td><td>Normal. No penalty.</td></tr>
-<tr><td>3&ndash;4</td><td>&ldquo;Governing by Decree&rdquo; label. &minus;2 approval/tick.</td></tr>
-<tr><td>5+</td><td>&ldquo;Authoritarian Drift&rdquo; label. &minus;5 approval/tick. Opposition can call joint motion to strip executive powers.</td></tr>
+<tr><th>Orders (8 ticks)</th><th>Effect</th></tr>
+<tr><td>0&ndash;1</td><td>Normal. No penalty.</td></tr>
+<tr><td>2&ndash;3</td><td>&ldquo;Governing by Decree&rdquo; label. Approval penalty per tick.</td></tr>
+<tr><td>4+</td><td>&ldquo;Authoritarian Drift&rdquo; label. Severe approval penalty per tick. Opposition can call joint motion to strip executive powers.</td></tr>
 </table>
 <p class="guide-tip">Use executive orders sparingly. The Overreach Bar is visible to all players and can trigger impeachment proceedings.</p>
 
@@ -666,6 +681,104 @@ const guideContent = {
 <li><strong>REVOLUTION FIRES</strong> &mdash; Government converts to Democracy (50% Parliamentary, 50% Presidential). Emergency election in 3 ticks.</li>
 </ol>
 <p class="guide-tip">Revolution is the endgame for a mismanaged autocracy. Watch stability and unrest closely &mdash; once the timer starts, you have limited time to act.</p>
+</div></details>
+
+<details><summary>Ministry Actions</summary><div>
+<h3>Overview</h3>
+<p>Some ministries have special actions that the ruling party can activate. These actions produce stat effects over time, with a delay before effects begin and a duration over which they apply. Each action has an escalating AP cost based on how many times it has been used recently.</p>
+
+<h3>Use-Count Scaling</h3>
+<p>Positive effects diminish with repeated use, while negative side effects remain at full strength. AP costs also escalate:</p>
+<table>
+<tr><th>Use Count</th><th>Positive Effect Scale</th><th>Negative Effects</th></tr>
+<tr><td>0 (first use)</td><td>100%</td><td>100%</td></tr>
+<tr><td>1</td><td>70%</td><td>100%</td></tr>
+<tr><td>2</td><td>40%</td><td>100%</td></tr>
+<tr><td>3+</td><td>15%</td><td>100%</td></tr>
+</table>
+
+<h3>Interior Ministry Actions</h3>
+<table>
+<tr><th>Action</th><th>AP Cost (by use)</th><th>Delay</th><th>Duration</th><th>Effects</th></tr>
+<tr><td><strong>Enforce Public Order</strong></td><td>2 / 3 / 5 / 8</td><td>1 tick</td><td>4 ticks</td><td>Crime &minus;2, Incarceration +3, Happiness &minus;2, Social Mobility &minus;1</td></tr>
+<tr><td><strong>Community Outreach</strong></td><td>1 / 2 / 3 / 4</td><td>3 ticks</td><td>8 ticks</td><td>Happiness +2, Crime &minus;1, Std of Living +1</td></tr>
+<tr><td><strong>Surveillance Expansion</strong></td><td>2 / 4 / 7 / 11</td><td>2 ticks</td><td>10 ticks</td><td>Crime &minus;5, Happiness &minus;2, Digital Infra +2, Std of Living &minus;1</td></tr>
+</table>
+<p class="guide-tip">Community Outreach is slow but sustainable with no downsides. Surveillance Expansion has permanent residue penalties that compound with each use. Choose your approach wisely.</p>
+</div></details>
+
+<details><summary>Protests</summary><div>
+<h3>Overview</h3>
+<p>Parties can organize protests to pressure the government. Protests have 7 tiers, with higher tiers causing greater national impact. Repeated protests escalate AP costs and can trigger crises at the highest tiers.</p>
+
+<h3>AP Costs</h3>
+<p>Protest costs escalate with a party's use count: <strong>2 / 3 / 5 / 7 / 10 AP</strong>. The use counter decays by 1 for every 12 ticks without protesting.</p>
+
+<h3>Cooldowns</h3>
+<ul>
+<li><strong>Calling party:</strong> 12-tick cooldown after a protest resolves</li>
+<li><strong>Endorsing party:</strong> 6-tick cooldown</li>
+</ul>
+
+<h3>Joint Protests</h3>
+<p>Other parties can endorse a protest for a bonus of +15 turnout per endorsing party (cap: +30). Endorsements also give +15 to the turnout roll.</p>
+
+<h3>Protest Fatigue</h3>
+<p>Each protest in the last 6 ticks imposes a &minus;10 penalty to protest score. Over-protesting makes each successive protest weaker.</p>
+
+<h3>Fizzle (Tiers 1&ndash;2)</h3>
+<p>Low-tier results backfire: the protesting party's bloc support drops by &minus;2. If government approval is 45+, the government may gain up to +3 approval from the failed protest.</p>
+
+<h3>Crisis Tiers</h3>
+<table>
+<tr><th>Tier</th><th>Duration</th><th>Effects per Tick</th></tr>
+<tr><td><strong>Tier 6</strong></td><td>6 ticks</td><td>Gov Approval &minus;2, Civil Unrest +2, Happiness &minus;1. After tick 3: Political Violence +1</td></tr>
+<tr><td><strong>Tier 7</strong></td><td>6 ticks</td><td>Gov Approval &minus;3, Civil Unrest +3, GDP Growth &minus;0.2, Foreign Investment &minus;2, Political Violence +1</td></tr>
+</table>
+<p>Tier 7 protests also generate a <strong>demand</strong> &mdash; a specific stat target the government must meet within 6 ticks or face further consequences.</p>
+
+<h3>Responses to Protests</h3>
+<table>
+<tr><th>Action</th><th>AP Cost</th><th>Details</th></tr>
+<tr><td><strong>Public Address</strong></td><td>1 AP</td><td>3-tick cooldown. Available to the ruling party to address protest grievances.</td></tr>
+<tr><td><strong>Enforce Public Order</strong></td><td>2 AP</td><td>Deploy law enforcement against a Tier 6+ crisis (33% success chance).</td></tr>
+<tr><td><strong>National Emergency</strong></td><td>5 AP</td><td>Declare emergency in response to a Tier 7 crisis.</td></tr>
+</table>
+
+<h3>Unresolved Grievances</h3>
+<p>Protests that were never adequately addressed carry a <strong>&minus;5 penalty</strong> at the next election for the governing party.</p>
+<p class="guide-tip">Protests are a double-edged sword. Fizzled protests hurt the organizer, but successful ones can spiral into crises that destabilize the government.</p>
+</div></details>
+
+<details><summary>Defense Doctrines</summary><div>
+<h3>Overview</h3>
+<p>The Ministry of Defense can announce military doctrines across 5 sectors. Doctrines shape your nation's military posture and are visible to other nations (except hidden doctrines). Announcing a doctrine costs AP and adds to your nation's <strong>Doctrine Cohesion</strong> score.</p>
+
+<h3>Sectors</h3>
+<table>
+<tr><th>Sector</th><th>Examples</th></tr>
+<tr><td><strong>Army</strong></td><td>Active Defense, Counterinsurgency, Asymmetric Warfare, Combined Battle, Joint Command Operations</td></tr>
+<tr><td><strong>Navy</strong></td><td>Blue-Water Navy, Coastal Defense, Maritime Interdiction</td></tr>
+<tr><td><strong>Air Force</strong></td><td>Air Superiority, Close Air Support, Strategic Airlift</td></tr>
+<tr><td><strong>Intelligence</strong></td><td>Signals Intelligence, Human Intelligence, Cyber Operations</td></tr>
+<tr><td><strong>Nuclear</strong></td><td>No First Use, Flexible Response, Launch on Warning, Minimum Deterrence</td></tr>
+</table>
+
+<h3>Key Rules</h3>
+<ul>
+<li>Most sectors allow multiple active doctrines simultaneously</li>
+<li><strong>Nuclear</strong> is single-select &mdash; only one nuclear doctrine can be active at a time</li>
+<li>Landlocked nations cannot adopt Navy doctrines</li>
+<li>Some doctrines are autocracy-only (e.g., Praetorian Doctrine)</li>
+<li>Nuclear doctrines enter a <strong>pending</strong> state before becoming active</li>
+</ul>
+
+<h3>Cohesion</h3>
+<p>Doctrine Cohesion (max 200) represents how well your military doctrines integrate. Higher cohesion improves defense effectiveness.</p>
+
+<h3>Renouncing</h3>
+<p>Doctrines can be renounced, but there is a cooldown of 120 ticks before the same doctrine can be re-announced.</p>
+<p class="guide-tip">Doctrines are long-term strategic commitments. Choose doctrines that complement your nation's geography, resources, and diplomatic posture.</p>
 </div></details>
 `
     },

@@ -3256,14 +3256,19 @@ export async function processCrises(supabase, nation, currentTick) {
                 fired_at_tick: currentTick
             });
 
+            // 1d6 government approval boost for resolving a crisis
+            const crisisResolveBoost = Math.ceil(Math.random() * 6);
+            await adjustGovernmentApprovalEvent(supabase, nation.id, crisisResolveBoost, `crisis:resolved:${template.name}`);
+
             crisisEvents.push({
                 type: 'crisis_resolved',
                 crisisName: template.name,
                 duration: currentTick - activeRecord.started_at_tick,
-                tick: currentTick
+                tick: currentTick,
+                govApprovalBoost: crisisResolveBoost
             });
 
-            console.log(`Crisis resolved: "${template.name}" in ${nation.name} (tick ${currentTick}, duration: ${currentTick - activeRecord.started_at_tick} ticks)`);
+            console.log(`Crisis resolved: "${template.name}" in ${nation.name} (tick ${currentTick}, duration: ${currentTick - activeRecord.started_at_tick} ticks, gov approval +${crisisResolveBoost})`);
         }
     }
 

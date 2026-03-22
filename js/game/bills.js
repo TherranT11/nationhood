@@ -2348,23 +2348,35 @@ export async function enactBill(supabase, bill, currentTick) {
             taxUpdates
         });
 
-        // ── Apply tax-change approval/momentum effects ──
-        // These match the preview shown in the economy.html tax cards.
+        // ── Apply tax-change approval effects to gov_approval_events ──
+        // Tax increases hurt approval, tax cuts boost it.
+        // Approval gain is reduced by 20% per active crisis.
         if (bill.proposed_by) {
+            // Count active crises to scale approval impact
+            let crisisCount = 0;
+            try {
+                const { count } = await supabase
+                    .from('active_crises').select('id', { count: 'exact', head: true })
+                    .eq('nation_id', bill.nation_id);
+                crisisCount = count || 0;
+            } catch (e) {
+                console.warn('[enactBill] Could not count active crises:', e.message);
+            }
+            const crisisPenalty = Math.min(1, crisisCount * 0.20); // cap at 100%
+
             for (const [taxKey, newRate] of Object.entries(taxUpdates)) {
                 const oldRate = Number(nation[taxKey] ?? 0);
                 const rateDiff = newRate - oldRate;
                 if (rateDiff === 0) continue;
 
-                if (taxKey === 'corporate_tax') {
-                    // Legacy: corporate tax momentum on Business Owners bloc removed (adjustMomentum is now a no-op)
-                } else {
-                    // Income / Sales tax: general momentum hit on sponsor
-                    const approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
-                    if (approvalImpact !== 0) {
-                        await adjustMomentumAll(supabase, bill.nation_id, bill.proposed_by, approvalImpact, `tax:${taxKey}`);
-                        console.log(`[enactBill] ${taxKey} momentum: ${approvalImpact} for sponsor ${bill.proposed_by}`);
-                    }
+                // Tax increase: -2 per point raised. Tax cut: +1 per point lowered.
+                let approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
+                if (approvalImpact > 0 && crisisPenalty > 0) {
+                    approvalImpact = Math.round(approvalImpact * (1 - crisisPenalty));
+                }
+                if (approvalImpact !== 0) {
+                    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, approvalImpact, `tax:${taxKey}`);
+                    console.log(`[enactBill] ${taxKey} gov_approval_events: ${approvalImpact} (crises: ${crisisCount}, penalty: ${Math.round(crisisPenalty * 100)}%)`);
                 }
             }
         }
