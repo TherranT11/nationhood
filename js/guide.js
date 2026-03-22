@@ -835,6 +835,71 @@ const guideContent = {
 <p>The feed receives <strong>real-time updates</strong> &mdash; new player posts from other factions in your nation will appear automatically without refreshing the page.</p>
 </div></details>
 `
+    },
+
+    laws: {
+        title: 'Bills Guide',
+        html: `
+<details open><summary>Drafting a Bill</summary><div>
+<h3>What Is a Bill?</h3>
+<p>A bill is a piece of proposed legislation that, if passed by parliament, becomes an active law. Active laws produce ongoing stat effects every tick &mdash; raising or lowering national indicators like stability, corruption, GDP growth, press freedom, and more. Bills are the primary way factions shape the nation.</p>
+
+<h3>Who Can Draft?</h3>
+<table>
+<tr><th>Government Type</th><th>Who Can Draft</th></tr>
+<tr><td><strong>Parliamentary</strong></td><td>Any faction with seats in parliament</td></tr>
+<tr><td><strong>Presidential</strong></td><td>Any faction with seats in the legislature</td></tr>
+<tr><td><strong>Autocracy</strong></td><td>Only the ruling faction (bills are called <em>Decrees</em>)</td></tr>
+</table>
+
+<h3>AP Cost</h3>
+<p>Drafting a standard bill costs <strong>2 AP</strong>. This is deducted when you submit the bill to committee.</p>
+<p class="guide-tip">The <strong>Policy Wonk</strong> party leadership trait reduces bill drafting cost by 1 AP. If you legislate heavily, this trait pays for itself quickly.</p>
+
+<h3>How to Draft</h3>
+<ol>
+<li>Click <strong>&ldquo;Draft a Bill&rdquo;</strong> (or &ldquo;Draft a Decree&rdquo; in autocracies) at the top of the Bills page.</li>
+<li>The draft modal opens with a preamble already written. You cannot edit the preamble &mdash; it is auto-generated.</li>
+<li>Add one or more <strong>articles</strong> to the bill (see article types below).</li>
+<li>Give your bill a name in the <strong>&ldquo;Name Your Bill&rdquo;</strong> field.</li>
+<li>Click <strong>&ldquo;Submit to Committee&rdquo;</strong>. Your AP is deducted and the bill enters the committee phase.</li>
+</ol>
+
+<h3>Article Types</h3>
+<p>Every bill must contain at least one article. There are three types you can add:</p>
+
+<table>
+<tr><th>Type</th><th>What It Does</th><th>How to Add</th></tr>
+<tr><td><strong>Policy Article</strong></td><td>Activates a policy from the national policy catalogue. Each policy has stat effects that apply every tick once the bill passes.</td><td>Click <strong>&ldquo;+ Add Article&rdquo;</strong>, choose a sector, then select a policy from the grid.</td></tr>
+<tr><td><strong>Text Article</strong></td><td>A freeform provision with no mechanical effect. Useful for signalling intent, setting conditions, or political messaging.</td><td>Click <strong>&ldquo;+ Add Text Article&rdquo;</strong>, enter a title and body, then confirm.</td></tr>
+<tr><td><strong>Funding Article</strong></td><td>Changes how a ministry&rsquo;s budget is allocated across its institutions. Adjusting funding levels affects the ministry&rsquo;s output.</td><td>Click <strong>&ldquo;+ Funding Article&rdquo;</strong>, choose a ministry, adjust the institution sliders, then confirm.</td></tr>
+</table>
+
+<h3>Policy Sectors</h3>
+<p>When adding a policy article, you pick from one of 11 sectors:</p>
+<p>Economics &bull; Labor &bull; Education &bull; Energy &bull; Welfare &bull; Social &bull; Military &amp; Security &bull; Governance &bull; Immigration &bull; International &bull; Trade</p>
+<p>Each sector contains multiple policies. Policies you have already enacted appear greyed out and cannot be added again.</p>
+
+<h3>Ideology Chips</h3>
+<p>Every policy displays small coloured squares indicating its ideological alignment. These are compared against <em>your faction&rsquo;s</em> current ideology scores:</p>
+<ul>
+<li><strong>Green chip</strong> &mdash; Aligned with your faction. Passing this boosts your approval with like-minded voter blocs.</li>
+<li><strong>Red chip</strong> &mdash; Opposed to your faction. Passing this may cost you support with your base.</li>
+<li><strong>Grey chip</strong> &mdash; Neutral. No strong ideological signal.</li>
+</ul>
+<p class="guide-tip">Ideology chips are relative to <em>your</em> faction. The same policy may show green for one party and red for another. Use this to gauge whether a bill will help or hurt you politically.</p>
+
+<h3>Removing Articles</h3>
+<p>While drafting, each article has a remove button (<strong>&times;</strong>). Click it to strip the article from the bill before submission. You can add and remove freely until you submit.</p>
+
+<h3>Naming Your Bill</h3>
+<p>Bills require a name before submission. The name is visible to all players in the nation and appears in the political events feed when the bill is voted on. Choose something descriptive &mdash; &ldquo;Economic Modernisation Act&rdquo; tells other players what to expect; &ldquo;Bill 7&rdquo; does not.</p>
+
+<h3>What Happens After Submission</h3>
+<p>Once submitted, your bill enters the <strong>Committee</strong> phase. It is now visible to all factions in your nation. Other factions can propose amendments, offer conditional support, or signal opposition. You retain control of the bill as its sponsor.</p>
+<p>Committee is where you build the votes to pass. See the next section for how amendments and support-building work.</p>
+</div></details>
+`
     }
 };
 
