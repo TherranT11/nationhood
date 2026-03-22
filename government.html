@@ -2828,9 +2828,20 @@ function renderDoctrinePanel() {
 
     const isMine = isDefenseMinister();
 
+    // Landlocked nations cannot adopt Navy doctrines — hide the tab entirely
+    const isLandlocked = currentNation?.is_landlocked === true;
+    const visibleSectors = isLandlocked
+        ? DOCTRINE_SECTORS.filter(s => s !== 'navy')
+        : DOCTRINE_SECTORS;
+
+    // If active tab was navy but nation is landlocked, reset to army
+    if (isLandlocked && _doctrineActiveTab === 'navy') {
+        _doctrineActiveTab = 'army';
+    }
+
     // Build tab bar
     let tabsHtml = '';
-    DOCTRINE_SECTORS.forEach(sector => {
+    visibleSectors.forEach(sector => {
         const label = DOCTRINE_SECTOR_LABELS[sector];
         const isActive = sector === _doctrineActiveTab;
         const activeCount = _nationDoctrines.filter(d => d.sector === sector && d.active && !DOCTRINES[d.doctrine_id]?.hidden).length;
@@ -2996,6 +3007,12 @@ function doctrineEventVars(def, extra = {}) {
 function beginDoctrineAnnounce(doctrineId) {
     const def = DOCTRINES[doctrineId];
     if (!def) return;
+
+    // Landlocked nations cannot announce navy doctrines
+    if (def.sector === 'navy' && currentNation?.is_landlocked) {
+        showDoctrineAlert(doctrineId, 'Landlocked nations cannot adopt naval doctrines.');
+        return;
+    }
 
     // Nuclear capability check
     if (def.sector === NUCLEAR_SECTOR) {
