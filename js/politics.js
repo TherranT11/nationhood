@@ -4,7 +4,7 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
 
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { statDirectionSign } from './game/stats.js';
@@ -2666,11 +2666,15 @@ const CA_ACTIONS = [
     { id: 'grassroots_movement', name: 'Grassroots Movement', ap: IDEO_SHIFT_CONFIG.GRASSROOTS.AP_COST, color: '#10b981', icon: '🌱',
       affects: 'Ideology',
       desc: 'Build a slow-burning grassroots campaign to shift public ideology over time. Cheap to start but runs for 100 ticks. Gradually drifts opinion and builds party visibility.' },
+    { id: 'pivot', name: 'Ideological Pivot', ap: 1, color: '#f59e0b', icon: '⟳',
+      affects: 'Alignment',
+      desc: 'Shift your party\'s position on a chosen ideological axis. Costs escalate with each pivot (+1 AP per use, resets after 20 ticks). Reversing your current lean costs extra AP and credibility. Holding steady for 20+ ticks earns a conviction bonus.' },
 ];
 
 // State for new electorate actions
 let _caTargetAxis = null;
 let _caTargetDirection = null;
+let _caPivotIdeo = null; // cached faction ideology for pivot cost calculation
 let _caTargetDemographic = null;
 let _caTargetBand = null;
 // State for Take Stance action
@@ -2707,16 +2711,32 @@ function caIsReady() {
     if (_caSelected === 'fund_think_tank') return !!_caTargetAxis && !!_caTargetDirection;
     if (_caSelected === 'media_campaign') return !!_caTargetAxis && !!_caTargetDirection;
     if (_caSelected === 'grassroots_movement') return !!_caTargetAxis && !!_caTargetDirection;
+    if (_caSelected === 'pivot') return !!_caTargetAxis && !!_caTargetDirection;
     return false;
 }
 
 function caGetCost() {
     if (_caSelected === 'protest') {
-        // Dynamic cost based on use counter
         const f = _currentFaction;
         const tick = _currentShard?.current_tick || 0;
         const decayed = getDecayedUseCount(f?.protest_use_count || 0, f?.protest_last_use_tick, tick);
         return getProtestCost(decayed);
+    }
+    if (_caSelected === 'pivot') {
+        const f = _currentFaction;
+        const tick = _currentShard?.current_tick || 0;
+        let pivotCount = f?.pivot_count || 0;
+        const lastPivot = f?.pivot_last_tick || 0;
+        if (tick - lastPivot >= PIVOT_CONFIG.ESCALATION_RESET) pivotCount = 0;
+        let cost = PIVOT_CONFIG.BASE_AP + pivotCount;
+        // Check if reversing (need faction ideology loaded)
+        if (_caTargetAxis && _caTargetDirection && _caPivotIdeo) {
+            const currentPos = Number(_caPivotIdeo[_caTargetAxis] ?? 0);
+            const shiftSign = _caTargetDirection === 'right' ? 1 : -1;
+            const isReversal = (currentPos > 0 && shiftSign < 0) || (currentPos < 0 && shiftSign > 0);
+            if (isReversal) cost += PIVOT_CONFIG.REVERSE_AP_EXTRA;
+        }
+        return cost;
     }
     const act = CA_ACTIONS.find(a => a.id === _caSelected);
     return act ? act.ap : 0;
@@ -2753,6 +2773,7 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     const { data: factionIdeo } = await _supabase
         .from('faction_ideology')
         .select('*').eq('faction_id', f.id).single();
+    _caPivotIdeo = factionIdeo;
 
     // Fetch other parties
     const otherParties = (allParties || []).filter(p => p.id !== f.id);
@@ -2958,18 +2979,18 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
     }
 
     container.innerHTML = `<div class="ca-wrap"><div class="ca-list">${listHtml}</div>${panelHtml}</div>
-    <div class="ca-portfolios" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
-        <div id="ca-stances-container"><div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px">Loading stances...</div></div>
+    <div class="ca-portfolios" style="margin-top:16px;">
         <div id="ca-promises-container"><div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px">Loading promises...</div></div>
     </div>
     <div class="pe-container">
         <div class="pe-header"><span class="pol-mod-title">Party Events</span></div>
         <div id="party-events-feed" class="pe-feed"><div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px">Loading events...</div></div>
-    </div>`;
+    </div>
+    <div id="ca-stance-portfolio-container" style="margin-top:16px;"></div>`;
 
-    // Load stances and promises portfolios on the actions page
-    _renderActionsStancePortfolio(f, n);
+    // Load promises and stance portfolio on the actions page
     _renderActionsPromisesPanel(f, n, tick);
+    _renderStancePortfolio(document.getElementById('ca-stance-portfolio-container'), f, n);
 
     // Load party events feed
     _loadPartyEventsFeed(n.id, f.id);
@@ -3014,73 +3035,6 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
 
     // Wire up config interactions
     wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost);
-}
-
-// ── Stances portfolio on the Actions page ──
-
-async function _renderActionsStancePortfolio(faction, nation) {
-    const container = document.getElementById('ca-stances-container');
-    if (!container) return;
-
-    const [stancesRes, issueStatesRes, shardRes] = await Promise.all([
-        _supabase.from('faction_issue_stance')
-            .select('*').eq('faction_id', faction.id).eq('nation_id', nation.id),
-        _supabase.from('issue_state')
-            .select('issue_id, salience, owned_by, pioneer_faction_id').eq('nation_id', nation.id),
-        _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
-    ]);
-
-    const stances = stancesRes.data || [];
-    const issueStates = issueStatesRes.data || [];
-    const currentTick = shardRes.data?.current_tick || 0;
-    const issueStateMap = {};
-    for (const is of issueStates) issueStateMap[is.issue_id] = is;
-
-    const maxStances = STANCE_CONFIG.MAX_STANCES;
-    let rowsHtml = '';
-    if (stances.length === 0) {
-        rowsHtml = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px 0">No active stances.</div>';
-    } else {
-        for (const s of stances) {
-            const issueDef = ISSUE_DEFS[s.issue_id];
-            if (!issueDef) continue;
-            const axisInfo = IDEOLOGY_AXES.find(a => a.key === s.axis);
-            const sideLabel = s.side === 'left' ? axisInfo?.leftLabel : axisInfo?.rightLabel;
-            const sideColor = s.side === 'left' ? axisInfo?.leftColor : axisInfo?.rightColor;
-            const strength = Number(s.strength ?? 0);
-            const decayRate = Number(s.decay_rate ?? 0);
-            const isFading = strength <= 40;
-            const isWeak = strength <= 20;
-            const strengthColor = isWeak ? 'var(--dred)' : isFading ? 'var(--damber)' : 'var(--dgreen)';
-
-            rowsHtml += `
-            <div style="padding:6px 0;border-bottom:1px solid var(--dborder-1)">
-                <div style="display:flex;justify-content:space-between;align-items:center">
-                    <div>
-                        <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0)">${escapeHtml(issueDef.label)}</span>
-                        <span style="font-family:var(--dfont-mono);font-size:10px;color:${sideColor};margin-left:6px">${s.intensity} ${sideLabel}</span>
-                    </div>
-                    <span style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3)">Held ${s.ticks_held || 0}t</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
-                    <div style="flex:1;height:4px;background:var(--dborder-1);border-radius:2px;overflow:hidden">
-                        <div style="width:${strength}%;height:100%;background:${strengthColor}"></div>
-                    </div>
-                    <span style="font-family:var(--dfont-mono);font-size:10px;color:${strengthColor}">${strength.toFixed(0)}</span>
-                    <span style="font-family:var(--dfont-mono);font-size:10px;color:var(--dred)">-${decayRate}/t</span>
-                </div>
-            </div>`;
-        }
-    }
-
-    container.innerHTML = `
-    <div style="border:1px solid var(--dborder-1);border-radius:6px;padding:12px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span style="font-family:var(--dfont-ui);font-size:13px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:0.5px">Active Stances</span>
-            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${stances.length} / ${maxStances}</span>
-        </div>
-        ${rowsHtml}
-    </div>`;
 }
 
 // ── Promises panel on the Actions page ──
@@ -3148,6 +3102,7 @@ function renderActionConfig(sel, otherParties, factionIdeo, nation, ap, tick) {
     if (sel.id === 'fund_think_tank') return renderThinkTankConfig();
     if (sel.id === 'media_campaign') return renderMediaCampaignConfig();
     if (sel.id === 'grassroots_movement') return renderGrassrootsConfig();
+    if (sel.id === 'pivot') return renderPivotConfig(nation);
     return '';
 }
 
@@ -3277,6 +3232,50 @@ function renderGrassrootsConfig() {
         if (axisDef) {
             html += `<div class="ca-subtitle" style="margin-top:12px">Drift direction</div>`;
             html += renderDirectionSelector(axisDef.leftLabel, axisDef.rightLabel, 'left', 'right');
+        }
+    }
+    return html;
+}
+
+// ── IDEOLOGICAL PIVOT CONFIG ──
+
+function renderPivotConfig(nation) {
+    const f = _currentFaction;
+    const tick = _currentShard?.current_tick || 0;
+    let pivotCount = f?.pivot_count || 0;
+    const lastPivot = f?.pivot_last_tick || 0;
+    if (tick - lastPivot >= PIVOT_CONFIG.ESCALATION_RESET) pivotCount = 0;
+
+    const cooldownRemaining = Math.max(0, PIVOT_CONFIG.COOLDOWN - (tick - lastPivot));
+    const onCooldown = lastPivot > 0 && cooldownRemaining > 0;
+
+    let html = `<div class="ca-info-box">Shift your party's ideological position. Each pivot costs +1 AP more than the last (resets after ${PIVOT_CONFIG.ESCALATION_RESET} ticks of no pivots). Reversing direction costs extra AP and credibility. Hold steady 20+ ticks for a conviction bonus.</div>`;
+
+    if (onCooldown) {
+        html += `<div style="font-family:var(--dfont-mono);font-size:11px;color:var(--damber);padding:6px 0">Cooldown: ${cooldownRemaining} tick${cooldownRemaining !== 1 ? 's' : ''} remaining</div>`;
+    }
+
+    html += `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);padding:4px 0">Pivots this cycle: ${pivotCount} · Next cost: ${PIVOT_CONFIG.BASE_AP + pivotCount} AP${pivotCount > 0 ? ' (escalated)' : ''}</div>`;
+
+    html += renderAxisSelector();
+    if (_caTargetAxis) {
+        const axisDef = IDEOLOGY_AXES.find(a => a.key === _caTargetAxis);
+        if (axisDef) {
+            const currentPos = _caPivotIdeo ? Number(_caPivotIdeo[_caTargetAxis] ?? 0) : 0;
+            const posLabel = currentPos > 0 ? `+${currentPos} (${axisDef.rightLabel})` : currentPos < 0 ? `${currentPos} (${axisDef.leftLabel})` : '0 (Center)';
+            html += `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-2);padding:4px 0;margin-top:4px">Current position: <span style="font-weight:700">${posLabel}</span></div>`;
+            html += `<div class="ca-subtitle" style="margin-top:8px">Pivot direction</div>`;
+            html += renderDirectionSelector(axisDef.leftLabel, axisDef.rightLabel, 'left', 'right');
+
+            // Show reversal warning
+            if (_caTargetDirection) {
+                const shiftSign = _caTargetDirection === 'right' ? 1 : -1;
+                const isReversal = (currentPos > 0 && shiftSign < 0) || (currentPos < 0 && shiftSign > 0);
+                if (isReversal) {
+                    const credPenalty = PIVOT_CONFIG.REVERSE_CRED_BASE + Math.abs(currentPos) * PIVOT_CONFIG.REVERSE_CRED_SCALE;
+                    html += `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dred);padding:6px 0;border-top:1px solid var(--dborder-1);margin-top:8px">⚠ Reversal: +${PIVOT_CONFIG.REVERSE_AP_EXTRA} AP extra, −${credPenalty.toFixed(1)} credibility</div>`;
+                }
+            }
         }
     }
     return html;
@@ -4309,6 +4308,20 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
             result = await executeMediaCampaign(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
         } else if (sel.id === 'grassroots_movement') {
             result = await executeGrassrootsMovement(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
+        } else if (sel.id === 'pivot') {
+            result = await executeIdeologicalPivot(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
+            if (result.success) {
+                // Refresh cached faction data for pivot count
+                const { data: freshFaction } = await _supabase.from('factions')
+                    .select('pivot_count, pivot_last_tick, pivot_cycle_start_tick')
+                    .eq('id', f.id).single();
+                if (freshFaction) {
+                    f.pivot_count = freshFaction.pivot_count;
+                    f.pivot_last_tick = freshFaction.pivot_last_tick;
+                    f.pivot_cycle_start_tick = freshFaction.pivot_cycle_start_tick;
+                }
+                _caPivotIdeo = null; // force reload
+            }
         }
     } catch (err) {
         console.error('Campaign action error:', err);
@@ -4334,14 +4347,13 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
     // Update topbar AP display
     const apEl = document.getElementById('topbar-ap');
     if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + (f.action_points ?? 0) + ' AP</span>';
-    // Refresh stance summary on main tab after stance actions
+    // Refresh stance summary on main tab + portfolio on actions page after stance actions
     if (sel.id === 'take_stance') {
         _renderStanceSummaryStrip(f.id, n.id);
-        // Refresh portfolio in electorate tab if loaded
-        const esContainer = document.getElementById('electorate-spread-container');
-        if (esContainer) {
-            esContainer.querySelector('.sp-card')?.remove();
-            _renderStancePortfolio(esContainer, f, n);
+        const spContainer = document.getElementById('ca-stance-portfolio-container');
+        if (spContainer) {
+            spContainer.querySelector('.sp-card')?.remove();
+            _renderStancePortfolio(spContainer, f, n);
         }
     }
 }
@@ -5293,11 +5305,8 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
     // Phase 6 (pillar cards) removed from Electorate tab
 }
 
-/**
- * Phase 6: Render "How You Got X%" and "Vote Left on Table" cards below the
- * Electorate Spread visualization. Reads polled values from faction_electoral_standing.
- */
-async function _renderPillarCards(container, playerFaction, nation) {
+// Phase 6 (_renderPillarCards) removed — pillar cards no longer shown
+function _renderPillarCards_REMOVED() {
     const { data: standing } = await _supabase
         .from('faction_electoral_standing')
         .select('*')
@@ -5497,9 +5506,6 @@ async function _renderPillarCards(container, playerFaction, nation) {
     </div>`;
 
     container.insertAdjacentHTML('beforeend', cardsHtml);
-
-    // Also render stance portfolio in the Electorate tab
-    _renderStancePortfolio(container, playerFaction, nation);
 }
 
 // ═══════════════════════════════════════════════════════════════════
