@@ -22300,6 +22300,7 @@ function protestRecentCrackdown(ministryActions: any[], currentTick: number): bo
 function protestGrievanceBonus(grievance: any): number {
     if (grievance.type === 'minister') return Math.max(0, (60 - (grievance.approval || 50)) / 4);
     if (grievance.type === 'activePolicy') return Math.max(0, (60 - (grievance.publicApproval || 50)) / 4);
+    if (grievance.type === 'activeCrisis') return Math.min(15, (grievance.duration || 0) / 2);
     if (grievance.type === 'statFailure') return Math.min(15, (grievance.failureScore || 0) / 2);
     return 0;
 }
