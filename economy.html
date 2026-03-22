@@ -680,6 +680,8 @@ async function submitTaxBill(nation) {
             bill_name: billName,
             bill_type: 'tax_reform',
             status: 'committee',
+            proposer_name: currentFaction.faction_name,
+            proposer_color: currentFaction.party_color,
             preamble: preamble,
             metadata: {
                 tax_changes: taxChangeSummary,
