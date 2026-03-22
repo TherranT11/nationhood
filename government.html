@@ -934,7 +934,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                             <div class="admin-section-title">Prime Minister</div>
                             <div class="admin-person-name">${activeHOG ? `${escapeHtml(activeHOG.first_name)} ${escapeHtml(activeHOG.last_name)}` : escapeHtml(pmName)}</div>
                             <div class="admin-person-details">${activeHOG ? `Age ${activeHOG.age} • ` : (pmAge !== '—' ? `Age ${pmAge} • ` : '')}<span class="admin-person-party">${activeHOG ? (activeHOG.factions?.faction_name || allParties.find(p => p.id === activeHOG.faction_id)?.faction_name || pmPartyName) : pmPartyName}</span></div>
-                            ${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}
+                            ${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">PM Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}
                             ${activeHOG ? `
                                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
                                     <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(activeHOG.ideology)};color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
@@ -1033,7 +1033,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                             <div class="admin-section-title">President${presidentData.terms_served ? ` — ${['1st','2nd','3rd','4th'][presidentData.terms_served - 1] || presidentData.terms_served + 'th'} Term` : ''}</div>
                             <div class="admin-person-name">${escapeHtml(presidentData.first_name)} ${escapeHtml(presidentData.last_name)}</div>
                             <div class="admin-person-details">Age ${presidentData.age} · <span class="admin-person-party">${escapeHtml(presPartyName)}</span></div>
-                            ${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}
+                            ${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">Presidential Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}
                             <div style="margin-top:8px;">
                                 <div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:4px;">${termRemaining <= 0 ? termRemainingDisplay : `Term Remaining: ${termRemainingDisplay}`}</div>
                                 <div style="height:4px;background:var(--bg-card);border-radius:0;overflow:hidden;">
