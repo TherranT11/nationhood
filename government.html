@@ -3598,8 +3598,14 @@ async function ministryActionConfirm(actionId) {
         }
     }
 
-    // Finance conflict: cancel opposing action before activating
-    if (action.conflictsWith) {
+    // Finance conflict: warn player and cancel opposing action before activating
+    if (action.conflictsWith && activeMinistryActions[ministryKey + '-' + action.conflictsWith]) {
+        const opposingName = action.conflictsWith === 'stimulusPackage' ? 'Stimulus Package' : 'Austerity Measures';
+        if (!confirm(`This will immediately cancel your active ${opposingName} with no AP refund. Continue?`)) {
+            _ministryActionConfirming = false;
+            ministryActionDeselect(actionId);
+            return;
+        }
         await handleFinanceConflict(action, ministryKey);
     }
 
