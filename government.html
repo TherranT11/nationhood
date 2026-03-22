@@ -3247,12 +3247,18 @@ async function fireDoctrineEvent(poolKey, vars) {
         if (!pool) return;
         const text = buildDoctrineEventText(pool, vars);
 
-        await _supabase.rpc('fire_system_event', {
-            p_trigger_key: 'military_doctrine_' + poolKey,
-            p_nation_id: currentNation.id,
-            p_tick: currentTick,
-            p_placeholders: { ...vars, event_text: text }
+        // Insert directly into event_log (fire_system_event RPC has auth
+        // guard issues for client-side calls; direct insert matches the
+        // pattern used by autocracy-coups.js, bills.js, etc.)
+        const { error } = await _supabase.from('event_log').insert({
+            nation_id: currentNation.id,
+            event_name: 'Military Doctrine',
+            trigger_key: 'military_doctrine_' + poolKey,
+            description_chosen: text,
+            category: 'MILITARY',
+            fired_at_tick: currentTick
         });
+        if (error) console.error('[fireDoctrineEvent] insert failed:', error.message);
     } catch (e) {
         console.error('[fireDoctrineEvent]', e);
     }
