@@ -12638,7 +12638,7 @@ async function tickElectorate(supabase, nation, currentTick) {
     // ── 1. Load active factions (exclude gone ≥12 ticks) ──
     const { data: allFactions } = await supabase
         .from('factions')
-        .select('id, seats, last_seen_tick, faction_type')
+        .select('id, seats, last_seen_tick, faction_type, pivot_last_tick')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
     if (!allFactions || allFactions.length === 0) return;
@@ -12799,9 +12799,16 @@ async function tickElectorate(supabase, nation, currentTick) {
         const isLead = factionId === leadPartyId;
 
         // ─── PILLAR 1: Ideological Alignment (0-100) ───
-        const targetAlignment = ideo
+        var targetAlignment = ideo
             ? computeTickAlignment(ideo, activeProfile, axisSalienceWeights, nation)
             : CFG.DEFAULT_ALIGNMENT;
+
+        // Conviction bonus: parties that haven't pivoted in 20+ ticks get +3 alignment
+        var factionEntry = factions.find(function(ff) { return ff.id === factionId; });
+        var pivotLastTick = factionEntry?.pivot_last_tick || 0;
+        if (pivotLastTick === 0 || (currentTick - pivotLastTick) >= 20) {
+            targetAlignment = Math.min(100, targetAlignment + 3);
+        }
 
         // Drift toward target
         const oldAlignment = Number(standing.ideological_alignment ?? 50);
