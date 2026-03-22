@@ -290,22 +290,3 @@ export function buildDoctrineEventText(pool, vars) {
     return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] || key);
 }
 
-// Create a default doctrine state object
-export function createDoctrineState(doctrineId, tick, opts = {}) {
-    const def = DOCTRINES[doctrineId];
-    if (!def) return null;
-    return {
-        id: def.id,
-        sector: def.sector,
-        active: true,
-        cohesion: 0,
-        cohesionMax: DOCTRINE_COHESION_MAX,
-        activatedOnTick: tick,
-        renouncing: false,
-        renounceCooldownRemaining: null,
-        permanent: def.permanent || false,
-        autocracyOnly: def.autocracyOnly || false,
-        hidden: def.hidden || false,
-        ...opts
-    };
-}
