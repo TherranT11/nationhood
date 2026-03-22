@@ -20805,6 +20805,120 @@ async function processStatEffects(supabase, nation, currentTick) {
 }
 
 /**
+ * Process military doctrine tick effects:
+ * - Increment cohesion (+1/tick) for active non-renouncing doctrines (capped at 200).
+ * - Decrement renounce cooldown for renouncing doctrines.
+ * - On cooldown expiry: deactivate doctrine, reset cohesion, handle nuclear pending transition.
+ * - If autocracy democratises: deactivate Praetorian Doctrine.
+ */
+async function processMilitaryDoctrines(supabase: any, nation: any, currentTick: number) {
+    const COHESION_MAX = 200;
+    const results: string[] = [];
+
+    const { data: doctrines, error } = await supabase
+        .from('military_doctrines')
+        .select('*')
+        .eq('nation_id', nation.id);
+
+    if (error || !doctrines || doctrines.length === 0) return results;
+
+    const govType = (nation.government_type || '').toLowerCase();
+    const isAutocracyNation = govType.includes('autocra') || govType.includes('authoritarian') || govType.includes('dictat') || govType.includes('junta');
+
+    for (const doc of doctrines) {
+        // Praetorian: deactivate if nation is no longer autocracy
+        if (doc.doctrine_id === 'praetorian_doctrine' && doc.active && !isAutocracyNation) {
+            await supabase.from('military_doctrines')
+                .update({ active: false, cohesion: 0, updated_at: new Date().toISOString() })
+                .eq('id', doc.id);
+            results.push(`${nation.name}: Praetorian Doctrine deactivated (democratised)`);
+            continue;
+        }
+
+        // Active, non-renouncing: increment cohesion
+        if (doc.active && !doc.renouncing) {
+            const newCohesion = Math.min(COHESION_MAX, (doc.cohesion || 0) + 1);
+            if (newCohesion !== doc.cohesion) {
+                await supabase.from('military_doctrines')
+                    .update({ cohesion: newCohesion, updated_at: new Date().toISOString() })
+                    .eq('id', doc.id);
+            }
+        }
+
+        // Renouncing: decrement cooldown
+        if (doc.renouncing && doc.renounce_cooldown_remaining != null) {
+            const remaining = Math.max(0, doc.renounce_cooldown_remaining - 1);
+
+            if (remaining <= 0) {
+                // Cooldown expired — fully deactivate
+                const hasPending = doc.pending_doctrine_id && doc.sector === 'nuclear';
+
+                if (hasPending) {
+                    // Nuclear transition: deactivate old, activate new
+                    await supabase.from('military_doctrines')
+                        .update({
+                            active: false,
+                            renouncing: false,
+                            renounce_cooldown_remaining: null,
+                            cohesion: 0,
+                            pending_doctrine_id: null,
+                            pending_activates_tick: null,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', doc.id);
+
+                    // Insert/upsert the new nuclear doctrine
+                    await supabase.from('military_doctrines')
+                        .upsert({
+                            nation_id: nation.id,
+                            doctrine_id: doc.pending_doctrine_id,
+                            sector: 'nuclear',
+                            active: true,
+                            cohesion: 0,
+                            activated_on_tick: currentTick,
+                            renouncing: false,
+                            renounce_cooldown_remaining: null,
+                            permanent: false,
+                            autocracy_only: false,
+                            hidden: false,
+                            updated_at: new Date().toISOString()
+                        }, { onConflict: 'nation_id,doctrine_id' });
+
+                    results.push(`${nation.name}: Nuclear doctrine transitioned to ${doc.pending_doctrine_id}`);
+                } else {
+                    // Standard renounce complete — delete the row
+                    await supabase.from('military_doctrines')
+                        .delete()
+                        .eq('id', doc.id);
+
+                    results.push(`${nation.name}: ${doc.doctrine_id} renunciation complete`);
+                }
+
+                // Fire cooldown-expiry events via fire_system_event (best effort)
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_trigger_key: 'military_doctrine_renounced_complete',
+                        p_nation_id: nation.id,
+                        p_tick: currentTick,
+                        p_placeholders: {
+                            nation_name: nation.name || 'Unknown',
+                            doctrine_id: doc.doctrine_id,
+                            sector: doc.sector
+                        }
+                    });
+                } catch (_) { /* best effort */ }
+            } else {
+                await supabase.from('military_doctrines')
+                    .update({ renounce_cooldown_remaining: remaining, updated_at: new Date().toISOString() })
+                    .eq('id', doc.id);
+            }
+        }
+    }
+
+    return results;
+}
+
+/**
  * Process ministry action stat effects during tick advancement.
  * Mirrors processStatEffects but reads from ministry_action_log.
  */
@@ -25337,6 +25451,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (minActErr) {
             console.error(`[advanceTick] Ministry actions failed for ${nation.name} (non-fatal):`, minActErr);
+        }
+
+        // Military doctrine tick processing (cohesion, renounce cooldown)
+        try {
+            const doctrineResults = await processMilitaryDoctrines(supabase, nation, newTick);
+            if (doctrineResults.length > 0) {
+                summary.doctrines = summary.doctrines || [];
+                summary.doctrines.push({ nation: nation.name, effects: doctrineResults });
+            }
+        } catch (docErr) {
+            console.error(`[advanceTick] Military doctrines failed for ${nation.name} (non-fatal):`, docErr);
         }
 
         // Apply GDP growth rate

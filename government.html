@@ -58,6 +58,7 @@ import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game-common.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
+import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
 (function () {
     'use strict';
 
@@ -2661,6 +2662,9 @@ function isMyMinistryByKey(ministryKey) {
 }
 
 function buildMinistryActionRows(ministryKey, isMyMinistry) {
+    // Defense ministry has a custom action layout
+    if (ministryKey === 'defense') return buildDefenseActionRows(isMyMinistry);
+
     const config = MINISTRY_ACTIONS[ministryKey];
     if (!config || !config.actions || config.actions.length === 0) return '';
     const pop = currentNation?.population || 20000000;
@@ -2706,6 +2710,535 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
         </div>`;
     });
     return html;
+}
+
+// ==================== DEFENSE MINISTRY — CUSTOM ACTION ROWS ====================
+
+function buildDefenseActionRows(isMyMinistry) {
+    const comingSoonBtn = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div>`;
+
+    let html = '<div class="ministry-card__actions-label">Ministry Actions</div>';
+
+    // Action 1 — Expand Military Infrastructure (Coming Soon)
+    html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Expand Military Infrastructure</span>
+            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
+        </div>
+        <div class="ministry-action__desc">Issue an RFP for construction of a new Army, Naval, or Air Force base.</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags"></div>
+            <div>${comingSoonBtn}</div>
+        </div>
+    </div>`;
+
+    // Action 2 — Declare Doctrine (fully functional)
+    const viewBtn = isMyMinistry
+        ? `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openDoctrinePanel()" style="background:#5aafa5;border-color:#5aafa5;color:#0f0f0d;">VIEW DOCTRINES</div>`
+        : `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openDoctrinePanel()" style="background:#5aafa5;border-color:#5aafa5;color:#0f0f0d;opacity:0.7;">VIEW DOCTRINES</div>`;
+
+    html += `<div class="ministry-action" onclick="openDoctrinePanel()" style="cursor:pointer;">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Declare Doctrine</span>
+            <span class="ministry-action__ap-cost">3–8 AP</span>
+        </div>
+        <div class="ministry-action__desc">Announce or renounce military doctrine across five sectors.</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags"></div>
+            <div>${viewBtn}</div>
+        </div>
+    </div>`;
+
+    // Action 3 — Military Exercises (Coming Soon)
+    html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Military Exercises</span>
+            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
+        </div>
+        <div class="ministry-action__desc">Conduct large-scale training operations across active branches.</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags"></div>
+            <div>${comingSoonBtn}</div>
+        </div>
+    </div>`;
+
+    return html;
+}
+
+// ==================== DOCTRINE PANEL — FULL-SCREEN OVERLAY ====================
+
+let _doctrineActiveTab = 'army';
+let _nationDoctrines = []; // loaded from DB on panel open
+let _doctrineConfirmingId = null; // lock during announce/renounce
+
+function isDefenseMinister() {
+    return isMyMinistryByKey('defense');
+}
+
+let _doctrinePanelLoading = false;
+
+async function openDoctrinePanel() {
+    if (_doctrinePanelLoading) return;
+    _doctrinePanelLoading = true;
+    _doctrineActiveTab = 'army';
+    _doctrineConfirmingId = null;
+
+    // Load nation doctrines from DB
+    try {
+        await loadNationDoctrines();
+    } finally {
+        _doctrinePanelLoading = false;
+    }
+
+    // Render panel
+    renderDoctrinePanel();
+}
+
+function closeDoctrinePanel() {
+    const panel = document.getElementById('doctrine-panel-overlay');
+    if (panel) panel.remove();
+}
+
+async function loadNationDoctrines() {
+    if (!currentNation) { _nationDoctrines = []; return; }
+    const { data, error } = await _supabase
+        .from('military_doctrines')
+        .select('*')
+        .eq('nation_id', currentNation.id);
+    if (error) {
+        console.error('[loadNationDoctrines]', error.message);
+        _nationDoctrines = [];
+        return;
+    }
+    _nationDoctrines = data || [];
+}
+
+function getDoctrineState(doctrineId) {
+    return _nationDoctrines.find(d => d.doctrine_id === doctrineId);
+}
+
+function renderDoctrinePanel() {
+    // Remove existing if any
+    let overlay = document.getElementById('doctrine-panel-overlay');
+    if (overlay) overlay.remove();
+
+    overlay = document.createElement('div');
+    overlay.id = 'doctrine-panel-overlay';
+    overlay.className = 'doctrine-overlay';
+
+    const isMine = isDefenseMinister();
+
+    // Build tab bar
+    let tabsHtml = '';
+    DOCTRINE_SECTORS.forEach(sector => {
+        const label = DOCTRINE_SECTOR_LABELS[sector];
+        const isActive = sector === _doctrineActiveTab;
+        const activeCount = _nationDoctrines.filter(d => d.sector === sector && d.active && !DOCTRINES[d.doctrine_id]?.hidden).length;
+        const pendingNuclear = sector === NUCLEAR_SECTOR && _nationDoctrines.some(d => d.sector === NUCLEAR_SECTOR && d.pending_doctrine_id);
+
+        let badgeHtml = '';
+        if (sector === NUCLEAR_SECTOR && activeCount > 0) {
+            const activeDoctrine = _nationDoctrines.find(d => d.sector === NUCLEAR_SECTOR && d.active && !d.renouncing);
+            if (activeDoctrine) {
+                const def = DOCTRINES[activeDoctrine.doctrine_id];
+                const abbr = def ? def.name.substring(0, 3).toUpperCase() : '';
+                badgeHtml = `<span class="doctrine-tab__badge">${abbr}</span>`;
+            }
+            if (pendingNuclear) {
+                badgeHtml += `<span class="doctrine-tab__badge doctrine-tab__badge--pending">PENDING</span>`;
+            }
+        } else if (activeCount > 0) {
+            badgeHtml = `<span class="doctrine-tab__badge">${activeCount}</span>`;
+        }
+
+        tabsHtml += `<div class="doctrine-tab${isActive ? ' active' : ''}" onclick="switchDoctrineTab('${sector}')">
+            <span class="doctrine-tab__label${activeCount > 0 ? ' doctrine-tab__label--active' : ''}">${label}</span>
+            ${badgeHtml}
+        </div>`;
+    });
+
+    // Build doctrine cards for active tab
+    const sectorDoctrines = getDoctrinesBySector(_doctrineActiveTab);
+    let cardsHtml = '';
+    sectorDoctrines.forEach(def => {
+        // Praetorian: hide from democratic governments
+        if (def.autocracyOnly && !isAutocracy) return;
+
+        cardsHtml += renderDoctrineCard(def, getDoctrineState(def.id), isMine);
+    });
+
+    if (!cardsHtml) {
+        cardsHtml = '<div style="padding:20px;color:#4a4840;font-family:var(--font-mono);font-size:9px;">No doctrines available for this sector.</div>';
+    }
+
+    overlay.innerHTML = `
+        <div class="doctrine-panel">
+            <div class="doctrine-panel__header">
+                <div class="doctrine-panel__title">MINISTRY OF DEFENSE — MILITARY DOCTRINE</div>
+                <div class="doctrine-panel__close" onclick="closeDoctrinePanel()">✕</div>
+            </div>
+            <div class="doctrine-panel__tabs">${tabsHtml}</div>
+            <div class="doctrine-panel__cards" id="doctrine-cards-container">${cardsHtml}</div>
+        </div>
+    `;
+
+    // Close on backdrop click (outside the panel)
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeDoctrinePanel();
+    });
+
+    document.body.appendChild(overlay);
+}
+
+function renderDoctrineCard(def, state, isMine) {
+    const isActiveDoc = state && state.active && !state.renouncing;
+    const isRenouncing = state && state.renouncing;
+    const isPermanent = def.permanent;
+    const isNuclearLocked = def.id === 'non_nuclear_power' && state && state.active && !(currentNation?.hasNuclearCapability);
+
+    // Determine card visual state
+    let cardClass = 'doctrine-card';
+    let stateTagHtml = '';
+    let barHtml = '';
+    let buttonHtml = '';
+
+    if (isPermanent && isActiveDoc) {
+        // Praetorian Doctrine — permanent autocracy card
+        cardClass += ' doctrine-card--praetorian';
+        stateTagHtml = `<span class="doctrine-card__tag doctrine-card__tag--permanent">PERMANENT</span>`;
+        barHtml = renderCohesionBar(state);
+        buttonHtml = `<div class="doctrine-card__btn doctrine-card__btn--disabled">AUTOCRACY — CANNOT BE RENOUNCED</div>`;
+    } else if (isRenouncing) {
+        // Renouncing state — cooldown in progress
+        cardClass += ' doctrine-card--renouncing';
+        stateTagHtml = `<span class="doctrine-card__tag doctrine-card__tag--renouncing">RENOUNCING</span>`;
+        barHtml = renderCooldownBar(state);
+        buttonHtml = `<div style="font-family:var(--font-mono);font-size:7px;color:#4a4840;margin-top:4px;">Cannot announce while cooldown is active.</div>`;
+    } else if (isActiveDoc) {
+        // Active state
+        cardClass += ' doctrine-card--active';
+        stateTagHtml = `<span class="doctrine-card__tag doctrine-card__tag--active">ACTIVE</span>`;
+        barHtml = renderCohesionBar(state);
+
+        if (isNuclearLocked) {
+            buttonHtml = `<div class="doctrine-card__btn doctrine-card__btn--disabled">REQUIRES NUCLEAR CAPABILITY TO CHANGE</div>`;
+        } else if (isMine && !isPermanent) {
+            buttonHtml = `<div class="doctrine-card__btn doctrine-card__btn--renounce" onclick="event.stopPropagation();beginDoctrineRenounce('${def.id}')">RENOUNCE — ${DOCTRINE_RENOUNCE_COOLDOWN} TICK COOLDOWN</div>`;
+        }
+    } else {
+        // Inactive state
+        cardClass += ' doctrine-card--inactive';
+        if (isMine) {
+            buttonHtml = `<div class="doctrine-card__btn doctrine-card__btn--announce" onclick="event.stopPropagation();beginDoctrineAnnounce('${def.id}')">ANNOUNCE</div>`;
+        }
+    }
+
+    // Nuclear pending state
+    if (state && state.pending_doctrine_id === def.id && !isActiveDoc) {
+        cardClass = 'doctrine-card doctrine-card--pending';
+        const activatesTick = state.pending_activates_tick || '?';
+        stateTagHtml = `<span class="doctrine-card__tag doctrine-card__tag--pending">PENDING — ACTIVATES TICK ${activatesTick}</span>`;
+        barHtml = '';
+        buttonHtml = '';
+    }
+
+    const apText = def.apCost > 0 ? `${def.apCost} AP` : (def.startingDoctrine ? 'DEFAULT' : 'NO COST');
+
+    return `<div class="${cardClass}" id="doctrine-card-${def.id}">
+        <div class="doctrine-card__top">
+            <span class="doctrine-card__name">${escapeHtml(def.name)}</span>
+            ${stateTagHtml}
+        </div>
+        <div class="doctrine-card__ap">${apText}</div>
+        <div class="doctrine-card__desc">${escapeHtml(def.desc)}</div>
+        ${barHtml}
+        <div class="doctrine-card__actions" id="doctrine-actions-${def.id}">
+            ${buttonHtml}
+        </div>
+    </div>`;
+}
+
+function renderCohesionBar(state) {
+    if (!state) return '';
+    const cohesion = state.cohesion || 0;
+    const max = DOCTRINE_COHESION_MAX;
+    const pct = Math.min(100, (cohesion / max) * 100);
+    return `<div class="doctrine-bar">
+        <span class="doctrine-bar__label">COHESION</span>
+        <div class="doctrine-bar__track"><div class="doctrine-bar__fill doctrine-bar__fill--cohesion" style="width:${pct}%"></div></div>
+        <span class="doctrine-bar__value doctrine-bar__value--cohesion">${cohesion} / ${max}</span>
+    </div>`;
+}
+
+function renderCooldownBar(state) {
+    if (!state) return '';
+    const remaining = state.renounce_cooldown_remaining || 0;
+    const total = DOCTRINE_RENOUNCE_COOLDOWN;
+    const pct = Math.min(100, (remaining / total) * 100);
+    return `<div class="doctrine-bar">
+        <span class="doctrine-bar__label">COOLDOWN</span>
+        <div class="doctrine-bar__track"><div class="doctrine-bar__fill doctrine-bar__fill--cooldown" style="width:${pct}%"></div></div>
+        <span class="doctrine-bar__value doctrine-bar__value--cooldown">${remaining} / ${total}</span>
+    </div>`;
+}
+
+function doctrineEventVars(def, extra = {}) {
+    return {
+        nation_name: currentNation?.name || 'Unknown',
+        doctrine_name: def.name,
+        sector: DOCTRINE_SECTOR_LABELS[def.sector],
+        ...extra
+    };
+}
+
+// ── Announce flow ──
+
+function beginDoctrineAnnounce(doctrineId) {
+    const def = DOCTRINES[doctrineId];
+    if (!def) return;
+
+    // Nuclear capability check
+    if (def.sector === NUCLEAR_SECTOR) {
+        const check = canAnnounceNuclearDoctrine(def, { nation: currentNation || {} });
+        if (!check.allowed) {
+            showDoctrineAlert(doctrineId, check.message);
+            return;
+        }
+    }
+
+    // AP check
+    const ap = currentFaction?.action_points || 0;
+    if (def.apCost > 0 && ap < def.apCost) {
+        showDoctrineAlert(doctrineId, `Insufficient AP. Need ${def.apCost}, have ${ap}.`);
+        return;
+    }
+
+    // Show inline confirmation
+    const actionsEl = document.getElementById('doctrine-actions-' + doctrineId);
+    if (!actionsEl) return;
+
+    actionsEl.innerHTML = `
+        <div class="doctrine-confirm doctrine-confirm--announce">
+            <div class="doctrine-confirm__text">Announce ${escapeHtml(def.name)}? This declaration is public.</div>
+            <div class="doctrine-confirm__btns">
+                <div class="doctrine-card__btn doctrine-card__btn--announce" onclick="event.stopPropagation();confirmDoctrineAnnounce('${doctrineId}')">Confirm — ${def.apCost} AP</div>
+                <div class="doctrine-card__btn doctrine-card__btn--cancel" onclick="event.stopPropagation();cancelDoctrineAction('${doctrineId}')">Cancel</div>
+            </div>
+        </div>`;
+}
+
+function showDoctrineAlert(doctrineId, message) {
+    const actionsEl = document.getElementById('doctrine-actions-' + doctrineId);
+    if (!actionsEl) return;
+    const existingAlert = actionsEl.querySelector('.doctrine-alert');
+    if (existingAlert) existingAlert.remove();
+
+    const alert = document.createElement('div');
+    alert.className = 'doctrine-alert';
+    alert.textContent = message;
+    actionsEl.prepend(alert);
+
+    // Auto-dismiss after 5s
+    setTimeout(() => { if (alert.parentNode) alert.remove(); }, 5000);
+}
+
+async function confirmDoctrineAnnounce(doctrineId) {
+    if (_doctrineConfirmingId) return;
+    _doctrineConfirmingId = doctrineId;
+
+    const def = DOCTRINES[doctrineId];
+    if (!def) { _doctrineConfirmingId = null; return; }
+
+    try {
+        // Guard: prevent re-announcing an already active doctrine
+        const existing = getDoctrineState(doctrineId);
+        if (existing && existing.active && !existing.renouncing) {
+            showDoctrineAlert(doctrineId, `${def.name} is already active.`);
+            _doctrineConfirmingId = null;
+            return;
+        }
+
+        // Nuclear single-select: if announcing a different nuclear doctrine, begin renounce of current
+        let oldNuclearDoctrine = null;
+        if (def.sector === NUCLEAR_SECTOR) {
+            const currentNuclear = _nationDoctrines.find(d => d.sector === NUCLEAR_SECTOR && d.active && !d.renouncing);
+            if (currentNuclear && currentNuclear.doctrine_id !== doctrineId) {
+                oldNuclearDoctrine = currentNuclear;
+            }
+        }
+
+        // Deduct AP
+        if (def.apCost > 0) {
+            const apResult = await deductAP(_supabase, currentFaction.id, def.apCost);
+            if (!apResult.success) {
+                showDoctrineAlert(doctrineId, apResult.error || 'Failed to deduct AP.');
+                _doctrineConfirmingId = null;
+                return;
+            }
+            currentFaction.action_points = Math.max(0, (currentFaction.action_points || 0) - def.apCost);
+            sessionStorage.removeItem('nationhood_state');
+        }
+
+        if (def.sector === NUCLEAR_SECTOR && oldNuclearDoctrine) {
+            // Nuclear transition: begin renounce of old, set pending for new
+            const { error: nucErr } = await _supabase.from('military_doctrines')
+                .update({
+                    renouncing: true,
+                    renounce_cooldown_remaining: DOCTRINE_RENOUNCE_COOLDOWN,
+                    pending_doctrine_id: doctrineId,
+                    pending_activates_tick: (currentTick || 0) + DOCTRINE_RENOUNCE_COOLDOWN
+                })
+                .eq('nation_id', currentNation.id)
+                .eq('doctrine_id', oldNuclearDoctrine.doctrine_id);
+            if (nucErr) throw nucErr;
+
+            // Fire nuclear transition world event
+            const oldDef = DOCTRINES[oldNuclearDoctrine.doctrine_id];
+            if (oldDef && def.id !== 'non_nuclear_power') {
+                fireDoctrineEvent('nuclear_transition_world', doctrineEventVars(def, {
+                    old_doctrine: oldDef.name,
+                    new_doctrine: def.name
+                }));
+            }
+        } else {
+            // Standard announce: insert new active doctrine
+            const { error: insErr } = await _supabase.from('military_doctrines').insert({
+                nation_id: currentNation.id,
+                doctrine_id: doctrineId,
+                sector: def.sector,
+                active: true,
+                cohesion: 0,
+                activated_on_tick: currentTick || 0,
+                renouncing: false,
+                renounce_cooldown_remaining: null,
+                permanent: def.permanent || false,
+                autocracy_only: def.autocracyOnly || false,
+                hidden: def.hidden || false
+            });
+            if (insErr) throw insErr;
+        }
+
+        // Fire events (non-hidden doctrines only)
+        if (!def.hidden) {
+            const vars = doctrineEventVars(def);
+            fireDoctrineEvent('announced_nation', vars);
+            fireDoctrineEvent('announced_world', vars);
+        }
+
+        // Log activity
+        await _supabase.from('activity_log').insert({
+            faction_id: currentFaction.id,
+            nation_id: currentNation.id,
+            action_type: 'declare_doctrine',
+            action_label: 'Declare Doctrine',
+            description: `Announced ${def.name} (${DOCTRINE_SECTOR_LABELS[def.sector]}).`,
+            outcome: 'success',
+            ap_spent: def.apCost,
+            tick: currentTick
+        });
+
+        // Refresh panel
+        await loadNationDoctrines();
+        renderDoctrinePanel();
+
+    } catch (e) {
+        console.error('[confirmDoctrineAnnounce]', e);
+        showDoctrineAlert(doctrineId, 'Failed: ' + (e.message || 'Unknown error'));
+    } finally {
+        _doctrineConfirmingId = null;
+    }
+}
+
+// ── Renounce flow ──
+
+function beginDoctrineRenounce(doctrineId) {
+    const def = DOCTRINES[doctrineId];
+    if (!def) return;
+
+    const actionsEl = document.getElementById('doctrine-actions-' + doctrineId);
+    if (!actionsEl) return;
+
+    actionsEl.innerHTML = `
+        <div class="doctrine-confirm doctrine-confirm--renounce">
+            <div class="doctrine-confirm__text">Renounce ${escapeHtml(def.name)}? ${DOCTRINE_RENOUNCE_COOLDOWN}-tick cooldown applies. Doctrine remains public until cooldown expires.</div>
+            <div class="doctrine-confirm__btns">
+                <div class="doctrine-card__btn doctrine-card__btn--renounce" onclick="event.stopPropagation();confirmDoctrineRenounce('${doctrineId}')">Confirm Renunciation</div>
+                <div class="doctrine-card__btn doctrine-card__btn--cancel" onclick="event.stopPropagation();cancelDoctrineAction('${doctrineId}')">Cancel</div>
+            </div>
+        </div>`;
+}
+
+async function confirmDoctrineRenounce(doctrineId) {
+    if (_doctrineConfirmingId) return;
+    _doctrineConfirmingId = doctrineId;
+
+    const def = DOCTRINES[doctrineId];
+    if (!def) { _doctrineConfirmingId = null; return; }
+
+    try {
+        const { error: renErr } = await _supabase.from('military_doctrines')
+            .update({
+                renouncing: true,
+                renounce_cooldown_remaining: DOCTRINE_RENOUNCE_COOLDOWN
+            })
+            .eq('nation_id', currentNation.id)
+            .eq('doctrine_id', doctrineId);
+        if (renErr) throw renErr;
+
+        // Fire nation event
+        if (!def.hidden) {
+            fireDoctrineEvent('renounced_nation_start', doctrineEventVars(def));
+        }
+
+        // Log activity
+        await _supabase.from('activity_log').insert({
+            faction_id: currentFaction.id,
+            nation_id: currentNation.id,
+            action_type: 'renounce_doctrine',
+            action_label: 'Renounce Doctrine',
+            description: `Initiated renunciation of ${def.name} (${DOCTRINE_SECTOR_LABELS[def.sector]}). Cooldown: ${DOCTRINE_RENOUNCE_COOLDOWN} ticks.`,
+            outcome: 'success',
+            ap_spent: 0,
+            tick: currentTick
+        });
+
+        // Refresh panel
+        await loadNationDoctrines();
+        renderDoctrinePanel();
+
+    } catch (e) {
+        console.error('[confirmDoctrineRenounce]', e);
+        showDoctrineAlert(doctrineId, 'Failed: ' + (e.message || 'Unknown error'));
+    } finally {
+        _doctrineConfirmingId = null;
+    }
+}
+
+function cancelDoctrineAction(doctrineId) {
+    // Re-render the panel to reset the card
+    renderDoctrinePanel();
+}
+
+function switchDoctrineTab(sector) {
+    _doctrineActiveTab = sector;
+    renderDoctrinePanel();
+}
+
+async function fireDoctrineEvent(poolKey, vars) {
+    try {
+        const pool = DOCTRINE_EVENTS[poolKey];
+        if (!pool) return;
+        const text = buildDoctrineEventText(pool, vars);
+
+        await _supabase.rpc('fire_system_event', {
+            p_trigger_key: 'military_doctrine_' + poolKey,
+            p_nation_id: currentNation.id,
+            p_tick: currentTick,
+            p_placeholders: { ...vars, event_text: text }
+        });
+    } catch (e) {
+        console.error('[fireDoctrineEvent]', e);
+    }
 }
 
 // --- Ministry action interaction state machine ---
@@ -5695,6 +6228,15 @@ window.onMinistryChange = onMinistryChange;
 window.ministryActionSelect = ministryActionSelect;
 window.ministryActionConfirm = ministryActionConfirm;
 window.ministryActionDeselect = ministryActionDeselect;
+// Doctrine panel exports
+window.openDoctrinePanel = openDoctrinePanel;
+window.closeDoctrinePanel = closeDoctrinePanel;
+window.switchDoctrineTab = switchDoctrineTab;
+window.beginDoctrineAnnounce = beginDoctrineAnnounce;
+window.confirmDoctrineAnnounce = confirmDoctrineAnnounce;
+window.beginDoctrineRenounce = beginDoctrineRenounce;
+window.confirmDoctrineRenounce = confirmDoctrineRenounce;
+window.cancelDoctrineAction = cancelDoctrineAction;
 // Protest crisis card exports
 window.protestCrisisAction = protestCrisisAction;
 })();
