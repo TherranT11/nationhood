@@ -899,6 +899,112 @@ const guideContent = {
 <p>Once submitted, your bill enters the <strong>Committee</strong> phase. It is now visible to all factions in your nation. Other factions can propose amendments, offer conditional support, or signal opposition. You retain control of the bill as its sponsor.</p>
 <p>Committee is where you build the votes to pass. See the next section for how amendments and support-building work.</p>
 </div></details>
+
+<details><summary>Committee Phase</summary><div>
+<h3>What Is Committee?</h3>
+<p>After a bill is submitted, it enters the <strong>committee</strong> phase. The bill is now visible to every faction in your nation. This is the negotiation stage &mdash; you need to build enough support to advance the bill to the floor.</p>
+
+<h3>Committee Expiry</h3>
+<p>Bills that sit in committee for <strong>6 ticks</strong> without being sent to the floor are <strong>automatically expired</strong> and removed. Act within the window or lose the bill (and the AP you spent).</p>
+
+<h3>Support &amp; Stances</h3>
+<p>Each faction in parliament is listed in the bill&rsquo;s sidebar with a stance:</p>
+<table>
+<tr><th>Stance</th><th>Meaning</th></tr>
+<tr><td><strong>SPONSOR</strong></td><td>You drafted the bill. Automatically counts as support.</td></tr>
+<tr><td><strong>ACCEPT</strong></td><td>The faction supports the bill.</td></tr>
+<tr><td><strong>REJECT</strong></td><td>The faction opposes the bill.</td></tr>
+<tr><td><strong>CONDITIONAL</strong></td><td>The faction has proposed an amendment &mdash; they will support if you accept it.</td></tr>
+<tr><td><strong>PENDING</strong></td><td>The faction has not yet declared a position.</td></tr>
+<tr><td><strong>LOCKED</strong></td><td>Support was locked via a strike deal (cannot be changed).</td></tr>
+</table>
+<p>The sidebar shows a live <strong>Support %</strong> bar based on total seats backing the bill.</p>
+
+<h3>Accepting or Rejecting (Non-Sponsors)</h3>
+<p>If you are <em>not</em> the sponsor, you can click <strong>Accept</strong> or <strong>Reject</strong> on the bill detail page. You may change your mind at any time while the bill is in committee &mdash; unless your support has been locked by a strike deal.</p>
+
+<h3>Conditional Support (Amendments)</h3>
+<p>Instead of simply accepting or rejecting, any non-sponsor faction can propose <strong>conditional support</strong>. This is the game&rsquo;s amendment system. There are three types:</p>
+
+<table>
+<tr><th>Type</th><th>What It Does</th></tr>
+<tr><td><strong>Policy Amendment</strong></td><td>You propose adding a specific policy article. If the sponsor accepts, the policy is added and your faction&rsquo;s support is recorded.</td></tr>
+<tr><td><strong>Text Amendment</strong></td><td>You propose adding a freeform text article (title + body). No mechanical effect, but politically significant.</td></tr>
+<tr><td><strong>Strike Article</strong></td><td>You request the <em>removal</em> of an existing article. If accepted, the article is removed and your support is <strong>locked</strong> (you cannot withdraw it later).</td></tr>
+</table>
+
+<p>The <strong>sponsor</strong> sees all incoming conditional support offers and can <strong>Accept</strong> or <strong>Reject</strong> each one individually. Accepting an amendment modifies the bill and secures that faction&rsquo;s votes.</p>
+<p class="guide-tip">Amendments are the core negotiation mechanic. A bill with unpopular articles can be salvaged by striking the controversial provision in exchange for another party&rsquo;s locked support.</p>
+
+<h3>Sponsor Actions in Committee</h3>
+<p>As the sponsor, you have several tools while your bill is in committee:</p>
+<ul>
+<li><strong>Add Policy Article</strong> &mdash; attach additional policies to the bill.</li>
+<li><strong>Add Text Article</strong> &mdash; attach freeform text provisions.</li>
+<li><strong>Remove articles</strong> &mdash; strip articles you added (using the &times; button on each article).</li>
+<li><strong>Accept / Reject amendments</strong> &mdash; respond to conditional support offers from other factions.</li>
+<li><strong>Retract Bill</strong> &mdash; withdraw the bill entirely. The AP cost is not refunded.</li>
+</ul>
+
+<h3>Sending to the Floor</h3>
+<p>When you are ready to call a vote, click <strong>&ldquo;Send to Floor&rdquo;</strong>. To be eligible:</p>
+<ul>
+<li><strong>Standard bills</strong> &mdash; you need at least one co-sponsor (another faction that has accepted) <em>or</em> you must hold a simple majority of seats on your own.</li>
+<li><strong>Foundational bills</strong> &mdash; you <em>must</em> have at least one co-sponsor. A solo majority is not enough.</li>
+</ul>
+<p>Once on the floor, the bill enters the voting window and <strong>cannot be amended or retracted</strong>.</p>
+</div></details>
+
+<details><summary>Floor Vote &amp; Resolution</summary><div>
+<h3>Voting Window</h3>
+<p>Floor votes last <strong>6 ticks</strong>. The deadline is shown on the bill detail page. Every faction with parliamentary seats may vote.</p>
+
+<h3>How to Vote</h3>
+<p>Open the bill detail page and click one of three buttons:</p>
+<ul>
+<li><strong>Vote Yes</strong> &mdash; your faction&rsquo;s seats count toward passage.</li>
+<li><strong>Vote No</strong> &mdash; your faction&rsquo;s seats count against.</li>
+<li><strong>Abstain</strong> &mdash; your seats count toward quorum but not toward yes or no.</li>
+</ul>
+<p>You may change your vote at any time before the window closes.</p>
+
+<h3>Quorum</h3>
+<p>At least <strong>50%</strong> of total seats must participate (yes + no + abstain) for the vote to be valid. If quorum is not met, the bill fails automatically.</p>
+
+<h3>Passage Thresholds</h3>
+<table>
+<tr><th>Bill Type</th><th>Threshold</th></tr>
+<tr><td>Standard bill</td><td><strong>Simple majority</strong> &mdash; more YES votes than NO votes</td></tr>
+<tr><td>Repeal</td><td><strong>Simple majority</strong></td></tr>
+<tr><td>Foundational bill</td><td><strong>Two-thirds supermajority</strong> &mdash; YES votes &ge; &lceil;2/3 of total seats&rceil;</td></tr>
+<tr><td>No Confidence motion</td><td><strong>Simple majority</strong></td></tr>
+<tr><td>Impeachment motion</td><td><strong>Absolute majority</strong> &mdash; YES &ge; 61 of 120 seats</td></tr>
+<tr><td>Impeachment conviction</td><td><strong>Two-thirds supermajority</strong></td></tr>
+</table>
+
+<h3>Early Resolution</h3>
+<p>If enough votes are locked in that the outcome is mathematically certain before the deadline, the bill resolves on the <strong>next tick</strong> instead of waiting for the window to expire. The bill page will show &ldquo;Resolves next tick &mdash; will pass&rdquo; or &ldquo;will fail&rdquo;.</p>
+
+<h3>Presidential Systems &mdash; President&rsquo;s Desk</h3>
+<p>In a presidential democracy, bills that pass the legislature are sent to the <strong>President&rsquo;s Desk</strong> before becoming law. The president&rsquo;s faction may:</p>
+<ul>
+<li><strong>Sign into law</strong> &mdash; the bill takes effect immediately.</li>
+<li><strong>Veto</strong> &mdash; the bill is blocked. Costs the president <strong>-3 Approval</strong>. The legislature can override a veto with a <strong>two-thirds supermajority</strong>.</li>
+</ul>
+<p>If the president takes no action within <strong>6 ticks</strong>, the bill is <strong>auto-signed</strong> into law.</p>
+
+<h3>Autocracies &mdash; Decrees</h3>
+<p>In an autocracy, there is no floor vote. The ruling faction drafts a <strong>decree</strong> and clicks <strong>&ldquo;Enact Decree&rdquo;</strong> to pass it unilaterally. Other factions can still propose amendments during the committee phase if any exist. The head faction can also <strong>veto</strong> decrees proposed by other parties.</p>
+
+<h3>What Happens When a Bill Passes</h3>
+<p>Each policy article in the bill becomes an <strong>active law</strong>. Active laws apply their stat effects every tick (e.g., +2 stability, -1 corruption, etc.). Funding articles adjust ministry institution allocations. Text articles have no mechanical effect but are recorded in the legislative history.</p>
+
+<h3>What Happens When a Bill Fails</h3>
+<p>The bill is removed with no effect. It appears in the <strong>Recently Resolved</strong> section marked as FAILED. The AP spent drafting it is not refunded.</p>
+
+<h3>Frozen Bills</h3>
+<p>If the legislature is <strong>dissolved</strong> (e.g., during elections), all in-progress bills are <strong>frozen</strong>. Frozen bills cannot be voted on or amended. They are dismissed when the election resolves.</p>
+</div></details>
 `
     }
 };
