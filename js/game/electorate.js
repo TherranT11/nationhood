@@ -2099,6 +2099,8 @@ export async function onRally(supabase, factionId, nationId, outcomeId, currentT
         outcomeId === 'gaffe' || outcomeId === 'counter' ? 'failure' : 'success',
         3, currentTick
     );
+
+    return { visBoost };
 }
 
 /**
@@ -2715,3 +2717,175 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
 //   the common case, and the atomic RPC prevents DB over-spending, but a race condition could
 //   let effects apply without AP deduction if two requests pass the early check simultaneously.
 //   Acceptable for alpha; fix by moving deductAP before effects in a future refactor.
+
+// ============================================================================
+// IDEOLOGICAL PIVOT
+// ============================================================================
+
+export const PIVOT_CONFIG = {
+    BASE_AP: 1,
+    COOLDOWN: 3,                     // ticks between pivots
+    ESCALATION_RESET: 20,            // pivot_count resets after 20 ticks of no pivots
+    SHIFT_AMOUNT: 5,                 // +5 per pivot on -100 to +100 scale
+    REVERSE_AP_EXTRA: 1,             // extra AP when pivoting against current position
+    REVERSE_CRED_BASE: 2,            // base credibility penalty for reversing
+    REVERSE_CRED_SCALE: 0.05,        // extra cred penalty per point of current position strength
+};
+
+/**
+ * Execute an Ideological Pivot — shift the party's ideology on a chosen axis.
+ *
+ * Rules:
+ *   - Base cost: 1 AP + pivotCount (escalating within 20-tick window)
+ *   - Cooldown: 3 ticks between pivots
+ *   - Pivoting AGAINST current position: +1 AP extra, credibility penalty
+ *   - Credibility penalty scales with how far you've gone in the opposite direction
+ *   - Updates faction_ideology directly
+ *
+ * @param {object} supabase
+ * @param {string} factionId
+ * @param {string} nationId
+ * @param {string} targetAxis - e.g. 'security_freedom'
+ * @param {string} targetDirection - 'left' or 'right'
+ * @param {number} currentTick
+ * @returns {{ success, message, effects, newAp, ... }}
+ */
+export async function executeIdeologicalPivot(supabase, factionId, nationId, targetAxis, targetDirection, currentTick) {
+    const cfg = PIVOT_CONFIG;
+
+    // Validate
+    if (!AXIS_KEYS.includes(targetAxis)) {
+        return { success: false, message: 'Unknown axis.' };
+    }
+    if (!['left', 'right'].includes(targetDirection)) {
+        return { success: false, message: "Direction must be 'left' or 'right'." };
+    }
+
+    // Load faction
+    const { data: faction } = await supabase.from('factions')
+        .select('id, action_points, pivot_count, pivot_last_tick, pivot_cycle_start_tick')
+        .eq('id', factionId).single();
+    if (!faction) return { success: false, message: 'Faction not found.' };
+
+    // Cooldown check
+    const lastPivotTick = faction.pivot_last_tick || 0;
+    if (currentTick - lastPivotTick < cfg.COOLDOWN) {
+        const remaining = cfg.COOLDOWN - (currentTick - lastPivotTick);
+        return { success: false, message: `Pivot on cooldown: ${remaining} tick${remaining !== 1 ? 's' : ''} remaining.` };
+    }
+
+    // Compute escalating pivot count (resets after 20 ticks of no pivots)
+    let pivotCount = faction.pivot_count || 0;
+    if (currentTick - lastPivotTick >= cfg.ESCALATION_RESET) {
+        pivotCount = 0; // reset cycle
+    }
+
+    // Load current ideology position
+    const { data: ideo } = await supabase.from('faction_ideology')
+        .select('*').eq('faction_id', factionId).single();
+    if (!ideo) return { success: false, message: 'No ideology data found.' };
+
+    const currentPos = Number(ideo[targetAxis] ?? 0); // -100 to +100
+    const shiftAmount = cfg.SHIFT_AMOUNT;
+    const shiftSign = targetDirection === 'right' ? 1 : -1;
+    const newPos = Math.max(-100, Math.min(100, currentPos + shiftAmount * shiftSign));
+
+    // Reject no-op pivots at boundary (don't charge AP for zero movement)
+    if (newPos === currentPos) {
+        const boundaryLabel = currentPos >= 100 ? 'maximum' : 'minimum';
+        return { success: false, message: `Already at ${boundaryLabel} on this axis.` };
+    }
+
+    // Determine if this is a reversal (pivoting against current lean)
+    const isReversal = (currentPos > 0 && shiftSign < 0) || (currentPos < 0 && shiftSign > 0);
+
+    // Calculate AP cost
+    let apCost = cfg.BASE_AP + pivotCount;
+    if (isReversal) apCost += cfg.REVERSE_AP_EXTRA;
+
+    // Check AP
+    const factionAp = faction.action_points || 0;
+    if (factionAp < apCost) {
+        return { success: false, message: `Need ${apCost} AP, have ${factionAp}.` };
+    }
+
+    // Calculate credibility penalty for reversals
+    let credPenalty = 0;
+    if (isReversal) {
+        credPenalty = cfg.REVERSE_CRED_BASE + Math.abs(currentPos) * cfg.REVERSE_CRED_SCALE;
+    }
+
+    // Deduct AP
+    const apResult = await deductAP(supabase, factionId, apCost);
+    if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP' };
+
+    // Update ideology — error means AP lost but position unchanged (logged, not fatal)
+    const { error: ideoErr } = await supabase.from('faction_ideology')
+        .update({ [targetAxis]: newPos })
+        .eq('faction_id', factionId);
+    if (ideoErr) {
+        console.error('[Pivot] ideology update failed:', ideoErr.message);
+        return { success: false, message: 'Failed to update ideology position.' };
+    }
+
+    // Update pivot tracking
+    const { error: pivotErr } = await supabase.from('factions')
+        .update({
+            pivot_count: pivotCount + 1,
+            pivot_last_tick: currentTick,
+            pivot_cycle_start_tick: pivotCount === 0 ? currentTick : (faction.pivot_cycle_start_tick || currentTick),
+        })
+        .eq('id', factionId);
+    if (pivotErr) console.error('[Pivot] pivot tracking update failed:', pivotErr.message);
+
+    // Apply credibility penalty
+    if (credPenalty > 0) {
+        const { data: standing } = await supabase.from('faction_electoral_standing')
+            .select('id, credibility_modifier')
+            .eq('faction_id', factionId).eq('nation_id', nationId).maybeSingle();
+        if (standing) {
+            const newCred = Math.max(0.1, (Number(standing.credibility_modifier) || 1.0) - credPenalty * 0.01);
+            const { error: credErr } = await supabase.from('faction_electoral_standing')
+                .update({ credibility_modifier: newCred })
+                .eq('id', standing.id);
+            if (credErr) console.error('[Pivot] credibility update failed:', credErr.message);
+        }
+    }
+
+    // Build result
+    const axisDef = IDEOLOGY_AXES.find(a => a.key === targetAxis);
+    const dirLabel = targetDirection === 'left' ? axisDef?.leftLabel : axisDef?.rightLabel;
+
+    // Log to campaign_actions + activity_log (consistent with other actions)
+    const { error: insErr } = await supabase.from('campaign_actions').insert({
+        party_id: factionId, nation_id: nationId,
+        action_type: 'ideological_pivot', ap_cost: apCost,
+        money_cost: 0, tick_performed: currentTick,
+        result: { targetAxis, targetDirection, from: currentPos, to: newPos, isReversal, credPenalty },
+    });
+    if (insErr) console.error('[Pivot] campaign_actions insert failed:', insErr.message);
+
+    await logActivity(supabase, factionId, nationId, 'ideological_pivot',
+        'Ideological Pivot',
+        `Pivoted toward ${dirLabel} on ${axisDef?.key || targetAxis} (${currentPos} → ${newPos})${isReversal ? ' [reversal]' : ''}`,
+        'success', apCost, currentTick);
+
+    const effects = [
+        { label: 'AP Spent', value: -apCost },
+        { label: `${axisDef?.leftLabel} ↔ ${axisDef?.rightLabel}`, value: `${currentPos > 0 ? '+' : ''}${currentPos} → ${newPos > 0 ? '+' : ''}${newPos}` },
+    ];
+    if (credPenalty > 0) {
+        effects.push({ label: 'Credibility', value: -credPenalty });
+    }
+    if (pivotCount > 0) {
+        effects.push({ label: 'Next pivot cost', value: `${cfg.BASE_AP + pivotCount + 1} AP` });
+    }
+
+    return {
+        success: true,
+        headline: `Pivoted toward ${dirLabel}`,
+        newAp: apResult.newAp,
+        effects,
+        outcomeName: isReversal ? 'Reversal — credibility hit applied' : 'Position shifted',
+    };
+}
