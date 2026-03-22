@@ -12515,13 +12515,20 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
 
     const govApproval = Number(nation.gov_approval ?? 50);
 
+    // Compute spatial alignments at genesis (all parties compete from the start)
+    const defaultSalience = {};
+    for (const axisKey of AXIS_KEYS) defaultSalience[axisKey] = 0.2;
+    const genesisAlignments = profile
+        ? computeSpatialAlignments(ideoMap, profile, defaultSalience)
+        : {};
+
     const rows = [];
     for (const faction of factions) {
         const ideo = ideoMap[faction.id];
 
-        // Compute initial alignment from ideology vs electorate profile
-        const alignment = profile && ideo
-            ? computeGenesisAlignment(ideo, profile)
+        // Compute initial alignment from ideology vs electorate profile (spatial competition)
+        const alignment = (genesisAlignments[faction.id] != null)
+            ? genesisAlignments[faction.id]
             : CFG.DEFAULT_ALIGNMENT;
 
         // Party approval: governing factions inherit gov_approval, new parties start low
@@ -12584,6 +12591,45 @@ function bimodalAxisAlignment(partyPos, elecMean, elecVar) {
     var bimodal = Math.max(gauss(partyPos, leftHump, humpSigma), gauss(partyPos, rightHump, humpSigma));
 
     return (1 - polWeight) * unimodal + polWeight * bimodal;
+}
+
+/**
+ * Compute each party's share of voters on a single ideology axis using
+ * spatial competition. Parties near the same position split voters;
+ * a party alone on a flank captures it entirely.
+ *
+ * @param {Array<{factionId: string, partyNorm: number}>} parties
+ * @param {number} elecMean - Electorate mean (0-100)
+ * @param {number} elecVar - Electorate variance (5-45)
+ * @param {number} [temperature=4] - Softmax temperature
+ * @returns {Map<string, number>} factionId → share (0-1)
+ */
+function spatialAxisCompetition(parties, elecMean, elecVar, temperature) {
+    if (temperature === undefined) temperature = 4;
+    var result = new Map();
+    if (parties.length === 0) return result;
+    if (parties.length === 1) {
+        var align = bimodalAxisAlignment(parties[0].partyNorm, elecMean, elecVar);
+        result.set(parties[0].factionId, align);
+        return result;
+    }
+
+    var alignments = parties.map(function(p) {
+        return { factionId: p.factionId, alignment: bimodalAxisAlignment(p.partyNorm, elecMean, elecVar) };
+    });
+
+    var scores = alignments.map(function(a) { return a.alignment; });
+    var maxScore = Math.max.apply(null, scores);
+    var k = Math.max(0.5, temperature);
+    var exps = scores.map(function(s) { return Math.exp((s - maxScore) / k); });
+    var sumExp = exps.reduce(function(a, b) { return a + b; }, 0);
+
+    var poolQuality = maxScore;
+    for (var i = 0; i < alignments.length; i++) {
+        var share = sumExp > 0 ? (exps[i] / sumExp) : (1 / alignments.length);
+        result.set(alignments[i].factionId, round3(share * poolQuality));
+    }
+    return result;
 }
 
 /**
@@ -12824,7 +12870,10 @@ async function tickElectorate(supabase, nation, currentTick) {
     // ── 13. Phase 2C: Decay stance strength ──
     await tickStanceDecay(supabase, allStances || [], currentTick);
 
-    // ── 14. Calculate pillars for each faction ──
+    // ── 14. Compute spatial alignments (all factions compete per-axis) ──
+    const spatialAlignments = computeSpatialAlignments(ideoMap, activeProfile, axisSalienceWeights);
+
+    // ── 15. Calculate pillars for each faction ──
     const updates = [];
 
     for (const standing of standings) {
@@ -12835,9 +12884,9 @@ async function tickElectorate(supabase, nation, currentTick) {
         const isCoalition = coalitionPartyIds.has(factionId);
         const isLead = factionId === leadPartyId;
 
-        // ─── PILLAR 1: Ideological Alignment (0-100) ───
-        var targetAlignment = ideo
-            ? computeTickAlignment(ideo, activeProfile, axisSalienceWeights)
+        // ─── PILLAR 1: Ideological Alignment (0-100) — spatial competition ───
+        var targetAlignment = (spatialAlignments[factionId] != null)
+            ? spatialAlignments[factionId]
             : CFG.DEFAULT_ALIGNMENT;
 
         // Conviction bonus: parties that haven't pivoted in 20+ ticks get +3 alignment
@@ -13034,6 +13083,69 @@ function computeTickAlignment(ideo, profile, axisSalienceWeights) {
 
     if (totalWeight <= 0) return 50;
     return round2(clamp((weightedAlignment / totalWeight) * 100, 0, 100));
+}
+
+/**
+ * Compute spatially-competitive alignment for ALL factions simultaneously.
+ * Parties near the same position split voters; differentiated parties capture flanks.
+ *
+ * @param {object} ideoMap - { factionId: faction_ideology row }
+ * @param {object} profile - electorate_profile row
+ * @param {object} axisSalienceWeights - { axisKey: weight }
+ * @returns {object} { factionId: spatialAlignment (0-100) }
+ */
+function computeSpatialAlignments(ideoMap, profile, axisSalienceWeights) {
+    var factionIds = Object.keys(ideoMap);
+    var result = {};
+
+    if (factionIds.length === 0) return result;
+
+    if (factionIds.length === 1) {
+        var fid = factionIds[0];
+        result[fid] = computeTickAlignment(ideoMap[fid], profile, axisSalienceWeights);
+        return result;
+    }
+
+    var factionWeightedShare = {};
+    for (var _f = 0; _f < factionIds.length; _f++) factionWeightedShare[factionIds[_f]] = 0;
+    var totalWeight = 0;
+
+    for (var _a = 0; _a < AXIS_KEYS.length; _a++) {
+        var axisKey = AXIS_KEYS[_a];
+        var elecMean = Number(profile['ideo_mean_' + axisKey] ?? 50);
+        var elecVar = Number(profile['ideo_var_' + axisKey] ?? 20);
+
+        var profileSalience = Number(profile['salience_' + axisKey] ?? 0.2);
+        var issueSalience = axisSalienceWeights[axisKey] ?? 0.2;
+        var weight = (profileSalience + issueSalience) / 2;
+
+        var parties = factionIds.map(function(fid) {
+            var ideo = ideoMap[fid];
+            var partyScore = Number(ideo[axisKey] || 0);
+            return { factionId: fid, partyNorm: (partyScore + 100) / 2 };
+        });
+
+        var axisShares = spatialAxisCompetition(parties, elecMean, elecVar);
+
+        for (var _ff = 0; _ff < factionIds.length; _ff++) {
+            var share = axisShares.get(factionIds[_ff]) ?? 0;
+            factionWeightedShare[factionIds[_ff]] += share * weight;
+        }
+        totalWeight += weight;
+    }
+
+    for (var _fi = 0; _fi < factionIds.length; _fi++) {
+        var fid2 = factionIds[_fi];
+        var raw = totalWeight > 0
+            ? factionWeightedShare[fid2] / totalWeight
+            : (1 / factionIds.length);
+        var fairShare = 1 / factionIds.length;
+        var relativeStrength = fairShare > 0 ? raw / fairShare : 1;
+        var scaled = clamp(relativeStrength * 50, 0, 100);
+        result[fid2] = round2(scaled);
+    }
+
+    return result;
 }
 
 /**
