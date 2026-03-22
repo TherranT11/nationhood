@@ -2623,7 +2623,7 @@ let _caAttackEvidence = null; // cached attack evidence
 let _caAttackVectors = null;  // cached built vectors
 
 // Protest action state
-let _protestTab = 'minister';       // 'minister' | 'activePolicy' | 'statFailure'
+let _protestTab = 'minister';       // 'minister' | 'activeCrisis' | 'statFailure'
 let _protestTarget = null;          // selected grievance target object
 let _protestState = null;           // null | 'resolving' | 'result' | 'active' | 'locked' | 'cooldown'
 let _protestActiveData = null;      // active protest_log row (if any)
@@ -3961,7 +3961,7 @@ function renderProtestResolvingPanel() {
 
     if (data) {
         if (data.grievance_type) {
-            const typeLabel = data.grievance_type === 'minister' ? 'Minister' : data.grievance_type === 'activePolicy' ? 'Active Policy' : 'Stat Failure';
+            const typeLabel = data.grievance_type === 'minister' ? 'Minister' : data.grievance_type === 'activeCrisis' ? 'Active Crisis' : data.grievance_type === 'activePolicy' ? 'Active Policy' : 'Stat Failure';
             html += `<div class="ca-result-row" style="margin-top:8px">
                 <span class="ca-result-label">Grievance</span>
                 <span class="ca-result-val" style="color:#f97316">${typeLabel}</span>
@@ -4181,7 +4181,7 @@ function wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick
             console.error('[Protest] loadProtestData failed:', err);
             _protestLoading = false;
             _protestCachedMinisters = _protestCachedMinisters || [];
-            _protestCachedPolicies = _protestCachedPolicies || [];
+            _protestCachedCrises = _protestCachedCrises || [];
             _protestCachedStats = _protestCachedStats || { failingStats: [], _fatigueLevel: { label: '—', color: '#4a4840' } };
             rerender();
         });
