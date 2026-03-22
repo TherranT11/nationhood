@@ -3036,73 +3036,6 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
     wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost);
 }
 
-// ── Stances portfolio on the Actions page ──
-
-async function _renderActionsStancePortfolio(faction, nation) {
-    const container = document.getElementById('ca-stances-container');
-    if (!container) return;
-
-    const [stancesRes, issueStatesRes, shardRes] = await Promise.all([
-        _supabase.from('faction_issue_stance')
-            .select('*').eq('faction_id', faction.id).eq('nation_id', nation.id),
-        _supabase.from('issue_state')
-            .select('issue_id, salience, owned_by, pioneer_faction_id').eq('nation_id', nation.id),
-        _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
-    ]);
-
-    const stances = stancesRes.data || [];
-    const issueStates = issueStatesRes.data || [];
-    const currentTick = shardRes.data?.current_tick || 0;
-    const issueStateMap = {};
-    for (const is of issueStates) issueStateMap[is.issue_id] = is;
-
-    const maxStances = STANCE_CONFIG.MAX_STANCES;
-    let rowsHtml = '';
-    if (stances.length === 0) {
-        rowsHtml = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px 0">No active stances.</div>';
-    } else {
-        for (const s of stances) {
-            const issueDef = ISSUE_DEFS[s.issue_id];
-            if (!issueDef) continue;
-            const axisInfo = IDEOLOGY_AXES.find(a => a.key === s.axis);
-            const sideLabel = s.side === 'left' ? axisInfo?.leftLabel : axisInfo?.rightLabel;
-            const sideColor = s.side === 'left' ? axisInfo?.leftColor : axisInfo?.rightColor;
-            const strength = Number(s.strength ?? 0);
-            const decayRate = Number(s.decay_rate ?? 0);
-            const isFading = strength <= 40;
-            const isWeak = strength <= 20;
-            const strengthColor = isWeak ? 'var(--dred)' : isFading ? 'var(--damber)' : 'var(--dgreen)';
-
-            rowsHtml += `
-            <div style="padding:6px 0;border-bottom:1px solid var(--dborder-1)">
-                <div style="display:flex;justify-content:space-between;align-items:center">
-                    <div>
-                        <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0)">${escapeHtml(issueDef.label)}</span>
-                        <span style="font-family:var(--dfont-mono);font-size:10px;color:${sideColor};margin-left:6px">${s.intensity} ${sideLabel}</span>
-                    </div>
-                    <span style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3)">Held ${s.ticks_held || 0}t</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
-                    <div style="flex:1;height:4px;background:var(--dborder-1);border-radius:2px;overflow:hidden">
-                        <div style="width:${strength}%;height:100%;background:${strengthColor}"></div>
-                    </div>
-                    <span style="font-family:var(--dfont-mono);font-size:10px;color:${strengthColor}">${strength.toFixed(0)}</span>
-                    <span style="font-family:var(--dfont-mono);font-size:10px;color:var(--dred)">-${decayRate}/t</span>
-                </div>
-            </div>`;
-        }
-    }
-
-    container.innerHTML = `
-    <div style="border:1px solid var(--dborder-1);border-radius:6px;padding:12px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span style="font-family:var(--dfont-ui);font-size:13px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:0.5px">Active Stances</span>
-            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${stances.length} / ${maxStances}</span>
-        </div>
-        ${rowsHtml}
-    </div>`;
-}
-
 // ── Promises panel on the Actions page ──
 
 async function _renderActionsPromisesPanel(faction, nation, tick) {
@@ -5371,11 +5304,8 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
     // Phase 6 (pillar cards) removed from Electorate tab
 }
 
-/**
- * Phase 6: Render "How You Got X%" and "Vote Left on Table" cards below the
- * Electorate Spread visualization. Reads polled values from faction_electoral_standing.
- */
-async function _renderPillarCards(container, playerFaction, nation) {
+// Phase 6 (_renderPillarCards) removed — pillar cards no longer shown
+function _renderPillarCards_REMOVED() {
     const { data: standing } = await _supabase
         .from('faction_electoral_standing')
         .select('*')
