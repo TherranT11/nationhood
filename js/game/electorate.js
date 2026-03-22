@@ -189,25 +189,7 @@ export function calculateIdeologyZones(mean, variance) {
     return { zones, zoneForPos };
 }
 
-/**
- * Get zone-based alignment bonus for voter targeting.
- * Parties competing for voters in their own zone get a bonus.
- * Adjacent zones get a smaller bonus. Non-adjacent zones get a penalty.
- *
- * @param {string} partyZone - Zone ID where the party sits
- * @param {string} voterZone - Zone ID where the voter cluster is
- * @returns {number} Multiplier (0.6 to 1.2)
- */
-export function getZoneCompetitionMultiplier(partyZone, voterZone) {
-    const zoneIdx = ZONE_IDS.indexOf(partyZone);
-    const voterIdx = ZONE_IDS.indexOf(voterZone);
-    if (zoneIdx < 0 || voterIdx < 0) return 1.0;
-    const dist = Math.abs(zoneIdx - voterIdx);
-    if (dist === 0) return 1.2;  // Same zone: +20% effectiveness
-    if (dist === 1) return 1.0;  // Adjacent zone: normal
-    if (dist === 2) return 0.8;  // 2 zones away: -20%
-    return 0.6;                  // Opposite extreme: -40%
-}
+
 
 // ============================================================================
 // DEMOGRAPHIC ← STAT MAPPING
