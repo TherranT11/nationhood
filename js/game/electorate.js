@@ -154,7 +154,7 @@ export function bimodalAxisAlignment(partyPos, elecMean, elecVar) {
  * @param {number} [temperature=4] - Softmax temperature (lower = more winner-take-all)
  * @returns {Map<string, number>} factionId → share of this axis's voters (0-1, sums to 1)
  */
-export function spatialAxisCompetition(parties, elecMean, elecVar, temperature = 4) {
+function spatialAxisCompetition(parties, elecMean, elecVar, temperature = 4) {
     const result = new Map();
     if (parties.length === 0) return result;
     if (parties.length === 1) {
