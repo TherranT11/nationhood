@@ -84,6 +84,50 @@ export const ISSUE_IDS = Object.keys(ISSUE_DEFS);
 export const AXIS_KEYS = IDEOLOGY_AXES.map(a => a.key);
 
 // ============================================================================
+// BIMODAL ALIGNMENT HELPER
+// ============================================================================
+// When polarization is low the electorate is a single bell curve at the mean.
+// When polarization is high the electorate splits into two humps offset from
+// the mean. This function blends between the two models based on variance.
+
+/**
+ * Compute per-axis alignment using a bimodal mixture model.
+ *
+ * @param {number} partyPos  - Party position on 0-100 scale
+ * @param {number} elecMean  - Electorate mean on 0-100 scale
+ * @param {number} elecVar   - Electorate variance (5-45, higher = more polarized)
+ * @returns {number} 0-1 alignment score for this axis
+ */
+export function bimodalAxisAlignment(partyPos, elecMean, elecVar) {
+    const gauss = (x, mu, sigma) => Math.exp(-((x - mu) * (x - mu)) / (2 * sigma * sigma));
+
+    const sigma = Math.max(5, elecVar);
+
+    // Unimodal: single Gaussian at the mean (classic model)
+    const unimodal = gauss(partyPos, elecMean, sigma);
+
+    // How bimodal is this electorate? 0 at var<=10, 1 at var>=40
+    const polWeight = Math.min(1, Math.max(0, (elecVar - 10) / 30));
+
+    if (polWeight <= 0) return unimodal;
+
+    // Bimodal: two narrower Gaussians offset from mean
+    // Offset grows with variance (at max var=45, offset=30 from mean)
+    const offset = elecVar * 0.67;
+    // Each hump is narrower than the overall spread — voters are clustered
+    const humpSigma = Math.max(5, sigma * 0.5);
+
+    const leftHump = Math.min(100, Math.max(0, elecMean - offset));
+    const rightHump = Math.min(100, Math.max(0, elecMean + offset));
+
+    // Party alignment = best overlap with either hump
+    const bimodal = Math.max(gauss(partyPos, leftHump, humpSigma), gauss(partyPos, rightHump, humpSigma));
+
+    // Blend: low polarization = unimodal, high polarization = bimodal
+    return (1 - polWeight) * unimodal + polWeight * bimodal;
+}
+
+// ============================================================================
 // IDEOLOGY ZONE SYSTEM (centrist / moderate / radical)
 // ============================================================================
 
@@ -324,9 +368,9 @@ export const ELECTORATE_CONFIG = {
 
     // -- Standing defaults --
     DEFAULT_ALIGNMENT: 50,
-    DEFAULT_PLATFORM_APPEAL: 50,
-    DEFAULT_PARTY_APPROVAL: 50,
-    DEFAULT_VISIBILITY: 30,
+    DEFAULT_PLATFORM_APPEAL: 0,
+    DEFAULT_PARTY_APPROVAL: 25,
+    DEFAULT_VISIBILITY: 0,
     DEFAULT_CREDIBILITY: 1.0,
 
     // ── Phase 2B: Per-tick pillar weights ──
@@ -709,7 +753,7 @@ export async function seedFactionElectoralStanding(supabase, nation, factions, p
             ? computeGenesisAlignment(ideo, profile)
             : CFG.DEFAULT_ALIGNMENT;
 
-        // Party approval: governing factions inherit gov_approval, opposition gets 50
+        // Party approval: governing factions inherit gov_approval, new parties start low
         const approval = governingIds.has(faction.id) ? govApproval : CFG.DEFAULT_PARTY_APPROVAL;
 
         rows.push({
@@ -743,9 +787,10 @@ export async function seedFactionElectoralStanding(supabase, nation, factions, p
 /**
  * Compute initial ideological alignment between a faction and the electorate.
  *
- * Uses a simplified Gaussian overlap proxy: for each axis, measure the
- * distance between the faction's position and the electorate mean,
- * penalized by electorate variance (wider variance = more forgiving).
+ * Uses bimodal mixture model: at low polarization, a single Gaussian
+ * centered at the electorate mean. At high polarization, two Gaussian
+ * humps offset from the mean — rewarding parties that align with either
+ * pole rather than sitting in the empty center.
  *
  * Returns 0-100 alignment score.
  */
@@ -762,13 +807,7 @@ function computeGenesisAlignment(factionIdeology, profile) {
         // Convert party score to 0-100 scale
         const partyNorm = (partyScore + 100) / 2; // -100→0, 0→50, +100→100
 
-        // Distance from electorate mean
-        const distance = Math.abs(partyNorm - elecMean);
-
-        // Alignment: Gaussian-style falloff. Higher variance = more forgiving.
-        // σ = elecVar, alignment = exp(-distance² / (2σ²))
-        const sigma = Math.max(5, elecVar);
-        const alignment = Math.exp(-(distance * distance) / (2 * sigma * sigma));
+        const alignment = bimodalAxisAlignment(partyNorm, elecMean, elecVar);
 
         weightedAlignment += alignment * salienceWeight;
         totalWeight += salienceWeight;
@@ -1190,18 +1229,9 @@ function computeTickAlignment(ideo, profile, axisSalienceWeights) {
         const weight = (profileSalience + issueSalience) / 2;
 
         const partyNorm = (partyScore + 100) / 2;
-        const distance = Math.abs(partyNorm - elecMean);
-        const sigma = Math.max(5, elecVar);
-        const alignment = Math.exp(-(distance * distance) / (2 * sigma * sigma));
+        const alignment = bimodalAxisAlignment(partyNorm, elecMean, elecVar);
 
-        // Zone competition: parties in same zone as electorate mean get a bonus,
-        // distant zones get a penalty. This doesn't lock out voters — it weights them.
-        const { zoneForPos } = calculateIdeologyZones(elecMean, elecVar);
-        const partyZone = zoneForPos(partyNorm);
-        const voterZone = zoneForPos(elecMean);
-        const zoneMult = getZoneCompetitionMultiplier(partyZone, voterZone);
-
-        weightedAlignment += alignment * weight * zoneMult;
+        weightedAlignment += alignment * weight;
         totalWeight += weight;
     }
 
