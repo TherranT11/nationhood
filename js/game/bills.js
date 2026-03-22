@@ -2478,19 +2478,25 @@ export async function enactBill(supabase, bill, currentTick) {
         if (grantAmountM !== 0) {
             const grantRaw = grantAmountM * 1_000_000;
             // Credit (or debit) the ministry's discretionary_balance
-            const { data: curMinistry } = await supabase.from('ministries')
+            const { data: curMinistry, error: balReadErr } = await supabase.from('ministries')
                 .select('discretionary_balance')
                 .eq('nation_id', bill.nation_id)
                 .eq('ministry_key', fd.ministry_key)
                 .eq('is_active', true)
                 .maybeSingle();
+            if (balReadErr) {
+                console.error(`[enactBill] failed to read discretionary_balance for ${fd.ministry_key}:`, balReadErr.message);
+            }
             const curBalance = Number(curMinistry?.discretionary_balance || 0);
             const newBalance = Math.max(0, curBalance + grantRaw);
-            await supabase.from('ministries')
+            const { error: balWriteErr } = await supabase.from('ministries')
                 .update({ discretionary_balance: newBalance })
                 .eq('nation_id', bill.nation_id)
                 .eq('ministry_key', fd.ministry_key)
                 .eq('is_active', true);
+            if (balWriteErr) {
+                console.error(`[enactBill] failed to update discretionary_balance for ${fd.ministry_key}:`, balWriteErr.message);
+            }
             console.log(`[enactBill] discretionary: ${fd.ministry_key} balance ${curBalance} → ${newBalance} (${grantAmountM > 0 ? '+' : ''}${grantAmountM}M)`);
 
             // Positive grants add to national debt (the money has to come from somewhere)

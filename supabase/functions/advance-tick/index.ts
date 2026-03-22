@@ -25338,7 +25338,10 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
         }
     }
 
-    // Apply deltas to each ministry's discretionary_balance
+    // Apply deltas to each ministry's discretionary_balance.
+    // NOTE: Balance is clamped at 0 — an active action can overdraw the pool.
+    // The action still runs to completion (stat effects apply) but the pool cannot go negative.
+    // This is intentional: actions are pre-approved at activation time, not cancelled mid-run.
     for (const [mKey, delta] of Object.entries(ministryBalanceDeltas)) {
         if (delta === 0) continue;
         const { data: mRow } = await supabase.from('ministries')

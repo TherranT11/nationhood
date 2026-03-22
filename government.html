@@ -2826,7 +2826,9 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
     // Discretionary balance for this ministry
     const ministry = ministryData.find(m => m.ministry_key === ministryKey);
     const discretionaryBalance = Number(ministry?.discretionary_balance || 0);
-    const balFmt = discretionaryBalance >= 1000000
+    const balFmt = discretionaryBalance >= 1000000000
+        ? '$' + (discretionaryBalance / 1000000000).toFixed(1) + 'B'
+        : discretionaryBalance >= 1000000
         ? '$' + (discretionaryBalance / 1000000).toFixed(1) + 'M'
         : discretionaryBalance > 0 ? '$' + Math.round(discretionaryBalance).toLocaleString() : '$0';
     const balCls = discretionaryBalance > 0 ? 'color:var(--green)' : 'color:var(--red)';
