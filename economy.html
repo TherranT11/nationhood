@@ -2261,6 +2261,9 @@ function renderSectorDetail(nation, sectorKey) {
     // --- Export Drivers ---
     h += renderSectorDrivers(nation, sector);
 
+    // --- Import Drivers ---
+    h += renderImportDrivers(nation, sector);
+
     // --- Partner breakdown ---
     h += renderSectorPartners(sectorKey, sector);
 
@@ -2554,6 +2557,85 @@ function renderSectorDrivers(nation, sector) {
     return h;
 }
 
+// Import driver stat definitions per sector (based on calculateImportDemand logic)
+// inverted: true means LOW values drive MORE imports (deficiency model)
+var TRADE_IMPORT_DRIVERS = {
+    fuel_energy: [
+        { key: 'oil_and_gas', inverted: true },
+        { key: 'energy_generation', inverted: true },
+        { key: 'manufacturing_output', inverted: false },
+        { key: 'urbanization', inverted: false },
+        { key: 'cost_of_living', inverted: false },
+        { key: 'rail_network', inverted: true }
+    ],
+    minerals: [
+        { key: 'rare_minerals', inverted: true },
+        { key: 'manufacturing_output', inverted: false }
+    ],
+    food_agriculture: [
+        { key: 'arable_land', inverted: true }
+    ],
+    manufactured_goods: [
+        { key: 'standard_of_living', inverted: false },
+        { key: 'manufacturing_output', inverted: true }
+    ],
+    technology: [
+        { key: 'digital_infrastructure', inverted: false },
+        { key: 'higher_education', inverted: true }
+    ],
+    arms: []
+};
+
+function renderImportDrivers(nation, sector) {
+    if (sector.export_only) return '';
+    var drivers = TRADE_IMPORT_DRIVERS[sector.key];
+    if (!drivers || drivers.length === 0) return '';
+
+    var h = '<div class="econ-section">';
+    h += '<div class="econ-section-header">IMPORT DRIVERS</div>';
+    if (TRADE_IMPORT_HINTS[sector.key]) {
+        h += '<div class="econ-section-subtitle">' + escapeHtml(TRADE_IMPORT_HINTS[sector.key]) + '</div>';
+    }
+
+    h += '<div class="sector-drivers">';
+    for (var i = 0; i < drivers.length; i++) {
+        var d = drivers[i];
+        var val = Number(nation[d.key]) || 0;
+        var stPct = Math.min(100, Math.max(0, Math.round(val)));
+
+        // For inverted drivers: low value = high import pressure (red=driving imports)
+        // For normal drivers: high value = high import pressure
+        var barColor, stColor;
+        if (d.inverted) {
+            // Low value drives imports: low=red (high demand), high=green (self-sufficient)
+            barColor = stPct >= 70 ? '#5cb85c' : stPct >= 40 ? '#888' : '#d9534f';
+            stColor = stPct >= 70 ? '#5cb85c' : stPct >= 40 ? '#f0efe6' : '#d9534f';
+        } else {
+            // High value drives imports: high=red (consuming more), low=green (low demand)
+            barColor = stPct <= 30 ? '#5cb85c' : stPct <= 60 ? '#888' : '#d9534f';
+            stColor = stPct <= 30 ? '#5cb85c' : stPct <= 60 ? '#f0efe6' : '#d9534f';
+        }
+
+        var label = formatStatLabel(d.key);
+        var tag = d.inverted ? ' (low = more imports)' : ' (high = more imports)';
+
+        h += '<div class="sector-driver-row">';
+        h += '<div class="sector-driver-label">' + escapeHtml(label) + '</div>';
+        h += '<div class="sector-driver-track">';
+        h += '<div class="sector-driver-fill" style="width:' + stPct + '%;background:' + barColor + '"></div>';
+        h += '</div>';
+        h += '<div class="sector-driver-value" style="color:' + stColor + '">' + stPct + '</div>';
+
+        var trendHtml = getTrendArrow(d.key, val, d.inverted);
+        h += '<div class="sector-driver-trend">' + trendHtml + '</div>';
+        h += '</div>';
+    }
+
+    h += '</div>';
+    h += '</div>';
+    return h;
+}
+
 function renderSectorPartners(sectorKey, sector) {
     if (!tradeData || !tradeData.partners) return '';
 
@@ -2632,14 +2714,21 @@ function renderSectorPartners(sectorKey, sector) {
 function formatStatLabel(key) {
     var labels = {
         oil_and_gas: 'Oil & Gas',
+        energy_generation: 'Energy Generation',
         rare_minerals: 'Rare Minerals',
         arable_land: 'Arable Land',
+        manufacturing_output: 'Manufacturing Output',
         physical_infrastructure: 'Physical Infrastructure',
         digital_infrastructure: 'Digital Infrastructure',
         higher_education: 'Higher Education',
         happiness: 'Happiness',
         stability: 'Stability',
-        credit: 'Credit'
+        credit: 'Credit',
+        urbanization: 'Urbanization',
+        cost_of_living: 'Cost of Living',
+        rail_network: 'Rail Network',
+        standard_of_living: 'Standard of Living',
+        service_output: 'Service Output'
     };
     return labels[key] || key;
 }
@@ -3014,7 +3103,7 @@ function renderMinistryPoliciesHtml(category) {
 
 // ==================== TRADE LINE ITEMS ====================
 var TRADE_EXPORT_HINTS = {
-    fuel_energy:        'Driven by: Oil & Gas',
+    fuel_energy:        'Driven by: Oil & Gas + Energy Generation',
     minerals:           'Driven by: Rare Minerals',
     food_agriculture:   'Driven by: Arable Land',
     manufactured_goods: 'Driven by: Manufacturing Output',
