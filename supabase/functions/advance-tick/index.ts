@@ -20944,17 +20944,17 @@ async function processMilitaryDoctrines(supabase: any, nation: any, currentTick:
                     results.push(`${nation.name}: ${doc.doctrine_id} renunciation complete`);
                 }
 
-                // Fire cooldown-expiry events via fire_system_event (best effort)
+                // Fire cooldown-expiry event directly to event_log
                 try {
-                    await supabase.rpc('fire_system_event', {
-                        p_trigger_key: 'military_doctrine_renounced_complete',
-                        p_nation_id: nation.id,
-                        p_tick: currentTick,
-                        p_placeholders: {
-                            nation_name: nation.name || 'Unknown',
-                            doctrine_id: doc.doctrine_id,
-                            sector: doc.sector
-                        }
+                    const sectorLabel = (doc.sector || '').replace('_', ' ').toUpperCase();
+                    const doctrineName = (doc.doctrine_id || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    await supabase.from('event_log').insert({
+                        nation_id: nation.id,
+                        event_name: 'Military Doctrine',
+                        trigger_key: 'military_doctrine_renounced_complete',
+                        description_chosen: `${doctrineName} has been fully renounced. ${sectorLabel} doctrine updated.`,
+                        category: 'MILITARY',
+                        fired_at_tick: currentTick
                     });
                 } catch (_) { /* best effort */ }
             } else {
