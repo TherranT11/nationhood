@@ -371,6 +371,11 @@ window._appointLeader = async function() {
         confirmLines.push(`Electability: ${getElectabilityTier(candidate.electability).label}`);
     }
     confirmLines.push('', 'This will replace the current party leader.');
+    const isRulingPartyPreCheck = currentNation?.ruling_faction_id === currentFaction?.id;
+    const isParliamentaryPreCheck = !isPresidentialRepublic(currentNation) && !isAutocracy(currentNation);
+    if (isRulingPartyPreCheck && isParliamentaryPreCheck) {
+        confirmLines.push('As the ruling party leader, they will also become Prime Minister.');
+    }
     if (!confirm(confirmLines.join('\n'))) return;
 
     isAppointing = true;
@@ -443,6 +448,30 @@ window._appointLeader = async function() {
                 .eq('nation_id', currentNation.id)
                 .is('ended_at_tick', null);
             if (admErr) console.warn('Failed to update administration (non-blocking):', admErr.message);
+
+            // Apply trait on_appoint_stability effect (matches autoAppointPartyLeaderAsPM)
+            try {
+                const { data: trait } = await _supabase.from('leader_traits').select('effects').eq('trait_key', newTraitKey).single();
+                if (trait?.effects?.on_appoint_stability) {
+                    const newStability = Math.max(0, Math.min(100, (currentNation.stability || 50) + trait.effects.on_appoint_stability));
+                    await _supabase.from('nations').update({ stability: newStability }).eq('id', currentNation.id);
+                }
+            } catch (e) { console.warn('PM trait stability effect failed (non-blocking):', e); }
+
+            // Fire pm_appointed system event so other players see the PM change
+            try {
+                await _supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'pm_appointed',
+                    p_nation_id: currentNation.id,
+                    p_tick: currentTick,
+                    p_placeholders: {
+                        nation: currentNation.name || '',
+                        pm_name: pmFullName,
+                        party: currentFaction.faction_name,
+                        trait: newTraitKey
+                    }
+                });
+            } catch (e) { console.warn('PM appointed event fire failed (non-blocking):', e); }
 
             console.log(`Ruling party leader change → PM updated: ${pmFullName} (trait: ${newTraitKey})`);
         }
