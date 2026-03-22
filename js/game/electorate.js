@@ -680,10 +680,10 @@ function computeIssueSalience(nation, statKeys) {
  *
  * Initial values:
  *   - ideological_alignment: computed from faction ideology vs electorate profile
- *   - platform_appeal: 50 (no stances yet)
+ *   - platform_appeal: 0 (must build via issue stances)
  *   - party_approval: derived from existing gov_approval for governing factions,
- *     50 for opposition
- *   - visibility: 30 (low, no campaign actions yet)
+ *     25 for new/opposition parties
+ *   - visibility: 0 (must earn via campaign actions)
  *   - credibility: 1.0 (clean slate)
  *
  * @param {object} supabase - Supabase client
@@ -1048,7 +1048,7 @@ export async function tickElectorate(supabase, nation, currentTick) {
         const newAppeal = round2(clamp(oldAppeal + appealDelta, CFG.APPEAL_MIN, CFG.APPEAL_MAX));
 
         // ─── PILLAR 3: Party Approval (0-100) ───
-        const oldApproval = Number(standing.party_approval ?? 50);
+        const oldApproval = Number(standing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);
         let approvalTarget;
 
         if (isCoalition) {
@@ -1304,7 +1304,7 @@ function computeRealizedVoteShares(updates, profile) {
 
     // Compute per-faction turnout rate
     for (const u of updates) {
-        const vis = Number(u.visibility ?? 30);
+        const vis = Number(u.visibility ?? CFG.DEFAULT_VISIBILITY);
         const enthBonus = (enthusiasm - 50) * CFG.TURNOUT_ENTHUSIASM_SCALE;
         const visBonus = Math.max(0, (vis - 50)) * CFG.TURNOUT_VISIBILITY_SCALE;
         u.turnout_rate = round3(clamp(CFG.TURNOUT_BASE + enthBonus + visBonus, 0.3, 0.95));
@@ -1751,7 +1751,7 @@ export async function boostVisibility(supabase, factionId, nationId, boost) {
     const multiplier = getDiminishingMultiplier(actionCount);
     const effectiveBoost = round2(boost * multiplier);
 
-    const old = Number(standing.visibility ?? 30);
+    const old = Number(standing.visibility ?? CFG.DEFAULT_VISIBILITY);
     const newVis = round2(clamp(old + effectiveBoost, 0, 100));
 
     const { error: visErr } = await supabase.from('faction_electoral_standing')
@@ -1787,7 +1787,7 @@ export async function nudgeApproval(supabase, factionId, nationId, delta) {
     const multiplier = getDiminishingMultiplier(actionCount);
     const effectiveDelta = round2(delta * multiplier);
 
-    const old = Number(standing.party_approval ?? 50);
+    const old = Number(standing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);
     const newApproval = round2(clamp(old + effectiveDelta, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX));
 
     const { error: appErr } = await supabase.from('faction_electoral_standing')
