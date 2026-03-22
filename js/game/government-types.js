@@ -57,3 +57,17 @@ export function canonicalizeNationGovType(govType) {
     return legacyAliasMap[govType] || govType;
 }
 
+/**
+ * Returns a human-friendly government type label for display.
+ * Accounts for Constitutional Monarchy (hereditary HOS in a parliamentary system).
+ *
+ * @param {object} nation - Nation row (needs government_type, hos_election_method)
+ * @returns {string} e.g. "Parliamentary Democracy", "Constitutional Monarchy", "Presidential Republic", "Autocratic State"
+ */
+export function getGovDisplayLabel(nation) {
+    if (isAutocracy(nation)) return 'Autocratic State';
+    if (isPresidentialRepublic(nation)) return 'Presidential Republic';
+    if (nation?.hos_election_method === 'hereditary') return 'Constitutional Monarchy';
+    return 'Parliamentary Democracy';
+}
+

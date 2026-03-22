@@ -438,6 +438,13 @@ function wnGetGovLabel(govType) {
     return 'PARLIAMENTARY';
 }
 
+function getGovDisplayLabel(nation) {
+    if (nation.government_type === 'Autocracy') return 'Autocratic State';
+    if (nation.government_type === 'Presidential') return 'Presidential Republic';
+    if (nation.hos_election_method === 'hereditary') return 'Constitutional Monarchy';
+    return 'Parliamentary Democracy';
+}
+
 function wnGetIdeologyLabel(p) {
     if (p.ideology_value_1 && p.ideology_value_2) return p.ideology_value_1 + ', ' + p.ideology_value_2;
     return '';
@@ -946,7 +953,7 @@ async function renderRelationsTab() {
                     <div class="nation-card-header" onclick="toggleNationCard('${nation.id}')">
                         ${flagUrl ? '<img src="' + flagUrl + '" class="nation-card-flag" />' : '<div class="nation-card-flag-placeholder"></div>'}
                         <div class="nation-card-info">
-                            <div class="nation-card-name">${escapeHtml(nation.name)}</div>
+                            <div class="nation-card-name">${escapeHtml(nation.name)} <span style="color:#8a8778;font-size:11px;font-weight:400;font-style:italic;margin-left:6px;">${getGovDisplayLabel(nation)}</span></div>
                             <div class="nation-card-meta">
                                 <span class="relation-badge ${tier.cssClass}">${tier.label}</span>
                                 <span class="nation-card-embassy" style="color:${embassyColor};">${embassyStatus === 'open' ? 'Embassy Open' : embassyStatus === 'closed' ? 'Embassy Closed' : 'No Embassy'}</span>

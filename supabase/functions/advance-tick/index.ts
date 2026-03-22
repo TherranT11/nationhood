@@ -25078,6 +25078,69 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] State visit expiration check failed (non-fatal):', svExpErr);
     }
 
+    // 3.8 Diplomatic relations decay — all relation scores drift toward 0 (neutral)
+    try {
+        var RELATION_DECAY_BASE = 0.1;      // per-tick decay toward 0
+        var RELATION_DECAY_ISOLATIONIST = 0.15; // per-tick decay if nation has isolationist leader
+
+        // Find nations whose governing (coalition lead) faction leader has 'isolationist' flaw
+        var isolationistNationIds = new Set();
+        var { data: coalitions } = await supabase.from('coalitions')
+            .select('nation_id, lead_party_id')
+            .eq('is_active', true);
+        if (coalitions && coalitions.length > 0) {
+            var leadIds = coalitions.map(function(c) { return c.lead_party_id; });
+            var { data: leadFactions } = await supabase.from('factions')
+                .select('id, nation_id, leader_negative_traits')
+                .in('id', leadIds);
+            if (leadFactions) {
+                for (var lf = 0; lf < leadFactions.length; lf++) {
+                    var neg = leadFactions[lf].leader_negative_traits || [];
+                    if (neg.includes('isolationist')) {
+                        isolationistNationIds.add(leadFactions[lf].nation_id);
+                    }
+                }
+            }
+        }
+
+        var { data: allRelations } = await supabase.from('diplomatic_relations')
+            .select('id, nation_a_id, nation_b_id, relation_score');
+        if (allRelations && allRelations.length > 0) {
+            var decayUpdates = 0;
+            for (var ri = 0; ri < allRelations.length; ri++) {
+                var rel = allRelations[ri];
+                var score = Number(rel.relation_score || 0);
+                if (score === 0) continue; // already neutral, no decay needed
+
+                // Determine decay rate: if either nation has isolationist leader, use higher rate
+                var hasIsolationist = isolationistNationIds.has(rel.nation_a_id) || isolationistNationIds.has(rel.nation_b_id);
+                var decayRate = hasIsolationist ? RELATION_DECAY_ISOLATIONIST : RELATION_DECAY_BASE;
+
+                // Decay toward 0 (positive scores decrease, negative scores increase)
+                var newScore;
+                if (score > 0) {
+                    newScore = Math.max(0, score - decayRate);
+                } else {
+                    newScore = Math.min(0, score + decayRate);
+                }
+                // Round to 2 decimal places
+                newScore = Math.round(newScore * 100) / 100;
+
+                if (newScore !== score) {
+                    await supabase.from('diplomatic_relations')
+                        .update({ relation_score: newScore })
+                        .eq('id', rel.id);
+                    decayUpdates++;
+                }
+            }
+            if (decayUpdates > 0) {
+                console.log('[advanceTick] Diplomatic relations decay: updated ' + decayUpdates + ' relations');
+            }
+        }
+    } catch (relDecayErr) {
+        console.error('[advanceTick] Diplomatic relations decay failed (non-fatal):', relDecayErr);
+    }
+
     // 4. Process each nation
     for (const nation of nationList) {
       try {
