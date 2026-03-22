@@ -366,6 +366,7 @@ async function renderPartyTab(f, nation, data) {
                 <div class="pol-meta-row">
                     <span class="pol-role-badge ${roleCls}">${escapeHtml(roleLabel.toUpperCase())}</span>
                     <span class="pol-established">Est. ${founded}</span>
+                    <span class="pol-leader-badge">Leader: ${escapeHtml(leaderName)} ${leaderAge}</span>
                 </div>
             </div>
         </div>
