@@ -6471,7 +6471,7 @@ function renderPartyCard(party, nation) {
                 </div>
                 <div class="op-stat-row">
                     <span class="op-sr-label">Vote Share</span>
-                    <span class="op-sr-val">${(party.voteShare * 100).toFixed(1)}%</span>
+                    <span class="op-sr-val">${party.voteShare.toFixed(1)}%</span>
                 </div>
                 <div class="op-stat-row">
                     <span class="op-sr-label">Approval</span>
