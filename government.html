@@ -4511,6 +4511,8 @@ async function fileNoConfidence() {
             status: 'floor',
             floor_tick: tick,
             voting_ends_tick: tick + GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS,
+            proposer_name: currentFaction.faction_name,
+            proposer_color: currentFaction.party_color,
             preamble: `This motion, filed by the ${currentFaction.faction_name}, calls for a vote of no confidence in the current government. If passed by simple majority, the coalition will be immediately dissolved.`
         }).select().single();
 
@@ -5298,6 +5300,8 @@ async function fileImpeachment() {
             bill_type: 'impeachment_motion',
             status: 'committee',
             impeachment_id: proceeding.id,
+            proposer_name: currentFaction.faction_name,
+            proposer_color: currentFaction.party_color,
             preamble: `This motion, filed by the ${currentFaction.faction_name}, calls for the impeachment of President ${presName} on the following charges: ${chargesList}. After ${GAME_CONFIG.IMPEACHMENT_COMMITTEE_TICKS} ticks of committee debate, the motion will proceed to a floor vote requiring an absolute majority (${GAME_CONFIG.MAJORITY_SEATS} of ${GAME_CONFIG.TOTAL_SEATS} seats) to pass.`
         }).select().single();
 

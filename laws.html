@@ -1109,6 +1109,8 @@ async function rescindLaw(activeLawId, policyName, policyId) {
             bill_type: 'repeal',
             repeal_active_law_id: activeLawId,
             status: 'committee',
+            proposer_name: currentFaction.faction_name,
+            proposer_color: currentFaction.party_color,
             preamble: 'This ' + termBill + ', put forth by the ' + currentFaction.faction_name + ', seeks to rescind the law "' + policyName + '" currently in effect in ' + currentNation.name + '.'
         }).select().single();
         if (billError) throw billError;
@@ -2466,6 +2468,7 @@ async function submitToCommittee() {
 
         const billInsert = {
             nation_id: currentNation.id, proposed_by: currentFaction.id, proposed_tick: currentTick, bill_name: billName, status: 'committee',
+            proposer_name: currentFaction.faction_name, proposer_color: currentFaction.party_color,
             preamble: isFoundationalBill
                 ? (draftArticles.find(a => a.isFoundational).foundationalSubtype === 'hos_title'
                     ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the Head of State title in ${currentNation.name} to "${draftArticles.find(a => a.isFoundational).proposedHosTitle}". Requires a two-thirds supermajority to pass.`
@@ -2794,6 +2797,8 @@ async function submitDefaultResolution() {
             bill_type: 'default_resolution',
             status: 'floor',
             voting_ends_tick: currentTick + cfg.VOTING_TICKS,
+            proposer_name: currentFaction.faction_name,
+            proposer_color: currentFaction.party_color,
             preamble: defaultType === 'full'
                 ? `This resolution, filed by the ${currentFaction.faction_name}, declares sovereign default on all outstanding national debt (${formatDebtToGDP(debtRatio)} of GDP). Passage requires a two-thirds supermajority.`
                 : `This resolution, filed by the ${currentFaction.faction_name}, proposes partial restructuring of national debt (${formatDebtToGDP(debtRatio)} of GDP), committing to repay ${Math.round((repaymentRate || 0.5) * 100)}% of obligations. Passage requires a two-thirds supermajority.`

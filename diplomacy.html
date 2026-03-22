@@ -6532,9 +6532,13 @@ async function approveTradeNegotiation(negotiationId) {
         // Use the current approver's faction for our side (not yet written to DB), and the stored approver for the other side
         const approverA = weAreA ? currentFaction.id : neg.approved_by_a;
         const approverB = weAreA ? neg.approved_by_b : currentFaction.id;
+        const billA = { ...billBase, nation_id: neg.nation_a_id, proposed_by: approverA };
+        const billB = { ...billBase, nation_id: neg.nation_b_id, proposed_by: approverB };
+        if (weAreA) { billA.proposer_name = currentFaction.faction_name; billA.proposer_color = currentFaction.party_color; }
+        else        { billB.proposer_name = currentFaction.faction_name; billB.proposer_color = currentFaction.party_color; }
         const [resultA, resultB] = await Promise.all([
-            _supabase.from('bills').insert({ ...billBase, nation_id: neg.nation_a_id, proposed_by: approverA }).select('id').single(),
-            _supabase.from('bills').insert({ ...billBase, nation_id: neg.nation_b_id, proposed_by: approverB }).select('id').single()
+            _supabase.from('bills').insert(billA).select('id').single(),
+            _supabase.from('bills').insert(billB).select('id').single()
         ]);
 
         if (resultA.error) { alert('Error creating ratification bill: ' + resultA.error.message); return; }
@@ -10814,6 +10818,8 @@ async function submitRTDraft() {
         bill_name: billTitle,
         preamble: billPreamble,
         proposed_by: currentFaction.id,
+        proposer_name: currentFaction.faction_name,
+        proposer_color: currentFaction.party_color,
         status: 'floor',
         proposed_tick: currentTick,
         floor_tick: currentTick,
@@ -11003,6 +11009,8 @@ async function submitESDraft() {
         bill_name: billTitle,
         preamble: billPreamble,
         proposed_by: currentFaction.id,
+        proposer_name: currentFaction.faction_name,
+        proposer_color: currentFaction.party_color,
         status: 'floor',
         proposed_tick: currentTick,
         floor_tick: currentTick,
@@ -11279,6 +11287,8 @@ async function submitEmbargoDraft() {
         bill_name: billTitle,
         preamble: billPreamble,
         proposed_by: currentFaction.id,
+        proposer_name: currentFaction.faction_name,
+        proposer_color: currentFaction.party_color,
         status: 'floor',
         proposed_tick: currentTick,
         floor_tick: currentTick,

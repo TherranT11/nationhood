@@ -1199,6 +1199,32 @@ const EVENT_CATEGORY_STYLES = {
 };
 const EVENT_CATEGORY_DEFAULT = { icon: '\u2022', color: '#888', bg: 'rgba(136,136,136,0.08)', label: '' };
 
+// ── Human-readable event name mapping ──
+const EVENT_NAME_DISPLAY = {
+  'FORMATION_SNAP_ELECTION':        'Snap Election Called',
+  'FORMATION_WINDOW_START':         'Coalition Formation Underway',
+  'FORMATION_DEADLINE_WARNING':     'Formation Deadline Warning',
+  'EMERGENCY_MINORITY_GOVERNMENT':  'Emergency Minority Government',
+  'DEMOCRATIC_REVOLUTION':          'Democratic Revolution',
+  'REVOLUTION_WARNING':             'Revolution Warning',
+  'REVOLUTION_ESCALATION':          'Revolution Escalation',
+  'REVOLUTION_AVERTED':             'Revolution Averted',
+};
+
+/** Convert raw event_name to a display-friendly title */
+function formatEventName(raw) {
+  if (!raw) return '';
+  // Strip prefixes like "CRISIS_STARTED: " or "CRISIS_RESOLVED: "
+  const stripped = raw.replace(/^[A-Z_]+:\s*/, '');
+  // Check explicit mapping first
+  if (EVENT_NAME_DISPLAY[stripped]) return EVENT_NAME_DISPLAY[stripped];
+  // If it's ALL_CAPS_WITH_UNDERSCORES, title-case it
+  if (/^[A-Z][A-Z0-9_]+$/.test(stripped)) {
+    return stripped.split('_').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+  }
+  return stripped;
+}
+
 // ── Shared helpers for Nation + World event feeds ──
 
 const IDEOLOGY_AXES_DISPLAY = [
@@ -1270,7 +1296,7 @@ async function loadDashEvents(nationId, currentTick, parties) {
         .limit(50),
       // Recent bill proposals
       _supabase.from('bills')
-        .select('id, bill_name, proposed_tick, proposed_by, bill_type, factions!proposed_by(faction_name, party_color)')
+        .select('id, bill_name, proposed_tick, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id)')
         .eq('nation_id', nationId)
         .not('bill_type', 'in', '("no_confidence","confirmation","minister_confirmation","veto_override","impeachment_conviction")')
         .order('proposed_tick', { ascending: false })
@@ -1297,13 +1323,19 @@ async function loadDashEvents(nationId, currentTick, parties) {
     const protests = protestResult.data || [];
 
     // Convert bills to event-like objects
-    const billEvents = bills.map(b => ({
-      fired_at_tick: b.proposed_tick,
-      event_name: b.bill_name,
-      _desc_html: `${partyHtml(b.factions?.faction_name, b.factions?.party_color)} proposed "${esc(b.bill_name)}"`,
-      category: 'bill',
-      _synthetic: true
-    }));
+    const billEvents = bills.map(b => {
+      // Prefer stored snapshot name; fall back to live join only if faction still belongs to this nation
+      const factionMatchesNation = b.factions?.nation_id === nationId;
+      const displayName = b.proposer_name || (factionMatchesNation ? b.factions?.faction_name : null) || 'A former party';
+      const displayColor = b.proposer_color || (factionMatchesNation ? b.factions?.party_color : null);
+      return {
+        fired_at_tick: b.proposed_tick,
+        event_name: b.bill_name,
+        _desc_html: `${partyHtml(displayName, displayColor)} proposed "${esc(b.bill_name)}"`,
+        category: 'bill',
+        _synthetic: true
+      };
+    });
 
     // Convert factions to event-like objects with ideology summary
     const factionEvents = factions.map(f => {
@@ -1370,8 +1402,7 @@ async function loadDashEvents(nationId, currentTick, parties) {
         displayText = ev._desc_html;
       } else {
         const desc = ev.description_chosen || ev.description_used || '';
-        const rawName = ev.event_name || '';
-        const eventName = rawName.replace(/^[A-Z_]+:\s*/, '');
+        const eventName = formatEventName(ev.event_name);
         const headline = eventName ? `<strong>${esc(eventName)}</strong>` : '';
         const body = desc ? colorizeText(desc, eventName) : '';
         displayText = headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
@@ -1427,7 +1458,7 @@ async function loadWorldEvents(excludeNationId, currentTick) {
         .limit(80),
       // World bill proposals (other nations)
       _supabase.from('bills')
-        .select('id, bill_name, proposed_tick, nation_id, proposed_by, bill_type, factions!proposed_by(faction_name, party_color), nations!inner(name, nation_profiles(flag_url))')
+        .select('id, bill_name, proposed_tick, nation_id, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id), nations!inner(name, nation_profiles(flag_url))')
         .neq('nation_id', excludeNationId)
         .not('bill_type', 'in', '("no_confidence","confirmation","minister_confirmation","veto_override","impeachment_conviction")')
         .order('proposed_tick', { ascending: false })
@@ -1454,14 +1485,20 @@ async function loadWorldEvents(excludeNationId, currentTick) {
     const protests = protestResult.data || [];
 
     // Convert bills to event-like objects
-    const billEvents = bills.map(b => ({
-      fired_at_tick: b.proposed_tick,
-      event_name: b.bill_name,
-      _desc_html: `${partyHtml(b.factions?.faction_name, b.factions?.party_color)} proposed "${esc(b.bill_name)}"`,
-      category: 'bill',
-      _synthetic: true,
-      nations: b.nations
-    }));
+    const billEvents = bills.map(b => {
+      // Prefer stored snapshot name; fall back to live join only if faction still belongs to this nation
+      const factionMatchesNation = b.factions?.nation_id === b.nation_id;
+      const displayName = b.proposer_name || (factionMatchesNation ? b.factions?.faction_name : null) || 'A former party';
+      const displayColor = b.proposer_color || (factionMatchesNation ? b.factions?.party_color : null);
+      return {
+        fired_at_tick: b.proposed_tick,
+        event_name: b.bill_name,
+        _desc_html: `${partyHtml(displayName, displayColor)} proposed "${esc(b.bill_name)}"`,
+        category: 'bill',
+        _synthetic: true,
+        nations: b.nations
+      };
+    });
 
     // Convert factions to event-like objects
     const factionEvents = factions.map(f => {
@@ -1550,8 +1587,7 @@ async function loadWorldEvents(excludeNationId, currentTick) {
         displayText = ev._desc_html;
       } else {
         const desc = ev.description_chosen || ev.description_used || '';
-        const rawName = ev.event_name || '';
-        const eventName = rawName.replace(/^[A-Z_]+:\s*/, '');
+        const eventName = formatEventName(ev.event_name);
         const headline = eventName ? `<strong>${esc(eventName)}</strong>` : '';
         const body = desc ? esc(desc) : '';
         displayText = headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
