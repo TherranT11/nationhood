@@ -610,6 +610,9 @@ export const MINISTER_APPROVAL_CONFIG = {
     // Government approval: -3 per vacant ministry seat
     VACANCY_PENALTY: -3,
 
+    // Government approval floor: even the worst government retains some support
+    APPROVAL_FLOOR: 15,
+
     // Event modifier decay: 10% per tick (transient shocks fade naturally)
     EVENTS_DECAY_RATE: 0.10,
 
