@@ -467,6 +467,7 @@ export function distributeTradeAmongPartners(exportCapacity, importers) {
     // Filter out zero-volume entries
     return results.filter(function (r) { return r.volume > 0; });
 }
+// #endregion server-exclude
 
 /**
  * Derive trade_balance stat (0-100) from raw trade surplus/deficit.
@@ -490,6 +491,7 @@ export function deriveTradeBalanceIndex(tradeSurplus, gdp) {
     return Math.round(Math.max(0, Math.min(100, index)) * 10) / 10;
 }
 
+// #region server-exclude
 /**
  * Calculate tariff revenue from actual import volumes.
  *

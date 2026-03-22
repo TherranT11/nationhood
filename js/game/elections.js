@@ -1131,7 +1131,6 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
 
 // ==================== PARTIAL ELECTION (FOUNDATIONAL BILL) ====================
 
-// #region server-exclude
 export async function processPartialElection(supabase, nation, election, currentTick) {
     const deltaSeats = election.partial_seats;
     console.log(`Processing partial election for ${nation.name}: +${deltaSeats} new seats`);
@@ -1201,6 +1200,7 @@ export async function processPartialElection(supabase, nation, election, current
     console.log(`Partial election completed: ${deltaSeats} new seats allocated across ${factions.length} parties`);
 }
 
+// #region server-exclude
 export async function resolveManualElectionContext(supabase, nation, currentTick, requestedElectionType = null) {
     const governmentType = getCanonicalGovernmentType(nation);
     if (governmentType !== CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC) {
@@ -1720,7 +1720,6 @@ export async function processElections(supabase, nation, currentTick) {
     return results;
 }
 
-// #region server-exclude
 /**
  * Presidential election result: read candidate-level popular vote results
  * and inaugurate the winning candidate.
@@ -2290,4 +2289,3 @@ export async function scheduleNextPresidentialElections(supabase, nation, curren
         console.log(`Scheduled next presidential election for ${nation.name} at tick ${nextPres}`);
     }
 }
-// #endregion server-exclude

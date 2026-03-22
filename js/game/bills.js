@@ -65,6 +65,7 @@ export async function syncVoteTallies(supabase, billId) {
 
     return { votesFor, votesAgainst, votesAbstain };
 }
+// #endregion server-exclude
 
 
 // ==================== ENACTMENT APPROVAL IMPACT ====================
@@ -226,6 +227,7 @@ export async function applyNoVotePenalty(supabase, bill, nationId) {
 }
 
 
+// #region server-exclude
 // ==================== STATIC IDEOLOGY PENALTY (LEGACY) ====================
 
 export function calculateIdeologyPenalty(stage, opposedCount, polarization) {
@@ -597,6 +599,8 @@ export function evaluateBillVote(bill, totalSeats) {
     return { status: 'tied', reason: 'tied_votes', quorumMet: true, quorumThreshold, quorumCurrent: participating, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
 }
 
+// #endregion server-exclude
+
 /**
  * Resolve a bill vote at deadline (or early resolution).
  * Returns: 'passed', 'failed', 'failed_no_quorum', or 'deferred'.
@@ -638,6 +642,7 @@ export function resolveBillVote(bill, totalSeats) {
     return forSeats > againstSeats ? 'passed' : 'failed';
 }
 
+// #region server-exclude
 /**
  * Auto-expire committee bills that have been sitting for COMMITTEE_EXPIRY_TICKS
  * without being sent to the floor. Sets status to 'failed'.
@@ -2603,7 +2608,6 @@ export async function reversePolicy(supabase, nation, policy, passedTick, curren
     }
 }
 
-// #region server-exclude
 // ==================== FOUNDATIONAL BILL ENACTMENT ====================
 
 export async function enactFoundationalBill(supabase, bill, currentTick) {
@@ -3062,7 +3066,6 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
     return true;
 }
-// #endregion server-exclude
 
 export async function failBill(supabase, bill) {
     const { error } = await supabase.from('bills').update({

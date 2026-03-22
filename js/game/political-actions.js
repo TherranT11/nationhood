@@ -1450,6 +1450,7 @@ export function getPromiseableStats(nation, isGoverning = false) {
     }
     return results;
 }
+// #endregion server-exclude
 
 
 
@@ -1677,7 +1678,6 @@ export function evaluatePromiseStatus(promise, nationStats, currentTick, ministr
             return { status: 'in_progress', progress };
     }
 }
-// #endregion server-exclude
 
 /**
  * Process all active promises for a nation during tick advancement.
