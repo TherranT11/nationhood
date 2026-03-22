@@ -1145,7 +1145,7 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
         effects,
         weights,
         opensCounter,
-        newAp: apResult.newAp ?? ((faction.action_points || 0) - ATTACK_CONFIG.AP_COST),
+        newAp: apResult.newAp ?? ((faction.action_points || 0) - effectiveAttackCost),
     };
 }
 

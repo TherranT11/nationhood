@@ -2937,7 +2937,8 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             continue;
         }
 
-        const ok = ap >= act.ap;
+        const displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.ap;
+        const ok = ap >= displayCost;
         const borderColor = isSel ? act.color : ok ? act.color + '55' : 'var(--dtext-3)';
         const bgStyle = isSel ? `background:${act.color}08;` : '';
         const borderStyle = isSel ? `border-color:${act.color}33;` : '';
@@ -2949,7 +2950,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
                     <span class="ca-item-icon" style="color:${act.color}">${act.icon}</span>
                     <span class="ca-item-name" style="color:${nameColor}">${escapeHtml(act.name)}</span>
                 </div>
-                <span class="ca-item-ap">${act.ap} AP</span>
+                <span class="ca-item-ap">${displayCost} AP</span>
             </div>
             <div class="ca-item-desc">${escapeHtml(act.desc)}</div>
             <div class="ca-item-affects" style="color:${affectsColor}">This action affects ${act.affects}</div>
@@ -3028,7 +3029,8 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             }
 
             const act = CA_ACTIONS.find(a => a.id === id);
-            if (act && ap < act.ap) return;
+            const actCost = act?.id === 'attack' ? getAttackAPCost(n?.polarization) : act?.ap;
+            if (act && ap < actCost) return;
             if (_caSelected === id) { _caSelected = null; } else { _caSelected = id; }
             caReset();
             _caResult = null;
