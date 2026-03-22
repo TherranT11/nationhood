@@ -4956,10 +4956,16 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
     }
 
     // Compute electorate mean per axis from electorate_profile.
-    // Zone variance is driven by the nation's polarization stat (0-100 → 5-45)
-    // so that the spread visualization always matches the polarization indicator.
+    // Zone variance is driven by polarization (high → spread) and stability (low → spread).
+    // Matches backend IDEO_VARIANCE_STAT_MAP weights: polarization 0.5, stability -0.3, ethnic_diversity 0.2
     const nationPolarization = Number(nation.polarization ?? 50);
-    const zoneVariance = 5 + (nationPolarization / 100) * 40; // 0→5, 100→45
+    const nationStability = Number(nation.stability ?? 50);
+    const nationDiversity = Number(nation.ethnic_diversity ?? 50);
+    const varianceShift =
+        ((nationPolarization - 50) / 50) * 0.5 +
+        ((nationStability - 50) / 50) * -0.3 +
+        ((nationDiversity - 50) / 50) * 0.2;
+    const zoneVariance = Math.max(5, Math.min(45, 20 + varianceShift * 0.3 * 50));
     const electorateStats = {};
     for (const ax of ES_AXES) {
         const mean = Number(profile['ideo_mean_' + ax.key] ?? 50);
@@ -5177,6 +5183,35 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
             </div>`;
         }
 
+        // Spread driver indicators
+        const spreadDrivers = [];
+        if (nationPolarization >= 65) {
+            const intensity = nationPolarization >= 85 ? 'High' : 'Elevated';
+            spreadDrivers.push({ label: `${intensity} Polarization`, stat: Math.round(nationPolarization), color: 'var(--dred)', note: 'pushing the electorate to the fringes' });
+        }
+        if (nationStability <= 35) {
+            const intensity = nationStability <= 15 ? 'Very low' : 'Low';
+            spreadDrivers.push({ label: `${intensity} Stability`, stat: Math.round(nationStability), color: 'var(--damber)', note: 'pushing the electorate to the fringes' });
+        }
+        if (nationDiversity >= 65) {
+            spreadDrivers.push({ label: 'High Ethnic Diversity', stat: Math.round(nationDiversity), color: 'var(--dteal)', note: 'widening ideological divisions' });
+        }
+        if (nationPolarization <= 25 && nationStability >= 65) {
+            spreadDrivers.push({ label: 'Stable & United', stat: null, color: 'var(--dgreen)', note: 'electorate is ideologically consolidated' });
+        }
+        let spreadDriversHtml = '';
+        if (spreadDrivers.length > 0) {
+            spreadDriversHtml = '<div style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 16px;border-bottom:1px solid var(--dborder-hair)">';
+            for (const d of spreadDrivers) {
+                spreadDriversHtml += `<div style="font-family:var(--dfont-mono);font-size:10px;color:${d.color};display:flex;align-items:center;gap:4px">`;
+                spreadDriversHtml += `<span style="font-weight:700">${d.label}</span>`;
+                if (d.stat !== null) spreadDriversHtml += `<span style="opacity:0.6">(${d.stat})</span>`;
+                spreadDriversHtml += `<span style="color:var(--dtext-3)">— ${d.note}</span>`;
+                spreadDriversHtml += `</div>`;
+            }
+            spreadDriversHtml += '</div>';
+        }
+
         container.innerHTML = `
         <div class="es-page-label">Electorate Ideology Spread — <span class="es-nation">${escapeHtml(nation.name)}</span> · Tick ${currentTick}</div>
         <div class="es-outer">
@@ -5187,6 +5222,7 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
                 </div>
                 <div class="es-legend" id="es-legend">${legendHtml}</div>
             </div>
+            ${spreadDriversHtml}
             <div class="es-body">${axesHtml}</div>
             <div class="es-summary">
                 <div class="es-sb-item">
