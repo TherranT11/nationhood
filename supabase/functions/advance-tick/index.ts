@@ -21028,6 +21028,154 @@ async function processMinistryActions(supabase, nation, currentTick) {
     const trackingUpdates = [];
 
     for (const action of actions) {
+        // === DEBT RESTRUCTURING RESOLUTION ===
+        // This action has no per-tick stat_effects; instead it resolves probabilistically after its delay period.
+        const ad = action.action_data || {};
+        if (ad.is_resolution && action.action_key === 'debtRestructuring' && action.ministry_key === 'finance') {
+            const appliedTick = action.applied_at_tick || 0;
+            const delayTicks = 3; // 3-tick negotiation period
+            const resolutionTick = appliedTick + delayTicks;
+
+            // Not yet time to resolve
+            if (currentTick < resolutionTick) {
+                trackingUpdates.push({ id: action.id, allEffectsComplete: false });
+                continue;
+            }
+
+            // Already resolved (effects_applied_through_tick >= resolutionTick)
+            if ((action.effects_applied_through_tick || 0) >= resolutionTick) {
+                // Check if GDP growth penalty duration has passed (failure case: 4 ticks post-resolution)
+                const failureEnd = resolutionTick + 4;
+                if (currentTick >= failureEnd || ad.resolution_outcome === 'success') {
+                    trackingUpdates.push({ id: action.id, allEffectsComplete: true });
+                } else {
+                    // Apply ongoing GDP growth penalty for failure
+                    const gdpKey = 'gdp_growth';
+                    const curGdp = nationUpdates[gdpKey] !== undefined
+                        ? nationUpdates[gdpKey]
+                        : (nation[gdpKey] !== undefined && nation[gdpKey] !== null ? Number(nation[gdpKey]) : 50);
+                    nationUpdates[gdpKey] = Math.max(0, Math.min(100, curGdp - 0.2));
+                    trackingUpdates.push({ id: action.id, allEffectsComplete: currentTick >= failureEnd - 1 });
+                }
+                continue;
+            }
+
+            // === RESOLUTION ROLL ===
+            const credit = Number(ad.credit_at_action ?? nation.credit ?? 50);
+            const baseChance = credit / 100;
+            const roll = Math.random();
+            const success = roll <= baseChance;
+
+            console.log(`[DebtRestructuring] ${nation.name}: credit=${credit} chance=${(baseChance * 100).toFixed(0)}% roll=${roll.toFixed(3)} => ${success ? 'SUCCESS' : 'FAILURE'}`);
+
+            // Fetch minister info for events
+            const { data: finMinistry } = await supabase
+                .from('ministries')
+                .select('minister_first_name, minister_last_name, factions(faction_name)')
+                .eq('nation_id', nation.id)
+                .eq('ministry_key', 'finance')
+                .maybeSingle();
+            const finMinisterName = finMinistry
+                ? ((finMinistry.minister_first_name || '') + ' ' + (finMinistry.minister_last_name || '')).trim()
+                : 'Finance Minister';
+            const finPartyName = finMinistry?.factions?.faction_name || 'Unknown';
+
+            if (success) {
+                // Interest Rates −1.5 (permanent via nation stat)
+                const irKey = 'interest_rates';
+                const curIR = nationUpdates[irKey] !== undefined
+                    ? nationUpdates[irKey]
+                    : (nation[irKey] !== undefined && nation[irKey] !== null ? Number(nation[irKey]) : 50);
+                nationUpdates[irKey] = Math.max(0, Math.min(100, curIR - 1.5));
+
+                // Foreign Investment +3 (one-time)
+                const fiKey = 'foreign_investment';
+                const curFI = nationUpdates[fiKey] !== undefined
+                    ? nationUpdates[fiKey]
+                    : (nation[fiKey] !== undefined && nation[fiKey] !== null ? Number(nation[fiKey]) : 50);
+                nationUpdates[fiKey] = Math.max(0, Math.min(100, curFI + 3));
+
+                // Credit −5 (permanent)
+                const crKey = 'credit';
+                const curCR = nationUpdates[crKey] !== undefined
+                    ? nationUpdates[crKey]
+                    : (nation[crKey] !== undefined && nation[crKey] !== null ? Number(nation[crKey]) : 50);
+                nationUpdates[crKey] = Math.max(0, Math.min(100, curCR - 5));
+
+                // Store outcome
+                await supabase.from('ministry_action_log').update({
+                    action_data: { ...ad, resolution_outcome: 'success', resolution_tick: currentTick }
+                }).eq('id', action.id);
+
+                // Fire success event (nation + world)
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_nation_id: nation.id,
+                        p_trigger_key: 'ministry_debt_restructuring_success',
+                        p_tick: currentTick,
+                        p_placeholders: { minister_name: finMinisterName, party: finPartyName, nation: nation.name || 'Unknown' }
+                    });
+                } catch (_) {}
+
+                trackingUpdates.push({ id: action.id, allEffectsComplete: true });
+            } else {
+                // Foreign Investment −5 (one-time)
+                const fiKey = 'foreign_investment';
+                const curFI = nationUpdates[fiKey] !== undefined
+                    ? nationUpdates[fiKey]
+                    : (nation[fiKey] !== undefined && nation[fiKey] !== null ? Number(nation[fiKey]) : 50);
+                nationUpdates[fiKey] = Math.max(0, Math.min(100, curFI - 5));
+
+                // Credit −8 (permanent)
+                const crKey = 'credit';
+                const curCR = nationUpdates[crKey] !== undefined
+                    ? nationUpdates[crKey]
+                    : (nation[crKey] !== undefined && nation[crKey] !== null ? Number(nation[crKey]) : 50);
+                nationUpdates[crKey] = Math.max(0, Math.min(100, curCR - 8));
+
+                // GDP Growth −0.2/tick for 4 ticks (first tick applied here)
+                const gdpKey = 'gdp_growth';
+                const curGdp = nationUpdates[gdpKey] !== undefined
+                    ? nationUpdates[gdpKey]
+                    : (nation[gdpKey] !== undefined && nation[gdpKey] !== null ? Number(nation[gdpKey]) : 50);
+                nationUpdates[gdpKey] = Math.max(0, Math.min(100, curGdp - 0.2));
+
+                // Minister Approval −1
+                const mKey = action.ministry_key + ':' + action.faction_id;
+                if (ministerUpdates[mKey] === undefined) {
+                    const { data: mData } = await supabase
+                        .from('ministries')
+                        .select('minister_approval')
+                        .eq('nation_id', nation.id)
+                        .eq('ministry_key', action.ministry_key)
+                        .eq('party_id', action.faction_id)
+                        .single();
+                    ministerUpdates[mKey] = (mData?.minister_approval ?? 50);
+                    ministerBaseline[mKey] = ministerUpdates[mKey];
+                }
+                ministerUpdates[mKey] = Math.max(0, Math.min(100, ministerUpdates[mKey] - 1));
+
+                // Store outcome
+                await supabase.from('ministry_action_log').update({
+                    action_data: { ...ad, resolution_outcome: 'failure', resolution_tick: currentTick }
+                }).eq('id', action.id);
+
+                // Fire failure event (nation + world)
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_nation_id: nation.id,
+                        p_trigger_key: 'ministry_debt_restructuring_failure',
+                        p_tick: currentTick,
+                        p_placeholders: { minister_name: finMinisterName, party: finPartyName, nation: nation.name || 'Unknown' }
+                    });
+                } catch (_) {}
+
+                // Not complete yet — GDP penalty runs for 3 more ticks
+                trackingUpdates.push({ id: action.id, allEffectsComplete: false });
+            }
+            continue;
+        }
+
         const effects = action.stat_effects;
         if (!effects || !Array.isArray(effects) || effects.length === 0) {
             // No effects — mark as processed
@@ -25180,11 +25328,44 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
     // 4. Build full budget (all values are ANNUAL raw dollars)
     const budgetData = buildBudgetData(nation, activeLaws || [], tradeTariffRevenue, institutionConfig, aidData);
 
+    // 4b. Ministry action budget impact (e.g., Finance stimulus/austerity)
+    //     Fetch active (unprocessed) ministry actions with budget_per_tick or budget_saves_per_tick
+    const { data: activeActions } = await supabase
+        .from('ministry_action_log')
+        .select('action_data, applied_at_tick, stat_effects')
+        .eq('nation_id', nation.id)
+        .eq('processed', false);
+
+    let ministryActionBudgetImpact = 0; // positive = cost, negative = savings (per tick)
+    if (activeActions?.length) {
+        for (const act of activeActions) {
+            const ad = act.action_data;
+            if (!ad) continue;
+            // Check if this action is within its active duration this tick
+            const appliedTick = act.applied_at_tick || 0;
+            const ticksSince = currentTick - appliedTick;
+            // Derive delay and duration from stat_effects or action_data
+            const firstEffect = Array.isArray(act.stat_effects) && act.stat_effects.length > 0 ? act.stat_effects[0] : null;
+            const delay = firstEffect ? (Number(firstEffect.delay_ticks) || 0) : 0;
+            const duration = firstEffect ? (Number(firstEffect.duration_ticks) || 4) : (ad.is_resolution ? 4 : 4);
+            if (ticksSince > delay && ticksSince <= delay + duration) {
+                if (ad.budget_per_tick && ad.budget_per_tick > 0) {
+                    ministryActionBudgetImpact += ad.budget_per_tick;
+                }
+                if (ad.budget_saves_per_tick && ad.budget_saves_per_tick > 0) {
+                    ministryActionBudgetImpact -= ad.budget_saves_per_tick;
+                }
+            }
+        }
+    }
+
     // 5. Compute annual balance
     //    grossRevenue already includes aidReceived.
     //    Mandatory costs (debtService + aidGiven) are already subtracted in 'available'.
     //    Discretionary costs: totalExpenditure (ministry policies + institutions).
-    const annualBalance = budgetData.available - budgetData.totalExpenditure;
+    //    ministryActionBudgetImpact is per-tick, so annualize it.
+    const actionAnnualImpact = ministryActionBudgetImpact * GAME_CONFIG.TICKS_PER_YEAR;
+    const annualBalance = budgetData.available - budgetData.totalExpenditure - actionAnnualImpact;
 
     // 6. Per-tick balance
     const perTickBalance = annualBalance / GAME_CONFIG.TICKS_PER_YEAR;
@@ -25216,7 +25397,7 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
     // 9. Log
     const fmtM = (v) => `$${(v / 1_000_000).toFixed(1)}M`;
     if (debtDelta !== 0) {
-        console.log(`[BudgetDeficit] ${nation.name}: revenue=${fmtM(budgetData.grossRevenue)}/yr expenditure=${fmtM(budgetData.totalExpenditure + budgetData.debtService + budgetData.aidGiven)}/yr balance=${fmtM(annualBalance)}/yr (${fmtM(perTickBalance)}/tick) debt: ${fmtM(currentDebt)} → ${fmtM(newDebt)}`);
+        console.log(`[BudgetDeficit] ${nation.name}: revenue=${fmtM(budgetData.grossRevenue)}/yr expenditure=${fmtM(budgetData.totalExpenditure + budgetData.debtService + budgetData.aidGiven)}/yr${actionAnnualImpact !== 0 ? ' actions=' + fmtM(actionAnnualImpact) + '/yr' : ''} balance=${fmtM(annualBalance)}/yr (${fmtM(perTickBalance)}/tick) debt: ${fmtM(currentDebt)} → ${fmtM(newDebt)}`);
     }
 
     return {
