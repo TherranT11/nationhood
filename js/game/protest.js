@@ -806,6 +806,12 @@ export async function executeProtest(supabase, factionId, nationId, grievanceTyp
         apCost,
         newAp: (faction.action_points || 0) - apCost,
         useCount: decayedUseCount + 1,
+        headline: 'Protest Organised',
+        effects: [
+            { label: 'AP Spent', value: -apCost },
+        ],
+        demandText: demandLabel || grievanceType,
+        outcomeName: 'Gathering momentum — outcome resolves next tick',
     };
 }
 

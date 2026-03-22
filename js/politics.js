@@ -2630,7 +2630,7 @@ let _protestActiveData = null;      // active protest_log row (if any)
 let _endorseableProtest = null;     // another party's resolving protest that we can endorse
 let _alreadyEndorsed = false;       // whether we already endorsed the current endorseable protest
 let _protestCachedMinisters = null;
-let _protestCachedPolicies = null;
+let _protestCachedCrises = null;
 let _protestCachedStats = null;
 let _protestLoading = false;
 let _govProtestCrisis = null;       // active protest crisis for governing party PA row
@@ -2684,7 +2684,7 @@ function caReset() {
     _caPromiseType = null; _caStatKey = null; _caCrisisId = null;
     _caAttackEvidence = null; _caAttackVectors = null;
     _protestTab = 'minister'; _protestTarget = null;
-    _protestCachedMinisters = null; _protestCachedPolicies = null; _protestCachedStats = null;
+    _protestCachedMinisters = null; _protestCachedCrises = null; _protestCachedStats = null;
     _protestLoading = false;
     _caTargetAxis = null; _caTargetDirection = null;
     _caTargetDemographic = null; _caTargetBand = null;
@@ -3459,32 +3459,16 @@ async function loadProtestData(nation, faction, tick) {
         _protestCachedMinisters = ministers || [];
     }
 
-    // Load active policies from current government
-    if (!_protestCachedPolicies) {
-        const coalition = await fetchActiveCoalition(_supabase, nation.id);
-        const coalitionIds = coalition?.party_ids || [];
-        if (coalitionIds.length > 0) {
-            const { data: bills } = await _supabase
-                .from('bills')
-                .select('id, bill_type, proposed_by, proposed_tick, bill_articles(policy_id, policies(policy_name))')
-                .eq('nation_id', nation.id)
-                .eq('status', 'enacted')
-                .in('proposed_by', coalitionIds)
-                .order('proposed_tick', { ascending: false });
-            _protestCachedPolicies = (bills || []).map(b => {
-                const firstArticle = b.bill_articles?.[0];
-                const policyName = firstArticle?.policies?.policy_name || `Bill ${b.id.slice(0, 8)}`;
-                return {
-                    id: b.id,
-                    name: policyName,
-                    bill_type: b.bill_type,
-                    enacted_tick: b.proposed_tick,
-                    ministry: '',
-                };
-            });
-        } else {
-            _protestCachedPolicies = [];
-        }
+    // Load active crises in the nation
+    if (!_protestCachedCrises) {
+        const { data: crises } = await _supabase
+            .from('active_crises')
+            .select('id, started_at_tick, crisis_templates(name, description)')
+            .eq('nation_id', nation.id);
+        _protestCachedCrises = (crises || []).map(c => ({
+            ...c,
+            duration: tick - (c.started_at_tick || 0),
+        }));
     }
 
     // Load stat failure data
@@ -3708,7 +3692,7 @@ function renderProtestConfig(nation, tick) {
     // Grievance type tabs
     const tabs = [
         { id: 'minister', label: 'Minister' },
-        { id: 'activePolicy', label: 'Active Policy' },
+        { id: 'activeCrisis', label: 'Active Crisis' },
         { id: 'statFailure', label: 'Stat Failure' },
     ];
     html += `<div class="protest-tabs">`;
@@ -3721,8 +3705,8 @@ function renderProtestConfig(nation, tick) {
     html += `<div class="protest-target-list" id="protest-target-list">`;
     if (_protestTab === 'minister') {
         html += renderProtestMinisterTargets();
-    } else if (_protestTab === 'activePolicy') {
-        html += renderProtestPolicyTargets();
+    } else if (_protestTab === 'activeCrisis') {
+        html += renderProtestCrisisTargets();
     } else if (_protestTab === 'statFailure') {
         html += renderProtestStatTargets(nation, tick);
     }
@@ -3767,30 +3751,30 @@ function renderProtestMinisterTargets() {
     return html;
 }
 
-function renderProtestPolicyTargets() {
-    const policies = _protestCachedPolicies;
-    if (!policies) return `<div class="protest-empty">Loading active policies...</div>`;
-    if (policies.length === 0) return `<div class="protest-empty">No active policies enacted by the current government.</div>`;
+function renderProtestCrisisTargets() {
+    const crises = _protestCachedCrises;
+    if (!crises) return `<div class="protest-empty">Loading active crises...</div>`;
+    if (crises.length === 0) return `<div class="protest-empty">No active crises in this nation.</div>`;
 
     let html = '';
-    for (const p of policies) {
-        const isSel = _protestTarget?.id === p.id;
-        const isLever = p.bill_type === 'lever' || p.bill_type === 'normal';
-        const demandLabel = isLever
-            ? `The government must commit to not reactivating ${p.name} for 8 ticks.`
-            : `The government must repeal ${p.name}.`;
+    for (const c of crises) {
+        const isSel = _protestTarget?.id === c.id;
+        const name = c.crisis_templates?.name || 'Unknown Crisis';
+        const desc = c.crisis_templates?.description || '';
+        const dur = c.duration || 0;
+        const demandLabel = `The government must resolve the ${name} crisis.`;
         const targetData = JSON.stringify({
-            id: p.id,
-            type: 'activePolicy',
-            label: p.name,
+            id: c.id,
+            type: 'activeCrisis',
+            label: name,
             demandLabel,
-            grievanceData: { billId: p.id, name: p.name, publicApproval: p.publicApproval || 50 },
+            grievanceData: { crisisId: c.id, name, duration: dur },
         }).replace(/"/g, '&quot;');
 
         html += `<div class="protest-target${isSel ? ' selected' : ''}" data-protest-target="${targetData}">
             <div>
-                <div class="protest-target__name">${escapeHtml(p.name)}</div>
-                <div class="protest-target__meta">${escapeHtml(p.ministry || '')} · tick ${p.enacted_tick || '?'}</div>
+                <div class="protest-target__name">${escapeHtml(name)}</div>
+                <div class="protest-target__meta">${escapeHtml(desc ? desc.slice(0, 80) : '')}${dur ? ' · ' + dur + 't active' : ''}</div>
             </div>
         </div>`;
     }
@@ -6449,7 +6433,7 @@ function renderPartyCard(party, nation) {
     if (govLabel === 'Autocratic State') govBadgeCls = 'op-badge-red';
     else if (govLabel === 'Presidential Republic') govBadgeCls = 'op-badge-amber';
     else if (govLabel === 'Constitutional Monarchy') govBadgeCls = 'op-badge-amber';
-    const govBadge = `<span class="op-badge ${govBadgeCls}" style="font-size:9px;padding:3px 8px;">${govLabel.toUpperCase()}</span>`;
+    const govBadge = `<span class="op-badge ${govBadgeCls}">${govLabel.toUpperCase()}</span>`;
 
     return `
     <div class="op-card" style="background:linear-gradient(135deg, ${cGlow} 0%, var(--dbg-2) 40%);border-color:${cBorder}">
