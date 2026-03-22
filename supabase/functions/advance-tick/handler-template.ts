@@ -1051,6 +1051,64 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] State visit expiration check failed (non-fatal):', svExpErr);
     }
 
+    // 3.8 Diplomatic relations decay — all relation scores drift toward 0 (neutral)
+    try {
+        const RELATION_DECAY_BASE = 0.1;
+        const RELATION_DECAY_ISOLATIONIST = 0.15;
+
+        const isolationistNationIds = new Set<string>();
+        const { data: coalitions } = await supabase.from('coalitions')
+            .select('nation_id, lead_party_id')
+            .eq('is_active', true);
+        if (coalitions && coalitions.length > 0) {
+            const leadIds = coalitions.map(c => c.lead_party_id);
+            const { data: leadFactions } = await supabase.from('factions')
+                .select('id, nation_id, leader_negative_traits')
+                .in('id', leadIds);
+            if (leadFactions) {
+                for (const lf of leadFactions) {
+                    const neg: string[] = lf.leader_negative_traits || [];
+                    if (neg.includes('isolationist')) {
+                        isolationistNationIds.add(lf.nation_id);
+                    }
+                }
+            }
+        }
+
+        const { data: allRelations } = await supabase.from('diplomatic_relations')
+            .select('id, nation_a_id, nation_b_id, relation_score');
+        if (allRelations && allRelations.length > 0) {
+            let decayUpdates = 0;
+            for (const rel of allRelations) {
+                const score = Number(rel.relation_score || 0);
+                if (score === 0) continue;
+
+                const hasIsolationist = isolationistNationIds.has(rel.nation_a_id) || isolationistNationIds.has(rel.nation_b_id);
+                const decayRate = hasIsolationist ? RELATION_DECAY_ISOLATIONIST : RELATION_DECAY_BASE;
+
+                let newScore: number;
+                if (score > 0) {
+                    newScore = Math.max(0, score - decayRate);
+                } else {
+                    newScore = Math.min(0, score + decayRate);
+                }
+                newScore = Math.round(newScore * 100) / 100;
+
+                if (newScore !== score) {
+                    await supabase.from('diplomatic_relations')
+                        .update({ relation_score: newScore })
+                        .eq('id', rel.id);
+                    decayUpdates++;
+                }
+            }
+            if (decayUpdates > 0) {
+                console.log(`[advanceTick] Diplomatic relations decay: updated ${decayUpdates} relations`);
+            }
+        }
+    } catch (relDecayErr) {
+        console.error('[advanceTick] Diplomatic relations decay failed (non-fatal):', relDecayErr);
+    }
+
     // 4. Process each nation
     for (const nation of nationList) {
       try {

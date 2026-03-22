@@ -5,7 +5,7 @@ import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } f
 import { tickToDate } from './utils.js';
 
 import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement } from './game-common.js';
-import { isAutocracy, isGovernmentPresidential } from './game/government-types.js';
+import { isAutocracy, isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { ISSUE_CATEGORY_STATS, statDirectionSign } from './game/stats.js';
 import { getElectabilityTier } from './game/party-leadership.js';
@@ -358,7 +358,7 @@ async function renderPartyTab(f, nation, data) {
         <div class="pol-header">
             <div class="pol-logo">${logoSvg}</div>
             <div class="pol-header-info">
-                <div class="pol-party-name">${escapeHtml(f.faction_name)}</div>
+                <div class="pol-party-name">${escapeHtml(f.faction_name)} <span style="color:var(--dtext-3);font-size:11px;font-weight:400;font-style:italic;margin-left:4px;">${getGovDisplayLabel(nation)}</span></div>
                 <div class="pol-meta-row">
                     <span class="pol-role-badge ${roleCls}">${escapeHtml(roleLabel.toUpperCase())}</span>
                     <span class="pol-established">Est. ${founded}</span>
@@ -930,7 +930,7 @@ function renderAutocracyPoliticsContent(f, nation, opts) {
             <div class="pol-header">
                 <div class="pol-logo">${logoSvg}</div>
                 <div class="pol-header-info">
-                    <div class="pol-party-name">${escapeHtml(f.faction_name)}</div>
+                    <div class="pol-party-name">${escapeHtml(f.faction_name)} <span style="color:var(--dtext-3);font-size:11px;font-weight:400;font-style:italic;margin-left:4px;">${getGovDisplayLabel(nation)}</span></div>
                     <div class="pol-meta-row">
                         <span class="pol-role-badge ${roleCls}">${escapeHtml(roleLabel.toUpperCase())}</span>
                         <span style="font-size:10px;color:${PILLAR_COLORS[myPillar] || 'var(--dtext-3)'};font-weight:600;text-transform:uppercase">${escapeHtml(PILLAR_LABELS[myPillar] || myPillar)} Pillar</span>
@@ -6451,6 +6451,14 @@ function renderPartyCard(party, nation) {
             <div class="op-insight-body">${escapeHtml(party.abbreviation)} has not declared any positions. Issue stance system not yet active.</div>
            </div>`;
 
+    // Government type badge (larger, colorful)
+    const govLabel = getGovDisplayLabel(nation);
+    let govBadgeCls = 'op-badge-teal';
+    if (govLabel === 'Autocratic State') govBadgeCls = 'op-badge-red';
+    else if (govLabel === 'Presidential Republic') govBadgeCls = 'op-badge-amber';
+    else if (govLabel === 'Constitutional Monarchy') govBadgeCls = 'op-badge-amber';
+    const govBadge = `<span class="op-badge ${govBadgeCls}" style="font-size:9px;padding:3px 8px;">${govLabel.toUpperCase()}</span>`;
+
     return `
     <div class="op-card" style="background:linear-gradient(135deg, ${cGlow} 0%, var(--dbg-2) 40%);border-color:${cBorder}">
         <div class="op-card-hdr" style="border-bottom-color:${cBorder}">
@@ -6459,6 +6467,7 @@ function renderPartyCard(party, nation) {
                 <div class="op-name" style="color:${c}">${escapeHtml(party.name)}</div>
                 <div class="op-meta">
                     <span class="op-badge ${statusCls}">${statusLabel}</span>
+                    ${govBadge}
                     ${foundedBadge}
                     ${leaderBadge}
                 </div>
