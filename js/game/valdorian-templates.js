@@ -968,6 +968,7 @@ export const OPINION_TRIGGERS = [
     { condition: 'election_within_10', topic: 'election', headline: "The Case For — and Against — {candidate_a} vs {candidate_b}" },
     { condition: 'crisis_active', topic: 'crisis', headline: "Editorial: {nation_name}'s {crisis_name} and What Comes Next" },
     { condition: 'stability_below_30', topic: 'governance', headline: "Editorial: Can {nation_name}'s Government Survive?" },
+    { condition: 'failed_state_active', topic: 'governance', headline: "Analysis: {nation_name} — A Nation In Name Only" },
     { condition: 'debt_critical', topic: 'economy', headline: "Editorial: The Debt Bomb — Is Default Inevitable?" },
     { condition: 'war_active_5_ticks', topic: 'war', headline: "Analysis: {war_duration} Ticks In — Is Peace Possible?" },
     { condition: 'shutdown_active', topic: 'budget', headline: "Editorial: The Cost of a Government That Can't Govern" },

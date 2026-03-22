@@ -385,6 +385,7 @@ const guideContent = {
 <tr><td>Revolution Risk</td><td>~70+</td><td>Nation is in danger of revolution. Prioritize stability and crisis management.</td></tr>
 <tr><td>National Debt</td><td>150%+ of GDP</td><td>Sovereign default. Drags down GDP and triggers economic crises.</td></tr>
 <tr><td>Political Stability</td><td>&lt;20</td><td>Governance breakdown, compounding other problems</td></tr>
+<tr><td>Political Stability</td><td>0</td><td>Failed State. Services collapse, lawlessness spreads, international isolation. Persists until stability reaches 15.</td></tr>
 </table>
 
 <p class="guide-tip">National Debt is the silent killer. Many popular laws increase debt. If it spirals, it drags GDP and triggers crises that are hard to escape.</p>

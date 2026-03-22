@@ -4009,6 +4009,9 @@ const MINISTER_APPROVAL_CONFIG = {
     // Government approval: -3 per vacant ministry seat
     VACANCY_PENALTY: -3,
 
+    // Government approval floor: even the worst government retains some support
+    APPROVAL_FLOOR: 15,
+
     // Event modifier decay: 10% per tick (transient shocks fade naturally)
     EVENTS_DECAY_RATE: 0.10,
 
@@ -21023,7 +21026,7 @@ async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
 
     // Composite target from minister averages + penalties + events
     let rawApproval = ministerAvg + vacancyPenalty + eventModifier;
-    rawApproval = Math.max(0, Math.min(100, rawApproval));
+    rawApproval = Math.max(cfg.APPROVAL_FLOOR, Math.min(100, rawApproval));
 
     // Dynamic per-tick cap: base ±3, but scales with the gap so approval can
     // crash quickly during crises rather than crawling down 3 pts/tick.
@@ -21034,7 +21037,7 @@ async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
     const gap = Math.abs(delta);
     const maxChange = Math.max(BASE_TICK_CHANGE, Math.round(gap * 0.25));
     const clampedDelta = Math.max(-maxChange, Math.min(maxChange, delta));
-    const govApproval = Math.round(Math.max(0, Math.min(100, previousApproval + clampedDelta)));
+    const govApproval = Math.round(Math.max(cfg.APPROVAL_FLOOR, Math.min(100, previousApproval + clampedDelta)));
 
     // Store on nation
     await supabase.from('nations')

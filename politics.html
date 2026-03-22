@@ -126,15 +126,17 @@
 .pol-meta-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 4px;
 }
 .pol-role-badge {
     font-family: var(--dfont-mono);
-    font-size: 9.5px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    padding: 3px 9px;
+    padding: 4px 10px;
     border-radius: 3px;
 }
 .pol-role-gov {
@@ -159,8 +161,25 @@
 }
 .pol-established {
     font-family: var(--dfont-mono);
-    font-size: 10.5px;
-    color: var(--dtxt-muted);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--dtxt-secondary);
+    background: var(--dbg-3);
+    border: 1px solid var(--dborder-1);
+    padding: 4px 10px;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+}
+.pol-leader-badge {
+    font-family: var(--dfont-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--dtxt-bright);
+    background: var(--dbg-3);
+    border: 1px solid var(--dborder-1);
+    padding: 4px 10px;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
 }
 
 /* ── Ideology tags row ── */
