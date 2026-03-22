@@ -12759,7 +12759,7 @@ async function tickElectorate(supabase, nation, currentTick) {
 
     // ── 10. Phase 2C: Drift electorate profile + enthusiasm toward stat-driven targets ──
     const { data: scheduledElections } = await supabase
-        .from('scheduled_elections')
+        .from('elections')
         .select('election_tick')
         .eq('nation_id', nation.id)
         .eq('status', 'scheduled')
