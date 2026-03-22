@@ -13303,6 +13303,122 @@ async function tickElectorateProfile(supabase, nation, profile, currentTick, ent
         }
     }
 
+    // ── Process ideology_shift_actions (Think Tank, Media Campaign, Grassroots) ──
+    try {
+        var { data: activeShifts } = await supabase.from('ideology_shift_actions')
+            .select('*')
+            .eq('nation_id', nation.id)
+            .eq('status', 'active');
+
+        if (activeShifts && activeShifts.length > 0) {
+            for (var si = 0; si < activeShifts.length; si++) {
+                var action = activeShifts[si];
+                var ticksActive = currentTick - (action.created_tick || 0);
+                var actionType = action.action_type;
+                var axisKey = action.target_axis;
+                var direction = action.target_direction; // 'left' or 'right'
+
+                // Determine duration limit
+                var maxDuration = actionType === 'think_tank' ? 50
+                    : actionType === 'media_campaign' ? 10  // 5 ticks variance + 5 ticks visibility
+                    : actionType === 'grassroots_movement' ? 100 : 50;
+
+                // ── Expire if past duration ──
+                if (ticksActive >= maxDuration) {
+                    await supabase.from('ideology_shift_actions')
+                        .update({ status: 'completed', last_active_tick: currentTick })
+                        .eq('id', action.id);
+                    continue;
+                }
+
+                // ── Ongoing AP cost for think_tank and grassroots_movement ──
+                if (actionType === 'think_tank' || actionType === 'grassroots_movement') {
+                    var { data: factionRow } = await supabase.from('factions')
+                        .select('action_points').eq('id', action.faction_id).single();
+                    var factionAp = factionRow?.action_points ?? 0;
+                    if (factionAp < 1) {
+                        // Can't afford ongoing cost — suspend the action
+                        await supabase.from('ideology_shift_actions')
+                            .update({ status: 'suspended', last_active_tick: currentTick })
+                            .eq('id', action.id);
+                        continue;
+                    }
+                    // Deduct 1 AP per tick
+                    await supabase.from('factions')
+                        .update({ action_points: factionAp - 1 })
+                        .eq('id', action.faction_id);
+                }
+
+                // ── Apply effect based on action type ──
+                if (actionType === 'think_tank' || actionType === 'grassroots_movement') {
+                    // Drift ideo_mean on target axis
+                    var driftMin = actionType === 'think_tank' ? 0.1 : 0.1;
+                    var driftMax = actionType === 'think_tank' ? 0.3 : 0.2;
+                    var driftAmount = driftMin + Math.random() * (driftMax - driftMin);
+                    // Direction: 'left' decreases mean (toward 0), 'right' increases (toward 100)
+                    var dirSign = direction === 'right' ? 1 : -1;
+                    var meanCol = 'ideo_mean_' + axisKey;
+                    var oldMean = Number(profile[meanCol] ?? 50);
+                    var newMean = round2(clamp(oldMean + driftAmount * dirSign, 5, 95));
+                    if (newMean !== oldMean) {
+                        changes[meanCol] = newMean;
+                        profile[meanCol] = newMean;
+                        anyChange = true;
+                    }
+                    // Grassroots: +1 visibility every 10 ticks
+                    if (actionType === 'grassroots_movement' && ticksActive > 0 && ticksActive % 10 === 0) {
+                        var { data: gsRow } = await supabase.from('faction_electoral_standing')
+                            .select('id, visibility')
+                            .eq('faction_id', action.faction_id)
+                            .eq('nation_id', nation.id)
+                            .maybeSingle();
+                        if (gsRow) {
+                            var gsVis = Math.min(100, (Number(gsRow.visibility) || 30) + 1);
+                            await supabase.from('faction_electoral_standing')
+                                .update({ visibility: gsVis })
+                                .eq('id', gsRow.id);
+                        }
+                    }
+                } else if (actionType === 'media_campaign') {
+                    if (ticksActive < 5) {
+                        // Phase 1 (ticks 0-4): shift variance on target axis
+                        var varAmount = 0.1 + Math.random() * 0.4; // 0.1-0.5
+                        var dirSignVar = direction === 'right' ? 1 : -1;
+                        var varCol = 'ideo_var_' + axisKey;
+                        var oldVar = Number(profile[varCol] ?? 20);
+                        var newVar = round2(clamp(oldVar + varAmount * dirSignVar, 5, 45));
+                        if (newVar !== oldVar) {
+                            changes[varCol] = newVar;
+                            profile[varCol] = newVar;
+                            anyChange = true;
+                        }
+                    } else {
+                        // Phase 2 (ticks 5-9): visibility boost to the faction
+                        var visBump = 1 + Math.floor(Math.random() * 3); // 1-3
+                        var { data: standingRow } = await supabase.from('faction_electoral_standing')
+                            .select('id, visibility')
+                            .eq('faction_id', action.faction_id)
+                            .eq('nation_id', nation.id)
+                            .maybeSingle();
+                        if (standingRow) {
+                            var newVis = Math.min(100, (Number(standingRow.visibility) || 30) + visBump);
+                            await supabase.from('faction_electoral_standing')
+                                .update({ visibility: newVis })
+                                .eq('id', standingRow.id);
+                        }
+                    }
+                }
+
+                // Update last_active_tick
+                await supabase.from('ideology_shift_actions')
+                    .update({ last_active_tick: currentTick })
+                    .eq('id', action.id);
+            }
+        }
+    } catch (shiftErr) {
+        console.error('[Electorate] ideology_shift_actions processing failed (non-fatal):', shiftErr);
+    }
+
     // ── Drift enthusiasm ──
     const oldEnthusiasm = Number(profile.enthusiasm ?? CFG.DEFAULT_ENTHUSIASM);
     const { nextElectionTick, crisisCount, inactiveCount } = enthusiasmContext;

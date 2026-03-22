@@ -5290,8 +5290,7 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
 
     render();
 
-    // ── Phase 6: Pillar Contribution + Vote Left on Table cards ──
-    _renderPillarCards(container, playerFaction, nation);
+    // Phase 6 (pillar cards) removed from Electorate tab
 }
 
 /**
