@@ -1610,7 +1610,7 @@ function renderEditIdentityBox(f, currentTick) {
     const desc  = f.party_description || '';
     const ap    = f.action_points || 0;
     const lastRenameTick = f.last_rename_tick || 0;
-    const cooldownRemaining = Math.max(0, RENAME_COOLDOWN - (currentTick - lastRenameTick));
+    const cooldownRemaining = lastRenameTick > 0 ? Math.max(0, RENAME_COOLDOWN - (currentTick - lastRenameTick)) : 0;
     const onCooldown = cooldownRemaining > 0;
 
     // Preview badge
