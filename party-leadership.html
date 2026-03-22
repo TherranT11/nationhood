@@ -30,6 +30,8 @@ import {
     getElectabilityTier, getAPCostColor, getAPCostLabel,
     generateLeadershipCandidates
 } from './js/game/party-leadership.js';
+import { PM_TRAIT_KEYS } from './js/game/political-actions.js';
+import { isPresidentialRepublic, isAutocracy } from './js/game/government-types.js';
 
 let currentNation = null;
 let currentFaction = null;
@@ -369,6 +371,11 @@ window._appointLeader = async function() {
         confirmLines.push(`Electability: ${getElectabilityTier(candidate.electability).label}`);
     }
     confirmLines.push('', 'This will replace the current party leader.');
+    const isRulingPartyPreCheck = currentNation?.ruling_faction_id === currentFaction?.id;
+    const isParliamentaryPreCheck = !isPresidentialRepublic(currentNation) && !isAutocracy(currentNation);
+    if (isRulingPartyPreCheck && isParliamentaryPreCheck) {
+        confirmLines.push('As the ruling party leader, they will also become Prime Minister.');
+    }
     if (!confirm(confirmLines.join('\n'))) return;
 
     isAppointing = true;
@@ -396,6 +403,78 @@ window._appointLeader = async function() {
 
         const { error: updateErr } = await _supabase.from('factions').update(updateFields).eq('id', currentFaction.id);
         if (updateErr) throw new Error('Failed to update faction: ' + updateErr.message);
+
+        // If this faction is the ruling party (parliamentary), update PM records
+        // so the new leader becomes PM with a fresh trait
+        const isRulingParty = currentNation.ruling_faction_id === currentFaction.id;
+        const isParliamentary = !isPresidentialRepublic(currentNation) && !isAutocracy(currentNation);
+        if (isRulingParty && isParliamentary) {
+            const newTraitKey = PM_TRAIT_KEYS[Math.floor(Math.random() * PM_TRAIT_KEYS.length)];
+            const leaderAge = candidate.age || (35 + Math.floor(Math.random() * 16));
+            const pmFullName = `${candidate.firstName} ${candidate.lastName}`;
+
+            // Update head_of_government record
+            const { error: hogErr } = await _supabase.from('head_of_government')
+                .update({
+                    first_name: candidate.firstName,
+                    last_name: candidate.lastName,
+                    age: leaderAge,
+                    trait_key: newTraitKey,
+                    appointed_tick: currentTick
+                })
+                .eq('nation_id', currentNation.id)
+                .eq('active', true);
+            if (hogErr) console.warn('Failed to update head_of_government (non-blocking):', hogErr.message);
+
+            // Update PM ministry row
+            const { error: minErr } = await _supabase.from('ministries')
+                .update({
+                    minister_first_name: candidate.firstName,
+                    minister_last_name: candidate.lastName,
+                    minister_age: leaderAge
+                })
+                .eq('nation_id', currentNation.id)
+                .eq('ministry_key', 'prime_minister')
+                .eq('is_active', true);
+            if (minErr) console.warn('Failed to update PM ministry (non-blocking):', minErr.message);
+
+            // Update administration record
+            const { error: admErr } = await _supabase.from('administrations')
+                .update({
+                    prime_minister: pmFullName,
+                    admin_name: `${candidate.lastName} Administration`,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('nation_id', currentNation.id)
+                .is('ended_at_tick', null);
+            if (admErr) console.warn('Failed to update administration (non-blocking):', admErr.message);
+
+            // Apply trait on_appoint_stability effect (matches autoAppointPartyLeaderAsPM)
+            try {
+                const { data: trait } = await _supabase.from('leader_traits').select('effects').eq('trait_key', newTraitKey).single();
+                if (trait?.effects?.on_appoint_stability) {
+                    const newStability = Math.max(0, Math.min(100, (currentNation.stability || 50) + trait.effects.on_appoint_stability));
+                    await _supabase.from('nations').update({ stability: newStability }).eq('id', currentNation.id);
+                }
+            } catch (e) { console.warn('PM trait stability effect failed (non-blocking):', e); }
+
+            // Fire pm_appointed system event so other players see the PM change
+            try {
+                await _supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'pm_appointed',
+                    p_nation_id: currentNation.id,
+                    p_tick: currentTick,
+                    p_placeholders: {
+                        nation: currentNation.name || '',
+                        pm_name: pmFullName,
+                        party: currentFaction.faction_name,
+                        trait: newTraitKey
+                    }
+                });
+            } catch (e) { console.warn('PM appointed event fire failed (non-blocking):', e); }
+
+            console.log(`Ruling party leader change → PM updated: ${pmFullName} (trait: ${newTraitKey})`);
+        }
 
         // Log event
         const oldLeader = currentLeaders.leader;

@@ -835,6 +835,245 @@ const guideContent = {
 <p>The feed receives <strong>real-time updates</strong> &mdash; new player posts from other factions in your nation will appear automatically without refreshing the page.</p>
 </div></details>
 `
+    },
+
+    laws: {
+        title: 'Bills Guide',
+        html: `
+<details open><summary>Drafting a Bill</summary><div>
+<h3>What Is a Bill?</h3>
+<p>A bill is a piece of proposed legislation that, if passed by parliament, becomes an active law. Active laws produce ongoing stat effects every tick &mdash; raising or lowering national indicators like stability, corruption, GDP growth, press freedom, and more. Bills are the primary way factions shape the nation.</p>
+
+<h3>Who Can Draft?</h3>
+<table>
+<tr><th>Government Type</th><th>Who Can Draft</th></tr>
+<tr><td><strong>Parliamentary</strong></td><td>Any faction with seats in parliament</td></tr>
+<tr><td><strong>Presidential</strong></td><td>Any faction with seats in the legislature</td></tr>
+<tr><td><strong>Autocracy</strong></td><td>Only the ruling faction (bills are called <em>Decrees</em>)</td></tr>
+</table>
+
+<h3>AP Cost</h3>
+<p>Drafting a standard bill costs <strong>2 AP</strong>. This is deducted when you submit the bill to committee.</p>
+<p class="guide-tip">The <strong>Policy Wonk</strong> party leadership trait reduces bill drafting cost by 1 AP. If you legislate heavily, this trait pays for itself quickly.</p>
+
+<h3>How to Draft</h3>
+<ol>
+<li>Click <strong>&ldquo;Draft a Bill&rdquo;</strong> (or &ldquo;Draft a Decree&rdquo; in autocracies) at the top of the Bills page.</li>
+<li>The draft modal opens with a preamble already written. You cannot edit the preamble &mdash; it is auto-generated.</li>
+<li>Add one or more <strong>articles</strong> to the bill (see article types below).</li>
+<li>Give your bill a name in the <strong>&ldquo;Name Your Bill&rdquo;</strong> field.</li>
+<li>Click <strong>&ldquo;Submit to Committee&rdquo;</strong>. Your AP is deducted and the bill enters the committee phase.</li>
+</ol>
+
+<h3>Article Types</h3>
+<p>Every bill must contain at least one article. There are three types you can add:</p>
+
+<table>
+<tr><th>Type</th><th>What It Does</th><th>How to Add</th></tr>
+<tr><td><strong>Policy Article</strong></td><td>Activates a policy from the national policy catalogue. Each policy has stat effects that apply every tick once the bill passes.</td><td>Click <strong>&ldquo;+ Add Article&rdquo;</strong>, choose a sector, then select a policy from the grid.</td></tr>
+<tr><td><strong>Text Article</strong></td><td>A freeform provision with no mechanical effect. Useful for signalling intent, setting conditions, or political messaging.</td><td>Click <strong>&ldquo;+ Add Text Article&rdquo;</strong>, enter a title and body, then confirm.</td></tr>
+<tr><td><strong>Funding Article</strong></td><td>Changes how a ministry&rsquo;s budget is allocated across its institutions. Adjusting funding levels affects the ministry&rsquo;s output.</td><td>Click <strong>&ldquo;+ Funding Article&rdquo;</strong>, choose a ministry, adjust the institution sliders, then confirm.</td></tr>
+</table>
+
+<h3>Policy Sectors</h3>
+<p>When adding a policy article, you pick from one of 11 sectors:</p>
+<p>Economics &bull; Labor &bull; Education &bull; Energy &bull; Welfare &bull; Social &bull; Military &amp; Security &bull; Governance &bull; Immigration &bull; International &bull; Trade</p>
+<p>Each sector contains multiple policies. Policies you have already enacted appear greyed out and cannot be added again.</p>
+
+<h3>Ideology Chips</h3>
+<p>Every policy displays small coloured squares indicating its ideological alignment. These are compared against <em>your faction&rsquo;s</em> current ideology scores:</p>
+<ul>
+<li><strong>Green chip</strong> &mdash; Aligned with your faction. Passing this boosts your approval with like-minded voter blocs.</li>
+<li><strong>Red chip</strong> &mdash; Opposed to your faction. Passing this may cost you support with your base.</li>
+<li><strong>Grey chip</strong> &mdash; Neutral. No strong ideological signal.</li>
+</ul>
+<p class="guide-tip">Ideology chips are relative to <em>your</em> faction. The same policy may show green for one party and red for another. Use this to gauge whether a bill will help or hurt you politically.</p>
+
+<h3>Removing Articles</h3>
+<p>While drafting, each article has a remove button (<strong>&times;</strong>). Click it to strip the article from the bill before submission. You can add and remove freely until you submit.</p>
+
+<h3>Naming Your Bill</h3>
+<p>Bills require a name before submission. The name is visible to all players in the nation and appears in the political events feed when the bill is voted on. Choose something descriptive &mdash; &ldquo;Economic Modernisation Act&rdquo; tells other players what to expect; &ldquo;Bill 7&rdquo; does not.</p>
+
+<h3>What Happens After Submission</h3>
+<p>Once submitted, your bill enters the <strong>Committee</strong> phase. It is now visible to all factions in your nation. Other factions can propose amendments, offer conditional support, or signal opposition. You retain control of the bill as its sponsor.</p>
+<p>Committee is where you build the votes to pass. See the next section for how amendments and support-building work.</p>
+</div></details>
+
+<details><summary>Committee Phase</summary><div>
+<h3>What Is Committee?</h3>
+<p>After a bill is submitted, it enters the <strong>committee</strong> phase. The bill is now visible to every faction in your nation. This is the negotiation stage &mdash; you need to build enough support to advance the bill to the floor.</p>
+
+<h3>Committee Expiry</h3>
+<p>Bills that sit in committee for <strong>6 ticks</strong> without being sent to the floor are <strong>automatically expired</strong> and removed. Act within the window or lose the bill (and the AP you spent).</p>
+
+<h3>Support &amp; Stances</h3>
+<p>Each faction in parliament is listed in the bill&rsquo;s sidebar with a stance:</p>
+<table>
+<tr><th>Stance</th><th>Meaning</th></tr>
+<tr><td><strong>SPONSOR</strong></td><td>You drafted the bill. Automatically counts as support.</td></tr>
+<tr><td><strong>ACCEPT</strong></td><td>The faction supports the bill.</td></tr>
+<tr><td><strong>REJECT</strong></td><td>The faction opposes the bill.</td></tr>
+<tr><td><strong>CONDITIONAL</strong></td><td>The faction has proposed an amendment &mdash; they will support if you accept it.</td></tr>
+<tr><td><strong>PENDING</strong></td><td>The faction has not yet declared a position.</td></tr>
+<tr><td><strong>LOCKED</strong></td><td>Support was locked via a strike deal (cannot be changed).</td></tr>
+</table>
+<p>The sidebar shows a live <strong>Support %</strong> bar based on total seats backing the bill.</p>
+
+<h3>Accepting or Rejecting (Non-Sponsors)</h3>
+<p>If you are <em>not</em> the sponsor, you can click <strong>Accept</strong> or <strong>Reject</strong> on the bill detail page. You may change your mind at any time while the bill is in committee &mdash; unless your support has been locked by a strike deal.</p>
+
+<h3>Conditional Support (Amendments)</h3>
+<p>Instead of simply accepting or rejecting, any non-sponsor faction can propose <strong>conditional support</strong>. This is the game&rsquo;s amendment system. There are three types:</p>
+
+<table>
+<tr><th>Type</th><th>What It Does</th></tr>
+<tr><td><strong>Policy Amendment</strong></td><td>You propose adding a specific policy article. If the sponsor accepts, the policy is added and your faction&rsquo;s support is recorded.</td></tr>
+<tr><td><strong>Text Amendment</strong></td><td>You propose adding a freeform text article (title + body). No mechanical effect, but politically significant.</td></tr>
+<tr><td><strong>Strike Article</strong></td><td>You request the <em>removal</em> of an existing article. If accepted, the article is removed and your support is <strong>locked</strong> (you cannot withdraw it later).</td></tr>
+</table>
+
+<p>The <strong>sponsor</strong> sees all incoming conditional support offers and can <strong>Accept</strong> or <strong>Reject</strong> each one individually. Accepting an amendment modifies the bill and secures that faction&rsquo;s votes.</p>
+<p class="guide-tip">Amendments are the core negotiation mechanic. A bill with unpopular articles can be salvaged by striking the controversial provision in exchange for another party&rsquo;s locked support.</p>
+
+<h3>Sponsor Actions in Committee</h3>
+<p>As the sponsor, you have several tools while your bill is in committee:</p>
+<ul>
+<li><strong>Add Policy Article</strong> &mdash; attach additional policies to the bill.</li>
+<li><strong>Add Text Article</strong> &mdash; attach freeform text provisions.</li>
+<li><strong>Remove articles</strong> &mdash; strip articles you added (using the &times; button on each article).</li>
+<li><strong>Accept / Reject amendments</strong> &mdash; respond to conditional support offers from other factions.</li>
+<li><strong>Retract Bill</strong> &mdash; withdraw the bill entirely. The AP cost is not refunded.</li>
+</ul>
+
+<h3>Sending to the Floor</h3>
+<p>When you are ready to call a vote, click <strong>&ldquo;Send to Floor&rdquo;</strong>. To be eligible:</p>
+<ul>
+<li><strong>Standard bills</strong> &mdash; you need at least one co-sponsor (another faction that has accepted) <em>or</em> you must hold a simple majority of seats on your own.</li>
+<li><strong>Foundational bills</strong> &mdash; you <em>must</em> have at least one co-sponsor. A solo majority is not enough.</li>
+</ul>
+<p>Once on the floor, the bill enters the voting window and <strong>cannot be amended or retracted</strong>.</p>
+</div></details>
+
+<details><summary>Floor Vote &amp; Resolution</summary><div>
+<h3>Voting Window</h3>
+<p>Floor votes last <strong>6 ticks</strong>. The deadline is shown on the bill detail page. Every faction with parliamentary seats may vote.</p>
+
+<h3>How to Vote</h3>
+<p>Open the bill detail page and click one of three buttons:</p>
+<ul>
+<li><strong>Vote Yes</strong> &mdash; your faction&rsquo;s seats count toward passage.</li>
+<li><strong>Vote No</strong> &mdash; your faction&rsquo;s seats count against.</li>
+<li><strong>Abstain</strong> &mdash; your seats count toward quorum but not toward yes or no.</li>
+</ul>
+<p>You may change your vote at any time before the window closes.</p>
+
+<h3>Quorum</h3>
+<p>At least <strong>50%</strong> of total seats must participate (yes + no + abstain) for the vote to be valid. If quorum is not met, the bill fails automatically.</p>
+
+<h3>Passage Thresholds</h3>
+<table>
+<tr><th>Bill Type</th><th>Threshold</th></tr>
+<tr><td>Standard bill</td><td><strong>Simple majority</strong> &mdash; more YES votes than NO votes</td></tr>
+<tr><td>Repeal</td><td><strong>Simple majority</strong></td></tr>
+<tr><td>Foundational bill</td><td><strong>Two-thirds supermajority</strong> &mdash; YES votes &ge; &lceil;2/3 of total seats&rceil;</td></tr>
+<tr><td>No Confidence motion</td><td><strong>Simple majority</strong></td></tr>
+<tr><td>Impeachment motion</td><td><strong>Absolute majority</strong> &mdash; YES &ge; 61 of 120 seats</td></tr>
+<tr><td>Impeachment conviction</td><td><strong>Two-thirds supermajority</strong></td></tr>
+</table>
+
+<h3>Early Resolution</h3>
+<p>If enough votes are locked in that the outcome is mathematically certain before the deadline, the bill resolves on the <strong>next tick</strong> instead of waiting for the window to expire. The bill page will show &ldquo;Resolves next tick &mdash; will pass&rdquo; or &ldquo;will fail&rdquo;.</p>
+
+<h3>Presidential Systems &mdash; President&rsquo;s Desk</h3>
+<p>In a presidential democracy, bills that pass the legislature are sent to the <strong>President&rsquo;s Desk</strong> before becoming law. The president&rsquo;s faction may:</p>
+<ul>
+<li><strong>Sign into law</strong> &mdash; the bill takes effect immediately.</li>
+<li><strong>Veto</strong> &mdash; the bill is blocked. Costs the president <strong>-3 Approval</strong>. The legislature can override a veto with a <strong>two-thirds supermajority</strong>.</li>
+</ul>
+<p>If the president takes no action within <strong>6 ticks</strong>, the bill is <strong>auto-signed</strong> into law.</p>
+
+<h3>Autocracies &mdash; Decrees</h3>
+<p>In an autocracy, there is no floor vote. The ruling faction drafts a <strong>decree</strong> and clicks <strong>&ldquo;Enact Decree&rdquo;</strong> to pass it unilaterally. Other factions can still propose amendments during the committee phase if any exist. The head faction can also <strong>veto</strong> decrees proposed by other parties.</p>
+
+<h3>What Happens When a Bill Passes</h3>
+<p>Each policy article in the bill becomes an <strong>active law</strong>. Active laws apply their stat effects every tick (e.g., +2 stability, -1 corruption, etc.). Funding articles adjust ministry institution allocations. Text articles have no mechanical effect but are recorded in the legislative history.</p>
+
+<h3>What Happens When a Bill Fails</h3>
+<p>The bill is removed with no effect. It appears in the <strong>Recently Resolved</strong> section marked as FAILED. The AP spent drafting it is not refunded.</p>
+
+<h3>Frozen Bills</h3>
+<p>If the legislature is <strong>dissolved</strong> (e.g., during elections), all in-progress bills are <strong>frozen</strong>. Frozen bills cannot be voted on or amended. They are dismissed when the election resolves.</p>
+</div></details>
+
+<details><summary>Active Laws &amp; Repeals</summary><div>
+<h3>Active Laws</h3>
+<p>The bottom of the Bills page shows all <strong>active laws</strong> grouped by sector (Economics, Labor, Education, etc.). Expand a sector, then a sub-sector, to see which policies are currently in effect.</p>
+<p>Each active law displays:</p>
+<ul>
+<li>The policy name and description</li>
+<li>Stat effects (e.g., Stability ↑, Corruption ↓) &mdash; these apply every tick</li>
+<li>The tick it was passed</li>
+<li>A <strong>Rescind</strong> button</li>
+</ul>
+
+<h3>Rescinding (Repealing) a Law</h3>
+<p>Click <strong>&ldquo;Rescind&rdquo;</strong> on any active law to propose its repeal. This creates a <strong>repeal bill</strong> automatically and sends it to committee. The repeal bill follows the same committee &rarr; floor vote pipeline as any other bill. It passes with a simple majority.</p>
+<p>You can also add <strong>repeal articles</strong> to a regular bill while drafting. In the policy picker, already-enacted policies appear with a red <strong>&ldquo;Click to Repeal&rdquo;</strong> badge. Clicking one adds a repeal article to your draft. This lets you bundle new policies and repeals in a single bill.</p>
+<p class="guide-tip">When you repeal a law, its stat effects are reversed. If the law was costing money per tick, those costs stop immediately. Ideology chips on repeal articles are <em>inverted</em> &mdash; repealing an opposed policy shows as green (aligned) for you.</p>
+
+<h3>The All Laws Panel</h3>
+<p>Click <strong>&ldquo;All Laws&rdquo;</strong> at the top of the page to open a filterable catalogue of every policy in the game. Use it to:</p>
+<ul>
+<li><strong>Search by name</strong> &mdash; type in the search box to filter policies.</li>
+<li><strong>Filter by status</strong> &mdash; show only Active or Inactive policies.</li>
+<li><strong>Filter by sector</strong> &mdash; narrow to a specific sector.</li>
+<li><strong>Filter by ideology</strong> &mdash; find policies aligned to a particular ideology pole.</li>
+</ul>
+<p>Each policy card shows its stat effects, ideology chips, costs, and whether it is currently active. This is useful for planning which policies to target in your next bill.</p>
+
+<h3>Legislative Record</h3>
+<p>Click <strong>&ldquo;View full legislative record&rdquo;</strong> below the Recently Resolved section to see every bill that has ever been voted on, with pass/fail status, vote tallies, and party breakdowns. Use it to review the nation&rsquo;s legislative history and track which factions voted which way.</p>
+</div></details>
+
+<details><summary>Special Bill Types</summary><div>
+<h3>Foundational Bills</h3>
+<p>Foundational bills change the constitutional structure of the nation. They cost <strong>3 AP</strong> to draft (vs. 2 AP for standard bills) and require a <strong>two-thirds supermajority</strong> to pass. They also <em>must</em> have at least one co-sponsor to advance from committee.</p>
+
+<p>When drafting, select the <strong>Foundational</strong> sector in the policy picker. Available subtypes:</p>
+<table>
+<tr><th>Subtype</th><th>What It Changes</th></tr>
+<tr><td><strong>Electoral Makeup</strong></td><td>Changes the total number of parliamentary seats (50&ndash;500).</td></tr>
+<tr><td><strong>Head of State Title</strong></td><td>Renames the head of state (e.g., President, Chancellor, Supreme Leader).</td></tr>
+<tr><td><strong>Term Length</strong></td><td>Changes how many ticks a presidential term lasts. Shorter terms increase polarization; longer terms reduce legitimacy.</td></tr>
+<tr><td><strong>Term Limits</strong></td><td>Sets the maximum number of terms a president may serve, or removes term limits entirely.</td></tr>
+<tr><td><strong>HoS Election Method</strong></td><td>Changes how the head of state is chosen: direct popular vote, appointed by parliament, or constitutional monarchy (hereditary).</td></tr>
+</table>
+<p>Foundational bills contain exactly <strong>one article</strong> and cannot have policy, text, or funding articles added.</p>
+
+<h3>Repeal Bills</h3>
+<p>Repeal bills are created when you click <strong>Rescind</strong> on an active law. They target a single active law for removal and pass with a simple majority. The bill is pre-configured &mdash; you cannot add articles to it.</p>
+
+<h3>No Confidence Motions</h3>
+<p>A motion to dissolve the current government. Requires a <strong>simple majority</strong> (more YES than NO votes). If passed, the coalition is dissolved, the PM is removed, and all ministries are vacated. If it fails, the filer loses 5 approval and the PM gains 3, with a 6-tick cooldown before another motion can be filed.</p>
+
+<h3>Impeachment</h3>
+<p>Impeachment is a two-stage process in presidential systems:</p>
+<ol>
+<li><strong>Impeachment Motion</strong> &mdash; requires an <strong>absolute majority</strong> (61 of 120 seats) to pass. If successful, the president is impeached and proceeds to a conviction trial.</li>
+<li><strong>Impeachment Conviction</strong> &mdash; requires a <strong>two-thirds supermajority</strong> to convict and remove the president from office.</li>
+</ol>
+<p>If the motion fails, the filer loses 5 approval and the president gains 3.</p>
+
+<h3>Default Resolution</h3>
+<p>An extreme fiscal measure available when your nation&rsquo;s debt-to-GDP ratio exceeds <strong>150%</strong>. Filing costs <strong>6 AP</strong> and requires a two-thirds supermajority. There are two types:</p>
+<ul>
+<li><strong>Full Default</strong> &mdash; eliminates all debt but causes severe international consequences.</li>
+<li><strong>Partial Restructuring</strong> &mdash; negotiates a repayment rate (30&ndash;70%) with reduced penalties.</li>
+</ul>
+<p>You can optionally include <strong>austerity commitments</strong> (spending cuts) to soften the international backlash.</p>
+</div></details>
+`
     }
 };
 
