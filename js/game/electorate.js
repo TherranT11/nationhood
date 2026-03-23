@@ -461,9 +461,12 @@ export const ELECTORATE_CONFIG = {
 
     // ── Vote share config ──
     SOFTMAX_TEMPERATURE: 8,           // softmax k (higher = more uniform distribution)
-    TURNOUT_BASE: 0.65,               // base turnout fraction
+    TURNOUT_BASE: 0.50,               // base turnout fraction
+    TURNOUT_POLARIZATION_SCALE: 0.002, // per polarization point: higher polarization → more turnout
+    TURNOUT_STABILITY_SCALE: -0.001,   // per stability point above 50: higher stability → less urgency → less turnout
     TURNOUT_ENTHUSIASM_SCALE: 0.003,  // per enthusiasm point above/below 50
     TURNOUT_VISIBILITY_SCALE: 0.002,  // per visibility point above 50
+    TURNOUT_MAX: 0.88,               // hard cap on turnout rate
 
     // ── Inactivity ──
     INACTIVITY_EXCLUSION_TICKS: 12,   // parties unseen for this many ticks are excluded
@@ -1183,8 +1186,8 @@ export async function tickElectorate(supabase, nation, currentTick) {
         //   High stability + low polarization → credibility matters most (up to 35%)
         //   High polarization + low stability → credibility barely matters (down to 5%)
         // The weight borrowed/freed is redistributed proportionally to the other 4 pillars.
-        const stability = Number(nation.stability ?? 50);
-        const polarization = Number(nation.polarization ?? 50);
+        const stability = clamp(Number(nation.stability ?? 50) || 50, 0, 100);
+        const polarization = clamp(Number(nation.polarization ?? 50) || 50, 0, 100);
         // chaosIndex: 0 = perfectly stable, 1 = maximum chaos
         const chaosIndex = clamp(((polarization / 100) + (1 - stability / 100)) / 2, 0, 1);
         const credWeight = CFG.CRED_MAX_WEIGHT - chaosIndex * (CFG.CRED_MAX_WEIGHT - CFG.CRED_MIN_WEIGHT);
@@ -1236,7 +1239,7 @@ export async function tickElectorate(supabase, nation, currentTick) {
     computeContestedVoteShares(updates);
 
     // ── 12. Turnout → realized_vote_share ──
-    computeRealizedVoteShares(updates, profile);
+    computeRealizedVoteShares(updates, profile, nation);
 
     // ── 13. Compute vote_left_on_table ──
     for (const u of updates) {
@@ -1384,17 +1387,20 @@ function computeSpatialAlignments(ideoMap, profile, axisSalienceWeights) {
         totalWeight += weight;
     }
 
-    // Normalize to 0-100 scale
+    // Normalize to 0-100 scale with sqrt compression.
+    // Without compression, small spatial advantages produce huge alignment gaps
+    // (e.g. 88 vs 24 with 8 parties). Sqrt compresses the scale so that:
+    //   fair share (1/N) → 50 (unchanged)
+    //   2× fair share → 71 (was 100)
+    //   0.5× fair share → 35 (was 25)
+    // This halves the effective spread, preventing alignment from dominating.
     for (const fid of factionIds) {
         const raw = totalWeight > 0
             ? factionWeightedShare[fid] / totalWeight
             : (1 / factionIds.length);
-        // Scale relative to fair share so scores are comparable to old system.
-        // A party capturing its fair share (1/N) maps to 50 (average).
-        // A party capturing 2x fair share maps to 100 (dominant on this dimension).
         const fairShare = 1 / factionIds.length;
         const relativeStrength = fairShare > 0 ? raw / fairShare : 1;
-        const scaled = clamp(relativeStrength * 50, 0, 100);
+        const scaled = clamp(Math.sqrt(relativeStrength) * 50, 0, 100);
         result[fid] = round2(scaled);
     }
 
@@ -1477,17 +1483,26 @@ function computeContestedVoteShares(updates) {
  * @param {object[]} updates - Array of standing update objects (mutated in place)
  * @param {object} profile - electorate_profile row
  */
-function computeRealizedVoteShares(updates, profile) {
+function computeRealizedVoteShares(updates, profile, nation) {
     if (updates.length === 0) return;
 
     const enthusiasm = Number(profile?.enthusiasm ?? 50);
+    const polarization = clamp(Number(nation?.polarization ?? 50) || 50, 0, 100);
+    const stability = clamp(Number(nation?.stability ?? 50) || 50, 0, 100);
+
+    // Dynamic base turnout:
+    //   Base 50% + polarization pushes it up (polarized electorates are angry, they vote)
+    //   High stability pushes it down (content electorates stay home)
+    const polBonus = polarization * CFG.TURNOUT_POLARIZATION_SCALE;
+    const stabPenalty = Math.max(0, stability - 50) * CFG.TURNOUT_STABILITY_SCALE;
+    const nationalBase = CFG.TURNOUT_BASE + polBonus + stabPenalty;
 
     // Compute per-faction turnout rate
     for (const u of updates) {
         const vis = Number(u.visibility ?? CFG.DEFAULT_VISIBILITY);
         const enthBonus = (enthusiasm - 50) * CFG.TURNOUT_ENTHUSIASM_SCALE;
         const visBonus = Math.max(0, (vis - 50)) * CFG.TURNOUT_VISIBILITY_SCALE;
-        u.turnout_rate = round3(clamp(CFG.TURNOUT_BASE + enthBonus + visBonus, 0.3, 0.95));
+        u.turnout_rate = round3(clamp(nationalBase + enthBonus + visBonus, 0.25, CFG.TURNOUT_MAX));
     }
 
     // realized = contested × turnout (then renormalize)

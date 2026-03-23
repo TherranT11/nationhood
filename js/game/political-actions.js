@@ -487,7 +487,7 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
         if (rallyResult?.visBoost !== 0) {
             effects.push({ stat: 'Visibility', value: rallyResult.visBoost });
         }
-        if (rallyResult?.approvalHit) {
+        if (rallyResult?.approvalHit != null && rallyResult.approvalHit !== 0) {
             effects.push({ stat: 'Party Approval', value: rallyResult.approvalHit });
         }
     } catch (e) {
