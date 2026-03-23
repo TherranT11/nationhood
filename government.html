@@ -2817,6 +2817,14 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
     // Defense ministry has a custom action layout
     if (ministryKey === 'defense') return buildDefenseActionRows(isMyMinistry);
 
+    // Foreign ministry actions live on the Diplomacy page
+    if (ministryKey === 'foreign') {
+        return `<div class="ministry-card__actions-label">ACTIONS</div>
+            <div style="padding:10px 12px;font-size:11px;color:var(--text-secondary);">
+                Foreign Ministry actions are conducted in the <a href="diplomacy.html" style="color:var(--accent);text-decoration:underline;">Diplomacy panel</a>.
+            </div>`;
+    }
+
     const config = MINISTRY_ACTIONS[ministryKey];
     if (!config || !config.actions || config.actions.length === 0) return '';
     const pop = currentNation?.population || 20000000;
