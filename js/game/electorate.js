@@ -171,7 +171,13 @@ export function bimodalAxisAlignment(partyPos, elecMean, elecVar) {
  * @param {number} [temperature=4] - Softmax temperature (lower = more winner-take-all)
  * @returns {Map<string, number>} factionId → share of this axis's voters (0-1, sums to 1)
  */
-function spatialAxisCompetition(parties, elecMean, elecVar, temperature = 4) {
+function spatialAxisCompetition(parties, elecMean, elecVar, temperature) {
+    // Dynamic temperature: at low polarization (var≤10) use temp=4 (soft competition);
+    // at high polarization (var≥40) use temp=0.75 (sharp competition) so the centrist
+    // valley penalty actually survives the softmax.
+    const polWeight = Math.min(1, Math.max(0, (elecVar - 10) / 30));
+    const dynTemp = temperature ?? (4 - 3.25 * polWeight);
+
     const result = new Map();
     if (parties.length === 0) return result;
     if (parties.length === 1) {
@@ -191,7 +197,7 @@ function spatialAxisCompetition(parties, elecMean, elecVar, temperature = 4) {
     // Step 2: Softmax over alignment scores
     const scores = alignments.map(a => a.alignment);
     const maxScore = Math.max(...scores);
-    const k = Math.max(0.5, temperature);
+    const k = Math.max(0.5, dynTemp);
     const exps = scores.map(s => Math.exp((s - maxScore) / k));
     const sumExp = exps.reduce((a, b) => a + b, 0);
 

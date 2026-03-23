@@ -12872,7 +12872,12 @@ function bimodalAxisAlignment(partyPos, elecMean, elecVar) {
  * @returns {Map<string, number>} factionId → share (0-1)
  */
 function spatialAxisCompetition(parties, elecMean, elecVar, temperature) {
-    if (temperature === undefined) temperature = 4;
+    // Dynamic temperature: at low polarization (var≤10) use temp=4 (soft competition);
+    // at high polarization (var≥40) use temp=0.75 (sharp competition) so the centrist
+    // valley penalty actually survives the softmax.
+    var polWeight = Math.min(1, Math.max(0, (elecVar - 10) / 30));
+    var dynTemp = temperature !== undefined ? temperature : (4 - 3.25 * polWeight);
+
     var result = new Map();
     if (parties.length === 0) return result;
     if (parties.length === 1) {
@@ -12887,7 +12892,7 @@ function spatialAxisCompetition(parties, elecMean, elecVar, temperature) {
 
     var scores = alignments.map(function(a) { return a.alignment; });
     var maxScore = Math.max.apply(null, scores);
-    var k = Math.max(0.5, temperature);
+    var k = Math.max(0.5, dynTemp);
     var exps = scores.map(function(s) { return Math.exp((s - maxScore) / k); });
     var sumExp = exps.reduce(function(a, b) { return a + b; }, 0);
 
