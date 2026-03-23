@@ -2895,9 +2895,10 @@ function updateDefaultPreview() {
     ];
 
     for (const [label, stat, inverse] of stats) {
+        const s = stat || { before: 0, after: 0, change: 0 };
         html += `<div class="default-preview-stat">
             <span class="dps-label">${label}</span>
-            <span class="dps-value">${stat.before.toFixed(0)} → ${stat.after.toFixed(0)} ${fmtChange(stat.change, inverse)}</span>
+            <span class="dps-value">${s.before.toFixed(0)} → ${s.after.toFixed(0)} ${fmtChange(s.change, inverse)}</span>
         </div>`;
     }
 
