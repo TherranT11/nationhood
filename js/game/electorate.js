@@ -1383,10 +1383,12 @@ function computeSpatialAlignments(ideoMap, profile, axisSalienceWeights) {
     const factionWeightedShare = {};
     for (const fid of factionIds) factionWeightedShare[fid] = 0;
     let totalWeight = 0;
+    let varSum = 0;
 
     for (const axisKey of AXIS_KEYS) {
         const elecMean = Number(profile['ideo_mean_' + axisKey] ?? 50);
         const elecVar = Number(profile['ideo_var_' + axisKey] ?? 20);
+        varSum += elecVar;
 
         // Salience weight for this axis
         const profileSalience = Number(profile['salience_' + axisKey] ?? 0.2);
@@ -1411,20 +1413,22 @@ function computeSpatialAlignments(ideoMap, profile, axisSalienceWeights) {
         totalWeight += weight;
     }
 
-    // Normalize to 0-100 scale with sqrt compression.
-    // Without compression, small spatial advantages produce huge alignment gaps
-    // (e.g. 88 vs 24 with 8 parties). Sqrt compresses the scale so that:
-    //   fair share (1/N) → 50 (unchanged)
-    //   2× fair share → 71 (was 100)
-    //   0.5× fair share → 35 (was 25)
-    // This halves the effective spread, preventing alignment from dominating.
+    // Normalize to 0-100 scale with compression that loosens with polarization.
+    // At low polarization: sqrt compression (spread halved, prevents alignment dominating).
+    // At high polarization: linear mapping (full spread, centrist penalty bites hard).
+    // Blend via polWeight so the transition is smooth.
+    const avgVar = varSum / AXIS_KEYS.length;
+    const polWeight = Math.min(1, Math.max(0, (avgVar - 10) / 30));
+
     for (const fid of factionIds) {
         const raw = totalWeight > 0
             ? factionWeightedShare[fid] / totalWeight
             : (1 / factionIds.length);
         const fairShare = 1 / factionIds.length;
         const relativeStrength = fairShare > 0 ? raw / fairShare : 1;
-        const scaled = clamp(Math.sqrt(relativeStrength) * 50, 0, 100);
+        const sqrtScaled = Math.sqrt(relativeStrength) * 50;
+        const linearScaled = relativeStrength * 50;
+        const scaled = clamp((1 - polWeight) * sqrtScaled + polWeight * linearScaled, 0, 100);
         result[fid] = round2(scaled);
     }
 

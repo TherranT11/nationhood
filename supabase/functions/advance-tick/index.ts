@@ -13394,11 +13394,13 @@ function computeSpatialAlignments(ideoMap, profile, axisSalienceWeights) {
     var factionWeightedShare = {};
     for (var _f = 0; _f < factionIds.length; _f++) factionWeightedShare[factionIds[_f]] = 0;
     var totalWeight = 0;
+    var varSum = 0;
 
     for (var _a = 0; _a < AXIS_KEYS.length; _a++) {
         var axisKey = AXIS_KEYS[_a];
         var elecMean = Number(profile['ideo_mean_' + axisKey] ?? 50);
         var elecVar = Number(profile['ideo_var_' + axisKey] ?? 20);
+        varSum += elecVar;
 
         var profileSalience = Number(profile['salience_' + axisKey] ?? 0.2);
         var issueSalience = axisSalienceWeights[axisKey] ?? 0.2;
@@ -13419,6 +13421,9 @@ function computeSpatialAlignments(ideoMap, profile, axisSalienceWeights) {
         totalWeight += weight;
     }
 
+    var avgVar = varSum / AXIS_KEYS.length;
+    var polWeight = Math.min(1, Math.max(0, (avgVar - 10) / 30));
+
     for (var _fi = 0; _fi < factionIds.length; _fi++) {
         var fid2 = factionIds[_fi];
         var raw = totalWeight > 0
@@ -13426,7 +13431,9 @@ function computeSpatialAlignments(ideoMap, profile, axisSalienceWeights) {
             : (1 / factionIds.length);
         var fairShare = 1 / factionIds.length;
         var relativeStrength = fairShare > 0 ? raw / fairShare : 1;
-        var scaled = clamp(Math.sqrt(relativeStrength) * 50, 0, 100);
+        var sqrtScaled = Math.sqrt(relativeStrength) * 50;
+        var linearScaled = relativeStrength * 50;
+        var scaled = clamp((1 - polWeight) * sqrtScaled + polWeight * linearScaled, 0, 100);
         result[fid2] = round2(scaled);
     }
 
