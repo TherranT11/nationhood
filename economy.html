@@ -2205,6 +2205,17 @@ function renderSectorDetail(nation, sectorKey) {
     // Right: volume cards
     h += '<div class="sector-volume-panel">';
     if (flow) {
+        // Supply & Demand capacity row
+        var expCap = Number(flow.export_capacity) || 0;
+        var impDemHeader = Number(flow.import_demand) || 0;
+        h += '<div class="sector-vol-row">';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">SUPPLY</span><span class="sector-vol-value" style="color:#6aa3d9">' + formatBudgetCurrency(expCap) + '</span></div>';
+        if (!sector.export_only) {
+            h += '<div class="sector-vol-item"><span class="sector-vol-label">DEMAND</span><span class="sector-vol-value" style="color:#c9a54e">' + formatBudgetCurrency(impDemHeader) + '</span></div>';
+        }
+        h += '</div>';
+
+        // Actual trade volumes row
         h += '<div class="sector-vol-row">';
         h += '<div class="sector-vol-item"><span class="sector-vol-label">EXPORTS</span><span class="sector-vol-value" style="color:#5cb85c">' + formatBudgetCurrency(expVol) + '</span></div>';
         if (!sector.export_only) {
