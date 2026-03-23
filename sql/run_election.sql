@@ -99,10 +99,6 @@ BEGIN
         WHERE f.nation_id = p_nation_id
           AND f.faction_type = 'party'
           AND f.abandoned_at IS NULL
-          AND (
-              f.last_seen_tick IS NULL
-              OR v_current_tick - f.last_seen_tick < 12
-          )
     LOOP
         -- Convert contested_vote_share × turnout_rate to actual vote count
         -- (realized_vote_share is renormalized to sum=1, which gives ~100% turnout)

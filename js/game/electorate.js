@@ -565,8 +565,7 @@ function normalizeDistribution(values, targetSum = 100) {
     return rounded;
 }
 
-function round2(v) { return Math.round(v * 100) / 100; }
-function round3(v) { return Math.round(v * 1000) / 1000; }
+import { round2, round3 } from './momentum.js';
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 /**
@@ -1000,17 +999,21 @@ export async function genesisElectorate(supabase, nation, factions, currentTick 
 export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     if (isAutocracy(nation)) return;
 
-    // ── 1. Load active factions (exclude gone ≥12 ticks) ──
+    // ── 1. Load all non-abandoned parties ──
+    // All parties participate in electoral calculations (vote share pipeline)
+    // so that elections always have accurate realized_vote_share data.
+    // Inactive parties are still penalized (visibility decay, approval drift)
+    // but they are NOT excluded from the pipeline — excluding them caused
+    // parties with real vote share to get 0 seats in elections.
     const { data: allFactions } = await supabase
         .from('factions')
-        .select('id, seats, last_seen_tick, faction_type')
+        .select('id, seats, last_seen_tick, faction_type, abandoned_at')
         .eq('nation_id', nation.id)
-        .eq('faction_type', 'party');
+        .eq('faction_type', 'party')
+        .is('abandoned_at', null);
     if (!allFactions || allFactions.length === 0) return;
 
-    const factions = allFactions.filter(f =>
-        f.last_seen_tick == null || (currentTick - f.last_seen_tick) < CFG.INACTIVITY_EXCLUSION_TICKS
-    );
+    const factions = allFactions;
     const inactiveFactions = allFactions.filter(f =>
         f.last_seen_tick != null && (currentTick - f.last_seen_tick) >= CFG.INACTIVITY_EXCLUSION_TICKS
     );
