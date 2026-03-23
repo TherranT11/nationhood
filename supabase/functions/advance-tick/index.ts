@@ -10494,6 +10494,37 @@ async function processElections(supabase, nation, currentTick) {
         // Auto-select presidential candidates for any party that hasn't chosen yet
         if (electionType === 'presidential') {
             await autoSelectPresidentialCandidates(supabase, nation, currentTick);
+
+            // Incumbent visibility boost: the sitting president's party gets a +1D6%
+            // visibility bump from the bully pulpit / media coverage advantage
+            try {
+                const { data: presAdmin } = await supabase
+                    .from('administrations')
+                    .select('lead_party_id')
+                    .eq('nation_id', nation.id)
+                    .is('ended_at_tick', null)
+                    .order('started_at_tick', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (presAdmin?.lead_party_id) {
+                    const incumbentBoost = 1 + Math.floor(Math.random() * 6); // 1D6
+                    const { data: standing } = await supabase
+                        .from('faction_electoral_standing')
+                        .select('id, visibility')
+                        .eq('faction_id', presAdmin.lead_party_id)
+                        .eq('nation_id', nation.id)
+                        .maybeSingle();
+                    if (standing) {
+                        const newVis = Math.min(100, Number(standing.visibility ?? 0) + incumbentBoost);
+                        await supabase.from('faction_electoral_standing')
+                            .update({ visibility: newVis })
+                            .eq('id', standing.id);
+                        console.log(`[Election] Incumbent visibility boost: +${incumbentBoost}% for faction ${presAdmin.lead_party_id}`);
+                    }
+                }
+            } catch (e) {
+                console.warn('[Election] Incumbent visibility boost failed (non-fatal):', e.message);
+            }
         }
 
         // Use candidate-based voting for presidential elections, party-based for parliamentary
