@@ -1165,7 +1165,9 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
             if (centristAxes > 0) {
                 const avgVar = AXIS_KEYS.reduce((s, k) => s + Number(activeProfile['ideo_var_' + k] ?? 20), 0) / AXIS_KEYS.length;
                 const polWeight = Math.min(1, Math.max(0, (avgVar - 10) / 30));
-                targetAlignment -= centristAxes * CFG.CENTRIST_ZONE_PENALTY_PER_AXIS * polWeight;
+                const penalty = centristAxes * CFG.CENTRIST_ZONE_PENALTY_PER_AXIS * polWeight;
+                console.log(`  [CentristPenalty] ${factionId}: centristAxes=${centristAxes}, avgVar=${avgVar.toFixed(1)}, polWeight=${polWeight.toFixed(2)}, penalty=${penalty.toFixed(1)}, before=${targetAlignment.toFixed(1)}, after=${Math.max(0, targetAlignment - penalty).toFixed(1)}`);
+                targetAlignment -= penalty;
                 targetAlignment = Math.max(0, targetAlignment);
             }
         }
