@@ -2683,6 +2683,7 @@ const CA_ACTIONS = [
 
 // State for new electorate actions
 let _caCooldowns = {};     // { action_type: ticksRemaining }
+let _caUsedThisTick = {};  // { actionId: true } — actions already used this tick
 let _caActiveActions = [];  // Active ideology_shift_actions rows
 let _caTargetAxis = null;
 let _caTargetDirection = null;
@@ -2899,14 +2900,28 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
         .eq('status', 'active');
 
     _caCooldowns = {};
-    const cooldownMap = { fund_think_tank: IDEO_SHIFT_CONFIG.THINK_TANK.COOLDOWN_WINDOW, media_campaign: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.COOLDOWN_WINDOW, grassroots_movement: IDEO_SHIFT_CONFIG.GRASSROOTS.COOLDOWN_WINDOW };
+    _caUsedThisTick = {};
+    // Multi-tick cooldown windows (action cannot be used again until window expires)
+    const cooldownMap = {
+        fund_think_tank: IDEO_SHIFT_CONFIG.THINK_TANK.COOLDOWN_WINDOW,
+        media_campaign: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.COOLDOWN_WINDOW,
+        grassroots_movement: IDEO_SHIFT_CONFIG.GRASSROOTS.COOLDOWN_WINDOW,
+        take_stance: STANCE_CONFIG.COOLDOWN_WINDOW,
+        poll_now: POLL_CONFIG.COOLDOWN_WINDOW,
+    };
     for (const a of (recentActions || [])) {
+        const actionId = a.action_type;
+        // Track multi-tick cooldowns
         const window = cooldownMap[a.action_type];
         if (window) {
             const remaining = (a.tick_performed + window) - tick;
-            if (remaining > 0 && (!_caCooldowns[a.action_type] || remaining > _caCooldowns[a.action_type])) {
-                _caCooldowns[a.action_type] = remaining;
+            if (remaining > 0 && (!_caCooldowns[actionId] || remaining > _caCooldowns[actionId])) {
+                _caCooldowns[actionId] = remaining;
             }
+        }
+        // Track "already used this tick" for one-per-tick actions
+        if (a.tick_performed === tick) {
+            _caUsedThisTick[actionId] = true;
         }
     }
     _caActiveActions = activeShiftActions || [];
@@ -2974,29 +2989,35 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         }
 
         const displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.ap;
-        const cdRemaining = _caCooldowns[act.id] || 0;
+        // Map CA_ACTIONS id → campaign_actions action_type
+        const dbActionType = act.id === 'promise' ? 'make_promise' : act.id;
+        const cdRemaining = _caCooldowns[dbActionType] || 0;
         const onCooldown = cdRemaining > 0;
+        const usedThisTick = !!_caUsedThisTick[dbActionType];
         const isActive = _caActiveActions.some(a => a.action_type === act.id.replace('fund_', ''));
-        const ok = ap >= displayCost && !onCooldown;
+        const ok = ap >= displayCost && !onCooldown && !usedThisTick;
         const borderColor = isSel ? act.color : ok ? act.color + '55' : 'var(--dtext-3)';
         const bgStyle = isSel ? `background:${act.color}08;` : '';
         const borderStyle = isSel ? `border-color:${act.color}33;` : '';
         const nameColor = isSel ? act.color : 'var(--dtext-0)';
         const affectsColor = act.affects === 'Visibility' ? '#f97316' : act.affects === 'Enthusiasm' ? '#f97316' : act.affects === 'Approval' ? '#4ade80' : act.affects === 'Appeal' ? '#38bdf8' : act.affects === 'Ideology' ? '#a78bfa' : '#6b7280';
-        const statusBadge = onCooldown
+        const usedLabel = usedThisTick ? `${act.name} already used this turn` : '';
+        const statusBadge = usedThisTick
+            ? `<span class="ca-used-badge">USED</span>`
+            : onCooldown
             ? `<span class="ca-cd-badge">${cdRemaining} tick${cdRemaining !== 1 ? 's' : ''} CD</span>`
             : isActive ? `<span class="ca-active-badge">ACTIVE</span>` : '';
-        listHtml += `<div class="ca-item${isSel ? ' selected' : ''}${!ok ? ' disabled' : ''}${onCooldown ? ' ca-item--cooldown' : ''}" data-action-id="${act.id}" style="border-left-color:${borderColor};${bgStyle}${borderStyle}${!ok ? 'opacity:0.35;' : ''}">
+        listHtml += `<div class="ca-item${isSel ? ' selected' : ''}${!ok ? ' disabled' : ''}${onCooldown ? ' ca-item--cooldown' : ''}${usedThisTick ? ' ca-item--used' : ''}" data-action-id="${act.id}" style="border-left-color:${borderColor};${bgStyle}${borderStyle}${!ok ? 'opacity:0.35;' : ''}">
             <div class="ca-item-head">
                 <div style="display:flex;align-items:center;gap:6px">
                     <span class="ca-item-icon" style="color:${act.color}">${act.icon}</span>
                     <span class="ca-item-name" style="color:${nameColor}">${escapeHtml(act.name)}</span>
                     ${statusBadge}
                 </div>
-                <span class="ca-item-ap">${onCooldown ? `${cdRemaining} TICK CD` : `${displayCost} AP`}</span>
+                <span class="ca-item-ap">${usedThisTick ? 'USED' : onCooldown ? `${cdRemaining} TICK CD` : `${displayCost} AP`}</span>
             </div>
             <div class="ca-item-desc">${escapeHtml(act.desc)}</div>
-            <div class="ca-item-affects" style="color:${affectsColor}">This action affects ${act.affects}</div>
+            ${usedThisTick ? `<div class="ca-item-used-msg">${escapeHtml(usedLabel)}</div>` : `<div class="ca-item-affects" style="color:${affectsColor}">This action affects ${act.affects}</div>`}
         </div>`;
     }
 
