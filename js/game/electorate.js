@@ -440,10 +440,10 @@ export const ELECTORATE_CONFIG = {
     APPROVAL_MAX: 90,
 
     // ── Visibility config ──
-    VISIBILITY_DECAY: 0.92,          // 8% decay per tick
+    VISIBILITY_DECAY: 0.97,          // 3% decay per tick (always active)
     VISIBILITY_FLOOR: 10,
     VISIBILITY_GOV_FLOOR: 25,        // governing parties stay more visible
-    VISIBILITY_INACTIVITY_THRESHOLD: 3, // ticks without action before decay kicks in
+    VISIBILITY_INACTIVITY_THRESHOLD: 3, // ticks without action before approval drift kicks in
 
     // ── Credibility config ──
     CREDIBILITY_MIN: 0.5,
@@ -1152,11 +1152,9 @@ export async function tickElectorate(supabase, nation, currentTick) {
         const newApproval = round2(clamp(oldApproval + approvalDelta + approvalNudge, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX));
 
         // ─── VISIBILITY (turnout multiplier, not a pillar) ───
+        // Decays 3% every tick — parties must actively campaign to stay visible
         let newVisibility = Number(standing.visibility ?? CFG.DEFAULT_VISIBILITY);
-        if (currentTick >= CFG.VISIBILITY_INACTIVITY_THRESHOLD &&
-            ticksSinceAction >= CFG.VISIBILITY_INACTIVITY_THRESHOLD) {
-            newVisibility = round2(newVisibility * CFG.VISIBILITY_DECAY);
-        }
+        newVisibility = round2(newVisibility * CFG.VISIBILITY_DECAY);
         const visFloor = isCoalition ? CFG.VISIBILITY_GOV_FLOOR : CFG.VISIBILITY_FLOOR;
         newVisibility = round2(clamp(newVisibility, visFloor, 100));
 
