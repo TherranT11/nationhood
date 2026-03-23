@@ -6205,13 +6205,16 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
     const rivalIds = rivals.map(p => p.id);
     const { data: rivalStandings } = rivalIds.length > 0
         ? await _supabase.from('faction_electoral_standing')
-            .select('faction_id, party_approval')
+            .select('faction_id, party_approval, credibility_modifier')
             .in('faction_id', rivalIds)
         : { data: [] };
 
     const approvalMap = {};
+    const credibilityMap = {};
     for (const row of (rivalStandings || [])) {
         approvalMap[row.faction_id] = Math.round(row.party_approval ?? 40);
+        const credMod = Number(row.credibility_modifier ?? 0.5);
+        credibilityMap[row.faction_id] = Math.round(Math.max(0, Math.min(100, (credMod - 0.5) * 100)));
     }
 
     // Fetch leader data for each rival (factions table has leader columns)
@@ -6237,6 +6240,7 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
             : 'Vacant';
         const leaderAge = fd.leader_age || null;
         const approval = approvalMap[p.id] ?? 40;
+        const credibility = credibilityMap[p.id] ?? 0;
         const voteShare = Number(p.national_vote_share || 0);
 
         let status = 'opposition';
@@ -6260,6 +6264,7 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
             totalSeats,
             voteShare,
             approval,
+            credibility,
             ideology: {
                 security_freedom: ideo.security_freedom ?? 0,
                 tradition_progress: ideo.tradition_progress ?? 0,
@@ -6335,14 +6340,14 @@ function renderPartyCard(party, nation) {
 
     // Founded
     const founded = party.foundedTick != null ? tickToDate(party.foundedTick) : null;
-    const foundedBadge = founded ? `<span class="op-badge op-badge-neutral">Est. ${escapeHtml(founded)}</span>` : '';
+    const foundedBadge = founded ? `<span class="op-badge op-badge-party" style="color:${c};border-color:${cBorder};font-size:12px">Est. ${escapeHtml(founded)}</span>` : '';
 
     // Leader badge
-    const leaderBadge = `<span class="op-badge op-badge-neutral">Leader: ${escapeHtml(party.leaderName)}${party.leaderAge ? ' (' + party.leaderAge + ')' : ''}</span>`;
+    const leaderBadge = `<span class="op-badge op-badge-party" style="color:${c};border-color:${cBorder};font-size:12px">Leader: ${escapeHtml(party.leaderName)}${party.leaderAge ? ' (' + party.leaderAge + ')' : ''}</span>`;
 
     // Party description
     const descHtml = party.description
-        ? `<div class="op-desc">${escapeHtml(party.description)}</div>`
+        ? `<div class="op-desc" style="font-size:13px;line-height:1.6">${escapeHtml(party.description)}</div>`
         : '';
 
     // Approval color
@@ -6415,13 +6420,8 @@ function renderPartyCard(party, nation) {
             <div class="op-insight-body">${escapeHtml(party.abbreviation)} has not declared any positions. Issue stance system not yet active.</div>
            </div>`;
 
-    // Government type badge (larger, colorful)
-    const govLabel = getGovDisplayLabel(nation) || 'Unknown';
-    let govBadgeCls = 'op-badge-teal';
-    if (govLabel === 'Autocratic State') govBadgeCls = 'op-badge-red';
-    else if (govLabel === 'Presidential Republic') govBadgeCls = 'op-badge-amber';
-    else if (govLabel === 'Constitutional Monarchy') govBadgeCls = 'op-badge-amber';
-    const govBadge = `<span class="op-badge ${govBadgeCls}">${govLabel.toUpperCase()}</span>`;
+    // Credibility color
+    const credColor = party.credibility > 50 ? 'var(--dgreen)' : party.credibility >= 25 ? 'var(--damber)' : 'var(--dred)';
 
     return `
     <div class="op-card" style="background:linear-gradient(135deg, ${cGlow} 0%, var(--dbg-2) 40%);border-color:${cBorder}">
@@ -6431,7 +6431,6 @@ function renderPartyCard(party, nation) {
                 <div class="op-name" style="color:${c}">${escapeHtml(party.name)}</div>
                 <div class="op-meta">
                     <span class="op-badge ${statusCls}">${statusLabel}</span>
-                    ${govBadge}
                     ${foundedBadge}
                     ${leaderBadge}
                 </div>
@@ -6448,6 +6447,10 @@ function renderPartyCard(party, nation) {
                 <div class="op-stat-row">
                     <span class="op-sr-label">Approval</span>
                     <span class="op-sr-val" style="color:${apColor}">${party.approval}%</span>
+                </div>
+                <div class="op-stat-row">
+                    <span class="op-sr-label">Credibility</span>
+                    <span class="op-sr-val" style="color:${credColor}">${party.credibility}%</span>
                 </div>
                 <div class="op-rule"></div>
                 <div class="op-sec-label">Ideology Axes</div>
