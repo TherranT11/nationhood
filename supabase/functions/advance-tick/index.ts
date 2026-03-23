@@ -11342,6 +11342,58 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         }
     }
 
+    // ── Presidential transition: clean slate for new administration ──
+
+    // 1. End "The Big One" crisis (protest tier 7) — new president gets a fresh start
+    const BIG_ONE_CRISIS_ID = '00000000-0000-0000-0000-000000000021';
+    const { error: crisisErr } = await supabase.from('active_crises')
+        .delete()
+        .eq('nation_id', nationId)
+        .eq('crisis_id', BIG_ONE_CRISIS_ID);
+    if (crisisErr) {
+        console.error(`[inauguratePresident] Failed to end The Big One crisis:`, crisisErr.message);
+    } else {
+        console.log(`[inauguratePresident] Ended The Big One crisis for ${nationId} (if active)`);
+    }
+
+    // 2. Reset executive overreach counter — new president starts with clean record
+    const { error: overreachErr } = await supabase.from('nations')
+        .update({ overreach_count: 0 })
+        .eq('id', nationId);
+    if (overreachErr) {
+        console.error(`[inauguratePresident] Failed to reset overreach_count:`, overreachErr.message);
+    }
+
+    // 3. Remove all acting ministers — new president appoints their own cabinet
+    const { error: actingErr } = await supabase.from('ministries')
+        .update({
+            minister_first_name: null,
+            minister_last_name: null,
+            minister_age: null,
+            is_acting: false,
+            acting_order_id: null,
+            confirmation_status: null
+        })
+        .eq('nation_id', nationId)
+        .eq('is_acting', true);
+    if (actingErr) {
+        console.error(`[inauguratePresident] Failed to remove acting ministers:`, actingErr.message);
+    } else {
+        console.log(`[inauguratePresident] Removed acting ministers for ${nationId}`);
+    }
+    // Deactivate the associated executive orders for acting ministers
+    const { error: actingEoErr } = await supabase.from('executive_orders')
+        .update({ is_active: false })
+        .eq('nation_id', nationId)
+        .eq('order_type', 'acting_minister')
+        .eq('is_active', true);
+    if (actingEoErr) {
+        console.error(`[inauguratePresident] Failed to deactivate acting minister EOs:`, actingEoErr.message);
+    }
+
+    // 4. Active executive orders from previous presidents are kept —
+    //    new president can undo them via their own executive actions.
+
     // Get faction info for administration record
     const { data: faction } = await supabase.from('factions').select('faction_name, seats, approval_rating').eq('id', factionId).single();
     const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
