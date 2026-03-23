@@ -237,6 +237,9 @@ BEGIN
 END;
 $$;
 
+-- Refresh PostgREST schema cache so protest_update is immediately available
+NOTIFY pgrst, 'reload schema';
+
 -- ═══════════════════════════════════════════════════════════════════
 -- 8. Crisis templates for Tier 6 and Tier 7
 -- ═══════════════════════════════════════════════════════════════════

@@ -170,3 +170,6 @@ BEGIN
     END IF;
 END;
 $$;
+
+-- Refresh PostgREST schema cache so updated protest_update is immediately available
+NOTIFY pgrst, 'reload schema';
