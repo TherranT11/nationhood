@@ -864,6 +864,39 @@ export async function seedFactionElectoralStanding(supabase, nation, factions, p
         });
     }
 
+    // Compute initial raw_appeal and vote shares so elections running before
+    // the first tickElectorate don't see NULL contested_vote_share (= 0 votes).
+    const stability = clamp(Number(nation.stability ?? 50) || 50, 0, 100);
+    const polarization = clamp(Number(nation.polarization ?? 50) || 50, 0, 100);
+    const chaosIndex = clamp(((polarization / 100) + (1 - stability / 100)) / 2, 0, 1);
+    const credWeight = CFG.CRED_MAX_WEIGHT - chaosIndex * (CFG.CRED_MAX_WEIGHT - CFG.CRED_MIN_WEIGHT);
+    const otherBaseSum = CFG.PILLAR_WEIGHT_ALIGNMENT + CFG.PILLAR_WEIGHT_APPEAL +
+                         CFG.PILLAR_WEIGHT_APPROVAL + CFG.PILLAR_WEIGHT_VISIBILITY;
+    const otherScale = (1 - credWeight) / otherBaseSum;
+    const wAlign = CFG.PILLAR_WEIGHT_ALIGNMENT * otherScale;
+    const wAppeal = CFG.PILLAR_WEIGHT_APPEAL * otherScale;
+    const wApproval = CFG.PILLAR_WEIGHT_APPROVAL * otherScale;
+    const wVisibility = CFG.PILLAR_WEIGHT_VISIBILITY * otherScale;
+
+    for (const r of rows) {
+        const credibilityScore = clamp((r.credibility_modifier - 0.5) * 100, 0, 100);
+        r.raw_appeal = round2(
+            r.ideological_alignment * wAlign +
+            r.platform_appeal * wAppeal +
+            r.party_approval * wApproval +
+            (r.visibility || 0) * wVisibility +
+            credibilityScore * credWeight
+        );
+    }
+    computeContestedVoteShares(rows);
+    computeRealizedVoteShares(rows, profile, nation);
+
+    // Add computed vote share fields to each row for DB write
+    for (const r of rows) {
+        r.base_vote_share = r.contested_vote_share;
+        r.turnout_rate = r.turnout_rate || 0.65;
+    }
+
     const { data, error } = await supabase
         .from('faction_electoral_standing')
         .upsert(rows, { onConflict: 'faction_id,nation_id' })
@@ -874,7 +907,7 @@ export async function seedFactionElectoralStanding(supabase, nation, factions, p
         return [];
     }
 
-    console.log(`[Electorate] Seeded ${data.length} faction_electoral_standing rows for ${nation.name}`);
+    console.log(`[Electorate] Seeded ${data.length} faction_electoral_standing rows for ${nation.name} (with initial vote shares)`);
     return data;
 }
 
