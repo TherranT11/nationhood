@@ -3602,7 +3602,7 @@ function renderProtestActionRow(act, isSel, ap, faction, tick) {
                 </div>
                 <span class="ca-item-ap" style="color:rgba(217,83,79,0.5)">LOCKED</span>
             </div>
-            <div class="ca-item-desc" style="color:#4a4840">Historic or Nationwide Protests already underway, led by another party.</div>
+            <div class="ca-item-desc" style="color:#4a4840">A protest crisis is already underway, led by another party.</div>
         </div>`;
     }
 

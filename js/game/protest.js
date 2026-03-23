@@ -9,6 +9,7 @@
 import { fetchActiveCoalition } from './government-structure.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { loadFactionIdeology } from './ideology.js';
+import { nudgeApproval, nudgeEnthusiasm } from './electorate.js';
 
 // ==================== PROTEST LOG UPDATE RPC ====================
 // All protest_log writes from client code must go through this RPC
@@ -83,8 +84,15 @@ export const PROTEST_CONFIG = {
     ESCALATION_MIN_SCORE: 65,
     ESCALATION_TRIGGER_SCORE: 70,
 
-    // Fizzle (Tier 1-2) effects
-    FIZZLE_BLOC_PENALTY: -2,
+    // Fizzle / backfire effects on the organising party
+    // Tier 1 — "Embarrassing Backfire": harsh, organiser looks foolish
+    FIZZLE_T1_VISIBILITY: -10,
+    FIZZLE_T1_APPROVAL: -7,
+    FIZZLE_T1_ENTHUSIASM: -12,
+    // Tier 2 — "Protests Don't Materialise": milder, just a whimper
+    FIZZLE_T2_VISIBILITY: -4,
+    FIZZLE_T2_APPROVAL: -3,
+    FIZZLE_T2_ENTHUSIASM: -5,
     FIZZLE_GOV_APPROVAL_MAX_BOOST: 3,   // 1d3
     FIZZLE_GOV_APPROVAL_MIN_THRESHOLD: 45,
 
@@ -123,8 +131,6 @@ const HIGHER_IS_BAD = new Set([
     'debt', 'debt_growth', 'cost_of_living',
 ]);
 
-// Blocs penalised on fizzle (Tier 1-2)
-const FIZZLE_PENALTY_BLOCS = ['centrist', 'business', 'academic'];
 
 // ==================== AP COST ====================
 
@@ -343,12 +349,12 @@ export function rollTurnoutWithRng(conditionScore, rngValue) {
  * @returns {number} tier 1-7
  */
 export function getTurnoutTier(score) {
-    if (score < 15) return 1;
-    if (score < 30) return 2;
-    if (score < 45) return 3;
-    if (score < 60) return 4;
-    if (score < 75) return 5;
-    if (score < 90) return 6;
+    if (score < 20) return 1;
+    if (score < 35) return 2;
+    if (score < 50) return 3;
+    if (score < 65) return 4;
+    if (score < 78) return 5;
+    if (score < 92) return 6;
     return 7;
 }
 
@@ -357,13 +363,13 @@ export function getTurnoutTier(score) {
  */
 export function getTierLabel(tier) {
     const labels = {
-        1: 'Embarrassing Fizzle',
-        2: 'Modest Showing',
-        3: 'Respectable Turnout',
-        4: 'Strong Protest',
-        5: 'Mass Demonstration',
-        6: 'Historic Protest',
-        7: 'Nationwide Protest',
+        1: 'Embarrassing Backfire',
+        2: 'Protests Don\'t Materialise',
+        3: 'Modest Turnout',
+        4: 'Respectable Protest',
+        5: 'Strong Demonstration',
+        6: 'Nationwide Protests',
+        7: 'The Big One',
     };
     return labels[tier] || 'Unknown';
 }
@@ -413,50 +419,53 @@ export function calculateJointProtestBonus(endorsementCount) {
  * Returns an effect descriptor — caller is responsible for applying to DB.
  * @param {number} tier
  * @param {object} opts - { govApproval, callingFactionId }
- * @returns {object} { govApprovalDelta, civilUnrestDelta, blocPenalties, blocBonuses, fizzleGovBoost }
+ * @returns {object} { govApprovalDelta, civilUnrestDelta, fizzleGovBoost, organiserVisibility, organiserApproval, organiserEnthusiasm, isCrisis }
  */
 export function computeTierEffects(tier, opts = {}) {
     const effects = {
         govApprovalDelta: 0,
         civilUnrestDelta: 0,
-        blocPenalties: [],    // [{ blocName, delta }]
-        blocBonuses: [],      // [{ blocName, delta }]
         fizzleGovBoost: 0,
+        // Organiser penalties (Tier 1-2 backfires)
+        organiserVisibility: 0,
+        organiserApproval: 0,
+        organiserEnthusiasm: 0,
         isCrisis: false,
     };
 
     switch (tier) {
         case 1: {
-            // Embarrassing Fizzle: -2 approval with centrists/business/academics, 1d3 gov boost if gov >= 45%
-            effects.blocPenalties = FIZZLE_PENALTY_BLOCS.map(b => ({
-                blocName: b,
-                delta: PROTEST_CONFIG.FIZZLE_BLOC_PENALTY,
-            }));
+            // Embarrassing Backfire: organiser looks foolish, gov gets a boost
+            effects.organiserVisibility = PROTEST_CONFIG.FIZZLE_T1_VISIBILITY;
+            effects.organiserApproval = PROTEST_CONFIG.FIZZLE_T1_APPROVAL;
+            effects.organiserEnthusiasm = PROTEST_CONFIG.FIZZLE_T1_ENTHUSIASM;
             if ((opts.govApproval || 0) >= PROTEST_CONFIG.FIZZLE_GOV_APPROVAL_MIN_THRESHOLD) {
                 effects.fizzleGovBoost = Math.ceil(Math.random() * PROTEST_CONFIG.FIZZLE_GOV_APPROVAL_MAX_BOOST);
             }
             break;
         }
         case 2: {
-            // Modest Showing: no stat effect, free headline, same gov boost as tier 1
+            // Protests Don't Materialise: mild backfire, gov gets a boost
+            effects.organiserVisibility = PROTEST_CONFIG.FIZZLE_T2_VISIBILITY;
+            effects.organiserApproval = PROTEST_CONFIG.FIZZLE_T2_APPROVAL;
+            effects.organiserEnthusiasm = PROTEST_CONFIG.FIZZLE_T2_ENTHUSIASM;
             if ((opts.govApproval || 0) >= PROTEST_CONFIG.FIZZLE_GOV_APPROVAL_MIN_THRESHOLD) {
                 effects.fizzleGovBoost = Math.ceil(Math.random() * PROTEST_CONFIG.FIZZLE_GOV_APPROVAL_MAX_BOOST);
             }
             break;
         }
         case 3: {
-            // Respectable Turnout: gov approval -1
+            // Modest Turnout: gov approval -1
             effects.govApprovalDelta = -1;
             break;
         }
         case 4: {
-            // Strong Protest: gov approval -3, +2 with aligned blocs
+            // Respectable Protest: gov approval -3
             effects.govApprovalDelta = -3;
-            // Caller must resolve "ideologically aligned blocs" and populate blocBonuses
             break;
         }
         case 5: {
-            // Mass Demonstration: gov approval -6, civil unrest +2
+            // Strong Demonstration: gov approval -6, civil unrest +2
             effects.govApprovalDelta = -6;
             effects.civilUnrestDelta = 2;
             break;
@@ -906,7 +915,7 @@ export async function callOffProtest(supabase, factionId, protestId, currentTick
         return { success: false, error: 'No active crisis to call off.' };
     }
     if (protest.tier === 7) {
-        return { success: false, error: 'Tier 7 Nationwide Protests cannot be called off.' };
+        return { success: false, error: 'Tier 7 protests cannot be called off.' };
     }
 
     // ── 2. Load faction for AP check ──
@@ -1117,7 +1126,7 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
         return { success: false, error: 'No active protest crisis.' };
     }
     if (protest.tier !== 6) {
-        return { success: false, error: 'Enforce Public Order can only be used on Tier 6 (Historic Protest) crises.' };
+        return { success: false, error: 'Enforce Public Order can only be used on Tier 6 (Nationwide Protests) crises.' };
     }
 
     // ── 2. Check faction owns Interior ministry ──
@@ -1253,7 +1262,7 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
 
         const escalatedHeadline = pickHeadline('protest_epo_escalated');
         dispatchProtestArticle(supabase, nationId, 'protest_epo_escalated', escalatedHeadline,
-            `A government crackdown backfired, escalating the crisis to a Nationwide Protest. Demonstrators now demand: ${demand?.label || 'immediate action'}.`,
+            `A government crackdown backfired, escalating the crisis to The Big One. Demonstrators now demand: ${demand?.label || 'immediate action'}.`,
             1, currentTick, protestId);
         fireProtestEvent(supabase, nationId, 'protest:epo_escalated', currentTick, {
             protest_id: protestId, demand: demand?.label || '',
@@ -1437,13 +1446,41 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
         appliedEffects.push({ stat: 'civil_unrest', delta: effects.civilUnrestDelta });
     }
 
-    // Fizzle bloc penalties removed — electorate engine handles this now
+    // Fizzle gov boost (Tier 1-2)
     if (effects.fizzleGovBoost > 0) {
         await adjustGovernmentApprovalEvent(supabase, nationId, effects.fizzleGovBoost, `protest:fizzle:tier${tier}`);
         appliedEffects.push({ stat: 'gov_approval_events', delta: effects.fizzleGovBoost, note: 'fizzle_boost' });
     }
 
-    // Tier 4: aligned bloc momentum removed — electorate engine handles this now
+    // Backfire penalties on the organising party (Tier 1-2)
+    if (effects.organiserVisibility < 0 || effects.organiserApproval < 0 || effects.organiserEnthusiasm < 0) {
+        // Visibility: direct update (boostVisibility only handles positive)
+        if (effects.organiserVisibility < 0) {
+            const { data: standing } = await supabase
+                .from('faction_electoral_standing')
+                .select('id, visibility')
+                .eq('faction_id', factionId)
+                .eq('nation_id', nationId)
+                .maybeSingle();
+            if (standing) {
+                const newVis = Math.max(0, (Number(standing.visibility) || 0) + effects.organiserVisibility);
+                await supabase.from('faction_electoral_standing')
+                    .update({ visibility: newVis })
+                    .eq('id', standing.id);
+            }
+            appliedEffects.push({ stat: 'organiser_visibility', delta: effects.organiserVisibility });
+        }
+        // Party approval
+        if (effects.organiserApproval < 0) {
+            await nudgeApproval(supabase, factionId, nationId, effects.organiserApproval);
+            appliedEffects.push({ stat: 'organiser_approval', delta: effects.organiserApproval });
+        }
+        // Nation-wide enthusiasm
+        if (effects.organiserEnthusiasm < 0) {
+            await nudgeEnthusiasm(supabase, nationId, effects.organiserEnthusiasm);
+            appliedEffects.push({ stat: 'enthusiasm', delta: effects.organiserEnthusiasm });
+        }
+    }
 
     // ── 9. Tier 6/7: create crisis ──
     let crisisCreated = false;

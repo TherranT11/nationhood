@@ -3845,7 +3845,7 @@ async function protestCrisisAction(actionType) {
         if (actionType === 'public_address') {
             result = await executePublicAddress(_supabase, currentFaction.id, currentNation.id, protestId, currentTick);
         } else if (actionType === 'epo') {
-            if (!confirm('Enforce Public Order on the protest?\n\n33% chance the crisis ends. 66% chance it escalates to a Nationwide Protest (Tier 7).\n\nProceed?')) {
+            if (!confirm('Enforce Public Order on the protest?\n\n33% chance the crisis ends. 66% chance it escalates to The Big One (Tier 7).\n\nProceed?')) {
                 _protestCrisisActionLock = false;
                 return;
             }
@@ -3864,7 +3864,7 @@ async function protestCrisisAction(actionType) {
             sessionStorage.removeItem('nationhood_state');
 
             if (actionType === 'epo' && result.outcome === 'escalated') {
-                alert('The crackdown backfired! The protest has escalated to a Nationwide Protest (Tier 7).');
+                alert('The crackdown backfired! The protest has escalated to The Big One (Tier 7).');
             } else if (actionType === 'epo' && result.outcome === 'resolved') {
                 alert('The crackdown succeeded. The protest crisis has been resolved.');
             } else if (actionType === 'national_emergency') {
