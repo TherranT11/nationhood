@@ -171,8 +171,8 @@ CREATE TABLE IF NOT EXISTS faction_electoral_standing (
 
     -- Three pillars
     ideological_alignment       DECIMAL(5,2) DEFAULT 50,
-    platform_appeal             DECIMAL(5,2) DEFAULT 50,
-    party_approval              DECIMAL(5,2) DEFAULT 50,
+    platform_appeal             DECIMAL(5,2) DEFAULT 0,
+    party_approval              DECIMAL(5,2) DEFAULT 25,
 
     -- Platform appeal breakdown
     ideology_baseline           DECIMAL(5,2),
@@ -180,10 +180,10 @@ CREATE TABLE IF NOT EXISTS faction_electoral_standing (
     platform_ceiling            DECIMAL(5,2),
 
     -- Visibility (turnout multiplier, not a pillar)
-    visibility                  DECIMAL(5,2) DEFAULT 30,
+    visibility                  DECIMAL(5,2) DEFAULT 0,
 
     -- Credibility components
-    credibility_modifier                DECIMAL(4,3) DEFAULT 1.000,
+    credibility_modifier                DECIMAL(4,3) DEFAULT 0.500,
     credibility_radius_component        DECIMAL(4,3) DEFAULT 0,
     credibility_promise_component       DECIMAL(4,3) DEFAULT 0,
     credibility_recovery_suspended_until INTEGER DEFAULT 0,
