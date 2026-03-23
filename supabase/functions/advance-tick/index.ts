@@ -13051,8 +13051,8 @@ async function tickElectorate(supabase, nation, currentTick) {
         newCredibility = round3(clamp(newCredibility, CFG.CREDIBILITY_MIN, CFG.CREDIBILITY_MAX));
 
         // ─── RAW APPEAL = 5-pillar weighted sum with dynamic credibility ───
-        const stability = Number(nation.stability ?? 50);
-        const polarization = Number(nation.polarization ?? 50);
+        const stability = clamp(Number(nation.stability ?? 50) || 50, 0, 100);
+        const polarization = clamp(Number(nation.polarization ?? 50) || 50, 0, 100);
         const chaosIndex = clamp(((polarization / 100) + (1 - stability / 100)) / 2, 0, 1);
         const credWeight = CFG.CRED_MAX_WEIGHT - chaosIndex * (CFG.CRED_MAX_WEIGHT - CFG.CRED_MIN_WEIGHT);
         const otherBaseSum = CFG.PILLAR_WEIGHT_ALIGNMENT + CFG.PILLAR_WEIGHT_APPEAL +

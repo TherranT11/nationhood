@@ -1183,8 +1183,8 @@ export async function tickElectorate(supabase, nation, currentTick) {
         //   High stability + low polarization → credibility matters most (up to 35%)
         //   High polarization + low stability → credibility barely matters (down to 5%)
         // The weight borrowed/freed is redistributed proportionally to the other 4 pillars.
-        const stability = Number(nation.stability ?? 50);
-        const polarization = Number(nation.polarization ?? 50);
+        const stability = clamp(Number(nation.stability ?? 50) || 50, 0, 100);
+        const polarization = clamp(Number(nation.polarization ?? 50) || 50, 0, 100);
         // chaosIndex: 0 = perfectly stable, 1 = maximum chaos
         const chaosIndex = clamp(((polarization / 100) + (1 - stability / 100)) / 2, 0, 1);
         const credWeight = CFG.CRED_MAX_WEIGHT - chaosIndex * (CFG.CRED_MAX_WEIGHT - CFG.CRED_MIN_WEIGHT);

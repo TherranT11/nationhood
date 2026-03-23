@@ -3270,9 +3270,13 @@ function renderCurriculumModal() {
         </div>`;
 }
 
+let _confirmCurriculumLock = false;
+
 async function confirmCurriculum() {
-    if (!_curriculumSelection) return;
-    if (!isMyMinistryByKey('education')) return;
+    if (_confirmCurriculumLock) return;
+    _confirmCurriculumLock = true;
+    if (!_curriculumSelection) { _confirmCurriculumLock = false; return; }
+    if (!isMyMinistryByKey('education')) { _confirmCurriculumLock = false; return; }
     const sel = _curriculumSelection;
     const apCost = 6;
 
@@ -3380,6 +3384,8 @@ async function confirmCurriculum() {
         console.error('[Education] Curriculum confirm failed:', err);
         alert('Failed to set curriculum: ' + (err.message || err));
         if (row) { row.classList.remove('active'); }
+    } finally {
+        _confirmCurriculumLock = false;
     }
 }
 
