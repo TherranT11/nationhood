@@ -85,6 +85,12 @@ BEGIN
             WHEN 'aid_resumed'              THEN 'Economic Aid Resumed'
             WHEN 'snap_election_called'     THEN 'Snap Election Called'
             WHEN 'incumbent_lockin'         THEN 'Incumbent Re-elected'
+            -- Protest government responses
+            WHEN 'protest:public_address'   THEN 'Public Address'
+            WHEN 'protest:epo_resolved'     THEN 'Enforce Public Order — Crisis Resolved'
+            WHEN 'protest:epo_escalated'    THEN 'Crackdown Backfires — Crisis Escalates'
+            WHEN 'protest:national_emergency' THEN 'National Emergency Declared'
+            WHEN 'protest:called_off'       THEN 'Protest Called Off'
             ELSE REPLACE(p_trigger_key, '_', ' ')
         END,
         CASE
@@ -107,6 +113,9 @@ BEGIN
             WHEN p_trigger_key IN ('diplomatic_initiative_proposed', 'diplomatic_initiative_accepted',
                 'diplomatic_initiative_rejected', 'major_initiative_ratified',
                 'major_initiative_ratification_failed', 'state_visit') THEN 'Diplomatic'
+            WHEN p_trigger_key IN ('protest:public_address', 'protest:epo_resolved',
+                'protest:epo_escalated', 'protest:national_emergency',
+                'protest:called_off') THEN 'protest'
             ELSE 'system'
         END
     INTO v_event_name, v_category;
