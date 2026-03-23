@@ -3580,6 +3580,160 @@ export async function processRevolution(supabase, nation, currentTick) {
 }
 
 
+// ==================== SEIZE AUTOCRATIC POWER ====================
+
+/**
+ * Convert a democracy to an autocracy when the Rise of Authoritarianism crisis
+ * has been active 18+ ticks and the ruling party chooses to seize power.
+ *
+ * Steps:
+ *   1. Validate: nation must be a democracy with seize available and a ruling faction
+ *   2. Close administration and dissolve coalition
+ *   3. Change government_type to Autocracy
+ *   4. Adjust nation stats (freedom drops, stability resets)
+ *   5. Clear the authoritarianism crisis and seize flag
+ *   6. Initialize autocracy_tracker and faction_pillar_state
+ *   7. Freeze active bills
+ *   8. Log event
+ */
+export async function seizeAutocraticPower(supabase, nationId, callerFactionId) {
+    // 1. Load & validate
+    const { data: nation } = await supabase.from('nations')
+        .select('*')
+        .eq('id', nationId)
+        .single();
+
+    if (!nation) throw new Error('Nation not found');
+    if (isAutocracy(nation)) throw new Error('Nation is already an autocracy');
+    if (!nation.authoritarianism_seize_available_tick) throw new Error('Seize power is not available');
+    if (!nation.ruling_faction_id) throw new Error('No ruling faction — cannot seize power');
+    if (callerFactionId !== nation.ruling_faction_id) throw new Error('Only the ruling party can seize power');
+
+    const { data: shard } = await supabase.from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Load factions
+    const { data: allParties } = await supabase.from('factions')
+        .select('id, faction_name, seats')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party')
+        .order('seats', { ascending: false });
+
+    const rulingFaction = allParties?.find(f => f.id === nation.ruling_faction_id);
+    if (!rulingFaction) throw new Error('Ruling faction not found');
+
+    console.log(`[SeizePower] ${rulingFaction.faction_name} seizing autocratic power in ${nation.name}`);
+
+    // 2. Close administration and dissolve coalition
+    try {
+        await closeAdministration(supabase, nationId, nation, 'authoritarian_seizure', currentTick, shard?.current_date || '', null);
+    } catch (err) {
+        console.warn('[SeizePower] Could not close administration:', err);
+    }
+    try {
+        await dissolveCoalition(supabase, nationId);
+    } catch (err) {
+        console.warn('[SeizePower] Could not dissolve coalition:', err);
+    }
+
+    // 3. Change government type + reset stats
+    const nationUpdates = {
+        government_type: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
+        ruling_faction_id: nation.ruling_faction_id,
+        authoritarianism_seize_available_tick: null,
+        stability: 40,
+        freedom_index: Math.max(5, Math.round((Number(nation.freedom_index) - 10) * 10) / 10),
+        press_freedom: Math.max(5, Math.round((Number(nation.press_freedom) - 10) * 10) / 10),
+        judicial_independence: Math.max(5, Math.round((Number(nation.judicial_independence) - 15) * 10) / 10),
+        civil_unrest: Math.min(100, Math.round((Number(nation.civil_unrest) + 10) * 10) / 10),
+    };
+    await supabase.from('nations').update(nationUpdates).eq('id', nationId);
+
+    // 4. Clear active crises — the seizure ends the crisis cycle
+    await supabase.from('active_crises').delete().eq('nation_id', nationId);
+
+    // 5. Cancel any scheduled elections
+    await supabase.from('elections').delete()
+        .eq('nation_id', nationId).eq('status', 'scheduled');
+
+    // 6. Freeze active bills
+    await supabase.from('bills')
+        .update({ status: 'frozen' })
+        .eq('nation_id', nationId)
+        .in('status', ['committee', 'floor']);
+
+    // 7. Initialize autocracy_tracker
+    await supabase.from('autocracy_tracker').upsert({
+        nation_id: nationId,
+        tracker_value: 0,
+        last_updated_tick: currentTick,
+        wildcard_backing: 20,
+        public_tracker_value: 30,
+        public_tracker_last_tick: currentTick
+    }, { onConflict: 'nation_id' });
+
+    // 8. Initialize faction_pillar_state
+    const PILLARS = ['military', 'party', 'oligarchs', 'media', 'security'];
+    const factionLimit = Math.min(4, (allParties || []).length);
+
+    // Ruling faction first (strongman), then others by seats
+    const orderedFactions = [rulingFaction, ...(allParties || []).filter(f => f.id !== rulingFaction.id)].slice(0, factionLimit);
+
+    for (let i = 0; i < orderedFactions.length; i++) {
+        const faction = orderedFactions[i];
+        const deathAge = 75 + Math.floor(Math.random() * 11);
+        const startAge = 55 + Math.floor(Math.random() * 15);
+
+        await supabase.from('faction_pillar_state').upsert({
+            faction_id: faction.id,
+            nation_id: nationId,
+            pillar: PILLARS[i],
+            is_strongman: (i === 0),
+            backing: 20.00,
+            leader_name: faction.faction_name + ' Leader',
+            leader_age: startAge,
+            leader_birth_tick: currentTick - (startAge * 12),
+            death_age: deathAge,
+            longevity_ticks: (i === 0) ? 12 : 0,
+            arrested_leader: false,
+            minister_count: 0,
+            is_prime_minister: false
+        }, { onConflict: 'faction_id' });
+    }
+
+    // Set wildcard pillar (5th unassigned pillar)
+    const assignedPillars = PILLARS.slice(0, factionLimit);
+    const wildcardPillar = PILLARS.find(p => !assignedPillars.includes(p)) || 'security';
+    await supabase.from('autocracy_tracker')
+        .update({ wildcard_pillar: wildcardPillar })
+        .eq('nation_id', nationId);
+
+    // 9. Log event
+    await supabase.from('event_log').insert({
+        nation_id: nationId,
+        event_name: 'AUTHORITARIAN_SEIZURE',
+        trigger_key: 'government_type_changed',
+        description_used: `${rulingFaction.faction_name} has seized absolute power in ${nation.name}. Democratic institutions have been dissolved. The nation is now an autocracy under single-party rule.`,
+        category: 'crisis',
+        effects_applied: [
+            { stat: 'government_type', change: `${nation.government_type} → Autocracy`, target: 'nation' },
+            { stat: 'stability', change: '→ 40', target: 'nation' },
+            { stat: 'freedom_index', change: '-10', target: 'nation' },
+            { stat: 'press_freedom', change: '-10', target: 'nation' },
+            { stat: 'judicial_independence', change: '-15', target: 'nation' }
+        ],
+        fired_at_tick: currentTick
+    });
+
+    console.log(`[SeizePower] COMPLETE — ${nation.name} is now an Autocracy under ${rulingFaction.faction_name}`);
+    return {
+        success: true,
+        nation: nation.name,
+        rulingParty: rulingFaction.faction_name,
+        newGovernmentType: 'Autocracy'
+    };
+}
+
 
 // ==================== UTILITY FORMATTERS ====================
 

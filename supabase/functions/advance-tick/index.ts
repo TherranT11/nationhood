@@ -23198,6 +23198,30 @@ async function processCrises(supabase, nation, currentTick) {
             });
         }
 
+        // 4c-pre. Rise of Authoritarianism: enable "Seize Power" after 18 ticks
+        const AUTHORITARIANISM_CRISIS_ID = '00000000-0000-0000-0000-000000000030';
+        const AUTHORITARIANISM_SEIZE_TICKS = 18;
+        if (template.id === AUTHORITARIANISM_CRISIS_ID && !isAutocracy(nation)) {
+            const crisisDuration = currentTick - activeRecord.started_at_tick;
+            if (crisisDuration >= AUTHORITARIANISM_SEIZE_TICKS && !nation.authoritarianism_seize_available_tick) {
+                await supabase.from('nations')
+                    .update({ authoritarianism_seize_available_tick: currentTick })
+                    .eq('id', nation.id);
+                nation.authoritarianism_seize_available_tick = currentTick;
+
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: 'AUTHORITARIANISM_SEIZE_AVAILABLE',
+                    trigger_key: 'crisis_escalation',
+                    description_used: `After ${crisisDuration} ticks of democratic erosion, the ruling party now has enough control to seize absolute power. The path to autocracy is open.`,
+                    category: 'crisis',
+                    effects_applied: { crisis_duration: crisisDuration, option: 'seize_power_available' },
+                    fired_at_tick: currentTick
+                });
+                console.log(`[processCrises] Rise of Authoritarianism: seize power now available for ${nation.name} after ${crisisDuration} ticks`);
+            }
+        }
+
         // 4c. Check end / recovery triggers AFTER effects applied (prevents flicker)
         let allEndConditionsMet = false;
 
@@ -23297,6 +23321,15 @@ async function processCrises(supabase, nation, currentTick) {
             // Deactivate the crisis (effects already applied this final tick)
             await supabase.from('active_crises').delete().eq('id', activeRecord.id);
             delete activeMap[template.id];
+
+            // Clear seize power flag if Rise of Authoritarianism resolves
+            if (template.id === AUTHORITARIANISM_CRISIS_ID && nation.authoritarianism_seize_available_tick) {
+                await supabase.from('nations')
+                    .update({ authoritarianism_seize_available_tick: null })
+                    .eq('id', nation.id);
+                nation.authoritarianism_seize_available_tick = null;
+                console.log(`[processCrises] Rise of Authoritarianism resolved — seize power option cleared for ${nation.name}`);
+            }
 
             const demandMetMsg = template.id === BIG_ONE_CRISIS_ID
                 ? 'The government met the protesters\' demands. "The Big One" has ended.'
