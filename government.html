@@ -4934,6 +4934,7 @@ async function claimPower() {
                 government_type: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
                 started_at_tick: tick,
                 started_at_date: tickToDate(tick),
+                approval_at_start: 50,
                 head_of_state_title: currentNation.head_of_state_title || null
             });
         } catch (adminErr) {
