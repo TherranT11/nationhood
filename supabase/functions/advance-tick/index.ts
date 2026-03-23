@@ -24075,23 +24075,27 @@ async function runElectionPreview(supabase, nationId) {
     for (const s of (standings || [])) standingMap[s.faction_id] = s;
 
     // 4. Convert vote shares to actual votes
+    // Use contested_vote_share × turnout_rate (NOT realized_vote_share which is
+    // renormalized to sum=1.0 and would produce ~100% turnout).
     const tally = {};
     let totalVotesCast = 0;
 
-    let totalRealizedShare = 0;
+    let totalActualShare = 0;
     const voteExacts = [];
     for (const f of factions) {
         const s = standingMap[f.id];
-        const share = Number(s?.realized_vote_share || 0);
-        totalRealizedShare += share;
-        const exactVotes = eligibleVoters * share;
+        const contested = Number(s?.contested_vote_share || 0);
+        const turnout = Number(s?.turnout_rate || 0.65);
+        const actualShare = contested * turnout;
+        totalActualShare += actualShare;
+        const exactVotes = eligibleVoters * actualShare;
         voteExacts.push({ id: f.id, exact: exactVotes, floored: Math.floor(exactVotes) });
         tally[f.id] = Math.floor(exactVotes);
         totalVotesCast += Math.floor(exactVotes);
     }
 
     // Distribute remainder votes via largest remainder
-    const targetVotes = Math.round(eligibleVoters * Math.min(1, totalRealizedShare));
+    const targetVotes = Math.round(eligibleVoters * Math.min(1, totalActualShare));
     let remainder = targetVotes - totalVotesCast;
     if (remainder > 0) {
         voteExacts.sort((a, b) => (b.exact - b.floored) - (a.exact - a.floored));
@@ -24194,7 +24198,7 @@ async function runPresidentialElectionPreview(supabase, nationId) {
     // 4. Load electoral standings for each candidate's faction
     const { data: standings } = await supabase
         .from('faction_electoral_standing')
-        .select('faction_id, realized_vote_share, party_approval')
+        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval')
         .eq('nation_id', nationId)
         .in('faction_id', factionIds);
     const standingMap = {};
@@ -24238,8 +24242,9 @@ async function runPresidentialElectionPreview(supabase, nationId) {
         for (const cp of candidateParties) tally[cp.id] = 0;
         for (const [fid, cands] of Object.entries(factionCandidates)) {
             const s = standingMap[fid];
-            const factionShare = Number(s?.realized_vote_share || 0);
-            const factionVotes = Math.round(eligibleVoters * factionShare);
+            const contested = Number(s?.contested_vote_share || 0);
+            const turnout = Number(s?.turnout_rate || 0.65);
+            const factionVotes = Math.round(eligibleVoters * contested * turnout);
             const perCandidate = Math.floor(factionVotes / cands.length);
             let assigned = 0;
             for (const c of cands) { tally[c.id] = perCandidate; assigned += perCandidate; }

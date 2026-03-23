@@ -90,7 +90,8 @@ BEGIN
         SELECT
             f.id,
             f.faction_name,
-            COALESCE(fes.realized_vote_share, 0) AS realized_vote_share,
+            COALESCE(fes.contested_vote_share, 0) AS contested_vote_share,
+            COALESCE(fes.turnout_rate, 0.65) AS turnout_rate,
             COALESCE(fes.party_approval, 0) AS party_approval
         FROM factions f
         LEFT JOIN faction_electoral_standing fes
@@ -103,13 +104,14 @@ BEGIN
               OR v_current_tick - f.last_seen_tick < 12
           )
     LOOP
-        -- Convert realized_vote_share to actual vote count
-        v_exact := v_eligible::NUMERIC * v_party.realized_vote_share;
+        -- Convert contested_vote_share × turnout_rate to actual vote count
+        -- (realized_vote_share is renormalized to sum=1, which gives ~100% turnout)
+        v_exact := v_eligible::NUMERIC * v_party.contested_vote_share * v_party.turnout_rate;
         v_floored := FLOOR(v_exact);
 
         v_tally := v_tally || jsonb_build_object(v_party.id::TEXT, v_floored);
         v_allocated := v_allocated + v_floored;
-        v_total_realized := v_total_realized + v_party.realized_vote_share;
+        v_total_realized := v_total_realized + (v_party.contested_vote_share * v_party.turnout_rate);
 
         v_fractionals := v_fractionals || jsonb_build_object(
             'id', v_party.id::TEXT,
