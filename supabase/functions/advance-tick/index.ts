@@ -23215,7 +23215,61 @@ async function processCrises(supabase, nation, currentTick) {
         // 4c. Check end / recovery triggers AFTER effects applied (prevents flicker)
         let allEndConditionsMet = false;
 
-        if (template.crisis_type === 'ministry') {
+        // Special case: "The Big One" (Tier 7 protest crisis) ends when demand is met
+        const BIG_ONE_CRISIS_ID = '00000000-0000-0000-0000-000000000021';
+        if (template.id === BIG_ONE_CRISIS_ID) {
+            // Load the active Tier 7 protest to get its demand
+            const { data: t7Protest } = await supabase
+                .from('protest_log')
+                .select('id, tier7_demand, faction_id, crisis_started_tick')
+                .eq('nation_id', nation.id)
+                .eq('status', 'crisis_active')
+                .eq('tier', 7)
+                .order('crisis_started_tick', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (t7Protest?.tier7_demand) {
+                const demand = t7Protest.tier7_demand;
+                if (demand.type === 'stat') {
+                    const current = Number(nation[demand.stat] ?? 0);
+                    const baseline = Number(demand.baseline ?? current);
+                    const magnitude = Number(demand.magnitude || 0);
+                    if (demand.direction === 'reduce') {
+                        allEndConditionsMet = current <= baseline - magnitude;
+                    } else {
+                        allEndConditionsMet = current >= baseline + magnitude;
+                    }
+                } else if (demand.type === 'minister') {
+                    // Check if the targeted ministry is now vacant
+                    const { data: ministry } = await supabase
+                        .from('ministries')
+                        .select('ministry_key, party_id')
+                        .eq('nation_id', nation.id)
+                        .eq('ministry_key', demand.target)
+                        .maybeSingle();
+                    allEndConditionsMet = ministry != null && ministry.party_id == null;
+                }
+
+                // If demand met, also resolve the protest_log entry
+                if (allEndConditionsMet && t7Protest) {
+                    await supabase.from('protest_log').update({
+                        status: 'resolved',
+                        tick_resolved: currentTick,
+                    }).eq('id', t7Protest.id);
+
+                    // Unlock other factions and apply cooldown to calling faction
+                    await supabase.from('factions')
+                        .update({ protest_locked_by: null })
+                        .eq('protest_locked_by', t7Protest.id);
+                    await supabase.from('factions')
+                        .update({ protest_cooldown_until_tick: currentTick + 6 })
+                        .eq('id', t7Protest.faction_id);
+
+                    console.log(`[processCrises] The Big One demand met for ${nation.name}: "${demand.label}"`);
+                }
+            }
+        } else if (template.crisis_type === 'ministry') {
             // Ministry crisis: resolve when ALL institutions are at/above recovery_threshold_pct
             const institutionIds = template.institution_ids || [];
             const recoveryPct = Number(template.recovery_threshold_pct) || (Number(template.funding_threshold_pct) + 20);
@@ -23258,11 +23312,15 @@ async function processCrises(supabase, nation, currentTick) {
             await supabase.from('active_crises').delete().eq('id', activeRecord.id);
             delete activeMap[template.id];
 
+            const demandMetMsg = template.id === BIG_ONE_CRISIS_ID
+                ? 'The government met the protesters\' demands. "The Big One" has ended.'
+                : 'The crisis "' + template.name + '" has been resolved.';
+
             await supabase.from('event_log').insert({
                 nation_id: nation.id,
-                event_name: 'CRISIS_RESOLVED: ' + template.name,
+                event_name: template.id === BIG_ONE_CRISIS_ID ? 'CRISIS_RESOLVED: The Big One (Demand Met)' : 'CRISIS_RESOLVED: ' + template.name,
                 trigger_key: 'crisis_ended',
-                description_used: 'The crisis "' + template.name + '" has been resolved.',
+                description_used: demandMetMsg,
                 category: 'crisis',
                 effects_applied: [],
                 fired_at_tick: currentTick

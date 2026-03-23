@@ -591,6 +591,41 @@ export function generateTier7Demand(statSnapshots, ministers) {
     };
 }
 
+// ==================== TIER 7 DEMAND CHECK ====================
+
+/**
+ * Check whether a Tier 7 demand has been met.
+ *
+ * @param {object} demand - The tier7_demand object stored on the protest_log row
+ *   { type: 'stat', stat, magnitude, direction, baseline? } or { type: 'minister', target }
+ * @param {object} nation - Current nation row (stat values)
+ * @param {Array} ministers - Current minister rows [{ ministry_key, party_id }]
+ * @returns {boolean}
+ */
+export function checkTier7DemandMet(demand, nation, ministers) {
+    if (!demand) return false;
+
+    if (demand.type === 'stat') {
+        const current = Number(nation?.[demand.stat] ?? 0);
+        const baseline = Number(demand.baseline ?? current);
+        const magnitude = Number(demand.magnitude || 0);
+        if (demand.direction === 'reduce') {
+            return current <= baseline - magnitude;
+        }
+        // direction === 'raise'
+        return current >= baseline + magnitude;
+    }
+
+    if (demand.type === 'minister') {
+        // Demand met if the targeted ministry is now vacant (minister was dismissed)
+        const ministry = (ministers || []).find(m => m.ministry_key === demand.target);
+        if (!ministry) return false;
+        return ministry.party_id == null; // vacant
+    }
+
+    return false;
+}
+
 // ==================== POLITICAL VIOLENCE DECAY ====================
 
 /**
@@ -1248,6 +1283,11 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
 
         const demand = generateTier7Demand(statSnapshots, ministerList);
 
+        // Store the baseline stat value so we can check if the demand has been met
+        if (demand.type === 'stat' && nationData) {
+            demand.baseline = Number(nationData[demand.stat] ?? 0);
+        }
+
         // Update protest to T7
         await protestUpdate(supabase, protestId, {
             tier: 7,
@@ -1569,6 +1609,10 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
             const ministerList = (ministers || []).map(m => ({ ...m, is_vacant: m.party_id == null }));
 
             const demand = generateTier7Demand(statSnapshots, ministerList);
+            // Store baseline so we can check if demand has been met
+            if (demand.type === 'stat' && nationStats) {
+                demand.baseline = Number(nationStats[demand.stat] ?? 0);
+            }
             await supabase.from('protest_log').update({ tier7_demand: demand }).eq('id', protestId);
         }
 
