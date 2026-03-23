@@ -1111,7 +1111,7 @@ initPage('home', async (state) => {
         // Merge and sort by tick, label midterm vs presidential
         const merged = [
           ...parlElections.map(e => ({ tick: e.election_tick, type: 'Midterms', css: 'midterm' })),
-          ...presElections.map(e => ({ tick: e.election_tick, type: 'Presidential', css: 'presidential' }))
+          ...presElections.map(e => ({ tick: e.election_tick, type: 'General Election', css: 'presidential' }))
         ].sort((a, b) => a.tick - b.tick);
 
         elections = merged.slice(0, 5);
@@ -1128,7 +1128,7 @@ initPage('home', async (state) => {
               elections.push({ tick: nextParl, type: 'Midterms', css: 'midterm' });
               nextParl += 24;
             } else {
-              elections.push({ tick: nextPres, type: 'Presidential', css: 'presidential' });
+              elections.push({ tick: nextPres, type: 'General Election', css: 'presidential' });
               nextPres += 48;
             }
           }

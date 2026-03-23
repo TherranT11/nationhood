@@ -168,10 +168,16 @@ export function bimodalAxisAlignment(partyPos, elecMean, elecVar) {
  * @param {Array<{factionId: string, partyNorm: number}>} parties - Each party's normalized position (0-100)
  * @param {number} elecMean - Electorate mean on 0-100 scale
  * @param {number} elecVar - Electorate variance (5-45)
- * @param {number} [temperature=4] - Softmax temperature (lower = more winner-take-all)
+ * @param {number} [temperature] - Softmax temperature override (default scales dynamically: 4 at low polarization → 0.75 at max)
  * @returns {Map<string, number>} factionId → share of this axis's voters (0-1, sums to 1)
  */
-function spatialAxisCompetition(parties, elecMean, elecVar, temperature = 4) {
+function spatialAxisCompetition(parties, elecMean, elecVar, temperature) {
+    // Dynamic temperature: at low polarization (var≤10) use temp=4 (soft competition);
+    // at high polarization (var≥40) use temp=0.75 (sharp competition) so the centrist
+    // valley penalty actually survives the softmax.
+    const polWeight = Math.min(1, Math.max(0, (elecVar - 10) / 30));
+    const dynTemp = temperature ?? (4 - 3.25 * polWeight);
+
     const result = new Map();
     if (parties.length === 0) return result;
     if (parties.length === 1) {
@@ -191,7 +197,7 @@ function spatialAxisCompetition(parties, elecMean, elecVar, temperature = 4) {
     // Step 2: Softmax over alignment scores
     const scores = alignments.map(a => a.alignment);
     const maxScore = Math.max(...scores);
-    const k = Math.max(0.5, temperature);
+    const k = Math.max(0.5, dynTemp);
     const exps = scores.map(s => Math.exp((s - maxScore) / k));
     const sumExp = exps.reduce((a, b) => a + b, 0);
 
@@ -452,6 +458,12 @@ export const ELECTORATE_CONFIG = {
 
     // ── Alignment tick config ──
     ALIGNMENT_DRIFT_SPEED: 2,       // max points per tick toward target alignment
+
+    // ── Centrist zone penalty ──
+    // Direct penalty per axis where a party sits in the centrist zone.
+    // Scales with polarization. At max polarization, a party centrist on all
+    // 5 axes loses 5 × 4 = 20 points of alignment — a massive hit.
+    CENTRIST_ZONE_PENALTY_PER_AXIS: 4, // alignment points lost per centrist axis at max polarization
 
     // ── Party approval config ──
     APPROVAL_GOV_NUDGE_DIVISOR: 2.5,  // (gov_approval - 50) / divisor = nudge
@@ -851,6 +863,39 @@ export async function seedFactionElectoralStanding(supabase, nation, factions, p
         });
     }
 
+    // Compute initial raw_appeal and vote shares so elections running before
+    // the first tickElectorate don't see NULL contested_vote_share (= 0 votes).
+    const stability = clamp(Number(nation.stability ?? 50) || 50, 0, 100);
+    const polarization = clamp(Number(nation.polarization ?? 50) || 50, 0, 100);
+    const chaosIndex = clamp(((polarization / 100) + (1 - stability / 100)) / 2, 0, 1);
+    const credWeight = CFG.CRED_MAX_WEIGHT - chaosIndex * (CFG.CRED_MAX_WEIGHT - CFG.CRED_MIN_WEIGHT);
+    const otherBaseSum = CFG.PILLAR_WEIGHT_ALIGNMENT + CFG.PILLAR_WEIGHT_APPEAL +
+                         CFG.PILLAR_WEIGHT_APPROVAL + CFG.PILLAR_WEIGHT_VISIBILITY;
+    const otherScale = (1 - credWeight) / otherBaseSum;
+    const wAlign = CFG.PILLAR_WEIGHT_ALIGNMENT * otherScale;
+    const wAppeal = CFG.PILLAR_WEIGHT_APPEAL * otherScale;
+    const wApproval = CFG.PILLAR_WEIGHT_APPROVAL * otherScale;
+    const wVisibility = CFG.PILLAR_WEIGHT_VISIBILITY * otherScale;
+
+    for (const r of rows) {
+        const credibilityScore = clamp((r.credibility_modifier - 0.5) * 100, 0, 100);
+        r.raw_appeal = round2(
+            r.ideological_alignment * wAlign +
+            r.platform_appeal * wAppeal +
+            r.party_approval * wApproval +
+            (r.visibility || 0) * wVisibility +
+            credibilityScore * credWeight
+        );
+    }
+    computeContestedVoteShares(rows);
+    computeRealizedVoteShares(rows, profile, nation);
+
+    // Add computed vote share fields to each row for DB write
+    for (const r of rows) {
+        r.base_vote_share = r.contested_vote_share;
+        r.turnout_rate = r.turnout_rate || 0.65;
+    }
+
     const { data, error } = await supabase
         .from('faction_electoral_standing')
         .upsert(rows, { onConflict: 'faction_id,nation_id' })
@@ -861,7 +906,7 @@ export async function seedFactionElectoralStanding(supabase, nation, factions, p
         return [];
     }
 
-    console.log(`[Electorate] Seeded ${data.length} faction_electoral_standing rows for ${nation.name}`);
+    console.log(`[Electorate] Seeded ${data.length} faction_electoral_standing rows for ${nation.name} (with initial vote shares)`);
     return data;
 }
 
@@ -948,8 +993,10 @@ export async function genesisElectorate(supabase, nation, factions, currentTick 
  * @param {object} supabase - Supabase client
  * @param {object} nation   - Full nation row
  * @param {number} currentTick - The tick just committed
+ * @param {object} [opts] - Options
+ * @param {boolean} [opts.snap] - If true, bypass drift caps and snap pillars to target values immediately
  */
-export async function tickElectorate(supabase, nation, currentTick) {
+export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     if (isAutocracy(nation)) return;
 
     // ── 1. Load all non-abandoned parties ──
@@ -1135,14 +1182,36 @@ export async function tickElectorate(supabase, nation, currentTick) {
         const isLead = factionId === leadPartyId;
 
         // ─── PILLAR 1: Ideological Alignment (0-100) — spatial competition ───
-        const targetAlignment = (spatialAlignments[factionId] != null)
+        let targetAlignment = (spatialAlignments[factionId] != null)
             ? spatialAlignments[factionId]
             : CFG.DEFAULT_ALIGNMENT;
 
-        // Drift toward target
+        // Centrist zone penalty: parties sitting in the centrist zone on each axis
+        // lose alignment points scaling with polarization. This stacks on top of
+        // spatial competition and can't be washed out by compression.
+        if (ideo) {
+            let centristAxes = 0;
+            for (const axisKey of AXIS_KEYS) {
+                const elecVar = Number(activeProfile['ideo_var_' + axisKey] ?? 20);
+                const partyNorm = (Number(ideo[axisKey] || 0) + 100) / 2;
+                // Centrist zone: centered at 50, width shrinks with polarization
+                const pol = Math.min(100, Math.max(0, (elecVar - 5) / 35 * 100));
+                const half = Math.max(5, 15 - pol * 0.10);
+                if (partyNorm >= (50 - half) && partyNorm < (50 + half)) centristAxes++;
+            }
+            if (centristAxes > 0) {
+                const avgVar = AXIS_KEYS.reduce((s, k) => s + Number(activeProfile['ideo_var_' + k] ?? 20), 0) / AXIS_KEYS.length;
+                const polWeight = Math.min(1, Math.max(0, (avgVar - 10) / 30));
+                targetAlignment -= centristAxes * CFG.CENTRIST_ZONE_PENALTY_PER_AXIS * polWeight;
+                targetAlignment = Math.max(0, targetAlignment);
+            }
+        }
+
+        // Drift toward target (or snap if opts.snap)
         const oldAlignment = Number(standing.ideological_alignment ?? 50);
-        const alignDelta = clamp(targetAlignment - oldAlignment, -CFG.ALIGNMENT_DRIFT_SPEED, CFG.ALIGNMENT_DRIFT_SPEED);
-        const newAlignment = round2(clamp(oldAlignment + alignDelta, 0, 100));
+        const newAlignment = opts.snap
+            ? round2(clamp(targetAlignment, 0, 100))
+            : round2(clamp(oldAlignment + clamp(targetAlignment - oldAlignment, -CFG.ALIGNMENT_DRIFT_SPEED, CFG.ALIGNMENT_DRIFT_SPEED), 0, 100));
 
         // ─── PILLAR 2: Platform Appeal (0-100) ───
         const factionStances = stancesByFaction[factionId] || [];
@@ -1150,8 +1219,9 @@ export async function tickElectorate(supabase, nation, currentTick) {
             factionStances, issueStateMap, ideo, newAlignment
         );
         const oldAppeal = Number(standing.platform_appeal ?? CFG.DEFAULT_PLATFORM_APPEAL);
-        const appealDelta = clamp(appealResult.appeal - oldAppeal, -CFG.APPEAL_DRIFT_SPEED, CFG.APPEAL_DRIFT_SPEED);
-        const newAppeal = round2(clamp(oldAppeal + appealDelta, CFG.APPEAL_MIN, CFG.APPEAL_MAX));
+        const newAppeal = opts.snap
+            ? round2(clamp(appealResult.appeal, CFG.APPEAL_MIN, CFG.APPEAL_MAX))
+            : round2(clamp(oldAppeal + clamp(appealResult.appeal - oldAppeal, -CFG.APPEAL_DRIFT_SPEED, CFG.APPEAL_DRIFT_SPEED), CFG.APPEAL_MIN, CFG.APPEAL_MAX));
 
         // ─── PILLAR 3: Party Approval (0-100) ───
         const oldApproval = Number(standing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);
@@ -1376,10 +1446,12 @@ function computeSpatialAlignments(ideoMap, profile, axisSalienceWeights) {
     const factionWeightedShare = {};
     for (const fid of factionIds) factionWeightedShare[fid] = 0;
     let totalWeight = 0;
+    let varSum = 0;
 
     for (const axisKey of AXIS_KEYS) {
         const elecMean = Number(profile['ideo_mean_' + axisKey] ?? 50);
         const elecVar = Number(profile['ideo_var_' + axisKey] ?? 20);
+        varSum += elecVar;
 
         // Salience weight for this axis
         const profileSalience = Number(profile['salience_' + axisKey] ?? 0.2);
@@ -1404,20 +1476,22 @@ function computeSpatialAlignments(ideoMap, profile, axisSalienceWeights) {
         totalWeight += weight;
     }
 
-    // Normalize to 0-100 scale with sqrt compression.
-    // Without compression, small spatial advantages produce huge alignment gaps
-    // (e.g. 88 vs 24 with 8 parties). Sqrt compresses the scale so that:
-    //   fair share (1/N) → 50 (unchanged)
-    //   2× fair share → 71 (was 100)
-    //   0.5× fair share → 35 (was 25)
-    // This halves the effective spread, preventing alignment from dominating.
+    // Normalize to 0-100 scale with compression that loosens with polarization.
+    // At low polarization: sqrt compression (spread halved, prevents alignment dominating).
+    // At high polarization: linear mapping (full spread, centrist penalty bites hard).
+    // Blend via polWeight so the transition is smooth.
+    const avgVar = varSum / AXIS_KEYS.length;
+    const polWeight = Math.min(1, Math.max(0, (avgVar - 10) / 30));
+
     for (const fid of factionIds) {
         const raw = totalWeight > 0
             ? factionWeightedShare[fid] / totalWeight
             : (1 / factionIds.length);
         const fairShare = 1 / factionIds.length;
         const relativeStrength = fairShare > 0 ? raw / fairShare : 1;
-        const scaled = clamp(Math.sqrt(relativeStrength) * 50, 0, 100);
+        const sqrtScaled = Math.sqrt(relativeStrength) * 50;
+        const linearScaled = relativeStrength * 50;
+        const scaled = clamp((1 - polWeight) * sqrtScaled + polWeight * linearScaled, 0, 100);
         result[fid] = round2(scaled);
     }
 

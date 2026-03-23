@@ -2259,13 +2259,13 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
     let presTabs, presContents;
     if (wasRunoff) {
         presTabs = `
-            <button class="pol-el-tab" data-tab="pres-r1">Presidential [1st Round]</button>
-            <button class="pol-el-tab" data-tab="pres-runoff">Presidential [Runoff]</button>`;
+            <button class="pol-el-tab" data-tab="pres-r1">General Election [1st Round]</button>
+            <button class="pol-el-tab" data-tab="pres-runoff">General Election [Runoff]</button>`;
         presContents = `
             <div class="pol-el-content" data-content="pres-r1">${renderRound1Content(lastPresidential)}</div>
             <div class="pol-el-content" data-content="pres-runoff">${renderRunoffContent(lastPresidential)}</div>`;
     } else {
-        presTabs = `<button class="pol-el-tab" data-tab="pres">Presidential</button>`;
+        presTabs = `<button class="pol-el-tab" data-tab="pres">General Election</button>`;
         presContents = `<div class="pol-el-content" data-content="pres">${renderPresidentialContent(lastPresidential)}</div>`;
     }
 
@@ -2585,7 +2585,7 @@ function renderUpcomingElectionsBox(scheduledElections, currentTick) {
             const date = tickToDate(e.election_tick);
             const ticksAway = e.election_tick - currentTick;
             const typeClass = e.election_type === 'presidential' ? 'pres' : 'parl';
-            const typeLabel = e.election_type === 'presidential' ? 'Presidential' : 'Parliamentary';
+            const typeLabel = e.election_type === 'presidential' ? 'General Election' : 'Parliamentary';
             return `<div class="pol-upcoming-row">
                 <span class="pol-upcoming-type ${typeClass}">${typeLabel}</span>
                 <div class="pol-upcoming-info">

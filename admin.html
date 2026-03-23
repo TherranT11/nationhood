@@ -106,7 +106,7 @@
                 <label>Election Type</label>
                 <select id="election-type-select">
                     <option value="parliamentary">Parliamentary (midterm — seats only, president stays)</option>
-                    <option value="presidential">Presidential (candidate popular vote — new president)</option>
+                    <option value="presidential">General Election (parliamentary seats + presidential vote)</option>
                 </select>
             </div>
             <div id="election-type-warning" style="display:none;background:#3a2a1a;border:1px solid #d48a3c;border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.82rem;color:#d48a3c;"></div>
@@ -139,7 +139,7 @@
             <div class="input-group">
                 <label>Election Type</label>
                 <select id="schedule-type-select">
-                    <option value="presidential">Presidential (Parliamentary + Presidential)</option>
+                    <option value="presidential">General Election (Parliamentary + Presidential)</option>
                     <option value="parliamentary">Parliamentary / Midterm</option>
                 </select>
             </div>
@@ -739,7 +739,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
 
             let schedText = '';
             if (nextParl) schedText += `Parliamentary: tick ${nextParl.election_tick} (${nextParl.election_tick - currentTick} away)`;
-            if (nextPres) schedText += `${schedText ? ' | ' : ''}Presidential: tick ${nextPres.election_tick} (${nextPres.election_tick - currentTick} away)`;
+            if (nextPres) schedText += `${schedText ? ' | ' : ''}General Election: tick ${nextPres.election_tick} (${nextPres.election_tick - currentTick} away)`;
             if (schedText) {
                 document.getElementById('election-info-next').textContent = schedText;
                 document.getElementById('election-info-scheduled').style.display = '';
@@ -810,10 +810,10 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 : 'parliamentary';
 
             if (isPresidential) {
-                const typeLabel = selectedElectionType === 'presidential' ? 'Presidential (new president)' : 'Parliamentary (midterm)';
+                const typeLabel = selectedElectionType === 'presidential' ? 'General Election (seats + president)' : 'Parliamentary (midterm)';
                 const confirmMsg = `Run a ${typeLabel} election for ${nationRow.name}?\n\n` +
                     (selectedElectionType === 'presidential'
-                        ? 'This will determine a new president via candidate popular vote. If no candidates exist, they will be auto-generated and auto-selected.'
+                        ? 'This will reshuffle parliamentary seats AND determine a new president via candidate popular vote. If no candidates exist, they will be auto-generated and auto-selected.'
                         : 'This will reshuffle parliamentary seats. The president stays in office.') +
                     '\n\nContinue?';
                 if (!window.confirm(confirmMsg)) {
@@ -828,11 +828,25 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 electionType: selectedElectionType
             });
 
-            // Display results — candidate results for presidential, seat results for parliamentary
+            // Display results — for general elections show both seats and candidates
             const candidateResults = runResult?.completedElection?.results?.presidential_candidates || [];
+            const seatResultsDisplay = runResult?.completedElection?.results?.seats || runResult?.seatResults || [];
+            let resultsHtml = '';
+
+            if (seatResultsDisplay.length > 0) {
+                const totalSeats = selectedElectionNation.total_seats || 120;
+                resultsHtml += `<h4 style="color:#d48a3c;margin:0 0 8px;">Parliamentary Seats</h4>`;
+                resultsHtml += seatResultsDisplay
+                    .sort((a, b) => b.seats - a.seats)
+                    .map(r => `<div class="result-party"><div><div class="result-party-name">${escHtml(r.party_name)}</div><div class="result-bar" style="width:200px;"><div class="result-bar-fill" style="width:${(r.seats/totalSeats)*100}%"></div></div></div><div class="result-party-seats">${r.seats} seats</div></div>`)
+                    .join('');
+            }
+
             if (candidateResults.length > 0) {
                 const sorted = [...candidateResults].sort((a, b) => b.votes - a.votes);
-                resultsContent.innerHTML = sorted.map(c => {
+                if (resultsHtml) resultsHtml += `<hr style="border-color:#333;margin:12px 0;">`;
+                resultsHtml += `<h4 style="color:#5cb85c;margin:0 0 8px;">Presidential Vote</h4>`;
+                resultsHtml += sorted.map(c => {
                     const isWinner = c.winner;
                     return `<div class="result-party" style="${isWinner ? 'border-left:3px solid #5cb85c;padding-left:8px;' : ''}">
                         <div><div class="result-party-name">${isWinner ? '&#x2713; ' : ''}${escHtml(c.candidate_name)} (${escHtml(c.party_name)})</div>
@@ -841,13 +855,10 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                         <div class="result-party-seats">${(c.votes || 0).toLocaleString()} votes (${c.vote_percentage || 0}%)</div>
                     </div>`;
                 }).join('');
-                resultsDiv.classList.remove('hidden');
-            } else if (runResult?.seatResults?.length) {
-                const totalSeats = selectedElectionNation.total_seats || 120;
-                resultsContent.innerHTML = runResult.seatResults
-                    .sort((a, b) => b.seats - a.seats)
-                    .map(r => `<div class="result-party"><div><div class="result-party-name">${escHtml(r.party_name)}</div><div class="result-bar" style="width:200px;"><div class="result-bar-fill" style="width:${(r.seats/totalSeats)*100}%"></div></div></div><div class="result-party-seats">${r.seats} seats</div></div>`)
-                    .join('');
+            }
+
+            if (resultsHtml) {
+                resultsContent.innerHTML = resultsHtml;
                 resultsDiv.classList.remove('hidden');
             }
 
@@ -932,7 +943,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     }
 
     async function previewPresidentialElection(status, previewDiv, previewContent, previewSummary, previewBlocs) {
-            document.getElementById('election-preview-header').textContent = '🔍 Presidential Election Preview (Client-Side Simulation)';
+            document.getElementById('election-preview-header').textContent = '🔍 General Election Preview (Client-Side Simulation)';
             const result = await runPresidentialElectionPreview(_supabase, selectedElectionNation.id);
 
             // Summary stats
@@ -1017,7 +1028,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             }
 
             previewDiv.classList.remove('hidden');
-            status.className = 'status success'; status.textContent = `✅ Presidential preview complete for ${selectedElectionNation.name} (no data written)`;
+            status.className = 'status success'; status.textContent = `✅ General Election preview complete for ${selectedElectionNation.name} (no data written)`;
     }
 
     function renderCandidateTable(candidates) {
@@ -1189,7 +1200,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             } else {
                 const dbCount = inserted?.length || 0;
                 const typeLabel = electionType === 'presidential'
-                    ? 'Parliamentary + Presidential' : 'Parliamentary / Midterm';
+                    ? 'General Election' : 'Parliamentary / Midterm';
                 status.className = 'status success';
                 status.textContent = `✅ Scheduled ${typeLabel} for ${targetNations.length} nation(s) at tick ${targetTick} — ${dbCount} record(s) confirmed in DB`;
                 console.log('Scheduled elections:', inserted);
