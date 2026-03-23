@@ -114,8 +114,11 @@ export function bimodalAxisAlignment(partyPos, elecMean, elecVar) {
     // Bimodal: two narrower Gaussians offset from mean
     // Offset grows with variance (at max var=45, offset=30 from mean)
     const offset = elecVar * 0.67;
-    // Each hump is narrower than the overall spread — voters are clustered
-    const humpSigma = Math.max(5, sigma * 0.5);
+    // Each hump narrows as polarization deepens — at max polarization the
+    // valley between camps should be deep, punishing centrist positions hard.
+    // Multiplier scales from 0.45 (mild polarization) down to 0.25 (extreme).
+    const humpMult = 0.45 - 0.20 * polWeight;          // 0.45 → 0.25
+    const humpSigma = Math.max(5, sigma * humpMult);
 
     const leftHump = Math.min(100, Math.max(0, elecMean - offset));
     const rightHump = Math.min(100, Math.max(0, elecMean + offset));
