@@ -282,7 +282,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-modal">
                 <div class="nws-modal-header">
                     <h3>Write Article</h3>
-                    <span class="nws-ap-badge" id="nws-reward-badge">+2 Visibility (4000+)</span>
+                    <span class="nws-ap-badge" id="nws-reward-badge">+2 Vis, +1 Approval, +1 Enthusiasm (4000+)</span>
                 </div>
                 <button class="nws-modal-close" id="nws-modal-close">&times;</button>
                 <div class="nws-modal-body">
@@ -355,7 +355,7 @@ export async function initNewspaper(supabase, state) {
     if (rewardBadge) {
         rewardBadge.textContent = _isAutocracyNation
             ? '+1 Backing (4000+)'
-            : '+2 Visibility (4000+)';
+            : '+2 Vis, +1 Approval, +1 Enthusiasm (4000+)';
     }
 
     // === LOAD & DISPLAY ARTICLES ===
@@ -380,6 +380,39 @@ async function _applyArticleVisibilityReward(factionId, nationId) {
         .update({ visibility: newVal })
         .eq('faction_id', factionId)
         .eq('nation_id', nationId);
+}
+
+/** Award +1 party approval to a democratic faction for writing a long article */
+async function _applyArticleApprovalReward(factionId, nationId) {
+    const { data: standing } = await _supabase
+        .from('faction_electoral_standing')
+        .select('id, party_approval')
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId)
+        .maybeSingle();
+    if (!standing) return;
+    const current = Number(standing.party_approval ?? 0);
+    const newVal = Math.min(90, current + 1);
+    await _supabase
+        .from('faction_electoral_standing')
+        .update({ party_approval: newVal })
+        .eq('id', standing.id);
+}
+
+/** Award +1 enthusiasm to the nation's electorate for a published article */
+async function _applyArticleEnthusiasmReward(nationId) {
+    const { data: profile } = await _supabase
+        .from('electorate_profile')
+        .select('id, enthusiasm')
+        .eq('nation_id', nationId)
+        .maybeSingle();
+    if (!profile) return;
+    const current = Number(profile.enthusiasm ?? 50);
+    const newVal = Math.min(90, current + 1);
+    await _supabase
+        .from('electorate_profile')
+        .update({ enthusiasm: newVal })
+        .eq('id', profile.id);
 }
 
 /** Award backing to an autocracy faction for writing an article */
@@ -600,12 +633,14 @@ function bindSubmitHandler() {
                         successMsg = `Article published! (${body.length}/4000 chars — no backing reward)`;
                     }
                 } else {
-                    // Democracy: +2 Visibility for any article >= 4000 chars
+                    // Democracy: +2 Visibility, +1 Approval, +1 Enthusiasm for any article >= 4000 chars
                     if (body.length >= 4000) {
                         _applyArticleVisibilityReward(faction.id, nation.id).catch(err => console.error('[News] Visibility reward failed:', err));
-                        successMsg = 'Article published! +2 Visibility.';
+                        _applyArticleApprovalReward(faction.id, nation.id).catch(err => console.error('[News] Approval reward failed:', err));
+                        _applyArticleEnthusiasmReward(nation.id).catch(err => console.error('[News] Enthusiasm reward failed:', err));
+                        successMsg = 'Article published! +2 Visibility, +1 Approval, +1 Enthusiasm.';
                     } else {
-                        successMsg = `Article published! (${body.length}/4000 chars — no visibility reward)`;
+                        successMsg = `Article published! (${body.length}/4000 chars — no reward)`;
                     }
                 }
                 showFormSuccess(successMsg);
