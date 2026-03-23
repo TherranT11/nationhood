@@ -434,8 +434,8 @@ function guessSeverity(effects) {
 // ════════════════════════════════════════════════════════════════
 
 const TIER_LABELS = {
-    1: 'Embarrassing Fizzle', 2: 'Modest Showing', 3: 'Respectable Turnout',
-    4: 'Strong Protest', 5: 'Mass Demonstration', 6: 'Historic Protest', 7: 'Nationwide Protest',
+    1: 'Embarrassing Backfire', 2: 'Protests Don\'t Materialise', 3: 'Modest Turnout',
+    4: 'Respectable Protest', 5: 'Strong Demonstration', 6: 'Nationwide Protests', 7: 'The Big One',
 };
 
 function protestEventType(tier) {

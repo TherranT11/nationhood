@@ -12258,10 +12258,9 @@ const ELECTORATE_CONFIG = {
     APPROVAL_MAX: 90,
 
     // ── Visibility config ──
-    VISIBILITY_DECAY: 0.92,          // 8% decay per tick
+    VISIBILITY_DECAY: 0.97,          // 3% decay per tick (always active)
     VISIBILITY_FLOOR: 10,
     VISIBILITY_GOV_FLOOR: 25,        // governing parties stay more visible
-    VISIBILITY_INACTIVITY_THRESHOLD: 3, // ticks without action before decay kicks in
 
     // ── Credibility config ──
     CREDIBILITY_MIN: 0.5,
@@ -13030,11 +13029,9 @@ async function tickElectorate(supabase, nation, currentTick) {
         const newApproval = round2(clamp(oldApproval + approvalDelta + approvalNudge, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX));
 
         // ─── VISIBILITY (turnout multiplier, not a pillar) ───
+        // Decays 3% every tick — parties must actively campaign to stay visible
         let newVisibility = Number(standing.visibility ?? CFG.DEFAULT_VISIBILITY);
-        if (currentTick >= CFG.VISIBILITY_INACTIVITY_THRESHOLD &&
-            ticksSinceAction >= CFG.VISIBILITY_INACTIVITY_THRESHOLD) {
-            newVisibility = round2(newVisibility * CFG.VISIBILITY_DECAY);
-        }
+        newVisibility = round2(newVisibility * CFG.VISIBILITY_DECAY);
         const visFloor = isCoalition ? CFG.VISIBILITY_GOV_FLOOR : CFG.VISIBILITY_FLOOR;
         newVisibility = round2(clamp(newVisibility, visFloor, 100));
 
@@ -24049,11 +24046,9 @@ async function runElectionPreview(supabase, nationId) {
     if (!nation) throw new Error('Nation not found');
 
     const totalSeats = nation.total_seats || 120;
+    const eligibleVoters = nation.eligible_voters || 0;
 
-    // 2. Voter blocs (legacy table removed — use empty array)
-    const blocs = [];
-
-    // 3. Load parties + their ideology axes (exclude inactive ≥12 ticks)
+    // 2. Load parties (exclude inactive ≥12 ticks)
     const { data: shard } = await supabase
         .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
@@ -24068,61 +24063,78 @@ async function runElectionPreview(supabase, nationId) {
     );
     if (!factions || factions.length === 0) throw new Error('No eligible parties found for this nation');
 
+    // 3. Load electoral standings from Three Pillars electorate engine
     const factionIds = factions.map(f => f.id);
-    const { data: ideologies } = await supabase
-        .from('faction_ideology')
-        .select('*')
+    const { data: standings } = await supabase
+        .from('faction_electoral_standing')
+        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval, visibility, raw_appeal')
+        .eq('nation_id', nationId)
         .in('faction_id', factionIds);
 
-    const ideoMap = {};
-    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
+    const standingMap = {};
+    for (const s of (standings || [])) standingMap[s.faction_id] = s;
 
-    // Build party objects with axes and electability
-    const parties = factions.map(f => ({
-        id: f.id,
-        faction_name: f.faction_name,
-        electability: f.electability ?? 50,
-        axes: ideoMap[f.id] || {
-            liberty_equality: 0, tradition_progress: 0, security_freedom: 0,
-            globalism_nationalism: 0, individualism_collectivism: 0
+    // 4. Convert vote shares to actual votes
+    const tally = {};
+    let totalVotesCast = 0;
+
+    let totalRealizedShare = 0;
+    const voteExacts = [];
+    for (const f of factions) {
+        const s = standingMap[f.id];
+        const share = Number(s?.realized_vote_share || 0);
+        totalRealizedShare += share;
+        const exactVotes = eligibleVoters * share;
+        voteExacts.push({ id: f.id, exact: exactVotes, floored: Math.floor(exactVotes) });
+        tally[f.id] = Math.floor(exactVotes);
+        totalVotesCast += Math.floor(exactVotes);
+    }
+
+    // Distribute remainder votes via largest remainder
+    const targetVotes = Math.round(eligibleVoters * Math.min(1, totalRealizedShare));
+    let remainder = targetVotes - totalVotesCast;
+    if (remainder > 0) {
+        voteExacts.sort((a, b) => (b.exact - b.floored) - (a.exact - a.floored));
+        for (let i = 0; i < remainder && i < voteExacts.length; i++) {
+            tally[voteExacts[i].id] += 1;
+            totalVotesCast += 1;
         }
-    }));
+    }
 
-    // 3b. Simulation uses ideology-only weights now
-    const allBlocApprovals = null;
+    const totalAbstentions = Math.max(0, eligibleVoters - totalVotesCast);
 
-    // 4. Run simulation
-    const result = runElectionSimulation(blocs, parties, totalSeats, allBlocApprovals);
+    // 5. Allocate seats
+    const seats = allocateSeatsByVotes(tally, totalSeats);
 
-    // 5. Build friendly results
-    const partyResults = parties.map(p => {
+    // 6. Build friendly results
+    const partyResults = factions.map(f => {
+        const s = standingMap[f.id];
         return {
-            party_id: p.id,
-            party_name: p.faction_name,
-            approval: 40,
-            votes: result.votes[p.id] || 0,
-            vote_percentage: result.totalVotesCast > 0
-                ? Math.round(((result.votes[p.id] || 0) / result.totalVotesCast) * 10000) / 100
+            party_id: f.id,
+            party_name: f.faction_name,
+            approval: Math.round(Number(s?.party_approval || 0)),
+            votes: tally[f.id] || 0,
+            vote_percentage: totalVotesCast > 0
+                ? Math.round(((tally[f.id] || 0) / totalVotesCast) * 10000) / 100
                 : 0,
-            seats: result.seats[p.id] || 0
+            seats: seats[f.id] || 0
         };
     }).sort((a, b) => b.seats - a.seats);
 
-    // Build party name lookup for UI
     const partyNames = {};
-    for (const p of parties) partyNames[p.id] = p.faction_name;
+    for (const f of factions) partyNames[f.id] = f.faction_name;
 
     return {
         nation: nation.name,
         total_seats: totalSeats,
-        eligible_voters: nation.eligible_voters || 0,
-        total_votes_cast: result.totalVotesCast,
-        total_abstentions: result.totalAbstentions,
-        turnout_pct: nation.eligible_voters
-            ? Math.round((result.totalVotesCast / nation.eligible_voters) * 10000) / 100
+        eligible_voters: eligibleVoters,
+        total_votes_cast: totalVotesCast,
+        total_abstentions: totalAbstentions,
+        turnout_pct: eligibleVoters
+            ? Math.round((totalVotesCast / eligibleVoters) * 10000) / 100
             : 0,
         results: partyResults,
-        bloc_details: result.details,
+        bloc_details: [],
         partyNames
     };
 }
@@ -24142,10 +24154,9 @@ async function runPresidentialElectionPreview(supabase, nationId) {
         .single();
     if (!nation) throw new Error('Nation not found');
 
-    // 2. Voter blocs (legacy table removed — use empty array)
-    const blocs = [];
+    const eligibleVoters = nation.eligible_voters || 0;
 
-    // 3. Load selected presidential candidates
+    // 2. Load selected presidential candidates
     const { data: candidates } = await supabase
         .from('pm_candidates')
         .select('id, first_name, last_name, faction_id, ideology, ideology_axis, ideology_direction, trait_key')
@@ -24154,8 +24165,7 @@ async function runPresidentialElectionPreview(supabase, nationId) {
         .eq('selected', true);
     if (!candidates || candidates.length === 0) throw new Error('No selected presidential candidates found. Generate and select candidates first.');
 
-    // 4. Load faction data + ideology axes for each candidate's party
-    //    Filter out candidates whose factions are inactive ≥12 ticks
+    // 3. Load faction data + ideology axes for each candidate's party
     const { data: shardData } = await supabase
         .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const presTick = shardData?.current_tick || 0;
@@ -24181,7 +24191,16 @@ async function runPresidentialElectionPreview(supabase, nationId) {
     const ideoMap = {};
     for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
 
-    // 5. Build "virtual party" objects per candidate (mirrors SQL RPC logic)
+    // 4. Load electoral standings for each candidate's faction
+    const { data: standings } = await supabase
+        .from('faction_electoral_standing')
+        .select('faction_id, realized_vote_share, party_approval')
+        .eq('nation_id', nationId)
+        .in('faction_id', factionIds);
+    const standingMap = {};
+    for (const s of (standings || [])) standingMap[s.faction_id] = s;
+
+    // 5. Build "virtual party" objects per candidate
     const AXES = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
     function buildCandidateParty(cand) {
         const factionIdeo = ideoMap[cand.faction_id] || {};
@@ -24189,8 +24208,6 @@ async function runPresidentialElectionPreview(supabase, nationId) {
         for (const axis of AXES) {
             let val = factionIdeo[axis] || 0;
             if (cand.ideology_axis === axis) {
-                // Candidate gets +15 bonus on their personal axis
-                // For globalism_nationalism, negate direction (convention mismatch)
                 const dir = axis === 'globalism_nationalism' ? cand.ideology_direction * -1 : cand.ideology_direction;
                 val += 15 * dir;
             }
@@ -24209,17 +24226,36 @@ async function runPresidentialElectionPreview(supabase, nationId) {
     }
     const allCandidateParties = eligibleCandidates.map(buildCandidateParty);
 
-    // 6. Simulation uses ideology-only weights now
-    const allBlocApprovals = null;
+    // 6. Compute votes from faction vote shares
+    function computePresidentialVotes(candidateParties) {
+        const factionCandidates = {};
+        for (const cp of candidateParties) {
+            if (!factionCandidates[cp.faction_id]) factionCandidates[cp.faction_id] = [];
+            factionCandidates[cp.faction_id].push(cp);
+        }
+        const tally = {};
+        let totalVotesCast = 0;
+        for (const cp of candidateParties) tally[cp.id] = 0;
+        for (const [fid, cands] of Object.entries(factionCandidates)) {
+            const s = standingMap[fid];
+            const factionShare = Number(s?.realized_vote_share || 0);
+            const factionVotes = Math.round(eligibleVoters * factionShare);
+            const perCandidate = Math.floor(factionVotes / cands.length);
+            let assigned = 0;
+            for (const c of cands) { tally[c.id] = perCandidate; assigned += perCandidate; }
+            if (assigned < factionVotes && cands.length > 0) tally[cands[0].id] += factionVotes - assigned;
+            totalVotesCast += factionVotes;
+        }
+        const totalAbstentions = Math.max(0, eligibleVoters - totalVotesCast);
+        return { votes: tally, totalVotesCast, totalAbstentions, details: [] };
+    }
 
-    // 7. Run Round 1 simulation (use totalSeats=0 — we only care about votes)
-    const round1 = runElectionSimulation(blocs, allCandidateParties, 0, allBlocApprovals);
+    const round1 = computePresidentialVotes(allCandidateParties);
 
-    // Build Round 1 candidate results
-    const totalBlocWeight = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
+    // Build candidate results
     function buildCandidateResults(parties, simResult) {
         return parties.map(p => {
-            const weightedApproval = 40;
+            const s = standingMap[p.faction_id];
             return {
                 candidate_id: p.id,
                 candidate_name: p.faction_name,
@@ -24227,7 +24263,7 @@ async function runPresidentialElectionPreview(supabase, nationId) {
                 faction_id: p.faction_id,
                 ideology: p.ideology,
                 trait_key: p.trait_key,
-                approval: weightedApproval,
+                approval: Math.round(Number(s?.party_approval || 0)),
                 votes: simResult.votes[p.id] || 0,
                 vote_percentage: simResult.totalVotesCast > 0
                     ? Math.round(((simResult.votes[p.id] || 0) / simResult.totalVotesCast) * 10000) / 100
@@ -24238,7 +24274,7 @@ async function runPresidentialElectionPreview(supabase, nationId) {
 
     const round1Results = buildCandidateResults(allCandidateParties, round1);
 
-    // 8. Check for runoff
+    // 7. Check for runoff
     const topPct = round1Results[0]?.vote_percentage || 0;
     let wasRunoff = false;
     let runoffResults = null;
@@ -24246,19 +24282,13 @@ async function runPresidentialElectionPreview(supabase, nationId) {
     let winner;
 
     if (topPct > 50 || allCandidateParties.length <= 2) {
-        // Clear winner — no runoff
         winner = round1Results[0];
         winner.winner = true;
     } else {
-        // Runoff: top 2 advance, re-run simulation
         wasRunoff = true;
         const top2Ids = new Set([round1Results[0].candidate_id, round1Results[1].candidate_id]);
         const runoffParties = allCandidateParties.filter(p => top2Ids.has(p.id));
-
-        // Bloc approvals not used — pass null
-        const runoffBlocApprovals = null;
-
-        const round2 = runElectionSimulation(blocs, runoffParties, 0, runoffBlocApprovals);
+        const round2 = computePresidentialVotes(runoffParties);
         runoffResults = buildCandidateResults(runoffParties, round2);
         round2Details = round2.details;
         winner = runoffResults[0];
@@ -25590,6 +25620,304 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
     };
 }
 
+// ==================== EDUCATION — CURRICULUM DRIFT ====================
+
+async function processCurriculumDrift(supabase, nation, currentTick) {
+    const { data: drifts, error } = await supabase
+        .from('curriculum_drift')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .eq('completed', false);
+
+    if (error || !drifts || drifts.length === 0) return;
+
+    const ideoCentre = nation.ideological_centre || {
+        individualism_collectivism: 0,
+        tradition_progress: 0,
+        liberty_equality: 0,
+        freedom_security: 0,
+        globalism_nationalism: 0
+    };
+
+    let changed = false;
+
+    for (const drift of drifts) {
+        // Still in delay period
+        if (currentTick < drift.activates_at_tick) continue;
+
+        // Drift complete
+        if (drift.drift_ticks_remaining <= 0) {
+            await supabase.from('curriculum_drift')
+                .update({ completed: true })
+                .eq('id', drift.id);
+
+            // Fire completion event
+            try {
+                const axisLabel = drift.axis.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/ /g, ' / ');
+                const templates = [
+                    `Curriculum drift complete. ${axisLabel} axis shifted ${drift.direction_label} by 2.4 points.`,
+                    `${nation.name} electorate composition updated. Curriculum cycle concluded.`,
+                    `Education drift period ends. ${axisLabel} ideological shift locked in permanently.`,
+                    `Curriculum investment from Tick ${drift.set_at_tick} fully applied to electorate.`
+                ];
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    tick: currentTick,
+                    event_type: 'ministry_curriculum_drift_complete',
+                    category: 'education',
+                    headline: templates[Math.floor(Math.random() * templates.length)],
+                    details: { axis: drift.axis, direction: drift.direction, direction_label: drift.direction_label, set_at_tick: drift.set_at_tick },
+                    severity: 'info'
+                });
+            } catch (e) { /* non-fatal */ }
+            continue;
+        }
+
+        // Drift is active — apply +0.2 * direction per tick
+        const magnitude = Number(drift.drift_per_tick || 0.2) * drift.direction;
+        const axis = drift.axis;
+        if (ideoCentre[axis] !== undefined) {
+            ideoCentre[axis] = Math.round(((ideoCentre[axis] || 0) + magnitude) * 100) / 100;
+            changed = true;
+        }
+
+        // Decrement remaining ticks
+        const newRemaining = drift.drift_ticks_remaining - 1;
+        await supabase.from('curriculum_drift')
+            .update({ drift_ticks_remaining: newRemaining })
+            .eq('id', drift.id);
+
+        // Fire activation event on first tick of drift
+        if (drift.drift_ticks_remaining === 12) {
+            try {
+                const axisLabel = drift.axis.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/ /g, ' / ');
+                const templates = [
+                    `Curriculum reforms from Tick ${drift.set_at_tick} now taking effect. Electorate drifting ${drift.direction_label}.`,
+                    `${nation.name} curriculum drift active. Ideological shift underway on ${axisLabel} axis.`,
+                    `Education policy set ${currentTick - drift.set_at_tick} ticks ago begins reshaping ${nation.name}'s electorate.`,
+                    `Long-term curriculum investment now visible in electorate composition.`
+                ];
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    tick: currentTick,
+                    event_type: 'ministry_curriculum_drift_begins',
+                    category: 'education',
+                    headline: templates[Math.floor(Math.random() * templates.length)],
+                    details: { axis: drift.axis, direction: drift.direction, direction_label: drift.direction_label, set_at_tick: drift.set_at_tick },
+                    severity: 'info'
+                });
+            } catch (e) { /* non-fatal */ }
+        }
+    }
+
+    if (changed) {
+        const { error: updateErr } = await supabase.from('nations')
+            .update({ ideological_centre: ideoCentre })
+            .eq('id', nation.id);
+        if (updateErr) {
+            console.error(`[CurriculumDrift] Failed to update ideological_centre for ${nation.name}:`, updateErr.message);
+        } else {
+            console.log(`[CurriculumDrift] ${nation.name} ideological_centre updated:`, JSON.stringify(ideoCentre));
+        }
+    }
+}
+
+// ==================== VOLBAL LIGUE NATIONALE ====================
+
+const VLN_TEAMS = [
+    { id: 'san_estrella_fc',   name: 'San Estrella FC',   strength: 72 },
+    { id: 'palvera_united',    name: 'Palvera United',    strength: 69 },
+    { id: 'avelia_cf',         name: 'Avelia CF',         strength: 65 },
+    { id: 'fc_montequilla',    name: 'FC Montequilla',    strength: 62 },
+    { id: 'melizea_rovers',    name: 'Melizea Rovers',    strength: 60 },
+    { id: 'real_sangreza',     name: 'Real Sangreza',     strength: 58 },
+    { id: 'crucera_athletic',  name: 'Crucera Athletic',  strength: 55 },
+    { id: 'ossvera_city',      name: 'Ossvera City',      strength: 52 },
+    { id: 'valdoria_sc',       name: 'Valdoria SC',       strength: 48 },
+    { id: 'norte_bravo_fc',    name: 'Norte Bravo FC',    strength: 44 },
+];
+
+const VLN_ACTIVE_MONTHS = [2, 3, 4, 5, 6, 7, 8, 9, 10]; // March(2)–November(10)
+const VLN_MATCHES_PER_TICK = 5;
+
+function vlnShuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
+function vlnGenerateFixtures() {
+    const fixtures = [];
+    for (let i = 0; i < VLN_TEAMS.length; i++) {
+        for (let j = 0; j < VLN_TEAMS.length; j++) {
+            if (i !== j) fixtures.push({ home: VLN_TEAMS[i].id, away: VLN_TEAMS[j].id, played: false });
+        }
+    }
+    return vlnShuffle(fixtures);
+}
+
+function vlnFreshStandings() {
+    return Object.fromEntries(VLN_TEAMS.map(t => [t.id, {
+        id: t.id, name: t.name, played: 0, w: 0, d: 0, l: 0, form: [],
+    }]));
+}
+
+const VLN_SCORELINES = {
+    home: [
+        { home: 1, away: 0 }, { home: 2, away: 0 }, { home: 2, away: 1 },
+        { home: 3, away: 1 }, { home: 3, away: 2 }, { home: 4, away: 1 },
+        { home: 1, away: 0 }, { home: 2, away: 1 },
+    ],
+    away: [
+        { home: 0, away: 1 }, { home: 0, away: 2 }, { home: 1, away: 2 },
+        { home: 1, away: 3 }, { home: 2, away: 3 }, { home: 0, away: 1 },
+    ],
+    draw: [
+        { home: 0, away: 0 }, { home: 1, away: 1 },
+        { home: 2, away: 2 }, { home: 1, away: 1 },
+    ],
+};
+
+function vlnResolveMatch(fixture) {
+    const home = VLN_TEAMS.find(t => t.id === fixture.home);
+    const away = VLN_TEAMS.find(t => t.id === fixture.away);
+    let homeRoll = Math.ceil(Math.random() * 6);
+    let awayRoll = Math.ceil(Math.random() * 6);
+    if (home.strength > away.strength) homeRoll += 2;
+    if (away.strength > home.strength) awayRoll += 2;
+    let outcome;
+    if (homeRoll > awayRoll)       outcome = 'home';
+    else if (awayRoll > homeRoll)  outcome = 'away';
+    else                           outcome = 'draw';
+    const pool = VLN_SCORELINES[outcome];
+    const score = pool[Math.floor(Math.random() * pool.length)];
+    return {
+        home: fixture.home, away: fixture.away,
+        homeName: home.name, awayName: away.name,
+        outcome, homeScore: score.home, awayScore: score.away,
+    };
+}
+
+function vlnSelectMOTW(results) {
+    let best = results[0], bestScore = -1;
+    for (const r of results) {
+        const s = (r.homeScore + r.awayScore)
+            + (r.homeScore === r.awayScore ? 1 : 0)
+            + (Math.abs(r.homeScore - r.awayScore) <= 1 ? 0.5 : 0);
+        if (s > bestScore) { bestScore = s; best = r; }
+    }
+    return best;
+}
+
+function vlnInitSeason(tick) {
+    return {
+        active: true,
+        season: 2000 + Math.floor(tick / 12),
+        matchweek: 0,
+        fixtures: vlnGenerateFixtures(),
+        standings: vlnFreshStandings(),
+        last_results: [],
+        match_of_week: null,
+    };
+}
+
+function vlnProcessTick(state, newTick) {
+    const month = newTick % 12;
+    const year = 2000 + Math.floor(newTick / 12);
+    const active = VLN_ACTIVE_MONTHS.includes(month);
+
+    // Season reset: March of a new year
+    if (month === 2 && state.season !== year) {
+        return vlnInitSeason(newTick);
+    }
+    // Off-season
+    if (!active) {
+        return { ...state, active: false, last_results: [], match_of_week: null };
+    }
+    // Active — resolve matches
+    const fixtures = state.fixtures || [];
+    const standings = state.standings || vlnFreshStandings();
+    const unplayed = fixtures.filter(f => !f.played);
+    if (unplayed.length === 0) {
+        return { ...state, active: true, last_results: [], match_of_week: null };
+    }
+    const batch = unplayed.slice(0, VLN_MATCHES_PER_TICK);
+    const results = batch.map(f => vlnResolveMatch(f));
+    for (const r of results) {
+        const fix = fixtures.find(f => f.home === r.home && f.away === r.away && !f.played);
+        if (fix) fix.played = true;
+        // Update standings
+        const h = standings[r.home], a = standings[r.away];
+        h.played++; a.played++;
+        if (r.outcome === 'home') { h.w++; a.l++; }
+        else if (r.outcome === 'away') { a.w++; h.l++; }
+        else { h.d++; a.d++; }
+        h.form = [...h.form.slice(-4), r.outcome === 'home' ? 'W' : r.outcome === 'draw' ? 'D' : 'L'];
+        a.form = [...a.form.slice(-4), r.outcome === 'away' ? 'W' : r.outcome === 'draw' ? 'D' : 'L'];
+    }
+    return {
+        ...state, active: true, season: year,
+        matchweek: (state.matchweek || 0) + 1,
+        fixtures, standings,
+        last_results: results,
+        match_of_week: results.length > 0 ? vlnSelectMOTW(results) : null,
+    };
+}
+
+async function processVLN(supabase, newTick) {
+    // Load current state
+    const { data: row, error: loadErr } = await supabase
+        .from('vln_state')
+        .select('*')
+        .eq('shard_name', 'Alpha Shard')
+        .maybeSingle();
+
+    if (loadErr) {
+        console.error('[VLN] Failed to load state:', loadErr.message);
+        return;
+    }
+
+    let state = row ? {
+        active: row.active,
+        season: row.season,
+        matchweek: row.matchweek,
+        fixtures: row.fixtures || [],
+        standings: row.standings || {},
+        last_results: row.last_results || [],
+        match_of_week: row.match_of_week,
+    } : vlnInitSeason(newTick);
+
+    // Process
+    const updated = vlnProcessTick(state, newTick);
+
+    // Persist
+    const payload = {
+        active: updated.active,
+        season: updated.season,
+        matchweek: updated.matchweek,
+        fixtures: updated.fixtures,
+        standings: updated.standings,
+        last_results: updated.last_results,
+        match_of_week: updated.match_of_week,
+        updated_at: new Date().toISOString(),
+    };
+
+    if (row) {
+        const { error: upErr } = await supabase
+            .from('vln_state').update(payload).eq('id', row.id);
+        if (upErr) console.error('[VLN] Failed to update state:', upErr.message);
+        else console.log(`[VLN] Matchweek ${updated.matchweek}, active=${updated.active}, season=${updated.season}`);
+    } else {
+        const { error: insErr } = await supabase
+            .from('vln_state').insert({ shard_name: 'Alpha Shard', ...payload });
+        if (insErr) console.error('[VLN] Failed to insert state:', insErr.message);
+        else console.log(`[VLN] Initialized season ${updated.season}`);
+    }
+}
+
 // ==================== ADVANCE TICK ====================
 
 async function advanceTick(supabase, { force = false, reprocess = false } = {}) {
@@ -25890,6 +26218,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (minActErr) {
             console.error(`[advanceTick] Ministry actions failed for ${nation.name} (non-fatal):`, minActErr);
+        }
+
+        // Education: curriculum drift processing
+        try {
+            await processCurriculumDrift(supabase, nation, newTick);
+        } catch (currErr) {
+            console.error(`[advanceTick] Curriculum drift failed for ${nation.name} (non-fatal):`, currErr);
         }
 
         // Military doctrine tick processing (cohesion, renounce cooldown)
@@ -26809,6 +27144,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] History snapshot FAILED for ${nation.id} (${nation.name}):`, snapErr);
         }
       }
+    }
+
+    // 4b. Volbal Ligue Nationale — process league matches for this tick
+    try {
+        await processVLN(supabase, newTick);
+    } catch (vlnErr) {
+        console.error(`[advanceTick] VLN processing failed (non-fatal):`, vlnErr);
     }
 
     // 5. Commit shard tick/date AFTER all nation processing completes.

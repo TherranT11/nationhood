@@ -1,26 +1,12 @@
--- RPC: fire_system_event
--- Inserts a system event into event_log with a trigger_key and placeholders.
--- Called from the tick processor, ministry actions, elections, bills, etc.
--- SECURITY DEFINER so client-side callers can write to event_log.
-
--- Ensure trigger_key column exists (may already be present)
-ALTER TABLE event_log
-ADD COLUMN IF NOT EXISTS trigger_key TEXT DEFAULT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_event_log_trigger_key
-ON event_log (trigger_key)
-WHERE trigger_key IS NOT NULL;
-
--- Drop first in case the return type changed from a previous version
-DROP FUNCTION IF EXISTS fire_system_event(uuid, text, integer, jsonb);
+-- Add Education ministry trigger keys to the fire_system_event RPC
+-- This replaces the function with updated CASE statements.
 
 CREATE OR REPLACE FUNCTION fire_system_event(
-    p_nation_id    UUID,
-    p_trigger_key  TEXT,
-    p_tick         INT,
-    p_placeholders JSONB DEFAULT '{}'::jsonb
-)
-RETURNS void
+    p_trigger_key TEXT,
+    p_nation_id UUID,
+    p_tick INT,
+    p_placeholders JSONB DEFAULT '{}'
+) RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
@@ -28,25 +14,14 @@ DECLARE
     v_event_name TEXT;
     v_category TEXT;
 BEGIN
-    -- Guard: caller must belong to this nation (skip check for service_role / tick processor)
-    IF auth.role() = 'authenticated' THEN
-        IF NOT EXISTS (
-            SELECT 1 FROM factions
-            WHERE id = auth.uid() AND nation_id = p_nation_id
-        ) THEN
-            RAISE EXCEPTION 'Not authorized to fire events for this nation';
-        END IF;
-    END IF;
-
-    -- Map trigger_key to readable event_name and category
     SELECT
         CASE p_trigger_key
-            WHEN 'election_held'            THEN 'Election Held'
-            WHEN 'government_formed'        THEN 'Government Formed'
-            WHEN 'presidential_election'    THEN 'Presidential Election'
-            WHEN 'formation_snap_election'  THEN 'Snap Election Called'
-            WHEN 'emergency_minority_government' THEN 'Minority Government Formed'
-            WHEN 'minority_government_formed'    THEN 'Minority Government Formed'
+            WHEN 'election_held'             THEN 'Election Held'
+            WHEN 'government_formed'         THEN 'Government Formed'
+            WHEN 'presidential_election'     THEN 'Presidential Election'
+            WHEN 'formation_snap_election'   THEN 'Snap Election — Formation Failed'
+            WHEN 'emergency_minority_government' THEN 'Emergency Minority Government'
+            WHEN 'minority_government_formed' THEN 'Minority Government Formed'
             WHEN 'coalition_formation_started'    THEN 'Coalition Formation Underway'
             WHEN 'pm_appointed'             THEN 'Prime Minister Appointed'
             WHEN 'vonc_passed'              THEN 'No Confidence — Government Falls'

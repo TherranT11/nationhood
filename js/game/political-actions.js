@@ -484,8 +484,11 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
     // Electorate engine: update visibility + activity log
     try {
         const rallyResult = await onRally(supabase, factionId, nationId, outcomeId, currentTick);
-        if (rallyResult?.visBoost > 0) {
+        if (rallyResult?.visBoost !== 0) {
             effects.push({ stat: 'Visibility', value: rallyResult.visBoost });
+        }
+        if (rallyResult?.approvalHit) {
+            effects.push({ stat: 'Party Approval', value: rallyResult.approvalHit });
         }
     } catch (e) {
         console.error('[Rally] Electorate hook failed (non-fatal):', e.message);

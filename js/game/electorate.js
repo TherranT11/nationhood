@@ -440,10 +440,10 @@ export const ELECTORATE_CONFIG = {
     APPROVAL_MAX: 90,
 
     // ── Visibility config ──
-    VISIBILITY_DECAY: 0.92,          // 8% decay per tick
+    VISIBILITY_DECAY: 0.97,          // 3% decay per tick (always active)
     VISIBILITY_FLOOR: 10,
     VISIBILITY_GOV_FLOOR: 25,        // governing parties stay more visible
-    VISIBILITY_INACTIVITY_THRESHOLD: 3, // ticks without action before decay kicks in
+    VISIBILITY_INACTIVITY_THRESHOLD: 3, // ticks without action before approval drift kicks in
 
     // ── Credibility config ──
     CREDIBILITY_MIN: 0.5,
@@ -1152,11 +1152,9 @@ export async function tickElectorate(supabase, nation, currentTick) {
         const newApproval = round2(clamp(oldApproval + approvalDelta + approvalNudge, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX));
 
         // ─── VISIBILITY (turnout multiplier, not a pillar) ───
+        // Decays 3% every tick — parties must actively campaign to stay visible
         let newVisibility = Number(standing.visibility ?? CFG.DEFAULT_VISIBILITY);
-        if (currentTick >= CFG.VISIBILITY_INACTIVITY_THRESHOLD &&
-            ticksSinceAction >= CFG.VISIBILITY_INACTIVITY_THRESHOLD) {
-            newVisibility = round2(newVisibility * CFG.VISIBILITY_DECAY);
-        }
+        newVisibility = round2(newVisibility * CFG.VISIBILITY_DECAY);
         const visFloor = isCoalition ? CFG.VISIBILITY_GOV_FLOOR : CFG.VISIBILITY_FLOOR;
         newVisibility = round2(clamp(newVisibility, visFloor, 100));
 
@@ -1888,7 +1886,7 @@ function getDiminishingMultiplier(currentCount) {
  * @param {number} boost - Positive visibility increment (e.g., 5-15)
  */
 export async function boostVisibility(supabase, factionId, nationId, boost) {
-    if (!boost || boost <= 0) return;
+    if (!boost) return;
 
     const { data: standing } = await supabase
         .from('faction_electoral_standing')
@@ -1899,8 +1897,10 @@ export async function boostVisibility(supabase, factionId, nationId, boost) {
     if (!standing) return;
 
     const actionCount = Number(standing.campaign_actions_this_tick ?? 0);
-    const multiplier = getDiminishingMultiplier(actionCount);
-    const effectiveBoost = round2(boost * multiplier);
+    // Diminishing returns only apply to positive boosts; penalties hit at full force
+    const effectiveBoost = boost > 0
+        ? round2(boost * getDiminishingMultiplier(actionCount))
+        : boost;
 
     const old = Number(standing.visibility ?? CFG.DEFAULT_VISIBILITY);
     const newVis = round2(clamp(old + effectiveBoost, 0, 100));
@@ -2240,30 +2240,35 @@ export async function executeTakeStance(supabase, factionId, nationId, issueId, 
  */
 export async function onRally(supabase, factionId, nationId, outcomeId, currentTick) {
     const visBoost = {
-        rousing: 12,
-        solid: 8,
-        low: 4,
-        gaffe: 0,
-        divisive: 6,   // controversial but attention-getting
-        counter: 0,
-    }[outcomeId] ?? 5;
+        rousing: 6,
+        solid: 4,
+        low: 2,
+        gaffe: -2,
+        divisive: -6,
+        counter: -3,
+    }[outcomeId] ?? 0;
 
-    if (visBoost > 0) {
+    if (visBoost !== 0) {
         await boostVisibility(supabase, factionId, nationId, visBoost);
     }
 
-    // Gaffe damages approval slightly
-    if (outcomeId === 'gaffe') {
-        await nudgeApproval(supabase, factionId, nationId, -2);
+    // Approval penalties for bad outcomes
+    const approvalHit = {
+        gaffe: -5,
+        divisive: -3,
+        counter: -5,
+    }[outcomeId] ?? 0;
+    if (approvalHit !== 0) {
+        await nudgeApproval(supabase, factionId, nationId, approvalHit);
     }
 
     await logActivity(supabase, factionId, nationId, 'rally',
         'Rally', `Rally — ${outcomeId}`,
-        outcomeId === 'gaffe' || outcomeId === 'counter' ? 'failure' : 'success',
+        outcomeId === 'gaffe' || outcomeId === 'counter' || outcomeId === 'divisive' ? 'failure' : 'success',
         3, currentTick
     );
 
-    return { visBoost };
+    return { visBoost, approvalHit };
 }
 
 /**

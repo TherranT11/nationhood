@@ -726,8 +726,9 @@ const guideContent = {
 <h3>Protest Fatigue</h3>
 <p>Each protest in the last 6 ticks imposes a &minus;10 penalty to protest score. Over-protesting makes each successive protest weaker.</p>
 
-<h3>Fizzle (Tiers 1&ndash;2)</h3>
-<p>Low-tier results backfire: the protesting party's bloc support drops by &minus;2. If government approval is 45+, the government may gain up to +3 approval from the failed protest.</p>
+<h3>Backfire (Tiers 1&ndash;2)</h3>
+<p><strong>Tier 1 &mdash; Embarrassing Backfire:</strong> The organising party loses &minus;10 Visibility, &minus;7 Approval, and &minus;12 Enthusiasm. If government approval is 45+, the government may gain up to +3 approval.</p>
+<p><strong>Tier 2 &mdash; Protests Don't Materialise:</strong> The organising party loses &minus;4 Visibility, &minus;3 Approval, and &minus;5 Enthusiasm. Government may still gain up to +3 approval.</p>
 
 <h3>Crisis Tiers</h3>
 <table>

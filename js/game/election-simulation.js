@@ -289,11 +289,9 @@ export async function runElectionPreview(supabase, nationId) {
     if (!nation) throw new Error('Nation not found');
 
     const totalSeats = nation.total_seats || 120;
+    const eligibleVoters = nation.eligible_voters || 0;
 
-    // 2. Voter blocs — now supplied by the electorate engine; empty placeholder here
-    const blocs = [];
-
-    // 3. Load parties + their ideology axes (exclude inactive ≥12 ticks)
+    // 2. Load parties (exclude inactive ≥12 ticks)
     const { data: shard } = await supabase
         .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
@@ -308,58 +306,82 @@ export async function runElectionPreview(supabase, nationId) {
     );
     if (!factions || factions.length === 0) throw new Error('No eligible parties found for this nation');
 
+    // 3. Load electoral standings from Three Pillars electorate engine
     const factionIds = factions.map(f => f.id);
-    const { data: ideologies } = await supabase
-        .from('faction_ideology')
-        .select('*')
+    const { data: standings } = await supabase
+        .from('faction_electoral_standing')
+        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval, visibility, raw_appeal')
+        .eq('nation_id', nationId)
         .in('faction_id', factionIds);
 
-    const ideoMap = {};
-    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
+    const standingMap = {};
+    for (const s of (standings || [])) standingMap[s.faction_id] = s;
 
-    // Build party objects with axes and electability
-    const parties = factions.map(f => ({
-        id: f.id,
-        faction_name: f.faction_name,
-        electability: f.electability ?? 50,
-        axes: ideoMap[f.id] || {
-            liberty_equality: 0, tradition_progress: 0, security_freedom: 0,
-            globalism_nationalism: 0, individualism_collectivism: 0
+    // 4. Convert vote shares to actual votes
+    const tally = {};
+    let totalVotesCast = 0;
+    let totalAbstentions = 0;
+
+    // Use realized_vote_share from the electorate engine
+    // Each party's votes = eligible_voters × realized_vote_share
+    // Abstentions = eligible_voters × (1 - sum(realized_vote_share))
+    let totalRealizedShare = 0;
+    const voteExacts = [];
+    for (const f of factions) {
+        const s = standingMap[f.id];
+        const share = Number(s?.realized_vote_share || 0);
+        totalRealizedShare += share;
+        const exactVotes = eligibleVoters * share;
+        voteExacts.push({ id: f.id, exact: exactVotes, floored: Math.floor(exactVotes) });
+        tally[f.id] = Math.floor(exactVotes);
+        totalVotesCast += Math.floor(exactVotes);
+    }
+
+    // Distribute remainder votes via largest remainder
+    const targetVotes = Math.round(eligibleVoters * Math.min(1, totalRealizedShare));
+    let remainder = targetVotes - totalVotesCast;
+    if (remainder > 0) {
+        voteExacts.sort((a, b) => (b.exact - b.floored) - (a.exact - a.floored));
+        for (let i = 0; i < remainder && i < voteExacts.length; i++) {
+            tally[voteExacts[i].id] += 1;
+            totalVotesCast += 1;
         }
-    }));
+    }
 
-    // 4. Run simulation
-    const result = runElectionSimulation(blocs, parties, totalSeats);
+    totalAbstentions = Math.max(0, eligibleVoters - totalVotesCast);
 
-    // 5. Build friendly results
-    const partyResults = parties.map(p => {
+    // 5. Allocate seats
+    const seats = allocateSeatsByVotes(tally, totalSeats);
+
+    // 6. Build friendly results
+    const partyResults = factions.map(f => {
+        const s = standingMap[f.id];
         return {
-            party_id: p.id,
-            party_name: p.faction_name,
-            approval: 40,
-            votes: result.votes[p.id] || 0,
-            vote_percentage: result.totalVotesCast > 0
-                ? Math.round(((result.votes[p.id] || 0) / result.totalVotesCast) * 10000) / 100
+            party_id: f.id,
+            party_name: f.faction_name,
+            approval: Math.round(Number(s?.party_approval || 0)),
+            votes: tally[f.id] || 0,
+            vote_percentage: totalVotesCast > 0
+                ? Math.round(((tally[f.id] || 0) / totalVotesCast) * 10000) / 100
                 : 0,
-            seats: result.seats[p.id] || 0
+            seats: seats[f.id] || 0
         };
     }).sort((a, b) => b.seats - a.seats);
 
-    // Build party name lookup for UI
     const partyNames = {};
-    for (const p of parties) partyNames[p.id] = p.faction_name;
+    for (const f of factions) partyNames[f.id] = f.faction_name;
 
     return {
         nation: nation.name,
         total_seats: totalSeats,
-        eligible_voters: nation.eligible_voters || 0,
-        total_votes_cast: result.totalVotesCast,
-        total_abstentions: result.totalAbstentions,
-        turnout_pct: nation.eligible_voters
-            ? Math.round((result.totalVotesCast / nation.eligible_voters) * 10000) / 100
+        eligible_voters: eligibleVoters,
+        total_votes_cast: totalVotesCast,
+        total_abstentions: totalAbstentions,
+        turnout_pct: eligibleVoters
+            ? Math.round((totalVotesCast / eligibleVoters) * 10000) / 100
             : 0,
         results: partyResults,
-        bloc_details: result.details,
+        bloc_details: [],
         partyNames
     };
 }
@@ -379,11 +401,9 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
         .single();
     if (!nation) throw new Error('Nation not found');
 
-    // 2. Voter blocs — now supplied by the electorate engine; empty placeholder here
-    const blocs = [];
     const eligibleVoters = nation.eligible_voters || 0;
 
-    // 3. Load selected presidential candidates
+    // 2. Load selected presidential candidates
     const { data: candidates } = await supabase
         .from('pm_candidates')
         .select('id, first_name, last_name, faction_id, ideology, ideology_axis, ideology_direction, trait_key')
@@ -392,7 +412,7 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
         .eq('selected', true);
     if (!candidates || candidates.length === 0) throw new Error('No selected presidential candidates found. Generate and select candidates first.');
 
-    // 4. Load faction data + ideology axes for each candidate's party
+    // 3. Load faction data + ideology axes for each candidate's party
     //    Filter out candidates whose factions are inactive ≥12 ticks
     const { data: shardData } = await supabase
         .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -419,7 +439,16 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
     const ideoMap = {};
     for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
 
-    // 5. Build "virtual party" objects per candidate (mirrors SQL RPC logic)
+    // 4. Load electoral standings for each candidate's faction
+    const { data: standings } = await supabase
+        .from('faction_electoral_standing')
+        .select('faction_id, realized_vote_share, party_approval')
+        .eq('nation_id', nationId)
+        .in('faction_id', factionIds);
+    const standingMap = {};
+    for (const s of (standings || [])) standingMap[s.faction_id] = s;
+
+    // 5. Build "virtual party" objects per candidate
     const AXES = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
     function buildCandidateParty(cand) {
         const factionIdeo = ideoMap[cand.faction_id] || {};
@@ -427,8 +456,6 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
         for (const axis of AXES) {
             let val = factionIdeo[axis] || 0;
             if (cand.ideology_axis === axis) {
-                // Candidate gets +15 bonus on their personal axis
-                // For globalism_nationalism, negate direction (convention mismatch)
                 const dir = axis === 'globalism_nationalism' ? cand.ideology_direction * -1 : cand.ideology_direction;
                 val += 15 * dir;
             }
@@ -447,8 +474,44 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
     }
     const allCandidateParties = eligibleCandidates.map(buildCandidateParty);
 
-    // 6. Run Round 1 simulation (use totalSeats=0 — we only care about votes)
-    const round1 = runElectionSimulation(blocs, allCandidateParties, 0);
+    // 6. Run Round 1 using faction vote shares from the electorate engine
+    //    Distribute each faction's realized_vote_share among its candidates proportionally
+    function computePresidentialVotes(candidateParties) {
+        // Group candidates by faction
+        const factionCandidates = {};
+        for (const cp of candidateParties) {
+            if (!factionCandidates[cp.faction_id]) factionCandidates[cp.faction_id] = [];
+            factionCandidates[cp.faction_id].push(cp);
+        }
+
+        const tally = {};
+        let totalVotesCast = 0;
+        for (const cp of candidateParties) tally[cp.id] = 0;
+
+        // Distribute each faction's vote share among its candidates
+        for (const [fid, cands] of Object.entries(factionCandidates)) {
+            const s = standingMap[fid];
+            const factionShare = Number(s?.realized_vote_share || 0);
+            const factionVotes = Math.round(eligibleVoters * factionShare);
+            // Split evenly among candidates from same faction (usually 1)
+            const perCandidate = Math.floor(factionVotes / cands.length);
+            let assigned = 0;
+            for (const c of cands) {
+                tally[c.id] = perCandidate;
+                assigned += perCandidate;
+            }
+            // Remainder to first candidate
+            if (assigned < factionVotes && cands.length > 0) {
+                tally[cands[0].id] += factionVotes - assigned;
+            }
+            totalVotesCast += factionVotes;
+        }
+
+        const totalAbstentions = Math.max(0, eligibleVoters - totalVotesCast);
+        return { votes: tally, totalVotesCast, totalAbstentions, details: [] };
+    }
+
+    const round1 = computePresidentialVotes(allCandidateParties);
 
     // Build Round 1 candidate results
     function buildCandidateResults(parties, simResult) {
@@ -488,7 +551,7 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
         const top2Ids = new Set([round1Results[0].candidate_id, round1Results[1].candidate_id]);
         const runoffParties = allCandidateParties.filter(p => top2Ids.has(p.id));
 
-        const round2 = runElectionSimulation(blocs, runoffParties, 0);
+        const round2 = computePresidentialVotes(runoffParties);
         runoffResults = buildCandidateResults(runoffParties, round2);
         round2Details = round2.details;
         winner = runoffResults[0];
