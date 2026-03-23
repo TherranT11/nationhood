@@ -62,7 +62,7 @@ async function main() {
         // Snapshot before
         const { data: beforeStandings } = await supabase
             .from('faction_electoral_standing')
-            .select('faction_id, alignment, platform_appeal, party_approval, visibility, raw_appeal, contested_vote_share, realized_vote_share, turnout_rate')
+            .select('faction_id, ideological_alignment, platform_appeal, party_approval, visibility, raw_appeal, contested_vote_share, realized_vote_share, turnout_rate')
             .eq('nation_id', nation.id);
 
         const { data: factionNames } = await supabase
@@ -85,7 +85,7 @@ async function main() {
         // Snapshot after
         const { data: afterStandings } = await supabase
             .from('faction_electoral_standing')
-            .select('faction_id, alignment, platform_appeal, party_approval, visibility, raw_appeal, contested_vote_share, realized_vote_share, turnout_rate')
+            .select('faction_id, ideological_alignment, platform_appeal, party_approval, visibility, raw_appeal, contested_vote_share, realized_vote_share, turnout_rate')
             .eq('nation_id', nation.id);
 
         // Show diff
@@ -115,7 +115,7 @@ async function main() {
                 const sign = diff >= 0 ? '+' : '';
                 return `${v.toFixed(1).padStart(5)}% ${diff !== 0 ? `(${sign}${diff.toFixed(1)})` : '       '}`;
             };
-            console.log(`  ${name} | ${fmt(a.alignment, b.alignment)} | ${fmt(a.platform_appeal, b.platform_appeal)} | ${fmt(a.party_approval, b.party_approval)} | ${fmt(a.visibility, b.visibility)} | ${fmt(a.raw_appeal, b.raw_appeal)} | ${fmtPct(a.realized_vote_share, b.realized_vote_share)} | ${fmtPct(a.turnout_rate, b.turnout_rate)}`);
+            console.log(`  ${name} | ${fmt(a.ideological_alignment, b.ideological_alignment)} | ${fmt(a.platform_appeal, b.platform_appeal)} | ${fmt(a.party_approval, b.party_approval)} | ${fmt(a.visibility, b.visibility)} | ${fmt(a.raw_appeal, b.raw_appeal)} | ${fmtPct(a.realized_vote_share, b.realized_vote_share)} | ${fmtPct(a.turnout_rate, b.turnout_rate)}`);
         }
         console.log('');
     }
