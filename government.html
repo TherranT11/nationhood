@@ -770,7 +770,7 @@ function renderParliamentaryEmergency() {
     }
 
     const ap = currentFaction?.action_points || 0;
-    const cost = 4;
+    const cost = EO_CONFIG.NATIONAL_EMERGENCY_AP || 4;
     const canDeclare = ap >= cost;
 
     return `
@@ -791,7 +791,7 @@ function renderParliamentaryEmergency() {
 }
 
 window.declareParliamentaryEmergency = async function() {
-    if (!confirm('Declare a National Emergency?\n\nWhile active:\n• Bills bypass legislative votes\n• Stability -1/tick\n• Freedom Index -0.5/tick\n• Judicial Independence -0.5/tick\n\nCost: 4 AP')) return;
+    if (!confirm(`Declare a National Emergency?\n\nWhile active:\n• Bills bypass legislative votes\n• Stability -1/tick\n• Freedom Index -0.5/tick\n• Judicial Independence -0.5/tick\n\nCost: ${EO_CONFIG.NATIONAL_EMERGENCY_AP || 4} AP`)) return;
 
     const btn = document.getElementById('declare-emergency-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Declaring...'; }
@@ -802,11 +802,11 @@ window.declareParliamentaryEmergency = async function() {
             location.reload();
         } else {
             alert(result?.error || 'Failed to declare emergency.');
-            if (btn) { btn.disabled = false; btn.innerHTML = 'Declare Emergency <span class="ap-cost">4 AP</span>'; }
+            if (btn) { btn.disabled = false; btn.innerHTML = `Declare Emergency <span class="ap-cost">${EO_CONFIG.NATIONAL_EMERGENCY_AP || 4} AP</span>`; }
         }
     } catch (err) {
         alert('Error: ' + (err.message || err));
-        if (btn) { btn.disabled = false; btn.innerHTML = 'Declare Emergency <span class="ap-cost">4 AP</span>'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = `Declare Emergency <span class="ap-cost">${EO_CONFIG.NATIONAL_EMERGENCY_AP || 4} AP</span>`; }
     }
 };
 
