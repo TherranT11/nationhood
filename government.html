@@ -1325,7 +1325,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         const rulingParty = allParties.find(p => p.id === rulingFactionId);
         const rulingPartyName = rulingParty?.faction_name || '—';
         const pmName = safePmName(primeMinister);
-        const pmAge = primeMinister?.minister_age || '—';
+        const pmAge = primeMinister?.minister_age ?? '—';
         const pmPartyName = primeMinister?.factions?.faction_name || '—';
         return `
             <div class="administration-box">
@@ -1494,7 +1494,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         const leadParty = parties.find(p => p.party_id === coalition.lead_party_id);
         const leadPartyName = leadParty ? leadParty.party_name : 'Unknown';
         const pmName = safePmName(primeMinister);
-        const pmAge = primeMinister?.minister_age || '—';
+        const pmAge = primeMinister?.minister_age ?? '—';
         const pmParty = activeHOG?.factions?.faction_name || (primeMinister ? (primeMinister.factions?.faction_name || getPartyNameById(primeMinister.party_id)) : '—');
         const pmAppr = primeMinister?.minister_approval ?? null;
         const pmApprHtml = pmAppr !== null ? (() => {
@@ -2965,7 +2965,7 @@ function buildMinisterIdentity(ministry) {
     return `<div class="ministry-card__minister">
         <div class="ministry-card__minister-name">${escapeHtml(firstName)} ${escapeHtml(lastName)}</div>
         <div class="ministry-card__minister-meta">
-            Age ${ministry.minister_age || '?'} · ${mLogoHtml}<span class="party" style="color:${mColor};">${escapeHtml(partyName)}</span>
+            Age ${ministry.minister_age ?? '?'} · ${mLogoHtml}<span class="party" style="color:${mColor};">${escapeHtml(partyName)}</span>
         </div>
         <div class="ministry-card__minister-meta" style="margin-top:1px;">
             Approval: <span class="${apprCls}">${Math.round(appr)}%</span>
@@ -4602,7 +4602,7 @@ function renderCabinet(ministries, coalition) {
             return `<div class="ministry-card">${headerHtml}
                 <div class="ministry-card__minister">
                     <div class="ministry-card__minister-name">${escapeHtml(m.minister_first_name || 'Unknown')} ${escapeHtml(m.minister_last_name || '')}</div>
-                    <div class="ministry-card__minister-meta">Age ${m.minister_age || '?'} · <span class="party">${escapeHtml(actingParty?.faction_name || 'Unknown')}</span></div>
+                    <div class="ministry-card__minister-meta">Age ${m.minister_age ?? '?'} · <span class="party">${escapeHtml(actingParty?.faction_name || 'Unknown')}</span></div>
                 </div>
                 <div class="ministry-card__pending">
                     <div class="ministry-card__pending-label" style="color:var(--amber);">ACTING MINISTER</div>
