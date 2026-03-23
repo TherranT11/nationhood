@@ -776,10 +776,8 @@ async function renderGovernmentPage() {
         if (!isAutocracy && !isPresidential && electionData) {
             currentElectionId = electionData.id;
             electionResults = electionData.results?.votes || [];
-            totalLegislatureSeats = electionResults.reduce((sum, r) => sum + (r.seats || 0), 0);
-            if (totalLegislatureSeats === 0) {
-                totalLegislatureSeats = allParties.reduce((sum, p) => sum + (p.seats || 0), 0);
-            }
+            // Use factions.seats as the single source of truth for total legislature seats
+            totalLegislatureSeats = allParties.reduce((sum, p) => sum + (p.seats || 0), 0);
         }
 
         // Refresh current faction AP
@@ -1618,10 +1616,8 @@ function renderFormationInProgress(parties) {
 // ==================== GOVERNMENT FORMATION LOGIC ====================
 
 function getFormationPartySeats(partyId) {
-    const fromElection = electionResults.find(r => r.party_id === partyId);
-    if (fromElection) return fromElection.seats || 0;
-    const fromParty = allParties.find(p => p.id === partyId);
-    return fromParty?.seats || 0;
+    // Use factions.seats as the single source of truth (matches Parliament panel)
+    return allPartySeats[partyId] ?? allParties.find(p => p.id === partyId)?.seats ?? 0;
 }
 
 function getCoalitionSeats(partyIds) {
