@@ -3596,15 +3596,16 @@ async function loadProtestData(nation, faction, tick) {
             if (isExcludedStat(key)) continue;
             const sorted = history.sort((a, b) => a.tick - b.tick);
             const current = nation[key] ?? sorted[sorted.length - 1]?.value ?? 0;
+            // Only allow stats within 30 of their worst value (≥70 for higher-is-bad, ≤30 for lower-is-bad)
+            const isBad = isHigherIsBad(key) ? current >= 70 : current <= 30;
+            if (!isBad) continue;
             const sixAgo = sorted[0]?.value ?? current;
             const delta = current - sixAgo;
             const failureScore = getStatFailureScore(current, sixAgo, key);
-            if (failureScore > 0) {
-                failingStats.push({
-                    key, current, sixTicksAgo: sixAgo, delta, failureScore,
-                    displayName: key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-                });
-            }
+            failingStats.push({
+                key, current, sixTicksAgo: sixAgo, delta, failureScore,
+                displayName: key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+            });
         }
         failingStats.sort((a, b) => b.failureScore - a.failureScore);
 
@@ -3889,7 +3890,7 @@ function renderProtestCrisisTargets() {
 function renderProtestStatTargets(nation, tick) {
     const stats = _protestCachedStats?.failingStats;
     if (!stats) return `<div class="protest-empty">Loading stats...</div>`;
-    if (stats.length === 0) return `<div class="protest-empty">No stats are currently declining. The government appears to be performing.</div>`;
+    if (stats.length === 0) return `<div class="protest-empty">No stats are bad enough to protest. Stats must be critically failing (\u226570 for negative stats, \u226430 for positive stats).</div>`;
 
     let html = '';
     for (const s of stats) {
