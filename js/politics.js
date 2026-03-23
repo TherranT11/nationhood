@@ -2682,6 +2682,8 @@ const CA_ACTIONS = [
 ];
 
 // State for new electorate actions
+let _caCooldowns = {};     // { action_type: ticksRemaining }
+let _caActiveActions = [];  // Active ideology_shift_actions rows
 let _caTargetAxis = null;
 let _caTargetDirection = null;
 let _caPivotIdeo = null; // cached faction ideology for pivot cost calculation
@@ -2885,6 +2887,30 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
         _govProtestCrisis = govCrisis;
     }
 
+    // Fetch cooldown and active action data for UI
+    const { data: recentActions } = await _supabase.from('campaign_actions')
+        .select('action_type, tick_performed')
+        .eq('party_id', f.id)
+        .gte('tick_performed', tick - 10)
+        .order('tick_performed', { ascending: false });
+    const { data: activeShiftActions } = await _supabase.from('ideology_shift_actions')
+        .select('id, action_type, target_axis, target_direction, drift_rate, created_tick, status')
+        .eq('faction_id', f.id)
+        .eq('status', 'active');
+
+    _caCooldowns = {};
+    const cooldownMap = { fund_think_tank: IDEO_SHIFT_CONFIG.THINK_TANK.COOLDOWN_WINDOW, media_campaign: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.COOLDOWN_WINDOW, grassroots_movement: IDEO_SHIFT_CONFIG.GRASSROOTS.COOLDOWN_WINDOW };
+    for (const a of (recentActions || [])) {
+        const window = cooldownMap[a.action_type];
+        if (window) {
+            const remaining = (a.tick_performed + window) - tick;
+            if (remaining > 0 && (!_caCooldowns[a.action_type] || remaining > _caCooldowns[a.action_type])) {
+                _caCooldowns[a.action_type] = remaining;
+            }
+        }
+    }
+    _caActiveActions = activeShiftActions || [];
+
     renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost);
 }
 
@@ -2948,19 +2974,26 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         }
 
         const displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.ap;
-        const ok = ap >= displayCost;
+        const cdRemaining = _caCooldowns[act.id] || 0;
+        const onCooldown = cdRemaining > 0;
+        const isActive = _caActiveActions.some(a => a.action_type === act.id.replace('fund_', ''));
+        const ok = ap >= displayCost && !onCooldown;
         const borderColor = isSel ? act.color : ok ? act.color + '55' : 'var(--dtext-3)';
         const bgStyle = isSel ? `background:${act.color}08;` : '';
         const borderStyle = isSel ? `border-color:${act.color}33;` : '';
         const nameColor = isSel ? act.color : 'var(--dtext-0)';
         const affectsColor = act.affects === 'Visibility' ? '#f97316' : act.affects === 'Enthusiasm' ? '#f97316' : act.affects === 'Approval' ? '#4ade80' : act.affects === 'Appeal' ? '#38bdf8' : act.affects === 'Ideology' ? '#a78bfa' : '#6b7280';
-        listHtml += `<div class="ca-item${isSel ? ' selected' : ''}${!ok ? ' disabled' : ''}" data-action-id="${act.id}" style="border-left-color:${borderColor};${bgStyle}${borderStyle}${!ok ? 'opacity:0.35;' : ''}">
+        const statusBadge = onCooldown
+            ? `<span class="ca-cd-badge">${cdRemaining} tick${cdRemaining !== 1 ? 's' : ''} CD</span>`
+            : isActive ? `<span class="ca-active-badge">ACTIVE</span>` : '';
+        listHtml += `<div class="ca-item${isSel ? ' selected' : ''}${!ok ? ' disabled' : ''}${onCooldown ? ' ca-item--cooldown' : ''}" data-action-id="${act.id}" style="border-left-color:${borderColor};${bgStyle}${borderStyle}${!ok ? 'opacity:0.35;' : ''}">
             <div class="ca-item-head">
                 <div style="display:flex;align-items:center;gap:6px">
                     <span class="ca-item-icon" style="color:${act.color}">${act.icon}</span>
                     <span class="ca-item-name" style="color:${nameColor}">${escapeHtml(act.name)}</span>
+                    ${statusBadge}
                 </div>
-                <span class="ca-item-ap">${displayCost} AP</span>
+                <span class="ca-item-ap">${onCooldown ? `${cdRemaining} TICK CD` : `${displayCost} AP`}</span>
             </div>
             <div class="ca-item-desc">${escapeHtml(act.desc)}</div>
             <div class="ca-item-affects" style="color:${affectsColor}">This action affects ${act.affects}</div>
@@ -2992,7 +3025,38 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         panelHtml += `</div>`;
     }
 
+    // Build Active Actions table
+    let activeActionsHtml = '';
+    if (_caActiveActions.length > 0) {
+        const durationMap = { think_tank: IDEO_SHIFT_CONFIG.THINK_TANK.DURATION, media_campaign: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.DURATION + (IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.VISIBILITY_TICKS || 0), grassroots_movement: IDEO_SHIFT_CONFIG.GRASSROOTS.DURATION };
+        const nameMap = { think_tank: 'Think Tank', media_campaign: 'Media Campaign', grassroots_movement: 'Grassroots Movement' };
+        const axisMap = {};
+        for (const ax of IDEOLOGY_AXES) {
+            axisMap[ax.key] = ax;
+        }
+        let rows = _caActiveActions.map(a => {
+            const totalDuration = durationMap[a.action_type] || 50;
+            const ticksActive = tick - a.created_tick;
+            const ticksLeft = Math.max(0, totalDuration - ticksActive);
+            const axDef = axisMap[a.target_axis];
+            const dirLabel = a.target_direction === 'left' ? axDef?.leftLabel : a.target_direction === 'right' ? axDef?.rightLabel : a.target_direction === 'expand' ? 'Expand' : a.target_direction === 'narrow' ? 'Narrow' : a.target_direction || '?';
+            const effectLabel = a.drift_rate ? `+${a.drift_rate}/tick ${dirLabel}` : dirLabel;
+            const activatedDate = tickToDate(a.created_tick);
+            return `<tr>
+                <td style="font-weight:600">${nameMap[a.action_type] || a.action_type}</td>
+                <td>${activatedDate}</td>
+                <td>${effectLabel}</td>
+                <td style="text-align:right">${ticksLeft}</td>
+            </tr>`;
+        }).join('');
+        activeActionsHtml = `<div class="ca-active-actions" style="margin-top:16px;">
+            <div class="pe-header"><span class="pol-mod-title">Active Actions</span></div>
+            <table class="pol-el-table" style="margin-top:4px"><thead><tr><th>Action</th><th>Activated</th><th>Effect</th><th style="text-align:right">Ticks Left</th></tr></thead><tbody>${rows}</tbody></table>
+        </div>`;
+    }
+
     container.innerHTML = `<div class="ca-wrap"><div class="ca-list">${listHtml}</div>${panelHtml}</div>
+    ${activeActionsHtml}
     <div class="ca-portfolios" style="margin-top:16px;">
         <div id="ca-promises-container"><div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px">Loading promises...</div></div>
     </div>
