@@ -620,6 +620,196 @@
     color: var(--nws-red);
 }
 
+/* ===== VOLBAL LIGUE NATIONALE ===== */
+
+.vln-matchweek {
+    font-family: 'Source Serif 4', serif;
+    font-size: 10px;
+    font-style: italic;
+    color: var(--nws-ink-4);
+    text-align: right;
+    margin-bottom: 10px;
+}
+
+.vln-offseason {
+    font-family: 'Source Serif 4', serif;
+    font-size: 12px;
+    font-style: italic;
+    color: var(--nws-ink-3);
+    padding: 8px 0;
+}
+
+.vln-final-label {
+    font-family: 'Source Serif 4', serif;
+    font-size: 10px;
+    font-style: italic;
+    color: var(--nws-ink-4);
+    margin-bottom: 8px;
+}
+
+.vln-table {
+    width: 100%;
+}
+
+.vln-thead {
+    display: grid;
+    grid-template-columns: 16px 1fr 20px 20px 20px 28px 36px;
+    gap: 0 4px;
+    font-family: 'Source Serif 4', serif;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--nws-ink-4);
+    border-bottom: 1px solid var(--nws-ink-3);
+    padding-bottom: 4px;
+    margin-bottom: 2px;
+}
+
+.vln-row {
+    display: grid;
+    grid-template-columns: 16px 1fr 20px 20px 20px 28px 36px;
+    gap: 0 4px;
+    align-items: center;
+    padding: 3px 0;
+    font-family: 'Source Serif 4', serif;
+}
+
+.vln-row:hover {
+    background: var(--nws-paper-2);
+}
+
+.vln-zone-break {
+    border-bottom: 1px dashed var(--nws-rule);
+}
+
+.vln-col-pos {
+    font-size: 11px;
+    color: var(--nws-ink-4);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.vln-pos-top {
+    color: #8a6a20;
+}
+
+.vln-pos-bottom {
+    color: var(--nws-red);
+}
+
+.vln-col-name {
+    font-size: 12px;
+    color: var(--nws-ink);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.vln-col-stat {
+    font-size: 11px;
+    color: var(--nws-ink-3);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.vln-col-pts {
+    font-family: 'Playfair Display', serif;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--nws-ink);
+    text-align: center;
+}
+
+.vln-col-form {
+    display: flex;
+    gap: 2px;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.vln-form-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+}
+
+/* Muted state for off-season final standings (no form column) */
+.vln-table-muted .vln-thead,
+.vln-table-muted .vln-row {
+    grid-template-columns: 16px 1fr 20px 20px 20px 28px;
+}
+
+.vln-table-muted .vln-col-name,
+.vln-table-muted .vln-col-pts {
+    color: var(--nws-ink-4);
+}
+
+.vln-table-muted .vln-col-pos {
+    color: var(--nws-rule);
+}
+
+.vln-table-muted .vln-col-stat {
+    color: var(--nws-ink-4);
+}
+
+/* Match of the Week */
+.vln-motw {
+    margin-top: 10px;
+    padding: 7px 10px;
+    background: var(--nws-paper-2);
+    border-left: 2px solid var(--nws-ink-3);
+}
+
+.vln-motw-label {
+    font-family: 'Source Serif 4', serif;
+    font-size: 10px;
+    font-style: italic;
+    color: var(--nws-ink-3);
+    margin-bottom: 3px;
+}
+
+.vln-motw-result {
+    font-family: 'Source Serif 4', serif;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.vln-motw-team {
+    font-weight: 700;
+    color: var(--nws-ink);
+}
+
+.vln-motw-score {
+    font-weight: 400;
+    color: var(--nws-ink-3);
+}
+
+.vln-motw-week {
+    font-family: 'Source Serif 4', serif;
+    font-size: 10px;
+    font-style: italic;
+    color: var(--nws-ink-4);
+    margin-top: 2px;
+}
+
+/* Responsive: hide form column on narrow screens */
+@media (max-width: 600px) {
+    .vln-thead,
+    .vln-row {
+        grid-template-columns: 16px 1fr 20px 20px 20px 28px;
+    }
+    .vln-col-form {
+        display: none;
+    }
+    .vln-thead .vln-col-form {
+        display: none;
+    }
+}
+
 /* ===== FOOTER ===== */
 .nws-footer {
     background: var(--nws-ink);

@@ -264,38 +264,9 @@ export async function initNewspaper(supabase, state) {
                         </div>
                     </div>
                 </div>
-                <div class="nws-bottom-right">
-                    <div class="nws-col-header">Economic Indicators</div>
-                    <div class="nws-market-row">
-                        <span class="nws-market-name">GDP Growth</span>
-                        <span class="nws-market-val nws-placeholder">--</span>
-                        <span class="nws-market-chg nws-placeholder">--</span>
-                    </div>
-                    <div class="nws-market-row">
-                        <span class="nws-market-name">Inflation</span>
-                        <span class="nws-market-val nws-placeholder">--</span>
-                        <span class="nws-market-chg nws-placeholder">--</span>
-                    </div>
-                    <div class="nws-market-row">
-                        <span class="nws-market-name">Unemployment</span>
-                        <span class="nws-market-val nws-placeholder">--</span>
-                        <span class="nws-market-chg nws-placeholder">--</span>
-                    </div>
-                    <div class="nws-market-row">
-                        <span class="nws-market-name">Interest Rate</span>
-                        <span class="nws-market-val nws-placeholder">--</span>
-                        <span class="nws-market-chg nws-placeholder">--</span>
-                    </div>
-                    <div class="nws-market-row">
-                        <span class="nws-market-name">Trade Balance</span>
-                        <span class="nws-market-val nws-placeholder">--</span>
-                        <span class="nws-market-chg nws-placeholder">--</span>
-                    </div>
-                    <div class="nws-market-row">
-                        <span class="nws-market-name">Gov. Approval</span>
-                        <span class="nws-market-val nws-placeholder">--</span>
-                        <span class="nws-market-chg nws-placeholder">--</span>
-                    </div>
+                <div class="nws-bottom-right" id="vln-widget">
+                    <div class="nws-col-header">Volbal Ligue Nationale</div>
+                    <div class="vln-loading" style="font-family:'Source Serif 4',serif;font-size:12px;font-style:italic;color:var(--nws-ink-4);">Loading standings&hellip;</div>
                 </div>
             </div>
         </div>
@@ -389,6 +360,9 @@ export async function initNewspaper(supabase, state) {
 
     // === LOAD & DISPLAY ARTICLES ===
     await loadAndDisplayArticles();
+
+    // === VOLBAL LIGUE NATIONALE ===
+    loadAndRenderVLN();
 }
 
 /** Award +2 visibility to a democratic faction for writing a long article */
@@ -1576,4 +1550,132 @@ function buildBriefsHtml(articles) {
             </div>
         </div>
     `).join('');
+}
+
+
+// ==================== VOLBAL LIGUE NATIONALE ====================
+
+function _vlnGetPoints(r) { return (r.w * 3) + r.d; }
+
+function _vlnSortedTable(standings) {
+    return Object.values(standings).sort((a, b) => {
+        const ptsDiff = _vlnGetPoints(b) - _vlnGetPoints(a);
+        if (ptsDiff !== 0) return ptsDiff;
+        return b.w - a.w;
+    });
+}
+
+function _vlnFormDot(result) {
+    const colors = { W: '#1a4a1a', D: '#8a6a20', L: '#8b1a1a' };
+    return `<span class="vln-form-dot" style="background:${colors[result] || '#999'}"></span>`;
+}
+
+function _vlnPosClass(pos, total) {
+    if (pos <= 3) return 'vln-pos-top';
+    if (pos >= total - 2) return 'vln-pos-bottom';
+    return '';
+}
+
+function _vlnRenderTable(standings, opts = {}) {
+    const rows = _vlnSortedTable(standings);
+    const muted = opts.muted || false;
+    const totalTeams = rows.length;
+
+    let html = `<div class="vln-table${muted ? ' vln-table-muted' : ''}">
+        <div class="vln-thead">
+            <span class="vln-col-pos">#</span>
+            <span class="vln-col-name">Club</span>
+            <span class="vln-col-stat">W</span>
+            <span class="vln-col-stat">D</span>
+            <span class="vln-col-stat">L</span>
+            <span class="vln-col-pts">Pts</span>
+            ${muted ? '' : '<span class="vln-col-form">Form</span>'}
+        </div>`;
+
+    rows.forEach((r, i) => {
+        const pos = i + 1;
+        const posClass = _vlnPosClass(pos, totalTeams);
+        const zoneBreak = (pos === 3 || pos === 7) ? ' vln-zone-break' : '';
+        const pts = _vlnGetPoints(r);
+        const formDots = muted ? '' : r.form.map(f => _vlnFormDot(f)).join('');
+
+        html += `<div class="vln-row${zoneBreak}">
+            <span class="vln-col-pos ${posClass}">${pos}</span>
+            <span class="vln-col-name">${r.name}</span>
+            <span class="vln-col-stat">${r.w}</span>
+            <span class="vln-col-stat">${r.d}</span>
+            <span class="vln-col-stat">${r.l}</span>
+            <span class="vln-col-pts">${pts}</span>
+            ${muted ? '' : `<span class="vln-col-form">${formDots}</span>`}
+        </div>`;
+    });
+
+    html += '</div>';
+    return html;
+}
+
+function _vlnRenderMOTW(motw, matchweek) {
+    if (!motw) return '';
+    return `<div class="vln-motw">
+        <div class="vln-motw-label">Match of the Week:</div>
+        <div class="vln-motw-result">
+            <span class="vln-motw-team">${motw.homeName}</span>
+            <span class="vln-motw-score">${motw.homeScore} &mdash; ${motw.awayScore}</span>
+            <span class="vln-motw-team">${motw.awayName}</span>
+        </div>
+        <div class="vln-motw-week">&mdash; Matchweek ${matchweek}</div>
+    </div>`;
+}
+
+async function loadAndRenderVLN() {
+    const widget = document.getElementById('vln-widget');
+    if (!widget || !_supabase) return;
+
+    try {
+        const { data: vln, error } = await _supabase
+            .from('vln_state')
+            .select('*')
+            .eq('shard_name', 'Alpha Shard')
+            .maybeSingle();
+
+        if (error || !vln) {
+            widget.innerHTML = `
+                <div class="nws-col-header">Volbal Ligue Nationale</div>
+                <div class="vln-offseason">Season concludes in March.</div>`;
+            return;
+        }
+
+        const currentTick = _state?.shard?.current_tick ?? 0;
+        const year = 2000 + Math.floor(currentTick / 12);
+
+        let bodyHtml = '<div class="nws-col-header">Volbal Ligue Nationale</div>';
+
+        if (!vln.active) {
+            // Off-season
+            const hasStandings = vln.standings && Object.keys(vln.standings).length > 0
+                && Object.values(vln.standings).some(r => r.played > 0);
+            if (hasStandings) {
+                bodyHtml += `<div class="vln-offseason">Off-season. Final standings below.</div>`;
+                bodyHtml += `<div class="vln-final-label">Final Standings &mdash; Year ${vln.season}</div>`;
+                bodyHtml += _vlnRenderTable(vln.standings, { muted: true });
+            } else {
+                bodyHtml += `<div class="vln-offseason">Season concludes in March.</div>`;
+            }
+        } else {
+            // Active season
+            const seasonComplete = vln.matchweek >= 18
+                || (vln.fixtures || []).every(f => f.played);
+            if (seasonComplete && (!vln.last_results || vln.last_results.length === 0)) {
+                bodyHtml += `<div class="vln-matchweek">Final Standings</div>`;
+            } else {
+                bodyHtml += `<div class="vln-matchweek">Matchweek ${vln.matchweek} of 18</div>`;
+            }
+            bodyHtml += _vlnRenderTable(vln.standings);
+            bodyHtml += _vlnRenderMOTW(vln.match_of_week, vln.matchweek);
+        }
+
+        widget.innerHTML = bodyHtml;
+    } catch (e) {
+        console.error('[VLN] Widget render failed:', e);
+    }
 }

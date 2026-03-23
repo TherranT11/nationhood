@@ -34,3 +34,4 @@ export * from './game/valdorian-generator.js';
 export * from './game/party-leadership.js';
 export * from './game/protest.js';
 export * from './game/electorate.js';
+export * from './game/vln.js';

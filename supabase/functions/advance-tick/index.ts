@@ -25587,6 +25587,202 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
     };
 }
 
+// ==================== VOLBAL LIGUE NATIONALE ====================
+
+const VLN_TEAMS = [
+    { id: 'san_estrella_fc',   name: 'San Estrella FC',   strength: 72 },
+    { id: 'palvera_united',    name: 'Palvera United',    strength: 69 },
+    { id: 'avelia_cf',         name: 'Avelia CF',         strength: 65 },
+    { id: 'fc_montequilla',    name: 'FC Montequilla',    strength: 62 },
+    { id: 'melizea_rovers',    name: 'Melizea Rovers',    strength: 60 },
+    { id: 'real_sangreza',     name: 'Real Sangreza',     strength: 58 },
+    { id: 'crucera_athletic',  name: 'Crucera Athletic',  strength: 55 },
+    { id: 'ossvera_city',      name: 'Ossvera City',      strength: 52 },
+    { id: 'valdoria_sc',       name: 'Valdoria SC',       strength: 48 },
+    { id: 'norte_bravo_fc',    name: 'Norte Bravo FC',    strength: 44 },
+];
+
+const VLN_ACTIVE_MONTHS = [2, 3, 4, 5, 6, 7, 8, 9, 10]; // March(2)–November(10)
+const VLN_MATCHES_PER_TICK = 5;
+
+function vlnShuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
+function vlnGenerateFixtures() {
+    const fixtures = [];
+    for (let i = 0; i < VLN_TEAMS.length; i++) {
+        for (let j = 0; j < VLN_TEAMS.length; j++) {
+            if (i !== j) fixtures.push({ home: VLN_TEAMS[i].id, away: VLN_TEAMS[j].id, played: false });
+        }
+    }
+    return vlnShuffle(fixtures);
+}
+
+function vlnFreshStandings() {
+    return Object.fromEntries(VLN_TEAMS.map(t => [t.id, {
+        id: t.id, name: t.name, played: 0, w: 0, d: 0, l: 0, form: [],
+    }]));
+}
+
+const VLN_SCORELINES = {
+    home: [
+        { home: 1, away: 0 }, { home: 2, away: 0 }, { home: 2, away: 1 },
+        { home: 3, away: 1 }, { home: 3, away: 2 }, { home: 4, away: 1 },
+        { home: 1, away: 0 }, { home: 2, away: 1 },
+    ],
+    away: [
+        { home: 0, away: 1 }, { home: 0, away: 2 }, { home: 1, away: 2 },
+        { home: 1, away: 3 }, { home: 2, away: 3 }, { home: 0, away: 1 },
+    ],
+    draw: [
+        { home: 0, away: 0 }, { home: 1, away: 1 },
+        { home: 2, away: 2 }, { home: 1, away: 1 },
+    ],
+};
+
+function vlnResolveMatch(fixture) {
+    const home = VLN_TEAMS.find(t => t.id === fixture.home);
+    const away = VLN_TEAMS.find(t => t.id === fixture.away);
+    let homeRoll = Math.ceil(Math.random() * 6);
+    let awayRoll = Math.ceil(Math.random() * 6);
+    if (home.strength > away.strength) homeRoll += 2;
+    if (away.strength > home.strength) awayRoll += 2;
+    let outcome;
+    if (homeRoll > awayRoll)       outcome = 'home';
+    else if (awayRoll > homeRoll)  outcome = 'away';
+    else                           outcome = 'draw';
+    const pool = VLN_SCORELINES[outcome];
+    const score = pool[Math.floor(Math.random() * pool.length)];
+    return {
+        home: fixture.home, away: fixture.away,
+        homeName: home.name, awayName: away.name,
+        outcome, homeScore: score.home, awayScore: score.away,
+    };
+}
+
+function vlnSelectMOTW(results) {
+    let best = results[0], bestScore = -1;
+    for (const r of results) {
+        const s = (r.homeScore + r.awayScore)
+            + (r.homeScore === r.awayScore ? 1 : 0)
+            + (Math.abs(r.homeScore - r.awayScore) <= 1 ? 0.5 : 0);
+        if (s > bestScore) { bestScore = s; best = r; }
+    }
+    return best;
+}
+
+function vlnInitSeason(tick) {
+    return {
+        active: true,
+        season: 2000 + Math.floor(tick / 12),
+        matchweek: 0,
+        fixtures: vlnGenerateFixtures(),
+        standings: vlnFreshStandings(),
+        last_results: [],
+        match_of_week: null,
+    };
+}
+
+function vlnProcessTick(state, newTick) {
+    const month = newTick % 12;
+    const year = 2000 + Math.floor(newTick / 12);
+    const active = VLN_ACTIVE_MONTHS.includes(month);
+
+    // Season reset: March of a new year
+    if (month === 2 && state.season !== year) {
+        return vlnInitSeason(newTick);
+    }
+    // Off-season
+    if (!active) {
+        return { ...state, active: false, last_results: [], match_of_week: null };
+    }
+    // Active — resolve matches
+    const fixtures = state.fixtures || [];
+    const standings = state.standings || vlnFreshStandings();
+    const unplayed = fixtures.filter(f => !f.played);
+    if (unplayed.length === 0) {
+        return { ...state, active: true, last_results: [], match_of_week: null };
+    }
+    const batch = unplayed.slice(0, VLN_MATCHES_PER_TICK);
+    const results = batch.map(f => vlnResolveMatch(f));
+    for (const r of results) {
+        const fix = fixtures.find(f => f.home === r.home && f.away === r.away && !f.played);
+        if (fix) fix.played = true;
+        // Update standings
+        const h = standings[r.home], a = standings[r.away];
+        h.played++; a.played++;
+        if (r.outcome === 'home') { h.w++; a.l++; }
+        else if (r.outcome === 'away') { a.w++; h.l++; }
+        else { h.d++; a.d++; }
+        h.form = [...h.form.slice(-4), r.outcome === 'home' ? 'W' : r.outcome === 'draw' ? 'D' : 'L'];
+        a.form = [...a.form.slice(-4), r.outcome === 'away' ? 'W' : r.outcome === 'draw' ? 'D' : 'L'];
+    }
+    return {
+        ...state, active: true, season: year,
+        matchweek: (state.matchweek || 0) + 1,
+        fixtures, standings,
+        last_results: results,
+        match_of_week: results.length > 0 ? vlnSelectMOTW(results) : null,
+    };
+}
+
+async function processVLN(supabase, newTick) {
+    // Load current state
+    const { data: row, error: loadErr } = await supabase
+        .from('vln_state')
+        .select('*')
+        .eq('shard_name', 'Alpha Shard')
+        .maybeSingle();
+
+    if (loadErr) {
+        console.error('[VLN] Failed to load state:', loadErr.message);
+        return;
+    }
+
+    let state = row ? {
+        active: row.active,
+        season: row.season,
+        matchweek: row.matchweek,
+        fixtures: row.fixtures || [],
+        standings: row.standings || {},
+        last_results: row.last_results || [],
+        match_of_week: row.match_of_week,
+    } : vlnInitSeason(newTick);
+
+    // Process
+    const updated = vlnProcessTick(state, newTick);
+
+    // Persist
+    const payload = {
+        active: updated.active,
+        season: updated.season,
+        matchweek: updated.matchweek,
+        fixtures: updated.fixtures,
+        standings: updated.standings,
+        last_results: updated.last_results,
+        match_of_week: updated.match_of_week,
+        updated_at: new Date().toISOString(),
+    };
+
+    if (row) {
+        const { error: upErr } = await supabase
+            .from('vln_state').update(payload).eq('id', row.id);
+        if (upErr) console.error('[VLN] Failed to update state:', upErr.message);
+        else console.log(`[VLN] Matchweek ${updated.matchweek}, active=${updated.active}, season=${updated.season}`);
+    } else {
+        const { error: insErr } = await supabase
+            .from('vln_state').insert({ shard_name: 'Alpha Shard', ...payload });
+        if (insErr) console.error('[VLN] Failed to insert state:', insErr.message);
+        else console.log(`[VLN] Initialized season ${updated.season}`);
+    }
+}
+
 // ==================== ADVANCE TICK ====================
 
 async function advanceTick(supabase, { force = false, reprocess = false } = {}) {
@@ -26806,6 +27002,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] History snapshot FAILED for ${nation.id} (${nation.name}):`, snapErr);
         }
       }
+    }
+
+    // 4b. Volbal Ligue Nationale — process league matches for this tick
+    try {
+        await processVLN(supabase, newTick);
+    } catch (vlnErr) {
+        console.error(`[advanceTick] VLN processing failed (non-fatal):`, vlnErr);
     }
 
     // 5. Commit shard tick/date AFTER all nation processing completes.
