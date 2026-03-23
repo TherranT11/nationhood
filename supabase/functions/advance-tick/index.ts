@@ -23023,6 +23023,45 @@ async function processAuthoritarianLaws(supabase, nation, currentTick) {
     if (Object.keys(nationUpdates).length > 0) {
         await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
     }
+
+    // ── Seize Power trigger: 5+ consecutive administrations with abolished term limits ──
+    if (hasTermLimitsAbolished
+        && !nation.authoritarianism_seize_available_tick
+        && !nation.seize_power_rejected
+        && nation.ruling_faction_id) {
+        // Count consecutive administrations where the same party held PM
+        const { data: admins } = await supabase
+            .from('administrations')
+            .select('pm_party_id')
+            .eq('nation_id', nation.id)
+            .order('started_at_tick', { ascending: false })
+            .limit(6);
+
+        if (admins && admins.length >= 5) {
+            const rulingId = nation.ruling_faction_id;
+            // Check if the 5 most recent administrations all had the same PM party
+            const last5 = admins.slice(0, 5);
+            const allSameParty = last5.every(a => a.pm_party_id === rulingId);
+
+            if (allSameParty) {
+                await supabase.from('nations').update({
+                    authoritarianism_seize_available_tick: currentTick
+                }).eq('id', nation.id);
+
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: 'SEIZE_POWER_AVAILABLE',
+                    trigger_key: 'term_limits_seize_power',
+                    description_used: `The ruling party has held power through 5 consecutive administrations with no term limits. The head of government may now seize absolute power.`,
+                    category: 'POLITICAL',
+                    effects_applied: { trigger: 'abolished_term_limits_5_terms' },
+                    fired_at_tick: currentTick
+                });
+
+                console.log(`[processAuthoritarianLaws] Seize Power now available for nation ${nation.id} — 5+ consecutive administrations with abolished term limits`);
+            }
+        }
+    }
 }
 
 

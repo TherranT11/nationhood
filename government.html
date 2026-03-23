@@ -696,6 +696,7 @@ async function renderRevolutionBannerGov() {
 function renderAuthoritarianSeizeBanner() {
     if (!currentNation || !currentNation.authoritarianism_seize_available_tick) return '';
     if (isAutocracy) return '';
+    if (currentNation.seize_power_rejected) return '';
     // Only the ruling faction sees the seize power option
     const isRuling = currentFaction && currentNation.ruling_faction_id && currentFaction.id === currentNation.ruling_faction_id;
     if (!isRuling) return '';
@@ -707,13 +708,20 @@ function renderAuthoritarianSeizeBanner() {
             <div class="revolution-subtitle" style="margin-bottom: 12px;">
                 Democratic institutions have crumbled after prolonged authoritarian erosion. Your party now has the power to dissolve the legislature and establish single-party rule. This is irreversible.
             </div>
-            <button id="seize-power-btn"
-                style="padding: 14px 36px; background: var(--red); color: white; border: none; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; transition: all 0.2s;"
-                onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 20px rgba(255,68,68,0.4)';"
-                onmouseout="this.style.transform='none'; this.style.boxShadow='none';"
-                onclick="confirmSeizePower()">
-                Seize Absolute Power
-            </button>
+            <div style="display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap;">
+                <button id="seize-power-btn"
+                    style="padding: 14px 36px; background: var(--red); color: white; border: none; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; transition: all 0.2s;"
+                    onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 20px rgba(255,68,68,0.4)';"
+                    onmouseout="this.style.transform='none'; this.style.boxShadow='none';"
+                    onclick="confirmSeizePower()">
+                    Seize Absolute Power
+                </button>
+                <button id="reject-seize-btn"
+                    style="padding: 14px 24px; background: transparent; color: var(--text-secondary); border: 1px solid var(--border-main); border-radius: 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer;"
+                    onclick="rejectSeizePower()">
+                    Reject
+                </button>
+            </div>
             <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 10px;">
                 Converts the nation to an Autocracy. Coalition dissolved. All elections cancelled.
             </div>
@@ -737,6 +745,34 @@ window.confirmSeizePower = async function() {
         console.error('[SeizePower] Failed:', err);
         alert('Failed to seize power: ' + (err.message || err));
         if (btn) { btn.disabled = false; btn.textContent = 'Seize Absolute Power'; }
+    }
+};
+
+window.rejectSeizePower = async function() {
+    if (!confirm('Reject the path to absolute power?\n\nYou are choosing to preserve democratic governance. This decision is final — you will not be offered this opportunity again.')) return;
+
+    const btn = document.getElementById('reject-seize-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Rejecting...'; }
+
+    try {
+        await _supabase.from('nations').update({
+            seize_power_rejected: true,
+            authoritarianism_seize_available_tick: null
+        }).eq('id', currentNation.id);
+
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation.id,
+            event_name: 'SEIZE_POWER_REJECTED',
+            trigger_key: 'seize_power_rejected',
+            description_used: 'The ruling party has rejected the path to absolute power, choosing to preserve democratic governance.',
+            category: 'POLITICAL',
+            effects_applied: { action: 'rejected' }
+        });
+
+        location.reload();
+    } catch (err) {
+        alert('Error: ' + (err.message || err));
+        if (btn) { btn.disabled = false; btn.textContent = 'Reject'; }
     }
 };
 
