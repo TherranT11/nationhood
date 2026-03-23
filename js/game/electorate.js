@@ -1155,13 +1155,18 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         // spatial competition and can't be washed out by compression.
         if (ideo) {
             let centristAxes = 0;
+            const _debugZones = [];
             for (const axisKey of AXIS_KEYS) {
                 const elecMean = Number(activeProfile['ideo_mean_' + axisKey] ?? 50);
                 const elecVar = Number(activeProfile['ideo_var_' + axisKey] ?? 20);
-                const partyNorm = (Number(ideo[axisKey] || 0) + 100) / 2;
+                const rawIdeo = ideo[axisKey];
+                const partyNorm = (Number(rawIdeo || 0) + 100) / 2;
                 const { zoneForPos } = calculateIdeologyZones(elecMean, elecVar);
-                if (zoneForPos(partyNorm) === 'centrist') centristAxes++;
+                const zone = zoneForPos(partyNorm);
+                _debugZones.push(`${axisKey}:ideo=${rawIdeo},norm=${partyNorm.toFixed(1)},zone=${zone}`);
+                if (zone === 'centrist') centristAxes++;
             }
+            console.log(`  [ZoneDebug] ${factionId.substring(0,8)}: centristAxes=${centristAxes} | ${_debugZones.join(' | ')}`)
             if (centristAxes > 0) {
                 const avgVar = AXIS_KEYS.reduce((s, k) => s + Number(activeProfile['ideo_var_' + k] ?? 20), 0) / AXIS_KEYS.length;
                 const polWeight = Math.min(1, Math.max(0, (avgVar - 10) / 30));
