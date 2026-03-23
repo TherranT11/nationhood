@@ -67,6 +67,9 @@ for (const file of MODULE_FILES) {
     const filePath = path.join(GAME_DIR, file);
     let content = fs.readFileSync(filePath, 'utf8');
 
+    // Strip re-export lines (export { ... } from '...') — must come before export keyword strip
+    content = content.replace(/^export\s+\{[^}]*\}\s+from\s+['"][^'"]+['"];\s*\n?/gm, '');
+
     // Strip ES module export keywords
     content = content.replace(/^export /gm, '');
 

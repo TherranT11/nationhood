@@ -26,9 +26,10 @@ export async function adjustMomentumAll(supabase, nationId, source, delta, reaso
 }
 
 // nudgeApproval and adjustCredibility are now defined in electorate.js
-// (with diminishing returns and CFG constants). They are re-exported
-// via game-common.js barrel export. No duplicates here to avoid
-// conflicts in the concatenated edge function bundle.
+// (with diminishing returns and CFG constants). Re-export here so
+// existing imports from momentum.js keep working. The sync script
+// strips import/export lines, so no duplicates in the edge function bundle.
+export { nudgeApproval, adjustCredibility } from './electorate.js';
 
 /**
  * Apply a one-time event modifier to the government approval event modifier.
