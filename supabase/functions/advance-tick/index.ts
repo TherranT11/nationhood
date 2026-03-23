@@ -4728,12 +4728,13 @@ async function activateEconomicCollapse(supabase, nation, currentTick) {
         await supabase.from('active_crises')
             .delete().eq('nation_id', nation.id).in('crisis_id', econIds);
 
-        // 3. Political penalties: -25 gov approval, -20 momentum to all coalition parties
+        // 3. Political penalties: -25 gov approval, -6 party_approval & -0.15 credibility to all coalition parties
         await adjustGovernmentApprovalEvent(supabase, nation.id, -25, 'crisis:economic_collapse');
 
         const coalition = await fetchActiveCoalition(supabase, nation.id);
         for (const partyId of (coalition?.party_ids || [])) {
-            await adjustMomentumAll(supabase, nation.id, partyId, -20, 'crisis:economic_collapse');
+            await nudgeApproval(supabase, partyId, nation.id, -6);
+            await adjustCredibility(supabase, partyId, nation.id, -0.15, 12, currentTick);
         }
 
         // 4. Reset gdp_growth to neutral (stop the bleeding) — critical to prevent re-trigger loop
@@ -5818,7 +5819,9 @@ function calculateEnactmentApproval(articles, billSupport, sponsorId, factionIde
 async function applyEnactmentApproval(supabase, nationId, approvalDeltas) {
     for (const [factionId, delta] of Object.entries(approvalDeltas)) {
         if (delta === 0) continue;
-        await adjustMomentumAll(supabase, nationId, factionId, delta, 'bill:enactment');
+        // Scale momentum-era deltas to party_approval range (~0.3x)
+        const scaled = round2(delta * 0.3);
+        await nudgeApproval(supabase, factionId, nationId, scaled);
     }
 }
 
@@ -5872,12 +5875,12 @@ async function applyNoVotePenalty(supabase, bill, nationId) {
     const nonVoters = allFactions.filter(f => !votedFactionIds.has(f.id));
     if (nonVoters.length === 0) return [];
 
-    // 4. Apply penalties to each non-voter (momentum only)
+    // 4. Apply penalties to each non-voter (party_approval hit)
     const penalized = [];
     for (const faction of nonVoters) {
-        // Momentum: lose 1d3+1 (2-4) — adjustMomentumAll is now a no-op
-        const momentumLoss = -(Math.floor(Math.random() * 3) + 2);
-        await adjustMomentumAll(supabase, nationId, faction.id, momentumLoss, 'penalty:no_vote');
+        // Lose 1-2 party_approval for not voting
+        const approvalLoss = -(1 + Math.random());
+        await nudgeApproval(supabase, faction.id, nationId, round2(approvalLoss));
 
         penalized.push({
             factionId: faction.id,
@@ -7390,7 +7393,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presidentRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proceedingData.president_id).single();
                     if (presidentRow) {
-                        await adjustMomentumAll(supabase, bill.nation_id, presidentRow.faction_id, -15, 'impeachment:impeached');
+                        await nudgeApproval(supabase, presidentRow.faction_id, bill.nation_id, -5);
+                        await adjustCredibility(supabase, presidentRow.faction_id, bill.nation_id, -0.15, 12, currentTick);
                     }
                 }
 
@@ -7439,8 +7443,9 @@ async function resolveExpiredVotes(supabase, nationId) {
                     impeachment_cooldown_until_tick: currentTick + GAME_CONFIG.IMPEACHMENT_MOTION_COOLDOWN_TICKS
                 }).eq('id', bill.nation_id);
 
-                // Filer takes -5 approval (partisan overreach)
-                await adjustMomentumAll(supabase, bill.nation_id, bill.proposed_by, -5, 'impeachment:failed_motion');
+                // Filer takes approval & credibility hit (partisan overreach)
+                await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -2);
+                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.05);
 
                 // President gets +3 approval (vindication)
                 const { data: proc } = await supabase.from('impeachment_proceedings')
@@ -7449,7 +7454,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
-                        await adjustMomentumAll(supabase, bill.nation_id, presRow.faction_id, 3, 'impeachment:vindicated');
+                        await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 2);
+                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.03);
                     }
                 }
 
@@ -7507,7 +7513,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
-                        await adjustMomentumAll(supabase, bill.nation_id, presRow.faction_id, 5, 'impeachment:acquitted');
+                        await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 3);
+                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.05);
                     }
                 }
 
@@ -7523,10 +7530,12 @@ async function resolveExpiredVotes(supabase, nationId) {
                 const yesVoters = (bill.bill_support || []).filter(s => s.stance === 'yes' || s.stance === 'accept');
                 for (const v of yesVoters) {
                     if (v.faction_id !== bill.proposed_by) {
-                        await adjustMomentumAll(supabase, bill.nation_id, v.faction_id, -2, 'impeachment:overreach');
+                        await nudgeApproval(supabase, v.faction_id, bill.nation_id, -1);
+                        await adjustCredibility(supabase, v.faction_id, bill.nation_id, -0.03);
                     }
                 }
-                await adjustMomentumAll(supabase, bill.nation_id, bill.proposed_by, -2, 'impeachment:overreach');
+                await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -1);
+                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.03);
 
                 try {
                     await supabase.from('event_log').insert({
@@ -8554,7 +8563,9 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
             if (allFactions) {
                 for (const faction of allFactions) {
-                    await adjustMomentumAll(supabase, bill.nation_id, faction.id, 8, 'term_limits_removed');
+                    // Base loves it (+3 approval) but anti-democratic (-0.1 credibility)
+                    await nudgeApproval(supabase, faction.id, bill.nation_id, 3);
+                    await adjustCredibility(supabase, faction.id, bill.nation_id, -0.1);
                 }
             }
 
@@ -9635,13 +9646,15 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
             // Dissolve coalition
             await dissolveCoalition(supabase, nationId);
 
-            // Calling party gets +3 momentum
-            await adjustMomentumAll(supabase, nationId, callingPartyId, 3, 'no_confidence:success');
+            // Calling party gets approval boost
+            await nudgeApproval(supabase, callingPartyId, nationId, 2);
 
-            // All coalition parties get -5 momentum
+            // All coalition parties take approval & credibility hit
             for (const partyId of coalitionPartyIds) {
-                await adjustMomentumAll(supabase, nationId, partyId, -5, 'no_confidence:coalition_falls');
+                await nudgeApproval(supabase, partyId, nationId, -3);
+                await adjustCredibility(supabase, partyId, nationId, -0.05);
             }
+            await adjustGovernmentApprovalEvent(supabase, nationId, -5, 'no_confidence:success');
 
             // Schedule snap election (same pattern as early elections)
             await supabase.from('elections').delete()
@@ -9672,12 +9685,14 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
         } // end else (coalition not already dissolved)
 
     } else {
-        // FAILED: calling party gets -5 momentum
-        await adjustMomentumAll(supabase, nationId, callingPartyId, -5, 'no_confidence:failed');
+        // FAILED: calling party takes approval & credibility hit
+        await nudgeApproval(supabase, callingPartyId, nationId, -3);
+        await adjustCredibility(supabase, callingPartyId, nationId, -0.05);
 
-        // PM's party gets +3 momentum
+        // PM's party gets approval & credibility boost
         if (pmFactionId) {
-            await adjustMomentumAll(supabase, nationId, pmFactionId, 3, 'no_confidence:pm_survives');
+            await nudgeApproval(supabase, pmFactionId, nationId, 2);
+            await adjustCredibility(supabase, pmFactionId, nationId, 0.03);
         }
 
         // Record cooldown: store the tick when the no-confidence failed
@@ -9779,7 +9794,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
         const penalty = partyId === pmFactionId
             ? GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST
             : GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST;
-        await adjustMomentumAll(supabase, nationId, partyId, -penalty, 'early_election:penalty');
+        await nudgeApproval(supabase, partyId, nationId, -round2(penalty * 0.5));
     }
 
     // Bust coalition cache after caretaker transition
@@ -9938,7 +9953,7 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         .order('seats', { ascending: false });
 
     for (const party of (allParties || [])) {
-        await adjustMomentumAll(supabase, nation.id, party.id, -2, 'government_vacancy:ongoing');
+        await nudgeApproval(supabase, party.id, nation.id, -1);
     }
 
     // -1 stability to nation
@@ -9987,16 +10002,16 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
     if (failedAttempts < 1) {
         console.log(`STAGE 1: SNAP ELECTION triggered for ${nation.name} — ${ticksElapsed} ticks without government (attempt ${failedAttempts + 1})`);
 
-        // Top 2 parties: -6 momentum each
+        // Top 2 parties: -3 approval each
         if (allParties && allParties.length > 0) {
             const largest = allParties[0];
-            await adjustMomentumAll(supabase, nation.id, largest.id, -6, 'formation_failure:top_party');
-            console.log(`  Snap penalty: ${largest.faction_name} -6 momentum`);
+            await nudgeApproval(supabase, largest.id, nation.id, -3);
+            console.log(`  Snap penalty: ${largest.faction_name} -3 approval`);
 
             if (allParties.length > 1) {
                 const second = allParties[1];
-                await adjustMomentumAll(supabase, nation.id, second.id, -6, 'formation_failure:top_party');
-                console.log(`  Snap penalty: ${second.faction_name} -6 momentum`);
+                await nudgeApproval(supabase, second.id, nation.id, -3);
+                console.log(`  Snap penalty: ${second.faction_name} -3 approval`);
             }
         }
 
@@ -10032,9 +10047,9 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
             // Penalize non-responsive invitees
             for (const pid of invitedPartyIds) {
                 if (!respondedPartyIds.has(pid)) {
-                    await adjustMomentumAll(supabase, nation.id, pid, -3, 'formation_failure:non_responsive');
+                    await nudgeApproval(supabase, pid, nation.id, -2);
                     const partyName = allParties?.find(p => p.id === pid)?.faction_name || pid;
-                    console.log(`  Non-responsive penalty: ${partyName} -3 momentum`);
+                    console.log(`  Non-responsive penalty: ${partyName} -2 approval`);
                 }
             }
         }
@@ -11014,14 +11029,14 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
             }
         }
 
-        // Momentum effects: incumbent win boosts their faction, challenger win penalizes losing incumbent faction
+        // Election effects: incumbent win boosts approval, challenger win penalizes loser
         if (isIncumbentWin && incumbentFactionId) {
-            await adjustMomentumAll(supabase, nation.id, incumbentFactionId, 3, 'election:incumbent_win');
-            console.log(`Incumbent re-elected: +3 momentum to ${winner.party_name}`);
+            await nudgeApproval(supabase, incumbentFactionId, nation.id, 3);
+            console.log(`Incumbent re-elected: +3 approval to ${winner.party_name}`);
         } else if (isChallengerWin && incumbentFactionId) {
-            await adjustMomentumAll(supabase, nation.id, incumbentFactionId, -5, 'election:incumbent_loss');
-            await adjustMomentumAll(supabase, nation.id, winner.faction_id, 3, 'election:challenger_win');
-            console.log(`Challenger wins: -5 momentum to outgoing party, +3 to ${winner.party_name}`);
+            await nudgeApproval(supabase, incumbentFactionId, nation.id, -4);
+            await nudgeApproval(supabase, winner.faction_id, nation.id, 3);
+            console.log(`Challenger wins: -4 approval to outgoing party, +3 to ${winner.party_name}`);
         }
     } catch (effectsErr) { console.warn('Could not apply winner/loser effects:', effectsErr); }
 
@@ -19949,19 +19964,23 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
     const targetDelta = outcome.targetMin + Math.floor(Math.random() * (outcome.targetMax - outcome.targetMin + 1));
     const selfDelta = outcome.selfMin + Math.floor(Math.random() * (outcome.selfMax - outcome.selfMin + 1));
 
-    // ── 7. Apply effects to all blocs via momentum ──
+    // ── 7. Apply effects via electorate engine ──
     const effects = [];
 
-    // Target party: apply momentum to all blocs
+    // Target party: approval hit + credibility damage
     if (targetDelta !== 0) {
-        await adjustMomentumAll(supabase, nationId, targetFactionId, targetDelta, 'campaign:attack_target');
+        const approvalDelta = round2(targetDelta * 0.3);
+        const credDelta = round3(targetDelta * 0.01);
+        await nudgeApproval(supabase, targetFactionId, nationId, approvalDelta);
+        await adjustCredibility(supabase, targetFactionId, nationId, credDelta);
         effects.push({ label: targetFaction.faction_name, value: targetDelta });
     }
 
-    // Self: apply momentum to all blocs
+    // Self: credibility change (attacks can backfire or boost credibility)
     if (selfDelta !== 0) {
         const selfLabel = selfDelta > 0 ? 'Your party (credibility gain)' : 'Your party (credibility loss)';
-        await adjustMomentumAll(supabase, nationId, factionId, selfDelta, 'campaign:attack_self');
+        const selfCredDelta = round3(selfDelta * 0.01);
+        await adjustCredibility(supabase, factionId, nationId, selfCredDelta);
         effects.push({ label: selfLabel, value: selfDelta });
     }
 
@@ -21484,7 +21503,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
     for (const fKey of Object.keys(factionUpdates)) {
         const delta = Math.round((factionUpdates[fKey] - (factionBaseline[fKey] ?? 50)) * 10) / 10;
         if (delta !== 0) {
-            await adjustMomentumAll(supabase, nation.id, fKey, delta, 'event:cascade');
+            await nudgeApproval(supabase, fKey, nation.id, round2(delta * 0.3));
         }
     }
 
@@ -22235,9 +22254,10 @@ async function processCrises(supabase, nation, currentTick) {
                     const coalition = await fetchActiveCoalition(supabase, nation.id);
                     const partyIds = coalition?.party_ids || [];
                     for (const partyId of partyIds) {
-                        await adjustMomentumAll(supabase, nation.id, partyId, effectiveGovChange, 'crisis:' + template.name);
+                        const scaledDelta = round2(effectiveGovChange * 0.3);
+                        await nudgeApproval(supabase, partyId, nation.id, scaledDelta);
                         appliedEffects.push({
-                            stat: 'momentum', change: effectiveGovChange,
+                            stat: 'party_approval', change: scaledDelta,
                             target: effect.target, faction_id: partyId
                         });
                     }
@@ -22270,13 +22290,13 @@ async function processCrises(supabase, nation, currentTick) {
                         old: currentVal, new: newVal
                     });
 
-                    // Cascade PM approval loss to party momentum (2x multiplier)
+                    // Cascade PM approval loss to party_approval (scaled)
                     if (changePT < 0 && pmMinistry.party_id) {
-                        const cascadeDelta = -(Math.abs(changePT) * 2);
-                        await adjustMomentumAll(supabase, nation.id, pmMinistry.party_id, cascadeDelta, 'crisis:pm_cascade:' + template.name);
+                        const cascadeDelta = round2(-(Math.abs(changePT) * 0.5));
+                        await nudgeApproval(supabase, pmMinistry.party_id, nation.id, cascadeDelta);
 
                         appliedEffects.push({
-                            stat: 'momentum', change: cascadeDelta,
+                            stat: 'party_approval', change: cascadeDelta,
                             target: 'minister_cascade', faction_id: pmMinistry.party_id,
                             minister_key: 'prime_minister'
                         });
@@ -22308,15 +22328,15 @@ async function processCrises(supabase, nation, currentTick) {
                         old: currentVal, new: newVal
                     });
 
-                    // Cascade minister approval loss to party momentum (2x for PM, 1x for others)
+                    // Cascade minister approval loss to party_approval (scaled; PM 0.5x, others 0.25x)
                     if (changePT < 0 && ministry.party_id) {
                         const loss = Math.abs(changePT);
-                        const multiplier = effect.minister_key === 'prime_minister' ? 2 : 1;
-                        const cascadeDelta = -(loss * multiplier);
-                        await adjustMomentumAll(supabase, nation.id, ministry.party_id, cascadeDelta, 'crisis:minister_cascade:' + effect.minister_key);
+                        const multiplier = effect.minister_key === 'prime_minister' ? 0.5 : 0.25;
+                        const cascadeDelta = round2(-(loss * multiplier));
+                        await nudgeApproval(supabase, ministry.party_id, nation.id, cascadeDelta);
 
                         appliedEffects.push({
-                            stat: 'momentum', change: cascadeDelta,
+                            stat: 'party_approval', change: cascadeDelta,
                             target: 'minister_cascade', faction_id: ministry.party_id,
                             minister_key: effect.minister_key
                         });
@@ -23181,14 +23201,11 @@ async function processProtestResolution(supabase: any, nation: any, currentTick:
                 .select('id, bloc_name')
                 .eq('nation_id', nation.id)
                 .eq('is_active', true);
+            // Bloc penalties now mapped to party_approval nudge (legacy voter_blocs table removed)
             for (const penalty of effects.blocPenalties) {
-                const matchingBloc = (allBlocs || []).find((b: any) =>
-                    b.bloc_name.toLowerCase().includes(penalty.blocName.replace('_', ' '))
-                );
-                if (matchingBloc) {
-                    await adjustMomentum(supabase, nation.id, factionId, matchingBloc.id, penalty.delta, `protest:fizzle:tier${tier}`);
-                    appliedEffects.push({ stat: `momentum:${matchingBloc.bloc_name}`, delta: penalty.delta });
-                }
+                const scaledDelta = round2(penalty.delta * 0.3);
+                await nudgeApproval(supabase, factionId, nation.id, scaledDelta);
+                appliedEffects.push({ stat: 'party_approval', delta: scaledDelta, note: `fizzle:${penalty.blocName}` });
             }
         }
         if (effects.fizzleGovBoost > 0) {
@@ -23196,23 +23213,10 @@ async function processProtestResolution(supabase: any, nation: any, currentTick:
             appliedEffects.push({ stat: 'gov_approval_events', delta: effects.fizzleGovBoost, note: 'fizzle_boost' });
         }
 
-        // Tier 4: +2 with ideologically aligned blocs
+        // Tier 4: approval boost for strong protest showing
         if (tier === 4) {
-            const factionIdeo = await loadFactionIdeology(supabase, factionId);
-            if (factionIdeo) {
-                const { data: allBlocs } = await supabase
-                    .from('voter_blocs')
-                    .select('id, bloc_name, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-                    .eq('nation_id', nation.id)
-                    .eq('is_active', true);
-                for (const bloc of (allBlocs || [])) {
-                    const alignment = computeIdeologyAlignment(factionIdeo, bloc);
-                    if (alignment >= 0.6) {
-                        await adjustMomentum(supabase, nation.id, factionId, bloc.id, 2, 'protest:tier4:aligned');
-                        appliedEffects.push({ stat: `momentum:${bloc.bloc_name}`, delta: 2, note: 'aligned_bloc' });
-                    }
-                }
-            }
+            await nudgeApproval(supabase, factionId, nation.id, 2);
+            appliedEffects.push({ stat: 'party_approval', delta: 2, note: 'tier4_protest_boost' });
         }
 
         // 9. Tier 6/7: create crisis
@@ -23366,7 +23370,7 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
     }
 
     if (effects.party_approval_per_tick) {
-        await adjustMomentumAll(supabase, nation.id, factionId, effects.party_approval_per_tick, 'pm_trait:party_approval');
+        await nudgeApproval(supabase, factionId, nation.id, round2(effects.party_approval_per_tick * 0.3));
     }
 
     if (effects.nation_stat_per_tick) {
@@ -23409,7 +23413,7 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
                 delta = effects.approval_above_60_penalty;
             }
             if (delta !== 0) {
-                await adjustMomentumAll(supabase, nation.id, factionId, delta, 'pm_trait:conditional');
+                await nudgeApproval(supabase, factionId, nation.id, round2(delta * 0.3));
             }
         }
     }
@@ -23423,7 +23427,7 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
             .neq('id', factionId);
 
         for (const opp of (oppParties || [])) {
-            await adjustMomentumAll(supabase, nation.id, opp.id, effects.opposition_approval_per_tick, 'pm_trait:opposition');
+            await nudgeApproval(supabase, opp.id, nation.id, round2(effects.opposition_approval_per_tick * 0.3));
         }
     }
 
@@ -23437,7 +23441,7 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
             .eq('passed_tick', currentTick - 1);
 
         if (!count || count === 0) {
-            await adjustMomentumAll(supabase, nation.id, factionId, effects.no_bill_penalty_per_tick, 'pm_trait:no_bill_penalty');
+            await nudgeApproval(supabase, factionId, nation.id, round2(effects.no_bill_penalty_per_tick * 0.3));
         }
     }
 }
@@ -23466,8 +23470,9 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
         .update({ active: false })
         .eq('id', hog.id);
 
-    // 2. Approval & stability penalties
-    await adjustMomentumAll(supabase, nationId, factionId, -5, 'pm:resignation');
+    // 2. Approval, credibility & stability penalties
+    await nudgeApproval(supabase, factionId, nationId, -3);
+    await adjustCredibility(supabase, factionId, nationId, -0.05);
 
     const { data: nation } = await supabase
         .from('nations')
@@ -24813,7 +24818,7 @@ async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
     const ticksToElection = upcomingElection.election_tick - currentTick;
     console.log(`Campaign bonuses for incumbent ${president.first_name} ${president.last_name} in ${nation.name} (${ticksToElection} ticks to election)`);
 
-    await adjustMomentumAll(supabase, nation.id, president.faction_id, 2, 'campaign:incumbent_bonus');
+    await nudgeApproval(supabase, president.faction_id, nation.id, 1);
 
     const { data: nationStats } = await supabase
         .from('nations')
@@ -25050,7 +25055,7 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
         if (!result || !result.decay_ticks_remaining || result.decay_ticks_remaining <= 0) continue;
 
         const decayRate = result.decay_rate || 1;
-        await adjustMomentumAll(supabase, nationId, action.party_id, -decayRate, 'purge:decay');
+        await nudgeApproval(supabase, action.party_id, nationId, -round2(decayRate * 0.3));
 
         const newRemaining = result.decay_ticks_remaining - 1;
         await supabase.from('campaign_actions')
@@ -26138,8 +26143,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         removal_reason: 'impeached'
                     }).eq('id', proc.president_id);
 
-                    // President's party takes -10 approval
-                    await adjustMomentumAll(supabase, nation.id, president.faction_id, -10, 'impeachment:convicted');
+                    // President's party takes massive approval & credibility hit
+                    await nudgeApproval(supabase, president.faction_id, nation.id, -5);
+                    await adjustCredibility(supabase, president.faction_id, nation.id, -0.2, 24, currentTick);
 
                     // Stability -3, international_reputation -3
                     const newStab = Math.max(0, Math.round(Number(nation.stability || 50) - 3));

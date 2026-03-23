@@ -5,7 +5,7 @@
 
 import { GAME_CONFIG } from './config.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
-import { adjustGovernmentApprovalEvent, adjustMomentumAll } from './momentum.js';
+import { adjustGovernmentApprovalEvent, nudgeApproval, adjustCredibility } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { SOVEREIGN_DEFAULT_CRISIS_ID, SOVEREIGN_DEBT_CRISIS_ID, ECONOMIC_COLLAPSE_CRISIS_ID } from './sovereign-default.js';
 import { MINISTER_APPROVAL_CONFIG } from './stats.js';
@@ -631,12 +631,13 @@ async function activateEconomicCollapse(supabase, nation, currentTick) {
         await supabase.from('active_crises')
             .delete().eq('nation_id', nation.id).in('crisis_id', econIds);
 
-        // 3. Political penalties: -25 gov approval, -20 momentum to all coalition parties
+        // 3. Political penalties: -25 gov approval, -6 party_approval & -0.15 credibility to all coalition parties
         await adjustGovernmentApprovalEvent(supabase, nation.id, -25, 'crisis:economic_collapse');
 
         const coalition = await fetchActiveCoalition(supabase, nation.id);
         for (const partyId of (coalition?.party_ids || [])) {
-            await adjustMomentumAll(supabase, nation.id, partyId, -20, 'crisis:economic_collapse');
+            await nudgeApproval(supabase, partyId, nation.id, -6);
+            await adjustCredibility(supabase, partyId, nation.id, -0.15, 12);
         }
 
         // 4. Reset gdp_growth to neutral (stop the bleeding) — critical to prevent re-trigger loop

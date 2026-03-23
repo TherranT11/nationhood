@@ -7,7 +7,7 @@ import { FORMATION_DEADLINE_TICKS, GAME_CONFIG, SNAP_COOLDOWN_GAP, getPresidenti
 import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isAutocracy, isPresidentialRepublic } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { snapshotNationStats } from './stats.js';
-import { adjustMomentumAll } from './momentum.js';
+import { nudgeApproval, adjustCredibility, adjustGovernmentApprovalEvent, round2 } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { syncAmbassadorsForFailedConfirmationBills, syncMinistriesForFailedConfirmationBills } from './bills.js';
 import { autoSelectPresidentialCandidates, registerPartyLeaderAsCandidate } from './presidential.js';
@@ -566,13 +566,15 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
             // Dissolve coalition
             await dissolveCoalition(supabase, nationId);
 
-            // Calling party gets +3 momentum
-            await adjustMomentumAll(supabase, nationId, callingPartyId, 3, 'no_confidence:success');
+            // Calling party gets approval boost
+            await nudgeApproval(supabase, callingPartyId, nationId, 2);
 
-            // All coalition parties get -5 momentum
+            // All coalition parties take approval & credibility hit
             for (const partyId of coalitionPartyIds) {
-                await adjustMomentumAll(supabase, nationId, partyId, -5, 'no_confidence:coalition_falls');
+                await nudgeApproval(supabase, partyId, nationId, -3);
+                await adjustCredibility(supabase, partyId, nationId, -0.05);
             }
+            await adjustGovernmentApprovalEvent(supabase, nationId, -5, 'no_confidence:success');
 
             // Schedule snap election (same pattern as early elections)
             await supabase.from('elections').delete()
@@ -603,12 +605,14 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
         } // end else (coalition not already dissolved)
 
     } else {
-        // FAILED: calling party gets -5 momentum
-        await adjustMomentumAll(supabase, nationId, callingPartyId, -5, 'no_confidence:failed');
+        // FAILED: calling party takes approval & credibility hit
+        await nudgeApproval(supabase, callingPartyId, nationId, -3);
+        await adjustCredibility(supabase, callingPartyId, nationId, -0.05);
 
-        // PM's party gets +3 momentum
+        // PM's party gets approval & credibility boost
         if (pmFactionId) {
-            await adjustMomentumAll(supabase, nationId, pmFactionId, 3, 'no_confidence:pm_survives');
+            await nudgeApproval(supabase, pmFactionId, nationId, 2);
+            await adjustCredibility(supabase, pmFactionId, nationId, 0.03);
         }
 
         // Record cooldown: store the tick when the no-confidence failed
@@ -710,7 +714,7 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
         const penalty = partyId === pmFactionId
             ? GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST
             : GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST;
-        await adjustMomentumAll(supabase, nationId, partyId, -penalty, 'early_election:penalty');
+        await nudgeApproval(supabase, partyId, nationId, -round2(penalty * 0.5));
     }
 
     // Bust coalition cache after caretaker transition
@@ -869,7 +873,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
         .order('seats', { ascending: false });
 
     for (const party of (allParties || [])) {
-        await adjustMomentumAll(supabase, nation.id, party.id, -2, 'government_vacancy:ongoing');
+        await nudgeApproval(supabase, party.id, nation.id, -1);
     }
 
     // -1 stability to nation
@@ -918,16 +922,16 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
     if (failedAttempts < 1) {
         console.log(`STAGE 1: SNAP ELECTION triggered for ${nation.name} — ${ticksElapsed} ticks without government (attempt ${failedAttempts + 1})`);
 
-        // Top 2 parties: -6 momentum each
+        // Top 2 parties: -3 approval each
         if (allParties && allParties.length > 0) {
             const largest = allParties[0];
-            await adjustMomentumAll(supabase, nation.id, largest.id, -6, 'formation_failure:top_party');
-            console.log(`  Snap penalty: ${largest.faction_name} -6 momentum`);
+            await nudgeApproval(supabase, largest.id, nation.id, -3);
+            console.log(`  Snap penalty: ${largest.faction_name} -3 approval`);
 
             if (allParties.length > 1) {
                 const second = allParties[1];
-                await adjustMomentumAll(supabase, nation.id, second.id, -6, 'formation_failure:top_party');
-                console.log(`  Snap penalty: ${second.faction_name} -6 momentum`);
+                await nudgeApproval(supabase, second.id, nation.id, -3);
+                console.log(`  Snap penalty: ${second.faction_name} -3 approval`);
             }
         }
 
@@ -963,9 +967,9 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
             // Penalize non-responsive invitees
             for (const pid of invitedPartyIds) {
                 if (!respondedPartyIds.has(pid)) {
-                    await adjustMomentumAll(supabase, nation.id, pid, -3, 'formation_failure:non_responsive');
+                    await nudgeApproval(supabase, pid, nation.id, -2);
                     const partyName = allParties?.find(p => p.id === pid)?.faction_name || pid;
-                    console.log(`  Non-responsive penalty: ${partyName} -3 momentum`);
+                    console.log(`  Non-responsive penalty: ${partyName} -2 approval`);
                 }
             }
         }
@@ -2005,14 +2009,14 @@ export async function processPresidentialElectionResult(supabase, nation, comple
             }
         }
 
-        // Momentum effects: incumbent win boosts their faction, challenger win penalizes losing incumbent faction
+        // Election effects: incumbent win boosts approval, challenger win penalizes loser
         if (isIncumbentWin && incumbentFactionId) {
-            await adjustMomentumAll(supabase, nation.id, incumbentFactionId, 3, 'election:incumbent_win');
-            console.log(`Incumbent re-elected: +3 momentum to ${winner.party_name}`);
+            await nudgeApproval(supabase, incumbentFactionId, nation.id, 3);
+            console.log(`Incumbent re-elected: +3 approval to ${winner.party_name}`);
         } else if (isChallengerWin && incumbentFactionId) {
-            await adjustMomentumAll(supabase, nation.id, incumbentFactionId, -5, 'election:incumbent_loss');
-            await adjustMomentumAll(supabase, nation.id, winner.faction_id, 3, 'election:challenger_win');
-            console.log(`Challenger wins: -5 momentum to outgoing party, +3 to ${winner.party_name}`);
+            await nudgeApproval(supabase, incumbentFactionId, nation.id, -4);
+            await nudgeApproval(supabase, winner.faction_id, nation.id, 3);
+            console.log(`Challenger wins: -4 approval to outgoing party, +3 to ${winner.party_name}`);
         }
     } catch (effectsErr) { console.warn('Could not apply winner/loser effects:', effectsErr); }
 

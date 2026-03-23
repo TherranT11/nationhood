@@ -7,7 +7,7 @@
  */
 
 import { fetchActiveCoalition } from './government-structure.js';
-import { adjustMomentum, adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
+import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { loadFactionIdeology } from './ideology.js';
 
 // ==================== PROTEST LOG UPDATE RPC ====================
