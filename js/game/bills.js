@@ -7,7 +7,7 @@ import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPres
 import { isPresidentialRepublic } from './government-types.js';
 import { DIPLOMACY_CONFIG } from './diplomacy-constants.js';
 import { IDEOLOGY_AXES, IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology, loadNationIdeologies } from './ideology.js';
-import { adjustMomentum, adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
+import { adjustGovernmentApprovalEvent, nudgeApproval, adjustCredibility, round2 } from './momentum.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
 import { fetchActiveCoalition } from './government-structure.js';
@@ -149,7 +149,8 @@ export function calculateEnactmentApproval(articles, billSupport, sponsorId, fac
 export async function applyEnactmentApproval(supabase, nationId, approvalDeltas) {
     for (const [factionId, delta] of Object.entries(approvalDeltas)) {
         if (delta === 0) continue;
-        await adjustMomentumAll(supabase, nationId, factionId, delta, 'bill:enactment');
+        const scaled = round2(delta * 0.3);
+        await nudgeApproval(supabase, factionId, nationId, scaled);
     }
 }
 
@@ -205,12 +206,12 @@ export async function applyNoVotePenalty(supabase, bill, nationId) {
     const nonVoters = allFactions.filter(f => !votedFactionIds.has(f.id));
     if (nonVoters.length === 0) return [];
 
-    // 4. Apply penalties to each non-voter (momentum only — legacy faction_bloc_approval writes removed)
+    // 4. Apply penalties to each non-voter (party_approval hit)
     const penalized = [];
     for (const faction of nonVoters) {
-        // Momentum: lose 1d3+1 (2-4) across ALL blocs (adjustMomentumAll is now a no-op)
-        const momentumLoss = -(Math.floor(Math.random() * 3) + 2);
-        await adjustMomentumAll(supabase, nationId, faction.id, momentumLoss, 'penalty:no_vote');
+        // Lose 1-2 party_approval for not voting
+        const approvalLoss = -(1 + Math.random());
+        await nudgeApproval(supabase, faction.id, nationId, round2(approvalLoss));
 
         penalized.push({
             factionId: faction.id,
@@ -1696,7 +1697,8 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presidentRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proceedingData.president_id).single();
                     if (presidentRow) {
-                        await adjustMomentumAll(supabase, bill.nation_id, presidentRow.faction_id, -15, 'impeachment:impeached');
+                        await nudgeApproval(supabase, presidentRow.faction_id, bill.nation_id, -5);
+                        await adjustCredibility(supabase, presidentRow.faction_id, bill.nation_id, -0.15, 12);
                     }
                 }
 
@@ -1745,8 +1747,9 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     impeachment_cooldown_until_tick: currentTick + GAME_CONFIG.IMPEACHMENT_MOTION_COOLDOWN_TICKS
                 }).eq('id', bill.nation_id);
 
-                // Filer takes -5 approval (partisan overreach)
-                await adjustMomentumAll(supabase, bill.nation_id, bill.proposed_by, -5, 'impeachment:failed_motion');
+                // Filer takes approval & credibility hit (partisan overreach)
+                await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -2);
+                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.05);
 
                 // President gets +3 approval (vindication)
                 const { data: proc } = await supabase.from('impeachment_proceedings')
@@ -1755,7 +1758,8 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
-                        await adjustMomentumAll(supabase, bill.nation_id, presRow.faction_id, 3, 'impeachment:vindicated');
+                        await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 2);
+                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.03);
                     }
                 }
 
@@ -1813,7 +1817,8 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
-                        await adjustMomentumAll(supabase, bill.nation_id, presRow.faction_id, 5, 'impeachment:acquitted');
+                        await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 3);
+                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.05);
                     }
                 }
 
@@ -1829,10 +1834,12 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 const yesVoters = (bill.bill_support || []).filter(s => s.stance === 'yes' || s.stance === 'accept');
                 for (const v of yesVoters) {
                     if (v.faction_id !== bill.proposed_by) {
-                        await adjustMomentumAll(supabase, bill.nation_id, v.faction_id, -2, 'impeachment:overreach');
+                        await nudgeApproval(supabase, v.faction_id, bill.nation_id, -1);
+                        await adjustCredibility(supabase, v.faction_id, bill.nation_id, -0.03);
                     }
                 }
-                await adjustMomentumAll(supabase, bill.nation_id, bill.proposed_by, -2, 'impeachment:overreach');
+                await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -1);
+                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.03);
 
                 try {
                     await supabase.from('event_log').insert({
@@ -2898,7 +2905,9 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
             if (allFactions) {
                 for (const faction of allFactions) {
-                    await adjustMomentumAll(supabase, bill.nation_id, faction.id, 8, 'term_limits_removed');
+                    // Base loves it (+3 approval) but anti-democratic (-0.1 credibility)
+                    await nudgeApproval(supabase, faction.id, bill.nation_id, 3);
+                    await adjustCredibility(supabase, faction.id, bill.nation_id, -0.1);
                 }
             }
 

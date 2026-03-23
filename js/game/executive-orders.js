@@ -15,7 +15,7 @@
 import { GAME_CONFIG, deductAP } from './config.js';
 import { MINISTER_APPROVAL_CONFIG } from './stats.js';
 import { isGovernmentPresidential } from './government-types.js';
-import { adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
+import { adjustGovernmentApprovalEvent, nudgeApproval, adjustCredibility } from './momentum.js';
 import { getNationNames } from './political-actions.js';
 import { getTraitAPModifier } from './party-leadership.js';
 
@@ -524,8 +524,8 @@ export async function issuePriceControls(supabase, nationId, factionId, stat) {
     });
     if (insertErr) return { success: false, error: insertErr.message };
 
-    // Bloc approval effects
-    await adjustMomentumAll(supabase, nationId, factionId, 6, 'executive_order:price_controls');
+    // Party approval boost for populist action
+    await nudgeApproval(supabase, factionId, nationId, 2);
 
     // Gov approval penalty
     await adjustGovernmentApprovalEvent(supabase, nationId, -3, 'executive_order:price_controls');
@@ -593,11 +593,11 @@ export async function issueNationalEmergency(supabase, nationId, factionId) {
     // +8 gov approval immediately (crisis rally effect)
     await adjustGovernmentApprovalEvent(supabase, nationId, 8, 'executive_order:national_emergency');
 
-    // +6 momentum to ALL opposition factions (galvanized opposition)
+    // +2 approval to ALL opposition factions (galvanized opposition)
     const { data: factions } = await supabase
         .from('factions').select('id').eq('nation_id', nationId).neq('id', factionId);
     for (const f of (factions || [])) {
-        await adjustMomentumAll(supabase, nationId, f.id, 6, 'executive_order:emergency_opposition');
+        await nudgeApproval(supabase, f.id, nationId, 2);
     }
 
     // Update overreach
@@ -701,11 +701,13 @@ export async function issueCensure(supabase, nationId, factionId, targetFactionI
     });
     if (insertErr) return { success: false, error: insertErr.message };
 
-    // -4 momentum to target across all blocs
-    await adjustMomentumAll(supabase, nationId, targetFactionId, -4, 'executive_order:censure');
+    // Censure: -2 approval & -0.05 credibility to target
+    await nudgeApproval(supabase, targetFactionId, nationId, -2);
+    await adjustCredibility(supabase, targetFactionId, nationId, -0.05);
 
-    // Martyr effect: target gains momentum (bigger if repeat)
-    await adjustMomentumAll(supabase, nationId, targetFactionId, martyrMomentum, 'executive_order:censure_martyr');
+    // Martyr effect: target regains some approval (bigger if repeated censure)
+    const martyrApproval = Math.round(martyrMomentum * 0.3 * 100) / 100;
+    await nudgeApproval(supabase, targetFactionId, nationId, martyrApproval);
 
     // -3 gov approval
     await adjustGovernmentApprovalEvent(supabase, nationId, -3, 'executive_order:censure');
