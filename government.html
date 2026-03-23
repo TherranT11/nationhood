@@ -939,13 +939,20 @@ async function renderGovernmentPage() {
             </div>
         `;
 
-        if (partyData.length > 0) {
-            // Enrich partyData with DB colors for parliament visualization
-            const enrichedPartyData = partyData.map((p, i) => {
-                const dbParty = allParties.find(x => x.id === p.party_id);
-                return { ...p, color: dbParty?.party_color || FALLBACK_COLORS[i % FALLBACK_COLORS.length] };
-            });
-            drawParliament(enrichedPartyData);
+        // Build parliament chart from factions.seats (canonical source of truth)
+        // rather than stored election results, which may exclude parties that
+        // weren't participating when the last election ran.
+        const seatParties = allParties
+            .filter(p => (p.seats || 0) > 0)
+            .sort((a, b) => (b.seats || 0) - (a.seats || 0))
+            .map((p, i) => ({
+                party_id: p.id,
+                party_name: p.faction_name,
+                seats: p.seats || 0,
+                color: p.party_color || FALLBACK_COLORS[i % FALLBACK_COLORS.length]
+            }));
+        if (seatParties.length > 0) {
+            drawParliament(seatParties);
         }
 
         // Load and render past administrations
