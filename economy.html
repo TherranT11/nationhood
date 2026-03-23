@@ -579,30 +579,13 @@ function wireTariffSimulator(nation) {
     var slider = document.getElementById('tsim-range');
     if (!slider) return;
 
-    var currentRate = Number(nation.tariffs) || 0;
-    var eff = Number(nation.efficiency) || 50;
-    var corr = Number(nation.corruption) || 50;
-    var collectionRate = (eff + (100 - corr)) / 200;
-    var currentDampener = 1 - (currentRate / 200);
-
-    // Gather sector imports (same as renderTariffSimulator)
-    var sectorImports = [];
-    var totalCurrentImports = 0;
-    for (var i = 0; i < TRADE_SECTORS.length; i++) {
-        var s = TRADE_SECTORS[i];
-        if (s.export_only) continue;
-        var flow = tradeData && tradeData.flows ? tradeData.flows[s.key] : null;
-        var impVol = flow ? Number(flow.import_volume) || 0 : 0;
-        if (impVol > 0) {
-            sectorImports.push({ key: s.key, label: s.label, imports: impVol });
-            totalCurrentImports += impVol;
-        }
-    }
-
-    var currentTariffRev = 0;
-    if (tradeData && tradeData.summary) {
-        currentTariffRev = Number(tradeData.summary.tariff_revenue) || 0;
-    }
+    var simData = gatherTariffSimData(nation);
+    var currentRate = simData.currentRate;
+    var currentDampener = simData.currentDampener;
+    var totalCurrentImports = simData.totalCurrentImports;
+    var sectorImports = simData.sectorImports;
+    var collectionRate = simData.collectionRate;
+    var currentTariffRev = simData.currentTariffRev;
 
     slider.addEventListener('input', function() {
         var simRate = parseInt(slider.value, 10);
@@ -2271,12 +2254,12 @@ function renderSectorDetail(nation, sectorKey) {
     h += '<div class="sector-volume-panel">';
     if (flow) {
         // Supply & Demand capacity row
-        var expCap = Number(flow.export_capacity) || 0;
-        var impDemHeader = Number(flow.import_demand) || 0;
+        var supplyVal = Number(flow.export_capacity) || 0;
+        var demandVal = Number(flow.import_demand) || 0;
         h += '<div class="sector-vol-row">';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">SUPPLY</span><span class="sector-vol-value" style="color:#6aa3d9">' + formatBudgetCurrency(expCap) + '</span></div>';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">SUPPLY</span><span class="sector-vol-value" style="color:#6aa3d9">' + formatBudgetCurrency(supplyVal) + '</span></div>';
         if (!sector.export_only) {
-            h += '<div class="sector-vol-item"><span class="sector-vol-label">DEMAND</span><span class="sector-vol-value" style="color:#c9a54e">' + formatBudgetCurrency(impDemHeader) + '</span></div>';
+            h += '<div class="sector-vol-item"><span class="sector-vol-label">DEMAND</span><span class="sector-vol-value" style="color:#c9a54e">' + formatBudgetCurrency(demandVal) + '</span></div>';
         }
         h += '</div>';
 
@@ -2837,7 +2820,7 @@ function renderTariffsTab(nation) {
     h += '</div>';
 
     // --- Tariff Impact Simulator ---
-    h += renderTariffSimulator(nation, tariffRate, tariffRev);
+    h += renderTariffSimulator(nation);
 
     // --- Active Trade Agreements ---
     h += renderTariffAgreementsSection(nation);
@@ -2849,29 +2832,46 @@ function renderTariffsTab(nation) {
     return h;
 }
 
-function renderTariffSimulator(nation, currentRate, currentTariffRev) {
-    // Need trade flow data to project impacts
-    if (!tradeData || !tradeData.flows) return '';
-
+function gatherTariffSimData(nation) {
+    var currentRate = Number(nation.tariffs) || 0;
     var eff = Number(nation.efficiency) || 50;
     var corr = Number(nation.corruption) || 50;
     var collectionRate = (eff + (100 - corr)) / 200;
+    var currentDampener = 1 - (currentRate / 200);
 
-    // Gather current per-sector import volumes
     var sectorImports = [];
     var totalCurrentImports = 0;
-    for (var i = 0; i < TRADE_SECTORS.length; i++) {
-        var s = TRADE_SECTORS[i];
-        if (s.export_only) continue;
-        var flow = tradeData.flows[s.key];
-        var impVol = flow ? Number(flow.import_volume) || 0 : 0;
-        if (impVol > 0) {
-            sectorImports.push({ key: s.key, label: s.label, imports: impVol });
-            totalCurrentImports += impVol;
+    if (tradeData && tradeData.flows) {
+        for (var i = 0; i < TRADE_SECTORS.length; i++) {
+            var s = TRADE_SECTORS[i];
+            if (s.export_only) continue;
+            var flow = tradeData.flows[s.key];
+            var impVol = flow ? Number(flow.import_volume) || 0 : 0;
+            if (impVol > 0) {
+                sectorImports.push({ key: s.key, label: s.label, imports: impVol });
+                totalCurrentImports += impVol;
+            }
         }
     }
 
-    if (totalCurrentImports <= 0) {
+    var currentTariffRev = 0;
+    if (tradeData && tradeData.summary) {
+        currentTariffRev = Number(tradeData.summary.tariff_revenue) || 0;
+    }
+
+    return {
+        currentRate: currentRate,
+        collectionRate: collectionRate,
+        currentDampener: currentDampener,
+        sectorImports: sectorImports,
+        totalCurrentImports: totalCurrentImports,
+        currentTariffRev: currentTariffRev
+    };
+}
+
+function renderTariffSimulator(nation) {
+    var d = gatherTariffSimData(nation);
+    if (d.totalCurrentImports <= 0) {
         var h = '<div class="econ-section">';
         h += '<div class="econ-section-header">TARIFF IMPACT SIMULATOR</div>';
         h += '<div class="econ-placeholder">No import data yet. Projections will appear once trade flows are established.</div>';
@@ -2879,26 +2879,24 @@ function renderTariffSimulator(nation, currentRate, currentTariffRev) {
         return h;
     }
 
-    var currentDampener = 1 - (currentRate / 200);
-
     var h = '<div class="econ-section">';
     h += '<div class="econ-section-header">TARIFF IMPACT SIMULATOR</div>';
     h += '<div class="econ-section-subtitle">Drag to project how a tariff change would affect imports and revenue.</div>';
 
     // Slider
     h += '<div class="tsim-slider-row">';
-    h += '<div class="tsim-slider-label">CURRENT: <strong>' + currentRate.toFixed(0) + '%</strong></div>';
+    h += '<div class="tsim-slider-label">CURRENT: <strong>' + d.currentRate.toFixed(0) + '%</strong></div>';
     h += '<div class="tsim-slider-wrap">';
-    h += '<div class="tsim-slider-fill" id="tsim-fill" style="width:' + currentRate + '%"></div>';
-    h += '<input type="range" class="tsim-slider" id="tsim-range" min="0" max="100" step="1" value="' + currentRate.toFixed(0) + '">';
+    h += '<div class="tsim-slider-fill" id="tsim-fill" style="width:' + d.currentRate + '%"></div>';
+    h += '<input type="range" class="tsim-slider" id="tsim-range" min="0" max="100" step="1" value="' + d.currentRate.toFixed(0) + '">';
     h += '<div class="tsim-slider-labels"><span>0%</span><span>50%</span><span>100%</span></div>';
     h += '</div>';
-    h += '<div class="tsim-sim-label" id="tsim-sim-label">SIMULATED: <strong>' + currentRate.toFixed(0) + '%</strong></div>';
+    h += '<div class="tsim-sim-label" id="tsim-sim-label">SIMULATED: <strong>' + d.currentRate.toFixed(0) + '%</strong></div>';
     h += '</div>';
 
     // Projection cards
     h += '<div class="tsim-projections" id="tsim-projections">';
-    h += renderTariffProjections(currentRate, currentRate, currentDampener, totalCurrentImports, sectorImports, collectionRate, currentTariffRev);
+    h += renderTariffProjections(d.currentRate, d.currentRate, d.currentDampener, d.totalCurrentImports, d.sectorImports, d.collectionRate, d.currentTariffRev);
     h += '</div>';
 
     h += '</div>';
@@ -2921,10 +2919,9 @@ function renderTariffProjections(currentRate, simRate, currentDampener, totalCur
     // Summary cards
     h += '<div class="econ-cards-row econ-cards-4">';
 
-    // Projected imports
-    var impColor = importDelta > 0 ? 'surplus' : importDelta < 0 ? 'deficit' : 'neutral';
+    // Projected imports (neutral color — more/fewer imports isn't inherently good or bad)
     var impDeltaStr = importDelta !== 0 ? (importDelta > 0 ? '+' : '') + formatBudgetCurrency(importDelta) : '—';
-    h += renderOverviewCard('Projected Imports', formatBudgetCurrency(projectedTotalImports), impColor, isChanged ? impDeltaStr : 'No change');
+    h += renderOverviewCard('Projected Imports', formatBudgetCurrency(projectedTotalImports), 'neutral', isChanged ? impDeltaStr : 'No change');
 
     // Projected tariff revenue
     var revColor = revDelta > 0 ? 'surplus' : revDelta < 0 ? 'deficit' : 'neutral';
@@ -2932,9 +2929,8 @@ function renderTariffProjections(currentRate, simRate, currentDampener, totalCur
     h += renderOverviewCard('Projected Revenue', formatBudgetCurrency(projectedTariffRev), revColor, isChanged ? revDeltaStr : 'No change');
 
     // Import dampener
-    h += renderOverviewCard('Import Dampener', simDampener.toFixed(0) === '1' ? '100%' : (simDampener * 100).toFixed(0) + '%', 'neutral', 'of full demand');
+    h += renderOverviewCard('Import Dampener', (simDampener * 100).toFixed(0) + '%', 'neutral', 'of full demand');
 
-    // Net fiscal impact (revenue delta - import cost isn't meaningful, but direction helps)
     var netDirection = revDelta > 0 ? 'More revenue' : revDelta < 0 ? 'Less revenue' : 'No change';
     var tradeDirection = importDelta > 0 ? ', more imports' : importDelta < 0 ? ', fewer imports' : '';
     h += renderOverviewCard('Net Effect', isChanged ? (revDelta >= 0 ? '+' : '') + formatBudgetCurrency(revDelta) + '/tick' : '—', revColor, isChanged ? netDirection + tradeDirection : 'Drag the slider');
