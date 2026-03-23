@@ -334,7 +334,7 @@ export async function createAdministration(supabase, nationId, nation, coalition
                 started_at_tick: currentTick,
                 started_at_date: currentDate,
                 stats_at_start: statsAtStart,
-                approval_at_start: governmentApproval
+                approval_at_start: 50
             });
         if (insertErr) throw insertErr;
 
@@ -423,7 +423,7 @@ export async function rolloverAdministration(supabase, nationId, nation, endReas
         started_at_tick: currentTick,
         started_at_date: currentDate,
         stats_at_start: statsAtStart,
-        approval_at_start: governmentApproval
+        approval_at_start: 50
     };
 
     const { error: rpcErr } = await supabase.rpc('rollover_administration', {
