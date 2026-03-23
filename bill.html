@@ -1602,17 +1602,21 @@ async function renderSidebar() {
                 <div class="support-box-header" style="border-top:1px solid var(--border-main);"><div class="support-box-title">Conditional Support</div></div>
                 <div class="support-box-content">
                     ${amendmentRequests.map(req => {
+                        const isMyAmendment = currentFaction && req.faction_id === currentFaction.id;
+                        const withdrawBtn = isMyAmendment ? `<button class="amendment-withdraw-btn" onclick="withdrawConditionalSupport('${req.id}')" title="Withdraw">✕</button>` : '';
                         if (req.request_type === 'strike') {
                             const targetArt = (currentBill.bill_articles || []).find(a => a.id === req.target_article_id);
                             const artLabel = targetArt ? (targetArt.policies?.policy_name || targetArt.article_title || 'Article ' + targetArt.article_number) : 'Unknown Article';
-                            return `<div class="amendment-request strike">
+                            return `<div class="amendment-request strike" style="position:relative;">
+                                ${withdrawBtn}
                                 <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
                                 <div style="color:var(--orange);font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you <strong>REMOVE</strong>:</div>
                                 <div class="amendment-policy strike-policy">✂ ${artLabel}</div>
                                 ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
                             </div>`;
                         }
-                        return `<div class="amendment-request">
+                        return `<div class="amendment-request" style="position:relative;">
+                            ${withdrawBtn}
                             <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
                             <div style="color:var(--blue);font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you agree to add the following:</div>
                             ${req.policy_id ? `<div class="amendment-policy">📎 ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">📎 ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
@@ -1668,17 +1672,21 @@ async function renderSidebar() {
                 <div class="support-box-header" style="border-top:1px solid var(--border-main);"><div class="support-box-title">Conditional Support</div></div>
                 <div class="support-box-content">
                     ${amendmentRequests.map(req => {
+                        const isMyAmendment = currentFaction && req.faction_id === currentFaction.id;
+                        const withdrawBtn = isMyAmendment ? `<button class="amendment-withdraw-btn" onclick="withdrawConditionalSupport('${req.id}')" title="Withdraw">✕</button>` : '';
                         if (req.request_type === 'strike') {
                             const targetArt = (currentBill.bill_articles || []).find(a => a.id === req.target_article_id);
                             const artLabel = targetArt ? (targetArt.policies?.policy_name || targetArt.article_title || 'Article ' + targetArt.article_number) : 'Unknown Article';
-                            return `<div class="amendment-request strike">
+                            return `<div class="amendment-request strike" style="position:relative;">
+                                ${withdrawBtn}
                                 <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
                                 <div style="color:var(--orange);font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you <strong>REMOVE</strong>:</div>
                                 <div class="amendment-policy strike-policy">✂ ${artLabel}</div>
                                 ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
                             </div>`;
                         }
-                        return `<div class="amendment-request">
+                        return `<div class="amendment-request" style="position:relative;">
+                            ${withdrawBtn}
                             <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
                             <div style="color:var(--blue);font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you agree to add the following:</div>
                             ${req.policy_id ? `<div class="amendment-policy">📎 ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">📎 ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
@@ -2404,6 +2412,18 @@ async function respondToAmendment(reqId, response) {
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
+// ==================== WITHDRAW CONDITIONAL SUPPORT ====================
+
+async function withdrawConditionalSupport(reqId) {
+    if (!currentFaction) return;
+    if (!confirm('Withdraw your conditional support offer?')) return;
+    try {
+        await _supabase.from('bill_amendment_requests').delete().eq('id', reqId).eq('faction_id', currentFaction.id);
+        await _supabase.from('bill_support').delete().eq('bill_id', billId).eq('faction_id', currentFaction.id).eq('stance', 'conditional');
+        await loadBillData();
+    } catch (e) { console.error(e); alert('Error: ' + e.message); }
+}
+
 // ==================== TEXT AMENDMENTS ====================
 
 function openTextAmendmentModal() {
@@ -2814,6 +2834,7 @@ window.enactDecree = enactDecree;
 window.retractBill = retractBill;
 window.sendToFloor = sendToFloor;
 window.respondToAmendment = respondToAmendment;
+window.withdrawConditionalSupport = withdrawConditionalSupport;
 window.setCommitteeStance = setCommitteeStance;
 window.selectAmendmentPolicy = selectAmendmentPolicy;
 // Strike article
