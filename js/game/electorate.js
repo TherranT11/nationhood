@@ -1886,7 +1886,7 @@ function getDiminishingMultiplier(currentCount) {
  * @param {number} boost - Positive visibility increment (e.g., 5-15)
  */
 export async function boostVisibility(supabase, factionId, nationId, boost) {
-    if (!boost || boost <= 0) return;
+    if (!boost) return;
 
     const { data: standing } = await supabase
         .from('faction_electoral_standing')
@@ -1897,8 +1897,10 @@ export async function boostVisibility(supabase, factionId, nationId, boost) {
     if (!standing) return;
 
     const actionCount = Number(standing.campaign_actions_this_tick ?? 0);
-    const multiplier = getDiminishingMultiplier(actionCount);
-    const effectiveBoost = round2(boost * multiplier);
+    // Diminishing returns only apply to positive boosts; penalties hit at full force
+    const effectiveBoost = boost > 0
+        ? round2(boost * getDiminishingMultiplier(actionCount))
+        : boost;
 
     const old = Number(standing.visibility ?? CFG.DEFAULT_VISIBILITY);
     const newVis = round2(clamp(old + effectiveBoost, 0, 100));
@@ -2238,30 +2240,35 @@ export async function executeTakeStance(supabase, factionId, nationId, issueId, 
  */
 export async function onRally(supabase, factionId, nationId, outcomeId, currentTick) {
     const visBoost = {
-        rousing: 12,
-        solid: 8,
-        low: 4,
-        gaffe: 0,
-        divisive: 6,   // controversial but attention-getting
-        counter: 0,
-    }[outcomeId] ?? 5;
+        rousing: 6,
+        solid: 4,
+        low: 2,
+        gaffe: -2,
+        divisive: -6,
+        counter: -3,
+    }[outcomeId] ?? 0;
 
-    if (visBoost > 0) {
+    if (visBoost !== 0) {
         await boostVisibility(supabase, factionId, nationId, visBoost);
     }
 
-    // Gaffe damages approval slightly
-    if (outcomeId === 'gaffe') {
-        await nudgeApproval(supabase, factionId, nationId, -2);
+    // Approval penalties for bad outcomes
+    const approvalHit = {
+        gaffe: -5,
+        divisive: -3,
+        counter: -5,
+    }[outcomeId] ?? 0;
+    if (approvalHit !== 0) {
+        await nudgeApproval(supabase, factionId, nationId, approvalHit);
     }
 
     await logActivity(supabase, factionId, nationId, 'rally',
         'Rally', `Rally — ${outcomeId}`,
-        outcomeId === 'gaffe' || outcomeId === 'counter' ? 'failure' : 'success',
+        outcomeId === 'gaffe' || outcomeId === 'counter' || outcomeId === 'divisive' ? 'failure' : 'success',
         3, currentTick
     );
 
-    return { visBoost };
+    return { visBoost, approvalHit };
 }
 
 /**
