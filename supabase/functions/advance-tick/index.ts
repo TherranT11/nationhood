@@ -25587,6 +25587,108 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
     };
 }
 
+// ==================== EDUCATION — CURRICULUM DRIFT ====================
+
+async function processCurriculumDrift(supabase, nation, currentTick) {
+    const { data: drifts, error } = await supabase
+        .from('curriculum_drift')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .eq('completed', false);
+
+    if (error || !drifts || drifts.length === 0) return;
+
+    const ideoCentre = nation.ideological_centre || {
+        individualism_collectivism: 0,
+        tradition_progress: 0,
+        liberty_equality: 0,
+        freedom_security: 0,
+        globalism_nationalism: 0
+    };
+
+    let changed = false;
+
+    for (const drift of drifts) {
+        // Still in delay period
+        if (currentTick < drift.activates_at_tick) continue;
+
+        // Drift complete
+        if (drift.drift_ticks_remaining <= 0) {
+            await supabase.from('curriculum_drift')
+                .update({ completed: true })
+                .eq('id', drift.id);
+
+            // Fire completion event
+            try {
+                const axisLabel = drift.axis.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/ /g, ' / ');
+                const templates = [
+                    `Curriculum drift complete. ${axisLabel} axis shifted ${drift.direction_label} by 2.4 points.`,
+                    `${nation.name} electorate composition updated. Curriculum cycle concluded.`,
+                    `Education drift period ends. ${axisLabel} ideological shift locked in permanently.`,
+                    `Curriculum investment from Tick ${drift.set_at_tick} fully applied to electorate.`
+                ];
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    tick: currentTick,
+                    event_type: 'ministry_curriculum_drift_complete',
+                    category: 'education',
+                    headline: templates[Math.floor(Math.random() * templates.length)],
+                    details: { axis: drift.axis, direction: drift.direction, direction_label: drift.direction_label, set_at_tick: drift.set_at_tick },
+                    severity: 'info'
+                });
+            } catch (e) { /* non-fatal */ }
+            continue;
+        }
+
+        // Drift is active — apply +0.2 * direction per tick
+        const magnitude = Number(drift.drift_per_tick || 0.2) * drift.direction;
+        const axis = drift.axis;
+        if (ideoCentre[axis] !== undefined) {
+            ideoCentre[axis] = Math.round(((ideoCentre[axis] || 0) + magnitude) * 100) / 100;
+            changed = true;
+        }
+
+        // Decrement remaining ticks
+        const newRemaining = drift.drift_ticks_remaining - 1;
+        await supabase.from('curriculum_drift')
+            .update({ drift_ticks_remaining: newRemaining })
+            .eq('id', drift.id);
+
+        // Fire activation event on first tick of drift
+        if (drift.drift_ticks_remaining === 12) {
+            try {
+                const axisLabel = drift.axis.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/ /g, ' / ');
+                const templates = [
+                    `Curriculum reforms from Tick ${drift.set_at_tick} now taking effect. Electorate drifting ${drift.direction_label}.`,
+                    `${nation.name} curriculum drift active. Ideological shift underway on ${axisLabel} axis.`,
+                    `Education policy set ${currentTick - drift.set_at_tick} ticks ago begins reshaping ${nation.name}'s electorate.`,
+                    `Long-term curriculum investment now visible in electorate composition.`
+                ];
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    tick: currentTick,
+                    event_type: 'ministry_curriculum_drift_begins',
+                    category: 'education',
+                    headline: templates[Math.floor(Math.random() * templates.length)],
+                    details: { axis: drift.axis, direction: drift.direction, direction_label: drift.direction_label, set_at_tick: drift.set_at_tick },
+                    severity: 'info'
+                });
+            } catch (e) { /* non-fatal */ }
+        }
+    }
+
+    if (changed) {
+        const { error: updateErr } = await supabase.from('nations')
+            .update({ ideological_centre: ideoCentre })
+            .eq('id', nation.id);
+        if (updateErr) {
+            console.error(`[CurriculumDrift] Failed to update ideological_centre for ${nation.name}:`, updateErr.message);
+        } else {
+            console.log(`[CurriculumDrift] ${nation.name} ideological_centre updated:`, JSON.stringify(ideoCentre));
+        }
+    }
+}
+
 // ==================== VOLBAL LIGUE NATIONALE ====================
 
 const VLN_TEAMS = [
@@ -26083,6 +26185,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (minActErr) {
             console.error(`[advanceTick] Ministry actions failed for ${nation.name} (non-fatal):`, minActErr);
+        }
+
+        // Education: curriculum drift processing
+        try {
+            await processCurriculumDrift(supabase, nation, newTick);
+        } catch (currErr) {
+            console.error(`[advanceTick] Curriculum drift failed for ${nation.name} (non-fatal):`, currErr);
         }
 
         // Military doctrine tick processing (cohesion, renounce cooldown)

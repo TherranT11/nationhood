@@ -252,6 +252,62 @@ const MINISTRY_ACTIONS = {
     }
 };
 
+    education: {
+        actions: [
+            {
+                id: 'expandInfrastructure',
+                name: 'Expand Infrastructure',
+                desc: 'Fund construction and expansion of schools and educational facilities nationally.',
+                comingSoon: true
+            },
+            {
+                id: 'standardisedCurriculum',
+                triggerKey: 'ministry_standardised_curriculum',
+                name: 'Standardised Curriculum',
+                desc: 'Set the national curriculum to reflect a specific ideological orientation, shaping the values of future voters.',
+                apCosts: [6, 6, 6, 6], // flat 6 AP
+                budgetPerCapita: 0,
+                delay: 160, duration: 12,
+                decayTicks: 0,
+                useResetInterval: 999, // never resets
+                cooldownTicks: 12,
+                customFlow: 'curriculum', // signals custom modal instead of standard confirm
+                tags: [
+                    { label: 'ELECTORATE DRIFT', cls: 'neutral' },
+                    { label: '+0.2 / TICK', cls: 'neutral' },
+                    { label: 'NO BUDGET COST', cls: 'neutral' }
+                ],
+                baseEffects: [] // drift is handled via curriculum_drift table, not stat_effects
+            },
+            {
+                id: 'privateEducationIncentives',
+                triggerKey: 'ministry_private_education_incentives',
+                name: 'Private Education Incentives',
+                desc: 'Offer tax breaks and regulatory relief to attract private school investment and reduce the state education burden.',
+                apCosts: [2, 3, 5, 7],
+                budgetPerCapita: 0,
+                budgetSavesPerCapita: 1000000 / 12000000, // $1M per 12M pop per tick
+                delay: 2, duration: 10,
+                decayTicks: 4, // Higher Ed fades over 4 ticks post-expiry
+                useResetInterval: 15,
+                tags: [
+                    { label: 'HIGHER ED ↑', cls: 'positive' },
+                    { label: 'ACCESSIBILITY ↓', cls: 'negative' },
+                    { label: 'INEQUALITY ↑', cls: 'negative' },
+                    { label: 'ACADEMIC IMMIGRATION ↑', cls: 'positive' }
+                ],
+                baseEffects: [
+                    { stat_key: 'higher_education',       direction: 'up',   rate: 2, scalable: true },
+                    { stat_key: 'education_accessibility', direction: 'down', rate: 1, scalable: false },
+                    { stat_key: 'income_inequality',       direction: 'up',   rate: 1, scalable: false },
+                    { stat_key: 'academic_immigration',    direction: 'up',   rate: 1, scalable: true },
+                    { stat_key: 'minister_approval', direction: 'up', rate: 1, scalable: false, target: 'minister', delayOverride: 0, durationOverride: 1 }
+                ]
+            }
+        ]
+    }
+};
+
 // Build the stat_effects array for the tick processor, applying use-count scaling
 function buildStatEffects(action, useCount) {
     if (!action?.baseEffects) return [];
@@ -813,6 +869,9 @@ async function renderGovernmentPage() {
                 }
             }
         } catch (e) { /* non-blocking — defaults to 0 use counts */ }
+
+        // Load education curriculum drift state for card display
+        await loadCurriculumDriftState();
 
         // Check for pending PM or President candidates (player needs to select)
         const primeMinister = ministries?.find(m => m.ministry_key === 'prime_minister');
@@ -2816,6 +2875,8 @@ function isMyMinistryByKey(ministryKey) {
 function buildMinistryActionRows(ministryKey, isMyMinistry) {
     // Defense ministry has a custom action layout
     if (ministryKey === 'defense') return buildDefenseActionRows(isMyMinistry);
+    // Education ministry has a custom action layout
+    if (ministryKey === 'education') return buildEducationActionRows(isMyMinistry);
 
     // Foreign ministry actions live on the Diplomacy page
     if (ministryKey === 'foreign') {
@@ -2975,6 +3036,385 @@ function buildDefenseActionRows(isMyMinistry) {
     </div>`;
 
     return html;
+}
+
+// ==================== EDUCATION MINISTRY — CUSTOM ACTION ROWS ====================
+
+const CURRICULUM_AXES = [
+    { id: 'individualism_collectivism', left: 'Individualism', right: 'Collectivism',
+      tip: 'The degree to which citizens believe in personal agency and private responsibility versus shared social obligation and collective action.' },
+    { id: 'tradition_progress', left: 'Tradition', right: 'Progress',
+      tip: 'The degree to which citizens value established cultural norms, institutions, and ways of life versus openness to social change and reform.' },
+    { id: 'liberty_equality', left: 'Liberty', right: 'Equality',
+      tip: 'The degree to which citizens prioritise individual freedoms and rights versus equality of outcome and redistribution of opportunity.' },
+    { id: 'freedom_security', left: 'Freedom', right: 'Security',
+      tip: 'The degree to which citizens accept restrictions on civil liberties and personal autonomy in exchange for safety, order, and stability.' },
+    { id: 'globalism_nationalism', left: 'Globalism', right: 'Nationalism',
+      tip: 'The degree to which citizens identify with and support international engagement versus national sovereignty and domestic priority.' }
+];
+
+let _curriculumSelection = null; // { axisId, direction: +1/-1, label }
+let _curriculumCooldownUntil = 0; // tick when cooldown expires
+let _activeCurriculumDrift = null; // loaded from DB
+
+function buildEducationActionRows(isMyMinistry) {
+    const config = MINISTRY_ACTIONS.education;
+    if (!config?.actions) return '';
+    const pop = currentNation?.population || 20000000;
+    const ap = currentFaction?.action_points || 0;
+    const canUse = isMyMinistry === true;
+    const comingSoonBtn = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div>`;
+
+    // Discretionary balance
+    const ministry = ministryData.find(m => m.ministry_key === 'education');
+    const discretionaryBalance = Number(ministry?.discretionary_balance || 0);
+    const balFmt = discretionaryBalance >= 1000000000
+        ? '$' + (discretionaryBalance / 1000000000).toFixed(1) + 'B'
+        : discretionaryBalance >= 1000000
+        ? '$' + (discretionaryBalance / 1000000).toFixed(1) + 'M'
+        : discretionaryBalance > 0 ? '$' + Math.round(discretionaryBalance).toLocaleString() : '$0';
+    const balCls = discretionaryBalance > 0 ? 'color:var(--green)' : 'color:var(--red)';
+
+    let html = `<div class="ministry-card__actions-label" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>ACTIONS</span>
+        <span style="font-size:8px;font-weight:600;${balCls};letter-spacing:0.03em;">Discretionary Funds: ${balFmt}</span>
+    </div>`;
+
+    // Action 1 — Expand Infrastructure (Coming Soon)
+    html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Expand Infrastructure</span>
+            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
+        </div>
+        <div class="ministry-action__desc">Fund construction and expansion of schools and educational facilities nationally.</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags"></div>
+            <div>${comingSoonBtn}</div>
+        </div>
+    </div>`;
+
+    // Action 2 — Standardised Curriculum
+    const currAction = config.actions.find(a => a.id === 'standardisedCurriculum');
+    const currActionId = 'education-standardisedCurriculum';
+    const currActive = activeMinistryActions[currActionId] || false;
+    const currCountKey = 'education:standardisedCurriculum';
+    const currUseCount = ministryActionUseCounts[currCountKey] || 0;
+    const currApCost = 6;
+    const currTagsHtml = currAction.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
+    // Check cooldown
+    const inCooldown = currentTick < _curriculumCooldownUntil;
+    const cooldownRemaining = inCooldown ? _curriculumCooldownUntil - currentTick : 0;
+
+    let currBtnHtml = '';
+    let currDescExtra = '';
+    if (currActive || _activeCurriculumDrift) {
+        const drift = _activeCurriculumDrift;
+        if (drift) {
+            if (currentTick < drift.activates_at_tick) {
+                currDescExtra = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--amber);margin-top:3px;">Drift toward ${escapeHtml(drift.direction_label)} on ${escapeHtml(_curriculumAxisLabel(drift.axis))}. Activates Tick ${drift.activates_at_tick}.</div>`;
+            } else if (drift.drift_ticks_remaining > 0) {
+                currDescExtra = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--amber);margin-top:3px;">Drifting ${escapeHtml(drift.direction_label)} on ${escapeHtml(_curriculumAxisLabel(drift.axis))}. ${drift.drift_ticks_remaining} ticks remaining.</div>`;
+            }
+        }
+        currBtnHtml = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+    } else if (inCooldown) {
+        currBtnHtml = `<div style="font-family:var(--font-mono);font-size:8px;color:#4a4840;">COOLDOWN ${cooldownRemaining}</div>`;
+    } else if (!canUse) {
+        currBtnHtml = '';
+    } else if (ap < currApCost) {
+        currBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${currApCost} AP">▶ ${currApCost} AP</div>`;
+    } else {
+        currBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openCurriculumModal()">▶ ${currApCost} AP</div>`;
+    }
+
+    const currStateClass = (currActive || _activeCurriculumDrift) ? ' active' : (inCooldown || !canUse || ap < currApCost) ? ' disabled' : '';
+
+    html += `<div class="ministry-action${currStateClass}" id="${currActionId}">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Standardised Curriculum</span>
+            <span class="ministry-action__ap-cost">${currApCost} AP</span>
+        </div>
+        <div class="ministry-action__desc">${escapeHtml(currAction.desc)}${currDescExtra}</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags">${currTagsHtml}${_activeCurriculumDrift ? `<span class="tag tag--neutral">ACTIVATES TICK ${_activeCurriculumDrift.activates_at_tick}</span>` : ''}</div>
+            <div id="${currActionId}-btns">${currBtnHtml}</div>
+        </div>
+    </div>`;
+
+    // Action 3 — Private Education Incentives (standard flow)
+    const privAction = config.actions.find(a => a.id === 'privateEducationIncentives');
+    const privActionId = 'education-privateEducationIncentives';
+    const privActive = activeMinistryActions[privActionId] || false;
+    const privCountKey = 'education:privateEducationIncentives';
+    const privUseCount = ministryActionUseCounts[privCountKey] || 0;
+    const privApCost = privAction.apCosts[Math.min(privUseCount, 3)];
+    const privTagsHtml = privAction.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
+
+    // Budget savings tag
+    const saves = formatBudgetDraw(privAction.budgetSavesPerCapita, pop);
+    const privBudgetTag = `<span class="tag tag--positive">SAVES ${saves}/TICK</span>`;
+
+    let privBtnHtml = '';
+    let privStateClass = '';
+    if (privActive) {
+        privStateClass = ' active';
+        privBtnHtml = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+    } else if (!canUse) {
+        privStateClass = ' disabled';
+    } else if (ap < privApCost) {
+        privStateClass = ' disabled';
+        privBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${privApCost} AP">▶ ${privApCost} AP</div>`;
+    } else {
+        privBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${privActionId}')">▶ ${privApCost} AP</div>`;
+    }
+
+    html += `<div class="ministry-action${privStateClass}" id="${privActionId}" ${!privActive && canUse && ap >= privApCost ? `onclick="ministryActionSelect('${privActionId}')"` : ''}>
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Private Education Incentives</span>
+            <span class="ministry-action__ap-cost">${privApCost} AP${privUseCount > 0 ? ' (use ' + (privUseCount + 1) + ')' : ''}</span>
+        </div>
+        <div class="ministry-action__desc">${escapeHtml(privAction.desc)}</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags">${privTagsHtml}${privBudgetTag}</div>
+            <div id="${privActionId}-btns">${privBtnHtml}</div>
+        </div>
+    </div>`;
+
+    return html;
+}
+
+function _curriculumAxisLabel(axisId) {
+    const a = CURRICULUM_AXES.find(x => x.id === axisId);
+    return a ? `${a.left} / ${a.right}` : axisId;
+}
+
+// ==================== CURRICULUM MODAL ====================
+
+let _curriculumModalOpen = false;
+
+function openCurriculumModal() {
+    if (_curriculumModalOpen) return;
+    if (!isMyMinistryByKey('education')) return;
+    _curriculumSelection = null;
+    _curriculumModalOpen = true;
+    renderCurriculumModal();
+}
+
+function closeCurriculumModal() {
+    _curriculumModalOpen = false;
+    const overlay = document.getElementById('curriculum-modal-overlay');
+    if (overlay) overlay.remove();
+}
+
+function selectCurriculumDirection(axisId, direction, label) {
+    _curriculumSelection = { axisId, direction, label };
+    renderCurriculumModal();
+}
+
+function renderCurriculumModal() {
+    let overlay = document.getElementById('curriculum-modal-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'curriculum-modal-overlay';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeCurriculumModal(); });
+        document.body.appendChild(overlay);
+    }
+
+    const sel = _curriculumSelection;
+    const activationTick = (currentTick || 0) + 160;
+
+    let axisRowsHtml = '';
+    CURRICULUM_AXES.forEach(axis => {
+        const leftSelected = sel && sel.axisId === axis.id && sel.direction === -1;
+        const rightSelected = sel && sel.axisId === axis.id && sel.direction === 1;
+
+        const leftStyle = leftSelected
+            ? 'background:rgba(200,166,78,0.15);border:1px solid rgba(200,166,78,0.4);color:#c8b45a;'
+            : 'background:transparent;border:1px solid rgba(255,255,255,0.07);color:#4a4840;';
+        const rightStyle = rightSelected
+            ? 'background:rgba(200,166,78,0.15);border:1px solid rgba(200,166,78,0.4);color:#c8b45a;'
+            : 'background:transparent;border:1px solid rgba(255,255,255,0.07);color:#4a4840;';
+
+        axisRowsHtml += `
+            <div style="margin-bottom:8px;">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:8px;text-transform:uppercase;color:#6b6a5e;letter-spacing:0.06em;margin-bottom:4px;">${axis.left} / ${axis.right}</div>
+                <div style="display:flex;gap:6px;">
+                    <div onclick="selectCurriculumDirection('${axis.id}', -1, '${axis.left}')" style="flex:1;padding:6px 8px;text-align:center;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:600;letter-spacing:0.04em;${leftStyle}" title="${escapeHtml(axis.tip)}">${axis.left.toUpperCase()}</div>
+                    <div onclick="selectCurriculumDirection('${axis.id}', 1, '${axis.right}')" style="flex:1;padding:6px 8px;text-align:center;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:600;letter-spacing:0.04em;${rightStyle}" title="${escapeHtml(axis.tip)}">${axis.right.toUpperCase()}</div>
+                </div>
+            </div>`;
+    });
+
+    let confirmHtml;
+    if (!sel) {
+        confirmHtml = `
+            <div style="font-family:'IBM Plex Sans',sans-serif;font-size:10px;color:#4e4d42;margin-bottom:8px;">Select an axis and direction above.</div>
+            <div style="padding:8px 12px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;cursor:not-allowed;">CONFIRM — 6 AP</div>`;
+    } else {
+        const axisLabel = _curriculumAxisLabel(sel.axisId);
+        confirmHtml = `
+            <div style="font-family:'IBM Plex Sans',sans-serif;font-size:10px;color:#4e4d42;margin-bottom:8px;">Curriculum will drift toward <span style="color:#c8b45a;">${escapeHtml(sel.label)}</span> on ${escapeHtml(axisLabel)} axis.<br>Drift begins Tick ${activationTick}.</div>
+            <div onclick="confirmCurriculum()" style="padding:8px 12px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#c8a64e;border:1px solid rgba(200,166,78,0.5);color:#1a0808;cursor:pointer;">CONFIRM — 6 AP</div>`;
+    }
+
+    overlay.innerHTML = `
+        <div style="background:#1e1e1a;border:1px solid rgba(200,166,78,0.3);width:360px;padding:16px;max-height:80vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;color:#c8b45a;letter-spacing:0.06em;">SET CURRICULUM ORIENTATION</div>
+                <div onclick="closeCurriculumModal()" style="cursor:pointer;color:#6b6a5e;font-size:14px;line-height:1;">&times;</div>
+            </div>
+            <div style="font-family:'IBM Plex Sans',sans-serif;font-size:10px;color:#4e4d42;margin-bottom:14px;">Select one axis and one direction. Drift begins in 160 ticks.</div>
+            ${axisRowsHtml}
+            <div style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);">
+                ${confirmHtml}
+            </div>
+        </div>`;
+}
+
+async function confirmCurriculum() {
+    if (!_curriculumSelection) return;
+    if (!isMyMinistryByKey('education')) return;
+    const sel = _curriculumSelection;
+    const apCost = 6;
+
+    if ((currentFaction?.action_points || 0) < apCost) {
+        alert('Not enough AP.');
+        return;
+    }
+
+    closeCurriculumModal();
+
+    // Optimistic UI
+    const actionId = 'education-standardisedCurriculum';
+    const row = document.getElementById(actionId);
+    if (row) { row.classList.add('active'); }
+    const btns = document.getElementById(actionId + '-btns');
+    if (btns) btns.innerHTML = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+
+    const activationTick = (currentTick || 0) + 160;
+
+    try {
+        // 1. Insert curriculum drift record
+        const { error: driftErr } = await _supabase.from('curriculum_drift').insert({
+            nation_id: currentNation.id,
+            faction_id: currentFaction.id,
+            axis: sel.axisId,
+            direction: sel.direction,
+            direction_label: sel.label,
+            set_at_tick: currentTick,
+            activates_at_tick: activationTick,
+            drift_ticks_remaining: 12,
+            drift_per_tick: 0.2
+        });
+        if (driftErr) throw driftErr;
+
+        // 2. Execute as ministry action (AP deduction + action log)
+        const { error: rpcErr } = await _supabase.rpc('execute_ministry_action', {
+            p_nation_id: currentNation.id,
+            p_faction_id: currentFaction.id,
+            p_ministry_key: 'education',
+            p_action_key: 'standardisedCurriculum',
+            p_ap_cost: apCost,
+            p_applied_at_tick: currentTick,
+            p_stat_effects: [], // drift handled separately
+            p_action_data: {
+                axis: sel.axisId,
+                direction: sel.direction,
+                direction_label: sel.label,
+                activates_at_tick: activationTick,
+                use_count: ministryActionUseCounts['education:standardisedCurriculum'] || 0,
+                scale: 1.0,
+                budget_per_tick: 0
+            }
+        });
+        if (rpcErr) throw rpcErr;
+
+        // Update local state
+        currentFaction.action_points = Math.max(0, (currentFaction.action_points || 0) - apCost);
+        ministryActionUseCounts['education:standardisedCurriculum'] = (ministryActionUseCounts['education:standardisedCurriculum'] || 0) + 1;
+        activeMinistryActions[actionId] = true;
+        _activeCurriculumDrift = {
+            axis: sel.axisId,
+            direction: sel.direction,
+            direction_label: sel.label,
+            activates_at_tick: activationTick,
+            drift_ticks_remaining: 12
+        };
+        _curriculumCooldownUntil = currentTick + 12;
+        sessionStorage.removeItem('nationhood_state');
+
+        // Fire CIVIC event
+        try {
+            const { data: ministry } = await _supabase
+                .from('ministries')
+                .select('minister_first_name, minister_last_name, factions(faction_name)')
+                .eq('nation_id', currentNation.id)
+                .eq('ministry_key', 'education')
+                .single();
+
+            const ministerName = ministry ? `${ministry.minister_first_name} ${ministry.minister_last_name}` : 'Education Minister';
+            const partyName = ministry?.factions?.faction_name || currentFaction?.faction_name || 'Government';
+            const axisLabel = _curriculumAxisLabel(sel.axisId);
+
+            const templates = [
+                `${ministerName} sets national curriculum toward ${sel.label} on the ${axisLabel} axis.`,
+                `Education Ministry confirms new curriculum orientation: ${sel.label}.`,
+                `${currentNation.name} curriculum standardised. Electorate drift begins Tick ${activationTick}.`,
+                `${partyName} government locks in curriculum direction. Effects arrive in 160 ticks.`
+            ];
+            const headline = templates[Math.floor(Math.random() * templates.length)];
+
+            await _supabase.from('event_log').insert({
+                nation_id: currentNation.id,
+                tick: currentTick,
+                event_type: 'ministry_standardised_curriculum',
+                category: 'education',
+                headline,
+                details: { axis: sel.axisId, direction: sel.direction, direction_label: sel.label, activates_at_tick: activationTick },
+                severity: 'info'
+            });
+        } catch (e) { console.warn('[Education] Event log failed:', e); }
+
+        // Refresh education action states
+        refreshMinistryActionStates('education');
+    } catch (err) {
+        console.error('[Education] Curriculum confirm failed:', err);
+        alert('Failed to set curriculum: ' + (err.message || err));
+        if (row) { row.classList.remove('active'); }
+    }
+}
+
+// Load active curriculum drift for card display
+async function loadCurriculumDriftState() {
+    if (!currentNation) return;
+    try {
+        const { data } = await _supabase
+            .from('curriculum_drift')
+            .select('*')
+            .eq('nation_id', currentNation.id)
+            .eq('completed', false)
+            .order('set_at_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        _activeCurriculumDrift = data || null;
+
+        // Set cooldown from most recent curriculum action
+        const { data: recentAction } = await _supabase
+            .from('ministry_action_log')
+            .select('applied_at_tick')
+            .eq('nation_id', currentNation.id)
+            .eq('ministry_key', 'education')
+            .eq('action_key', 'standardisedCurriculum')
+            .order('applied_at_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (recentAction) {
+            _curriculumCooldownUntil = recentAction.applied_at_tick + 12;
+        }
+    } catch (e) {
+        console.warn('[Education] Failed to load curriculum drift:', e);
+    }
 }
 
 // ==================== DOCTRINE PANEL — FULL-SCREEN OVERLAY ====================
