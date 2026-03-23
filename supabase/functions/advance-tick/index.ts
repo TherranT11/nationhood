@@ -20035,19 +20035,22 @@ const MAKE_PROMISE_CONFIG = {
     STAT_DELTA_GOVERNING: 20,          // Governing factions must promise ±20 (harder target)
     DEADLINE_DICE: 12,                 // 1D12 + base
     DEADLINE_BASE: 12,                 // base ticks added to roll (range: 13-24)
-    APPROVAL_ON_PROMISE_STAT: 4,       // immediate bump with affected blocs (stat type)
-    APPROVAL_ON_PROMISE_CRISIS: 2,     // immediate bump with all blocs (crisis type)
-    APPROVAL_IF_KEPT: 12,              // permanent legacy reward
-    PENALTY_PER_TICK_MIN: 1,           // -1D3 per tick while governing & unfulfilled
-    PENALTY_PER_TICK_MAX: 3,
     MAX_ACTIVE_PROMISES: 5,            // limit active promises per faction
-    // Promise resolution rewards/penalties (used by resolvePromise)
-    KEPT_PREF_BONUS: 5,               // +preference with donor/affected bloc
-    KEPT_MOMENTUM: 4,                  // +momentum when promise kept
-    BROKEN_DONOR_PREF: -8,            // -preference with donor/affected bloc
-    BROKEN_ALL_PREF: -2,              // -preference with ALL blocs
-    BROKEN_MOMENTUM: -12,             // momentum hit when promise broken
-    BROKEN_NERVOUS_PREF: -1,          // other active promise holders get nervous
+
+    // ── Electorate engine effects (party_approval + credibility_modifier) ──
+    APPROVAL_ON_PROMISE: 2,            // immediate +party_approval when promise is made
+    PENALTY_PER_TICK_MIN: 0.5,         // -0.5 to -1.5 party_approval/tick while governing & unfulfilled
+    PENALTY_PER_TICK_MAX: 1.5,
+
+    // Promise kept rewards
+    KEPT_APPROVAL: 4,                  // +party_approval when promise fulfilled
+    KEPT_CREDIBILITY: 0.05,            // +credibility_modifier when promise fulfilled
+
+    // Promise broken penalties
+    BROKEN_APPROVAL: -6,               // -party_approval when promise broken
+    BROKEN_CREDIBILITY: -0.15,         // -credibility_modifier when promise broken
+    BROKEN_CREDIBILITY_SUSPEND: 12,    // suspend credibility recovery for N ticks after breaking
+    BROKEN_NERVOUS_CREDIBILITY: -0.03, // -credibility per other active promise when one breaks
 };
 
 /**
@@ -20209,18 +20212,11 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
         return { success: false, error: 'Invalid promise type.' };
     }
 
-    // ── 6. Apply immediate approval bump ──
-    const approvalBump = promiseType === 'crisis'
-        ? cfg.APPROVAL_ON_PROMISE_CRISIS
-        : cfg.APPROVAL_ON_PROMISE_STAT;
-
-    // ── 6. Apply immediate momentum bump (vote share updated by electorate engine) ──
+    // ── 6. Apply immediate party_approval bump via electorate engine ──
+    const approvalBump = cfg.APPROVAL_ON_PROMISE;
+    await nudgeApproval(supabase, factionId, nationId, approvalBump);
+    console.log(`[Promise] +${approvalBump} party_approval for ${factionId} on making ${promiseType} promise`);
     const blocEffects = [];
-    for (const blocId of affectedBlocIds) {
-        await adjustMomentum(supabase, nationId, factionId, blocId, approvalBump, `promise:made_${promiseType}`);
-        const bloc = (allBlocs || []).find(b => b.id === blocId);
-        blocEffects.push({ blocId, blocName: bloc?.bloc_name, delta: approvalBump });
-    }
 
     // ── 7. Deduct AP if needed + track last_action_tick ──
     let newAp = faction.action_points || 0;
@@ -20285,6 +20281,9 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
             headline,
         }
     });
+
+    // Boost national enthusiasm
+    await nudgeEnthusiasm(supabase, nationId, CFG.ENTHUSIASM_PROMISE_BOOST);
 
     return {
         success: true,
@@ -20660,12 +20659,11 @@ async function processPromiseTick(supabase, nation, currentTick) {
             continue;
         }
 
-        // Per-tick penalty: governing party with unfulfilled promise loses momentum with the promised bloc
-        // -1D3 momentum per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
-        if (isGoverning && promise.bloc_id) {
-            const penaltyAmount = -(Math.floor(Math.random() * (cfg.PENALTY_PER_TICK_MAX - cfg.PENALTY_PER_TICK_MIN + 1)) + cfg.PENALTY_PER_TICK_MIN);
-            await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, penaltyAmount, 'promise:unfulfilled_tick');
-            results.push({ promise, resolution: 'tick_penalty', penaltyAmount });
+        // Per-tick penalty: governing party with unfulfilled promise loses party_approval
+        if (isGoverning) {
+            const penaltyAmount = -(Math.random() * (cfg.PENALTY_PER_TICK_MAX - cfg.PENALTY_PER_TICK_MIN) + cfg.PENALTY_PER_TICK_MIN);
+            await nudgeApproval(supabase, promise.party_id, promise.nation_id, round2(penaltyAmount));
+            results.push({ promise, resolution: 'tick_penalty', penaltyAmount: round2(penaltyAmount) });
         }
     }
 
@@ -20679,16 +20677,10 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
     const cfg = MAKE_PROMISE_CONFIG;
 
     if (resolution === 'fulfilled') {
-        // ── REWARDS (all via momentum — vote share updated by electorate engine) ──
-        if (promise.bloc_id) {
-            await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, cfg.KEPT_PREF_BONUS, 'promise:kept_bloc');
-        }
-
-        // +momentum with ALL blocs (APPROVAL_IF_KEPT — the main +12 reward)
-        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.APPROVAL_IF_KEPT, 'promise:kept');
-
-        // +momentum (additional general boost)
-        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.KEPT_MOMENTUM, 'promise:kept_bonus');
+        // ── REWARDS via electorate engine (party_approval + credibility) ──
+        await nudgeApproval(supabase, promise.party_id, promise.nation_id, cfg.KEPT_APPROVAL);
+        await adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.KEPT_CREDIBILITY);
+        console.log(`[Promise] Fulfilled: +${cfg.KEPT_APPROVAL} approval, +${cfg.KEPT_CREDIBILITY} credibility for ${promise.party_id}`);
 
         // Mark promise as fulfilled
         await supabase.from('fundraiser_promises')
@@ -20696,30 +20688,24 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
             .eq('id', promise.id);
 
     } else if (resolution === 'broken') {
-        // ── PENALTIES (all via momentum — vote share updated by electorate engine) ──
-        if (promise.bloc_id) {
-            await adjustMomentum(supabase, promise.nation_id, promise.party_id, promise.bloc_id, cfg.BROKEN_DONOR_PREF, 'promise:broken_bloc');
-        }
+        // ── PENALTIES via electorate engine (party_approval + credibility) ──
+        await nudgeApproval(supabase, promise.party_id, promise.nation_id, cfg.BROKEN_APPROVAL);
+        await adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.BROKEN_CREDIBILITY, cfg.BROKEN_CREDIBILITY_SUSPEND, currentTick);
+        console.log(`[Promise] Broken: ${cfg.BROKEN_APPROVAL} approval, ${cfg.BROKEN_CREDIBILITY} credibility for ${promise.party_id}`);
 
-        // -momentum with ALL blocs
-        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.BROKEN_ALL_PREF, 'promise:broken');
-
-        // -momentum (additional penalty)
-        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.BROKEN_MOMENTUM, 'promise:broken_penalty');
-
-        // Nervous other promise holders: -1 momentum with each bloc
+        // Nervous effect: other active promises lose credibility too
         const { data: otherPromises } = await supabase
             .from('fundraiser_promises')
-            .select('bloc_id')
+            .select('id')
             .eq('party_id', promise.party_id)
             .eq('status', 'active')
             .neq('id', promise.id);
 
         if (otherPromises && otherPromises.length > 0) {
-            const nervousBlocIds = [...new Set(otherPromises.map(p => p.bloc_id).filter(Boolean))];
-            for (const nervousBlocId of nervousBlocIds) {
-                await adjustMomentum(supabase, promise.nation_id, promise.party_id, nervousBlocId, cfg.BROKEN_NERVOUS_PREF, 'promise:broken_nervous');
-            }
+            // Each additional active promise compounds the credibility damage
+            const nervousDelta = cfg.BROKEN_NERVOUS_CREDIBILITY * otherPromises.length;
+            await adjustCredibility(supabase, promise.party_id, promise.nation_id, nervousDelta);
+            console.log(`[Promise] Nervous effect: ${nervousDelta} credibility (${otherPromises.length} other active promises)`);
         }
 
         // Mark promise as broken
