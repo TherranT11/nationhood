@@ -166,6 +166,8 @@ html { overflow-y: scroll !important; height: auto !important; }
         .amendment-btn { padding: 6px 12px; border: none; border-radius: 3px; font-size: 0.75rem; font-weight: 700; cursor: pointer; text-transform: uppercase; font-family: var(--font-mono); }
         .amendment-btn.accept { background: var(--green); color: white; }
         .amendment-btn.reject { background: var(--red); color: white; }
+        .amendment-withdraw-btn { position: absolute; top: 8px; right: 8px; background: transparent; border: none; color: var(--text-dim); font-size: 0.85rem; cursor: pointer; padding: 2px 6px; border-radius: 3px; line-height: 1; transition: color 0.15s, background 0.15s; }
+        .amendment-withdraw-btn:hover { color: var(--red); background: var(--red-faint); }
         .vote-tally { background: var(--bg-panel); border-radius: 3px; overflow: hidden; border: 1px solid var(--border-main); }
         .vote-tally-header { padding: 14px; background: var(--bg-card); border-bottom: 1px solid var(--border-light); }
         .vote-tally-title { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; font-family: var(--font-mono); }

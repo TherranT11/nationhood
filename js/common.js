@@ -224,6 +224,11 @@ export async function loadGameState(requireFaction = true) {
                 window.location.href = 'select-nation.html';
                 return null;
             }
+        } else if (!userFaction.nation_id && requireFaction) {
+            // Faction exists but has no nation (e.g. disbanded) — send to nation select
+            sessionStorage.removeItem(STATE_KEY);
+            window.location.href = 'select-nation.html';
+            return null;
         }
         faction = userFaction;
     }

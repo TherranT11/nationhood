@@ -6214,7 +6214,7 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
     const credibilityMap = {};
     for (const row of (rivalStandings || [])) {
         approvalMap[row.faction_id] = Math.round(row.party_approval ?? 40);
-        const credMod = Number(row.credibility_modifier ?? 0.5);
+        const credMod = Number(row.credibility_modifier ?? 1.0);
         credibilityMap[row.faction_id] = Math.round(Math.max(0, Math.min(100, (credMod - 0.5) * 100)));
     }
 

@@ -64,7 +64,11 @@ DECLARE
         ARRAY['wiki_pages.created_by',       $$UPDATE wiki_pages SET created_by = NULL WHERE created_by = '%s'$$],
         ARRAY['wiki_pages.updated_by',       $$UPDATE wiki_pages SET updated_by = NULL WHERE updated_by = '%s'$$],
         ARRAY['wiki_pages.locked_by',        $$UPDATE wiki_pages SET locked_by = NULL WHERE locked_by = '%s'$$],
-        ARRAY['faction_coalitions(proposer)', $$UPDATE faction_coalitions SET proposed_by_faction_id = NULL WHERE proposed_by_faction_id = '%s'$$]
+        ARRAY['faction_coalitions(proposer)', $$UPDATE faction_coalitions SET proposed_by_faction_id = NULL WHERE proposed_by_faction_id = '%s'$$],
+        ARRAY['administrations.pm_party_id',  $$UPDATE administrations SET pm_party_id = NULL WHERE pm_party_id = '%s'$$],
+        ARRAY['election_candidates',          $$DELETE FROM election_candidates WHERE faction_id = '%s'$$],
+        ARRAY['presidential_candidates',      $$DELETE FROM presidential_candidates WHERE faction_id = '%s'$$],
+        ARRAY['protests.faction_id',          $$UPDATE protests SET faction_id = NULL WHERE faction_id = '%s'$$]
     ];
     i INT;
 BEGIN
