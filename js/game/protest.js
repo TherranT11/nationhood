@@ -1231,7 +1231,22 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
         fireProtestEvent(supabase, nationId, 'protest:epo_resolved', currentTick, { protest_id: protestId });
         return { success: true, outcome: 'resolved', newAp };
     } else {
-        // Escalation: T6 → T7
+        // Escalation: T6 → T7 — only if 2+ crises are active (excluding the T6 being replaced)
+        const { data: activeCrises } = await supabase
+            .from('active_crises')
+            .select('id')
+            .eq('nation_id', nationId)
+            .neq('crisis_id', PROTEST_CONFIG.TIER6_CRISIS_ID);
+        if ((activeCrises || []).length < 2) {
+            // Not enough active crises — EPO fails but stays at T6 instead of escalating
+            const failHeadline = pickHeadline('protest_epo_escalated');
+            dispatchProtestArticle(supabase, nationId, 'protest_epo_failed', failHeadline,
+                'The Interior Ministry\'s enforcement action failed to end the crisis, but conditions are not severe enough for further escalation.',
+                1, currentTick, protestId);
+            fireProtestEvent(supabase, nationId, 'protest:epo_failed', currentTick, { protest_id: protestId });
+            return { success: true, outcome: 'failed', newAp };
+        }
+
         // Remove T6 crisis, create T7
         const { error: delT6Err } = await supabase.from('active_crises').delete()
             .eq('nation_id', nationId)
@@ -1466,6 +1481,17 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
     // ── 7. Get tier + check escalation ──
     let tier = getTurnoutTier(turnoutScore);
     tier = checkEscalationPath(tier, turnoutScore, historyForEscalation, currentTick);
+
+    // Cap at Tier 6 unless there are already 2+ active crises
+    if (tier >= 7) {
+        const { data: activeCrises } = await supabase
+            .from('active_crises')
+            .select('id')
+            .eq('nation_id', nationId);
+        if ((activeCrises || []).length < 2) {
+            tier = 6;
+        }
+    }
 
     // ── 8. Apply tier effects ──
     const effects = computeTierEffects(tier, { govApproval: nationStats.gov_approval });
