@@ -2002,6 +2002,36 @@ body.light-mode .partner-card {
     border-bottom: none;
 }
 
+.tft-row-clickable {
+    cursor: pointer;
+    border-radius: 3px;
+    margin: 0 -6px;
+    padding-left: 6px;
+    padding-right: 6px;
+    transition: background 0.15s ease;
+}
+
+.tft-row-clickable:hover {
+    background: rgba(255,255,255,0.04);
+}
+
+body.light-mode .tft-row-clickable:hover {
+    background: rgba(0,0,0,0.04);
+}
+
+.tft-drill-chevron {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-left: 6px;
+    opacity: 0;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.tft-row-clickable:hover .tft-drill-chevron {
+    opacity: 1;
+    transform: translateX(2px);
+}
+
 .tft-row.tft-total {
     border-top: 1px solid var(--border-mid);
     border-bottom: none;
@@ -2540,6 +2570,188 @@ body.light-mode .sector-score-threshold {
     font-weight: 700;
     color: var(--text-faint);
     letter-spacing: 0.08em;
+}
+
+/* ===== TARIFF IMPACT SIMULATOR ===== */
+
+.tsim-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 16px 8px;
+}
+
+.tsim-slider-label,
+.tsim-sim-label {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    min-width: 120px;
+}
+
+.tsim-sim-label strong {
+    color: var(--text-secondary);
+}
+
+.tsim-sim-label.tsim-changed strong {
+    color: var(--accent);
+}
+
+.tsim-slider-wrap {
+    flex: 1;
+    position: relative;
+}
+
+.tsim-slider-fill {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    height: 4px;
+    transform: translateY(-50%);
+    background: var(--accent);
+    border-radius: 2px;
+    pointer-events: none;
+    opacity: 0.35;
+    margin-top: -7px;
+    transition: width 0.05s ease;
+}
+
+.tsim-slider {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+
+.tsim-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg-card);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+.tsim-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg-card);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+.tsim-slider-labels {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 0.5rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+    padding: 0 2px;
+}
+
+.tsim-projections {
+    padding: 0 4px;
+}
+
+/* Sector breakdown table */
+.tsim-sector-table {
+    margin: 8px 12px 4px;
+    border-top: 1px solid var(--border-main);
+    padding-top: 8px;
+}
+
+.tsim-sector-header {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 1fr 0.8fr;
+    gap: 4px;
+    padding: 4px 0 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.tsim-sector-header .tsim-sector-cell {
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+}
+
+.tsim-sector-row {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 1fr 0.8fr;
+    gap: 4px;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+}
+
+.tsim-sector-cell {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+}
+
+.tsim-sector-name {
+    color: var(--text-secondary);
+}
+
+.tsim-sector-num {
+    text-align: right;
+    color: var(--text-bright);
+}
+
+/* Light mode */
+body.light-mode .tsim-slider {
+    background: rgba(0,0,0,0.08);
+}
+
+body.light-mode .tsim-slider-fill {
+    opacity: 0.25;
+}
+
+body.light-mode .tsim-sector-header {
+    border-bottom-color: rgba(0,0,0,0.06);
+}
+
+body.light-mode .tsim-sector-row {
+    border-bottom-color: rgba(0,0,0,0.03);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .tsim-slider-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .tsim-slider-label,
+    .tsim-sim-label {
+        min-width: auto;
+    }
+
+    .tsim-sector-header,
+    .tsim-sector-row {
+        grid-template-columns: 1.2fr 1fr 1fr;
+    }
+
+    /* Hide current imports on mobile, just show projected + change */
+    .tsim-sector-header .tsim-sector-cell:nth-child(2),
+    .tsim-sector-row .tsim-sector-cell:nth-child(2) {
+        display: none;
+    }
 }
 
 /* Agreement cards grid */

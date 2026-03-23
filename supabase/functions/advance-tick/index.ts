@@ -9096,9 +9096,10 @@ async function syncMinistriesForFailedConfirmationBills(supabase, failedBills) {
  *
  * 1. Retire ambassadors whose term has expired (current_tick - appointed_at_tick >= term_length).
  * 2. Cancel in-progress diplomatic proposals involving the retiring ambassador's nation pair.
- * 3. Appoint a replacement ambassador with a fresh 60-tick term.
- * 4. Fire event log entries for retirements and lapsed negotiations.
- * 5. Show retirement warning at (term_length - AMBASSADOR_RETIREMENT_WARNING) ticks.
+ * 3. Fire event log entries for retirements and lapsed negotiations.
+ * 4. Show retirement warning at (term_length - AMBASSADOR_RETIREMENT_WARNING) ticks.
+ *
+ * Note: Retired ambassadorships remain vacant until a nomination vote is put forth.
  */
 async function processAmbassadorRetirements(supabase, nation, currentTick) {
     const results = [];
@@ -9184,48 +9185,22 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
                     event_name: 'Diplomatic Negotiations Lapsed',
                     trigger_key: 'diplomatic_initiative_rejected',
                     category: 'Diplomatic',
-                    description_chosen: `${nation.name}'s ambassador has retired. ${lapsedProposals.length} pending negotiation(s) have lapsed. The new ambassador may re-propose if desired.`,
+                    description_chosen: `${nation.name}'s ambassador has retired. ${lapsedProposals.length} pending negotiation(s) have lapsed. A new ambassador must be nominated before negotiations can resume.`,
                     fired_at_tick: currentTick
                 });
             }
 
-            // 3. Generate replacement ambassador
-            const { firstNames: ambFirstPool, lastNames: ambLastPool } = getNationNames(nation.name);
-            let newFirst, newLast;
-            do { newFirst = ambFirstPool[Math.floor(Math.random() * ambFirstPool.length)]; }
-            while (newFirst === amb.ambassador_first_name);
-            do { newLast = ambLastPool[Math.floor(Math.random() * ambLastPool.length)]; }
-            while (newLast === amb.ambassador_last_name);
-            const newAge = 35 + Math.floor(Math.random() * 20); // 35-54
-
-            const { error: insertErr } = await supabase.from('ambassadors').insert({
-                nation_id: nation.id,
-                target_nation_id: amb.target_nation_id,
-                faction_id: amb.faction_id,
-                ambassador_first_name: newFirst,
-                ambassador_last_name: newLast,
-                ambassador_age: newAge,
-                status: 'active',
-                is_active: true,
-                appointed_at_tick: currentTick,
-                term_length: DIPLOMACY_CONFIG.AMBASSADOR_TERM_LENGTH
-            });
-            if (insertErr) {
-                console.error(`[processAmbassadorRetirements] Failed to create replacement for ${ambName}:`, insertErr);
-                // Ambassador was already retired — continue without replacement
-            }
-
-            // 4. Fire retirement event for this nation
+            // 3. Fire retirement event — ambassadorship remains vacant until nomination vote
             await supabase.from('event_log').insert({
                 nation_id: nation.id,
                 event_name: 'Ambassador Retired',
                 category: 'Diplomatic',
-                description_chosen: `${ambName} has retired after ${yearsServed} year${yearsServed !== 1 ? 's' : ''} of service as Ambassador to ${targetNationName}.${insertErr ? '' : ` ${newFirst} ${newLast} has been appointed as replacement.`}`,
+                description_chosen: `${ambName} has retired after ${yearsServed} year${yearsServed !== 1 ? 's' : ''} of service as Ambassador to ${targetNationName}. The post is now vacant until a replacement is nominated and confirmed.`,
                 fired_at_tick: currentTick
             });
 
-            results.push({ ambassadorId: amb.id, name: ambName, target: targetNationName, action: 'retired', replacement: insertErr ? null : `${newFirst} ${newLast}` });
-            console.log(`[processAmbassadorRetirements] ${ambName} retired from ${nation.name} → ${targetNationName}.${insertErr ? ' (replacement failed)' : ` Replaced by ${newFirst} ${newLast}.`}`);
+            results.push({ ambassadorId: amb.id, name: ambName, target: targetNationName, action: 'retired' });
+            console.log(`[processAmbassadorRetirements] ${ambName} retired from ${nation.name} → ${targetNationName}. Post is now vacant.`);
 
         // ---- RETIREMENT WARNING (3 ticks before) ----
         } else if (ticksRemaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && !amb.retirement_warning_shown) {
@@ -9237,7 +9212,7 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
                 nation_id: nation.id,
                 event_name: 'Ambassador Retirement Approaching',
                 category: 'Diplomatic',
-                description_chosen: `Ambassador ${ambName} to ${targetNationName} will retire in ${ticksRemaining} tick${ticksRemaining !== 1 ? 's' : ''}. Conclude any active negotiations before the transition.`,
+                description_chosen: `Ambassador ${ambName} to ${targetNationName} will retire in ${ticksRemaining} tick${ticksRemaining !== 1 ? 's' : ''}. Conclude any active negotiations and prepare a nomination for their replacement.`,
                 fired_at_tick: currentTick
             });
 
