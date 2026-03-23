@@ -459,6 +459,12 @@ export const ELECTORATE_CONFIG = {
     // ── Alignment tick config ──
     ALIGNMENT_DRIFT_SPEED: 2,       // max points per tick toward target alignment
 
+    // ── Centrist zone penalty ──
+    // Direct penalty per axis where a party sits in the centrist zone.
+    // Scales with polarization. At max polarization, a party centrist on all
+    // 5 axes loses 5 × 4 = 20 points of alignment — a massive hit.
+    CENTRIST_ZONE_PENALTY_PER_AXIS: 4, // alignment points lost per centrist axis at max polarization
+
     // ── Party approval config ──
     APPROVAL_GOV_NUDGE_DIVISOR: 2.5,  // (gov_approval - 50) / divisor = nudge
     APPROVAL_GOV_NUDGE_CAP: 8,        // max ±nudge per tick
@@ -1140,9 +1146,29 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         const isLead = factionId === leadPartyId;
 
         // ─── PILLAR 1: Ideological Alignment (0-100) — spatial competition ───
-        const targetAlignment = (spatialAlignments[factionId] != null)
+        let targetAlignment = (spatialAlignments[factionId] != null)
             ? spatialAlignments[factionId]
             : CFG.DEFAULT_ALIGNMENT;
+
+        // Centrist zone penalty: parties sitting in the centrist zone on each axis
+        // lose alignment points scaling with polarization. This stacks on top of
+        // spatial competition and can't be washed out by compression.
+        if (ideo) {
+            let centristAxes = 0;
+            for (const axisKey of AXIS_KEYS) {
+                const elecMean = Number(activeProfile['ideo_mean_' + axisKey] ?? 50);
+                const elecVar = Number(activeProfile['ideo_var_' + axisKey] ?? 20);
+                const partyNorm = (Number(ideo[axisKey] || 0) + 100) / 2;
+                const { zoneForPos } = calculateIdeologyZones(elecMean, elecVar);
+                if (zoneForPos(partyNorm) === 'centrist') centristAxes++;
+            }
+            if (centristAxes > 0) {
+                const avgVar = AXIS_KEYS.reduce((s, k) => s + Number(activeProfile['ideo_var_' + k] ?? 20), 0) / AXIS_KEYS.length;
+                const polWeight = Math.min(1, Math.max(0, (avgVar - 10) / 30));
+                targetAlignment -= centristAxes * CFG.CENTRIST_ZONE_PENALTY_PER_AXIS * polWeight;
+                targetAlignment = Math.max(0, targetAlignment);
+            }
+        }
 
         // Drift toward target (or snap if opts.snap)
         const oldAlignment = Number(standing.ideological_alignment ?? 50);
