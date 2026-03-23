@@ -12273,9 +12273,12 @@ const ELECTORATE_CONFIG = {
 
     // ── Vote share config ──
     SOFTMAX_TEMPERATURE: 8,           // softmax k (higher = more uniform distribution)
-    TURNOUT_BASE: 0.65,               // base turnout fraction
+    TURNOUT_BASE: 0.50,               // base turnout fraction
+    TURNOUT_POLARIZATION_SCALE: 0.002, // per polarization point
+    TURNOUT_STABILITY_SCALE: -0.001,   // per stability point above 50
     TURNOUT_ENTHUSIASM_SCALE: 0.003,  // per enthusiasm point above/below 50
     TURNOUT_VISIBILITY_SCALE: 0.002,  // per visibility point above 50
+    TURNOUT_MAX: 0.88,               // hard cap on turnout rate
 
     // ── Inactivity ──
     INACTIVITY_EXCLUSION_TICKS: 12,   // parties unseen for this many ticks are excluded
@@ -13101,7 +13104,7 @@ async function tickElectorate(supabase, nation, currentTick) {
     computeContestedVoteShares(updates);
 
     // ── 12. Turnout → realized_vote_share ──
-    computeRealizedVoteShares(updates, profile);
+    computeRealizedVoteShares(updates, profile, nation);
 
     // ── 13. Compute vote_left_on_table ──
     for (const u of updates) {
@@ -13332,17 +13335,23 @@ function computeContestedVoteShares(updates) {
  * @param {object[]} updates - Array of standing update objects (mutated in place)
  * @param {object} profile - electorate_profile row
  */
-function computeRealizedVoteShares(updates, profile) {
+function computeRealizedVoteShares(updates, profile, nation) {
     if (updates.length === 0) return;
 
     const enthusiasm = Number(profile?.enthusiasm ?? 50);
+    const polarization = clamp(Number(nation?.polarization ?? 50) || 50, 0, 100);
+    const stability = clamp(Number(nation?.stability ?? 50) || 50, 0, 100);
+
+    const polBonus = polarization * CFG.TURNOUT_POLARIZATION_SCALE;
+    const stabPenalty = Math.max(0, stability - 50) * CFG.TURNOUT_STABILITY_SCALE;
+    const nationalBase = CFG.TURNOUT_BASE + polBonus + stabPenalty;
 
     // Compute per-faction turnout rate
     for (const u of updates) {
         const vis = Number(u.visibility ?? CFG.DEFAULT_VISIBILITY);
         const enthBonus = (enthusiasm - 50) * CFG.TURNOUT_ENTHUSIASM_SCALE;
         const visBonus = Math.max(0, (vis - 50)) * CFG.TURNOUT_VISIBILITY_SCALE;
-        u.turnout_rate = round3(clamp(CFG.TURNOUT_BASE + enthBonus + visBonus, 0.3, 0.95));
+        u.turnout_rate = round3(clamp(nationalBase + enthBonus + visBonus, 0.25, CFG.TURNOUT_MAX));
     }
 
     // realized = contested × turnout (then renormalize)
