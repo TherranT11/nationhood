@@ -1284,12 +1284,10 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
 
     // Use candidate-based voting for presidential elections, party-based for parliamentary
     let electionResults;
-    let parlSeatResults = null;
     if (isPresidential && normalizedElectionType === 'presidential') {
         // General Election: run parliamentary (seats) first, then presidential (candidates)
         const { data: parlData, error: parlError } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: 'parliamentary' });
         if (parlError) throw parlError;
-        parlSeatResults = parlData;
 
         // Ensure candidates exist — generate for parties that have none
         // Ensure all parties have their leader registered as a candidate
