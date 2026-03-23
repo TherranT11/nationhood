@@ -4408,17 +4408,18 @@ function renderCabinet(ministries, coalition) {
         if (isPresidential && isFilled && m.confirmation_status === 'acting') {
             const actingParty = allParties.find(p => p.id === m.party_id);
             const headerHtml = buildCardHeader(title, '', requests.length);
+            const mgmtHtml = buildMgmtButtons(key, m, govContext);
             const requestListHtml = (govContext.isRuling && requests.length > 0) ? buildRequestList(requests) : '';
             const statsHtml = renderMinistryStatBreakdown(key, m);
             return `<div class="ministry-card">${headerHtml}
                 <div class="ministry-card__minister">
-                    <div class="ministry-card__minister-name">${escapeHtml(m.minister_first_name)} ${escapeHtml(m.minister_last_name)}</div>
+                    <div class="ministry-card__minister-name">${escapeHtml(m.minister_first_name || 'Unknown')} ${escapeHtml(m.minister_last_name || '')}</div>
                     <div class="ministry-card__minister-meta">Age ${m.minister_age || '?'} · <span class="party">${escapeHtml(actingParty?.faction_name || 'Unknown')}</span></div>
                 </div>
                 <div class="ministry-card__pending">
                     <div class="ministry-card__pending-label" style="color:var(--amber);">ACTING MINISTER</div>
                 </div>
-                ${statsHtml}${requestListHtml}
+                ${mgmtHtml}${statsHtml}${requestListHtml}
             </div>`;
         }
 
