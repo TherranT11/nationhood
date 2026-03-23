@@ -127,9 +127,9 @@ BEGIN
 
   -- 6. Populate ministries from formation data
   FOR v_ministry_key, v_ministry_party_id IN
-    SELECT key, (value #>> '{}')::UUID
+    SELECT key, value::UUID
     FROM jsonb_each_text(v_formation.ministry_assignments)
-    WHERE value IS NOT NULL AND value #>> '{}' != ''
+    WHERE value IS NOT NULL AND value != ''
   LOOP
     IF v_ministry_key = 'prime_minister' THEN
       CONTINUE; -- PM handled separately below
@@ -213,14 +213,8 @@ BEGIN
   WHERE f.id = ANY((SELECT array_agg(x::UUID) FROM jsonb_array_elements_text(v_formation.party_ids::JSONB) x))
     AND f.nation_id = v_nation.id;
 
-  -- Compute government approval (average of coalition faction approval ratings)
-  SELECT COALESCE(
-    ROUND(AVG(f.approval_rating)),
-    50
-  )::INT INTO v_gov_approval
-  FROM factions f
-  WHERE f.id = ANY((SELECT array_agg(x::UUID) FROM jsonb_array_elements_text(v_formation.party_ids::JSONB) x))
-    AND f.nation_id = v_nation.id;
+  -- Government approval always starts at 50 for a new administration
+  v_gov_approval := 50;
 
   -- Determine end reason
   SELECT * INTO v_recent_election

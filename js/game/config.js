@@ -128,7 +128,8 @@ export function initGameConfigForNation(nation) {
     GAME_CONFIG.MAJORITY_SEATS = Math.floor(seats / 2) + 1;
 }
 
-export const FORMATION_DEADLINE_TICKS = 3; // ticks per formation window before escalation
+export const FORMATION_DEADLINE_TICKS = 3; // ticks per formation window before snap election
+export const POST_SNAP_DEADLINE_TICKS = 2; // ticks after snap election before emergency minority government
 export const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 5 — general snap cycle guard (overridden by formation escalation)
 
 /**
