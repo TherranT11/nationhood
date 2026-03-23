@@ -422,10 +422,19 @@ export const ELECTORATE_CONFIG = {
     DEFAULT_VISIBILITY: 0,
     DEFAULT_CREDIBILITY: 1.0,
 
-    // ── Phase 2B: Per-tick pillar weights ──
-    PILLAR_WEIGHT_ALIGNMENT: 0.40,  // ideological alignment
-    PILLAR_WEIGHT_APPEAL: 0.25,     // platform appeal (stances, issue ownership)
-    PILLAR_WEIGHT_APPROVAL: 0.35,   // party approval (governance record, momentum)
+    // ── Phase 2B: Per-tick pillar weights (5 pillars) ──
+    // Base weights (sum to 1.0). Credibility weight is dynamic — it shifts
+    // based on polarization/stability, borrowing from the other four pillars.
+    PILLAR_WEIGHT_ALIGNMENT: 0.25,  // ideological alignment
+    PILLAR_WEIGHT_APPEAL: 0.20,     // platform appeal (stances, issue ownership)
+    PILLAR_WEIGHT_APPROVAL: 0.20,   // party approval (governance record)
+    PILLAR_WEIGHT_VISIBILITY: 0.15, // visibility (campaigning, media presence)
+    PILLAR_WEIGHT_CREDIBILITY: 0.20, // credibility (base weight — actual is dynamic)
+    // Dynamic credibility range: scales from CRED_MIN_WEIGHT at max chaos to
+    // CRED_MAX_WEIGHT at max stability. The difference is redistributed
+    // proportionally among the other four pillars.
+    CRED_MIN_WEIGHT: 0.05,         // credibility weight at 100 polarization / 0 stability
+    CRED_MAX_WEIGHT: 0.35,         // credibility weight at 0 polarization / 100 stability
 
     // ── Alignment tick config ──
     ALIGNMENT_DRIFT_SPEED: 2,       // max points per tick toward target alignment
@@ -1169,17 +1178,39 @@ export async function tickElectorate(supabase, nation, currentTick) {
         }
         newCredibility = round3(clamp(newCredibility, CFG.CREDIBILITY_MIN, CFG.CREDIBILITY_MAX));
 
-        // ─── RAW APPEAL = weighted pillar sum × credibility ───
+        // ─── RAW APPEAL = 5-pillar weighted sum with dynamic credibility ───
+        // Credibility weight scales with stability/polarization:
+        //   High stability + low polarization → credibility matters most (up to 35%)
+        //   High polarization + low stability → credibility barely matters (down to 5%)
+        // The weight borrowed/freed is redistributed proportionally to the other 4 pillars.
+        const stability = Number(nation.stability ?? 50);
+        const polarization = Number(nation.polarization ?? 50);
+        // chaosIndex: 0 = perfectly stable, 1 = maximum chaos
+        const chaosIndex = clamp(((polarization / 100) + (1 - stability / 100)) / 2, 0, 1);
+        const credWeight = CFG.CRED_MAX_WEIGHT - chaosIndex * (CFG.CRED_MAX_WEIGHT - CFG.CRED_MIN_WEIGHT);
+        // Redistribute the delta across the other 4 pillars proportionally
+        const otherBaseSum = CFG.PILLAR_WEIGHT_ALIGNMENT + CFG.PILLAR_WEIGHT_APPEAL +
+                             CFG.PILLAR_WEIGHT_APPROVAL + CFG.PILLAR_WEIGHT_VISIBILITY;
+        const otherScale = (1 - credWeight) / otherBaseSum;
+        const wAlign = CFG.PILLAR_WEIGHT_ALIGNMENT * otherScale;
+        const wAppeal = CFG.PILLAR_WEIGHT_APPEAL * otherScale;
+        const wApproval = CFG.PILLAR_WEIGHT_APPROVAL * otherScale;
+        const wVisibility = CFG.PILLAR_WEIGHT_VISIBILITY * otherScale;
+        // Map credibility modifier (0.5–1.5) to 0–100 scale for consistent pillar math
+        const credibilityScore = clamp((newCredibility - 0.5) * 100, 0, 100);
+
         const rawAppeal = round2(
-            (newAlignment * CFG.PILLAR_WEIGHT_ALIGNMENT +
-             newAppeal * CFG.PILLAR_WEIGHT_APPEAL +
-             newApproval * CFG.PILLAR_WEIGHT_APPROVAL) * newCredibility
+            newAlignment * wAlign +
+            newAppeal * wAppeal +
+            newApproval * wApproval +
+            newVisibility * wVisibility +
+            credibilityScore * credWeight
         );
 
         // ─── Per-pillar contribution (for diagnostics/display) ───
-        const alignContrib = round2(newAlignment * CFG.PILLAR_WEIGHT_ALIGNMENT);
-        const appealContrib = round2(newAppeal * CFG.PILLAR_WEIGHT_APPEAL);
-        const approvalContrib = round2(newApproval * CFG.PILLAR_WEIGHT_APPROVAL);
+        const alignContrib = round2(newAlignment * wAlign);
+        const appealContrib = round2(newAppeal * wAppeal);
+        const approvalContrib = round2(newApproval * wApproval);
 
         updates.push({
             id: standing.id,

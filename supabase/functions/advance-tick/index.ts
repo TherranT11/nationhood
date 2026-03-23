@@ -12240,10 +12240,14 @@ const ELECTORATE_CONFIG = {
     DEFAULT_VISIBILITY: 0,
     DEFAULT_CREDIBILITY: 1.0,
 
-    // ── Phase 2B: Per-tick pillar weights ──
-    PILLAR_WEIGHT_ALIGNMENT: 0.40,  // ideological alignment
-    PILLAR_WEIGHT_APPEAL: 0.25,     // platform appeal (stances, issue ownership)
-    PILLAR_WEIGHT_APPROVAL: 0.35,   // party approval (governance record, momentum)
+    // ── Phase 2B: Per-tick pillar weights (5 pillars) ──
+    PILLAR_WEIGHT_ALIGNMENT: 0.25,
+    PILLAR_WEIGHT_APPEAL: 0.20,
+    PILLAR_WEIGHT_APPROVAL: 0.20,
+    PILLAR_WEIGHT_VISIBILITY: 0.15,
+    PILLAR_WEIGHT_CREDIBILITY: 0.20,
+    CRED_MIN_WEIGHT: 0.05,
+    CRED_MAX_WEIGHT: 0.35,
 
     // ── Alignment tick config ──
     ALIGNMENT_DRIFT_SPEED: 2,       // max points per tick toward target alignment
@@ -13046,17 +13050,32 @@ async function tickElectorate(supabase, nation, currentTick) {
         }
         newCredibility = round3(clamp(newCredibility, CFG.CREDIBILITY_MIN, CFG.CREDIBILITY_MAX));
 
-        // ─── RAW APPEAL = weighted pillar sum × credibility ───
+        // ─── RAW APPEAL = 5-pillar weighted sum with dynamic credibility ───
+        const stability = Number(nation.stability ?? 50);
+        const polarization = Number(nation.polarization ?? 50);
+        const chaosIndex = clamp(((polarization / 100) + (1 - stability / 100)) / 2, 0, 1);
+        const credWeight = CFG.CRED_MAX_WEIGHT - chaosIndex * (CFG.CRED_MAX_WEIGHT - CFG.CRED_MIN_WEIGHT);
+        const otherBaseSum = CFG.PILLAR_WEIGHT_ALIGNMENT + CFG.PILLAR_WEIGHT_APPEAL +
+                             CFG.PILLAR_WEIGHT_APPROVAL + CFG.PILLAR_WEIGHT_VISIBILITY;
+        const otherScale = (1 - credWeight) / otherBaseSum;
+        const wAlign = CFG.PILLAR_WEIGHT_ALIGNMENT * otherScale;
+        const wAppeal = CFG.PILLAR_WEIGHT_APPEAL * otherScale;
+        const wApproval = CFG.PILLAR_WEIGHT_APPROVAL * otherScale;
+        const wVisibility = CFG.PILLAR_WEIGHT_VISIBILITY * otherScale;
+        const credibilityScore = clamp((newCredibility - 0.5) * 100, 0, 100);
+
         const rawAppeal = round2(
-            (newAlignment * CFG.PILLAR_WEIGHT_ALIGNMENT +
-             newAppeal * CFG.PILLAR_WEIGHT_APPEAL +
-             newApproval * CFG.PILLAR_WEIGHT_APPROVAL) * newCredibility
+            newAlignment * wAlign +
+            newAppeal * wAppeal +
+            newApproval * wApproval +
+            newVisibility * wVisibility +
+            credibilityScore * credWeight
         );
 
         // ─── Per-pillar contribution (for diagnostics/display) ───
-        const alignContrib = round2(newAlignment * CFG.PILLAR_WEIGHT_ALIGNMENT);
-        const appealContrib = round2(newAppeal * CFG.PILLAR_WEIGHT_APPEAL);
-        const approvalContrib = round2(newApproval * CFG.PILLAR_WEIGHT_APPROVAL);
+        const alignContrib = round2(newAlignment * wAlign);
+        const appealContrib = round2(newAppeal * wAppeal);
+        const approvalContrib = round2(newApproval * wApproval);
 
         updates.push({
             id: standing.id,
