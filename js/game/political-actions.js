@@ -3497,7 +3497,8 @@ export async function processRevolution(supabase, nation, currentTick) {
         civil_unrest: 40,
         international_reputation: newIntlRep,
         revolution_started_tick: null,
-        revolution_duration: null
+        revolution_duration: null,
+        authoritarianism_seize_available_tick: null
     };
     await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
     Object.assign(nation, nationUpdates);
