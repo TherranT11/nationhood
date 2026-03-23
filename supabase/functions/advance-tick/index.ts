@@ -8783,8 +8783,8 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
         const updates = { term_limits_abolished: true };
         if (isPresidentialRepublic(nation)) updates.presidential_term_limit = 0;
-        updates.legitimacy = Math.max(0, (nation?.legitimacy || 50) - 5);
-        updates.stability = Math.min(100, (nation?.stability || 50) + 2);
+        updates.legitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
+        updates.stability = Math.min(100, (nation?.stability ?? 50) + 2);
 
         await supabase.from('nations').update(updates).eq('id', bill.nation_id);
 
@@ -8809,11 +8809,11 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
         await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
 
-        const cappedPressFreedom = Math.min(Number(nation?.press_freedom || 50), 40);
+        const cappedPressFreedom = Math.min(Number(nation?.press_freedom ?? 50), 40);
         await supabase.from('nations').update({
             state_media_control: true,
             press_freedom: cappedPressFreedom,
-            legitimacy: Math.max(0, (nation?.legitimacy || 50) - 3)
+            legitimacy: Math.max(0, (nation?.legitimacy ?? 50) - 3)
         }).eq('id', bill.nation_id);
 
         await supabase.from('event_log').insert({
@@ -8839,8 +8839,8 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
         await supabase.from('nations').update({
             emergency_powers_act: true,
-            stability: Math.max(0, (nation?.stability || 50) - 2),
-            freedom_index: Math.max(0, (nation?.freedom_index || 50) - 3)
+            stability: Math.max(0, (nation?.stability ?? 50) - 2),
+            freedom_index: Math.max(0, (nation?.freedom_index ?? 50) - 3)
         }).eq('id', bill.nation_id);
 
         await supabase.from('event_log').insert({
