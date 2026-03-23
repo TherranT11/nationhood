@@ -12797,14 +12797,25 @@ function bimodalAxisAlignment(partyPos, elecMean, elecVar) {
 
     // Bimodal: two narrower Gaussians offset from mean
     var offset = elecVar * 0.67;
-    var humpSigma = Math.max(5, sigma * 0.5);
+    var humpMult = 0.45 - 0.20 * polWeight;
+    var humpSigma = Math.max(5, sigma * humpMult);
 
     var leftHump = Math.min(100, Math.max(0, elecMean - offset));
     var rightHump = Math.min(100, Math.max(0, elecMean + offset));
 
     var bimodal = Math.max(gauss(partyPos, leftHump, humpSigma), gauss(partyPos, rightHump, humpSigma));
 
-    return (1 - polWeight) * unimodal + polWeight * bimodal;
+    // Centrist valley penalty
+    var distFromMean = Math.abs(partyPos - elecMean);
+    var inValley = distFromMean < offset * 0.6;
+    var valleyPenalty = 1.0;
+    if (inValley && polWeight > 0) {
+        var valleyDepth = 1.0 - (distFromMean / (offset * 0.6));
+        valleyPenalty = 1.0 - (valleyDepth * polWeight * 0.70);
+    }
+
+    var raw = (1 - polWeight) * unimodal + polWeight * bimodal;
+    return raw * valleyPenalty;
 }
 
 /**

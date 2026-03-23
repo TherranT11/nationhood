@@ -126,8 +126,22 @@ export function bimodalAxisAlignment(partyPos, elecMean, elecVar) {
     // Party alignment = best overlap with either hump
     const bimodal = Math.max(gauss(partyPos, leftHump, humpSigma), gauss(partyPos, rightHump, humpSigma));
 
-    // Blend: low polarization = unimodal, high polarization = bimodal
-    return (1 - polWeight) * unimodal + polWeight * bimodal;
+    // Centrist valley penalty: parties near the mean in a polarized electorate
+    // get an additional penalty. The valley between humps should be deep.
+    // Penalty scales with polWeight and proximity to the mean.
+    const distFromMean = Math.abs(partyPos - elecMean);
+    const inValley = distFromMean < offset * 0.6; // within 60% of the offset = in the valley
+    let valleyPenalty = 1.0;
+    if (inValley && polWeight > 0) {
+        // How deep in the valley: 1.0 at the mean, 0.0 at the valley edge
+        const valleyDepth = 1.0 - (distFromMean / (offset * 0.6));
+        // Penalty: up to 70% reduction at max polarization, dead centre
+        valleyPenalty = 1.0 - (valleyDepth * polWeight * 0.70);
+    }
+
+    // Blend: low polarization = unimodal, high polarization = bimodal (with valley penalty)
+    const raw = (1 - polWeight) * unimodal + polWeight * bimodal;
+    return raw * valleyPenalty;
 }
 
 // ============================================================================
