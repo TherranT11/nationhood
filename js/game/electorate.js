@@ -1135,11 +1135,14 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     const spatialAlignments = computeSpatialAlignments(ideoMap, activeProfile, axisSalienceWeights);
 
     // ── 15. Calculate pillars for each faction ──
+    console.log(`  [DEBUG] ideoMap keys: ${Object.keys(ideoMap).length}, standings: ${standings.length}, factionIds: ${factionIds.length}`);
+    if (Object.keys(ideoMap).length === 0) console.log('  [DEBUG] WARNING: ideoMap is EMPTY — faction_ideology query returned no rows');
     const updates = [];
 
     for (const standing of standings) {
         const factionId = standing.faction_id;
         const ideo = ideoMap[factionId];
+        if (!ideo) console.log(`  [DEBUG] ideo is FALSY for faction ${factionId} — not in ideoMap`);
         const lastActionTick = lastActionTickMap.get(factionId) ?? -999;
         const ticksSinceAction = currentTick - lastActionTick;
         const isCoalition = coalitionPartyIds.has(factionId);
