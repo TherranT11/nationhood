@@ -547,21 +547,135 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
     let round2Details = null;
     let winner;
 
+    let runoffMeta = null;
+
     if (topPct > 50 || allCandidateParties.length <= 2) {
         // Clear winner — no runoff
         winner = round1Results[0];
         winner.winner = true;
     } else {
-        // Runoff: top 2 advance, re-run simulation
+        // Runoff: top 2 advance with vote transfers from eliminated candidates
         wasRunoff = true;
-        const top2Ids = new Set([round1Results[0].candidate_id, round1Results[1].candidate_id]);
+        const top2 = [round1Results[0], round1Results[1]];
+        const top2Ids = new Set(top2.map(c => c.candidate_id));
         const runoffParties = allCandidateParties.filter(p => top2Ids.has(p.id));
+        const eliminatedParties = allCandidateParties.filter(p => !top2Ids.has(p.id));
 
-        const round2 = computePresidentialVotes(runoffParties);
-        runoffResults = buildCandidateResults(runoffParties, round2);
-        round2Details = round2.details;
+        // Start with the top 2 candidates' Round 1 votes as base
+        const runoffTally = {};
+        for (const c of top2) runoffTally[c.candidate_id] = c.votes;
+        let runoffTotalVotes = top2.reduce((s, c) => s + c.votes, 0);
+        let runoffAbstentions = 0;
+
+        // Transfer eliminated candidates' votes based on ideological proximity
+        const AXES = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
+        const endorsements = [];
+
+        for (const elim of eliminatedParties) {
+            const elimR1 = round1Results.find(r => r.candidate_id === elim.id);
+            const elimVotes = elimR1?.votes || 0;
+            if (elimVotes === 0) continue;
+
+            // Compute ideological distance to each runoff candidate
+            const distances = runoffParties.map(rp => {
+                let distSq = 0;
+                for (const axis of AXES) {
+                    const diff = (elim.axes[axis] || 0) - (rp.axes[axis] || 0);
+                    distSq += diff * diff;
+                }
+                return { id: rp.id, name: rp.faction_name, dist: Math.sqrt(distSq) };
+            });
+
+            // Convert distances to affinity (inverse distance)
+            // Closer candidate gets higher share of transfers
+            const totalDist = distances.reduce((s, d) => s + d.dist, 0);
+            let affinities;
+            if (totalDist === 0) {
+                // Equidistant — split evenly
+                affinities = distances.map(d => ({ ...d, affinity: 0.5 }));
+            } else {
+                // Affinity = 1 - (myDist / totalDist), then normalize
+                affinities = distances.map(d => ({ ...d, affinity: 1 - (d.dist / totalDist) }));
+                const affinitySum = affinities.reduce((s, a) => s + a.affinity, 0);
+                for (const a of affinities) a.affinity = a.affinity / affinitySum;
+            }
+
+            // Abstention rate: if both runoff candidates are far from the eliminated party,
+            // more of that party's voters stay home. Base 15%, +1% per 10 distance units.
+            const minDist = Math.min(...distances.map(d => d.dist));
+            const abstainRate = Math.min(0.50, 0.15 + (minDist / 1000));
+            const abstainVotes = Math.round(elimVotes * abstainRate);
+            const transferableVotes = elimVotes - abstainVotes;
+
+            const endorsement = {
+                eliminated_candidate: elim.faction_name,
+                eliminated_party: elim.party_name || elim.faction_name,
+                eliminated_faction_id: elim.faction_id,
+                round1_votes: elimVotes,
+                abstain_votes: abstainVotes,
+                transfers: []
+            };
+
+            // Distribute transferable votes proportionally by affinity
+            let distributed = 0;
+            for (const a of affinities) {
+                const xfer = Math.round(transferableVotes * a.affinity);
+                runoffTally[a.id] = (runoffTally[a.id] || 0) + xfer;
+                distributed += xfer;
+                endorsement.transfers.push({
+                    candidate_id: a.id,
+                    candidate_name: a.name,
+                    votes: xfer,
+                    affinity_pct: Math.round(a.affinity * 100)
+                });
+            }
+            // Rounding remainder
+            if (distributed < transferableVotes && affinities.length > 0) {
+                const rem = transferableVotes - distributed;
+                const bestId = affinities.sort((a, b) => b.affinity - a.affinity)[0].id;
+                runoffTally[bestId] += rem;
+                const t = endorsement.transfers.find(t => t.candidate_id === bestId);
+                if (t) t.votes += rem;
+            }
+
+            runoffTotalVotes += transferableVotes;
+            runoffAbstentions += abstainVotes;
+            endorsements.push(endorsement);
+        }
+
+        // Build runoff results
+        runoffResults = runoffParties.map(p => {
+            const votes = runoffTally[p.id] || 0;
+            return {
+                candidate_id: p.id,
+                candidate_name: p.faction_name,
+                party_name: p.party_name,
+                faction_id: p.faction_id,
+                ideology: p.ideology,
+                trait_key: p.trait_key,
+                votes,
+                vote_percentage: runoffTotalVotes > 0
+                    ? Math.round((votes / runoffTotalVotes) * 10000) / 100
+                    : 0
+            };
+        }).sort((a, b) => b.votes - a.votes);
+
+        round2Details = [];
         winner = runoffResults[0];
         winner.winner = true;
+
+        runoffMeta = {
+            endorsements,
+            total_transferred: endorsements.reduce((s, e) => s + e.transfers.reduce((ts, t) => ts + t.votes, 0), 0),
+            total_abstain: runoffAbstentions,
+            runoff_total_votes: runoffTotalVotes,
+            endorsed_party_name: endorsements.length > 0
+                ? endorsements.sort((a, b) => b.round1_votes - a.round1_votes)[0]
+                    ?.transfers.sort((a, b) => b.votes - a.votes)[0]?.candidate_name || null
+                : null,
+            abstain_votes: runoffAbstentions,
+            protest_votes: 0
+        };
     }
 
     // Build candidate name lookup
@@ -581,6 +695,7 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
         was_runoff: wasRunoff,
         runoff_results: runoffResults,
         runoff_details: round2Details,
+        runoff_meta: runoffMeta,
         winner,
         candidateNames
     };

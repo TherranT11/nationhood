@@ -10821,66 +10821,151 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
         });
         console.log(`Presidential election Round 1 winner: ${winner.candidate_name} (${winner.party_name}) with ${topPct.toFixed(1)}% — majority achieved (${nation.name})`);
     } else {
-        // === RUNOFF: No majority — top 2 candidates advance ===
+        // === RUNOFF: No majority — top 2 candidates advance with vote transfers ===
         wasRunoff = true;
         const runoffCandidates = sortedRound1.slice(0, 2);
+        const eliminatedCandidates = sortedRound1.slice(2);
         console.log(`Presidential election RUNOFF triggered for ${nation.name}: ${runoffCandidates[0].candidate_name} vs ${runoffCandidates[1].candidate_name} (top was ${topPct.toFixed(1)}%)`);
 
-        // Delete all non-runoff candidates from pm_candidates so the RPC only sees 2
+        // Load ideology axes for all factions involved (for distance computation)
+        const allFactionIds = [...new Set(candidateResults.map(c => c.faction_id))];
+        const { data: ideoRows } = await supabase
+            .from('faction_ideology')
+            .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+            .in('faction_id', allFactionIds);
+        const ideoByFaction = {};
+        for (const r of (ideoRows || [])) ideoByFaction[r.faction_id] = r;
+
+        // Start runoff tally from Round 1 votes of the top 2
+        const runoffTally = {};
+        for (const c of runoffCandidates) runoffTally[c.candidate_id] = c.votes;
+        let runoffTotalVotes = runoffCandidates.reduce((s, c) => s + c.votes, 0);
+        let runoffAbstentions = 0;
+        const AXES = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
+
+        // Transfer eliminated candidates' votes by ideological proximity
+        const endorsements = [];
+        for (const elim of eliminatedCandidates) {
+            const elimVotes = elim.votes || 0;
+            if (elimVotes === 0) continue;
+            const elimIdeo = ideoByFaction[elim.faction_id] || {};
+
+            // Distance to each runoff candidate's faction
+            const distances = runoffCandidates.map(rc => {
+                const rcIdeo = ideoByFaction[rc.faction_id] || {};
+                let distSq = 0;
+                for (const axis of AXES) {
+                    const diff = (elimIdeo[axis] || 0) - (rcIdeo[axis] || 0);
+                    distSq += diff * diff;
+                }
+                return { id: rc.candidate_id, name: rc.candidate_name, dist: Math.sqrt(distSq) };
+            });
+
+            const totalDist = distances.reduce((s, d) => s + d.dist, 0);
+            let affinities;
+            if (totalDist === 0) {
+                affinities = distances.map(d => ({ ...d, affinity: 0.5 }));
+            } else {
+                affinities = distances.map(d => ({ ...d, affinity: 1 - (d.dist / totalDist) }));
+                const affinitySum = affinities.reduce((s, a) => s + a.affinity, 0);
+                for (const a of affinities) a.affinity = a.affinity / affinitySum;
+            }
+
+            const minDist = Math.min(...distances.map(d => d.dist));
+            const abstainRate = Math.min(0.50, 0.15 + (minDist / 1000));
+            const abstainVotes = Math.round(elimVotes * abstainRate);
+            const transferableVotes = elimVotes - abstainVotes;
+
+            const endorsement = {
+                eliminated_candidate: elim.candidate_name,
+                eliminated_party: elim.party_name,
+                eliminated_faction_id: elim.faction_id,
+                round1_votes: elimVotes,
+                abstain_votes: abstainVotes,
+                transfers: []
+            };
+
+            let distributed = 0;
+            for (const a of affinities) {
+                const xfer = Math.round(transferableVotes * a.affinity);
+                runoffTally[a.id] = (runoffTally[a.id] || 0) + xfer;
+                distributed += xfer;
+                endorsement.transfers.push({
+                    candidate_id: a.id, candidate_name: a.name,
+                    votes: xfer, affinity_pct: Math.round(a.affinity * 100)
+                });
+            }
+            if (distributed < transferableVotes && affinities.length > 0) {
+                const rem = transferableVotes - distributed;
+                const bestId = affinities.sort((a, b) => b.affinity - a.affinity)[0].id;
+                runoffTally[bestId] += rem;
+                const t = endorsement.transfers.find(t => t.candidate_id === bestId);
+                if (t) t.votes += rem;
+            }
+            runoffTotalVotes += transferableVotes;
+            runoffAbstentions += abstainVotes;
+            endorsements.push(endorsement);
+        }
+
+        // Build runoff results with transfers included
+        runoffResults = runoffCandidates.map(c => ({
+            ...c,
+            votes: runoffTally[c.candidate_id] || 0,
+            vote_percentage: runoffTotalVotes > 0
+                ? Math.round(((runoffTally[c.candidate_id] || 0) / runoffTotalVotes) * 10000) / 100
+                : 0
+        }));
+
+        endorsementResolution = {
+            endorsements,
+            summary: {
+                total_transfer_votes: endorsements.reduce((s, e) => s + e.transfers.reduce((ts, t) => ts + t.votes, 0), 0),
+                total_abstain: runoffAbstentions
+            }
+        };
+
+        const runoffSorted = [...runoffResults].sort((a, b) => b.votes - a.votes);
+        winner = runoffSorted[0] || topCandidate;
+        console.log(`Runoff winner: ${winner.candidate_name} (${winner.party_name}) with ${winner.vote_percentage}% (${nation.name})`);
+
+        // Update the election record with combined round data
+        const combinedResults = {
+            ...completedElection.results,
+            presidential_candidates: runoffResults,
+            round_1_candidates: candidateResults,
+            runoff_candidates: runoffResults,
+            total_votes_cast: runoffTotalVotes,
+            was_runoff: true,
+            runoff_meta: {
+                endorsements: endorsementResolution.endorsements,
+                total_transferred: endorsementResolution.summary.total_transfer_votes,
+                abstain_votes: endorsementResolution.summary.total_abstain,
+                endorsed_party_name: endorsements.length > 0
+                    ? endorsements.sort((a, b) => b.round1_votes - a.round1_votes)[0]
+                        ?.transfers.sort((a, b) => b.votes - a.votes)[0]?.candidate_name || null
+                    : null,
+                protest_votes: 0
+            },
+            runoff_endorsement_summary: endorsementResolution.summary
+        };
+        const targetId = electionId || completedElection.id;
+        const { error: runoffUpdateErr } = await supabase.from('elections')
+            .update({ results: combinedResults })
+            .eq('id', targetId);
+        if (runoffUpdateErr) {
+            console.error(`[PresElection] Failed to update election ${targetId} with runoff results for ${nation.name}:`, runoffUpdateErr.message);
+        }
+
+        // Clean up eliminated candidates from pm_candidates
         const runoffCandidateIds = new Set(runoffCandidates.map(c => c.candidate_id));
         const { data: allPresidentialCandidates } = await supabase
             .from('pm_candidates')
             .select('id')
             .eq('nation_id', nation.id)
             .eq('candidate_type', 'presidential');
-
         for (const pc of (allPresidentialCandidates || [])) {
             if (!runoffCandidateIds.has(pc.id)) {
                 await supabase.from('pm_candidates').delete().eq('id', pc.id);
-            }
-        }
-
-        // Run the presidential election RPC again with only the top 2
-        const { data: runoffData, error: runoffErr } = await supabase.rpc('run_presidential_election', {
-            p_nation_id: nation.id,
-            p_election_id: completedElection.id
-        });
-
-        if (runoffErr) {
-            console.error(`Runoff RPC failed for ${nation.name}:`, runoffErr);
-            // Fallback: use round 1 winner
-            winner = topCandidate;
-        } else {
-            runoffResults = runoffData?.presidential_candidates || [];
-            endorsementResolution = resolvePresidentialRunoffEndorsements({
-                wasRunoff: true,
-                round1Results: candidateResults,
-                runoffCandidates,
-                snappedEndorsements,
-                compatibilityTable: completedElection?.results?.transfer_rate_compatibility || {}
-            });
-            const runoffSorted = [...runoffResults].sort((a, b) => b.votes - a.votes);
-            winner = runoffSorted[0] || topCandidate;
-            console.log(`Runoff winner: ${winner.candidate_name} (${winner.party_name}) with ${winner.vote_percentage}% (${nation.name})`);
-
-            // Update the election record with combined round data
-            // Replace presidential_candidates with runoff results so the UI shows the final outcome
-            const combinedResults = {
-                ...completedElection.results,
-                presidential_candidates: runoffResults,
-                round_1_candidates: candidateResults,
-                runoff_candidates: runoffResults,
-                total_votes_cast: runoffData?.total_votes_cast || completedElection.results?.total_votes_cast,
-                was_runoff: true,
-                snapped_endorsements: endorsementResolution.endorsements,
-                runoff_endorsement_summary: endorsementResolution.summary
-            };
-            const targetId = electionId || completedElection.id;
-            const { error: runoffUpdateErr } = await supabase.from('elections')
-                .update({ results: combinedResults })
-                .eq('id', targetId);
-            if (runoffUpdateErr) {
-                console.error(`[PresElection] Failed to update election ${targetId} with runoff results for ${nation.name}:`, runoffUpdateErr.message);
             }
         }
     }
