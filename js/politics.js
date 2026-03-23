@@ -6425,10 +6425,6 @@ function renderPartyCard(party, nation) {
                     <span class="op-sr-val" style="color:${c}">${party.seats} <span style="color:var(--dtext-3);font-size:9px;font-weight:400">/ ${party.totalSeats}</span></span>
                 </div>
                 <div class="op-stat-row">
-                    <span class="op-sr-label">Vote Share</span>
-                    <span class="op-sr-val">${(party.voteShare ?? 0).toFixed(1)}%</span>
-                </div>
-                <div class="op-stat-row">
                     <span class="op-sr-label">Approval</span>
                     <span class="op-sr-val" style="color:${apColor}">${party.approval}%</span>
                 </div>

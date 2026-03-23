@@ -440,7 +440,7 @@ export const ELECTORATE_CONFIG = {
     DEFAULT_PLATFORM_APPEAL: 0,
     DEFAULT_PARTY_APPROVAL: 25,
     DEFAULT_VISIBILITY: 0,
-    DEFAULT_CREDIBILITY: 1.0,
+    DEFAULT_CREDIBILITY: 0.5,  // 0% credibility score (formula: (modifier - 0.5) * 100)
 
     // ── Phase 2B: Per-tick pillar weights (5 pillars) ──
     // Base weights (sum to 1.0). Credibility weight is dynamic — it shifts
