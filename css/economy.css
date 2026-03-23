@@ -2002,6 +2002,36 @@ body.light-mode .partner-card {
     border-bottom: none;
 }
 
+.tft-row-clickable {
+    cursor: pointer;
+    border-radius: 3px;
+    margin: 0 -6px;
+    padding-left: 6px;
+    padding-right: 6px;
+    transition: background 0.15s ease;
+}
+
+.tft-row-clickable:hover {
+    background: rgba(255,255,255,0.04);
+}
+
+body.light-mode .tft-row-clickable:hover {
+    background: rgba(0,0,0,0.04);
+}
+
+.tft-drill-chevron {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-left: 6px;
+    opacity: 0;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.tft-row-clickable:hover .tft-drill-chevron {
+    opacity: 1;
+    transform: translateX(2px);
+}
+
 .tft-row.tft-total {
     border-top: 1px solid var(--border-mid);
     border-bottom: none;

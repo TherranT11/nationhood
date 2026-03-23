@@ -539,6 +539,15 @@ function wireTabEvents(nation) {
             renderEconomyPage(nation);
         });
     });
+    if (activeTab === 'trade') {
+        document.querySelectorAll('.tft-row-clickable').forEach(function(row) {
+            row.addEventListener('click', function() {
+                activeSector = row.getAttribute('data-sector');
+                activeTab = 'sectors';
+                renderEconomyPage(nation);
+            });
+        });
+    }
     if (activeTab === 'sectors') {
         document.querySelectorAll('.sector-tab').forEach(function(tab) {
             tab.addEventListener('click', function() {
@@ -1845,7 +1854,7 @@ function renderSectorFlowsTable(nation) {
 
     var h = '<div class="econ-section">';
     h += '<div class="econ-section-header">SECTOR FLOWS</div>';
-    h += '<div class="econ-section-subtitle">Export and import volumes by sector. Price modifier affects trade value.</div>';
+    h += '<div class="econ-section-subtitle">Export and import volumes by sector. Click a sector for details.</div>';
 
     // Table header
     h += '<div class="trade-flow-table">';
@@ -1883,10 +1892,11 @@ function renderSectorFlowsTable(nation) {
         var prevImp = tradeData.prevFlows[sKey] ? Number(tradeData.prevFlows[sKey].import_volume) || 0 : null;
         var prevNet = (prevExp !== null && prevImp !== null) ? prevExp - prevImp : null;
 
-        h += '<div class="tft-row">';
+        h += '<div class="tft-row tft-row-clickable" data-sector="' + sKey + '">';
         h += '<div class="tft-cell tft-sector">';
         h += '<span class="tft-sector-name">' + escapeHtml(sector.label) + '</span>';
         if (sector.export_only) h += '<span class="tft-export-only">EXPORT ONLY</span>';
+        h += '<span class="tft-drill-chevron">&#x203A;</span>';
         h += '</div>';
         h += '<div class="tft-cell tft-num" style="color:#5cb85c">' + formatBudgetCurrency(expVol) + '</div>';
         h += '<div class="tft-cell tft-num" style="color:#d9534f">' + (impVol > 0 ? formatBudgetCurrency(impVol) : '—') + '</div>';
