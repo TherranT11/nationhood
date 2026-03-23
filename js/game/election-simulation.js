@@ -407,14 +407,51 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
 
     const eligibleVoters = nation.eligible_voters || 0;
 
-    // 2. Load selected presidential candidates
-    const { data: candidates } = await supabase
+    // 2. Load selected presidential candidates — or synthesize from party leaders
+    let { data: candidates } = await supabase
         .from('pm_candidates')
         .select('id, first_name, last_name, faction_id, ideology, ideology_axis, ideology_direction, trait_key')
         .eq('nation_id', nationId)
         .eq('candidate_type', 'presidential')
         .eq('selected', true);
-    if (!candidates || candidates.length === 0) throw new Error('No selected presidential candidates found. Generate and select candidates first.');
+
+    // If no candidates registered, build synthetic ones from party leaders
+    // (mirrors autoSelectPresidentialCandidates in the tick handler)
+    if (!candidates || candidates.length === 0) {
+        const { data: parties } = await supabase
+            .from('factions')
+            .select('id, faction_name, leader_first_name, leader_last_name, leader_positive_traits, leader_negative_traits')
+            .eq('nation_id', nationId)
+            .eq('faction_type', 'party')
+            .is('abandoned_at', null);
+        const { data: ideos } = await supabase
+            .from('faction_ideology')
+            .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+            .in('faction_id', (parties || []).map(p => p.id));
+        const ideoLookup = {};
+        for (const r of (ideos || [])) ideoLookup[r.faction_id] = r;
+
+        candidates = (parties || []).filter(p => p.leader_first_name).map(p => {
+            const ideo = ideoLookup[p.id] || {};
+            const axes = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
+            let bestAxis = 'tradition_progress', bestDir = 1, maxAbs = 0;
+            for (const axis of axes) {
+                const val = Math.abs(ideo[axis] || 0);
+                if (val > maxAbs) { maxAbs = val; bestAxis = axis; bestDir = (ideo[axis] || 0) >= 0 ? 1 : -1; }
+            }
+            return {
+                id: p.id, // use faction id as synthetic candidate id
+                first_name: p.leader_first_name,
+                last_name: p.leader_last_name,
+                faction_id: p.id,
+                ideology: bestDir > 0 ? bestAxis.split('_').pop() : bestAxis.split('_')[0],
+                ideology_axis: bestAxis,
+                ideology_direction: bestDir,
+                trait_key: (p.leader_positive_traits || [])[0] || null
+            };
+        });
+    }
+    if (!candidates || candidates.length === 0) throw new Error('No parties with leaders found for presidential preview.');
 
     // 3. Load faction data + ideology axes for each candidate's party
     //    Filter out candidates whose factions are inactive ≥12 ticks
