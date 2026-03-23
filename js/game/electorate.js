@@ -1013,11 +1013,10 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         .is('abandoned_at', null);
     if (!allFactions || allFactions.length === 0) return;
 
-    const factions = allFactions;
+    const factions = allFactions; // alias used throughout function
     const inactiveFactions = allFactions.filter(f =>
         f.last_seen_tick != null && (currentTick - f.last_seen_tick) >= CFG.INACTIVITY_EXCLUSION_TICKS
     );
-    if (factions.length === 0) return;
     const factionIds = factions.map(f => f.id);
 
     // ── 1b. Reset campaign action counter for diminishing returns ──

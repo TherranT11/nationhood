@@ -1713,11 +1713,6 @@ function renderFormationInProgress(parties) {
     // Calculate accrued penalties
     const accruedApproval = ticksElapsed * 2;
 
-    // Find largest and second largest parties for snap penalty display
-    const sorted = [...parties].sort((a, b) => b.seats - a.seats);
-    const largestParty = sorted[0];
-    const secondParty = sorted[1];
-
     // Tone: calm at start, escalates with urgency
     const icon = urgency === 'critical' ? '⚠️' : urgency === 'warning' ? '⏳' : '🤝';
     const title = urgency === 'critical' ? 'No Government — Snap Election Imminent'
