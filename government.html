@@ -6669,7 +6669,15 @@ function renderAdminCard(admin, isCurrent) {
     const approvalStart = admin.approval_at_start;
     const approvalEnd = isCurrent ? null : admin.approval_at_end;
     let approvalHTML = '';
-    if (approvalStart != null) {
+    if (isCurrent) {
+        // Show live government approval for the current administration
+        const liveApproval = currentNation?.gov_approval;
+        if (liveApproval != null) {
+            approvalHTML = `<span>${liveApproval}%</span>`;
+        } else if (approvalStart != null) {
+            approvalHTML = `<span>${approvalStart}%</span>`;
+        }
+    } else if (approvalStart != null) {
         if (approvalEnd != null) {
             const color = approvalEnd >= approvalStart ? 'var(--green)' : 'var(--red)';
             approvalHTML = `<span style="color:${color}">${approvalStart}% &rarr; ${approvalEnd}%</span>`;
