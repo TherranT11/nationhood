@@ -3047,6 +3047,92 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         return true;
     }
 
+    // ── Abolish Term Limits subtype ──
+    if (bill.proposed_abolish_term_limits) {
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+        const updates = { term_limits_abolished: true };
+        // Also remove presidential term limit if applicable
+        if (isPresidentialRepublic(nation)) updates.presidential_term_limit = 0;
+
+        // One-time stat effects: legitimacy -5, stability +2
+        updates.legitimacy = Math.max(0, (nation?.legitimacy || 50) - 5);
+        updates.stability = Math.min(100, (nation?.stability || 50) + 2);
+
+        await supabase.from('nations').update(updates).eq('id', bill.nation_id);
+
+        await supabase.from('event_log').insert({
+            nation_id: bill.nation_id,
+            event_name: 'FOUNDATIONAL_LAW_PASSED',
+            trigger_key: 'term_limits_abolished',
+            description_used: 'Term limits have been abolished. The ruling party may now hold power indefinitely — but press freedom will erode over time.',
+            category: 'POLITICAL',
+            effects_applied: { law: 'abolish_term_limits', legitimacy: -5, stability: +2 },
+            fired_at_tick: currentTick
+        });
+
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+        console.log(`[enactFoundationalBill] Abolish Term Limits enacted for nation ${bill.nation_id}`);
+        return true;
+    }
+
+    // ── State Media Control Act subtype ──
+    if (bill.proposed_state_media_control) {
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+        const cappedPressFreedom = Math.min(Number(nation?.press_freedom || 50), 40);
+        await supabase.from('nations').update({
+            state_media_control: true,
+            press_freedom: cappedPressFreedom,
+            legitimacy: Math.max(0, (nation?.legitimacy || 50) - 3)
+        }).eq('id', bill.nation_id);
+
+        await supabase.from('event_log').insert({
+            nation_id: bill.nation_id,
+            event_name: 'FOUNDATIONAL_LAW_PASSED',
+            trigger_key: 'state_media_control',
+            description_used: 'The State Media Control Act has passed. Government now controls national media. Press freedom is permanently capped at 40.',
+            category: 'POLITICAL',
+            effects_applied: { law: 'state_media_control', press_freedom_cap: 40, legitimacy: -3 },
+            fired_at_tick: currentTick
+        });
+
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+        console.log(`[enactFoundationalBill] State Media Control Act enacted for nation ${bill.nation_id}`);
+        return true;
+    }
+
+    // ── Emergency Powers Act subtype ──
+    if (bill.proposed_emergency_powers_act) {
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+        await supabase.from('nations').update({
+            emergency_powers_act: true,
+            stability: Math.max(0, (nation?.stability || 50) - 2),
+            freedom_index: Math.max(0, (nation?.freedom_index || 50) - 3)
+        }).eq('id', bill.nation_id);
+
+        await supabase.from('event_log').insert({
+            nation_id: bill.nation_id,
+            event_name: 'FOUNDATIONAL_LAW_PASSED',
+            trigger_key: 'emergency_powers_act',
+            description_used: 'The Emergency Powers Act has passed. The head of government may now declare national emergencies, bypassing legislative votes on bills.',
+            category: 'POLITICAL',
+            effects_applied: { law: 'emergency_powers_act', stability: -2, freedom_index: -3 },
+            fired_at_tick: currentTick
+        });
+
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+        console.log(`[enactFoundationalBill] Emergency Powers Act enacted for nation ${bill.nation_id}`);
+        return true;
+    }
+
     // ── Electoral Makeup subtype ──
     // Validate proposed_seats BEFORE marking the bill as passed
     let newTotalSeats = bill.proposed_seats;

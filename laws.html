@@ -1682,6 +1682,24 @@ function renderFoundationalOptions() {
                     <input type="text" id="foundational-dynasty-crest" maxlength="200" placeholder="Image URL for crest/logo" style="background:var(--bg-card);border:1px solid var(--purple);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:280px;">
                 </div>
             </div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'abolish_term_limits' ? ' selected' : ''}" style="${selectedFoundationalType === 'abolish_term_limits' ? 'border-color:var(--red);' : ''}${currentNation.term_limits_abolished ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('abolish_term_limits')" data-foundational-type="abolish_term_limits">
+            <div class="policy-option-name">⛓ Abolish Term Limits <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.term_limits_abolished
+                ? 'Already enacted — term limits have been abolished.'
+                : 'Remove all term limits for the head of government. The ruling party gains +5 approval/tick but press freedom erodes -0.3/tick permanently. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'state_media_control' ? ' selected' : ''}" style="${selectedFoundationalType === 'state_media_control' ? 'border-color:var(--red);' : ''}${currentNation.state_media_control ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('state_media_control')" data-foundational-type="state_media_control">
+            <div class="policy-option-name">📺 State Media Control Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.state_media_control
+                ? 'Already enacted — the government controls national media.'
+                : 'Government takes control of national media. Press freedom permanently capped at 40. Ruling party +3 approval/tick, opposition -2 approval/tick. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'emergency_powers' ? ' selected' : ''}" style="${selectedFoundationalType === 'emergency_powers' ? 'border-color:var(--red);' : ''}${currentNation.emergency_powers_act ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('emergency_powers')" data-foundational-type="emergency_powers">
+            <div class="policy-option-name">🚨 Emergency Powers Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.emergency_powers_act
+                ? 'Already enacted — the head of government may declare national emergencies.'
+                : 'Grants the head of government power to declare national emergencies, bypassing legislative votes. While active: stability -1/tick, freedom index -0.5/tick, judicial independence -0.5/tick. Requires 2/3 supermajority (' + required + ' seats).'}</div>
         </div>`;
     selectedFoundationalType = null;
     selectedPolicy = null;
@@ -1712,7 +1730,8 @@ function selectFoundationalType(type) {
     document.querySelectorAll('[data-foundational-type]').forEach(el => {
         const isSelected = el.dataset.foundationalType === type;
         el.classList.toggle('selected', isSelected);
-        el.style.borderColor = isSelected ? 'var(--purple)' : '';
+        const authTypes = ['abolish_term_limits', 'state_media_control', 'emergency_powers'];
+        el.style.borderColor = isSelected ? (authTypes.includes(type) ? 'var(--red)' : 'var(--purple)') : '';
     });
     const seatsConfig = document.getElementById('foundational-seats-config');
     const hosConfig = document.getElementById('foundational-hos-config');
@@ -1981,6 +2000,48 @@ function addArticle() {
             document.getElementById('submit-bill-btn').disabled = false;
             _hideAllArticleButtons();
             return;
+        } else if (selectedFoundationalType === 'abolish_term_limits') {
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'abolish_term_limits',
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = 'Abolish Term Limits Act';
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'state_media_control') {
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'state_media_control',
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = 'State Media Control Act';
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'emergency_powers') {
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'emergency_powers',
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = 'Emergency Powers Act';
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
         } else {
             alert('Please select a foundational option first.');
             return;
@@ -2066,6 +2127,36 @@ function renderDraftArticles() {
                         <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--purple);">Foundational</span></div>
                         <div class="draft-article-name">🗳 Election of Head of State</div>
                         <div class="draft-article-meta">Change to: ${escapeHtml(methodLabel)}${dynastyInfo} · Requires 2/3 supermajority · 360 tick cooldown</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'abolish_term_limits') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">⛓ Abolish Term Limits</div>
+                        <div class="draft-article-meta">Removes all term limits. Ruling party +5 approval/tick, press freedom -0.3/tick. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'state_media_control') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">📺 State Media Control Act</div>
+                        <div class="draft-article-meta">Press freedom capped at 40. Ruling party +3/tick, opposition -2/tick. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'emergency_powers') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">🚨 Emergency Powers Act</div>
+                        <div class="draft-article-meta">Head of government may declare emergencies to bypass votes. Stat drain while active. Requires 2/3 supermajority.</div>
                     </div>
                     <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
                 </div>`;
@@ -2593,6 +2684,12 @@ async function submitToCommittee() {
                 billInsert.proposed_hos_election_method = fArt.proposedHosElectionMethod;
                 if (fArt.proposedDynastyName) billInsert.proposed_dynasty_name = fArt.proposedDynastyName;
                 if (fArt.proposedDynastyCrest) billInsert.proposed_dynasty_crest_url = fArt.proposedDynastyCrest;
+            } else if (fArt.foundationalSubtype === 'abolish_term_limits') {
+                billInsert.proposed_abolish_term_limits = true;
+            } else if (fArt.foundationalSubtype === 'state_media_control') {
+                billInsert.proposed_state_media_control = true;
+            } else if (fArt.foundationalSubtype === 'emergency_powers') {
+                billInsert.proposed_emergency_powers_act = true;
             } else {
                 billInsert.proposed_seats = fArt.proposedSeats;
             }
