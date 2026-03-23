@@ -12409,6 +12409,7 @@ const ELECTORATE_CONFIG = {
 
     // ── Alignment tick config ──
     ALIGNMENT_DRIFT_SPEED: 2,       // max points per tick toward target alignment
+    CENTRIST_ZONE_PENALTY_PER_AXIS: 4, // alignment points lost per centrist axis at max polarization
 
     // ── Party approval config ──
     APPROVAL_GOV_NUDGE_DIVISOR: 2.5,  // (gov_approval - 50) / divisor = nudge
@@ -13160,6 +13161,26 @@ async function tickElectorate(supabase, nation, currentTick) {
         var targetAlignment = (spatialAlignments[factionId] != null)
             ? spatialAlignments[factionId]
             : CFG.DEFAULT_ALIGNMENT;
+
+        // Centrist zone penalty: parties in the centrist zone on each axis
+        // lose alignment points scaling with polarization.
+        if (ideo) {
+            var centristAxes = 0;
+            for (var _ca = 0; _ca < AXIS_KEYS.length; _ca++) {
+                var caKey = AXIS_KEYS[_ca];
+                var caVar = Number(activeProfile['ideo_var_' + caKey] ?? 20);
+                var caPartyNorm = (Number(ideo[caKey] || 0) + 100) / 2;
+                var caPol = Math.min(100, Math.max(0, (caVar - 5) / 35 * 100));
+                var caHalf = Math.max(5, 15 - caPol * 0.10);
+                if (caPartyNorm >= (50 - caHalf) && caPartyNorm < (50 + caHalf)) centristAxes++;
+            }
+            if (centristAxes > 0) {
+                var caAvgVar = AXIS_KEYS.reduce(function(s, k) { return s + Number(activeProfile['ideo_var_' + k] ?? 20); }, 0) / AXIS_KEYS.length;
+                var caPolWeight = Math.min(1, Math.max(0, (caAvgVar - 10) / 30));
+                targetAlignment -= centristAxes * CFG.CENTRIST_ZONE_PENALTY_PER_AXIS * caPolWeight;
+                targetAlignment = Math.max(0, targetAlignment);
+            }
+        }
 
         // Conviction bonus: parties that haven't pivoted in 20+ ticks get +3 alignment
         var factionEntry = factions.find(function(ff) { return ff.id === factionId; });
