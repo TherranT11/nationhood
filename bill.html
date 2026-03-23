@@ -796,6 +796,26 @@ function renderArticles() {
                         'Longer terms: legitimacy -3, stability +2.' +
                     '</div>' +
                 '</div>';
+        } else if (bill.proposed_parliamentary_term_length != null) {
+            // Legislative Term Length subtype
+            const ticksPerYear = GAME_CONFIG.TICKS_PER_YEAR || 12;
+            const proposedParlYears = bill.proposed_parliamentary_term_length / ticksPerYear;
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--purple);">' +
+                    '<div class="article-number" style="color:var(--purple);">FOUNDATIONAL LAW</div>' +
+                    '<div class="article-title">Legislative Term Length</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill proposes to change the legislative term length.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--purple);">' +
+                    '<div class="repeal-notice-icon">🗓</div>' +
+                    '<div class="repeal-notice-text">Proposed Legislative Term: ' + proposedParlYears + ' Years (' + bill.proposed_parliamentary_term_length + ' ticks)</div>' +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--purple);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                        'The new term length takes effect after the next scheduled election.<br>' +
+                        'Shorter terms: polarization +2, political engagement +3.<br>' +
+                        'Longer terms: legitimacy -3, stability +2.' +
+                    '</div>' +
+                '</div>';
         } else if (bill.proposed_term_limit != null) {
             // Term Limits subtype
             const limitText = bill.proposed_term_limit === 0 ? 'No Term Limits' : bill.proposed_term_limit + ' Term' + (bill.proposed_term_limit !== 1 ? 's' : '');

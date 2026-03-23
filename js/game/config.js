@@ -63,6 +63,10 @@ export const GAME_CONFIG = {
     TERM_LIMIT_OPTIONS: [0, 1, 2, 3, 4],  // 0 = no limits
     TERM_LIMIT_COOLDOWN_TICKS: 240,
 
+    // ── Legislative Term Length (Foundational) ──
+    PARLIAMENTARY_TERM_LENGTH_OPTIONS: [24, 36, 48, 60, 72],  // ticks: 2yr, 3yr, 4yr, 5yr, 6yr
+    PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS: 120,
+
     // ── Head of State Election Method (Foundational) ──
     HOS_ELECTION_COOLDOWN_TICKS: 360,
 };
@@ -105,6 +109,17 @@ export function getPresidentialTermLimit(nation) {
         return nation.presidential_term_limit === 0 ? null : nation.presidential_term_limit;
     }
     return GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT;
+}
+
+/**
+ * Get the effective parliamentary term length (in ticks) for a nation.
+ * Uses nation-specific override if set, otherwise falls back to GAME_CONFIG default.
+ */
+export function getParliamentaryTermTicks(nation) {
+    if (nation && nation.parliamentary_term_ticks != null && nation.parliamentary_term_ticks > 0) {
+        return nation.parliamentary_term_ticks;
+    }
+    return GAME_CONFIG.PARLIAMENTARY_TERM_TICKS;
 }
 
 export function initGameConfigForNation(nation) {

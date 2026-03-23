@@ -118,6 +118,10 @@ const GAME_CONFIG = {
     TERM_LIMIT_OPTIONS: [0, 1, 2, 3, 4],  // 0 = no limits
     TERM_LIMIT_COOLDOWN_TICKS: 240,
 
+    // ── Legislative Term Length (Foundational) ──
+    PARLIAMENTARY_TERM_LENGTH_OPTIONS: [24, 36, 48, 60, 72],  // ticks: 2yr, 3yr, 4yr, 5yr, 6yr
+    PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS: 120,
+
     // ── Head of State Election Method (Foundational) ──
     HOS_ELECTION_COOLDOWN_TICKS: 360,
 };
@@ -201,6 +205,17 @@ function getPresidentialTermTicks(nation) {
         return nation.presidential_term_ticks;
     }
     return GAME_CONFIG.PRESIDENTIAL_TERM_TICKS;
+}
+
+/**
+ * Get the effective parliamentary term length (in ticks) for a nation.
+ * Uses nation-specific override if set, otherwise falls back to GAME_CONFIG default.
+ */
+function getParliamentaryTermTicks(nation) {
+    if (nation && nation.parliamentary_term_ticks != null && nation.parliamentary_term_ticks > 0) {
+        return nation.parliamentary_term_ticks;
+    }
+    return GAME_CONFIG.PARLIAMENTARY_TERM_TICKS;
 }
 
 /**
@@ -8411,6 +8426,68 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
         return true;
     }
 
+    // ── Legislative Term Length subtype ──
+    if (bill.proposed_parliamentary_term_length != null) {
+        const newParlTermTicks = bill.proposed_parliamentary_term_length;
+        const validOptions = GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_OPTIONS || [24, 36, 48, 60, 72];
+        if (!validOptions.includes(newParlTermTicks)) {
+            console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_parliamentary_term_length: ${newParlTermTicks}. Marking as failed.`);
+            await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+            return false;
+        }
+
+        // Get current nation data BEFORE update
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+        const oldParlTermTicks = nation?.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS;
+        const ticksPerYear = GAME_CONFIG.TICKS_PER_YEAR || 12;
+
+        // Mark bill as passed
+        const { error: billErr } = await supabase.from('bills').update({
+            status: 'passed',
+            passed_tick: currentTick
+        }).eq('id', bill.id);
+        if (billErr) {
+            console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
+            return false;
+        }
+
+        // Update nation's parliamentary_term_ticks
+        const { error: nationErr } = await supabase.from('nations').update({
+            parliamentary_term_ticks: newParlTermTicks
+        }).eq('id', bill.nation_id);
+        if (nationErr) {
+            console.error(`[enactFoundationalBill] Failed to update parliamentary_term_ticks for nation ${bill.nation_id}:`, nationErr.message);
+        }
+
+        // Apply mechanical effects based on whether terms got shorter or longer
+        if (newParlTermTicks < oldParlTermTicks) {
+            const newPol = Math.min(100, (nation?.polarization || 0) + 2);
+            const newEng = Math.min(100, (nation?.political_engagement || 0) + 3);
+            const { error: shortErr } = await supabase.from('nations').update({
+                polarization: newPol,
+                political_engagement: newEng
+            }).eq('id', bill.nation_id);
+            if (shortErr) console.error(`[enactFoundationalBill] Legislative term shortened stat update failed:`, shortErr.message);
+            else console.log(`[enactFoundationalBill] Legislative term shortened: polarization +2, political_engagement +3`);
+        } else if (newParlTermTicks > oldParlTermTicks) {
+            const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 3);
+            const newStability = Math.min(100, (nation?.stability || 50) + 2);
+            const { error: extErr } = await supabase.from('nations').update({
+                legitimacy: newLegitimacy,
+                stability: newStability
+            }).eq('id', bill.nation_id);
+            if (extErr) console.error(`[enactFoundationalBill] Legislative term extended stat update failed:`, extErr.message);
+            else console.log(`[enactFoundationalBill] Legislative term extended: legitimacy -3, stability +2`);
+        }
+
+        // NOTE: We do NOT reschedule the current parliamentary election.
+        // The new term length takes effect after the next election completes.
+
+        const newYears = newParlTermTicks / ticksPerYear;
+        console.log(`[enactFoundationalBill] Nation ${bill.nation_id} parliamentary term set to ${newYears} years (${newParlTermTicks} ticks).`);
+        return true;
+    }
+
     // ── Presidential Term Limits subtype ──
     if (bill.proposed_term_limit != null) {
         const newTermLimit = bill.proposed_term_limit;
@@ -11168,7 +11245,7 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
 
 /**
  * Schedule next presidential + parliamentary elections independently.
- * Presidential every PRESIDENTIAL_TERM_TICKS, parliamentary every PARLIAMENTARY_TERM_TICKS.
+ * Presidential every getPresidentialTermTicks(nation), parliamentary every getParliamentaryTermTicks(nation).
  */
 async function scheduleNextPresidentialElections(supabase, nation, currentTick) {
     // Check for future parliamentary election
@@ -11183,7 +11260,7 @@ async function scheduleNextPresidentialElections(supabase, nation, currentTick) 
         .maybeSingle();
 
     if (!futureParl) {
-        const nextParl = currentTick + GAME_CONFIG.PARLIAMENTARY_TERM_TICKS;
+        const nextParl = currentTick + getParliamentaryTermTicks(nation);
         await supabase.from('elections').insert({
             nation_id: nation.id,
             election_tick: nextParl,
