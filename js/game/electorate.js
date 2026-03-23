@@ -1387,17 +1387,20 @@ function computeSpatialAlignments(ideoMap, profile, axisSalienceWeights) {
         totalWeight += weight;
     }
 
-    // Normalize to 0-100 scale
+    // Normalize to 0-100 scale with sqrt compression.
+    // Without compression, small spatial advantages produce huge alignment gaps
+    // (e.g. 88 vs 24 with 8 parties). Sqrt compresses the scale so that:
+    //   fair share (1/N) → 50 (unchanged)
+    //   2× fair share → 71 (was 100)
+    //   0.5× fair share → 35 (was 25)
+    // This halves the effective spread, preventing alignment from dominating.
     for (const fid of factionIds) {
         const raw = totalWeight > 0
             ? factionWeightedShare[fid] / totalWeight
             : (1 / factionIds.length);
-        // Scale relative to fair share so scores are comparable to old system.
-        // A party capturing its fair share (1/N) maps to 50 (average).
-        // A party capturing 2x fair share maps to 100 (dominant on this dimension).
         const fairShare = 1 / factionIds.length;
         const relativeStrength = fairShare > 0 ? raw / fairShare : 1;
-        const scaled = clamp(relativeStrength * 50, 0, 100);
+        const scaled = clamp(Math.sqrt(relativeStrength) * 50, 0, 100);
         result[fid] = round2(scaled);
     }
 

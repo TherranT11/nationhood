@@ -13252,7 +13252,7 @@ function computeSpatialAlignments(ideoMap, profile, axisSalienceWeights) {
             : (1 / factionIds.length);
         var fairShare = 1 / factionIds.length;
         var relativeStrength = fairShare > 0 ? raw / fairShare : 1;
-        var scaled = clamp(relativeStrength * 50, 0, 100);
+        var scaled = clamp(Math.sqrt(relativeStrength) * 50, 0, 100);
         result[fid2] = round2(scaled);
     }
 
