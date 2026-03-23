@@ -1,5 +1,5 @@
 import { _supabase } from './supabase-client.js';
-import { initPage } from './common.js';
+import { initPage, refreshAP } from './common.js';
 import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
@@ -2643,7 +2643,7 @@ let _caTopIssueStats = null; // Stats from top 7 issues by salience (for Make Pr
 
 const CA_ACTIONS = [
     { id: 'rally', name: 'Hold a Rally', ap: RALLY_CONFIG.AP_COST, color: '#f97316', icon: '★',
-      affects: 'Enthusiasm',
+      affects: 'Visibility',
       desc: 'Rally your supporters in a public show of strength. Outcomes range from rousing success to embarrassing gaffe — results are random and generate headlines your rivals can see.' },
     { id: 'attack', name: 'Campaign Attack', ap: ATTACK_CONFIG.AP_COST, color: '#ef4444', icon: '✦',
       affects: 'Approval',
@@ -2943,7 +2943,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         const bgStyle = isSel ? `background:${act.color}08;` : '';
         const borderStyle = isSel ? `border-color:${act.color}33;` : '';
         const nameColor = isSel ? act.color : 'var(--dtext-0)';
-        const affectsColor = act.affects === 'Enthusiasm' ? '#f97316' : act.affects === 'Approval' ? '#4ade80' : act.affects === 'Appeal' ? '#38bdf8' : act.affects === 'Ideology' ? '#a78bfa' : '#6b7280';
+        const affectsColor = act.affects === 'Visibility' ? '#f97316' : act.affects === 'Enthusiasm' ? '#f97316' : act.affects === 'Approval' ? '#4ade80' : act.affects === 'Appeal' ? '#38bdf8' : act.affects === 'Ideology' ? '#a78bfa' : '#6b7280';
         listHtml += `<div class="ca-item${isSel ? ' selected' : ''}${!ok ? ' disabled' : ''}" data-action-id="${act.id}" style="border-left-color:${borderColor};${bgStyle}${borderStyle}${!ok ? 'opacity:0.35;' : ''}">
             <div class="ca-item-head">
                 <div style="display:flex;align-items:center;gap:6px">
@@ -4245,8 +4245,8 @@ window._protestEndorse = async function() {
         }
         _alreadyEndorsed = true;
         _currentFaction.action_points = Math.max(0, (_currentFaction.action_points || 0) - 1);
-        const apEl = document.getElementById('topbar-ap');
-        if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + (_currentFaction.action_points ?? 0) + ' AP</span>';
+        const freshAp1 = await refreshAP(_currentFaction.id);
+        if (freshAp1 !== undefined) _currentFaction.action_points = freshAp1;
         await renderDemocracyActions(_currentNation, _currentFaction, _currentShard, _currentAllParties);
     } catch (err) {
         console.error('[Protest] Endorse failed:', err);
@@ -4270,8 +4270,8 @@ window._protestCallOff = async function() {
             return;
         }
         _currentFaction.action_points = Math.max(0, (_currentFaction.action_points || 0) - PROTEST_CONFIG.CALL_OFF_AP);
-        const apEl = document.getElementById('topbar-ap');
-        if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + (_currentFaction.action_points ?? 0) + ' AP</span>';
+        const freshAp2 = await refreshAP(_currentFaction.id);
+        if (freshAp2 !== undefined) _currentFaction.action_points = freshAp2;
         await renderDemocracyActions(_currentNation, _currentFaction, _currentShard, _currentAllParties);
     } catch (err) {
         console.error('[Protest] Call-off failed:', err);
@@ -4347,17 +4347,16 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
         return;
     }
 
-    // Update local AP
+    // Update local AP and refresh from server
     f.action_points = result.newAp ?? ((f.action_points ?? 0) - cost);
+    const freshAp = await refreshAP(f.id);
+    if (freshAp !== undefined) f.action_points = freshAp;
 
     // Show result
     _caResult = result;
 
     // Re-render
     await renderDemocracyActions(n, f, _currentShard, _currentAllParties);
-    // Update topbar AP display
-    const apEl = document.getElementById('topbar-ap');
-    if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + (f.action_points ?? 0) + ' AP</span>';
     // Refresh stance summary on main tab + portfolio on actions page after stance actions
     if (sel.id === 'take_stance') {
         _renderStanceSummaryStrip(f.id, n.id);
@@ -5471,12 +5470,15 @@ async function _renderStancePortfolio(container, faction, nation) {
             btn.textContent = 'Reinforcing...';
             const result = await executeTakeStance(_supabase, faction.id, nation.id, issueId, axis, side, intensity, currentTick);
             if (result.success) {
-                // Update client AP
+                // Update client AP from server
                 if (result.newAp != null) {
                     faction.action_points = result.newAp;
                     if (_currentFaction) _currentFaction.action_points = result.newAp;
-                    const apEl = document.getElementById('topbar-ap');
-                    if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + result.newAp + ' AP</span>';
+                }
+                const freshAp3 = await refreshAP(faction.id);
+                if (freshAp3 !== undefined) {
+                    faction.action_points = freshAp3;
+                    if (_currentFaction) _currentFaction.action_points = freshAp3;
                 }
                 // Re-render the portfolio
                 container.querySelector('.sp-card')?.remove();
@@ -5698,12 +5700,15 @@ function _openTakeStanceModal(faction, nation, currentTick, issueStateMap, exist
         const result = await executeTakeStance(_supabase, faction.id, nation.id, selectedIssue, selectedAxis, selectedSide, selectedIntensity, currentTick);
 
         if (result.success) {
-            // Update client AP
+            // Update client AP from server
             if (result.newAp != null) {
                 faction.action_points = result.newAp;
                 if (_currentFaction) _currentFaction.action_points = result.newAp;
-                const apEl = document.getElementById('topbar-ap');
-                if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + result.newAp + ' AP</span>';
+            }
+            const freshAp4 = await refreshAP(faction.id);
+            if (freshAp4 !== undefined) {
+                faction.action_points = freshAp4;
+                if (_currentFaction) _currentFaction.action_points = freshAp4;
             }
             document.getElementById('stance-modal-overlay')?.remove();
             // Re-render portfolio
