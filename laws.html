@@ -2857,9 +2857,9 @@ function updateDefaultPreview() {
     const austerity = getAusterityCommitments();
     const preview = previewDefaultConsequences(currentNation, type, rate, austerity);
 
-    const fmtChange = (change) => {
-        if (change > 0) return `<span style="color:var(--green);">+${change}</span>`;
-        if (change < 0) return `<span style="color:var(--red);">${change}</span>`;
+    const fmtChange = (change, inverse = false) => {
+        if (change > 0) return `<span style="color:var(--${inverse ? 'red' : 'green'});">+${change}</span>`;
+        if (change < 0) return `<span style="color:var(--${inverse ? 'green' : 'red'});">${change}</span>`;
         return `<span style="color:var(--text-secondary);">0</span>`;
     };
 
@@ -2883,21 +2883,21 @@ function updateDefaultPreview() {
         <div class="default-preview-grid">`;
 
     const stats = [
-        ['Credit', preview.statChanges.credit],
-        ['Currency', preview.statChanges.currency_strength],
-        ['Foreign Inv.', preview.statChanges.foreign_investment],
-        ['Intl. Rep.', preview.statChanges.international_reputation],
-        ['Interest Rates', preview.statChanges.interest_rates],
-        ['Inflation', preview.statChanges.inflation],
-        ['Trade Balance', preview.statChanges.trade_balance],
-        ['Standard of Living', preview.statChanges.standard_of_living],
-        ['Happiness', preview.statChanges.happiness]
+        ['Credit', preview.statChanges.credit, false],
+        ['Currency', preview.statChanges.currency_strength, false],
+        ['Foreign Inv.', preview.statChanges.foreign_investment, false],
+        ['Intl. Rep.', preview.statChanges.international_reputation, false],
+        ['Interest Rates', preview.statChanges.interest_rates, true],
+        ['Inflation', preview.statChanges.inflation, true],
+        ['Trade Balance', preview.statChanges.trade_balance, false],
+        ['Standard of Living', preview.statChanges.standard_of_living, false],
+        ['Happiness', preview.statChanges.happiness, false]
     ];
 
-    for (const [label, stat] of stats) {
+    for (const [label, stat, inverse] of stats) {
         html += `<div class="default-preview-stat">
             <span class="dps-label">${label}</span>
-            <span class="dps-value">${stat.before.toFixed(0)} → ${stat.after.toFixed(0)} ${fmtChange(stat.change)}</span>
+            <span class="dps-value">${stat.before.toFixed(0)} → ${stat.after.toFixed(0)} ${fmtChange(stat.change, inverse)}</span>
         </div>`;
     }
 
