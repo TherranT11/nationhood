@@ -1135,14 +1135,11 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     const spatialAlignments = computeSpatialAlignments(ideoMap, activeProfile, axisSalienceWeights);
 
     // ── 15. Calculate pillars for each faction ──
-    console.log(`  [DEBUG] ideoMap keys: ${Object.keys(ideoMap).length}, standings: ${standings.length}, factionIds: ${factionIds.length}`);
-    if (Object.keys(ideoMap).length === 0) console.log('  [DEBUG] WARNING: ideoMap is EMPTY — faction_ideology query returned no rows');
     const updates = [];
 
     for (const standing of standings) {
         const factionId = standing.faction_id;
         const ideo = ideoMap[factionId];
-        if (!ideo) console.log(`  [DEBUG] ideo is FALSY for faction ${factionId} — not in ideoMap`);
         const lastActionTick = lastActionTickMap.get(factionId) ?? -999;
         const ticksSinceAction = currentTick - lastActionTick;
         const isCoalition = coalitionPartyIds.has(factionId);
@@ -1158,24 +1155,18 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         // spatial competition and can't be washed out by compression.
         if (ideo) {
             let centristAxes = 0;
-            const _debugZones = [];
             for (const axisKey of AXIS_KEYS) {
-                const elecMean = Number(activeProfile['ideo_mean_' + axisKey] ?? 50);
                 const elecVar = Number(activeProfile['ideo_var_' + axisKey] ?? 20);
-                const rawIdeo = ideo[axisKey];
-                const partyNorm = (Number(rawIdeo || 0) + 100) / 2;
-                const { zoneForPos } = calculateIdeologyZones(elecMean, elecVar);
-                const zone = zoneForPos(partyNorm);
-                _debugZones.push(`${axisKey}:ideo=${rawIdeo},norm=${partyNorm.toFixed(1)},zone=${zone}`);
-                if (zone === 'centrist') centristAxes++;
+                const partyNorm = (Number(ideo[axisKey] || 0) + 100) / 2;
+                // Centrist zone: centered at 50, width shrinks with polarization
+                const pol = Math.min(100, Math.max(0, (elecVar - 5) / 35 * 100));
+                const half = Math.max(5, 15 - pol * 0.10);
+                if (partyNorm >= (50 - half) && partyNorm < (50 + half)) centristAxes++;
             }
-            console.log(`  [ZoneDebug] ${factionId.substring(0,8)}: centristAxes=${centristAxes} | ${_debugZones.join(' | ')}`)
             if (centristAxes > 0) {
                 const avgVar = AXIS_KEYS.reduce((s, k) => s + Number(activeProfile['ideo_var_' + k] ?? 20), 0) / AXIS_KEYS.length;
                 const polWeight = Math.min(1, Math.max(0, (avgVar - 10) / 30));
-                const penalty = centristAxes * CFG.CENTRIST_ZONE_PENALTY_PER_AXIS * polWeight;
-                console.log(`  [CentristPenalty] ${factionId}: centristAxes=${centristAxes}, avgVar=${avgVar.toFixed(1)}, polWeight=${polWeight.toFixed(2)}, penalty=${penalty.toFixed(1)}, before=${targetAlignment.toFixed(1)}, after=${Math.max(0, targetAlignment - penalty).toFixed(1)}`);
-                targetAlignment -= penalty;
+                targetAlignment -= centristAxes * CFG.CENTRIST_ZONE_PENALTY_PER_AXIS * polWeight;
                 targetAlignment = Math.max(0, targetAlignment);
             }
         }
