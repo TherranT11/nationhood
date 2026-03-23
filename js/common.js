@@ -635,6 +635,42 @@ export function updateTopBarInfo(faction, shard, nation) {
     }
 }
 
+/**
+ * Fetch fresh AP from the database, update the topbar display, and sync the session cache.
+ * Call this after any AP-spending action to ensure the UI is always accurate.
+ */
+export async function refreshAP(factionId) {
+    if (!factionId) return;
+    try {
+        const { data, error } = await _supabase
+            .from('factions')
+            .select('action_points')
+            .eq('id', factionId)
+            .single();
+        if (error || !data) return;
+        const ap = data.action_points ?? 0;
+
+        // Update topbar
+        const apEl = document.getElementById('topbar-ap');
+        if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + ap + ' AP</span>';
+
+        // Sync session cache so page navigations show correct AP
+        try {
+            const cached = sessionStorage.getItem(STATE_KEY);
+            if (cached) {
+                const state = JSON.parse(cached);
+                if (state.faction) {
+                    state.faction.action_points = ap;
+                    state.timestamp = Date.now();
+                    sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
+                }
+            }
+        } catch (e) { /* non-blocking */ }
+
+        return ap;
+    } catch (e) { console.warn('[refreshAP] Failed:', e); }
+}
+
 function startTickCountdown() {
     if (tickInterval) clearInterval(tickInterval);
     if (tickPoller) { clearInterval(tickPoller); tickPoller = null; }
