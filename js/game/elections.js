@@ -1852,15 +1852,8 @@ export async function processPresidentialElectionResult(supabase, nation, comple
         console.error(`[processPresidentialElectionResult] Failed to deactivate previous presidents for ${nation.name}:`, deactErr.message);
     }
 
-    // Close previous administration
-    try {
-        const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
-        const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-        if (fullNation) {
-            const endReason = isIncumbentWin ? 'reelection' : 'election_loss';
-            await closeAdministration(supabase, nation.id, fullNation, endReason, currentTick, shardData?.current_date || '', null);
-        }
-    } catch (adminErr) { console.warn('Could not close administration on presidential election:', adminErr); }
+    // Administration close is now handled atomically inside inauguratePresident()
+    const endReason = isIncumbentWin ? 'reelection' : 'election_loss';
 
     // Set ruling faction to the winner's party
     await supabase.from('nations')
@@ -1877,7 +1870,7 @@ export async function processPresidentialElectionResult(supabase, nation, comple
     if (candErr) console.warn(`[PresElection] Candidate lookup error for ${winner.candidate_id}:`, candErr.message);
 
     if (winningCandidate) {
-        await inauguratePresident(supabase, winningCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
+        await inauguratePresident(supabase, winningCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident, endReason);
         console.log(`President inaugurated: ${winner.candidate_name} (${winner.party_name})`);
     } else {
         // Fallback 1: candidate may have been cleaned up, try by faction
@@ -1893,7 +1886,7 @@ export async function processPresidentialElectionResult(supabase, nation, comple
             .maybeSingle();
 
         if (fallbackCandidate) {
-            await inauguratePresident(supabase, fallbackCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
+            await inauguratePresident(supabase, fallbackCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident, endReason);
             console.log(`President inaugurated (fallback): ${fallbackCandidate.first_name} ${fallbackCandidate.last_name} (${winner.party_name})`);
         } else {
             // Fallback 2: register party leader and use that
@@ -1905,7 +1898,7 @@ export async function processPresidentialElectionResult(supabase, nation, comple
                 console.error(`[PresElection] registerPartyLeaderAsCandidate threw for ${winner.candidate_name}:`, regErr);
             }
             if (leaderCandidate) {
-                await inauguratePresident(supabase, leaderCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
+                await inauguratePresident(supabase, leaderCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident, endReason);
                 console.log(`President inaugurated from party leader: ${leaderCandidate.first_name} ${leaderCandidate.last_name}`);
             } else {
                 // Fallback 3 (last resort): create president directly from election result data
@@ -1919,7 +1912,7 @@ export async function processPresidentialElectionResult(supabase, nation, comple
                     ideology_axis: 'tradition_progress',
                     ideology_direction: 1
                 };
-                await inauguratePresident(supabase, directCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
+                await inauguratePresident(supabase, directCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident, endReason);
                 console.log(`Direct president inaugurated from election data: ${directCandidate.first_name} ${directCandidate.last_name}`);
             }
         }
@@ -2115,7 +2108,7 @@ function resolvePresidentialRunoffEndorsements({ wasRunoff, round1Results = [], 
  * applies ideology shift, applies trait effects, and creates an administration.
  * Used by processPresidentialElectionResult (auto-inauguration).
  */
-export async function inauguratePresident(supabase, candidate, nationId, factionId, currentTick, outgoingPresident = null) {
+export async function inauguratePresident(supabase, candidate, nationId, factionId, currentTick, outgoingPresident = null, endReason = 'election_loss') {
     // Deactivate any previous president
     const { error: deactErr } = await supabase.from('presidents')
         .update({ is_active: false })
@@ -2217,8 +2210,28 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
     const yearMatch = dateStr.match(/\d{4}/);
     const year = yearMatch ? yearMatch[0] : '';
 
+    // Atomically close previous administration and create new one
+    // Close first to satisfy uniq_open_administration_per_nation constraint
+    const { error: closeErr } = await supabase
+        .from('administrations')
+        .update({
+            ended_at_tick: currentTick,
+            ended_at_date: dateStr,
+            end_reason: endReason,
+            approval_at_end: faction?.approval_rating ?? null,
+            stats_at_end: fullNation ? snapshotNationStats(fullNation) : {},
+            updated_at: new Date().toISOString()
+        })
+        .eq('nation_id', nationId)
+        .is('ended_at_tick', null);
+    if (closeErr) {
+        console.error(`[inauguratePresident] Failed to close previous administration for ${nationId}:`, closeErr.message);
+    } else {
+        console.log(`[inauguratePresident] Closed previous administration for ${nationId} (reason: ${endReason})`);
+    }
+
     // Create new administration
-    await supabase.from('administrations').insert({
+    const { error: adminErr } = await supabase.from('administrations').insert({
         nation_id: nationId,
         admin_name: `${candidate.last_name} Administration${year ? ', ' + year : ''}`,
         head_of_state: `${candidate.first_name} ${candidate.last_name}`,
@@ -2234,6 +2247,9 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         approval_at_start: faction?.approval_rating ?? 50,
         head_of_state_title: fullNation?.head_of_state_title || null
     });
+    if (adminErr) {
+        console.error(`[inauguratePresident] Failed to create new administration for ${nationId}:`, adminErr.message);
+    }
 
     return candidate;
 }
