@@ -73,7 +73,8 @@ BEGIN
             f.faction_name,
             pc.ideology,
             pc.trait_key,
-            COALESCE(fes.realized_vote_share, 0) AS realized_vote_share,
+            COALESCE(fes.contested_vote_share, 0) AS contested_vote_share,
+            COALESCE(fes.turnout_rate, 0.65) AS turnout_rate,
             COALESCE(fes.party_approval, 0) AS party_approval
         FROM pm_candidates pc
         JOIN factions f ON f.id = pc.faction_id
@@ -92,10 +93,10 @@ BEGIN
         -- Track faction vote totals and candidate counts for splitting
         v_fid := v_cand.faction_id;
         IF NOT v_faction_votes ? v_fid THEN
-            v_fvotes := ROUND(v_eligible::NUMERIC * v_cand.realized_vote_share);
+            v_fvotes := ROUND(v_eligible::NUMERIC * v_cand.contested_vote_share * v_cand.turnout_rate);
             v_faction_votes := v_faction_votes || jsonb_build_object(v_fid, v_fvotes);
             v_faction_cands := v_faction_cands || jsonb_build_object(v_fid, 0);
-            v_total_realized := v_total_realized + v_cand.realized_vote_share;
+            v_total_realized := v_total_realized + (v_cand.contested_vote_share * v_cand.turnout_rate);
         END IF;
         v_faction_cands := jsonb_set(v_faction_cands, ARRAY[v_fid],
             to_jsonb(COALESCE((v_faction_cands->>v_fid)::INT, 0) + 1));
