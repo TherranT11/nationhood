@@ -696,6 +696,7 @@ async function renderRevolutionBannerGov() {
 function renderAuthoritarianSeizeBanner() {
     if (!currentNation || !currentNation.authoritarianism_seize_available_tick) return '';
     if (isAutocracy) return '';
+    if (currentNation.seize_power_rejected) return '';
     // Only the ruling faction sees the seize power option
     const isRuling = currentFaction && currentNation.ruling_faction_id && currentFaction.id === currentNation.ruling_faction_id;
     if (!isRuling) return '';
@@ -707,13 +708,20 @@ function renderAuthoritarianSeizeBanner() {
             <div class="revolution-subtitle" style="margin-bottom: 12px;">
                 Democratic institutions have crumbled after prolonged authoritarian erosion. Your party now has the power to dissolve the legislature and establish single-party rule. This is irreversible.
             </div>
-            <button id="seize-power-btn"
-                style="padding: 14px 36px; background: var(--red); color: white; border: none; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; transition: all 0.2s;"
-                onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 20px rgba(255,68,68,0.4)';"
-                onmouseout="this.style.transform='none'; this.style.boxShadow='none';"
-                onclick="confirmSeizePower()">
-                Seize Absolute Power
-            </button>
+            <div style="display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap;">
+                <button id="seize-power-btn"
+                    style="padding: 14px 36px; background: var(--red); color: white; border: none; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; transition: all 0.2s;"
+                    onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 20px rgba(255,68,68,0.4)';"
+                    onmouseout="this.style.transform='none'; this.style.boxShadow='none';"
+                    onclick="confirmSeizePower()">
+                    Seize Absolute Power
+                </button>
+                <button id="reject-seize-btn"
+                    style="padding: 14px 24px; background: transparent; color: var(--text-secondary); border: 1px solid var(--border-main); border-radius: 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer;"
+                    onclick="rejectSeizePower()">
+                    Reject
+                </button>
+            </div>
             <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 10px;">
                 Converts the nation to an Autocracy. Coalition dissolved. All elections cancelled.
             </div>
@@ -737,6 +745,124 @@ window.confirmSeizePower = async function() {
         console.error('[SeizePower] Failed:', err);
         alert('Failed to seize power: ' + (err.message || err));
         if (btn) { btn.disabled = false; btn.textContent = 'Seize Absolute Power'; }
+    }
+};
+
+window.rejectSeizePower = async function() {
+    if (!confirm('Reject the path to absolute power?\n\nYou are choosing to preserve democratic governance. This decision is final — you will not be offered this opportunity again.')) return;
+
+    const btn = document.getElementById('reject-seize-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Rejecting...'; }
+
+    try {
+        await _supabase.from('nations').update({
+            seize_power_rejected: true,
+            authoritarianism_seize_available_tick: null
+        }).eq('id', currentNation.id);
+
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation.id,
+            event_name: 'SEIZE_POWER_REJECTED',
+            trigger_key: 'seize_power_rejected',
+            description_used: 'The ruling party has rejected the path to absolute power, choosing to preserve democratic governance.',
+            category: 'POLITICAL',
+            effects_applied: { action: 'rejected' }
+        });
+
+        location.reload();
+    } catch (err) {
+        alert('Error: ' + (err.message || err));
+        if (btn) { btn.disabled = false; btn.textContent = 'Reject'; }
+    }
+};
+
+// ==================== PARLIAMENTARY EMERGENCY (requires Emergency Powers Act) ====================
+
+function renderParliamentaryEmergency() {
+    if (!currentNation || isAutocracy || isPresidential) return '';
+    if (!currentNation.emergency_powers_act) return '';
+    // Only the ruling faction (PM's party) can declare
+    const isRuling = currentFaction && currentNation.ruling_faction_id && currentFaction.id === currentNation.ruling_faction_id;
+    if (!isRuling) return '';
+
+    // Check if emergency is already active
+    const hasActiveEmergency = currentNation._activeParliamentaryEmergency;
+
+    if (hasActiveEmergency) {
+        return `
+            <div class="info-block" style="border-left: 3px solid var(--red); margin-bottom: 16px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                    <span style="font-size:1.2rem;">⚠️</span>
+                    <strong style="color:var(--red);">NATIONAL EMERGENCY IN EFFECT</strong>
+                </div>
+                <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:10px;">
+                    Bills can bypass legislative votes. Stability, freedom index, and judicial independence are eroding each tick.
+                </div>
+                <button class="ministry-btn purge" style="padding:8px 20px;font-size:0.75rem;" onclick="endParliamentaryEmergency()" id="end-emergency-btn">
+                    End Emergency
+                </button>
+            </div>
+        `;
+    }
+
+    const ap = currentFaction?.action_points || 0;
+    const cost = EO_CONFIG.NATIONAL_EMERGENCY_AP || 4;
+    const canDeclare = ap >= cost;
+
+    return `
+        <div class="info-block" style="border-left: 3px solid var(--amber); margin-bottom: 16px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="font-size:1.2rem;">🏛️</span>
+                <strong>Emergency Powers Available</strong>
+                <span style="font-size:0.65rem;color:var(--text-muted);margin-left:auto;">via Emergency Powers Act</span>
+            </div>
+            <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:10px;">
+                Declare a national emergency to bypass legislative votes on bills. While active: stability -1/tick, freedom index -0.5/tick, judicial independence -0.5/tick.
+            </div>
+            <button class="ministry-btn${canDeclare ? '' : ' disabled'}" style="padding:8px 20px;font-size:0.75rem;" onclick="${canDeclare ? 'declareParliamentaryEmergency()' : ''}" id="declare-emergency-btn" ${canDeclare ? '' : 'disabled'}>
+                Declare Emergency <span class="ap-cost">${cost} AP</span>
+            </button>
+        </div>
+    `;
+}
+
+window.declareParliamentaryEmergency = async function() {
+    if (!confirm(`Declare a National Emergency?\n\nWhile active:\n• Bills bypass legislative votes\n• Stability -1/tick\n• Freedom Index -0.5/tick\n• Judicial Independence -0.5/tick\n\nCost: ${EO_CONFIG.NATIONAL_EMERGENCY_AP || 4} AP`)) return;
+
+    const btn = document.getElementById('declare-emergency-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Declaring...'; }
+
+    try {
+        const result = await issueNationalEmergency(_supabase, currentNation.id, currentFaction.id);
+        if (result?.success) {
+            location.reload();
+        } else {
+            alert(result?.error || 'Failed to declare emergency.');
+            if (btn) { btn.disabled = false; btn.innerHTML = `Declare Emergency <span class="ap-cost">${EO_CONFIG.NATIONAL_EMERGENCY_AP || 4} AP</span>`; }
+        }
+    } catch (err) {
+        alert('Error: ' + (err.message || err));
+        if (btn) { btn.disabled = false; btn.innerHTML = `Declare Emergency <span class="ap-cost">${EO_CONFIG.NATIONAL_EMERGENCY_AP || 4} AP</span>`; }
+    }
+};
+
+window.endParliamentaryEmergency = async function() {
+    if (!confirm('End the National Emergency?')) return;
+
+    const btn = document.getElementById('end-emergency-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Ending...'; }
+
+    try {
+        const result = await endNationalEmergency(_supabase, currentNation.id, currentFaction.id);
+        if (result?.success) {
+            location.reload();
+        } else {
+            alert(result?.error || 'Failed to end emergency.');
+            if (btn) { btn.disabled = false; btn.textContent = 'End Emergency'; }
+        }
+    } catch (err) {
+        alert('Error: ' + (err.message || err));
+        if (btn) { btn.disabled = false; btn.textContent = 'End Emergency'; }
     }
 };
 
@@ -954,11 +1080,24 @@ async function renderGovernmentPage() {
             .maybeSingle();
         _protestCrisisData = activeProtestCrisis;
 
+        // Check for active parliamentary emergency (for Emergency Powers Act UI)
+        if (!isAutocracy && !isPresidential && currentNation.emergency_powers_act) {
+            const { data: activeEmergency } = await _supabase
+                .from('executive_orders')
+                .select('id')
+                .eq('nation_id', currentNation.id)
+                .eq('order_type', 'national_emergency')
+                .eq('is_active', true)
+                .maybeSingle();
+            currentNation._activeParliamentaryEmergency = !!activeEmergency;
+        }
+
         const revolutionBannerHtml = await renderRevolutionBannerGov();
         const authoritarianSeizeBannerHtml = renderAuthoritarianSeizeBanner();
         const administrationBoxHtml = await renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress, allPartySeats);
         const protestCrisisCardHtml = renderProtestCrisisCard();
         const autocracyPanelsHtml = isAutocracy ? await renderAutocracyGovPanels() : '';
+        const parliamentaryEmergencyHtml = renderParliamentaryEmergency();
 
         document.getElementById('content-area').innerHTML = `
             <div class="panel-padding">
@@ -966,6 +1105,7 @@ async function renderGovernmentPage() {
                 ${authoritarianSeizeBannerHtml}
                 ${protestCrisisCardHtml}
                 ${administrationBoxHtml}
+                ${parliamentaryEmergencyHtml}
                 ${autocracyPanelsHtml}
 
                 <div class="section-header">Government Structure</div>

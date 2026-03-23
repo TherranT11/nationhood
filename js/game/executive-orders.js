@@ -552,7 +552,7 @@ export async function issueNationalEmergency(supabase, nationId, factionId) {
 
     // Check cooldown
     const { data: nation } = await supabase
-        .from('nations').select('emergency_cooldown_until').eq('id', nationId).single();
+        .from('nations').select('emergency_cooldown_until, government_type').eq('id', nationId).single();
 
     if (nation?.emergency_cooldown_until && currentTick < nation.emergency_cooldown_until) {
         const remaining = nation.emergency_cooldown_until - currentTick;
@@ -604,9 +604,10 @@ export async function issueNationalEmergency(supabase, nationId, factionId) {
     const overreach = await getOverreachCount(supabase, nationId, currentTick);
     await supabase.from('nations').update({ overreach_count: overreach }).eq('id', nationId);
 
+    const leaderTitle = isGovernmentPresidential(nation) ? 'president' : 'head of government';
     await insertEventLog(supabase, nationId,
-        'Executive Order: National Emergency',
-        'The president has declared a national emergency. Emergency powers are now in effect.',
+        'National Emergency Declared',
+        `The ${leaderTitle} has declared a national emergency. Emergency powers are now in effect.`,
         currentTick,
         { order_type: 'national_emergency' }
     );
@@ -618,6 +619,8 @@ export async function issueNationalEmergency(supabase, nationId, factionId) {
 
 export async function endNationalEmergency(supabase, nationId, factionId) {
     const currentTick = await getCurrentTick(supabase);
+    const { data: endNation } = await supabase
+        .from('nations').select('government_type').eq('id', nationId).single();
 
     const { data: emergency } = await supabase
         .from('executive_orders')
@@ -646,9 +649,10 @@ export async function endNationalEmergency(supabase, nationId, factionId) {
         emergency_cooldown_until: currentTick + EO_CONFIG.EMERGENCY_COOLDOWN
     }).eq('id', nationId);
 
+    const endLeaderTitle = isGovernmentPresidential(endNation) ? 'president' : 'head of government';
     await insertEventLog(supabase, nationId,
         'National Emergency Ended',
-        'The president has ended the national emergency. Civil unrest has risen as a result.',
+        `The ${endLeaderTitle} has ended the national emergency. Civil unrest has risen as a result.`,
         currentTick,
         { order_type: 'national_emergency', action: 'ended', ticks_active: currentTick - emergency.issued_tick }
     );

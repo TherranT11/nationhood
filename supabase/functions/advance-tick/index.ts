@@ -8775,6 +8775,89 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
         return true;
     }
 
+    // ── Abolish Term Limits subtype ──
+    if (bill.proposed_abolish_term_limits) {
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+        const updates = { term_limits_abolished: true };
+        if (isPresidentialRepublic(nation)) updates.presidential_term_limit = 0;
+        updates.legitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
+        updates.stability = Math.min(100, (nation?.stability ?? 50) + 2);
+
+        await supabase.from('nations').update(updates).eq('id', bill.nation_id);
+
+        await supabase.from('event_log').insert({
+            nation_id: bill.nation_id,
+            event_name: 'FOUNDATIONAL_LAW_PASSED',
+            trigger_key: 'term_limits_abolished',
+            description_used: 'Term limits have been abolished. The ruling party may now hold power indefinitely — but press freedom will erode over time.',
+            category: 'POLITICAL',
+            effects_applied: { law: 'abolish_term_limits', legitimacy: -5, stability: +2 },
+            fired_at_tick: currentTick
+        });
+
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+        console.log(`[enactFoundationalBill] Abolish Term Limits enacted for nation ${bill.nation_id}`);
+        return true;
+    }
+
+    // ── State Media Control Act subtype ──
+    if (bill.proposed_state_media_control) {
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+        const cappedPressFreedom = Math.min(Number(nation?.press_freedom ?? 50), 40);
+        await supabase.from('nations').update({
+            state_media_control: true,
+            press_freedom: cappedPressFreedom,
+            legitimacy: Math.max(0, (nation?.legitimacy ?? 50) - 3)
+        }).eq('id', bill.nation_id);
+
+        await supabase.from('event_log').insert({
+            nation_id: bill.nation_id,
+            event_name: 'FOUNDATIONAL_LAW_PASSED',
+            trigger_key: 'state_media_control',
+            description_used: 'The State Media Control Act has passed. Government now controls national media. Press freedom is permanently capped at 40.',
+            category: 'POLITICAL',
+            effects_applied: { law: 'state_media_control', press_freedom_cap: 40, legitimacy: -3 },
+            fired_at_tick: currentTick
+        });
+
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+        console.log(`[enactFoundationalBill] State Media Control Act enacted for nation ${bill.nation_id}`);
+        return true;
+    }
+
+    // ── Emergency Powers Act subtype ──
+    if (bill.proposed_emergency_powers_act) {
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+        await supabase.from('nations').update({
+            emergency_powers_act: true,
+            stability: Math.max(0, (nation?.stability ?? 50) - 2),
+            freedom_index: Math.max(0, (nation?.freedom_index ?? 50) - 3)
+        }).eq('id', bill.nation_id);
+
+        await supabase.from('event_log').insert({
+            nation_id: bill.nation_id,
+            event_name: 'FOUNDATIONAL_LAW_PASSED',
+            trigger_key: 'emergency_powers_act',
+            description_used: 'The Emergency Powers Act has passed. The head of government may now declare national emergencies, bypassing legislative votes on bills.',
+            category: 'POLITICAL',
+            effects_applied: { law: 'emergency_powers_act', stability: -2, freedom_index: -3 },
+            fired_at_tick: currentTick
+        });
+
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+        console.log(`[enactFoundationalBill] Emergency Powers Act enacted for nation ${bill.nation_id}`);
+        return true;
+    }
+
     // ── Electoral Makeup subtype ──
     // Validate proposed_seats BEFORE marking the bill as passed
     let newTotalSeats = bill.proposed_seats;
@@ -22852,6 +22935,136 @@ async function processEvents(supabase, nation, currentTick) {
 }
 
 
+// ==================== AUTHORITARIAN FOUNDATIONAL LAW EFFECTS ====================
+
+/**
+ * Per-tick effects of authoritarian foundational laws.
+ * - Abolish Term Limits: ruling party +5 approval, press_freedom -0.3/tick
+ * - State Media Control: press_freedom capped at 40, ruling party +3 approval, opposition -2 approval
+ * - Emergency Powers Act: while emergency active, stability -1, freedom_index -0.5, judicial_independence -0.5
+ */
+async function processAuthoritarianLaws(supabase, nation, currentTick) {
+    const hasTermLimitsAbolished = nation.term_limits_abolished;
+    const hasStateMediaControl = nation.state_media_control;
+    const hasEmergencyPowersAct = nation.emergency_powers_act;
+
+    if (!hasTermLimitsAbolished && !hasStateMediaControl && !hasEmergencyPowersAct) return;
+
+    if (isAutocracy(nation)) return; // Autocracies have their own systems
+
+    const nationUpdates = {};
+
+    // ── Abolish Term Limits: ruling party entrenchment ──
+    if (hasTermLimitsAbolished) {
+        // press_freedom erodes -0.3/tick (floor 5)
+        const currentPF = Number(nation.press_freedom ?? 50);
+        nationUpdates.press_freedom = Math.max(5, Math.round((currentPF - 0.3) * 10) / 10);
+        nation.press_freedom = nationUpdates.press_freedom;
+
+        // Ruling party gets +5 approval
+        if (nation.ruling_faction_id) {
+            await nudgeApproval(supabase, nation.ruling_faction_id, nation.id, 5);
+        }
+    }
+
+    // ── State Media Control: cap press_freedom, boost ruling, suppress opposition ──
+    if (hasStateMediaControl) {
+        // Cap press_freedom at 40
+        const currentPF = nationUpdates.press_freedom !== undefined
+            ? nationUpdates.press_freedom
+            : Number(nation.press_freedom ?? 50);
+        if (currentPF > 40) {
+            nationUpdates.press_freedom = 40;
+            nation.press_freedom = 40;
+        }
+
+        // Ruling party +3 approval, opposition -2
+        const { data: parties } = await supabase
+            .from('factions')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'party');
+
+        for (const party of (parties || [])) {
+            if (party.id === nation.ruling_faction_id) {
+                await nudgeApproval(supabase, party.id, nation.id, 3);
+            } else {
+                await nudgeApproval(supabase, party.id, nation.id, -2);
+            }
+        }
+    }
+
+    // ── Emergency Powers Act: stat drain while emergency is active ──
+    if (hasEmergencyPowersAct) {
+        const { data: activeEmergency } = await supabase
+            .from('executive_orders')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('order_type', 'national_emergency')
+            .eq('is_active', true)
+            .maybeSingle();
+
+        if (activeEmergency) {
+            const currentStability = nationUpdates.stability !== undefined ? nationUpdates.stability : Number(nation.stability ?? 50);
+            const currentFI = nationUpdates.freedom_index !== undefined ? nationUpdates.freedom_index : Number(nation.freedom_index ?? 50);
+            const currentJI = Number(nation.judicial_independence ?? 50);
+
+            nationUpdates.stability = Math.max(0, Math.round((currentStability - 1) * 10) / 10);
+            nationUpdates.freedom_index = Math.max(0, Math.round((currentFI - 0.5) * 10) / 10);
+            nationUpdates.judicial_independence = Math.max(0, Math.round((currentJI - 0.5) * 10) / 10);
+
+            nation.stability = nationUpdates.stability;
+            nation.freedom_index = nationUpdates.freedom_index;
+            nation.judicial_independence = nationUpdates.judicial_independence;
+        }
+    }
+
+    // Apply nation stat updates
+    if (Object.keys(nationUpdates).length > 0) {
+        await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+    }
+
+    // ── Seize Power trigger: 5+ consecutive administrations with abolished term limits ──
+    if (hasTermLimitsAbolished
+        && !nation.authoritarianism_seize_available_tick
+        && !nation.seize_power_rejected
+        && nation.ruling_faction_id) {
+        // Count consecutive administrations where the same party held PM
+        const { data: admins } = await supabase
+            .from('administrations')
+            .select('pm_party_id')
+            .eq('nation_id', nation.id)
+            .order('started_at_tick', { ascending: false })
+            .limit(6);
+
+        if (admins && admins.length >= 5) {
+            const rulingId = nation.ruling_faction_id;
+            // Check if the 5 most recent administrations all had the same PM party
+            const last5 = admins.slice(0, 5);
+            const allSameParty = last5.every(a => a.pm_party_id === rulingId);
+
+            if (allSameParty) {
+                await supabase.from('nations').update({
+                    authoritarianism_seize_available_tick: currentTick
+                }).eq('id', nation.id);
+
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: 'SEIZE_POWER_AVAILABLE',
+                    trigger_key: 'term_limits_seize_power',
+                    description_used: `The ruling party has held power through 5 consecutive administrations with no term limits. The head of government may now seize absolute power.`,
+                    category: 'POLITICAL',
+                    effects_applied: { trigger: 'abolished_term_limits_5_terms' },
+                    fired_at_tick: currentTick
+                });
+
+                console.log(`[processAuthoritarianLaws] Seize Power now available for nation ${nation.id} — 5+ consecutive administrations with abolished term limits`);
+            }
+        }
+    }
+}
+
+
 // ==================== CRISIS TICK PROCESSOR ====================
 
 /**
@@ -27095,6 +27308,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (crisisErr) {
             console.error(`[advanceTick] Crisis processing failed for ${nation.name} (non-fatal):`, crisisErr);
+        }
+
+        // Authoritarian foundational law per-tick effects
+        try {
+            await processAuthoritarianLaws(supabase, nation, newTick);
+        } catch (authLawErr) {
+            console.error(`[advanceTick] Authoritarian law processing failed for ${nation.name} (non-fatal):`, authLawErr);
         }
 
         // Population growth: apply population change based on current population_growth stat.
