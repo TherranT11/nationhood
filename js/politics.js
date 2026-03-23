@@ -2923,7 +2923,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
                 </div>
                 <span class="ca-item-ap">${paApLabel}</span>
             </div>
-            <div class="ca-item-desc" style="font-size:9px;color:#4a4840;">Reduces civil unrest buildup this tick. +1 moderate bloc approval.</div>
+            <div class="ca-item-desc" style="font-size:9px;color:#4a4840;">Issue a public statement calling for calm. Reduces civil unrest buildup this tick.</div>
         </div>`;
     }
 
@@ -3014,6 +3014,8 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
                     const result = await executePublicAddress(_supabase, f.id, n.id, _govProtestCrisis.id, tick);
                     if (result.success) {
                         f.action_points = result.newAp;
+                        const freshAp = await refreshAP(f.id);
+                        if (freshAp !== undefined) f.action_points = freshAp;
                         await renderDemocracyActions(n, f, _currentShard, _currentAllParties);
                     } else {
                         _showToast(result.error || 'Public Address failed.');
