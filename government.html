@@ -1559,6 +1559,8 @@ window.sendAdminChat = async function() {
 // ==================== FORMATION IN PROGRESS ====================
 
 function renderFormationInProgress(parties) {
+    const failedAttempts = currentNation?.failed_formation_attempts || 0;
+    const effectiveDeadline = failedAttempts >= 1 ? POST_SNAP_DEADLINE_TICKS : FORMATION_DEADLINE_TICKS;
     const ticksElapsed = (lastElectionTick !== null) ? Math.max(0, currentTick - lastElectionTick) : 0;
     const ticksRemaining = Math.max(0, effectiveDeadline - ticksElapsed);
     const progressPct = Math.min(100, (ticksElapsed / effectiveDeadline) * 100);
@@ -1569,8 +1571,6 @@ function renderFormationInProgress(parties) {
     else if (ticksRemaining <= 2) urgency = 'warning';
 
     // Calculate accrued penalties
-    const failedAttempts = currentNation?.failed_formation_attempts || 0;
-    const effectiveDeadline = failedAttempts >= 1 ? POST_SNAP_DEADLINE_TICKS : FORMATION_DEADLINE_TICKS;
     const accruedApproval = ticksElapsed * 2;
 
     // Find largest and second largest parties for snap penalty display
@@ -1608,7 +1608,7 @@ function renderFormationInProgress(parties) {
                     </div>
                     <div class="countdown-detail">
                         ${ticksElapsed > 0
-                            ? ticksElapsed + ' tick' + (ticksElapsed !== 1 ? 's' : '') + ' without a government (of ${effectiveDeadline} allowed)'
+                            ? ticksElapsed + ' tick' + (ticksElapsed !== 1 ? 's' : '') + ' without a government (of ' + effectiveDeadline + ' allowed)'
                             : 'Election just concluded — form a coalition to avoid penalties'}
                     </div>
                 </div>

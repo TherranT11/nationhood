@@ -3609,8 +3609,9 @@ export async function seizeAutocraticPower(supabase, nationId, callerFactionId) 
     if (!nation.ruling_faction_id) throw new Error('No ruling faction — cannot seize power');
     if (callerFactionId !== nation.ruling_faction_id) throw new Error('Only the ruling party can seize power');
 
-    const { data: shard } = await supabase.from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const { data: shard, error: shardErr } = await supabase.from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
+    if (shardErr || !shard) throw new Error('Failed to load shard data: ' + (shardErr?.message || 'no shard'));
+    const currentTick = shard.current_tick;
 
     // Load factions
     const { data: allParties } = await supabase.from('factions')
@@ -3647,7 +3648,8 @@ export async function seizeAutocraticPower(supabase, nationId, callerFactionId) 
         judicial_independence: Math.max(5, Math.round((Number(nation.judicial_independence) - 15) * 10) / 10),
         civil_unrest: Math.min(100, Math.round((Number(nation.civil_unrest) + 10) * 10) / 10),
     };
-    await supabase.from('nations').update(nationUpdates).eq('id', nationId);
+    const { error: nationUpdateErr } = await supabase.from('nations').update(nationUpdates).eq('id', nationId);
+    if (nationUpdateErr) throw new Error('Failed to update nation to Autocracy: ' + nationUpdateErr.message);
 
     // 4. Clear active crises — the seizure ends the crisis cycle
     await supabase.from('active_crises').delete().eq('nation_id', nationId);
@@ -3663,7 +3665,7 @@ export async function seizeAutocraticPower(supabase, nationId, callerFactionId) 
         .in('status', ['committee', 'floor']);
 
     // 7. Initialize autocracy_tracker
-    await supabase.from('autocracy_tracker').upsert({
+    const { error: trackerErr } = await supabase.from('autocracy_tracker').upsert({
         nation_id: nationId,
         tracker_value: 0,
         last_updated_tick: currentTick,
@@ -3671,6 +3673,7 @@ export async function seizeAutocraticPower(supabase, nationId, callerFactionId) 
         public_tracker_value: 30,
         public_tracker_last_tick: currentTick
     }, { onConflict: 'nation_id' });
+    if (trackerErr) console.error('[SeizePower] autocracy_tracker init failed:', trackerErr.message);
 
     // 8. Initialize faction_pillar_state
     const PILLARS = ['military', 'party', 'oligarchs', 'media', 'security'];
