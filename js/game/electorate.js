@@ -440,7 +440,7 @@ export const ELECTORATE_CONFIG = {
     DEFAULT_PLATFORM_APPEAL: 0,
     DEFAULT_PARTY_APPROVAL: 25,
     DEFAULT_VISIBILITY: 0,
-    DEFAULT_CREDIBILITY: 0.5,  // 0% credibility score (formula: (modifier - 0.5) * 100)
+    DEFAULT_CREDIBILITY: 1.0,  // 50% credibility score (formula: (modifier - 0.5) * 100)
 
     // ── Phase 2B: Per-tick pillar weights (5 pillars) ──
     // Base weights (sum to 1.0). Credibility weight is dynamic — it shifts
@@ -2059,9 +2059,12 @@ export async function boostVisibility(supabase, factionId, nationId, boost) {
  * @param {string} factionId
  * @param {string} nationId
  * @param {number} delta - Signed approval change (positive = boost, negative = damage)
+ * @param {object} [opts] - Options
+ * @param {boolean} [opts.campaign=false] - If true, apply diminishing returns and increment action counter (for player campaign actions only)
  */
-export async function nudgeApproval(supabase, factionId, nationId, delta) {
+export async function nudgeApproval(supabase, factionId, nationId, delta, opts) {
     if (!delta || delta === 0) return;
+    const campaign = opts?.campaign ?? false;
 
     const { data: standing } = await supabase
         .from('faction_electoral_standing')
@@ -2072,17 +2075,17 @@ export async function nudgeApproval(supabase, factionId, nationId, delta) {
     if (!standing) return;
 
     const actionCount = Number(standing.campaign_actions_this_tick ?? 0);
-    const multiplier = getDiminishingMultiplier(actionCount);
+    const multiplier = campaign ? getDiminishingMultiplier(actionCount) : 1;
     const effectiveDelta = round2(delta * multiplier);
 
     const old = Number(standing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);
     const newApproval = round2(clamp(old + effectiveDelta, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX));
 
+    const updateFields = { party_approval: newApproval };
+    if (campaign) updateFields.campaign_actions_this_tick = actionCount + 1;
+
     const { error: appErr } = await supabase.from('faction_electoral_standing')
-        .update({
-            party_approval: newApproval,
-            campaign_actions_this_tick: actionCount + 1,
-        })
+        .update(updateFields)
         .eq('id', standing.id);
     if (appErr) console.error('[Electorate] approval update failed:', appErr.message);
 }
@@ -2905,6 +2908,19 @@ export async function executeGrassrootsMovement(supabase, factionId, nationId, t
  * Called from tickElectorate after stance decay, before pillar computation.
  */
 export async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick) {
+    // Auto-resume suspended actions (AP was insufficient last tick)
+    const { data: suspended } = await supabase
+        .from('ideology_shift_actions')
+        .select('id, faction_id')
+        .eq('nation_id', nationId)
+        .eq('status', 'suspended');
+    for (const s of (suspended || [])) {
+        const { data: fac } = await supabase.from('factions').select('action_points').eq('id', s.faction_id).single();
+        if (fac && (fac.action_points || 0) >= 1) {
+            await supabase.from('ideology_shift_actions').update({ status: 'active' }).eq('id', s.id);
+        }
+    }
+
     const { data: actions } = await supabase
         .from('ideology_shift_actions')
         .select('*')
@@ -2916,6 +2932,7 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
     const profileUpdates = {};
     const toUpdate = [];
     const toSuspend = [];
+    const toSuspendAP = [];
 
     for (const act of actions) {
         // ── Duration check — auto-complete after total ticks ──
@@ -2932,8 +2949,9 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
         }
 
         if (act.action_type === 'think_tank') {
-            // 1 AP per tick cost — always deducts (players gain 5 AP/turn)
-            await deductAP(supabase, act.faction_id, IDEO_SHIFT_CONFIG.THINK_TANK.TICK_AP_COST);
+            // 1 AP per tick cost — suspend if faction can't afford it
+            const apResult = await deductAP(supabase, act.faction_id, IDEO_SHIFT_CONFIG.THINK_TANK.TICK_AP_COST);
+            if (!apResult?.success) { toSuspendAP.push(act.id); continue; }
             // 1d3 drift: randomly 0.1, 0.2, or 0.3
             const col = 'ideo_mean_' + act.target_axis;
             const old = Number(profile[col] ?? 50);
@@ -2966,8 +2984,9 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
             }
         } else if (act.action_type === 'grassroots_movement') {
             const grCfg = IDEO_SHIFT_CONFIG.GRASSROOTS;
-            // 1 AP per tick cost
-            await deductAP(supabase, act.faction_id, grCfg.TICK_AP_COST);
+            // 1 AP per tick cost — suspend if faction can't afford it
+            const grApResult = await deductAP(supabase, act.faction_id, grCfg.TICK_AP_COST);
+            if (!grApResult?.success) { toSuspendAP.push(act.id); continue; }
             // 1d2 drift: randomly 0.1 or 0.2
             const col = 'ideo_mean_' + act.target_axis;
             const old = Number(profile[col] ?? 50);
@@ -3004,10 +3023,17 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
         if (error) console.error('[Electorate] ideology shift action update failed:', error.message);
     }
 
-    // ── Suspend/complete actions ──
+    // ── Complete duration-expired actions ──
     for (const id of toSuspend) {
         const { error } = await supabase.from('ideology_shift_actions')
             .update({ status: 'completed', last_active_tick: currentTick }).eq('id', id);
+        if (error) console.error('[Electorate] ideology shift complete failed:', error.message);
+    }
+
+    // ── Suspend actions that couldn't afford AP ──
+    for (const id of toSuspendAP) {
+        const { error } = await supabase.from('ideology_shift_actions')
+            .update({ status: 'suspended', last_active_tick: currentTick }).eq('id', id);
         if (error) console.error('[Electorate] ideology shift suspend failed:', error.message);
     }
 
