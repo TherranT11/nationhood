@@ -126,17 +126,24 @@ bimodal_final AS (
 -- SPATIAL AXIS COMPETITION: softmax(bimodal_scores, temp=4) × poolQuality
 -- Replicates spatialAxisCompetition() from the tick engine
 -- ============================================================================
-spatial_softmax AS (
+-- First pass: get pool_quality per axis (no nesting)
+spatial_pool AS (
     SELECT
         bf.faction_id,
         bf.axis_key,
         bf.salience,
         bf.axis_score,
-        MAX(bf.axis_score) OVER (PARTITION BY bf.axis_key) AS pool_quality,
-        exp((bf.axis_score - MAX(bf.axis_score) OVER (PARTITION BY bf.axis_key)) / 4.0) AS exp_val,
-        SUM(exp((bf.axis_score - MAX(bf.axis_score) OVER (PARTITION BY bf.axis_key)) / 4.0))
-            OVER (PARTITION BY bf.axis_key) AS sum_exp
+        MAX(bf.axis_score) OVER (PARTITION BY bf.axis_key) AS pool_quality
     FROM bimodal_final bf
+),
+-- Second pass: compute exp values using pool_quality from previous CTE
+spatial_softmax AS (
+    SELECT
+        sp.*,
+        exp((sp.axis_score - sp.pool_quality) / 4.0) AS exp_val,
+        SUM(exp((sp.axis_score - sp.pool_quality) / 4.0))
+            OVER (PARTITION BY sp.axis_key) AS sum_exp
+    FROM spatial_pool sp
 ),
 spatial_shares AS (
     SELECT
