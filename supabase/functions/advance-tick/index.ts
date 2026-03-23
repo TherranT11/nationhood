@@ -57,10 +57,6 @@ async function ensureApRpcAvailability(supabase) {
 
 // ────────── config ──────────
 
-/**
- * config.js — Game configuration constants and AP management
- * Extracted from game-common.js
- */
 
 // ==================== CONSTANTS ====================
 
@@ -273,10 +269,6 @@ async function switchPartyEndorsement(supabase, endorsingPartyId, newEndorsedPar
 
 // ────────── government-types ──────────
 
-/**
- * government-types.js — Government type helpers (autocracy, democracy, presidential)
- * Extracted from game-common.js
- */
 
 /**
  * Government type helpers.
@@ -349,10 +341,6 @@ function getGovDisplayLabel(nation) {
 
 // ────────── trade-constants ──────────
 
-/**
- * trade-constants.js — Trade system constants and calculation functions
- * Extracted from game-common.js
- */
 
 // ==================== TRADE SYSTEM CONSTANTS ====================
 
@@ -1645,10 +1633,6 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
 // ────────── diplomacy-constants ──────────
 
-/**
- * diplomacy-constants.js — Diplomacy constants, policy stances, and scaling divisors
- * Extracted from game-common.js
- */
 
 // ==================== DIPLOMACY CONSTANTS ====================
 
@@ -3184,10 +3168,6 @@ function checkSovereigntyConstraints(activeProposals, policySector) {
 
 // ────────── ideology ──────────
 
-/**
- * ideology.js — Dynamic ideology system (axes, labels, alignment, DB helpers)
- * Extracted from game-common.js
- */
 
 // Ideology spectrum opposites
 const IDEOLOGY_OPPOSITES = {
@@ -3405,10 +3385,6 @@ function extractAxisScores(ideologyRow) {
 
 // ────────── stats ──────────
 
-/**
- * stats.js — Nation stat columns, decay config, trends, and approval setup
- * Extracted from game-common.js
- */
 
 // ==================== ADMINISTRATION LIFECYCLE ====================
 
@@ -4071,10 +4047,9 @@ async function adjustMomentumAll(supabase, nationId, source, delta, reason) {
 }
 
 // nudgeApproval and adjustCredibility are now defined in electorate.js
-// (with diminishing returns and CFG constants). They are re-exported
-// via game-common.js barrel export. No duplicates here to avoid
-// conflicts in the concatenated edge function bundle.
-
+// (with diminishing returns and CFG constants). Re-export here so
+// existing imports from momentum.js keep working. The sync script
+// strips import/export lines, so no duplicates in the edge function bundle.
 /**
  * Apply a one-time event modifier to the government approval event modifier.
  * The modifier decays 10% per tick, so transient shocks fade naturally.
@@ -4123,10 +4098,6 @@ async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source)
 
 // ────────── budget ──────────
 
-/**
- * budget.js — National budget, tax config, economic aid, shutdown, GDP growth
- * Extracted from game-common.js
- */
 
 // ==================== NATIONAL BUDGET CALCULATION ====================
 
@@ -4785,10 +4756,6 @@ async function activateEconomicCollapse(supabase, nation, currentTick) {
 
 // ────────── government-structure ──────────
 
-/**
- * government-structure.js — Seat loading, head faction detection, coalition fetching, policy compatibility
- * Extracted from game-common.js
- */
 
 // ==================== SEAT LOADING ====================
 
@@ -5675,10 +5642,6 @@ async function repealActiveLaw({
 
 // ────────── event-helpers ──────────
 
-/**
- * event-helpers.js — Shared helpers for firing system events.
- * Extracted from game-common.js
- */
 
 /**
  * Fire a bill-related system event (bill_passed / bill_failed / quorum_failed etc).
@@ -5781,10 +5744,6 @@ async function fireBilateralEvent(supabase, triggerKey, nationIdA, nationIdB, cu
 
 // ────────── bills ──────────
 
-/**
- * bills.js — Bill support, vote tallies, ideology shifts, resolution engine, foundational bills
- * Extracted from game-common.js
- */
 
 // ==================== BILL SUPPORT ====================
 
@@ -9211,10 +9170,6 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
 
 // ────────── elections ──────────
 
-/**
- * elections.js — Administration lifecycle, coalition dissolution, elections, government vacancy
- * Extracted from game-common.js
- */
 
 /**
  * Close the current administration for a nation.
@@ -11514,10 +11469,6 @@ async function scheduleNextPresidentialElections(supabase, nation, currentTick) 
 
 // ────────── presidential ──────────
 
-/**
- * presidential.js — Presidential candidates, nomination, veto, and term processing
- * Extracted from game-common.js
- */
 
 /** Tally floor votes from bill_support records (already loaded via join). */
 function tallyFloorVotes(bill) {
@@ -19959,10 +19910,6 @@ registerAutocracyAction('select_pillar', {
 
 // ────────── political-actions ──────────
 
-/**
- * political-actions.js — Political actions, tick processors, crises, events, resign PM, disband party
- * Extracted from game-common.js
- */
 
 const _MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
@@ -24232,10 +24179,6 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
 
 // ────────── election-simulation ──────────
 
-/**
- * election-simulation.js — Election simulation (vote distribution, D'Hondt allocation)
- * Extracted from game-common.js
- */
 
 // ==================== ELECTION SIMULATION ====================
 
