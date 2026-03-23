@@ -5067,14 +5067,18 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
             const varLeft = Math.max(0, eMean - eSpread);
             const varWidth = Math.min(100, eMean + eSpread) - varLeft;
 
-            // Electorate lean text
+            // Electorate description: combines mean lean + polarization shape
+            const polLevel = nationPolarization >= 76 ? 'deeply divided'
+                           : nationPolarization >= 51 ? 'polarized'
+                           : nationPolarization >= 26 ? 'moderately divided'
+                           : 'near centrist';
             let leanText;
             if (eMean < 45) {
-                leanText = `Electorate leans <strong>${escapeHtml(ax.leftLabel)}</strong> — mean ${Math.round(eMean)} / 100`;
+                leanText = `Electorate is <strong>${polLevel}</strong>, leans ${escapeHtml(ax.leftLabel)} — mean ${Math.round(eMean)} / 100`;
             } else if (eMean > 55) {
-                leanText = `Electorate leans <strong>${escapeHtml(ax.rightLabel)}</strong> — mean ${Math.round(eMean)} / 100`;
+                leanText = `Electorate is <strong>${polLevel}</strong>, leans ${escapeHtml(ax.rightLabel)} — mean ${Math.round(eMean)} / 100`;
             } else {
-                leanText = `Electorate is <strong>near centrist</strong> — mean ${Math.round(eMean)} / 100`;
+                leanText = `Electorate is <strong>${polLevel}</strong> — mean ${Math.round(eMean)} / 100`;
             }
 
             // Party markers

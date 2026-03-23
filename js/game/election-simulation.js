@@ -567,7 +567,27 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
         let runoffTotalVotes = top2.reduce((s, c) => s + c.votes, 0);
         let runoffAbstentions = 0;
 
-        // Transfer eliminated candidates' votes based on ideological proximity
+        // Load player endorsement preferences (party → party)
+        const elimFactionIds = eliminatedParties.map(p => p.faction_id).filter(Boolean);
+        let endorsementPrefs = {};
+        if (elimFactionIds.length > 0) {
+            const { data: prefs } = await supabase
+                .from('party_endorsement_preferences')
+                .select('endorsing_party_id, endorsed_party_id')
+                .eq('nation_id', nationId)
+                .in('endorsing_party_id', elimFactionIds);
+            for (const p of (prefs || [])) {
+                endorsementPrefs[p.endorsing_party_id] = p.endorsed_party_id;
+            }
+        }
+
+        // Map runoff candidate faction IDs for endorsement lookups
+        const runoffFactionToCandidateId = {};
+        for (const rp of runoffParties) {
+            runoffFactionToCandidateId[rp.faction_id] = rp.id;
+        }
+
+        // Transfer eliminated candidates' votes based on endorsements + ideological proximity
         const AXES = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
         const endorsements = [];
 
@@ -586,24 +606,33 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
                 return { id: rp.id, name: rp.faction_name, dist: Math.sqrt(distSq) };
             });
 
+            // Check for player endorsement: does this eliminated faction endorse a runoff candidate's faction?
+            const endorsedFactionId = endorsementPrefs[elim.faction_id] || null;
+            const endorsedCandidateId = endorsedFactionId ? runoffFactionToCandidateId[endorsedFactionId] || null : null;
+
             // Convert distances to affinity (inverse distance)
-            // Closer candidate gets higher share of transfers
+            // If a player endorsement exists, the endorsed candidate gets 75% of affinity
             const totalDist = distances.reduce((s, d) => s + d.dist, 0);
             let affinities;
-            if (totalDist === 0) {
-                // Equidistant — split evenly
+            if (endorsedCandidateId) {
+                // Player endorsed: 75% to endorsed, 25% to other
+                affinities = distances.map(d => ({
+                    ...d,
+                    affinity: d.id === endorsedCandidateId ? 0.75 : 0.25 / Math.max(1, distances.length - 1)
+                }));
+            } else if (totalDist === 0) {
                 affinities = distances.map(d => ({ ...d, affinity: 0.5 }));
             } else {
-                // Affinity = 1 - (myDist / totalDist), then normalize
                 affinities = distances.map(d => ({ ...d, affinity: 1 - (d.dist / totalDist) }));
                 const affinitySum = affinities.reduce((s, a) => s + a.affinity, 0);
                 for (const a of affinities) a.affinity = a.affinity / affinitySum;
             }
 
-            // Abstention rate: if both runoff candidates are far from the eliminated party,
-            // more of that party's voters stay home. Base 15%, +1% per 10 distance units.
+            // Abstention rate: lower if there's an endorsement (voters feel more directed)
+            // Base 15%, +1% per 10 distance units. Endorsement reduces by 5%.
             const minDist = Math.min(...distances.map(d => d.dist));
-            const abstainRate = Math.min(0.50, 0.15 + (minDist / 1000));
+            const baseAbstain = endorsedCandidateId ? 0.10 : 0.15;
+            const abstainRate = Math.min(0.50, baseAbstain + (minDist / 1000));
             const abstainVotes = Math.round(elimVotes * abstainRate);
             const transferableVotes = elimVotes - abstainVotes;
 
@@ -611,6 +640,11 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
                 eliminated_candidate: elim.faction_name,
                 eliminated_party: elim.party_name || elim.faction_name,
                 eliminated_faction_id: elim.faction_id,
+                endorsed_candidate_id: endorsedCandidateId,
+                endorsed_faction_name: endorsedCandidateId
+                    ? runoffParties.find(rp => rp.id === endorsedCandidateId)?.faction_name || null
+                    : null,
+                has_player_endorsement: !!endorsedCandidateId,
                 round1_votes: elimVotes,
                 abstain_votes: abstainVotes,
                 transfers: []

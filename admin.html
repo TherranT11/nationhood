@@ -970,11 +970,15 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 let transferHtml = `<div style="margin-bottom:12px;background:#151515;border:1px solid #2b2b2b;border-radius:6px;padding:12px 14px;">
                     <div style="font-size:0.74rem;color:#d48a3c;text-transform:uppercase;letter-spacing:1px;font-weight:bold;margin-bottom:8px;">Vote Transfers from Eliminated Candidates</div>`;
                 for (const e of result.runoff_meta.endorsements) {
+                    const endorseBadge = e.has_player_endorsement
+                        ? `<span style="color:#c8a64e;font-size:0.72rem;font-weight:bold;margin-left:4px;">★ ENDORSED ${escHtml(e.endorsed_faction_name || '')}</span>`
+                        : '<span style="color:#555;font-size:0.72rem;margin-left:4px;">auto (ideology)</span>';
                     const transferList = e.transfers.map(t =>
                         `<span style="color:#ccc;">${escHtml(t.candidate_name)}: <strong style="color:#5cb85c;">+${t.votes.toLocaleString()}</strong> (${t.affinity_pct}% affinity)</span>`
                     ).join(' &middot; ');
                     transferHtml += `<div style="margin-bottom:6px;font-size:0.82rem;">
                         <span style="color:#aaa;">${escHtml(e.eliminated_candidate)}</span>
+                        ${endorseBadge}
                         <span style="color:#666;"> (${e.round1_votes.toLocaleString()} R1 votes)</span>
                         <span style="color:#888;"> → </span>${transferList}
                         <span style="color:#666;"> · ${e.abstain_votes.toLocaleString()} abstained</span>
@@ -1033,7 +1037,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                     </div>
                 </div>
                 <div class="result-party-seats">
-                    ${c.votes.toLocaleString()} votes <span style="color:#888; font-size:0.75rem;">(${c.vote_percentage}% · ${c.approval}% approval)</span>
+                    ${c.votes.toLocaleString()} votes <span style="color:#888; font-size:0.75rem;">(${c.vote_percentage}%${c.approval != null ? ' · ' + c.approval + '% approval' : ''})</span>
                 </div>
             </div>`;
         }).join('');
