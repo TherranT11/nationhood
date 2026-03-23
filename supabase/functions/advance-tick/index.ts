@@ -11245,7 +11245,7 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
 
 /**
  * Schedule next presidential + parliamentary elections independently.
- * Presidential every PRESIDENTIAL_TERM_TICKS, parliamentary every PARLIAMENTARY_TERM_TICKS.
+ * Presidential every getPresidentialTermTicks(nation), parliamentary every getParliamentaryTermTicks(nation).
  */
 async function scheduleNextPresidentialElections(supabase, nation, currentTick) {
     // Check for future parliamentary election

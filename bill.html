@@ -798,8 +798,8 @@ function renderArticles() {
                 '</div>';
         } else if (bill.proposed_parliamentary_term_length != null) {
             // Legislative Term Length subtype
-            const ticksPerYear2 = GAME_CONFIG.TICKS_PER_YEAR || 12;
-            const proposedParlYears = bill.proposed_parliamentary_term_length / ticksPerYear2;
+            const ticksPerYear = GAME_CONFIG.TICKS_PER_YEAR || 12;
+            const proposedParlYears = bill.proposed_parliamentary_term_length / ticksPerYear;
             foundationalHTML =
                 '<div class="article preamble" style="border-left-color:var(--purple);">' +
                     '<div class="article-number" style="color:var(--purple);">FOUNDATIONAL LAW</div>' +
