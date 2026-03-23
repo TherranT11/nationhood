@@ -2169,16 +2169,26 @@ function initEditIdentityBox(f) {
 }
 
 function renderElectionResultsBox(lastParliamentary, lastPresidential, allParties, { scheduledElections, currentTick, nation, mySeats, faction, currentEndorsement } = {}) {
-    // Build a color map from allParties
+    // Build a color map and seat map from allParties (single source of truth for seats)
     const colorMap = {};
-    (allParties || []).forEach(p => { colorMap[p.id] = p.party_color || '#888'; });
+    const seatMap = {};
+    (allParties || []).forEach(p => {
+        colorMap[p.id] = p.party_color || '#888';
+        seatMap[p.id] = p.seats || 0;
+    });
 
     function renderParliamentaryContent(el) {
         if (!el) return '<div class="pol-el-empty">No parliamentary election results yet.</div>';
         const r = el.results;
         if (!r || !r.votes) return '<div class="pol-el-empty">No parliamentary election results yet.</div>';
         const date = tickToDate(el.election_tick);
-        const votes = [...r.votes].sort((a, b) => (b.seats || 0) - (a.seats || 0));
+        // Use live factions.seats as the source of truth (matches Parliament panel)
+        const snapshotIds = new Set(r.votes.map(v => v.party_id));
+        const missingParties = (allParties || [])
+            .filter(p => !snapshotIds.has(p.id) && (seatMap[p.id] || 0) > 0)
+            .map(p => ({ party_id: p.id, party_name: p.faction_name, votes: 0, vote_percentage: 0, seats: seatMap[p.id] || 0 }));
+        const votes = [...r.votes, ...missingParties].map(v => ({ ...v, seats: seatMap[v.party_id] ?? v.seats ?? 0 }))
+            .sort((a, b) => (b.seats || 0) - (a.seats || 0));
         const maxVotePct = Math.max(...votes.map(v => v.vote_percentage || 0), 1);
         let rows = votes.map(v => {
             const color = colorMap[v.party_id] || '#888';
