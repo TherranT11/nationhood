@@ -15,13 +15,14 @@ import { loadFactionIdeology } from './ideology.js';
 // because protest_log RLS only allows service_role writes.
 
 async function protestUpdate(supabase, protestId, updates, clearLockouts = false, cooldownFactionId = null, cooldownUntil = null) {
-    const { error } = await supabase.rpc('protest_update', {
+    const params = {
         p_protest_id: protestId,
         p_updates: updates,
         p_clear_lockouts: clearLockouts,
-        p_cooldown_faction_id: cooldownFactionId,
-        p_cooldown_until: cooldownUntil,
-    });
+    };
+    if (cooldownFactionId != null) params.p_cooldown_faction_id = cooldownFactionId;
+    if (cooldownUntil != null) params.p_cooldown_until = cooldownUntil;
+    const { error } = await supabase.rpc('protest_update', params);
     if (error) {
         console.error('[Protest] protest_update RPC failed:', error.message);
         throw new Error(error.message);

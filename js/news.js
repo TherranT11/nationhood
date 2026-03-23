@@ -88,7 +88,7 @@ export async function initNewspaper(supabase, state) {
                 <div class="nws-nav-item" data-category="international">International</div>
                 <div class="nws-nav-item" data-category="social">Social</div>
                 <div class="nws-nav-item" data-category="entertainment">Entertainment</div>
-                <div class="nws-nav-item" data-category="elections">Elections</div>
+                <div class="nws-nav-item" data-category="opinion">Opinion</div>
                 <div class="nws-nav-item" data-category="sports">Sports</div>
                 <div class="nws-nav-item nws-nav-archives" id="nws-nav-archives">Older Issues</div>
             </div>
@@ -311,7 +311,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-modal">
                 <div class="nws-modal-header">
                     <h3>Write Article</h3>
-                    <span class="nws-ap-badge" id="nws-reward-badge">+1 Enthusiasm (4000+) · +2 Enthusiasm (8000+)</span>
+                    <span class="nws-ap-badge" id="nws-reward-badge">+2 Visibility (4000+)</span>
                 </div>
                 <button class="nws-modal-close" id="nws-modal-close">&times;</button>
                 <div class="nws-modal-body">
@@ -337,7 +337,6 @@ export async function initNewspaper(supabase, state) {
                             <option value="international">International</option>
                             <option value="social">Social</option>
                             <option value="entertainment">Entertainment</option>
-                            <option value="elections">Elections</option>
                             <option value="sports">Sports</option>
                             <option value="opinion">Opinion</option>
                         </select>
@@ -385,26 +384,26 @@ export async function initNewspaper(supabase, state) {
     if (rewardBadge) {
         rewardBadge.textContent = _isAutocracyNation
             ? '+1 Backing (4000+)'
-            : '+1 Enthusiasm (4000+) · +2 Enthusiasm (8000+)';
+            : '+2 Visibility (4000+)';
     }
 
     // === LOAD & DISPLAY ARTICLES ===
     await loadAndDisplayArticles();
 }
 
-/** Award enthusiasm to a democratic faction for writing an article */
-async function _applyArticleEnthusiasmReward(factionId, nationId, amount) {
+/** Award +2 visibility to a democratic faction for writing a long article */
+async function _applyArticleVisibilityReward(factionId, nationId) {
     const { data: standing } = await _supabase
         .from('faction_electoral_standing')
-        .select('enthusiasm')
+        .select('visibility')
         .eq('faction_id', factionId)
         .eq('nation_id', nationId)
         .maybeSingle();
-    const current = Number(standing?.enthusiasm ?? 50);
-    const newVal = Math.min(100, current + amount);
+    const current = Number(standing?.visibility ?? 0);
+    const newVal = Math.min(100, current + 2);
     await _supabase
         .from('faction_electoral_standing')
-        .update({ enthusiasm: newVal })
+        .update({ visibility: newVal })
         .eq('faction_id', factionId)
         .eq('nation_id', nationId);
 }
@@ -479,14 +478,11 @@ function bindModalEvents() {
     if (bodyInput && charCount) {
         bodyInput.addEventListener('input', () => {
             const len = bodyInput.value.length;
-            const rewardLabel = _isAutocracyNation ? 'Backing' : 'Enthusiasm';
             let tag;
             if (_isAutocracyNation) {
                 tag = len >= 4000 ? ' · +1 Backing' : ` · ${4000 - len} more for +1 Backing`;
             } else {
-                if (len >= 8000) tag = ' · +2 Enthusiasm';
-                else if (len >= 4000) tag = ` · +1 Enthusiasm · ${8000 - len} more for +2`;
-                else tag = ` · ${4000 - len} more for enthusiasm`;
+                tag = len >= 4000 ? ' · +2 Visibility' : ` · ${4000 - len} more for +2 Visibility`;
             }
             charCount.textContent = `${len} / 12000${tag}`;
             charCount.classList.toggle('nws-near-limit', len >= 11500);
@@ -630,13 +626,12 @@ function bindSubmitHandler() {
                         successMsg = `Article published! (${body.length}/4000 chars — no backing reward)`;
                     }
                 } else {
-                    // Democracy: +1 Enthusiasm (4000+), +2 Enthusiasm (8000+)
-                    const enthusiasmReward = body.length >= 8000 ? 2 : body.length >= 4000 ? 1 : 0;
-                    if (enthusiasmReward > 0) {
-                        _applyArticleEnthusiasmReward(faction.id, nation.id, enthusiasmReward).catch(err => console.error('[News] Enthusiasm reward failed:', err));
-                        successMsg = `Article published! +${enthusiasmReward} Enthusiasm.`;
+                    // Democracy: +2 Visibility for any article >= 4000 chars
+                    if (body.length >= 4000) {
+                        _applyArticleVisibilityReward(faction.id, nation.id).catch(err => console.error('[News] Visibility reward failed:', err));
+                        successMsg = 'Article published! +2 Visibility.';
                     } else {
-                        successMsg = `Article published! (${body.length}/4000 chars — no enthusiasm reward)`;
+                        successMsg = `Article published! (${body.length}/4000 chars — no visibility reward)`;
                     }
                 }
                 showFormSuccess(successMsg);
@@ -950,22 +945,23 @@ function formatBodyHtml(body) {
 }
 
 function categoryLabel(cat) {
+    if (cat === 'elections') cat = 'politics'; // legacy: fold elections into politics
     const labels = {
         politics: 'Politics', economy: 'Economy', international: 'International',
-        social: 'Social', entertainment: 'Entertainment', elections: 'Elections', sports: 'Sports',
+        social: 'Social', entertainment: 'Entertainment', sports: 'Sports',
         opinion: 'Opinion'
     };
     return labels[cat] || cat;
 }
 
 function categoryGradient(cat) {
+    if (cat === 'elections') cat = 'politics'; // legacy: fold elections into politics
     const gradients = {
         politics: 'linear-gradient(135deg,#2a1a2a,#1a0d1a)',
         economy: 'linear-gradient(135deg,#2a1a0a,#1a0d00)',
         international: 'linear-gradient(135deg,#0a1a2a,#001a2a)',
         social: 'linear-gradient(135deg,#1a2a1a,#0d1a0d)',
         entertainment: 'linear-gradient(135deg,#2a2a0a,#1a1a00)',
-        elections: 'linear-gradient(135deg,#1a1a2a,#0d0d1a)',
         sports: 'linear-gradient(135deg,#2a0a0a,#1a0000)',
         opinion: 'linear-gradient(135deg,#2a2a2a,#1a1a1a)'
     };
@@ -1070,9 +1066,12 @@ async function loadAndDisplayArticles() {
         // Cache for article reader lookup
         _articles = mergedArticles;
 
-        // Apply category filter if set
+        // Apply category filter if set (elections articles fold into politics)
         const filtered = _categoryFilter && _categoryFilter !== 'all'
-            ? mergedArticles.filter(a => a.category === _categoryFilter)
+            ? mergedArticles.filter(a => {
+                const effectiveCat = a.category === 'elections' ? 'politics' : a.category;
+                return effectiveCat === _categoryFilter;
+            })
             : mergedArticles;
 
         if (filtered.length === 0 && _categoryFilter !== 'all') {

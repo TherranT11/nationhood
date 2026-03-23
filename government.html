@@ -2835,7 +2835,7 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
 
     let html = `<div class="ministry-card__actions-label" style="display:flex;justify-content:space-between;align-items:center;">
         <span>ACTIONS</span>
-        <span style="font-size:7px;font-weight:600;${balCls};letter-spacing:0.03em;">FUNDS: ${balFmt}</span>
+        <span style="font-size:8px;font-weight:600;${balCls};letter-spacing:0.03em;">Discretionary Funds: ${balFmt}</span>
     </div>`;
     config.actions.forEach(action => {
         const countKey = ministryKey + ':' + action.id;
