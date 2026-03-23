@@ -3,7 +3,7 @@
  * Extracted from game-common.js
  */
 
-import { FORMATION_DEADLINE_TICKS, GAME_CONFIG, SNAP_COOLDOWN_GAP, getPresidentialTermTicks, getPresidentialTermLimit, getParliamentaryTermTicks } from './config.js';
+import { FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, GAME_CONFIG, SNAP_COOLDOWN_GAP, getPresidentialTermTicks, getPresidentialTermLimit, getParliamentaryTermTicks } from './config.js';
 import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isAutocracy, isPresidentialRepublic } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { snapshotNationStats } from './stats.js';
@@ -779,17 +779,16 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
  *
  * After an election with no majority party:
  *   Stage 0 — Formation window (ticks 1 to FORMATION_DEADLINE_TICKS):
- *     - Every tick: -2 momentum to ALL parties, -1 stability to nation
+ *     - Every tick: top 2 parties by seats lose -2 approval
  *     - Tick 1: notification "Formation underway, N ticks to form coalition"
- *     - Tick (FORMATION_DEADLINE_TICKS - 1): warning "1 tick remaining"
+ *     - Tick (deadline - 1): warning "1 tick remaining"
  *
  *   Stage 1 — Snap election (at FORMATION_DEADLINE_TICKS, failed_formation_attempts < 1):
- *     - Top 2 parties by seats: -6 momentum each
- *     - Non-responsive coalition invitees: -3 momentum each
+ *     - Non-responsive coalition invitees: -3 approval each
  *     - Snap election scheduled for next tick
  *     - failed_formation_attempts set to 1
  *
- *   Stage 2 — Emergency minority government (at FORMATION_DEADLINE_TICKS, failed_formation_attempts >= 1):
+ *   Stage 2 — Minority government (POST_SNAP_DEADLINE_TICKS after snap, failed_formation_attempts >= 1):
  *     - Largest party auto-installed as minority government
  *     - formation_type = 'emergency_minority' (permanent -20% legislative penalty)
  *     - failed_formation_attempts reset to 0
@@ -856,15 +855,18 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
     const ticksElapsed = currentTick - election.election_tick;
     if (ticksElapsed <= 0) return null;
 
+    const failedAttempts = nation.failed_formation_attempts || 0;
+    const deadline = failedAttempts >= 1 ? POST_SNAP_DEADLINE_TICKS : FORMATION_DEADLINE_TICKS;
+
     const result = {
         nation: nation.name,
         ticksElapsed,
         penaltiesApplied: true,
         approvalLoss: -2,
-        stabilityLoss: -1
     };
 
     // ===== ONGOING PENALTIES (every tick during vacancy) =====
+    // Top 2 parties by seats lose -2 approval each tick
     const { data: allParties } = await supabase
         .from('factions')
         .select('id, faction_name, seats')
@@ -872,37 +874,36 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
         .eq('faction_type', 'party')
         .order('seats', { ascending: false });
 
-    for (const party of (allParties || [])) {
-        await nudgeApproval(supabase, party.id, nation.id, -1);
+    if (allParties && allParties.length > 0) {
+        await nudgeApproval(supabase, allParties[0].id, nation.id, -2);
+        if (allParties.length > 1) {
+            await nudgeApproval(supabase, allParties[1].id, nation.id, -2);
+        }
     }
 
-    // -1 stability to nation
-    const newStability = Math.max(0, (nation.stability ?? 50) - 1);
-    await supabase.from('nations')
-        .update({ stability: newStability })
-        .eq('id', nation.id);
-    nation.stability = newStability;
-
-    console.log(`Government vacancy: ${nation.name} tick ${ticksElapsed}/${FORMATION_DEADLINE_TICKS} — all parties -2 momentum, nation -1 stability (→ ${newStability})`);
+    console.log(`Government vacancy: ${nation.name} tick ${ticksElapsed}/${deadline} — top 2 parties -2 approval`);
 
     // ===== FORMATION WINDOW NOTIFICATIONS =====
-    if (ticksElapsed === 1) {
+    if (ticksElapsed === 1 && failedAttempts < 1) {
         await supabase.from('event_log').insert({
             nation_id: nation.id,
             event_name: 'FORMATION_WINDOW_START',
             trigger_key: 'coalition_formation_started',
-            description_used: `Coalition formation underway in ${nation.name}. Parties have ${FORMATION_DEADLINE_TICKS} ticks to form a government.`,
+            description_used: `Coalition formation underway in ${nation.name}. Parties have ${deadline} ticks to form a government.`,
             category: 'POLITICAL',
-            effects_applied: { ticks_remaining: FORMATION_DEADLINE_TICKS, ongoing_penalty: -2 },
+            effects_applied: { ticks_remaining: deadline, ongoing_penalty: -2 },
             fired_at_tick: currentTick
         }).then(({ error }) => {
             if (error) console.warn('Formation window start event log failed:', error.message);
         });
-    } else if (ticksElapsed === FORMATION_DEADLINE_TICKS - 1) {
+    } else if (ticksElapsed === deadline - 1) {
+        const warningMsg = failedAttempts >= 1
+            ? `1 tick remaining before emergency minority government in ${nation.name}. Form a coalition now.`
+            : `1 tick remaining before snap elections in ${nation.name}. Form a coalition now or face snap elections.`;
         await supabase.from('event_log').insert({
             nation_id: nation.id,
             event_name: 'FORMATION_DEADLINE_WARNING',
-            description_used: `1 tick remaining before emergency elections in ${nation.name}. Form a coalition now or face snap elections.`,
+            description_used: warningMsg,
             category: 'POLITICAL',
             effects_applied: { ticks_remaining: 1 },
             fired_at_tick: currentTick
@@ -912,30 +913,15 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
     }
 
     // ===== ESCALATION CHECK =====
-    if (ticksElapsed < FORMATION_DEADLINE_TICKS) {
+    if (ticksElapsed < deadline) {
         return result;
     }
-
-    const failedAttempts = nation.failed_formation_attempts || 0;
 
     // ===== STAGE 1: SNAP ELECTION =====
     if (failedAttempts < 1) {
         console.log(`STAGE 1: SNAP ELECTION triggered for ${nation.name} — ${ticksElapsed} ticks without government (attempt ${failedAttempts + 1})`);
 
-        // Top 2 parties: -3 approval each
-        if (allParties && allParties.length > 0) {
-            const largest = allParties[0];
-            await nudgeApproval(supabase, largest.id, nation.id, -3);
-            console.log(`  Snap penalty: ${largest.faction_name} -3 approval`);
-
-            if (allParties.length > 1) {
-                const second = allParties[1];
-                await nudgeApproval(supabase, second.id, nation.id, -3);
-                console.log(`  Snap penalty: ${second.faction_name} -3 approval`);
-            }
-        }
-
-        // Non-responsive invitee penalty: -3 momentum
+        // Non-responsive invitee penalty: -3 approval
         // Find parties invited to formations but never gave support
         const { data: formations } = await supabase
             .from('government_formations')
@@ -967,9 +953,9 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
             // Penalize non-responsive invitees
             for (const pid of invitedPartyIds) {
                 if (!respondedPartyIds.has(pid)) {
-                    await nudgeApproval(supabase, pid, nation.id, -2);
+                    await nudgeApproval(supabase, pid, nation.id, -3);
                     const partyName = allParties?.find(p => p.id === pid)?.faction_name || pid;
-                    console.log(`  Non-responsive penalty: ${partyName} -2 approval`);
+                    console.log(`  Non-responsive penalty: ${partyName} -3 approval`);
                 }
             }
         }
@@ -1012,9 +998,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
             category: 'POLITICAL',
             effects_applied: {
                 stage: 1,
-                largest_party: allParties?.[0]?.faction_name,
-                second_party: allParties?.[1]?.faction_name,
-                top_party_penalty: -6,
+                non_responsive_penalty: -3,
                 ticks_without_gov: ticksElapsed,
                 failed_attempts: failedAttempts + 1
             },
@@ -1030,7 +1014,8 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
     }
 
     // ===== STAGE 2: EMERGENCY MINORITY GOVERNMENT =====
-    console.log(`STAGE 2: EMERGENCY MINORITY GOVERNMENT for ${nation.name} — second formation window expired`);
+    // After snap election, parties get POST_SNAP_DEADLINE_TICKS (2) more ticks to form government
+    console.log(`STAGE 2: EMERGENCY MINORITY GOVERNMENT for ${nation.name} — ${POST_SNAP_DEADLINE_TICKS} ticks after snap election without government`);
 
     // Identify largest party (tiebreak: higher total votes from election, then lower faction_id)
     const electionVotes = election.results?.votes || [];
@@ -1106,7 +1091,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
         nation_id: nation.id,
         event_name: 'EMERGENCY_MINORITY_GOVERNMENT',
         trigger_key: 'minority_government_formed',
-        description_used: `${largestParty.faction_name} installed as emergency minority government in ${nation.name} after two failed formation windows. Legislative effectiveness reduced by 20%.`,
+        description_used: `${largestParty.faction_name} installed as minority government in ${nation.name} after failing to form a coalition following snap elections. Legislative effectiveness reduced by 20%.`,
         category: 'POLITICAL',
         effects_applied: {
             stage: 2,

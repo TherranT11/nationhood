@@ -56,7 +56,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game-common.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
 (function () {
@@ -1509,8 +1509,8 @@ window.sendAdminChat = async function() {
 
 function renderFormationInProgress(parties) {
     const ticksElapsed = (lastElectionTick !== null) ? Math.max(0, currentTick - lastElectionTick) : 0;
-    const ticksRemaining = Math.max(0, FORMATION_DEADLINE_TICKS - ticksElapsed);
-    const progressPct = Math.min(100, (ticksElapsed / FORMATION_DEADLINE_TICKS) * 100);
+    const ticksRemaining = Math.max(0, effectiveDeadline - ticksElapsed);
+    const progressPct = Math.min(100, (ticksElapsed / effectiveDeadline) * 100);
 
     // Determine urgency level
     let urgency = 'safe';
@@ -1518,8 +1518,9 @@ function renderFormationInProgress(parties) {
     else if (ticksRemaining <= 2) urgency = 'warning';
 
     // Calculate accrued penalties
+    const failedAttempts = currentNation?.failed_formation_attempts || 0;
+    const effectiveDeadline = failedAttempts >= 1 ? POST_SNAP_DEADLINE_TICKS : FORMATION_DEADLINE_TICKS;
     const accruedApproval = ticksElapsed * 2;
-    const accruedStability = ticksElapsed * 1;
 
     // Find largest and second largest parties for snap penalty display
     const sorted = [...parties].sort((a, b) => b.seats - a.seats);
@@ -1531,7 +1532,7 @@ function renderFormationInProgress(parties) {
     const title = urgency === 'critical' ? 'No Government — Snap Election Imminent'
                 : urgency === 'warning' ? 'Coalition Formation — Time Running Out'
                 : 'Coalition Formation In Progress';
-    const subtitle = urgency === 'critical' ? 'Form a government immediately or face snap elections'
+    const subtitle = urgency === 'critical' ? (failedAttempts >= 1 ? 'Form a government immediately or a minority government will be installed' : 'Form a government immediately or face snap elections')
                    : urgency === 'warning' ? 'Parties are negotiating — the deadline is approaching'
                    : 'Parties are negotiating a coalition — propose or join one below';
 
@@ -1556,7 +1557,7 @@ function renderFormationInProgress(parties) {
                     </div>
                     <div class="countdown-detail">
                         ${ticksElapsed > 0
-                            ? ticksElapsed + ' tick' + (ticksElapsed !== 1 ? 's' : '') + ' without a government (of ${FORMATION_DEADLINE_TICKS} allowed)'
+                            ? ticksElapsed + ' tick' + (ticksElapsed !== 1 ? 's' : '') + ' without a government (of ${effectiveDeadline} allowed)'
                             : 'Election just concluded — form a coalition to avoid penalties'}
                     </div>
                 </div>
@@ -1566,36 +1567,29 @@ function renderFormationInProgress(parties) {
                     <div class="penalty-card ${urgency === 'safe' ? 'muted' : 'active-penalty'}">
                         <div class="penalty-value ${urgency === 'safe' ? 'dimmed' : 'red'}">-2%</div>
                         <div class="penalty-label">Party Approval / Tick</div>
-                        <div class="penalty-detail">All parties lose approval each tick</div>
-                    </div>
-                    <div class="penalty-card ${urgency === 'safe' ? 'muted' : 'active-penalty'}">
-                        <div class="penalty-value ${urgency === 'safe' ? 'dimmed' : 'red'}">-1</div>
-                        <div class="penalty-label">Stability / Tick</div>
-                        <div class="penalty-detail">National stability erodes</div>
+                        <div class="penalty-detail">Top 2 parties lose approval each tick</div>
                     </div>
                     <div class="penalty-card accrued">
                         <div class="penalty-value orange">${ticksElapsed > 0 ? ticksElapsed : '0'}</div>
                         <div class="penalty-label">Ticks Elapsed</div>
-                        <div class="penalty-detail">${accruedApproval > 0 ? '-' + accruedApproval + '% approval, -' + accruedStability + ' stability lost' : 'No penalties accrued yet'}</div>
+                        <div class="penalty-detail">${accruedApproval > 0 ? '-' + accruedApproval + '% approval lost (top 2)' : 'No penalties accrued yet'}</div>
                     </div>
                 </div>
 
                 ${urgency !== 'safe' ? `
-                <!-- Snap Election Warning (only show when time is running out) -->
+                <!-- Snap Election / Minority Government Warning -->
                 <div class="snap-warning ${urgency === 'critical' ? 'imminent' : ''}">
-                    <div class="snap-warning-icon">🗳️</div>
+                    <div class="snap-warning-icon">${failedAttempts >= 1 ? '⚠️' : '🗳️'}</div>
                     <div class="snap-warning-content">
                         <div class="snap-warning-title">
-                            ${ticksRemaining <= 0
-                                ? 'Snap Election Will Trigger Next Tick!'
-                                : 'Snap Election in ' + ticksRemaining + ' Tick' + (ticksRemaining !== 1 ? 's' : '')}
+                            ${failedAttempts >= 1
+                                ? (ticksRemaining <= 0 ? 'Minority Government Will Be Installed!' : 'Minority Government in ' + ticksRemaining + ' Tick' + (ticksRemaining !== 1 ? 's' : ''))
+                                : (ticksRemaining <= 0 ? 'Snap Election Will Trigger Next Tick!' : 'Snap Election in ' + ticksRemaining + ' Tick' + (ticksRemaining !== 1 ? 's' : ''))}
                         </div>
                         <div class="snap-warning-desc">
-                            If no government is formed within ${FORMATION_DEADLINE_TICKS} ticks, a snap election is called with approval penalties applied before voting.
-                        </div>
-                        <div class="snap-penalty-tags">
-                            <span class="snap-penalty-tag first">${largestParty ? largestParty.party_name : 'Largest'}: -10% Approval</span>
-                            ${secondParty ? `<span class="snap-penalty-tag second">${secondParty.party_name}: -5% Approval</span>` : ''}
+                            ${failedAttempts >= 1
+                                ? 'If no coalition is formed, the largest party will be installed as a minority government with a permanent -20% legislative penalty.'
+                                : 'If no government is formed within ' + effectiveDeadline + ' ticks, a snap election is called. Non-responsive invitees lose -3 approval.'}
                         </div>
                     </div>
                 </div>
@@ -1606,7 +1600,7 @@ function renderFormationInProgress(parties) {
         <div class="no-gov-warning">
             <div class="no-gov-warning-icon">⚠️</div>
             <div class="no-gov-warning-text">
-                No government has been formed. All parties lose <strong>2% approval</strong> each month until a government is formed.
+                No government has been formed. The top 2 parties lose <strong>2% approval</strong> each tick until a government is formed.
             </div>
         </div>
         <div class="section-header">Government Formation</div>
