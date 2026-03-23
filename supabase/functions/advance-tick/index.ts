@@ -10470,6 +10470,32 @@ async function processElections(supabase, nation, currentTick) {
         .eq('status', 'scheduled')
         .lte('election_tick', currentTick);
 
+    // Presidential systems: ensure a parliamentary election runs alongside any presidential one.
+    // In presidential republics, both chambers are elected simultaneously — if only a presidential
+    // election was scheduled, auto-create a parliamentary election for the same tick.
+    if (isPresidential && dueElections && dueElections.length > 0) {
+        const hasPresidential = dueElections.some(e => (e.election_type || 'parliamentary') === 'presidential');
+        const hasParliamentary = dueElections.some(e => (e.election_type || 'parliamentary') === 'parliamentary');
+        if (hasPresidential && !hasParliamentary) {
+            console.log(`[processElections] Auto-scheduling parliamentary election alongside presidential for ${nation.name}`);
+            const { data: parlElection, error: parlErr } = await supabase
+                .from('elections')
+                .insert({
+                    nation_id: nation.id,
+                    election_type: 'parliamentary',
+                    election_tick: currentTick,
+                    status: 'scheduled'
+                })
+                .select()
+                .single();
+            if (parlErr) {
+                console.error(`[processElections] Failed to auto-schedule parliamentary election:`, parlErr.message);
+            } else if (parlElection) {
+                dueElections.push(parlElection);
+            }
+        }
+    }
+
     // For presidential systems, process parliamentary elections before presidential ones
     // so seats are allocated before we determine the popular vote winner
     const sorted = (dueElections || []).sort((a, b) => {
