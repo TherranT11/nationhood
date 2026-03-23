@@ -12745,8 +12745,6 @@ function normalizeDistribution(values, targetSum = 100) {
     return rounded;
 }
 
-function round2(v) { return Math.round(v * 100) / 100; }
-function round3(v) { return Math.round(v * 1000) / 1000; }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 /**
