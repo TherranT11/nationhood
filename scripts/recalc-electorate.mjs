@@ -9,6 +9,8 @@
  * Usage:
  *   node scripts/recalc-electorate.mjs                  # all non-autocracy nations
  *   node scripts/recalc-electorate.mjs "Palvera"        # specific nation by name
+ *   node scripts/recalc-electorate.mjs --snap           # bypass drift caps, snap to targets
+ *   node scripts/recalc-electorate.mjs --snap "Palvera" # snap a specific nation
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -25,7 +27,9 @@ if (!SUPABASE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const targetName = process.argv[2] || null;
+const args = process.argv.slice(2);
+const snapMode = args.includes('--snap');
+const targetName = args.find(a => !a.startsWith('--')) || null;
 
 async function main() {
     // Get current tick
@@ -71,7 +75,8 @@ async function main() {
 
         // Run the electorate engine
         try {
-            await tickElectorate(supabase, nation, currentTick);
+            await tickElectorate(supabase, nation, currentTick, { snap: snapMode });
+            if (snapMode) console.log('  [SNAP] Bypassed drift caps — pillars set to target values');
         } catch (err) {
             console.error(`  ERROR: ${err.message}`);
             continue;

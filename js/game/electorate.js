@@ -955,8 +955,10 @@ export async function genesisElectorate(supabase, nation, factions, currentTick 
  * @param {object} supabase - Supabase client
  * @param {object} nation   - Full nation row
  * @param {number} currentTick - The tick just committed
+ * @param {object} [opts] - Options
+ * @param {boolean} [opts.snap] - If true, bypass drift caps and snap pillars to target values immediately
  */
-export async function tickElectorate(supabase, nation, currentTick) {
+export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     if (isAutocracy(nation)) return;
 
     // ── 1. Load active factions (exclude gone ≥12 ticks) ──
@@ -1142,10 +1144,11 @@ export async function tickElectorate(supabase, nation, currentTick) {
             ? spatialAlignments[factionId]
             : CFG.DEFAULT_ALIGNMENT;
 
-        // Drift toward target
+        // Drift toward target (or snap if opts.snap)
         const oldAlignment = Number(standing.ideological_alignment ?? 50);
-        const alignDelta = clamp(targetAlignment - oldAlignment, -CFG.ALIGNMENT_DRIFT_SPEED, CFG.ALIGNMENT_DRIFT_SPEED);
-        const newAlignment = round2(clamp(oldAlignment + alignDelta, 0, 100));
+        const newAlignment = opts.snap
+            ? round2(clamp(targetAlignment, 0, 100))
+            : round2(clamp(oldAlignment + clamp(targetAlignment - oldAlignment, -CFG.ALIGNMENT_DRIFT_SPEED, CFG.ALIGNMENT_DRIFT_SPEED), 0, 100));
 
         // ─── PILLAR 2: Platform Appeal (0-100) ───
         const factionStances = stancesByFaction[factionId] || [];
@@ -1153,8 +1156,9 @@ export async function tickElectorate(supabase, nation, currentTick) {
             factionStances, issueStateMap, ideo, newAlignment
         );
         const oldAppeal = Number(standing.platform_appeal ?? CFG.DEFAULT_PLATFORM_APPEAL);
-        const appealDelta = clamp(appealResult.appeal - oldAppeal, -CFG.APPEAL_DRIFT_SPEED, CFG.APPEAL_DRIFT_SPEED);
-        const newAppeal = round2(clamp(oldAppeal + appealDelta, CFG.APPEAL_MIN, CFG.APPEAL_MAX));
+        const newAppeal = opts.snap
+            ? round2(clamp(appealResult.appeal, CFG.APPEAL_MIN, CFG.APPEAL_MAX))
+            : round2(clamp(oldAppeal + clamp(appealResult.appeal - oldAppeal, -CFG.APPEAL_DRIFT_SPEED, CFG.APPEAL_DRIFT_SPEED), CFG.APPEAL_MIN, CFG.APPEAL_MAX));
 
         // ─── PILLAR 3: Party Approval (0-100) ───
         const oldApproval = Number(standing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);
