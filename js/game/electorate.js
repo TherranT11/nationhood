@@ -168,7 +168,7 @@ export function bimodalAxisAlignment(partyPos, elecMean, elecVar) {
  * @param {Array<{factionId: string, partyNorm: number}>} parties - Each party's normalized position (0-100)
  * @param {number} elecMean - Electorate mean on 0-100 scale
  * @param {number} elecVar - Electorate variance (5-45)
- * @param {number} [temperature=4] - Softmax temperature (lower = more winner-take-all)
+ * @param {number} [temperature] - Softmax temperature override (default scales dynamically: 4 at low polarization → 0.75 at max)
  * @returns {Map<string, number>} factionId → share of this axis's voters (0-1, sums to 1)
  */
 function spatialAxisCompetition(parties, elecMean, elecVar, temperature) {

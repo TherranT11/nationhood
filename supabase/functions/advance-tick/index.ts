@@ -12868,7 +12868,7 @@ function bimodalAxisAlignment(partyPos, elecMean, elecVar) {
  * @param {Array<{factionId: string, partyNorm: number}>} parties
  * @param {number} elecMean - Electorate mean (0-100)
  * @param {number} elecVar - Electorate variance (5-45)
- * @param {number} [temperature=4] - Softmax temperature
+ * @param {number} [temperature] - Softmax temperature override (default scales dynamically: 4 at low polarization → 0.75 at max)
  * @returns {Map<string, number>} factionId → share (0-1)
  */
 function spatialAxisCompetition(parties, elecMean, elecVar, temperature) {
@@ -12876,7 +12876,7 @@ function spatialAxisCompetition(parties, elecMean, elecVar, temperature) {
     // at high polarization (var≥40) use temp=0.75 (sharp competition) so the centrist
     // valley penalty actually survives the softmax.
     var polWeight = Math.min(1, Math.max(0, (elecVar - 10) / 30));
-    var dynTemp = temperature !== undefined ? temperature : (4 - 3.25 * polWeight);
+    var dynTemp = temperature != null ? temperature : (4 - 3.25 * polWeight);
 
     var result = new Map();
     if (parties.length === 0) return result;
