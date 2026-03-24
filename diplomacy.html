@@ -79,7 +79,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { isGovernmentAutocracy, isGovernmentPresidential, getGovDisplayLabel, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkCreditForTradeAgreement } from './js/game-common.js';
+import { isGovernmentAutocracy, isGovernmentPresidential, getGovDisplayLabel, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkCreditForTradeAgreement, TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -943,6 +943,20 @@ async function renderRelationsTab() {
             const barWidth = Math.max(0, Math.min(100, score));
             const barColor = getRelationBarColor(score);
 
+            // Credit badge for this nation
+            const theirCredit = Number(nation.credit ?? 50);
+            const creditColor = theirCredit >= 75 ? '#4ade80' : theirCredit >= 50 ? '#a0a090' : theirCredit >= 25 ? '#f59e0b' : '#ef4444';
+            // Check their credit as the agreement partner we'd be proposing TO.
+            // For economic_aid we would be the donor (isAidDonor=false for them as receiver → threshold 0).
+            // Drop economic_aid from this check: aid can always be proposed regardless of recipient credit.
+            const blockedAgreements = ['fta', 'pta', 'resource_supply'].filter(type => {
+                const check = checkCreditForTradeAgreement(theirCredit, type, false);
+                return !check.allowed;
+            });
+            const creditTitle = blockedAgreements.length > 0
+                ? 'Credit ' + theirCredit + ' — cannot propose: ' + blockedAgreements.map(t => ({ fta: 'FTA', pta: 'PTA', resource_supply: 'RSC', economic_aid: 'Aid' }[t])).join(', ')
+                : theirCredit >= 75 ? 'Credit ' + theirCredit + ' — preferred trade partner (+affinity bonus)' : 'Credit ' + theirCredit;
+
             cardsHTML += `
                 <div class="nation-card" data-nation-name="${escapeHtml(nation.name)}" data-nation-id="${nation.id}" id="nation-card-${nation.id}">
                     <div class="nation-card-header" onclick="toggleNationCard('${nation.id}')">
@@ -953,6 +967,7 @@ async function renderRelationsTab() {
                                 <span class="relation-badge ${tier.cssClass}">${tier.label}</span>
                                 <span class="nation-card-embassy" style="color:${embassyColor};">${embassyStatus === 'open' ? 'Embassy Open' : embassyStatus === 'closed' ? 'Embassy Closed' : 'No Embassy'}</span>
                                 ${agreementCount > 0 ? '<span class="nation-card-agreements">' + agreementCount + ' agreement' + (agreementCount > 1 ? 's' : '') + '</span>' : ''}
+                                <span style="font-size:11px;color:${creditColor};font-weight:500;" title="${escapeHtml(creditTitle)}">Credit ${Math.round(theirCredit)}</span>
                                 ${unreadByNation[nation.id] ? '<span class="diplo-incoming-msg">[Incoming Message]</span>' : ''}
                             </div>
                             <div class="nation-card-ambassadors">
@@ -4833,6 +4848,7 @@ function renderTradeArticleEditorLocal(container, articleType) {
     `;
     html += '</div>';
     container.innerHTML = html;
+    if (articleType === 'supply_commitment') updateSupplyVolumeHint();
 }
 
 function saveWizardTradeArticle(articleType) {
@@ -6782,20 +6798,20 @@ function renderSupplyCommitmentEditor() {
     return `
         <div class="trade-field">
             <label>Resource</label>
-            <select id="supply-sector">${opts}</select>
+            <select id="supply-sector" onchange="updateSupplyVolumeHint()">${opts}</select>
             <div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px;">Only raw resource sectors available for supply contracts.</div>
         </div>
         <div class="trade-field">
             <label>Direction: Who is the BUYER?</label>
             <div class="trade-radio-group">
-                <label class="trade-radio-option selected" onclick="selectRadioOption(this)">
+                <label class="trade-radio-option selected" onclick="selectRadioOption(this); updateSupplyVolumeHint()">
                     <input type="radio" name="supply-dir" value="we_buy" checked />
                     <div>
                         <div class="trade-radio-label">We BUY from partner</div>
                         <div class="trade-radio-hint">We commit to purchasing from them</div>
                     </div>
                 </label>
-                <label class="trade-radio-option" onclick="selectRadioOption(this)">
+                <label class="trade-radio-option" onclick="selectRadioOption(this); updateSupplyVolumeHint()">
                     <input type="radio" name="supply-dir" value="we_sell" />
                     <div>
                         <div class="trade-radio-label">We SELL to partner</div>
@@ -6806,7 +6822,7 @@ function renderSupplyCommitmentEditor() {
         </div>
         <div class="trade-field">
             <label>Minimum Purchase Commitment</label>
-            <div class="trade-slider-value" id="supply-pct-display">60%</div>
+            <div class="trade-slider-value" id="supply-pct-display">60% <span id="supply-volume-hint" style="font-size:0.72rem;color:var(--text-dim);font-weight:normal;"></span></div>
             <input type="range" class="trade-slider" id="supply-pct" min="10" max="90" value="60" oninput="updateSupplyWarning(this.value)" />
             <div class="trade-slider-labels">
                 <span>10%</span><span>60%</span><span>90%</span>
@@ -6819,7 +6835,13 @@ function renderSupplyCommitmentEditor() {
 }
 
 function updateSupplyWarning(val) {
-    document.getElementById('supply-pct-display').textContent = val + '%';
+    // Rebuild the pct display preserving the hint span
+    const display = document.getElementById('supply-pct-display');
+    if (display) {
+        const hint = document.getElementById('supply-volume-hint');
+        display.textContent = val + '% ';
+        if (hint) display.appendChild(hint);
+    }
     const warn = document.getElementById('supply-warning');
     if (!warn) return;
     const v = parseInt(val);
@@ -6833,6 +6855,24 @@ function updateSupplyWarning(val) {
         warn.className = 'trade-info-box danger';
         warn.textContent = 'At ' + v + '%, high dependency. Partner has significant leverage. Better price, bigger risk.';
     }
+    updateSupplyVolumeHint();
+}
+
+function updateSupplyVolumeHint() {
+    const hint = document.getElementById('supply-volume-hint');
+    if (!hint) return;
+    const sector = document.getElementById('supply-sector')?.value;
+    const dir = document.querySelector('input[name="supply-dir"]:checked')?.value || 'we_buy';
+    const pct = parseInt(document.getElementById('supply-pct')?.value || '60');
+    if (!sector || !currentNation) { hint.textContent = ''; return; }
+    const sectorDef = TRADE_SECTOR_MAP[sector];
+    if (!sectorDef) { hint.textContent = ''; return; }
+    const baseVal = dir === 'we_sell'
+        ? calculateExportCapacity(currentNation, sectorDef)
+        : calculateImportDemand(currentNation, sectorDef);
+    const committedVal = baseVal * pct / 100;
+    const unitStr = formatSectorVolume(committedVal, sector);
+    hint.textContent = unitStr ? '\u2248\u00a0' + unitStr : '';
 }
 
 // ── Price Terms Editor ──
@@ -9500,7 +9540,7 @@ async function renderRelationDetail(nationId) {
             const bilateralRows = bilateralRes.data;
 
             const sectorLabels = {
-                fuel_energy: 'Fuel & Energy', minerals: 'Minerals', food_agriculture: 'Food & Ag',
+                fuel_energy: 'Fuel & Energy', minerals: 'Minerals', food_agriculture: 'Food & Agriculture',
                 manufactured_goods: 'Manufactured', technology: 'Technology', arms: 'Arms',
                 tourism: 'Tourism', services_finance: 'Services'
             };

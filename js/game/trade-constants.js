@@ -90,6 +90,38 @@ for (var _tsi = 0; _tsi < TRADE_SECTORS.length; _tsi++) {
     TRADE_SECTOR_MAP[TRADE_SECTORS[_tsi].key] = TRADE_SECTORS[_tsi];
 }
 
+// ==================== SECTOR DISPLAY UNITS ====================
+// Maps sector keys to real-world commodity units for human-readable volume display.
+// Technology and services_finance are intentionally omitted — they display in currency.
+//
+// Calibration basis (BASE_TRADE_MULTIPLIER = $500M, BASELINE_GDP = $100B):
+//   A typical mid-GDP nation with stat=50 produces ~$5B capacity per sector.
+//   fuel_energy $2.5B → 1 million barrels a day  (Saudi Arabia ≈ 10 Mbbl/d)
+//   others      $100M → 1 unit                   (mid-tier exporter ≈ 50 units)
+export var SECTOR_DISPLAY_UNITS = {
+    fuel_energy:        { unit: 'million barrels a day',     factor: 1 / 2500000000 },
+    food_agriculture:   { unit: 'million tonnes/year',       factor: 1 / 100000000  },
+    minerals:           { unit: 'million tonnes/year',       factor: 1 / 100000000  },
+    manufactured_goods: { unit: 'thousand TEU/year',         factor: 1 / 100000000  },
+    arms:               { unit: 'thousand units/year',       factor: 1 / 100000000  },
+    tourism:            { unit: 'million visitor-days/year', factor: 1 / 100000000  },
+};
+
+/**
+ * Format a trade volume in real-world commodity units.
+ * Returns null for sectors that use currency display (technology, services_finance).
+ * @param {number} val       - internal dollar value
+ * @param {string} sectorKey - sector key
+ * @returns {string|null}
+ */
+export function formatSectorVolume(val, sectorKey) {
+    var def = SECTOR_DISPLAY_UNITS[sectorKey];
+    if (!def) return null;
+    var v = (Number(val) || 0) * def.factor;
+    var str = v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+    return str + '\u00a0' + def.unit;
+}
+
 // ==================== TRADE CALCULATION FUNCTIONS (STUBS) ====================
 
 /**
@@ -239,10 +271,12 @@ export function calculateImportDemand(nation, sector, opts) {
     // ── FOOD & AGRICULTURE ──
     // Everyone needs food. Import based on what you can't grow domestically.
     // Uses population as scaling factor (not GDP) — even poor nations need to eat.
+    // arable_land is treated as 0–1 (not divided by SN) so it stays proportional
+    // to popNorm. At land=0.5 and popNorm=1 the nation is roughly self-sufficient.
     else if (sector.key === 'food_agriculture') {
-        var arableLand = (Number(nation.arable_land) || 0) / SN;
+        var arableLand = (Number(nation.arable_land) || 0) / 100;
         var popNorm = (Number(nation.population) || 1) / PN;
-        var sufficiency = arableLand / Math.max(0.1, popNorm * 1.5);
+        var sufficiency = arableLand / Math.max(0.1, popNorm * 0.5);
         var deficit = Math.max(0, 1 - sufficiency);
         rawDemand = deficit * popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.8;
     }
@@ -391,19 +425,21 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var avgRep = (repA + repB) / 2;
     var reputationBonus = ((avgRep - 50) / 50) * 10;
 
-    // Credit rating: nations with poor credit are unreliable trade partners
-    // Uses the WORSE credit of the two nations (weakest-link principle)
-    // Continuous curve: credit 50+ = no penalty, scales linearly to -20 at credit 0, floor -25 for negative
+    // Credit rating: nations with poor credit are unreliable trade partners; high credit signals trustworthiness
+    // Penalty uses WORSE credit of the two nations (weakest-link): credit 50+ = no penalty, scales linearly to -20 at credit 0, floor -25 for negative
+    // Bonus uses BETTER credit of the two nations (best-link): credit 50 = +0, scales linearly to +10 at credit 100
     var creditA = Number(nationA.credit ?? 50);
     var creditB = Number(nationB.credit ?? 50);
     var worstCredit = Math.min(creditA, creditB);
+    var bestCredit = Math.max(creditA, creditB);
     var creditPenalty = 0;
     if (worstCredit < 50) {
         if (worstCredit < 0) creditPenalty = -25;
         else creditPenalty = -((50 - worstCredit) / 50) * 20;
     }
+    var creditBonus = bestCredit > 50 ? ((bestCredit - 50) / 50) * 10 : 0;
 
-    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + autocracyPenalty + fdiBonus + reputationBonus + creditPenalty;
+    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + autocracyPenalty + fdiBonus + reputationBonus + creditPenalty + creditBonus;
     return Math.round(Math.max(0, affinity));
 }
 
