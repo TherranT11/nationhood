@@ -49,6 +49,9 @@ let selectedIndex = { leader: null };
 // Double-fire guard for appoint action
 let isAppointing = false;
 
+// Track whether candidates were refreshed this tick (loaded from DB)
+let lastRefreshTick = null;
+
 // ── Init ──
 initPage('politics', async (state) => {
     const { nation, faction, shard } = state;
@@ -123,13 +126,14 @@ async function generateAllCandidates() {
     let candidates = null;
     const { data: stored, error: loadErr } = await _supabase
         .from('leadership_candidates')
-        .select('candidates')
+        .select('candidates, last_refresh_tick')
         .eq('faction_id', factionId)
         .eq('role', 'leader')
         .maybeSingle();
 
     if (!loadErr && stored && Array.isArray(stored.candidates) && stored.candidates.length > 0) {
         candidates = stored.candidates;
+        lastRefreshTick = stored.last_refresh_tick;
     } else {
         // Generate fresh candidates and persist them
         candidates = generateLeadershipCandidates(nationName, getNationNames, 3, 'leader');
@@ -180,6 +184,7 @@ function render() {
         <div class="pl-body">
             <div class="pl-list" id="pl-list">
                 ${renderCandidateList(candidates, sel)}
+                ${renderRefreshButton()}
             </div>
             <div class="pl-detail" id="pl-detail">
                 ${selectedCandidate ? renderCandidateDetail(selectedCandidate) : '<div class="pl-detail-empty">Select a candidate</div>'}
@@ -344,9 +349,85 @@ function renderCandidateDetail(c) {
     `;
 }
 
+function renderRefreshButton() {
+    const currentTick = currentShard?.current_tick || 0;
+    const alreadyUsed = lastRefreshTick != null && lastRefreshTick >= currentTick;
+
+    if (alreadyUsed) {
+        return `<div class="pl-refresh-wrap">
+            <button class="pl-refresh-btn pl-refresh-used" disabled>Refresh Leaders</button>
+            <div class="pl-refresh-note">Can only be used once per tick.</div>
+        </div>`;
+    }
+
+    return `<div class="pl-refresh-wrap">
+        <button class="pl-refresh-btn" onclick="window._refreshLeaders()">Refresh Leaders</button>
+        <div class="pl-refresh-note">5 AP — wipe all candidates and generate new ones</div>
+    </div>`;
+}
+
 // ═══════════════════════════════════════
 //  Global handlers
 // ═══════════════════════════════════════
+window._refreshLeaders = async function() {
+    if (isAppointing) return;
+
+    const currentTick = currentShard?.current_tick || 0;
+    if (lastRefreshTick != null && lastRefreshTick >= currentTick) {
+        alert('Can only be used once per tick.');
+        return;
+    }
+
+    if (!confirm('Refresh all leadership candidates?\n\nThis will wipe the current candidates and generate new ones.\nCost: 5 AP')) return;
+
+    isAppointing = true; // reuse the lock to prevent concurrent actions
+    const btn = document.querySelector('.pl-refresh-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Refreshing...'; }
+
+    try {
+        // Deduct 5 AP
+        const apResult = await deductAP(_supabase, currentFaction.id, 5);
+        if (!apResult.success) {
+            alert('Not enough AP. Need 5 AP, have ' + (apResult.currentAp ?? '?') + '.');
+            return;
+        }
+        currentFaction.action_points = apResult.newAp;
+
+        // Generate fresh candidates
+        const nationName = currentNation.name || '';
+        const newCandidates = generateLeadershipCandidates(nationName, getNationNames, 3, 'leader');
+
+        // Persist to DB with last_refresh_tick
+        const { error: upsertErr } = await _supabase.from('leadership_candidates').upsert({
+            faction_id: currentFaction.id,
+            role: 'leader',
+            candidates: newCandidates,
+            generated_at: new Date().toISOString(),
+            last_refresh_tick: currentTick,
+        }, { onConflict: 'faction_id,role' });
+        if (upsertErr) {
+            console.error('Failed to persist refreshed candidates:', upsertErr.message);
+            alert('Error saving new candidates: ' + upsertErr.message);
+            return;
+        }
+
+        // Update local state
+        lastRefreshTick = currentTick;
+        candidatesByRole.leader = newCandidates;
+
+        // Prepend current leader as 0-cost option
+        const currentEntry = buildCurrentCandidateEntry();
+        if (currentEntry) candidatesByRole.leader.unshift(currentEntry);
+
+        selectedIndex.leader = null;
+        render();
+    } catch (e) {
+        alert('Error: ' + e.message);
+    } finally {
+        isAppointing = false;
+    }
+};
+
 window._selectCandidate = function(index) {
     selectedIndex.leader = index;
     render();
