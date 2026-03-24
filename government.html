@@ -286,14 +286,12 @@ const MINISTRY_ACTIONS = {
             },
             {
                 id: 'pharmaceuticalRegulation',
-                triggerKey: 'ministry_pharmaceutical_regulation',
                 name: 'Pharmaceutical Regulation',
                 desc: 'Adjust the regulatory framework governing drug pricing, approval processes, and market access.',
                 apCosts: [2, 3, 5, 7],
                 delay: 2, duration: 8,
                 decayTicks: 3,
                 useResetInterval: 15,
-                hasDirection: true, // signals direction selection UI
                 directions: {
                     increase: {
                         label: 'INCREASE REGULATIONS',
@@ -482,6 +480,51 @@ async function handleFinanceConflict(action, ministryKey) {
     } catch (_) { /* best-effort */ }
 }
 
+// ==================== SHARED MINISTRY HELPERS ====================
+
+// Fetch minister name + party for any ministry (used by event firing)
+async function fetchMinisterInfo(ministryKey) {
+    try {
+        const { data: ministry } = await _supabase
+            .from('ministries')
+            .select('minister_first_name, minister_last_name, factions(faction_name)')
+            .eq('nation_id', currentNation.id)
+            .eq('ministry_key', ministryKey)
+            .single();
+        const ministerName = ministry
+            ? (ministry.minister_first_name + ' ' + (ministry.minister_last_name || '')).trim()
+            : 'Unknown';
+        const partyName = ministry?.factions?.faction_name || currentFaction?.faction_name || 'Unknown';
+        return { ministerName, partyName };
+    } catch (_) {
+        return { ministerName: 'Unknown', partyName: currentFaction?.faction_name || 'Unknown' };
+    }
+}
+
+// Format discretionary balance for display (shared across ministry card renderers)
+function formatDiscretionaryBalance(rawBalance) {
+    const balance = Number(rawBalance || 0);
+    const fmt = balance >= 1000000000
+        ? '$' + (balance / 1000000000).toFixed(1) + 'B'
+        : balance >= 1000000
+        ? '$' + (balance / 1000000).toFixed(1) + 'M'
+        : balance > 0 ? '$' + Math.round(balance).toLocaleString() : '$0';
+    const cls = balance > 0 ? 'color:var(--green)' : 'color:var(--red)';
+    return { balance, fmt, cls };
+}
+
+// Deduct a one-time cost from a ministry's discretionary fund
+async function deductDiscretionaryFund(ministryKey, localMData, currentBalance, cost) {
+    if (cost <= 0) return;
+    const newBalance = Math.max(0, currentBalance - cost);
+    await _supabase.from('ministries')
+        .update({ discretionary_balance: newBalance })
+        .eq('nation_id', currentNation.id)
+        .eq('ministry_key', ministryKey)
+        .eq('is_active', true);
+    if (localMData) localMData.discretionary_balance = newBalance;
+}
+
 // ==================== HEALTHCARE MINISTRY — HELPERS ====================
 
 // One-time cost calculation for healthcare actions
@@ -500,61 +543,52 @@ function formatUpfrontCost(cost) {
 // Track selected pharmaceutical direction: null, 'increase', or 'decrease'
 let _pharmaSelectedDirection = null;
 
-// Handle pharmaceutical conflict: cancel opposing direction if running
+// Handle pharmaceutical conflict: cancel any active pharmaceutical action before activating new direction
 async function handlePharmaceuticalConflict(newDirection) {
-    const oppositeDir = newDirection === 'increase' ? 'decrease' : 'increase';
-    const oppositeActionId = 'healthcare-pharmaceuticalRegulation';
-    const oppositeActionData = activeMinistryActions[oppositeActionId];
-    if (!oppositeActionData) return;
+    const actionId = 'healthcare-pharmaceuticalRegulation';
+    const activeData = activeMinistryActions[actionId];
+    if (!activeData) return;
 
-    // Check if the active action's direction is the opposite
-    const activeDir = typeof oppositeActionData === 'string' ? oppositeActionData : null;
-    if (activeDir && activeDir !== newDirection) {
-        // Cancel the opposing action in DB (best-effort)
-        try {
-            const { data: conflictLogs } = await _supabase
-                .from('ministry_action_log')
-                .select('id')
-                .eq('nation_id', currentNation.id)
-                .eq('ministry_key', 'healthcare')
-                .eq('action_key', 'pharmaceuticalRegulation')
-                .eq('processed', false);
+    const activeDir = typeof activeData === 'string' ? activeData : 'unknown';
 
-            if (conflictLogs?.length) {
-                for (const log of conflictLogs) {
-                    await _supabase.from('ministry_action_log')
-                        .update({ processed: true })
-                        .eq('id', log.id);
-                }
+    // Cancel all unprocessed pharmaceutical actions in DB (best-effort)
+    try {
+        const { data: conflictLogs } = await _supabase
+            .from('ministry_action_log')
+            .select('id')
+            .eq('nation_id', currentNation.id)
+            .eq('ministry_key', 'healthcare')
+            .eq('action_key', 'pharmaceuticalRegulation')
+            .eq('processed', false);
+
+        if (conflictLogs?.length) {
+            for (const log of conflictLogs) {
+                await _supabase.from('ministry_action_log')
+                    .update({ processed: true })
+                    .eq('id', log.id);
             }
-        } catch (_) { /* best-effort */ }
+        }
+    } catch (_) { /* best-effort */ }
 
-        // Fire direction changed event
-        try {
-            const { data: ministry } = await _supabase
-                .from('ministries')
-                .select('minister_first_name, minister_last_name, factions(faction_name)')
-                .eq('nation_id', currentNation.id)
-                .eq('ministry_key', 'healthcare')
-                .single();
-            const ministerName = ministry
-                ? (ministry.minister_first_name + ' ' + (ministry.minister_last_name || '')).trim()
-                : 'Unknown';
-            const partyName = ministry?.factions?.faction_name || currentFaction?.faction_name || 'Unknown';
-            await _supabase.rpc('fire_system_event', {
-                p_trigger_key: 'ministry_pharmaceutical_direction_changed',
-                p_nation_id: currentNation.id,
-                p_tick: currentTick,
-                p_placeholders: {
-                    minister_name: ministerName,
-                    party: partyName,
-                    nation: currentNation.name || 'Unknown',
-                    old_direction: activeDir,
-                    new_direction: newDirection
-                }
-            });
-        } catch (_) { /* best-effort */ }
-    }
+    // Clear local active state so the RPC duplicate check passes
+    delete activeMinistryActions[actionId];
+
+    // Fire direction changed event (best-effort)
+    try {
+        const { ministerName, partyName } = await fetchMinisterInfo('healthcare');
+        await _supabase.rpc('fire_system_event', {
+            p_trigger_key: 'ministry_pharmaceutical_direction_changed',
+            p_nation_id: currentNation.id,
+            p_tick: currentTick,
+            p_placeholders: {
+                minister_name: ministerName,
+                party: partyName,
+                nation: currentNation.name || 'Unknown',
+                old_direction: activeDir,
+                new_direction: newDirection
+            }
+        });
+    } catch (_) { /* best-effort */ }
 }
 
 function formatBudgetDraw(budgetPerCapita, population) {
@@ -3564,13 +3598,7 @@ function buildHealthcareActionRows(isMyMinistry) {
 
     // Discretionary balance
     const ministry = ministryData.find(m => m.ministry_key === 'healthcare');
-    const discretionaryBalance = Number(ministry?.discretionary_balance || 0);
-    const balFmt = discretionaryBalance >= 1000000000
-        ? '$' + (discretionaryBalance / 1000000000).toFixed(1) + 'B'
-        : discretionaryBalance >= 1000000
-        ? '$' + (discretionaryBalance / 1000000).toFixed(1) + 'M'
-        : discretionaryBalance > 0 ? '$' + Math.round(discretionaryBalance).toLocaleString() : '$0';
-    const balCls = discretionaryBalance > 0 ? 'color:var(--green)' : 'color:var(--red)';
+    const { balance: discretionaryBalance, fmt: balFmt, cls: balCls } = formatDiscretionaryBalance(ministry?.discretionary_balance);
 
     let html = `<div class="ministry-card__actions-label" style="display:flex;justify-content:space-between;align-items:center;">
         <span>Ministry Actions</span>
@@ -3773,7 +3801,6 @@ function closePharmaceuticalSelector() {
     const container = document.getElementById('pharma-direction-selector');
     if (container) container.innerHTML = '';
     // Reset tags to default
-    const config = MINISTRY_ACTIONS.healthcare.actions.find(a => a.id === 'pharmaceuticalRegulation');
     const tagsContainer = document.querySelector('#healthcare-pharmaceuticalRegulation .ministry-action__tags');
     if (tagsContainer) {
         tagsContainer.innerHTML = '<span class="tag tag--neutral">SELECT DIRECTION</span>';
@@ -3809,9 +3836,17 @@ async function confirmPharmaceuticalAction(direction) {
     }
 
     // Check if opposing direction is active — confirm cancellation
-    const activeDir = typeof activeMinistryActions[actionId] === 'string' ? activeMinistryActions[actionId] : null;
-    if (activeDir && activeDir !== direction) {
-        const opposingLabel = activeDir === 'increase' ? 'Increase Regulations' : 'Decrease Regulations';
+    const existingActive = activeMinistryActions[actionId];
+    if (existingActive) {
+        const existingDir = typeof existingActive === 'string' ? existingActive : null;
+        if (existingDir === direction) {
+            // Same direction already active — cannot double-activate
+            _ministryActionConfirming = false;
+            alert('This direction is already active.');
+            return;
+        }
+        const opposingLabel = existingDir === 'increase' ? 'Increase Regulations'
+            : existingDir === 'decrease' ? 'Decrease Regulations' : 'current pharmaceutical policy';
         if (!confirm(`This will immediately cancel your active ${opposingLabel} with no fund refund. Continue?`)) {
             _ministryActionConfirming = false;
             return;
@@ -3861,15 +3896,11 @@ async function confirmPharmaceuticalAction(direction) {
 
         if (error) throw error;
 
-        // Deduct one-time cost from discretionary fund
-        if (oneTimeCost > 0) {
-            const newBalance = Math.max(0, balance - oneTimeCost);
-            await _supabase.from('ministries')
-                .update({ discretionary_balance: newBalance })
-                .eq('nation_id', currentNation.id)
-                .eq('ministry_key', 'healthcare');
-            if (mData) mData.discretionary_balance = newBalance;
-        }
+        // === RPC succeeded — action is committed. Everything below is best-effort. ===
+
+        // Deduct one-time cost from discretionary fund (best-effort — action already committed)
+        try { await deductDiscretionaryFund('healthcare', mData, balance, oneTimeCost); }
+        catch (_) { /* fund deduction failed — will be stale until page reload */ }
 
         // Update local state
         const prevAP = currentFaction.action_points || 0;
@@ -3881,19 +3912,9 @@ async function confirmPharmaceuticalAction(direction) {
 
         // Fire event (non-blocking)
         try {
-            const effectiveTriggerKey = dirConfig.triggerKey;
-            const { data: ministryInfo } = await _supabase
-                .from('ministries')
-                .select('minister_first_name, minister_last_name, factions(faction_name)')
-                .eq('nation_id', currentNation.id)
-                .eq('ministry_key', 'healthcare')
-                .single();
-            const ministerName = ministryInfo
-                ? (ministryInfo.minister_first_name + ' ' + (ministryInfo.minister_last_name || '')).trim()
-                : 'Unknown';
-            const partyName = ministryInfo?.factions?.faction_name || currentFaction?.faction_name || 'Unknown';
+            const { ministerName, partyName } = await fetchMinisterInfo('healthcare');
             await _supabase.rpc('fire_system_event', {
-                p_trigger_key: effectiveTriggerKey,
+                p_trigger_key: dirConfig.triggerKey,
                 p_nation_id: currentNation.id,
                 p_tick: currentTick,
                 p_placeholders: {
@@ -3907,7 +3928,7 @@ async function confirmPharmaceuticalAction(direction) {
         } catch (_) { /* best-effort */ }
 
     } catch (e) {
-        // Revert optimistic UI
+        // Revert optimistic UI — only reached if RPC itself failed
         row.classList.remove('active');
         if (btns) btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openPharmaceuticalSelector()">▶ ${apCost} AP</div>`;
         alert('Action failed: ' + (e.message || 'Unknown error'));
@@ -4019,15 +4040,11 @@ async function confirmHealthcareAction(actionId) {
 
         if (error) throw error;
 
-        // Deduct one-time cost from discretionary fund
-        if (oneTimeCost > 0) {
-            const newBalance = Math.max(0, balance - oneTimeCost);
-            await _supabase.from('ministries')
-                .update({ discretionary_balance: newBalance })
-                .eq('nation_id', currentNation.id)
-                .eq('ministry_key', 'healthcare');
-            if (mData) mData.discretionary_balance = newBalance;
-        }
+        // === RPC succeeded — action is committed. Everything below is best-effort. ===
+
+        // Deduct one-time cost from discretionary fund (best-effort — action already committed)
+        try { await deductDiscretionaryFund('healthcare', mData, balance, oneTimeCost); }
+        catch (_) { /* fund deduction failed — will be stale until page reload */ }
 
         // Update local state
         const prevAP = currentFaction.action_points || 0;
@@ -4038,16 +4055,7 @@ async function confirmHealthcareAction(actionId) {
 
         // Fire event (non-blocking)
         try {
-            const { data: ministryInfo } = await _supabase
-                .from('ministries')
-                .select('minister_first_name, minister_last_name, factions(faction_name)')
-                .eq('nation_id', currentNation.id)
-                .eq('ministry_key', 'healthcare')
-                .single();
-            const ministerName = ministryInfo
-                ? (ministryInfo.minister_first_name + ' ' + (ministryInfo.minister_last_name || '')).trim()
-                : 'Unknown';
-            const partyName = ministryInfo?.factions?.faction_name || currentFaction?.faction_name || 'Unknown';
+            const { ministerName, partyName } = await fetchMinisterInfo('healthcare');
             await _supabase.rpc('fire_system_event', {
                 p_trigger_key: config.triggerKey,
                 p_nation_id: currentNation.id,
