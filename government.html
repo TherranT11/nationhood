@@ -879,17 +879,24 @@ async function renderGovernmentPage() {
             fetchActiveCoalition(_supabase, currentNation.id),
             fetchMinistries(),
             _supabase.from('factions')
-                .select('id, faction_name, abbreviation, seats, approval_rating, loyalty, action_points, party_color, party_logo, custom_logo_url')
+                .select('id, faction_name, abbreviation, seats, approval_rating, loyalty, action_points, party_color, party_logo, custom_logo_url, leader_ideology')
                 .eq('nation_id', currentNation.id).eq('faction_type', 'party')
         ]);
 
         // Fetch active Head of Government with trait and party name
         const { data: activeHOG } = await _supabase
             .from('head_of_government')
-            .select('*, factions(id, faction_name, abbreviation), leader_traits(*)')
+            .select('*, factions(id, faction_name, abbreviation, leader_ideology), leader_traits(*)')
             .eq('nation_id', currentNation.id)
             .eq('active', true)
             .maybeSingle();
+
+        // Resolve PM ideology: prefer HOG record, fall back to faction's leader_ideology
+        if (activeHOG) {
+            activeHOG._resolvedIdeology = activeHOG.ideology
+                || activeHOG.factions?.leader_ideology
+                || null;
+        }
 
         coalitionData = coalition;
         ministryData = ministries;
@@ -1342,7 +1349,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                             ${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">PM Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}
                             ${activeHOG ? `
                                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
-                                    <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(activeHOG.ideology)};color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
+                                    <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(activeHOG._resolvedIdeology)};color:white;margin-bottom:6px;">${activeHOG._resolvedIdeology || 'Unknown'}</div>
                                     <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
                                     <div style="font-size:0.75rem;color:var(--green);margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
                                     <div style="font-size:0.75rem;color:var(--red);">▼ ${activeHOG.leader_traits?.downside || ''}</div>
@@ -1523,7 +1530,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                             ${pmApprHtml}
                             ${activeHOG ? `
                                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
-                                    <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(activeHOG.ideology)};color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
+                                    <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(activeHOG._resolvedIdeology)};color:white;margin-bottom:6px;">${activeHOG._resolvedIdeology || 'Unknown'}</div>
                                     <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
                                     <div style="font-size:0.75rem;color:var(--green);margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
                                     <div style="font-size:0.75rem;color:var(--red);">▼ ${activeHOG.leader_traits?.downside || ''}</div>
@@ -4868,13 +4875,15 @@ async function confirmAssign() {
                 .eq('nation_id', currentNation.id)
                 .eq('active', true);
 
-            // Upsert new PM record (nation_id has unique constraint)
+            // Upsert new PM record — use faction's leader_ideology as single source of truth
+            const assignPartyData = allParties.find(p => p.id === selectedCandidate.partyId);
             await _supabase.from('head_of_government').upsert({
                 nation_id: currentNation.id,
                 faction_id: selectedCandidate.partyId,
                 first_name: selectedCandidate.firstName,
                 last_name: selectedCandidate.lastName,
                 age: selectedCandidate.age,
+                ideology: assignPartyData?.leader_ideology || null,
                 active: true
             }, { onConflict: 'nation_id' });
 
@@ -5050,6 +5059,7 @@ async function claimPower() {
                 first_name: pmInsert.minister_first_name,
                 last_name: pmInsert.minister_last_name,
                 age: pmInsert.minister_age,
+                ideology: currentFaction.leader_ideology || null,
                 active: true
             }, { onConflict: 'nation_id' });
         }
