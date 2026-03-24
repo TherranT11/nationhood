@@ -298,11 +298,20 @@ async function insertEventLog(supabase, nationId, eventName, eventDescription, c
 }
 
 async function getOverreachCount(supabase, nationId, currentTick) {
+    // Fetch the overreach_reset_tick so previous president's EOs don't count
+    const { data: nationRow } = await supabase
+        .from('nations')
+        .select('overreach_reset_tick')
+        .eq('id', nationId)
+        .single();
+    const resetTick = nationRow?.overreach_reset_tick || 0;
+    const windowStart = Math.max(currentTick - EO_CONFIG.OVERREACH_WINDOW, resetTick);
+
     const { count } = await supabase
         .from('executive_orders')
         .select('id', { count: 'exact', head: true })
         .eq('nation_id', nationId)
-        .gte('issued_tick', currentTick - EO_CONFIG.OVERREACH_WINDOW);
+        .gte('issued_tick', windowStart);
     return count || 0;
 }
 
@@ -960,6 +969,15 @@ export async function issueStimulusOrder(supabase, nationId, factionId, stimulus
 export async function fetchActiveOrders(supabase, nationId) {
     const currentTick = await getCurrentTick(supabase);
 
+    // Fetch overreach_reset_tick so previous president's EOs don't count toward overreach
+    const { data: nationRow } = await supabase
+        .from('nations')
+        .select('overreach_reset_tick')
+        .eq('id', nationId)
+        .single();
+    const resetTick = nationRow?.overreach_reset_tick || 0;
+    const windowStart = Math.max(currentTick - EO_CONFIG.OVERREACH_WINDOW, resetTick);
+
     const { data: orders } = await supabase
         .from('executive_orders')
         .select('*')
@@ -969,7 +987,7 @@ export async function fetchActiveOrders(supabase, nationId) {
 
     const activeOrders = (orders || []).filter(o => o.is_active);
     const recentOrders = (orders || []).filter(o =>
-        o.issued_tick >= currentTick - EO_CONFIG.OVERREACH_WINDOW
+        o.issued_tick >= windowStart
     );
 
     return {
