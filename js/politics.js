@@ -3145,12 +3145,17 @@ async function _renderActionsPromisesPanel(faction, nation, tick) {
     const container = document.getElementById('ca-promises-container');
     if (!container) return;
 
-    const { data: promises } = await _supabase
+    const { data: promises, error: promisesErr } = await _supabase
         .from('fundraiser_promises')
         .select('*')
         .eq('party_id', faction.id)
         .eq('nation_id', nation.id)
         .eq('status', 'active');
+
+    if (promisesErr) {
+        container.innerHTML = `<div style="color:var(--dred);font-family:var(--dfont-mono);font-size:11px;padding:8px">Failed to load promises.</div>`;
+        return;
+    }
 
     const activePromises = promises || [];
 
@@ -3160,33 +3165,30 @@ async function _renderActionsPromisesPanel(faction, nation, tick) {
     } else {
         for (const p of activePromises) {
             // Field sources (written by executeMakePromise in political-actions.js):
-            //   p.tick_deadline          — absolute tick the promise expires
-            //   p.demand_type            — 'stat_target' | 'crisis_resolution'
-            //   p.demand_text            — human-readable promise text (e.g. "Reduce Inflation to 30")
-            //   p.conditions.stat_key    — stat key for stat_target promises
-            //   p.conditions.direction   — 'above' (increase) | 'below' (decrease)
-            //   p.conditions.target_value — numeric target for stat_target promises
+            //   p.tick_deadline  — absolute tick the promise expires
+            //   p.demand_type    — 'stat_target' | 'crisis_resolution'
+            //   p.demand_text    — full human-readable label ("Reduce Inflation to 30", "Resolve X Crisis")
+            //   p.conditions.direction — 'above' (↑) | 'below' (↓) for stat_target promises
             const ticksLeft = Math.max(0, (p.tick_deadline || 0) - tick);
             const isUrgent = ticksLeft <= 3;
             const isCritical = ticksLeft <= 1;
             const tickColor = isCritical ? 'var(--dred)' : isUrgent ? 'var(--damber)' : 'var(--dgreen)';
             const isCrisis = p.demand_type === 'crisis_resolution';
-            const label = isCrisis
-                ? (p.demand_text || 'Resolve crisis')
-                : (p.conditions?.stat_key || 'Improve stat').replace(/_/g, ' ');
+            // demand_text is the authoritative display label for all promise types.
+            // It is written by executeMakePromise as a complete sentence: "Reduce Inflation to 30"
+            // or "Resolve [Crisis Name]". No reconstruction from conditions needed.
+            const label = p.demand_text || (isCrisis ? 'Resolve crisis' : 'Improve stat');
             const direction = isCrisis ? '✓' : (p.conditions?.direction === 'above' ? '↑' : '↓');
-            const targetValue = p.conditions?.target_value;
 
             rowsHtml += `
             <div style="padding:6px 0;border-bottom:1px solid var(--dborder-1)">
                 <div style="display:flex;justify-content:space-between;align-items:center">
                     <div>
                         <span style="font-family:var(--dfont-mono);font-size:12px;color:var(--dtext-0)">${direction}</span>
-                        <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0);margin-left:4px;text-transform:capitalize">${escapeHtml(label)}</span>
+                        <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0);margin-left:4px">${escapeHtml(label)}</span>
                     </div>
                     <span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${tickColor}">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} left</span>
                 </div>
-                ${targetValue != null ? `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:2px">Target: ${targetValue}</div>` : ''}
             </div>`;
         }
     }
