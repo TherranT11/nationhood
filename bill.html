@@ -880,6 +880,56 @@ function renderArticles() {
                         '240 tick cooldown between changes.' +
                     '</div>' +
                 '</div>';
+        } else if (bill.proposed_abolish_term_limits) {
+            // Abolish Term Limits subtype (authoritarian)
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--red);">' +
+                    '<div class="article-number" style="color:var(--red);">FOUNDATIONAL LAW — AUTHORITARIAN</div>' +
+                    '<div class="article-title">Abolish Term Limits</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill proposes to abolish all presidential term limits.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--red);background:rgba(239,68,68,0.05);">' +
+                    '<div class="repeal-notice-icon">⛓</div>' +
+                    '<div class="repeal-notice-text" style="color:var(--red);">All term limits abolished — indefinite rule permitted</div>' +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--red);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                        'If passed: legitimacy −5, stability +2, presidential term limit removed.<br>' +
+                        'Press freedom will erode over time once enacted.' +
+                    '</div>' +
+                '</div>';
+        } else if (bill.proposed_state_media_control) {
+            // State Media Control Act subtype (authoritarian)
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--red);">' +
+                    '<div class="article-number" style="color:var(--red);">FOUNDATIONAL LAW — AUTHORITARIAN</div>' +
+                    '<div class="article-title">State Media Control Act</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill proposes to place national media under government control.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--red);background:rgba(239,68,68,0.05);">' +
+                    '<div class="repeal-notice-icon">📺</div>' +
+                    '<div class="repeal-notice-text" style="color:var(--red);">Government assumes control of all national media</div>' +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--red);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                        'If passed: press freedom permanently capped at 40, legitimacy −3.' +
+                    '</div>' +
+                '</div>';
+        } else if (bill.proposed_emergency_powers_act) {
+            // Emergency Powers Act subtype (authoritarian)
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--red);">' +
+                    '<div class="article-number" style="color:var(--red);">FOUNDATIONAL LAW — AUTHORITARIAN</div>' +
+                    '<div class="article-title">Emergency Powers Act</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill grants the head of government emergency powers to bypass the legislature.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--red);background:rgba(239,68,68,0.05);">' +
+                    '<div class="repeal-notice-icon">🚨</div>' +
+                    '<div class="repeal-notice-text" style="color:var(--red);">Emergency powers granted to the executive</div>' +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--red);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                        'If passed: stability −2, freedom index −3.<br>' +
+                        'Head of government may declare national emergencies and bypass legislative votes.' +
+                    '</div>' +
+                '</div>';
         } else {
             // Electoral Makeup subtype (default)
             const currentSeatsDisplay = GAME_CONFIG.TOTAL_SEATS;
