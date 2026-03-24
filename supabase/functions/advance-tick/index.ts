@@ -576,10 +576,12 @@ function calculateImportDemand(nation, sector, opts) {
     // ── FOOD & AGRICULTURE ──
     // Everyone needs food. Import based on what you can't grow domestically.
     // Uses population as scaling factor (not GDP) — even poor nations need to eat.
+    // arable_land is treated as 0–1 (not divided by SN) so it stays proportional
+    // to popNorm. At land=0.5 and popNorm=1 the nation is roughly self-sufficient.
     else if (sector.key === 'food_agriculture') {
-        var arableLand = (Number(nation.arable_land) || 0) / SN;
+        var arableLand = (Number(nation.arable_land) || 0) / 100;
         var popNorm = (Number(nation.population) || 1) / PN;
-        var sufficiency = arableLand / Math.max(0.1, popNorm * 1.5);
+        var sufficiency = arableLand / Math.max(0.1, popNorm * 0.5);
         var deficit = Math.max(0, 1 - sufficiency);
         rawDemand = deficit * popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.8;
     }
