@@ -2299,19 +2299,22 @@ function renderSectorDetail(nation, sectorKey) {
         }
         h += '</div>';
 
-        // Available capacity row (supply minus RSC commitments, demand minus RSC commitments)
-        var availableSupply = Math.max(0, supplyVal * (1 - rscExportCommittedPct / 100));
-        var availableDemand = Math.max(0, demandVal * (1 - rscImportCommittedPct / 100));
-        var availSupplyColor = rscExportCommittedPct > 75 ? '#d9534f' : rscExportCommittedPct > 40 ? '#f0ad4e' : '#5cb85c';
-        var availDemandColor = rscImportCommittedPct > 75 ? '#d9534f' : rscImportCommittedPct > 40 ? '#f0ad4e' : '#5cb85c';
-        var supplyTitle = rscExportCommittedPct > 0 ? rscExportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscExportPartners.join(', ') : 'No RSC commitments';
-        var demandTitle = rscImportCommittedPct > 0 ? rscImportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscImportPartners.join(', ') : 'No RSC commitments';
-        h += '<div class="sector-vol-row">';
-        h += '<div class="sector-vol-item" title="' + escapeHtml(supplyTitle) + '"><span class="sector-vol-label">AVAILABLE</span><span class="sector-vol-value" style="color:' + availSupplyColor + '">' + formatBudgetCurrency(availableSupply) + (rscExportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscExportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
-        if (!sector.export_only) {
-            h += '<div class="sector-vol-item" title="' + escapeHtml(demandTitle) + '"><span class="sector-vol-label">UNMET DEMAND</span><span class="sector-vol-value" style="color:' + availDemandColor + '">' + formatBudgetCurrency(availableDemand) + (rscImportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscImportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
+        // Available capacity row — only shown when RSC agreements are locking some capacity.
+        // Without commitments the values are identical to SUPPLY/DEMAND above, so omit to avoid noise.
+        if (rscExportCommittedPct > 0 || rscImportCommittedPct > 0) {
+            var availableSupply = Math.max(0, supplyVal * (1 - rscExportCommittedPct / 100));
+            var availableDemand = Math.max(0, demandVal * (1 - rscImportCommittedPct / 100));
+            var availSupplyColor = rscExportCommittedPct > 75 ? '#d9534f' : rscExportCommittedPct > 40 ? '#f0ad4e' : '#5cb85c';
+            var availDemandColor = rscImportCommittedPct > 75 ? '#d9534f' : rscImportCommittedPct > 40 ? '#f0ad4e' : '#5cb85c';
+            var supplyTitle = rscExportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscExportPartners.join(', ');
+            var demandTitle = rscImportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscImportPartners.join(', ');
+            h += '<div class="sector-vol-row">';
+            h += '<div class="sector-vol-item" title="' + escapeHtml(supplyTitle) + '"><span class="sector-vol-label">AVAILABLE</span><span class="sector-vol-value" style="color:' + availSupplyColor + '">' + formatBudgetCurrency(availableSupply) + (rscExportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscExportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
+            if (!sector.export_only) {
+                h += '<div class="sector-vol-item" title="' + escapeHtml(demandTitle) + '"><span class="sector-vol-label">UNMET DEMAND</span><span class="sector-vol-value" style="color:' + availDemandColor + '">' + formatBudgetCurrency(availableDemand) + (rscImportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscImportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
+            }
+            h += '</div>';
         }
-        h += '</div>';
 
         // Actual trade volumes row
         h += '<div class="sector-vol-row">';
