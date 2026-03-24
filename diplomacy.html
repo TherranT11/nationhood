@@ -72,6 +72,11 @@
 
     <!-- ═══ International Party Organisations View (hidden by default) ═══ -->
     <div id="ipo-view" class="ipo-view ipo-view--hidden"></div>
+
+    <!-- ═══ IPO Creation Modal ═══ -->
+    <div class="modal-overlay" id="ipo-create-modal">
+        <div class="ipo-modal-content" id="ipo-create-modal-inner"></div>
+    </div>
 </div>
 
 <!-- Shared Scripts -->
@@ -14123,11 +14128,621 @@ async function declineIPOInvite(inviteId) {
     }
 }
 
-/**
- * Placeholder for creation modal — Phase 4
- */
+// ==================== IPO CREATION FLOW ====================
+
+// Creation wizard state
+let ipoCreateStep = 1;
+let ipoCreateName = '';
+let ipoCreateDesc = '';
+let ipoCreateLogoSymbol = '◈';
+let ipoCreateLogoText = '';
+let ipoCreateArticles = []; // [{ type: 'mission', config: {...} }, ...]
+
+// Article type definitions
+const IPO_ARTICLE_TYPES = [
+    { key: 'mission',     label: 'I — Mission Statement',           required: true,  maxOne: true },
+    { key: 'leadership',  label: 'II — Leadership',                 required: false, maxOne: true },
+    { key: 'membership',  label: 'III — Membership',                required: false, maxOne: true },
+    { key: 'governance',  label: 'IV — Transparency & Governance',  required: false, maxOne: true },
+    { key: 'resources',   label: 'V — Resources & External Relations', required: false, maxOne: true }
+];
+
+const IPO_IDEOLOGY_AXES = [
+    { axis: 'Individualism / Collectivism', poles: ['Individualism', 'Collectivism'] },
+    { axis: 'Tradition / Progress',         poles: ['Tradition', 'Progress'] },
+    { axis: 'Liberty / Equality',           poles: ['Liberty', 'Equality'] },
+    { axis: 'Freedom / Security',           poles: ['Freedom', 'Security'] },
+    { axis: 'Globalism / Nationalism',      poles: ['Globalism', 'Nationalism'] }
+];
+
 function openIPOCreationModal() {
-    alert('Organisation creation will be available in Phase 4.');
+    ipoCreateStep = 1;
+    ipoCreateName = '';
+    ipoCreateDesc = '';
+    ipoCreateLogoSymbol = '◈';
+    ipoCreateLogoText = '';
+    ipoCreateArticles = [{ type: 'mission', config: { text: '' } }];
+    const modal = document.getElementById('ipo-create-modal');
+    modal.classList.add('active');
+    renderIPOCreateStep();
+}
+
+function closeIPOCreationModal() {
+    document.getElementById('ipo-create-modal').classList.remove('active');
+}
+
+function renderIPOCreateStep() {
+    const inner = document.getElementById('ipo-create-modal-inner');
+    const stepIndicators = [1,2,3].map(i =>
+        `<div class="wizard-step ${i === ipoCreateStep ? 'active' : i < ipoCreateStep ? 'completed' : ''}">
+            <span class="wizard-step-num">${i}</span> ${['Identity','Charter','Confirm'][i-1]}
+        </div>`
+    ).join('');
+
+    let body = '';
+    if (ipoCreateStep === 1) body = renderIPOCreateStep1();
+    else if (ipoCreateStep === 2) body = renderIPOCreateStep2();
+    else body = renderIPOCreateStep3();
+
+    inner.innerHTML = `
+        <div class="ipo-modal-header">
+            <span class="ipo-modal-title">Create Organisation</span>
+            <button class="modal-close" onclick="closeIPOCreationModal()">&times;</button>
+        </div>
+        <div class="wizard-steps">${stepIndicators}</div>
+        <div class="ipo-modal-body">${body}</div>`;
+}
+
+// ── Step 1: Identity ──
+function renderIPOCreateStep1() {
+    const symbolBtns = IPO_LOGO_SYMBOLS.map(s =>
+        `<button class="ipo-symbol-btn ${s === ipoCreateLogoSymbol ? 'selected' : ''}"
+            onclick="ipoSelectSymbol('${s}')">${s}</button>`
+    ).join('');
+
+    return `
+        <div class="trade-field">
+            <label>Organisation Name</label>
+            <input type="text" maxlength="40" value="${escapeHtml(ipoCreateName)}"
+                oninput="ipoCreateName=this.value;ipoUpdateStep1Next()"
+                id="ipo-create-name" placeholder="e.g. Progressive Socialist International" />
+        </div>
+        <div class="trade-field">
+            <label>Description</label>
+            <textarea maxlength="200" rows="2"
+                oninput="ipoCreateDesc=this.value"
+                style="width:100%;padding:4px 8px;font-size:0.78rem;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);border-radius:3px;resize:vertical;"
+                placeholder="Brief description of the organisation's purpose...">${escapeHtml(ipoCreateDesc)}</textarea>
+        </div>
+        <div class="trade-field">
+            <label>Logo Symbol</label>
+            <div class="ipo-symbol-row">${symbolBtns}</div>
+        </div>
+        <div class="trade-field">
+            <label>Logo Text (max 4 characters)</label>
+            <input type="text" maxlength="4" value="${escapeHtml(ipoCreateLogoText)}"
+                oninput="ipoCreateLogoText=this.value.toUpperCase();ipoUpdateStep1Next()"
+                id="ipo-create-logo-text" placeholder="e.g. PSI"
+                style="width:80px;text-transform:uppercase;" />
+            <div style="margin-top:6px;font-family:var(--font-mono);font-size:10px;color:var(--ipo-purple);">
+                Preview: ${ipoCreateLogoSymbol} ${escapeHtml(ipoCreateLogoText) || '...'}
+            </div>
+        </div>
+        <div class="wizard-nav">
+            <button class="wizard-back-btn" onclick="closeIPOCreationModal()">Cancel</button>
+            <button class="wizard-next-btn" id="ipo-step1-next"
+                ${(!ipoCreateName.trim() || !ipoCreateLogoText.trim()) ? 'disabled' : ''}
+                onclick="ipoCreateStep=2;renderIPOCreateStep()">Next</button>
+        </div>`;
+}
+
+function ipoUpdateStep1Next() {
+    const btn = document.getElementById('ipo-step1-next');
+    if (btn) btn.disabled = !ipoCreateName.trim() || !ipoCreateLogoText.trim();
+    // Update preview
+    const preview = document.querySelector('.ipo-modal-body .trade-field:last-of-type div[style]');
+    if (preview) preview.innerHTML = `Preview: ${ipoCreateLogoSymbol} ${escapeHtml(ipoCreateLogoText) || '...'}`;
+}
+
+function ipoSelectSymbol(s) {
+    ipoCreateLogoSymbol = s;
+    renderIPOCreateStep();
+}
+
+// ── Step 2: Charter Articles ──
+function renderIPOCreateStep2() {
+    const articleCards = ipoCreateArticles.map((art, i) => renderIPOArticleCard(art, i)).join('');
+
+    // Available articles to add
+    const usedTypes = new Set(ipoCreateArticles.map(a => a.type));
+    const availableTypes = IPO_ARTICLE_TYPES.filter(t => !usedTypes.has(t.key));
+    const canAdd = ipoCreateArticles.length < 5 && availableTypes.length > 0;
+
+    const addDropdown = canAdd ? `
+        <div class="ipo-add-article-row">
+            <select id="ipo-add-article-select" style="font-size:0.75rem;padding:4px 8px;background:var(--bg-1);color:var(--text-primary);border:1px solid var(--border-hair);border-radius:3px;">
+                <option value="">Add article...</option>
+                ${availableTypes.map(t => `<option value="${t.key}">${t.label}</option>`).join('')}
+            </select>
+            <button class="wizard-next-btn" style="font-size:8px;padding:3px 10px;"
+                onclick="ipoAddArticle()">Add</button>
+        </div>` : '';
+
+    const apCost = 4 + Math.max(0, ipoCreateArticles.length - 1);
+
+    return `
+        <div class="ipo-charter-info">
+            Articles: ${ipoCreateArticles.length}/5 · AP Cost: ${apCost}
+            <span style="color:#4a4840;margin-left:8px;">(Base 4 + 1 per extra article)</span>
+        </div>
+        <div class="ipo-article-list">${articleCards}</div>
+        ${addDropdown}
+        <div class="wizard-nav">
+            <button class="wizard-back-btn" onclick="ipoCreateStep=1;renderIPOCreateStep()">Back</button>
+            <button class="wizard-next-btn" id="ipo-step2-next"
+                ${!ipoValidateCharter() ? 'disabled' : ''}
+                onclick="ipoCreateStep=3;renderIPOCreateStep()">Next</button>
+        </div>`;
+}
+
+function ipoValidateCharter() {
+    const mission = ipoCreateArticles.find(a => a.type === 'mission');
+    return mission && (mission.config.text || '').trim().length > 0;
+}
+
+function ipoAddArticle() {
+    const sel = document.getElementById('ipo-add-article-select');
+    if (!sel || !sel.value) return;
+    const key = sel.value;
+    const defaults = {
+        leadership:  { type: 'rotation', termYears: 2, votingWeight: 'equal', votePass: 'majority' },
+        membership:  { admission: 'vote', ideologicalThreshold: { enabled: false, directions: [] }, expulsionClause: null },
+        governance:  { voteTransparency: 'public', observerStatus: false, vetoRight: null, emergencyPowers: false },
+        resources:   { solidarityFund: { enabled: false, contributionPerQuarter: 1 }, resourceSharingCap: null, jointStatementClause: 'vote', headquarters: null }
+    };
+    ipoCreateArticles.push({ type: key, config: defaults[key] || {} });
+    renderIPOCreateStep();
+}
+
+function ipoRemoveArticle(index) {
+    if (ipoCreateArticles[index]?.type === 'mission') return; // Cannot remove mission
+    ipoCreateArticles.splice(index, 1);
+    renderIPOCreateStep();
+}
+
+function renderIPOArticleCard(art, index) {
+    const typeDef = IPO_ARTICLE_TYPES.find(t => t.key === art.type);
+    const label = typeDef?.label || art.type;
+    const canRemove = art.type !== 'mission';
+    const removeBtn = canRemove ? `<button class="ipo-article-remove" onclick="ipoRemoveArticle(${index})">&times;</button>` : '';
+
+    let fields = '';
+    switch (art.type) {
+        case 'mission': fields = renderMissionFields(art, index); break;
+        case 'leadership': fields = renderLeadershipFields(art, index); break;
+        case 'membership': fields = renderMembershipFields(art, index); break;
+        case 'governance': fields = renderGovernanceFields(art, index); break;
+        case 'resources': fields = renderResourcesFields(art, index); break;
+    }
+
+    return `
+        <div class="ipo-article-card">
+            <div class="ipo-article-card-header">
+                <span class="ipo-article-label">${label}</span>
+                ${removeBtn}
+            </div>
+            <div class="ipo-article-card-body">${fields}</div>
+        </div>`;
+}
+
+// ── Article field renderers ──
+
+function renderMissionFields(art, idx) {
+    return `
+        <textarea maxlength="300" rows="3" placeholder="Describe the organisation's mission and purpose..."
+            oninput="ipoCreateArticles[${idx}].config.text=this.value;document.getElementById('ipo-step2-next').disabled=!ipoValidateCharter()"
+            style="width:100%;padding:4px 8px;font-size:10px;background:#141410;border:1px solid rgba(255,255,255,0.07);color:#e2d9b4;font-family:var(--font-sans);border-radius:2px;resize:vertical;"
+        >${escapeHtml(art.config.text || '')}</textarea>
+        <div style="font-family:var(--font-mono);font-size:7px;color:#4a4840;margin-top:2px;">${(art.config.text||'').length}/300</div>`;
+}
+
+function renderLeadershipFields(art, idx) {
+    const c = art.config;
+    return `
+        ${ipoRadioGroup('Leadership Type', idx, 'type', [
+            { value: 'rotation', label: 'Rotation', hint: 'Presidency rotates in fixed order' },
+            { value: 'most_seats', label: 'Most Seats', hint: 'Party with most seats leads' },
+            { value: 'random', label: 'Random', hint: 'Randomly assigned each term' }
+        ], c.type)}
+        ${ipoSelectField('Succession Term', idx, 'termYears', [1,2,3,4,5,6,7].map(n => ({ value: n, label: n + ' Year' + (n>1?'s':'') })), c.termYears)}
+        ${ipoRadioGroup('Voting Weight', idx, 'votingWeight', [
+            { value: 'equal', label: 'Equal', hint: 'One vote per member' },
+            { value: 'seat_share', label: 'By Seat Share', hint: 'Weighted by parliament seats' }
+        ], c.votingWeight)}
+        ${ipoRadioGroup('Vote Pass Threshold', idx, 'votePass', [
+            { value: 'majority', label: 'Majority', hint: '>50% of votes cast' },
+            { value: 'unanimous', label: 'Unanimous', hint: 'All members must vote yes' }
+        ], c.votePass)}`;
+}
+
+function renderMembershipFields(art, idx) {
+    const c = art.config;
+    const thresh = c.ideologicalThreshold || { enabled: false, directions: [] };
+    const dirs = thresh.directions || [];
+
+    const ideologyCheckboxes = IPO_IDEOLOGY_AXES.map(axis => {
+        const checks = axis.poles.map(pole => {
+            const checked = dirs.includes(pole.toLowerCase());
+            // Check if the opposite pole is already selected
+            const oppositePole = axis.poles.find(p => p !== pole);
+            const oppositeChecked = dirs.includes(oppositePole.toLowerCase());
+            return `<label class="ipo-ideology-check ${oppositeChecked ? 'ipo-disabled' : ''}" style="margin-right:12px;">
+                <input type="checkbox" ${checked ? 'checked' : ''} ${oppositeChecked ? 'disabled' : ''}
+                    onchange="ipoToggleIdeology(${idx},'${pole.toLowerCase()}',this.checked)" />
+                ${pole}
+            </label>`;
+        }).join('');
+        return `<div class="ipo-ideology-axis"><span class="ipo-ideology-axis-name">${axis.axis}</span>${checks}</div>`;
+    }).join('');
+
+    return `
+        ${ipoRadioGroup('New Member Admission', idx, 'admission', [
+            { value: 'vote', label: 'Vote Required', hint: 'Majority vote among members' },
+            { value: 'president', label: 'President Decides', hint: 'President admits unilaterally' }
+        ], c.admission)}
+        ${ipoToggleField('Ideological Threshold', idx, 'ideologicalThreshold.enabled', thresh.enabled)}
+        ${thresh.enabled ? `<div class="ipo-ideology-grid">${ideologyCheckboxes}</div>` : ''}
+        ${ipoToggleField('Expulsion Clause', idx, 'expulsionClauseEnabled', !!c.expulsionClause)}
+        ${c.expulsionClause ? ipoRadioGroup('Expulsion Method', idx, 'expulsionClause', [
+            { value: 'president', label: 'President Only', hint: '' },
+            { value: 'majority', label: 'Majority Vote', hint: '' },
+            { value: 'unanimous', label: 'Unanimous Vote', hint: '' }
+        ], c.expulsionClause) : ''}`;
+}
+
+function renderGovernanceFields(art, idx) {
+    const c = art.config;
+    return `
+        ${ipoRadioGroup('Vote Transparency', idx, 'voteTransparency', [
+            { value: 'public', label: 'Public Ballot', hint: 'All see how everyone voted' },
+            { value: 'secret', label: 'Secret Ballot', hint: 'Only outcome revealed' }
+        ], c.voteTransparency)}
+        ${ipoToggleField('Observer Status', idx, 'observerStatus', c.observerStatus)}
+        ${ipoToggleField('Veto Right', idx, 'vetoRightEnabled', !!c.vetoRight)}
+        ${c.vetoRight ? ipoRadioGroup('Veto Holder', idx, 'vetoRight', [
+            { value: 'founding', label: 'Founding Party', hint: '' },
+            { value: 'president', label: 'Current President', hint: '' },
+            { value: 'hq', label: 'HQ Nation Party', hint: '' }
+        ], c.vetoRight) : ''}
+        ${ipoToggleField('Emergency Powers', idx, 'emergencyPowers', c.emergencyPowers)}`;
+}
+
+function renderResourcesFields(art, idx) {
+    const c = art.config;
+    const fund = c.solidarityFund || { enabled: false, contributionPerQuarter: 1 };
+    return `
+        ${ipoToggleField('Solidarity Fund', idx, 'solidarityFund.enabled', fund.enabled)}
+        ${fund.enabled ? ipoSelectField('Contribution Rate', idx, 'solidarityFund.contributionPerQuarter',
+            [1,2,3].map(n => ({ value: n, label: n + ' AP / Quarter' })), fund.contributionPerQuarter) : ''}
+        ${ipoToggleField('Resource Sharing Cap', idx, 'resourceSharingCapEnabled', c.resourceSharingCap != null)}
+        ${c.resourceSharingCap != null ? ipoSelectField('Max Uses Per Term', idx, 'resourceSharingCap',
+            [1,2,3].map(n => ({ value: n, label: n + ' time' + (n>1?'s':'') })), c.resourceSharingCap || 1) : ''}
+        ${ipoRadioGroup('Joint Statement Clause', idx, 'jointStatementClause', [
+            { value: 'president', label: 'President Alone', hint: '' },
+            { value: 'vote', label: 'Majority Vote Required', hint: '' }
+        ], c.jointStatementClause)}
+        ${ipoToggleField('Headquarters', idx, 'headquartersEnabled', c.headquarters != null)}
+        ${c.headquarters != null ? `<div class="trade-field" style="margin-top:4px;">
+            <label>HQ Nation</label>
+            <div class="trade-info-box info" style="font-size:8px;">Headquarters will be set to your nation on creation. Can be changed later by vote.</div>
+        </div>` : ''}`;
+}
+
+// ── Reusable field helpers ──
+
+function ipoRadioGroup(label, artIdx, key, options, current) {
+    const radios = options.map(opt =>
+        `<label class="trade-radio-option ${opt.value === current ? 'selected' : ''}"
+            onclick="ipoSetArticleField(${artIdx},'${key}','${opt.value}')">
+            <input type="radio" name="ipo_${artIdx}_${key}" value="${opt.value}" ${opt.value === current ? 'checked' : ''} />
+            <div>
+                <div class="trade-radio-label">${opt.label}</div>
+                ${opt.hint ? `<div class="trade-radio-hint">${opt.hint}</div>` : ''}
+            </div>
+        </label>`
+    ).join('');
+    return `
+        <div class="trade-field">
+            <label>${label}</label>
+            <div class="trade-radio-group" style="flex-wrap:wrap;gap:6px;">${radios}</div>
+        </div>`;
+}
+
+function ipoSelectField(label, artIdx, key, options, current) {
+    const opts = options.map(o =>
+        `<option value="${o.value}" ${o.value == current ? 'selected' : ''}>${o.label}</option>`
+    ).join('');
+    return `
+        <div class="trade-field">
+            <label>${label}</label>
+            <select onchange="ipoSetArticleField(${artIdx},'${key}',this.value)"
+                style="width:auto;font-size:0.75rem;padding:4px 8px;background:var(--bg-1);color:var(--text-primary);border:1px solid var(--border-hair);border-radius:3px;">
+                ${opts}
+            </select>
+        </div>`;
+}
+
+function ipoToggleField(label, artIdx, key, isOn) {
+    return `
+        <div class="trade-field" style="display:flex;align-items:center;gap:8px;">
+            <label style="margin-bottom:0;flex:1;">${label}</label>
+            <button class="ipo-toggle-btn ${isOn ? 'is-on' : ''}"
+                onclick="ipoToggleArticleField(${artIdx},'${key}')">
+                ${isOn ? 'ON' : 'OFF'}
+            </button>
+        </div>`;
+}
+
+// ── Field setters ──
+
+function ipoSetArticleField(artIdx, key, value) {
+    const art = ipoCreateArticles[artIdx];
+    if (!art) return;
+    // Handle nested keys like 'solidarityFund.contributionPerQuarter'
+    const parts = key.split('.');
+    let target = art.config;
+    for (let i = 0; i < parts.length - 1; i++) {
+        if (!target[parts[i]]) target[parts[i]] = {};
+        target = target[parts[i]];
+    }
+    // Try to convert to number
+    const numVal = Number(value);
+    target[parts[parts.length - 1]] = isNaN(numVal) ? value : numVal;
+    renderIPOCreateStep();
+}
+
+function ipoToggleArticleField(artIdx, key) {
+    const art = ipoCreateArticles[artIdx];
+    if (!art) return;
+
+    // Special handling for complex toggle fields
+    if (key === 'ideologicalThreshold.enabled') {
+        if (!art.config.ideologicalThreshold) art.config.ideologicalThreshold = { enabled: false, directions: [] };
+        art.config.ideologicalThreshold.enabled = !art.config.ideologicalThreshold.enabled;
+    } else if (key === 'expulsionClauseEnabled') {
+        art.config.expulsionClause = art.config.expulsionClause ? null : 'majority';
+    } else if (key === 'vetoRightEnabled') {
+        art.config.vetoRight = art.config.vetoRight ? null : 'president';
+    } else if (key === 'resourceSharingCapEnabled') {
+        art.config.resourceSharingCap = art.config.resourceSharingCap != null ? null : 2;
+    } else if (key === 'headquartersEnabled') {
+        art.config.headquarters = art.config.headquarters != null ? null : '__self__';
+    } else if (key === 'solidarityFund.enabled') {
+        if (!art.config.solidarityFund) art.config.solidarityFund = { enabled: false, contributionPerQuarter: 1 };
+        art.config.solidarityFund.enabled = !art.config.solidarityFund.enabled;
+    } else {
+        // Simple boolean toggle
+        const parts = key.split('.');
+        let target = art.config;
+        for (let i = 0; i < parts.length - 1; i++) {
+            if (!target[parts[i]]) target[parts[i]] = {};
+            target = target[parts[i]];
+        }
+        target[parts[parts.length - 1]] = !target[parts[parts.length - 1]];
+    }
+    renderIPOCreateStep();
+}
+
+function ipoToggleIdeology(artIdx, direction, checked) {
+    const art = ipoCreateArticles[artIdx];
+    if (!art) return;
+    const thresh = art.config.ideologicalThreshold;
+    if (!thresh) return;
+    if (checked) {
+        if (!thresh.directions.includes(direction)) thresh.directions.push(direction);
+    } else {
+        thresh.directions = thresh.directions.filter(d => d !== direction);
+    }
+    renderIPOCreateStep();
+}
+
+// ── Step 3: Confirm ──
+function renderIPOCreateStep3() {
+    const apCost = 4 + Math.max(0, ipoCreateArticles.length - 1);
+    const articleSummary = ipoCreateArticles.map(art => {
+        const typeDef = IPO_ARTICLE_TYPES.find(t => t.key === art.type);
+        return `<div class="ipo-confirm-article">
+            <span class="ipo-confirm-article-label">${typeDef?.label || art.type}</span>
+            <span class="ipo-confirm-article-detail">${getArticleSummary(art)}</span>
+        </div>`;
+    }).join('');
+
+    return `
+        <div class="ipo-confirm-preview">
+            <div class="ipo-confirm-identity">
+                <span class="ipo-header-logo">${escapeHtml(ipoCreateLogoSymbol)} ${escapeHtml(ipoCreateLogoText)}</span>
+                <div>
+                    <div style="font-family:var(--font-sans);font-size:13px;font-weight:700;color:#e2d9b4;">${escapeHtml(ipoCreateName)}</div>
+                    ${ipoCreateDesc ? `<div style="font-family:var(--font-sans);font-size:10px;color:#6b6a5e;margin-top:2px;">${escapeHtml(ipoCreateDesc)}</div>` : ''}
+                </div>
+            </div>
+            <div class="ipo-confirm-articles">${articleSummary}</div>
+            <div class="ipo-confirm-cost">
+                <div class="ipo-confirm-cost-row">
+                    <span>Base cost</span><span>4 AP</span>
+                </div>
+                ${ipoCreateArticles.length > 1 ? `<div class="ipo-confirm-cost-row">
+                    <span>Extra articles (${ipoCreateArticles.length - 1})</span><span>${ipoCreateArticles.length - 1} AP</span>
+                </div>` : ''}
+                <div class="ipo-confirm-cost-row ipo-confirm-cost-total">
+                    <span>Total</span><span>${apCost} AP</span>
+                </div>
+            </div>
+        </div>
+        <div class="wizard-nav">
+            <button class="wizard-back-btn" onclick="ipoCreateStep=2;renderIPOCreateStep()">Back</button>
+            <button class="ipo-btn ipo-btn--create-large" onclick="submitIPOCreation()">
+                Create Organisation — ${apCost} AP
+            </button>
+        </div>`;
+}
+
+function getArticleSummary(art) {
+    const c = art.config;
+    switch (art.type) {
+        case 'mission': return escapeHtml((c.text || '').substring(0, 80)) + ((c.text||'').length > 80 ? '...' : '');
+        case 'leadership': {
+            const labels = { rotation: 'Rotation', most_seats: 'Most Seats', random: 'Random' };
+            return `${labels[c.type] || c.type} · ${c.termYears}yr · ${c.votingWeight === 'equal' ? 'Equal' : 'Seat Share'} · ${c.votePass === 'unanimous' ? 'Unanimous' : 'Majority'}`;
+        }
+        case 'membership': {
+            const parts = [c.admission === 'vote' ? 'Vote admission' : 'President admits'];
+            if (c.ideologicalThreshold?.enabled && c.ideologicalThreshold.directions?.length)
+                parts.push('Ideology: ' + c.ideologicalThreshold.directions.join(', '));
+            if (c.expulsionClause) parts.push('Expulsion: ' + c.expulsionClause);
+            return parts.join(' · ');
+        }
+        case 'governance': {
+            const parts = [c.voteTransparency === 'public' ? 'Public ballot' : 'Secret ballot'];
+            if (c.observerStatus) parts.push('Observers');
+            if (c.vetoRight) parts.push('Veto: ' + c.vetoRight);
+            if (c.emergencyPowers) parts.push('Emergency powers');
+            return parts.join(' · ');
+        }
+        case 'resources': {
+            const parts = [];
+            if (c.solidarityFund?.enabled) parts.push('Fund: ' + c.solidarityFund.contributionPerQuarter + ' AP/qtr');
+            if (c.resourceSharingCap != null) parts.push('Cap: ' + c.resourceSharingCap + '/term');
+            parts.push('Statements: ' + (c.jointStatementClause === 'president' ? 'President' : 'Vote'));
+            if (c.headquarters != null) parts.push('HQ enabled');
+            return parts.join(' · ');
+        }
+        default: return '';
+    }
+}
+
+// ── Submit creation ──
+async function submitIPOCreation() {
+    if (!currentFaction || !currentNation) return;
+
+    const apCost = 4 + Math.max(0, ipoCreateArticles.length - 1);
+
+    // Deduct AP
+    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+    if (!apResult.success) {
+        alert('Insufficient AP. You need ' + apCost + ' AP to create this organisation.');
+        return;
+    }
+
+    // Build charter JSONB
+    const charter = {};
+    for (const art of ipoCreateArticles) {
+        switch (art.type) {
+            case 'mission':
+                charter.mission = art.config.text || '';
+                break;
+            case 'leadership':
+                charter.leadership = {
+                    type: art.config.type,
+                    termYears: Number(art.config.termYears),
+                    votingWeight: art.config.votingWeight,
+                    votePass: art.config.votePass
+                };
+                break;
+            case 'membership':
+                charter.membership = {
+                    admission: art.config.admission,
+                    ideologicalThreshold: art.config.ideologicalThreshold || { enabled: false, directions: [] },
+                    expulsionClause: art.config.expulsionClause || null
+                };
+                break;
+            case 'governance':
+                charter.governance = {
+                    voteTransparency: art.config.voteTransparency,
+                    observerStatus: !!art.config.observerStatus,
+                    vetoRight: art.config.vetoRight || null,
+                    emergencyPowers: !!art.config.emergencyPowers
+                };
+                break;
+            case 'resources':
+                charter.resources = {
+                    solidarityFund: art.config.solidarityFund || { enabled: false, contributionPerQuarter: 1 },
+                    resourceSharingCap: art.config.resourceSharingCap ?? null,
+                    jointStatementClause: art.config.jointStatementClause || 'vote',
+                    headquarters: art.config.headquarters === '__self__' ? currentNation.id : (art.config.headquarters || null)
+                };
+                break;
+        }
+    }
+
+    // Set defaults for articles not added
+    if (!charter.leadership) charter.leadership = { type: 'rotation', termYears: 2, votingWeight: 'equal', votePass: 'majority' };
+    if (!charter.membership) charter.membership = { admission: 'vote', ideologicalThreshold: { enabled: false, directions: [] }, expulsionClause: null };
+    if (!charter.governance) charter.governance = { voteTransparency: 'public', observerStatus: false, vetoRight: null, emergencyPowers: false };
+    if (!charter.resources) charter.resources = { solidarityFund: { enabled: false, contributionPerQuarter: 1 }, resourceSharingCap: null, jointStatementClause: 'vote', headquarters: null };
+
+    try {
+        // Create org
+        const { data: newOrg, error: orgErr } = await _supabase
+            .from('international_orgs')
+            .insert({
+                name: ipoCreateName.trim(),
+                description: ipoCreateDesc.trim() || null,
+                logo_symbol: ipoCreateLogoSymbol,
+                logo_text: ipoCreateLogoText.trim().toUpperCase(),
+                founded_at_tick: shardTick,
+                founding_party_id: currentFaction.id,
+                president_id: currentFaction.id,
+                president_term_start_tick: shardTick,
+                headquarters_nation_id: charter.resources.headquarters,
+                solidarity_fund_balance: 0,
+                charter: charter
+            })
+            .select('id')
+            .single();
+
+        if (orgErr) {
+            console.error('[IPO] Create org error:', orgErr);
+            alert('Failed to create organisation: ' + orgErr.message);
+            return;
+        }
+
+        // Add founding member
+        const chatColor = IPO_CHAT_COLORS[0];
+        await _supabase.from('ipo_members').insert({
+            org_id: newOrg.id,
+            faction_id: currentFaction.id,
+            role: 'member',
+            joined_at_tick: shardTick,
+            chat_color: chatColor
+        });
+
+        // System chat message
+        await _supabase.from('ipo_chat').insert({
+            org_id: newOrg.id,
+            faction_id: null,
+            is_system: true,
+            message_text: `${escapeHtml(ipoCreateName.trim())} has been founded by ${currentFaction.faction_name}.`,
+            tick_posted: shardTick
+        });
+
+        // Event log entry
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation.id,
+            event_name: `${currentFaction.faction_name} has founded ${ipoCreateName.trim()}.`,
+            trigger_key: 'ipo_founded',
+            category: 'international',
+            effects_applied: { org_name: ipoCreateName.trim(), party: currentFaction.faction_name },
+            fired_at_tick: shardTick
+        });
+
+        closeIPOCreationModal();
+        ipoSelectedOrgId = newOrg.id;
+        renderIPOView();
+    } catch (e) {
+        console.error('[IPO] Creation error:', e);
+        alert('Failed to create organisation.');
+    }
 }
 
 // IPO exports
@@ -14135,10 +14750,20 @@ window.selectIPOOrg = selectIPOOrg;
 window.acceptIPOInvite = acceptIPOInvite;
 window.declineIPOInvite = declineIPOInvite;
 window.openIPOCreationModal = openIPOCreationModal;
+window.closeIPOCreationModal = closeIPOCreationModal;
 window.sendIPOChat = sendIPOChat;
 window.openIPOInviteModal = openIPOInviteModal;
 window.openIPOAmendModal = openIPOAmendModal;
 window.leaveIPOOrg = leaveIPOOrg;
+// IPO creation wizard exports
+window.ipoSelectSymbol = ipoSelectSymbol;
+window.ipoAddArticle = ipoAddArticle;
+window.ipoRemoveArticle = ipoRemoveArticle;
+window.ipoSetArticleField = ipoSetArticleField;
+window.ipoToggleArticleField = ipoToggleArticleField;
+window.ipoToggleIdeology = ipoToggleIdeology;
+window.ipoUpdateStep1Next = ipoUpdateStep1Next;
+window.submitIPOCreation = submitIPOCreation;
 </script>
 
 </body>

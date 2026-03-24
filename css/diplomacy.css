@@ -3681,6 +3681,308 @@ body.light-mode .ipo-sidebar-name.is-active { color: #333; }
 body.light-mode .ipo-main { background: #fff; }
 body.light-mode .ipo-empty-title { color: #333; }
 body.light-mode .ipo-empty-desc { color: #888; }
+/* ══════════════════════════════════════════════════════════════
+   IPO CREATION MODAL
+   ══════════════════════════════════════════════════════════════ */
+
+.ipo-modal-content {
+  background: #1a1a17;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  padding: 24px;
+  max-width: 680px;
+  width: 92%;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.ipo-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.ipo-modal-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ipo-purple);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+#ipo-create-modal .modal-close {
+  background: none;
+  border: none;
+  color: #6b6a5e;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+#ipo-create-modal .modal-close:hover { color: #e2d9b4; }
+
+.ipo-modal-body {
+  margin-top: 12px;
+}
+
+/* ── Wizard step indicators (shared with initiative wizard) ── */
+.wizard-steps {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.wizard-step {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  color: #4a4840;
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 2px;
+  background: transparent;
+}
+.wizard-step.active {
+  color: var(--ipo-purple);
+  border-color: var(--ipo-purple-border);
+  background: var(--ipo-purple-faint);
+}
+.wizard-step.completed {
+  color: #5aafa5;
+  border-color: rgba(90,175,165,0.2);
+  background: rgba(90,175,165,0.06);
+}
+.wizard-step-num {
+  font-weight: 700;
+  margin-right: 3px;
+}
+
+/* ── Symbol selector ── */
+.ipo-symbol-row {
+  display: flex;
+  gap: 6px;
+}
+.ipo-symbol-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  background: #141410;
+  border: 1px solid rgba(255,255,255,0.07);
+  color: var(--ipo-purple);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ipo-symbol-btn:hover {
+  border-color: var(--ipo-purple-border);
+  background: var(--ipo-purple-faint);
+}
+.ipo-symbol-btn.selected {
+  border-color: var(--ipo-purple);
+  background: var(--ipo-purple-hover);
+}
+
+/* ── Charter info bar ── */
+.ipo-charter-info {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: #a89880;
+  padding: 6px 10px;
+  background: rgba(139,126,200,0.06);
+  border: 1px solid rgba(139,126,200,0.15);
+  border-radius: 3px;
+  margin-bottom: 12px;
+}
+
+/* ── Article cards ── */
+.ipo-article-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ipo-article-card {
+  background: #141410;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 3px;
+  border-left: 3px solid var(--ipo-purple-border);
+}
+
+.ipo-article-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background: rgba(139,126,200,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.ipo-article-label {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #5aafa5;
+}
+
+.ipo-article-remove {
+  background: none;
+  border: none;
+  color: #d9534f;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.ipo-article-remove:hover { opacity: 0.7; }
+
+.ipo-article-card-body {
+  padding: 10px 12px;
+}
+
+/* ── Add article row ── */
+.ipo-add-article-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+/* ── Toggle button ── */
+.ipo-toggle-btn {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.03);
+  color: #4a4840;
+  transition: all 0.15s;
+  min-width: 36px;
+}
+.ipo-toggle-btn.is-on {
+  background: rgba(92,184,92,0.12);
+  border-color: rgba(92,184,92,0.3);
+  color: #5cb85c;
+}
+
+/* ── Ideology checkbox grid ── */
+.ipo-ideology-grid {
+  margin: 6px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ipo-ideology-axis {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+}
+.ipo-ideology-axis-name {
+  width: 160px;
+  flex-shrink: 0;
+  color: #6b6a5e;
+  font-size: 8px;
+}
+.ipo-ideology-check {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: #a89880;
+  font-size: 8px;
+  cursor: pointer;
+}
+.ipo-ideology-check.ipo-disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.ipo-ideology-check input[type="checkbox"] {
+  width: 10px;
+  height: 10px;
+  accent-color: var(--ipo-purple);
+}
+
+/* ── Confirm step ── */
+.ipo-confirm-preview {
+  margin-bottom: 16px;
+}
+.ipo-confirm-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.ipo-confirm-articles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.ipo-confirm-article {
+  padding: 6px 10px;
+  background: #141410;
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 2px;
+}
+.ipo-confirm-article-label {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #5aafa5;
+  display: block;
+  margin-bottom: 2px;
+}
+.ipo-confirm-article-detail {
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  color: #a89880;
+}
+.ipo-confirm-cost {
+  background: rgba(200,166,78,0.06);
+  border: 1px solid rgba(200,166,78,0.15);
+  border-radius: 3px;
+  padding: 8px 12px;
+}
+.ipo-confirm-cost-row {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: #a89880;
+  padding: 2px 0;
+}
+.ipo-confirm-cost-total {
+  border-top: 1px solid rgba(200,166,78,0.2);
+  margin-top: 4px;
+  padding-top: 4px;
+  color: #c8a64e;
+  font-weight: 700;
+}
+
+/* ── Light mode overrides ── */
+body.light-mode .ipo-modal-content { background: #fff; border-color: rgba(0,0,0,0.1); }
+body.light-mode .ipo-article-card { background: #fafaf8; border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-symbol-btn { background: #f8f8f6; border-color: rgba(0,0,0,0.08); }
+
 body.light-mode .ipo-header { background: #f0f0ec; }
 body.light-mode .ipo-header-name { color: #333; }
 body.light-mode .ipo-chat-area { background: #fff; }
