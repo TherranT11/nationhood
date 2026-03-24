@@ -79,7 +79,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { isGovernmentAutocracy, isGovernmentPresidential, getGovDisplayLabel, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS } from './js/game-common.js';
+import { isGovernmentAutocracy, isGovernmentPresidential, getGovDisplayLabel, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkCreditForTradeAgreement } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -4672,14 +4672,27 @@ async function renderWizardStep3TradeProposal() {
                 <div class="type-card-grid">`;
 
         // Show bilateral trade agreement types (unilateral types have their own wizard path)
+        const ourCredit = Number(currentNation.credit ?? 50);
         for (const [key, typeInfo] of Object.entries(TRADE_AGREEMENT_TYPES)) {
             if (!typeInfo.bilateral) continue;
-            html += `
+            const isAidDonor = key === 'economic_aid'; // assume proposer is donor
+            const creditCheck = checkCreditForTradeAgreement(ourCredit, key, isAidDonor);
+            if (!creditCheck.allowed) {
+                html += `
+                <div class="type-card" style="opacity:0.45;cursor:not-allowed;position:relative;" title="${escapeHtml(creditCheck.reason)}">
+                    <div class="type-card-short">${escapeHtml(typeInfo.shortLabel)}</div>
+                    <div class="type-card-title">${escapeHtml(typeInfo.label)}</div>
+                    <div class="type-card-effects"><span class="trade-type-tag bilateral">BILATERAL</span></div>
+                    <div style="font-size:0.7rem;color:var(--red);margin-top:4px;">Credit ${Math.round(ourCredit)}/${Math.round(creditCheck.required)} required</div>
+                </div>`;
+            } else {
+                html += `
                 <div class="type-card" onclick="selectTradeAgreementType('${key}')">
                     <div class="type-card-short">${escapeHtml(typeInfo.shortLabel)}</div>
                     <div class="type-card-title">${escapeHtml(typeInfo.label)}</div>
                     <div class="type-card-effects"><span class="trade-type-tag bilateral">BILATERAL</span></div>
                 </div>`;
+            }
         }
         html += '</div></div>';
         html += '<div class="wizard-nav" style="margin-top:12px;"><button class="wizard-back-btn" onclick="wizardBackToStep2()">Back</button></div>';
@@ -5364,8 +5377,17 @@ async function wizardSubmit() {
 // (Step 4B removed — trade type selection now happens inside negotiations)
 
 async function submitTradeProposal() {
+    if (_diploActionLock) return;
     if (!wizardTargetNation || !wizardTradeAgreementType) {
         alert('Missing target nation or agreement type.');
+        return;
+    }
+
+    // Credit rating gate — prevent proposals if credit too low for this agreement type
+    const isAidDonor = wizardTradeAgreementType === 'economic_aid';
+    const creditCheck = checkCreditForTradeAgreement(currentNation.credit, wizardTradeAgreementType, isAidDonor);
+    if (!creditCheck.allowed) {
+        alert(creditCheck.reason);
         return;
     }
 
@@ -5385,6 +5407,8 @@ async function submitTradeProposal() {
     const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isMoT && !diplomaticRoles.isFM;
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
+    _diploActionLock = true;
+    try {
     // Deduct AP
     const apResult = await deductAP(_supabase, currentFaction.id, apCost);
     if (!apResult.success) {
@@ -5474,6 +5498,9 @@ async function submitTradeProposal() {
         await renderInitiativeWizard();
     }
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
+    } finally {
+        _diploActionLock = false;
+    }
 }
 
 // ==================== VIEW ACTIVE AGREEMENT IN DRAFT BOX ====================
@@ -9435,6 +9462,173 @@ async function renderRelationDetail(nationId) {
             }
             html += '</div>';
         }
+
+        // ── Trade Profile snapshot ──
+        try {
+            // First get the latest tick for this nation's trade data
+            const { data: latestRow } = await _supabase.from('trade_flows')
+                .select('tick')
+                .eq('nation_id', nationId)
+                .order('tick', { ascending: false })
+                .limit(1);
+            const latestTick = latestRow?.[0]?.tick;
+
+            // Fetch both nations' trade flows + bilateral trade in parallel
+            const [theirFlowsRes, ourFlowsRes, bilateralRes] = await Promise.all([
+                latestTick != null
+                    ? _supabase.from('trade_flows')
+                        .select('sector, export_capacity, import_demand')
+                        .eq('nation_id', nationId)
+                        .eq('tick', latestTick)
+                    : Promise.resolve({ data: null }),
+                latestTick != null && currentNation
+                    ? _supabase.from('trade_flows')
+                        .select('sector, export_capacity, import_demand')
+                        .eq('nation_id', currentNation.id)
+                        .eq('tick', latestTick)
+                    : Promise.resolve({ data: null }),
+                latestTick != null && currentNation
+                    ? _supabase.from('trade_partners')
+                        .select('sector, trade_volume, exporter_nation_id, importer_nation_id')
+                        .eq('tick', latestTick)
+                        .or('and(exporter_nation_id.eq.' + currentNation.id + ',importer_nation_id.eq.' + nationId + '),' +
+                            'and(exporter_nation_id.eq.' + nationId + ',importer_nation_id.eq.' + currentNation.id + ')')
+                    : Promise.resolve({ data: null })
+            ]);
+            const tFlows = theirFlowsRes.data;
+            const ourFlows = ourFlowsRes.data;
+            const bilateralRows = bilateralRes.data;
+
+            const sectorLabels = {
+                fuel_energy: 'Fuel & Energy', minerals: 'Minerals', food_agriculture: 'Food & Ag',
+                manufactured_goods: 'Manufactured', technology: 'Technology', arms: 'Arms',
+                tourism: 'Tourism', services_finance: 'Services'
+            };
+
+            if (tFlows && tFlows.length > 0) {
+                // Sort by export capacity descending for "strong exports"
+                const byExport = [...tFlows].sort((a, b) => (b.export_capacity || 0) - (a.export_capacity || 0));
+                const topExports = byExport.filter(f => (f.export_capacity || 0) > 0).slice(0, 3);
+
+                // Sort by import demand descending for "high demand"
+                const byDemand = [...tFlows].sort((a, b) => (b.import_demand || 0) - (a.import_demand || 0));
+                const topImports = byDemand.filter(f => (f.import_demand || 0) > 0).slice(0, 3);
+
+                if (topExports.length > 0 || topImports.length > 0) {
+                    html += '<div class="diplo-section-title" style="margin-top:8px;">Trade Profile</div>';
+                    html += '<div style="display:flex;gap:12px;flex-wrap:wrap;">';
+                    if (topExports.length > 0) {
+                        html += '<div style="flex:1;min-width:120px;">';
+                        html += '<div style="font-size:0.65rem;color:var(--text-muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:0.5px;">Exports</div>';
+                        for (const f of topExports) {
+                            const label = sectorLabels[f.sector] || f.sector;
+                            html += '<div style="font-size:0.72rem;color:#5cb85c;line-height:1.6;">' + escapeHtml(label) + ' <span style="color:var(--text-muted);">' + fmtBudgetCurrency(f.export_capacity) + '</span></div>';
+                        }
+                        html += '</div>';
+                    }
+                    if (topImports.length > 0) {
+                        html += '<div style="flex:1;min-width:120px;">';
+                        html += '<div style="font-size:0.65rem;color:var(--text-muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:0.5px;">Needs</div>';
+                        for (const f of topImports) {
+                            const label = sectorLabels[f.sector] || f.sector;
+                            html += '<div style="font-size:0.72rem;color:#c9a54e;line-height:1.6;">' + escapeHtml(label) + ' <span style="color:var(--text-muted);">' + fmtBudgetCurrency(f.import_demand) + '</span></div>';
+                        }
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                }
+            }
+
+            // ── Trade Opportunities: bilateral flow vs potential ──
+            if (tFlows && ourFlows && currentNation) {
+                // Build lookup maps
+                const theirMap = {};
+                for (const f of tFlows) theirMap[f.sector] = f;
+                const ourMap = {};
+                for (const f of ourFlows) ourMap[f.sector] = f;
+
+                // Build bilateral flow map: what's currently trading between us
+                const currentFlow = {}; // sector → { weExport, weImport }
+                if (bilateralRows) {
+                    for (const row of bilateralRows) {
+                        if (!currentFlow[row.sector]) currentFlow[row.sector] = { weExport: 0, weImport: 0 };
+                        if (row.exporter_nation_id === currentNation.id) {
+                            currentFlow[row.sector].weExport += Number(row.trade_volume) || 0;
+                        } else {
+                            currentFlow[row.sector].weImport += Number(row.trade_volume) || 0;
+                        }
+                    }
+                }
+
+                // Check if an active trade agreement exists (FTA/PTA/RSC)
+                const hasTradeAgreement = proposals.some(p =>
+                    p.proposal_type === 'trade_agreement' && ['fta', 'rsc', 'pta'].includes(p.proposal_data?.agreement_type));
+
+                // Find complementary sectors:
+                //   "We can sell" = our export capacity + their import demand
+                //   "We can buy" = their export capacity + our import demand
+                const opportunities = [];
+                const allSectors = new Set([...Object.keys(ourMap), ...Object.keys(theirMap)]);
+                for (const sector of allSectors) {
+                    const ours = ourMap[sector];
+                    const theirs = theirMap[sector];
+                    const flow = currentFlow[sector] || { weExport: 0, weImport: 0 };
+                    const ourExCap = Number(ours?.export_capacity || 0);
+                    const theirDemand = Number(theirs?.import_demand || 0);
+                    const theirExCap = Number(theirs?.export_capacity || 0);
+                    const ourDemand = Number(ours?.import_demand || 0);
+
+                    // "We can sell to them" – our exports matching their demand
+                    if (ourExCap > 0 && theirDemand > 0) {
+                        const potential = Math.min(ourExCap, theirDemand);
+                        opportunities.push({
+                            sector,
+                            direction: 'sell',
+                            currentVol: flow.weExport,
+                            potential,
+                        });
+                    }
+                    // "We can buy from them" – their exports matching our demand
+                    if (theirExCap > 0 && ourDemand > 0) {
+                        const potential = Math.min(theirExCap, ourDemand);
+                        opportunities.push({
+                            sector,
+                            direction: 'buy',
+                            currentVol: flow.weImport,
+                            potential,
+                        });
+                    }
+                }
+
+                // Sort by untapped potential (biggest gap between potential and current)
+                opportunities.sort((a, b) => (b.potential - b.currentVol) - (a.potential - a.currentVol));
+
+                // Show top opportunities (up to 5)
+                const topOpps = opportunities.filter(o => o.potential > 0).slice(0, 5);
+                if (topOpps.length > 0) {
+                    html += '<div class="diplo-section-title" style="margin-top:8px;">Trade Opportunities</div>';
+                    html += '<div style="font-size:0.62rem;color:var(--text-dim);margin-bottom:4px;">Current open-market flow vs. complementary capacity' + (hasTradeAgreement ? '' : ' — a trade agreement could unlock more') + '</div>';
+                    for (const opp of topOpps) {
+                        const label = sectorLabels[opp.sector] || opp.sector;
+                        const dirLabel = opp.direction === 'sell' ? 'We export' : 'We import';
+                        const dirColor = opp.direction === 'sell' ? '#5cb85c' : '#c9a54e';
+                        const pct = opp.potential > 0 ? Math.round((opp.currentVol / opp.potential) * 100) : 0;
+                        const barPct = Math.min(100, pct);
+
+                        html += '<div style="margin-bottom:5px;">';
+                        html += '<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:0.7rem;">';
+                        html += '<span style="color:' + dirColor + ';">' + escapeHtml(label) + ' <span style="color:var(--text-dim);font-size:0.62rem;">(' + dirLabel + ')</span></span>';
+                        html += '<span style="color:var(--text-muted);font-size:0.62rem;">' + fmtBudgetCurrency(opp.currentVol) + ' / ' + fmtBudgetCurrency(opp.potential) + '</span>';
+                        html += '</div>';
+                        // Progress bar: current flow vs potential
+                        html += '<div style="height:4px;background:var(--bg-tertiary);border-radius:2px;margin-top:2px;overflow:hidden;">';
+                        html += '<div style="height:100%;width:' + barPct + '%;background:' + dirColor + ';border-radius:2px;transition:width 0.3s;"></div>';
+                        html += '</div>';
+                        html += '</div>';
+                    }
+                }
+            }
+        } catch (_tradeErr) { /* non-critical — profile section simply omitted */ }
 
         // Action buttons
         html += '<div class="detail-actions">';

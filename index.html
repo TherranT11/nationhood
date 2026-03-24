@@ -3,119 +3,113 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nationhood | Faction Login</title>
+    <title>Nationhood | Political Simulation</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/index.css">
+    <link rel="stylesheet" href="css/welcome.css">
 </head>
 <body>
-<div class="page-title">Nationhood</div>
-<div class="login-card">
-    <div class="login-header">
-        <span class="dot"></span>
-        <span class="title">Faction Login</span>
+
+<nav class="wl-nav">
+    <span class="wl-nav-brand">Nationhood</span>
+    <div class="wl-nav-links">
+        <a href="login.html" class="wl-nav-link login">Login</a>
+        <a href="signup.html" class="wl-nav-link signup">Sign Up</a>
     </div>
-    <div class="login-body">
-        <div class="initials-block">
-            <div class="initials-icon">NH</div>
-            <div class="initials-subtitle">Enter the Chronicle</div>
+</nav>
+
+<div class="wl-hero">
+    <div class="wl-hero-badge">Alpha Build</div>
+    <h1 class="wl-hero-title">Govern a nation. Shape a continent.</h1>
+    <p class="wl-hero-sub">
+        Nationhood is a multiplayer political simulation where every law, budget, and diplomatic
+        deal is decided by real players. Found a party, win elections, form coalitions, and steer
+        your nation through economic crises, trade wars, and the politics of survival.
+    </p>
+    <div class="wl-hero-actions">
+        <a href="signup.html" class="wl-btn primary">Sign Up for the Alpha</a>
+        <a href="login.html" class="wl-btn secondary">Login</a>
+        <a href="https://discord.gg/zdfeWdCxf" target="_blank" rel="noopener" class="wl-btn discord">Discuss on Discord</a>
+    </div>
+</div>
+
+<div class="wl-divider"></div>
+
+<!-- Political Parties -->
+<div class="wl-section">
+    <div class="wl-section-header">
+        <span class="wl-section-dot" style="background:var(--blue)"></span>
+        <span class="wl-section-title">Political Parties</span>
+        <span class="wl-section-tag available">Playable Now</span>
+    </div>
+    <p class="wl-section-desc">
+        Create a political party, recruit a leader, and fight for seats in parliament.
+        Draft legislation, negotiate coalitions, set tax policy, manage diplomacy,
+        and try to hold power long enough to actually change something.
+    </p>
+    <div class="wl-features">
+        <div class="wl-feature">
+            <div class="wl-feature-title">Elections & Campaigns</div>
+            <div class="wl-feature-text">Run rallies, craft messaging, target voter blocs, and compete in multi-party elections with real seat math.</div>
         </div>
-        <div class="rule"></div>
-        <form id="login-form">
-            <div class="input-group">
-                <label>Email Address</label>
-                <input type="email" id="email" required>
-            </div>
-            <div class="input-group">
-                <label>Password</label>
-                <input type="password" id="password" required>
-            </div>
-            <button type="submit" class="btn-login" id="login-btn">Enter the Chronicle</button>
-            <div id="error-message" class="error"></div>
-            <div id="loading-message" class="loading"></div>
-        </form>
-        <div class="signup-link">
-            New to the continent? <a href="signup.html">Establish a Faction</a>
+        <div class="wl-feature">
+            <div class="wl-feature-title">Legislation</div>
+            <div class="wl-feature-text">Draft bills, whip votes, navigate committee review, and fight floor debates to pass or block policy.</div>
+        </div>
+        <div class="wl-feature">
+            <div class="wl-feature-title">Coalitions & Governance</div>
+            <div class="wl-feature-text">No majority? Negotiate coalition deals, divide ministries, and hold a fragile government together.</div>
+        </div>
+        <div class="wl-feature">
+            <div class="wl-feature-title">Diplomacy & Trade</div>
+            <div class="wl-feature-text">Appoint ambassadors, propose trade agreements, set tariffs, and manage relations with other player-run nations.</div>
         </div>
     </div>
 </div>
-<script type="module">
-import { _supabase } from './js/supabase-client.js';
 
-    // On page load, check if user is already logged in
-    (async () => {
-        const { data: { user } } = await _supabase.auth.getUser();
-        if (user) {
-            // Already authenticated — route them appropriately
-            await routeUser(user);
-        }
-    })();
+<div class="wl-divider"></div>
 
-    document.getElementById('login-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
+<!-- Corporations -->
+<div class="wl-section">
+    <div class="wl-section-header">
+        <span class="wl-section-dot" style="background:var(--amber)"></span>
+        <span class="wl-section-title">Corporations</span>
+        <span class="wl-section-tag coming-soon">Coming Soon</span>
+    </div>
+    <p class="wl-section-desc">
+        Build a corporate empire inside a player-driven economy. Lobby governments for favorable
+        regulation, compete for market share across sectors, and navigate the intersection of
+        profit and politics.
+    </p>
+    <div class="wl-coming-placeholder">
+        Corporate gameplay is in development. Sectors, trade flows, and tariff systems are
+        already live &mdash; corporations will plug directly into the existing economic simulation.
+    </div>
+</div>
 
-        const errorMsg   = document.getElementById('error-message');
-        const loadingMsg = document.getElementById('loading-message');
-        const loginBtn   = document.getElementById('login-btn');
+<div class="wl-divider"></div>
 
-        errorMsg.textContent   = '';
-        loadingMsg.textContent = '';
+<!-- Military Branches -->
+<div class="wl-section">
+    <div class="wl-section-header">
+        <span class="wl-section-dot" style="background:var(--red)"></span>
+        <span class="wl-section-title">Military Branches</span>
+        <span class="wl-section-tag coming-soon">Coming Soon</span>
+    </div>
+    <p class="wl-section-desc">
+        Command a branch of your nation's armed forces. Manage readiness, advise the
+        civilian government on defense spending, and execute operations when diplomacy fails.
+    </p>
+    <div class="wl-coming-placeholder">
+        Military gameplay is in development. Defense budgets and military strength stats are
+        already tracked &mdash; branch command will give players direct control over force structure and deployment.
+    </div>
+</div>
 
-        const email    = document.getElementById('email').value;
-        const password = document.getElementById('password').value;
+<div class="wl-footer">
+    <div class="wl-footer-text">Nationhood Alpha &mdash; A political simulation by players, for players</div>
+</div>
 
-        // Disable button and show loading state
-        loginBtn.disabled = true;
-        loadingMsg.textContent = 'Signing in…';
-
-        try {
-            const { data, error } = await _supabase.auth.signInWithPassword({
-                email: email,
-                password: password,
-            });
-            if (error) throw error;
-
-            loadingMsg.textContent = 'Checking faction status…';
-
-            // Route based on faction setup state
-            await routeUser(data.user);
-
-        } catch (error) {
-            console.error('Login error:', error);
-            errorMsg.textContent = error.message || 'Login failed. Please try again.';
-            loginBtn.disabled    = false;
-            loadingMsg.textContent = '';
-        }
-    });
-
-    /**
-     * Checks the user's faction status and redirects accordingly:
-     *   - Has a party with a nation assigned → dashboard.html
-     *   - Anything else (no faction, no nation, etc.) → select-nation.html
-     */
-    async function routeUser(user) {
-        try {
-            const { data: faction } = await _supabase
-                .from('factions')
-                .select('*')
-                .eq('id', user.id)
-                .single();
-
-            if (faction && faction.faction_type === 'party' && faction.nation_id) {
-                // Fully set up — go to home dashboard
-                window.location.href = 'dashboard.html';
-            } else {
-                // Needs setup — route into nation selection onboarding
-                window.location.href = 'select-nation.html';
-            }
-
-        } catch (error) {
-            console.error('Faction check error:', error);
-            // If faction lookup fails, send user to onboarding instead of dropping into gameplay.
-            window.location.href = 'select-nation.html';
-        }
-    }
-</script>
 </body>
 </html>

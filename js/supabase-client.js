@@ -57,13 +57,13 @@ export const _supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /**
  * Check if user is authenticated
- * Redirects to index.html if not
+ * Redirects to login.html if not
  * @returns {Promise<object|null>} User object or null
  */
 export async function requireAuth() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) {
-        window.location.href = 'index.html';
+        window.location.href = 'login.html';
         return null;
     }
     return user;

@@ -9,7 +9,7 @@ import { isAutocracy } from './government-types.js';
 // ==================== TRADE SYSTEM CONSTANTS ====================
 
 export var TRADE_CONFIG = {
-    BASE_TRADE_MULTIPLIER: 50000000,       // base dollar value per unit of export capacity
+    BASE_TRADE_MULTIPLIER: 500000000,      // base dollar value per unit of export capacity
     BASELINE_GDP: 100000000000,            // 100B — the "average" GDP for scaling
     HISTORY_TICKS: 24,                     // keep 2 game-years of trade history
 };
@@ -391,7 +391,19 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var avgRep = (repA + repB) / 2;
     var reputationBonus = ((avgRep - 50) / 50) * 10;
 
-    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + autocracyPenalty + fdiBonus + reputationBonus;
+    // Credit rating: nations with poor credit are unreliable trade partners
+    // Uses the WORSE credit of the two nations (weakest-link principle)
+    // Continuous curve: credit 50+ = no penalty, scales linearly to -20 at credit 0, floor -25 for negative
+    var creditA = Number(nationA.credit ?? 50);
+    var creditB = Number(nationB.credit ?? 50);
+    var worstCredit = Math.min(creditA, creditB);
+    var creditPenalty = 0;
+    if (worstCredit < 50) {
+        if (worstCredit < 0) creditPenalty = -25;
+        else creditPenalty = -((50 - worstCredit) / 50) * 20;
+    }
+
+    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + autocracyPenalty + fdiBonus + reputationBonus + creditPenalty;
     return Math.round(Math.max(0, affinity));
 }
 

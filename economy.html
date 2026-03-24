@@ -27,7 +27,7 @@ import { initPage, qCache, qCacheSet, formatCurrency, assertRawEconomicValue } f
 import './js/guide.js';
 import { escapeHtml } from './js/utils.js';
 import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
-import { calculateNationalBudget, applyTradeTariffOverride, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, isAutocracy, ISSUE_CATEGORY_STATS, formatStatName, deductAP, fetchActiveCoalition, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG, buildFundingPctMap, getInstFundingPct } from './js/game-common.js';
+import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, isAutocracy, ISSUE_CATEGORY_STATS, formatStatName, deductAP, fetchActiveCoalition, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG, buildFundingPctMap, getInstFundingPct } from './js/game-common.js';
 
 // ==================== STATE ====================
 var previousTickData = null;
@@ -188,6 +188,7 @@ async function loadExpenditureData(nationId, nation) {
         .eq('nation_id', nationId);
 
     var yearStartTick = Math.floor(currentTick / GAME_CONFIG.TICKS_PER_YEAR) * GAME_CONFIG.TICKS_PER_YEAR;
+    var inflationMult = getInflationMultiplier(nation.inflation);
 
     for (var i = 0; i < (res.data || []).length; i++) {
         var law = res.data[i];
@@ -215,6 +216,7 @@ async function loadExpenditureData(nationId, nation) {
             }
         }
 
+        policyCost *= inflationMult;
         totals[cat] += policyCost;
         if (policyCost > 0) {
             details[cat].push({ name: policy.policy_name, cost: policyCost, type: 'policy' });
@@ -243,6 +245,7 @@ async function loadExpenditureData(nationId, nation) {
             if (!fCat) continue;
             var baseVal = Number(cfg.base_cost_per_capita || 0);
             var instNeeded = cfg.scaling_type === 'gdp' ? (baseVal / 100) * gdp : baseVal * population;
+            instNeeded *= inflationMult;
             var instFundPct = getInstFundingPct(allocMap, cfg.id);
             var instCost = instNeeded * (instFundPct / 100);
             if (!catFundingSums[fCat]) catFundingSums[fCat] = { totalPct: 0, count: 0 };
