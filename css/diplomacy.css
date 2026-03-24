@@ -2859,7 +2859,7 @@ body.light-mode .action-badge {
   cursor: pointer;
   transition: all 0.15s;
 }
-.diplo-view-btn:first-child { border-right: none; }
+.diplo-view-btn:not(:last-child) { border-right: none; }
 .diplo-view-btn:hover { color: var(--text-muted); background: var(--bg-3); }
 .diplo-view-btn.is-active {
   color: var(--teal);
@@ -3102,8 +3102,283 @@ body.light-mode .diplo-view-btn.is-active {
   border-color: rgba(91,154,139,0.25);
 }
 
+/* ══════════════════════════════════════════════════════════════
+   INTERNATIONAL PARTY ORGANISATIONS (IPO)
+   Purple accent: #8b7ec8
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── IPO Design Tokens ── */
+:root {
+  --ipo-purple: #8b7ec8;
+  --ipo-purple-faint: rgba(139,126,200,0.06);
+  --ipo-purple-hover: rgba(139,126,200,0.1);
+  --ipo-purple-border: rgba(139,126,200,0.25);
+  --ipo-fund-amber: #c8a64e;
+}
+
+/* ── IPO View Container ── */
+.ipo-view {
+  display: flex;
+  min-height: calc(100vh - 80px);
+  padding: 16px 24px 24px;
+  gap: 0;
+}
+.ipo-view--hidden { display: none !important; }
+
+/* ── IPO Sidebar ── */
+.ipo-sidebar {
+  width: 220px;
+  min-width: 220px;
+  background: #141410;
+  border-right: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px 0 0 4px;
+}
+
+.ipo-sidebar-header {
+  height: 38px;
+  background: #1e1e1a;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+}
+
+.ipo-sidebar-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #5aafa5;
+  flex-shrink: 0;
+}
+
+.ipo-sidebar-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #6b6a5e;
+}
+
+.ipo-sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ── Sidebar Org Items ── */
+.ipo-sidebar-item {
+  padding: 9px 14px;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.1s;
+}
+.ipo-sidebar-item:hover {
+  background: rgba(255,255,255,0.02);
+}
+.ipo-sidebar-item.is-active {
+  border-left-color: var(--ipo-purple);
+  background: var(--ipo-purple-faint);
+}
+
+.ipo-sidebar-logo {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ipo-purple);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.ipo-sidebar-logo.is-active {
+  color: #e2d9b4;
+}
+
+.ipo-sidebar-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ipo-sidebar-name {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  color: #a89880;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ipo-sidebar-name.is-active {
+  color: #e2d9b4;
+}
+
+.ipo-sidebar-meta {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: #4a4840;
+}
+
+/* ── Sidebar Invitation Items ── */
+.ipo-sidebar-invite {
+  padding: 9px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  border-left: 3px solid var(--ipo-purple-border);
+  background: var(--ipo-purple-faint);
+}
+.ipo-sidebar-invite-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.ipo-sidebar-invite-from {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: #6b6a5e;
+  display: block;
+  margin-bottom: 6px;
+}
+.ipo-sidebar-invite-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* ── Create Organisation Button (sidebar bottom) ── */
+.ipo-btn--create {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  text-transform: uppercase;
+  font-weight: 700;
+  background: #5aafa5;
+  border: 1px solid #6ec4ba;
+  color: #0a2422;
+  width: 100%;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ipo-btn--create:hover {
+  background: #6ec4ba;
+}
+
+/* ── Shared IPO Buttons ── */
+.ipo-btn {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid;
+  transition: opacity 0.15s;
+}
+.ipo-btn:hover { opacity: 0.85; }
+
+.ipo-btn--accept {
+  background: rgba(92,184,92,0.12);
+  border-color: rgba(92,184,92,0.3);
+  color: #5cb85c;
+}
+.ipo-btn--decline {
+  background: rgba(217,83,79,0.1);
+  border-color: rgba(217,83,79,0.25);
+  color: #d9534f;
+}
+
+/* ── IPO Main Panel ── */
+.ipo-main {
+  flex: 1;
+  min-width: 0;
+  background: #141410;
+  border-radius: 0 4px 4px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Empty State ── */
+.ipo-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 40px;
+  text-align: center;
+}
+.ipo-empty-icon {
+  font-size: 32px;
+  color: var(--ipo-purple);
+  opacity: 0.4;
+  margin-bottom: 4px;
+}
+.ipo-empty-title {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: #e2d9b4;
+}
+.ipo-empty-desc {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: #6b6a5e;
+  line-height: 1.5;
+  max-width: 380px;
+}
+.ipo-btn--create-large {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  text-transform: uppercase;
+  font-weight: 700;
+  background: #5aafa5;
+  border: 1px solid #6ec4ba;
+  color: #0a2422;
+  padding: 8px 18px;
+  margin-top: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ipo-btn--create-large:hover {
+  background: #6ec4ba;
+}
+
+/* ── Main Placeholder (before Phase 3 fills in detail) ── */
+.ipo-main-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ipo-main-placeholder-text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #3a3830;
+  letter-spacing: 0.03em;
+}
+
+/* ── Light mode ── */
+body.light-mode .ipo-sidebar { background: #f8f8f6; border-right-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-sidebar-header { background: #f0f0ec; }
+body.light-mode .ipo-sidebar-item.is-active { background: rgba(139,126,200,0.06); }
+body.light-mode .ipo-sidebar-name { color: #666; }
+body.light-mode .ipo-sidebar-name.is-active { color: #333; }
+body.light-mode .ipo-main { background: #fff; }
+body.light-mode .ipo-empty-title { color: #333; }
+body.light-mode .ipo-empty-desc { color: #888; }
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .wn-grid { grid-template-columns: 1fr; padding: 14px; gap: 12px; }
   .diplo-view-toggle { margin-left: 0; margin-top: 4px; }
+  .ipo-view { flex-direction: column; padding: 10px; }
+  .ipo-sidebar { width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.06); border-radius: 4px 4px 0 0; max-height: 200px; }
+  .ipo-main { border-radius: 0 0 4px 4px; }
 }

@@ -69,6 +69,9 @@
     </div>
     <!-- ═══ World Nations View (hidden by default) ═══ -->
     <div id="world-nations-view" class="wn-grid wn-grid--hidden"></div>
+
+    <!-- ═══ International Party Organisations View (hidden by default) ═══ -->
+    <div id="ipo-view" class="ipo-view ipo-view--hidden"></div>
 </div>
 
 <!-- Shared Scripts -->
@@ -158,6 +161,17 @@ let appointCachedExistingAmbs = null; // cache of existing ambassadors for filte
 // World Nations view state
 let currentDiploView = 'diplomacy';
 let worldNationsLoaded = false;
+
+// ── IPO (International Party Organisations) state ──
+let ipoMemberships = [];        // active ipo_members rows for current faction (joined with org data)
+let ipoSelectedOrgId = null;    // currently selected org in sidebar
+let ipoLoaded = false;          // prevents redundant re-fetches
+let ipoRealtimeChannel = null;  // realtime subscription for chat
+
+// Chat colour palette (assigned in join order)
+const IPO_CHAT_COLORS = ['#5cb85c','#c8a64e','#5aafa5','#d9534f','#8b7ec8','#5b9bd5'];
+// Logo symbol options
+const IPO_LOGO_SYMBOLS = ['◈','⬡','▲','◆','⬢','⊕'];
 
 // Legacy INITIATIVE_TYPES kept for backward compat with existing proposals.
 // New proposals use INITIATIVE_ARTICLE_TYPES from diplomacy-constants.js.
@@ -399,17 +413,24 @@ function switchDiploView(view) {
 
     const dashboard = document.querySelector('.dashboard');
     const wnView = document.getElementById('world-nations-view');
+    const ipoView = document.getElementById('ipo-view');
     const btns = document.querySelectorAll('.diplo-view-btn');
 
+    // Hide all views first
+    dashboard.style.display = 'none';
+    wnView.classList.add('wn-grid--hidden');
+    ipoView.classList.add('ipo-view--hidden');
+
     if (view === 'nations') {
-        dashboard.style.display = 'none';
         wnView.classList.remove('wn-grid--hidden');
         // Always re-fetch when switching to nations view to avoid stale data
         worldNationsLoaded = true;
         renderWorldNations();
+    } else if (view === 'orgs') {
+        ipoView.classList.remove('ipo-view--hidden');
+        renderIPOView();
     } else {
         dashboard.style.display = '';
-        wnView.classList.add('wn-grid--hidden');
     }
 
     btns.forEach(btn => {
@@ -706,6 +727,7 @@ async function renderDiploHeader() {
         <div class="diplo-header-roles">${roleBadges.join('')}</div>
         <div class="diplo-view-toggle">
             <button class="diplo-view-btn ${currentDiploView === 'diplomacy' ? 'is-active' : ''}" data-view="diplomacy" onclick="switchDiploView('diplomacy')">Diplomacy</button>
+            <button class="diplo-view-btn ${currentDiploView === 'orgs' ? 'is-active' : ''}" data-view="orgs" onclick="switchDiploView('orgs')">International Orgs</button>
             <button class="diplo-view-btn ${currentDiploView === 'nations' ? 'is-active' : ''}" data-view="nations" onclick="switchDiploView('nations')">World Nations</button>
         </div>
         <div class="diplo-header-stats">
@@ -13661,6 +13683,275 @@ window.executeRecallAmbassador = executeRecallAmbassador;
 window.selectAppointTarget = selectAppointTarget;
 window.selectAppointCandidate = selectAppointCandidate;
 window.executeAppointAmbassador = executeAppointAmbassador;
+
+// ==================== INTERNATIONAL PARTY ORGANISATIONS ====================
+
+/**
+ * Load and render the full IPO view:
+ *  - Sidebar: list of orgs the player belongs to + Create button
+ *  - Main panel: selected org detail (or empty state)
+ */
+async function renderIPOView() {
+    const container = document.getElementById('ipo-view');
+    if (!container || !currentFaction) return;
+
+    // Fetch memberships (joined with org data) — always re-fetch to avoid stale state
+    try {
+        const { data: memberships, error } = await _supabase
+            .from('ipo_members')
+            .select(`
+                id, role, joined_at_tick, chat_color,
+                org:international_orgs (
+                    id, name, logo_symbol, logo_text, description,
+                    founded_at_tick, founding_party_id,
+                    president_id, president_term_start_tick,
+                    headquarters_nation_id, solidarity_fund_balance,
+                    charter, is_active,
+                    symposium_cooldown_remaining, pending_symposium
+                )
+            `)
+            .eq('faction_id', currentFaction.id)
+            .eq('is_active', true);
+
+        if (error) {
+            console.error('[IPO] Failed to load memberships:', error.message);
+            ipoMemberships = [];
+        } else {
+            // Filter out any rows where the org is dissolved
+            ipoMemberships = (memberships || []).filter(m => m.org && m.org.is_active);
+        }
+    } catch (e) {
+        console.error('[IPO] Membership fetch error:', e);
+        ipoMemberships = [];
+    }
+
+    // Count members per org (for sidebar meta)
+    const memberCounts = {};
+    if (ipoMemberships.length > 0) {
+        const orgIds = ipoMemberships.map(m => m.org.id);
+        const { data: counts } = await _supabase
+            .from('ipo_members')
+            .select('org_id')
+            .in('org_id', orgIds)
+            .eq('is_active', true);
+        (counts || []).forEach(c => {
+            memberCounts[c.org_id] = (memberCounts[c.org_id] || 0) + 1;
+        });
+    }
+
+    // Auto-select first org if none selected (or if selected org was left)
+    if (ipoMemberships.length > 0) {
+        const selectedStillValid = ipoMemberships.some(m => m.org.id === ipoSelectedOrgId);
+        if (!ipoSelectedOrgId || !selectedStillValid) {
+            ipoSelectedOrgId = ipoMemberships[0].org.id;
+        }
+    } else {
+        ipoSelectedOrgId = null;
+    }
+
+    // Check for pending invitations
+    let pendingInvites = [];
+    try {
+        const { data: invites } = await _supabase
+            .from('ipo_invitations')
+            .select(`
+                id, invited_role, invited_at_tick, status,
+                org:international_orgs ( id, name, logo_symbol, logo_text ),
+                inviter:invited_by ( id, faction_name )
+            `)
+            .eq('target_faction_id', currentFaction.id)
+            .in('status', ['pending']);
+        pendingInvites = invites || [];
+    } catch (e) { /* non-fatal */ }
+
+    // ── Build sidebar ──
+    const sidebarItems = ipoMemberships.map(m => {
+        const org = m.org;
+        const isActive = org.id === ipoSelectedOrgId;
+        const count = memberCounts[org.id] || 1;
+        const roleLabel = org.president_id === currentFaction.id ? 'President'
+            : m.role === 'observer' ? 'Observer' : 'Member';
+        return `
+            <div class="ipo-sidebar-item ${isActive ? 'is-active' : ''}"
+                 onclick="selectIPOOrg('${org.id}')">
+                <span class="ipo-sidebar-logo ${isActive ? 'is-active' : ''}">${escapeHtml(org.logo_symbol)} ${escapeHtml(org.logo_text)}</span>
+                <div class="ipo-sidebar-info">
+                    <span class="ipo-sidebar-name ${isActive ? 'is-active' : ''}">${escapeHtml(org.name)}</span>
+                    <span class="ipo-sidebar-meta">${count} member${count !== 1 ? 's' : ''} · ${roleLabel}</span>
+                </div>
+            </div>`;
+    }).join('');
+
+    // ── Pending invitations in sidebar ──
+    const inviteItems = pendingInvites.map(inv => {
+        const org = inv.org;
+        const inviterName = inv.inviter?.faction_name || 'Unknown';
+        return `
+            <div class="ipo-sidebar-invite">
+                <div class="ipo-sidebar-invite-header">
+                    <span class="ipo-sidebar-logo">${escapeHtml(org.logo_symbol)} ${escapeHtml(org.logo_text)}</span>
+                    <span class="ipo-sidebar-name">${escapeHtml(org.name)}</span>
+                </div>
+                <span class="ipo-sidebar-invite-from">Invited by ${escapeHtml(inviterName)} · ${inv.invited_role}</span>
+                <div class="ipo-sidebar-invite-actions">
+                    <button class="ipo-btn ipo-btn--accept" onclick="acceptIPOInvite('${inv.id}')">Accept</button>
+                    <button class="ipo-btn ipo-btn--decline" onclick="declineIPOInvite('${inv.id}')">Decline</button>
+                </div>
+            </div>`;
+    }).join('');
+
+    // ── Main panel ──
+    let mainContent = '';
+    if (ipoMemberships.length === 0) {
+        // Empty state
+        mainContent = `
+            <div class="ipo-empty-state">
+                <div class="ipo-empty-icon">◈</div>
+                <div class="ipo-empty-title">International Party Organisations</div>
+                <div class="ipo-empty-desc">
+                    Join or create an international organisation to coordinate with like-minded parties across nations.
+                    Share resources, hold rallies, issue joint statements, and project soft power across borders.
+                </div>
+                <button class="ipo-btn ipo-btn--create-large" onclick="openIPOCreationModal()">
+                    + Create Organisation — 4 AP
+                </button>
+            </div>`;
+    } else {
+        // Placeholder for selected org detail — Phase 3 will render the full header/chat/panels
+        mainContent = `
+            <div class="ipo-main-placeholder">
+                <span class="ipo-main-placeholder-text">Select an organisation from the sidebar.</span>
+            </div>`;
+    }
+
+    container.innerHTML = `
+        <div class="ipo-sidebar">
+            <div class="ipo-sidebar-header">
+                <span class="ipo-sidebar-dot"></span>
+                <span class="ipo-sidebar-label">YOUR ORGANISATIONS</span>
+            </div>
+            <div class="ipo-sidebar-list">
+                ${sidebarItems}
+                ${inviteItems}
+            </div>
+            <button class="ipo-btn ipo-btn--create" onclick="openIPOCreationModal()">
+                + Create Organisation — 4 AP
+            </button>
+        </div>
+        <div class="ipo-main" id="ipo-main">
+            ${mainContent}
+        </div>`;
+
+    ipoLoaded = true;
+}
+
+/**
+ * Select an org in the sidebar — re-renders main panel.
+ */
+function selectIPOOrg(orgId) {
+    if (orgId === ipoSelectedOrgId) return;
+    ipoSelectedOrgId = orgId;
+    renderIPOView();
+}
+
+/**
+ * Accept an IPO invitation.
+ */
+async function acceptIPOInvite(inviteId) {
+    if (!currentFaction) return;
+    try {
+        // Fetch invite details
+        const { data: invite, error: fetchErr } = await _supabase
+            .from('ipo_invitations')
+            .select('id, org_id, invited_role, status')
+            .eq('id', inviteId)
+            .single();
+        if (fetchErr || !invite || invite.status !== 'pending') {
+            alert('This invitation is no longer valid.');
+            renderIPOView();
+            return;
+        }
+
+        // Check if org charter requires a vote for admission
+        const { data: org } = await _supabase
+            .from('international_orgs')
+            .select('charter')
+            .eq('id', invite.org_id)
+            .single();
+        const admission = org?.charter?.membership?.admission || 'vote';
+
+        if (admission === 'vote' && invite.invited_role === 'member') {
+            // Mark invite as vote_pending — the vote creation will happen in Phase 7
+            await _supabase.from('ipo_invitations')
+                .update({ status: 'vote_pending', responded_at_tick: shardTick })
+                .eq('id', inviteId);
+            alert('Your application has been submitted. The organisation will vote on your membership.');
+        } else {
+            // Direct admission (president decides, or observer role)
+            // Assign chat color
+            const { data: existingMembers } = await _supabase
+                .from('ipo_members')
+                .select('chat_color')
+                .eq('org_id', invite.org_id)
+                .eq('is_active', true);
+            const usedColors = (existingMembers || []).map(m => m.chat_color).filter(Boolean);
+            const chatColor = IPO_CHAT_COLORS.find(c => !usedColors.includes(c)) || IPO_CHAT_COLORS[0];
+
+            await _supabase.from('ipo_members').insert({
+                org_id: invite.org_id,
+                faction_id: currentFaction.id,
+                role: invite.invited_role,
+                joined_at_tick: shardTick,
+                chat_color: chatColor
+            });
+
+            await _supabase.from('ipo_invitations')
+                .update({ status: 'accepted', responded_at_tick: shardTick })
+                .eq('id', inviteId);
+
+            // System chat message
+            await _supabase.from('ipo_chat').insert({
+                org_id: invite.org_id,
+                faction_id: null,
+                is_system: true,
+                message_text: `${currentFaction.faction_name} has joined the organisation.`,
+                tick_posted: shardTick
+            });
+        }
+        renderIPOView();
+    } catch (e) {
+        console.error('[IPO] Accept invite error:', e);
+        alert('Failed to accept invitation.');
+    }
+}
+
+/**
+ * Decline an IPO invitation.
+ */
+async function declineIPOInvite(inviteId) {
+    if (!currentFaction) return;
+    try {
+        await _supabase.from('ipo_invitations')
+            .update({ status: 'declined', responded_at_tick: shardTick })
+            .eq('id', inviteId);
+        renderIPOView();
+    } catch (e) {
+        console.error('[IPO] Decline invite error:', e);
+    }
+}
+
+/**
+ * Placeholder for creation modal — Phase 4
+ */
+function openIPOCreationModal() {
+    alert('Organisation creation will be available in Phase 4.');
+}
+
+// IPO exports
+window.selectIPOOrg = selectIPOOrg;
+window.acceptIPOInvite = acceptIPOInvite;
+window.declineIPOInvite = declineIPOInvite;
+window.openIPOCreationModal = openIPOCreationModal;
 </script>
 
 </body>
