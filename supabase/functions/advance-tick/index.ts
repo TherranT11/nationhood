@@ -20262,6 +20262,7 @@ registerAutocracyAction('select_pillar', {
 const _MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
 function _tickToDate(tick) {
+    if (tick == null) return null;
     return `${_MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
 }
 
