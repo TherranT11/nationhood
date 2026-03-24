@@ -3879,10 +3879,10 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
         throw new Error('Cannot appoint a Prime Minister until a coalition has been formed.');
     }
 
-    // Load faction with leader data
+    // Load faction with leader data (including leader_ideology as single source of truth)
     const { data: faction, error: factionErr } = await supabase
         .from('factions')
-        .select('id, faction_name, leader_first_name, leader_last_name, leader_age')
+        .select('id, faction_name, leader_first_name, leader_last_name, leader_age, leader_ideology')
         .eq('id', factionId)
         .single();
     if (factionErr || !faction) throw new Error('Faction not found');
@@ -3890,15 +3890,22 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
         throw new Error('Party leader data is incomplete — cannot auto-appoint PM.');
     }
 
-    // Pick a weighted ideology based on faction's ideology profile
+    // Use the leader's existing ideology as single source of truth.
+    // Only fall back to a weighted random pick if leader_ideology is unset.
     let factionIdeology = await loadFactionIdeology(supabase, factionId);
     if (factionIdeology?._error) {
         console.error(`[autoAppointPartyLeaderAsPM] DB error loading ideology for ${factionId}, using neutral weights`);
         factionIdeology = null;
     }
-    const weightedIdeologies = getWeightedIdeologies(factionIdeology);
-    const ideologyPick = weightedRandomPick(weightedIdeologies);
-    const ideology = ideologyPick.item;
+
+    let ideology;
+    if (faction.leader_ideology) {
+        ideology = IDEOLOGY_OPTIONS.find(o => o.tag === faction.leader_ideology.toUpperCase())
+            || IDEOLOGY_OPTIONS[0];
+    } else {
+        const weightedIdeologies = getWeightedIdeologies(factionIdeology);
+        ideology = weightedRandomPick(weightedIdeologies).item;
+    }
 
     // Pick a random trait
     const traitKey = PM_TRAIT_KEYS[Math.floor(Math.random() * PM_TRAIT_KEYS.length)];
