@@ -250,6 +250,91 @@ const MINISTRY_ACTIONS = {
             }
         ]
     },
+    healthcare: {
+        actions: [
+            {
+                id: 'expandInfrastructure',
+                name: 'Expand Infrastructure',
+                desc: 'Fund construction and modernisation of hospitals, clinics, and medical facilities nationally.',
+                comingSoon: true
+            },
+            {
+                id: 'preventativeCare',
+                triggerKey: 'ministry_preventative_care',
+                name: 'Preventative Care Programme',
+                desc: 'Shift healthcare spending from treatment to prevention, investing in early intervention and population health outcomes.',
+                apCosts: [2, 3, 5, 7],
+                oneTimeCostPerMillion: 10_000_000, // $10M per 1M population
+                delay: 4, duration: 8,
+                decayTicks: 4,
+                useResetInterval: 15,
+                tags: [
+                    { label: 'LIFESPAN ↑ PERM', cls: 'positive' },
+                    { label: 'DRUG USE ↓', cls: 'positive' },
+                    { label: 'ACCESSIBILITY ↑', cls: 'positive' },
+                    { label: 'HAPPINESS ↑', cls: 'positive' },
+                    { label: 'BEDS ↑', cls: 'positive' }
+                ],
+                baseEffects: [
+                    { stat_key: 'lifespan',                 direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'drug_use',                 direction: 'down', rate: 0.1, scalable: true },
+                    { stat_key: 'healthcare_accessibility',  direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'happiness',                 direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'beds_per_100k',             direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'minister_approval', direction: 'up', rate: 1, scalable: false, target: 'minister', delayOverride: 0, durationOverride: 1 }
+                ]
+            },
+            {
+                id: 'pharmaceuticalRegulation',
+                name: 'Pharmaceutical Regulation',
+                desc: 'Adjust the regulatory framework governing drug pricing, approval processes, and market access.',
+                apCosts: [2, 3, 5, 7],
+                delay: 2, duration: 8,
+                decayTicks: 3,
+                useResetInterval: 15,
+                directions: {
+                    increase: {
+                        label: 'INCREASE REGULATIONS',
+                        triggerKey: 'ministry_pharmaceutical_increased',
+                        oneTimeCostPerMillion: 10_000_000 / 1.2, // $10M per 1.2M pop ≈ $8.33M per 1M
+                        tags: [
+                            { label: 'DRUG USE ↓', cls: 'positive' },
+                            { label: 'HEALTHCARE ↑', cls: 'positive' },
+                            { label: 'STD LIVING ↑', cls: 'positive' },
+                            { label: 'GDP ↓', cls: 'negative' },
+                            { label: 'FOREIGN INV ↓', cls: 'negative' }
+                        ],
+                        baseEffects: [
+                            { stat_key: 'drug_use',              direction: 'down', rate: 0.2, scalable: true },
+                            { stat_key: 'healthcare_quality',     direction: 'up',   rate: 0.1, scalable: true },
+                            { stat_key: 'standard_of_living',     direction: 'up',   rate: 0.1, scalable: true },
+                            { stat_key: 'gdp_growth',             direction: 'down', rate: 0.1, scalable: false },
+                            { stat_key: 'foreign_investment',     direction: 'down', rate: 0.3, scalable: false }
+                        ]
+                    },
+                    decrease: {
+                        label: 'DECREASE REGULATIONS',
+                        triggerKey: 'ministry_pharmaceutical_decreased',
+                        oneTimeCostPerMillion: 0, // no cost
+                        tags: [
+                            { label: 'HEALTHCARE ↑', cls: 'positive' },
+                            { label: 'GDP ↑', cls: 'positive' },
+                            { label: 'FOREIGN INV ↑', cls: 'positive' },
+                            { label: 'DRUG USE ↑', cls: 'negative' },
+                            { label: 'INEQUALITY ↑', cls: 'negative' }
+                        ],
+                        baseEffects: [
+                            { stat_key: 'healthcare_quality',     direction: 'up',   rate: 0.2, scalable: true },
+                            { stat_key: 'gdp_growth',             direction: 'up',   rate: 0.2, scalable: true },
+                            { stat_key: 'foreign_investment',     direction: 'up',   rate: 0.3, scalable: true },
+                            { stat_key: 'drug_use',               direction: 'up',   rate: 0.1, scalable: false },
+                            { stat_key: 'income_inequality',      direction: 'up',   rate: 0.1, scalable: false }
+                        ]
+                    }
+                }
+            }
+        ]
+    },
     education: {
         actions: [
             {
@@ -390,6 +475,117 @@ async function handleFinanceConflict(action, ministryKey) {
                 nation: currentNation.name || 'Unknown',
                 cancelled_action: cancelledName,
                 new_action: action.name
+            }
+        });
+    } catch (_) { /* best-effort */ }
+}
+
+// ==================== SHARED MINISTRY HELPERS ====================
+
+// Fetch minister name + party for any ministry (used by event firing)
+async function fetchMinisterInfo(ministryKey) {
+    try {
+        const { data: ministry } = await _supabase
+            .from('ministries')
+            .select('minister_first_name, minister_last_name, factions(faction_name)')
+            .eq('nation_id', currentNation.id)
+            .eq('ministry_key', ministryKey)
+            .single();
+        const ministerName = ministry
+            ? (ministry.minister_first_name + ' ' + (ministry.minister_last_name || '')).trim()
+            : 'Unknown';
+        const partyName = ministry?.factions?.faction_name || currentFaction?.faction_name || 'Unknown';
+        return { ministerName, partyName };
+    } catch (_) {
+        return { ministerName: 'Unknown', partyName: currentFaction?.faction_name || 'Unknown' };
+    }
+}
+
+// Format discretionary balance for display (shared across ministry card renderers)
+function formatDiscretionaryBalance(rawBalance) {
+    const balance = Number(rawBalance || 0);
+    const fmt = balance >= 1000000000
+        ? '$' + (balance / 1000000000).toFixed(1) + 'B'
+        : balance >= 1000000
+        ? '$' + (balance / 1000000).toFixed(1) + 'M'
+        : balance > 0 ? '$' + Math.round(balance).toLocaleString() : '$0';
+    const cls = balance > 0 ? 'color:var(--green)' : 'color:var(--red)';
+    return { balance, fmt, cls };
+}
+
+// Deduct a one-time cost from a ministry's discretionary fund
+async function deductDiscretionaryFund(ministryKey, localMData, currentBalance, cost) {
+    if (cost <= 0) return;
+    const newBalance = Math.max(0, currentBalance - cost);
+    await _supabase.from('ministries')
+        .update({ discretionary_balance: newBalance })
+        .eq('nation_id', currentNation.id)
+        .eq('ministry_key', ministryKey)
+        .eq('is_active', true);
+    if (localMData) localMData.discretionary_balance = newBalance;
+}
+
+// ==================== HEALTHCARE MINISTRY — HELPERS ====================
+
+// One-time cost calculation for healthcare actions
+function calculateHealthActionCost(actionOrDirection, population) {
+    const costPerMillion = actionOrDirection.oneTimeCostPerMillion || 0;
+    return Math.round((population / 1_000_000) * costPerMillion);
+}
+
+function formatUpfrontCost(cost) {
+    if (cost <= 0) return 'No Fund Draw';
+    if (cost >= 1_000_000_000) return '$' + (cost / 1_000_000_000).toFixed(1) + 'B';
+    if (cost >= 1_000_000) return '$' + Math.round(cost / 1_000_000).toLocaleString() + 'M';
+    return '$' + Math.round(cost).toLocaleString();
+}
+
+// Track selected pharmaceutical direction: null, 'increase', or 'decrease'
+let _pharmaSelectedDirection = null;
+
+// Handle pharmaceutical conflict: cancel any active pharmaceutical action before activating new direction
+async function handlePharmaceuticalConflict(newDirection) {
+    const actionId = 'healthcare-pharmaceuticalRegulation';
+    const activeData = activeMinistryActions[actionId];
+    if (!activeData) return;
+
+    const activeDir = typeof activeData === 'string' ? activeData : 'unknown';
+
+    // Cancel all unprocessed pharmaceutical actions in DB (best-effort)
+    try {
+        const { data: conflictLogs } = await _supabase
+            .from('ministry_action_log')
+            .select('id')
+            .eq('nation_id', currentNation.id)
+            .eq('ministry_key', 'healthcare')
+            .eq('action_key', 'pharmaceuticalRegulation')
+            .eq('processed', false);
+
+        if (conflictLogs?.length) {
+            for (const log of conflictLogs) {
+                await _supabase.from('ministry_action_log')
+                    .update({ processed: true })
+                    .eq('id', log.id);
+            }
+        }
+    } catch (_) { /* best-effort */ }
+
+    // Clear local active state so the RPC duplicate check passes
+    delete activeMinistryActions[actionId];
+
+    // Fire direction changed event (best-effort)
+    try {
+        const { ministerName, partyName } = await fetchMinisterInfo('healthcare');
+        await _supabase.rpc('fire_system_event', {
+            p_trigger_key: 'ministry_pharmaceutical_direction_changed',
+            p_nation_id: currentNation.id,
+            p_tick: currentTick,
+            p_placeholders: {
+                minister_name: ministerName,
+                party: partyName,
+                nation: currentNation.name || 'Unknown',
+                old_direction: activeDir,
+                new_direction: newDirection
             }
         });
     } catch (_) { /* best-effort */ }
@@ -1030,7 +1226,12 @@ async function renderGovernmentPage() {
                     const countKey = log.ministry_key + ':' + log.action_key;
                     ministryActionUseCounts[countKey] = (ministryActionUseCounts[countKey] || 0) + 1;
                     if (!log.processed) {
-                        activeMinistryActions[log.ministry_key + '-' + log.action_key] = true;
+                        // For pharmaceutical regulation, store the direction as the value
+                        if (log.ministry_key === 'healthcare' && log.action_key === 'pharmaceuticalRegulation' && log.action_data?.direction) {
+                            activeMinistryActions[log.ministry_key + '-' + log.action_key] = log.action_data.direction;
+                        } else {
+                            activeMinistryActions[log.ministry_key + '-' + log.action_key] = true;
+                        }
                     }
                     // Track last failed debt restructuring tick for blocking check
                     if (log.action_key === 'debtRestructuring' && log.action_data?.resolution_outcome === 'failure') {
@@ -3075,6 +3276,8 @@ function isMyMinistryByKey(ministryKey) {
 function buildMinistryActionRows(ministryKey, isMyMinistry) {
     // Defense ministry has a custom action layout
     if (ministryKey === 'defense') return buildDefenseActionRows(isMyMinistry);
+    // Healthcare ministry has a custom action layout (pharmaceutical direction selector)
+    if (ministryKey === 'healthcare') return buildHealthcareActionRows(isMyMinistry);
     // Education ministry has a custom action layout
     if (ministryKey === 'education') return buildEducationActionRows(isMyMinistry);
 
@@ -3381,6 +3584,501 @@ function buildEducationActionRows(isMyMinistry) {
     </div>`;
 
     return html;
+}
+
+// ==================== HEALTHCARE MINISTRY — CUSTOM ACTION ROWS ====================
+
+function buildHealthcareActionRows(isMyMinistry) {
+    const config = MINISTRY_ACTIONS.healthcare;
+    if (!config?.actions) return '';
+    const pop = currentNation?.population || 20000000;
+    const ap = currentFaction?.action_points || 0;
+    const canUse = isMyMinistry === true;
+    const comingSoonBtn = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div>`;
+
+    // Discretionary balance
+    const ministry = ministryData.find(m => m.ministry_key === 'healthcare');
+    const { balance: discretionaryBalance, fmt: balFmt, cls: balCls } = formatDiscretionaryBalance(ministry?.discretionary_balance);
+
+    let html = `<div class="ministry-card__actions-label" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Ministry Actions</span>
+        <span style="font-size:8px;font-weight:600;${balCls};letter-spacing:0.03em;">Discretionary Funds: ${balFmt}</span>
+    </div>`;
+
+    // Action 1 — Expand Infrastructure (Coming Soon)
+    html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Expand Infrastructure</span>
+            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
+        </div>
+        <div class="ministry-action__desc">Fund construction and modernisation of hospitals, clinics, and medical facilities nationally.</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags"></div>
+            <div>${comingSoonBtn}</div>
+        </div>
+    </div>`;
+
+    // Action 2 — Preventative Care Programme
+    const prevAction = config.actions.find(a => a.id === 'preventativeCare');
+    const prevActionId = 'healthcare-preventativeCare';
+    const prevActive = activeMinistryActions[prevActionId] || false;
+    const prevCountKey = 'healthcare:preventativeCare';
+    const prevUseCount = ministryActionUseCounts[prevCountKey] || 0;
+    const prevApCost = prevAction.apCosts[Math.min(prevUseCount, 3)];
+    const prevOneTimeCost = calculateHealthActionCost(prevAction, pop);
+    const prevCostLabel = formatUpfrontCost(prevOneTimeCost);
+    const prevTagsHtml = prevAction.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
+    const prevBudgetTag = `<span class="tag tag--budget">${prevCostLabel} UPFRONT</span>`;
+    const prevCanAfford = discretionaryBalance >= prevOneTimeCost;
+
+    let prevBtnHtml = '';
+    let prevStateClass = '';
+    let prevExtraHtml = '';
+    if (prevActive) {
+        prevStateClass = ' active';
+        prevBtnHtml = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+    } else if (!canUse) {
+        prevStateClass = ' disabled';
+    } else if (!prevCanAfford) {
+        prevStateClass = ' disabled';
+        prevBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Insufficient discretionary funds">🔒</div>`;
+        prevExtraHtml = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--red);margin-top:2px;">Insufficient discretionary funds.</div>`;
+    } else if (ap < prevApCost) {
+        prevStateClass = ' disabled';
+        prevBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${prevApCost} AP">▶ ${prevApCost} AP</div>`;
+    } else {
+        prevBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();healthcareActionSelect('${prevActionId}')">▶ ${prevApCost} AP</div>`;
+    }
+
+    html += `<div class="ministry-action${prevStateClass}" id="${prevActionId}" ${!prevActive && canUse && prevCanAfford && ap >= prevApCost ? `onclick="healthcareActionSelect('${prevActionId}')"` : ''}>
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Preventative Care Programme</span>
+            <span class="ministry-action__ap-cost">${prevApCost} AP${prevUseCount > 0 ? ' (use ' + (prevUseCount + 1) + ')' : ''}</span>
+        </div>
+        <div class="ministry-action__desc">${escapeHtml(prevAction.desc)}${prevExtraHtml}</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags">${prevTagsHtml}${prevBudgetTag}</div>
+            <div id="${prevActionId}-btns">${prevBtnHtml}</div>
+        </div>
+    </div>`;
+
+    // Action 3 — Pharmaceutical Regulation (with direction selector)
+    const pharmaAction = config.actions.find(a => a.id === 'pharmaceuticalRegulation');
+    const pharmaActionId = 'healthcare-pharmaceuticalRegulation';
+    const pharmaActiveRaw = activeMinistryActions[pharmaActionId];
+    const pharmaActive = !!pharmaActiveRaw;
+    const pharmaActiveDir = typeof pharmaActiveRaw === 'string' ? pharmaActiveRaw : null;
+    const pharmaCountKey = 'healthcare:pharmaceuticalRegulation';
+    const pharmaUseCount = ministryActionUseCounts[pharmaCountKey] || 0;
+    const pharmaApCost = pharmaAction.apCosts[Math.min(pharmaUseCount, 3)];
+
+    // Show direction-specific tags if a direction is selected or active
+    const displayDir = pharmaActiveDir || _pharmaSelectedDirection;
+    const dirConfig = displayDir ? pharmaAction.directions[displayDir] : null;
+    const pharmaTags = dirConfig ? dirConfig.tags : [
+        { label: 'SELECT DIRECTION', cls: 'neutral' }
+    ];
+    const pharmaTagsHtml = pharmaTags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
+
+    // Budget tag based on direction
+    let pharmaBudgetTag = '';
+    if (dirConfig) {
+        const pharmaCost = calculateHealthActionCost(dirConfig, pop);
+        pharmaBudgetTag = pharmaCost > 0
+            ? `<span class="tag tag--budget">${formatUpfrontCost(pharmaCost)} UPFRONT</span>`
+            : `<span class="tag tag--neutral">NO FUND DRAW</span>`;
+    }
+
+    let pharmaBtnHtml = '';
+    let pharmaStateClass = '';
+    if (pharmaActive) {
+        pharmaStateClass = ' active';
+        const dirLabel = pharmaActiveDir === 'increase' ? 'INCREASE' : pharmaActiveDir === 'decrease' ? 'DECREASE' : 'ACTIVE';
+        pharmaBtnHtml = `<div class="ministry-action__active-indicator" style="color:#5cb85c;">● ACTIVE — ${dirLabel}</div>`;
+    } else if (!canUse) {
+        pharmaStateClass = ' disabled';
+    } else if (ap < pharmaApCost) {
+        pharmaStateClass = ' disabled';
+        pharmaBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${pharmaApCost} AP">▶ ${pharmaApCost} AP</div>`;
+    } else {
+        pharmaBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openPharmaceuticalSelector()">▶ ${pharmaApCost} AP</div>`;
+    }
+
+    html += `<div class="ministry-action${pharmaStateClass}" id="${pharmaActionId}">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Pharmaceutical Regulation</span>
+            <span class="ministry-action__ap-cost">${pharmaApCost} AP${pharmaUseCount > 0 ? ' (use ' + (pharmaUseCount + 1) + ')' : ''}</span>
+        </div>
+        <div class="ministry-action__desc">${escapeHtml(pharmaAction.desc)}</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags">${pharmaTagsHtml}${pharmaBudgetTag}</div>
+            <div id="${pharmaActionId}-btns">${pharmaBtnHtml}</div>
+        </div>
+        <div id="pharma-direction-selector"></div>
+    </div>`;
+
+    return html;
+}
+
+// Open the pharmaceutical direction selector inline
+function openPharmaceuticalSelector() {
+    if (!isMyMinistryByKey('healthcare')) return;
+    _pharmaSelectedDirection = null;
+    const container = document.getElementById('pharma-direction-selector');
+    if (!container) return;
+    renderPharmaSelectorUI(container);
+}
+
+function renderPharmaSelectorUI(container) {
+    const config = MINISTRY_ACTIONS.healthcare.actions.find(a => a.id === 'pharmaceuticalRegulation');
+    const pop = currentNation?.population || 20000000;
+    const pharmaCountKey = 'healthcare:pharmaceuticalRegulation';
+    const pharmaUseCount = ministryActionUseCounts[pharmaCountKey] || 0;
+    const pharmaApCost = config.apCosts[Math.min(pharmaUseCount, 3)];
+    const ministry = ministryData.find(m => m.ministry_key === 'healthcare');
+    const discretionaryBalance = Number(ministry?.discretionary_balance || 0);
+
+    const incCost = calculateHealthActionCost(config.directions.increase, pop);
+    const decCost = calculateHealthActionCost(config.directions.decrease, pop);
+    const selDir = _pharmaSelectedDirection;
+
+    const incSelected = selDir === 'increase';
+    const decSelected = selDir === 'decrease';
+    const incStyle = incSelected
+        ? 'background:rgba(91,155,213,0.12);border:1px solid rgba(91,155,213,0.3);color:#5b9bd5;'
+        : 'background:transparent;border:1px solid rgba(255,255,255,0.07);color:#4a4840;';
+    const decStyle = decSelected
+        ? 'background:rgba(91,155,213,0.12);border:1px solid rgba(91,155,213,0.3);color:#5b9bd5;'
+        : 'background:transparent;border:1px solid rgba(255,255,255,0.07);color:#4a4840;';
+
+    // Confirm button
+    let confirmHtml = '';
+    if (selDir) {
+        const cost = selDir === 'increase' ? incCost : decCost;
+        const canAfford = cost <= 0 || discretionaryBalance >= cost;
+        const costLabel = cost > 0 ? formatUpfrontCost(cost) : 'No Fund Draw';
+        if (!canAfford) {
+            confirmHtml = `<div class="ministry-action__btn-confirm" style="opacity:0.4;cursor:not-allowed;margin-top:6px;">Confirm — ${pharmaApCost} AP · Insufficient funds</div>`;
+        } else {
+            confirmHtml = `<div class="ministry-action__btn-confirm" onclick="event.stopPropagation();confirmPharmaceuticalAction('${selDir}')" style="margin-top:6px;">Confirm — ${pharmaApCost} AP · ${costLabel}</div>`;
+        }
+    }
+
+    container.innerHTML = `<div style="background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);padding:8px 12px;margin-top:6px;">
+        <div style="font-family:var(--font-mono);font-size:8px;text-transform:uppercase;color:#6b6a5e;margin-bottom:6px;">Select direction:</div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="${incStyle}padding:6px 10px;cursor:pointer;font-family:var(--font-mono);font-size:8px;text-transform:uppercase;font-weight:700;letter-spacing:0.04em;" onclick="event.stopPropagation();selectPharmaDirection('increase')">INCREASE REGULATIONS</div>
+            <div style="${decStyle}padding:6px 10px;cursor:pointer;font-family:var(--font-mono);font-size:8px;text-transform:uppercase;font-weight:700;letter-spacing:0.04em;" onclick="event.stopPropagation();selectPharmaDirection('decrease')">DECREASE REGULATIONS</div>
+        </div>
+        <div style="display:flex;gap:4px;margin-top:6px;align-items:center;">
+            ${confirmHtml}
+            <div class="ministry-action__btn-cancel" onclick="event.stopPropagation();closePharmaceuticalSelector()" style="margin-top:${selDir ? '6px' : '0'};">✕</div>
+        </div>
+    </div>`;
+
+    // Update the tags display based on selected direction
+    if (selDir) {
+        const dirConfig = config.directions[selDir];
+        const tagsContainer = document.querySelector('#healthcare-pharmaceuticalRegulation .ministry-action__tags');
+        if (tagsContainer && dirConfig) {
+            const cost = selDir === 'increase' ? incCost : decCost;
+            const budgetTag = cost > 0
+                ? `<span class="tag tag--budget">${formatUpfrontCost(cost)} UPFRONT</span>`
+                : `<span class="tag tag--neutral">NO FUND DRAW</span>`;
+            tagsContainer.innerHTML = dirConfig.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('') + budgetTag;
+        }
+    }
+}
+
+function selectPharmaDirection(direction) {
+    _pharmaSelectedDirection = direction;
+    const container = document.getElementById('pharma-direction-selector');
+    if (container) renderPharmaSelectorUI(container);
+}
+
+function closePharmaceuticalSelector() {
+    _pharmaSelectedDirection = null;
+    const container = document.getElementById('pharma-direction-selector');
+    if (container) container.innerHTML = '';
+    // Reset tags to default
+    const tagsContainer = document.querySelector('#healthcare-pharmaceuticalRegulation .ministry-action__tags');
+    if (tagsContainer) {
+        tagsContainer.innerHTML = '<span class="tag tag--neutral">SELECT DIRECTION</span>';
+    }
+}
+
+async function confirmPharmaceuticalAction(direction) {
+    if (_ministryActionConfirming) return;
+    _ministryActionConfirming = true;
+
+    const actionId = 'healthcare-pharmaceuticalRegulation';
+    const row = document.getElementById(actionId);
+    if (!row || !currentFaction || !currentNation) { _ministryActionConfirming = false; return; }
+    if (!isMyMinistryByKey('healthcare')) { _ministryActionConfirming = false; return; }
+
+    const config = MINISTRY_ACTIONS.healthcare.actions.find(a => a.id === 'pharmaceuticalRegulation');
+    const dirConfig = config.directions[direction];
+    if (!dirConfig) { _ministryActionConfirming = false; return; }
+
+    const countKey = 'healthcare:pharmaceuticalRegulation';
+    const useCount = ministryActionUseCounts[countKey] || 0;
+    const apCost = config.apCosts[Math.min(useCount, 3)];
+    const pop = currentNation.population || 20000000;
+    const oneTimeCost = calculateHealthActionCost(dirConfig, pop);
+
+    // Check discretionary funds
+    const mData = ministryData.find(m => m.ministry_key === 'healthcare');
+    const balance = Number(mData?.discretionary_balance || 0);
+    if (oneTimeCost > 0 && balance < oneTimeCost) {
+        _ministryActionConfirming = false;
+        alert('Insufficient discretionary funds.');
+        return;
+    }
+
+    // Check if opposing direction is active — confirm cancellation
+    const existingActive = activeMinistryActions[actionId];
+    if (existingActive) {
+        const existingDir = typeof existingActive === 'string' ? existingActive : null;
+        if (existingDir === direction) {
+            // Same direction already active — cannot double-activate
+            _ministryActionConfirming = false;
+            alert('This direction is already active.');
+            return;
+        }
+        const opposingLabel = existingDir === 'increase' ? 'Increase Regulations'
+            : existingDir === 'decrease' ? 'Decrease Regulations' : 'current pharmaceutical policy';
+        if (!confirm(`This will immediately cancel your active ${opposingLabel} with no fund refund. Continue?`)) {
+            _ministryActionConfirming = false;
+            return;
+        }
+        await handlePharmaceuticalConflict(direction);
+    }
+
+    // Build stat effects from the direction's baseEffects
+    const scale = getUseCountScale(useCount);
+    const statEffects = dirConfig.baseEffects.map(eff => ({
+        stat_key: eff.stat_key,
+        direction: eff.direction,
+        rate: Math.round((eff.scalable ? eff.rate * scale : eff.rate) * 100) / 100,
+        delay_ticks: config.delay,
+        duration_ticks: config.duration,
+        target: eff.target || 'nation'
+    }));
+
+    // Optimistic UI
+    row.classList.remove('selected');
+    row.classList.add('active');
+    const btns = document.getElementById(actionId + '-btns');
+    const dirLabel = direction === 'increase' ? 'INCREASE' : 'DECREASE';
+    if (btns) btns.innerHTML = `<div class="ministry-action__active-indicator" style="color:#5cb85c;">● ACTIVE — ${dirLabel}</div>`;
+    const selectorEl = document.getElementById('pharma-direction-selector');
+    if (selectorEl) selectorEl.innerHTML = '';
+
+    const actionData = {
+        use_count: useCount,
+        scale: scale,
+        direction: direction,
+        one_time_cost: oneTimeCost,
+        budget_per_tick: 0
+    };
+
+    try {
+        const { data: actionLogId, error } = await _supabase.rpc('execute_ministry_action', {
+            p_nation_id: currentNation.id,
+            p_faction_id: currentFaction.id,
+            p_ministry_key: 'healthcare',
+            p_action_key: 'pharmaceuticalRegulation',
+            p_ap_cost: apCost,
+            p_applied_at_tick: currentTick,
+            p_stat_effects: statEffects,
+            p_action_data: actionData
+        });
+
+        if (error) throw error;
+
+        // === RPC succeeded — action is committed. Everything below is best-effort. ===
+
+        // Deduct one-time cost from discretionary fund (best-effort — action already committed)
+        try { await deductDiscretionaryFund('healthcare', mData, balance, oneTimeCost); }
+        catch (_) { /* fund deduction failed — will be stale until page reload */ }
+
+        // Update local state
+        const prevAP = currentFaction.action_points || 0;
+        currentFaction.action_points = Math.max(0, prevAP - apCost);
+        ministryActionUseCounts[countKey] = useCount + 1;
+        activeMinistryActions[actionId] = direction; // store direction as value
+        _pharmaSelectedDirection = null;
+        sessionStorage.removeItem('nationhood_state');
+
+        // Fire event (non-blocking)
+        try {
+            const { ministerName, partyName } = await fetchMinisterInfo('healthcare');
+            await _supabase.rpc('fire_system_event', {
+                p_trigger_key: dirConfig.triggerKey,
+                p_nation_id: currentNation.id,
+                p_tick: currentTick,
+                p_placeholders: {
+                    minister_name: ministerName,
+                    party: partyName,
+                    nation: currentNation.name || 'Unknown',
+                    direction: direction,
+                    cost: formatUpfrontCost(oneTimeCost)
+                }
+            });
+        } catch (_) { /* best-effort */ }
+
+    } catch (e) {
+        // Revert optimistic UI — only reached if RPC itself failed
+        row.classList.remove('active');
+        if (btns) btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openPharmaceuticalSelector()">▶ ${apCost} AP</div>`;
+        alert('Action failed: ' + (e.message || 'Unknown error'));
+    } finally {
+        _ministryActionConfirming = false;
+    }
+}
+
+// Healthcare action select (for Preventative Care — standard flow with one-time cost)
+function healthcareActionSelect(actionId) {
+    const row = document.getElementById(actionId);
+    if (!row || row.classList.contains('active') || row.classList.contains('disabled')) return;
+    if (!isMyMinistryByKey('healthcare')) return;
+
+    // Deselect previous
+    if (selectedMinistryAction && selectedMinistryAction !== actionId) {
+        ministryActionDeselect(selectedMinistryAction);
+    }
+    if (row.classList.contains('selected')) return;
+
+    row.classList.add('selected');
+    selectedMinistryAction = actionId;
+
+    const config = MINISTRY_ACTIONS.healthcare.actions.find(a => a.id === 'preventativeCare');
+    const countKey = 'healthcare:preventativeCare';
+    const useCount = ministryActionUseCounts[countKey] || 0;
+    const apCost = config.apCosts[Math.min(useCount, 3)];
+    const pop = currentNation?.population || 20000000;
+    const oneTimeCost = calculateHealthActionCost(config, pop);
+    const costLabel = formatUpfrontCost(oneTimeCost);
+
+    const btns = document.getElementById(actionId + '-btns');
+    if (btns) {
+        btns.innerHTML = `<div style="display:flex;gap:4px;">
+            <div class="ministry-action__btn-confirm" onclick="event.stopPropagation();confirmHealthcareAction('${actionId}')">Confirm — ${apCost} AP · ${costLabel}</div>
+            <div class="ministry-action__btn-cancel" onclick="event.stopPropagation();healthcareActionDeselect('${actionId}')">✕</div>
+        </div>`;
+    }
+}
+
+function healthcareActionDeselect(actionId) {
+    const row = document.getElementById(actionId);
+    if (!row) return;
+    row.classList.remove('selected');
+    if (selectedMinistryAction === actionId) selectedMinistryAction = null;
+
+    const config = MINISTRY_ACTIONS.healthcare.actions.find(a => a.id === 'preventativeCare');
+    const countKey = 'healthcare:preventativeCare';
+    const useCount = ministryActionUseCounts[countKey] || 0;
+    const apCost = config.apCosts[Math.min(useCount, 3)];
+
+    const btns = document.getElementById(actionId + '-btns');
+    if (btns) {
+        btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();healthcareActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+    }
+}
+
+async function confirmHealthcareAction(actionId) {
+    if (_ministryActionConfirming) return;
+    _ministryActionConfirming = true;
+
+    const row = document.getElementById(actionId);
+    if (!row || !currentFaction || !currentNation) { _ministryActionConfirming = false; return; }
+    if (!isMyMinistryByKey('healthcare')) { _ministryActionConfirming = false; return; }
+
+    const config = MINISTRY_ACTIONS.healthcare.actions.find(a => a.id === 'preventativeCare');
+    const countKey = 'healthcare:preventativeCare';
+    const useCount = ministryActionUseCounts[countKey] || 0;
+    const apCost = config.apCosts[Math.min(useCount, 3)];
+    const pop = currentNation.population || 20000000;
+    const oneTimeCost = calculateHealthActionCost(config, pop);
+    const statEffects = buildStatEffects(config, useCount);
+
+    // Check discretionary funds
+    const mData = ministryData.find(m => m.ministry_key === 'healthcare');
+    const balance = Number(mData?.discretionary_balance || 0);
+    if (oneTimeCost > 0 && balance < oneTimeCost) {
+        _ministryActionConfirming = false;
+        alert('Insufficient discretionary funds.');
+        healthcareActionDeselect(actionId);
+        return;
+    }
+
+    // Optimistic UI
+    row.classList.remove('selected');
+    row.classList.add('active');
+    selectedMinistryAction = null;
+    const btns = document.getElementById(actionId + '-btns');
+    if (btns) btns.innerHTML = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+
+    const actionData = {
+        use_count: useCount,
+        scale: getUseCountScale(useCount),
+        one_time_cost: oneTimeCost,
+        budget_per_tick: 0
+    };
+
+    try {
+        const { data: actionLogId, error } = await _supabase.rpc('execute_ministry_action', {
+            p_nation_id: currentNation.id,
+            p_faction_id: currentFaction.id,
+            p_ministry_key: 'healthcare',
+            p_action_key: 'preventativeCare',
+            p_ap_cost: apCost,
+            p_applied_at_tick: currentTick,
+            p_stat_effects: statEffects,
+            p_action_data: actionData
+        });
+
+        if (error) throw error;
+
+        // === RPC succeeded — action is committed. Everything below is best-effort. ===
+
+        // Deduct one-time cost from discretionary fund (best-effort — action already committed)
+        try { await deductDiscretionaryFund('healthcare', mData, balance, oneTimeCost); }
+        catch (_) { /* fund deduction failed — will be stale until page reload */ }
+
+        // Update local state
+        const prevAP = currentFaction.action_points || 0;
+        currentFaction.action_points = Math.max(0, prevAP - apCost);
+        ministryActionUseCounts[countKey] = useCount + 1;
+        activeMinistryActions[actionId] = true;
+        sessionStorage.removeItem('nationhood_state');
+
+        // Fire event (non-blocking)
+        try {
+            const { ministerName, partyName } = await fetchMinisterInfo('healthcare');
+            await _supabase.rpc('fire_system_event', {
+                p_trigger_key: config.triggerKey,
+                p_nation_id: currentNation.id,
+                p_tick: currentTick,
+                p_placeholders: {
+                    minister_name: ministerName,
+                    party: partyName,
+                    nation: currentNation.name || 'Unknown',
+                    cost: formatUpfrontCost(oneTimeCost)
+                }
+            });
+        } catch (_) { /* best-effort */ }
+
+    } catch (e) {
+        // Revert optimistic UI
+        row.classList.remove('active');
+        if (btns) {
+            btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();healthcareActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+        }
+        alert('Action failed: ' + (e.message || 'Unknown error'));
+    } finally {
+        _ministryActionConfirming = false;
+    }
 }
 
 function _curriculumAxisLabel(axisId) {
@@ -4182,6 +4880,8 @@ function ministryActionDeselect(actionId) {
 // Refresh button states and disabled classes for all actions in a ministry
 // after AP changes (avoids full page re-render)
 function refreshMinistryActionStates(ministryKey) {
+    // Custom-layout ministries manage their own state
+    if (ministryKey === 'defense' || ministryKey === 'healthcare') return;
     const config = MINISTRY_ACTIONS[ministryKey];
     if (!config?.actions) return;
     const ap = currentFaction?.action_points || 0;
