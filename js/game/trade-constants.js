@@ -393,15 +393,14 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
 
     // Credit rating: nations with poor credit are unreliable trade partners
     // Uses the WORSE credit of the two nations (weakest-link principle)
-    // Credit 50+ = no penalty, 25-49 = -5 to -10, 1-24 = -15 to -20, 0 = -25
+    // Continuous curve: credit 50+ = no penalty, scales linearly to -20 at credit 0, floor -25 for negative
     var creditA = Number(nationA.credit ?? 50);
     var creditB = Number(nationB.credit ?? 50);
     var worstCredit = Math.min(creditA, creditB);
     var creditPenalty = 0;
     if (worstCredit < 50) {
         if (worstCredit <= 0) creditPenalty = -25;
-        else if (worstCredit < 25) creditPenalty = -15 - ((25 - worstCredit) / 25) * 5;
-        else creditPenalty = -5 - ((50 - worstCredit) / 25) * 5;
+        else creditPenalty = -((50 - worstCredit) / 50) * 20;
     }
 
     var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + autocracyPenalty + fdiBonus + reputationBonus + creditPenalty;
