@@ -9472,20 +9472,40 @@ async function renderRelationDetail(nationId) {
                 .order('tick', { ascending: false })
                 .limit(1);
             const latestTick = latestRow?.[0]?.tick;
-            const { data: tFlows } = latestTick != null
-                ? await _supabase.from('trade_flows')
-                    .select('sector, export_capacity, import_demand')
-                    .eq('nation_id', nationId)
-                    .eq('tick', latestTick)
-                : { data: null };
+
+            // Fetch both nations' trade flows + bilateral trade in parallel
+            const [theirFlowsRes, ourFlowsRes, bilateralRes] = await Promise.all([
+                latestTick != null
+                    ? _supabase.from('trade_flows')
+                        .select('sector, export_capacity, import_demand')
+                        .eq('nation_id', nationId)
+                        .eq('tick', latestTick)
+                    : Promise.resolve({ data: null }),
+                latestTick != null && currentNation
+                    ? _supabase.from('trade_flows')
+                        .select('sector, export_capacity, import_demand')
+                        .eq('nation_id', currentNation.id)
+                        .eq('tick', latestTick)
+                    : Promise.resolve({ data: null }),
+                latestTick != null && currentNation
+                    ? _supabase.from('trade_partners')
+                        .select('sector, trade_volume, exporter_nation_id, importer_nation_id')
+                        .eq('tick', latestTick)
+                        .or('and(exporter_nation_id.eq.' + currentNation.id + ',importer_nation_id.eq.' + nationId + '),' +
+                            'and(exporter_nation_id.eq.' + nationId + ',importer_nation_id.eq.' + currentNation.id + ')')
+                    : Promise.resolve({ data: null })
+            ]);
+            const tFlows = theirFlowsRes.data;
+            const ourFlows = ourFlowsRes.data;
+            const bilateralRows = bilateralRes.data;
+
+            const sectorLabels = {
+                fuel_energy: 'Fuel & Energy', minerals: 'Minerals', food_agriculture: 'Food & Ag',
+                manufactured_goods: 'Manufactured', technology: 'Technology', arms: 'Arms',
+                tourism: 'Tourism', services_finance: 'Services'
+            };
 
             if (tFlows && tFlows.length > 0) {
-                const sectorLabels = {
-                    fuel_energy: 'Fuel & Energy', minerals: 'Minerals', food_agriculture: 'Food & Ag',
-                    manufactured_goods: 'Manufactured', technology: 'Technology', arms: 'Arms',
-                    tourism: 'Tourism', services_finance: 'Services'
-                };
-
                 // Sort by export capacity descending for "strong exports"
                 const byExport = [...tFlows].sort((a, b) => (b.export_capacity || 0) - (a.export_capacity || 0));
                 const topExports = byExport.filter(f => (f.export_capacity || 0) > 0).slice(0, 3);
@@ -9516,6 +9536,96 @@ async function renderRelationDetail(nationId) {
                         html += '</div>';
                     }
                     html += '</div>';
+                }
+            }
+
+            // ── Trade Opportunities: bilateral flow vs potential ──
+            if (tFlows && ourFlows && currentNation) {
+                // Build lookup maps
+                const theirMap = {};
+                for (const f of tFlows) theirMap[f.sector] = f;
+                const ourMap = {};
+                for (const f of ourFlows) ourMap[f.sector] = f;
+
+                // Build bilateral flow map: what's currently trading between us
+                const currentFlow = {}; // sector → { weExport, weImport }
+                if (bilateralRows) {
+                    for (const row of bilateralRows) {
+                        if (!currentFlow[row.sector]) currentFlow[row.sector] = { weExport: 0, weImport: 0 };
+                        if (row.exporter_nation_id === currentNation.id) {
+                            currentFlow[row.sector].weExport += Number(row.trade_volume) || 0;
+                        } else {
+                            currentFlow[row.sector].weImport += Number(row.trade_volume) || 0;
+                        }
+                    }
+                }
+
+                // Check if an active trade agreement exists (FTA/PTA/RSC)
+                const hasTradeAgreement = proposals.some(p =>
+                    ['fta', 'rsc', 'pta'].includes(p.proposal_type));
+
+                // Find complementary sectors:
+                //   "We can sell" = our export capacity + their import demand
+                //   "We can buy" = their export capacity + our import demand
+                const opportunities = [];
+                const allSectors = new Set([...Object.keys(ourMap), ...Object.keys(theirMap)]);
+                for (const sector of allSectors) {
+                    const ours = ourMap[sector];
+                    const theirs = theirMap[sector];
+                    const flow = currentFlow[sector] || { weExport: 0, weImport: 0 };
+                    const ourExCap = Number(ours?.export_capacity || 0);
+                    const theirDemand = Number(theirs?.import_demand || 0);
+                    const theirExCap = Number(theirs?.export_capacity || 0);
+                    const ourDemand = Number(ours?.import_demand || 0);
+
+                    // "We can sell to them" – our exports matching their demand
+                    if (ourExCap > 0 && theirDemand > 0) {
+                        const potential = Math.min(ourExCap, theirDemand);
+                        opportunities.push({
+                            sector,
+                            direction: 'sell',
+                            currentVol: flow.weExport,
+                            potential,
+                        });
+                    }
+                    // "We can buy from them" – their exports matching our demand
+                    if (theirExCap > 0 && ourDemand > 0) {
+                        const potential = Math.min(theirExCap, ourDemand);
+                        opportunities.push({
+                            sector,
+                            direction: 'buy',
+                            currentVol: flow.weImport,
+                            potential,
+                        });
+                    }
+                }
+
+                // Sort by untapped potential (biggest gap between potential and current)
+                opportunities.sort((a, b) => (b.potential - b.currentVol) - (a.potential - a.currentVol));
+
+                // Show top opportunities (up to 5)
+                const topOpps = opportunities.filter(o => o.potential > 0).slice(0, 5);
+                if (topOpps.length > 0) {
+                    html += '<div class="diplo-section-title" style="margin-top:8px;">Trade Opportunities</div>';
+                    html += '<div style="font-size:0.62rem;color:var(--text-dim);margin-bottom:4px;">Current open-market flow vs. complementary capacity' + (hasTradeAgreement ? '' : ' — a trade agreement could unlock more') + '</div>';
+                    for (const opp of topOpps) {
+                        const label = sectorLabels[opp.sector] || opp.sector;
+                        const dirLabel = opp.direction === 'sell' ? 'We export' : 'We import';
+                        const dirColor = opp.direction === 'sell' ? '#5cb85c' : '#c9a54e';
+                        const pct = opp.potential > 0 ? Math.round((opp.currentVol / opp.potential) * 100) : 0;
+                        const barPct = Math.min(100, pct);
+
+                        html += '<div style="margin-bottom:5px;">';
+                        html += '<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:0.7rem;">';
+                        html += '<span style="color:' + dirColor + ';">' + escapeHtml(label) + ' <span style="color:var(--text-dim);font-size:0.62rem;">(' + dirLabel + ')</span></span>';
+                        html += '<span style="color:var(--text-muted);font-size:0.62rem;">' + fmtBudgetCurrency(opp.currentVol) + ' / ' + fmtBudgetCurrency(opp.potential) + '</span>';
+                        html += '</div>';
+                        // Progress bar: current flow vs potential
+                        html += '<div style="height:4px;background:var(--bg-tertiary);border-radius:2px;margin-top:2px;overflow:hidden;">';
+                        html += '<div style="height:100%;width:' + barPct + '%;background:' + dirColor + ';border-radius:2px;transition:width 0.3s;"></div>';
+                        html += '</div>';
+                        html += '</div>';
+                    }
                 }
             }
         } catch (_tradeErr) { /* non-critical — profile section simply omitted */ }
