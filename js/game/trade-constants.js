@@ -9,7 +9,7 @@ import { isAutocracy } from './government-types.js';
 // ==================== TRADE SYSTEM CONSTANTS ====================
 
 export var TRADE_CONFIG = {
-    BASE_TRADE_MULTIPLIER: 50000000,       // base dollar value per unit of export capacity
+    BASE_TRADE_MULTIPLIER: 500000000,      // base dollar value per unit of export capacity
     BASELINE_GDP: 100000000000,            // 100B — the "average" GDP for scaling
     HISTORY_TICKS: 24,                     // keep 2 game-years of trade history
 };
