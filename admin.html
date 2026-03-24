@@ -707,7 +707,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     // ==================== ELECTIONS TAB ====================
     async function loadElectionNations() {
         try {
-            const { data } = await _supabase.from('nations').select('id, name, total_seats, eligible_voters, government_type, election_frequency, parliamentary_term_ticks, presidential_term_ticks').order('name');
+            const { data } = await _supabase.from('nations').select('*').order('name');
             nations = data || [];
             const select = document.getElementById('election-nation-select');
             select.innerHTML = '<option value="">-- Choose a nation --</option>';
