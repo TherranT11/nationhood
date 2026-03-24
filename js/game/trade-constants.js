@@ -399,7 +399,7 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var worstCredit = Math.min(creditA, creditB);
     var creditPenalty = 0;
     if (worstCredit < 50) {
-        if (worstCredit <= 0) creditPenalty = -25;
+        if (worstCredit < 0) creditPenalty = -25;
         else creditPenalty = -((50 - worstCredit) / 50) * 20;
     }
 

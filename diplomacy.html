@@ -9562,7 +9562,7 @@ async function renderRelationDetail(nationId) {
 
                 // Check if an active trade agreement exists (FTA/PTA/RSC)
                 const hasTradeAgreement = proposals.some(p =>
-                    ['fta', 'rsc', 'pta'].includes(p.proposal_type));
+                    p.proposal_type === 'trade_agreement' && ['fta', 'rsc', 'pta'].includes(p.proposal_data?.agreement_type));
 
                 // Find complementary sectors:
                 //   "We can sell" = our export capacity + their import demand
