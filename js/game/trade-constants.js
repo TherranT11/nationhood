@@ -90,6 +90,38 @@ for (var _tsi = 0; _tsi < TRADE_SECTORS.length; _tsi++) {
     TRADE_SECTOR_MAP[TRADE_SECTORS[_tsi].key] = TRADE_SECTORS[_tsi];
 }
 
+// ==================== SECTOR DISPLAY UNITS ====================
+// Maps sector keys to real-world commodity units for human-readable volume display.
+// Technology and services_finance are intentionally omitted — they display in currency.
+//
+// Calibration basis (BASE_TRADE_MULTIPLIER = $500M, BASELINE_GDP = $100B):
+//   A typical mid-GDP nation with stat=50 produces ~$5B capacity per sector.
+//   fuel_energy $2.5B → 1 million barrels a day  (Saudi Arabia ≈ 10 Mbbl/d)
+//   others      $100M → 1 unit                   (mid-tier exporter ≈ 50 units)
+export var SECTOR_DISPLAY_UNITS = {
+    fuel_energy:        { unit: 'million barrels a day',     factor: 1 / 2500000000 },
+    food_agriculture:   { unit: 'million tonnes/year',       factor: 1 / 100000000  },
+    minerals:           { unit: 'million tonnes/year',       factor: 1 / 100000000  },
+    manufactured_goods: { unit: 'thousand TEU/year',         factor: 1 / 100000000  },
+    arms:               { unit: 'thousand units/year',       factor: 1 / 100000000  },
+    tourism:            { unit: 'million visitor-days/year', factor: 1 / 100000000  },
+};
+
+/**
+ * Format a trade volume in real-world commodity units.
+ * Returns null for sectors that use currency display (technology, services_finance).
+ * @param {number} val       - internal dollar value
+ * @param {string} sectorKey - sector key
+ * @returns {string|null}
+ */
+export function formatSectorVolume(val, sectorKey) {
+    var def = SECTOR_DISPLAY_UNITS[sectorKey];
+    if (!def) return null;
+    var v = (Number(val) || 0) * def.factor;
+    var str = v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+    return str + '\u00a0' + def.unit;
+}
+
 // ==================== TRADE CALCULATION FUNCTIONS (STUBS) ====================
 
 /**

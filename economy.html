@@ -27,7 +27,7 @@ import { initPage, qCache, qCacheSet, formatCurrency, assertRawEconomicValue } f
 import './js/guide.js';
 import { escapeHtml } from './js/utils.js';
 import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
-import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, isAutocracy, ISSUE_CATEGORY_STATS, formatStatName, deductAP, fetchActiveCoalition, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG, buildFundingPctMap, getInstFundingPct } from './js/game-common.js';
+import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, isAutocracy, ISSUE_CATEGORY_STATS, formatStatName, deductAP, fetchActiveCoalition, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG, buildFundingPctMap, getInstFundingPct, formatSectorVolume } from './js/game-common.js';
 
 // ==================== STATE ====================
 var previousTickData = null;
@@ -2293,9 +2293,9 @@ function renderSectorDetail(nation, sectorKey) {
         var supplyVal = Number(flow.export_capacity) || 0;
         var demandVal = Number(flow.import_demand) || 0;
         h += '<div class="sector-vol-row">';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">SUPPLY</span><span class="sector-vol-value" style="color:#6aa3d9">' + formatBudgetCurrency(supplyVal) + '</span></div>';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">SUPPLY</span><span class="sector-vol-value" style="color:#6aa3d9">' + (formatSectorVolume(supplyVal, sectorKey) || formatBudgetCurrency(supplyVal)) + '</span></div>';
         if (!sector.export_only) {
-            h += '<div class="sector-vol-item"><span class="sector-vol-label">DEMAND</span><span class="sector-vol-value" style="color:#c9a54e">' + formatBudgetCurrency(demandVal) + '</span></div>';
+            h += '<div class="sector-vol-item"><span class="sector-vol-label">DEMAND</span><span class="sector-vol-value" style="color:#c9a54e">' + (formatSectorVolume(demandVal, sectorKey) || formatBudgetCurrency(demandVal)) + '</span></div>';
         }
         h += '</div>';
 
@@ -2309,22 +2309,25 @@ function renderSectorDetail(nation, sectorKey) {
             var supplyTitle = rscExportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscExportPartners.join(', ');
             var demandTitle = rscImportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscImportPartners.join(', ');
             h += '<div class="sector-vol-row">';
-            h += '<div class="sector-vol-item" title="' + escapeHtml(supplyTitle) + '"><span class="sector-vol-label">AVAILABLE</span><span class="sector-vol-value" style="color:' + availSupplyColor + '">' + formatBudgetCurrency(availableSupply) + (rscExportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscExportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
+            h += '<div class="sector-vol-item" title="' + escapeHtml(supplyTitle) + '"><span class="sector-vol-label">AVAILABLE</span><span class="sector-vol-value" style="color:' + availSupplyColor + '">' + (formatSectorVolume(availableSupply, sectorKey) || formatBudgetCurrency(availableSupply)) + (rscExportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscExportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
             if (!sector.export_only) {
-                h += '<div class="sector-vol-item" title="' + escapeHtml(demandTitle) + '"><span class="sector-vol-label">UNMET DEMAND</span><span class="sector-vol-value" style="color:' + availDemandColor + '">' + formatBudgetCurrency(availableDemand) + (rscImportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscImportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
+                h += '<div class="sector-vol-item" title="' + escapeHtml(demandTitle) + '"><span class="sector-vol-label">UNMET DEMAND</span><span class="sector-vol-value" style="color:' + availDemandColor + '">' + (formatSectorVolume(availableDemand, sectorKey) || formatBudgetCurrency(availableDemand)) + (rscImportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscImportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
             }
             h += '</div>';
         }
 
         // Actual trade volumes row
         h += '<div class="sector-vol-row">';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">EXPORTS</span><span class="sector-vol-value" style="color:#5cb85c">' + formatBudgetCurrency(expVol) + '</span></div>';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">EXPORTS</span><span class="sector-vol-value" style="color:#5cb85c">' + (formatSectorVolume(expVol, sectorKey) || formatBudgetCurrency(expVol)) + '</span></div>';
         if (!sector.export_only) {
-            h += '<div class="sector-vol-item"><span class="sector-vol-label">IMPORTS</span><span class="sector-vol-value" style="color:#d9534f">' + formatBudgetCurrency(impVol) + '</span></div>';
+            h += '<div class="sector-vol-item"><span class="sector-vol-label">IMPORTS</span><span class="sector-vol-value" style="color:#d9534f">' + (formatSectorVolume(impVol, sectorKey) || formatBudgetCurrency(impVol)) + '</span></div>';
         }
         var netColor = net > 0 ? '#5cb85c' : net < 0 ? '#d9534f' : '#888';
-        var netSign = net > 0 ? '+' : '';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">NET</span><span class="sector-vol-value" style="color:' + netColor + '">' + netSign + formatBudgetCurrency(net) + '</span></div>';
+        var netUnit = formatSectorVolume(Math.abs(net), sectorKey);
+        var netDisplay = netUnit
+            ? (net > 0 ? '+' : net < 0 ? '-' : '') + netUnit
+            : (net > 0 ? '+' : '') + formatBudgetCurrency(net);
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">NET</span><span class="sector-vol-value" style="color:' + netColor + '">' + netDisplay + '</span></div>';
         h += '</div>';
 
         // Price modifier
