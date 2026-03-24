@@ -10683,6 +10683,18 @@ async function processElections(supabase, nation, currentTick) {
         const electionType = election.election_type || 'parliamentary';
         console.log(`Processing ${electionType} election for ${nation.name} (tick ${currentTick})`);
 
+        // Safety check: skip snap elections if a government has already been formed
+        if (electionType === 'parliamentary') {
+            const existingGov = await fetchActiveCoalition(supabase, nation.id);
+            if (existingGov && (existingGov.status === 'formed' || existingGov.status === 'caretaker')) {
+                console.log(`Skipping parliamentary election for ${nation.name} — government already formed (status: ${existingGov.status})`);
+                await supabase.from('elections')
+                    .update({ status: 'cancelled' })
+                    .eq('id', election.id);
+                continue;
+            }
+        }
+
         // Partial election — only allocate delta seats (from foundational bill)
         if (election.partial_seats && election.partial_seats > 0) {
             await processPartialElection(supabase, nation, election, currentTick);
@@ -11413,11 +11425,20 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
     }
 
     // 2. Reset executive overreach counter — new president starts with clean record
+    //    Also reset gov_approval to 50 and clear gov_approval_events (clean slate)
+    //    Set overreach_reset_tick so previous president's EOs don't count toward new overreach
     const { error: overreachErr } = await supabase.from('nations')
-        .update({ overreach_count: 0 })
+        .update({
+            overreach_count: 0,
+            overreach_reset_tick: currentTick,
+            gov_approval: 50,
+            gov_approval_events: 0
+        })
         .eq('id', nationId);
     if (overreachErr) {
-        console.error(`[inauguratePresident] Failed to reset overreach_count:`, overreachErr.message);
+        console.error(`[inauguratePresident] Failed to reset overreach/gov_approval:`, overreachErr.message);
+    } else {
+        console.log(`[inauguratePresident] Reset overreach_count, overreach_reset_tick, gov_approval, gov_approval_events for ${nationId}`);
     }
 
     // 3. Remove all acting ministers — new president appoints their own cabinet
