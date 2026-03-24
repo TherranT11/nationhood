@@ -69,6 +69,14 @@
     </div>
     <!-- ═══ World Nations View (hidden by default) ═══ -->
     <div id="world-nations-view" class="wn-grid wn-grid--hidden"></div>
+
+    <!-- ═══ International Party Organisations View (hidden by default) ═══ -->
+    <div id="ipo-view" class="ipo-view ipo-view--hidden"></div>
+
+    <!-- ═══ IPO Creation Modal ═══ -->
+    <div class="modal-overlay" id="ipo-create-modal">
+        <div class="ipo-modal-content" id="ipo-create-modal-inner"></div>
+    </div>
 </div>
 
 <!-- Shared Scripts -->
@@ -158,6 +166,17 @@ let appointCachedExistingAmbs = null; // cache of existing ambassadors for filte
 // World Nations view state
 let currentDiploView = 'diplomacy';
 let worldNationsLoaded = false;
+
+// ── IPO (International Party Organisations) state ──
+let ipoMemberships = [];        // active ipo_members rows for current faction (joined with org data)
+let ipoSelectedOrgId = null;    // currently selected org in sidebar
+let ipoLoaded = false;          // prevents redundant re-fetches
+let ipoRealtimeChannel = null;  // realtime subscription for chat
+
+// Chat colour palette (assigned in join order)
+const IPO_CHAT_COLORS = ['#5cb85c','#c8a64e','#5aafa5','#d9534f','#8b7ec8','#5b9bd5'];
+// Logo symbol options
+const IPO_LOGO_SYMBOLS = ['◈','⬡','▲','◆','⬢','⊕'];
 
 // Legacy INITIATIVE_TYPES kept for backward compat with existing proposals.
 // New proposals use INITIATIVE_ARTICLE_TYPES from diplomacy-constants.js.
@@ -399,17 +418,30 @@ function switchDiploView(view) {
 
     const dashboard = document.querySelector('.dashboard');
     const wnView = document.getElementById('world-nations-view');
+    const ipoView = document.getElementById('ipo-view');
     const btns = document.querySelectorAll('.diplo-view-btn');
 
+    // Hide all views first
+    dashboard.style.display = 'none';
+    wnView.classList.add('wn-grid--hidden');
+    ipoView.classList.add('ipo-view--hidden');
+
+    // Clean up IPO realtime when leaving orgs view
+    if (view !== 'orgs' && ipoRealtimeChannel) {
+        _supabase.removeChannel(ipoRealtimeChannel);
+        ipoRealtimeChannel = null;
+    }
+
     if (view === 'nations') {
-        dashboard.style.display = 'none';
         wnView.classList.remove('wn-grid--hidden');
         // Always re-fetch when switching to nations view to avoid stale data
         worldNationsLoaded = true;
         renderWorldNations();
+    } else if (view === 'orgs') {
+        ipoView.classList.remove('ipo-view--hidden');
+        renderIPOView();
     } else {
         dashboard.style.display = '';
-        wnView.classList.add('wn-grid--hidden');
     }
 
     btns.forEach(btn => {
@@ -706,6 +738,7 @@ async function renderDiploHeader() {
         <div class="diplo-header-roles">${roleBadges.join('')}</div>
         <div class="diplo-view-toggle">
             <button class="diplo-view-btn ${currentDiploView === 'diplomacy' ? 'is-active' : ''}" data-view="diplomacy" onclick="switchDiploView('diplomacy')">Diplomacy</button>
+            <button class="diplo-view-btn ${currentDiploView === 'orgs' ? 'is-active' : ''}" data-view="orgs" onclick="switchDiploView('orgs')">International Orgs</button>
             <button class="diplo-view-btn ${currentDiploView === 'nations' ? 'is-active' : ''}" data-view="nations" onclick="switchDiploView('nations')">World Nations</button>
         </div>
         <div class="diplo-header-stats">
@@ -13701,6 +13734,1549 @@ window.executeRecallAmbassador = executeRecallAmbassador;
 window.selectAppointTarget = selectAppointTarget;
 window.selectAppointCandidate = selectAppointCandidate;
 window.executeAppointAmbassador = executeAppointAmbassador;
+
+// ==================== INTERNATIONAL PARTY ORGANISATIONS ====================
+
+/**
+ * Load and render the full IPO view:
+ *  - Sidebar: list of orgs the player belongs to + Create button
+ *  - Main panel: selected org detail (or empty state)
+ */
+async function renderIPOView() {
+    const container = document.getElementById('ipo-view');
+    if (!container || !currentFaction) return;
+
+    // Fetch memberships (joined with org data) — always re-fetch to avoid stale state
+    try {
+        const { data: memberships, error } = await _supabase
+            .from('ipo_members')
+            .select(`
+                id, role, joined_at_tick, chat_color,
+                org:international_orgs (
+                    id, name, logo_symbol, logo_text, description,
+                    founded_at_tick, founding_party_id,
+                    president_id, president_term_start_tick,
+                    headquarters_nation_id, solidarity_fund_balance,
+                    charter, is_active,
+                    symposium_cooldown_remaining, pending_symposium
+                )
+            `)
+            .eq('faction_id', currentFaction.id)
+            .eq('is_active', true);
+
+        if (error) {
+            console.error('[IPO] Failed to load memberships:', error.message);
+            ipoMemberships = [];
+        } else {
+            // Filter out any rows where the org is dissolved
+            ipoMemberships = (memberships || []).filter(m => m.org && m.org.is_active);
+        }
+    } catch (e) {
+        console.error('[IPO] Membership fetch error:', e);
+        ipoMemberships = [];
+    }
+
+    // Count members per org (for sidebar meta)
+    const memberCounts = {};
+    if (ipoMemberships.length > 0) {
+        const orgIds = ipoMemberships.map(m => m.org.id);
+        const { data: counts } = await _supabase
+            .from('ipo_members')
+            .select('org_id')
+            .in('org_id', orgIds)
+            .eq('is_active', true);
+        (counts || []).forEach(c => {
+            memberCounts[c.org_id] = (memberCounts[c.org_id] || 0) + 1;
+        });
+    }
+
+    // Auto-select first org if none selected (or if selected org was left)
+    if (ipoMemberships.length > 0) {
+        const selectedStillValid = ipoMemberships.some(m => m.org.id === ipoSelectedOrgId);
+        if (!ipoSelectedOrgId || !selectedStillValid) {
+            ipoSelectedOrgId = ipoMemberships[0].org.id;
+        }
+    } else {
+        ipoSelectedOrgId = null;
+    }
+
+    // Check for pending invitations
+    let pendingInvites = [];
+    try {
+        const { data: invites } = await _supabase
+            .from('ipo_invitations')
+            .select(`
+                id, invited_role, invited_at_tick, status,
+                org:international_orgs ( id, name, logo_symbol, logo_text ),
+                inviter:invited_by ( id, faction_name )
+            `)
+            .eq('target_faction_id', currentFaction.id)
+            .in('status', ['pending']);
+        pendingInvites = invites || [];
+    } catch (e) { /* non-fatal */ }
+
+    // ── Build sidebar ──
+    const sidebarItems = ipoMemberships.map(m => {
+        const org = m.org;
+        const isActive = org.id === ipoSelectedOrgId;
+        const count = memberCounts[org.id] || 1;
+        const roleLabel = org.president_id === currentFaction.id ? 'President'
+            : m.role === 'observer' ? 'Observer' : 'Member';
+        return `
+            <div class="ipo-sidebar-item ${isActive ? 'is-active' : ''}"
+                 onclick="selectIPOOrg('${org.id}')">
+                <span class="ipo-sidebar-logo ${isActive ? 'is-active' : ''}">${escapeHtml(org.logo_symbol)} ${escapeHtml(org.logo_text)}</span>
+                <div class="ipo-sidebar-info">
+                    <span class="ipo-sidebar-name ${isActive ? 'is-active' : ''}">${escapeHtml(org.name)}</span>
+                    <span class="ipo-sidebar-meta">${count} member${count !== 1 ? 's' : ''} · ${roleLabel}</span>
+                </div>
+            </div>`;
+    }).join('');
+
+    // ── Pending invitations in sidebar ──
+    const inviteItems = pendingInvites.map(inv => {
+        const org = inv.org;
+        const inviterName = inv.inviter?.faction_name || 'Unknown';
+        return `
+            <div class="ipo-sidebar-invite">
+                <div class="ipo-sidebar-invite-header">
+                    <span class="ipo-sidebar-logo">${escapeHtml(org.logo_symbol)} ${escapeHtml(org.logo_text)}</span>
+                    <span class="ipo-sidebar-name">${escapeHtml(org.name)}</span>
+                </div>
+                <span class="ipo-sidebar-invite-from">Invited by ${escapeHtml(inviterName)} · ${inv.invited_role}</span>
+                <div class="ipo-sidebar-invite-actions">
+                    <button class="ipo-btn ipo-btn--accept" onclick="acceptIPOInvite('${inv.id}')">Accept</button>
+                    <button class="ipo-btn ipo-btn--decline" onclick="declineIPOInvite('${inv.id}')">Decline</button>
+                </div>
+            </div>`;
+    }).join('');
+
+    // ── Main panel ──
+    let mainContent = '';
+    if (ipoMemberships.length === 0) {
+        // Empty state
+        mainContent = `
+            <div class="ipo-empty-state">
+                <div class="ipo-empty-icon">◈</div>
+                <div class="ipo-empty-title">International Party Organisations</div>
+                <div class="ipo-empty-desc">
+                    Join or create an international organisation to coordinate with like-minded parties across nations.
+                    Share resources, hold rallies, issue joint statements, and project soft power across borders.
+                </div>
+                <button class="ipo-btn ipo-btn--create-large" onclick="openIPOCreationModal()">
+                    + Create Organisation — 4 AP
+                </button>
+            </div>`;
+    } else {
+        // Render selected org detail
+        mainContent = await renderIPOMainPanel(memberCounts);
+    }
+
+    container.innerHTML = `
+        <div class="ipo-sidebar">
+            <div class="ipo-sidebar-header">
+                <span class="ipo-sidebar-dot"></span>
+                <span class="ipo-sidebar-label">YOUR ORGANISATIONS</span>
+            </div>
+            <div class="ipo-sidebar-list">
+                ${sidebarItems}
+                ${inviteItems}
+            </div>
+            <button class="ipo-btn ipo-btn--create" onclick="openIPOCreationModal()">
+                + Create Organisation — 4 AP
+            </button>
+        </div>
+        <div class="ipo-main" id="ipo-main">
+            ${mainContent}
+        </div>`;
+
+    ipoLoaded = true;
+
+    // Load chat after DOM is set (only if an org is selected)
+    if (ipoSelectedOrgId && ipoMemberships.length > 0) {
+        loadIPOChat(ipoSelectedOrgId);
+    }
+}
+
+/**
+ * Render the full main panel for the selected org:
+ *  - Header bar (logo, name, meta, fund pill, president pill)
+ *  - Chat placeholder (Phase 5)
+ *  - Bottom third panels: charter / votes / actions (Phase 6-8)
+ *  - Footer with member badges + management buttons (Phase 10)
+ */
+async function renderIPOMainPanel(memberCounts) {
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    if (!membership) {
+        return `<div class="ipo-main-placeholder">
+            <span class="ipo-main-placeholder-text">Select an organisation from the sidebar.</span>
+        </div>`;
+    }
+
+    const org = membership.org;
+    const charter = org.charter || {};
+    const leadership = charter.leadership || {};
+    const resources = charter.resources || {};
+    const isPresident = org.president_id === currentFaction.id;
+    const isObserver = membership.role === 'observer';
+    const count = memberCounts[org.id] || 1;
+
+    // Fetch HQ nation name, president party name, and all members in parallel
+    const [hqResult, presidentResult, membersResult, allNationsResult] = await Promise.all([
+        org.headquarters_nation_id
+            ? _supabase.from('nations').select('name').eq('id', org.headquarters_nation_id).single()
+            : Promise.resolve({ data: null }),
+        _supabase.from('factions').select('faction_name').eq('id', org.president_id).single(),
+        _supabase.from('ipo_members')
+            .select('id, faction_id, role, factions:faction_id ( id, faction_name, nation_id )')
+            .eq('org_id', org.id)
+            .eq('is_active', true),
+        _supabase.from('nations').select('id, name').order('name')
+    ]);
+
+    const hqName = hqResult.data?.name || null;
+    const presidentName = presidentResult.data?.faction_name || 'Unknown';
+    const allMembers = membersResult.data || [];
+    const allNations = allNationsResult.data || [];
+    const nationMap = Object.fromEntries(allNations.map(n => [n.id, n.name]));
+
+    // Leadership type display
+    const leadershipLabels = { rotation: 'Rotation', most_seats: 'Most Seats', random: 'Random' };
+    const leadershipLabel = leadershipLabels[leadership.type] || 'Rotation';
+
+    // Term display
+    const termYears = leadership.termYears || 2;
+
+    // ── Header ──
+    const headerHtml = `
+        <div class="ipo-header">
+            <span class="ipo-header-logo">${escapeHtml(org.logo_symbol)} ${escapeHtml(org.logo_text)}</span>
+            <div class="ipo-header-identity">
+                <span class="ipo-header-name">${escapeHtml(org.name)}</span>
+                <div class="ipo-header-meta">
+                    <span>Est. Tick ${org.founded_at_tick}</span>
+                    <span>${count} member${count !== 1 ? 's' : ''}</span>
+                    ${hqName ? `<span>HQ: ${escapeHtml(hqName)}</span>` : '<span>HQ: Vacant</span>'}
+                    <span>${leadershipLabel}</span>
+                    <span>${termYears}-Year Term</span>
+                </div>
+            </div>
+            <div class="ipo-header-right">
+                <span class="ipo-header-fund">${escapeHtml('SOLIDARITY FUND')} · ${org.solidarity_fund_balance} AP</span>
+                ${isPresident ? '<span class="ipo-header-president">PRESIDENT</span>' : ''}
+            </div>
+        </div>`;
+
+    // ── Chat area (Phase 5 placeholder) ──
+    const chatHtml = `
+        <div class="ipo-chat-area" id="ipo-chat-area">
+            <div class="ipo-chat-messages" id="ipo-chat-messages">
+                <div class="ipo-main-placeholder">
+                    <span class="ipo-main-placeholder-text">Chat loading...</span>
+                </div>
+            </div>
+            <div class="ipo-chat-input-row">
+                <input type="text" class="ipo-chat-input"
+                    placeholder="${isObserver ? 'Observers cannot send messages.' : 'Message the ' + escapeHtml(org.name) + '...'}"
+                    ${isObserver ? 'disabled' : ''}
+                    id="ipo-chat-input"
+                    onkeydown="if(event.key==='Enter')sendIPOChat()" />
+                <button class="ipo-btn ipo-btn--send" onclick="sendIPOChat()" ${isObserver ? 'disabled' : ''}>Send</button>
+            </div>
+        </div>`;
+
+    // ── Bottom panels: Charter / Votes / Actions ──
+    const charterBodyHtml = renderIPOCharterPanel(charter, org);
+    const bottomHtml = `
+        <div class="ipo-bottom-panels">
+            <div class="ipo-panel ipo-panel--charter" id="ipo-panel-charter">
+                <div class="ipo-panel-header">
+                    <span class="ipo-panel-dot ipo-panel-dot--teal"></span>
+                    <span class="ipo-panel-title">Charter</span>
+                </div>
+                <div class="ipo-panel-body">${charterBodyHtml}</div>
+            </div>
+            <div class="ipo-panel ipo-panel--votes" id="ipo-panel-votes">
+                <div class="ipo-panel-header">
+                    <span class="ipo-panel-dot ipo-panel-dot--amber"></span>
+                    <span class="ipo-panel-title">Votes</span>
+                </div>
+                <div class="ipo-panel-body">
+                    <span class="ipo-main-placeholder-text">Votes — Phase 7</span>
+                </div>
+            </div>
+            <div class="ipo-panel ipo-panel--actions" id="ipo-panel-actions">
+                <div class="ipo-panel-header">
+                    <span class="ipo-panel-dot ipo-panel-dot--purple"></span>
+                    <span class="ipo-panel-title">Actions</span>
+                </div>
+                <div class="ipo-panel-body">
+                    <span class="ipo-main-placeholder-text">Actions — Phase 8</span>
+                </div>
+            </div>
+        </div>`;
+
+    // ── Footer: member badges + management buttons ──
+    const memberBadges = allMembers.map(m => {
+        const pName = m.factions?.faction_name || 'Unknown';
+        const pNation = m.factions?.nation_id ? (nationMap[m.factions.nation_id] || '') : '';
+        const isYou = m.faction_id === currentFaction.id;
+        const roleTag = m.role === 'observer' ? ' (OBS)' : '';
+        const cls = isYou ? 'ipo-footer-badge--you' : 'ipo-footer-badge--other';
+        return `<span class="ipo-footer-badge ${cls}">${escapeHtml(pName)}${roleTag}${isYou ? ' (YOU)' : ''}${pNation ? ' · ' + escapeHtml(pNation) : ''}</span>`;
+    }).join('');
+
+    const footerHtml = `
+        <div class="ipo-footer">
+            <div class="ipo-footer-members">${memberBadges}</div>
+            <div class="ipo-footer-actions">
+                <button class="ipo-btn ipo-btn--invite" onclick="openIPOInviteModal()">Invite Member</button>
+                <button class="ipo-btn ipo-btn--amend" onclick="openIPOAmendModal()">Amend Charter</button>
+                <button class="ipo-btn ipo-btn--leave" onclick="leaveIPOOrg()">Leave Org</button>
+            </div>
+        </div>`;
+
+    return headerHtml + chatHtml + bottomHtml + footerHtml;
+}
+
+// ==================== IPO CHAT SYSTEM ====================
+
+let ipoChatMessages = [];       // cached messages for current org
+let ipoChatMemberMap = {};      // { faction_id: { name, color } } for rendering
+
+/**
+ * Load chat messages for the selected org, render them, and subscribe to realtime.
+ */
+async function loadIPOChat(orgId) {
+    const container = document.getElementById('ipo-chat-messages');
+    if (!container || !orgId) return;
+
+    // Unsubscribe from previous channel
+    if (ipoRealtimeChannel) {
+        _supabase.removeChannel(ipoRealtimeChannel);
+        ipoRealtimeChannel = null;
+    }
+
+    // Build member map (for names and colors)
+    try {
+        const { data: members } = await _supabase
+            .from('ipo_members')
+            .select('faction_id, chat_color, factions:faction_id ( faction_name )')
+            .eq('org_id', orgId)
+            .eq('is_active', true);
+        ipoChatMemberMap = {};
+        (members || []).forEach(m => {
+            ipoChatMemberMap[m.faction_id] = {
+                name: m.factions?.faction_name || 'Unknown',
+                color: m.chat_color || '#6b6a5e'
+            };
+        });
+    } catch (e) { console.warn('[IPO Chat] Member map error:', e); }
+
+    // Fetch messages (most recent 100)
+    try {
+        const { data: messages, error } = await _supabase
+            .from('ipo_chat')
+            .select('id, faction_id, is_system, message_text, tick_posted, created_at')
+            .eq('org_id', orgId)
+            .order('created_at', { ascending: true })
+            .limit(100);
+
+        if (error) {
+            console.error('[IPO Chat] Fetch error:', error.message);
+            ipoChatMessages = [];
+        } else {
+            ipoChatMessages = messages || [];
+        }
+    } catch (e) {
+        console.error('[IPO Chat] Fetch exception:', e);
+        ipoChatMessages = [];
+    }
+
+    renderIPOChatMessages();
+
+    // Subscribe to realtime inserts
+    ipoRealtimeChannel = _supabase
+        .channel('ipo_chat_' + orgId)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'ipo_chat',
+            filter: 'org_id=eq.' + orgId
+        }, (payload) => {
+            const msg = payload.new;
+            if (!ipoChatMessages.find(m => m.id === msg.id)) {
+                ipoChatMessages.push(msg);
+                renderIPOChatMessages();
+            }
+        })
+        .subscribe();
+}
+
+/**
+ * Render chat messages into the chat container.
+ */
+function renderIPOChatMessages() {
+    const container = document.getElementById('ipo-chat-messages');
+    if (!container) return;
+
+    if (ipoChatMessages.length === 0) {
+        container.innerHTML = '<div class="ipo-chat-system">— No messages yet —</div>';
+        return;
+    }
+
+    container.innerHTML = ipoChatMessages.map(msg => {
+        if (msg.is_system) {
+            return `<div class="ipo-chat-system">— ${escapeHtml(msg.message_text)} —</div>`;
+        }
+
+        const member = ipoChatMemberMap[msg.faction_id];
+        const partyName = member?.name || 'Unknown';
+        const partyColor = member?.color || '#6b6a5e';
+        const timeStr = formatIPOChatTime(msg.created_at);
+
+        return `<div class="ipo-chat-msg">
+            <span class="ipo-chat-msg-party" style="color:${partyColor};">${escapeHtml(partyName)}</span>
+            <span class="ipo-chat-msg-text">${escapeHtml(msg.message_text)}</span>
+            <span class="ipo-chat-msg-time">${timeStr}</span>
+        </div>`;
+    }).join('');
+
+    // Auto-scroll to bottom
+    container.scrollTop = container.scrollHeight;
+}
+
+/**
+ * Format chat timestamp (relative or absolute).
+ */
+function formatIPOChatTime(isoStr) {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    const now = new Date();
+    const diff = (now - d) / 1000;
+    if (diff < 60) return 'now';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h';
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+/**
+ * Send a chat message to the current org.
+ */
+async function sendIPOChat() {
+    const input = document.getElementById('ipo-chat-input');
+    if (!input || !currentFaction || !ipoSelectedOrgId) return;
+
+    const text = input.value.trim();
+    if (!text) return;
+
+    // Check membership is active and role is 'member' (not observer)
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    if (!membership || membership.role === 'observer') return;
+
+    input.value = '';
+    input.disabled = true;
+
+    try {
+        const { error } = await _supabase.from('ipo_chat').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: currentFaction.id,
+            is_system: false,
+            message_text: text,
+            tick_posted: shardTick
+        });
+
+        if (error) {
+            console.error('[IPO Chat] Send error:', error.message);
+            input.value = text; // restore on failure
+        }
+        // Message will appear via realtime subscription
+    } catch (e) {
+        console.error('[IPO Chat] Send exception:', e);
+        input.value = text;
+    } finally {
+        input.disabled = false;
+        input.focus();
+    }
+}
+
+// Placeholder handlers for later phases
+function openIPOInviteModal() { alert('Invite flow — Phase 10'); }
+function openIPOAmendModal() { alert('Amend Charter — Phase 6'); }
+async function leaveIPOOrg() {
+    if (!currentFaction || !ipoSelectedOrgId) return;
+    if (!confirm('Are you sure you want to leave this organisation? Your solidarity fund contributions will not be returned.')) return;
+    try {
+        await _supabase.from('ipo_members')
+            .update({ is_active: false, left_at_tick: shardTick })
+            .eq('org_id', ipoSelectedOrgId)
+            .eq('faction_id', currentFaction.id)
+            .eq('is_active', true);
+
+        // System message
+        await _supabase.from('ipo_chat').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: null,
+            is_system: true,
+            message_text: `${currentFaction.faction_name} has left the organisation.`,
+            tick_posted: shardTick
+        });
+
+        // Check if org is now empty — dissolve
+        const { data: remaining } = await _supabase
+            .from('ipo_members')
+            .select('id')
+            .eq('org_id', ipoSelectedOrgId)
+            .eq('is_active', true);
+
+        if (!remaining || remaining.length === 0) {
+            await _supabase.from('international_orgs')
+                .update({ is_active: false, dissolved_at_tick: shardTick })
+                .eq('id', ipoSelectedOrgId);
+        }
+
+        ipoSelectedOrgId = null;
+        renderIPOView();
+    } catch (e) {
+        console.error('[IPO] Leave org error:', e);
+        alert('Failed to leave organisation.');
+    }
+}
+
+/**
+ * Select an org in the sidebar — re-renders main panel.
+ */
+function selectIPOOrg(orgId) {
+    if (orgId === ipoSelectedOrgId) return;
+    ipoSelectedOrgId = orgId;
+    renderIPOView();
+}
+
+/**
+ * Accept an IPO invitation.
+ */
+async function acceptIPOInvite(inviteId) {
+    if (!currentFaction) return;
+    try {
+        // Fetch invite details
+        const { data: invite, error: fetchErr } = await _supabase
+            .from('ipo_invitations')
+            .select('id, org_id, invited_role, status')
+            .eq('id', inviteId)
+            .single();
+        if (fetchErr || !invite || invite.status !== 'pending') {
+            alert('This invitation is no longer valid.');
+            renderIPOView();
+            return;
+        }
+
+        // Check if org charter requires a vote for admission
+        const { data: org } = await _supabase
+            .from('international_orgs')
+            .select('charter')
+            .eq('id', invite.org_id)
+            .single();
+        const admission = org?.charter?.membership?.admission || 'vote';
+
+        if (admission === 'vote' && invite.invited_role === 'member') {
+            // Mark invite as vote_pending — the vote creation will happen in Phase 7
+            await _supabase.from('ipo_invitations')
+                .update({ status: 'vote_pending', responded_at_tick: shardTick })
+                .eq('id', inviteId);
+            alert('Your application has been submitted. The organisation will vote on your membership.');
+        } else {
+            // Direct admission (president decides, or observer role)
+            // Assign chat color
+            const { data: existingMembers } = await _supabase
+                .from('ipo_members')
+                .select('chat_color')
+                .eq('org_id', invite.org_id)
+                .eq('is_active', true);
+            const usedColors = (existingMembers || []).map(m => m.chat_color).filter(Boolean);
+            const chatColor = IPO_CHAT_COLORS.find(c => !usedColors.includes(c)) || IPO_CHAT_COLORS[0];
+
+            await _supabase.from('ipo_members').insert({
+                org_id: invite.org_id,
+                faction_id: currentFaction.id,
+                role: invite.invited_role,
+                joined_at_tick: shardTick,
+                chat_color: chatColor
+            });
+
+            await _supabase.from('ipo_invitations')
+                .update({ status: 'accepted', responded_at_tick: shardTick })
+                .eq('id', inviteId);
+
+            // System chat message
+            await _supabase.from('ipo_chat').insert({
+                org_id: invite.org_id,
+                faction_id: null,
+                is_system: true,
+                message_text: `${currentFaction.faction_name} has joined the organisation.`,
+                tick_posted: shardTick
+            });
+        }
+        renderIPOView();
+    } catch (e) {
+        console.error('[IPO] Accept invite error:', e);
+        alert('Failed to accept invitation.');
+    }
+}
+
+/**
+ * Decline an IPO invitation.
+ */
+async function declineIPOInvite(inviteId) {
+    if (!currentFaction) return;
+    try {
+        await _supabase.from('ipo_invitations')
+            .update({ status: 'declined', responded_at_tick: shardTick })
+            .eq('id', inviteId);
+        renderIPOView();
+    } catch (e) {
+        console.error('[IPO] Decline invite error:', e);
+    }
+}
+
+// ==================== IPO CHARTER DISPLAY ====================
+
+/**
+ * Render the charter panel contents for the selected org.
+ */
+function renderIPOCharterPanel(charter, org) {
+    if (!charter || Object.keys(charter).length === 0) {
+        return '<span class="ipo-main-placeholder-text">No charter defined.</span>';
+    }
+
+    const sections = [];
+
+    // Article I — Mission Statement
+    if (charter.mission != null) {
+        sections.push(renderCharterSection('Article I — Mission Statement',
+            `<div class="ipo-charter-text">${escapeHtml(charter.mission)}</div>`));
+    }
+
+    // Article II — Leadership
+    if (charter.leadership) {
+        const l = charter.leadership;
+        const typeLabels = { rotation: 'Rotation', most_seats: 'Most Seats', random: 'Random' };
+        const weightLabels = { equal: 'Equal (one vote per member)', seat_share: 'By Seat Share' };
+        const passLabels = { majority: 'Majority (>50%)', unanimous: 'Unanimous' };
+        sections.push(renderCharterSection('Article II — Leadership', `
+            ${charterRow('Leadership Type', typeLabels[l.type] || l.type)}
+            ${charterRow('Succession Term', (l.termYears || 2) + ' Year' + ((l.termYears||2) > 1 ? 's' : ''))}
+            ${charterRow('Voting Weight', weightLabels[l.votingWeight] || l.votingWeight)}
+            ${charterRow('Vote Pass Threshold', passLabels[l.votePass] || l.votePass)}
+        `));
+    }
+
+    // Article III — Membership
+    if (charter.membership) {
+        const m = charter.membership;
+        const admLabels = { vote: 'Vote Required', president: 'President Decides' };
+        let membershipRows = charterRow('New Member Admission', admLabels[m.admission] || m.admission);
+
+        if (m.ideologicalThreshold?.enabled && m.ideologicalThreshold.directions?.length > 0) {
+            const dirs = m.ideologicalThreshold.directions.map(d =>
+                `<span class="ipo-charter-tag">${escapeHtml(d.charAt(0).toUpperCase() + d.slice(1))}</span>`
+            ).join(' ');
+            membershipRows += charterRow('Ideological Requirements', dirs);
+        } else {
+            membershipRows += charterRow('Ideological Threshold', 'None');
+        }
+
+        if (m.expulsionClause) {
+            const expLabels = { president: 'President Only', majority: 'Majority Vote', unanimous: 'Unanimous Vote' };
+            membershipRows += charterRow('Expulsion Clause', expLabels[m.expulsionClause] || m.expulsionClause);
+        } else {
+            membershipRows += charterRow('Expulsion Clause', 'Disabled');
+        }
+
+        sections.push(renderCharterSection('Article III — Membership', membershipRows));
+    }
+
+    // Article IV — Transparency & Governance
+    if (charter.governance) {
+        const g = charter.governance;
+        const transLabels = { public: 'Public Ballot', secret: 'Secret Ballot' };
+        const vetoLabels = { founding: 'Founding Party', president: 'Current President', hq: 'HQ Nation Party' };
+        sections.push(renderCharterSection('Article IV — Transparency & Governance', `
+            ${charterRow('Vote Transparency', transLabels[g.voteTransparency] || g.voteTransparency)}
+            ${charterRow('Observer Status', g.observerStatus ? 'Enabled' : 'Disabled')}
+            ${charterRow('Veto Right', g.vetoRight ? vetoLabels[g.vetoRight] || g.vetoRight : 'None')}
+            ${charterRow('Emergency Powers', g.emergencyPowers ? 'Enabled — President can act once per term without a vote' : 'Disabled')}
+        `));
+    }
+
+    // Article V — Resources & External Relations
+    if (charter.resources) {
+        const r = charter.resources;
+        const stmtLabels = { president: 'President Alone', vote: 'Majority Vote Required' };
+        let resourceRows = '';
+
+        if (r.solidarityFund?.enabled) {
+            resourceRows += charterRow('Solidarity Fund', r.solidarityFund.contributionPerQuarter + ' AP / Quarter');
+        } else {
+            resourceRows += charterRow('Solidarity Fund', 'Disabled');
+        }
+
+        if (r.resourceSharingCap != null) {
+            resourceRows += charterRow('Resource Sharing Cap', r.resourceSharingCap + ' per member per term');
+        } else {
+            resourceRows += charterRow('Resource Sharing Cap', 'No limit');
+        }
+
+        resourceRows += charterRow('Joint Statements', stmtLabels[r.jointStatementClause] || r.jointStatementClause);
+        resourceRows += charterRow('Headquarters', r.headquarters ? 'Active' : 'Not designated');
+
+        sections.push(renderCharterSection('Article V — Resources & External Relations', resourceRows));
+    }
+
+    return sections.join('<div class="ipo-charter-divider"></div>');
+}
+
+function renderCharterSection(title, body) {
+    return `
+        <div class="ipo-charter-section">
+            <div class="ipo-charter-article-label">${title}</div>
+            ${body}
+        </div>`;
+}
+
+function charterRow(label, value) {
+    return `<div class="ipo-charter-row">
+        <span class="ipo-charter-row-label">${label}</span>
+        <span class="ipo-charter-row-value">${value}</span>
+    </div>`;
+}
+
+// ==================== IPO AMEND CHARTER ====================
+
+let ipoAmendArticles = null; // copy of charter articles for editing
+
+function openIPOAmendModal() {
+    if (!currentFaction || !ipoSelectedOrgId) return;
+
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    if (!membership) return;
+
+    const org = membership.org;
+    const charter = org.charter || {};
+    const isPresident = org.president_id === currentFaction.id;
+
+    // Only president can directly amend; others must propose a vote (Phase 7)
+    if (!isPresident) {
+        alert('Only the president can amend the charter directly. You can propose a charter amendment vote instead.');
+        return;
+    }
+
+    // Deep clone charter into editable articles array
+    ipoAmendArticles = [];
+    if (charter.mission != null) ipoAmendArticles.push({ type: 'mission', config: { text: charter.mission } });
+    if (charter.leadership) ipoAmendArticles.push({ type: 'leadership', config: { ...charter.leadership } });
+    if (charter.membership) ipoAmendArticles.push({ type: 'membership', config: JSON.parse(JSON.stringify(charter.membership)) });
+    if (charter.governance) ipoAmendArticles.push({ type: 'governance', config: { ...charter.governance } });
+    if (charter.resources) ipoAmendArticles.push({ type: 'resources', config: JSON.parse(JSON.stringify(charter.resources)) });
+
+    // If no mission exists (shouldn't happen), add one
+    if (!ipoAmendArticles.find(a => a.type === 'mission')) {
+        ipoAmendArticles.unshift({ type: 'mission', config: { text: '' } });
+    }
+
+    // Reuse the creation modal but swap to amend mode
+    const modal = document.getElementById('ipo-create-modal');
+    modal.classList.add('active');
+    renderIPOAmendStep();
+}
+
+function renderIPOAmendStep() {
+    const inner = document.getElementById('ipo-create-modal-inner');
+
+    // Reuse creation article card renderer — swap the ipoCreateArticles temporarily
+    const savedArticles = ipoCreateArticles;
+    ipoCreateArticles = ipoAmendArticles;
+
+    const articleCards = ipoAmendArticles.map((art, i) => renderIPOArticleCard(art, i)).join('');
+    const usedTypes = new Set(ipoAmendArticles.map(a => a.type));
+    const availableTypes = IPO_ARTICLE_TYPES.filter(t => !usedTypes.has(t.key));
+    const canAdd = ipoAmendArticles.length < 5 && availableTypes.length > 0;
+
+    const addDropdown = canAdd ? `
+        <div class="ipo-add-article-row">
+            <select id="ipo-add-article-select" style="font-size:0.75rem;padding:4px 8px;background:var(--bg-1);color:var(--text-primary);border:1px solid var(--border-hair);border-radius:3px;">
+                <option value="">Add article...</option>
+                ${availableTypes.map(t => `<option value="${t.key}">${t.label}</option>`).join('')}
+            </select>
+            <button class="wizard-next-btn" style="font-size:8px;padding:3px 10px;"
+                onclick="ipoAmendAddArticle()">Add</button>
+        </div>` : '';
+
+    inner.innerHTML = `
+        <div class="ipo-modal-header">
+            <span class="ipo-modal-title">Amend Charter</span>
+            <button class="modal-close" onclick="closeIPOAmendModal()">&times;</button>
+        </div>
+        <div class="ipo-modal-body">
+            <div class="ipo-charter-info">Edit the charter articles below. Changes take effect immediately.</div>
+            <div class="ipo-article-list">${articleCards}</div>
+            ${addDropdown}
+            <div class="wizard-nav">
+                <button class="wizard-back-btn" onclick="closeIPOAmendModal()">Cancel</button>
+                <button class="ipo-btn ipo-btn--create-large" onclick="submitIPOAmend()">Save Changes</button>
+            </div>
+        </div>`;
+
+    // Restore creation articles
+    ipoCreateArticles = savedArticles;
+}
+
+function ipoAmendAddArticle() {
+    const sel = document.getElementById('ipo-add-article-select');
+    if (!sel || !sel.value) return;
+    const key = sel.value;
+    const defaults = {
+        leadership:  { type: 'rotation', termYears: 2, votingWeight: 'equal', votePass: 'majority' },
+        membership:  { admission: 'vote', ideologicalThreshold: { enabled: false, directions: [] }, expulsionClause: null },
+        governance:  { voteTransparency: 'public', observerStatus: false, vetoRight: null, emergencyPowers: false },
+        resources:   { solidarityFund: { enabled: false, contributionPerQuarter: 1 }, resourceSharingCap: null, jointStatementClause: 'vote', headquarters: null }
+    };
+    ipoAmendArticles.push({ type: key, config: defaults[key] || {} });
+    // Temporarily swap so card renderers work
+    const saved = ipoCreateArticles;
+    ipoCreateArticles = ipoAmendArticles;
+    renderIPOAmendStep();
+    ipoCreateArticles = saved;
+}
+
+function closeIPOAmendModal() {
+    document.getElementById('ipo-create-modal').classList.remove('active');
+    ipoAmendArticles = null;
+}
+
+async function submitIPOAmend() {
+    if (!currentFaction || !ipoSelectedOrgId || !ipoAmendArticles) return;
+
+    // Build charter from amend articles (same logic as creation)
+    const charter = {};
+    for (const art of ipoAmendArticles) {
+        switch (art.type) {
+            case 'mission': charter.mission = art.config.text || ''; break;
+            case 'leadership':
+                charter.leadership = {
+                    type: art.config.type,
+                    termYears: Number(art.config.termYears),
+                    votingWeight: art.config.votingWeight,
+                    votePass: art.config.votePass
+                }; break;
+            case 'membership':
+                charter.membership = {
+                    admission: art.config.admission,
+                    ideologicalThreshold: art.config.ideologicalThreshold || { enabled: false, directions: [] },
+                    expulsionClause: art.config.expulsionClause || null
+                }; break;
+            case 'governance':
+                charter.governance = {
+                    voteTransparency: art.config.voteTransparency,
+                    observerStatus: !!art.config.observerStatus,
+                    vetoRight: art.config.vetoRight || null,
+                    emergencyPowers: !!art.config.emergencyPowers
+                }; break;
+            case 'resources':
+                charter.resources = {
+                    solidarityFund: art.config.solidarityFund || { enabled: false, contributionPerQuarter: 1 },
+                    resourceSharingCap: art.config.resourceSharingCap ?? null,
+                    jointStatementClause: art.config.jointStatementClause || 'vote',
+                    headquarters: art.config.headquarters === '__self__' ? currentNation.id : (art.config.headquarters || null)
+                }; break;
+        }
+    }
+
+    // Defaults for missing articles
+    if (!charter.leadership) charter.leadership = { type: 'rotation', termYears: 2, votingWeight: 'equal', votePass: 'majority' };
+    if (!charter.membership) charter.membership = { admission: 'vote', ideologicalThreshold: { enabled: false, directions: [] }, expulsionClause: null };
+    if (!charter.governance) charter.governance = { voteTransparency: 'public', observerStatus: false, vetoRight: null, emergencyPowers: false };
+    if (!charter.resources) charter.resources = { solidarityFund: { enabled: false, contributionPerQuarter: 1 }, resourceSharingCap: null, jointStatementClause: 'vote', headquarters: null };
+
+    try {
+        const { error } = await _supabase
+            .from('international_orgs')
+            .update({ charter: charter })
+            .eq('id', ipoSelectedOrgId);
+
+        if (error) {
+            console.error('[IPO] Amend charter error:', error);
+            alert('Failed to save charter: ' + error.message);
+            return;
+        }
+
+        // System chat message
+        await _supabase.from('ipo_chat').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: null,
+            is_system: true,
+            message_text: `Charter amended by ${currentFaction.faction_name}.`,
+            tick_posted: shardTick
+        });
+
+        closeIPOAmendModal();
+        renderIPOView();
+    } catch (e) {
+        console.error('[IPO] Amend error:', e);
+        alert('Failed to save charter changes.');
+    }
+}
+
+// ==================== IPO CREATION FLOW ====================
+
+// Creation wizard state
+let ipoCreateStep = 1;
+let ipoCreateName = '';
+let ipoCreateDesc = '';
+let ipoCreateLogoSymbol = '◈';
+let ipoCreateLogoText = '';
+let ipoCreateArticles = []; // [{ type: 'mission', config: {...} }, ...]
+
+// Article type definitions
+const IPO_ARTICLE_TYPES = [
+    { key: 'mission',     label: 'I — Mission Statement',           required: true,  maxOne: true },
+    { key: 'leadership',  label: 'II — Leadership',                 required: false, maxOne: true },
+    { key: 'membership',  label: 'III — Membership',                required: false, maxOne: true },
+    { key: 'governance',  label: 'IV — Transparency & Governance',  required: false, maxOne: true },
+    { key: 'resources',   label: 'V — Resources & External Relations', required: false, maxOne: true }
+];
+
+const IPO_IDEOLOGY_AXES = [
+    { axis: 'Individualism / Collectivism', poles: ['Individualism', 'Collectivism'] },
+    { axis: 'Tradition / Progress',         poles: ['Tradition', 'Progress'] },
+    { axis: 'Liberty / Equality',           poles: ['Liberty', 'Equality'] },
+    { axis: 'Freedom / Security',           poles: ['Freedom', 'Security'] },
+    { axis: 'Globalism / Nationalism',      poles: ['Globalism', 'Nationalism'] }
+];
+
+function openIPOCreationModal() {
+    ipoCreateStep = 1;
+    ipoCreateName = '';
+    ipoCreateDesc = '';
+    ipoCreateLogoSymbol = '◈';
+    ipoCreateLogoText = '';
+    ipoCreateArticles = [{ type: 'mission', config: { text: '' } }];
+    const modal = document.getElementById('ipo-create-modal');
+    modal.classList.add('active');
+    renderIPOCreateStep();
+}
+
+function closeIPOCreationModal() {
+    document.getElementById('ipo-create-modal').classList.remove('active');
+}
+
+function renderIPOCreateStep() {
+    const inner = document.getElementById('ipo-create-modal-inner');
+    const stepIndicators = [1,2,3].map(i =>
+        `<div class="wizard-step ${i === ipoCreateStep ? 'active' : i < ipoCreateStep ? 'completed' : ''}">
+            <span class="wizard-step-num">${i}</span> ${['Identity','Charter','Confirm'][i-1]}
+        </div>`
+    ).join('');
+
+    let body = '';
+    if (ipoCreateStep === 1) body = renderIPOCreateStep1();
+    else if (ipoCreateStep === 2) body = renderIPOCreateStep2();
+    else body = renderIPOCreateStep3();
+
+    inner.innerHTML = `
+        <div class="ipo-modal-header">
+            <span class="ipo-modal-title">Create Organisation</span>
+            <button class="modal-close" onclick="closeIPOCreationModal()">&times;</button>
+        </div>
+        <div class="wizard-steps">${stepIndicators}</div>
+        <div class="ipo-modal-body">${body}</div>`;
+}
+
+// ── Step 1: Identity ──
+function renderIPOCreateStep1() {
+    const symbolBtns = IPO_LOGO_SYMBOLS.map(s =>
+        `<button class="ipo-symbol-btn ${s === ipoCreateLogoSymbol ? 'selected' : ''}"
+            onclick="ipoSelectSymbol('${s}')">${s}</button>`
+    ).join('');
+
+    return `
+        <div class="trade-field">
+            <label>Organisation Name</label>
+            <input type="text" maxlength="40" value="${escapeHtml(ipoCreateName)}"
+                oninput="ipoCreateName=this.value;ipoUpdateStep1Next()"
+                id="ipo-create-name" placeholder="e.g. Progressive Socialist International" />
+        </div>
+        <div class="trade-field">
+            <label>Description</label>
+            <textarea maxlength="200" rows="2"
+                oninput="ipoCreateDesc=this.value"
+                style="width:100%;padding:4px 8px;font-size:0.78rem;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);border-radius:3px;resize:vertical;"
+                placeholder="Brief description of the organisation's purpose...">${escapeHtml(ipoCreateDesc)}</textarea>
+        </div>
+        <div class="trade-field">
+            <label>Logo Symbol</label>
+            <div class="ipo-symbol-row">${symbolBtns}</div>
+        </div>
+        <div class="trade-field">
+            <label>Logo Text (max 4 characters)</label>
+            <input type="text" maxlength="4" value="${escapeHtml(ipoCreateLogoText)}"
+                oninput="ipoCreateLogoText=this.value.toUpperCase();ipoUpdateStep1Next()"
+                id="ipo-create-logo-text" placeholder="e.g. PSI"
+                style="width:80px;text-transform:uppercase;" />
+            <div style="margin-top:6px;font-family:var(--font-mono);font-size:10px;color:var(--ipo-purple);">
+                Preview: ${ipoCreateLogoSymbol} ${escapeHtml(ipoCreateLogoText) || '...'}
+            </div>
+        </div>
+        <div class="wizard-nav">
+            <button class="wizard-back-btn" onclick="closeIPOCreationModal()">Cancel</button>
+            <button class="wizard-next-btn" id="ipo-step1-next"
+                ${(!ipoCreateName.trim() || !ipoCreateLogoText.trim()) ? 'disabled' : ''}
+                onclick="ipoCreateStep=2;renderIPOCreateStep()">Next</button>
+        </div>`;
+}
+
+function ipoUpdateStep1Next() {
+    const btn = document.getElementById('ipo-step1-next');
+    if (btn) btn.disabled = !ipoCreateName.trim() || !ipoCreateLogoText.trim();
+    // Update preview
+    const preview = document.querySelector('.ipo-modal-body .trade-field:last-of-type div[style]');
+    if (preview) preview.innerHTML = `Preview: ${ipoCreateLogoSymbol} ${escapeHtml(ipoCreateLogoText) || '...'}`;
+}
+
+function ipoSelectSymbol(s) {
+    ipoCreateLogoSymbol = s;
+    renderIPOCreateStep();
+}
+
+// ── Step 2: Charter Articles ──
+function renderIPOCreateStep2() {
+    const articleCards = ipoCreateArticles.map((art, i) => renderIPOArticleCard(art, i)).join('');
+
+    // Available articles to add
+    const usedTypes = new Set(ipoCreateArticles.map(a => a.type));
+    const availableTypes = IPO_ARTICLE_TYPES.filter(t => !usedTypes.has(t.key));
+    const canAdd = ipoCreateArticles.length < 5 && availableTypes.length > 0;
+
+    const addDropdown = canAdd ? `
+        <div class="ipo-add-article-row">
+            <select id="ipo-add-article-select" style="font-size:0.75rem;padding:4px 8px;background:var(--bg-1);color:var(--text-primary);border:1px solid var(--border-hair);border-radius:3px;">
+                <option value="">Add article...</option>
+                ${availableTypes.map(t => `<option value="${t.key}">${t.label}</option>`).join('')}
+            </select>
+            <button class="wizard-next-btn" style="font-size:8px;padding:3px 10px;"
+                onclick="ipoAddArticle()">Add</button>
+        </div>` : '';
+
+    const apCost = 4 + Math.max(0, ipoCreateArticles.length - 1);
+
+    return `
+        <div class="ipo-charter-info">
+            Articles: ${ipoCreateArticles.length}/5 · AP Cost: ${apCost}
+            <span style="color:#4a4840;margin-left:8px;">(Base 4 + 1 per extra article)</span>
+        </div>
+        <div class="ipo-article-list">${articleCards}</div>
+        ${addDropdown}
+        <div class="wizard-nav">
+            <button class="wizard-back-btn" onclick="ipoCreateStep=1;renderIPOCreateStep()">Back</button>
+            <button class="wizard-next-btn" id="ipo-step2-next"
+                ${!ipoValidateCharter() ? 'disabled' : ''}
+                onclick="ipoCreateStep=3;renderIPOCreateStep()">Next</button>
+        </div>`;
+}
+
+function ipoValidateCharter() {
+    const mission = ipoCreateArticles.find(a => a.type === 'mission');
+    return mission && (mission.config.text || '').trim().length > 0;
+}
+
+function ipoAddArticle() {
+    const sel = document.getElementById('ipo-add-article-select');
+    if (!sel || !sel.value) return;
+    const key = sel.value;
+    const defaults = {
+        leadership:  { type: 'rotation', termYears: 2, votingWeight: 'equal', votePass: 'majority' },
+        membership:  { admission: 'vote', ideologicalThreshold: { enabled: false, directions: [] }, expulsionClause: null },
+        governance:  { voteTransparency: 'public', observerStatus: false, vetoRight: null, emergencyPowers: false },
+        resources:   { solidarityFund: { enabled: false, contributionPerQuarter: 1 }, resourceSharingCap: null, jointStatementClause: 'vote', headquarters: null }
+    };
+    ipoActiveArticles().push({ type: key, config: defaults[key] || {} });
+    ipoReRenderActiveEditor();
+}
+
+function ipoRemoveArticle(index) {
+    const articles = ipoActiveArticles();
+    if (articles[index]?.type === 'mission') return; // Cannot remove mission
+    articles.splice(index, 1);
+    ipoReRenderActiveEditor();
+}
+
+function renderIPOArticleCard(art, index) {
+    const typeDef = IPO_ARTICLE_TYPES.find(t => t.key === art.type);
+    const label = typeDef?.label || art.type;
+    const canRemove = art.type !== 'mission';
+    const removeBtn = canRemove ? `<button class="ipo-article-remove" onclick="ipoRemoveArticle(${index})">&times;</button>` : '';
+
+    let fields = '';
+    switch (art.type) {
+        case 'mission': fields = renderMissionFields(art, index); break;
+        case 'leadership': fields = renderLeadershipFields(art, index); break;
+        case 'membership': fields = renderMembershipFields(art, index); break;
+        case 'governance': fields = renderGovernanceFields(art, index); break;
+        case 'resources': fields = renderResourcesFields(art, index); break;
+    }
+
+    return `
+        <div class="ipo-article-card">
+            <div class="ipo-article-card-header">
+                <span class="ipo-article-label">${label}</span>
+                ${removeBtn}
+            </div>
+            <div class="ipo-article-card-body">${fields}</div>
+        </div>`;
+}
+
+// ── Article field renderers ──
+
+function renderMissionFields(art, idx) {
+    return `
+        <textarea maxlength="300" rows="3" placeholder="Describe the organisation's mission and purpose..."
+            oninput="ipoActiveArticles()[${idx}].config.text=this.value;var nb=document.getElementById('ipo-step2-next');if(nb)nb.disabled=!ipoValidateCharter()"
+            style="width:100%;padding:4px 8px;font-size:10px;background:#141410;border:1px solid rgba(255,255,255,0.07);color:#e2d9b4;font-family:var(--font-sans);border-radius:2px;resize:vertical;"
+        >${escapeHtml(art.config.text || '')}</textarea>
+        <div style="font-family:var(--font-mono);font-size:7px;color:#4a4840;margin-top:2px;">${(art.config.text||'').length}/300</div>`;
+}
+
+function renderLeadershipFields(art, idx) {
+    const c = art.config;
+    return `
+        ${ipoRadioGroup('Leadership Type', idx, 'type', [
+            { value: 'rotation', label: 'Rotation', hint: 'Presidency rotates in fixed order' },
+            { value: 'most_seats', label: 'Most Seats', hint: 'Party with most seats leads' },
+            { value: 'random', label: 'Random', hint: 'Randomly assigned each term' }
+        ], c.type)}
+        ${ipoSelectField('Succession Term', idx, 'termYears', [1,2,3,4,5,6,7].map(n => ({ value: n, label: n + ' Year' + (n>1?'s':'') })), c.termYears)}
+        ${ipoRadioGroup('Voting Weight', idx, 'votingWeight', [
+            { value: 'equal', label: 'Equal', hint: 'One vote per member' },
+            { value: 'seat_share', label: 'By Seat Share', hint: 'Weighted by parliament seats' }
+        ], c.votingWeight)}
+        ${ipoRadioGroup('Vote Pass Threshold', idx, 'votePass', [
+            { value: 'majority', label: 'Majority', hint: '>50% of votes cast' },
+            { value: 'unanimous', label: 'Unanimous', hint: 'All members must vote yes' }
+        ], c.votePass)}`;
+}
+
+function renderMembershipFields(art, idx) {
+    const c = art.config;
+    const thresh = c.ideologicalThreshold || { enabled: false, directions: [] };
+    const dirs = thresh.directions || [];
+
+    const ideologyCheckboxes = IPO_IDEOLOGY_AXES.map(axis => {
+        const checks = axis.poles.map(pole => {
+            const checked = dirs.includes(pole.toLowerCase());
+            // Check if the opposite pole is already selected
+            const oppositePole = axis.poles.find(p => p !== pole);
+            const oppositeChecked = dirs.includes(oppositePole.toLowerCase());
+            return `<label class="ipo-ideology-check ${oppositeChecked ? 'ipo-disabled' : ''}" style="margin-right:12px;">
+                <input type="checkbox" ${checked ? 'checked' : ''} ${oppositeChecked ? 'disabled' : ''}
+                    onchange="ipoToggleIdeology(${idx},'${pole.toLowerCase()}',this.checked)" />
+                ${pole}
+            </label>`;
+        }).join('');
+        return `<div class="ipo-ideology-axis"><span class="ipo-ideology-axis-name">${axis.axis}</span>${checks}</div>`;
+    }).join('');
+
+    return `
+        ${ipoRadioGroup('New Member Admission', idx, 'admission', [
+            { value: 'vote', label: 'Vote Required', hint: 'Majority vote among members' },
+            { value: 'president', label: 'President Decides', hint: 'President admits unilaterally' }
+        ], c.admission)}
+        ${ipoToggleField('Ideological Threshold', idx, 'ideologicalThreshold.enabled', thresh.enabled)}
+        ${thresh.enabled ? `<div class="ipo-ideology-grid">${ideologyCheckboxes}</div>` : ''}
+        ${ipoToggleField('Expulsion Clause', idx, 'expulsionClauseEnabled', !!c.expulsionClause)}
+        ${c.expulsionClause ? ipoRadioGroup('Expulsion Method', idx, 'expulsionClause', [
+            { value: 'president', label: 'President Only', hint: '' },
+            { value: 'majority', label: 'Majority Vote', hint: '' },
+            { value: 'unanimous', label: 'Unanimous Vote', hint: '' }
+        ], c.expulsionClause) : ''}`;
+}
+
+function renderGovernanceFields(art, idx) {
+    const c = art.config;
+    return `
+        ${ipoRadioGroup('Vote Transparency', idx, 'voteTransparency', [
+            { value: 'public', label: 'Public Ballot', hint: 'All see how everyone voted' },
+            { value: 'secret', label: 'Secret Ballot', hint: 'Only outcome revealed' }
+        ], c.voteTransparency)}
+        ${ipoToggleField('Observer Status', idx, 'observerStatus', c.observerStatus)}
+        ${ipoToggleField('Veto Right', idx, 'vetoRightEnabled', !!c.vetoRight)}
+        ${c.vetoRight ? ipoRadioGroup('Veto Holder', idx, 'vetoRight', [
+            { value: 'founding', label: 'Founding Party', hint: '' },
+            { value: 'president', label: 'Current President', hint: '' },
+            { value: 'hq', label: 'HQ Nation Party', hint: '' }
+        ], c.vetoRight) : ''}
+        ${ipoToggleField('Emergency Powers', idx, 'emergencyPowers', c.emergencyPowers)}`;
+}
+
+function renderResourcesFields(art, idx) {
+    const c = art.config;
+    const fund = c.solidarityFund || { enabled: false, contributionPerQuarter: 1 };
+    return `
+        ${ipoToggleField('Solidarity Fund', idx, 'solidarityFund.enabled', fund.enabled)}
+        ${fund.enabled ? ipoSelectField('Contribution Rate', idx, 'solidarityFund.contributionPerQuarter',
+            [1,2,3].map(n => ({ value: n, label: n + ' AP / Quarter' })), fund.contributionPerQuarter) : ''}
+        ${ipoToggleField('Resource Sharing Cap', idx, 'resourceSharingCapEnabled', c.resourceSharingCap != null)}
+        ${c.resourceSharingCap != null ? ipoSelectField('Max Uses Per Term', idx, 'resourceSharingCap',
+            [1,2,3].map(n => ({ value: n, label: n + ' time' + (n>1?'s':'') })), c.resourceSharingCap || 1) : ''}
+        ${ipoRadioGroup('Joint Statement Clause', idx, 'jointStatementClause', [
+            { value: 'president', label: 'President Alone', hint: '' },
+            { value: 'vote', label: 'Majority Vote Required', hint: '' }
+        ], c.jointStatementClause)}
+        ${ipoToggleField('Headquarters', idx, 'headquartersEnabled', c.headquarters != null)}
+        ${c.headquarters != null ? `<div class="trade-field" style="margin-top:4px;">
+            <label>HQ Nation</label>
+            <div class="trade-info-box info" style="font-size:8px;">Headquarters will be set to your nation on creation. Can be changed later by vote.</div>
+        </div>` : ''}`;
+}
+
+// ── Reusable field helpers ──
+
+function ipoRadioGroup(label, artIdx, key, options, current) {
+    const radios = options.map(opt =>
+        `<label class="trade-radio-option ${opt.value === current ? 'selected' : ''}"
+            onclick="ipoSetArticleField(${artIdx},'${key}','${opt.value}')">
+            <input type="radio" name="ipo_${artIdx}_${key}" value="${opt.value}" ${opt.value === current ? 'checked' : ''} />
+            <div>
+                <div class="trade-radio-label">${opt.label}</div>
+                ${opt.hint ? `<div class="trade-radio-hint">${opt.hint}</div>` : ''}
+            </div>
+        </label>`
+    ).join('');
+    return `
+        <div class="trade-field">
+            <label>${label}</label>
+            <div class="trade-radio-group" style="flex-wrap:wrap;gap:6px;">${radios}</div>
+        </div>`;
+}
+
+function ipoSelectField(label, artIdx, key, options, current) {
+    const opts = options.map(o =>
+        `<option value="${o.value}" ${o.value == current ? 'selected' : ''}>${o.label}</option>`
+    ).join('');
+    return `
+        <div class="trade-field">
+            <label>${label}</label>
+            <select onchange="ipoSetArticleField(${artIdx},'${key}',this.value)"
+                style="width:auto;font-size:0.75rem;padding:4px 8px;background:var(--bg-1);color:var(--text-primary);border:1px solid var(--border-hair);border-radius:3px;">
+                ${opts}
+            </select>
+        </div>`;
+}
+
+function ipoToggleField(label, artIdx, key, isOn) {
+    return `
+        <div class="trade-field" style="display:flex;align-items:center;gap:8px;">
+            <label style="margin-bottom:0;flex:1;">${label}</label>
+            <button class="ipo-toggle-btn ${isOn ? 'is-on' : ''}"
+                onclick="ipoToggleArticleField(${artIdx},'${key}')">
+                ${isOn ? 'ON' : 'OFF'}
+            </button>
+        </div>`;
+}
+
+// ── Field setters ──
+
+// Returns whichever articles array is currently being edited (create or amend)
+function ipoActiveArticles() {
+    return ipoAmendArticles || ipoCreateArticles;
+}
+
+function ipoReRenderActiveEditor() {
+    if (ipoAmendArticles) renderIPOAmendStep();
+    else renderIPOCreateStep();
+}
+
+function ipoSetArticleField(artIdx, key, value) {
+    const art = ipoActiveArticles()[artIdx];
+    if (!art) return;
+    // Handle nested keys like 'solidarityFund.contributionPerQuarter'
+    const parts = key.split('.');
+    let target = art.config;
+    for (let i = 0; i < parts.length - 1; i++) {
+        if (!target[parts[i]]) target[parts[i]] = {};
+        target = target[parts[i]];
+    }
+    // Try to convert to number
+    const numVal = Number(value);
+    target[parts[parts.length - 1]] = isNaN(numVal) ? value : numVal;
+    ipoReRenderActiveEditor();
+}
+
+function ipoToggleArticleField(artIdx, key) {
+    const art = ipoActiveArticles()[artIdx];
+    if (!art) return;
+
+    // Special handling for complex toggle fields
+    if (key === 'ideologicalThreshold.enabled') {
+        if (!art.config.ideologicalThreshold) art.config.ideologicalThreshold = { enabled: false, directions: [] };
+        art.config.ideologicalThreshold.enabled = !art.config.ideologicalThreshold.enabled;
+    } else if (key === 'expulsionClauseEnabled') {
+        art.config.expulsionClause = art.config.expulsionClause ? null : 'majority';
+    } else if (key === 'vetoRightEnabled') {
+        art.config.vetoRight = art.config.vetoRight ? null : 'president';
+    } else if (key === 'resourceSharingCapEnabled') {
+        art.config.resourceSharingCap = art.config.resourceSharingCap != null ? null : 2;
+    } else if (key === 'headquartersEnabled') {
+        art.config.headquarters = art.config.headquarters != null ? null : '__self__';
+    } else if (key === 'solidarityFund.enabled') {
+        if (!art.config.solidarityFund) art.config.solidarityFund = { enabled: false, contributionPerQuarter: 1 };
+        art.config.solidarityFund.enabled = !art.config.solidarityFund.enabled;
+    } else {
+        // Simple boolean toggle
+        const parts = key.split('.');
+        let target = art.config;
+        for (let i = 0; i < parts.length - 1; i++) {
+            if (!target[parts[i]]) target[parts[i]] = {};
+            target = target[parts[i]];
+        }
+        target[parts[parts.length - 1]] = !target[parts[parts.length - 1]];
+    }
+    ipoReRenderActiveEditor();
+}
+
+function ipoToggleIdeology(artIdx, direction, checked) {
+    const art = ipoActiveArticles()[artIdx];
+    if (!art) return;
+    const thresh = art.config.ideologicalThreshold;
+    if (!thresh) return;
+    if (checked) {
+        if (!thresh.directions.includes(direction)) thresh.directions.push(direction);
+    } else {
+        thresh.directions = thresh.directions.filter(d => d !== direction);
+    }
+    ipoReRenderActiveEditor();
+}
+
+// ── Step 3: Confirm ──
+function renderIPOCreateStep3() {
+    const apCost = 4 + Math.max(0, ipoCreateArticles.length - 1);
+    const articleSummary = ipoCreateArticles.map(art => {
+        const typeDef = IPO_ARTICLE_TYPES.find(t => t.key === art.type);
+        return `<div class="ipo-confirm-article">
+            <span class="ipo-confirm-article-label">${typeDef?.label || art.type}</span>
+            <span class="ipo-confirm-article-detail">${getArticleSummary(art)}</span>
+        </div>`;
+    }).join('');
+
+    return `
+        <div class="ipo-confirm-preview">
+            <div class="ipo-confirm-identity">
+                <span class="ipo-header-logo">${escapeHtml(ipoCreateLogoSymbol)} ${escapeHtml(ipoCreateLogoText)}</span>
+                <div>
+                    <div style="font-family:var(--font-sans);font-size:13px;font-weight:700;color:#e2d9b4;">${escapeHtml(ipoCreateName)}</div>
+                    ${ipoCreateDesc ? `<div style="font-family:var(--font-sans);font-size:10px;color:#6b6a5e;margin-top:2px;">${escapeHtml(ipoCreateDesc)}</div>` : ''}
+                </div>
+            </div>
+            <div class="ipo-confirm-articles">${articleSummary}</div>
+            <div class="ipo-confirm-cost">
+                <div class="ipo-confirm-cost-row">
+                    <span>Base cost</span><span>4 AP</span>
+                </div>
+                ${ipoCreateArticles.length > 1 ? `<div class="ipo-confirm-cost-row">
+                    <span>Extra articles (${ipoCreateArticles.length - 1})</span><span>${ipoCreateArticles.length - 1} AP</span>
+                </div>` : ''}
+                <div class="ipo-confirm-cost-row ipo-confirm-cost-total">
+                    <span>Total</span><span>${apCost} AP</span>
+                </div>
+            </div>
+        </div>
+        <div class="wizard-nav">
+            <button class="wizard-back-btn" onclick="ipoCreateStep=2;renderIPOCreateStep()">Back</button>
+            <button class="ipo-btn ipo-btn--create-large" onclick="submitIPOCreation()">
+                Create Organisation — ${apCost} AP
+            </button>
+        </div>`;
+}
+
+function getArticleSummary(art) {
+    const c = art.config;
+    switch (art.type) {
+        case 'mission': return escapeHtml((c.text || '').substring(0, 80)) + ((c.text||'').length > 80 ? '...' : '');
+        case 'leadership': {
+            const labels = { rotation: 'Rotation', most_seats: 'Most Seats', random: 'Random' };
+            return `${labels[c.type] || c.type} · ${c.termYears}yr · ${c.votingWeight === 'equal' ? 'Equal' : 'Seat Share'} · ${c.votePass === 'unanimous' ? 'Unanimous' : 'Majority'}`;
+        }
+        case 'membership': {
+            const parts = [c.admission === 'vote' ? 'Vote admission' : 'President admits'];
+            if (c.ideologicalThreshold?.enabled && c.ideologicalThreshold.directions?.length)
+                parts.push('Ideology: ' + c.ideologicalThreshold.directions.join(', '));
+            if (c.expulsionClause) parts.push('Expulsion: ' + c.expulsionClause);
+            return parts.join(' · ');
+        }
+        case 'governance': {
+            const parts = [c.voteTransparency === 'public' ? 'Public ballot' : 'Secret ballot'];
+            if (c.observerStatus) parts.push('Observers');
+            if (c.vetoRight) parts.push('Veto: ' + c.vetoRight);
+            if (c.emergencyPowers) parts.push('Emergency powers');
+            return parts.join(' · ');
+        }
+        case 'resources': {
+            const parts = [];
+            if (c.solidarityFund?.enabled) parts.push('Fund: ' + c.solidarityFund.contributionPerQuarter + ' AP/qtr');
+            if (c.resourceSharingCap != null) parts.push('Cap: ' + c.resourceSharingCap + '/term');
+            parts.push('Statements: ' + (c.jointStatementClause === 'president' ? 'President' : 'Vote'));
+            if (c.headquarters != null) parts.push('HQ enabled');
+            return parts.join(' · ');
+        }
+        default: return '';
+    }
+}
+
+// ── Submit creation ──
+async function submitIPOCreation() {
+    if (!currentFaction || !currentNation) return;
+
+    const apCost = 4 + Math.max(0, ipoCreateArticles.length - 1);
+
+    // Deduct AP
+    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+    if (!apResult.success) {
+        alert('Insufficient AP. You need ' + apCost + ' AP to create this organisation.');
+        return;
+    }
+
+    // Build charter JSONB
+    const charter = {};
+    for (const art of ipoCreateArticles) {
+        switch (art.type) {
+            case 'mission':
+                charter.mission = art.config.text || '';
+                break;
+            case 'leadership':
+                charter.leadership = {
+                    type: art.config.type,
+                    termYears: Number(art.config.termYears),
+                    votingWeight: art.config.votingWeight,
+                    votePass: art.config.votePass
+                };
+                break;
+            case 'membership':
+                charter.membership = {
+                    admission: art.config.admission,
+                    ideologicalThreshold: art.config.ideologicalThreshold || { enabled: false, directions: [] },
+                    expulsionClause: art.config.expulsionClause || null
+                };
+                break;
+            case 'governance':
+                charter.governance = {
+                    voteTransparency: art.config.voteTransparency,
+                    observerStatus: !!art.config.observerStatus,
+                    vetoRight: art.config.vetoRight || null,
+                    emergencyPowers: !!art.config.emergencyPowers
+                };
+                break;
+            case 'resources':
+                charter.resources = {
+                    solidarityFund: art.config.solidarityFund || { enabled: false, contributionPerQuarter: 1 },
+                    resourceSharingCap: art.config.resourceSharingCap ?? null,
+                    jointStatementClause: art.config.jointStatementClause || 'vote',
+                    headquarters: art.config.headquarters === '__self__' ? currentNation.id : (art.config.headquarters || null)
+                };
+                break;
+        }
+    }
+
+    // Set defaults for articles not added
+    if (!charter.leadership) charter.leadership = { type: 'rotation', termYears: 2, votingWeight: 'equal', votePass: 'majority' };
+    if (!charter.membership) charter.membership = { admission: 'vote', ideologicalThreshold: { enabled: false, directions: [] }, expulsionClause: null };
+    if (!charter.governance) charter.governance = { voteTransparency: 'public', observerStatus: false, vetoRight: null, emergencyPowers: false };
+    if (!charter.resources) charter.resources = { solidarityFund: { enabled: false, contributionPerQuarter: 1 }, resourceSharingCap: null, jointStatementClause: 'vote', headquarters: null };
+
+    try {
+        // Create org
+        const { data: newOrg, error: orgErr } = await _supabase
+            .from('international_orgs')
+            .insert({
+                name: ipoCreateName.trim(),
+                description: ipoCreateDesc.trim() || null,
+                logo_symbol: ipoCreateLogoSymbol,
+                logo_text: ipoCreateLogoText.trim().toUpperCase(),
+                founded_at_tick: shardTick,
+                founding_party_id: currentFaction.id,
+                president_id: currentFaction.id,
+                president_term_start_tick: shardTick,
+                headquarters_nation_id: charter.resources.headquarters,
+                solidarity_fund_balance: 0,
+                charter: charter
+            })
+            .select('id')
+            .single();
+
+        if (orgErr) {
+            console.error('[IPO] Create org error:', orgErr);
+            alert('Failed to create organisation: ' + orgErr.message);
+            return;
+        }
+
+        // Add founding member
+        const chatColor = IPO_CHAT_COLORS[0];
+        await _supabase.from('ipo_members').insert({
+            org_id: newOrg.id,
+            faction_id: currentFaction.id,
+            role: 'member',
+            joined_at_tick: shardTick,
+            chat_color: chatColor
+        });
+
+        // System chat message
+        await _supabase.from('ipo_chat').insert({
+            org_id: newOrg.id,
+            faction_id: null,
+            is_system: true,
+            message_text: `${escapeHtml(ipoCreateName.trim())} has been founded by ${currentFaction.faction_name}.`,
+            tick_posted: shardTick
+        });
+
+        // Event log entry
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation.id,
+            event_name: `${currentFaction.faction_name} has founded ${ipoCreateName.trim()}.`,
+            trigger_key: 'ipo_founded',
+            category: 'international',
+            effects_applied: { org_name: ipoCreateName.trim(), party: currentFaction.faction_name },
+            fired_at_tick: shardTick
+        });
+
+        closeIPOCreationModal();
+        ipoSelectedOrgId = newOrg.id;
+        renderIPOView();
+    } catch (e) {
+        console.error('[IPO] Creation error:', e);
+        alert('Failed to create organisation.');
+    }
+}
+
+// IPO exports
+window.selectIPOOrg = selectIPOOrg;
+window.acceptIPOInvite = acceptIPOInvite;
+window.declineIPOInvite = declineIPOInvite;
+window.openIPOCreationModal = openIPOCreationModal;
+window.closeIPOCreationModal = closeIPOCreationModal;
+window.sendIPOChat = sendIPOChat;
+window.openIPOInviteModal = openIPOInviteModal;
+window.openIPOAmendModal = openIPOAmendModal;
+window.leaveIPOOrg = leaveIPOOrg;
+// IPO creation wizard exports
+window.ipoSelectSymbol = ipoSelectSymbol;
+window.ipoAddArticle = ipoAddArticle;
+window.ipoRemoveArticle = ipoRemoveArticle;
+window.ipoSetArticleField = ipoSetArticleField;
+window.ipoToggleArticleField = ipoToggleArticleField;
+window.ipoToggleIdeology = ipoToggleIdeology;
+window.ipoUpdateStep1Next = ipoUpdateStep1Next;
+window.ipoActiveArticles = ipoActiveArticles;
+window.submitIPOCreation = submitIPOCreation;
+window.closeIPOAmendModal = closeIPOAmendModal;
+window.ipoAmendAddArticle = ipoAmendAddArticle;
+window.submitIPOAmend = submitIPOAmend;
 </script>
 
 </body>
