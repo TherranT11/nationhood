@@ -9457,6 +9457,55 @@ async function renderRelationDetail(nationId) {
             html += '</div>';
         }
 
+        // ── Trade Profile snapshot ──
+        try {
+            const { data: tFlows } = await _supabase.from('trade_flows')
+                .select('sector, export_capacity, import_demand')
+                .eq('nation_id', nationId)
+                .order('tick', { ascending: false })
+                .limit(8);
+
+            if (tFlows && tFlows.length > 0) {
+                const sectorLabels = {
+                    fuel_energy: 'Fuel & Energy', minerals: 'Minerals', food_agriculture: 'Food & Ag',
+                    manufactured_goods: 'Manufactured', technology: 'Technology', arms: 'Arms',
+                    tourism: 'Tourism', services_finance: 'Services'
+                };
+
+                // Sort by export capacity descending for "strong exports"
+                const byExport = [...tFlows].sort((a, b) => (b.export_capacity || 0) - (a.export_capacity || 0));
+                const topExports = byExport.filter(f => (f.export_capacity || 0) > 0).slice(0, 3);
+
+                // Sort by import demand descending for "high demand"
+                const byDemand = [...tFlows].sort((a, b) => (b.import_demand || 0) - (a.import_demand || 0));
+                const topImports = byDemand.filter(f => (f.import_demand || 0) > 0).slice(0, 3);
+
+                if (topExports.length > 0 || topImports.length > 0) {
+                    html += '<div class="diplo-section-title" style="margin-top:8px;">Trade Profile</div>';
+                    html += '<div style="display:flex;gap:12px;flex-wrap:wrap;">';
+                    if (topExports.length > 0) {
+                        html += '<div style="flex:1;min-width:120px;">';
+                        html += '<div style="font-size:0.65rem;color:var(--text-muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:0.5px;">Exports</div>';
+                        for (const f of topExports) {
+                            const label = sectorLabels[f.sector] || f.sector;
+                            html += '<div style="font-size:0.72rem;color:#5cb85c;line-height:1.6;">' + escapeHtml(label) + ' <span style="color:var(--text-muted);">' + fmtBudgetCurrency(f.export_capacity) + '</span></div>';
+                        }
+                        html += '</div>';
+                    }
+                    if (topImports.length > 0) {
+                        html += '<div style="flex:1;min-width:120px;">';
+                        html += '<div style="font-size:0.65rem;color:var(--text-muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:0.5px;">Needs</div>';
+                        for (const f of topImports) {
+                            const label = sectorLabels[f.sector] || f.sector;
+                            html += '<div style="font-size:0.72rem;color:#c9a54e;line-height:1.6;">' + escapeHtml(label) + ' <span style="color:var(--text-muted);">' + fmtBudgetCurrency(f.import_demand) + '</span></div>';
+                        }
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                }
+            }
+        } catch (tradeErr) { console.warn('Trade profile load error:', tradeErr); }
+
         // Action buttons
         html += '<div class="detail-actions">';
         html += '<button class="detail-btn" onclick="selectDraftTarget(\'' + nationId + '\')">Draft Initiative</button>';
