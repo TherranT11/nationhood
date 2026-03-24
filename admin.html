@@ -129,7 +129,7 @@
             <!-- ========== SCHEDULE ELECTION ========== -->
             <hr style="border-color:#333; margin:20px 0;">
             <h3>📅 Schedule Election</h3>
-            <div class="info-box"><strong>ℹ️ Schedule elections</strong><br>Insert scheduled election(s) at a future tick. When advanceTick reaches that tick, the election runs automatically and subsequent elections are auto-scheduled.</div>
+            <div class="info-box"><strong>ℹ️ Schedule elections</strong><br>Set the first election tick and frequency for a nation. The system auto-schedules all subsequent elections after each one completes. Frequency is saved to the nation and used by advanceTick.</div>
             <div class="input-group">
                 <label>Nation</label>
                 <select id="schedule-nation-select" onchange="onScheduleNationChange()">
@@ -138,17 +138,36 @@
             </div>
             <div class="input-group">
                 <label>Election Type</label>
-                <select id="schedule-type-select">
-                    <option value="presidential">General Election (Parliamentary + Presidential)</option>
-                    <option value="parliamentary">Parliamentary / Midterm</option>
+                <select id="schedule-type-select" onchange="updateElectionPreviewList()">
+                    <option value="parliamentary">Parliamentary</option>
+                    <option value="presidential">Presidential (Presidential Republics Only)</option>
                 </select>
             </div>
             <div class="input-group">
-                <label>Election Tick</label>
-                <input type="number" id="schedule-tick-input" min="1" placeholder="e.g. 24">
+                <label>Election Frequency (ticks between elections)</label>
+                <select id="schedule-frequency-select" onchange="updateElectionPreviewList()">
+                    <option value="12">Every 12 ticks (~2 years)</option>
+                    <option value="18">Every 18 ticks (~3 years)</option>
+                    <option value="24" selected>Every 24 ticks (~4 years)</option>
+                    <option value="30">Every 30 ticks (~5 years)</option>
+                    <option value="36">Every 36 ticks (~6 years)</option>
+                    <option value="42">Every 42 ticks (~7 years)</option>
+                </select>
+                <div style="font-size:0.75rem;color:#888;" id="schedule-freq-hint"></div>
+            </div>
+            <div class="input-group">
+                <label>First Election Tick</label>
+                <input type="number" id="schedule-tick-input" min="1" placeholder="e.g. 24" oninput="updateElectionPreviewList()">
                 <div style="font-size:0.75rem;color:#888;" id="schedule-tick-hint"></div>
             </div>
-            <button class="btn btn-primary" style="width:100%;" id="schedule-election-btn" onclick="scheduleElection()">📅 SCHEDULE ELECTION</button>
+
+            <!-- Projected Elections Preview -->
+            <div id="schedule-preview-box" style="background:#1a1a17; border:1px solid rgba(255,255,255,0.08); border-radius:4px; padding:12px 14px; margin-bottom:14px; display:none;">
+                <div style="font-family:'JetBrains Mono',monospace; font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#8a8778; margin-bottom:8px;">Projected Elections</div>
+                <div id="schedule-preview-list" style="font-family:'JetBrains Mono',monospace; font-size:0.8rem; color:#c8c4b8; line-height:1.8;"></div>
+            </div>
+
+            <button class="btn btn-primary" style="width:100%;" id="schedule-election-btn" onclick="scheduleElection()">📅 SCHEDULE ELECTION & SAVE FREQUENCY</button>
             <div id="schedule-status" class="status info hidden"></div>
         </div>
 
@@ -688,7 +707,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     // ==================== ELECTIONS TAB ====================
     async function loadElectionNations() {
         try {
-            const { data } = await _supabase.from('nations').select('id, name, total_seats, eligible_voters, government_type').order('name');
+            const { data } = await _supabase.from('nations').select('id, name, total_seats, eligible_voters, government_type, election_frequency, parliamentary_term_ticks, presidential_term_ticks').order('name');
             nations = data || [];
             const select = document.getElementById('election-nation-select');
             select.innerHTML = '<option value="">-- Choose a nation --</option>';
@@ -1111,14 +1130,18 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     }
 
     // ==================== SCHEDULE ELECTION ====================
+    let scheduleCurrentTick = 0;
+
     async function scheduleElection() {
         const nationSelect = document.getElementById('schedule-nation-select');
         const typeSelect = document.getElementById('schedule-type-select');
         const tickInput = document.getElementById('schedule-tick-input');
+        const freqSelect = document.getElementById('schedule-frequency-select');
         const status = document.getElementById('schedule-status');
         const btn = document.getElementById('schedule-election-btn');
 
         const targetTick = parseInt(tickInput.value);
+        const frequency = parseInt(freqSelect.value);
         if (!targetTick || targetTick < 1) {
             status.className = 'status error'; status.textContent = 'Enter a valid tick.'; status.classList.remove('hidden');
             return;
@@ -1155,42 +1178,41 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         }
 
         btn.disabled = true;
-        status.className = 'status info'; status.textContent = '⏳ Scheduling...'; status.classList.remove('hidden');
+        status.className = 'status info'; status.textContent = '⏳ Scheduling & saving frequency...'; status.classList.remove('hidden');
 
         try {
-            // Delete any existing scheduled elections for these nations to avoid duplicates
+            // Save the frequency to each nation so advanceTick uses it for auto-scheduling
+            for (const nation of targetNations) {
+                const freqUpdate = {};
+                if (electionType === 'presidential') {
+                    freqUpdate.presidential_term_ticks = frequency;
+                } else {
+                    freqUpdate.parliamentary_term_ticks = frequency;
+                    freqUpdate.election_frequency = frequency;
+                }
+                const { error: updErr } = await _supabase.from('nations').update(freqUpdate).eq('id', nation.id);
+                if (updErr) console.warn(`Failed to update frequency for ${nation.name}:`, updErr);
+            }
+
+            // Delete any existing scheduled elections of this type for these nations
             for (const nation of targetNations) {
                 const { error: delErr } = await _supabase.from('elections').delete()
                     .eq('nation_id', nation.id)
-                    .eq('status', 'scheduled');
-                if (delErr) console.warn(`Failed to clear old scheduled elections for ${nation.name}:`, delErr);
+                    .eq('status', 'scheduled')
+                    .eq('election_type', electionType);
+                if (delErr) console.warn(`Failed to clear old scheduled ${electionType} elections for ${nation.name}:`, delErr);
             }
 
             const rows = [];
             for (const nation of targetNations) {
-                const isPresidential = isGovernmentPresidential(nation);
-
-                // Always schedule parliamentary
                 rows.push({
                     nation_id: nation.id,
                     election_tick: targetTick,
-                    election_type: 'parliamentary',
+                    election_type: electionType,
                     status: 'scheduled'
                 });
-
-                // For "presidential" type, also add a presidential election
-                // (only for Presidential government nations — standard democracies skip this)
-                if (electionType === 'presidential' && isPresidential) {
-                    rows.push({
-                        nation_id: nation.id,
-                        election_tick: targetTick,
-                        election_type: 'presidential',
-                        status: 'scheduled'
-                    });
-                }
             }
 
-            // Use .select() to get server confirmation of inserted rows
             const { data: inserted, error } = await _supabase.from('elections').insert(rows).select();
 
             if (error) {
@@ -1199,11 +1221,23 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 console.error('Election schedule insert error:', error);
             } else {
                 const dbCount = inserted?.length || 0;
-                const typeLabel = electionType === 'presidential'
-                    ? 'General Election' : 'Parliamentary / Midterm';
+                const typeLabel = electionType === 'presidential' ? 'Presidential' : 'Parliamentary';
                 status.className = 'status success';
-                status.textContent = `✅ Scheduled ${typeLabel} for ${targetNations.length} nation(s) at tick ${targetTick} — ${dbCount} record(s) confirmed in DB`;
+                status.textContent = `✅ Scheduled ${typeLabel} for ${targetNations.length} nation(s) at tick ${targetTick}, frequency set to every ${frequency} ticks — ${dbCount} record(s) confirmed in DB`;
                 console.log('Scheduled elections:', inserted);
+
+                // Update the cached nations data with new frequency
+                for (const nation of targetNations) {
+                    const cached = nations.find(n => n.id === nation.id);
+                    if (cached) {
+                        if (electionType === 'presidential') {
+                            cached.presidential_term_ticks = frequency;
+                        } else {
+                            cached.parliamentary_term_ticks = frequency;
+                            cached.election_frequency = frequency;
+                        }
+                    }
+                }
             }
         } catch (err) {
             status.className = 'status error';
@@ -1218,16 +1252,22 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     async function updateScheduleTickHint() {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const hint = document.getElementById('schedule-tick-hint');
-        if (hint && shard) hint.textContent = `Current shard tick: ${shard.current_tick}. Enter a tick greater than this.`;
+        if (hint && shard) {
+            scheduleCurrentTick = shard.current_tick;
+            hint.textContent = `Current shard tick: ${shard.current_tick}. Enter a tick greater than this.`;
+        }
     }
 
     function onScheduleNationChange() {
         const nationValue = document.getElementById('schedule-nation-select').value;
         const typeSelect = document.getElementById('schedule-type-select');
+        const freqSelect = document.getElementById('schedule-frequency-select');
+        const freqHint = document.getElementById('schedule-freq-hint');
         const presOption = typeSelect.querySelector('option[value="presidential"]');
 
         if (nationValue === '__all__') {
             presOption.disabled = false;
+            freqHint.textContent = '';
         } else {
             const nation = nations.find(n => n.id === nationValue);
             if (nation && !isGovernmentPresidential(nation)) {
@@ -1236,7 +1276,63 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             } else {
                 presOption.disabled = false;
             }
+
+            // Show current frequency from foundation law
+            if (nation) {
+                const parlFreq = nation.parliamentary_term_ticks || nation.election_frequency || 24;
+                const presFreq = nation.presidential_term_ticks || 48;
+                const isPres = isGovernmentPresidential(nation);
+                if (isPres) {
+                    freqHint.textContent = `Current: Parliamentary every ${parlFreq} ticks, Presidential every ${presFreq} ticks`;
+                } else {
+                    freqHint.textContent = `Current: Parliamentary every ${parlFreq} ticks`;
+                }
+                // Pre-select the current frequency in the dropdown
+                const currentType = typeSelect.value;
+                const currentFreq = currentType === 'presidential' ? presFreq : parlFreq;
+                if (freqSelect.querySelector(`option[value="${currentFreq}"]`)) {
+                    freqSelect.value = currentFreq;
+                }
+            }
         }
+        updateElectionPreviewList();
+    }
+
+    function updateElectionPreviewList() {
+        const tickInput = document.getElementById('schedule-tick-input');
+        const freqSelect = document.getElementById('schedule-frequency-select');
+        const typeSelect = document.getElementById('schedule-type-select');
+        const previewBox = document.getElementById('schedule-preview-box');
+        const previewList = document.getElementById('schedule-preview-list');
+
+        const firstTick = parseInt(tickInput.value);
+        const frequency = parseInt(freqSelect.value);
+        const electionType = typeSelect.value === 'presidential' ? 'Presidential' : 'Parliamentary';
+
+        if (!firstTick || firstTick < 1 || !frequency) {
+            previewBox.style.display = 'none';
+            return;
+        }
+
+        // Generate ~10 projected election ticks
+        const ticks = [];
+        for (let i = 0; i < 10; i++) {
+            const tick = firstTick + (i * frequency);
+            ticks.push(tick);
+        }
+
+        const currentTick = scheduleCurrentTick || 0;
+        let html = `<div style="color:#8a8778; font-size:0.7rem; margin-bottom:6px;">Next ${electionType} elections (every ${frequency} ticks):</div>`;
+        html += ticks.map((t, i) => {
+            const isFuture = t > currentTick;
+            const marker = i === 0 ? ' ← first (scheduled now)' : '';
+            const color = isFuture ? '#c8c4b8' : '#5c5a50';
+            const pastLabel = !isFuture ? ' (past)' : '';
+            return `<div style="color:${color}; padding:2px 0;">Tick ${t}${marker}${pastLabel}</div>`;
+        }).join('');
+
+        previewList.innerHTML = html;
+        previewBox.style.display = 'block';
     }
 
     // ==================== PLAYERS TAB ====================
@@ -2397,6 +2493,8 @@ window.onElectionNationSelect = onElectionNationSelect;
 window.runElection = runElection;
 window.previewElection = previewElection;
 window.scheduleElection = scheduleElection;
+window.onScheduleNationChange = onScheduleNationChange;
+window.updateElectionPreviewList = updateElectionPreviewList;
 window.filterPlayers = filterPlayers;
 window.removePlayer = removePlayer;
 window.deleteParty = deleteParty;
