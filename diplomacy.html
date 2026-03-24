@@ -4683,7 +4683,7 @@ async function renderWizardStep3TradeProposal() {
                     <div class="type-card-short">${escapeHtml(typeInfo.shortLabel)}</div>
                     <div class="type-card-title">${escapeHtml(typeInfo.label)}</div>
                     <div class="type-card-effects"><span class="trade-type-tag bilateral">BILATERAL</span></div>
-                    <div style="font-size:0.7rem;color:var(--red);margin-top:4px;">Credit ${ourCredit}/${creditCheck.required} required</div>
+                    <div style="font-size:0.7rem;color:var(--red);margin-top:4px;">Credit ${Math.round(ourCredit)}/${Math.round(creditCheck.required)} required</div>
                 </div>`;
             } else {
                 html += `
@@ -5377,6 +5377,7 @@ async function wizardSubmit() {
 // (Step 4B removed — trade type selection now happens inside negotiations)
 
 async function submitTradeProposal() {
+    if (_diploActionLock) return;
     if (!wizardTargetNation || !wizardTradeAgreementType) {
         alert('Missing target nation or agreement type.');
         return;
@@ -5406,6 +5407,8 @@ async function submitTradeProposal() {
     const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isMoT && !diplomaticRoles.isFM;
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
+    _diploActionLock = true;
+    try {
     // Deduct AP
     const apResult = await deductAP(_supabase, currentFaction.id, apCost);
     if (!apResult.success) {
@@ -5495,6 +5498,9 @@ async function submitTradeProposal() {
         await renderInitiativeWizard();
     }
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
+    } finally {
+        _diploActionLock = false;
+    }
 }
 
 // ==================== VIEW ACTIVE AGREEMENT IN DRAFT BOX ====================
@@ -9459,11 +9465,19 @@ async function renderRelationDetail(nationId) {
 
         // ── Trade Profile snapshot ──
         try {
-            const { data: tFlows } = await _supabase.from('trade_flows')
-                .select('sector, export_capacity, import_demand')
+            // First get the latest tick for this nation's trade data
+            const { data: latestRow } = await _supabase.from('trade_flows')
+                .select('tick')
                 .eq('nation_id', nationId)
                 .order('tick', { ascending: false })
-                .limit(8);
+                .limit(1);
+            const latestTick = latestRow?.[0]?.tick;
+            const { data: tFlows } = latestTick != null
+                ? await _supabase.from('trade_flows')
+                    .select('sector, export_capacity, import_demand')
+                    .eq('nation_id', nationId)
+                    .eq('tick', latestTick)
+                : { data: null };
 
             if (tFlows && tFlows.length > 0) {
                 const sectorLabels = {
@@ -9504,7 +9518,7 @@ async function renderRelationDetail(nationId) {
                     html += '</div>';
                 }
             }
-        } catch (tradeErr) { console.warn('Trade profile load error:', tradeErr); }
+        } catch (_tradeErr) { /* non-critical — profile section simply omitted */ }
 
         // Action buttons
         html += '<div class="detail-actions">';
