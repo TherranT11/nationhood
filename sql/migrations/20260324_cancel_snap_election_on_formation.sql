@@ -1,8 +1,6 @@
--- ============================================================
--- finalize_government_formation RPC
--- Replaces ~15 sequential client-side DB operations with a single
--- atomic server-side transaction for forming a government.
--- ============================================================
+-- Cancel pending snap elections when a government is successfully formed.
+-- This prevents the race condition where a snap election fires after
+-- players have already completed Form Government.
 
 CREATE OR REPLACE FUNCTION finalize_government_formation(
   p_formation_id UUID,

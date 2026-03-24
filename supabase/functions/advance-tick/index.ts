@@ -10683,6 +10683,18 @@ async function processElections(supabase, nation, currentTick) {
         const electionType = election.election_type || 'parliamentary';
         console.log(`Processing ${electionType} election for ${nation.name} (tick ${currentTick})`);
 
+        // Safety check: skip snap elections if a government has already been formed
+        if (electionType === 'parliamentary') {
+            const existingGov = await fetchActiveCoalition(supabase, nation.id);
+            if (existingGov && (existingGov.status === 'formed' || existingGov.status === 'caretaker')) {
+                console.log(`Skipping parliamentary election for ${nation.name} — government already formed (status: ${existingGov.status})`);
+                await supabase.from('elections')
+                    .update({ status: 'cancelled' })
+                    .eq('id', election.id);
+                continue;
+            }
+        }
+
         // Partial election — only allocate delta seats (from foundational bill)
         if (election.partial_seats && election.partial_seats > 0) {
             await processPartialElection(supabase, nation, election, currentTick);
