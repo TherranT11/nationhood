@@ -9290,7 +9290,7 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
             // Query bills passed during this administration (exclude repeals — tracked separately)
             const { data: passedBills, error: passedBillsErr } = await supabase
                 .from('bills')
-                .select('id, bill_name, passed_tick')
+                .select('id, bill_name, bill_type, passed_tick')
                 .eq('nation_id', nationId)
                 .eq('status', 'passed')
                 .neq('bill_type', 'repeal')
@@ -9299,9 +9299,11 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
             if (passedBillsErr) throw passedBillsErr;
 
             const billsPassed = (passedBills || []).map(b => ({
+                bill_type: b.bill_type,
                 bill_id: b.id,
                 bill_name: b.bill_name,
-                passed_tick: b.passed_tick
+                passed_tick: b.passed_tick,
+                date: _tickToDate(b.passed_tick)
             }));
 
             // Query repeal bills that passed during this administration
@@ -9318,7 +9320,8 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
             const lawsRepealed = (repealBills || []).map(b => ({
                 bill_id: b.id,
                 bill_name: b.bill_name,
-                repealed_tick: b.passed_tick
+                repealed_tick: b.passed_tick,
+                date: _tickToDate(b.passed_tick)
             }));
 
             // Query crises (events with category 'crisis' or matching crisis event names)
@@ -9339,14 +9342,16 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
                 .map(e => ({
                     event_id: e.event_id,
                     title: e.event_name,
-                    started_tick: e.fired_at_tick
+                    started_tick: e.fired_at_tick,
+                    date: _tickToDate(e.fired_at_tick)
                 }));
 
             const crisesSolved = (eventsDuring || [])
                 .filter(e => e.event_name && e.event_name.startsWith('CRISIS_RESOLVED:'))
                 .map(e => ({
                     title: e.event_name.replace('CRISIS_RESOLVED: ', ''),
-                    solved_tick: e.fired_at_tick
+                    solved_tick: e.fired_at_tick,
+                    date: _tickToDate(e.fired_at_tick)
                 }));
 
             // Count elections survived (elections that occurred during this admin where the coalition continued)
@@ -9374,6 +9379,7 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
                 agreement_name: ta.agreement_name,
                 partner_nation_id: ta.nation_a_id === nationId ? ta.nation_b_id : ta.nation_a_id,
                 enacted_at_tick: ta.enacted_at_tick,
+                date: _tickToDate(ta.enacted_at_tick),
                 status: ta.status
             }));
 
@@ -9392,7 +9398,7 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
                     if (b.passed_tick != null) return b.passed_tick >= currentAdmin.started_at_tick && b.passed_tick <= currentTick;
                     return true; // created_at filter already scoped it
                 })
-                .map(b => ({ bill_id: b.id, bill_name: b.bill_name, bill_type: b.bill_type || 'standard' }));
+                .map(b => ({ bill_id: b.id, bill_name: b.bill_name, bill_type: b.bill_type || 'standard', date: _tickToDate(b.passed_tick) }));
 
             // Query no-confidence votes during this administration
             const { data: nocRows } = await supabase
@@ -9403,7 +9409,7 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
                 .gte('passed_tick', currentAdmin.started_at_tick)
                 .lte('passed_tick', currentTick);
             const noConfidenceVotes = (nocRows || []).map(b => ({
-                bill_id: b.id, bill_name: b.bill_name, result: b.status === 'passed' ? 'passed' : 'failed', tick: b.passed_tick
+                bill_id: b.id, bill_name: b.bill_name, result: b.status === 'passed' ? 'passed' : 'failed', tick: b.passed_tick, date: _tickToDate(b.passed_tick)
             }));
 
             // Query impeachment motions/convictions during this administration
@@ -9415,7 +9421,7 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
                 .gte('passed_tick', currentAdmin.started_at_tick)
                 .lte('passed_tick', currentTick);
             const impeachments = (impeachRows || []).map(b => ({
-                bill_id: b.id, bill_name: b.bill_name, type: b.bill_type, result: b.status === 'passed' ? 'passed' : 'failed', tick: b.passed_tick
+                bill_id: b.id, bill_name: b.bill_name, type: b.bill_type, result: b.status === 'passed' ? 'passed' : 'failed', tick: b.passed_tick, date: _tickToDate(b.passed_tick)
             }));
 
             // Query executive orders issued during this administration
@@ -9426,22 +9432,48 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
                 .gte('issued_at_tick', currentAdmin.started_at_tick)
                 .lte('issued_at_tick', currentTick);
             const executiveOrders = (eoRows || []).map(eo => ({
-                id: eo.id, order_type: eo.order_type, tick: eo.issued_at_tick
+                id: eo.id, order_type: eo.order_type, tick: eo.issued_at_tick, date: _tickToDate(eo.issued_at_tick)
             }));
 
             // Detect snap elections and minority governments from event_log
             const snapEvents = (eventsDuring || []).filter(e =>
                 e.event_name && (e.event_name.includes('snap_election') || e.event_name.includes('formation_snap_election') || e.event_name.includes('early_election'))
-            ).map(e => ({ title: e.event_name, tick: e.fired_at_tick }));
+            ).map(e => ({ title: e.event_name, tick: e.fired_at_tick, date: _tickToDate(e.fired_at_tick) }));
 
             const minorityEvents = (eventsDuring || []).filter(e =>
                 e.event_name && e.event_name.includes('minority_government')
-            ).map(e => ({ title: e.event_name, tick: e.fired_at_tick }));
+            ).map(e => ({ title: e.event_name, tick: e.fired_at_tick, date: _tickToDate(e.fired_at_tick) }));
 
             // Detect leader changes from event_log (Party Leadership appointments)
             const leaderChangeEvents = (eventsDuring || []).filter(e =>
                 e.event_name && e.event_name === 'New Party Leader'
-            ).map(e => ({ role: e.event_name, description: e.description_chosen || '', tick: e.fired_at_tick }));
+            ).map(e => ({ role: e.event_name, description: e.description_chosen || '', tick: e.fired_at_tick, date: _tickToDate(e.fired_at_tick) }));
+
+            // Minister actions (from campaign_actions)
+            const { data: ministerRows } = await supabase
+                .from('campaign_actions').select('id, action_type, tick_performed, result')
+                .eq('nation_id', nationId)
+                .in('action_type', ['assign_minister', 'purge_minister', 'fire_minister'])
+                .gte('tick_performed', currentAdmin.started_at_tick)
+                .lte('tick_performed', currentTick);
+            const ministerActions = (ministerRows || []).map(r => ({
+                action_type: r.action_type, tick: r.tick_performed, date: _tickToDate(r.tick_performed),
+                minister_name: r.result?.minister_name || (r.result?.first_name ? `${r.result.first_name} ${r.result.last_name}` : null),
+                ministry: r.result?.ministry_key || r.result?.ministry_name || null,
+                party: r.result?.party_name || null,
+            }));
+
+            // Diplomatic actions (from diplomatic_action_log)
+            const { data: diplomaticRows } = await supabase
+                .from('diplomatic_action_log').select('id, action_type, target_nation_id, applied_at_tick, action_data')
+                .eq('nation_id', nationId)
+                .gte('applied_at_tick', currentAdmin.started_at_tick)
+                .lte('applied_at_tick', currentTick);
+            const diplomaticActionsArr = (diplomaticRows || []).map(r => ({
+                action_type: r.action_type, tick: r.applied_at_tick, date: _tickToDate(r.applied_at_tick),
+                target_nation_id: r.target_nation_id,
+                target_nation: r.action_data?.target_nation_name || null,
+            }));
 
             // Update the administration record
             const { error: updateErr } = await supabase
@@ -9465,6 +9497,8 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
                     snap_elections: snapEvents,
                     minority_governments: minorityEvents,
                     leader_changes: leaderChangeEvents,
+                    minister_actions: ministerActions,
+                    diplomatic_actions: diplomaticActionsArr,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', currentAdmin.id);
@@ -9597,6 +9631,154 @@ async function createAdministration(supabase, nationId, nation, coalition, allPa
         console.error('createAdministration error:', err);
         throw err;
     }
+}
+
+/**
+ * Refresh the current (open) administration's event arrays so the
+ * Past Administrations card always shows live data.  Called once per
+ * nation per tick by the tick processor.
+ */
+async function refreshCurrentAdministrationEvents(supabase, nationId, currentTick) {
+    const { data: admin, error: adminErr } = await supabase
+        .from('administrations')
+        .select('id, started_at_tick, created_at')
+        .eq('nation_id', nationId)
+        .is('ended_at_tick', null)
+        .maybeSingle();
+
+    if (adminErr || !admin) return;
+
+    const start = admin.started_at_tick;
+
+    const [
+        { data: passedBills },
+        { data: repealBills },
+        { data: failedBillRows },
+        { data: nocRows },
+        { data: impeachRows },
+        { data: eoRows },
+        { data: electionsDuring },
+        { data: tradeAgreementsDuring },
+        { data: eventsDuring },
+        { data: ministerRows },
+        { data: diplomaticRows },
+    ] = await Promise.all([
+        supabase.from('bills').select('id, bill_name, bill_type, passed_tick')
+            .eq('nation_id', nationId).eq('status', 'passed').neq('bill_type', 'repeal')
+            .gte('passed_tick', start).lte('passed_tick', currentTick),
+        supabase.from('bills').select('id, bill_name, passed_tick')
+            .eq('nation_id', nationId).eq('bill_type', 'repeal').eq('status', 'passed')
+            .gte('passed_tick', start).lte('passed_tick', currentTick),
+        supabase.from('bills').select('id, bill_name, bill_type, passed_tick')
+            .eq('nation_id', nationId).eq('status', 'failed').neq('bill_type', 'repeal')
+            .gte('passed_tick', start).lte('passed_tick', currentTick),
+        supabase.from('bills').select('id, bill_name, status, passed_tick')
+            .eq('nation_id', nationId).eq('bill_type', 'no_confidence')
+            .gte('passed_tick', start).lte('passed_tick', currentTick),
+        supabase.from('bills').select('id, bill_name, bill_type, status, passed_tick')
+            .eq('nation_id', nationId).in('bill_type', ['impeachment_motion', 'impeachment_conviction'])
+            .gte('passed_tick', start).lte('passed_tick', currentTick),
+        supabase.from('executive_orders').select('id, order_type, issued_at_tick')
+            .eq('nation_id', nationId)
+            .gte('issued_at_tick', start).lte('issued_at_tick', currentTick),
+        supabase.from('elections').select('id, election_tick')
+            .eq('nation_id', nationId).eq('status', 'completed')
+            .gte('election_tick', start).lt('election_tick', currentTick),
+        supabase.from('trade_agreements').select('id, agreement_type, agreement_name, nation_a_id, nation_b_id, enacted_at_tick, status')
+            .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+            .gte('enacted_at_tick', start).lte('enacted_at_tick', currentTick),
+        supabase.from('event_log').select('event_id, event_name, category, fired_at_tick, description_chosen')
+            .eq('nation_id', nationId)
+            .gte('fired_at_tick', start).lte('fired_at_tick', currentTick),
+        supabase.from('campaign_actions').select('id, action_type, tick_performed, result')
+            .eq('nation_id', nationId)
+            .in('action_type', ['assign_minister', 'purge_minister', 'fire_minister'])
+            .gte('tick_performed', start).lte('tick_performed', currentTick),
+        supabase.from('diplomatic_action_log').select('id, action_type, target_nation_id, applied_at_tick, action_data')
+            .eq('nation_id', nationId)
+            .gte('applied_at_tick', start).lte('applied_at_tick', currentTick),
+    ]);
+
+    const billsPassed = (passedBills || []).map(b => ({
+        bill_id: b.id, bill_name: b.bill_name, bill_type: b.bill_type,
+        passed_tick: b.passed_tick, date: _tickToDate(b.passed_tick)
+    }));
+    const lawsRepealed = (repealBills || []).map(b => ({
+        bill_id: b.id, bill_name: b.bill_name,
+        repealed_tick: b.passed_tick, date: _tickToDate(b.passed_tick)
+    }));
+    const billsFailed = (failedBillRows || []).map(b => ({
+        bill_id: b.id, bill_name: b.bill_name, bill_type: b.bill_type || 'standard',
+        tick: b.passed_tick, date: _tickToDate(b.passed_tick)
+    }));
+    const noConfidenceVotes = (nocRows || []).map(b => ({
+        bill_id: b.id, bill_name: b.bill_name,
+        result: b.status === 'passed' ? 'passed' : 'failed',
+        tick: b.passed_tick, date: _tickToDate(b.passed_tick)
+    }));
+    const impeachmentsArr = (impeachRows || []).map(b => ({
+        bill_id: b.id, bill_name: b.bill_name, type: b.bill_type,
+        result: b.status === 'passed' ? 'passed' : 'failed',
+        tick: b.passed_tick, date: _tickToDate(b.passed_tick)
+    }));
+    const executiveOrders = (eoRows || []).map(eo => ({
+        id: eo.id, order_type: eo.order_type,
+        tick: eo.issued_at_tick, date: _tickToDate(eo.issued_at_tick)
+    }));
+    const tradeAgreements = (tradeAgreementsDuring || []).map(ta => ({
+        agreement_id: ta.id, agreement_type: ta.agreement_type, agreement_name: ta.agreement_name,
+        partner_nation_id: ta.nation_a_id === nationId ? ta.nation_b_id : ta.nation_a_id,
+        enacted_at_tick: ta.enacted_at_tick, date: _tickToDate(ta.enacted_at_tick), status: ta.status
+    }));
+
+    const events = eventsDuring || [];
+    const crisisEvents = events.filter(e => e.category === 'crisis' || e.category === 'disaster' || e.category === 'conflict');
+    const crisesStarted = crisisEvents
+        .filter(e => !e.event_name?.startsWith('CRISIS_RESOLVED:'))
+        .map(e => ({ event_id: e.event_id, title: e.event_name, started_tick: e.fired_at_tick, date: _tickToDate(e.fired_at_tick) }));
+    const crisesSolved = events
+        .filter(e => e.event_name?.startsWith('CRISIS_RESOLVED:'))
+        .map(e => ({ title: e.event_name.replace('CRISIS_RESOLVED: ', ''), solved_tick: e.fired_at_tick, date: _tickToDate(e.fired_at_tick) }));
+    const snapElections = events
+        .filter(e => e.event_name && (e.event_name.includes('snap_election') || e.event_name.includes('formation_snap_election') || e.event_name.includes('early_election')))
+        .map(e => ({ title: e.event_name, tick: e.fired_at_tick, date: _tickToDate(e.fired_at_tick) }));
+    const minorityGovernments = events
+        .filter(e => e.event_name?.includes('minority_government'))
+        .map(e => ({ title: e.event_name, tick: e.fired_at_tick, date: _tickToDate(e.fired_at_tick) }));
+    const leaderChanges = events
+        .filter(e => e.event_name === 'New Party Leader')
+        .map(e => ({ role: e.event_name, description: e.description_chosen || '', tick: e.fired_at_tick, date: _tickToDate(e.fired_at_tick) }));
+
+    const ministerActions = (ministerRows || []).map(r => ({
+        action_type: r.action_type, tick: r.tick_performed, date: _tickToDate(r.tick_performed),
+        minister_name: r.result?.minister_name || (r.result?.first_name ? `${r.result.first_name} ${r.result.last_name}` : null),
+        ministry: r.result?.ministry_key || r.result?.ministry_name || null,
+        party: r.result?.party_name || null,
+    }));
+    const diplomaticActionsArr = (diplomaticRows || []).map(r => ({
+        action_type: r.action_type, tick: r.applied_at_tick, date: _tickToDate(r.applied_at_tick),
+        target_nation_id: r.target_nation_id,
+        target_nation: r.action_data?.target_nation_name || null,
+    }));
+
+    await supabase.from('administrations').update({
+        bills_passed: billsPassed,
+        bills_failed: billsFailed,
+        laws_repealed: lawsRepealed,
+        crises_started: crisesStarted,
+        crises_solved: crisesSolved,
+        elections_survived: (electionsDuring || []).length,
+        trade_agreements: tradeAgreements,
+        no_confidence_votes: noConfidenceVotes,
+        impeachments: impeachmentsArr,
+        executive_orders: executiveOrders,
+        snap_elections: snapElections,
+        minority_governments: minorityGovernments,
+        leader_changes: leaderChanges,
+        minister_actions: ministerActions,
+        diplomatic_actions: diplomaticActionsArr,
+        updated_at: new Date().toISOString()
+    }).eq('id', admin.id);
 }
 
 /**
@@ -27754,6 +27936,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             } catch (agingErr) {
                 console.error(`[advanceTick] Leader aging failed for ${nation.name} (non-fatal):`, agingErr);
             }
+        }
+
+        // Refresh current administration event arrays (non-fatal)
+        try {
+            await refreshCurrentAdministrationEvents(supabase, nation.id, newTick);
+        } catch (adminRefreshErr) {
+            console.error(`[advanceTick] Admin event refresh failed for ${nation.name} (non-fatal):`, adminRefreshErr);
         }
 
       } catch (nationErr) {

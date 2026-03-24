@@ -6949,6 +6949,8 @@ function renderAdminCard(admin, isCurrent) {
     const snapElections = admin.snap_elections || [];
     const minorityGovernments = admin.minority_governments || [];
     const leaderChanges = admin.leader_changes || [];
+    const ministerActions = admin.minister_actions || [];
+    const diplomaticActions = admin.diplomatic_actions || [];
 
     // Detail sections
     let detailHTML = '';
@@ -7049,11 +7051,11 @@ function renderAdminCard(admin, isCurrent) {
         detailHTML += `<div class="pad-section-title">Crises</div>`;
         if (crisesStarted.length > 0) {
             detailHTML += `<div style="font-size:0.72rem;color:var(--red);font-weight:bold;margin-bottom:4px;">Started (${crisesStarted.length})</div>`;
-            detailHTML += crisesStarted.map(c => `<div class="pad-crisis-item"><span>${c.title}</span><span class="crisis-date">${c.started_tick != null ? tickToDate(c.started_tick) : (c.started_date || '')}</span></div>`).join('');
+            detailHTML += crisesStarted.map(c => `<div class="pad-crisis-item"><span>${c.title}</span><span class="crisis-date">${c.date || (c.started_tick != null ? tickToDate(c.started_tick) : '')}</span></div>`).join('');
         }
         if (crisesSolved.length > 0) {
             detailHTML += `<div style="font-size:0.72rem;color:var(--green);font-weight:bold;margin:6px 0 4px;">Solved (${crisesSolved.length})</div>`;
-            detailHTML += crisesSolved.map(c => `<div class="pad-crisis-item"><span>${c.title}</span><span class="crisis-date">${c.solved_tick != null ? tickToDate(c.solved_tick) : (c.solved_date || '')}</span></div>`).join('');
+            detailHTML += crisesSolved.map(c => `<div class="pad-crisis-item"><span>${c.title}</span><span class="crisis-date">${c.date || (c.solved_tick != null ? tickToDate(c.solved_tick) : '')}</span></div>`).join('');
         }
     }
 
@@ -7062,15 +7064,21 @@ function renderAdminCard(admin, isCurrent) {
         detailHTML += `<div class="pad-section-title">Legislation</div>`;
         if (billsPassed.length > 0) {
             detailHTML += `<div style="font-size:0.72rem;color:var(--green);font-weight:bold;margin-bottom:4px;">Bills Passed (${billsPassed.length})</div>`;
-            detailHTML += billsPassed.map(b => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(b.bill_name || 'Unnamed')}</span><span class="bill-date">${tickToDate(b.passed_tick)}</span></div>`).join('');
+            detailHTML += billsPassed.map(b => {
+                const tag = b.bill_type === 'foundational' ? ' <span style="font-size:0.65rem;color:var(--amber);font-weight:600;text-transform:uppercase;">Foundational</span>' : '';
+                return `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(b.bill_name || 'Unnamed')}${tag}</span><span class="bill-date">${b.date || tickToDate(b.passed_tick)}</span></div>`;
+            }).join('');
         }
         if (billsFailed.length > 0) {
             detailHTML += `<div style="font-size:0.72rem;color:var(--red);font-weight:bold;margin:6px 0 4px;">Bills Failed (${billsFailed.length})</div>`;
-            detailHTML += billsFailed.map(b => `<div class="pad-legislation-item"><span class="bill-name" style="color:var(--text-muted);">${escapeHtml(b.bill_name || 'Unnamed')}</span></div>`).join('');
+            detailHTML += billsFailed.map(b => {
+                const tag = b.bill_type === 'foundational' ? ' <span style="font-size:0.65rem;color:var(--amber);font-weight:600;text-transform:uppercase;">Foundational</span>' : '';
+                return `<div class="pad-legislation-item"><span class="bill-name" style="color:var(--text-muted);">${escapeHtml(b.bill_name || 'Unnamed')}${tag}</span>${b.date ? `<span class="bill-date">${b.date}</span>` : ''}</div>`;
+            }).join('');
         }
         if (lawsRepealed.length > 0) {
             detailHTML += `<div style="font-size:0.72rem;color:var(--orange);font-weight:bold;margin:6px 0 4px;">Laws Repealed (${lawsRepealed.length})</div>`;
-            detailHTML += lawsRepealed.map(b => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(b.bill_name || 'Unnamed')}</span><span class="bill-date">${b.repealed_tick != null ? tickToDate(b.repealed_tick) : (b.repealed_date || '')}</span></div>`).join('');
+            detailHTML += lawsRepealed.map(b => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(b.bill_name || 'Unnamed')}</span><span class="bill-date">${b.date || (b.repealed_tick != null ? tickToDate(b.repealed_tick) : '')}</span></div>`).join('');
         }
     }
 
@@ -7087,7 +7095,7 @@ function renderAdminCard(admin, isCurrent) {
                 const passed = v.result === 'passed';
                 const color = passed ? 'var(--red)' : 'var(--green)';
                 const label = passed ? 'PASSED' : 'FAILED';
-                return `<div class="pad-legislation-item"><span class="bill-name">Vote of No Confidence</span><span class="bill-date" style="color:${color};">${label} &middot; ${tickToDate(v.tick)}</span></div>`;
+                return `<div class="pad-legislation-item"><span class="bill-name">Vote of No Confidence</span><span class="bill-date" style="color:${color};">${label} &middot; ${v.date || tickToDate(v.tick)}</span></div>`;
             }).join('');
         }
         if (impeachments.length > 0) {
@@ -7096,23 +7104,23 @@ function renderAdminCard(admin, isCurrent) {
                 const color = passed ? 'var(--red)' : 'var(--green)';
                 const label = passed ? 'PASSED' : 'FAILED';
                 const typeLabel = v.type === 'impeachment_conviction' ? 'Impeachment Conviction' : 'Impeachment Motion';
-                return `<div class="pad-legislation-item"><span class="bill-name">${typeLabel}</span><span class="bill-date" style="color:${color};">${label} &middot; ${tickToDate(v.tick)}</span></div>`;
+                return `<div class="pad-legislation-item"><span class="bill-name">${typeLabel}</span><span class="bill-date" style="color:${color};">${label} &middot; ${v.date || tickToDate(v.tick)}</span></div>`;
             }).join('');
         }
         if (snapElections.length > 0) {
-            detailHTML += snapElections.map(e => `<div class="pad-legislation-item"><span class="bill-name">Snap Election</span><span class="bill-date">${tickToDate(e.tick)}</span></div>`).join('');
+            detailHTML += snapElections.map(e => `<div class="pad-legislation-item"><span class="bill-name">Snap Election</span><span class="bill-date">${e.date || tickToDate(e.tick)}</span></div>`).join('');
         }
         if (minorityGovernments.length > 0) {
-            detailHTML += minorityGovernments.map(e => `<div class="pad-legislation-item"><span class="bill-name" style="color:var(--orange);">Minority Government Formed</span><span class="bill-date">${tickToDate(e.tick)}</span></div>`).join('');
+            detailHTML += minorityGovernments.map(e => `<div class="pad-legislation-item"><span class="bill-name" style="color:var(--orange);">Minority Government Formed</span><span class="bill-date">${e.date || tickToDate(e.tick)}</span></div>`).join('');
         }
         if (leaderChanges.length > 0) {
             detailHTML += `<div style="font-size:0.72rem;color:var(--teal, #5aafa5);font-weight:bold;margin:6px 0 4px;">Leadership Changes (${leaderChanges.length})</div>`;
-            detailHTML += leaderChanges.map(lc => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(lc.role)}</span><span class="bill-date" style="color:var(--text-dim);">${escapeHtml(lc.description)} &middot; ${tickToDate(lc.tick)}</span></div>`).join('');
+            detailHTML += leaderChanges.map(lc => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(lc.role)}</span><span class="bill-date" style="color:var(--text-dim);">${escapeHtml(lc.description)} &middot; ${lc.date || tickToDate(lc.tick)}</span></div>`).join('');
         }
         if (executiveOrders.length > 0) {
             const eoLabels = { acting_minister: 'Acting Minister', emergency_session: 'Emergency Session', executive_decree: 'Executive Decree', emergency_powers: 'Emergency Powers', media_address: 'Media Address' };
             detailHTML += `<div style="font-size:0.72rem;color:var(--amber);font-weight:bold;margin:6px 0 4px;">Executive Orders (${executiveOrders.length})</div>`;
-            detailHTML += executiveOrders.map(eo => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(eoLabels[eo.order_type] || eo.order_type)}</span><span class="bill-date">${tickToDate(eo.tick)}</span></div>`).join('');
+            detailHTML += executiveOrders.map(eo => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(eoLabels[eo.order_type] || eo.order_type)}</span><span class="bill-date">${eo.date || tickToDate(eo.tick)}</span></div>`).join('');
         }
     }
 
@@ -7121,7 +7129,32 @@ function renderAdminCard(admin, isCurrent) {
     if (tradeAgreements.length > 0) {
         const taTypeLabels = { fta: 'Free Trade Agreement', pta: 'Preferential Trade Agreement', resource_supply: 'Resource Supply', export_subsidy: 'Export Subsidy', impose_embargo: 'Embargo', retaliatory_tariff: 'Retaliatory Tariff' };
         detailHTML += `<div class="pad-section-title">Trade Agreements (${tradeAgreements.length})</div>`;
-        detailHTML += tradeAgreements.map(ta => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(ta.agreement_name || 'Unnamed')}</span><span class="bill-date" style="color:var(--text-dim);">${taTypeLabels[ta.agreement_type] || ta.agreement_type} &middot; ${tickToDate(ta.enacted_at_tick)}</span></div>`).join('');
+        detailHTML += tradeAgreements.map(ta => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(ta.agreement_name || 'Unnamed')}</span><span class="bill-date" style="color:var(--text-dim);">${taTypeLabels[ta.agreement_type] || ta.agreement_type} &middot; ${ta.date || tickToDate(ta.enacted_at_tick)}</span></div>`).join('');
+    }
+
+    // Minister Actions
+    if (ministerActions.length > 0) {
+        const maLabels = { assign_minister: 'Appointed', purge_minister: 'Purged', fire_minister: 'Fired' };
+        const maColors = { assign_minister: 'var(--green)', purge_minister: 'var(--red)', fire_minister: 'var(--orange)' };
+        detailHTML += `<div class="pad-section-title">Cabinet Changes (${ministerActions.length})</div>`;
+        detailHTML += ministerActions.map(ma => {
+            const label = maLabels[ma.action_type] || ma.action_type;
+            const color = maColors[ma.action_type] || 'var(--text-dim)';
+            const name = ma.minister_name ? escapeHtml(ma.minister_name) : 'Unknown';
+            const ministry = ma.ministry ? ` — ${escapeHtml(ma.ministry)}` : '';
+            return `<div class="pad-legislation-item"><span class="bill-name">${name}${ministry}</span><span class="bill-date" style="color:${color};">${label} &middot; ${ma.date || tickToDate(ma.tick)}</span></div>`;
+        }).join('');
+    }
+
+    // Diplomatic Actions
+    if (diplomaticActions.length > 0) {
+        const daLabels = { formal_protest: 'Formal Protest', recall_ambassador: 'Recall Ambassador', impose_embargo: 'Embargo', offer_foreign_aid: 'Foreign Aid', issue_ultimatum: 'Ultimatum', state_visit: 'State Visit', covert_gather_intel: 'Intelligence Gathering', covert_propaganda: 'Propaganda Campaign', covert_bribe: 'Bribe Officials', declare_war: 'Declaration of War', sue_for_peace: 'Peace Offer' };
+        detailHTML += `<div class="pad-section-title">Diplomatic Actions (${diplomaticActions.length})</div>`;
+        detailHTML += diplomaticActions.map(da => {
+            const label = daLabels[da.action_type] || da.action_type;
+            const target = da.target_nation ? ` — ${escapeHtml(da.target_nation)}` : '';
+            return `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(label)}${target}</span><span class="bill-date">${da.date || tickToDate(da.tick)}</span></div>`;
+        }).join('');
     }
 
     // All stat changes table (expandable)
