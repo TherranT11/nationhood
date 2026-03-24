@@ -46,6 +46,14 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 
+    // On page load, check if user is already logged in
+    (async () => {
+        const { data: { user } } = await _supabase.auth.getUser();
+        if (user) {
+            await routeUser(user);
+        }
+    })();
+
     // Show success message if redirected from password reset
     const params = new URLSearchParams(window.location.search);
     if (params.get('reset') === 'success') {
@@ -76,7 +84,7 @@ import { _supabase } from './js/supabase-client.js';
             if (error) throw error;
             // Clear stale game state so dashboard fetches fresh data
             sessionStorage.removeItem('nationhood_state');
-            window.location.href = "dashboard.html";
+            await routeUser(data.user);
         } catch (error) {
             console.error('Login error:', error);
             errorMsg.textContent = error.message || 'Login failed. Please try again.';
@@ -84,6 +92,25 @@ import { _supabase } from './js/supabase-client.js';
             submitBtn.textContent = 'ENTER THE CHRONICLE';
         }
     });
+
+    async function routeUser(user) {
+        try {
+            const { data: faction } = await _supabase
+                .from('factions')
+                .select('*')
+                .eq('id', user.id)
+                .single();
+
+            if (faction && faction.faction_type === 'party' && faction.nation_id) {
+                window.location.href = 'dashboard.html';
+            } else {
+                window.location.href = 'select-nation.html';
+            }
+        } catch (error) {
+            console.error('Faction check error:', error);
+            window.location.href = 'select-nation.html';
+        }
+    }
 </script>
 </body>
 </html>

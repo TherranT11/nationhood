@@ -549,7 +549,7 @@ async function renderPartyTab(f, nation, data) {
                 await disbandParty(_supabase, nation.id, f.id, currentTick);
                 sessionStorage.removeItem('nationhood_state');
                 await _supabase.auth.signOut();
-                window.location.href = 'index.html';
+                window.location.href = 'login.html';
             } catch (err) {
                 _showToast(err.message || 'Failed to disband party.');
                 disbandBtn.disabled = false;
