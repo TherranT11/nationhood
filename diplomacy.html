@@ -426,6 +426,12 @@ function switchDiploView(view) {
     wnView.classList.add('wn-grid--hidden');
     ipoView.classList.add('ipo-view--hidden');
 
+    // Clean up IPO realtime when leaving orgs view
+    if (view !== 'orgs' && ipoRealtimeChannel) {
+        _supabase.removeChannel(ipoRealtimeChannel);
+        ipoRealtimeChannel = null;
+    }
+
     if (view === 'nations') {
         wnView.classList.remove('wn-grid--hidden');
         // Always re-fetch when switching to nations view to avoid stale data
@@ -13845,6 +13851,11 @@ async function renderIPOView() {
         </div>`;
 
     ipoLoaded = true;
+
+    // Load chat after DOM is set (only if an org is selected)
+    if (ipoSelectedOrgId && ipoMemberships.length > 0) {
+        loadIPOChat(ipoSelectedOrgId);
+    }
 }
 
 /**
@@ -13989,8 +14000,168 @@ async function renderIPOMainPanel(memberCounts) {
     return headerHtml + chatHtml + bottomHtml + footerHtml;
 }
 
+// ==================== IPO CHAT SYSTEM ====================
+
+let ipoChatMessages = [];       // cached messages for current org
+let ipoChatMemberMap = {};      // { faction_id: { name, color } } for rendering
+
+/**
+ * Load chat messages for the selected org, render them, and subscribe to realtime.
+ */
+async function loadIPOChat(orgId) {
+    const container = document.getElementById('ipo-chat-messages');
+    if (!container || !orgId) return;
+
+    // Unsubscribe from previous channel
+    if (ipoRealtimeChannel) {
+        _supabase.removeChannel(ipoRealtimeChannel);
+        ipoRealtimeChannel = null;
+    }
+
+    // Build member map (for names and colors)
+    try {
+        const { data: members } = await _supabase
+            .from('ipo_members')
+            .select('faction_id, chat_color, factions:faction_id ( faction_name )')
+            .eq('org_id', orgId)
+            .eq('is_active', true);
+        ipoChatMemberMap = {};
+        (members || []).forEach(m => {
+            ipoChatMemberMap[m.faction_id] = {
+                name: m.factions?.faction_name || 'Unknown',
+                color: m.chat_color || '#6b6a5e'
+            };
+        });
+    } catch (e) { console.warn('[IPO Chat] Member map error:', e); }
+
+    // Fetch messages (most recent 100)
+    try {
+        const { data: messages, error } = await _supabase
+            .from('ipo_chat')
+            .select('id, faction_id, is_system, message_text, tick_posted, created_at')
+            .eq('org_id', orgId)
+            .order('created_at', { ascending: true })
+            .limit(100);
+
+        if (error) {
+            console.error('[IPO Chat] Fetch error:', error.message);
+            ipoChatMessages = [];
+        } else {
+            ipoChatMessages = messages || [];
+        }
+    } catch (e) {
+        console.error('[IPO Chat] Fetch exception:', e);
+        ipoChatMessages = [];
+    }
+
+    renderIPOChatMessages();
+
+    // Subscribe to realtime inserts
+    ipoRealtimeChannel = _supabase
+        .channel('ipo_chat_' + orgId)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'ipo_chat',
+            filter: 'org_id=eq.' + orgId
+        }, (payload) => {
+            const msg = payload.new;
+            if (!ipoChatMessages.find(m => m.id === msg.id)) {
+                ipoChatMessages.push(msg);
+                renderIPOChatMessages();
+            }
+        })
+        .subscribe();
+}
+
+/**
+ * Render chat messages into the chat container.
+ */
+function renderIPOChatMessages() {
+    const container = document.getElementById('ipo-chat-messages');
+    if (!container) return;
+
+    if (ipoChatMessages.length === 0) {
+        container.innerHTML = '<div class="ipo-chat-system">— No messages yet —</div>';
+        return;
+    }
+
+    container.innerHTML = ipoChatMessages.map(msg => {
+        if (msg.is_system) {
+            return `<div class="ipo-chat-system">— ${escapeHtml(msg.message_text)} —</div>`;
+        }
+
+        const member = ipoChatMemberMap[msg.faction_id];
+        const partyName = member?.name || 'Unknown';
+        const partyColor = member?.color || '#6b6a5e';
+        const timeStr = formatIPOChatTime(msg.created_at);
+
+        return `<div class="ipo-chat-msg">
+            <span class="ipo-chat-msg-party" style="color:${partyColor};">${escapeHtml(partyName)}</span>
+            <span class="ipo-chat-msg-text">${escapeHtml(msg.message_text)}</span>
+            <span class="ipo-chat-msg-time">${timeStr}</span>
+        </div>`;
+    }).join('');
+
+    // Auto-scroll to bottom
+    container.scrollTop = container.scrollHeight;
+}
+
+/**
+ * Format chat timestamp (relative or absolute).
+ */
+function formatIPOChatTime(isoStr) {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    const now = new Date();
+    const diff = (now - d) / 1000;
+    if (diff < 60) return 'now';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h';
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+/**
+ * Send a chat message to the current org.
+ */
+async function sendIPOChat() {
+    const input = document.getElementById('ipo-chat-input');
+    if (!input || !currentFaction || !ipoSelectedOrgId) return;
+
+    const text = input.value.trim();
+    if (!text) return;
+
+    // Check membership is active and role is 'member' (not observer)
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    if (!membership || membership.role === 'observer') return;
+
+    input.value = '';
+    input.disabled = true;
+
+    try {
+        const { error } = await _supabase.from('ipo_chat').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: currentFaction.id,
+            is_system: false,
+            message_text: text,
+            tick_posted: shardTick
+        });
+
+        if (error) {
+            console.error('[IPO Chat] Send error:', error.message);
+            input.value = text; // restore on failure
+        }
+        // Message will appear via realtime subscription
+    } catch (e) {
+        console.error('[IPO Chat] Send exception:', e);
+        input.value = text;
+    } finally {
+        input.disabled = false;
+        input.focus();
+    }
+}
+
 // Placeholder handlers for later phases
-function sendIPOChat() { /* Phase 5 */ }
 function openIPOInviteModal() { alert('Invite flow — Phase 10'); }
 function openIPOAmendModal() { alert('Amend Charter — Phase 6'); }
 async function leaveIPOOrg() {
