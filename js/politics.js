@@ -3159,14 +3159,23 @@ async function _renderActionsPromisesPanel(faction, nation, tick) {
         rowsHtml = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px 0">No active promises.</div>';
     } else {
         for (const p of activePromises) {
-            const ticksLeft = Math.max(0, (p.deadline_tick || 0) - tick);
+            // Field sources (written by executeMakePromise in political-actions.js):
+            //   p.tick_deadline          — absolute tick the promise expires
+            //   p.demand_type            — 'stat_target' | 'crisis_resolution'
+            //   p.demand_text            — human-readable promise text (e.g. "Reduce Inflation to 30")
+            //   p.conditions.stat_key    — stat key for stat_target promises
+            //   p.conditions.direction   — 'above' (increase) | 'below' (decrease)
+            //   p.conditions.target_value — numeric target for stat_target promises
+            const ticksLeft = Math.max(0, (p.tick_deadline || 0) - tick);
             const isUrgent = ticksLeft <= 3;
             const isCritical = ticksLeft <= 1;
             const tickColor = isCritical ? 'var(--dred)' : isUrgent ? 'var(--damber)' : 'var(--dgreen)';
-            const label = p.promise_type === 'crisis'
-                ? (p.crisis_label || 'Resolve crisis')
-                : (p.stat_key || 'Improve stat').replace(/_/g, ' ');
-            const direction = p.promise_type === 'stat' ? (p.target_direction === 'increase' ? '↑' : '↓') : '✓';
+            const isCrisis = p.demand_type === 'crisis_resolution';
+            const label = isCrisis
+                ? (p.demand_text || 'Resolve crisis')
+                : (p.conditions?.stat_key || 'Improve stat').replace(/_/g, ' ');
+            const direction = isCrisis ? '✓' : (p.conditions?.direction === 'above' ? '↑' : '↓');
+            const targetValue = p.conditions?.target_value;
 
             rowsHtml += `
             <div style="padding:6px 0;border-bottom:1px solid var(--dborder-1)">
@@ -3177,7 +3186,7 @@ async function _renderActionsPromisesPanel(faction, nation, tick) {
                     </div>
                     <span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${tickColor}">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} left</span>
                 </div>
-                ${p.target_value != null ? `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:2px">Target: ${p.target_value}</div>` : ''}
+                ${targetValue != null ? `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:2px">Target: ${targetValue}</div>` : ''}
             </div>`;
         }
     }
