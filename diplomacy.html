@@ -13817,11 +13817,8 @@ async function renderIPOView() {
                 </button>
             </div>`;
     } else {
-        // Placeholder for selected org detail — Phase 3 will render the full header/chat/panels
-        mainContent = `
-            <div class="ipo-main-placeholder">
-                <span class="ipo-main-placeholder-text">Select an organisation from the sidebar.</span>
-            </div>`;
+        // Render selected org detail
+        mainContent = await renderIPOMainPanel(memberCounts);
     }
 
     container.innerHTML = `
@@ -13843,6 +13840,192 @@ async function renderIPOView() {
         </div>`;
 
     ipoLoaded = true;
+}
+
+/**
+ * Render the full main panel for the selected org:
+ *  - Header bar (logo, name, meta, fund pill, president pill)
+ *  - Chat placeholder (Phase 5)
+ *  - Bottom third panels: charter / votes / actions (Phase 6-8)
+ *  - Footer with member badges + management buttons (Phase 10)
+ */
+async function renderIPOMainPanel(memberCounts) {
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    if (!membership) {
+        return `<div class="ipo-main-placeholder">
+            <span class="ipo-main-placeholder-text">Select an organisation from the sidebar.</span>
+        </div>`;
+    }
+
+    const org = membership.org;
+    const charter = org.charter || {};
+    const leadership = charter.leadership || {};
+    const resources = charter.resources || {};
+    const isPresident = org.president_id === currentFaction.id;
+    const isObserver = membership.role === 'observer';
+    const count = memberCounts[org.id] || 1;
+
+    // Fetch HQ nation name, president party name, and all members in parallel
+    const [hqResult, presidentResult, membersResult, allNationsResult] = await Promise.all([
+        org.headquarters_nation_id
+            ? _supabase.from('nations').select('name').eq('id', org.headquarters_nation_id).single()
+            : Promise.resolve({ data: null }),
+        _supabase.from('factions').select('faction_name').eq('id', org.president_id).single(),
+        _supabase.from('ipo_members')
+            .select('id, faction_id, role, factions:faction_id ( id, faction_name, nation_id )')
+            .eq('org_id', org.id)
+            .eq('is_active', true),
+        _supabase.from('nations').select('id, name').order('name')
+    ]);
+
+    const hqName = hqResult.data?.name || null;
+    const presidentName = presidentResult.data?.faction_name || 'Unknown';
+    const allMembers = membersResult.data || [];
+    const allNations = allNationsResult.data || [];
+    const nationMap = Object.fromEntries(allNations.map(n => [n.id, n.name]));
+
+    // Leadership type display
+    const leadershipLabels = { rotation: 'Rotation', most_seats: 'Most Seats', random: 'Random' };
+    const leadershipLabel = leadershipLabels[leadership.type] || 'Rotation';
+
+    // Term display
+    const termYears = leadership.termYears || 2;
+
+    // ── Header ──
+    const headerHtml = `
+        <div class="ipo-header">
+            <span class="ipo-header-logo">${escapeHtml(org.logo_symbol)} ${escapeHtml(org.logo_text)}</span>
+            <div class="ipo-header-identity">
+                <span class="ipo-header-name">${escapeHtml(org.name)}</span>
+                <div class="ipo-header-meta">
+                    <span>Est. Tick ${org.founded_at_tick}</span>
+                    <span>${count} member${count !== 1 ? 's' : ''}</span>
+                    ${hqName ? `<span>HQ: ${escapeHtml(hqName)}</span>` : '<span>HQ: Vacant</span>'}
+                    <span>${leadershipLabel}</span>
+                    <span>${termYears}-Year Term</span>
+                </div>
+            </div>
+            <div class="ipo-header-right">
+                <span class="ipo-header-fund">${escapeHtml('SOLIDARITY FUND')} · ${org.solidarity_fund_balance} AP</span>
+                ${isPresident ? '<span class="ipo-header-president">PRESIDENT</span>' : ''}
+            </div>
+        </div>`;
+
+    // ── Chat area (Phase 5 placeholder) ──
+    const chatHtml = `
+        <div class="ipo-chat-area" id="ipo-chat-area">
+            <div class="ipo-chat-messages" id="ipo-chat-messages">
+                <div class="ipo-main-placeholder">
+                    <span class="ipo-main-placeholder-text">Chat loading...</span>
+                </div>
+            </div>
+            <div class="ipo-chat-input-row">
+                <input type="text" class="ipo-chat-input"
+                    placeholder="${isObserver ? 'Observers cannot send messages.' : 'Message the ' + escapeHtml(org.name) + '...'}"
+                    ${isObserver ? 'disabled' : ''}
+                    id="ipo-chat-input"
+                    onkeydown="if(event.key==='Enter')sendIPOChat()" />
+                <button class="ipo-btn ipo-btn--send" onclick="sendIPOChat()" ${isObserver ? 'disabled' : ''}>Send</button>
+            </div>
+        </div>`;
+
+    // ── Bottom panels: Charter / Votes / Actions (Phase 6-8 placeholders) ──
+    const bottomHtml = `
+        <div class="ipo-bottom-panels">
+            <div class="ipo-panel ipo-panel--charter" id="ipo-panel-charter">
+                <div class="ipo-panel-header">
+                    <span class="ipo-panel-dot ipo-panel-dot--teal"></span>
+                    <span class="ipo-panel-title">Charter</span>
+                </div>
+                <div class="ipo-panel-body">
+                    <span class="ipo-main-placeholder-text">Charter details — Phase 6</span>
+                </div>
+            </div>
+            <div class="ipo-panel ipo-panel--votes" id="ipo-panel-votes">
+                <div class="ipo-panel-header">
+                    <span class="ipo-panel-dot ipo-panel-dot--amber"></span>
+                    <span class="ipo-panel-title">Votes</span>
+                </div>
+                <div class="ipo-panel-body">
+                    <span class="ipo-main-placeholder-text">Votes — Phase 7</span>
+                </div>
+            </div>
+            <div class="ipo-panel ipo-panel--actions" id="ipo-panel-actions">
+                <div class="ipo-panel-header">
+                    <span class="ipo-panel-dot ipo-panel-dot--purple"></span>
+                    <span class="ipo-panel-title">Actions</span>
+                </div>
+                <div class="ipo-panel-body">
+                    <span class="ipo-main-placeholder-text">Actions — Phase 8</span>
+                </div>
+            </div>
+        </div>`;
+
+    // ── Footer: member badges + management buttons ──
+    const memberBadges = allMembers.map(m => {
+        const pName = m.factions?.faction_name || 'Unknown';
+        const pNation = m.factions?.nation_id ? (nationMap[m.factions.nation_id] || '') : '';
+        const isYou = m.faction_id === currentFaction.id;
+        const roleTag = m.role === 'observer' ? ' (OBS)' : '';
+        const cls = isYou ? 'ipo-footer-badge--you' : 'ipo-footer-badge--other';
+        return `<span class="ipo-footer-badge ${cls}">${escapeHtml(pName)}${roleTag}${isYou ? ' (YOU)' : ''}${pNation ? ' · ' + escapeHtml(pNation) : ''}</span>`;
+    }).join('');
+
+    const footerHtml = `
+        <div class="ipo-footer">
+            <div class="ipo-footer-members">${memberBadges}</div>
+            <div class="ipo-footer-actions">
+                <button class="ipo-btn ipo-btn--invite" onclick="openIPOInviteModal()">Invite Member</button>
+                <button class="ipo-btn ipo-btn--amend" onclick="openIPOAmendModal()">Amend Charter</button>
+                <button class="ipo-btn ipo-btn--leave" onclick="leaveIPOOrg()">Leave Org</button>
+            </div>
+        </div>`;
+
+    return headerHtml + chatHtml + bottomHtml + footerHtml;
+}
+
+// Placeholder handlers for later phases
+function sendIPOChat() { /* Phase 5 */ }
+function openIPOInviteModal() { alert('Invite flow — Phase 10'); }
+function openIPOAmendModal() { alert('Amend Charter — Phase 6'); }
+async function leaveIPOOrg() {
+    if (!currentFaction || !ipoSelectedOrgId) return;
+    if (!confirm('Are you sure you want to leave this organisation? Your solidarity fund contributions will not be returned.')) return;
+    try {
+        await _supabase.from('ipo_members')
+            .update({ is_active: false, left_at_tick: shardTick })
+            .eq('org_id', ipoSelectedOrgId)
+            .eq('faction_id', currentFaction.id)
+            .eq('is_active', true);
+
+        // System message
+        await _supabase.from('ipo_chat').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: null,
+            is_system: true,
+            message_text: `${currentFaction.faction_name} has left the organisation.`,
+            tick_posted: shardTick
+        });
+
+        // Check if org is now empty — dissolve
+        const { data: remaining } = await _supabase
+            .from('ipo_members')
+            .select('id')
+            .eq('org_id', ipoSelectedOrgId)
+            .eq('is_active', true);
+
+        if (!remaining || remaining.length === 0) {
+            await _supabase.from('international_orgs')
+                .update({ is_active: false, dissolved_at_tick: shardTick })
+                .eq('id', ipoSelectedOrgId);
+        }
+
+        ipoSelectedOrgId = null;
+        renderIPOView();
+    } catch (e) {
+        console.error('[IPO] Leave org error:', e);
+        alert('Failed to leave organisation.');
+    }
 }
 
 /**
@@ -13952,6 +14135,10 @@ window.selectIPOOrg = selectIPOOrg;
 window.acceptIPOInvite = acceptIPOInvite;
 window.declineIPOInvite = declineIPOInvite;
 window.openIPOCreationModal = openIPOCreationModal;
+window.sendIPOChat = sendIPOChat;
+window.openIPOInviteModal = openIPOInviteModal;
+window.openIPOAmendModal = openIPOAmendModal;
+window.leaveIPOOrg = leaveIPOOrg;
 </script>
 
 </body>
