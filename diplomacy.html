@@ -946,8 +946,11 @@ async function renderRelationsTab() {
             // Credit badge for this nation
             const theirCredit = Number(nation.credit ?? 50);
             const creditColor = theirCredit >= 75 ? '#4ade80' : theirCredit >= 50 ? '#a0a090' : theirCredit >= 25 ? '#f59e0b' : '#ef4444';
-            const blockedAgreements = ['fta', 'pta', 'resource_supply', 'economic_aid'].filter(type => {
-                const check = checkCreditForTradeAgreement(theirCredit, type, type === 'economic_aid');
+            // Check their credit as the agreement partner we'd be proposing TO.
+            // For economic_aid we would be the donor (isAidDonor=false for them as receiver → threshold 0).
+            // Drop economic_aid from this check: aid can always be proposed regardless of recipient credit.
+            const blockedAgreements = ['fta', 'pta', 'resource_supply'].filter(type => {
+                const check = checkCreditForTradeAgreement(theirCredit, type, false);
                 return !check.allowed;
             });
             const creditTitle = blockedAgreements.length > 0

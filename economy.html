@@ -428,7 +428,7 @@ async function loadTradeData(nationId) {
         allAffinities.push({ partnerId: nid, name: nationNames[nid] || 'Unknown', breakdown: breakdown });
     }
 
-    tradeData = { summary: summary, flows: flows, prevFlows: prevFlows, partners: partners, allAffinities: allAffinities };
+    tradeData = { summary: summary, flows: flows, prevFlows: prevFlows, partners: partners, allAffinities: allAffinities, nationNames: nationNames };
     qCacheSet(cacheKey, tradeData, 2 * 60 * 1000);
 }
 
