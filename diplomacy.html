@@ -13892,9 +13892,10 @@ async function renderIPOView() {
 
     ipoLoaded = true;
 
-    // Load chat after DOM is set (only if an org is selected)
+    // Load chat and votes after DOM is set (only if an org is selected)
     if (ipoSelectedOrgId && ipoMemberships.length > 0) {
         loadIPOChat(ipoSelectedOrgId);
+        loadIPOVotes(ipoSelectedOrgId);
     }
 }
 
@@ -14000,9 +14001,10 @@ async function renderIPOMainPanel(memberCounts) {
                 <div class="ipo-panel-header">
                     <span class="ipo-panel-dot ipo-panel-dot--amber"></span>
                     <span class="ipo-panel-title">Votes</span>
+                    ${!isObserver ? '<button class="ipo-panel-action-btn" onclick="openIPOVoteModal()">+ Propose</button>' : ''}
                 </div>
-                <div class="ipo-panel-body">
-                    <span class="ipo-main-placeholder-text">Votes — Phase 7</span>
+                <div class="ipo-panel-body" id="ipo-votes-body">
+                    <span class="ipo-main-placeholder-text">Loading votes...</span>
                 </div>
             </div>
             <div class="ipo-panel ipo-panel--actions" id="ipo-panel-actions">
@@ -14202,7 +14204,7 @@ async function sendIPOChat() {
 
 // Placeholder handlers for later phases
 function openIPOInviteModal() { alert('Invite flow — Phase 10'); }
-function openIPOAmendModal() { alert('Amend Charter — Phase 6'); }
+// openIPOAmendModal() defined below in IPO AMEND CHARTER section
 async function leaveIPOOrg() {
     if (!currentFaction || !ipoSelectedOrgId) return;
     if (!confirm('Are you sure you want to leave this organisation? Your solidarity fund contributions will not be returned.')) return;
