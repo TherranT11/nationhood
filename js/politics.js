@@ -5980,62 +5980,165 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const container = document.getElementById('voters-container');
     if (!container) return;
 
-    container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:12px;padding:40px;text-align:center;letter-spacing:1px;">THIS PAGE IS BEING RECONSTRUCTED. THANK YOU FOR YOUR PATIENCE.</div>';
-    return;
-
     const partyColor = playerFaction.party_color || '#9b7ec8';
     const partyAbbr = playerFaction.abbreviation || '??';
+    const partyName = playerFaction.faction_name || 'Unknown Party';
 
-    // Fetch faction_electoral_standing + engagement scores + issue_state for Issue Landscape
-    const partyIds = (allParties || []).map(p => p.id);
-    const [standingsRes, issueStatesRes, engagementRes] = await Promise.all([
+    // Fetch standing, gov approval log, and government formation in parallel
+    const [standingRes, govLogRes, govFormRes] = await Promise.all([
         _supabase.from('faction_electoral_standing')
-            .select('faction_id, ideological_alignment, platform_appeal, party_approval, visibility, credibility_modifier, contested_vote_share, realized_vote_share, turnout_rate, alignment_contribution, appeal_contribution, approval_contribution, vote_left_on_table, raw_appeal')
+            .select('faction_id, party_approval, polled_party_approval, last_polled_tick')
             .eq('nation_id', nation.id)
-            .in('faction_id', partyIds),
-        _supabase.from('issue_state')
-            .select('issue_id, salience, salience_target, owned_by, pioneer_faction_id')
-            .eq('nation_id', nation.id),
-        _supabase.from('faction_engagement')
-            .select('faction_id, engagement_score, initiative_score, constructive_score, positioning_score')
+            .eq('faction_id', playerFaction.id)
+            .maybeSingle(),
+        _supabase.from('gov_approval_log')
+            .select('amount, source, tick')
             .eq('nation_id', nation.id)
-            .in('faction_id', partyIds),
+            .order('tick', { ascending: false })
+            .limit(20),
+        _supabase.from('government_formations')
+            .select('lead_party_id, party_ids')
+            .eq('nation_id', nation.id)
+            .eq('status', 'active')
+            .maybeSingle(),
     ]);
 
-    if (standingsRes.error) console.error('[Politics] Failed to load standings:', standingsRes.error.message);
-    if (issueStatesRes.error) console.error('[Politics] Failed to load issue states:', issueStatesRes.error.message);
-    if (engagementRes.error) console.error('[Politics] Failed to load engagement:', engagementRes.error.message);
-    const standings = standingsRes.data || [];
-    const issueStates = issueStatesRes.data || [];
-    const engagementData = engagementRes.data || [];
-
-    // Build standings lookup
-    const standingMap = {};
-    for (const s of standings) standingMap[s.faction_id] = s;
-
-    // Build engagement lookup
-    const engagementMap = {};
-    for (const e of engagementData) engagementMap[e.faction_id] = e;
-
-    const playerStanding = standingMap[playerFaction.id];
-    const playerEngagement = engagementMap[playerFaction.id];
-
-    // Build party lookup
-    const partyMap = {};
-    for (const p of (allParties || [])) partyMap[p.id] = p;
-
-    // If no standings data, show fallback
+    const playerStanding = standingRes.data;
     if (!playerStanding) {
         container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:20px;text-align:center;">Electorate standing not yet computed. Advance a tick to generate data.</div>';
         return;
     }
 
-    // Player values
-    const alignment = Number(playerStanding.ideological_alignment ?? 50);
-    const appeal = Number(playerStanding.platform_appeal ?? 50);
-    const approval = Number(playerStanding.party_approval ?? 50);
-    const visibility = Number(playerStanding.visibility ?? 30);
-    const credibility = Number(playerStanding.credibility_modifier ?? 1.0);
+    const approval = Number(playerStanding.party_approval ?? 25);
+    const polledApproval = playerStanding.polled_party_approval != null ? Number(playerStanding.polled_party_approval) : null;
+    const lastPolledTick = playerStanding.last_polled_tick || null;
+
+    // Determine if player is in government
+    const coalitionIds = govFormRes.data?.party_ids || [];
+    const leadPartyId = govFormRes.data?.lead_party_id || null;
+    const isGoverning = coalitionIds.includes(playerFaction.id) || leadPartyId === playerFaction.id;
+
+    // Build modifiers list from gov_approval_log
+    const govLog = govLogRes.data || [];
+
+    // Human-readable labels for gov_approval_log sources
+    const _approvalSourceLabels = {
+        'bill_passage': 'Bill Passed',
+        'no_confidence:success': 'No Confidence Vote',
+        'crisis:economic_collapse': 'Economic Collapse',
+        'minister:nominee_self_rejected': 'Minister Rejected Nomination',
+        'executive_order:acting_minister_after_failed_vote': 'Acting Minister (Failed Vote)',
+        'executive_order:acting_minister_no_vote': 'Acting Minister (No Vote)',
+        'executive_order:tax_adjustment': 'Tax Adjustment',
+        'executive_order:price_controls': 'Price Controls',
+        'executive_order:national_emergency': 'National Emergency',
+        'executive_order:censure': 'Censure',
+        'executive_order:emergency_bill_advance': 'Emergency Bill Advance',
+    };
+    function _formatSource(source) {
+        if (_approvalSourceLabels[source]) return _approvalSourceLabels[source];
+        if (source.startsWith('crisis:resolved:')) return 'Crisis Resolved';
+        if (source.startsWith('crisis:')) return 'Crisis';
+        if (source.startsWith('protest:fizzle:')) return 'Protests Fizzled';
+        if (source.startsWith('protest:tier')) return 'Protests';
+        if (source.startsWith('protest:')) return 'Protests';
+        if (source.startsWith('tax:')) return 'Tax Change';
+        if (source.startsWith('executive_order:')) return 'Executive Order';
+        return source.replace(/_/g, ' ').replace(/:/g, ' — ');
+    }
+
+    // Approval color based on value
+    function _approvalColor(val) {
+        if (val >= 60) return '#5cb85c';
+        if (val >= 40) return '#c8a44e';
+        if (val >= 25) return '#d98030';
+        return '#d9534f';
+    }
+
+    // Build modifier rows HTML
+    let modifiersHtml = '';
+    if (govLog.length === 0) {
+        modifiersHtml = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;padding:6px 0">No recorded modifiers yet.</div>';
+    } else {
+        for (const entry of govLog) {
+            const amt = Number(entry.amount);
+            const sign = amt >= 0 ? '+' : '';
+            const color = amt >= 0 ? '#5cb85c' : '#d9534f';
+            const label = _formatSource(entry.source);
+            const date = tickToDate(entry.tick);
+            modifiersHtml += `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--dborder-0)">
+                    <div style="flex:1;min-width:0">
+                        <div style="font-size:10px;color:var(--dtext-1);font-family:var(--dfont-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(label)}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:8px">
+                        <span style="font-size:10px;color:var(--dtext-3);font-family:var(--dfont-ui)">${escapeHtml(date)}</span>
+                        <span style="font-size:11px;font-weight:700;font-family:var(--dfont-mono);color:${color};min-width:32px;text-align:right">${sign}${amt}</span>
+                    </div>
+                </div>`;
+        }
+    }
+
+    // Last poll info
+    const lastPollText = lastPolledTick && lastPolledTick > 0
+        ? tickToDate(lastPolledTick)
+        : 'Never';
+    const polledDelta = (polledApproval != null && lastPolledTick > 0)
+        ? (approval - polledApproval)
+        : null;
+    const polledDeltaHtml = polledDelta != null
+        ? ` <span style="font-size:10px;font-weight:600;color:${polledDelta >= 0 ? '#5cb85c' : '#d9534f'}">(${polledDelta >= 0 ? '+' : ''}${polledDelta.toFixed(1)} since poll)</span>`
+        : '';
+
+    // Governing status label
+    const statusLabel = isGoverning
+        ? (playerFaction.id === leadPartyId ? 'GOVERNING — LEAD' : 'GOVERNING — COALITION')
+        : 'OPPOSITION';
+    const statusColor = isGoverning ? '#5cb85c' : '#d98030';
+
+    // Build the Party Approval container
+    container.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:16px;padding:10px 0">
+        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
+            <!-- Header -->
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${partyColor};margin-bottom:4px;font-weight:700">PARTY APPROVAL</div>
+
+            <!-- Party name + status -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="font-size:14px;font-weight:700;color:var(--dtext-0)">${escapeHtml(partyName)}</span>
+                <span style="font-size:9px;font-weight:600;color:${statusColor};text-transform:uppercase;letter-spacing:0.5px">${statusLabel}</span>
+            </div>
+
+            <!-- Approval value -->
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+                <span style="font-size:28px;font-weight:800;font-family:var(--dfont-mono);color:${_approvalColor(approval)}">${approval.toFixed(1)}</span>
+                <span style="font-size:11px;color:var(--dtext-3)">/ 100</span>
+            </div>
+
+            <!-- Approval bar -->
+            <div style="height:6px;border-radius:3px;background:var(--dbg-3);margin-bottom:8px;overflow:hidden">
+                <div style="width:${Math.min(100, approval)}%;height:100%;background:${_approvalColor(approval)};border-radius:3px;transition:width 0.5s"></div>
+            </div>
+
+            <!-- Last poll -->
+            <div style="font-size:10px;color:var(--dtext-3);margin-bottom:14px;font-family:var(--dfont-ui)">
+                Last Poll Taken — <span style="color:var(--dtext-1)">${escapeHtml(lastPollText)}</span>${polledDeltaHtml}
+            </div>
+
+            <hr style="border:none;border-top:1px solid var(--dborder-0);margin:0 0 10px 0">
+
+            <!-- Modifiers header -->
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dtext-0);margin-bottom:6px">Modifiers</div>
+            <div style="font-size:9px;color:var(--dtext-3);margin-bottom:8px;font-style:italic">${isGoverning ? 'Events affecting government approval (your party drifts toward this)' : 'Events affecting national government approval'}</div>
+
+            <!-- Modifier list (scrollable) -->
+            <div style="flex:1;overflow-y:auto;min-height:0">
+                ${modifiersHtml}
+            </div>
+        </div>
+    </div>`;
+
+    return; // Additional containers will be added below in future updates
     const voteShare = Number(playerStanding.realized_vote_share ?? 0);
     const contestedShare = Number(playerStanding.contested_vote_share ?? 0);
     const turnout = Number(playerStanding.turnout_rate ?? 0.65);
