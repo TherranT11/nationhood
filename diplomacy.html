@@ -15807,6 +15807,8 @@ async function applyVoteEffects(vote, org) {
             break;
         }
         case 'fund_draw': {
+            // KNOWN ISSUE: same read-modify-write race as executeDirectFundDraw.
+            // Needs server-side atomic decrement RPC for full safety.
             if (meta.amount_requested && meta.amount_requested > 0) {
                 const newBalance = Math.max(0, (org.solidarity_fund_balance || 0) - meta.amount_requested);
                 await _supabase.from('international_orgs')
@@ -16514,12 +16516,15 @@ async function executeDirectFundDraw() {
     _ipoActionLock = true;
 
     try {
+        // KNOWN ISSUE: read-modify-write on cached balance is not atomic across sessions.
+        // A server-side RPC for atomic fund decrement would eliminate this race.
+        // The _ipoActionLock guard protects against same-tab double-fire only.
         const newBalance = balance - amount;
         await _supabase.from('international_orgs')
             .update({ solidarity_fund_balance: newBalance })
             .eq('id', ipoSelectedOrgId);
 
-        // Credit the president's faction
+        // Credit the president's faction (fresh read to avoid overwriting concurrent AP changes)
         const { data: faction } = await _supabase
             .from('factions')
             .select('action_points')
@@ -17223,15 +17228,10 @@ function getArticleSummary(art) {
 // ── Submit creation ──
 async function submitIPOCreation() {
     if (!currentFaction || !currentNation) return;
+    if (_ipoActionLock) return;
+    _ipoActionLock = true;
 
     const apCost = 4 + Math.max(0, ipoCreateArticles.length - 1);
-
-    // Deduct AP
-    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
-    if (!apResult.success) {
-        alert('Insufficient AP. You need ' + apCost + ' AP to create this organisation.');
-        return;
-    }
 
     // Build charter JSONB
     const charter = {};
@@ -17281,7 +17281,7 @@ async function submitIPOCreation() {
     if (!charter.resources) charter.resources = { solidarityFund: { enabled: false, contributionPerQuarter: 1 }, resourceSharingCap: null, jointStatementClause: 'vote', headquarters: null };
 
     try {
-        // Upload custom logo image if provided
+        // Upload custom logo image BEFORE deducting AP (failable, no side effects to undo)
         let logoImageUrl = null;
         if (ipoCreateLogoFile) {
             const ext = ipoCreateLogoFile.name.split('.').pop() || 'png';
@@ -17296,6 +17296,13 @@ async function submitIPOCreation() {
             }
             const { data: urlData } = _supabase.storage.from('public-assets').getPublicUrl(filePath);
             logoImageUrl = urlData?.publicUrl || null;
+        }
+
+        // Deduct AP (after logo upload succeeds, before org creation)
+        const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+        if (!apResult.success) {
+            alert('Insufficient AP. You need ' + apCost + ' AP to create this organisation.');
+            return;
         }
 
         // Create org
@@ -17320,6 +17327,8 @@ async function submitIPOCreation() {
 
         if (orgErr) {
             console.error('[IPO] Create org error:', orgErr);
+            // Refund AP since org creation failed
+            await _supabase.from('factions').update({ action_points: (currentFaction.action_points || 0) + apCost }).eq('id', currentFaction.id);
             alert('Failed to create organisation: ' + orgErr.message);
             return;
         }
@@ -17359,6 +17368,8 @@ async function submitIPOCreation() {
     } catch (e) {
         console.error('[IPO] Creation error:', e);
         alert('Failed to create organisation.');
+    } finally {
+        _ipoActionLock = false;
     }
 }
 
