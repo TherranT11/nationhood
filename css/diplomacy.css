@@ -4351,11 +4351,44 @@ img.ipo-logo-img.ipo-header-logo {
 .ipo-vote-form-input:focus,
 .ipo-vote-form-textarea:focus { outline: none; border-color: rgba(200,166,78,0.4); }
 
-.ipo-invite-item:hover { background: rgba(255,255,255,0.06); }
-.ipo-invite-item.selected { background: rgba(200,166,78,0.15); border-left: 3px solid rgba(200,166,78,0.7); }
+.ipo-invite-item {
+  padding: 8px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-left: 3px solid transparent;
+  transition: background 0.12s, border-color 0.12s;
+}
 .ipo-invite-item:last-child { border-bottom: none; }
-body.light-mode .ipo-invite-item:hover { background: rgba(0,0,0,0.04); }
-body.light-mode .ipo-invite-item.selected { background: rgba(200,166,78,0.12); border-left: 3px solid rgba(180,140,50,0.6); }
+.ipo-invite-item:not(.disabled):hover { background: rgba(255,255,255,0.06); }
+.ipo-invite-item.selected { background: rgba(200,166,78,0.18); border-left-color: rgba(200,166,78,0.8); }
+.ipo-invite-item.disabled { opacity: 0.55; cursor: default; }
+body.light-mode .ipo-invite-item { border-bottom-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-invite-item:not(.disabled):hover { background: rgba(0,0,0,0.04); }
+body.light-mode .ipo-invite-item.selected { background: rgba(200,166,78,0.12); border-left-color: rgba(180,140,50,0.6); }
+
+.ipo-invite-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ipo-invite-badge--accepted { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+.ipo-invite-badge--invited { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); }
+.ipo-invite-badge--rejected { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+
+.ipo-ideo-filter-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  opacity: 0.6;
+}
+.ipo-ideo-filter-btn:hover { opacity: 0.85; }
+.ipo-ideo-filter-btn.active { opacity: 1; filter: brightness(1.3); box-shadow: 0 0 0 1px currentColor; }
 
 .ipo-vote-form-note {
   font-family: var(--font-mono);

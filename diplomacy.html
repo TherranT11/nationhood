@@ -14235,6 +14235,7 @@ async function openIPOInviteModal() {
     if (!currentFaction || !ipoSelectedOrgId) return;
     const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
     if (!membership || membership.role === 'observer') return;
+    _ipoIdeoFilters = new Set();
 
     // Fetch all factions not already members or with pending invites
     const { data: existingMembers, error: memErr } = await _supabase
@@ -14245,13 +14246,23 @@ async function openIPOInviteModal() {
     if (memErr) console.error('[IPO Invite] Members query error:', memErr.message);
     const memberIds = new Set((existingMembers || []).map(m => m.faction_id));
 
-    const { data: pendingInvites, error: invErr } = await _supabase
+    const { data: allInvites, error: invErr } = await _supabase
         .from('ipo_invitations')
-        .select('target_faction_id')
-        .eq('org_id', ipoSelectedOrgId)
-        .in('status', ['pending', 'vote_pending']);
+        .select('target_faction_id, status, responded_at_tick')
+        .eq('org_id', ipoSelectedOrgId);
     if (invErr) console.error('[IPO Invite] Invitations query error:', invErr.message);
-    const pendingIds = new Set((pendingInvites || []).map(i => i.target_faction_id));
+
+    // Build a map: faction_id → latest invitation status
+    const inviteMap = {};
+    (allInvites || []).forEach(i => {
+        const prev = inviteMap[i.target_faction_id];
+        // Keep the most relevant status: pending/vote_pending > declined > accepted
+        if (!prev || i.status === 'pending' || i.status === 'vote_pending') {
+            inviteMap[i.target_faction_id] = i;
+        }
+    });
+
+    const IPO_INVITE_COOLDOWN = 10;
 
     const { data: allFactions, error: facErr } = await _supabase
         .from('factions')
@@ -14259,15 +14270,9 @@ async function openIPOInviteModal() {
         .order('faction_name');
     if (facErr) console.error('[IPO Invite] Factions query error:', facErr.message);
 
-    const available = (allFactions || []).filter(f => !memberIds.has(f.id) && !pendingIds.has(f.id));
-
-    if (available.length === 0) {
-        alert('No eligible factions to invite — all active factions are already members or have pending invites.');
-        return;
-    }
-
     // Fetch nation names for display
-    const nationIds = [...new Set(available.map(f => f.nation_id).filter(Boolean))];
+    const allFactionsList = allFactions || [];
+    const nationIds = [...new Set(allFactionsList.map(f => f.nation_id).filter(Boolean))];
     const nationMap = {};
     if (nationIds.length > 0) {
         const { data: nations } = await _supabase.from('nations').select('id, name').in('id', nationIds);
@@ -14280,15 +14285,66 @@ async function openIPOInviteModal() {
         return '<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:11px;line-height:16px;background:' + c + '22;color:' + c + ';border:1px solid ' + c + '55;">' + escapeHtml(name) + '</span>';
     }
 
-    const listItems = available.map((f, i) => {
+    function statusBadge(f) {
+        if (memberIds.has(f.id)) {
+            return '<span class="ipo-invite-badge ipo-invite-badge--accepted">Accepted</span>';
+        }
+        const inv = inviteMap[f.id];
+        if (!inv) return '';
+        if (inv.status === 'pending' || inv.status === 'vote_pending') {
+            return '<span class="ipo-invite-badge ipo-invite-badge--invited">Invited</span>';
+        }
+        if (inv.status === 'declined') {
+            const ticksSince = shardTick - (inv.responded_at_tick || 0);
+            if (ticksSince < IPO_INVITE_COOLDOWN) {
+                const remaining = IPO_INVITE_COOLDOWN - ticksSince;
+                return '<span class="ipo-invite-badge ipo-invite-badge--rejected">Rejected · ' + remaining + ' Tick Cooldown</span>';
+            }
+        }
+        return '';
+    }
+
+    function isDisabled(f) {
+        if (memberIds.has(f.id)) return true;
+        const inv = inviteMap[f.id];
+        if (!inv) return false;
+        if (inv.status === 'pending' || inv.status === 'vote_pending') return true;
+        if (inv.status === 'declined') {
+            const ticksSince = shardTick - (inv.responded_at_tick || 0);
+            if (ticksSince < IPO_INVITE_COOLDOWN) return true;
+        }
+        return false;
+    }
+
+    // Find first selectable faction
+    const firstSelectable = allFactionsList.find(f => !isDisabled(f));
+
+    const listItems = allFactionsList.map(f => {
         const nation = nationMap[f.nation_id] ? ' <span style="color:var(--text-dim);font-size:12px;">· ' + escapeHtml(nationMap[f.nation_id]) + '</span>' : '';
         const ideo1 = f.ideology_value_1 ? ideoTag(f.ideology_value_1) : '';
         const ideo2 = f.ideology_value_2 ? ideoTag(f.ideology_value_2) : '';
         const ideoHtml = (ideo1 || ideo2) ? '<div style="display:flex;gap:4px;margin-top:2px;">' + ideo1 + ideo2 + '</div>' : '';
-        return '<div class="ipo-invite-item' + (i === 0 ? ' selected' : '') + '" data-faction-id="' + f.id + '" onclick="selectIPOInviteTarget(this)" style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border-dim, rgba(255,255,255,0.06));">'
-            + '<div style="font-size:13px;">' + escapeHtml(f.faction_name) + nation + '</div>'
+        const badge = statusBadge(f);
+        const disabled = isDisabled(f);
+        const selectedClass = (!disabled && firstSelectable && f.id === firstSelectable.id) ? ' selected' : '';
+        const disabledClass = disabled ? ' disabled' : '';
+        const ideos = [f.ideology_value_1, f.ideology_value_2].filter(Boolean).join(',');
+        return '<div class="ipo-invite-item' + selectedClass + disabledClass + '" data-faction-id="' + f.id + '" data-ideologies="' + ideos + '"'
+            + (disabled ? '' : ' onclick="selectIPOInviteTarget(this)"')
+            + '>'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
+            + '<span style="font-size:13px;">' + escapeHtml(f.faction_name) + nation + '</span>'
+            + badge
+            + '</div>'
             + ideoHtml
             + '</div>';
+    }).join('');
+
+    // Build ideology filter bar
+    const ideoNames = Object.keys(WN_IDEOLOGY_COLORS);
+    const ideoFilterBtns = ideoNames.map(name => {
+        const c = WN_IDEOLOGY_COLORS[name];
+        return '<button class="ipo-ideo-filter-btn" data-ideology="' + name + '" onclick="toggleIPOIdeoFilter(this)" style="background:' + c + '18;color:' + c + ';border:1px solid ' + c + '44;">' + name + '</button>';
     }).join('');
 
     const inner = document.getElementById('ipo-create-modal-inner');
@@ -14300,7 +14356,8 @@ async function openIPOInviteModal() {
         </div>
         <div class="ipo-modal-body">
             <label class="ipo-vote-form-label">Party to Invite</label>
-            <input type="hidden" id="ipo-invite-target" value="${available[0]?.id || ''}">
+            <div id="ipo-ideo-filter-bar" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">${ideoFilterBtns}</div>
+            <input type="hidden" id="ipo-invite-target" value="${firstSelectable?.id || ''}">
             <div id="ipo-invite-list" style="max-height:260px;overflow-y:auto;border:1px solid var(--border-color, rgba(255,255,255,0.12));border-radius:6px;background:var(--bg-darker, rgba(0,0,0,0.2));">${listItems}</div>
             <label class="ipo-vote-form-label">Role</label>
             <select id="ipo-invite-role" class="ipo-vote-form-select">
@@ -14316,9 +14373,32 @@ async function openIPOInviteModal() {
 }
 
 function selectIPOInviteTarget(el) {
-    document.querySelectorAll('#ipo-invite-list .ipo-invite-item').forEach(item => item.classList.remove('selected'));
+    if (el.classList.contains('disabled')) return;
+    document.querySelectorAll('#ipo-invite-list .ipo-invite-item.selected').forEach(item => item.classList.remove('selected'));
     el.classList.add('selected');
     document.getElementById('ipo-invite-target').value = el.dataset.factionId;
+}
+
+let _ipoIdeoFilters = new Set();
+function toggleIPOIdeoFilter(btn) {
+    const ideo = btn.dataset.ideology;
+    if (_ipoIdeoFilters.has(ideo)) {
+        _ipoIdeoFilters.delete(ideo);
+        btn.classList.remove('active');
+    } else {
+        _ipoIdeoFilters.add(ideo);
+        btn.classList.add('active');
+    }
+    // Filter the list
+    document.querySelectorAll('#ipo-invite-list .ipo-invite-item').forEach(item => {
+        if (_ipoIdeoFilters.size === 0) {
+            item.style.display = '';
+            return;
+        }
+        const ideos = (item.dataset.ideologies || '').split(',');
+        const match = ideos.some(i => _ipoIdeoFilters.has(i));
+        item.style.display = match ? '' : 'none';
+    });
 }
 
 /**
