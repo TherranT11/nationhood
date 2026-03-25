@@ -13863,12 +13863,22 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
         profile = data;
     }
 
-    // Fetch faction ideologies
+    // Fetch ideologies for ALL active factions in the nation (not just the ones being seeded)
+    // so that spatial alignment is calculated with proper competition from existing parties.
+    // Without this, a single new party gets uncompeted alignment (70-90+) and inflated vote share.
     const factionIds = factions.map(f => f.id);
+    const { data: allNationFactions } = await supabase
+        .from('factions')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party')
+        .is('abandoned_at', null);
+    const allFactionIds = (allNationFactions || []).map(f => f.id);
+
     const { data: ideologies } = await supabase
         .from('faction_ideology')
         .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-        .in('faction_id', factionIds);
+        .in('faction_id', allFactionIds);
     const ideoMap = {};
     for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
 
@@ -13884,7 +13894,7 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
 
     const govApproval = Number(nation.gov_approval ?? 50);
 
-    // Compute spatial alignments at genesis (all parties compete from the start)
+    // Compute spatial alignments with ALL parties competing (not just the new ones)
     const defaultSalience = {};
     for (const axisKey of AXIS_KEYS) defaultSalience[axisKey] = 0.2;
     const genesisAlignments = profile
@@ -13919,6 +13929,8 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
 
     // Compute initial raw_appeal and vote shares so elections running before
     // the first tickElectorate don't see NULL contested_vote_share (= 0 votes).
+    // We must include ALL existing standings in the softmax so the new party
+    // doesn't get 100% contested_vote_share from being computed in isolation.
     const stability = clamp(Number(nation.stability ?? 50) || 50, 0, 100);
     const polarization = clamp(Number(nation.polarization ?? 50) || 50, 0, 100);
     const chaosIndex = clamp(((polarization / 100) + (1 - stability / 100)) / 2, 0, 1);
@@ -13941,11 +13953,32 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
             credibilityScore * credWeight
         );
     }
-    computeContestedVoteShares(rows);
-    computeRealizedVoteShares(rows, profile, nation);
 
-    // Add computed vote share fields to each row for DB write
+    // Fetch existing standings so softmax includes ALL parties (not just the new ones)
+    const existingFactionIds = allFactionIds.filter(id => !factionIds.includes(id));
+    let allRows = [...rows];
+    if (existingFactionIds.length > 0) {
+        const { data: existingStandings } = await supabase
+            .from('faction_electoral_standing')
+            .select('faction_id, nation_id, raw_appeal, contested_vote_share, realized_vote_share, turnout_rate')
+            .eq('nation_id', nation.id)
+            .in('faction_id', existingFactionIds);
+        if (existingStandings && existingStandings.length > 0) {
+            allRows = [...rows, ...existingStandings];
+        }
+    }
+
+    computeContestedVoteShares(allRows);
+    computeRealizedVoteShares(allRows, profile, nation);
+
+    // Copy computed values back to the new rows only (existing standings aren't written)
     for (const r of rows) {
+        const computed = allRows.find(a => a.faction_id === r.faction_id);
+        if (computed) {
+            r.contested_vote_share = computed.contested_vote_share;
+            r.realized_vote_share = computed.realized_vote_share;
+            r.turnout_rate = computed.turnout_rate;
+        }
         r.base_vote_share = r.contested_vote_share;
         r.turnout_rate = r.turnout_rate || 0.65;
     }
