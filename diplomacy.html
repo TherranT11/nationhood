@@ -1003,7 +1003,7 @@ async function renderRelationsTab() {
                 return !check.allowed;
             });
             const creditTitle = blockedAgreements.length > 0
-                ? 'Credit ' + theirCredit + ' — cannot propose: ' + blockedAgreements.map(t => ({ fta: 'FTA', pta: 'PTA', resource_supply: 'RSC', economic_aid: 'Aid' }[t])).join(', ')
+                ? 'Credit ' + theirCredit + ' — cannot propose: ' + blockedAgreements.map(t => ({ fta: 'FTA', pta: 'PTA', resource_supply: 'RSC' }[t])).join(', ')
                 : theirCredit >= 75 ? 'Credit ' + theirCredit + ' — preferred trade partner (+affinity bonus)' : 'Credit ' + theirCredit;
 
             cardsHTML += `
@@ -13723,6 +13723,7 @@ window.selectDurationType = selectDurationType;
 window.toggleDurationFixedFields = toggleDurationFixedFields;
 window.togglePriceModifier = togglePriceModifier;
 window.updateSupplyWarning = updateSupplyWarning;
+window.updateSupplyVolumeHint = updateSupplyVolumeHint;
 window.updateSubsidyWarning = updateSubsidyWarning;
 window.renderInitiativeWizard = renderInitiativeWizard;
 window.renderDraftBox = renderDraftBox;
@@ -16685,6 +16686,8 @@ function openIPOCreationModal() {
 
 function closeIPOCreationModal() {
     document.getElementById('ipo-create-modal').classList.remove('active');
+    ipoCreateLogoFile = null;
+    ipoCreateLogoPreviewUrl = null;
 }
 
 function renderIPOCreateStep() {

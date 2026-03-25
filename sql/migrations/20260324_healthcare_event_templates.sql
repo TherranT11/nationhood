@@ -1,12 +1,19 @@
--- Add Healthcare ministry trigger keys to the fire_system_event RPC
--- and update the base fire_system_event.sql with Healthcare entries.
+-- Add Healthcare ministry trigger keys to the fire_system_event RPC.
+-- This migration re-applies the canonical function from create_fire_system_event.sql
+-- with the correct parameter order (p_nation_id, p_trigger_key) and auth guard.
+--
+-- Also drops the wrong-signature overload (p_trigger_key, p_nation_id) if it exists.
+
+DROP FUNCTION IF EXISTS fire_system_event(text, uuid, integer, jsonb);
+DROP FUNCTION IF EXISTS fire_system_event(uuid, text, integer, jsonb);
 
 CREATE OR REPLACE FUNCTION fire_system_event(
-    p_trigger_key TEXT,
-    p_nation_id UUID,
-    p_tick INT,
-    p_placeholders JSONB DEFAULT '{}'
-) RETURNS void
+    p_nation_id    UUID,
+    p_trigger_key  TEXT,
+    p_tick         INT,
+    p_placeholders JSONB DEFAULT '{}'::jsonb
+)
+RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
@@ -14,14 +21,25 @@ DECLARE
     v_event_name TEXT;
     v_category TEXT;
 BEGIN
+    -- Guard: caller must belong to this nation (skip check for service_role / tick processor)
+    IF auth.role() = 'authenticated' THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM factions
+            WHERE id = auth.uid() AND nation_id = p_nation_id
+        ) THEN
+            RAISE EXCEPTION 'Not authorized to fire events for this nation';
+        END IF;
+    END IF;
+
+    -- Map trigger_key to readable event_name and category
     SELECT
         CASE p_trigger_key
-            WHEN 'election_held'             THEN 'Election Held'
-            WHEN 'government_formed'         THEN 'Government Formed'
-            WHEN 'presidential_election'     THEN 'Presidential Election'
-            WHEN 'formation_snap_election'   THEN 'Snap Election — Formation Failed'
-            WHEN 'emergency_minority_government' THEN 'Emergency Minority Government'
-            WHEN 'minority_government_formed' THEN 'Minority Government Formed'
+            WHEN 'election_held'            THEN 'Election Held'
+            WHEN 'government_formed'        THEN 'Government Formed'
+            WHEN 'presidential_election'    THEN 'Presidential Election'
+            WHEN 'formation_snap_election'  THEN 'Snap Election Called'
+            WHEN 'emergency_minority_government' THEN 'Minority Government Formed'
+            WHEN 'minority_government_formed'    THEN 'Minority Government Formed'
             WHEN 'coalition_formation_started'    THEN 'Coalition Formation Underway'
             WHEN 'pm_appointed'             THEN 'Prime Minister Appointed'
             WHEN 'vonc_passed'              THEN 'No Confidence — Government Falls'
