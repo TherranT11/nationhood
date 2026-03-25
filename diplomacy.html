@@ -13777,7 +13777,7 @@ function updateIPOInviteTabBadge(count) {
 
 /**
  * Shared helper: fetch org + members, build the preview HTML.
- * Returns { org, html } or null if org not found.
+ * Returns { org, members, headerHtml } or null if org not found.
  */
 async function buildOrgPreviewData(orgId) {
     const [orgResult, membersResult] = await Promise.all([
