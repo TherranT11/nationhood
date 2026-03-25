@@ -372,6 +372,12 @@ export async function createAdministration(supabase, nationId, nation, coalition
             });
         if (insertErr) throw insertErr;
 
+        // Reset government approval to 50 for the new administration (clean slate)
+        const { error: approvalResetErr } = await supabase.from('nations')
+            .update({ gov_approval: 50, gov_approval_events: 0 })
+            .eq('id', nationId);
+        if (approvalResetErr) console.error('createAdministration: failed to reset gov_approval:', approvalResetErr.message);
+
         // Fire timeline event for government formed
         try {
             const partyNames = coalitionParties.map(p => p.party_name).join(', ');
@@ -648,6 +654,11 @@ export async function rolloverAdministration(supabase, nationId, nation, endReas
     });
 
     if (!rpcErr) {
+        // Reset government approval to 50 for the new administration (clean slate)
+        const { error: approvalResetErr } = await supabase.from('nations')
+            .update({ gov_approval: 50, gov_approval_events: 0 })
+            .eq('id', nationId);
+        if (approvalResetErr) console.error('rolloverAdministration: failed to reset gov_approval:', approvalResetErr.message);
         console.log(`Administration rolled over atomically: "${adminName}" at tick ${currentTick}`);
         return;
     }
@@ -2506,7 +2517,15 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         console.error(`[inauguratePresident] Failed to reset overreach_count:`, overreachErr.message);
     }
 
-    // 3. Remove all acting ministers — new president appoints their own cabinet
+    // 3. Reset government approval to 50 — new administration starts with clean slate
+    const { error: approvalResetErr } = await supabase.from('nations')
+        .update({ gov_approval: 50, gov_approval_events: 0 })
+        .eq('id', nationId);
+    if (approvalResetErr) {
+        console.error(`[inauguratePresident] Failed to reset gov_approval:`, approvalResetErr.message);
+    }
+
+    // 4. Remove all acting ministers — new president appoints their own cabinet
     const { error: actingErr } = await supabase.from('ministries')
         .update({
             minister_first_name: null,
@@ -2533,7 +2552,7 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         console.error(`[inauguratePresident] Failed to deactivate acting minister EOs:`, actingEoErr.message);
     }
 
-    // 4. Active executive orders from previous presidents are kept —
+    // 5. Active executive orders from previous presidents are kept —
     //    new president can undo them via their own executive actions.
 
     // Get faction info for administration record

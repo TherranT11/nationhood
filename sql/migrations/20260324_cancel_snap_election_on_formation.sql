@@ -320,6 +320,10 @@ BEGIN
     v_nation.head_of_state_title
   );
 
+  -- Reset government approval to 50 for the new administration (clean slate)
+  UPDATE nations SET gov_approval = 50, gov_approval_events = 0
+  WHERE id = v_nation.id;
+
   -- 9. Auto-appoint PM (party leader)
   SELECT f.*, fi.value AS ideology_tag
   INTO v_pm_faction
