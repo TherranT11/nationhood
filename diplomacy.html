@@ -16178,6 +16178,7 @@ function renderIPOActionsPanel() {
     }
 
     const actions = [];
+    const currentAp = currentFaction?.action_points ?? 0;
 
     // Hold Rally — any member, targets another member
     actions.push({
@@ -16186,7 +16187,7 @@ function renderIPOActionsPanel() {
         desc: 'Spend AP to rally support for another member party.',
         cost: IPO_ACTION_COSTS.hold_rally,
         icon: '📢',
-        available: ipoVoteMembers.filter(m => m.faction_id !== currentFaction.id).length > 0
+        available: ipoVoteMembers.filter(m => m.faction_id !== currentFaction.id).length > 0 && currentAp >= IPO_ACTION_COSTS.hold_rally
     });
 
     // Rally All Members — president only
@@ -16196,7 +16197,7 @@ function renderIPOActionsPanel() {
         desc: 'Coordinate rallies across all member nations.',
         cost: IPO_ACTION_COSTS.rally_all,
         icon: '📣',
-        available: isPresident
+        available: isPresident && currentAp >= IPO_ACTION_COSTS.rally_all
     });
 
     // Back Channel Resources — any member, fund must be enabled
@@ -16207,7 +16208,7 @@ function renderIPOActionsPanel() {
         desc: `Secretly transfer AP to another member. ${Math.round(IPO_BACK_CHANNEL_EXPOSURE_CHANCE * 100)}% exposure risk.`,
         cost: IPO_ACTION_COSTS.back_channel,
         icon: '🤝',
-        available: !!fundEnabled
+        available: !!fundEnabled && currentAp >= IPO_ACTION_COSTS.back_channel
     });
 
     // Joint Statement — president or if charter allows vote (vote handled in Votes panel)
