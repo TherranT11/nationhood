@@ -1486,8 +1486,39 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
         const { data: parlData, error: parlError } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: 'parliamentary' });
         if (parlError) throw parlError;
 
+        // Create a separate completed parliamentary election record so the UI Parliamentary tab updates.
+        // Consume a scheduled parliamentary record if one exists, otherwise insert a new one.
+        if (parlData) {
+            if (parlData.seats) {
+                for (const r of parlData.seats) {
+                    await supabase.from('factions').update({ seats: r.seats }).eq('id', r.party_id);
+                }
+            }
+            const { data: existingParlElection } = await supabase
+                .from('elections')
+                .select('id')
+                .eq('nation_id', nation.id)
+                .eq('status', 'scheduled')
+                .eq('election_type', 'parliamentary')
+                .order('election_tick', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+            if (existingParlElection) {
+                await supabase.from('elections')
+                    .update({ status: 'completed', results: parlData, election_tick: currentTick })
+                    .eq('id', existingParlElection.id);
+            } else {
+                await supabase.from('elections').insert({
+                    nation_id: nation.id,
+                    election_tick: currentTick,
+                    election_type: 'parliamentary',
+                    status: 'completed',
+                    results: parlData
+                });
+            }
+        }
+
         // Ensure candidates exist — generate for parties that have none
-        // Ensure all parties have their leader registered as a candidate
         await autoSelectPresidentialCandidates(supabase, nation, currentTick);
 
         const { error: snapshotErr } = await supabase.rpc('snapshot_presidential_endorsements', {
@@ -1693,45 +1724,59 @@ export async function processElections(supabase, nation, currentTick) {
         // Use candidate-based voting for presidential elections, party-based for parliamentary
         let data, error;
         if (electionType === 'presidential') {
-            // Presidential elections are "General Elections": run parliamentary seats first,
-            // then presidential candidates — mirrors runManualElectionByGovernmentType logic.
-            const { data: parlData, error: parlError } = await supabase.rpc('run_election', {
-                p_nation_id: nation.id,
-                p_election_type: 'parliamentary'
-            });
-            if (parlError) {
-                console.error(`Parliamentary sub-election failed for presidential election in ${nation.name}:`, parlError);
-            } else {
-                // Sync parliamentary seats to factions and store a parliamentary election record
-                if (parlData?.seats) {
-                    for (const r of parlData.seats) {
-                        await supabase.from('factions').update({ seats: r.seats }).eq('id', r.party_id);
-                    }
-                    console.log(`Parliamentary seats synced alongside presidential election for ${nation.name}`);
-                }
-                // Update or create a completed parliamentary election record so the UI shows fresh results
-                const { data: existingParlElection } = await supabase
-                    .from('elections')
-                    .select('id')
-                    .eq('nation_id', nation.id)
-                    .eq('status', 'scheduled')
-                    .eq('election_type', 'parliamentary')
-                    .order('election_tick', { ascending: true })
-                    .limit(1)
-                    .maybeSingle();
-                if (existingParlElection) {
-                    await supabase.from('elections')
-                        .update({ status: 'completed', results: parlData, election_tick: currentTick })
-                        .eq('id', existingParlElection.id);
+            // General Election: always run parliamentary seats alongside presidential.
+            // Check if a parliamentary election was already completed this tick (e.g. both
+            // were scheduled at the same tick and parliamentary ran first in the sort order).
+            const { data: parlAlreadyRan } = await supabase
+                .from('elections')
+                .select('id')
+                .eq('nation_id', nation.id)
+                .eq('status', 'completed')
+                .eq('election_type', 'parliamentary')
+                .eq('election_tick', currentTick)
+                .limit(1)
+                .maybeSingle();
+
+            if (!parlAlreadyRan) {
+                const { data: parlData, error: parlError } = await supabase.rpc('run_election', {
+                    p_nation_id: nation.id,
+                    p_election_type: 'parliamentary'
+                });
+                if (parlError) {
+                    console.error(`Parliamentary sub-election failed for presidential election in ${nation.name}:`, parlError);
                 } else {
-                    await supabase.from('elections').insert({
-                        nation_id: nation.id,
-                        election_tick: currentTick,
-                        election_type: 'parliamentary',
-                        status: 'completed',
-                        results: parlData
-                    });
+                    if (parlData?.seats) {
+                        for (const r of parlData.seats) {
+                            await supabase.from('factions').update({ seats: r.seats }).eq('id', r.party_id);
+                        }
+                        console.log(`Parliamentary seats synced alongside presidential election for ${nation.name}`);
+                    }
+                    // Consume a scheduled parliamentary election record if one exists, otherwise create one
+                    const { data: existingParlElection } = await supabase
+                        .from('elections')
+                        .select('id')
+                        .eq('nation_id', nation.id)
+                        .eq('status', 'scheduled')
+                        .eq('election_type', 'parliamentary')
+                        .order('election_tick', { ascending: true })
+                        .limit(1)
+                        .maybeSingle();
+                    if (existingParlElection) {
+                        await supabase.from('elections')
+                            .update({ status: 'completed', results: parlData, election_tick: currentTick })
+                            .eq('id', existingParlElection.id);
+                    } else {
+                        await supabase.from('elections').insert({
+                            nation_id: nation.id,
+                            election_tick: currentTick,
+                            election_type: 'parliamentary',
+                            status: 'completed',
+                            results: parlData
+                        });
+                    }
                 }
+            } else {
+                console.log(`Parliamentary election already completed this tick for ${nation.name}, skipping sub-election`);
             }
 
             const { error: snapshotErr } = await supabase.rpc('snapshot_presidential_endorsements', {
