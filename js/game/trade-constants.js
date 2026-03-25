@@ -99,17 +99,19 @@ for (var _tsi = 0; _tsi < TRADE_SECTORS.length; _tsi++) {
 //   fuel_energy $2.5B → 1 million barrels a day  (Saudi Arabia ≈ 10 Mbbl/d)
 //   others      $100M → 1 unit                   (mid-tier exporter ≈ 50 units)
 export var SECTOR_DISPLAY_UNITS = {
-    fuel_energy:        { unit: 'million barrels a day',     factor: 1 / 2500000000 },
-    food_agriculture:   { unit: 'million tonnes/year',       factor: 1 / 100000000  },
-    minerals:           { unit: 'million tonnes/year',       factor: 1 / 100000000  },
-    manufactured_goods: { unit: 'thousand TEU/year',         factor: 1 / 100000000  },
-    arms:               { unit: 'thousand units/year',       factor: 1 / 100000000  },
-    tourism:            { unit: 'million visitor-days/year', factor: 1 / 100000000  },
+    fuel_energy:        { baseUnit: 'barrels per day',    scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 2500000000 },
+    food_agriculture:   { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
+    minerals:           { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
+    manufactured_goods: { baseUnit: 'TEU/year',           scaleLabel: 'thousand', scaleFactor: 1e3,  factor: 1 / 100000000  },
+    arms:               { baseUnit: 'units/year',         scaleLabel: 'thousand', scaleFactor: 1e3,  factor: 1 / 100000000  },
+    tourism:            { baseUnit: 'visitor-days/year',   scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
 };
 
 /**
  * Format a trade volume in real-world commodity units.
  * Returns null for sectors that use currency display (technology, services_finance).
+ * Values below the scale threshold (e.g. < 1 million) are shown as raw numbers
+ * with commas (e.g. "340,000 barrels per day").
  * @param {number} val       - internal dollar value
  * @param {string} sectorKey - sector key
  * @returns {string|null}
@@ -117,9 +119,17 @@ export var SECTOR_DISPLAY_UNITS = {
 export function formatSectorVolume(val, sectorKey) {
     var def = SECTOR_DISPLAY_UNITS[sectorKey];
     if (!def) return null;
-    var v = (Number(val) || 0) * def.factor;
-    var str = v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
-    return str + '\u00a0' + def.unit;
+    var scaled = (Number(val) || 0) * def.factor;  // value in scaled units (e.g. millions)
+    var abs = Math.abs(scaled);
+    var sign = scaled < 0 ? '-' : '';
+    if (abs >= 1) {
+        // Show with scale label: "4.00 million barrels per day"
+        var str = abs >= 100 ? abs.toFixed(0) : abs >= 10 ? abs.toFixed(1) : abs.toFixed(2);
+        return sign + str + '\u00a0' + def.scaleLabel + ' ' + def.baseUnit;
+    }
+    // Below scale threshold: show raw number with commas: "340,000 barrels per day"
+    var raw = Math.round(abs * def.scaleFactor);
+    return sign + raw.toLocaleString() + '\u00a0' + def.baseUnit;
 }
 
 // ==================== TRADE CALCULATION FUNCTIONS (STUBS) ====================

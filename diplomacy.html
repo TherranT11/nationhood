@@ -1003,7 +1003,7 @@ async function renderRelationsTab() {
                 return !check.allowed;
             });
             const creditTitle = blockedAgreements.length > 0
-                ? 'Credit ' + theirCredit + ' — cannot propose: ' + blockedAgreements.map(t => ({ fta: 'FTA', pta: 'PTA', resource_supply: 'RSC', economic_aid: 'Aid' }[t])).join(', ')
+                ? 'Credit ' + theirCredit + ' — cannot propose: ' + blockedAgreements.map(t => ({ fta: 'FTA', pta: 'PTA', resource_supply: 'RSC' }[t])).join(', ')
                 : theirCredit >= 75 ? 'Credit ' + theirCredit + ' — preferred trade partner (+affinity bonus)' : 'Credit ' + theirCredit;
 
             cardsHTML += `
@@ -13723,6 +13723,7 @@ window.selectDurationType = selectDurationType;
 window.toggleDurationFixedFields = toggleDurationFixedFields;
 window.togglePriceModifier = togglePriceModifier;
 window.updateSupplyWarning = updateSupplyWarning;
+window.updateSupplyVolumeHint = updateSupplyVolumeHint;
 window.updateSubsidyWarning = updateSubsidyWarning;
 window.renderInitiativeWizard = renderInitiativeWizard;
 window.renderDraftBox = renderDraftBox;
@@ -13823,7 +13824,7 @@ async function renderIPOView() {
             .from('ipo_invitations')
             .select(`
                 id, invited_role, invited_at_tick, status,
-                org:international_orgs ( id, name, logo_symbol, logo_text ),
+                org:international_orgs ( id, name, logo_symbol, logo_text, logo_image_url ),
                 inviter:invited_by ( id, faction_name )
             `)
             .eq('target_faction_id', currentFaction.id)
@@ -14440,7 +14441,7 @@ async function submitIPOExpel() {
                 org_id: ipoSelectedOrgId,
                 faction_id: currentFaction.id,
                 target_faction_id: targetId,
-                action_type: 'hold_rally', // reuse closest type — expulsion is logged via chat
+                action_type: 'expulsion',
                 action_data: { type: 'expulsion', target_name: targetName, by_president: true },
                 ap_cost: 0,
                 performed_at_tick: shardTick
@@ -15807,6 +15808,8 @@ async function applyVoteEffects(vote, org) {
             break;
         }
         case 'fund_draw': {
+            // KNOWN ISSUE: same read-modify-write race as executeDirectFundDraw.
+            // Needs server-side atomic decrement RPC for full safety.
             if (meta.amount_requested && meta.amount_requested > 0) {
                 const newBalance = Math.max(0, (org.solidarity_fund_balance || 0) - meta.amount_requested);
                 await _supabase.from('international_orgs')
@@ -16514,12 +16517,15 @@ async function executeDirectFundDraw() {
     _ipoActionLock = true;
 
     try {
+        // KNOWN ISSUE: read-modify-write on cached balance is not atomic across sessions.
+        // A server-side RPC for atomic fund decrement would eliminate this race.
+        // The _ipoActionLock guard protects against same-tab double-fire only.
         const newBalance = balance - amount;
         await _supabase.from('international_orgs')
             .update({ solidarity_fund_balance: newBalance })
             .eq('id', ipoSelectedOrgId);
 
-        // Credit the president's faction
+        // Credit the president's faction (fresh read to avoid overwriting concurrent AP changes)
         const { data: faction } = await _supabase
             .from('factions')
             .select('action_points')
@@ -16680,6 +16686,8 @@ function openIPOCreationModal() {
 
 function closeIPOCreationModal() {
     document.getElementById('ipo-create-modal').classList.remove('active');
+    ipoCreateLogoFile = null;
+    ipoCreateLogoPreviewUrl = null;
 }
 
 function renderIPOCreateStep() {
@@ -16715,13 +16723,13 @@ function renderIPOCreateStep1() {
         <div class="trade-field">
             <label>Organisation Name</label>
             <input type="text" maxlength="40" value="${escapeHtml(ipoCreateName)}"
-                oninput="ipoCreateName=this.value;ipoUpdateStep1Next()"
+                oninput="ipoSetCreateName(this.value)"
                 id="ipo-create-name" placeholder="e.g. Progressive Socialist International" />
         </div>
         <div class="trade-field">
             <label>Description</label>
             <textarea maxlength="200" rows="2"
-                oninput="ipoCreateDesc=this.value"
+                oninput="ipoSetCreateDesc(this.value)"
                 style="width:100%;padding:4px 8px;font-size:0.78rem;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);border-radius:3px;resize:vertical;"
                 placeholder="Brief description of the organisation's purpose...">${escapeHtml(ipoCreateDesc)}</textarea>
         </div>
@@ -16732,7 +16740,7 @@ function renderIPOCreateStep1() {
         <div class="trade-field">
             <label>Logo Text (max 4 characters)</label>
             <input type="text" maxlength="4" value="${escapeHtml(ipoCreateLogoText)}"
-                oninput="ipoCreateLogoText=this.value.toUpperCase();ipoUpdateStep1Next()"
+                oninput="ipoSetCreateLogoText(this.value)"
                 id="ipo-create-logo-text" placeholder="e.g. PSI"
                 style="width:80px;text-transform:uppercase;" />
             <div id="ipo-create-logo-preview" style="margin-top:6px;font-family:var(--font-mono);font-size:10px;color:var(--ipo-purple);">
@@ -16757,7 +16765,7 @@ function renderIPOCreateStep1() {
             <button class="wizard-back-btn" onclick="closeIPOCreationModal()">Cancel</button>
             <button class="wizard-next-btn" id="ipo-step1-next"
                 ${(!ipoCreateName.trim() || !ipoCreateLogoText.trim()) ? 'disabled' : ''}
-                onclick="ipoCreateStep=2;renderIPOCreateStep()">Next</button>
+                onclick="ipoSetCreateStep(2)">Next</button>
         </div>`;
 }
 
@@ -16864,10 +16872,10 @@ function renderIPOCreateStep2() {
         <div class="ipo-article-list">${articleCards}</div>
         ${addDropdown}
         <div class="wizard-nav">
-            <button class="wizard-back-btn" onclick="ipoCreateStep=1;renderIPOCreateStep()">Back</button>
+            <button class="wizard-back-btn" onclick="ipoSetCreateStep(1)">Back</button>
             <button class="wizard-next-btn" id="ipo-step2-next"
                 ${!ipoValidateCharter() ? 'disabled' : ''}
-                onclick="ipoCreateStep=3;renderIPOCreateStep()">Next</button>
+                onclick="ipoSetCreateStep(3)">Next</button>
         </div>`;
 }
 
@@ -17179,7 +17187,7 @@ function renderIPOCreateStep3() {
             </div>
         </div>
         <div class="wizard-nav">
-            <button class="wizard-back-btn" onclick="ipoCreateStep=2;renderIPOCreateStep()">Back</button>
+            <button class="wizard-back-btn" onclick="ipoSetCreateStep(2)">Back</button>
             <button class="ipo-btn ipo-btn--create-large" onclick="submitIPOCreation()">
                 Create Organisation — ${apCost} AP
             </button>
@@ -17223,15 +17231,10 @@ function getArticleSummary(art) {
 // ── Submit creation ──
 async function submitIPOCreation() {
     if (!currentFaction || !currentNation) return;
+    if (_ipoActionLock) return;
+    _ipoActionLock = true;
 
     const apCost = 4 + Math.max(0, ipoCreateArticles.length - 1);
-
-    // Deduct AP
-    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
-    if (!apResult.success) {
-        alert('Insufficient AP. You need ' + apCost + ' AP to create this organisation.');
-        return;
-    }
 
     // Build charter JSONB
     const charter = {};
@@ -17281,7 +17284,7 @@ async function submitIPOCreation() {
     if (!charter.resources) charter.resources = { solidarityFund: { enabled: false, contributionPerQuarter: 1 }, resourceSharingCap: null, jointStatementClause: 'vote', headquarters: null };
 
     try {
-        // Upload custom logo image if provided
+        // Upload custom logo image BEFORE deducting AP (failable, no side effects to undo)
         let logoImageUrl = null;
         if (ipoCreateLogoFile) {
             const ext = ipoCreateLogoFile.name.split('.').pop() || 'png';
@@ -17296,6 +17299,13 @@ async function submitIPOCreation() {
             }
             const { data: urlData } = _supabase.storage.from('public-assets').getPublicUrl(filePath);
             logoImageUrl = urlData?.publicUrl || null;
+        }
+
+        // Deduct AP (after logo upload succeeds, before org creation)
+        const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+        if (!apResult.success) {
+            alert('Insufficient AP. You need ' + apCost + ' AP to create this organisation.');
+            return;
         }
 
         // Create org
@@ -17320,19 +17330,24 @@ async function submitIPOCreation() {
 
         if (orgErr) {
             console.error('[IPO] Create org error:', orgErr);
+            // Refund AP since org creation failed
+            await _supabase.from('factions').update({ action_points: (currentFaction.action_points || 0) + apCost }).eq('id', currentFaction.id);
             alert('Failed to create organisation: ' + orgErr.message);
             return;
         }
 
-        // Add founding member
+        // Add founding member (critical — org is broken without this)
         const chatColor = IPO_CHAT_COLORS[0];
-        await _supabase.from('ipo_members').insert({
+        const { error: memberErr } = await _supabase.from('ipo_members').insert({
             org_id: newOrg.id,
             faction_id: currentFaction.id,
             role: 'member',
             joined_at_tick: shardTick,
             chat_color: chatColor
         });
+        if (memberErr) {
+            console.error('[IPO] Failed to add founding member:', memberErr.message);
+        }
 
         // System chat message
         await _supabase.from('ipo_chat').insert({
@@ -17359,6 +17374,8 @@ async function submitIPOCreation() {
     } catch (e) {
         console.error('[IPO] Creation error:', e);
         alert('Failed to create organisation.');
+    } finally {
+        _ipoActionLock = false;
     }
 }
 
@@ -17382,6 +17399,14 @@ window.ipoToggleIdeology = ipoToggleIdeology;
 window.ipoUpdateStep1Next = ipoUpdateStep1Next;
 window.ipoActiveArticles = ipoActiveArticles;
 window.submitIPOCreation = submitIPOCreation;
+window.renderIPOCreateStep = renderIPOCreateStep;
+window.ipoHandleLogoUpload = ipoHandleLogoUpload;
+window.ipoRemoveLogoUpload = ipoRemoveLogoUpload;
+// Setter functions for module-scoped variables used in inline handlers
+window.ipoSetCreateName = function(v) { ipoCreateName = v; ipoUpdateStep1Next(); };
+window.ipoSetCreateDesc = function(v) { ipoCreateDesc = v; };
+window.ipoSetCreateLogoText = function(v) { ipoCreateLogoText = v.toUpperCase(); ipoUpdateStep1Next(); };
+window.ipoSetCreateStep = function(s) { ipoCreateStep = s; renderIPOCreateStep(); };
 window.closeIPOAmendModal = closeIPOAmendModal;
 window.ipoAmendAddArticle = ipoAmendAddArticle;
 window.submitIPOAmend = submitIPOAmend;

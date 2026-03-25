@@ -235,7 +235,7 @@ CREATE TABLE IF NOT EXISTS ipo_action_log (
 
     CONSTRAINT chk_action_type CHECK (action_type IN (
         'hold_rally', 'rally_all', 'back_channel',
-        'joint_statement', 'fund_draw'
+        'joint_statement', 'fund_draw', 'expulsion'
     ))
 );
 
@@ -335,7 +335,6 @@ CREATE POLICY "international_orgs_update" ON international_orgs
     FOR UPDATE TO authenticated
     USING (
         president_id = auth.uid()
-        OR id IN (SELECT org_id FROM ipo_members WHERE faction_id = auth.uid() AND is_active = true)
     );
 
 -- Members: anyone can read; members insert/update their own records
@@ -350,7 +349,12 @@ CREATE POLICY "ipo_members_update" ON ipo_members
     FOR UPDATE TO authenticated
     USING (
         faction_id = auth.uid()
-        OR org_id IN (SELECT org_id FROM ipo_members WHERE faction_id = auth.uid() AND is_active = true)
+        OR org_id IN (
+            SELECT m.org_id FROM ipo_members m
+            JOIN international_orgs o ON o.id = m.org_id
+            WHERE m.faction_id = auth.uid() AND m.is_active = true
+            AND o.president_id = auth.uid()
+        )
     );
 
 -- Chat: members/observers of the org can read; only full members can write
@@ -387,15 +391,28 @@ CREATE POLICY "ipo_votes_insert" ON ipo_votes
         )
     );
 
--- Ballots: org members can read (public) or see own (secret handled in app);
--- members can insert their own ballot
+-- Ballots: org members can read ballots for votes in their org;
+-- members can insert their own ballot (must be member of the vote's org)
 CREATE POLICY "ipo_ballots_select" ON ipo_ballots
-    FOR SELECT TO authenticated USING (true);
+    FOR SELECT TO authenticated
+    USING (
+        vote_id IN (
+            SELECT v.id FROM ipo_votes v
+            WHERE v.org_id IN (SELECT org_id FROM ipo_members WHERE faction_id = auth.uid() AND is_active = true)
+        )
+    );
 
 CREATE POLICY "ipo_ballots_insert" ON ipo_ballots
     FOR INSERT TO authenticated
     WITH CHECK (
         (faction_id = auth.uid() OR faction_id IS NULL)
+        AND vote_id IN (
+            SELECT v.id FROM ipo_votes v
+            WHERE v.org_id IN (
+                SELECT org_id FROM ipo_members
+                WHERE faction_id = auth.uid() AND is_active = true AND role = 'member'
+            )
+        )
     );
 
 CREATE POLICY "ipo_ballots_update" ON ipo_ballots
@@ -411,7 +428,13 @@ CREATE POLICY "ipo_action_log_select" ON ipo_action_log
 
 CREATE POLICY "ipo_action_log_insert" ON ipo_action_log
     FOR INSERT TO authenticated
-    WITH CHECK (faction_id = auth.uid());
+    WITH CHECK (
+        faction_id = auth.uid()
+        AND org_id IN (
+            SELECT org_id FROM ipo_members
+            WHERE faction_id = auth.uid() AND is_active = true AND role = 'member'
+        )
+    );
 
 -- Fund transactions: org members can read
 CREATE POLICY "ipo_fund_txn_select" ON ipo_fund_transactions
@@ -421,7 +444,13 @@ CREATE POLICY "ipo_fund_txn_select" ON ipo_fund_transactions
     );
 
 CREATE POLICY "ipo_fund_txn_insert" ON ipo_fund_transactions
-    FOR INSERT TO authenticated WITH CHECK (true);
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        org_id IN (
+            SELECT org_id FROM ipo_members
+            WHERE faction_id = auth.uid() AND is_active = true
+        )
+    );
 
 -- Invitations: target can read their own; org members can read org invites
 CREATE POLICY "ipo_invitations_select" ON ipo_invitations
