@@ -5980,6 +5980,9 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const container = document.getElementById('voters-container');
     if (!container) return;
 
+    container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:12px;padding:40px;text-align:center;letter-spacing:1px;">THIS PAGE IS BEING RECONSTRUCTED. THANK YOU FOR YOUR PATIENCE.</div>';
+    return;
+
     const partyColor = playerFaction.party_color || '#9b7ec8';
     const partyAbbr = playerFaction.abbreviation || '??';
 
