@@ -14256,7 +14256,6 @@ async function openIPOInviteModal() {
     const { data: allFactions, error: facErr } = await _supabase
         .from('factions')
         .select('id, faction_name, nation_id')
-        .eq('is_active', true)
         .order('faction_name');
     if (facErr) console.error('[IPO Invite] Factions query error:', facErr.message);
 
