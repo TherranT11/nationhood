@@ -10704,6 +10704,44 @@ async function processPartialElection(supabase, nation, election, currentTick) {
     console.log(`Partial election completed: ${deltaSeats} new seats allocated across ${factions.length} parties`);
 }
 
+/**
+ * Sync parliamentary seats to factions and record a completed parliamentary
+ * election so the UI Parliamentary tab shows fresh results.
+ * Used by both the tick path and manual path when a General Election
+ * (presidential + parliamentary) runs.
+ */
+async function recordParliamentarySubElection(supabase, nationId, parlData, currentTick) {
+    if (!parlData) return;
+    if (parlData.seats) {
+        for (const r of parlData.seats) {
+            await supabase.from('factions').update({ seats: r.seats }).eq('id', r.party_id);
+        }
+    }
+    // Consume a scheduled parliamentary election record if one exists, otherwise insert one
+    const { data: existingParlElection } = await supabase
+        .from('elections')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('status', 'scheduled')
+        .eq('election_type', 'parliamentary')
+        .order('election_tick', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+    if (existingParlElection) {
+        await supabase.from('elections')
+            .update({ status: 'completed', results: parlData, election_tick: currentTick })
+            .eq('id', existingParlElection.id);
+    } else {
+        await supabase.from('elections').insert({
+            nation_id: nationId,
+            election_tick: currentTick,
+            election_type: 'parliamentary',
+            status: 'completed',
+            results: parlData
+        });
+    }
+}
+
 async function resolveManualElectionContext(supabase, nation, currentTick, requestedElectionType = null) {
     const governmentType = getCanonicalGovernmentType(nation);
     if (governmentType !== CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC) {
@@ -10793,8 +10831,10 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
         const { data: parlData, error: parlError } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: 'parliamentary' });
         if (parlError) throw parlError;
 
+        // Sync seats and create a completed parliamentary election record for the UI
+        await recordParliamentarySubElection(supabase, nation.id, parlData, currentTick);
+
         // Ensure candidates exist — generate for parties that have none
-        // Ensure all parties have their leader registered as a candidate
         await autoSelectPresidentialCandidates(supabase, nation, currentTick);
 
         const { error: snapshotErr } = await supabase.rpc('snapshot_presidential_endorsements', {
@@ -11000,6 +11040,34 @@ async function processElections(supabase, nation, currentTick) {
         // Use candidate-based voting for presidential elections, party-based for parliamentary
         let data, error;
         if (electionType === 'presidential') {
+            // General Election: always run parliamentary seats alongside presidential.
+            // Check if a parliamentary election was already completed this tick (e.g. both
+            // were scheduled at the same tick and parliamentary ran first in the sort order).
+            const { data: parlAlreadyRan } = await supabase
+                .from('elections')
+                .select('id')
+                .eq('nation_id', nation.id)
+                .eq('status', 'completed')
+                .eq('election_type', 'parliamentary')
+                .eq('election_tick', currentTick)
+                .limit(1)
+                .maybeSingle();
+
+            if (!parlAlreadyRan) {
+                const { data: parlData, error: parlError } = await supabase.rpc('run_election', {
+                    p_nation_id: nation.id,
+                    p_election_type: 'parliamentary'
+                });
+                if (parlError) {
+                    console.error(`Parliamentary sub-election failed for presidential election in ${nation.name}:`, parlError);
+                } else {
+                    await recordParliamentarySubElection(supabase, nation.id, parlData, currentTick);
+                    console.log(`Parliamentary seats synced alongside presidential election for ${nation.name}`);
+                }
+            } else {
+                console.log(`Parliamentary election already completed this tick for ${nation.name}, skipping sub-election`);
+            }
+
             const { error: snapshotErr } = await supabase.rpc('snapshot_presidential_endorsements', {
                 p_nation_id: nation.id,
                 p_election_id: election.id
@@ -11329,7 +11397,31 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
                 snappedEndorsements,
                 compatibilityTable: completedElection?.results?.transfer_rate_compatibility || {}
             });
+
+            // Apply endorsement vote transfers to the runoff results.
+            // The RPC only sees 2 candidates and assigns them their base faction votes,
+            // but eliminated candidates' voters need to be redistributed via endorsements.
+            const transferTotals = endorsementResolution.summary?.candidate_totals || {};
+            runoffResults = runoffResults.map(c => {
+                const transfers = transferTotals[c.candidate_id];
+                if (transfers) {
+                    const addedVotes = (transfers.transfer_votes || 0) + (transfers.protest_votes || 0);
+                    return { ...c, votes: (c.votes || 0) + addedVotes, base_votes: c.votes || 0, transfer_votes: addedVotes };
+                }
+                return { ...c, base_votes: c.votes || 0, transfer_votes: 0 };
+            });
+            // Recalculate percentages and total after adding transfers
+            const runoffTotalVotes = runoffResults.reduce((s, c) => s + (c.votes || 0), 0);
+            runoffResults = runoffResults.map(c => ({
+                ...c,
+                vote_percentage: runoffTotalVotes > 0 ? Math.round(((c.votes || 0) / runoffTotalVotes) * 10000) / 100 : 0
+            }));
+            // Re-determine winner after transfers
             const runoffSorted = [...runoffResults].sort((a, b) => b.votes - a.votes);
+            // Mark winner flag
+            if (runoffSorted.length >= 1) {
+                runoffResults = runoffResults.map(c => ({ ...c, winner: c.candidate_id === runoffSorted[0].candidate_id }));
+            }
             winner = runoffSorted[0] || topCandidate;
             console.log(`Runoff winner: ${winner.candidate_name} (${winner.party_name}) with ${winner.vote_percentage}% (${nation.name})`);
 
@@ -11340,7 +11432,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
                 presidential_candidates: runoffResults,
                 round_1_candidates: candidateResults,
                 runoff_candidates: runoffResults,
-                total_votes_cast: runoffData?.total_votes_cast || completedElection.results?.total_votes_cast,
+                total_votes_cast: runoffTotalVotes,
                 was_runoff: true,
                 snapped_endorsements: endorsementResolution.endorsements,
                 runoff_endorsement_summary: endorsementResolution.summary
