@@ -14,10 +14,10 @@ import { closeAdministration, createAdministration, dissolveCoalition } from './
 import { getTraitAPModifier, applyRallyTraitModifiers, getTraitApprovalMultiplier, getEffectiveBlocDisposition } from './party-leadership.js';
 import { onRally, onOutreach, onAttack, nudgeEnthusiasm, ELECTORATE_CONFIG as E_CFG } from './electorate.js';
 
-const _MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+const _PA_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
 function _tickToDate(tick) {
-    return `${_MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
+    return `${_PA_MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
 }
 
 // ==================== STAT DECAY PROCESSING ====================

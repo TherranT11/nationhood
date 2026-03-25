@@ -427,6 +427,48 @@ for (var _tsi = 0; _tsi < TRADE_SECTORS.length; _tsi++) {
     TRADE_SECTOR_MAP[TRADE_SECTORS[_tsi].key] = TRADE_SECTORS[_tsi];
 }
 
+// ==================== SECTOR DISPLAY UNITS ====================
+// Maps sector keys to real-world commodity units for human-readable volume display.
+// Technology and services_finance are intentionally omitted — they display in currency.
+//
+// Calibration basis (BASE_TRADE_MULTIPLIER = $500M, BASELINE_GDP = $100B):
+//   A typical mid-GDP nation with stat=50 produces ~$5B capacity per sector.
+//   fuel_energy $2.5B → 1 million barrels a day  (Saudi Arabia ≈ 10 Mbbl/d)
+//   others      $100M → 1 unit                   (mid-tier exporter ≈ 50 units)
+var SECTOR_DISPLAY_UNITS = {
+    fuel_energy:        { baseUnit: 'barrels per day',    scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 2500000000 },
+    food_agriculture:   { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
+    minerals:           { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
+    manufactured_goods: { baseUnit: 'TEU/year',           scaleLabel: 'thousand', scaleFactor: 1e3,  factor: 1 / 100000000  },
+    arms:               { baseUnit: 'units/year',         scaleLabel: 'thousand', scaleFactor: 1e3,  factor: 1 / 100000000  },
+    tourism:            { baseUnit: 'visitor-days/year',   scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
+};
+
+/**
+ * Format a trade volume in real-world commodity units.
+ * Returns null for sectors that use currency display (technology, services_finance).
+ * Values below the scale threshold (e.g. < 1 million) are shown as raw numbers
+ * with commas (e.g. "340,000 barrels per day").
+ * @param {number} val       - internal dollar value
+ * @param {string} sectorKey - sector key
+ * @returns {string|null}
+ */
+function formatSectorVolume(val, sectorKey) {
+    var def = SECTOR_DISPLAY_UNITS[sectorKey];
+    if (!def) return null;
+    var scaled = (Number(val) || 0) * def.factor;  // value in scaled units (e.g. millions)
+    var abs = Math.abs(scaled);
+    var sign = scaled < 0 ? '-' : '';
+    if (abs >= 1) {
+        // Show with scale label: "4.00 million barrels per day"
+        var str = abs >= 100 ? abs.toFixed(0) : abs >= 10 ? abs.toFixed(1) : abs.toFixed(2);
+        return sign + str + '\u00a0' + def.scaleLabel + ' ' + def.baseUnit;
+    }
+    // Below scale threshold: show raw number with commas: "340,000 barrels per day"
+    var raw = Math.round(abs * def.scaleFactor);
+    return sign + raw.toLocaleString() + '\u00a0' + def.baseUnit;
+}
+
 // ==================== TRADE CALCULATION FUNCTIONS (STUBS) ====================
 
 /**
@@ -12725,7 +12767,20 @@ function spatialAxisCompetition(parties, elecMean, elecVar, temperature) {
     // Step 3: Each party's share = their proportion of the softmax
     // But scale by the best alignment — if ALL parties are far from voters,
     // the total pool of voters is small (no free votes for being least-bad).
-    const poolQuality = maxScore; // 0-1: how well the best party serves this axis
+    //
+    // Crowding penalty: when multiple parties cluster near the same alignment
+    // score, they are all competing for the same voters. The ideological space
+    // becomes saturated — each additional party crowding the same region
+    // shrinks the effective pool available to all of them.
+    // Threshold: parties within 15% of the top alignment count as "clustered".
+    // Divisor: each extra clustered party reduces pool quality by 25%.
+    //   1 party  → divisor 1.00 (no penalty)
+    //   2 parties → divisor 1.25 (−20%)
+    //   3 parties → divisor 1.50 (−33%)
+    //   4 parties → divisor 1.75 (−43%)
+    const clusteredCount = alignments.filter(a => a.alignment >= maxScore * 0.85).length;
+    const crowdingDivisor = 1 + 0.25 * (clusteredCount - 1);
+    const poolQuality = maxScore / crowdingDivisor;
 
     for (let i = 0; i < alignments.length; i++) {
         const share = sumExp > 0 ? (exps[i] / sumExp) : (1 / alignments.length);
@@ -12991,12 +13046,12 @@ const ELECTORATE_CONFIG = {
     APPROVAL_GOV_NUDGE_CAP: 8,        // max ±nudge per tick
     APPROVAL_COALITION_SHARE: 0.25,    // non-lead coalition parties get 25% of nudge
     APPROVAL_OPPOSITION_TARGET: 45,    // inactive opposition drifts toward this
-    APPROVAL_DRIFT_SPEED: 3,           // max points per tick drift toward target
+    APPROVAL_DRIFT_SPEED: 1.5,         // max points per tick drift toward target
     APPROVAL_MIN: 10,
     APPROVAL_MAX: 90,
 
     // ── Visibility config ──
-    VISIBILITY_DECAY: 0.97,          // 3% decay per tick (always active)
+    VISIBILITY_DECAY: 0.985,         // ~1.5% decay per tick (always active)
     VISIBILITY_FLOOR: 10,
     VISIBILITY_GOV_FLOOR: 25,        // governing parties stay more visible
     VISIBILITY_INACTIVITY_THRESHOLD: 3, // ticks without action before approval drift kicks in
@@ -13007,7 +13062,7 @@ const ELECTORATE_CONFIG = {
     CREDIBILITY_RECOVERY_RATE: 0.01,  // per tick toward 1.0
 
     // ── Vote share config ──
-    SOFTMAX_TEMPERATURE: 8,           // softmax k (higher = more uniform distribution)
+    SOFTMAX_TEMPERATURE: 12,          // softmax k (higher = more uniform distribution)
     TURNOUT_BASE: 0.50,               // base turnout fraction
     TURNOUT_POLARIZATION_SCALE: 0.002, // per polarization point: higher polarization → more turnout
     TURNOUT_STABILITY_SCALE: -0.001,   // per stability point above 50: higher stability → less urgency → less turnout
@@ -13033,7 +13088,7 @@ const ELECTORATE_CONFIG = {
     APPEAL_PIONEER_BONUS: 5,               // bonus for being the first faction on an issue
     APPEAL_CONSISTENCY_BONUS: 3,           // bonus for ideologically consistent stances
     APPEAL_INCONSISTENCY_PENALTY: 5,       // penalty for inconsistent stances
-    APPEAL_DRIFT_SPEED: 3,                 // max platform_appeal change per tick
+    APPEAL_DRIFT_SPEED: 1.5,               // max platform_appeal change per tick
     APPEAL_MIN: 10,
     APPEAL_MAX: 90,
 
@@ -20304,10 +20359,10 @@ registerAutocracyAction('select_pillar', {
 // ────────── political-actions ──────────
 
 
-const _MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+const _PA_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
 function _tickToDate(tick) {
-    return `${_MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
+    return `${_PA_MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
 }
 
 // ==================== STAT DECAY PROCESSING ====================
