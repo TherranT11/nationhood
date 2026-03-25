@@ -584,6 +584,32 @@ async function updateDiplomacyAwaitingBadge(faction, nation, roles) {
 }
 
 
+// ===== IPO INVITE BADGE (pending org invitations) =====
+
+async function updateIPOInviteBadge(faction) {
+    const dipBadge = document.getElementById('diplomacy-awaiting-badge');
+    if (!faction) return;
+    try {
+        const { data: invites, error } = await _supabase
+            .from('ipo_invitations')
+            .select('id')
+            .eq('target_faction_id', faction.id)
+            .eq('status', 'pending');
+        if (error) return;
+        const count = (invites || []).length;
+        // Store count globally so diplomacy.html can read it for the sub-tab badge
+        window._ipoPendingInviteCount = count;
+        if (count > 0 && dipBadge) {
+            // Add to existing awaiting badge count or show if hidden
+            const existing = parseInt(dipBadge.textContent) || 0;
+            dipBadge.textContent = existing + count;
+            dipBadge.style.display = '';
+        }
+    } catch (e) {
+        console.error('Error updating IPO invite badge:', e);
+    }
+}
+
 // ===== TICK COUNTDOWN =====
 
 let tickInterval = null;
@@ -939,6 +965,7 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
         updateDiplomacyBadge(state.faction, state.nation, diploRoles);
     }
     updateDiplomacyAwaitingBadge(state.faction, state.nation, diploRoles);
+    updateIPOInviteBadge(state.faction);
     if (onReady) {
         await onReady(state);
     }

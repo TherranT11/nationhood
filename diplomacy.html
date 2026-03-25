@@ -754,7 +754,7 @@ async function renderDiploHeader() {
         <div class="diplo-header-roles">${roleBadges.join('')}</div>
         <div class="diplo-view-toggle">
             <button class="diplo-view-btn ${currentDiploView === 'diplomacy' ? 'is-active' : ''}" data-view="diplomacy" onclick="switchDiploView('diplomacy')">Diplomacy</button>
-            <button class="diplo-view-btn ${currentDiploView === 'orgs' ? 'is-active' : ''}" data-view="orgs" onclick="switchDiploView('orgs')">International Orgs</button>
+            <button class="diplo-view-btn ${currentDiploView === 'orgs' ? 'is-active' : ''}" data-view="orgs" onclick="switchDiploView('orgs')">International Orgs<span class="badge badge--amber ipo-invite-tab-badge" id="ipo-invite-tab-badge" style="display:none;margin-left:6px;"></span></button>
             <button class="diplo-view-btn ${currentDiploView === 'nations' ? 'is-active' : ''}" data-view="nations" onclick="switchDiploView('nations')">World Nations</button>
         </div>
         <div class="diplo-header-stats">
@@ -13755,6 +13755,95 @@ window.executeAppointAmbassador = executeAppointAmbassador;
 // ==================== INTERNATIONAL PARTY ORGANISATIONS ====================
 
 /**
+ * Update the amber badge on the "International Orgs" sub-tab and the top-level
+ * Diplomacy awaiting badge. Called after rendering the IPO view and after
+ * accepting/declining an invite.
+ */
+function updateIPOInviteTabBadge(count) {
+    // Sub-tab badge
+    const tabBadge = document.getElementById('ipo-invite-tab-badge');
+    if (tabBadge) {
+        if (count > 0) {
+            tabBadge.textContent = count;
+            tabBadge.style.display = '';
+        } else {
+            tabBadge.style.display = 'none';
+        }
+    }
+    // Top-level Diplomacy awaiting badge: re-derive from existing awaiting count + IPO count
+    // (The common.js badge may have already been set; just sync it)
+    window._ipoPendingInviteCount = count;
+}
+
+/**
+ * Preview an org's details in the main panel when clicking [View] on an invitation.
+ */
+async function previewIPOInviteOrg(orgId, inviteId) {
+    const main = document.getElementById('ipo-main');
+    if (!main) return;
+    main.innerHTML = '<div class="ipo-main-placeholder"><span class="ipo-main-placeholder-text">Loading organisation details...</span></div>';
+
+    const [orgResult, membersResult] = await Promise.all([
+        _supabase.from('international_orgs').select('*').eq('id', orgId).single(),
+        _supabase.from('ipo_members')
+            .select('id, faction_id, role, factions:faction_id ( id, faction_name, nation_id )')
+            .eq('org_id', orgId)
+            .eq('is_active', true)
+    ]);
+
+    const org = orgResult.data;
+    if (!org) { main.innerHTML = '<div class="ipo-main-placeholder"><span class="ipo-main-placeholder-text">Organisation not found.</span></div>'; return; }
+
+    const members = membersResult.data || [];
+    const charter = org.charter || {};
+    const description = org.description || charter.description || 'No description provided.';
+
+    // Fetch nation names for members
+    const nationIds = [...new Set(members.map(m => m.factions?.nation_id).filter(Boolean))];
+    const nationMap = {};
+    if (nationIds.length > 0) {
+        const { data: nations } = await _supabase.from('nations').select('id, name').in('id', nationIds);
+        (nations || []).forEach(n => { nationMap[n.id] = n.name; });
+    }
+
+    // President name
+    const presidentMember = members.find(m => m.faction_id === org.president_id);
+    const presidentName = presidentMember?.factions?.faction_name || 'Unknown';
+
+    const memberRows = members.map(m => {
+        const f = m.factions;
+        if (!f) return '';
+        const nation = nationMap[f.nation_id] || '';
+        const role = m.faction_id === org.president_id ? 'President' : m.role === 'observer' ? 'Observer' : 'Member';
+        return '<div class="ipo-preview-member"><span class="ipo-preview-member-name">' + escapeHtml(f.faction_name) + '</span>'
+            + (nation ? '<span class="ipo-preview-member-nation"> · ' + escapeHtml(nation) + '</span>' : '')
+            + '<span class="ipo-preview-member-role">' + role + '</span></div>';
+    }).join('');
+
+    main.innerHTML = `
+        <div class="ipo-preview">
+            <div class="ipo-preview-header">
+                ${renderIPOLogo(org, 'ipo-header-logo', '')}
+                <div class="ipo-preview-header-info">
+                    <div class="ipo-header-name">${escapeHtml(org.name)}</div>
+                    <div class="ipo-header-meta">
+                        <span>${members.length} member${members.length !== 1 ? 's' : ''}</span>
+                        <span>President: ${escapeHtml(presidentName)}</span>
+                        <span>Est. Tick ${org.founded_at_tick}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="ipo-preview-desc">${escapeHtml(description)}</div>
+            <div class="ipo-preview-section-label">Members</div>
+            <div class="ipo-preview-members">${memberRows || '<div style="color:var(--text-dim);font-size:12px;">No members.</div>'}</div>
+            <div class="ipo-preview-actions" style="margin-top:16px;display:flex;gap:8px;">
+                <button class="ipo-btn ipo-btn--accept" onclick="acceptIPOInvite('${inviteId}')">Accept Invitation</button>
+                <button class="ipo-btn ipo-btn--decline" onclick="declineIPOInvite('${inviteId}')">Decline</button>
+            </div>
+        </div>`;
+}
+
+/**
  * Load and render the full IPO view:
  *  - Sidebar: list of orgs the player belongs to + Create button
  *  - Main panel: selected org detail (or empty state)
@@ -13864,6 +13953,7 @@ async function renderIPOView() {
                 <div class="ipo-sidebar-invite-actions">
                     <button class="ipo-btn ipo-btn--accept" onclick="acceptIPOInvite('${inv.id}')">Accept</button>
                     <button class="ipo-btn ipo-btn--decline" onclick="declineIPOInvite('${inv.id}')">Decline</button>
+                    <button class="ipo-btn ipo-btn--view" onclick="previewIPOInviteOrg('${org.id}','${inv.id}')">View</button>
                 </div>
             </div>`;
     }).join('');
@@ -13908,6 +13998,9 @@ async function renderIPOView() {
         </div>`;
 
     ipoLoaded = true;
+
+    // Update International Orgs sub-tab badge with pending invite count
+    updateIPOInviteTabBadge(pendingInvites.length);
 
     // Load chat, votes, and actions after DOM is set (only if an org is selected)
     if (ipoSelectedOrgId && ipoMemberships.length > 0) {
@@ -17588,6 +17681,7 @@ window.confirmHoldRally = confirmHoldRally;
 window.selectIPOInviteTarget = selectIPOInviteTarget;
 window.toggleIPOIdeoFilter = toggleIPOIdeoFilter;
 window.submitIPOInvite = submitIPOInvite;
+window.previewIPOInviteOrg = previewIPOInviteOrg;
 window.openIPOExpelModal = openIPOExpelModal;
 window.submitIPOExpel = submitIPOExpel;
 </script>
