@@ -13937,15 +13937,19 @@ async function requestToJoinOrg(orgId) {
             .maybeSingle();
         if (existingVote) { alert('You already have a pending join request for this organisation.'); return; }
 
+        // Determine requested role from charter (default: member)
+        const requestedRole = org.charter?.membership?.joinRequestRole || 'member';
+
         if (admission === 'vote') {
             // Create a membership vote for existing members to decide
             const { error: voteErr } = await _supabase.from('ipo_votes').insert({
                 org_id: orgId,
-                title: `Admit ${currentFaction.faction_name}`,
+                title: `Admit ${currentFaction.faction_name} as ${requestedRole}`,
                 vote_type: 'membership',
                 meta: {
                     target_faction_id: currentFaction.id,
                     target_faction_name: currentFaction.faction_name,
+                    requested_role: requestedRole,
                     join_request: true
                 },
                 status: 'open',
@@ -13959,24 +13963,42 @@ async function requestToJoinOrg(orgId) {
                 org_id: orgId,
                 faction_id: null,
                 is_system: true,
-                message_text: `${currentFaction.faction_name} has requested to join. A membership vote has been opened.`,
+                message_text: `${currentFaction.faction_name} has requested to join as ${requestedRole}. A membership vote has been opened.`,
                 tick_posted: shardTick
             });
             if (chatErr) console.error('[IPO] Chat insert failed:', chatErr.message);
 
             alert('Your request has been submitted. The organisation will vote on your membership.');
         } else {
-            // President-decides admission — notify via chat, president must invite manually
+            // President-decides admission — auto-generate a vote for president to review
+            const { error: voteErr } = await _supabase.from('ipo_votes').insert({
+                org_id: orgId,
+                title: `Admit ${currentFaction.faction_name} as ${requestedRole}`,
+                vote_type: 'membership',
+                meta: {
+                    target_faction_id: currentFaction.id,
+                    target_faction_name: currentFaction.faction_name,
+                    requested_role: requestedRole,
+                    join_request: true,
+                    president_decides: true
+                },
+                status: 'open',
+                opened_at_tick: shardTick,
+                closes_at_tick: shardTick + IPO_VOTE_DURATION,
+                proposed_by: currentFaction.id
+            });
+            if (voteErr) { console.error('[IPO] Vote insert failed:', voteErr.message); alert('Failed to create join request. You may not have permission.'); return; }
+
             const { error: chatErr } = await _supabase.from('ipo_chat').insert({
                 org_id: orgId,
                 faction_id: null,
                 is_system: true,
-                message_text: `${currentFaction.faction_name} has expressed interest in joining. The president may invite them.`,
+                message_text: `${currentFaction.faction_name} has requested to join as ${requestedRole}. The president may approve or members may vote.`,
                 tick_posted: shardTick
             });
             if (chatErr) console.error('[IPO] Chat insert failed:', chatErr.message);
 
-            alert('Your interest has been noted. The organisation president can invite you.');
+            alert('Your request has been submitted. The organisation will review your application.');
         }
 
         // Refresh the preview to show "Request Pending" state
@@ -15623,7 +15645,8 @@ function renderVoteMetaSummary(vote) {
     switch (vote.vote_type) {
         case 'membership': {
             const name = meta.target_faction_name || 'a party';
-            text = `Admit <strong>${escapeHtml(name)}</strong> as a member.`;
+            const role = meta.requested_role === 'observer' ? 'an observer' : 'a member';
+            text = `Admit <strong>${escapeHtml(name)}</strong> as ${role}.`;
             break;
         }
         case 'expulsion': {
@@ -16159,30 +16182,34 @@ async function applyVoteEffects(vote, org) {
 
     switch (vote.vote_type) {
         case 'membership': {
-            // Admit the applicant — update invitation, create member record
+            if (!meta.target_faction_id) break;
+
+            // If invite-based, mark the invitation as accepted
             if (meta.invite_id) {
                 await _supabase.from('ipo_invitations')
                     .update({ status: 'accepted', responded_at_tick: shardTick })
                     .eq('id', meta.invite_id);
-
-                const chatColor = await assignIPOChatColor(ipoSelectedOrgId);
-
-                await _supabase.from('ipo_members').insert({
-                    org_id: ipoSelectedOrgId,
-                    faction_id: meta.target_faction_id,
-                    role: 'member',
-                    joined_at_tick: shardTick,
-                    chat_color: chatColor
-                });
-
-                await _supabase.from('ipo_chat').insert({
-                    org_id: ipoSelectedOrgId,
-                    faction_id: null,
-                    is_system: true,
-                    message_text: `${meta.target_faction_name || 'A new member'} has been admitted to the organisation.`,
-                    tick_posted: shardTick
-                });
             }
+
+            const admitRole = meta.requested_role || 'member';
+            const chatColor = await assignIPOChatColor(ipoSelectedOrgId);
+
+            await _supabase.from('ipo_members').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: meta.target_faction_id,
+                role: admitRole,
+                joined_at_tick: shardTick,
+                chat_color: chatColor
+            });
+
+            const roleLabel = admitRole === 'observer' ? 'an observer' : 'a member';
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: `${meta.target_faction_name || 'A new party'} has been admitted as ${roleLabel}.`,
+                tick_posted: shardTick
+            });
             break;
         }
         case 'expulsion': {
