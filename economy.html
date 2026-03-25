@@ -27,7 +27,7 @@ import { initPage, qCache, qCacheSet, formatCurrency, assertRawEconomicValue } f
 import './js/guide.js';
 import { escapeHtml } from './js/utils.js';
 import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
-import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, isAutocracy, ISSUE_CATEGORY_STATS, formatStatName, deductAP, fetchActiveCoalition, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG, buildFundingPctMap, getInstFundingPct } from './js/game-common.js';
+import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, isAutocracy, ISSUE_CATEGORY_STATS, formatStatName, deductAP, fetchActiveCoalition, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG, buildFundingPctMap, getInstFundingPct, formatSectorVolume } from './js/game-common.js';
 
 // ==================== STATE ====================
 var previousTickData = null;
@@ -428,7 +428,7 @@ async function loadTradeData(nationId) {
         allAffinities.push({ partnerId: nid, name: nationNames[nid] || 'Unknown', breakdown: breakdown });
     }
 
-    tradeData = { summary: summary, flows: flows, prevFlows: prevFlows, partners: partners, allAffinities: allAffinities };
+    tradeData = { summary: summary, flows: flows, prevFlows: prevFlows, partners: partners, allAffinities: allAffinities, nationNames: nationNames };
     qCacheSet(cacheKey, tradeData, 2 * 60 * 1000);
 }
 
@@ -2228,6 +2228,39 @@ function renderSectorDetail(nation, sectorKey) {
     var priceMod = flow ? Number(flow.price_modifier) || 1 : 1;
     var isNetImporter = impVol > expVol;
 
+    // Compute RSC-committed capacity for this sector
+    var rscExportCommittedPct = 0;  // % of our export capacity locked to RSC buyers
+    var rscImportCommittedPct = 0;  // % of our import demand locked to RSC sellers
+    var rscExportPartners = [];     // names of buyers we're committed to
+    var rscImportPartners = [];     // names of sellers we're committed to
+    if (tradeAgreements && nation) {
+        for (var _ri = 0; _ri < tradeAgreements.length; _ri++) {
+            var _rsc = tradeAgreements[_ri];
+            if (_rsc.agreement_type !== 'resource_supply') continue;
+            var _arts = _rsc.articles || [];
+            var _supplyArt = null;
+            for (var _ai = 0; _ai < _arts.length; _ai++) {
+                if (_arts[_ai].type === 'supply_commitment') { _supplyArt = _arts[_ai].data; break; }
+            }
+            if (!_supplyArt || _supplyArt.sector !== sectorKey || !_supplyArt.commitment_pct) continue;
+            var _authorId = _supplyArt.author_nation_id || _rsc.nation_a_id;
+            var _otherId = (_authorId === _rsc.nation_a_id) ? _rsc.nation_b_id : _rsc.nation_a_id;
+            var _sellerId = _supplyArt.direction === 'we_buy' ? _otherId : _authorId;
+            var _buyerId  = _supplyArt.direction === 'we_buy' ? _authorId : _otherId;
+            var _pct = Number(_supplyArt.commitment_pct) || 0;
+            if (_sellerId === nation.id) {
+                rscExportCommittedPct += _pct;
+                var _buyerName = (tradeData && tradeData.nationNames && tradeData.nationNames[_buyerId]) || _buyerId;
+                rscExportPartners.push(_buyerName + ' (' + _pct + '%)');
+            }
+            if (_buyerId === nation.id) {
+                rscImportCommittedPct += _pct;
+                var _sellerName = (tradeData && tradeData.nationNames && tradeData.nationNames[_sellerId]) || _sellerId;
+                rscImportPartners.push(_sellerName + ' (' + _pct + '%)');
+            }
+        }
+    }
+
     var h = '';
 
     // --- Header card with score + volume summary ---
@@ -2265,6 +2298,23 @@ function renderSectorDetail(nation, sectorKey) {
             h += '<div class="sector-vol-item"><span class="sector-vol-label">DEMAND</span><span class="sector-vol-value" style="color:#c9a54e">' + formatTradeVolume(demandVal, sectorKey) + '</span></div>';
         }
         h += '</div>';
+
+        // Available capacity row — only shown when RSC agreements are locking some capacity.
+        // Without commitments the values are identical to SUPPLY/DEMAND above, so omit to avoid noise.
+        if (rscExportCommittedPct > 0 || rscImportCommittedPct > 0) {
+            var availableSupply = Math.max(0, supplyVal * (1 - rscExportCommittedPct / 100));
+            var availableDemand = Math.max(0, demandVal * (1 - rscImportCommittedPct / 100));
+            var availSupplyColor = rscExportCommittedPct > 75 ? '#d9534f' : rscExportCommittedPct > 40 ? '#f0ad4e' : '#5cb85c';
+            var availDemandColor = rscImportCommittedPct > 75 ? '#d9534f' : rscImportCommittedPct > 40 ? '#f0ad4e' : '#5cb85c';
+            var supplyTitle = rscExportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscExportPartners.join(', ');
+            var demandTitle = rscImportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscImportPartners.join(', ');
+            h += '<div class="sector-vol-row">';
+            h += '<div class="sector-vol-item" title="' + escapeHtml(supplyTitle) + '"><span class="sector-vol-label">AVAILABLE</span><span class="sector-vol-value" style="color:' + availSupplyColor + '">' + formatTradeVolume(availableSupply, sectorKey) + (rscExportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscExportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
+            if (!sector.export_only) {
+                h += '<div class="sector-vol-item" title="' + escapeHtml(demandTitle) + '"><span class="sector-vol-label">UNMET DEMAND</span><span class="sector-vol-value" style="color:' + availDemandColor + '">' + formatTradeVolume(availableDemand, sectorKey) + (rscImportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscImportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
+            }
+            h += '</div>';
+        }
 
         // Actual trade volumes row
         h += '<div class="sector-vol-row">';

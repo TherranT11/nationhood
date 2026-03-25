@@ -576,10 +576,12 @@ function calculateImportDemand(nation, sector, opts) {
     // ── FOOD & AGRICULTURE ──
     // Everyone needs food. Import based on what you can't grow domestically.
     // Uses population as scaling factor (not GDP) — even poor nations need to eat.
+    // arable_land is treated as 0–1 (not divided by SN) so it stays proportional
+    // to popNorm. At land=0.5 and popNorm=1 the nation is roughly self-sufficient.
     else if (sector.key === 'food_agriculture') {
-        var arableLand = (Number(nation.arable_land) || 0) / SN;
+        var arableLand = (Number(nation.arable_land) || 0) / 100;
         var popNorm = (Number(nation.population) || 1) / PN;
-        var sufficiency = arableLand / Math.max(0.1, popNorm * 1.5);
+        var sufficiency = arableLand / Math.max(0.1, popNorm * 0.5);
         var deficit = Math.max(0, 1 - sufficiency);
         rawDemand = deficit * popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.8;
     }
@@ -728,19 +730,21 @@ function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var avgRep = (repA + repB) / 2;
     var reputationBonus = ((avgRep - 50) / 50) * 10;
 
-    // Credit rating: nations with poor credit are unreliable trade partners
-    // Uses the WORSE credit of the two nations (weakest-link principle)
-    // Continuous curve: credit 50+ = no penalty, scales linearly to -20 at credit 0, floor -25 for negative
+    // Credit rating: nations with poor credit are unreliable trade partners; high credit signals trustworthiness
+    // Penalty uses WORSE credit of the two nations (weakest-link): credit 50+ = no penalty, scales linearly to -20 at credit 0, floor -25 for negative
+    // Bonus uses BETTER credit of the two nations (best-link): credit 50 = +0, scales linearly to +10 at credit 100
     var creditA = Number(nationA.credit ?? 50);
     var creditB = Number(nationB.credit ?? 50);
     var worstCredit = Math.min(creditA, creditB);
+    var bestCredit = Math.max(creditA, creditB);
     var creditPenalty = 0;
     if (worstCredit < 50) {
         if (worstCredit < 0) creditPenalty = -25;
         else creditPenalty = -((50 - worstCredit) / 50) * 20;
     }
+    var creditBonus = bestCredit > 50 ? ((bestCredit - 50) / 50) * 10 : 0;
 
-    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + autocracyPenalty + fdiBonus + reputationBonus + creditPenalty;
+    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + autocracyPenalty + fdiBonus + reputationBonus + creditPenalty + creditBonus;
     return Math.round(Math.max(0, affinity));
 }
 

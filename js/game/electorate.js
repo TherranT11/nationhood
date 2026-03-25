@@ -204,7 +204,20 @@ function spatialAxisCompetition(parties, elecMean, elecVar, temperature) {
     // Step 3: Each party's share = their proportion of the softmax
     // But scale by the best alignment — if ALL parties are far from voters,
     // the total pool of voters is small (no free votes for being least-bad).
-    const poolQuality = maxScore; // 0-1: how well the best party serves this axis
+    //
+    // Crowding penalty: when multiple parties cluster near the same alignment
+    // score, they are all competing for the same voters. The ideological space
+    // becomes saturated — each additional party crowding the same region
+    // shrinks the effective pool available to all of them.
+    // Threshold: parties within 15% of the top alignment count as "clustered".
+    // Divisor: each extra clustered party reduces pool quality by 25%.
+    //   1 party  → divisor 1.00 (no penalty)
+    //   2 parties → divisor 1.25 (−20%)
+    //   3 parties → divisor 1.50 (−33%)
+    //   4 parties → divisor 1.75 (−43%)
+    const clusteredCount = alignments.filter(a => a.alignment >= maxScore * 0.85).length;
+    const crowdingDivisor = 1 + 0.25 * (clusteredCount - 1);
+    const poolQuality = maxScore / crowdingDivisor;
 
     for (let i = 0; i < alignments.length; i++) {
         const share = sumExp > 0 ? (exps[i] / sumExp) : (1 / alignments.length);
@@ -470,12 +483,12 @@ export const ELECTORATE_CONFIG = {
     APPROVAL_GOV_NUDGE_CAP: 8,        // max ±nudge per tick
     APPROVAL_COALITION_SHARE: 0.25,    // non-lead coalition parties get 25% of nudge
     APPROVAL_OPPOSITION_TARGET: 45,    // inactive opposition drifts toward this
-    APPROVAL_DRIFT_SPEED: 3,           // max points per tick drift toward target
+    APPROVAL_DRIFT_SPEED: 1.5,         // max points per tick drift toward target
     APPROVAL_MIN: 10,
     APPROVAL_MAX: 90,
 
     // ── Visibility config ──
-    VISIBILITY_DECAY: 0.97,          // 3% decay per tick (always active)
+    VISIBILITY_DECAY: 0.985,         // ~1.5% decay per tick (always active)
     VISIBILITY_FLOOR: 10,
     VISIBILITY_GOV_FLOOR: 25,        // governing parties stay more visible
     VISIBILITY_INACTIVITY_THRESHOLD: 3, // ticks without action before approval drift kicks in
@@ -486,7 +499,7 @@ export const ELECTORATE_CONFIG = {
     CREDIBILITY_RECOVERY_RATE: 0.01,  // per tick toward 1.0
 
     // ── Vote share config ──
-    SOFTMAX_TEMPERATURE: 8,           // softmax k (higher = more uniform distribution)
+    SOFTMAX_TEMPERATURE: 12,          // softmax k (higher = more uniform distribution)
     TURNOUT_BASE: 0.50,               // base turnout fraction
     TURNOUT_POLARIZATION_SCALE: 0.002, // per polarization point: higher polarization → more turnout
     TURNOUT_STABILITY_SCALE: -0.001,   // per stability point above 50: higher stability → less urgency → less turnout
@@ -512,7 +525,7 @@ export const ELECTORATE_CONFIG = {
     APPEAL_PIONEER_BONUS: 5,               // bonus for being the first faction on an issue
     APPEAL_CONSISTENCY_BONUS: 3,           // bonus for ideologically consistent stances
     APPEAL_INCONSISTENCY_PENALTY: 5,       // penalty for inconsistent stances
-    APPEAL_DRIFT_SPEED: 3,                 // max platform_appeal change per tick
+    APPEAL_DRIFT_SPEED: 1.5,               // max platform_appeal change per tick
     APPEAL_MIN: 10,
     APPEAL_MAX: 90,
 

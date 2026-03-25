@@ -425,6 +425,12 @@ window._refreshLeaders = async function() {
         alert('Error: ' + e.message);
     } finally {
         isAppointing = false;
+        // Restore button if render() was never called (failure/early-return path).
+        // After a successful render() the old element is detached → isConnected is false → no-op.
+        if (btn && btn.isConnected) {
+            btn.disabled = false;
+            btn.textContent = 'Refresh Leaders';
+        }
     }
 };
 
