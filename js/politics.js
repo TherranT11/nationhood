@@ -5983,9 +5983,9 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const partyColor = playerFaction.party_color || '#9b7ec8';
     const partyAbbr = playerFaction.abbreviation || '??';
 
-    // Fetch faction_electoral_standing for ALL parties + issue_state for Issue Landscape
+    // Fetch faction_electoral_standing + engagement scores + issue_state for Issue Landscape
     const partyIds = (allParties || []).map(p => p.id);
-    const [standingsRes, issueStatesRes] = await Promise.all([
+    const [standingsRes, issueStatesRes, engagementRes] = await Promise.all([
         _supabase.from('faction_electoral_standing')
             .select('faction_id, ideological_alignment, platform_appeal, party_approval, visibility, credibility_modifier, contested_vote_share, realized_vote_share, turnout_rate, alignment_contribution, appeal_contribution, approval_contribution, vote_left_on_table, raw_appeal')
             .eq('nation_id', nation.id)
@@ -5993,18 +5993,29 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         _supabase.from('issue_state')
             .select('issue_id, salience, salience_target, owned_by, pioneer_faction_id')
             .eq('nation_id', nation.id),
+        _supabase.from('faction_engagement')
+            .select('faction_id, engagement_score, initiative_score, constructive_score, positioning_score')
+            .eq('nation_id', nation.id)
+            .in('faction_id', partyIds),
     ]);
 
     if (standingsRes.error) console.error('[Politics] Failed to load standings:', standingsRes.error.message);
     if (issueStatesRes.error) console.error('[Politics] Failed to load issue states:', issueStatesRes.error.message);
+    if (engagementRes.error) console.error('[Politics] Failed to load engagement:', engagementRes.error.message);
     const standings = standingsRes.data || [];
     const issueStates = issueStatesRes.data || [];
+    const engagementData = engagementRes.data || [];
 
     // Build standings lookup
     const standingMap = {};
     for (const s of standings) standingMap[s.faction_id] = s;
 
+    // Build engagement lookup
+    const engagementMap = {};
+    for (const e of engagementData) engagementMap[e.faction_id] = e;
+
     const playerStanding = standingMap[playerFaction.id];
+    const playerEngagement = engagementMap[playerFaction.id];
 
     // Build party lookup
     const partyMap = {};
@@ -6027,6 +6038,12 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const turnout = Number(playerStanding.turnout_rate ?? 0.65);
     const voteLeft = Number(playerStanding.vote_left_on_table ?? 0);
     const rawAppeal = Number(playerStanding.raw_appeal ?? 0);
+
+    // Engagement values
+    const engScore = Number(playerEngagement?.engagement_score ?? 50);
+    const engInit = Number(playerEngagement?.initiative_score ?? 50);
+    const engConst = Number(playerEngagement?.constructive_score ?? 50);
+    const engPos = Number(playerEngagement?.positioning_score ?? 50);
 
     const vsNum = (voteShare * 100).toFixed(1);
     const seatsText = `${mySeats} / ${totalSeats} seats`;
@@ -6059,6 +6076,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         const sVis = Number(s.visibility ?? 30);
         const sCred = Number(s.credibility_modifier ?? 1.0);
         const sTurnout = (Number(s.turnout_rate ?? 0.65) * 100).toFixed(0);
+        const sEng = Number(engagementMap[s.faction_id]?.engagement_score ?? 50);
         const sVoteLeft = (Number(s.vote_left_on_table ?? 0) * 100).toFixed(1);
 
         // Pillar color helper
@@ -6086,6 +6104,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
                 <div class="vc-vs-lbl"><div class="vc-vs-lbl-dot" style="background:${VC_MOM_COLOR}"></div>Approval <span style="color:${pc(sApproval)}">${sApproval.toFixed(0)}</span></div>
                 <div class="vc-vs-lbl">Vis ${sVis.toFixed(0)}</div>
                 <div class="vc-vs-lbl">Cred ${(sCred * 100).toFixed(0)}%</div>
+                <div class="vc-vs-lbl">Eng <span style="color:${sEng >= 60 ? 'var(--dgreen)' : sEng >= 40 ? 'var(--damber)' : 'var(--dred)'}">${sEng.toFixed(0)}</span></div>
                 <div class="vc-vs-lbl">Turnout ${sTurnout}%</div>
                 ${Number(sVoteLeft) > 0.01 ? `<div class="vc-vs-lbl" style="color:var(--dred);">Left ${sVoteLeft}%</div>` : ''}
             </div>
@@ -6220,6 +6239,40 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             <div>
                 <div class="vc-pc-label">Vote Left on Table</div>
                 <div class="vc-pc-num" style="color:${voteLeft > 0.005 ? 'var(--dred)' : 'var(--dgreen)'}; font-size:18px;">${(voteLeft * 100).toFixed(2)}%</div>
+            </div>
+        </div>
+        <!-- Engagement Score -->
+        <div class="vc-pillar-section">
+            <div class="vc-sec-label" style="margin-bottom:8px;">Engagement Score</div>
+            <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px;">
+                <div class="vc-pc-num" style="color:${engScore >= 60 ? 'var(--dgreen)' : engScore >= 40 ? 'var(--damber)' : 'var(--dred)'}; font-size:24px;">${engScore.toFixed(0)}</div>
+                <div class="vc-pc-bar" style="flex:1;"><div class="vc-pc-fill" style="width:${engScore}%;background:${engScore >= 60 ? 'var(--dgreen)' : engScore >= 40 ? 'var(--damber)' : 'var(--dred)'};"></div></div>
+                <div style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtxt-dim);white-space:nowrap;">
+                    ${engScore >= 60 ? 'No penalty' : engScore >= 40 ? 'Appeal ×0.85' : engScore >= 20 ? 'Appeal ×0.65' : 'Appeal ×0.50'}
+                </div>
+            </div>
+            <div style="display:flex;gap:20px;flex-wrap:wrap;">
+                <div>
+                    <div class="vc-pc-label">Initiative</div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <div class="vc-pc-num" style="font-size:14px;color:${engInit >= 60 ? 'var(--dgreen)' : engInit >= 40 ? 'var(--damber)' : 'var(--dred)'}">${engInit.toFixed(0)}</div>
+                        <div class="vc-pc-bar" style="width:80px;"><div class="vc-pc-fill" style="width:${engInit}%;background:${engInit >= 60 ? 'var(--dgreen)' : engInit >= 40 ? 'var(--damber)' : 'var(--dred)'};"></div></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="vc-pc-label">Constructive</div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <div class="vc-pc-num" style="font-size:14px;color:${engConst >= 60 ? 'var(--dgreen)' : engConst >= 40 ? 'var(--damber)' : 'var(--dred)'}">${engConst.toFixed(0)}</div>
+                        <div class="vc-pc-bar" style="width:80px;"><div class="vc-pc-fill" style="width:${engConst}%;background:${engConst >= 60 ? 'var(--dgreen)' : engConst >= 40 ? 'var(--damber)' : 'var(--dred)'};"></div></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="vc-pc-label">Positioning</div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <div class="vc-pc-num" style="font-size:14px;color:${engPos >= 60 ? 'var(--dgreen)' : engPos >= 40 ? 'var(--damber)' : 'var(--dred)'}">${engPos.toFixed(0)}</div>
+                        <div class="vc-pc-bar" style="width:80px;"><div class="vc-pc-fill" style="width:${engPos}%;background:${engPos >= 60 ? 'var(--dgreen)' : engPos >= 40 ? 'var(--damber)' : 'var(--dred)'};"></div></div>
+                    </div>
+                </div>
             </div>
         </div>
         ${issueLandscapeHtml}

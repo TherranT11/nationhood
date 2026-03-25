@@ -22,6 +22,7 @@ import { statDirectionSign, ISSUE_CATEGORY_STATS } from './stats.js';
 import { isAutocracy } from './government-types.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { deductAP } from './config.js';
+import { computeEngagementScores } from './engagement.js';
 
 // ============================================================================
 // ISSUE DEFINITIONS
@@ -1182,6 +1183,12 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     // ── 14. Compute spatial alignments (all factions compete per-axis) ──
     const spatialAlignments = computeSpatialAlignments(ideoMap, activeProfile, axisSalienceWeights);
 
+    // ── 14b. Compute engagement scores (legislative activity tracking) ──
+    const engagementResults = await computeEngagementScores(
+        supabase, nation, factions, coalitionPartyIds, leadPartyId,
+        updatedIssueStates, currentTick
+    );
+
     // ── 15. Calculate pillars for each faction ──
     const updates = [];
 
@@ -1230,10 +1237,15 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         const appealResult = computePlatformAppeal(
             factionStances, issueStateMap, ideo, newAlignment
         );
+        // Apply engagement multiplier to platform appeal
+        const engagementData = engagementResults[factionId];
+        const engagementMult = engagementData?.multiplier ?? 1.0;
+        const adjustedAppeal = round2(appealResult.appeal * engagementMult);
+
         const oldAppeal = Number(standing.platform_appeal ?? CFG.DEFAULT_PLATFORM_APPEAL);
         const newAppeal = opts.snap
-            ? round2(clamp(appealResult.appeal, CFG.APPEAL_MIN, CFG.APPEAL_MAX))
-            : round2(clamp(oldAppeal + clamp(appealResult.appeal - oldAppeal, -CFG.APPEAL_DRIFT_SPEED, CFG.APPEAL_DRIFT_SPEED), CFG.APPEAL_MIN, CFG.APPEAL_MAX));
+            ? round2(clamp(adjustedAppeal, CFG.APPEAL_MIN, CFG.APPEAL_MAX))
+            : round2(clamp(oldAppeal + clamp(adjustedAppeal - oldAppeal, -CFG.APPEAL_DRIFT_SPEED, CFG.APPEAL_DRIFT_SPEED), CFG.APPEAL_MIN, CFG.APPEAL_MAX));
 
         // ─── PILLAR 3: Party Approval (0-100) ───
         const oldApproval = Number(standing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);

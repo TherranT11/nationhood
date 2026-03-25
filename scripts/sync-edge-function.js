@@ -46,6 +46,7 @@ const MODULE_FILES = [
     'bills.js',
     'elections.js',
     'presidential.js',
+    'engagement.js',
     'electorate.js',
     'party-leadership.js',
     'autocracy-pillars.js',
