@@ -4351,6 +4351,12 @@ img.ipo-logo-img.ipo-header-logo {
 .ipo-vote-form-input:focus,
 .ipo-vote-form-textarea:focus { outline: none; border-color: rgba(200,166,78,0.4); }
 
+.ipo-invite-item:hover { background: rgba(255,255,255,0.06); }
+.ipo-invite-item.selected { background: rgba(200,166,78,0.15); border-left: 3px solid rgba(200,166,78,0.7); }
+.ipo-invite-item:last-child { border-bottom: none; }
+body.light-mode .ipo-invite-item:hover { background: rgba(0,0,0,0.04); }
+body.light-mode .ipo-invite-item.selected { background: rgba(200,166,78,0.12); border-left: 3px solid rgba(180,140,50,0.6); }
+
 .ipo-vote-form-note {
   font-family: var(--font-mono);
   font-size: 10px;
