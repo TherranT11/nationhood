@@ -3315,23 +3315,23 @@ body.light-mode .diplo-view-btn.is-active {
   text-align: center;
 }
 .ipo-empty-icon {
-  font-size: 32px;
+  font-size: 42px;
   color: var(--ipo-purple);
   opacity: 0.4;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 .ipo-empty-title {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 20px;
   font-weight: 600;
   color: #e2d9b4;
 }
 .ipo-empty-desc {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 14px;
   color: #6b6a5e;
   line-height: 1.5;
-  max-width: 380px;
+  max-width: 420px;
 }
 .ipo-btn--create-large {
   font-family: var(--font-mono);
@@ -4309,6 +4309,153 @@ body.light-mode .ipo-empty-desc { color: #888; }
   padding: 8px 0;
 }
 
+/* ══ IPO ACTIONS PANEL (Phase 8) ══ */
+
+.ipo-actions-empty {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: #6b6a5e;
+  text-align: center;
+  padding: 24px 12px;
+}
+
+.ipo-action-card {
+  background: rgba(255,255,255,0.015);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 3px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  transition: border-color 0.15s;
+}
+.ipo-action-card:hover { border-color: rgba(139,126,200,0.25); }
+.ipo-action-card--disabled { opacity: 0.45; pointer-events: none; }
+
+.ipo-action-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ipo-action-icon { font-size: 14px; flex-shrink: 0; line-height: 1; }
+
+.ipo-action-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ipo-action-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ipo-action-desc {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  color: #6b6a5e;
+  line-height: 1.3;
+}
+
+.ipo-action-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ipo-action-cost {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 600;
+  color: #c8a64e;
+}
+
+.ipo-action-exec-btn {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--ipo-purple);
+  background: rgba(139,126,200,0.06);
+  border: 1px solid rgba(139,126,200,0.2);
+  transition: background 0.15s;
+}
+.ipo-action-exec-btn:hover:not(:disabled) { background: rgba(139,126,200,0.18); }
+.ipo-action-exec-btn:disabled { color: #6b6a5e; border-color: rgba(107,106,94,0.2); cursor: not-allowed; }
+
+/* Action result modal */
+.ipo-action-result-icon {
+  font-size: 42px;
+  margin-bottom: 8px;
+}
+.ipo-action-result-name {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.ipo-action-result-effect {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.ipo-action-result-desc {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+}
+
+/* Multi-result (rally all) */
+.ipo-action-multi-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ipo-action-multi-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 3px;
+}
+.ipo-action-multi-icon { font-size: 12px; flex-shrink: 0; }
+.ipo-action-multi-name {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ipo-action-multi-outcome {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+}
+.ipo-action-multi-change {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 30px;
+  text-align: right;
+}
+
 /* ── Light mode overrides ── */
 body.light-mode .ipo-modal-content { background: #fff; border-color: rgba(0,0,0,0.1); }
 body.light-mode .ipo-article-card { background: #fafaf8; border-color: rgba(0,0,0,0.06); }
@@ -4330,6 +4477,10 @@ body.light-mode .ipo-vote-voter { background: rgba(0,0,0,0.02); border-color: rg
 body.light-mode .ipo-vote-form-select,
 body.light-mode .ipo-vote-form-input,
 body.light-mode .ipo-vote-form-textarea { background: #fff; border-color: rgba(0,0,0,0.12); color: #333; }
+body.light-mode .ipo-action-card { background: rgba(0,0,0,0.015); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-action-label { color: #333; }
+body.light-mode .ipo-action-multi-row { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-action-multi-name { color: #333; }
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
