@@ -2260,21 +2260,21 @@ function renderSectorDetail(nation, sectorKey) {
         var supplyVal = Number(flow.export_capacity) || 0;
         var demandVal = Number(flow.import_demand) || 0;
         h += '<div class="sector-vol-row">';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">SUPPLY</span><span class="sector-vol-value" style="color:#6aa3d9">' + formatBudgetCurrency(supplyVal) + '</span></div>';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">SUPPLY</span><span class="sector-vol-value" style="color:#6aa3d9">' + formatTradeVolume(supplyVal, sectorKey) + '</span></div>';
         if (!sector.export_only) {
-            h += '<div class="sector-vol-item"><span class="sector-vol-label">DEMAND</span><span class="sector-vol-value" style="color:#c9a54e">' + formatBudgetCurrency(demandVal) + '</span></div>';
+            h += '<div class="sector-vol-item"><span class="sector-vol-label">DEMAND</span><span class="sector-vol-value" style="color:#c9a54e">' + formatTradeVolume(demandVal, sectorKey) + '</span></div>';
         }
         h += '</div>';
 
         // Actual trade volumes row
         h += '<div class="sector-vol-row">';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">EXPORTS</span><span class="sector-vol-value" style="color:#5cb85c">' + formatBudgetCurrency(expVol) + '</span></div>';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">EXPORTS</span><span class="sector-vol-value" style="color:#5cb85c">' + formatTradeVolume(expVol, sectorKey) + '</span></div>';
         if (!sector.export_only) {
-            h += '<div class="sector-vol-item"><span class="sector-vol-label">IMPORTS</span><span class="sector-vol-value" style="color:#d9534f">' + formatBudgetCurrency(impVol) + '</span></div>';
+            h += '<div class="sector-vol-item"><span class="sector-vol-label">IMPORTS</span><span class="sector-vol-value" style="color:#d9534f">' + formatTradeVolume(impVol, sectorKey) + '</span></div>';
         }
         var netColor = net > 0 ? '#5cb85c' : net < 0 ? '#d9534f' : '#888';
         var netSign = net > 0 ? '+' : '';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">NET</span><span class="sector-vol-value" style="color:' + netColor + '">' + netSign + formatBudgetCurrency(net) + '</span></div>';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">NET</span><span class="sector-vol-value" style="color:' + netColor + '">' + netSign + formatTradeVolume(net, sectorKey) + '</span></div>';
         h += '</div>';
 
         // Price modifier
@@ -3363,6 +3363,21 @@ function formatBudgetCurrency(val) {
     if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(1) + ' Million';
     if (abs >= 1e3)  return sign + '$' + (abs / 1e3).toFixed(1) + 'K';
     return sign + '$' + Math.round(abs).toLocaleString();
+}
+
+function formatTradeVolume(val, sectorKey) {
+    if (val == null) return '0';
+    val = Number(val);
+    var sign = val < 0 ? '-' : '';
+    var abs = Math.abs(val);
+    var suffix = (sectorKey === 'fuel_energy') ? ' barrels per day' : '';
+    if (sectorKey === 'fuel_energy') {
+        if (abs >= 1e9)  return sign + (abs / 1e9).toFixed(2) + ' billion' + suffix;
+        if (abs >= 1e6)  return sign + (abs / 1e6).toFixed(2) + ' million' + suffix;
+        return sign + Math.round(abs).toLocaleString() + suffix;
+    }
+    // Non-fuel sectors: use currency-style formatting
+    return formatBudgetCurrency(val);
 }
 
 function budgetTrendHtml(current, previous, prevYear) {
